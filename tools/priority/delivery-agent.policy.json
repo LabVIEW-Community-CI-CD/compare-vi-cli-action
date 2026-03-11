@@ -8,6 +8,21 @@
   "allowPolicyMutations": false,
   "allowReleaseAdmin": false,
   "stopWhenNoOpenEpics": true,
+  "hostIsolation": {
+    "mode": "hard-cutover",
+    "wslDistro": "Ubuntu",
+    "runnerServicePolicy": "stop-all-actions-runner-services",
+    "restoreRunnerServicesOnExit": true,
+    "pauseOnFingerprintDrift": true
+  },
+  "dockerRuntime": {
+    "provider": "native-wsl",
+    "dockerHost": "unix:///var/run/docker.sock",
+    "expectedOsType": "linux",
+    "expectedContext": "",
+    "manageDockerEngine": false,
+    "allowHostEngineMutation": false
+  },
   "turnBudget": {
     "maxMinutes": 20,
     "maxToolCalls": 12

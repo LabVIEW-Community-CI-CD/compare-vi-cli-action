@@ -40,6 +40,17 @@ function Resolve-CommandPath {
   return $command.Source
 }
 
+function Invoke-TypeScriptBuild {
+  param([Parameter(Mandatory)][string]$RepoRoot)
+
+  $nodePath = Resolve-CommandPath -Name 'node'
+  $scriptPath = Join-Path $RepoRoot 'tools\npm\run-script.mjs'
+  & $nodePath $scriptPath build | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "TypeScript build failed for $RepoRoot"
+  }
+}
+
 function Repair-CrossPlaneRuntimeWorktrees {
   param([Parameter(Mandatory)][string]$RepoRoot)
 
@@ -139,6 +150,192 @@ function Repair-RepoGitWorktreeConfig {
   }
 }
 
+function Get-WslDefaultUser {
+  param([Parameter(Mandatory)][string]$Distro)
+
+  $user = (& wsl.exe -d $Distro -- bash -lc 'id -un' 2>$null | Select-Object -Last 1)
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]$user)) {
+    throw "Unable to resolve the default WSL user for distro '$Distro'."
+  }
+
+  return ([string]$user).Trim()
+}
+
+function Ensure-NativeWslDocker {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)][string]$Distro,
+    [Parameter(Mandatory)][string]$TargetUser
+  )
+
+  $runtimeDirPath = Join-Path $RepoRoot 'tests\results\_agent\runtime'
+  New-Item -ItemType Directory -Path $runtimeDirPath -Force | Out-Null
+  $scriptPath = Join-Path $runtimeDirPath 'ensure-native-wsl-docker.sh'
+  $reportPath = Join-Path $runtimeDirPath 'wsl-native-docker.json'
+  $scriptPathWsl = Convert-ToWslPath -Path $scriptPath
+
+  $bashScript = @'
+set -euo pipefail
+
+target_user="${COMPAREVI_WSL_TARGET_USER:?missing target user}"
+apt_updated='false'
+docker_installed='false'
+proxy_killed='false'
+service_enabled='false'
+native_override_written='false'
+
+export DEBIAN_FRONTEND=noninteractive
+
+if ! command -v docker >/dev/null 2>&1 || ! command -v dockerd >/dev/null 2>&1; then
+  apt-get update -y >/dev/null
+  apt_updated='true'
+  apt-get install -y docker.io >/tmp/comparevi-wsl-native-docker-install.log 2>&1
+  docker_installed='true'
+fi
+
+mkdir -p /etc/systemd/system/docker.service.d
+cat >/etc/systemd/system/docker.service.d/comparevi-native.conf <<'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/bin/dockerd -H unix:///var/run/docker.sock --containerd=/run/containerd/containerd.sock
+EOF
+native_override_written='true'
+
+systemctl daemon-reload
+systemctl disable --now docker.socket >/dev/null 2>&1 || true
+systemctl stop docker.service >/dev/null 2>&1 || true
+if pkill -f '^docker-desktop($| )' >/dev/null 2>&1; then
+  proxy_killed='true'
+fi
+pkill -f '/mnt/wsl/docker-desktop' >/dev/null 2>&1 || true
+rm -f /var/run/docker.sock /var/run/docker-cli.sock >/dev/null 2>&1 || true
+
+if id -u "$target_user" >/dev/null 2>&1; then
+  usermod -aG docker "$target_user" >/dev/null 2>&1 || true
+fi
+
+systemctl enable docker.service >/dev/null 2>&1 && service_enabled='true' || true
+systemctl restart docker.service
+
+systemd_state="$(systemctl is-system-running 2>/dev/null || true)"
+service_state="$(systemctl is-active docker 2>/dev/null || true)"
+context_value=''
+docker_info_b64=''
+server_version=''
+attempts=0
+for attempt in $(seq 1 30); do
+  attempts="$attempt"
+  docker_info_b64="$(DOCKER_HOST='unix:///var/run/docker.sock' docker info --format '{{json .}}' 2>/dev/null | base64 -w0 || true)"
+  server_version="$(DOCKER_HOST='unix:///var/run/docker.sock' docker version --format '{{.Server.Version}}' 2>/dev/null || true)"
+  if [ -n "$docker_info_b64" ] && [ -n "$server_version" ]; then
+    break
+  fi
+  sleep 2
+done
+context_value="$(DOCKER_HOST='unix:///var/run/docker.sock' docker context show 2>/dev/null || true)"
+socket_present='false'
+socket_owner=''
+socket_mode=''
+if [ -S /var/run/docker.sock ]; then
+  socket_present='true'
+  socket_owner="$(stat -c '%U:%G' /var/run/docker.sock 2>/dev/null || true)"
+  socket_mode="$(stat -c '%a' /var/run/docker.sock 2>/dev/null || true)"
+fi
+
+printf '{\n'
+printf '  "schema": "priority/wsl-native-docker@v1",\n'
+printf '  "systemdState": "%s",\n' "$systemd_state"
+printf '  "serviceState": "%s",\n' "$service_state"
+printf '  "context": "%s",\n' "$context_value"
+printf '  "dockerHost": "unix:///var/run/docker.sock",\n'
+printf '  "socketPresent": %s,\n' "$socket_present"
+printf '  "socketOwner": "%s",\n' "$socket_owner"
+printf '  "socketMode": "%s",\n' "$socket_mode"
+printf '  "targetUser": "%s",\n' "$target_user"
+printf '  "aptUpdated": %s,\n' "$apt_updated"
+printf '  "dockerInstalled": %s,\n' "$docker_installed"
+printf '  "proxyKilled": %s,\n' "$proxy_killed"
+printf '  "serviceEnabled": %s,\n' "$service_enabled"
+printf '  "overrideWritten": %s,\n' "$native_override_written"
+printf '  "serverVersion": "%s",\n' "$server_version"
+printf '  "dockerInfoBase64": "%s",\n' "$docker_info_b64"
+printf '  "attempts": %s\n' "$attempts"
+printf '}\n'
+'@
+
+  $bashScript | Set-Content -LiteralPath $scriptPath -Encoding utf8
+  $output = & wsl.exe -d $Distro -u root -- env "COMPAREVI_WSL_TARGET_USER=$TargetUser" bash $scriptPathWsl
+  if ($LASTEXITCODE -ne 0) {
+    throw "Native WSL Docker bootstrap failed for distro '$Distro'."
+  }
+
+  $report = (($output -join [Environment]::NewLine) | ConvertFrom-Json -Depth 10 -ErrorAction Stop)
+  $dockerInfoText = ''
+  if ($report.PSObject.Properties['dockerInfoBase64'] -and -not [string]::IsNullOrWhiteSpace([string]$report.dockerInfoBase64)) {
+    $dockerInfoText = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String([string]$report.dockerInfoBase64))
+  }
+  $dockerInfo = if ([string]::IsNullOrWhiteSpace($dockerInfoText)) {
+    $null
+  } else {
+    $dockerInfoText | ConvertFrom-Json -Depth 20 -ErrorAction Stop
+  }
+
+  $platformName = if ($dockerInfo -and $dockerInfo.PSObject.Properties['Platform']) { [string]$dockerInfo.Platform.Name } else { '' }
+  $operatingSystem = if ($dockerInfo -and $dockerInfo.PSObject.Properties['OperatingSystem']) { [string]$dockerInfo.OperatingSystem } else { '' }
+  $serverName = if ($dockerInfo -and $dockerInfo.PSObject.Properties['Name']) { [string]$dockerInfo.Name } else { '' }
+  $isDockerDesktop = @($platformName, $operatingSystem, $serverName) -join ' ' -match 'Docker Desktop|docker-desktop'
+  $nativeOwned = -not $isDockerDesktop -and `
+    ($report.socketPresent -eq $true) -and `
+    ($report.serviceState -eq 'active') -and `
+    ($dockerInfo -ne $null) -and `
+    (-not [string]::IsNullOrWhiteSpace([string]$report.serverVersion)) -and `
+    ($dockerInfo.PSObject.Properties['OSType']) -and `
+    ([string]$dockerInfo.OSType -eq 'linux')
+
+  $report | Add-Member -NotePropertyName ensuredAt -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
+  $report | Add-Member -NotePropertyName distro -NotePropertyValue $Distro -Force
+  $report | Add-Member -NotePropertyName dockerInfo -NotePropertyValue $dockerInfo -Force
+  $report | Add-Member -NotePropertyName isDockerDesktop -NotePropertyValue $isDockerDesktop -Force
+  $report | Add-Member -NotePropertyName nativeOwned -NotePropertyValue $nativeOwned -Force
+  $report.PSObject.Properties.Remove('dockerInfoBase64')
+
+  $report | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $reportPath -Encoding utf8
+  if (-not $nativeOwned) {
+    throw "WSL Docker bootstrap did not produce a native distro-owned daemon for '$Distro'. See $reportPath"
+  }
+
+  return $report
+}
+
+function Invoke-DeliveryHostSignal {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)][string]$Distro
+  )
+
+  $nodePath = Resolve-CommandPath -Name 'node'
+  $scriptPath = Join-Path $RepoRoot 'dist\tools\priority\delivery-host-signal.js'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+    throw "Compiled delivery host signal collector not found: $scriptPath"
+  }
+  $reportPath = Join-Path $RepoRoot 'tests\results\_agent\runtime\daemon-host-signal.json'
+  $isolationPath = Join-Path $RepoRoot 'tests\results\_agent\runtime\delivery-agent-host-isolation.json'
+  $output = & $nodePath $scriptPath `
+    --mode collect `
+    --repo-root $RepoRoot `
+    --distro $Distro `
+    --docker-host 'unix:///var/run/docker.sock' `
+    --report $reportPath `
+    --isolation $isolationPath `
+    --reset-fingerprint-baseline `
+    --allow-runner-services
+  if ($LASTEXITCODE -ne 0) {
+    throw "Delivery host signal collection failed for distro '$Distro'."
+  }
+
+  return (($output -join [Environment]::NewLine) | ConvertFrom-Json -Depth 20 -ErrorAction Stop)
+}
+
 $repoRoot = Resolve-RepoRoot
 $reportPath = Join-Path $repoRoot $ReportPath
 $ghPath = Resolve-CommandPath -Name 'gh'
@@ -150,6 +347,10 @@ $codexHomePath = Join-Path $HOME '.codex'
 $repoGitWorktreeRepair = Repair-RepoGitWorktreeConfig -RepoRoot $repoRoot
 $crossPlaneWorktreeRepair = Repair-CrossPlaneRuntimeWorktrees -RepoRoot $repoRoot
 $codexStateHygiene = Repair-CodexState -RepoRoot $repoRoot
+Invoke-TypeScriptBuild -RepoRoot $repoRoot
+$wslDefaultUser = Get-WslDefaultUser -Distro $Distro
+$wslNativeDocker = Ensure-NativeWslDocker -RepoRoot $repoRoot -Distro $Distro -TargetUser $wslDefaultUser
+$hostSignal = Invoke-DeliveryHostSignal -RepoRoot $repoRoot -Distro $Distro
 
 $env:COMPAREVI_WSL_NODE_VERSION = $NodeVersion
 $env:COMPAREVI_WSL_GH_EXE = Convert-ToWslPath -Path $ghPath
@@ -316,6 +517,9 @@ $report | Add-Member -NotePropertyName codexRequested -NotePropertyValue $codexV
 $report | Add-Member -NotePropertyName repoGitWorktreeRepair -NotePropertyValue $repoGitWorktreeRepair -Force
 $report | Add-Member -NotePropertyName crossPlaneWorktreeRepair -NotePropertyValue $crossPlaneWorktreeRepair -Force
 $report | Add-Member -NotePropertyName codexStateHygiene -NotePropertyValue $codexStateHygiene -Force
+$report | Add-Member -NotePropertyName wslDefaultUser -NotePropertyValue $wslDefaultUser -Force
+$report | Add-Member -NotePropertyName wslNativeDocker -NotePropertyValue $wslNativeDocker -Force
+$report | Add-Member -NotePropertyName hostSignal -NotePropertyValue $hostSignal.report -Force
 
 $directory = Split-Path -Parent $reportPath
 if ($directory) {

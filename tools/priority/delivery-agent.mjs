@@ -4,6 +4,12 @@ import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { handoffStandingPriority } from './standing-priority-handoff.mjs';
+import {
+  main as syncStandingPriority,
+  resolveStandingPriorityLabels,
+  selectAutoStandingPriorityCandidate
+} from './sync-standing-priority.mjs';
 
 export const DELIVERY_AGENT_POLICY_SCHEMA = 'priority/delivery-agent-policy@v1';
 export const DELIVERY_AGENT_RUNTIME_STATE_SCHEMA = 'priority/delivery-agent-runtime-state@v1';
@@ -33,6 +39,21 @@ const DEFAULT_POLICY = {
   allowPolicyMutations: false,
   allowReleaseAdmin: false,
   stopWhenNoOpenEpics: true,
+  hostIsolation: {
+    mode: 'hard-cutover',
+    wslDistro: 'Ubuntu',
+    runnerServicePolicy: 'stop-all-actions-runner-services',
+    restoreRunnerServicesOnExit: true,
+    pauseOnFingerprintDrift: true,
+  },
+  dockerRuntime: {
+    provider: 'native-wsl',
+    dockerHost: 'unix:///var/run/docker.sock',
+    expectedOsType: 'linux',
+    expectedContext: '',
+    manageDockerEngine: false,
+    allowHostEngineMutation: false,
+  },
   turnBudget: {
     maxMinutes: 20,
     maxToolCalls: 12
@@ -513,6 +534,14 @@ export async function loadDeliveryAgentPolicy(repoRoot, deps = {}) {
       ...DEFAULT_POLICY.retry,
       ...(filePolicy?.retry && typeof filePolicy.retry === 'object' ? filePolicy.retry : {})
     },
+    hostIsolation: {
+      ...DEFAULT_POLICY.hostIsolation,
+      ...(filePolicy?.hostIsolation && typeof filePolicy.hostIsolation === 'object' ? filePolicy.hostIsolation : {})
+    },
+    dockerRuntime: {
+      ...DEFAULT_POLICY.dockerRuntime,
+      ...(filePolicy?.dockerRuntime && typeof filePolicy.dockerRuntime === 'object' ? filePolicy.dockerRuntime : {})
+    },
     codingTurnCommand: normalizeCommandList(filePolicy?.codingTurnCommand)
   };
 }
@@ -961,6 +990,189 @@ async function runCommand(command, args, { cwd, env }, deps = {}) {
   };
 }
 
+async function listOpenIssues({ repository, repoRoot, deps = {} }) {
+  if (typeof deps.listOpenIssuesFn === 'function') {
+    const result = await deps.listOpenIssuesFn({ repository, repoRoot });
+    return Array.isArray(result) ? result : [];
+  }
+
+  const result = await runCommand(
+    'gh',
+    [
+      'issue',
+      'list',
+      '--repo',
+      repository,
+      '--state',
+      'open',
+      '--limit',
+      '100',
+      '--json',
+      'number,title,body,labels,createdAt,updatedAt,url'
+    ],
+    { cwd: repoRoot, env: process.env },
+    deps
+  );
+  if (result.status !== 0) {
+    throw new Error(normalizeText(result.stderr) || normalizeText(result.stdout) || 'gh issue list failed');
+  }
+
+  let parsed = [];
+  try {
+    parsed = JSON.parse(result.stdout || '[]');
+  } catch (error) {
+    throw new Error(`Unable to parse gh issue list output: ${error.message}`);
+  }
+
+  return Array.isArray(parsed)
+    ? parsed
+        .map((entry) => normalizeIssueLike({ ...entry, repository }))
+        .filter((entry) => entry && entry.state === 'OPEN')
+    : [];
+}
+
+async function editIssueLabels({ repository, issueNumber, repoRoot, removeLabels = [], addLabels = [], deps = {} }) {
+  if (typeof deps.editIssueLabelsFn === 'function') {
+    return deps.editIssueLabelsFn({ repository, issueNumber, repoRoot, removeLabels, addLabels });
+  }
+
+  const args = ['issue', 'edit', String(issueNumber), '--repo', repository];
+  for (const label of removeLabels.map((entry) => normalizeText(entry)).filter(Boolean)) {
+    args.push('--remove-label', label);
+  }
+  for (const label of addLabels.map((entry) => normalizeText(entry)).filter(Boolean)) {
+    args.push('--add-label', label);
+  }
+
+  if (args.length === 5) {
+    return { status: 0, stdout: '', stderr: '' };
+  }
+
+  const result = await runCommand('gh', args, { cwd: repoRoot, env: process.env }, deps);
+  if (result.status !== 0) {
+    throw new Error(normalizeText(result.stderr) || normalizeText(result.stdout) || 'gh issue edit failed');
+  }
+  return result;
+}
+
+async function closeIssueWithComment({ repository, issueNumber, repoRoot, comment, deps = {} }) {
+  if (typeof deps.closeIssueWithCommentFn === 'function') {
+    return deps.closeIssueWithCommentFn({ repository, issueNumber, repoRoot, comment });
+  }
+
+  const args = ['issue', 'close', String(issueNumber), '--repo', repository];
+  if (normalizeText(comment)) {
+    args.push('--comment', normalizeText(comment));
+  }
+
+  const result = await runCommand('gh', args, { cwd: repoRoot, env: process.env }, deps);
+  if (result.status !== 0) {
+    throw new Error(normalizeText(result.stderr) || normalizeText(result.stdout) || 'gh issue close failed');
+  }
+  return result;
+}
+
+function buildMergedIssueCloseComment({ issueNumber, pullRequestNumber, pullRequestUrl, nextStandingIssueNumber }) {
+  const prReference = pullRequestUrl
+    ? `PR #${pullRequestNumber} (${pullRequestUrl})`
+    : pullRequestNumber
+      ? `PR #${pullRequestNumber}`
+      : 'the merged pull request';
+  if (nextStandingIssueNumber) {
+    return `Completed by ${prReference}. Standing priority has advanced from #${issueNumber} to #${nextStandingIssueNumber}.`;
+  }
+  return `Completed by ${prReference}. No next standing-priority issue is currently labeled, so the queue is now idle until a new issue is promoted.`;
+}
+
+async function finalizeMergedPullRequest({ taskPacket, mergeResult, repoRoot, deps = {} }) {
+  if (typeof deps.finalizeMergedPullRequestFn === 'function') {
+    return deps.finalizeMergedPullRequestFn({ taskPacket, mergeResult, repoRoot });
+  }
+
+  const repository = normalizeText(taskPacket?.repository);
+  const delivery = taskPacket?.evidence?.delivery ?? {};
+  const selectedIssue = delivery.selectedIssue ?? delivery.standingIssue ?? null;
+  const standingIssue = delivery.standingIssue ?? null;
+  const pullRequest = delivery.pullRequest ?? taskPacket?.pullRequest ?? null;
+  const selectedIssueNumber = coercePositiveInteger(selectedIssue?.number);
+  const standingIssueNumber = coercePositiveInteger(standingIssue?.number);
+  const pullRequestNumber = coercePositiveInteger(pullRequest?.number) ?? extractPullRequestNumberFromUrl(pullRequest?.url);
+
+  if (!repository || !selectedIssueNumber) {
+    return {
+      selectedIssueNumber: null,
+      standingIssueNumber,
+      nextStandingIssueNumber: null,
+      helperCallsExecuted: []
+    };
+  }
+
+  const helperCallsExecuted = [];
+  let nextStandingIssueNumber = null;
+  if (standingIssueNumber && standingIssueNumber === selectedIssueNumber) {
+    const openIssues = await listOpenIssues({ repository, repoRoot, deps });
+    const nextCandidate = selectAutoStandingPriorityCandidate(openIssues, {
+      excludeIssueNumbers: [standingIssueNumber]
+    });
+    if (nextCandidate?.number) {
+      const handoffFn = deps.handoffStandingPriorityFn ?? handoffStandingPriority;
+      await handoffFn(nextCandidate.number, {
+        repoSlug: repository,
+        repoRoot,
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: repository
+        },
+        logger: deps.handoffLogger ?? (() => {}),
+        releaseLease: false
+      });
+      nextStandingIssueNumber = nextCandidate.number;
+      helperCallsExecuted.push('node tools/priority/standing-priority-handoff.mjs --auto');
+    } else {
+      const standingLabels = resolveStandingPriorityLabels(repoRoot, repository, process.env);
+      if (standingLabels.length > 0) {
+        await editIssueLabels({
+          repository,
+          issueNumber: standingIssueNumber,
+          repoRoot,
+          removeLabels: standingLabels,
+          deps
+        });
+        helperCallsExecuted.push(`gh issue edit ${standingIssueNumber} --remove-label ${standingLabels.join(',')}`);
+      }
+      const syncFn = deps.syncStandingPriorityFn ?? syncStandingPriority;
+      await syncFn({
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: repository
+        }
+      });
+      helperCallsExecuted.push('node tools/priority/sync-standing-priority.mjs');
+    }
+  }
+
+  await closeIssueWithComment({
+    repository,
+    issueNumber: selectedIssueNumber,
+    repoRoot,
+    comment: buildMergedIssueCloseComment({
+      issueNumber: selectedIssueNumber,
+      pullRequestNumber,
+      pullRequestUrl: normalizeText(pullRequest?.url) || null,
+      nextStandingIssueNumber
+    }),
+    deps
+  });
+  helperCallsExecuted.push(`gh issue close ${selectedIssueNumber}`);
+
+  return {
+    selectedIssueNumber,
+    standingIssueNumber,
+    nextStandingIssueNumber,
+    helperCallsExecuted
+  };
+}
+
 async function autoSliceIssue({ taskPacket, repoRoot, deps = {} }) {
   if (typeof deps.autoSliceIssueFn === 'function') {
     return deps.autoSliceIssueFn({ taskPacket, repoRoot });
@@ -1320,11 +1532,60 @@ export async function runDeliveryTurnBroker({
   }
 
   if (planned.actionType === 'merge-pr') {
-    return mergePullRequest({
+    const mergeResult = await mergePullRequest({
       taskPacket: enrichedPacket,
       repoRoot,
       deps
     });
+    if (mergeResult.status !== 'completed' || mergeResult.outcome !== 'merged') {
+      return mergeResult;
+    }
+
+    try {
+      const finalization = await finalizeMergedPullRequest({
+        taskPacket: enrichedPacket,
+        mergeResult,
+        repoRoot,
+        deps
+      });
+      return {
+        ...mergeResult,
+        reason:
+          finalization.selectedIssueNumber && finalization.nextStandingIssueNumber
+            ? `Merged PR and closed issue #${finalization.selectedIssueNumber}; standing priority advanced to #${finalization.nextStandingIssueNumber}.`
+            : finalization.selectedIssueNumber
+              ? `Merged PR and closed issue #${finalization.selectedIssueNumber}.`
+              : mergeResult.reason,
+        details: {
+          ...mergeResult.details,
+          helperCallsExecuted: [
+            ...(Array.isArray(mergeResult.details?.helperCallsExecuted) ? mergeResult.details.helperCallsExecuted : []),
+            ...(Array.isArray(finalization.helperCallsExecuted) ? finalization.helperCallsExecuted : [])
+          ],
+          finalizedIssueNumber: finalization.selectedIssueNumber,
+          standingIssueNumber: finalization.standingIssueNumber,
+          nextStandingIssueNumber: finalization.nextStandingIssueNumber ?? null
+        }
+      };
+    } catch (error) {
+      return {
+        status: 'blocked',
+        outcome: 'merged-finalization-blocked',
+        reason: `${mergeResult.reason} Finalization failed: ${error.message}`,
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'merge-pr',
+          laneLifecycle: 'blocked',
+          blockerClass: 'helperbug',
+          retryable: true,
+          nextWakeCondition: 'merged-lane-finalization-retry',
+          helperCallsExecuted: Array.isArray(mergeResult.details?.helperCallsExecuted)
+            ? mergeResult.details.helperCallsExecuted
+            : [],
+          filesTouched: []
+        }
+      };
+    }
   }
 
   if (planned.actionType === 'reshape-backlog') {

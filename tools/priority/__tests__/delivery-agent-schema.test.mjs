@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { buildDeliveryAgentRuntimeRecord } from '../delivery-agent.mjs';
+import { buildDeliveryMemoryReport } from '../delivery-memory.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -27,6 +28,21 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
   const ajv = makeAjv();
   const validate = ajv.compile(schema);
   assert.equal(validate(data), true, JSON.stringify(validate.errors, null, 2));
+  assert.deepEqual(data.hostIsolation, {
+    mode: 'hard-cutover',
+    wslDistro: 'Ubuntu',
+    runnerServicePolicy: 'stop-all-actions-runner-services',
+    restoreRunnerServicesOnExit: true,
+    pauseOnFingerprintDrift: true
+  });
+  assert.deepEqual(data.dockerRuntime, {
+    provider: 'native-wsl',
+    dockerHost: 'unix:///var/run/docker.sock',
+    expectedOsType: 'linux',
+    expectedContext: '',
+    manageDockerEngine: false,
+    allowHostEngineMutation: false
+  });
 });
 
 test('runtime delivery task packet schema validates canonical delivery packets', async () => {
@@ -174,4 +190,59 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
   const ajv = makeAjv();
   const validate = ajv.compile(schema);
   assert.equal(validate(state), true, JSON.stringify(validate.errors, null, 2));
+});
+
+test('delivery memory schema validates suite-aware terminal PR history', async () => {
+  const schema = await loadSchema('docs/schemas/delivery-memory-v1.schema.json');
+  const report = buildDeliveryMemoryReport({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: 'tests/results/_agent/runtime',
+    taskPackets: [
+      {
+        generatedAt: '2026-03-11T08:00:00.000Z',
+        laneId: 'origin-1011',
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        objective: {
+          summary: 'Advance issue #1011: deliver the VI History Suite'
+        },
+        branch: {
+          name: 'issue/origin-1011-vi-history-suite'
+        },
+        pullRequest: {
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/500'
+        },
+        evidence: {
+          delivery: {
+            selectedIssue: {
+              number: 1011
+            }
+          }
+        }
+      }
+    ],
+    executionReceipts: [
+      {
+        generatedAt: '2026-03-11T08:10:00.000Z',
+        laneId: 'origin-1011',
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        issue: 1011,
+        status: 'completed',
+        outcome: 'merged',
+        reason: 'Merged PR #500.',
+        details: {
+          actionType: 'merge-pr',
+          laneLifecycle: 'complete',
+          blockerClass: 'none',
+          retryable: false,
+          nextWakeCondition: 'next-scheduler-cycle',
+          helperCallsExecuted: ['node tools/priority/merge-sync-pr.mjs'],
+          filesTouched: ['tools/Test-PRVIHistorySmoke.ps1']
+        }
+      }
+    ],
+    now: new Date('2026-03-11T08:15:00.000Z')
+  });
+  const ajv = makeAjv();
+  const validate = ajv.compile(schema);
+  assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
 });

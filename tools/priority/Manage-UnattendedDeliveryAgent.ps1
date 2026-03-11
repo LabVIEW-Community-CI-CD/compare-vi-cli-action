@@ -77,6 +77,17 @@ function Read-JsonFile {
   }
 }
 
+function Resolve-CommandPath {
+  param([Parameter(Mandatory)][string]$Name)
+
+  $command = Get-Command -Name $Name -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $command) {
+    throw "Required command not found on the Windows host: $Name"
+  }
+
+  return $command.Source
+}
+
 function Write-JsonFile {
   param(
     [Parameter(Mandatory)][string]$Path,
@@ -101,8 +112,13 @@ function Get-ArtifactPaths {
     StopRequestPath = Join-Path $runtimeDirPath 'delivery-agent-manager-stop.json'
     ObserverHeartbeatPath = Join-Path $runtimeDirPath 'observer-heartbeat.json'
     DeliveryStatePath = Join-Path $runtimeDirPath 'delivery-agent-state.json'
+    DeliveryMemoryPath = Join-Path $runtimeDirPath 'delivery-memory.json'
     WslDaemonPidPath = Join-Path $runtimeDirPath 'delivery-agent-wsl-daemon-pid.json'
     CodexStateHygienePath = Join-Path $runtimeDirPath 'codex-state-hygiene.json'
+    HostSignalPath = Join-Path $runtimeDirPath 'daemon-host-signal.json'
+    HostIsolationPath = Join-Path $runtimeDirPath 'delivery-agent-host-isolation.json'
+    HostTracePath = Join-Path $runtimeDirPath 'delivery-agent-host-trace.ndjson'
+    WslNativeDockerPath = Join-Path $runtimeDirPath 'wsl-native-docker.json'
     RunnerLogPath = Join-Path $runtimeDirPath 'delivery-agent-manager.log'
     RunnerErrorPath = Join-Path $runtimeDirPath 'delivery-agent-manager.stderr.log'
   }
@@ -291,10 +307,53 @@ function Resolve-DeliveryStateForStatus {
 
 function Invoke-EnsurePrereqs {
   $scriptPath = Join-Path $PSScriptRoot 'Ensure-WSLDeliveryPrereqs.ps1'
-  & pwsh -NoLogo -NoProfile -File $scriptPath -Distro $WslDistro | Out-Null
+  $output = & pwsh -NoLogo -NoProfile -File $scriptPath -Distro $WslDistro
   if ($LASTEXITCODE -ne 0) {
     throw "Ensure-WSLDeliveryPrereqs failed for distro '$WslDistro'."
   }
+
+  return (($output -join [Environment]::NewLine) | ConvertFrom-Json -Depth 20 -ErrorAction Stop)
+}
+
+function Invoke-DeliveryHostSignal {
+  param(
+    [Parameter(Mandatory)][ValidateSet('collect', 'isolate', 'restore')][string]$Mode,
+    [Parameter(Mandatory)][object]$Paths
+  )
+
+  $nodePath = Resolve-CommandPath -Name 'node'
+  $scriptPath = Join-Path (Resolve-RepoRoot) 'dist\tools\priority\delivery-host-signal.js'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+    throw "Compiled delivery host signal collector not found: $scriptPath"
+  }
+
+  $args = @(
+    $scriptPath,
+    '--mode',
+    $Mode,
+    '--repo-root',
+    (Resolve-RepoRoot),
+    '--distro',
+    $WslDistro,
+    '--docker-host',
+    'unix:///var/run/docker.sock',
+    '--report',
+    $Paths.HostSignalPath,
+    '--isolation',
+    $Paths.HostIsolationPath,
+    '--trace',
+    $Paths.HostTracePath
+  )
+  if ($Mode -eq 'collect') {
+    $args += '--allow-runner-services'
+  }
+
+  $output = & $nodePath @args
+  if ($LASTEXITCODE -ne 0) {
+    throw "Delivery host signal '$Mode' failed."
+  }
+
+  return (($output -join [Environment]::NewLine) | ConvertFrom-Json -Depth 20 -ErrorAction Stop)
 }
 
 function Emit-Status {
@@ -309,7 +368,11 @@ function Emit-Status {
   $daemonAlive = Test-WslProcessAlive -Distro $WslDistro -ProcessId (Get-OptionalIntProperty -InputObject $daemonState -Name 'pid')
   $heartbeat = Read-JsonFile -Path $Paths.ObserverHeartbeatPath
   $deliveryState = Resolve-DeliveryStateForStatus -DeliveryState (Read-JsonFile -Path $Paths.DeliveryStatePath) -Heartbeat $heartbeat -Paths $Paths
+  $deliveryMemory = Read-JsonFile -Path $Paths.DeliveryMemoryPath
   $codexStateHygiene = Read-JsonFile -Path $Paths.CodexStateHygienePath
+  $hostSignal = Read-JsonFile -Path $Paths.HostSignalPath
+  $hostIsolation = Read-JsonFile -Path $Paths.HostIsolationPath
+  $wslNativeDocker = Read-JsonFile -Path $Paths.WslNativeDockerPath
   $status = if ($managerAlive -or $daemonAlive) { 'running' } else { 'stopped' }
 
   $report = [ordered]@{
@@ -334,15 +397,24 @@ function Emit-Status {
     }
     heartbeat = $heartbeat
     delivery = $deliveryState
+    deliveryMemory = $deliveryMemory
     codexStateHygiene = $codexStateHygiene
+    hostSignal = $hostSignal
+    hostIsolation = $hostIsolation
+    wslNativeDocker = $wslNativeDocker
     paths = [ordered]@{
       managerStatePath = $Paths.ManagerStatePath
       managerPidPath = $Paths.ManagerPidPath
       stopRequestPath = $Paths.StopRequestPath
       observerHeartbeatPath = $Paths.ObserverHeartbeatPath
       deliveryStatePath = $Paths.DeliveryStatePath
+      deliveryMemoryPath = $Paths.DeliveryMemoryPath
       wslDaemonPidPath = $Paths.WslDaemonPidPath
       codexStateHygienePath = $Paths.CodexStateHygienePath
+      hostSignalPath = $Paths.HostSignalPath
+      hostIsolationPath = $Paths.HostIsolationPath
+      hostTracePath = $Paths.HostTracePath
+      wslNativeDockerPath = $Paths.WslNativeDockerPath
       runnerLogPath = $Paths.RunnerLogPath
       runnerErrorPath = $Paths.RunnerErrorPath
     }
@@ -392,6 +464,12 @@ if ($Stop) {
     }
   }
 
+  try {
+    Invoke-DeliveryHostSignal -Mode 'restore' -Paths $paths | Out-Null
+  } catch {
+    Write-Warning ("Failed to restore runner services: {0}" -f $_.Exception.Message)
+  }
+
   Remove-Item -LiteralPath $paths.ManagerPidPath -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $paths.WslDaemonPidPath -Force -ErrorAction SilentlyContinue
   Emit-Status -Paths $paths -Outcome 'stopped' | Write-Output
@@ -402,7 +480,7 @@ if (-not $Ensure) {
   throw 'Specify one of -Ensure, -Status, or -Stop.'
 }
 
-Invoke-EnsurePrereqs
+$null = Invoke-EnsurePrereqs
 
 $existingPidState = Read-JsonFile -Path $paths.ManagerPidPath
 $existingPid = Get-OptionalIntProperty -InputObject $existingPidState -Name 'pid'
@@ -412,6 +490,8 @@ if (Test-ProcessAlive -ProcessId $existingPid) {
 }
 
 Remove-Item -LiteralPath $paths.StopRequestPath -Force -ErrorAction SilentlyContinue
+
+$null = Invoke-DeliveryHostSignal -Mode 'isolate' -Paths $paths
 
 $runnerPath = Join-Path $PSScriptRoot 'Run-UnattendedDeliveryAgent.ps1'
 $argumentList = @(
@@ -446,8 +526,17 @@ if ($directory) {
   New-Item -ItemType Directory -Path $directory -Force | Out-Null
 }
 
-$process = Start-Process -FilePath 'pwsh' -ArgumentList $argumentList -PassThru -WindowStyle Hidden `
-  -RedirectStandardOutput $paths.RunnerLogPath -RedirectStandardError $paths.RunnerErrorPath
+try {
+  $process = Start-Process -FilePath 'pwsh' -ArgumentList $argumentList -PassThru -WindowStyle Hidden `
+    -RedirectStandardOutput $paths.RunnerLogPath -RedirectStandardError $paths.RunnerErrorPath
+} catch {
+  try {
+    Invoke-DeliveryHostSignal -Mode 'restore' -Paths $paths | Out-Null
+  } catch {
+    Write-Warning ("Failed to restore runner services after launch failure: {0}" -f $_.Exception.Message)
+  }
+  throw
+}
 
 Write-JsonFile -Path $paths.ManagerPidPath -Payload ([ordered]@{
     schema = 'priority/unattended-delivery-agent-manager-pid@v1'

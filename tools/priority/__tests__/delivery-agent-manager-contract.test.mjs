@@ -14,6 +14,11 @@ async function readText(relativePath) {
 
 test('package scripts expose delivery-agent commands and keep unattended aliases intact', async () => {
   const packageJson = JSON.parse(await readText('package.json'));
+  assert.equal(packageJson.scripts['priority:delivery:memory'], 'node tools/priority/delivery-memory.mjs');
+  assert.equal(
+    packageJson.scripts['priority:delivery:host:signal'],
+    'tsc -p tsconfig.json && node dist/tools/priority/delivery-host-signal.js'
+  );
   assert.equal(
     packageJson.scripts['priority:delivery:agent:ensure'],
     'pwsh -NoLogo -NoProfile -File tools/priority/Manage-UnattendedDeliveryAgent.ps1 -Ensure -SleepMode'
@@ -48,16 +53,30 @@ test('delivery-agent manager and run scripts target the WSL runtime daemon inste
 
   assert.match(manager, /Ensure-WSLDeliveryPrereqs\.ps1/);
   assert.match(manager, /CodexStateHygienePath/);
+  assert.match(manager, /DeliveryMemoryPath/);
+  assert.match(manager, /HostSignalPath/);
+  assert.match(manager, /HostIsolationPath/);
+  assert.match(manager, /HostTracePath/);
+  assert.match(manager, /WslNativeDockerPath/);
+  assert.match(manager, /delivery-host-signal\.js/);
   assert.match(manager, /wsl\.exe/);
   assert.match(runner, /runtime-daemon\.mjs/);
   assert.match(runner, /WslDistro/);
   assert.match(runner, /AGENT_WRITER_LEASE_OWNER/);
+  assert.match(runner, /DOCKER_HOST='unix:\/\/\/var\/run\/docker\.sock'/);
+  assert.match(runner, /COMPAREVI_DOCKER_RUNTIME_PROVIDER='native-wsl'/);
   assert.match(runner, /Invoke-CodexStateHygiene/);
+  assert.match(runner, /Invoke-DeliveryMemory/);
+  assert.match(runner, /Invoke-DeliveryHostSignal/);
+  assert.match(runner, /delivery-agent-host-trace\.ndjson/);
+  assert.match(runner, /delivery-memory\.json/);
   assert.match(runner, /CodexHygieneIntervalCycles/);
   assert.match(ensurePrereqs, /nodejs\.org\/dist/);
   assert.match(ensurePrereqs, /@openai\/codex/);
   assert.match(ensurePrereqs, /codex_needs_install=0/);
   assert.match(ensurePrereqs, /core\.worktree/);
+  assert.match(ensurePrereqs, /ensure-native-wsl-docker\.sh/);
+  assert.match(ensurePrereqs, /delivery-host-signal\.js/);
 });
 
 test('delivery-agent manager status synthesizes the active lane from the freshest heartbeat when delivery state is stale', async () => {

@@ -1951,11 +1951,36 @@ try {
       [System.IO.Path]::GetFullPath((Join-Path (Resolve-Path '.').Path $RuntimeSnapshotPath))
     }
   }
+  $runtimeProvider = if ([string]::IsNullOrWhiteSpace($env:COMPAREVI_DOCKER_RUNTIME_PROVIDER)) {
+    'desktop'
+  } else {
+    $env:COMPAREVI_DOCKER_RUNTIME_PROVIDER.Trim()
+  }
+  $runtimeExpectedContext = if ([string]::IsNullOrWhiteSpace($env:COMPAREVI_DOCKER_EXPECTED_CONTEXT)) {
+    if ($runtimeProvider -eq 'desktop') { 'desktop-linux' } else { '' }
+  } else {
+    $env:COMPAREVI_DOCKER_EXPECTED_CONTEXT.Trim()
+  }
+  $runtimeExpectedDockerHost = if ($runtimeProvider -eq 'native-wsl') {
+    if (-not [string]::IsNullOrWhiteSpace($env:COMPAREVI_DOCKER_EXPECTED_DOCKER_HOST)) {
+      $env:COMPAREVI_DOCKER_EXPECTED_DOCKER_HOST.Trim()
+    } elseif (-not [string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) {
+      $env:DOCKER_HOST.Trim()
+    } else {
+      'unix:///var/run/docker.sock'
+    }
+  } else {
+    ''
+  }
 
   & pwsh -NoLogo -NoProfile -File $runtimeGuardPath `
     -ExpectedOsType linux `
-    -ExpectedContext 'desktop-linux' `
+    -RuntimeProvider $runtimeProvider `
+    -ExpectedContext $runtimeExpectedContext `
+    -ExpectedDockerHost $runtimeExpectedDockerHost `
     -AutoRepair:$AutoRepairRuntime `
+    -ManageDockerEngine:($runtimeProvider -eq 'desktop') `
+    -AllowHostEngineMutation:$false `
     -EngineReadyTimeoutSeconds $RuntimeEngineReadyTimeoutSeconds `
     -EngineReadyPollSeconds $RuntimeEngineReadyPollSeconds `
     -SnapshotPath $runtimeSnapshot `

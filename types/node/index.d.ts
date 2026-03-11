@@ -39,8 +39,9 @@ declare module 'node:fs' {
   function readFileSync(path: string, options?: unknown): string;
   function writeFileSync(path: string, data: string, options?: unknown): void;
   function mkdirSync(path: string, options?: unknown): void;
+  function unlinkSync(path: string): void;
 
-  export { existsSync, readFileSync, writeFileSync, mkdirSync };
+  export { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync };
 }
 
 declare module 'fs' {
@@ -58,16 +59,24 @@ declare module 'fs' {
   function writeFileSync(path: string, data: string, options?: unknown): void;
   function appendFileSync(path: string, data: string, options?: unknown): void;
   function mkdirSync(path: string, options?: MkdirOptions): void;
+  function unlinkSync(path: string): void;
   function readdirSync(path: string, options?: { withFileTypes?: boolean }): Dirent[];
 
-  export { readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, Dirent, MkdirOptions };
+  export { readFileSync, writeFileSync, appendFileSync, mkdirSync, unlinkSync, readdirSync, Dirent, MkdirOptions };
   export default {
     readFileSync,
     writeFileSync,
     appendFileSync,
     mkdirSync,
+    unlinkSync,
     readdirSync,
   } as const;
+}
+
+declare module 'os' {
+  function tmpdir(): string;
+
+  export { tmpdir };
 }
 
 declare module 'node:fs/promises' {
@@ -111,6 +120,7 @@ declare module 'node:process' {
     stdout: WritableStream;
     stderr: WritableStream;
     exitCode: number | null;
+    pid: number;
     platform: string;
     execPath: string;
     cwd(): string;

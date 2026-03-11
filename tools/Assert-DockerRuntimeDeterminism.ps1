@@ -13,8 +13,17 @@
   Required expected Docker daemon OSType: windows or linux.
 
 .PARAMETER ExpectedContext
-  Required expected Docker context (for example desktop-windows or
-  desktop-linux). No implicit default is applied.
+  Expected Docker context (for example desktop-windows or desktop-linux).
+  Required when RuntimeProvider=desktop. Leave empty for RuntimeProvider=native-wsl.
+
+.PARAMETER RuntimeProvider
+  Expected runtime provider contract. `desktop` validates Docker Desktop-style
+  context ownership. `native-wsl` validates a pinned Linux daemon exposed via
+  DOCKER_HOST and forbids Docker Desktop mutation repair logic.
+
+.PARAMETER ExpectedDockerHost
+  Expected DOCKER_HOST value when RuntimeProvider=native-wsl. Defaults to the
+  current DOCKER_HOST environment variable when omitted.
 
 .PARAMETER AutoRepair
   When true, mismatch remediation is attempted before failing.
@@ -50,9 +59,12 @@ param(
   [ValidateSet('windows', 'linux')]
   [string]$ExpectedOsType,
 
-  [Parameter(Mandatory = $true)]
-  [ValidateNotNullOrEmpty()]
-  [string]$ExpectedContext,
+  [ValidateSet('desktop', 'native-wsl')]
+  [string]$RuntimeProvider = 'desktop',
+
+  [string]$ExpectedContext = '',
+
+  [string]$ExpectedDockerHost = '',
 
   [bool]$AutoRepair = $true,
 
@@ -269,6 +281,94 @@ function Get-DockerOsProbe {
   return [pscustomobject]$probe
 }
 
+function Get-DockerInfoRecord {
+  param(
+    [AllowNull()][string]$Context,
+    [int]$TimeoutSeconds = 45
+  )
+
+  $record = [ordered]@{
+    context = $Context
+    command = ''
+    exitCode = $null
+    info = $null
+    parseReason = ''
+    rawLines = @()
+  }
+
+  try {
+    $args = @('info', '--format', '{{json .}}')
+    $normalizedContext = if ([string]::IsNullOrWhiteSpace($Context)) { '' } else { $Context.Trim().ToLowerInvariant() }
+    if (-not [string]::IsNullOrWhiteSpace($normalizedContext) -and $normalizedContext -ne 'default') {
+      $args = @('--context', $Context) + $args
+    }
+
+    $invoke = Invoke-ProcessWithTimeout -FilePath 'docker' -Arguments $args -TimeoutSeconds $TimeoutSeconds
+    $record.command = [string]$invoke.command
+    if ($invoke.timedOut) {
+      $record.parseReason = 'timeout'
+      $record.rawLines = @(("timeout after {0}s" -f [math]::Max(5, [int]$TimeoutSeconds)))
+      return [pscustomobject]$record
+    }
+    if ($invoke.exception) {
+      throw ([System.Exception]::new([string]$invoke.exception))
+    }
+
+    $record.exitCode = if ($null -eq $invoke.exitCode) { $null } else { [int]$invoke.exitCode }
+    $lines = @(@($invoke.stdout) + @($invoke.stderr) | ForEach-Object { [string]$_ })
+    $record.rawLines = @($lines | Select-Object -First 12)
+
+    $payload = (($invoke.stdout ?? @()) -join "`n").Trim()
+    if ([string]::IsNullOrWhiteSpace($payload)) {
+      $record.parseReason = if ([int]$record.exitCode -eq 0) { 'empty-output' } else { 'docker-info-command-failed' }
+      return [pscustomobject]$record
+    }
+
+    try {
+      $record.info = $payload | ConvertFrom-Json -Depth 20 -ErrorAction Stop
+      $record.parseReason = 'parsed'
+    } catch {
+      $record.parseReason = if ([int]$record.exitCode -eq 0) { 'unparseable-output' } else { 'docker-info-command-failed' }
+    }
+  } catch {
+    $record.exitCode = [int]$LASTEXITCODE
+    if ($record.exitCode -eq 0) { $record.exitCode = $null }
+    if ($_.Exception.Message) {
+      $record.rawLines = @([string]$_.Exception.Message)
+    }
+    $record.parseReason = 'exception'
+  }
+
+  return [pscustomobject]$record
+}
+
+function Test-IsDockerDesktopInfo {
+  param([AllowNull()]$DockerInfo)
+
+  if ($null -eq $DockerInfo) {
+    return $false
+  }
+
+  $labels = @()
+  if ($DockerInfo.PSObject.Properties['Labels'] -and $DockerInfo.Labels) {
+    $labels = @($DockerInfo.Labels | ForEach-Object { [string]$_ })
+  }
+
+  $platformName = ''
+  if ($DockerInfo.PSObject.Properties['Platform'] -and $DockerInfo.Platform -and $DockerInfo.Platform.PSObject.Properties['Name']) {
+    $platformName = [string]$DockerInfo.Platform.Name
+  }
+
+  $haystack = @(
+    [string]$DockerInfo.OperatingSystem,
+    [string]$DockerInfo.Name,
+    $platformName
+  ) + $labels
+
+  $joined = (($haystack | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' ').ToLowerInvariant()
+  return ($joined -match 'docker desktop' -or $joined -match 'docker-desktop' -or $joined -match 'com\.docker\.desktop')
+}
+
 function Format-DockerOsProbeHint {
   param([AllowNull()]$Probe)
 
@@ -358,6 +458,7 @@ function Resolve-RuntimeFailureClass {
     [AllowNull()]$Probe,
     [AllowEmptyString()][string]$ObservedOsType,
     [bool]$HostAlignmentFailure = $false,
+    [bool]$ProviderMismatch = $false,
     [bool]$ContextOrOsMismatch = $false
   )
 
@@ -377,6 +478,10 @@ function Resolve-RuntimeFailureClass {
     if (-not [string]::IsNullOrWhiteSpace($parseReason)) {
       return 'parse-defect'
     }
+  }
+
+  if ($ProviderMismatch) {
+    return 'provider-mismatch'
   }
 
   if ($ContextOrOsMismatch) {
@@ -419,6 +524,10 @@ function Test-ContextAccepted {
     [Parameter(Mandatory = $true)][ValidateSet('windows', 'linux')][string]$ExpectedOsType,
     [AllowNull()][string]$ObservedOsType
   )
+
+  if ([string]::IsNullOrWhiteSpace($ExpectedContext)) {
+    return $true
+  }
 
   if ([string]::IsNullOrWhiteSpace($ObservedContext)) {
     return $false
@@ -710,11 +819,21 @@ function Invoke-DockerEngineSwitch {
 
 function Get-ManualRemediationSteps {
   param(
+    [Parameter(Mandatory = $true)][ValidateSet('desktop', 'native-wsl')][string]$RuntimeProvider,
     [Parameter(Mandatory = $true)][ValidateSet('windows', 'linux')][string]$TargetOsType,
-    [Parameter(Mandatory = $true)][string]$ExpectedContext
+    [string]$ExpectedContext = '',
+    [string]$ExpectedDockerHost = ''
   )
 
   $steps = New-Object System.Collections.Generic.List[string]
+  if ($RuntimeProvider -eq 'native-wsl') {
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedDockerHost)) {
+      $steps.Add(("export DOCKER_HOST={0}" -f $ExpectedDockerHost)) | Out-Null
+    }
+    $steps.Add('systemctl start docker.service') | Out-Null
+    return @($steps.ToArray())
+  }
+
   $steps.Add(("docker context use {0}" -f $ExpectedContext)) | Out-Null
   if ($IsWindows) {
     $dockerCli = Resolve-DockerCliPath
@@ -775,9 +894,20 @@ function Wait-DockerEngineReady {
   }
 }
 
+$runtimeProviderNormalized = $RuntimeProvider.Trim().ToLowerInvariant()
 $effectiveExpectedContext = $ExpectedContext.Trim()
-if ([string]::IsNullOrWhiteSpace($effectiveExpectedContext)) {
-  throw 'ExpectedContext must be provided explicitly and cannot be empty.'
+$effectiveExpectedDockerHost = if (-not [string]::IsNullOrWhiteSpace($ExpectedDockerHost)) {
+  $ExpectedDockerHost.Trim()
+} elseif (-not [string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) {
+  $env:DOCKER_HOST.Trim()
+} else {
+  ''
+}
+if ($runtimeProviderNormalized -eq 'desktop' -and [string]::IsNullOrWhiteSpace($effectiveExpectedContext)) {
+  throw 'ExpectedContext must be provided explicitly and cannot be empty when RuntimeProvider=desktop.'
+}
+if ($runtimeProviderNormalized -eq 'native-wsl' -and [string]::IsNullOrWhiteSpace($effectiveExpectedDockerHost)) {
+  throw 'ExpectedDockerHost must be provided explicitly (or via DOCKER_HOST) when RuntimeProvider=native-wsl.'
 }
 
 $snapshotResolved = if ([System.IO.Path]::IsPathRooted($SnapshotPath)) {
@@ -797,6 +927,8 @@ $repairActions = New-Object System.Collections.Generic.List[string]
 $initialDockerOsProbe = $null
 $fallbackDockerOsProbe = $null
 $lastDockerOsProbe = $null
+$dockerInfoRecord = $null
+$observedIsDockerDesktop = $false
 
 $runnerOsRaw = $env:RUNNER_OS
 $runnerOsNormalized = if ([string]::IsNullOrWhiteSpace($runnerOsRaw)) { '' } else { $runnerOsRaw.Trim().ToLowerInvariant() }
@@ -816,15 +948,24 @@ if ($ExpectedOsType -eq 'windows') {
   $reason = "RUNNER_OS is '$runnerOsRaw', expected Linux for linux lane."
 }
 
+$observedDockerHost = if ([string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) { $null } else { $env:DOCKER_HOST.Trim() }
 $observedContext = Get-DockerContext
-$initialDockerOsProbe = Get-DockerOsProbe -Context $observedContext -TimeoutSeconds $CommandTimeoutSeconds
+$probeContext = if ($runtimeProviderNormalized -eq 'desktop') { $observedContext } else { $null }
+$initialDockerOsProbe = Get-DockerOsProbe -Context $probeContext -TimeoutSeconds $CommandTimeoutSeconds
 $observedOsType = [string]$initialDockerOsProbe.osType
 $lastDockerOsProbe = $initialDockerOsProbe
-if ([string]::IsNullOrWhiteSpace($observedOsType)) {
+if ($runtimeProviderNormalized -eq 'desktop' -and [string]::IsNullOrWhiteSpace($observedOsType)) {
   $fallbackDockerOsProbe = Get-DockerOsProbe -Context $effectiveExpectedContext -TimeoutSeconds $CommandTimeoutSeconds
   $observedOsType = [string]$fallbackDockerOsProbe.osType
   $lastDockerOsProbe = $fallbackDockerOsProbe
 }
+$dockerInfoContext = if ($runtimeProviderNormalized -eq 'desktop') {
+  if ([string]::IsNullOrWhiteSpace($observedContext)) { $effectiveExpectedContext } else { $observedContext }
+} else {
+  $null
+}
+$dockerInfoRecord = Get-DockerInfoRecord -Context $dockerInfoContext -TimeoutSeconds $CommandTimeoutSeconds
+$observedIsDockerDesktop = Test-IsDockerDesktopInfo -DockerInfo $dockerInfoRecord.info
 
 if (-not $hostAlignmentOk) {
   $resultStatus = 'mismatch-failed'
@@ -834,129 +975,159 @@ if (-not $hostAlignmentOk) {
     $resultStatus = 'mismatch-failed'
     $resultFailureClass = Resolve-RuntimeFailureClass -Probe $lastDockerOsProbe -ObservedOsType $observedOsType
     $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
-    $manualSteps = Get-ManualRemediationSteps -TargetOsType $ExpectedOsType -ExpectedContext $effectiveExpectedContext
+    $manualSteps = Get-ManualRemediationSteps `
+      -RuntimeProvider $runtimeProviderNormalized `
+      -TargetOsType $ExpectedOsType `
+      -ExpectedContext $effectiveExpectedContext `
+      -ExpectedDockerHost $effectiveExpectedDockerHost
     $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
-    Write-Host ("[runtime-determinism] mismatch detected expectedContext={0} observedContext={1} expectedOs={2} observedOs=<empty>" -f $effectiveExpectedContext, ($observedContext ?? '<null>'), $ExpectedOsType) -ForegroundColor Yellow
-    $reason = ("Runtime invariant mismatch. observed Docker OSType is empty for context={0}; expected os={1}, context={2}. Manual remediation: {3}. {4}" -f ($observedContext ?? '<null>'), $ExpectedOsType, $effectiveExpectedContext, $manualText, $probeHint)
+    Write-Host ("[runtime-determinism] mismatch detected provider={0} expectedContext={1} observedContext={2} expectedOs={3} observedOs=<empty>" -f $runtimeProviderNormalized, ($effectiveExpectedContext ?? ''), ($observedContext ?? '<null>'), $ExpectedOsType) -ForegroundColor Yellow
+    $reason = ("Runtime invariant mismatch. observed Docker OSType is empty for provider={0}; expected os={1}, context={2}, dockerHost={3}; observed context={4}, dockerHost={5}. Manual remediation: {6}. {7}" -f $runtimeProviderNormalized, $ExpectedOsType, $effectiveExpectedContext, ($effectiveExpectedDockerHost ?? '<null>'), ($observedContext ?? '<null>'), ($observedDockerHost ?? '<null>'), $manualText, $probeHint)
   } else {
     $osMismatch = ($observedOsType -ne $ExpectedOsType)
-    $contextMismatch = -not (Test-ContextAccepted `
+    $contextMismatch = ($runtimeProviderNormalized -eq 'desktop') -and -not (Test-ContextAccepted `
       -ObservedContext $observedContext `
       -ExpectedContext $effectiveExpectedContext `
       -ExpectedOsType $ExpectedOsType `
       -ObservedOsType $observedOsType)
+    $providerMismatch = $false
+    if ($runtimeProviderNormalized -eq 'native-wsl') {
+      $providerMismatch = $observedIsDockerDesktop -or `
+        [string]::IsNullOrWhiteSpace($observedDockerHost) -or `
+        ($observedDockerHost -ne $effectiveExpectedDockerHost)
+    }
 
-    if ($osMismatch -or $contextMismatch) {
-      Write-Host ("[runtime-determinism] mismatch detected expectedContext={0} observedContext={1} expectedOs={2} observedOs={3}" -f $effectiveExpectedContext, ($observedContext ?? '<null>'), $ExpectedOsType, ($observedOsType ?? '<null>')) -ForegroundColor Yellow
+    if ($osMismatch -or $contextMismatch -or $providerMismatch) {
+      Write-Host ("[runtime-determinism] mismatch detected provider={0} expectedContext={1} observedContext={2} expectedDockerHost={3} observedDockerHost={4} expectedOs={5} observedOs={6}" -f $runtimeProviderNormalized, ($effectiveExpectedContext ?? ''), ($observedContext ?? '<null>'), ($effectiveExpectedDockerHost ?? '<null>'), ($observedDockerHost ?? '<null>'), $ExpectedOsType, ($observedOsType ?? '<null>')) -ForegroundColor Yellow
       if ($AutoRepair) {
-      $daemonUnavailable = (Test-IsDaemonUnavailableProbe -Probe $initialDockerOsProbe) -or (Test-IsDaemonUnavailableProbe -Probe $fallbackDockerOsProbe)
-      $hostMutationAllowed = ($ManageDockerEngine -and $hostIsWindows -and $AllowHostEngineMutation)
-      if ($ManageDockerEngine -and $hostIsWindows -and $osMismatch -and -not $AllowHostEngineMutation) {
-        $repairActions.Add('host engine mutation skipped: AllowHostEngineMutation=false') | Out-Null
-      }
-      if ($hostMutationAllowed -and $osMismatch -and $daemonUnavailable) {
-        Write-Host '[runtime-determinism] attempting docker service recovery' -ForegroundColor DarkGray
-        $serviceRecovery = Invoke-DockerServiceRecovery
-        if ($serviceRecovery -and $serviceRecovery.PSObject.Properties['steps'] -and $serviceRecovery.steps) {
-          foreach ($stepMessage in @($serviceRecovery.steps)) {
-            $repairActions.Add(("docker service recovery: {0}" -f [string]$stepMessage)) | Out-Null
+        $daemonUnavailable = (Test-IsDaemonUnavailableProbe -Probe $initialDockerOsProbe) -or (Test-IsDaemonUnavailableProbe -Probe $fallbackDockerOsProbe)
+        $hostMutationAllowed = ($runtimeProviderNormalized -eq 'desktop' -and $ManageDockerEngine -and $hostIsWindows -and $AllowHostEngineMutation)
+        if ($runtimeProviderNormalized -eq 'desktop' -and $ManageDockerEngine -and $hostIsWindows -and $osMismatch -and -not $AllowHostEngineMutation) {
+          $repairActions.Add('host engine mutation skipped: AllowHostEngineMutation=false') | Out-Null
+        }
+        if ($runtimeProviderNormalized -eq 'desktop' -and $hostMutationAllowed -and $osMismatch -and $daemonUnavailable) {
+          Write-Host '[runtime-determinism] attempting docker service recovery' -ForegroundColor DarkGray
+          $serviceRecovery = Invoke-DockerServiceRecovery
+          if ($serviceRecovery -and $serviceRecovery.PSObject.Properties['steps'] -and $serviceRecovery.steps) {
+            foreach ($stepMessage in @($serviceRecovery.steps)) {
+              $repairActions.Add(("docker service recovery: {0}" -f [string]$stepMessage)) | Out-Null
+            }
+          } else {
+            $repairActions.Add('docker service recovery: no-actions') | Out-Null
           }
+        }
+        if ($runtimeProviderNormalized -eq 'desktop' -and $contextMismatch) {
+          Write-Host ("[runtime-determinism] attempting: docker context use {0}" -f $effectiveExpectedContext) -ForegroundColor DarkGray
+          $ok = Invoke-DockerContextUse -Context $effectiveExpectedContext
+          $ctxResult = if ($ok) { 'ok' } else { 'failed' }
+          $repairActions.Add(("docker context use {0}: {1}" -f $effectiveExpectedContext, $ctxResult)) | Out-Null
+        }
+        if ($runtimeProviderNormalized -eq 'desktop' -and $hostMutationAllowed -and $osMismatch) {
+          Write-Host ("[runtime-determinism] attempting docker engine switch to {0}" -f $ExpectedOsType) -ForegroundColor DarkGray
+          $switchResult = Invoke-DockerEngineSwitch -TargetOsType $ExpectedOsType
+          $switchStatus = if ([bool]$switchResult.success) { 'ok' } else { 'failed' }
+          $switchMessage = if ([string]::IsNullOrWhiteSpace([string]$switchResult.message)) { '' } else { [string]$switchResult.message }
+          $repairActions.Add(("docker engine switch to {0}: {1} {2}" -f $ExpectedOsType, $switchStatus, $switchMessage).Trim()) | Out-Null
+        }
+        if ($runtimeProviderNormalized -eq 'desktop' -and $hostMutationAllowed -and $ExpectedOsType -eq 'windows' -and $osMismatch) {
+          Write-Host '[runtime-determinism] attempting: wsl --shutdown' -ForegroundColor DarkGray
+          $wslOk = Invoke-WslShutdown
+          $wslResult = if ($wslOk) { 'ok' } else { 'failed-or-not-applicable' }
+          $repairActions.Add(("wsl --shutdown: {0}" -f $wslResult)) | Out-Null
+        }
+        if ($runtimeProviderNormalized -eq 'desktop') {
+          Write-Host ("[runtime-determinism] attempting: docker context use {0} (post-switch)" -f $effectiveExpectedContext) -ForegroundColor DarkGray
+          $postSwitchContext = Invoke-DockerContextUse -Context $effectiveExpectedContext
+          $postSwitchStatus = if ($postSwitchContext) { 'ok' } else { 'failed' }
+          $repairActions.Add(("docker context use {0} (post-switch): {1}" -f $effectiveExpectedContext, $postSwitchStatus)) | Out-Null
+
+          Write-Host ("[runtime-determinism] waiting for docker engine readiness (timeout={0}s poll={1}s)" -f [int]$EngineReadyTimeoutSeconds, [int]$EngineReadyPollSeconds) -ForegroundColor DarkGray
+          $waitResult = Wait-DockerEngineReady `
+            -ExpectedOsType $ExpectedOsType `
+            -FallbackContext $effectiveExpectedContext `
+            -TimeoutSeconds $EngineReadyTimeoutSeconds `
+            -PollSeconds $EngineReadyPollSeconds
+          $waitStatus = if ([bool]$waitResult.ready) { 'ready' } else { 'timeout' }
+          $waitProbeHint = Format-DockerOsProbeHint -Probe $waitResult.osProbe
+          $repairActions.Add(("docker engine readiness: {0} attempts={1} observed={2}/{3} {4}" -f $waitStatus, [int]$waitResult.attempts, ([string]$waitResult.osType ?? '<null>'), ([string]$waitResult.context ?? '<null>'), $waitProbeHint).Trim()) | Out-Null
+
+          $recheckedContext = [string]$waitResult.context
+          $recheckedOsType = [string]$waitResult.osType
+          if ($waitResult.osProbe) {
+            $lastDockerOsProbe = $waitResult.osProbe
+          }
+          if ([string]::IsNullOrWhiteSpace($recheckedContext)) {
+            $recheckedContext = Get-DockerContext
+          }
+          if ([string]::IsNullOrWhiteSpace($recheckedOsType)) {
+            $recheckedProbe = Get-DockerOsProbe -Context $recheckedContext -TimeoutSeconds $CommandTimeoutSeconds
+            $recheckedOsType = [string]$recheckedProbe.osType
+            if ($recheckedProbe) {
+              $lastDockerOsProbe = $recheckedProbe
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($recheckedOsType)) {
+            $recheckedFallbackProbe = Get-DockerOsProbe -Context $effectiveExpectedContext -TimeoutSeconds $CommandTimeoutSeconds
+            $recheckedOsType = [string]$recheckedFallbackProbe.osType
+            if ($recheckedFallbackProbe) {
+              $lastDockerOsProbe = $recheckedFallbackProbe
+            }
+          }
+
+          $observedOsType = $recheckedOsType
+          $observedContext = $recheckedContext
         } else {
-          $repairActions.Add('docker service recovery: no-actions') | Out-Null
+          $repairActions.Add('native-wsl auto-repair skipped: use distro-local bootstrap instead') | Out-Null
         }
-      }
-      if ($contextMismatch) {
-        Write-Host ("[runtime-determinism] attempting: docker context use {0}" -f $effectiveExpectedContext) -ForegroundColor DarkGray
-        $ok = Invoke-DockerContextUse -Context $effectiveExpectedContext
-        $ctxResult = if ($ok) { 'ok' } else { 'failed' }
-        $repairActions.Add(("docker context use {0}: {1}" -f $effectiveExpectedContext, $ctxResult)) | Out-Null
-      }
-      if ($hostMutationAllowed -and $osMismatch) {
-        Write-Host ("[runtime-determinism] attempting docker engine switch to {0}" -f $ExpectedOsType) -ForegroundColor DarkGray
-        $switchResult = Invoke-DockerEngineSwitch -TargetOsType $ExpectedOsType
-        $switchStatus = if ([bool]$switchResult.success) { 'ok' } else { 'failed' }
-        $switchMessage = if ([string]::IsNullOrWhiteSpace([string]$switchResult.message)) { '' } else { [string]$switchResult.message }
-        $repairActions.Add(("docker engine switch to {0}: {1} {2}" -f $ExpectedOsType, $switchStatus, $switchMessage).Trim()) | Out-Null
-      }
-      if ($hostMutationAllowed -and $ExpectedOsType -eq 'windows' -and $osMismatch) {
-        Write-Host '[runtime-determinism] attempting: wsl --shutdown' -ForegroundColor DarkGray
-        $wslOk = Invoke-WslShutdown
-        $wslResult = if ($wslOk) { 'ok' } else { 'failed-or-not-applicable' }
-        $repairActions.Add(("wsl --shutdown: {0}" -f $wslResult)) | Out-Null
-      }
 
-      Write-Host ("[runtime-determinism] attempting: docker context use {0} (post-switch)" -f $effectiveExpectedContext) -ForegroundColor DarkGray
-      $postSwitchContext = Invoke-DockerContextUse -Context $effectiveExpectedContext
-      $postSwitchStatus = if ($postSwitchContext) { 'ok' } else { 'failed' }
-      $repairActions.Add(("docker context use {0} (post-switch): {1}" -f $effectiveExpectedContext, $postSwitchStatus)) | Out-Null
+        $recheckDockerInfoContext = if ($runtimeProviderNormalized -eq 'desktop') { $observedContext } else { $null }
+        $dockerInfoRecord = Get-DockerInfoRecord -Context $recheckDockerInfoContext -TimeoutSeconds $CommandTimeoutSeconds
+        $observedIsDockerDesktop = Test-IsDockerDesktopInfo -DockerInfo $dockerInfoRecord.info
+        $observedDockerHost = if ([string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) { $null } else { $env:DOCKER_HOST.Trim() }
 
-      Write-Host ("[runtime-determinism] waiting for docker engine readiness (timeout={0}s poll={1}s)" -f [int]$EngineReadyTimeoutSeconds, [int]$EngineReadyPollSeconds) -ForegroundColor DarkGray
-      $waitResult = Wait-DockerEngineReady `
-        -ExpectedOsType $ExpectedOsType `
-        -FallbackContext $effectiveExpectedContext `
-        -TimeoutSeconds $EngineReadyTimeoutSeconds `
-        -PollSeconds $EngineReadyPollSeconds
-      $waitStatus = if ([bool]$waitResult.ready) { 'ready' } else { 'timeout' }
-      $waitProbeHint = Format-DockerOsProbeHint -Probe $waitResult.osProbe
-      $repairActions.Add(("docker engine readiness: {0} attempts={1} observed={2}/{3} {4}" -f $waitStatus, [int]$waitResult.attempts, ([string]$waitResult.osType ?? '<null>'), ([string]$waitResult.context ?? '<null>'), $waitProbeHint).Trim()) | Out-Null
+        $osMismatchAfter = [string]::IsNullOrWhiteSpace($observedOsType) -or ($observedOsType -ne $ExpectedOsType)
+        $contextMismatchAfter = ($runtimeProviderNormalized -eq 'desktop') -and -not (Test-ContextAccepted `
+          -ObservedContext $observedContext `
+          -ExpectedContext $effectiveExpectedContext `
+          -ExpectedOsType $ExpectedOsType `
+          -ObservedOsType $observedOsType)
+        $providerMismatchAfter = ($runtimeProviderNormalized -eq 'native-wsl') -and `
+          ($observedIsDockerDesktop -or [string]::IsNullOrWhiteSpace($observedDockerHost) -or ($observedDockerHost -ne $effectiveExpectedDockerHost))
 
-      $recheckedContext = [string]$waitResult.context
-      $recheckedOsType = [string]$waitResult.osType
-      if ($waitResult.osProbe) {
-        $lastDockerOsProbe = $waitResult.osProbe
-      }
-      if ([string]::IsNullOrWhiteSpace($recheckedContext)) {
-        $recheckedContext = Get-DockerContext
-      }
-      if ([string]::IsNullOrWhiteSpace($recheckedOsType)) {
-        $recheckedProbe = Get-DockerOsProbe -Context $recheckedContext -TimeoutSeconds $CommandTimeoutSeconds
-        $recheckedOsType = [string]$recheckedProbe.osType
-        if ($recheckedProbe) {
-          $lastDockerOsProbe = $recheckedProbe
-        }
-      }
-      if ([string]::IsNullOrWhiteSpace($recheckedOsType)) {
-        $recheckedFallbackProbe = Get-DockerOsProbe -Context $effectiveExpectedContext -TimeoutSeconds $CommandTimeoutSeconds
-        $recheckedOsType = [string]$recheckedFallbackProbe.osType
-        if ($recheckedFallbackProbe) {
-          $lastDockerOsProbe = $recheckedFallbackProbe
-        }
-      }
-
-      $osMismatchAfter = [string]::IsNullOrWhiteSpace($recheckedOsType) -or ($recheckedOsType -ne $ExpectedOsType)
-      $contextMismatchAfter = -not (Test-ContextAccepted `
-        -ObservedContext $recheckedContext `
-        -ExpectedContext $effectiveExpectedContext `
-        -ExpectedOsType $ExpectedOsType `
-        -ObservedOsType $recheckedOsType)
-
-      $observedOsType = $recheckedOsType
-      $observedContext = $recheckedContext
-
-      if ($osMismatchAfter -or $contextMismatchAfter) {
-        $manualSteps = Get-ManualRemediationSteps -TargetOsType $ExpectedOsType -ExpectedContext $effectiveExpectedContext
-        $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
-        $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
-        $resultStatus = 'mismatch-failed'
-        $resultFailureClass = Resolve-RuntimeFailureClass `
-          -Probe $lastDockerOsProbe `
-          -ObservedOsType $observedOsType `
-          -ContextOrOsMismatch:($osMismatchAfter -or $contextMismatchAfter)
-        $reason = ("Runtime invariant mismatch after repair. expected os={0}, context={1}; observed os={2}, context={3}. Manual remediation: {4}. {5}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), $manualText, $probeHint)
+        if ($osMismatchAfter -or $contextMismatchAfter -or $providerMismatchAfter) {
+          $manualSteps = Get-ManualRemediationSteps `
+            -RuntimeProvider $runtimeProviderNormalized `
+            -TargetOsType $ExpectedOsType `
+            -ExpectedContext $effectiveExpectedContext `
+            -ExpectedDockerHost $effectiveExpectedDockerHost
+          $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
+          $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
+          $resultStatus = 'mismatch-failed'
+          $resultFailureClass = Resolve-RuntimeFailureClass `
+            -Probe $lastDockerOsProbe `
+            -ObservedOsType $observedOsType `
+            -ProviderMismatch:$providerMismatchAfter `
+            -ContextOrOsMismatch:($osMismatchAfter -or $contextMismatchAfter)
+          $reason = ("Runtime invariant mismatch after repair. expected provider={0}, os={1}, context={2}, dockerHost={3}; observed os={4}, context={5}, dockerHost={6}, desktopBacked={7}. Manual remediation: {8}. {9}" -f $runtimeProviderNormalized, $ExpectedOsType, $effectiveExpectedContext, ($effectiveExpectedDockerHost ?? '<null>'), ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), ($observedDockerHost ?? '<null>'), $observedIsDockerDesktop, $manualText, $probeHint)
         } else {
           $resultStatus = 'mismatch-repaired'
           $resultFailureClass = 'none'
         }
       } else {
-        $manualSteps = Get-ManualRemediationSteps -TargetOsType $ExpectedOsType -ExpectedContext $effectiveExpectedContext
+        $manualSteps = Get-ManualRemediationSteps `
+          -RuntimeProvider $runtimeProviderNormalized `
+          -TargetOsType $ExpectedOsType `
+          -ExpectedContext $effectiveExpectedContext `
+          -ExpectedDockerHost $effectiveExpectedDockerHost
         $manualText = if ($manualSteps.Count -gt 0) { [string]::Join('; ', $manualSteps) } else { 'n/a' }
         $probeHint = Format-DockerOsProbeHint -Probe $lastDockerOsProbe
         $resultStatus = 'mismatch-failed'
         $resultFailureClass = Resolve-RuntimeFailureClass `
           -Probe $lastDockerOsProbe `
           -ObservedOsType $observedOsType `
+          -ProviderMismatch:$providerMismatch `
           -ContextOrOsMismatch:$true
-        $reason = ("Runtime invariant mismatch. expected os={0}, context={1}; observed os={2}, context={3}. Manual remediation: {4}. {5}" -f $ExpectedOsType, $effectiveExpectedContext, ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), $manualText, $probeHint)
+        $reason = ("Runtime invariant mismatch. expected provider={0}, os={1}, context={2}, dockerHost={3}; observed os={4}, context={5}, dockerHost={6}, desktopBacked={7}. Manual remediation: {8}. {9}" -f $runtimeProviderNormalized, $ExpectedOsType, $effectiveExpectedContext, ($effectiveExpectedDockerHost ?? '<null>'), ($observedOsType ?? '<null>'), ($observedContext ?? '<null>'), ($observedDockerHost ?? '<null>'), $observedIsDockerDesktop, $manualText, $probeHint)
       }
     }
   }
@@ -966,8 +1137,10 @@ $snapshot = [ordered]@{
   schema = 'docker-runtime-determinism@v1'
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
   expected = [ordered]@{
+    provider = $runtimeProviderNormalized
     osType = $ExpectedOsType
     context = $effectiveExpectedContext
+    dockerHost = $effectiveExpectedDockerHost
     autoRepair = [bool]$AutoRepair
     manageDockerEngine = [bool]$ManageDockerEngine
     allowHostEngineMutation = [bool]$AllowHostEngineMutation
@@ -983,11 +1156,14 @@ $snapshot = [ordered]@{
   observed = [ordered]@{
     osType = $observedOsType
     context = $observedContext
+    dockerHost = $observedDockerHost
+    desktopBacked = $observedIsDockerDesktop
     dockerOsProbe = [ordered]@{
       initial = $initialDockerOsProbe
       fallback = $fallbackDockerOsProbe
       last = $lastDockerOsProbe
     }
+    dockerInfo = $dockerInfoRecord
     availableContexts = @(Get-DockerContexts)
     runningContainers = @(Get-RunningContainers)
     wslDistributions = @(Get-WslDistributions)
@@ -1008,6 +1184,7 @@ $snapshot | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $snapshotResolve
 Write-GitHubOutput -Key 'runtime-status' -Value $resultStatus -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'docker-ostype' -Value ($observedOsType ?? '') -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'docker-context' -Value ($observedContext ?? '') -DestPath $GitHubOutputPath
+Write-GitHubOutput -Key 'docker-host' -Value ($observedDockerHost ?? '') -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'runtime-failure-class' -Value ($resultFailureClass ?? '') -DestPath $GitHubOutputPath
 $dockerOsParseReason = ''
 if ($lastDockerOsProbe -and $lastDockerOsProbe.PSObject.Properties['parseReason']) {
@@ -1016,7 +1193,7 @@ if ($lastDockerOsProbe -and $lastDockerOsProbe.PSObject.Properties['parseReason'
 Write-GitHubOutput -Key 'docker-ostype-parse-reason' -Value $dockerOsParseReason -DestPath $GitHubOutputPath
 Write-GitHubOutput -Key 'snapshot-path' -Value $snapshotResolved -DestPath $GitHubOutputPath
 
-Write-Host ("[runtime-determinism] status={0} expectedContext={1} observedContext={2} expectedOs={3} observedOs={4} snapshot={5}" -f $resultStatus, $effectiveExpectedContext, ($observedContext ?? '<null>'), $ExpectedOsType, ($observedOsType ?? '<null>'), $snapshotResolved)
+Write-Host ("[runtime-determinism] status={0} provider={1} expectedContext={2} observedContext={3} expectedDockerHost={4} observedDockerHost={5} expectedOs={6} observedOs={7} snapshot={8}" -f $resultStatus, $runtimeProviderNormalized, $effectiveExpectedContext, ($observedContext ?? '<null>'), ($effectiveExpectedDockerHost ?? '<null>'), ($observedDockerHost ?? '<null>'), $ExpectedOsType, ($observedOsType ?? '<null>'), $snapshotResolved)
 
 if ($resultStatus -eq 'mismatch-failed') {
   throw ($reason ?? 'Runtime determinism check failed.')

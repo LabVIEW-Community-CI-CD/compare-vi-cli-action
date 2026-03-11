@@ -130,6 +130,8 @@
     "priority:runtime:daemon:docker:stop": "pwsh -NoLogo -NoProfile -File tools/priority/Manage-RuntimeDaemonInDocker.ps1 -Action stop",
     "priority:runtime:supervisor": "node tools/priority/runtime-supervisor.mjs",
     "priority:delivery:broker": "node tools/priority/runtime-turn-broker.mjs",
+    "priority:delivery:memory": "node tools/priority/delivery-memory.mjs",
+    "priority:delivery:host:signal": "tsc -p tsconfig.json && node dist/tools/priority/delivery-host-signal.js",
     "priority:delivery:agent:ensure": "pwsh -NoLogo -NoProfile -File tools/priority/Manage-UnattendedDeliveryAgent.ps1 -Ensure -SleepMode",
     "priority:delivery:agent:status": "pwsh -NoLogo -NoProfile -File tools/priority/Manage-UnattendedDeliveryAgent.ps1 -Status",
     "priority:delivery:agent:stop": "pwsh -NoLogo -NoProfile -File tools/priority/Manage-UnattendedDeliveryAgent.ps1 -Stop",
