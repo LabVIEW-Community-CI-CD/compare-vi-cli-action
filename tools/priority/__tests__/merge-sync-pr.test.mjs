@@ -129,6 +129,46 @@ test('selectMergeMode chooses auto for merge-queue branches', () => {
   });
 });
 
+test('buildMergeArgs omits --delete-branch for merge-queue auto mode', () => {
+  const args = buildMergeArgs({
+    pr: 1015,
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    method: 'squash',
+    mode: 'auto',
+    keepBranch: false
+  });
+
+  assert.deepEqual(args, [
+    'pr',
+    'merge',
+    '1015',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--squash',
+    '--auto'
+  ]);
+});
+
+test('buildMergeArgs keeps --delete-branch for direct merges when branch cleanup is requested', () => {
+  const args = buildMergeArgs({
+    pr: 1015,
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    method: 'squash',
+    mode: 'direct',
+    keepBranch: false
+  });
+
+  assert.deepEqual(args, [
+    'pr',
+    'merge',
+    '1015',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--squash',
+    '--delete-branch'
+  ]);
+});
+
 test('selectMergeMode keeps queue reason stable for refs/heads base branch values', () => {
   const selection = selectMergeMode(
     {
