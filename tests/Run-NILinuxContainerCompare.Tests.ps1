@@ -512,6 +512,79 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
       if ($lines.Count -eq 0) { return @() }
       return @($lines | ForEach-Object { $_ | ConvertFrom-Json })
     }
+
+    function script:Invoke-WithIsolatedGitWorkspace {
+      param([Parameter(Mandatory)][scriptblock]$ScriptBlock)
+
+      # Temp-repo tests must not inherit the mounted workspace git indirection.
+      $gitEnvNames = @(
+        'GIT_DIR',
+        'GIT_WORK_TREE',
+        'GIT_COMMON_DIR',
+        'GIT_INDEX_FILE',
+        'GIT_OBJECT_DIRECTORY',
+        'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+        'GIT_PREFIX',
+        'GIT_CEILING_DIRECTORIES'
+      )
+      $savedEnv = @{}
+      foreach ($name in $gitEnvNames) {
+        $savedEnv[$name] = [System.Environment]::GetEnvironmentVariable($name, 'Process')
+        Remove-Item -Path ("Env:{0}" -f $name) -ErrorAction SilentlyContinue
+        [System.Environment]::SetEnvironmentVariable($name, $null, 'Process')
+      }
+
+      try {
+        $gitPath = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+        function local:git {
+          param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Arguments)
+
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = $gitPath
+          $psi.WorkingDirectory = (Get-Location).Path
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          foreach ($arg in @($Arguments)) {
+            [void]$psi.ArgumentList.Add([string]$arg)
+          }
+          foreach ($envName in $gitEnvNames) {
+            [void]$psi.Environment.Remove($envName)
+          }
+
+          $proc = [System.Diagnostics.Process]::new()
+          $proc.StartInfo = $psi
+          try {
+            [void]$proc.Start()
+            $stdout = $proc.StandardOutput.ReadToEnd()
+            $stderr = $proc.StandardError.ReadToEnd()
+            $proc.WaitForExit()
+            $global:LASTEXITCODE = [int]$proc.ExitCode
+            if (-not [string]::IsNullOrWhiteSpace($stderr)) {
+              [Console]::Error.Write($stderr)
+            }
+            if ([string]::IsNullOrWhiteSpace($stdout)) {
+              return @()
+            }
+            return @($stdout -split "(`r`n|`n|`r)" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+          } finally {
+            $proc.Dispose()
+          }
+        }
+        & $ScriptBlock
+      } finally {
+        Remove-Item -Path Function:git -ErrorAction SilentlyContinue
+        foreach ($name in $savedEnv.Keys) {
+          if ($null -eq $savedEnv[$name]) {
+            Remove-Item -Path ("Env:{0}" -f $name) -ErrorAction SilentlyContinue
+            [System.Environment]::SetEnvironmentVariable($name, $null, 'Process')
+          } else {
+            Set-Item -Path ("Env:{0}" -f $name) -Value $savedEnv[$name]
+            [System.Environment]::SetEnvironmentVariable($name, $savedEnv[$name], 'Process')
+          }
+        }
+      }
+    }
   }
 
   BeforeEach {
@@ -773,23 +846,25 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
 
     $repoRoot = Join-Path $work 'consumer-repo'
     New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
-    Push-Location $repoRoot
-    try {
-      & git init --initial-branch=develop | Out-Null
-      & git config user.email 'agent@example.com'
-      & git config user.name 'Agent Runner'
-      $targetDir = Join-Path $repoRoot 'src'
-      New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-      $targetPath = Join-Path $targetDir 'Sample.vi'
-      Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
-      & git add .
-      & git commit -m 'initial history repo' | Out-Null
-      & git switch -c 'consumer/branch' | Out-Null
-      Set-Content -LiteralPath $targetPath -Value 'head' -Encoding utf8
-      & git add src/Sample.vi
-      & git commit -m 'update sample vi' | Out-Null
-    } finally {
-      Pop-Location | Out-Null
+    Invoke-WithIsolatedGitWorkspace {
+      Push-Location $repoRoot
+      try {
+        & git init --initial-branch=develop | Out-Null
+        & git config user.email 'agent@example.com'
+        & git config user.name 'Agent Runner'
+        $targetDir = Join-Path $repoRoot 'src'
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        $targetPath = Join-Path $targetDir 'Sample.vi'
+        Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
+        & git add .
+        & git commit -m 'initial history repo' | Out-Null
+        & git switch -c 'consumer/branch' | Out-Null
+        Set-Content -LiteralPath $targetPath -Value 'head' -Encoding utf8
+        & git add src/Sample.vi
+        & git commit -m 'update sample vi' | Out-Null
+      } finally {
+        Pop-Location | Out-Null
+      }
     }
 
     $resultsDir = Join-Path $work 'vi-history-results'
@@ -870,31 +945,37 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
 
     $repoRoot = Join-Path $work 'consumer-repo'
     New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
-    $baselineSha = ''
-    $headSha = ''
-    Push-Location $repoRoot
-    try {
-      & git init --initial-branch=main | Out-Null
-      & git config user.email 'agent@example.com'
-      & git config user.name 'Agent Runner'
-      $targetDir = Join-Path $repoRoot 'src'
-      New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-      $targetPath = Join-Path $targetDir 'Sample.vi'
-      Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
-      & git add .
-      & git commit -m 'initial history repo' | Out-Null
-      $baselineSha = [string](& git rev-parse HEAD | Select-Object -Last 1)
+    $gitSetup = Invoke-WithIsolatedGitWorkspace {
+      Push-Location $repoRoot
+      try {
+        & git init --initial-branch=main | Out-Null
+        & git config user.email 'agent@example.com'
+        & git config user.name 'Agent Runner'
+        $targetDir = Join-Path $repoRoot 'src'
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        $targetPath = Join-Path $targetDir 'Sample.vi'
+        Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
+        & git add .
+        & git commit -m 'initial history repo' | Out-Null
+        $baselineShaLocal = [string](& git rev-parse HEAD | Select-Object -Last 1)
 
-      & git switch -c 'consumer/branch' | Out-Null
-      1..2 | ForEach-Object {
-        Set-Content -LiteralPath $targetPath -Value ("head-{0}" -f $_) -Encoding utf8
-        & git add src/Sample.vi
-        & git commit -m ("update sample vi {0}" -f $_) | Out-Null
+        & git switch -c 'consumer/branch' | Out-Null
+        1..2 | ForEach-Object {
+          Set-Content -LiteralPath $targetPath -Value ("head-{0}" -f $_) -Encoding utf8
+          & git add src/Sample.vi
+          & git commit -m ("update sample vi {0}" -f $_) | Out-Null
+        }
+        $headShaLocal = [string](& git rev-parse HEAD | Select-Object -Last 1)
+        return [pscustomobject]@{
+          baselineSha = $baselineShaLocal
+          headSha = $headShaLocal
+        }
+      } finally {
+        Pop-Location | Out-Null
       }
-      $headSha = [string](& git rev-parse HEAD | Select-Object -Last 1)
-    } finally {
-      Pop-Location | Out-Null
     }
+    $baselineSha = [string]$gitSetup.baselineSha
+    $headSha = [string]$gitSetup.headSha
 
     $resultsDir = Join-Path $work 'vi-history-results'
     $runtimeContract = Join-Path $work 'runtime-bootstrap.json'
@@ -951,34 +1032,39 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
 
     $primaryRepoRoot = Join-Path $work 'primary-repo'
     $linkedWorktreeRoot = Join-Path $work 'linked-worktree'
-    $baselineSha = ''
     New-Item -ItemType Directory -Path $primaryRepoRoot -Force | Out-Null
-    Push-Location $primaryRepoRoot
-    try {
-      & git init --initial-branch=develop | Out-Null
-      & git config user.email 'agent@example.com'
-      & git config user.name 'Agent Runner'
-      $targetDir = Join-Path $primaryRepoRoot 'src'
-      New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-      $targetPath = Join-Path $targetDir 'Sample.vi'
-      Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
-      & git add .
-      & git commit -m 'initial history repo' | Out-Null
-      $baselineSha = [string](& git rev-parse HEAD | Select-Object -Last 1)
-      & git worktree add -b 'consumer/branch' $linkedWorktreeRoot | Out-Null
-    } finally {
-      Pop-Location | Out-Null
-    }
+    $gitSetup = Invoke-WithIsolatedGitWorkspace {
+      Push-Location $primaryRepoRoot
+      try {
+        & git init --initial-branch=develop | Out-Null
+        & git config user.email 'agent@example.com'
+        & git config user.name 'Agent Runner'
+        $targetDir = Join-Path $primaryRepoRoot 'src'
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        $targetPath = Join-Path $targetDir 'Sample.vi'
+        Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
+        & git add .
+        & git commit -m 'initial history repo' | Out-Null
+        $baselineShaLocal = [string](& git rev-parse HEAD | Select-Object -Last 1)
+        & git worktree add -b 'consumer/branch' $linkedWorktreeRoot | Out-Null
+      } finally {
+        Pop-Location | Out-Null
+      }
 
-    Push-Location $linkedWorktreeRoot
-    try {
-      $linkedTargetPath = Join-Path $linkedWorktreeRoot 'src' 'Sample.vi'
-      Set-Content -LiteralPath $linkedTargetPath -Value 'head' -Encoding utf8
-      & git add src/Sample.vi
-      & git commit -m 'update sample vi' | Out-Null
-    } finally {
-      Pop-Location | Out-Null
+      Push-Location $linkedWorktreeRoot
+      try {
+        $linkedTargetPath = Join-Path $linkedWorktreeRoot 'src' 'Sample.vi'
+        Set-Content -LiteralPath $linkedTargetPath -Value 'head' -Encoding utf8
+        & git add src/Sample.vi
+        & git commit -m 'update sample vi' | Out-Null
+        return [pscustomobject]@{
+          baselineSha = $baselineShaLocal
+        }
+      } finally {
+        Pop-Location | Out-Null
+      }
     }
+    $baselineSha = [string]$gitSetup.baselineSha
 
     $resultsDir = Join-Path $work 'vi-history-results'
     $runtimeContract = Join-Path $work 'runtime-bootstrap.json'
@@ -1049,25 +1135,27 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
     New-Item -ItemType Directory -Path $work -Force | Out-Null
     $repoRoot = Join-Path $work 'consumer-repo'
     New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
-    Push-Location $repoRoot
-    try {
-      & git init --initial-branch=develop | Out-Null
-      & git config user.email 'agent@example.com'
-      & git config user.name 'Agent Runner'
-      $targetDir = Join-Path $repoRoot 'src'
-      New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-      $targetPath = Join-Path $targetDir 'Sample.vi'
-      Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
-      & git add .
-      & git commit -m 'initial history repo' | Out-Null
-      $baseRef = [string](& git rev-parse HEAD).Trim()
-      & git switch -c 'consumer/branch' | Out-Null
-      Set-Content -LiteralPath $targetPath -Value 'head' -Encoding utf8
-      & git add src/Sample.vi
-      & git commit -m 'update sample vi' | Out-Null
-      $headRef = [string](& git rev-parse HEAD).Trim()
-    } finally {
-      Pop-Location | Out-Null
+    Invoke-WithIsolatedGitWorkspace {
+      Push-Location $repoRoot
+      try {
+        & git init --initial-branch=develop | Out-Null
+        & git config user.email 'agent@example.com'
+        & git config user.name 'Agent Runner'
+        $targetDir = Join-Path $repoRoot 'src'
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        $targetPath = Join-Path $targetDir 'Sample.vi'
+        Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
+        & git add .
+        & git commit -m 'initial history repo' | Out-Null
+        $baseRef = [string](& git rev-parse HEAD).Trim()
+        & git switch -c 'consumer/branch' | Out-Null
+        Set-Content -LiteralPath $targetPath -Value 'head' -Encoding utf8
+        & git add src/Sample.vi
+        & git commit -m 'update sample vi' | Out-Null
+        $headRef = [string](& git rev-parse HEAD).Trim()
+      } finally {
+        Pop-Location | Out-Null
+      }
     }
 
     $resultsDir = Join-Path $work 'results'
@@ -1174,31 +1262,33 @@ comparevi_vi_history_emit_suite_bundle 1 '$(Convert-TestPathToWsl -Path $reportP
     New-Item -ItemType Directory -Path $work -Force | Out-Null
     $repoRoot = Join-Path $work 'consumer-repo'
     New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
-    Push-Location $repoRoot
-    try {
-      & git init --initial-branch=develop | Out-Null
-      & git config user.email 'agent@example.com'
-      & git config user.name 'Agent Runner'
-      Set-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Value 'seed' -Encoding utf8
-      & git add README.md
-      & git commit -m 'seed repo' | Out-Null
+    Invoke-WithIsolatedGitWorkspace {
+      Push-Location $repoRoot
+      try {
+        & git init --initial-branch=develop | Out-Null
+        & git config user.email 'agent@example.com'
+        & git config user.name 'Agent Runner'
+        Set-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Value 'seed' -Encoding utf8
+        & git add README.md
+        & git commit -m 'seed repo' | Out-Null
 
-      $targetDir = Join-Path $repoRoot 'src'
-      New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-      $targetPath = Join-Path $targetDir 'Sample.vi'
-      Set-Content -LiteralPath $targetPath -Value 'baseline' -Encoding utf8
-      & git add src/Sample.vi
-      & git commit -m 'introduce sample vi' | Out-Null
+        $targetDir = Join-Path $repoRoot 'src'
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        $targetPath = Join-Path $targetDir 'Sample.vi'
+        Set-Content -LiteralPath $targetPath -Value 'baseline' -Encoding utf8
+        & git add src/Sample.vi
+        & git commit -m 'introduce sample vi' | Out-Null
 
-      & git switch -c 'consumer/branch' | Out-Null
-      Set-Content -LiteralPath $targetPath -Value 'head-1' -Encoding utf8
-      & git add src/Sample.vi
-      & git commit -m 'update sample vi 1' | Out-Null
-      Set-Content -LiteralPath $targetPath -Value 'head-2' -Encoding utf8
-      & git add src/Sample.vi
-      & git commit -m 'update sample vi 2' | Out-Null
-    } finally {
-      Pop-Location | Out-Null
+        & git switch -c 'consumer/branch' | Out-Null
+        Set-Content -LiteralPath $targetPath -Value 'head-1' -Encoding utf8
+        & git add src/Sample.vi
+        & git commit -m 'update sample vi 1' | Out-Null
+        Set-Content -LiteralPath $targetPath -Value 'head-2' -Encoding utf8
+        & git add src/Sample.vi
+        & git commit -m 'update sample vi 2' | Out-Null
+      } finally {
+        Pop-Location | Out-Null
+      }
     }
 
     $resultsDir = Join-Path $work 'results'
@@ -1262,31 +1352,33 @@ export COMPAREVI_VI_HISTORY_MAX_PAIRS='6'
     New-Item -ItemType Directory -Path $work -Force | Out-Null
     $repoRoot = Join-Path $work 'consumer-repo'
     New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
-    Push-Location $repoRoot
-    try {
-      & git init --initial-branch=develop | Out-Null
-      & git config user.email 'agent@example.com'
-      & git config user.name 'Agent Runner'
-      Set-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Value 'seed' -Encoding utf8
-      & git add README.md
-      & git commit -m 'seed repo' | Out-Null
+    Invoke-WithIsolatedGitWorkspace {
+      Push-Location $repoRoot
+      try {
+        & git init --initial-branch=develop | Out-Null
+        & git config user.email 'agent@example.com'
+        & git config user.name 'Agent Runner'
+        Set-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Value 'seed' -Encoding utf8
+        & git add README.md
+        & git commit -m 'seed repo' | Out-Null
 
-      $targetDir = Join-Path $repoRoot 'src'
-      New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-      $targetPath = Join-Path $targetDir 'Sample.vi'
-      Set-Content -LiteralPath $targetPath -Value 'baseline' -Encoding utf8
-      & git add src/Sample.vi
-      & git commit -m 'introduce sample vi' | Out-Null
+        $targetDir = Join-Path $repoRoot 'src'
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        $targetPath = Join-Path $targetDir 'Sample.vi'
+        Set-Content -LiteralPath $targetPath -Value 'baseline' -Encoding utf8
+        & git add src/Sample.vi
+        & git commit -m 'introduce sample vi' | Out-Null
 
-      & git switch -c 'consumer/branch' | Out-Null
-      Set-Content -LiteralPath $targetPath -Value 'head-1' -Encoding utf8
-      & git add src/Sample.vi
-      & git commit -m 'update sample vi 1' | Out-Null
-      Set-Content -LiteralPath $targetPath -Value 'head-2' -Encoding utf8
-      & git add src/Sample.vi
-      & git commit -m 'update sample vi 2' | Out-Null
-    } finally {
-      Pop-Location | Out-Null
+        & git switch -c 'consumer/branch' | Out-Null
+        Set-Content -LiteralPath $targetPath -Value 'head-1' -Encoding utf8
+        & git add src/Sample.vi
+        & git commit -m 'update sample vi 1' | Out-Null
+        Set-Content -LiteralPath $targetPath -Value 'head-2' -Encoding utf8
+        & git add src/Sample.vi
+        & git commit -m 'update sample vi 2' | Out-Null
+      } finally {
+        Pop-Location | Out-Null
+      }
     }
 
     $resultsDir = Join-Path $work 'results'
@@ -1374,25 +1466,27 @@ export COMPAREVI_VI_HISTORY_MAX_PAIRS='6'
 
     $repoRoot = Join-Path $work 'consumer-repo'
     New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
-    Push-Location $repoRoot
-    try {
-      & git init --initial-branch=develop | Out-Null
-      & git config user.email 'agent@example.com'
-      & git config user.name 'Agent Runner'
-      $targetDir = Join-Path $repoRoot 'src'
-      New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-      $targetPath = Join-Path $targetDir 'Sample.vi'
-      Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
-      & git add .
-      & git commit -m 'initial history repo' | Out-Null
-      & git switch -c 'consumer/branch' | Out-Null
-      1..3 | ForEach-Object {
-        Set-Content -LiteralPath $targetPath -Value ("head-{0}" -f $_) -Encoding utf8
-        & git add src/Sample.vi
-        & git commit -m ("update sample vi {0}" -f $_) | Out-Null
+    Invoke-WithIsolatedGitWorkspace {
+      Push-Location $repoRoot
+      try {
+        & git init --initial-branch=develop | Out-Null
+        & git config user.email 'agent@example.com'
+        & git config user.name 'Agent Runner'
+        $targetDir = Join-Path $repoRoot 'src'
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        $targetPath = Join-Path $targetDir 'Sample.vi'
+        Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
+        & git add .
+        & git commit -m 'initial history repo' | Out-Null
+        & git switch -c 'consumer/branch' | Out-Null
+        1..3 | ForEach-Object {
+          Set-Content -LiteralPath $targetPath -Value ("head-{0}" -f $_) -Encoding utf8
+          & git add src/Sample.vi
+          & git commit -m ("update sample vi {0}" -f $_) | Out-Null
+        }
+      } finally {
+        Pop-Location | Out-Null
       }
-    } finally {
-      Pop-Location | Out-Null
     }
 
     $runtimeContract = Join-Path $work 'runtime-bootstrap.json'

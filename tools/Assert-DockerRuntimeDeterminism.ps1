@@ -401,7 +401,8 @@ function Get-DockerContext {
     if ($invoke.timedOut -or $invoke.exception -or $null -eq $invoke.exitCode -or [int]$invoke.exitCode -ne 0) {
       return $null
     }
-    $output = if ($invoke.stdout -and $invoke.stdout.Count -gt 0) { [string]$invoke.stdout[0] } else { '' }
+    $stdoutLines = @($invoke.stdout | ForEach-Object { [string]$_ })
+    $output = if ($stdoutLines.Count -gt 0) { [string]$stdoutLines[0] } else { '' }
     if ([string]::IsNullOrWhiteSpace($output)) {
       return $null
     }
@@ -725,7 +726,7 @@ function Get-ManualRemediationSteps {
       $steps.Add('wsl --shutdown') | Out-Null
     }
   }
-  return @($steps.ToArray())
+  return ,($steps.ToArray())
 }
 
 function Wait-DockerEngineReady {
