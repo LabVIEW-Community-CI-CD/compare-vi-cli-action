@@ -32,6 +32,10 @@
   Optional Pester FullName filter(s) forwarded to tools/Run-Pester.ps1 for targeted containerized execution.
 .PARAMETER PesterIncludeIntegration
   Include Integration-tagged tests in the containerized Pester run.
+.PARAMETER DockerSocketPassthrough
+  Mount the host Docker socket into the tools container and forward DOCKER_HOST.
+  Required when the in-container workload launches sibling Docker containers,
+  such as the NILinuxCompare Pester suite.
 .NOTES
   Environment variables:
     - COMPAREVI_TOOLS_IMAGE: Default image tag when -UseToolsImage is supplied without -ToolsImageTag.
@@ -54,6 +58,7 @@ param(
   [string[]]$PesterTag,
   [string[]]$PesterExcludeTag,
   [switch]$PesterIncludeIntegration,
+  [switch]$DockerSocketPassthrough,
   [string]$PesterResultsDir = 'tests/results/docker-pester'
 )
 
@@ -161,6 +166,54 @@ function Resolve-ContainerGitArgs {
   )
 }
 
+function Test-TargetsNILinuxContainerCompareSuite {
+  param([string[]]$Paths)
+
+  foreach ($path in @($Paths)) {
+    if ([string]::IsNullOrWhiteSpace($path)) {
+      continue
+    }
+
+    if ([string]::Equals([System.IO.Path]::GetFileName($path), 'Run-NILinuxContainerCompare.Tests.ps1', [System.StringComparison]::OrdinalIgnoreCase)) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Resolve-DockerSocketPassthroughArgs {
+  $socketPath = '/var/run/docker.sock'
+  if ($IsWindows) {
+    throw 'Docker socket passthrough is only supported from Linux or WSL hosts.'
+  }
+
+  if (-not (Test-Path -LiteralPath $socketPath)) {
+    throw ("Docker socket '{0}' was not found. Start Docker on a Linux/WSL host before using -DockerSocketPassthrough." -f $socketPath)
+  }
+
+  $socketGroupId = $null
+  try {
+    $socketGroupId = (& stat -c '%g' $socketPath 2>$null | Select-Object -First 1)
+  } catch {
+    $socketGroupId = $null
+  }
+  if ($null -ne $socketGroupId) {
+    $socketGroupId = [string]$socketGroupId
+    $socketGroupId = $socketGroupId.Trim()
+  }
+
+  if ([string]::IsNullOrWhiteSpace($socketGroupId) -or $socketGroupId -notmatch '^\d+$') {
+    throw ("Unable to resolve Docker socket group id for '{0}'." -f $socketPath)
+  }
+
+  return @(
+    '-v', ("{0}:{0}" -f $socketPath),
+    '--group-add', $socketGroupId,
+    '-e', 'DOCKER_HOST=unix:///var/run/docker.sock'
+  )
+}
+
 $hostPath = Get-DockerHostPath '.'
 $volumeSpec = "${hostPath}:/work"
 $commonArgs = @('--rm','-v', $volumeSpec,'-w','/work')
@@ -227,11 +280,12 @@ function Invoke-Container {
     [string]$Image,
     [string[]]$Arguments,
     [int[]]$AcceptExitCodes = @(0),
-    [string]$Label
+    [string]$Label,
+    [string[]]$DockerRunArguments = @()
   )
   $labelText = if ($Label) { $Label } else { $Image }
   Write-Host ("[docker] {0}" -f $labelText) -ForegroundColor Cyan
-  $cmd = @('docker','run') + $commonArgs + @($Image) + $Arguments
+  $cmd = @('docker','run') + $commonArgs + @($DockerRunArguments) + @($Image) + $Arguments
   $displayCmd = New-Object System.Collections.Generic.List[string]
   for ($i = 0; $i -lt $cmd.Count; $i++) {
     $arg = $cmd[$i]
@@ -248,7 +302,7 @@ function Invoke-Container {
     $displayCmd.Add($arg)
   }
   Write-Host ("`t" + ($displayCmd.ToArray() -join ' ')) -ForegroundColor DarkGray
-  & docker run @commonArgs $Image @Arguments
+  & docker run @commonArgs @DockerRunArguments $Image @Arguments
   $code = $LASTEXITCODE
   if ($AcceptExitCodes -notcontains $code) {
     throw "Container '$labelText' exited with code $code."
@@ -306,6 +360,16 @@ if ($pesterRequested -and -not $UseToolsImage) {
 
 if ($UseToolsImage -and -not $ToolsImageTag) {
   $ToolsImageTag = 'ghcr.io/labview-community-ci-cd/comparevi-tools:latest'
+}
+
+$requiresDockerSocketPassthrough = $false
+if ($UseToolsImage -and $pesterRequested) {
+  $requiresDockerSocketPassthrough = $DockerSocketPassthrough -or (Test-TargetsNILinuxContainerCompareSuite -Paths $PesterPath)
+}
+$dockerSocketPassthroughArgs = @()
+if ($requiresDockerSocketPassthrough) {
+  $dockerSocketPassthroughArgs = Resolve-DockerSocketPassthroughArgs
+  Write-Host '[docker] Enabling Docker socket passthrough for tools-container Pester execution.' -ForegroundColor Cyan
 }
 
 if ($UseToolsImage -and $ToolsImageTag) {
@@ -419,7 +483,10 @@ if ($pesterRequested) {
   $pesterScriptLines.Add('exit $LASTEXITCODE')
   $pesterScript = $pesterScriptLines -join [Environment]::NewLine
 
-  Invoke-Container -Image $ToolsImageTag -Arguments @('pwsh', '-NoLogo', '-NoProfile', '-Command', $pesterScript) -Label 'pester (tools)' | Out-Null
+  Invoke-Container -Image $ToolsImageTag `
+    -Arguments @('pwsh', '-NoLogo', '-NoProfile', '-Command', $pesterScript) `
+    -Label 'pester (tools)' `
+    -DockerRunArguments $dockerSocketPassthroughArgs | Out-Null
 }
 
 Write-Host 'Non-LabVIEW container checks completed.' -ForegroundColor Green
