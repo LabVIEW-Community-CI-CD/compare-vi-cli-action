@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { compareviRuntimeTest, parseArgs, runRuntimeSupervisor } from '../runtime-supervisor.mjs';
@@ -532,6 +532,91 @@ test('comparevi canonical execution delegates to the delivery broker instead of 
   assert.equal(execution.outcome, 'coding-command-finished');
   assert.equal(execution.source, 'delivery-agent-broker');
   assert.equal(execution.details.actionType, 'execute-coding-turn');
+});
+
+test('comparevi canonical execution consumes the broker receipt file when stdout includes helper chatter', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-broker-receipt-'));
+  const runtimeDir = path.join(repoRoot, 'tests', 'results', '_agent', 'runtime');
+  await mkdir(runtimeDir, { recursive: true });
+
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-962',
+        issue: 962,
+        forkRemote: 'origin',
+        branch: 'issue/origin-962-github-metadata-apply-tolerate-bot-review-requests-in-pr-reviewer-state'
+      },
+      artifacts: {
+        standingRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        standingIssueNumber: 962,
+        laneLifecycle: 'ready-merge',
+        selectedActionType: 'merge-pr'
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      objective: { summary: 'Advance issue #962' },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'ready-merge',
+          selectedActionType: 'merge-pr'
+        }
+      }
+    },
+    taskPacketArtifacts: {
+      latestPath: path.join(runtimeDir, 'task-packet.json')
+    },
+    runtimeArtifactPaths: {
+      runtimeDir
+    },
+    deps: {
+      execFileFn: async (_command, args) => {
+        const receiptPath = args[args.indexOf('--receipt-out') + 1];
+        assert.equal(path.basename(receiptPath), 'broker-execution-receipt.json');
+        await writeFile(
+          receiptPath,
+          `${JSON.stringify(
+            {
+              status: 'completed',
+              outcome: 'merged',
+              reason: 'Merged PR #1018 and closed issue #962.',
+              source: 'delivery-agent-broker',
+              details: {
+                actionType: 'merge-pr',
+                laneLifecycle: 'complete',
+                blockerClass: 'none',
+                retryable: false,
+                nextWakeCondition: 'next-scheduler-cycle',
+                helperCallsExecuted: ['node tools/priority/merge-sync-pr.mjs', 'gh issue close 962'],
+                filesTouched: [],
+                finalizedIssueNumber: 962
+              }
+            },
+            null,
+            2
+          )}\n`,
+          'utf8'
+        );
+        return {
+          stdout: '[priority] Standing issue: #963\n{\n  "ignored": true\n}\n'
+        };
+      }
+    }
+  });
+
+  assert.equal(execution.outcome, 'merged');
+  assert.equal(execution.reason, 'Merged PR #1018 and closed issue #962.');
+  assert.equal(execution.details.actionType, 'merge-pr');
+  assert.equal(execution.details.finalizedIssueNumber, 962);
 });
 
 test('delivery broker auto-slices epics by creating and linking a child issue', async () => {

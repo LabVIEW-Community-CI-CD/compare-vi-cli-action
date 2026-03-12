@@ -1,0 +1,779 @@
+// @ts-nocheck
+
+import { closeSync, mkdirSync, openSync, rmSync } from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import { spawn } from 'node:child_process';
+import { refreshDeliveryMemory } from '../delivery-memory.js';
+import {
+  DAEMON_PID_SCHEMA,
+  DEFAULTS,
+  MANAGER_CYCLE_SCHEMA,
+  MANAGER_PID_SCHEMA,
+  MANAGER_REPORT_SCHEMA,
+  MANAGER_STATE_SCHEMA,
+  STOP_REQUEST_SCHEMA,
+  convertToWslPath,
+  getArtifactPaths,
+  getOptionalDateTimeProperty,
+  getOptionalIntProperty,
+  getOptionalProperty,
+  getOptionalStringProperty,
+  getStableLeaseOwner,
+  getWslRuntimeDaemonUnitName,
+  normalizeText,
+  readJsonFile,
+  readLogTail,
+  resolveDeliveryStateForStatus,
+  resolveGitDirPath,
+  resolveObserverTelemetry,
+  resolveRepoRoot,
+  runCommand,
+  shellQuote,
+  sleep,
+  testProcessAlive,
+  testWslProcessAlive,
+  toIso,
+  writeJsonFile,
+  writeLogTailTrace,
+  writeManagerTrace,
+} from './delivery-agent-common.js';
+import {
+  invokeDeliveryHostSignal,
+  runPrereqsCommand,
+  updateHostIsolationState,
+} from './delivery-agent-prereqs.js';
+
+async function invokeDeliveryMemory({ repoRoot, repo, runtimeDir, outPath }) {
+  try {
+    const { report } = await refreshDeliveryMemory({
+      repoRoot,
+      repository: repo,
+      runtimeDir,
+      outPath,
+    });
+    return report;
+  } catch (error) {
+    return {
+      status: 'error',
+      reason: 'tool-failed',
+      reportPath: outPath,
+      message: error?.message || String(error),
+    };
+  }
+}
+
+export function startWslRuntimeDaemon({
+  repoRoot,
+  runtimeDir,
+  distro,
+  daemonPollIntervalSeconds,
+  leaseOwner,
+  leaseRootWsl,
+  daemonLogPath,
+  repo,
+  unitName,
+  stopOnIdle,
+}) {
+  const launchScriptPath = path.join(repoRoot, 'tools', 'priority', 'bash', 'start-runtime-daemon.sh');
+  const launchScriptPathWsl = convertToWslPath(launchScriptPath);
+  const repoRootWsl = convertToWslPath(repoRoot);
+  const daemonLogPathWsl = convertToWslPath(daemonLogPath);
+  const envAssignments = [
+    `COMPAREVI_RUNTIME_DAEMON_LOG=${shellQuote(daemonLogPathWsl)}`,
+    `COMPAREVI_RUNTIME_DAEMON_CWD=${shellQuote(repoRootWsl)}`,
+    `COMPAREVI_RUNTIME_DAEMON_REPO=${shellQuote(repo)}`,
+    `COMPAREVI_RUNTIME_DAEMON_RUNTIME_DIR=${shellQuote(runtimeDir)}`,
+    `COMPAREVI_RUNTIME_DAEMON_LEASE_ROOT=${shellQuote(leaseRootWsl)}`,
+    `COMPAREVI_RUNTIME_DAEMON_POLL_INTERVAL=${shellQuote(String(daemonPollIntervalSeconds))}`,
+    `AGENT_WRITER_LEASE_OWNER=${shellQuote(leaseOwner)}`,
+    `DOCKER_HOST=${shellQuote(DEFAULTS.dockerHost)}`,
+    `COMPAREVI_DOCKER_RUNTIME_PROVIDER=${shellQuote('native-wsl')}`,
+    `COMPAREVI_DOCKER_EXPECTED_CONTEXT=${shellQuote('')}`,
+    `COMPAREVI_RUNTIME_DAEMON_STOP_ON_IDLE=${shellQuote(stopOnIdle ? 'true' : 'false')}`,
+  ].join(' ');
+
+  runCommand('wsl.exe', ['-d', distro, '--', 'bash', '-lc', `systemctl --user reset-failed ${shellQuote(`${unitName}.service`)} >/dev/null 2>&1 || true`]);
+  const startCommand = `${envAssignments} systemd-run --user --unit ${shellQuote(unitName)} --collect --quiet bash ${shellQuote(launchScriptPathWsl)} >/dev/null && systemctl --user show ${shellQuote(`${unitName}.service`)} -p MainPID --value`;
+  const result = runCommand('wsl.exe', ['-d', distro, '--', 'bash', '-lc', startCommand]);
+  if (result.status !== 0) {
+    throw new Error(`Failed to start WSL runtime daemon in distro '${distro}': ${normalizeText(result.stderr || result.stdout)}`);
+  }
+  const pid = Number(normalizeText(result.stdout.split(/\r?\n/).pop() || result.stdout));
+  if (!Number.isInteger(pid) || pid <= 0) {
+    throw new Error(`WSL runtime daemon did not return a valid PID for distro '${distro}'.`);
+  }
+  return pid;
+}
+
+export function stopWslRuntimeDaemon({ distro, unitName, processId }) {
+  if (unitName) {
+    runCommand('wsl.exe', ['-d', distro, '--', 'bash', '-lc', `systemctl --user stop ${shellQuote(`${unitName}.service`)} >/dev/null 2>&1 || true`]);
+  }
+  if (!Number.isInteger(processId) || processId <= 0) {
+    return;
+  }
+  runCommand('wsl.exe', ['-d', distro, '--', 'bash', '-lc', `kill ${processId} >/dev/null 2>&1 || true`]);
+  if (testWslProcessAlive(distro, processId)) {
+    runCommand('wsl.exe', ['-d', distro, '--', 'bash', '-lc', `kill -9 ${processId} >/dev/null 2>&1 || true`]);
+  }
+}
+
+export function emitStatus(options) {
+  const repoRoot = resolveRepoRoot();
+  const paths = getArtifactPaths(repoRoot, options.runtimeDir);
+  const pidState = readJsonFile(paths.managerPidPath);
+  const managerAlive = testProcessAlive(getOptionalIntProperty(pidState, 'pid'));
+  const managerStartedAt = getOptionalDateTimeProperty(pidState, 'startedAt');
+  const daemonState = readJsonFile(paths.wslDaemonPidPath);
+  const daemonAlive = testWslProcessAlive(options.wslDistro, getOptionalIntProperty(daemonState, 'pid'));
+  const daemonStartedAt = getOptionalDateTimeProperty(daemonState, 'startedAt');
+  const heartbeat = readJsonFile(paths.observerHeartbeatPath);
+  const runtimeState = readJsonFile(paths.runtimeStatePath);
+  const taskPacket = readJsonFile(paths.taskPacketPath);
+  const resolvedDelivery = resolveDeliveryStateForStatus({
+    repo: options.repo,
+    runtimeDir: options.runtimeDir,
+    deliveryState: readJsonFile(paths.deliveryStatePath),
+    heartbeat,
+    runtimeState,
+    taskPacket,
+    paths,
+    managerStartedAt,
+    daemonStartedAt,
+    daemonAlive,
+  });
+  const deliveryState = resolvedDelivery.state;
+  const deliveryMemory = readJsonFile(paths.deliveryMemoryPath);
+  const codexStateHygiene = readJsonFile(paths.codexStateHygienePath);
+  const observer = resolveObserverTelemetry(codexStateHygiene, paths.codexStateHygienePath);
+  const hostSignal = readJsonFile(paths.hostSignalPath);
+  const hostIsolation = readJsonFile(paths.hostIsolationPath);
+  const wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
+  const daemonLogTail = readLogTail(paths.daemonLogPath);
+  const managerLogTail = readLogTail(paths.runnerLogPath);
+  const managerErrorLogTail = readLogTail(paths.runnerErrorPath);
+  const status = managerAlive || daemonAlive ? 'running' : 'stopped';
+
+  writeLogTailTrace({ repo: options.repo, runtimeDir: options.runtimeDir, distro: options.wslDistro, tracePath: paths.managerTracePath, source: 'daemon', reason: `status:${options.outcome}`, logPath: paths.daemonLogPath, lines: daemonLogTail });
+  writeLogTailTrace({ repo: options.repo, runtimeDir: options.runtimeDir, distro: options.wslDistro, tracePath: paths.managerTracePath, source: 'manager-stdout', reason: `status:${options.outcome}`, logPath: paths.runnerLogPath, lines: managerLogTail });
+  writeLogTailTrace({ repo: options.repo, runtimeDir: options.runtimeDir, distro: options.wslDistro, tracePath: paths.managerTracePath, source: 'manager-stderr', reason: `status:${options.outcome}`, logPath: paths.runnerErrorPath, lines: managerErrorLogTail });
+
+  const report = {
+    schema: MANAGER_REPORT_SCHEMA,
+    generatedAt: toIso(),
+    repo: options.repo,
+    runtimeDir: options.runtimeDir,
+    distro: options.wslDistro,
+    status,
+    outcome: options.outcome,
+    manager: {
+      pid: getOptionalIntProperty(pidState, 'pid'),
+      alive: managerAlive,
+      startedAt: getOptionalProperty(pidState, 'startedAt'),
+      command: getOptionalProperty(pidState, 'command'),
+    },
+    daemon: {
+      pid: getOptionalIntProperty(daemonState, 'pid'),
+      alive: daemonAlive,
+      startedAt: getOptionalProperty(daemonState, 'startedAt'),
+      command: getOptionalProperty(daemonState, 'command'),
+    },
+    heartbeat,
+    delivery: deliveryState,
+    heartbeatDiagnostics: resolvedDelivery.diagnostics,
+    deliveryMemory,
+    observer,
+    codexStateHygiene,
+    hostSignal,
+    hostIsolation,
+    wslNativeDocker,
+    logTail: {
+      daemon: daemonLogTail,
+      managerStdout: managerLogTail,
+      managerStderr: managerErrorLogTail,
+    },
+    paths: {
+      managerStatePath: paths.managerStatePath,
+      managerPidPath: paths.managerPidPath,
+      stopRequestPath: paths.stopRequestPath,
+      observerHeartbeatPath: paths.observerHeartbeatPath,
+      deliveryStatePath: paths.deliveryStatePath,
+      runtimeStatePath: paths.runtimeStatePath,
+      taskPacketPath: paths.taskPacketPath,
+      deliveryMemoryPath: paths.deliveryMemoryPath,
+      wslDaemonPidPath: paths.wslDaemonPidPath,
+      codexStateHygienePath: paths.codexStateHygienePath,
+      hostSignalPath: paths.hostSignalPath,
+      hostIsolationPath: paths.hostIsolationPath,
+      hostTracePath: paths.hostTracePath,
+      managerTracePath: paths.managerTracePath,
+      wslNativeDockerPath: paths.wslNativeDockerPath,
+      daemonLogPath: paths.daemonLogPath,
+      runnerLogPath: paths.runnerLogPath,
+      runnerErrorPath: paths.runnerErrorPath,
+    },
+  };
+
+  writeJsonFile(paths.managerStatePath, report);
+  writeManagerTrace({
+    repo: options.repo,
+    runtimeDir: options.runtimeDir,
+    distro: options.wslDistro,
+    tracePath: paths.managerTracePath,
+    eventType: 'status',
+    detail: {
+      outcome: options.outcome,
+      managerAlive,
+      daemonAlive,
+      heartbeatReason: resolvedDelivery.diagnostics.reason,
+      heartbeatUsed: Boolean(resolvedDelivery.diagnostics.usedHeartbeat),
+      heartbeatGeneratedAt: resolvedDelivery.diagnostics.heartbeatGeneratedAt,
+      observerStatus: getOptionalStringProperty(observer, 'status'),
+      daemonLogLineCount: daemonLogTail.length,
+      managerStdoutLineCount: managerLogTail.length,
+      managerStderrLineCount: managerErrorLogTail.length,
+    },
+  });
+  return report;
+}
+
+export async function ensureManagerCommand(options) {
+  const repoRoot = resolveRepoRoot();
+  const paths = getArtifactPaths(repoRoot, options.runtimeDir);
+  await runPrereqsCommand(options);
+
+  const existingPidState = readJsonFile(paths.managerPidPath);
+  const existingPid = getOptionalIntProperty(existingPidState, 'pid');
+  if (testProcessAlive(existingPid)) {
+    return emitStatus({ ...options, outcome: 'already-running' });
+  }
+
+  rmSync(paths.stopRequestPath, { force: true });
+  invokeDeliveryHostSignal({ mode: 'isolate', repoRoot, distro: options.wslDistro, paths, previousFingerprint: null, allowRunnerServices: false });
+
+  mkdirSync(path.dirname(paths.runnerLogPath), { recursive: true });
+  const stdoutFd = openSync(paths.runnerLogPath, 'a');
+  const stderrFd = openSync(paths.runnerErrorPath, 'a');
+  const distScriptPath = path.join(repoRoot, 'dist', 'tools', 'priority', 'delivery-agent.js');
+  const childArgs = [
+    distScriptPath,
+    'run',
+    '--repo',
+    options.repo,
+    '--runtime-dir',
+    options.runtimeDir,
+    '--daemon-poll-interval-seconds',
+    String(options.daemonPollIntervalSeconds),
+    '--cycle-interval-seconds',
+    String(options.cycleIntervalSeconds),
+    '--max-cycles',
+    String(options.maxCycles),
+    '--wsl-distro',
+    options.wslDistro,
+  ];
+  if (options.stopWhenNoOpenIssues || options.sleepMode) {
+    childArgs.push('--stop-when-no-open-issues');
+  }
+  if (options.sleepMode) {
+    childArgs.push('--sleep-mode');
+  }
+  const child = spawn(process.execPath, childArgs, {
+    cwd: repoRoot,
+    detached: true,
+    windowsHide: true,
+    stdio: ['ignore', stdoutFd, stderrFd],
+    env: process.env,
+  });
+  child.unref();
+  closeSync(stdoutFd);
+  closeSync(stderrFd);
+
+  writeJsonFile(paths.managerPidPath, {
+    schema: MANAGER_PID_SCHEMA,
+    startedAt: toIso(),
+    pid: child.pid,
+    repo: options.repo,
+    runtimeDir: options.runtimeDir,
+    distro: options.wslDistro,
+    command: [process.execPath, ...childArgs],
+  });
+
+  await sleep(2000);
+  return emitStatus({ ...options, outcome: 'started' });
+}
+
+export async function stopManagerCommand(options) {
+  const repoRoot = resolveRepoRoot();
+  const paths = getArtifactPaths(repoRoot, options.runtimeDir);
+  writeJsonFile(paths.stopRequestPath, {
+    schema: STOP_REQUEST_SCHEMA,
+    requestedAt: toIso(),
+    repo: options.repo,
+    distro: options.wslDistro,
+  });
+
+  const managerPidState = readJsonFile(paths.managerPidPath);
+  const managerPid = getOptionalIntProperty(managerPidState, 'pid');
+  const deadline = Date.now() + options.stopWaitSeconds * 1000;
+  while (Date.now() < deadline) {
+    if (!testProcessAlive(managerPid)) {
+      break;
+    }
+    await sleep(1000);
+  }
+  if (testProcessAlive(managerPid)) {
+    try {
+      process.kill(managerPid, 'SIGTERM');
+    } catch {
+      // ignore
+    }
+  }
+
+  const daemonPidState = readJsonFile(paths.wslDaemonPidPath);
+  const daemonPid = getOptionalIntProperty(daemonPidState, 'pid');
+  if (testWslProcessAlive(options.wslDistro, daemonPid)) {
+    runCommand('wsl.exe', ['-d', options.wslDistro, '--', 'bash', '-lc', `kill ${daemonPid} >/dev/null 2>&1 || true`]);
+    await sleep(2000);
+    if (testWslProcessAlive(options.wslDistro, daemonPid)) {
+      runCommand('wsl.exe', ['-d', options.wslDistro, '--', 'bash', '-lc', `kill -9 ${daemonPid} >/dev/null 2>&1 || true`]);
+    }
+  }
+
+  try {
+    invokeDeliveryHostSignal({ mode: 'restore', repoRoot, distro: options.wslDistro, paths, previousFingerprint: null, allowRunnerServices: false });
+  } catch (error) {
+    process.stderr.write(`Warning: failed to restore runner services: ${error?.message || String(error)}\n`);
+  }
+
+  rmSync(paths.managerPidPath, { force: true });
+  rmSync(paths.wslDaemonPidPath, { force: true });
+  return emitStatus({ ...options, outcome: 'stopped' });
+}
+
+export async function runManagerLoop(options) {
+  const repoRoot = resolveRepoRoot();
+  const paths = getArtifactPaths(repoRoot, options.runtimeDir);
+  mkdirSync(paths.runtimeDirPath, { recursive: true });
+
+  const gitDirPath = resolveGitDirPath(repoRoot);
+  const leaseRootWsl = convertToWslPath(path.join(gitDirPath, 'agent-writer-leases'));
+  const leaseOwner = getStableLeaseOwner(repoRoot);
+  const daemonUnitName = getWslRuntimeDaemonUnitName(options.repo);
+
+  let cycle = 0;
+  let activeDaemonPid = 0;
+  let codexStateHygiene = readJsonFile(paths.codexStateHygienePath);
+  let observerTelemetry = resolveObserverTelemetry(codexStateHygiene, paths.codexStateHygienePath);
+  let deliveryMemory = null;
+  let hostSignal = readJsonFile(paths.hostSignalPath);
+  let hostIsolation = updateHostIsolationState({
+    path: paths.hostIsolationPath,
+    repo: options.repo,
+    runtimeDir: options.runtimeDir,
+    distro: options.wslDistro,
+    hostSignalPath: paths.hostSignalPath,
+    hostSignal,
+  });
+  let wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
+
+  try {
+    await runPrereqsCommand(options);
+    writeManagerTrace({
+      repo: options.repo,
+      runtimeDir: options.runtimeDir,
+      distro: options.wslDistro,
+      tracePath: paths.managerTracePath,
+      eventType: 'manager-started',
+      detail: {
+        ensureStatus: hostSignal?.status || 'ok',
+        repoRootWsl: convertToWslPath(repoRoot),
+        leaseOwner,
+      },
+    });
+  } catch (error) {
+    writeManagerTrace({
+      repo: options.repo,
+      runtimeDir: options.runtimeDir,
+      distro: options.wslDistro,
+      tracePath: paths.managerTracePath,
+      eventType: 'wsl-prereqs-failed',
+      detail: {
+        repoRootWsl: convertToWslPath(repoRoot),
+        leaseOwner,
+        message: error?.message || String(error),
+      },
+    });
+    throw error;
+  }
+
+  try {
+    while (true) {
+      if (options.maxCycles > 0 && cycle >= options.maxCycles) {
+        break;
+      }
+      if (path.isAbsolute(paths.stopRequestPath) && readJsonFile(paths.stopRequestPath)) {
+        break;
+      }
+
+      cycle += 1;
+      const pidState = readJsonFile(paths.wslDaemonPidPath);
+      activeDaemonPid = getOptionalIntProperty(pidState, 'pid');
+      let daemonAlive = testWslProcessAlive(options.wslDistro, activeDaemonPid);
+      writeManagerTrace({
+        repo: options.repo,
+        runtimeDir: options.runtimeDir,
+        distro: options.wslDistro,
+        tracePath: paths.managerTracePath,
+        eventType: 'cycle-start',
+        detail: { cycle, daemonPid: activeDaemonPid, daemonAlive },
+      });
+
+      const previousFingerprint = hostSignal?.daemonFingerprint ? String(hostSignal.daemonFingerprint) : null;
+      const hostSignalResult = invokeDeliveryHostSignal({
+        mode: 'collect',
+        repoRoot,
+        distro: options.wslDistro,
+        paths,
+        previousFingerprint,
+        allowRunnerServices: false,
+      });
+      hostSignal = hostSignalResult.report;
+      hostIsolation = hostSignalResult.isolation;
+      wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
+      writeManagerTrace({
+        repo: options.repo,
+        runtimeDir: options.runtimeDir,
+        distro: options.wslDistro,
+        tracePath: paths.managerTracePath,
+        eventType: 'host-signal',
+        detail: {
+          cycle,
+          status: hostSignal.status,
+          provider: hostSignal.provider,
+          daemonFingerprint: hostSignal.daemonFingerprint,
+          fingerprintChanged: Boolean(hostSignal.fingerprintChanged),
+        },
+      });
+
+      if (hostSignal.status === 'runner-conflict') {
+        if (daemonAlive) {
+          stopWslRuntimeDaemon({ distro: options.wslDistro, unitName: daemonUnitName, processId: activeDaemonPid });
+          daemonAlive = false;
+        }
+        const isolated = invokeDeliveryHostSignal({
+          mode: 'isolate',
+          repoRoot,
+          distro: options.wslDistro,
+          paths,
+          previousFingerprint: hostSignal.daemonFingerprint,
+          allowRunnerServices: false,
+        });
+        hostSignal = isolated.report;
+        hostIsolation = isolated.isolation;
+        writeManagerTrace({
+          repo: options.repo,
+          runtimeDir: options.runtimeDir,
+          distro: options.wslDistro,
+          tracePath: paths.managerTracePath,
+          eventType: 'runner-conflict-isolated',
+          detail: { cycle, status: hostSignal.status, daemonPid: activeDaemonPid },
+        });
+      }
+
+      let blockedByHostConflict = false;
+      if (hostSignal.status !== 'native-wsl') {
+        if (daemonAlive) {
+          stopWslRuntimeDaemon({ distro: options.wslDistro, unitName: daemonUnitName, processId: activeDaemonPid });
+          daemonAlive = false;
+        }
+        rmSync(paths.wslDaemonPidPath, { force: true });
+        hostIsolation = updateHostIsolationState({
+          path: paths.hostIsolationPath,
+          repo: options.repo,
+          runtimeDir: options.runtimeDir,
+          distro: options.wslDistro,
+          hostSignalPath: paths.hostSignalPath,
+          counterName: 'cyclesBlockedByHostRuntimeConflict',
+          increment: 1,
+          lastEventType: 'host-runtime-conflict',
+          lastEventDetail: `status=${hostSignal.status}`,
+          hostSignal,
+        });
+        writeManagerTrace({
+          repo: options.repo,
+          runtimeDir: options.runtimeDir,
+          distro: options.wslDistro,
+          tracePath: paths.managerTracePath,
+          eventType: 'host-runtime-conflict',
+          detail: { cycle, status: hostSignal.status },
+        });
+
+        let repairError = null;
+        try {
+          await runPrereqsCommand(options);
+          hostSignal = readJsonFile(paths.hostSignalPath);
+          hostIsolation = updateHostIsolationState({
+            path: paths.hostIsolationPath,
+            repo: options.repo,
+            runtimeDir: options.runtimeDir,
+            distro: options.wslDistro,
+            hostSignalPath: paths.hostSignalPath,
+            counterName: 'nativeDaemonRepairCount',
+            increment: 1,
+            lastEventType: 'native-daemon-repaired',
+            lastEventDetail: `status=${hostSignal?.status || 'unknown'}`,
+            hostSignal,
+          });
+          wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
+          writeManagerTrace({
+            repo: options.repo,
+            runtimeDir: options.runtimeDir,
+            distro: options.wslDistro,
+            tracePath: paths.managerTracePath,
+            eventType: 'native-daemon-repaired',
+            detail: { cycle, status: hostSignal?.status || 'unknown' },
+          });
+        } catch (error) {
+          repairError = error?.message || String(error);
+          hostIsolation = updateHostIsolationState({
+            path: paths.hostIsolationPath,
+            repo: options.repo,
+            runtimeDir: options.runtimeDir,
+            distro: options.wslDistro,
+            hostSignalPath: paths.hostSignalPath,
+            lastEventType: 'native-daemon-repair-failed',
+            lastEventDetail: repairError,
+            hostSignal,
+          });
+          writeManagerTrace({
+            repo: options.repo,
+            runtimeDir: options.runtimeDir,
+            distro: options.wslDistro,
+            tracePath: paths.managerTracePath,
+            eventType: 'native-daemon-repair-failed',
+            detail: { cycle, message: repairError },
+          });
+        }
+
+        if (!repairError) {
+          const postRepairFingerprint = hostSignal?.daemonFingerprint ? String(hostSignal.daemonFingerprint) : null;
+          const collected = invokeDeliveryHostSignal({
+            mode: 'collect',
+            repoRoot,
+            distro: options.wslDistro,
+            paths,
+            previousFingerprint: postRepairFingerprint,
+            allowRunnerServices: false,
+          });
+          hostSignal = collected.report;
+          hostIsolation = collected.isolation;
+        }
+        blockedByHostConflict = hostSignal.status !== 'native-wsl';
+      }
+
+      if (!blockedByHostConflict && !daemonAlive) {
+        activeDaemonPid = startWslRuntimeDaemon({
+          repoRoot,
+          runtimeDir: options.runtimeDir,
+          distro: options.wslDistro,
+          daemonPollIntervalSeconds: options.daemonPollIntervalSeconds,
+          leaseOwner,
+          leaseRootWsl,
+          daemonLogPath: paths.daemonLogPath,
+          repo: options.repo,
+          unitName: daemonUnitName,
+          stopOnIdle: options.stopWhenNoOpenIssues || options.sleepMode,
+        });
+        writeJsonFile(paths.wslDaemonPidPath, {
+          schema: DAEMON_PID_SCHEMA,
+          startedAt: toIso(),
+          pid: activeDaemonPid,
+          unit: `${daemonUnitName}.service`,
+          repo: options.repo,
+          distro: options.wslDistro,
+          command: [
+            'node',
+            'dist/tools/priority/runtime-daemon.js',
+            '--repo',
+            options.repo,
+            '--runtime-dir',
+            options.runtimeDir,
+            '--lease-root',
+            leaseRootWsl,
+            '--poll-interval-seconds',
+            String(options.daemonPollIntervalSeconds),
+            '--execute-turn',
+          ],
+        });
+        await sleep(3000);
+        daemonAlive = testWslProcessAlive(options.wslDistro, activeDaemonPid);
+        writeManagerTrace({
+          repo: options.repo,
+          runtimeDir: options.runtimeDir,
+          distro: options.wslDistro,
+          tracePath: paths.managerTracePath,
+          eventType: 'daemon-started',
+          detail: { cycle, daemonPid: activeDaemonPid, daemonAlive },
+        });
+      }
+
+      deliveryMemory = await invokeDeliveryMemory({
+        repoRoot,
+        repo: options.repo,
+        runtimeDir: options.runtimeDir,
+        outPath: paths.deliveryMemoryPath,
+      });
+      codexStateHygiene = readJsonFile(paths.codexStateHygienePath);
+      observerTelemetry = resolveObserverTelemetry(codexStateHygiene, paths.codexStateHygienePath);
+
+      const heartbeat = readJsonFile(paths.observerHeartbeatPath);
+      const report = readJsonFile(paths.observerReportPath);
+      if (!daemonAlive) {
+        const daemonLogTail = readLogTail(paths.daemonLogPath);
+        writeLogTailTrace({
+          repo: options.repo,
+          runtimeDir: options.runtimeDir,
+          distro: options.wslDistro,
+          tracePath: paths.managerTracePath,
+          source: 'daemon',
+          reason: 'daemon-not-running',
+          logPath: paths.daemonLogPath,
+          lines: daemonLogTail,
+          detail: { cycle, daemonPid: activeDaemonPid },
+        });
+        writeManagerTrace({
+          repo: options.repo,
+          runtimeDir: options.runtimeDir,
+          distro: options.wslDistro,
+          tracePath: paths.managerTracePath,
+          eventType: 'daemon-not-running',
+          detail: {
+            cycle,
+            daemonPid: activeDaemonPid,
+            heartbeatGeneratedAt: heartbeat?.generatedAt || null,
+            heartbeatOutcome: heartbeat?.outcome || null,
+            reportOutcome: report?.outcome || null,
+            daemonLogLineCount: daemonLogTail.length,
+          },
+        });
+      }
+
+      const state = {
+        schema: MANAGER_STATE_SCHEMA,
+        generatedAt: toIso(),
+        repo: options.repo,
+        runtimeDir: options.runtimeDir,
+        distro: options.wslDistro,
+        cycle,
+        daemon: { pid: activeDaemonPid, alive: daemonAlive },
+        heartbeat,
+        report,
+        hostSignal,
+        hostIsolation,
+        wslNativeDocker,
+        observer: observerTelemetry,
+        codexStateHygiene,
+        deliveryMemory,
+        deliveryMemoryPath: paths.deliveryMemoryPath,
+        hostSignalPath: paths.hostSignalPath,
+        hostIsolationPath: paths.hostIsolationPath,
+        hostTracePath: paths.hostTracePath,
+        managerTracePath: paths.managerTracePath,
+        wslNativeDockerPath: paths.wslNativeDockerPath,
+        blockedByHostRuntimeConflict: blockedByHostConflict,
+        stopWhenNoOpenIssues: options.stopWhenNoOpenIssues || options.sleepMode,
+      };
+      writeJsonFile(paths.managerStatePath, state);
+      writeJsonFile(paths.cyclePath, {
+        schema: MANAGER_CYCLE_SCHEMA,
+        generatedAt: toIso(),
+        cycle,
+        daemon: state.daemon,
+        report,
+        hostSignal,
+        hostIsolation,
+        wslNativeDocker,
+        observer: observerTelemetry,
+        codexStateHygiene,
+        deliveryMemory,
+        managerTracePath: paths.managerTracePath,
+      });
+
+      if (blockedByHostConflict) {
+        await sleep(options.cycleIntervalSeconds * 1000);
+        continue;
+      }
+      if (!daemonAlive && (options.stopWhenNoOpenIssues || options.sleepMode) && report?.outcome === 'idle-stop') {
+        break;
+      }
+      await sleep(options.cycleIntervalSeconds * 1000);
+    }
+  } finally {
+    stopWslRuntimeDaemon({ distro: options.wslDistro, unitName: daemonUnitName, processId: activeDaemonPid });
+    rmSync(paths.stopRequestPath, { force: true });
+    rmSync(paths.wslDaemonPidPath, { force: true });
+    try {
+      const restorePreviousFingerprint = hostSignal?.daemonFingerprint ? String(hostSignal.daemonFingerprint) : null;
+      const restoreResult = invokeDeliveryHostSignal({
+        mode: 'restore',
+        repoRoot,
+        distro: options.wslDistro,
+        paths,
+        previousFingerprint: restorePreviousFingerprint,
+        allowRunnerServices: false,
+      });
+      hostSignal = restoreResult.report;
+      hostIsolation = restoreResult.isolation;
+      writeManagerTrace({
+        repo: options.repo,
+        runtimeDir: options.runtimeDir,
+        distro: options.wslDistro,
+        tracePath: paths.managerTracePath,
+        eventType: 'manager-stopped',
+        detail: { cycle, restored: true, daemonPid: activeDaemonPid },
+      });
+    } catch (error) {
+      hostIsolation = updateHostIsolationState({
+        path: paths.hostIsolationPath,
+        repo: options.repo,
+        runtimeDir: options.runtimeDir,
+        distro: options.wslDistro,
+        hostSignalPath: paths.hostSignalPath,
+        lastEventType: 'runner-service-restore-failed',
+        lastEventDetail: error?.message || String(error),
+        hostSignal,
+      });
+      writeManagerTrace({
+        repo: options.repo,
+        runtimeDir: options.runtimeDir,
+        distro: options.wslDistro,
+        tracePath: paths.managerTracePath,
+        eventType: 'manager-stop-restore-failed',
+        detail: { cycle, message: error?.message || String(error) },
+      });
+    }
+    wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
+    writeJsonFile(paths.managerStatePath, {
+      schema: MANAGER_STATE_SCHEMA,
+      generatedAt: toIso(),
+      repo: options.repo,
+      runtimeDir: options.runtimeDir,
+      distro: options.wslDistro,
+      cycle,
+      daemon: { pid: activeDaemonPid, alive: testWslProcessAlive(options.wslDistro, activeDaemonPid) },
+      hostSignal,
+      hostIsolation,
+      wslNativeDocker,
+      codexStateHygiene,
+      deliveryMemory,
+      deliveryMemoryPath: paths.deliveryMemoryPath,
+      hostSignalPath: paths.hostSignalPath,
+      hostIsolationPath: paths.hostIsolationPath,
+      hostTracePath: paths.hostTracePath,
+      managerTracePath: paths.managerTracePath,
+      wslNativeDockerPath: paths.wslNativeDockerPath,
+      outcome: 'stopped',
+    });
+  }
+}

@@ -62,12 +62,29 @@ function createMockRunner({ windowsInfo, wslInfo, initialServices = [] }) {
   const serviceState = new Map();
   for (const service of initialServices) {
     serviceState.set(service.name, {
-      Name: service.name,
-      DisplayName: service.displayName ?? service.name,
-      Status: service.status ?? 'Stopped',
-      StartType: service.startType ?? 'Manual',
+      name: service.name,
+      displayName: service.displayName ?? service.name,
+      status: service.status ?? 'Stopped',
+      startType: service.startType ?? 'Manual',
     });
   }
+
+  const normalizeStatusCode = (value) => {
+    if (value === 'Running') return '4';
+    if (value === 'Stopped') return '1';
+    return String(value ?? '1');
+  };
+  const normalizeStatusLabel = (value) => {
+    if (value === '4' || value === 'Running') return 'RUNNING';
+    if (value === '1' || value === 'Stopped') return 'STOPPED';
+    return String(value ?? 'STOPPED').toUpperCase();
+  };
+  const normalizeStartTypeCode = (value) => {
+    if (value === 'Automatic') return '2';
+    if (value === 'Manual') return '3';
+    if (value === 'Disabled') return '4';
+    return String(value ?? '3');
+  };
 
   return (filePath, args) => {
     if (filePath === 'docker' && args[0] === 'context' && args[1] === 'show') {
@@ -79,38 +96,37 @@ function createMockRunner({ windowsInfo, wslInfo, initialServices = [] }) {
     if (filePath === 'wsl.exe') {
       return { status: 0, stdout: makeWslStdout(wslInfo), stderr: '' };
     }
-    if (filePath === 'pwsh') {
-      const script = args[args.length - 1] ?? '';
-      if (script.includes("Get-Service -Name 'actions.runner.*'")) {
+    if (filePath === 'sc.exe') {
+      if (args[0] === 'query' && args[1] === 'state=' && args[2] === 'all') {
         return {
           status: 0,
-          stdout: `${JSON.stringify([...serviceState.values()])}\n`,
+          stdout: [...serviceState.keys()].map((name) => `SERVICE_NAME: ${name}`).join('\n'),
           stderr: '',
         };
       }
-      if (script.includes('Stop-Service')) {
-        const names = [...serviceState.keys()].filter((name) => script.includes(`'${name}'`));
-        for (const name of names) {
-          const current = serviceState.get(name);
-          serviceState.set(name, { ...current, Status: 'Stopped' });
-        }
+      if (args[0] === 'query' && args[1]) {
+        const current = serviceState.get(args[1]);
         return {
           status: 0,
-          stdout: `${JSON.stringify(names.map((name) => ({ name, status: 'ok' })))}\n`,
+          stdout: `SERVICE_NAME: ${args[1]}\nSTATE              : ${normalizeStatusCode(current?.status)} ${normalizeStatusLabel(current?.status)}\n`,
           stderr: '',
         };
       }
-      if (script.includes('Start-Service')) {
-        const names = [...serviceState.keys()].filter((name) => script.includes(`'${name}'`));
-        for (const name of names) {
-          const current = serviceState.get(name);
-          serviceState.set(name, { ...current, Status: 'Running' });
-        }
+      if (args[0] === 'qc' && args[1]) {
+        const current = serviceState.get(args[1]);
         return {
           status: 0,
-          stdout: `${JSON.stringify(names.map((name) => ({ name, status: 'ok' })))}\n`,
+          stdout: `SERVICE_NAME: ${args[1]}\nSTART_TYPE         : ${normalizeStartTypeCode(current?.startType)}\n`,
           stderr: '',
         };
+      }
+      if ((args[0] === 'stop' || args[0] === 'start') && args[1]) {
+        const current = serviceState.get(args[1]);
+        serviceState.set(args[1], {
+          ...current,
+          status: args[0] === 'stop' ? 'Stopped' : 'Running',
+        });
+        return { status: 0, stdout: `SERVICE_NAME: ${args[1]}\n`, stderr: '' };
       }
     }
     throw new Error(`Unexpected command: ${filePath} ${args.join(' ')}`);

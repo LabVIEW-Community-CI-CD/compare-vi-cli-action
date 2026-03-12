@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 
 import path from 'node:path';
 import process from 'node:process';
@@ -51,6 +50,40 @@ function parseArgs(argv = process.argv) {
   return options;
 }
 
+function formatConsoleArg(value) {
+  if (typeof value === 'string') {
+    return value;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+async function withStdoutIsolation(fn) {
+  const originalLog = console.log;
+  const originalInfo = console.info;
+  const originalDebug = console.debug;
+  const redirect = (...args) => {
+    const line = args.map((entry) => formatConsoleArg(entry)).join(' ').trim();
+    if (line) {
+      process.stderr.write(`${line}\n`);
+    }
+  };
+
+  console.log = redirect;
+  console.info = redirect;
+  console.debug = redirect;
+  try {
+    return await fn();
+  } finally {
+    console.log = originalLog;
+    console.info = originalInfo;
+    console.debug = originalDebug;
+  }
+}
+
 async function main(argv = process.argv) {
   const options = parseArgs(argv);
   if (options.help) {
@@ -65,12 +98,14 @@ async function main(argv = process.argv) {
   const repoRoot = path.resolve(options.repoRoot || process.cwd());
   const taskPacketPath = path.resolve(repoRoot, options.taskPacketPath);
   const taskPacket = JSON.parse(await readFile(taskPacketPath, 'utf8'));
-  const receipt = await runDeliveryTurnBroker({
-    taskPacket,
-    taskPacketPath,
-    repoRoot,
-    policyPath: options.policyPath
-  });
+  const receipt = await withStdoutIsolation(() =>
+    runDeliveryTurnBroker({
+      taskPacket,
+      taskPacketPath,
+      repoRoot,
+      policyPath: options.policyPath
+    })
+  );
 
   if (options.receiptOutPath) {
     const receiptOutPath = path.resolve(repoRoot, options.receiptOutPath);

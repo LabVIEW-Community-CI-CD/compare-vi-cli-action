@@ -43,114 +43,70 @@ async function invokeManagerStatus(relativeRuntimeDir) {
 
 test('package scripts expose delivery-agent commands and keep unattended aliases intact', async () => {
   const packageJson = JSON.parse(await readText('package.json'));
-  assert.equal(packageJson.scripts['priority:delivery:memory'], 'node tools/priority/delivery-memory.mjs');
+  assert.equal(packageJson.scripts['priority:delivery:memory'], 'tsc -p tsconfig.json && node dist/tools/priority/delivery-memory.js');
   assert.equal(
     packageJson.scripts['priority:delivery:host:signal'],
     'tsc -p tsconfig.json && node dist/tools/priority/delivery-host-signal.js'
   );
   assert.equal(
     packageJson.scripts['priority:delivery:agent:ensure'],
-    'pwsh -NoLogo -NoProfile -File tools/priority/Manage-UnattendedDeliveryAgent.ps1 -Ensure -SleepMode'
+    'tsc -p tsconfig.json && node dist/tools/priority/delivery-agent.js ensure --sleep-mode'
   );
   assert.equal(
     packageJson.scripts['priority:delivery:agent:status'],
-    'pwsh -NoLogo -NoProfile -File tools/priority/Manage-UnattendedDeliveryAgent.ps1 -Status'
+    'tsc -p tsconfig.json && node dist/tools/priority/delivery-agent.js status'
   );
   assert.equal(
     packageJson.scripts['priority:delivery:agent:stop'],
-    'pwsh -NoLogo -NoProfile -File tools/priority/Manage-UnattendedDeliveryAgent.ps1 -Stop'
+    'tsc -p tsconfig.json && node dist/tools/priority/delivery-agent.js stop'
   );
   assert.equal(
     packageJson.scripts['priority:unattended:sleep:ensure'],
-    'pwsh -NoLogo -NoProfile -File tools/priority/Manage-UnattendedDeliveryAgent.ps1 -Ensure -SleepMode'
+    'tsc -p tsconfig.json && node dist/tools/priority/delivery-agent.js ensure --sleep-mode'
   );
   assert.equal(
     packageJson.scripts['priority:unattended:project-board:ensure'],
-    'pwsh -NoLogo -NoProfile -File tools/priority/Manage-UnattendedDeliveryAgent.ps1 -Ensure -SleepMode'
+    'tsc -p tsconfig.json && node dist/tools/priority/delivery-agent.js ensure --sleep-mode'
   );
 });
 
 test('delivery-agent policy wires coding turns to the Codex runner', async () => {
   const policy = JSON.parse(await readText('tools/priority/delivery-agent.policy.json'));
-  assert.deepEqual(policy.codingTurnCommand, ['node', 'tools/priority/run-delivery-turn-with-codex.mjs']);
+  assert.deepEqual(policy.codingTurnCommand, ['node', 'dist/tools/priority/run-delivery-turn-with-codex.js']);
 });
 
-test('delivery-agent manager and run scripts target the WSL runtime daemon instead of the legacy loop', async () => {
+test('delivery-agent wrappers delegate to the compiled node CLI', async () => {
   const manager = await readText('tools/priority/Manage-UnattendedDeliveryAgent.ps1');
   const runner = await readText('tools/priority/Run-UnattendedDeliveryAgent.ps1');
   const ensurePrereqs = await readText('tools/priority/Ensure-WSLDeliveryPrereqs.ps1');
+  const cli = await readText('tools/priority/delivery-agent.ts');
 
-  assert.match(manager, /Ensure-WSLDeliveryPrereqs\.ps1/);
-  assert.match(manager, /CodexStateHygienePath/);
-  assert.match(manager, /DeliveryMemoryPath/);
-  assert.match(manager, /HostSignalPath/);
-  assert.match(manager, /HostIsolationPath/);
-  assert.match(manager, /HostTracePath/);
-  assert.match(manager, /ManagerTracePath/);
-  assert.match(manager, /DaemonLogPath/);
-  assert.match(manager, /WslNativeDockerPath/);
-  assert.match(manager, /delivery-host-signal\.js/);
-  assert.match(manager, /wsl\.exe/);
-  assert.match(manager, /heartbeatDiagnostics/);
-  assert.match(manager, /RuntimeStatePath/);
-  assert.match(manager, /TaskPacketPath/);
-  assert.match(manager, /logTail/);
-  assert.match(manager, /function Write-LogTailTrace/);
-  assert.match(manager, /EventType 'log-tail'/);
-  assert.match(manager, /stale-before-current-manager/);
-  assert.match(runner, /runtime-daemon\.mjs/);
-  assert.match(runner, /WslDistro/);
-  assert.match(runner, /AGENT_WRITER_LEASE_OWNER/);
-  assert.match(runner, /AGENT_WRITER_LEASE_ROOT/);
-  assert.match(runner, /DOCKER_HOST='unix:\/\/\/var\/run\/docker\.sock'/);
-  assert.match(runner, /COMPAREVI_DOCKER_RUNTIME_PROVIDER='native-wsl'/);
-  assert.match(runner, /--lease-root/);
-  assert.match(runner, /exec >> '\$LogPathWsl' 2>&1/);
-  assert.match(runner, /exec \$\(\$quotedArgs -join ' '\)/);
-  assert.doesNotMatch(runner, /exec \$\(\$quotedArgs -join ' '\) >> '\$LogPathWsl' 2>&1/);
-  assert.match(runner, /\[System\.IO\.File\]::WriteAllText\(/);
-  assert.match(runner, /\[System\.Text\.UTF8Encoding\]::new\(\$false\)/);
-  assert.match(runner, /Invoke-CodexStateHygiene/);
-  assert.match(runner, /Invoke-DeliveryMemory/);
-  assert.match(runner, /Invoke-DeliveryHostSignal/);
-  assert.match(runner, /delivery-agent-host-trace\.ndjson/);
-  assert.match(runner, /delivery-agent-manager-trace\.ndjson/);
-  assert.match(runner, /Write-ManagerTrace/);
-  assert.match(runner, /function Write-LogTailTrace/);
-  assert.match(runner, /EventType 'log-tail'/);
-  assert.match(runner, /daemonLogTail/);
-  assert.match(runner, /systemd-run --user/);
-  assert.match(runner, /Get-WslRuntimeDaemonUnitName/);
-  assert.doesNotMatch(runner, /-PreviousFingerprint \(if/);
-  assert.match(runner, /delivery-memory\.json/);
-  assert.match(runner, /CodexHygieneIntervalCycles/);
-  assert.match(ensurePrereqs, /nodejs\.org\/dist/);
-  assert.match(ensurePrereqs, /@openai\/codex/);
-  assert.match(ensurePrereqs, /codex_needs_install=0/);
-  assert.match(ensurePrereqs, /core\.worktree/);
-  assert.match(ensurePrereqs, /ensure-native-wsl-docker\.sh/);
-  assert.match(ensurePrereqs, /delivery-host-signal\.js/);
-  assert.match(ensurePrereqs, /flock -w 120 9/);
-  assert.match(ensurePrereqs, /systemctl reset-failed docker\.service docker\.socket/);
-  assert.match(ensurePrereqs, /healthy_service_reused='false'/);
-  assert.match(ensurePrereqs, /service_restarted='false'/);
-  assert.match(ensurePrereqs, /--repo-root \$RepoRoot --apply --report/);
-  assert.match(ensurePrereqs, /status = 'ok'/);
-  assert.match(ensurePrereqs, /report = \$report/);
-  assert.doesNotMatch(ensurePrereqs, /systemctl restart docker\.service/);
-  assert.match(runner, /Invoke-EnsureWslDeliveryPrereqs/);
-  assert.match(runner, /wsl-prereqs-failed/);
+  assert.match(manager, /delivery-agent\.js/);
+  assert.match(manager, /'ensure'|\"ensure\"/);
+  assert.match(manager, /'status'|\"status\"/);
+  assert.match(manager, /'stop'|\"stop\"/);
+  assert.match(runner, /delivery-agent\.js/);
+  assert.match(runner, /'run'|\"run\"/);
+  assert.match(ensurePrereqs, /delivery-agent\.js/);
+  assert.match(ensurePrereqs, /prereqs/);
+  assert.doesNotMatch(manager, /Start-Process -FilePath 'pwsh'/);
+  assert.doesNotMatch(runner, /Start-Process -FilePath 'pwsh'/);
+  assert.match(cli, /ensureManagerCommand/);
+  assert.match(cli, /stopManagerCommand/);
+  assert.match(cli, /runManagerLoop/);
+  assert.match(cli, /runPrereqsCommand/);
 });
 
 test('delivery-agent manager status synthesizes the active lane from the freshest heartbeat when delivery state is stale', async () => {
-  const manager = await readText('tools/priority/Manage-UnattendedDeliveryAgent.ps1');
+  const common = await readText('tools/priority/lib/delivery-agent-common.ts');
+  const manager = await readText('tools/priority/lib/delivery-agent-manager.ts');
 
-  assert.match(manager, /function Resolve-DeliveryStateForStatus/);
-  assert.match(manager, /derivedFromHeartbeat/);
-  assert.match(manager, /derivedFromRuntimeState/);
-  assert.match(manager, /Read-JsonFile -Path \$Paths\.ObserverHeartbeatPath/);
-  assert.match(manager, /Read-JsonFile -Path \$Paths\.RuntimeStatePath/);
-  assert.match(manager, /Read-JsonFile -Path \$Paths\.TaskPacketPath/);
+  assert.match(common, /export function resolveDeliveryStateForStatus/);
+  assert.match(common, /derivedFromHeartbeat/);
+  assert.match(common, /derivedFromRuntimeState/);
+  assert.match(manager, /readJsonFile\(paths\.observerHeartbeatPath\)/);
+  assert.match(manager, /readJsonFile\(paths\.runtimeStatePath\)/);
+  assert.match(manager, /readJsonFile\(paths\.taskPacketPath\)/);
 });
 
 test('delivery-agent manager status ignores stale heartbeat state from before the current manager start', async (t) => {
@@ -259,6 +215,46 @@ test('delivery-agent manager status derives from a fresh heartbeat when no deliv
   assert.equal(status.heartbeatDiagnostics.usedHeartbeat, true);
   assert.equal(status.heartbeatDiagnostics.reason, 'fresh-heartbeat');
   assert.ok(Array.isArray(status.logTail.daemon));
+});
+
+test('delivery-agent manager status exposes observer telemetry as non-blocking state', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-observer-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+  });
+
+  await writeJson(path.join(runtimeDirPath, 'codex-state-hygiene.json'), {
+    schema: 'priority/codex-state-hygiene-report@v1',
+    generatedAt: new Date('2026-03-11T20:00:00.000Z').toISOString(),
+    observer: {
+      plane: 'observer',
+      source: 'codex-state-hygiene',
+      status: 'degraded',
+      deliveryCritical: false,
+      hotPathEligible: false,
+      deliveryImpact: 'none',
+      reasons: ['thread-stream-state-changed'],
+      counts: {
+        gitOriginAndRoots: 0,
+        localEnvironmentsUnsupported: 0,
+        openInTargetUnsupported: 0,
+        unhandledBroadcastNoHandler: 1,
+        threadStreamStateChanged: 1,
+        threadQueuedFollowupsChanged: 0,
+        databaseLocked: 0,
+        slowStatement: 0
+      }
+    }
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.observer.plane, 'observer');
+  assert.equal(status.observer.status, 'degraded');
+  assert.equal(status.observer.deliveryCritical, false);
+  assert.equal(status.observer.hotPathEligible, false);
+  assert.equal(status.observer.deliveryImpact, 'none');
 });
 
 test('delivery-agent manager status prefers a fresher runtime state and task packet over stale delivery and heartbeat artifacts', async (t) => {
