@@ -12,12 +12,13 @@ test('agent-review-policy keeps heavyweight collection on pull_request_target an
 
   assert.match(workflow, /merge_group:/);
   assert.doesNotMatch(workflow, /workflow_run:/);
-  assert.doesNotMatch(workflow, /pull_request_review:/);
+  assert.match(workflow, /pull_request_review:\s+types:\s+\[submitted\]/);
+  assert.match(workflow, /permissions:\s+actions: read\s+pull-requests: read\s+contents: read/ms);
   assert.match(workflow, /uses: actions\/checkout@v5/);
   assert.match(workflow, /repository:\s+\$\{\{\s*github\.repository\s*\}\}/);
   assert.match(
     workflow,
-    /ref:\s+\$\{\{\s*github\.event_name == 'pull_request_target' && github\.event\.pull_request\.base\.sha \|\| github\.sha\s*\}\}/
+    /ref:\s+\$\{\{\s*github\.event\.pull_request\.base\.sha \|\| github\.sha\s*\}\}/
   );
   assert.doesNotMatch(workflow, /checkout-workflow-context/);
   assert.doesNotMatch(workflow, /repository:\s+\$\{\{\s*github\.event\.pull_request\.head\.repo\.full_name\s*\}\}/);
@@ -34,12 +35,13 @@ test('agent-review-policy keeps heavyweight collection on pull_request_target an
   assert.doesNotMatch(workflow, /name: Load workflow-run pull request metadata/);
   assert.match(
     workflow,
-    /name: Evaluate Copilot queue gate\s+if: >[\s\S]*github\.event_name == 'pull_request_target'[\s\S]*github\.event_name == 'merge_group'/,
+    /name: Evaluate Copilot queue gate\s+if: >[\s\S]*github\.event_name == 'pull_request_target'[\s\S]*github\.event_name == 'pull_request_review'[\s\S]*github\.event_name == 'merge_group'/,
   );
   assert.match(workflow, /"--poll-attempts" "60"/);
   assert.match(workflow, /"--poll-delay-ms" "10000"/);
   assert.match(workflow, /if \[\[ "\$\{\{ github\.event_name \}\}" == "merge_group" \]\]; then/);
   assert.match(workflow, /"--head-sha" "\$\{\{ github\.sha \}\}"/);
+  assert.match(workflow, /"--head-branch" "\$\{\{ github\.event\.merge_group\.head_ref \|\| github\.ref_name \}\}"/);
   assert.match(workflow, /"--base-ref" "\$\{\{ github\.event\.merge_group\.base_ref \}\}"/);
   assert.doesNotMatch(workflow, /elif \[\[ "\$\{\{ github\.event_name \}\}" == "workflow_run" \]\]; then/);
   assert.doesNotMatch(workflow, /"--review-run-id"/);

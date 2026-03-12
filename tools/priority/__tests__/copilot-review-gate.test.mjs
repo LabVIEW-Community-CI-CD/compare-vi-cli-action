@@ -81,7 +81,80 @@ test('copilot-review-gate skips draft PRs before any live lookup', async () => {
   assert.equal(threadsCalled, false);
 });
 
-test('copilot-review-gate skips merge-group runs while keeping the required status green', async () => {
+test('parseMergeGroupHeadBranch resolves the queued PR number and source head SHA from the merge-group branch', async () => {
+  const { parseMergeGroupHeadBranch } = await loadModule();
+
+  assert.deepEqual(
+    parseMergeGroupHeadBranch('gh-readonly-queue/develop/pr-1012-23324a081abaf177d24ea295e6da805ce541465a'),
+    {
+      headBranch: 'gh-readonly-queue/develop/pr-1012-23324a081abaf177d24ea295e6da805ce541465a',
+      baseRef: 'develop',
+      prNumber: 1012,
+      sourceHeadSha: '23324a081abaf177d24ea295e6da805ce541465a',
+    },
+  );
+  assert.equal(parseMergeGroupHeadBranch('feature/not-a-queue-branch'), null);
+});
+
+test('copilot-review-gate evaluates merge-group runs against the queued PR head instead of skipping', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  const sourceHead = '23324a081abaf177d24ea295e6da805ce541465a';
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'merge_group',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--head-sha',
+      '7c5a463fc1c90edff1bc7671a22cd2bb1308def5',
+      '--head-branch',
+      'gh-readonly-queue/develop/pr-1012-23324a081abaf177d24ea295e6da805ce541465a',
+      '--base-ref',
+      'refs/heads/develop',
+    ]),
+    loadPullRequestFn: async () => ({
+      number: 1012,
+      html_url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1012',
+      draft: false,
+      head: { sha: sourceHead },
+      base: { ref: 'develop' },
+    }),
+    loadReviewsFn: async () => [],
+    loadThreadsFn: async () => ({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [],
+            },
+          },
+        },
+      },
+    }),
+    loadReviewRunFn: async () => ({
+      id: 93020,
+      name: 'Copilot code review',
+      status: 'completed',
+      conclusion: 'success',
+      html_url: 'https://github.com/example/actions/runs/93020',
+      head_sha: sourceHead,
+    }),
+    writeReportFn: () => 'memory://copilot-review-gate.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.gateState, 'ready');
+  assert.deepEqual(result.report?.reasons, ['current-head-review-run-completed-clean']);
+  assert.equal(result.report?.source.mode, 'merge-group-live');
+  assert.equal(result.report?.source.mergeGroup?.prNumber, 1012);
+  assert.equal(result.report?.source.mergeGroup?.sourceHeadSha, sourceHead);
+  assert.equal(result.report?.pullRequest.liveHeadSha, sourceHead);
+});
+
+test('copilot-review-gate blocks merge-group runs when the queued source head is stale relative to the live PR head', async () => {
   const { runCopilotReviewGate } = await loadModule();
 
   const result = await runCopilotReviewGate({
@@ -91,18 +164,86 @@ test('copilot-review-gate skips merge-group runs while keeping the required stat
       '--repo',
       'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       '--head-sha',
-      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      '7c5a463fc1c90edff1bc7671a22cd2bb1308def5',
+      '--head-branch',
+      'gh-readonly-queue/develop/pr-1012-23324a081abaf177d24ea295e6da805ce541465a',
       '--base-ref',
       'refs/heads/develop',
     ]),
-    writeReportFn: () => 'memory://copilot-review-gate.json',
+    loadPullRequestFn: async () => ({
+      number: 1012,
+      html_url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1012',
+      draft: false,
+      head: { sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+      base: { ref: 'develop' },
+    }),
+    loadReviewsFn: async () => [],
+    loadThreadsFn: async () => ({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [],
+            },
+          },
+        },
+      },
+    }),
+    loadReviewRunFn: async () => null,
+    writeReportFn: () => 'memory://copilot-review-gate-merge-group-stale.json',
     appendStepSummaryFn: () => {},
   });
 
-  assert.equal(result.exitCode, 0);
-  assert.equal(result.report?.status, 'pass');
-  assert.equal(result.report?.gateState, 'skipped');
-  assert.deepEqual(result.report?.reasons, ['merge-group-skip']);
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report?.gateState, 'blocked');
+  assert.deepEqual(result.report?.reasons, ['merge-group-source-head-stale']);
+  assert.equal(result.report?.source.mergeGroup?.sourceHeadMatchesPullRequestHead, false);
+});
+
+test('copilot-review-gate fails early when a merge-group head branch cannot be resolved', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  let pullRequestLookupCalled = false;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'merge_group',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--head-sha',
+      '7c5a463fc1c90edff1bc7671a22cd2bb1308def5',
+      '--head-branch',
+      'feature/not-a-queue-branch',
+      '--base-ref',
+      'refs/heads/develop',
+    ]),
+    loadPullRequestFn: async () => {
+      pullRequestLookupCalled = true;
+      throw new Error('loadPullRequestFn should not be called for unresolved merge-group metadata');
+    },
+    loadReviewsFn: async () => [],
+    loadThreadsFn: async () => ({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [],
+            },
+          },
+        },
+      },
+    }),
+    writeReportFn: () => 'memory://copilot-review-gate-merge-group-unresolved.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report?.status, 'fail');
+  assert.equal(result.report?.gateState, 'error');
+  assert.deepEqual(result.report?.reasons, ['merge-group-source-unresolved']);
+  assert.match(result.report?.errors?.[0] ?? '', /expected gh-readonly-queue\/<base>\/pr-<number>-<sha> pattern/i);
+  assert.equal(result.report?.source.mode, 'merge-group-metadata');
+  assert.equal(pullRequestLookupCalled, false);
 });
 
 test('copilot-review-gate skips throughput fork repos before any live lookup', async () => {
