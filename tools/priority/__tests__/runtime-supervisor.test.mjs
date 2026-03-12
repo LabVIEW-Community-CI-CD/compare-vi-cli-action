@@ -454,6 +454,101 @@ test('canonical delivery scheduler attaches the live Copilot review workflow to 
   assert.equal(decision.artifacts.pullRequest.copilotReviewWorkflow.workflowName, 'Copilot code review');
 });
 
+test('canonical delivery scheduler tolerates transient Copilot review metadata fetch failures', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-canonical-copilot-fallback-'));
+  const decision = await buildCanonicalDeliveryDecision({
+    repoRoot,
+    upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    targetRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    issueSnapshot: {
+      number: 1010,
+      title: 'Epic: Linux-first unattended delivery runtime',
+      body: 'epic body',
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    issueGraph: {
+      standingIssue: {
+        number: 1010,
+        title: 'Epic: Linux-first unattended delivery runtime',
+        body: 'epic body',
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+        state: 'OPEN',
+        labels: [],
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        createdAt: '2026-03-10T00:00:00Z',
+        updatedAt: '2026-03-10T00:00:00Z',
+        priority: 1,
+        epic: true,
+        pullRequests: []
+      },
+      subIssues: [
+        {
+          number: 1015,
+          title: '[P1] Auto-finalize merged standing lanes',
+          body: 'child',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1015',
+          state: 'OPEN',
+          labels: [],
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          createdAt: '2026-03-10T00:00:00Z',
+          updatedAt: '2026-03-10T00:00:00Z',
+          priority: 1,
+          epic: false,
+          pullRequests: [
+            {
+              number: 1015,
+              title: 'Auto-finalize merged standing lanes',
+              url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1015',
+              state: 'OPEN',
+              isDraft: false,
+              reviewDecision: null,
+              headRefName: 'issue/origin-1010-auto-finalize-merged-standing-lanes',
+              headRefOid: '8827146e4298783c15fd5514a3cf4291ef766aa0',
+              mergeStateStatus: 'BLOCKED',
+              mergeable: 'MERGEABLE',
+              repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+              statusCheckRollup: [
+                { __typename: 'CheckRun', name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' }
+              ]
+            }
+          ]
+        }
+      ],
+      pullRequests: []
+    },
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      backlogAuthority: 'issues',
+      implementationRemote: 'origin',
+      autoSlice: true,
+      autoMerge: true,
+      maxActiveCodingLanes: 1,
+      allowPolicyMutations: false,
+      allowReleaseAdmin: false,
+      stopWhenNoOpenEpics: true
+    },
+    deps: {
+      loadCopilotReviewWorkflowRunFn: () => {
+        throw new Error('temporary GitHub failure');
+      },
+      loadCopilotReviewSignalFn: () => {
+        throw new Error('temporary GitHub failure');
+      }
+    }
+  });
+
+  assert.equal(decision.artifacts.selectedActionType, 'existing-pr-unblock');
+  assert.equal(decision.artifacts.laneLifecycle, 'ready-merge');
+  assert.equal(decision.artifacts.pullRequest.copilotReviewWorkflow, null);
+  assert.equal(decision.artifacts.pullRequest.copilotReviewSignal, null);
+});
+
+test('delivery agent review-thread query omits comment bodies to keep Copilot scheduler payloads small', async () => {
+  const source = await readFile(new URL('../delivery-agent.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /REVIEW_THREADS_QUERY[\s\S]*'body',/);
+});
+
 test('classifyPullRequestWork compresses waiting-review polling after the Copilot workflow completes on the current head', () => {
   const prStatus = classifyPullRequestWork({
     number: 1015,

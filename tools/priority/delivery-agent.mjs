@@ -92,7 +92,6 @@ const REVIEW_THREADS_QUERY = [
   'comments(first:100){',
   'nodes{',
   'id',
-  'body',
   'createdAt',
   'publishedAt',
   'url',
@@ -1034,19 +1033,26 @@ export async function buildCanonicalDeliveryDecision({
       normalizeText(targetRepository) ||
       normalizeText(upstreamRepository) ||
       null;
-    const reviewWorkflow = loadCopilotReviewWorkflowRun({
-      repoRoot,
-      repository: pullRequestRepository,
-      headSha: pullRequest.headRefOid,
-      deps
-    });
-    const reviewSignal = loadCopilotReviewSignal({
-      repoRoot,
-      repository: pullRequestRepository,
-      pullRequestNumber: pullRequest.number,
-      headSha: pullRequest.headRefOid,
-      deps
-    });
+    let reviewWorkflow = null;
+    let reviewSignal = null;
+    try {
+      reviewWorkflow = loadCopilotReviewWorkflowRun({
+        repoRoot,
+        repository: pullRequestRepository,
+        headSha: pullRequest.headRefOid,
+        deps
+      });
+      reviewSignal = loadCopilotReviewSignal({
+        repoRoot,
+        repository: pullRequestRepository,
+        pullRequestNumber: pullRequest.number,
+        headSha: pullRequest.headRefOid,
+        deps
+      });
+    } catch {
+      reviewWorkflow = null;
+      reviewSignal = null;
+    }
     if (reviewWorkflow || reviewSignal) {
       pullRequest = {
         ...pullRequest,
