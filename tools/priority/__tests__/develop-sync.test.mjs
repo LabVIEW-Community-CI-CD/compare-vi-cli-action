@@ -106,6 +106,7 @@ test('Sync-OriginUpstreamDevelop retries SSH auth failures against the fetch URL
   assert.match(source, /'core\.askpass='/);
   assert.match(source, /Get-SafeRemoteLocation -Location \$fetchUrl/);
   assert.match(source, /Get-SafeRemoteLocation -Location \$pushUrl/);
+  assert.match(source, /Get-SafeRemoteLocation -Location \(\[string\]\$_\)/);
   assert.match(source, /\("\{0\}:\{0\}" -f \$BranchName\)/);
   assert.match(source, /Permission denied \\\(publickey\\\)/);
 });

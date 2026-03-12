@@ -27,7 +27,8 @@ function Invoke-Git {
     [switch]$IgnoreExitCode
   )
 
-  Write-Host ("[sync] git {0}" -f ($Arguments -join ' '))
+  $displayArguments = @($Arguments | ForEach-Object { Get-SafeRemoteLocation -Location ([string]$_) })
+  Write-Host ("[sync] git {0}" -f ($displayArguments -join ' '))
   $raw = & git @Arguments 2>&1
   $exitCode = $LASTEXITCODE
   $lines = @($raw | ForEach-Object { [string]$_ })
@@ -212,7 +213,7 @@ function Invoke-PushWithTransportFallback {
       throw
     }
 
-    Write-Warning ("[sync] Push via remote '{0}' failed with SSH auth; retrying against fetch URL {1}" -f $Remote, $fetchUrl)
+    Write-Warning ("[sync] Push via remote '{0}' failed with SSH auth; retrying against fetch URL {1}" -f $Remote, (Get-SafeRemoteLocation -Location $fetchUrl))
     Invoke-Git -Arguments @(
       '-c', 'credential.interactive=never',
       '-c', 'core.askpass=',
