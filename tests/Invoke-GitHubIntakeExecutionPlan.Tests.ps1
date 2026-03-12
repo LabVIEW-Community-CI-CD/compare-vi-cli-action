@@ -43,7 +43,9 @@ Describe 'Invoke-GitHubIntakeExecutionPlan' {
       -Scenario workflow-policy-pr `
       -Issue 923 `
       -IssueTitle 'Execution planner issue' `
-      -CurrentBranch 'issue/923-work'
+      -CurrentBranch 'issue/923-work' `
+      -ForkRemote 'origin' `
+      -HeadRemote 'personal'
 
     $state = [pscustomobject]@{
       DraftCalled = $false
@@ -67,10 +69,16 @@ Describe 'Invoke-GitHubIntakeExecutionPlan' {
     $result.commandFilePath | Should -Match 'Branch-Orchestrator\.ps1$'
     $result.arguments | Should -Contain '-Issue'
     $result.arguments | Should -Contain '-PRTemplate'
+    $result.arguments | Should -Contain '-ForkRemote'
+    $result.arguments | Should -Contain 'origin'
+    $result.arguments | Should -Contain '-HeadRemote'
+    $result.arguments | Should -Contain 'personal'
     $state.DraftCalled | Should -BeFalse
     $state.Invocation.Issue | Should -Be 923
     $state.Invocation.Execute | Should -BeTrue
     $state.Invocation.PRTemplate | Should -Be 'workflow-policy'
+    $state.Invocation.ForkRemote | Should -Be 'origin'
+    $state.Invocation.HeadRemote | Should -Be 'personal'
   }
 
   It 'dispatches priority-pr-create plans through node after rendering the draft' {
@@ -79,6 +87,7 @@ Describe 'Invoke-GitHubIntakeExecutionPlan' {
       -Issue 963 `
       -IssueTitle 'Support org-owned fork PR creation without upstream mirroring' `
       -Branch 'issue/963-org-owned-fork-pr-helper' `
+      -HeadRemote 'origin' `
       -DraftOutputPath (Join-Path $TestDrive 'pr-body.md')
 
     $calls = [System.Collections.Generic.List[object]]::new()
@@ -109,6 +118,8 @@ Describe 'Invoke-GitHubIntakeExecutionPlan' {
     $calls[1].arguments | Should -Contain '963'
     $calls[1].arguments | Should -Contain '--branch'
     $calls[1].arguments | Should -Contain 'issue/963-org-owned-fork-pr-helper'
+    $calls[1].arguments | Should -Contain '--head-remote'
+    $calls[1].arguments | Should -Contain 'origin'
     $calls[1].arguments | Should -Contain '--body-file'
   }
 
