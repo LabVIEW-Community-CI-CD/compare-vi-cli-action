@@ -10,6 +10,9 @@ jobs:
       ACTIONLINT_VERSION: ${{ vars.ACTIONLINT_VERSION || '1.7.7' }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install actionlint (pinned)
         shell: bash
