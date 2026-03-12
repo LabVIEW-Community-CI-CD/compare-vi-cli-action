@@ -33,7 +33,7 @@ const HINTS = {
   'lease-missing':
     'Acquire the writer lease (`tools/priority/bootstrap.ps1`) before running mutating automation.',
   'lease-read-error':
-    'Repair or remove the corrupted lease file under `.git/agent-writer-leases/` and re-run bootstrap.',
+    'Repair or remove the corrupted lease file under the resolved writer-lease root (typically the git common dir `agent-writer-leases/` directory) and re-run bootstrap.',
   'lease-owner-mismatch':
     'Only the active lease owner may proceed. Reacquire lease or hand off ownership first.',
   'lease-id-mismatch':

@@ -213,6 +213,33 @@ test('evaluateWorkspaceHealth reads required writer lease from git-common-dir in
   );
 });
 
+test('evaluateWorkspaceHealth hints point to the resolved writer-lease root for corrupted lease files', () => {
+  const report = evaluateWorkspaceHealth(
+    {
+      repoRoot,
+      leaseMode: 'required',
+      leaseRoot: path.join(gitDir, 'agent-writer-leases')
+    },
+    makeDeps({
+      existing: [indexPath, leasePath],
+      writable: [indexPath],
+      files: {
+        [leasePath]: '{not-valid-json'
+      }
+    })
+  );
+
+  assert.equal(report.status, 'fail');
+  assert.ok(report.failures.some((entry) => entry.id === 'lease-read-error'));
+  assert.ok(
+    report.hints.some(
+      (entry) =>
+        entry.includes('resolved writer-lease root') && entry.includes('git common dir')
+    )
+  );
+  assert.ok(report.hints.every((entry) => !entry.includes('.git/agent-writer-leases/')));
+});
+
 test('workspace health CLI writes report even when failing', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'workspace-health-cli-'));
   const tempGitDir = path.join(tempRoot, '.git');
