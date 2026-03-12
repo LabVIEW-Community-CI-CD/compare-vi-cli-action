@@ -6,7 +6,7 @@ import { access, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import os from 'node:os';
 import path from 'node:path';
 import { createRuntimeAdapter } from '../index.mjs';
-import { parseObserverArgs, runRuntimeObserverLoop } from '../observer.mjs';
+import { DEFAULT_POLL_INTERVAL_SECONDS, parseObserverArgs, runRuntimeObserverLoop } from '../observer.mjs';
 
 async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, 'utf8'));
@@ -27,6 +27,7 @@ function makeAdapter(repoRoot, calls, options = {}) {
   const plannerMode = options.plannerMode ?? 'manual';
   const activateMode = options.activateMode ?? 'attached';
   const executeMode = options.executeMode ?? 'none';
+  const executionDetails = options.executionDetails ?? {};
   return createRuntimeAdapter({
     name: 'test-adapter',
     resolveRepoRoot: () => repoRoot,
@@ -149,7 +150,8 @@ function makeAdapter(repoRoot, calls, options = {}) {
               outcome: executeMode === 'stop' ? 'execution-stop' : 'execution-completed',
               stopLoop: executeMode === 'stop',
               details: {
-                issue: schedulerDecision.activeLane?.issue ?? null
+                issue: schedulerDecision.activeLane?.issue ?? null,
+                ...(executionDetails && typeof executionDetails === 'object' ? executionDetails : {})
               }
             };
           },
@@ -286,7 +288,7 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
       nowFactory,
       sleepFn: async (ms) => {
         sleepCalls += 1;
-        assert.equal(ms, 0);
+        assert.equal(ms, DEFAULT_POLL_INTERVAL_SECONDS * 1000);
       }
     }
   );
@@ -355,6 +357,87 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
     calls.map((entry) => entry.type),
     ['acquire', 'release', 'acquire', 'release']
   );
+});
+
+test('runRuntimeObserverLoop honors a shorter execution poll hint for near-term wake conditions', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-poll-hint-'));
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-poll-hint-root-'));
+  const calls = [];
+  const sleepCalls = [];
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'example/repo',
+      runtimeDir,
+      lane: 'origin-1015',
+      issue: 1015,
+      forkRemote: 'origin',
+      branch: 'issue/origin-1015-copilot-watch',
+      owner: 'agent@example',
+      pollIntervalSeconds: 60,
+      maxCycles: 2,
+      executeTurn: true
+    },
+    {
+      platform: 'linux',
+      adapter: makeAdapter(repoRoot, calls, {
+        executeMode: 'complete',
+        executionDetails: {
+          laneLifecycle: 'waiting-review',
+          blockerClass: 'review',
+          retryable: true,
+          nextWakeCondition: 'copilot-review-workflow-completed',
+          pollIntervalSecondsHint: 10
+        }
+      }),
+      sleepFn: async (ms) => {
+        sleepCalls.push(ms);
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(sleepCalls, [10000]);
+});
+
+test('runRuntimeObserverLoop clamps non-positive configured poll intervals to a safe default', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-poll-default-clamp-'));
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-poll-default-clamp-root-'));
+  const calls = [];
+  const sleepCalls = [];
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'example/repo',
+      runtimeDir,
+      lane: 'origin-1015',
+      issue: 1015,
+      forkRemote: 'origin',
+      branch: 'issue/origin-1015-copilot-watch',
+      owner: 'agent@example',
+      pollIntervalSeconds: 0,
+      maxCycles: 2,
+      executeTurn: true
+    },
+    {
+      platform: 'linux',
+      adapter: makeAdapter(repoRoot, calls, {
+        executeMode: 'complete',
+        executionDetails: {
+          laneLifecycle: 'waiting-review',
+          blockerClass: 'review',
+          retryable: true,
+          nextWakeCondition: 'review-disposition-updated'
+        }
+      }),
+      sleepFn: async (ms) => {
+        sleepCalls.push(ms);
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(sleepCalls, [DEFAULT_POLL_INTERVAL_SECONDS * 1000]);
 });
 
 test('runRuntimeObserverLoop emits an idle task packet when the planner returns idle', async () => {

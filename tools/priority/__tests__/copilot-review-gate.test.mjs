@@ -199,6 +199,59 @@ test('copilot-review-gate passes stale but clean follow-up heads after an earlie
   assert.equal(result.report?.signals.staleReviewCleanFollowup, true);
 });
 
+test('copilot-review-gate blocks stale-only review state on pull_request_target so broker-managed ready-for-review waits for a fresh current-head Copilot review', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  const currentHead = 'abababababababababababababababababababab';
+  const staleHead = 'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd';
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '885',
+      '--head-sha',
+      currentHead,
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+    ]),
+    loadReviewsFn: async () => [
+      {
+        id: 13,
+        user: { login: 'copilot-pull-request-reviewer[bot]' },
+        state: 'COMMENTED',
+        body: 'Initial Copilot review on the previous head.',
+        html_url: 'https://github.com/example/review/13',
+        submitted_at: '2026-03-08T06:03:00Z',
+        commit_id: staleHead,
+      },
+    ],
+    loadThreadsFn: async () => ({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [],
+            },
+          },
+        },
+      },
+    }),
+    writeReportFn: () => 'memory://copilot-review-gate-broker-refresh.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report?.gateState, 'blocked');
+  assert.deepEqual(result.report?.reasons, ['current-head-review-missing', 'latest-review-stale']);
+  assert.equal(result.report?.signals.hasCurrentHeadReview, false);
+  assert.equal(result.report?.signals.staleReviewCleanFollowup, false);
+});
+
 test('copilot-review-gate blocks unresolved current-head Copilot threads', async () => {
   const { runCopilotReviewGate } = await loadModule();
   const currentHead = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
@@ -394,6 +447,78 @@ test('copilot-review-gate can evaluate the current-head state from the collected
   assert.equal(result.report?.gateState, 'ready');
   assert.equal(reviewsCalled, false);
   assert.equal(threadsCalled, false);
+});
+
+test('copilot-review-gate accepts a fresh current-head review from the signal artifact even when the initial Copilot review remains as stale history', async (t) => {
+  const { runCopilotReviewGate } = await loadModule();
+  const signalPath = createSignalFixture(t, 'copilot-review-signal-stale-and-current.json');
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '885',
+      '--head-sha',
+      '9999999999999999999999999999999999999999',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+      '--signal',
+      signalPath,
+    ]),
+    readSignalFn: () => ({
+      schema: 'priority/copilot-review-signal@v1',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pullRequest: {
+        number: 885,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/885',
+        draft: false,
+        headSha: '9999999999999999999999999999999999999999',
+        baseRef: 'develop',
+      },
+      latestCopilotReview: {
+        id: '16',
+        state: 'COMMENTED',
+        commitId: '9999999999999999999999999999999999999999',
+        submittedAt: '2026-03-08T06:08:00Z',
+        url: 'https://github.com/example/review/16',
+        isCurrentHead: true,
+        bodySummary: 'Fresh current-head Copilot review after broker-managed ready-for-review.',
+      },
+      staleReviews: [
+        {
+          id: '15',
+          state: 'COMMENTED',
+          commitId: '1111111111111111111111111111111111111111',
+          submittedAt: '2026-03-08T06:05:00Z',
+          url: 'https://github.com/example/review/15',
+          bodySummary: 'Initial Copilot review on the prior head.',
+        },
+      ],
+      unresolvedThreads: [],
+      actionableComments: [],
+      errors: [],
+    }),
+    loadReviewsFn: async () => {
+      throw new Error('signal mode should not query live reviews');
+    },
+    loadThreadsFn: async () => {
+      throw new Error('signal mode should not query live threads');
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-stale-and-current.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.gateState, 'ready');
+  assert.deepEqual(result.report?.reasons, ['current-head-review-clean']);
+  assert.equal(result.report?.summary.staleReviewCount, 1);
+  assert.equal(result.report?.signals.hasCurrentHeadReview, true);
 });
 
 test('copilot-review-gate reads the signal artifact before throughput-fork preflight skipping', async (t) => {

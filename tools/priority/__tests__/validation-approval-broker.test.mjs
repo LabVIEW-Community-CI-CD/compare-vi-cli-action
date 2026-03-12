@@ -196,6 +196,64 @@ test('validation approval broker returns ready for trusted clean inputs', async 
   assert.equal(firstEvent.schema, 'comparevi/runtime-event/v1');
 });
 
+test('validation approval broker accepts a fresh current-head Copilot review even when the initial review remains as stale history', async (t) => {
+  const { runValidationApprovalBroker } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-broker-stale-and-current-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const headSha = 'abababababababababababababababababababab';
+  const prNumber = 8651;
+  const signalPath = path.join(tmpDir, 'signal.json');
+  const attestationPath = path.join(tmpDir, 'attestation.json');
+  const deploymentPath = path.join(tmpDir, 'deployment.json');
+  const pullPath = path.join(tmpDir, 'pull.json');
+
+  writeJson(signalPath, {
+    ...createSignal(headSha, prNumber),
+    summary: {
+      actionableCommentCount: 0,
+      unresolvedThreadCount: 0,
+      staleReviewCount: 1,
+    },
+  });
+  writeJson(attestationPath, createAttestation(headSha, prNumber));
+  writeJson(deploymentPath, createDeploymentDeterminism());
+  writeJson(
+    pullPath,
+    createPullContext({
+      headSha,
+      prNumber,
+      statusCheckRollup: createSuccessRollup(readDevelopRequiredChecks()),
+    }),
+  );
+
+  const result = await runValidationApprovalBroker({
+    argv: [
+      'node',
+      'validation-approval-broker.mjs',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      String(prNumber),
+      '--signal',
+      signalPath,
+      '--attestation',
+      attestationPath,
+      '--deployment-determinism',
+      deploymentPath,
+      '--pull-file',
+      pullPath,
+    ],
+    now: new Date('2026-03-08T08:00:30Z'),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.decision.state, 'ready');
+  assert.deepEqual(result.report?.decision.reasons, ['approval-ready']);
+  assert.equal(result.report?.providers.reviewSignal.staleReviewCount, 1);
+  assert.equal(result.report?.providers.reviewSignal.hasCurrentHeadReview, true);
+});
+
 test('validation approval broker blocks when required checks are not ready', async (t) => {
   const { runValidationApprovalBroker } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-broker-blocked-'));

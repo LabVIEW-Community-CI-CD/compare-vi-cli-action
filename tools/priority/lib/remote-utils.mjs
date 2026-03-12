@@ -281,14 +281,75 @@ export function ensureOriginFork(repoRoot, upstream, options = {}) {
   return ensureForkRemote(repoRoot, upstream, DEFAULT_FORK_REMOTE, options);
 }
 
-export function pushBranch(repoRoot, branch, remote = DEFAULT_FORK_REMOTE) {
-  const selectedRemote = normalizeForkRemoteName(remote);
+export function remoteBranchExists(repoRoot, remote, branch, { runFn = run } = {}) {
   try {
-    run('git', ['push', '--set-upstream', selectedRemote, branch], {
+    const output = runFn('git', ['ls-remote', '--heads', remote, branch], {
       cwd: repoRoot
     });
+    return Boolean(String(output || '').trim());
   } catch {
-    throw new Error(`Failed to push branch to ${selectedRemote}. Resolve the push error above.`);
+    return false;
+  }
+}
+
+export function getRemoteBranchHead(repoRoot, remote, branch, { runFn = run } = {}) {
+  try {
+    const output = runFn('git', ['ls-remote', '--heads', remote, branch], {
+      cwd: repoRoot
+    });
+    const firstLine = String(output || '').trim().split(/\r?\n/, 1)[0] ?? '';
+    const [sha] = firstLine.split(/\s+/);
+    return sha ? sha.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getLocalBranchHead(repoRoot, branch, { runFn = run } = {}) {
+  try {
+    const output = runFn('git', ['rev-parse', branch], {
+      cwd: repoRoot
+    });
+    return String(output || '').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function pushBranch(
+  repoRoot,
+  branch,
+  remote = DEFAULT_FORK_REMOTE,
+  {
+    runFn = run,
+    getRemoteBranchHeadFn = getRemoteBranchHead,
+    getLocalBranchHeadFn = getLocalBranchHead
+  } = {}
+) {
+  const selectedRemote = normalizeForkRemoteName(remote);
+  try {
+    runFn('git', ['push', '--set-upstream', selectedRemote, branch], {
+      cwd: repoRoot
+    });
+    return {
+      status: 'pushed',
+      remote: selectedRemote,
+      branch
+    };
+  } catch (error) {
+    const remoteHead = getRemoteBranchHeadFn(repoRoot, selectedRemote, branch, { runFn });
+    const localHead = getLocalBranchHeadFn(repoRoot, branch, { runFn });
+    if (remoteHead && localHead && remoteHead === localHead) {
+      return {
+        status: 'already-published',
+        remote: selectedRemote,
+        branch,
+        recoveredFromPushFailure: true
+      };
+    }
+    const cause = String(error?.stderr ?? error?.message ?? error ?? '').trim();
+    const detail = cause ? ` ${cause}` : '';
+    throw new Error(`Failed to push branch to ${selectedRemote}.${detail}`);
   }
 }
 
@@ -313,10 +374,28 @@ export function buildGhPrCreateArgs({ upstream, origin, headRepository, branch, 
     base,
     '--head',
     `${resolvedHeadRepository.owner}:${branch}`,
+    '--draft',
     '--title',
     title,
     '--body',
     body
+  ];
+}
+
+export function buildGhPrListArgs({ upstream, branch, base, head }) {
+  return [
+    'pr',
+    'list',
+    '--repo',
+    buildRepositorySlug(upstream),
+    '--state',
+    'open',
+    '--base',
+    base,
+    '--head',
+    head ?? branch,
+    '--json',
+    'number,url,state,isDraft,headRefName,baseRefName,headRepositoryOwner,isCrossRepository'
   ];
 }
 
@@ -356,6 +435,7 @@ export function buildCreatePullRequestMutation({
             headRepositoryId: $headRepositoryId,
             headRefName: $headRefName,
             baseRefName: $baseRefName,
+            draft: true,
             title: $title,
             body: $body,
             maintainerCanModify: true
@@ -387,12 +467,71 @@ export function extractPullRequestFromMutation(payload) {
   return payload?.data?.createPullRequest?.pullRequest ?? null;
 }
 
+export function isExistingPullRequestError(error) {
+  return /a pull request already exists/i.test(String(error?.message ?? error ?? ''));
+}
+
+export function findExistingPullRequest(
+  repoRoot,
+  { upstream, origin, headRepository, branch, base },
+  {
+    runGhJsonFn = runGhJson,
+    spawnSyncFn = spawnSync
+  } = {}
+) {
+  const resolvedHeadRepository = headRepository ?? origin;
+  const expectedOwner = String(resolvedHeadRepository?.owner ?? '')
+    .trim()
+    .toLowerCase();
+  const headSelectors = Array.from(
+    new Set([
+      expectedOwner ? `${resolvedHeadRepository.owner}:${branch}` : null,
+      branch
+    ].filter(Boolean))
+  );
+  const pulls = [];
+  for (const headSelector of headSelectors) {
+    const response =
+      runGhJsonFn(repoRoot, buildGhPrListArgs({ upstream, branch, base, head: headSelector }), {
+        spawnSyncFn
+      }) ?? [];
+    if (Array.isArray(response) && response.length > 0) {
+      pulls.push(...response);
+      break;
+    }
+  }
+  if (pulls.length === 0) {
+    return null;
+  }
+
+  return (
+    pulls.find((pull) => {
+      const headRefName = String(pull?.headRefName ?? '').trim();
+      const baseRefName = String(pull?.baseRefName ?? '').trim();
+      const headOwner = String(pull?.headRepositoryOwner?.login ?? '')
+        .trim()
+        .toLowerCase();
+
+      if (headRefName !== branch || baseRefName !== base) {
+        return false;
+      }
+      if (!expectedOwner) {
+        return true;
+      }
+      return headOwner === expectedOwner;
+    }) ?? null
+  );
+}
+
 export function runGhPrCreate(
   { repoRoot, upstream, origin, headRepository, branch, base, title, body },
   {
     spawnSyncFn = spawnSync,
     loadRepositoryGraphMetadataFn = loadRepositoryGraphMetadata,
-    runGhGraphqlFn = runGhGraphql
+    runGhGraphqlFn = runGhGraphql,
+    runGhJsonFn = runGhJson,
+    findExistingPullRequestFn = findExistingPullRequest,
+    writeStdoutFn = (text) => process.stdout.write(text)
   } = {}
 ) {
   const resolvedHeadRepository = headRepository ?? origin;
@@ -428,12 +567,36 @@ export function runGhPrCreate(
           throw new Error(`GitHub GraphQL mutation returned no pull request URL for head '${headRefName}'.`);
         }
 
-        console.log(pullRequest.url);
+        writeStdoutFn(`${pullRequest.url}\n`);
         return {
           strategy,
           pullRequest
         };
       } catch (error) {
+        if (isExistingPullRequestError(error)) {
+          const pullRequest = findExistingPullRequestFn(
+            repoRoot,
+            {
+              upstream,
+              origin,
+              headRepository: resolvedHeadRepository,
+              branch,
+              base
+            },
+            {
+              runGhJsonFn,
+              spawnSyncFn
+            }
+          );
+          if (pullRequest?.url) {
+            writeStdoutFn(`${pullRequest.url}\n`);
+            return {
+              strategy,
+              pullRequest,
+              reusedExisting: true
+            };
+          }
+        }
         failures.push({ headRefName, error });
       }
     }
@@ -454,15 +617,52 @@ export function runGhPrCreate(
   });
   const result = spawnSyncFn('gh', args, {
     cwd: repoRoot,
-    stdio: 'inherit',
-    encoding: 'utf8'
+    ...DEFAULT_GH_OPTIONS
   });
   if (result.status !== 0) {
-    throw new Error('gh pr create failed. Review the messages above.');
+    const error = new Error(buildGhCommandError(args, result, `exit ${result.status}`));
+    if (isExistingPullRequestError(error)) {
+      const pullRequest = findExistingPullRequestFn(
+        repoRoot,
+        {
+          upstream,
+          origin,
+          headRepository: resolvedHeadRepository,
+          branch,
+          base
+        },
+        {
+          runGhJsonFn,
+          spawnSyncFn
+        }
+      );
+      if (pullRequest?.url) {
+        writeStdoutFn(`${pullRequest.url}\n`);
+        return {
+          strategy,
+          pullRequest,
+          reusedExisting: true
+        };
+      }
+    }
+    throw error;
   }
+
+  const stdout = String(result.stdout ?? '');
+  if (stdout) {
+    writeStdoutFn(stdout);
+  }
+
+  const urlMatch = stdout.match(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(?<number>\d+)/);
+  const pullRequest = urlMatch?.[0]
+    ? {
+        number: Number.parseInt(urlMatch.groups.number, 10),
+        url: urlMatch[0]
+      }
+    : null;
 
   return {
     strategy,
-    pullRequest: null
+    pullRequest
   };
 }

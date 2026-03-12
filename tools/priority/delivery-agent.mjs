@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
@@ -68,6 +68,54 @@ const DEFAULT_POLICY = {
 const SUCCESSFUL_CHECK_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 const PENDING_CHECK_STATES = new Set(['QUEUED', 'IN_PROGRESS', 'PENDING', 'EXPECTED', 'WAITING']);
 const BLOCKING_CHECK_STATES = new Set(['FAILURE', 'FAILED', 'TIMED_OUT', 'ERROR', 'ACTION_REQUIRED', 'CANCELLED']);
+const COPILOT_REVIEW_WORKFLOW_NAME = 'Copilot code review';
+const PENDING_WORKFLOW_RUN_STATUSES = new Set(['QUEUED', 'IN_PROGRESS', 'PENDING', 'REQUESTED', 'WAITING']);
+const COPILOT_REVIEW_ACTIVE_POLL_HINT_SECONDS = 10;
+const COPILOT_REVIEW_POST_POLL_HINT_SECONDS = 5;
+const COPILOT_REVIEW_METADATA_CACHE_TTL_MS =
+  Math.max(COPILOT_REVIEW_ACTIVE_POLL_HINT_SECONDS, COPILOT_REVIEW_POST_POLL_HINT_SECONDS) * 1000;
+const COPILOT_REVIEW_METADATA_RETENTION_MS = 24 * 60 * 60 * 1000;
+const GH_JSON_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
+const COPILOT_LOGINS = new Set([
+  'copilot',
+  'copilot-pull-request-reviewer',
+  'copilot-pull-request-reviewer[bot]'
+]);
+const REVIEW_THREADS_QUERY = [
+  'query($owner:String!,$repo:String!,$number:Int!){',
+  'repository(owner:$owner,name:$repo){',
+  'pullRequest(number:$number){',
+  'reviewThreads(first:100){',
+  'nodes{',
+  'id',
+  'isResolved',
+  'isOutdated',
+  'path',
+  'line',
+  'originalLine',
+  'comments(first:100){',
+  'nodes{',
+  'id',
+  'createdAt',
+  'publishedAt',
+  'url',
+  'author{login}',
+  'originalCommit{oid}',
+  'pullRequestReview{',
+  'databaseId',
+  'state',
+  'author{login}',
+  'submittedAt',
+  'commit{oid}',
+  '}',
+  '}',
+  '}',
+  '}',
+  '}',
+  '}',
+  '}',
+  '}'
+].join(' ');
 
 function normalizeText(value) {
   if (value == null) return '';
@@ -103,12 +151,36 @@ function resolveExecutionRoot(repoRoot, taskPacket) {
   return workerCheckoutPath ? resolvePath(repoRoot, workerCheckoutPath) : repoRoot;
 }
 
-async function readJsonIfPresent(filePath) {
+function isJsonParseError(error) {
+  return error instanceof SyntaxError || error?.name === 'SyntaxError';
+}
+
+async function readJsonIfPresent(filePath, { deleteCorrupt = false } = {}) {
   try {
     return JSON.parse(await readFile(filePath, 'utf8'));
   } catch (error) {
     if (error?.code === 'ENOENT') return null;
+    if (deleteCorrupt && isJsonParseError(error)) {
+      await rm(filePath, { force: true });
+      return null;
+    }
     throw error;
+  }
+}
+
+async function writeJsonAtomically(filePath, payload) {
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tempPath, payload, 'utf8');
+  try {
+    await rename(tempPath, filePath);
+  } catch (error) {
+    if (error?.code !== 'EEXIST' && error?.code !== 'EPERM') {
+      throw error;
+    }
+    await rm(filePath, { force: true });
+    await rename(tempPath, filePath);
+  } finally {
+    await rm(tempPath, { force: true });
   }
 }
 
@@ -277,6 +349,23 @@ export function classifyPullRequestWork(pr = {}) {
   const mergeable = normalizeText(pr.mergeable).toUpperCase();
   const reviewDecision = normalizeText(pr.reviewDecision).toUpperCase();
   const isDraft = pr.isDraft === true;
+  const copilotReviewSignal = pr.copilotReviewSignal ?? null;
+  const copilotReviewWorkflow = pr.copilotReviewWorkflow ?? null;
+  const copilotReviewWorkflowStatus = normalizeText(copilotReviewWorkflow?.status).toUpperCase();
+  const copilotReviewWorkflowConclusion = normalizeText(copilotReviewWorkflow?.conclusion).toUpperCase();
+  const hasActionableCurrentHeadComments = (copilotReviewSignal?.actionableCommentCount ?? 0) > 0;
+  const reviewPendingRequired =
+    !reviewDecision || reviewDecision === 'REVIEW_REQUIRED' || reviewDecision === 'CHANGES_REQUESTED';
+  const reviewPendingFromSignal =
+    reviewPendingRequired &&
+    ((copilotReviewSignal != null &&
+      (copilotReviewSignal.hasCurrentHeadReview !== true || hasActionableCurrentHeadComments)) ||
+      (copilotReviewSignal == null &&
+        copilotReviewWorkflow != null &&
+        (PENDING_WORKFLOW_RUN_STATUSES.has(copilotReviewWorkflowStatus) ||
+          (copilotReviewWorkflowStatus === 'COMPLETED' && copilotReviewWorkflowConclusion === 'SUCCESS'))));
+  let nextWakeCondition = 'review-disposition-updated';
+  let pollIntervalSecondsHint = null;
 
   if (mergeStateStatus === 'BEHIND') {
     return {
@@ -289,14 +378,53 @@ export function classifyPullRequestWork(pr = {}) {
       syncRequired: true
     };
   }
-  if (isDraft || reviewDecision === 'REVIEW_REQUIRED' || reviewDecision === 'CHANGES_REQUESTED') {
+  if (copilotReviewWorkflow && PENDING_WORKFLOW_RUN_STATUSES.has(copilotReviewWorkflowStatus)) {
+    nextWakeCondition = 'copilot-review-workflow-completed';
+    pollIntervalSecondsHint = COPILOT_REVIEW_ACTIVE_POLL_HINT_SECONDS;
+  } else if (
+    copilotReviewWorkflow &&
+    copilotReviewWorkflowStatus === 'COMPLETED' &&
+    copilotReviewWorkflowConclusion === 'SUCCESS'
+  ) {
+    nextWakeCondition = 'copilot-review-post-expected';
+    pollIntervalSecondsHint = COPILOT_REVIEW_POST_POLL_HINT_SECONDS;
+  } else if (
+    copilotReviewWorkflow &&
+    copilotReviewWorkflowStatus === 'COMPLETED' &&
+    copilotReviewWorkflowConclusion &&
+    copilotReviewWorkflowConclusion !== 'SUCCESS'
+  ) {
+    nextWakeCondition = 'copilot-review-workflow-rerun-or-fixed';
+  }
+
+  if (hasActionableCurrentHeadComments) {
+    return {
+      laneLifecycle: 'coding',
+      blockerClass: 'review',
+      checksStatus: checks.status,
+      readyToMerge: false,
+      retryable: true,
+      nextWakeCondition: 'review-comments-addressed',
+      pollIntervalSecondsHint: null,
+      reviewMonitor: {
+        workflow: copilotReviewWorkflow,
+        signal: copilotReviewSignal
+      }
+    };
+  }
+  if (isDraft || reviewDecision === 'REVIEW_REQUIRED' || reviewDecision === 'CHANGES_REQUESTED' || reviewPendingFromSignal) {
     return {
       laneLifecycle: 'waiting-review',
       blockerClass: 'review',
       checksStatus: checks.status,
       readyToMerge: false,
       retryable: true,
-      nextWakeCondition: 'review-disposition-updated',
+      nextWakeCondition,
+      pollIntervalSecondsHint,
+      reviewMonitor: {
+        workflow: copilotReviewWorkflow,
+        signal: copilotReviewSignal
+      },
       syncRequired: false
     };
   }
@@ -378,6 +506,7 @@ function normalizePullRequest(pr, fallbackRepository) {
     updatedAt: normalizeText(pr.updatedAt) || null,
     baseRefName: normalizeText(pr.baseRefName) || null,
     headRefName: normalizeText(pr.headRefName) || null,
+    headRefOid: normalizeText(pr.headRefOid) || null,
     mergeStateStatus: normalizeText(pr.mergeStateStatus) || null,
     mergeable: normalizeText(pr.mergeable) || null,
     reviewDecision: normalizeText(pr.reviewDecision) || null,
@@ -532,12 +661,173 @@ function runGhGraphql(repoRoot, query, variables = {}, deps = {}) {
   const result = spawnSync('gh', buildGraphqlArgs(query, variables), {
     cwd: repoRoot,
     encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: GH_JSON_MAX_BUFFER_BYTES
   });
   if (result.status !== 0) {
     throw new Error(`gh api graphql failed (${result.status}): ${normalizeText(result.stderr) || 'unknown error'}`);
   }
   return JSON.parse(result.stdout || '{}');
+}
+
+function runGhApiJson(repoRoot, endpoint, deps = {}) {
+  if (typeof deps.runGhApiJsonFn === 'function') {
+    return deps.runGhApiJsonFn({ repoRoot, endpoint });
+  }
+  const result = spawnSync('gh', ['api', endpoint], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: GH_JSON_MAX_BUFFER_BYTES
+  });
+  if (result.status !== 0) {
+    throw new Error(`gh api ${endpoint} failed (${result.status}): ${normalizeText(result.stderr) || 'unknown error'}`);
+  }
+  return JSON.parse(result.stdout || '{}');
+}
+
+function normalizeCopilotReviewWorkflowRun(run, headSha) {
+  if (!run || typeof run !== 'object') {
+    return null;
+  }
+  const workflowName = normalizeText(run.name || run.workflowName);
+  const normalizedHeadSha = normalizeText(run.head_sha || run.headSha).toLowerCase() || null;
+  if (!workflowName || !normalizedHeadSha || (headSha && normalizedHeadSha !== String(headSha).trim().toLowerCase())) {
+    return null;
+  }
+  return {
+    workflowName,
+    runId: coercePositiveInteger(run.id || run.databaseId),
+    event: normalizeText(run.event) || null,
+    status: normalizeText(run.status).toUpperCase() || null,
+    conclusion: normalizeText(run.conclusion).toUpperCase() || null,
+    url: normalizeText(run.html_url || run.url) || null,
+    headSha: normalizedHeadSha,
+    createdAt: normalizeText(run.created_at || run.createdAt) || null,
+    updatedAt: normalizeText(run.updated_at || run.updatedAt) || null
+  };
+}
+
+function selectCopilotReviewWorkflowRun(runs, headSha) {
+  const normalizedHeadSha = normalizeText(headSha).toLowerCase() || null;
+  if (!normalizedHeadSha) {
+    return null;
+  }
+  const normalizedRuns = (Array.isArray(runs) ? runs : [])
+    .map((run) => normalizeCopilotReviewWorkflowRun(run, normalizedHeadSha))
+    .filter(Boolean)
+    .filter((run) => run.workflowName === COPILOT_REVIEW_WORKFLOW_NAME)
+    .sort((left, right) => {
+      const byUpdatedAt = normalizeText(right.updatedAt).localeCompare(normalizeText(left.updatedAt));
+      if (byUpdatedAt !== 0) {
+        return byUpdatedAt;
+      }
+      return (right.runId ?? 0) - (left.runId ?? 0);
+    });
+  return normalizedRuns[0] ?? null;
+}
+
+async function loadCopilotReviewWorkflowRun({ repoRoot, repository, headSha, deps = {} }) {
+  if (!normalizeText(repository) || !normalizeText(headSha)) {
+    return null;
+  }
+  if (typeof deps.loadCopilotReviewWorkflowRunFn === 'function') {
+    return await deps.loadCopilotReviewWorkflowRunFn({ repoRoot, repository, headSha });
+  }
+  const { owner, repo } = parseRepositorySlug(repository);
+  const endpoint = `repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(headSha)}&per_page=100`;
+  const payload = runGhApiJson(repoRoot, endpoint, deps);
+  return selectCopilotReviewWorkflowRun(payload?.workflow_runs, headSha);
+}
+
+function isCopilotLogin(login) {
+  const normalized = normalizeText(login).toLowerCase();
+  return normalized ? COPILOT_LOGINS.has(normalized) : false;
+}
+
+function normalizeCopilotReview(review, headSha) {
+  if (!isCopilotLogin(review?.user?.login)) {
+    return null;
+  }
+  const commitId = normalizeText(review?.commit_id).toLowerCase() || null;
+  return {
+    id: coercePositiveInteger(review?.id) ?? (normalizeText(review?.id) || null),
+    state: normalizeText(review?.state) || null,
+    commitId,
+    submittedAt: normalizeText(review?.submitted_at) || null,
+    url: normalizeText(review?.html_url) || null,
+    isCurrentHead: Boolean(headSha && commitId && commitId === String(headSha).trim().toLowerCase())
+  };
+}
+
+function normalizeCopilotThreadComment(comment, headSha) {
+  const authorLogin = normalizeText(comment?.author?.login) || normalizeText(comment?.pullRequestReview?.author?.login);
+  if (!isCopilotLogin(authorLogin)) {
+    return null;
+  }
+  const commitId = normalizeText(comment?.pullRequestReview?.commit?.oid || comment?.originalCommit?.oid).toLowerCase() || null;
+  return {
+    id: normalizeText(comment?.id) || null,
+    url: normalizeText(comment?.url) || null,
+    publishedAt: normalizeText(comment?.publishedAt || comment?.createdAt) || null,
+    commitId,
+    isCurrentHead: Boolean(headSha && commitId && commitId === String(headSha).trim().toLowerCase())
+  };
+}
+
+function normalizeCopilotThread(thread, headSha) {
+  const comments = Array.isArray(thread?.comments?.nodes)
+    ? thread.comments.nodes
+        .map((comment) => normalizeCopilotThreadComment(comment, headSha))
+        .filter(Boolean)
+    : [];
+  if (comments.length === 0) {
+    return null;
+  }
+  const actionableComments = comments.filter((comment) => comment.isCurrentHead);
+  return {
+    threadId: normalizeText(thread?.id) || null,
+    path: normalizeText(thread?.path) || null,
+    line: coercePositiveInteger(thread?.line),
+    originalLine: coercePositiveInteger(thread?.originalLine),
+    isResolved: thread?.isResolved === true,
+    isOutdated: thread?.isOutdated === true,
+    actionableComments
+  };
+}
+
+async function loadCopilotReviewSignal({ repoRoot, repository, pullRequestNumber, headSha, deps = {} }) {
+  if (!normalizeText(repository) || !coercePositiveInteger(pullRequestNumber) || !normalizeText(headSha)) {
+    return null;
+  }
+  if (typeof deps.loadCopilotReviewSignalFn === 'function') {
+    return await deps.loadCopilotReviewSignalFn({ repoRoot, repository, pullRequestNumber, headSha });
+  }
+  const { owner, repo } = parseRepositorySlug(repository);
+  const reviewsPayload = runGhApiJson(repoRoot, `repos/${owner}/${repo}/pulls/${pullRequestNumber}/reviews?per_page=100`, deps);
+  const threadsPayload = runGhGraphql(
+    repoRoot,
+    REVIEW_THREADS_QUERY,
+    { owner, repo, number: pullRequestNumber },
+    deps
+  );
+  const reviews = (Array.isArray(reviewsPayload) ? reviewsPayload : [])
+    .map((review) => normalizeCopilotReview(review, headSha))
+    .filter(Boolean)
+    .sort((left, right) => normalizeText(right.submittedAt).localeCompare(normalizeText(left.submittedAt)));
+  const threads = (threadsPayload?.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [])
+    .map((thread) => normalizeCopilotThread(thread, headSha))
+    .filter(Boolean);
+  const actionableThreads = threads.filter(
+    (thread) => thread.isResolved !== true && thread.isOutdated !== true && thread.actionableComments.length > 0
+  );
+  return {
+    hasCopilotReview: reviews.length > 0,
+    hasCurrentHeadReview: reviews.some((review) => review.isCurrentHead),
+    latestCopilotReview: reviews[0] ?? null,
+    actionableThreadCount: actionableThreads.length,
+    actionableCommentCount: actionableThreads.reduce((total, thread) => total + thread.actionableComments.length, 0)
+  };
 }
 
 export async function loadDeliveryAgentPolicy(repoRoot, deps = {}) {
@@ -617,6 +907,7 @@ export async function fetchIssueExecutionGraph({ repoRoot, repository, issueNumb
                         updatedAt
                         baseRefName
                         headRefName
+                        headRefOid
                         mergeStateStatus
                         mergeable
                         reviewDecision
@@ -664,6 +955,7 @@ export async function fetchIssueExecutionGraph({ repoRoot, repository, issueNumb
                     updatedAt
                     baseRefName
                     headRefName
+                    headRefOid
                     mergeStateStatus
                     mergeable
                     reviewDecision
@@ -744,7 +1036,9 @@ export async function buildCanonicalDeliveryDecision({
   upstreamRepository,
   targetRepository,
   policy,
-  source = 'comparevi-standing-priority-live'
+  source = 'comparevi-standing-priority-live',
+  deps = {},
+  now = new Date()
 }) {
   const effectivePolicy = policy ?? (await loadDeliveryAgentPolicy(repoRoot));
   const implementationRemote = normalizeText(effectivePolicy.implementationRemote) || 'origin';
@@ -768,8 +1062,38 @@ export async function buildCanonicalDeliveryDecision({
     return null;
   }
   const selectedIssue = selected.selectedIssue;
-  const pullRequest = selected.pullRequest ?? null;
-  const pullRequestStatus = selected.pullRequestStatus ?? null;
+  let pullRequest = selected.pullRequest ?? null;
+  let pullRequestStatus = selected.pullRequestStatus ?? null;
+  if (pullRequest && shouldLoadCopilotReviewMetadata(pullRequest, pullRequestStatus)) {
+    const pullRequestRepository =
+      normalizeText(pullRequest.repository) ||
+      normalizeText(targetRepository) ||
+      normalizeText(upstreamRepository) ||
+      null;
+    let reviewWorkflow = null;
+    let reviewSignal = null;
+    try {
+      ({ reviewWorkflow, reviewSignal } = await loadCachedCopilotReviewMetadata({
+        repoRoot,
+        repository: pullRequestRepository,
+        pullRequestNumber: pullRequest.number,
+        headSha: pullRequest.headRefOid,
+        deps,
+        now
+      }));
+    } catch {
+      reviewWorkflow = null;
+      reviewSignal = null;
+    }
+    if (reviewWorkflow || reviewSignal) {
+      pullRequest = {
+        ...pullRequest,
+        copilotReviewWorkflow: reviewWorkflow,
+        copilotReviewSignal: reviewSignal
+      };
+      pullRequestStatus = classifyPullRequestWork(pullRequest);
+    }
+  }
   const blockerClass = pullRequestStatus?.blockerClass ?? 'none';
   const laneId = `${implementationRemote}-${selectedIssue.number}`;
   const reason =
@@ -804,7 +1128,7 @@ export async function buildCanonicalDeliveryDecision({
       cadence: false,
       executionMode: 'canonical-delivery',
       selectedActionType: selected.actionType,
-      laneLifecycle: selected.laneLifecycle,
+      laneLifecycle: pullRequestStatus?.laneLifecycle ?? selected.laneLifecycle,
       selectedIssueSnapshot: selectedIssue,
       standingIssueSnapshot: standingIssue,
       issueGraph: buildIssueGraphSummary({
@@ -821,11 +1145,22 @@ export async function buildCanonicalDeliveryDecision({
               title: pullRequest.title,
               state: pullRequest.state,
               headRefName: pullRequest.headRefName,
+              headRefOid: pullRequest.headRefOid,
               baseRefName: pullRequest.baseRefName,
               reviewDecision: pullRequest.reviewDecision,
               mergeStateStatus: pullRequest.mergeStateStatus,
               mergeable: pullRequest.mergeable,
               syncRequired: pullRequestStatus?.syncRequired === true,
+              nextWakeCondition: pullRequestStatus?.nextWakeCondition ?? null,
+              pollIntervalSecondsHint: pullRequestStatus?.pollIntervalSecondsHint ?? null,
+              copilotReviewWorkflow:
+                pullRequestStatus?.reviewMonitor?.workflow ??
+                pullRequest.copilotReviewWorkflow ??
+                null,
+              copilotReviewSignal:
+                pullRequestStatus?.reviewMonitor?.signal ??
+                pullRequest.copilotReviewSignal ??
+                null,
               checks: {
                 status: pullRequestStatus?.checksStatus ?? 'not-linked',
                 blockerClass: pullRequestStatus?.blockerClass ?? 'none'
@@ -838,6 +1173,163 @@ export async function buildCanonicalDeliveryDecision({
 
 function isRateLimitMessage(message) {
   return /rate limit/i.test(normalizeText(message));
+}
+
+function shouldLoadCopilotReviewMetadata(pr, prStatus = null) {
+  if (!pr?.headRefOid) {
+    return false;
+  }
+  const laneLifecycle = normalizeText(prStatus?.laneLifecycle).toLowerCase();
+  if (laneLifecycle === 'waiting-review' || laneLifecycle === 'coding') {
+    return true;
+  }
+  if (laneLifecycle !== 'ready-merge') {
+    return false;
+  }
+  const reviewDecision = normalizeText(pr.reviewDecision).toUpperCase();
+  const mergeStateStatus = normalizeText(pr.mergeStateStatus).toUpperCase();
+  return !reviewDecision && mergeStateStatus === 'BLOCKED';
+}
+
+function resolveCopilotReviewMetadataCachePath({ repoRoot, repository, pullRequestNumber, headSha }) {
+  const repositorySegment = sanitizeSegment(repository || 'repo');
+  const pullRequestSegment = sanitizeSegment(`pr-${pullRequestNumber || 'unknown'}`);
+  const headSegment = sanitizeSegment(headSha || 'head');
+  return path.join(
+    repoRoot,
+    'tests',
+    'results',
+    '_agent',
+    'runtime',
+    'copilot-review-cache',
+    `${repositorySegment}-${pullRequestSegment}-${headSegment}.json`
+  );
+}
+
+async function pruneCopilotReviewMetadataCache({ repoRoot, repository, pullRequestNumber, headSha, now = new Date() }) {
+  const cachePath = resolveCopilotReviewMetadataCachePath({
+    repoRoot,
+    repository,
+    pullRequestNumber,
+    headSha
+  });
+  const cacheDir = path.dirname(cachePath);
+  const repositorySegment = sanitizeSegment(repository || 'repo');
+  const pullRequestSegment = sanitizeSegment(`pr-${pullRequestNumber || 'unknown'}`);
+  const cachePrefix = `${repositorySegment}-${pullRequestSegment}-`;
+  const nowTime = now instanceof Date ? now.getTime() : Date.parse(now);
+  let entries = [];
+  try {
+    entries = await readdir(cacheDir, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return;
+    }
+    throw error;
+  }
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isFile() && entry.name.startsWith(cachePrefix) && entry.name.endsWith('.json'))
+      .map(async (entry) => {
+        const entryPath = path.join(cacheDir, entry.name);
+        if (entryPath === cachePath) {
+          return;
+        }
+        await rm(entryPath, { force: true });
+      })
+  );
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      .map(async (entry) => {
+        const entryPath = path.join(cacheDir, entry.name);
+        if (entryPath === cachePath) {
+          return;
+        }
+        const cached = await readJsonIfPresent(entryPath, { deleteCorrupt: true });
+        const generatedAt = Date.parse(cached?.generatedAt || '');
+        if (
+          Number.isFinite(nowTime) &&
+          Number.isFinite(generatedAt) &&
+          nowTime - generatedAt > COPILOT_REVIEW_METADATA_RETENTION_MS
+        ) {
+          await rm(entryPath, { force: true });
+        }
+      })
+  );
+}
+
+async function loadCachedCopilotReviewMetadata({
+  repoRoot,
+  repository,
+  pullRequestNumber,
+  headSha,
+  deps = {},
+  now = new Date()
+}) {
+  const cachePath = resolveCopilotReviewMetadataCachePath({
+    repoRoot,
+    repository,
+    pullRequestNumber,
+    headSha
+  });
+  const cached = await readJsonIfPresent(cachePath, { deleteCorrupt: true });
+  const nowTime = now instanceof Date ? now.getTime() : Date.parse(now);
+  const cachedTime = Date.parse(cached?.generatedAt || '');
+  if (
+    cached &&
+    cached.repository === repository &&
+    cached.pullRequestNumber === pullRequestNumber &&
+    cached.headSha === headSha &&
+    Number.isFinite(nowTime) &&
+    Number.isFinite(cachedTime) &&
+    nowTime - cachedTime <= COPILOT_REVIEW_METADATA_CACHE_TTL_MS
+  ) {
+    return {
+      reviewWorkflow: cached.reviewWorkflow ?? null,
+      reviewSignal: cached.reviewSignal ?? null
+    };
+  }
+  const reviewWorkflow = await loadCopilotReviewWorkflowRun({
+    repoRoot,
+    repository,
+    headSha,
+    deps
+  });
+  const reviewSignal = await loadCopilotReviewSignal({
+    repoRoot,
+    repository,
+    pullRequestNumber,
+    headSha,
+    deps
+  });
+  await mkdir(path.dirname(cachePath), { recursive: true });
+  await writeJsonAtomically(
+    cachePath,
+    JSON.stringify(
+      {
+        generatedAt: Number.isFinite(nowTime) ? new Date(nowTime).toISOString() : toIso(),
+        repository,
+        pullRequestNumber,
+        headSha,
+        reviewWorkflow,
+        reviewSignal
+      },
+      null,
+      2
+    )
+  );
+  await pruneCopilotReviewMetadataCache({
+    repoRoot,
+    repository,
+    pullRequestNumber,
+    headSha,
+    now
+  });
+  return {
+    reviewWorkflow,
+    reviewSignal
+  };
 }
 
 function extractIssueNumberFromUrl(url) {
@@ -891,6 +1383,16 @@ export function buildDeliveryAgentRuntimeRecord({
     schedulerDecision?.outcome === 'idle' ? 'idle' : blockerClass !== 'none' ? 'blocked' : 'planning'
   );
   const activeCodingLanes = laneLifecycle === 'coding' ? 1 : 0;
+  const reviewMonitor =
+    executionReceipt?.details?.reviewMonitor ??
+    taskPacket?.evidence?.delivery?.pullRequest?.copilotReviewWorkflow ??
+    schedulerDecision?.artifacts?.pullRequest?.copilotReviewWorkflow ??
+    null;
+  const pollIntervalSecondsHint =
+    coercePositiveInteger(executionReceipt?.details?.pollIntervalSecondsHint) ??
+    coercePositiveInteger(taskPacket?.evidence?.delivery?.pullRequest?.pollIntervalSecondsHint) ??
+    coercePositiveInteger(schedulerDecision?.artifacts?.pullRequest?.pollIntervalSecondsHint) ??
+    null;
   return {
     schema: DELIVERY_AGENT_RUNTIME_STATE_SCHEMA,
     generatedAt: toIso(now),
@@ -931,7 +1433,9 @@ export function buildDeliveryAgentRuntimeRecord({
       outcome: normalizeText(executionReceipt?.outcome) || null,
       reason: normalizeText(executionReceipt?.reason) || null,
       retryable: executionReceipt?.details?.retryable === true,
-      nextWakeCondition: normalizeText(executionReceipt?.details?.nextWakeCondition) || null
+      nextWakeCondition: normalizeText(executionReceipt?.details?.nextWakeCondition) || null,
+      pollIntervalSecondsHint,
+      reviewMonitor
     },
     artifacts: {
       statePath,
@@ -1097,21 +1601,89 @@ async function closeIssueWithComment({ repository, issueNumber, repoRoot, commen
   return result;
 }
 
+function shellEscapeHelperValue(value) {
+  if (value == null) {
+    return '';
+  }
+  const text = String(value);
+  if (text === '') {
+    return "''";
+  }
+  if (/^[A-Za-z0-9._\-/:]+$/.test(text)) {
+    return text;
+  }
+  return `'${text.replace(/'/g, `'\\''`)}'`;
+}
+
+function buildRemoveLabelHelperCall(issueNumber, repository, labels = []) {
+  const removeLabelFlags = labels
+    .map((label) => normalizeText(label))
+    .filter(Boolean)
+    .map((label) => `--remove-label ${shellEscapeHelperValue(label)}`)
+    .join(' ');
+  return [`gh issue edit ${issueNumber}`, `--repo ${shellEscapeHelperValue(repository)}`, removeLabelFlags].filter(Boolean).join(' ');
+}
+
+function buildCloseIssueHelperCall(issueNumber, repository, { hasComment = false } = {}) {
+  const repoArgument = `--repo ${shellEscapeHelperValue(repository)}`;
+  return hasComment
+    ? `gh issue close ${issueNumber} ${repoArgument} --comment <omitted>`
+    : `gh issue close ${issueNumber} ${repoArgument}`;
+}
+
+async function syncStandingPriorityForRepo({ repository, repoRoot, deps = {} }) {
+  if (typeof deps.syncStandingPriorityFn === 'function') {
+    return deps.syncStandingPriorityFn({
+      repository,
+      repoRoot,
+      env: {
+        ...process.env,
+        GITHUB_REPOSITORY: repository
+      }
+    });
+  }
+
+  const syncResult = await runCommand(
+    'node',
+    ['tools/priority/sync-standing-priority.mjs'],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        GITHUB_REPOSITORY: repository
+      }
+    },
+    deps
+  );
+  if (syncResult.status !== 0) {
+    throw new Error(
+      normalizeText(syncResult.stderr) || normalizeText(syncResult.stdout) || 'priority sync failed after merge finalization'
+    );
+  }
+  return syncResult;
+}
+
 function buildMergedIssueCloseComment({ issueNumber, pullRequestNumber, pullRequestUrl, nextStandingIssueNumber }) {
-  const prReference = pullRequestUrl
-    ? `PR #${pullRequestNumber} (${pullRequestUrl})`
-    : pullRequestNumber
-      ? `PR #${pullRequestNumber}`
-      : 'the merged pull request';
+  const parsedPullRequestNumber = Number.isInteger(pullRequestNumber)
+    ? pullRequestNumber
+    : Number.parseInt(String(pullRequestNumber ?? ''), 10);
+  let prReference = 'the merged pull request';
+  if (pullRequestUrl && Number.isInteger(parsedPullRequestNumber)) {
+    prReference = `PR #${parsedPullRequestNumber} (${pullRequestUrl})`;
+  } else if (pullRequestUrl) {
+    prReference = `PR ${pullRequestUrl}`;
+  } else if (Number.isInteger(parsedPullRequestNumber)) {
+    prReference = `PR #${parsedPullRequestNumber}`;
+  }
   if (nextStandingIssueNumber) {
     return `Completed by ${prReference}. Standing priority has advanced from #${issueNumber} to #${nextStandingIssueNumber}.`;
   }
   return `Completed by ${prReference}. No next standing-priority issue is currently labeled, so the queue is now idle until a new issue is promoted.`;
 }
 
-async function finalizeMergedPullRequest({ taskPacket, mergeResult, repoRoot, deps = {} }) {
+async function finalizeMergedPullRequest({ taskPacket, repoRoot, deps = {} }) {
   if (typeof deps.finalizeMergedPullRequestFn === 'function') {
-    return deps.finalizeMergedPullRequestFn({ taskPacket, mergeResult, repoRoot });
+    return deps.finalizeMergedPullRequestFn({ taskPacket, repoRoot });
   }
 
   const repository = normalizeText(taskPacket?.repository);
@@ -1163,34 +1735,9 @@ async function finalizeMergedPullRequest({ taskPacket, mergeResult, repoRoot, de
           removeLabels: standingLabels,
           deps
         });
-        helperCallsExecuted.push(`gh issue edit ${standingIssueNumber} --remove-label ${standingLabels.join(',')}`);
+        helperCallsExecuted.push(buildRemoveLabelHelperCall(standingIssueNumber, repository, standingLabels));
       }
-      if (typeof deps.syncStandingPriorityFn === 'function') {
-        await deps.syncStandingPriorityFn({
-          env: {
-            ...process.env,
-            GITHUB_REPOSITORY: repository
-          }
-        });
-      } else {
-        const syncResult = await runCommand(
-          'node',
-          ['tools/priority/sync-standing-priority.mjs'],
-          {
-            cwd: repoRoot,
-            env: {
-              ...process.env,
-              GITHUB_REPOSITORY: repository
-            }
-          },
-          deps
-        );
-        if (syncResult.status !== 0) {
-          throw new Error(
-            normalizeText(syncResult.stderr) || normalizeText(syncResult.stdout) || 'priority sync failed after merge finalization'
-          );
-        }
-      }
+      await syncStandingPriorityForRepo({ repository, repoRoot, deps });
       helperCallsExecuted.push('node tools/priority/sync-standing-priority.mjs');
     }
   }
@@ -1207,7 +1754,7 @@ async function finalizeMergedPullRequest({ taskPacket, mergeResult, repoRoot, de
     }),
     deps
   });
-  helperCallsExecuted.push(`gh issue close ${selectedIssueNumber}`);
+  helperCallsExecuted.push(buildCloseIssueHelperCall(selectedIssueNumber, repository, { hasComment: true }));
 
   return {
     selectedIssueNumber,
@@ -1729,24 +2276,35 @@ export function planDeliveryBrokerAction(taskPacket = {}) {
     if (pullRequest.readyToMerge === true) {
       return {
         actionType: 'merge-pr',
-        laneLifecycle: 'ready-merge'
+        laneLifecycle: 'ready-merge',
+        pullRequest
+      };
+    }
+    if (lifecycle === 'coding') {
+      return {
+        actionType: 'execute-coding-turn',
+        laneLifecycle: 'coding',
+        pullRequest
       };
     }
     if (pullRequest.checks?.blockerClass === 'ci' || lifecycle === 'waiting-ci') {
       return {
         actionType: 'watch-pr',
-        laneLifecycle: 'waiting-ci'
+        laneLifecycle: 'waiting-ci',
+        pullRequest
       };
     }
     if (lifecycle === 'waiting-review') {
       return {
         actionType: 'watch-pr',
-        laneLifecycle: 'waiting-review'
+        laneLifecycle: 'waiting-review',
+        pullRequest
       };
     }
     return {
       actionType: 'watch-pr',
-      laneLifecycle: lifecycle
+      laneLifecycle: lifecycle,
+      pullRequest
     };
   }
   return {
@@ -1810,7 +2368,16 @@ export async function runDeliveryTurnBroker({
         laneLifecycle: planned.laneLifecycle,
         blockerClass: planned.laneLifecycle === 'waiting-review' ? 'review' : 'ci',
         retryable: true,
-        nextWakeCondition: planned.laneLifecycle === 'waiting-review' ? 'review-disposition-updated' : 'checks-green',
+        nextWakeCondition:
+          planned.laneLifecycle === 'waiting-review'
+            ? normalizeText(planned.pullRequest?.nextWakeCondition) || 'review-disposition-updated'
+            : 'checks-green',
+        pollIntervalSecondsHint:
+          coercePositiveInteger(planned.pullRequest?.pollIntervalSecondsHint) ?? null,
+        reviewMonitor:
+          planned.laneLifecycle === 'waiting-review'
+            ? planned.pullRequest?.copilotReviewWorkflow ?? null
+            : null,
         helperCallsExecuted: [],
         filesTouched: []
       }
@@ -1839,7 +2406,6 @@ export async function runDeliveryTurnBroker({
     try {
       const finalization = await finalizeMergedPullRequest({
         taskPacket: enrichedPacket,
-        mergeResult,
         repoRoot,
         deps
       });

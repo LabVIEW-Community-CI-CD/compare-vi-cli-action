@@ -411,3 +411,11 @@ test('delivery-agent manager status emits bounded log-tail trace events for daem
   assert.match(traceText, /"source":"manager-stderr"/);
   assert.match(traceText, /"reason":"status:status"/);
 });
+
+test('Manage-UnattendedDeliveryAgent.ps1 remains a thin wrapper around the JS delivery-agent implementation', async () => {
+  const manager = await readText('tools/priority/Manage-UnattendedDeliveryAgent.ps1');
+
+  assert.doesNotMatch(manager, /function Resolve-DeliveryStateForStatus/);
+  assert.doesNotMatch(manager, /function Get-SanitizedSegment/);
+  assert.match(manager, /delivery-agent\.js/i);
+});
