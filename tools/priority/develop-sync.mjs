@@ -6,6 +6,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { getRepoRoot } from './lib/branch-utils.mjs';
+import { resolveGitAdminPaths } from './lib/git-admin-paths.mjs';
 import { resolveActiveForkRemoteName } from './lib/remote-utils.mjs';
 
 const DEFAULT_REPORT_PATH = path.join('tests', 'results', '_agent', 'issue', 'develop-sync-report.json');
@@ -73,6 +74,34 @@ export function buildParityReportPath(repoRoot, remote) {
   return path.join(repoRoot, 'tests', 'results', '_agent', 'issue', `${remote}-upstream-parity.json`);
 }
 
+export function buildSyncLockName({ baseRemote = 'upstream', headRemote = 'origin', branch = 'develop' } = {}) {
+  return `priority-sync-${baseRemote}-${headRemote}-${branch}.lock`.replace(/[^A-Za-z0-9._-]/g, '_');
+}
+
+export function buildSyncAdminPaths({
+  repoRoot,
+  remote,
+  baseRemote = 'upstream',
+  branch = 'develop',
+  env = process.env,
+  spawnSyncFn = spawnSync
+}) {
+  const adminPaths = resolveGitAdminPaths({
+    cwd: repoRoot,
+    env,
+    spawnSyncFn,
+    includeGitPaths: ['config']
+  });
+
+  return {
+    repoRoot: adminPaths.repoRoot,
+    gitDir: adminPaths.gitDir,
+    gitCommonDir: adminPaths.gitCommonDir,
+    gitConfigPath: adminPaths.gitPaths.config,
+    lockPath: path.join(adminPaths.gitCommonDir, buildSyncLockName({ baseRemote, headRemote: remote, branch }))
+  };
+}
+
 export function buildPwshArgs({ repoRoot, remote, parityReportPath }) {
   return [
     '-NoLogo',
@@ -86,6 +115,20 @@ export function buildPwshArgs({ repoRoot, remote, parityReportPath }) {
   ];
 }
 
+function writeDevelopSyncReport({ repoRoot, reportPath, remotes, actions, status }) {
+  mkdirSync(path.dirname(reportPath), { recursive: true });
+  const report = {
+    schema: 'priority/develop-sync-report@v1',
+    generatedAt: new Date().toISOString(),
+    repositoryRoot: repoRoot,
+    remotes,
+    status,
+    actions
+  };
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  return report;
+}
+
 export function runDevelopSync({
   repoRoot = getRepoRoot(),
   options = parseArgs(),
@@ -94,9 +137,11 @@ export function runDevelopSync({
 } = {}) {
   const remotes = resolveForkRemoteTargets(options.forkRemote, env);
   const actions = [];
+  const reportPath = path.isAbsolute(options.reportPath) ? options.reportPath : path.join(repoRoot, options.reportPath);
 
   for (const remote of remotes) {
     const parityReportPath = buildParityReportPath(repoRoot, remote);
+    const adminPaths = buildSyncAdminPaths({ repoRoot, remote, env, spawnSyncFn });
     const args = buildPwshArgs({ repoRoot, remote, parityReportPath });
     const result = spawnSyncFn('pwsh', args, {
       cwd: repoRoot,
@@ -104,24 +149,36 @@ export function runDevelopSync({
       encoding: 'utf8'
     });
     if (result.status !== 0) {
+      actions.push({
+        remote,
+        status: 'failed',
+        parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/'),
+        adminPaths,
+        exitCode: result.status
+      });
+      writeDevelopSyncReport({
+        repoRoot,
+        reportPath,
+        remotes,
+        actions,
+        status: 'failed'
+      });
       throw new Error(`priority:develop:sync failed for ${remote}.`);
     }
     actions.push({
       remote,
-      parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/')
+      status: 'ok',
+      parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/'),
+      adminPaths
     });
   }
-
-  const reportPath = path.isAbsolute(options.reportPath) ? options.reportPath : path.join(repoRoot, options.reportPath);
-  mkdirSync(path.dirname(reportPath), { recursive: true });
-  const report = {
-    schema: 'priority/develop-sync-report@v1',
-    generatedAt: new Date().toISOString(),
-    repositoryRoot: repoRoot,
+  const report = writeDevelopSyncReport({
+    repoRoot,
+    reportPath,
     remotes,
-    actions
-  };
-  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    actions,
+    status: 'ok'
+  });
   return { report, reportPath };
 }
 

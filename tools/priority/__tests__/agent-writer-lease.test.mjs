@@ -164,14 +164,56 @@ test('defaultOwner prefers AGENT_WRITER_LEASE_OWNER when provided', () => {
   }
 });
 
-test('defaultLeaseRoot resolves the active worktree gitdir instead of assuming repoRoot/.git', () => {
-  const probe = spawnSync('git', ['rev-parse', '--git-dir'], {
+test('defaultLeaseRoot resolves git-common-dir instead of assuming repoRoot/.git', () => {
+  const probe = spawnSync('git', ['rev-parse', '--git-common-dir'], {
     cwd: repoRoot,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe']
   });
-  assert.equal(probe.status, 0, probe.stderr || 'git rev-parse --git-dir failed');
-  const gitDir = probe.stdout.trim();
-  const expectedGitDir = path.isAbsolute(gitDir) ? path.normalize(gitDir) : path.resolve(repoRoot, gitDir);
-  assert.equal(defaultLeaseRoot(), path.join(expectedGitDir, 'agent-writer-leases'));
+  assert.equal(probe.status, 0, probe.stderr || 'git rev-parse --git-common-dir failed');
+  const gitCommonDir = probe.stdout.trim();
+  const expectedGitCommonDir = path.isAbsolute(gitCommonDir) ? path.normalize(gitCommonDir) : path.resolve(repoRoot, gitCommonDir);
+  assert.equal(defaultLeaseRoot(), path.join(expectedGitCommonDir, 'agent-writer-leases'));
+});
+
+test('defaultLeaseRoot resolves git-common-dir for a linked worktree repo root override', async (t) => {
+  const sandboxRoot = randomTempRoot('agent-writer-lease-worktree');
+  const repoDir = path.join(sandboxRoot, 'repo');
+  const worktreeDir = path.join(sandboxRoot, 'worktree');
+  await fs.mkdir(sandboxRoot, { recursive: true });
+  t.after(async () => {
+    await fs.rm(sandboxRoot, { recursive: true, force: true });
+  });
+
+  const run = (command, args, cwd) => {
+    const result = spawnSync(command, args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    assert.equal(result.status, 0, result.stderr || `${command} ${args.join(' ')} failed`);
+    return String(result.stdout ?? '').trim();
+  };
+
+  run('git', ['init', '--initial-branch=develop', repoDir], sandboxRoot);
+  run('git', ['config', 'user.email', 'agent@example.com'], repoDir);
+  run('git', ['config', 'user.name', 'Agent Runner'], repoDir);
+  await fs.writeFile(path.join(repoDir, 'README.md'), 'lease\n', 'utf8');
+  run('git', ['add', 'README.md'], repoDir);
+  run('git', ['commit', '-m', 'seed'], repoDir);
+  run('git', ['worktree', 'add', '-b', 'issue/test-lease', worktreeDir, 'develop'], repoDir);
+
+  const gitCommonDir = run('git', ['rev-parse', '--git-common-dir'], worktreeDir);
+  const expectedGitCommonDir = path.isAbsolute(gitCommonDir)
+    ? path.normalize(gitCommonDir)
+    : path.resolve(worktreeDir, gitCommonDir);
+
+  assert.equal(
+    defaultLeaseRoot({ repoRoot: worktreeDir }),
+    path.join(expectedGitCommonDir, 'agent-writer-leases')
+  );
+  assert.notEqual(
+    defaultLeaseRoot({ repoRoot: worktreeDir }),
+    path.join(worktreeDir, '.git', 'agent-writer-leases')
+  );
 });
