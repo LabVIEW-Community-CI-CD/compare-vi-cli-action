@@ -122,25 +122,25 @@ function Test-ContextMatch {
   return $false
 }
 
-function Resolve-BranchExpectedContexts {
+function Resolve-PatternValue {
   param(
-    [psobject]$Branches,
+    [psobject]$Mapping,
     [string]$BranchName
   )
 
-  if (-not $Branches) {
-    return @()
+  if (-not $Mapping) {
+    return $null
   }
 
-  foreach ($prop in $Branches.PSObject.Properties) {
+  foreach ($prop in $Mapping.PSObject.Properties) {
     if ($prop.Name -eq $BranchName) {
-      return @($prop.Value)
+      return $prop.Value
     }
   }
 
   $bestMatch = $null
   $bestSpecificity = -1
-  foreach ($prop in $Branches.PSObject.Properties) {
+  foreach ($prop in $Mapping.PSObject.Properties) {
     $pattern = $prop.Name
     if ($pattern -eq 'default') {
       continue
@@ -152,22 +152,35 @@ function Resolve-BranchExpectedContexts {
       $specificity = ($pattern -replace '[\*\?]', '').Length
       if ($specificity -gt $bestSpecificity) {
         $bestSpecificity = $specificity
-        $bestMatch = @($prop.Value)
+        $bestMatch = $prop.Value
       }
     }
   }
 
-  if ($null -ne $bestMatch -and $bestMatch.Count -gt 0) {
+  if ($null -ne $bestMatch) {
     return $bestMatch
   }
 
-  foreach ($prop in $Branches.PSObject.Properties) {
+  foreach ($prop in $Mapping.PSObject.Properties) {
     if ($prop.Name -eq 'default') {
-      return @($prop.Value)
+      return $prop.Value
     }
   }
 
-  return @()
+  return $null
+}
+
+function Resolve-BranchExpectedContexts {
+  param(
+    [psobject]$Branches,
+    [string]$BranchName
+  )
+
+  $resolved = Resolve-PatternValue -Mapping $Branches -BranchName $BranchName
+  if ($null -eq $resolved) {
+    return @()
+  }
+  return @($resolved)
 }
 
 $rawBranch = $Branch
@@ -215,8 +228,23 @@ $branches = $policy.branches
 if (-not $branches) {
   throw "Policy file '$PolicyPath' does not contain a 'branches' object."
 }
+$branchClassBindings = $policy.branchClassBindings
+$branchClassRequiredChecks = $policy.branchClassRequiredChecks
+$branchClassId = $null
+if ($branchClassBindings) {
+  $resolvedBranchClass = Resolve-PatternValue -Mapping $branchClassBindings -BranchName $Branch
+  if ($resolvedBranchClass) {
+    $branchClassId = [string]$resolvedBranchClass
+  }
+}
 
-$expectedRaw = @(Resolve-BranchExpectedContexts -Branches $branches -BranchName $Branch)
+$expectedRaw = @()
+if ($branchClassId -and $branchClassRequiredChecks) {
+  $expectedRaw = @(Resolve-BranchExpectedContexts -Branches $branchClassRequiredChecks -BranchName $branchClassId)
+}
+if ($expectedRaw.Count -eq 0) {
+  $expectedRaw = @(Resolve-BranchExpectedContexts -Branches $branches -BranchName $Branch)
+}
 $expected = @($expectedRaw | Where-Object { $_ } | Sort-Object -Unique)
 
 $producedRaw = if ($PSBoundParameters.ContainsKey('ProducedContexts')) {
@@ -328,6 +356,7 @@ $contract = [ordered]@{
 $bpObject = [ordered]@{
   contract = $contract
   branch   = $Branch
+  branchClassId = $branchClassId
   expected = $expected
   produced = $produced
   actual   = $actualBlock
@@ -353,6 +382,9 @@ Set-Content -LiteralPath $idxPath -Value $jsonOut -Encoding UTF8
 if ($env:GITHUB_STEP_SUMMARY) {
   $summaryLines = @('### Branch Protection Verification','')
   $summaryLines += ('- Branch: {0}' -f $Branch)
+  if ($branchClassId) {
+    $summaryLines += ('- Branch class: {0}' -f $branchClassId)
+  }
   $summaryLines += ('- Status: {0}' -f $resultStatus)
   $summaryLines += ('- Reason: {0}' -f $resultReason)
   if ($missingCount -gt 0) {

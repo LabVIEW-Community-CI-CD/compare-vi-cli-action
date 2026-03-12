@@ -9,8 +9,10 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $policyLocal = Get-Content -LiteralPath $policyPathLocal -Raw | ConvertFrom-Json
     Set-Variable -Name policy -Scope Script -Value $policyLocal
 
-    Set-Variable -Name developExpected -Scope Script -Value @($policyLocal.branches.develop)
-    Set-Variable -Name releaseExpected -Scope Script -Value @($policyLocal.branches.'release/*')
+    Set-Variable -Name developBranchClassId -Scope Script -Value ([string]$policyLocal.branchClassBindings.develop)
+    Set-Variable -Name releaseBranchClassId -Scope Script -Value ([string]$policyLocal.branchClassBindings.'release/*')
+    Set-Variable -Name developExpected -Scope Script -Value @($policyLocal.branchClassRequiredChecks.($script:developBranchClassId))
+    Set-Variable -Name releaseExpected -Scope Script -Value @($policyLocal.branchClassRequiredChecks.($script:releaseBranchClassId))
     Set-Variable -Name updateScript -Scope Script -Value (Join-Path $repoRootLocal 'tools/Update-SessionIndexBranchProtection.ps1')
     $newFixture = {
       param([string]$Name)
@@ -36,6 +38,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
   }
 
   It 'requires develop policy to include core required checks' {
+    $script:developBranchClassId | Should -Be 'upstream-integration'
     $script:developExpected | Should -Contain 'lint'
     $script:developExpected | Should -Contain 'fixtures'
     $script:developExpected | Should -Contain 'session-index'
@@ -55,6 +58,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $bp = $idx.branchProtection
     $bp | Should -Not -BeNullOrEmpty
     $bp.branch | Should -Be 'develop'
+    $bp.branchClassId | Should -Be $script:developBranchClassId
     ($bp.expected | Sort-Object) | Should -Be ($script:developExpected | Sort-Object)
     ($bp.produced | Sort-Object) | Should -Be ($script:developExpected | Sort-Object)
     $bp.result.status | Should -Be 'ok'
@@ -92,6 +96,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
     $bp = $idx.branchProtection
     $bp.branch | Should -Be 'develop'
+    $bp.branchClassId | Should -Be $script:developBranchClassId
     ($bp.expected | Sort-Object) | Should -Be ($script:developExpected | Sort-Object)
     ($bp.produced | Sort-Object) | Should -Be ($script:developExpected | Sort-Object)
     $bp.result.status | Should -Be 'ok'
@@ -231,6 +236,7 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
     $bp = $idx.branchProtection
     $bp.branch | Should -Be 'release/v0.6.0'
+    $bp.branchClassId | Should -Be $script:releaseBranchClassId
     ($bp.expected | Sort-Object) | Should -Be ($script:releaseExpected | Sort-Object)
     ($bp.produced | Sort-Object) | Should -Be ($script:releaseExpected | Sort-Object)
     $bp.result.status | Should -Be 'ok'

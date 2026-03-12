@@ -29,7 +29,6 @@ const EXPECTED_DEVELOP_CHECKS = [
   'issue-snapshot',
   'semver',
   'Policy Guard (Upstream) / policy-guard',
-  'hook-parity (ubuntu-latest)',
   'vi-history-scenarios-linux',
   'agent-review-policy',
   'commit-integrity'
@@ -220,18 +219,7 @@ function toRulesetSummary(ruleset) {
 }
 
 test('priority:policy --apply updates rulesets for develop/main/release', async () => {
-  const expectedDevelopChecks = [
-    'lint',
-    'fixtures',
-    'session-index',
-    'issue-snapshot',
-    'semver',
-    'Policy Guard (Upstream) / policy-guard',
-    'hook-parity (ubuntu-latest)',
-    'vi-history-scenarios-linux',
-    'agent-review-policy',
-    'commit-integrity'
-  ];
+  const expectedDevelopChecks = [...EXPECTED_DEVELOP_CHECKS];
   const expectedMainChecks = [
     'lint',
     'pester',
@@ -1642,18 +1630,7 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
     }
   };
 
-  const developChecks = [
-    'lint',
-    'fixtures',
-    'session-index',
-    'issue-snapshot',
-    'semver',
-    'Policy Guard (Upstream) / policy-guard',
-    'hook-parity (ubuntu-latest)',
-    'vi-history-scenarios-linux',
-    'agent-review-policy',
-    'commit-integrity'
-  ];
+  const developChecks = [...EXPECTED_DEVELOP_CHECKS];
   const mainChecks = [
     'lint',
     'pester',
@@ -1875,18 +1852,7 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     }
   };
 
-  const developChecksExpected = [
-    'lint',
-    'fixtures',
-    'session-index',
-    'issue-snapshot',
-    'semver',
-    'Policy Guard (Upstream) / policy-guard',
-    'hook-parity (ubuntu-latest)',
-    'vi-history-scenarios-linux',
-    'agent-review-policy',
-    'commit-integrity'
-  ];
+  const developChecksExpected = [...EXPECTED_DEVELOP_CHECKS];
   const mainChecksExpected = [
     'lint',
     'pester',
@@ -2420,4 +2386,3 @@ test('priority:policy optional ruleset seam detects copilot review parameter dri
     'copilot_code_review.review_draft_pull_requests: expected false, actual true'
   ]);
 });
-
