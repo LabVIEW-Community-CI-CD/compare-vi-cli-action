@@ -176,6 +176,16 @@ function Test-GitHubSshAuthFailure {
   return $false
 }
 
+function Get-SafeRemoteLocation {
+  param([string]$Location)
+
+  if ([string]::IsNullOrWhiteSpace($Location)) {
+    return $Location
+  }
+
+  return ($Location -replace '^(https?://)([^/@]+@)', '$1')
+}
+
 function Invoke-PushWithTransportFallback {
   param(
     [Parameter(Mandatory)][string]$Remote,
@@ -209,10 +219,10 @@ function Invoke-PushWithTransportFallback {
       'push', $fetchUrl, ("{0}:{0}" -f $BranchName)
     ) | Out-Null
     return [ordered]@{
-      target = $fetchUrl
+      target = Get-SafeRemoteLocation -Location $fetchUrl
       usedFallback = $true
       primaryRemote = $Remote
-      primaryPushUrl = $pushUrl
+      primaryPushUrl = Get-SafeRemoteLocation -Location $pushUrl
     }
   }
 }
