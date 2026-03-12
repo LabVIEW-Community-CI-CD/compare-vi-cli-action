@@ -145,6 +145,13 @@ function isQueueManagedRulesetExpectation(expectations) {
   return Boolean(expectations) && expectations.merge_queue !== null && expectations.merge_queue !== undefined;
 }
 
+function deriveActiveQueueManagedBranches(manifest, portabilityProfile) {
+  if (portabilityProfile?.queueManagedRulesetsPortable === false) {
+    return new Set();
+  }
+  return deriveQueueManagedBranches(manifest);
+}
+
 function buildRulesetPortabilityProfile(repoData, overrides = {}) {
   const isFork = repoData?.fork === true;
   const ownerType = String(repoData?.owner?.type ?? '').toLowerCase();
@@ -1155,7 +1162,10 @@ async function collectState(manifest, repoUrl, token, fetchFn, logFn = console.l
 
 function evaluateDiffs(manifest, state, options = {}) {
   const repoDiffs = compareRepoSettings(manifest.repo ?? {}, state.repoData ?? {});
-  const queueManagedBranches = deriveQueueManagedBranches(manifest);
+  const queueManagedBranches =
+    options.queueManagedBranches instanceof Set
+      ? options.queueManagedBranches
+      : deriveQueueManagedBranches(manifest);
   const ignoreRulesetDiffs = options.ignoreRulesetDiffs === true;
   const ignoreRulesetEntryFn =
     typeof options.ignoreRulesetEntryFn === 'function' ? options.ignoreRulesetEntryFn : () => false;
@@ -1198,6 +1208,26 @@ function evaluateDiffs(manifest, state, options = {}) {
   }
 
   return { repoDiffs, branchDiffs, rulesetDiffs };
+}
+
+function collectBranchStatesNeedingUpdates(branchStates, queueManagedBranches) {
+  return branchStates.filter((entry) => {
+    if (entry.skipReason === 'pattern') {
+      return false;
+    }
+    if (entry.error) {
+      return isNotFoundError(entry.error);
+    }
+    const diffs = compareBranchSettings(
+      entry.branch,
+      entry.expectations,
+      entry.protection,
+      {
+        skipRequiredStatusChecks: queueManagedBranches.has(entry.branch)
+      }
+    );
+    return diffs.length > 0;
+  });
 }
 
 export async function run({
@@ -1395,10 +1425,11 @@ export async function run({
       log('[policy] User-owned throughput fork detected; skipping queue-managed fork-local ruleset enforcement because merge_queue rulesets are not portable to user-owned forks.');
     }
 
+    let queueManagedBranches = deriveActiveQueueManagedBranches(manifest, portabilityProfile);
     const initialDiffs = evaluateDiffs(manifest, initialState, {
+      queueManagedBranches,
       ignoreRulesetEntryFn: (entry) => shouldIgnoreRulesetEntry(entry, portabilityProfile)
     });
-    const queueManagedBranches = deriveQueueManagedBranches(manifest);
     applyDiffsToReport(initialDiffs);
 
     const allDiffs = [
@@ -1418,38 +1449,26 @@ export async function run({
     }
 
     if (options.apply) {
-      const branchStatesNeedingUpdates = initialState.branchStates.filter((entry) => {
-        if (entry.skipReason === 'pattern') {
-          return false;
-        }
-        if (entry.error) {
-          return isNotFoundError(entry.error);
-        }
-        const diffs = compareBranchSettings(
-          entry.branch,
-          entry.expectations,
-          entry.protection,
-          {
-            skipRequiredStatusChecks: queueManagedBranches.has(entry.branch)
+      const applyBranchUpdates = async (branchStates) => {
+        for (const entry of branchStates) {
+          await invokeWithAuthFallback(`applyBranchProtection(${entry.branch})`, (token) =>
+            applyBranchProtection(
+              repoUrl,
+              token,
+              entry.branch,
+              entry.expectations,
+              entry.protection,
+              fetchFn,
+              log
+            )
+          );
+          if (!report.applied.branches.includes(entry.branch)) {
+            report.applied.branches.push(entry.branch);
           }
-        );
-        return diffs.length > 0;
-      });
+        }
+      };
 
-      for (const entry of branchStatesNeedingUpdates) {
-        await invokeWithAuthFallback(`applyBranchProtection(${entry.branch})`, (token) =>
-          applyBranchProtection(
-            repoUrl,
-            token,
-            entry.branch,
-            entry.expectations,
-            entry.protection,
-            fetchFn,
-            log
-          )
-        );
-        report.applied.branches.push(entry.branch);
-      }
+      await applyBranchUpdates(collectBranchStatesNeedingUpdates(initialState.branchStates, queueManagedBranches));
 
       for (const entry of initialState.rulesetStates) {
         if (shouldIgnoreRulesetEntry(entry, portabilityProfile)) {
@@ -1497,8 +1516,12 @@ export async function run({
               reason: `ruleset ${entry.id}: merge_queue unsupported`
             });
             report.portability = portabilityProfile;
+            queueManagedBranches = deriveActiveQueueManagedBranches(manifest, portabilityProfile);
             log(
               `[policy] Fork ruleset portability downgrade detected for ${report.repository}: merge_queue rules are unsupported on this fork. Continuing with non-queue ruleset enforcement only.`
+            );
+            await applyBranchUpdates(
+              collectBranchStatesNeedingUpdates(initialState.branchStates, queueManagedBranches)
             );
             continue;
           }
@@ -1510,6 +1533,7 @@ export async function run({
         collectState(manifest, repoUrl, token, fetchFn, log)
       );
       const postDiffs = evaluateDiffs(manifest, postState, {
+        queueManagedBranches,
         ignoreRulesetEntryFn: (entry) => shouldIgnoreRulesetEntry(entry, portabilityProfile)
       });
       applyDiffsToReport(postDiffs);

@@ -1359,6 +1359,131 @@ test('priority:policy --apply downgrades queue-managed rulesets when a fork reje
   );
 });
 
+test('priority:policy --apply enforces required checks after merge_queue portability downgrade', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-fork';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const requests = [];
+  let createdReleaseRuleset = null;
+  let developProtection = createAlignedBranchProtection([]);
+  let mainProtection = createAlignedBranchProtection([]);
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    requests.push({ method, url, body: options.body });
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'Organization', login: 'test-org' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(mainProtection);
+    }
+    if (method === 'PUT' && url === branchDevelopUrl) {
+      const payload = JSON.parse(options.body);
+      developProtection = {
+        ...payload,
+        required_status_checks: {
+          ...payload.required_status_checks,
+          checks: (payload.required_status_checks?.contexts ?? []).map((context) => ({ context }))
+        }
+      };
+      return createResponse(developProtection);
+    }
+    if (method === 'PUT' && url === branchMainUrl) {
+      const payload = JSON.parse(options.body);
+      mainProtection = {
+        ...payload,
+        required_status_checks: {
+          ...payload.required_status_checks,
+          checks: (payload.required_status_checks?.contexts ?? []).map((context) => ({ context }))
+        }
+      };
+      return createResponse(mainProtection);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      if (createdReleaseRuleset) {
+        return createResponse(createdReleaseRuleset);
+      }
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse([]);
+    }
+    if (method === 'POST' && url === listUrl) {
+      const payload = JSON.parse(options.body);
+      if (payload.rules.some((rule) => rule?.type === 'merge_queue')) {
+        return createResponse(
+          {
+            message: 'Validation Failed',
+            errors: [{ message: "Invalid rule 'merge_queue'" }]
+          },
+          422,
+          'Unprocessable Entity'
+        );
+      }
+      createdReleaseRuleset = {
+        ...payload,
+        id: 8614172,
+        enforcement: payload.enforcement ?? 'active',
+        target: payload.target ?? 'branch',
+        bypass_actors: payload.bypass_actors ?? []
+      };
+      return createResponse(createdReleaseRuleset, 201, 'Created');
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--apply'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-fork',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: () => {},
+    error: () => {}
+  });
+
+  assert.equal(code, 0, 'apply mode should recover branch protection enforcement after portability downgrade');
+  assert.deepEqual(
+    developProtection.required_status_checks.contexts.slice().sort(),
+    EXPECTED_DEVELOP_CHECKS.slice().sort(),
+    'develop required checks should be enforced after downgrade'
+  );
+  assert.deepEqual(
+    mainProtection.required_status_checks.contexts.slice().sort(),
+    EXPECTED_MAIN_CHECKS.slice().sort(),
+    'main required checks should be enforced after downgrade'
+  );
+  assert.ok(
+    requests.some((entry) => entry.method === 'PUT' && entry.url === branchDevelopUrl),
+    'expected develop branch protection update after downgrade'
+  );
+  assert.ok(
+    requests.some((entry) => entry.method === 'PUT' && entry.url === branchMainUrl),
+    'expected main branch protection update after downgrade'
+  );
+});
+
 test('priority:policy skips when repository settings require admin access', async () => {
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
   const rulesetDevelopUrl = `${repoUrl}/rulesets/8811898`;
