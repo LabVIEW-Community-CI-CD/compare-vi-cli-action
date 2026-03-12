@@ -133,6 +133,53 @@ Describe 'Invoke-PesterTests.ps1 Dispatcher' -Tag 'Unit' {
     $joined | Should -Match 'IncludeIntegration is deprecated'
   }
 
+  It 'accepts repo-relative IncludePatterns without crashing dispatcher selection' {
+    if ($script:dispatcherSkip) {
+      Set-ItResult -Skipped -Because $script:dispatcherSkipReason
+      return
+    }
+
+    $resultsDir = Join-Path $TestDrive 'relative-include-results'
+    Push-Location $script:repoRoot
+    try {
+      $res = Invoke-DispatcherSafe -DispatcherPath $script:dispatcherPath `
+        -ResultsPath $resultsDir `
+        -IncludePatterns 'tests/Invoke-GitHubIntakeScenario.Tests.ps1' `
+        -AdditionalArgs @('-IntegrationMode','exclude') `
+        -TimeoutSeconds 90
+    } finally {
+      Pop-Location
+    }
+
+    $res.TimedOut | Should -BeFalse
+    $res.ExitCode | Should -Be 0
+    ($res.StdOut + "`n" + $res.StdErr) | Should -Match 'Applied IncludePatterns \(tests/Invoke-GitHubIntakeScenario\.Tests\.ps1\) -> kept 1/'
+  }
+
+  It 'emits placeholder artifacts when IncludePatterns matches zero files' {
+    if ($script:dispatcherSkip) {
+      Set-ItResult -Skipped -Because $script:dispatcherSkipReason
+      return
+    }
+
+    $resultsDir = Join-Path $TestDrive 'zero-match-results'
+    Push-Location $script:repoRoot
+    try {
+      $res = Invoke-DispatcherSafe -DispatcherPath $script:dispatcherPath `
+        -ResultsPath $resultsDir `
+        -IncludePatterns 'tests/DoesNotExist.Tests.ps1' `
+        -AdditionalArgs @('-IntegrationMode','exclude') `
+        -TimeoutSeconds 60
+    } finally {
+      Pop-Location
+    }
+
+    $res.TimedOut | Should -BeFalse
+    $res.ExitCode | Should -Be 0
+    ($res.StdOut + "`n" + $res.StdErr) | Should -Match 'No test files found\. Placeholder artifacts emitted\.'
+    Test-Path -LiteralPath (Join-Path $resultsDir 'pester-results.xml') | Should -BeTrue
+  }
+
   It 'does not override an existing FAST_PESTER value when integrations excluded' {
     if ($script:dispatcherSkip) {
       Set-ItResult -Skipped -Because $script:dispatcherSkipReason

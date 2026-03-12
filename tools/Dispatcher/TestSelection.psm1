@@ -89,8 +89,28 @@ function Test-DispatcherPatternMatch {
 
   foreach ($pattern in $Patterns) {
     if (-not $pattern) { continue }
-    $target = if ($pattern -match '[\\/]') { $File.FullName } else { $File.Name }
-    if ($target -like $pattern) {
+    if ($pattern -match '[\\/]') {
+      $normalizedPattern = ($pattern -replace '\\', '/')
+      $candidates = New-Object System.Collections.Generic.List[string]
+      $candidates.Add(($File.FullName -replace '\\', '/')) | Out-Null
+
+      try {
+        $repoRelative = [System.IO.Path]::GetRelativePath((Get-Location).Path, $File.FullName)
+        if (-not [string]::IsNullOrWhiteSpace($repoRelative)) {
+          $candidates.Add(($repoRelative -replace '\\', '/')) | Out-Null
+        }
+      } catch {}
+
+      foreach ($candidate in $candidates) {
+        if ($candidate -like $normalizedPattern) {
+          return $true
+        }
+      }
+
+      continue
+    }
+
+    if ($File.Name -like $pattern) {
       return $true
     }
   }
