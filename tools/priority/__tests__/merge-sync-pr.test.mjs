@@ -167,6 +167,33 @@ test('selectMergeMode honors branch-class merge policy for queue-managed upstrea
   });
 });
 
+test('selectMergeMode ignores legacy mergeQueueBranches when branch-class policy is non-queue', () => {
+  const baseBranchClass = classifyBranch({
+    branch: 'develop',
+    contract: branchClassContract,
+    repositoryRole: 'fork'
+  });
+
+  const selection = selectMergeMode(
+    {
+      state: 'OPEN',
+      isDraft: false,
+      baseRefName: 'develop',
+      mergeStateStatus: 'CLEAN',
+      mergeable: 'MERGEABLE'
+    },
+    {
+      mergeQueueBranches: new Set(['develop']),
+      baseBranchClass
+    }
+  );
+
+  assert.deepEqual(selection, {
+    mode: 'direct',
+    reason: 'clean-mergeable'
+  });
+});
+
 test('buildMergeArgs omits --delete-branch for merge-queue auto mode', () => {
   const args = buildMergeArgs({
     pr: 1015,

@@ -27,20 +27,23 @@ Instead, branch behavior is driven by one machine-readable contract:
 
 ## Allowed Transitions
 
+The `Via` column below mirrors the exact `allowedTransitions[*].via` tokens from
+[tools/policy/branch-classes.json](../tools/policy/branch-classes.json).
+
 | From | Action | To | Via |
 | --- | --- | --- | --- |
-| `lane` | `promote` | `upstream-integration` | PR merge into `develop` |
-| `feature` | `promote` | `upstream-integration` | PR merge into `develop` |
-| `lane` | `promote` | `upstream-release-prep` | Release PR |
-| `upstream-release-prep` | `promote` | `upstream-release` | Release PR |
+| `lane` | `promote` | `upstream-integration` | `pull-request` |
+| `feature` | `promote` | `upstream-integration` | `pull-request` |
+| `lane` | `promote` | `upstream-release-prep` | `pull-request` |
+| `upstream-release-prep` | `promote` | `upstream-release` | `pull-request` |
 | `upstream-integration` | `sync` | `fork-mirror-develop` | `priority:develop:sync` |
 | `upstream-integration` | `queue` | `merge-queue` | `priority:merge-sync` |
 | `upstream-release` | `queue` | `merge-queue` | `priority:merge-sync` |
-| `merge-queue` | `merge` | `upstream-integration` | GitHub merge queue |
-| `merge-queue` | `merge` | `upstream-release` | GitHub merge queue |
+| `merge-queue` | `merge` | `upstream-integration` | `github-merge-queue` |
+| `merge-queue` | `merge` | `upstream-release` | `github-merge-queue` |
 | `upstream-integration` | `branch` | `lane` | `issue/*` |
 | `upstream-integration` | `branch` | `feature` | `feature/*` |
-| `fork-mirror-develop` | `branch` | `lane` | fork lane creation only; promotion still targets upstream |
+| `fork-mirror-develop` | `branch` | `lane` | `issue/*` |
 
 ## Operational Implications
 

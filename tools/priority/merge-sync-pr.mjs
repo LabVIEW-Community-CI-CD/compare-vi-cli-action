@@ -342,7 +342,7 @@ export function selectMergeMode(prInfo, { admin = false, mergeQueueBranches = ne
     return { mode: 'auto', reason: `merge-queue-branch-${baseRefName || baseBranchClass.id}` };
   }
 
-  if (baseRefName && mergeQueueBranches.has(baseRefName)) {
+  if (!baseBranchClass && baseRefName && mergeQueueBranches.has(baseRefName)) {
     return { mode: 'auto', reason: `merge-queue-branch-${baseRefName}` };
   }
 
