@@ -205,6 +205,16 @@ function Test-GitHubProtectedBranchFailure {
   return $false
 }
 
+function Get-ProtectedBranchSyncReason {
+  param([Parameter(Mandatory)][string]$Message)
+
+  if ($Message -match '(?i)GH013') {
+    return 'protected-branch-gh013'
+  }
+
+  return 'protected-branch'
+}
+
 function Get-SafeRemoteLocation {
   param([string]$Location)
 
@@ -357,7 +367,7 @@ try {
         }
 
         $syncMode = 'protected-pr'
-        $syncReason = 'protected-branch-gh013'
+        $syncReason = Get-ProtectedBranchSyncReason -Message $message
         $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
         $syncBranch = Get-ProtectedSyncBranchName -Remote $HeadRemote -BranchName $Branch
         Write-Warning ("[sync] Protected branch rejected direct push to {0}/{1}; staging sync PR on {2}" -f $HeadRemote, $Branch, $syncBranch)
@@ -438,10 +448,11 @@ try {
   if ($pushTransport) {
     $parityReport['pushTransport'] = $pushTransport
   }
+  $tipDiffCount = [int]($parityReport['tipDiff']['fileCount'])
   $syncResult = [ordered]@{
     mode = $syncMode
     reason = $syncReason
-    parityConverged = $false
+    parityConverged = ($tipDiffCount -eq 0)
   }
   if ($protectedSyncReportPath) {
     $syncResult['reportPath'] = $protectedSyncReportPath
@@ -449,9 +460,6 @@ try {
   if ($protectedSync) {
     $syncResult['protectedSync'] = $protectedSync
   }
-  ($parityReport | ConvertTo-Json -Depth 20) + "`n" | Set-Content -LiteralPath $parityReportPath -Encoding utf8
-  $tipDiffCount = [int]($parityReport['tipDiff']['fileCount'])
-  $syncResult['parityConverged'] = ($tipDiffCount -eq 0)
   $parityReport['syncResult'] = $syncResult
   ($parityReport | ConvertTo-Json -Depth 20) + "`n" | Set-Content -LiteralPath $parityReportPath -Encoding utf8
   if ($tipDiffCount -ne 0 -and $syncMode -ne 'protected-pr') {

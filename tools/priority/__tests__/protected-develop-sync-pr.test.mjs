@@ -63,8 +63,14 @@ test('buildProtectedSyncPrTitle and body describe protected branch staging', () 
   });
 
   assert.match(body, /align `LabVIEW-Community-CI-CD\/compare-vi-cli-action-fork:develop` with `LabVIEW-Community-CI-CD\/compare-vi-cli-action:develop`/);
+  assert.match(body, /stage protected-fork `develop` sync through a PR \/ merge-queue path instead of direct push/);
   assert.match(body, /sync branch: `sync\/origin-develop`/);
   assert.match(body, /Refs LabVIEW-Community-CI-CD\/compare-vi-cli-action#986/);
+});
+
+test('protected sync usage text is generic across protected branches', async () => {
+  const text = await readFile(new URL('../protected-develop-sync-pr.mjs', import.meta.url), 'utf8');
+  assert.match(text, /protected branch \(see --branch\) is being synced/);
 });
 
 test('buildProtectedSyncSummaryPayload captures PR and merge request details', () => {

@@ -132,8 +132,8 @@ function writeDevelopSyncReport({ repoRoot, reportPath, remotes, actions, status
 function readJsonFile(filePath) {
   try {
     return JSON.parse(readFileSync(filePath, 'utf8'));
-  } catch {
-    return null;
+  } catch (error) {
+    throw new Error(`Unable to read parity report '${filePath}': ${error.message}`);
   }
 }
 
@@ -173,7 +173,26 @@ export function runDevelopSync({
       });
       throw new Error(`priority:develop:sync failed for ${remote}.`);
     }
-    const parityReport = readJsonFile(parityReportPath);
+    let parityReport;
+    try {
+      parityReport = readJsonFile(parityReportPath);
+    } catch (error) {
+      actions.push({
+        remote,
+        status: 'failed',
+        parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/'),
+        adminPaths,
+        error: error.message
+      });
+      writeDevelopSyncReport({
+        repoRoot,
+        reportPath,
+        remotes,
+        actions,
+        status: 'failed'
+      });
+      throw error;
+    }
     actions.push({
       remote,
       status: 'ok',

@@ -30,7 +30,7 @@ function printUsage() {
   console.log('Usage: node tools/priority/protected-develop-sync-pr.mjs [options]');
   console.log('');
   console.log('Options:');
-  console.log('  --target-remote <origin|personal>    Fork remote whose protected develop branch is being synced.');
+  console.log('  --target-remote <origin|personal>    Fork remote whose protected branch (see --branch) is being synced.');
   console.log(`  --base-remote <name>                  Base remote name used for diagnostics (default: ${DEFAULT_BASE_REMOTE}).`);
   console.log(`  --branch <name>                      Protected branch to sync (default: ${DEFAULT_BRANCH}).`);
   console.log('  --sync-branch <name>                 Deterministic sync branch already pushed to the target remote.');
@@ -119,7 +119,7 @@ export function buildProtectedSyncPrBody({
   const lines = [
     '## Summary',
     `- align \`${targetSlug}:${branch}\` with \`${upstreamSlug}:${branch}\``,
-    '- stage protected-fork develop sync through a PR / merge-queue path instead of direct push',
+    `- stage protected-fork \`${branch}\` sync through a PR / merge-queue path instead of direct push`,
     '',
     '## Testing',
     '- branch sync only; required checks run on this PR',

@@ -118,11 +118,14 @@ test('Sync-OriginUpstreamDevelop stages a protected-branch sync PR when GH013 bl
   const source = readFileSyncImmediate(scriptPath, 'utf8');
 
   assert.match(source, /function Test-GitHubProtectedBranchFailure/);
+  assert.match(source, /function Get-ProtectedBranchSyncReason/);
   assert.match(source, /GH013/);
   assert.match(source, /Changes must be made through a pull request/);
   assert.match(source, /Changes must be made through the merge queue/);
   assert.match(source, /protected-develop-sync-pr\.mjs/);
   assert.match(source, /Protected sync staged via PR path/);
+  assert.match(source, /\$syncReason = Get-ProtectedBranchSyncReason -Message \$message/);
+  assert.equal((source.match(/Set-Content -LiteralPath \$parityReportPath -Encoding utf8/g) ?? []).length, 1);
 });
 
 test('buildSyncAdminPaths uses git-common-dir for repo-wide lock serialization in a linked worktree', () => {
@@ -225,6 +228,44 @@ test('runDevelopSync records protected sync mode details from the parity report'
   assert.equal(report.actions[0].syncReason, 'protected-branch-gh013');
   assert.equal(report.actions[0].parityConverged, false);
   assert.equal(report.actions[0].protectedSync.pullRequest.number, 44);
+});
+
+test('runDevelopSync fails closed when the parity report is unreadable', async (t) => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-bad-parity-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  const parityReportPath = path.join(tempRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
+  await mkdir(path.dirname(parityReportPath), { recursive: true });
+  await writeFile(parityReportPath, '{not-valid-json', 'utf8');
+
+  const reportPath = path.join(tempRoot, 'develop-sync-report.json');
+  await assert.rejects(
+    async () =>
+      runDevelopSync({
+        repoRoot: tempRoot,
+        options: {
+          forkRemote: 'origin',
+          reportPath
+        },
+        spawnSyncFn: (command, args) => {
+          if (command === 'git') {
+            return spawnSync(command, args, { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+          }
+          if (command === 'pwsh') {
+            return { status: 0, stdout: '', stderr: '' };
+          }
+          throw new Error(`Unexpected command ${command}`);
+        }
+      }),
+    /Unable to read parity report/
+  );
+
+  const report = readJson(reportPath);
+  assert.equal(report.status, 'failed');
+  assert.equal(report.actions[0].status, 'failed');
+  assert.match(report.actions[0].error, /Unable to read parity report/);
 });
 
 test('Sync-OriginUpstreamDevelop succeeds from a linked worktree and writes admin paths into parity diagnostics', async (t) => {
