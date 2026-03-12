@@ -72,6 +72,30 @@ Describe "{0}" {{
     ($selection.Files | ForEach-Object { $_.Name }) | Should -Be @('Alpha.Unit.Tests.ps1')
   }
 
+  It 'matches repo-relative IncludePatterns when a path is provided' {
+    $skipFlag = $false
+    $skipVar = Get-Variable -Name skipSelfTest -Scope Script -ErrorAction SilentlyContinue
+    if ($skipVar) { $skipFlag = [bool]$skipVar.Value }
+    if ($skipFlag) {
+      $reasonVar = Get-Variable -Name skipReason -Scope Script -ErrorAction SilentlyContinue
+      $reason = if ($reasonVar) { [string]$reasonVar.Value } else { 'Pattern self-test suppressed in nested dispatcher context' }
+      Set-ItResult -Skipped -Because $reason
+      return
+    }
+
+    $originalLocation = Get-Location
+    try {
+      Push-Location $TestDrive
+      $selection = Invoke-DispatcherIncludeExcludeFilter -Files $script:fixtureFiles -IncludePatterns @('fixture-tests/Alpha.Unit.Tests.ps1')
+    } finally {
+      Set-Location $originalLocation
+    }
+
+    $selection.Include.Applied | Should -BeTrue
+    $selection.Include.After | Should -Be 1
+    @($selection.Files | ForEach-Object { $_.FullName }) | Should -Be @($script:expectedAlpha)
+  }
+
   It 'honors ExcludePatterns to remove files' {
     $skipFlag = $false
     $skipVar = Get-Variable -Name skipSelfTest -Scope Script -ErrorAction SilentlyContinue

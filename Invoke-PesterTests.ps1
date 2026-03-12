@@ -1173,6 +1173,7 @@ if ([System.IO.Path]::IsPathRooted($TestsPath)) {
 }
 
 # Accept single test file path as well as directory
+$singleTestFile = $null
 if ((Test-Path -LiteralPath $testsDirRaw -PathType Leaf) -and ($testsDirRaw -like '*.ps1')) {
   $singleTestFile = $testsDirRaw
   $testsDir = Split-Path -Parent $singleTestFile
@@ -1853,7 +1854,14 @@ if ($suppressPatternSelfTest)
     $originalTestFileCount = $testFiles.Count
   }
 
-  $suppressionResult = Invoke-DispatcherPatternSelfTestSuppression -Files $testFiles -PatternSelfTestLeaf $patternSelfTestLeaf -SingleTestFile $singleTestFile -LimitToSingle:$limitToSingle
+  $suppressionResult = [pscustomobject]@{
+    Files         = @($testFiles)
+    Removed       = 0
+    SingleCleared = $false
+  }
+  if ($testFiles.Count -gt 0) {
+    $suppressionResult = Invoke-DispatcherPatternSelfTestSuppression -Files $testFiles -PatternSelfTestLeaf $patternSelfTestLeaf -SingleTestFile $singleTestFile -LimitToSingle:$limitToSingle
+  }
   $testFiles = @($suppressionResult.Files)
   $removedBySuppress = $suppressionResult.Removed
   if ($removedBySuppress -gt 0)
@@ -1882,11 +1890,19 @@ try {
   $includePatternsAppliedForPlane = $false
 }
 $explicitExecutionSelection = ($limitToSingle -or $includePatternsAppliedForPlane)
-$executionPlaneMetadata = @($testFiles | ForEach-Object { Get-DispatcherTestMetadata -File $_ })
-$executionPlaneResult = Invoke-DispatcherExecutionPlaneFilter `
-  -Metadata $executionPlaneMetadata `
-  -AllowLegacyHostLabVIEW:$allowLegacyHostLabVIEW `
-  -ExplicitSelection:$explicitExecutionSelection
+$executionPlaneResult = [pscustomobject]@{
+  Files           = @($testFiles)
+  Excluded        = @()
+  ExcludedCount   = 0
+  ExplicitBlocked = $false
+}
+if ($testFiles.Count -gt 0) {
+  $executionPlaneMetadata = @($testFiles | ForEach-Object { Get-DispatcherTestMetadata -File $_ })
+  $executionPlaneResult = Invoke-DispatcherExecutionPlaneFilter `
+    -Metadata $executionPlaneMetadata `
+    -AllowLegacyHostLabVIEW:$allowLegacyHostLabVIEW `
+    -ExplicitSelection:$explicitExecutionSelection
+}
 
 if ($executionPlaneResult.ExcludedCount -gt 0) {
   $excludedNames = @($executionPlaneResult.Excluded | ForEach-Object { Split-Path -Leaf $_.FullName } | Sort-Object)
