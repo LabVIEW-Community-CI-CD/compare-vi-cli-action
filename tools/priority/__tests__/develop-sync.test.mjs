@@ -4,7 +4,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { existsSync, readFileSync as readFileSyncImmediate, writeFileSync as writeFileSyncImmediate } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync as readFileSyncImmediate,
+  writeFileSync as writeFileSyncImmediate
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +20,7 @@ import {
   buildPwshArgs,
   buildSyncAdminPaths,
   buildSyncLockName,
+  buildDevelopSyncBranchClassTrace,
   runDevelopSync
 } from '../develop-sync.mjs';
 
@@ -49,7 +55,14 @@ function initRepo(repoDir) {
 function initTempGitRepo(repoDir) {
   initRepo(repoDir);
   writeFileSyncImmediate(path.join(repoDir, '.gitkeep'), 'temp\n', 'utf8');
+  mkdirSync(path.join(repoDir, 'tools', 'policy'), { recursive: true });
+  writeFileSyncImmediate(
+    path.join(repoDir, 'tools', 'policy', 'branch-classes.json'),
+    readFileSyncImmediate(path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'), 'utf8'),
+    'utf8'
+  );
   run('git', ['add', '.gitkeep'], { cwd: repoDir });
+  run('git', ['add', 'tools/policy/branch-classes.json'], { cwd: repoDir });
   run('git', ['commit', '-m', 'temp init'], { cwd: repoDir });
 }
 
@@ -93,6 +106,16 @@ test('buildPwshArgs pins the selected remote and parity path', () => {
   assert.ok(args.includes('-HeadRemote'));
   assert.ok(args.includes('personal'));
   assert.ok(args.includes(parityReportPath));
+});
+
+test('buildDevelopSyncBranchClassTrace classifies upstream develop to fork develop as a mirror sync', () => {
+  const trace = buildDevelopSyncBranchClassTrace(repoRoot);
+
+  assert.equal(trace.contractPath, 'tools/policy/branch-classes.json');
+  assert.equal(trace.source.id, 'upstream-integration');
+  assert.equal(trace.target.id, 'fork-mirror-develop');
+  assert.equal(trace.transition.action, 'sync');
+  assert.equal(trace.transition.via, 'priority:develop:sync');
 });
 
 test('Sync-OriginUpstreamDevelop forwards the requested parity report path to the parity reporter', () => {
@@ -251,6 +274,8 @@ test('runDevelopSync records protected sync mode details from the parity report'
   assert.equal(report.actions[0].syncReason, 'protected-branch-gh013');
   assert.equal(report.actions[0].parityConverged, false);
   assert.equal(report.actions[0].protectedSync.pullRequest.number, 44);
+  assert.equal(report.actions[0].branchClassTrace.source.id, 'upstream-integration');
+  assert.equal(report.actions[0].branchClassTrace.target.id, 'fork-mirror-develop');
 });
 
 test('runDevelopSync records fork-sync mode details from the parity report', async (t) => {

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import {
   assertUpstreamOwnedHead,
+  buildBranchClassTrace,
   buildMergeArgs,
   buildMergeSummaryPayload,
   buildPolicyTrace,
@@ -16,6 +17,9 @@ import {
   shouldRetryWithAuto,
   getMergeQueueBranches
 } from '../merge-sync-pr.mjs';
+import { classifyBranch, loadBranchClassContract } from '../lib/branch-classification.mjs';
+
+const branchClassContract = loadBranchClassContract(process.cwd());
 
 test('selectMergeMode chooses auto for policy-blocked merge states', () => {
   const selection = selectMergeMode({
@@ -131,6 +135,33 @@ test('selectMergeMode chooses auto for merge-queue branches', () => {
   assert.deepEqual(selection, {
     mode: 'auto',
     reason: 'merge-queue-branch-main'
+  });
+});
+
+test('selectMergeMode honors branch-class merge policy for queue-managed upstream branches', () => {
+  const baseBranchClass = classifyBranch({
+    branch: 'develop',
+    contract: branchClassContract,
+    repositoryRole: 'upstream'
+  });
+
+  const selection = selectMergeMode(
+    {
+      state: 'OPEN',
+      isDraft: false,
+      baseRefName: 'develop',
+      mergeStateStatus: 'CLEAN',
+      mergeable: 'MERGEABLE'
+    },
+    {
+      mergeQueueBranches: new Set(),
+      baseBranchClass
+    }
+  );
+
+  assert.deepEqual(selection, {
+    mode: 'auto',
+    reason: 'merge-queue-branch-develop'
   });
 });
 
@@ -364,6 +395,28 @@ test('buildPolicyTrace emits deterministic sorted queue branch metadata', () => 
   });
 });
 
+test('buildBranchClassTrace emits deterministic base-branch classification metadata', () => {
+  const baseBranchClass = classifyBranch({
+    branch: 'develop',
+    contract: branchClassContract,
+    repositoryRole: 'upstream'
+  });
+
+  assert.deepEqual(
+    buildBranchClassTrace({
+      targetRepositoryRole: 'upstream',
+      baseBranchClass
+    }),
+    {
+      contractPath: 'tools/policy/branch-classes.json',
+      targetRepositoryRole: 'upstream',
+      baseBranchClassId: 'upstream-integration',
+      baseBranchMergePolicy: 'merge-queue-squash',
+      baseBranchPattern: 'develop'
+    }
+  );
+});
+
 test('buildMergeSummaryPayload remains stable for direct mode contracts', () => {
   const payload = buildMergeSummaryPayload({
     repo: 'owner/repo',
@@ -396,6 +449,11 @@ test('buildMergeSummaryPayload remains stable for direct mode contracts', () => 
 });
 
 test('buildMergeSummaryPayload captures auto mode policy-driven selection details', () => {
+  const baseBranchClass = classifyBranch({
+    branch: 'main',
+    contract: branchClassContract,
+    repositoryRole: 'upstream'
+  });
   const payload = buildMergeSummaryPayload({
     repo: 'owner/repo',
     pr: 456,
@@ -415,6 +473,10 @@ test('buildMergeSummaryPayload captures auto mode policy-driven selection detail
       isDraft: false,
       url: 'https://example.test/pr/456'
     },
+    branchClassTrace: buildBranchClassTrace({
+      targetRepositoryRole: 'upstream',
+      baseBranchClass
+    }),
     createdAt: '2026-03-03T00:00:01.000Z'
   });
 
@@ -422,6 +484,7 @@ test('buildMergeSummaryPayload captures auto mode policy-driven selection detail
   assert.equal(payload.finalReason, 'merge-queue-branch-main');
   assert.equal(payload.prState.baseRefName, 'main');
   assert.deepEqual(payload.policyTrace.mergeQueueBranches, ['main']);
+  assert.equal(payload.branchClassTrace.baseBranchClassId, 'upstream-release');
 });
 
 test('normalizeBaseRefName handles refs prefix and casing', () => {

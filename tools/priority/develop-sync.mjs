@@ -8,6 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { resolveGitAdminPaths } from './lib/git-admin-paths.mjs';
 import { resolveActiveForkRemoteName } from './lib/remote-utils.mjs';
+import {
+  assertAllowedTransition,
+  classifyBranch,
+  loadBranchClassContract
+} from './lib/branch-classification.mjs';
 
 const DEFAULT_REPORT_PATH = path.join('tests', 'results', '_agent', 'issue', 'develop-sync-report.json');
 const SUPPORTED_FORK_REMOTES = new Set(['origin', 'personal']);
@@ -115,6 +120,33 @@ export function buildPwshArgs({ repoRoot, remote, parityReportPath }) {
   ];
 }
 
+export function buildDevelopSyncBranchClassTrace(repoRoot) {
+  const contract = loadBranchClassContract(repoRoot);
+  const source = classifyBranch({
+    branch: 'develop',
+    contract,
+    repositoryRole: 'upstream'
+  });
+  const target = classifyBranch({
+    branch: 'develop',
+    contract,
+    repositoryRole: 'fork'
+  });
+  const transition = assertAllowedTransition({
+    from: source?.id,
+    to: target?.id,
+    action: 'sync',
+    contract
+  });
+
+  return {
+    contractPath: 'tools/policy/branch-classes.json',
+    source,
+    target,
+    transition
+  };
+}
+
 function writeDevelopSyncReport({ repoRoot, reportPath, remotes, actions, status }) {
   mkdirSync(path.dirname(reportPath), { recursive: true });
   const report = {
@@ -146,6 +178,7 @@ export function runDevelopSync({
   const remotes = resolveForkRemoteTargets(options.forkRemote, env);
   const actions = [];
   const reportPath = path.isAbsolute(options.reportPath) ? options.reportPath : path.join(repoRoot, options.reportPath);
+  const branchClassTrace = buildDevelopSyncBranchClassTrace(repoRoot);
 
   for (const remote of remotes) {
     const parityReportPath = buildParityReportPath(repoRoot, remote);
@@ -198,6 +231,7 @@ export function runDevelopSync({
       status: 'ok',
       parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/'),
       adminPaths,
+      branchClassTrace,
       syncMode: parityReport?.syncResult?.mode ?? 'direct-push',
       syncReason: parityReport?.syncResult?.reason ?? 'direct-push',
       parityConverged:
