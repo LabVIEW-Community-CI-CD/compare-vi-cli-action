@@ -412,14 +412,10 @@ test('delivery-agent manager status emits bounded log-tail trace events for daem
   assert.match(traceText, /"reason":"status:status"/);
 });
 
-test('delivery-agent manager status synthesizes the active lane from the freshest heartbeat when delivery state is stale', async () => {
+test('Manage-UnattendedDeliveryAgent.ps1 remains a thin wrapper around the JS delivery-agent implementation', async () => {
   const manager = await readText('tools/priority/Manage-UnattendedDeliveryAgent.ps1');
 
-  assert.match(manager, /function Resolve-DeliveryStateForStatus/);
-  assert.match(manager, /function Get-SanitizedSegment/);
-  assert.match(manager, /derivedFromHeartbeat/);
-  assert.match(manager, /Read-JsonFile -Path \$Paths\.ObserverHeartbeatPath/);
-  assert.match(manager, /\$laneId = "issue-\$heartbeatIssue"/);
-  assert.match(manager, /\$sanitizedLaneId = Get-SanitizedSegment -Value \$laneId -Fallback "issue-\$heartbeatIssue"/);
-  assert.match(manager, /\$blockerClass = 'none'/);
+  assert.doesNotMatch(manager, /function Resolve-DeliveryStateForStatus/);
+  assert.doesNotMatch(manager, /function Get-SanitizedSegment/);
+  assert.match(manager, /delivery-agent\.js/i);
 });

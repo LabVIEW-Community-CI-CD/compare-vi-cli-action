@@ -382,6 +382,7 @@ test('extractPullRequestFromMutation returns the created pull request payload', 
 
 test('runGhPrCreate retries same-owner fork GraphQL creation with a namespaced head ref when needed', () => {
   const headRefs = [];
+  const writes = [];
   const result = runGhPrCreate(
     {
       repoRoot: '/tmp/repo',
@@ -419,6 +420,9 @@ test('runGhPrCreate retries same-owner fork GraphQL creation with a namespaced h
             }
           }
         };
+      },
+      writeStdoutFn: (text) => {
+        writes.push(text);
       }
     }
   );
@@ -429,9 +433,11 @@ test('runGhPrCreate retries same-owner fork GraphQL creation with a namespaced h
   ]);
   assert.equal(result.strategy, 'graphql-same-owner-fork');
   assert.equal(result.pullRequest.number, 963);
+  assert.deepEqual(writes, ['https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963\n']);
 });
 
 test('runGhPrCreate reuses an existing PR when same-owner fork GraphQL creation reports a duplicate', () => {
+  const writes = [];
   const result = runGhPrCreate(
     {
       repoRoot: '/tmp/repo',
@@ -460,16 +466,21 @@ test('runGhPrCreate reuses an existing PR when same-owner fork GraphQL creation 
       findExistingPullRequestFn: () => ({
         number: 963,
         url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963'
-      })
+      }),
+      writeStdoutFn: (text) => {
+        writes.push(text);
+      }
     }
   );
 
   assert.equal(result.strategy, 'graphql-same-owner-fork');
   assert.equal(result.reusedExisting, true);
   assert.equal(result.pullRequest.number, 963);
+  assert.deepEqual(writes, ['https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963\n']);
 });
 
 test('runGhPrCreate reuses an existing human-drafted PR so it can later return to ready-for-review for a fresh Copilot review', () => {
+  const writes = [];
   const result = runGhPrCreate(
     {
       repoRoot: '/tmp/repo',
@@ -499,7 +510,10 @@ test('runGhPrCreate reuses an existing human-drafted PR so it can later return t
         number: 963,
         url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963',
         isDraft: true
-      })
+      }),
+      writeStdoutFn: (text) => {
+        writes.push(text);
+      }
     }
   );
 
@@ -507,6 +521,7 @@ test('runGhPrCreate reuses an existing human-drafted PR so it can later return t
   assert.equal(result.reusedExisting, true);
   assert.equal(result.pullRequest.number, 963);
   assert.equal(result.pullRequest.isDraft, true);
+  assert.deepEqual(writes, ['https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963\n']);
 });
 
 test('runGhPrCreate preserves the gh CLI path for user-owned forks', () => {

@@ -552,7 +552,7 @@ export function runGhPrCreate(
           throw new Error(`GitHub GraphQL mutation returned no pull request URL for head '${headRefName}'.`);
         }
 
-        console.log(pullRequest.url);
+        writeStdoutFn(`${pullRequest.url}\n`);
         return {
           strategy,
           pullRequest
@@ -574,7 +574,7 @@ export function runGhPrCreate(
             }
           );
           if (pullRequest?.url) {
-            console.log(pullRequest.url);
+            writeStdoutFn(`${pullRequest.url}\n`);
             return {
               strategy,
               pullRequest,
@@ -622,7 +622,7 @@ export function runGhPrCreate(
         }
       );
       if (pullRequest?.url) {
-        console.log(pullRequest.url);
+        writeStdoutFn(`${pullRequest.url}\n`);
         return {
           strategy,
           pullRequest,
