@@ -866,6 +866,13 @@ test('delivery agent helper-call audit strings shell-escape repository and label
   assert.match(source, /--repo \$\{shellEscapeHelperValue\(repository\)\}/);
 });
 
+test('delivery agent GitHub JSON helpers pin a 32 MB maxBuffer for large review payloads', async () => {
+  const source = await readFile(new URL('../delivery-agent.mjs', import.meta.url), 'utf8');
+  assert.match(source, /const GH_JSON_MAX_BUFFER_BYTES = 32 \* 1024 \* 1024;/);
+  assert.match(source, /spawnSync\('gh', buildGraphqlArgs\(query, variables\), \{[\s\S]*maxBuffer: GH_JSON_MAX_BUFFER_BYTES/s);
+  assert.match(source, /spawnSync\('gh', \['api', endpoint\], \{[\s\S]*maxBuffer: GH_JSON_MAX_BUFFER_BYTES/s);
+});
+
 test('classifyPullRequestWork compresses waiting-review polling after the Copilot workflow completes on the current head', () => {
   const prStatus = classifyPullRequestWork({
     number: 1015,

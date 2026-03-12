@@ -73,6 +73,7 @@ const PENDING_WORKFLOW_RUN_STATUSES = new Set(['QUEUED', 'IN_PROGRESS', 'PENDING
 const COPILOT_REVIEW_ACTIVE_POLL_HINT_SECONDS = 10;
 const COPILOT_REVIEW_POST_POLL_HINT_SECONDS = 5;
 const COPILOT_REVIEW_METADATA_CACHE_TTL_MS = 60 * 1000;
+const GH_JSON_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 const COPILOT_LOGINS = new Set([
   'copilot',
   'copilot-pull-request-reviewer',
@@ -631,7 +632,8 @@ function runGhGraphql(repoRoot, query, variables = {}, deps = {}) {
   const result = spawnSync('gh', buildGraphqlArgs(query, variables), {
     cwd: repoRoot,
     encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: GH_JSON_MAX_BUFFER_BYTES
   });
   if (result.status !== 0) {
     throw new Error(`gh api graphql failed (${result.status}): ${normalizeText(result.stderr) || 'unknown error'}`);
@@ -646,7 +648,8 @@ function runGhApiJson(repoRoot, endpoint, deps = {}) {
   const result = spawnSync('gh', ['api', endpoint], {
     cwd: repoRoot,
     encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: GH_JSON_MAX_BUFFER_BYTES
   });
   if (result.status !== 0) {
     throw new Error(`gh api ${endpoint} failed (${result.status}): ${normalizeText(result.stderr) || 'unknown error'}`);
