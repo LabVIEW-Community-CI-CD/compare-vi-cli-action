@@ -590,6 +590,9 @@ jobs:
       PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS: '1'
     steps:
     - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
     - uses: actions/setup-node@v5
       with:
