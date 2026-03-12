@@ -199,7 +199,8 @@ Human-authored PRs should use the `human-change` template so they do not acciden
   PR draft from the catalog.
 - Prefer `Invoke-GitHubIntakeScenario.ps1` when you want the planner/apply surface for future agents; it emits a
   structured execution plan, keeps dry-run as the default mode, and only performs the route's GitHub mutation when
-  `-Apply` is explicit.
+  `-Apply` is explicit. Use `-HeadRemote origin|personal` (and `-ForkRemote ...` for branch orchestration routes) when
+  the PR should open from a specific fork without an upstream mirror branch.
 - Prefer `priority:project:portfolio:apply` when you need deterministic project-field stamping for issues or PRs; the
   board remains a visibility layer, but the helper removes the manual CLI mutation seam and emits richer built-in board
   metadata for future-agent routing.

@@ -457,7 +457,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - For a machine-readable execution planner and explicit apply helper, use
   `pwsh -File tools/Invoke-GitHubIntakeScenario.ps1 -Scenario <name> -AsJson`.
   This stays in dry-run mode by default, emits the structured execution plan,
-  and only mutates GitHub when you add `-Apply`.
+  and only mutates GitHub when you add `-Apply`. Pass `-HeadRemote origin|personal`
+  (and `-ForkRemote ...` for branch orchestration scenarios) when the plan needs
+  to target a specific fork without first mirroring the branch upstream.
 - For the whole-surface report, use `pwsh -File tools/Write-GitHubIntakeAtlas.ps1`;
   it emits Markdown + JSON intake atlas artifacts under
   `tests/results/_agent/intake/`.
@@ -594,4 +596,3 @@ pwsh -File scripts/CompareVI.ps1 `
   `-KeepBranch` preserves the branch/PR after the staging and history dispatches complete for manual inspection.
 - When testing fork scenarios locally, use the composite `.github/actions/fetch-pr-head` action to simulate
   `pull/<id>/head` checkouts before invoking the staging or history helpers.
-

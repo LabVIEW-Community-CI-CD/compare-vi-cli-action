@@ -447,6 +447,8 @@ function New-GitHubIntakeExecutionPlan {
     [string]$RepositoryContext = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     [string]$DraftOutputPath,
     [string]$CurrentBranch,
+    [string]$ForkRemote,
+    [string]$HeadRemote,
     [string]$GeneratedAtUtc
   )
 
@@ -535,6 +537,10 @@ function New-GitHubIntakeExecutionPlan {
       }
       $arguments.Add('--base')
       $arguments.Add($Base)
+      if (-not [string]::IsNullOrWhiteSpace($HeadRemote)) {
+        $arguments.Add('--head-remote')
+        $arguments.Add($HeadRemote)
+      }
       $arguments.Add('--title')
       $arguments.Add($resolvedTitle)
       $arguments.Add('--body-file')
@@ -567,6 +573,14 @@ function New-GitHubIntakeExecutionPlan {
       if ($templateName -ne 'default') {
         $arguments.Add('-PRTemplate')
         $arguments.Add($templateName)
+      }
+      if (-not [string]::IsNullOrWhiteSpace($ForkRemote)) {
+        $arguments.Add('-ForkRemote')
+        $arguments.Add($ForkRemote)
+      }
+      if (-not [string]::IsNullOrWhiteSpace($HeadRemote)) {
+        $arguments.Add('-HeadRemote')
+        $arguments.Add($HeadRemote)
       }
     }
     'open-link' {
@@ -615,6 +629,8 @@ function New-GitHubIntakeExecutionPlan {
       relatedIssues     = if ([string]::IsNullOrWhiteSpace($RelatedIssues)) { $null } else { $RelatedIssues }
       repositoryContext = $RepositoryContext
       snapshotResolved  = [bool]$context.snapshotResolved
+      forkRemote        = if ([string]::IsNullOrWhiteSpace($ForkRemote)) { $null } else { [string]$ForkRemote }
+      headRemote        = if ([string]::IsNullOrWhiteSpace($HeadRemote)) { $null } else { [string]$HeadRemote }
     }
     execution         = [pscustomobject]@{
       kind                = $executionKind
@@ -622,6 +638,8 @@ function New-GitHubIntakeExecutionPlan {
       labels              = @($labels)
       base                = if ([string]::IsNullOrWhiteSpace($Base)) { $null } else { $Base }
       branch              = if ([string]::IsNullOrWhiteSpace($context.branch)) { $null } else { [string]$context.branch }
+      forkRemote          = if ([string]::IsNullOrWhiteSpace($ForkRemote)) { $null } else { [string]$ForkRemote }
+      headRemote          = if ([string]::IsNullOrWhiteSpace($HeadRemote)) { $null } else { [string]$HeadRemote }
       pullRequestTemplate = if ($route.execution -and -not [string]::IsNullOrWhiteSpace([string]$route.execution.pullRequestTemplate)) { [string]$route.execution.pullRequestTemplate } else { $null }
       arguments           = @($arguments)
       displayCommand      = $displayCommand
@@ -736,6 +754,12 @@ function Invoke-GitHubIntakeExecutionPlan {
       if ($null -ne $Plan.execution.pullRequestTemplate -and -not [string]::IsNullOrWhiteSpace([string]$Plan.execution.pullRequestTemplate)) {
         $orchestratorParameters['PRTemplate'] = [string]$Plan.execution.pullRequestTemplate
       }
+      if ($null -ne $Plan.execution.forkRemote -and -not [string]::IsNullOrWhiteSpace([string]$Plan.execution.forkRemote)) {
+        $orchestratorParameters['ForkRemote'] = [string]$Plan.execution.forkRemote
+      }
+      if ($null -ne $Plan.execution.headRemote -and -not [string]::IsNullOrWhiteSpace([string]$Plan.execution.headRemote)) {
+        $orchestratorParameters['HeadRemote'] = [string]$Plan.execution.headRemote
+      }
 
       $commandArguments = @('-Issue', [string]$orchestratorParameters.Issue, '-Execute')
       if ($orchestratorParameters.ContainsKey('Base')) {
@@ -743,6 +767,12 @@ function Invoke-GitHubIntakeExecutionPlan {
       }
       if ($orchestratorParameters.ContainsKey('PRTemplate')) {
         $commandArguments += @('-PRTemplate', [string]$orchestratorParameters.PRTemplate)
+      }
+      if ($orchestratorParameters.ContainsKey('ForkRemote')) {
+        $commandArguments += @('-ForkRemote', [string]$orchestratorParameters.ForkRemote)
+      }
+      if ($orchestratorParameters.ContainsKey('HeadRemote')) {
+        $commandArguments += @('-HeadRemote', [string]$orchestratorParameters.HeadRemote)
       }
 
       $output = & $BranchOrchestratorInvoker $orchestratorParameters

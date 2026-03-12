@@ -9,6 +9,8 @@ param(
   [string]$IssueUrl,
   [string]$Base = 'develop',
   [string]$Branch,
+  [string]$ForkRemote,
+  [string]$HeadRemote,
   [switch]$StandingPriority,
   [string]$RelatedIssues,
   [string]$RepositoryContext = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
@@ -69,7 +71,9 @@ $plan = New-GitHubIntakeExecutionPlan `
   -RelatedIssues $RelatedIssues `
   -RepositoryContext $RepositoryContext `
   -DraftOutputPath $DraftOutputPath `
-  -CurrentBranch $currentBranch
+  -CurrentBranch $currentBranch `
+  -ForkRemote $ForkRemote `
+  -HeadRemote $HeadRemote
 
 if (-not [string]::IsNullOrWhiteSpace($PlanOutputPath)) {
   Write-JsonFile -Path $PlanOutputPath -Value $plan

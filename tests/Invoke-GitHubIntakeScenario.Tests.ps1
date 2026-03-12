@@ -35,7 +35,7 @@ Describe 'Invoke-GitHubIntakeScenario.ps1' {
     $previous = $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR
     try {
       $env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR = $snapshotDir
-      $json = & $scriptPath -Scenario human-pr -Issue 923 -Branch 'issue/923-work' -AsJson
+      $json = & $scriptPath -Scenario human-pr -Issue 923 -Branch 'issue/923-work' -HeadRemote 'origin' -AsJson
     } finally {
       if ($null -eq $previous) {
         Remove-Item Env:COMPAREVI_GITHUB_INTAKE_SNAPSHOT_DIR -ErrorAction SilentlyContinue
@@ -47,7 +47,29 @@ Describe 'Invoke-GitHubIntakeScenario.ps1' {
     $plan = $json | ConvertFrom-Json -Depth 10
     $plan.execution.kind | Should -Be 'priority-pr-create'
     $plan.execution.branch | Should -Be 'issue/923-work'
+    $plan.execution.headRemote | Should -Be 'origin'
     $plan.execution.title | Should -Be 'Execution planner issue (#923)'
+    $plan.execution.arguments | Should -Contain '--head-remote'
+    $plan.execution.arguments | Should -Contain 'origin'
+    $plan.requirements.canApply | Should -BeTrue
+  }
+
+  It 'preserves fork and head remote selections for branch-orchestrator scenarios' {
+    $json = & $scriptPath `
+      -Scenario workflow-policy-pr `
+      -Issue 923 `
+      -ForkRemote 'origin' `
+      -HeadRemote 'personal' `
+      -AsJson
+
+    $plan = $json | ConvertFrom-Json -Depth 10
+    $plan.execution.kind | Should -Be 'branch-orchestrator'
+    $plan.execution.forkRemote | Should -Be 'origin'
+    $plan.execution.headRemote | Should -Be 'personal'
+    $plan.execution.arguments | Should -Contain '-ForkRemote'
+    $plan.execution.arguments | Should -Contain 'origin'
+    $plan.execution.arguments | Should -Contain '-HeadRemote'
+    $plan.execution.arguments | Should -Contain 'personal'
     $plan.requirements.canApply | Should -BeTrue
   }
 }
