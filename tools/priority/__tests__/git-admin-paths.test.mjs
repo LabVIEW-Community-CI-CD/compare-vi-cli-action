@@ -36,3 +36,18 @@ test('resolveGitAdminPaths reports signal-based git failures when stderr is empt
     /git rev-parse --show-toplevel failed \(signal SIGTERM\)/
   );
 });
+
+test('resolveGitAdminPaths preserves git command context when stderr is present', () => {
+  assert.throws(
+    () =>
+      resolveGitAdminPaths({
+        cwd: process.cwd(),
+        spawnSyncFn: () => ({
+          status: 128,
+          stdout: '',
+          stderr: 'fatal: bad revision'
+        })
+      }),
+    /git rev-parse --show-toplevel failed: fatal: bad revision/
+  );
+});

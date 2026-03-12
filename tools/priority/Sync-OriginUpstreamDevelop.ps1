@@ -230,7 +230,7 @@ $parityReportPath = if ([string]::IsNullOrWhiteSpace($ParityReportPath)) {
   }
 }
 $lockName = ('priority-sync-{0}-{1}-{2}.lock' -f $BaseRemote, $HeadRemote, $Branch) -replace '[^A-Za-z0-9._-]', '_'
-$lockPath = Join-Path (Join-Path $repoRoot '.git') $lockName
+$lockPath = ''
 $lockStream = $null
 $restoreBranch = $false
 $startingBranch = ''

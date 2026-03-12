@@ -21,7 +21,7 @@ function runGit(args, { cwd, env = process.env, spawnSyncFn = spawnSync } = {}) 
   if (result.status !== 0) {
     const stderr = String(result.stderr ?? '').trim();
     if (stderr) {
-      throw new Error(stderr);
+      throw new Error(`git ${args.join(' ')} failed: ${stderr}`);
     }
 
     const details = [];
