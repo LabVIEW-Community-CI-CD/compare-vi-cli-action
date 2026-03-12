@@ -12,9 +12,27 @@ function runGit(args, { cwd, env = process.env, spawnSyncFn = spawnSync } = {}) 
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
+  if (result.error) {
+    const underlying = result.error.message || String(result.error);
+    const code = result.error.code ? ` (code ${result.error.code})` : '';
+    throw new Error(`Failed to run git ${args.join(' ')}: ${underlying}${code}`);
+  }
+
   if (result.status !== 0) {
     const stderr = String(result.stderr ?? '').trim();
-    throw new Error(stderr || `git ${args.join(' ')} failed with exit code ${result.status}`);
+    if (stderr) {
+      throw new Error(stderr);
+    }
+
+    const details = [];
+    if (result.status !== null && result.status !== undefined) {
+      details.push(`exit code ${result.status}`);
+    }
+    if (result.signal) {
+      details.push(`signal ${result.signal}`);
+    }
+    const suffix = details.length ? ` (${details.join(', ')})` : '';
+    throw new Error(`git ${args.join(' ')} failed${suffix}`);
   }
 
   return String(result.stdout ?? '').trim();

@@ -330,7 +330,7 @@ try {
     $parityReport['pushTransport'] = $pushTransport
   }
   ($parityReport | ConvertTo-Json -Depth 20) + "`n" | Set-Content -LiteralPath $parityReportPath -Encoding utf8
-  $tipDiffCount = [int]($parityReport.tipDiff.fileCount)
+  $tipDiffCount = [int]($parityReport['tipDiff']['fileCount'])
   if ($tipDiffCount -ne 0) {
     throw ("Origin/upstream parity failed: tipDiff.fileCount={0} (expected 0)." -f $tipDiffCount)
   }
