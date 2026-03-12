@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/delivery-agent-workspace-quarantine-v1.schema.json",
+  "title": "Delivery Agent Workspace Quarantine v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "runtimeDir",
+    "scope",
+    "repoRoot",
+    "status",
+    "reason",
+    "canProceedUnattended",
+    "trackedDirtyOnly",
+    "dirtyTrackedCount",
+    "dirtyEntries",
+    "dirtyPaths"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/delivery-agent-workspace-quarantine@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string"
+    },
+    "runtimeDir": {
+      "type": "string"
+    },
+    "scope": {
+      "const": "control-root"
+    },
+    "repoRoot": {
+      "type": "string"
+    },
+    "gitDir": {
+      "type": ["string", "null"]
+    },
+    "branch": {
+      "type": ["string", "null"]
+    },
+    "head": {
+      "type": ["string", "null"]
+    },
+    "status": {
+      "enum": ["ok", "quarantined"]
+    },
+    "reason": {
+      "enum": ["clean", "dirty-tracked-files", "git-status-failed"]
+    },
+    "canProceedUnattended": {
+      "type": "boolean"
+    },
+    "trackedDirtyOnly": {
+      "type": "boolean"
+    },
+    "dirtyTrackedCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "dirtyEntries": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dirtyPaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

@@ -20,6 +20,7 @@ import {
   getOptionalProperty,
   getOptionalStringProperty,
   getStableLeaseOwner,
+  inspectControlWorkspaceQuarantine,
   getWslRuntimeDaemonUnitName,
   normalizeText,
   readJsonFile,
@@ -122,6 +123,12 @@ export function stopWslRuntimeDaemon({ distro, unitName, processId }) {
 export function emitStatus(options) {
   const repoRoot = resolveRepoRoot();
   const paths = getArtifactPaths(repoRoot, options.runtimeDir);
+  const workspaceQuarantine = inspectControlWorkspaceQuarantine({
+    repoRoot,
+    repo: options.repo,
+    runtimeDir: options.runtimeDir,
+  });
+  writeJsonFile(paths.workspaceQuarantinePath, workspaceQuarantine);
   const pidState = readJsonFile(paths.managerPidPath);
   const managerAlive = testProcessAlive(getOptionalIntProperty(pidState, 'pid'));
   const managerStartedAt = getOptionalDateTimeProperty(pidState, 'startedAt');
@@ -187,6 +194,7 @@ export function emitStatus(options) {
     codexStateHygiene,
     hostSignal,
     hostIsolation,
+    workspaceQuarantine,
     wslNativeDocker,
     logTail: {
       daemon: daemonLogTail,
@@ -208,6 +216,7 @@ export function emitStatus(options) {
       hostIsolationPath: paths.hostIsolationPath,
       hostTracePath: paths.hostTracePath,
       managerTracePath: paths.managerTracePath,
+      workspaceQuarantinePath: paths.workspaceQuarantinePath,
       wslNativeDockerPath: paths.wslNativeDockerPath,
       daemonLogPath: paths.daemonLogPath,
       runnerLogPath: paths.runnerLogPath,
@@ -230,6 +239,8 @@ export function emitStatus(options) {
       heartbeatUsed: Boolean(resolvedDelivery.diagnostics.usedHeartbeat),
       heartbeatGeneratedAt: resolvedDelivery.diagnostics.heartbeatGeneratedAt,
       observerStatus: getOptionalStringProperty(observer, 'status'),
+      workspaceQuarantineStatus: getOptionalStringProperty(workspaceQuarantine, 'status'),
+      workspaceQuarantineReason: getOptionalStringProperty(workspaceQuarantine, 'reason'),
       daemonLogLineCount: daemonLogTail.length,
       managerStdoutLineCount: managerLogTail.length,
       managerStderrLineCount: managerErrorLogTail.length,
@@ -241,6 +252,28 @@ export function emitStatus(options) {
 export async function ensureManagerCommand(options) {
   const repoRoot = resolveRepoRoot();
   const paths = getArtifactPaths(repoRoot, options.runtimeDir);
+  const workspaceQuarantine = inspectControlWorkspaceQuarantine({
+    repoRoot,
+    repo: options.repo,
+    runtimeDir: options.runtimeDir,
+  });
+  writeJsonFile(paths.workspaceQuarantinePath, workspaceQuarantine);
+  if (!workspaceQuarantine.canProceedUnattended) {
+    writeManagerTrace({
+      repo: options.repo,
+      runtimeDir: options.runtimeDir,
+      distro: options.wslDistro,
+      tracePath: paths.managerTracePath,
+      eventType: 'workspace-quarantined',
+      detail: {
+        reason: workspaceQuarantine.reason,
+        dirtyTrackedCount: workspaceQuarantine.dirtyTrackedCount,
+      },
+    });
+    throw new Error(
+      `Control workspace is quarantined for unattended delivery (${workspaceQuarantine.reason}). See ${paths.workspaceQuarantinePath}`,
+    );
+  }
   await runPrereqsCommand(options);
 
   const existingPidState = readJsonFile(paths.managerPidPath);
@@ -376,6 +409,12 @@ export async function runManagerLoop(options) {
     hostSignal,
   });
   let wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
+  let workspaceQuarantine = inspectControlWorkspaceQuarantine({
+    repoRoot,
+    repo: options.repo,
+    runtimeDir: options.runtimeDir,
+  });
+  writeJsonFile(paths.workspaceQuarantinePath, workspaceQuarantine);
 
   try {
     await runPrereqsCommand(options);
@@ -420,6 +459,12 @@ export async function runManagerLoop(options) {
       const pidState = readJsonFile(paths.wslDaemonPidPath);
       activeDaemonPid = getOptionalIntProperty(pidState, 'pid');
       let daemonAlive = testWslProcessAlive(options.wslDistro, activeDaemonPid);
+      workspaceQuarantine = inspectControlWorkspaceQuarantine({
+        repoRoot,
+        repo: options.repo,
+        runtimeDir: options.runtimeDir,
+      });
+      writeJsonFile(paths.workspaceQuarantinePath, workspaceQuarantine);
       writeManagerTrace({
         repo: options.repo,
         runtimeDir: options.runtimeDir,
@@ -429,34 +474,58 @@ export async function runManagerLoop(options) {
         detail: { cycle, daemonPid: activeDaemonPid, daemonAlive },
       });
 
-      const previousFingerprint = hostSignal?.daemonFingerprint ? String(hostSignal.daemonFingerprint) : null;
-      const hostSignalResult = invokeDeliveryHostSignal({
-        mode: 'collect',
-        repoRoot,
-        distro: options.wslDistro,
-        paths,
-        previousFingerprint,
-        allowRunnerServices: false,
-      });
-      hostSignal = hostSignalResult.report;
-      hostIsolation = hostSignalResult.isolation;
-      wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
-      writeManagerTrace({
-        repo: options.repo,
-        runtimeDir: options.runtimeDir,
-        distro: options.wslDistro,
-        tracePath: paths.managerTracePath,
-        eventType: 'host-signal',
-        detail: {
-          cycle,
-          status: hostSignal.status,
-          provider: hostSignal.provider,
-          daemonFingerprint: hostSignal.daemonFingerprint,
-          fingerprintChanged: Boolean(hostSignal.fingerprintChanged),
-        },
-      });
+      let blockedByWorkspaceQuarantine = false;
+      if (!workspaceQuarantine.canProceedUnattended) {
+        if (daemonAlive) {
+          stopWslRuntimeDaemon({ distro: options.wslDistro, unitName: daemonUnitName, processId: activeDaemonPid });
+          daemonAlive = false;
+        }
+        rmSync(paths.wslDaemonPidPath, { force: true });
+        blockedByWorkspaceQuarantine = true;
+        writeManagerTrace({
+          repo: options.repo,
+          runtimeDir: options.runtimeDir,
+          distro: options.wslDistro,
+          tracePath: paths.managerTracePath,
+          eventType: 'workspace-quarantined',
+          detail: {
+            cycle,
+            reason: workspaceQuarantine.reason,
+            dirtyTrackedCount: workspaceQuarantine.dirtyTrackedCount,
+          },
+        });
+      }
 
-      if (hostSignal.status === 'runner-conflict') {
+      const previousFingerprint = hostSignal?.daemonFingerprint ? String(hostSignal.daemonFingerprint) : null;
+      if (!blockedByWorkspaceQuarantine) {
+        const hostSignalResult = invokeDeliveryHostSignal({
+          mode: 'collect',
+          repoRoot,
+          distro: options.wslDistro,
+          paths,
+          previousFingerprint,
+          allowRunnerServices: false,
+        });
+        hostSignal = hostSignalResult.report;
+        hostIsolation = hostSignalResult.isolation;
+        wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
+        writeManagerTrace({
+          repo: options.repo,
+          runtimeDir: options.runtimeDir,
+          distro: options.wslDistro,
+          tracePath: paths.managerTracePath,
+          eventType: 'host-signal',
+          detail: {
+            cycle,
+            status: hostSignal.status,
+            provider: hostSignal.provider,
+            daemonFingerprint: hostSignal.daemonFingerprint,
+            fingerprintChanged: Boolean(hostSignal.fingerprintChanged),
+          },
+        });
+      }
+
+      if (!blockedByWorkspaceQuarantine && hostSignal.status === 'runner-conflict') {
         if (daemonAlive) {
           stopWslRuntimeDaemon({ distro: options.wslDistro, unitName: daemonUnitName, processId: activeDaemonPid });
           daemonAlive = false;
@@ -482,7 +551,7 @@ export async function runManagerLoop(options) {
       }
 
       let blockedByHostConflict = false;
-      if (hostSignal.status !== 'native-wsl') {
+      if (!blockedByWorkspaceQuarantine && hostSignal.status !== 'native-wsl') {
         if (daemonAlive) {
           stopWslRuntimeDaemon({ distro: options.wslDistro, unitName: daemonUnitName, processId: activeDaemonPid });
           daemonAlive = false;
@@ -671,6 +740,7 @@ export async function runManagerLoop(options) {
         report,
         hostSignal,
         hostIsolation,
+        workspaceQuarantine,
         wslNativeDocker,
         observer: observerTelemetry,
         codexStateHygiene,
@@ -680,7 +750,9 @@ export async function runManagerLoop(options) {
         hostIsolationPath: paths.hostIsolationPath,
         hostTracePath: paths.hostTracePath,
         managerTracePath: paths.managerTracePath,
+        workspaceQuarantinePath: paths.workspaceQuarantinePath,
         wslNativeDockerPath: paths.wslNativeDockerPath,
+        blockedByWorkspaceQuarantine,
         blockedByHostRuntimeConflict: blockedByHostConflict,
         stopWhenNoOpenIssues: options.stopWhenNoOpenIssues || options.sleepMode,
       };
@@ -693,14 +765,17 @@ export async function runManagerLoop(options) {
         report,
         hostSignal,
         hostIsolation,
+        workspaceQuarantine,
         wslNativeDocker,
         observer: observerTelemetry,
         codexStateHygiene,
         deliveryMemory,
         managerTracePath: paths.managerTracePath,
+        workspaceQuarantinePath: paths.workspaceQuarantinePath,
+        blockedByWorkspaceQuarantine,
       });
 
-      if (blockedByHostConflict) {
+      if (blockedByWorkspaceQuarantine || blockedByHostConflict) {
         await sleep(options.cycleIntervalSeconds * 1000);
         continue;
       }
@@ -764,6 +839,7 @@ export async function runManagerLoop(options) {
       daemon: { pid: activeDaemonPid, alive: testWslProcessAlive(options.wslDistro, activeDaemonPid) },
       hostSignal,
       hostIsolation,
+      workspaceQuarantine,
       wslNativeDocker,
       codexStateHygiene,
       deliveryMemory,
@@ -772,6 +848,7 @@ export async function runManagerLoop(options) {
       hostIsolationPath: paths.hostIsolationPath,
       hostTracePath: paths.hostTracePath,
       managerTracePath: paths.managerTracePath,
+      workspaceQuarantinePath: paths.workspaceQuarantinePath,
       wslNativeDockerPath: paths.wslNativeDockerPath,
       outcome: 'stopped',
     });

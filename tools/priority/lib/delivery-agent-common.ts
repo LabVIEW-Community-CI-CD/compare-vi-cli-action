@@ -29,6 +29,7 @@ export const MANAGER_PID_SCHEMA = 'priority/unattended-delivery-agent-manager-pi
 export const DAEMON_PID_SCHEMA = 'priority/unattended-delivery-agent-wsl-daemon-pid@v1';
 export const STOP_REQUEST_SCHEMA = 'priority/unattended-delivery-agent-stop@v1';
 export const TRACE_SCHEMA = 'priority/unattended-delivery-agent-trace@v1';
+export const WORKSPACE_QUARANTINE_SCHEMA = 'priority/delivery-agent-workspace-quarantine@v1';
 export const MAX_BUFFER = 32 * 1024 * 1024;
 
 export function resolveRepoRoot() {
@@ -247,12 +248,82 @@ export function getArtifactPaths(repoRoot, runtimeDir) {
     hostIsolationPath: path.join(runtimeDirPath, 'delivery-agent-host-isolation.json'),
     hostTracePath: path.join(runtimeDirPath, 'delivery-agent-host-trace.ndjson'),
     managerTracePath: path.join(runtimeDirPath, 'delivery-agent-manager-trace.ndjson'),
+    workspaceQuarantinePath: path.join(runtimeDirPath, 'delivery-agent-workspace-quarantine.json'),
     wslNativeDockerPath: path.join(runtimeDirPath, 'wsl-native-docker.json'),
     daemonLogPath: path.join(runtimeDirPath, 'runtime-daemon-wsl.log'),
     runnerLogPath: path.join(runtimeDirPath, 'delivery-agent-manager.log'),
     runnerErrorPath: path.join(runtimeDirPath, 'delivery-agent-manager.stderr.log'),
     cyclePath: path.join(runtimeDirPath, 'delivery-agent-manager-cycle.json'),
     observerReportPath: path.join(runtimeDirPath, 'runtime-daemon-report.json'),
+  };
+}
+
+function parsePorcelainPath(entry) {
+  const text = String(entry ?? '').trimEnd();
+  if (text.trim().length === 0) {
+    return null;
+  }
+  const pathText = text.length > 3 ? text.slice(3).trim() : '';
+  if (!pathText) {
+    return null;
+  }
+  if (pathText.includes(' -> ')) {
+    const parts = pathText.split(/\s+->\s+/);
+    return parts[parts.length - 1] || pathText;
+  }
+  return pathText;
+}
+
+export function inspectControlWorkspaceQuarantine({ repoRoot, repo, runtimeDir }) {
+  const branchResult = runCommand('git', ['-C', repoRoot, 'branch', '--show-current']);
+  const headResult = runCommand('git', ['-C', repoRoot, 'rev-parse', 'HEAD']);
+  const gitDirResult = runCommand('git', ['-C', repoRoot, 'rev-parse', '--git-dir']);
+  const statusCommand = ['git', '-C', repoRoot, 'status', '--porcelain', '--untracked-files=no'];
+  const statusResult = runCommand(statusCommand[0], statusCommand.slice(1));
+  const dirtyEntries = statusResult.status === 0
+    ? String(statusResult.stdout ?? '')
+      .split(/\r?\n/)
+      .map((entry) => entry.trimEnd())
+      .filter((entry) => entry.trim().length > 0)
+    : [];
+  const dirtyPaths = dirtyEntries
+    .map((entry) => parsePorcelainPath(entry))
+    .filter(Boolean);
+  const gitDirRaw = normalizeText(gitDirResult.stdout);
+  const gitDir = gitDirResult.status === 0
+    ? path.resolve(repoRoot, gitDirRaw)
+    : null;
+  const status = statusResult.status === 0 && dirtyEntries.length === 0 ? 'ok' : 'quarantined';
+  let reason = 'clean';
+  if (statusResult.status !== 0) {
+    reason = 'git-status-failed';
+  } else if (dirtyEntries.length > 0) {
+    reason = 'dirty-tracked-files';
+  }
+  return {
+    schema: WORKSPACE_QUARANTINE_SCHEMA,
+    generatedAt: toIso(),
+    repository: repo,
+    runtimeDir,
+    scope: 'control-root',
+    repoRoot,
+    gitDir,
+    branch: branchResult.status === 0 ? normalizeText(branchResult.stdout) || null : null,
+    head: headResult.status === 0 ? normalizeText(headResult.stdout) || null : null,
+    status,
+    reason,
+    canProceedUnattended: status === 'ok',
+    trackedDirtyOnly: true,
+    dirtyTrackedCount: dirtyEntries.length,
+    dirtyEntries,
+    dirtyPaths,
+    commands: {
+      status: statusCommand,
+    },
+    diagnostics: {
+      gitStatusExitCode: statusResult.status,
+      gitStatusStderr: normalizeText(statusResult.stderr) || null,
+    },
   };
 }
 

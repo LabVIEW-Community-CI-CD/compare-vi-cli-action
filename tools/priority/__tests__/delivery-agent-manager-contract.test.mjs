@@ -109,6 +109,19 @@ test('delivery-agent manager status synthesizes the active lane from the freshes
   assert.match(manager, /readJsonFile\(paths\.taskPacketPath\)/);
 });
 
+test('delivery-agent manager persists and reports control-root workspace quarantine state', async () => {
+  const common = await readText('tools/priority/lib/delivery-agent-common.ts');
+  const manager = await readText('tools/priority/lib/delivery-agent-manager.ts');
+
+  assert.match(common, /WORKSPACE_QUARANTINE_SCHEMA/);
+  assert.match(common, /workspaceQuarantinePath/);
+  assert.match(common, /inspectControlWorkspaceQuarantine/);
+  assert.match(manager, /workspaceQuarantinePath/);
+  assert.match(manager, /workspaceQuarantine/);
+  assert.match(manager, /blockedByWorkspaceQuarantine/);
+  assert.match(manager, /Control workspace is quarantined for unattended delivery/);
+});
+
 test('delivery-agent manager status ignores stale heartbeat state from before the current manager start', async (t) => {
   const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-stale-'));
   const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
