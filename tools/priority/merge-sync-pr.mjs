@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { ensureGhCli, resolveUpstream } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import {
+  DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
   classifyBranch,
   loadBranchClassContract,
   resolveRepositoryRole
@@ -187,7 +188,7 @@ export function buildPolicyTrace(mergeQueueBranches = new Set()) {
 
 export function buildBranchClassTrace({ targetRepositoryRole = null, baseBranchClass = null } = {}) {
   return {
-    contractPath: 'tools/policy/branch-classes.json',
+    contractPath: DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH.replace(/\\/g, '/'),
     targetRepositoryRole,
     baseBranchClassId: baseBranchClass?.id ?? null,
     baseBranchMergePolicy: baseBranchClass?.mergePolicy ?? null,

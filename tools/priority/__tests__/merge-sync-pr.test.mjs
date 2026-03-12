@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import {
   assertUpstreamOwnedHead,
   buildBranchClassTrace,
@@ -19,7 +20,8 @@ import {
 } from '../merge-sync-pr.mjs';
 import { classifyBranch, loadBranchClassContract } from '../lib/branch-classification.mjs';
 
-const branchClassContract = loadBranchClassContract(process.cwd());
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const branchClassContract = loadBranchClassContract(repoRoot);
 
 test('selectMergeMode chooses auto for policy-blocked merge states', () => {
   const selection = selectMergeMode({
@@ -676,7 +678,7 @@ test('runMergeSync records queued promotion state after auto merge activation ma
       '--summary-path',
       path.join(tempDir, 'summary.json')
     ],
-    repoRoot: process.cwd(),
+    repoRoot,
     ensureGhCliFn: () => {},
     readPrInfoFn: () => ({
       number: 123,
@@ -709,7 +711,7 @@ test('runMergeSync fails when auto merge command succeeds but no durable promoti
     () =>
       runMergeSync({
         argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '124', '--repo', 'owner/repo'],
-        repoRoot: process.cwd(),
+        repoRoot,
         ensureGhCliFn: () => {},
         readPrInfoFn: () => ({
           number: 124,
@@ -738,7 +740,7 @@ test('runMergeSync does not query promotion state when the PR is already merged'
   let promotionReads = 0;
   const payload = await runMergeSync({
     argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '125', '--repo', 'owner/repo'],
-    repoRoot: process.cwd(),
+    repoRoot,
     ensureGhCliFn: () => {},
     readPrInfoFn: () => ({
       number: 125,
@@ -765,7 +767,7 @@ test('runMergeSync rejects repo slugs with extra path segments', async () => {
     () =>
       runMergeSync({
         argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '126', '--repo', 'owner/repo/extra'],
-        repoRoot: process.cwd(),
+        repoRoot,
         ensureGhCliFn: () => {},
         readPrInfoFn: () => ({
           number: 126,

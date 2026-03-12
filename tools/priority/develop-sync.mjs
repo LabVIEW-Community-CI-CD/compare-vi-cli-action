@@ -9,6 +9,7 @@ import { getRepoRoot } from './lib/branch-utils.mjs';
 import { resolveGitAdminPaths } from './lib/git-admin-paths.mjs';
 import { resolveActiveForkRemoteName } from './lib/remote-utils.mjs';
 import {
+  DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
   assertAllowedTransition,
   classifyBranch,
   loadBranchClassContract
@@ -120,27 +121,51 @@ export function buildPwshArgs({ repoRoot, remote, parityReportPath }) {
   ];
 }
 
-export function buildDevelopSyncBranchClassTrace(repoRoot) {
-  const contract = loadBranchClassContract(repoRoot);
-  const source = classifyBranch({
-    branch: 'develop',
+function requireClassifiedBranch({
+  branch,
+  repositoryRole,
+  contract,
+  contractPath = DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH
+}) {
+  const classified = classifyBranch({
+    branch,
     contract,
-    repositoryRole: 'upstream'
+    repositoryRole
   });
-  const target = classifyBranch({
+  if (!classified) {
+    throw new Error(
+      `Unable to classify branch '${branch}' for repository role '${repositoryRole}' using '${contractPath}'.`
+    );
+  }
+  return classified;
+}
+
+export function buildDevelopSyncBranchClassTrace(repoRoot) {
+  const contractPath = DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH.replace(/\\/g, '/');
+  const contract = loadBranchClassContract(repoRoot, {
+    relativePath: DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH
+  });
+  const source = requireClassifiedBranch({
     branch: 'develop',
     contract,
-    repositoryRole: 'fork'
+    repositoryRole: 'upstream',
+    contractPath
+  });
+  const target = requireClassifiedBranch({
+    branch: 'develop',
+    contract,
+    repositoryRole: 'fork',
+    contractPath
   });
   const transition = assertAllowedTransition({
-    from: source?.id,
-    to: target?.id,
+    from: source.id,
+    to: target.id,
     action: 'sync',
     contract
   });
 
   return {
-    contractPath: 'tools/policy/branch-classes.json',
+    contractPath,
     source,
     target,
     transition

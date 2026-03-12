@@ -23,7 +23,7 @@ Instead, branch behavior is driven by one machine-readable contract:
 | `fork-passive-main` | fork | `main` | Optional passive mirror of upstream `main` | Mirror-only |
 | `lane` | upstream or fork | `issue/*` | Short-lived implementation branches | PR source only |
 | `feature` | upstream or fork | `feature/*` | Explicit rehearsal/experiment branches | PR source only |
-| `merge-queue` | upstream | `gh-readonly-queue/*` | GitHub-owned merge queue refs | Queue-owned; never human or agent writable |
+| `merge-queue` | upstream | `gh-readonly-queue/**` | GitHub-owned merge queue refs | Queue-owned; never human or agent writable |
 
 ## Allowed Transitions
 
