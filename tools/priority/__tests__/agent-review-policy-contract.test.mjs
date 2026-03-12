@@ -37,7 +37,7 @@ test('agent-review-policy keeps heavyweight collection on pull_request_target an
     workflow,
     /name: Evaluate Copilot queue gate\s+if: >[\s\S]*github\.event_name == 'pull_request_target'[\s\S]*github\.event_name == 'merge_group'[\s\S]*github\.event_name == 'workflow_run'/,
   );
-  assert.match(workflow, /"--poll-attempts" "18"/);
+  assert.match(workflow, /"--poll-attempts" "60"/);
   assert.match(workflow, /"--poll-delay-ms" "10000"/);
   assert.match(workflow, /if \[\[ "\$\{\{ github\.event_name \}\}" == "merge_group" \]\]; then/);
   assert.match(workflow, /"--head-sha" "\$\{\{ github\.sha \}\}"/);

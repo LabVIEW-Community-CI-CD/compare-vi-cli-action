@@ -112,7 +112,7 @@ jobs:
           "tools/priority/copilot-review-gate.mjs"
           "--event-name" "${{ github.event_name }}"
           "--repo" "${{ github.repository }}"
-          "--poll-attempts" "18"
+          "--poll-attempts" "60"
           "--poll-delay-ms" "10000"
           "--out" "tests/results/_agent/reviews/copilot-review-gate.json"
           "--step-summary" "$GITHUB_STEP_SUMMARY"
