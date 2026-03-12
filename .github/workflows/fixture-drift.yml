@@ -34,9 +34,10 @@ jobs:
       pull-requests: write
     steps:
     - name: Checkout
-      uses: ./.github/actions/checkout-workflow-context
+      uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         fetch-depth: 0
     - name: LV Guard (pre)
       uses: ./.github/actions/runner-unblock-guard
@@ -105,9 +106,10 @@ jobs:
       contents: read
     steps:
     - name: Checkout
-      uses: ./.github/actions/checkout-workflow-context
+      uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         fetch-depth: 0
     - name: Prepare fixture copies (base/head)
       id: prep
@@ -167,9 +169,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 3
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'default'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Verify Windows runner and idle LabVIEW (surface LVCompare notice)
       shell: pwsh
       run: |-

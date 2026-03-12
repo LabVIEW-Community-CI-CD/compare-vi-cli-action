@@ -18,10 +18,19 @@ test('Validate standard path is not blocked by a validation environment approval
   assert.doesNotMatch(workflow, /priority:deployment:assert/);
 });
 
-test('Validate resolves checkout through the workflow context helper on PR-capable lanes', () => {
+test('Validate uses explicit PR-head checkout expressions and no longer references the removed updater', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
 
-  assert.match(workflow, /uses: \.\/\.github\/actions\/checkout-workflow-context/);
-  assert.match(workflow, /mode: 'pr-head'/);
-  assert.doesNotMatch(workflow, /actions\/checkout@v5/);
+  assert.match(workflow, /uses: actions\/checkout@v5/);
+  assert.match(
+    workflow,
+    /repository:\s+\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.repo\.full_name \|\| github\.repository\s*\}\}/
+  );
+  assert.match(
+    workflow,
+    /ref:\s+\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.sha \|\| github\.sha\s*\}\}/
+  );
+  assert.doesNotMatch(workflow, /checkout-workflow-context/);
+  assert.doesNotMatch(workflow, /update_workflows\.py/);
+  assert.doesNotMatch(workflow, /Workflow drift check/);
 });

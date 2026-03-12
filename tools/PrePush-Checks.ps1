@@ -14,7 +14,7 @@ param(
   [string]$ActionlintVersion = '1.7.7',
   [bool]$InstallIfMissing = $true,
   [switch]$SkipNiImageFlagScenarios,
-  [switch]$SkipIconEditorFixtureChecks,
+  [switch]$SkipLegacyFixtureChecks,
   [switch]$SkipPSScriptAnalyzer
 )
 
@@ -457,10 +457,9 @@ if (Test-Path -LiteralPath $commitIntegrityContractScript -PathType Leaf) {
 Invoke-SafeGitReliabilitySummary -repoRoot $root
 
 $skipNiImageChecks = $SkipNiImageFlagScenarios `
-  -or $SkipIconEditorFixtureChecks `
+  -or $SkipLegacyFixtureChecks `
   -or ($env:PREPUSH_SKIP_NI_IMAGE_FLAG_SCENARIOS -match '^(1|true|yes|on)$') `
-  -or ($env:PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS -match '^(1|true|yes|on)$') `
-  -or ($env:PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS -match '^(1|true|yes|on)$')
+  -or ($env:PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS -match '^(1|true|yes|on)$')
 if ($skipNiImageChecks) {
   Write-Host '[pre-push] Skipping VI Comparison Report flag combination scenarios by request' -ForegroundColor Yellow
   return

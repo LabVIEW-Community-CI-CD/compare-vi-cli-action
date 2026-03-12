@@ -13,9 +13,10 @@ jobs:
     if: ${{ github.event.pull_request.head.sha && !startsWith(github.head_ref, 'release/') }}
     runs-on: ubuntu-latest
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         fetch-depth: 0
     - name: Check for merge commits
       shell: bash

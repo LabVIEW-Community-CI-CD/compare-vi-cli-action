@@ -19,7 +19,7 @@ single source of truth when deciding which helper to run locally, invoke from VS
   - Platform note: install PowerShell 7 (`pwsh`) on macOS/Linux; when LabVIEW is unavailable, run the command
     without leak-cleanup switches until parity wiring lands.
 - **`tools/Run-NonLVChecksInDocker.ps1`**
-  - Scope: containerised lint, docs links, workflow drift, CLI build.
+  - Scope: containerised lint, docs links, workflow checkout contracts, CLI build.
   - Typical invocation: `pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage`.
   - Exit semantics: first failing container exit (`0` happy, `3` = drift).
   - Artifacts: container logs, optional `dist/comparevi-cli/*`.
@@ -80,18 +80,19 @@ Audience: local validation for PowerShell unit/integration suites and leak detec
 Audience: contributors without the full local toolchain or anyone mirroring CI behaviour.
 
 - **What it does** – Spins up Docker containers for `actionlint`, `markdownlint`, documentation link checks, workflow
-  drift detection, and optional CompareVI CLI builds. Supports the published tools image (`-UseToolsImage`) or
+  checkout contract validation, and optional CompareVI CLI builds. Supports the published tools image (`-UseToolsImage`) or
   per-check public images.
 - **Inputs** – Common switches:
   - `-UseToolsImage [-ToolsImageTag <tag>]` to route everything through the curated tools container (honours
     `COMPAREVI_TOOLS_IMAGE`).
   - `-PrioritySync` to run `priority:sync` inside the container (requires `GH_TOKEN`).
-  - `-FailOnWorkflowDrift` to treat exit code `3` as fatal locally.
+  - `-FailOnWorkflowDrift` remains as a deprecated compatibility switch; workflow checkout contracts now fail
+    immediately when enabled.
   - Skip flags (`-SkipActionlint`, `-SkipMarkdown`, `-SkipDocs`, `-SkipWorkflow`, `-SkipDotnetCliBuild`) for tight
     loops.
 - **Expected output** - Console logs reflect each container invocation. The CLI build emits `dist/comparevi-cli/*` when
-  enabled. Workflow drift uses ruamel.yaml or the tools image helper and will leave pending git changes when drift is
-  real.
+  enabled. Workflow checkout contracts run through the pinned Node test surface and fail cleanly when the checkout
+  contract drifts.
 - **Failure modes** - Missing Docker daemon, authentication gaps (when the tools image is private), or missing GH
   tokens during priority sync. Exit code is the first failing container code.
 - **When to run** - Before publishing documentation, when validating the tools image, or after editing workflows to

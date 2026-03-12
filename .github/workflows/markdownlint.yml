@@ -10,9 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: ./.github/actions/checkout-workflow-context
+      uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Lint changed Markdown (PR)
       if: github.event_name == 'pull_request'
       shell: pwsh

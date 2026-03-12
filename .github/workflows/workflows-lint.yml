@@ -9,9 +9,10 @@ jobs:
     env:
       ACTIONLINT_VERSION: ${{ vars.ACTIONLINT_VERSION || '1.7.7' }}
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Install actionlint (pinned)
       shell: bash
       run: |
@@ -28,6 +29,14 @@ jobs:
 
     - name: Run actionlint
       run: ./bin/actionlint -color
+
+    - name: Assert workflow checkout contract
+      run: >
+        node --test
+        tools/priority/__tests__/workflow-checkout-contract.test.mjs
+        tools/priority/__tests__/workflows-lint-workflow-contract.test.mjs
+        tools/priority/__tests__/agent-review-policy-contract.test.mjs
+        tools/priority/__tests__/validate-standard-path-contract.test.mjs
 
     - name: Assert requirements-verification check contract
       shell: pwsh

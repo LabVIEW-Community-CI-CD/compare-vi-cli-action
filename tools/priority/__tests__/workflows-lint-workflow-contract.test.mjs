@@ -7,11 +7,19 @@ import { readFileSync } from 'node:fs';
 
 const repoRoot = process.cwd();
 
-test('workflows-lint uses the checkout workflow context helper with the default shallow PR-head mode', () => {
+test('workflows-lint uses explicit shallow PR-head checkout and runs the checkout contract suite', () => {
   const workflow = readFileSync(path.join(repoRoot, '.github', 'workflows', 'workflows-lint.yml'), 'utf8');
 
-  assert.match(workflow, /- uses: \.\/\.github\/actions\/checkout-workflow-context/);
-  assert.match(workflow, /- uses: \.\/\.github\/actions\/checkout-workflow-context\s*\r?\n\s+with:\s*\r?\n\s+mode:\s*'pr-head'/);
-  assert.doesNotMatch(workflow, /actions\/checkout@v5/);
-  assert.doesNotMatch(workflow, /- uses: \.\/\.github\/actions\/checkout-workflow-context\s*\r?\n\s+with:\s*\r?\n\s+mode:\s*'pr-head'\s*\r?\n\s+fetch-depth:\s*0/);
+  assert.match(workflow, /- uses: actions\/checkout@v5/);
+  assert.match(
+    workflow,
+    /repository:\s+\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.repo\.full_name \|\| github\.repository\s*\}\}/
+  );
+  assert.match(
+    workflow,
+    /ref:\s+\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.sha \|\| github\.sha\s*\}\}/
+  );
+  assert.doesNotMatch(workflow, /checkout-workflow-context/);
+  assert.doesNotMatch(workflow, /fetch-depth:\s*0/);
+  assert.match(workflow, /Assert workflow checkout contract/);
 });

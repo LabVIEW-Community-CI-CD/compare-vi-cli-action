@@ -86,7 +86,7 @@ RUN npm install -g markdownlint-cli2@0.14.0 markdownlint-cli@0.31.1 \
  && ln -sf /usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-x64/bin/markdownlint /usr/local/bin/markdownlint \
  && ln -sf /usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-x64/bin/markdownlint-cli2 /usr/local/bin/markdownlint-cli2
 
-# Python ruamel.yaml for workflow drift checks
+# Python retained for helper scripts and test tooling
 RUN python3 -m pip install --break-system-packages --no-cache-dir --upgrade pip \
     && python3 -m pip install --break-system-packages --no-cache-dir ruamel.yaml
 

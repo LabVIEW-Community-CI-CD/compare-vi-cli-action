@@ -15,9 +15,10 @@ jobs:
   agent-review-policy:
     runs-on: ubuntu-latest
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'base-safe'
+        repository: ${{ github.repository }}
+        ref: ${{ (github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review') && github.event.pull_request.base.sha || github.sha }}
     - uses: actions/setup-node@v5
       with:
         node-version: '20'

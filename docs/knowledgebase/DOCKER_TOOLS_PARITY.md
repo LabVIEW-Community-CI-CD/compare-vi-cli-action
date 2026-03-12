@@ -47,7 +47,7 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
 - GitHub workflow `Tools Parity (Linux)` (`.github/workflows/tools-parity.yml`) runs the helper on `ubuntu-latest`.
   Trigger it via `workflow_dispatch` to capture fresh parity logs and a `docker version` snapshot. Artifacts are uploaded
   as `docker-parity-linux` (example run: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18703466772).
-- Adjust the workflow inputs to re-enable docs, workflow drift, or markdown checks when validating broader coverage.
+- Adjust the workflow inputs to re-enable docs, workflow checkout contracts, or markdown checks when validating broader coverage.
 
 ## macOS coverage (help wanted)
 
@@ -59,6 +59,6 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
 ## Status (2025-10-22)
 
 - Parity check completed on Windows with Docker Desktop 4.47.0 (Engine 28.4.0). CLI build succeeded; cleanup confirmed.
-- Full helper sweep (docs, workflow drift, markdown) now runs cleanly after lint fixes logged in develop (Oct 22).
+- Full helper sweep (docs, workflow checkout contracts, markdown) now runs cleanly after lint fixes logged in develop (Oct 22).
 - Documentation updated (validation matrix) to remind contributors to remove `dist/comparevi-cli/` after runs.
 - Linux automation added via `Tools Parity (Linux)` workflow; macOS parity remains open for contribution.

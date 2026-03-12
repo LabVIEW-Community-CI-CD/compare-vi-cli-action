@@ -61,9 +61,10 @@ jobs:
     if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -166,7 +167,6 @@ jobs:
     - name: PrePush local gates (includes watcher schema validation)
       shell: pwsh
       env:
-        PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS: '1'
         PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS: '1'
       run: |
         pwsh -File tools/PrePush-Checks.ps1
@@ -215,33 +215,6 @@ jobs:
           echo "- markdownlint: $(markdownlint --version || echo 'n/a')"
         } >> "$GITHUB_STEP_SUMMARY"
 
-    - name: Workflow drift check (ruamel updater — notice on develop)
-      if: github.ref_name == 'develop' || github.base_ref == 'develop'
-      shell: pwsh
-      continue-on-error: true
-      run: |
-        python -m pip install --user ruamel.yaml
-        python tools/workflows/update_workflows.py --check `
-          .github/workflows/pester-selfhosted.yml `
-          .github/workflows/fixture-drift.yml `
-          .github/workflows/ci-orchestrated.yml `
-          .github/workflows/pester-integration-on-label.yml `
-          .github/workflows/smoke.yml `
-          .github/workflows/compare-artifacts.yml
-        if ($LASTEXITCODE -eq 3) { Write-Host '::notice::Workflow drift detected (develop). See ruamel updater output.' }
-
-    - name: Workflow drift check (ruamel updater — enforced on main)
-      if: github.ref_name == 'main' || github.base_ref == 'main'
-      shell: pwsh
-      run: |
-        python -m pip install --user ruamel.yaml
-        python tools/workflows/update_workflows.py --check `
-          .github/workflows/pester-selfhosted.yml `
-          .github/workflows/fixture-drift.yml `
-          .github/workflows/ci-orchestrated.yml `
-          .github/workflows/pester-integration-on-label.yml `
-          .github/workflows/smoke.yml `
-          .github/workflows/compare-artifacts.yml
 
     - name: Lint loop determinism (notice only on non-main)
       if: github.ref_name != 'main'
@@ -435,9 +408,10 @@ jobs:
       run_vi_history: ${{ steps.plan.outputs.run_vi_history }}
       vi_history_reason: ${{ steps.plan.outputs.vi_history_reason }}
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         fetch-depth: 0
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
@@ -514,9 +488,10 @@ jobs:
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
     - if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
-      uses: ./.github/actions/checkout-workflow-context
+      uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -637,12 +612,12 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     env:
-      PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS: '1'
       PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS: '1'
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -684,7 +659,7 @@ jobs:
 
     - name: Prime actionlint binary
       shell: pwsh
-      run: ./tools/PrePush-Checks.ps1 -SkipIconEditorFixtureChecks
+      run: ./tools/PrePush-Checks.ps1 -SkipLegacyFixtureChecks
 
     - name: Hooks plane info
       run: node tools/npm/run-script.mjs hooks:plane
@@ -716,9 +691,10 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -744,9 +720,10 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         fetch-depth: 0
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
@@ -776,9 +753,10 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         fetch-depth: 0
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
@@ -808,9 +786,10 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -855,9 +834,10 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -1064,9 +1044,10 @@ jobs:
     env:
       SESSION_INDEX_V2_CONTRACT_ENFORCE: ${{ vars.SESSION_INDEX_V2_CONTRACT_ENFORCE || 'false' }}
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -1126,9 +1107,10 @@ jobs:
       run:
         shell: pwsh
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         fetch-depth: 0
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
@@ -1220,9 +1202,10 @@ jobs:
       requested_history_scenario_set: ${{ steps.plan.outputs.requested_history_scenario_set }}
       downgraded_history_core: ${{ steps.plan.outputs.downgraded_history_core }}
     steps:
-    - uses: ./.github/actions/checkout-workflow-context
+    - uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -1306,9 +1289,10 @@ jobs:
         }
 
     - if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
-      uses: ./.github/actions/checkout-workflow-context
+      uses: actions/checkout@v5
       with:
-        mode: 'pr-head'
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe

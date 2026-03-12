@@ -45,7 +45,7 @@ Describe 'Resolve-ValidateScopePlan' -Tag 'Unit' {
     $plan = & $scriptPath `
       -EventName 'pull_request' `
       -Repository 'LabVIEW-Community-CI-CD/compare-vi-cli-action' `
-      -ChangedFile @('.github/workflows/validate.yml', 'tools/workflows/update_workflows.py') | ConvertFrom-Json -Depth 10
+      -ChangedFile @('.github/workflows/validate.yml', '.github/workflows/workflows-lint.yml') | ConvertFrom-Json -Depth 10
 
     $plan.scopeCategory | Should -Be 'ci-control-plane'
     $plan.lanes.fixtures.run | Should -BeFalse

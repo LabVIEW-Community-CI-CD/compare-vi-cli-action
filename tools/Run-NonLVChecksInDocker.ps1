@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  Runs non-LabVIEW validation checks (actionlint, markdownlint, docs links, workflow drift)
+  Runs non-LabVIEW validation checks (actionlint, markdownlint, docs links, workflow contracts)
   inside Docker containers for consistent local results.
 
 .DESCRIPTION
@@ -10,7 +10,7 @@
   runs against the current workspace.
 
   Exit codes:
-    - 0 : success or expected drift (workflow drift exits 3 normally)
+    - 0 : success
     - non-zero : first failing check exit code is propagated.
 
 .PARAMETER SkipActionlint
@@ -20,7 +20,7 @@
 .PARAMETER SkipDocs
   Skip the docs link checker.
 .PARAMETER SkipWorkflow
-  Skip the workflow drift check.
+  Skip the workflow checkout contract checks.
 .PARAMETER SkipDotnetCliBuild
   Skip building the CompareVI .NET CLI inside the dotnet SDK container (outputs to dist/comparevi-cli by default).
 .PARAMETER PrioritySync
@@ -39,8 +39,6 @@
 .NOTES
   Environment variables:
     - COMPAREVI_TOOLS_IMAGE: Default image tag when -UseToolsImage is supplied without -ToolsImageTag.
-.PARAMETER ExcludeWorkflowPaths
-  Paths to omit from the workflow drift check (subset of the default targets).
 #>
 param(
   [switch]$SkipActionlint,
@@ -52,7 +50,6 @@ param(
   [switch]$PrioritySync,
   [string]$ToolsImageTag,
   [switch]$UseToolsImage,
-  [string[]]$ExcludeWorkflowPaths,
   [string[]]$PesterPath,
   [string[]]$PesterFullName,
   [string[]]$PesterTag,
@@ -235,44 +232,17 @@ $buildSha = $null
 try { $buildSha = (git rev-parse HEAD).Trim() } catch { $buildSha = $null }
 if (-not $buildSha) { $buildSha = $env:GITHUB_SHA }
 if ($buildSha) { $commonArgs += @('-e', "BUILD_GIT_SHA=$buildSha") }
-$workflowTargets = @(
-  '.github/workflows/pester-selfhosted.yml',
-  '.github/workflows/fixture-drift.yml',
-  '.github/workflows/ci-orchestrated.yml',
-  '.github/workflows/pester-integration-on-label.yml',
-  '.github/workflows/smoke.yml',
-  '.github/workflows/compare-artifacts.yml'
+$workflowContractTests = @(
+  'tools/priority/__tests__/workflow-checkout-contract.test.mjs',
+  'tools/priority/__tests__/workflows-lint-workflow-contract.test.mjs',
+  'tools/priority/__tests__/agent-review-policy-contract.test.mjs',
+  'tools/priority/__tests__/validate-standard-path-contract.test.mjs'
 )
-
-if ($ExcludeWorkflowPaths) {
-  $workflowTargets = $workflowTargets | Where-Object { $_ -notin $ExcludeWorkflowPaths }
-}
-
-if (-not $workflowTargets) {
-  $SkipWorkflow = $true
-}
-
-function ConvertTo-SingleQuotedList {
-  param([string[]]$Values)
-  if (-not $Values) { return '' }
-  return ($Values | ForEach-Object { "'$_'" }) -join ' '
-}
 
 function ConvertTo-PowerShellSingleQuotedLiteral {
   param([string]$Value)
   if ($null -eq $Value) { return "''" }
   return "'" + $Value.Replace("'", "''") + "'"
-}
-
-function Test-WorkflowDriftPending {
-  param([string[]]$Paths)
-  try {
-    $output = git status --porcelain -- @Paths
-    return [bool]$output
-  } catch {
-    Write-Verbose "git status check failed: $_"
-    return $true
-  }
 }
 
 function Invoke-Container {
@@ -313,6 +283,10 @@ function Invoke-Container {
     Write-Host ("[docker] {0} OK" -f $labelText) -ForegroundColor Green
   }
   return $code
+}
+
+if ($FailOnWorkflowDrift) {
+  Write-Verbose 'FailOnWorkflowDrift is deprecated; workflow checkout contract checks are enforced whenever SkipWorkflow is not set.'
 }
 
 # Build CLI via tools image or plain SDK
@@ -384,17 +358,8 @@ if ($UseToolsImage -and $ToolsImageTag) {
     Invoke-Container -Image $ToolsImageTag -Arguments @('pwsh','-NoLogo','-NoProfile','-File','tools/Check-DocsLinks.ps1','-Path','docs') -Label 'docs-links (tools)'
   }
   if (-not $SkipWorkflow) {
-    $targetsText = ConvertTo-SingleQuotedList -Values $workflowTargets
-    $checkCmd = "python tools/workflows/update_workflows.py --check $targetsText"
-    $wfCode = Invoke-Container -Image $ToolsImageTag -Arguments @('bash','-lc',$checkCmd) -AcceptExitCodes @(0,3) -Label 'workflow-drift (tools)'
-    if ($wfCode -eq 3 -and -not (Test-WorkflowDriftPending -Paths $workflowTargets)) {
-      Write-Host '[docker] workflow-drift (tools) reported drift but no files changed; treating as clean.' -ForegroundColor Yellow
-      $wfCode = 0
-    }
-    if ($FailOnWorkflowDrift -and $wfCode -eq 3) {
-      Write-Host 'Workflow drift detected (enforced).' -ForegroundColor Red
-      exit 3
-    }
+    $testArgs = @('--test') + $workflowContractTests
+    Invoke-Container -Image $ToolsImageTag -Arguments (@('node') + $testArgs) -Label 'workflow-contracts (tools)' | Out-Null
   }
 } else {
   if (-not $SkipActionlint) {
@@ -411,20 +376,8 @@ markdownlint "**/*.md" --config .markdownlint.jsonc --ignore node_modules --igno
     Invoke-Container -Image 'mcr.microsoft.com/powershell:7.4-debian-12' -Arguments @('pwsh','-NoLogo','-NoProfile','-File','tools/Check-DocsLinks.ps1','-Path','docs') -Label 'docs-links'
   }
   if (-not $SkipWorkflow) {
-    $targetsText = ConvertTo-SingleQuotedList -Values $workflowTargets
-    $checkCmd = @"
-pip install -q ruamel.yaml && \
-python tools/workflows/update_workflows.py --check $targetsText
-"@
-    $wfCode = Invoke-Container -Image 'python:3.12-alpine' -Arguments @('sh','-lc',$checkCmd) -AcceptExitCodes @(0,3) -Label 'workflow-drift'
-    if ($wfCode -eq 3 -and -not (Test-WorkflowDriftPending -Paths $workflowTargets)) {
-      Write-Host '[docker] workflow-drift (fallback) reported drift but no files changed; treating as clean.' -ForegroundColor Yellow
-      $wfCode = 0
-    }
-    if ($FailOnWorkflowDrift -and $wfCode -eq 3) {
-      Write-Host 'Workflow drift detected (enforced).' -ForegroundColor Red
-      exit 3
-    }
+    $testArgs = @('--test') + $workflowContractTests
+    Invoke-Container -Image 'node:20' -Arguments (@('node') + $testArgs) -Label 'workflow-contracts' | Out-Null
   }
 }
 

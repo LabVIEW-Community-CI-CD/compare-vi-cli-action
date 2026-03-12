@@ -12,9 +12,13 @@ test('agent-review-policy keeps heavyweight collection on pull_request_target an
 
   assert.match(workflow, /merge_group:/);
   assert.match(workflow, /pull_request_review:\s+types: \[submitted\]/);
-  assert.match(workflow, /uses: \.\/\.github\/actions\/checkout-workflow-context/);
-  assert.match(workflow, /uses: \.\/\.github\/actions\/checkout-workflow-context\s+with:\s+mode: 'base-safe'/);
-  assert.doesNotMatch(workflow, /actions\/checkout@v5/);
+  assert.match(workflow, /uses: actions\/checkout@v5/);
+  assert.match(workflow, /repository:\s+\$\{\{\s*github\.repository\s*\}\}/);
+  assert.match(
+    workflow,
+    /ref:\s+\$\{\{\s*\(github\.event_name == 'pull_request_target' \|\| github\.event_name == 'pull_request_review'\) && github\.event\.pull_request\.base\.sha \|\| github\.sha\s*\}\}/
+  );
+  assert.doesNotMatch(workflow, /checkout-workflow-context/);
   assert.doesNotMatch(workflow, /repository:\s+\$\{\{\s*github\.event\.pull_request\.head\.repo\.full_name\s*\}\}/);
   assert.doesNotMatch(workflow, /ref:\s+\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/);
   assert.match(workflow, /actions\/setup-node@v5/);

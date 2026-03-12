@@ -8,7 +8,7 @@ on:
         default: 'true'
         required: false
       skipWorkflow:
-        description: 'Skip workflow drift check'
+        description: 'Skip workflow checkout contract checks'
         default: 'true'
         required: false
       skipMarkdown:
