@@ -195,6 +195,16 @@ function Test-GitHubSshAuthFailure {
   return $false
 }
 
+function Test-GitHubProtectedBranchFailure {
+  param([Parameter(Mandatory)][string]$Message)
+
+  if ($Message -match '(?i)GH013') { return $true }
+  if ($Message -match '(?i)Repository rule violations found') { return $true }
+  if ($Message -match '(?i)Changes must be made through a pull request') { return $true }
+  if ($Message -match '(?i)Changes must be made through the merge queue') { return $true }
+  return $false
+}
+
 function Get-SafeRemoteLocation {
   param([string]$Location)
 
@@ -208,14 +218,22 @@ function Get-SafeRemoteLocation {
 function Invoke-PushWithTransportFallback {
   param(
     [Parameter(Mandatory)][string]$Remote,
-    [Parameter(Mandatory)][string]$BranchName
+    [Parameter(Mandatory)][string]$BranchName,
+    [string]$SourceRef,
+    [string]$TargetBranch
   )
 
+  $resolvedSourceRef = if ([string]::IsNullOrWhiteSpace($SourceRef)) { $BranchName } else { $SourceRef }
+  $resolvedTargetBranch = if ([string]::IsNullOrWhiteSpace($TargetBranch)) { $BranchName } else { $TargetBranch }
+  $pushRefSpec = '{0}:{1}' -f $resolvedSourceRef, $resolvedTargetBranch
+
   try {
-    Invoke-Git -Arguments @('push', $Remote, $BranchName) | Out-Null
+    Invoke-Git -Arguments @('push', $Remote, $pushRefSpec) | Out-Null
     return [ordered]@{
       target = $Remote
       usedFallback = $false
+      sourceRef = $resolvedSourceRef
+      targetBranch = $resolvedTargetBranch
     }
   }
   catch {
@@ -235,15 +253,29 @@ function Invoke-PushWithTransportFallback {
     Invoke-Git -Arguments @(
       '-c', 'credential.interactive=never',
       '-c', 'core.askpass=',
-      'push', $fetchUrl, ("{0}:{0}" -f $BranchName)
+      'push', $fetchUrl, $pushRefSpec
     ) | Out-Null
     return [ordered]@{
       target = Get-SafeRemoteLocation -Location $fetchUrl
       usedFallback = $true
       primaryRemote = $Remote
       primaryPushUrl = Get-SafeRemoteLocation -Location $pushUrl
+      sourceRef = $resolvedSourceRef
+      targetBranch = $resolvedTargetBranch
     }
   }
+}
+
+function Get-ProtectedSyncBranchName {
+  param(
+    [Parameter(Mandatory)][string]$Remote,
+    [Parameter(Mandatory)][string]$BranchName
+  )
+
+  $sanitizedRemote = $Remote.ToLowerInvariant() -replace '[^a-z0-9._-]', '-'
+  $sanitizedBranch = $BranchName.ToLowerInvariant() -replace '[^a-z0-9._/-]', '-'
+  $sanitizedBranch = $sanitizedBranch -replace '/', '-'
+  return "sync/$sanitizedRemote-$sanitizedBranch"
 }
 
 $repoRoot = Get-GitValue -Arguments @('rev-parse', '--show-toplevel')
@@ -273,6 +305,10 @@ $gitCommonDir = ''
 $gitConfigPath = ''
 $adminPaths = $null
 $pushTransport = $null
+$syncMode = 'direct-push'
+$syncReason = 'direct-push'
+$protectedSync = $null
+$protectedSyncReportPath = ''
 
 Push-Location -LiteralPath $repoRoot
 $pushedLocation = $true
@@ -311,18 +347,57 @@ try {
 
       # Sequential by design: pull must complete before push starts.
       Invoke-Git -Arguments @('pull', '--ff-only', $BaseRemote, $Branch) | Out-Null
-      $pushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $Branch
+      try {
+        $pushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $Branch
+      }
+      catch {
+        $message = $_.Exception.Message
+        if (-not (Test-GitHubProtectedBranchFailure -Message $message)) {
+          throw
+        }
+
+        $syncMode = 'protected-pr'
+        $syncReason = 'protected-branch-gh013'
+        $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
+        $syncBranch = Get-ProtectedSyncBranchName -Remote $HeadRemote -BranchName $Branch
+        Write-Warning ("[sync] Protected branch rejected direct push to {0}/{1}; staging sync PR on {2}" -f $HeadRemote, $Branch, $syncBranch)
+        $pushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch -SourceRef 'HEAD' -TargetBranch $syncBranch
+        $protectedSyncReportPath = Join-Path $repoRoot ("tests/results/_agent/issue/{0}-protected-develop-sync.json" -f $HeadRemote)
+        Invoke-Node -Arguments @(
+          'tools/priority/protected-develop-sync-pr.mjs',
+          '--target-remote',
+          $HeadRemote,
+          '--base-remote',
+          $BaseRemote,
+          '--branch',
+          $Branch,
+          '--sync-branch',
+          $syncBranch,
+          '--reason',
+          $syncReason,
+          '--local-head',
+          $localHead,
+          '--report-path',
+          $protectedSyncReportPath
+        )
+        if (-not (Test-Path -LiteralPath $protectedSyncReportPath -PathType Leaf)) {
+          throw ("Protected sync report not found: {0}" -f $protectedSyncReportPath)
+        }
+        $protectedSync = Get-Content -LiteralPath $protectedSyncReportPath -Raw | ConvertFrom-Json -AsHashtable
+      }
 
       $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
       if ([string]::IsNullOrWhiteSpace($localHead)) {
         throw 'Unable to resolve local HEAD after push.'
       }
 
-      $converged = Wait-ForRemoteHead -Remote $HeadRemote -BranchName $Branch -ExpectedSha $localHead -Attempts $RemoteHeadPollAttempts -DelaySeconds $RemoteHeadPollDelaySeconds
-      if (-not $converged) {
-        throw ("Push completed but remote head did not converge to local HEAD ({0}) within {1} poll(s)." -f $localHead, $RemoteHeadPollAttempts)
+      if ($syncMode -eq 'direct-push') {
+        $converged = Wait-ForRemoteHead -Remote $HeadRemote -BranchName $Branch -ExpectedSha $localHead -Attempts $RemoteHeadPollAttempts -DelaySeconds $RemoteHeadPollDelaySeconds
+        if (-not $converged) {
+          throw ("Push completed but remote head did not converge to local HEAD ({0}) within {1} poll(s)." -f $localHead, $RemoteHeadPollAttempts)
+        }
+        Refresh-RemoteTrackingRef -Remote $HeadRemote -BranchName $Branch -ExpectedSha $localHead
       }
-      Refresh-RemoteTrackingRef -Remote $HeadRemote -BranchName $Branch -ExpectedSha $localHead
 
       $syncSucceeded = $true
       break
@@ -363,10 +438,27 @@ try {
   if ($pushTransport) {
     $parityReport['pushTransport'] = $pushTransport
   }
+  $syncResult = [ordered]@{
+    mode = $syncMode
+    reason = $syncReason
+    parityConverged = $false
+  }
+  if ($protectedSyncReportPath) {
+    $syncResult['reportPath'] = $protectedSyncReportPath
+  }
+  if ($protectedSync) {
+    $syncResult['protectedSync'] = $protectedSync
+  }
   ($parityReport | ConvertTo-Json -Depth 20) + "`n" | Set-Content -LiteralPath $parityReportPath -Encoding utf8
   $tipDiffCount = [int]($parityReport['tipDiff']['fileCount'])
-  if ($tipDiffCount -ne 0) {
+  $syncResult['parityConverged'] = ($tipDiffCount -eq 0)
+  $parityReport['syncResult'] = $syncResult
+  ($parityReport | ConvertTo-Json -Depth 20) + "`n" | Set-Content -LiteralPath $parityReportPath -Encoding utf8
+  if ($tipDiffCount -ne 0 -and $syncMode -ne 'protected-pr') {
     throw ("Origin/upstream parity failed: tipDiff.fileCount={0} (expected 0)." -f $tipDiffCount)
+  }
+  if ($tipDiffCount -ne 0 -and $syncMode -eq 'protected-pr') {
+    Write-Host ("[sync] Protected sync staged via PR path; parity remains pending with tipDiff.fileCount={0}" -f $tipDiffCount)
   }
 
   Write-Host ("[sync] Parity OK for {0} vs {1}" -f $baseRef, $headRef)

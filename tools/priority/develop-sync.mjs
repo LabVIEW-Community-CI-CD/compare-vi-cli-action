@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -129,6 +129,14 @@ function writeDevelopSyncReport({ repoRoot, reportPath, remotes, actions, status
   return report;
 }
 
+function readJsonFile(filePath) {
+  try {
+    return JSON.parse(readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 export function runDevelopSync({
   repoRoot = getRepoRoot(),
   options = parseArgs(),
@@ -165,11 +173,19 @@ export function runDevelopSync({
       });
       throw new Error(`priority:develop:sync failed for ${remote}.`);
     }
+    const parityReport = readJsonFile(parityReportPath);
     actions.push({
       remote,
       status: 'ok',
       parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/'),
-      adminPaths
+      adminPaths,
+      syncMode: parityReport?.syncResult?.mode ?? 'direct-push',
+      syncReason: parityReport?.syncResult?.reason ?? 'direct-push',
+      parityConverged:
+        typeof parityReport?.syncResult?.parityConverged === 'boolean'
+          ? parityReport.syncResult.parityConverged
+          : parityReport?.tipDiff?.fileCount === 0,
+      protectedSync: parityReport?.syncResult?.protectedSync ?? null
     });
   }
   const report = writeDevelopSyncReport({
