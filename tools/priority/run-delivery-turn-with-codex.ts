@@ -378,6 +378,7 @@ function buildExecutionReceipt({
   codexResult,
   codexCommand,
   brokerHelperCalls = [],
+  brokerTransitionNotes = [],
   filesTouched,
   startHead,
   endHead,
@@ -403,6 +404,7 @@ function buildExecutionReceipt({
     : filesTouched;
   const noteParts = [
     normalizeText(codexResult?.notes) || null,
+    ...brokerTransitionNotes.map((entry) => normalizeText(entry)).filter(Boolean),
     reviewCycle?.freshCopilotReviewExpected
       ? 'Broker marked the PR ready for review and is waiting for a fresh current-head Copilot review.'
       : null
@@ -513,6 +515,7 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
     env: unattendedEnv
   });
   const brokerHelperCalls = [];
+  const brokerTransitionNotes = [];
   if (initialPullRequest?.isDraft === false) {
     const toDraft = setPullRequestReadyState({
       repository: normalizeText(packet.repository),
@@ -521,8 +524,13 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
       workDir,
       env: unattendedEnv
     });
-    if (toDraft.ok && toDraft.helperCall) {
+    if (toDraft.helperCall) {
       brokerHelperCalls.push(toDraft.helperCall);
+    }
+    if (!toDraft.ok && initialPullRequest.number) {
+      brokerTransitionNotes.push(
+        `Broker failed to mark PR #${initialPullRequest.number} as draft before mutation: ${normalizeText(toDraft.result?.stderr) || normalizeText(toDraft.result?.stdout) || 'unknown error'}.`
+      );
     }
   }
   const codexArgs = [
@@ -571,8 +579,13 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
       workDir,
       env: unattendedEnv
     });
-    if (toReady.ok && toReady.helperCall) {
+    if (toReady.helperCall) {
       brokerHelperCalls.push(toReady.helperCall);
+    }
+    if (!toReady.ok && pullRequest?.number) {
+      brokerTransitionNotes.push(
+        `Broker failed to mark PR #${pullRequest.number} ready for review after mutation: ${normalizeText(toReady.result?.stderr) || normalizeText(toReady.result?.stdout) || 'unknown error'}.`
+      );
     }
   }
   const artifacts = {
@@ -593,6 +606,7 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
       codexResult: parsedLastMessage,
       codexCommand: ['codex', ...codexArgs].join(' '),
       brokerHelperCalls,
+      brokerTransitionNotes,
       filesTouched,
       startHead,
       endHead,
@@ -611,6 +625,7 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
       codexResult: parsedLastMessage,
       codexCommand: ['codex', ...codexArgs].join(' '),
       brokerHelperCalls,
+      brokerTransitionNotes,
       filesTouched,
       startHead,
       endHead,

@@ -1069,6 +1069,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       execute_lanes: ${{ steps.plan.outputs.execute_lanes }}
       skip_reason: ${{ steps.plan.outputs.skip_reason }}
@@ -1077,6 +1078,8 @@ jobs:
       downgraded_history_core: ${{ steps.plan.outputs.downgraded_history_core }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Resolve VI history dispatch plan
         id: plan
@@ -1126,6 +1129,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     env:
       NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
       NI_LINUX_LABVIEW_PATH: /usr/local/natinst/LabVIEW-2026-64/labview

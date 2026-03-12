@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { compareviRuntimeTest, parseArgs, runRuntimeSupervisor } from '../runtime-supervisor.mjs';
@@ -413,6 +413,7 @@ test('canonical delivery scheduler attaches the live Copilot review workflow to 
     deps: {
       runGhApiJsonFn: ({ endpoint }) => {
         if (endpoint.includes('/actions/runs?')) {
+          assert.match(endpoint, /per_page=100/);
           return {
             workflow_runs: [
               {
@@ -650,6 +651,117 @@ test('canonical delivery scheduler caches Copilot review metadata by head sha wh
   assert.equal(workflowLookups, 1);
   assert.equal(signalLookups, 1);
   assert.equal(secondDecision.artifacts.pullRequest.copilotReviewWorkflow.workflowName, 'Copilot code review');
+});
+
+test('canonical delivery scheduler prunes older head-sha Copilot cache entries for the same PR', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-canonical-copilot-prune-'));
+  let workflowLookups = 0;
+  const baseOptions = {
+    repoRoot,
+    upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    targetRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    issueSnapshot: {
+      number: 1010,
+      title: 'Epic: Linux-first unattended delivery runtime',
+      body: 'epic body',
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      backlogAuthority: 'issues',
+      implementationRemote: 'origin',
+      autoSlice: true,
+      autoMerge: true,
+      maxActiveCodingLanes: 1,
+      allowPolicyMutations: false,
+      allowReleaseAdmin: false,
+      stopWhenNoOpenEpics: true
+    },
+    now: new Date('2026-03-11T18:44:00Z'),
+    deps: {
+      loadCopilotReviewWorkflowRunFn: ({ headSha }) => {
+        workflowLookups += 1;
+        return {
+          workflowName: 'Copilot code review',
+          runId: 22968811761,
+          status: 'IN_PROGRESS',
+          conclusion: null,
+          headSha,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/22968811761',
+          createdAt: '2026-03-11T18:43:13Z',
+          updatedAt: '2026-03-11T18:44:00Z'
+        };
+      },
+      loadCopilotReviewSignalFn: () => null
+    }
+  };
+  const buildIssueGraph = (headRefOid) => ({
+    standingIssue: {
+      number: 1010,
+      title: 'Epic: Linux-first unattended delivery runtime',
+      body: 'epic body',
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+      state: 'OPEN',
+      labels: [],
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      createdAt: '2026-03-10T00:00:00Z',
+      updatedAt: '2026-03-10T00:00:00Z',
+      priority: 1,
+      epic: true,
+      pullRequests: []
+    },
+    subIssues: [
+      {
+        number: 1015,
+        title: '[P1] Auto-finalize merged standing lanes',
+        body: 'child',
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1015',
+        state: 'OPEN',
+        labels: [],
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        createdAt: '2026-03-10T00:00:00Z',
+        updatedAt: '2026-03-10T00:00:00Z',
+        priority: 1,
+        epic: false,
+        pullRequests: [
+          {
+            number: 1015,
+            title: 'Auto-finalize merged standing lanes',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1015',
+            state: 'OPEN',
+            isDraft: false,
+            reviewDecision: null,
+            headRefName: 'issue/origin-1010-auto-finalize-merged-standing-lanes',
+            headRefOid,
+            mergeStateStatus: 'BLOCKED',
+            mergeable: 'MERGEABLE',
+            repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+            statusCheckRollup: [
+              { __typename: 'CheckRun', name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' }
+            ]
+          }
+        ]
+      }
+    ],
+    pullRequests: []
+  });
+
+  await buildCanonicalDeliveryDecision({
+    ...baseOptions,
+    issueGraph: buildIssueGraph('1111111111111111111111111111111111111111')
+  });
+  await buildCanonicalDeliveryDecision({
+    ...baseOptions,
+    issueGraph: buildIssueGraph('2222222222222222222222222222222222222222')
+  });
+
+  const cacheDir = path.join(repoRoot, 'tests', 'results', '_agent', 'runtime', 'copilot-review-cache');
+  const cacheFiles = await readdir(cacheDir);
+
+  assert.equal(workflowLookups, 2);
+  assert.equal(cacheFiles.length, 1);
+  assert.match(cacheFiles[0], /2222222222222222222222222222222222222222/);
 });
 
 test('canonical delivery scheduler tolerates transient Copilot review metadata fetch failures', async () => {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
@@ -703,7 +703,7 @@ function loadCopilotReviewWorkflowRun({ repoRoot, repository, headSha, deps = {}
     return deps.loadCopilotReviewWorkflowRunFn({ repoRoot, repository, headSha });
   }
   const { owner, repo } = parseRepositorySlug(repository);
-  const endpoint = `repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(headSha)}&per_page=20`;
+  const endpoint = `repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(headSha)}&per_page=100`;
   const payload = runGhApiJson(repoRoot, endpoint, deps);
   return selectCopilotReviewWorkflowRun(payload?.workflow_runs, headSha);
 }
@@ -1174,6 +1174,39 @@ function resolveCopilotReviewMetadataCachePath({ repoRoot, repository, pullReque
   );
 }
 
+async function pruneCopilotReviewMetadataCache({ repoRoot, repository, pullRequestNumber, headSha }) {
+  const cachePath = resolveCopilotReviewMetadataCachePath({
+    repoRoot,
+    repository,
+    pullRequestNumber,
+    headSha
+  });
+  const cacheDir = path.dirname(cachePath);
+  const repositorySegment = sanitizeSegment(repository || 'repo');
+  const pullRequestSegment = sanitizeSegment(`pr-${pullRequestNumber || 'unknown'}`);
+  const cachePrefix = `${repositorySegment}-${pullRequestSegment}-`;
+  let entries = [];
+  try {
+    entries = await readdir(cacheDir, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return;
+    }
+    throw error;
+  }
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isFile() && entry.name.startsWith(cachePrefix) && entry.name.endsWith('.json'))
+      .map(async (entry) => {
+        const entryPath = path.join(cacheDir, entry.name);
+        if (entryPath === cachePath) {
+          return;
+        }
+        await rm(entryPath, { force: true });
+      })
+  );
+}
+
 async function loadCachedCopilotReviewMetadata({
   repoRoot,
   repository,
@@ -1234,6 +1267,12 @@ async function loadCachedCopilotReviewMetadata({
       2
     )
   );
+  await pruneCopilotReviewMetadataCache({
+    repoRoot,
+    repository,
+    pullRequestNumber,
+    headSha
+  });
   return {
     reviewWorkflow,
     reviewSignal

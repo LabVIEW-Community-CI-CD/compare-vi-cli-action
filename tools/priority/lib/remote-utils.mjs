@@ -380,7 +380,7 @@ export function buildGhPrCreateArgs({ upstream, origin, headRepository, branch, 
   ];
 }
 
-export function buildGhPrListArgs({ upstream, branch, base }) {
+export function buildGhPrListArgs({ upstream, branch, base, head }) {
   return [
     'pr',
     'list',
@@ -391,7 +391,7 @@ export function buildGhPrListArgs({ upstream, branch, base }) {
     '--base',
     base,
     '--head',
-    branch,
+    head ?? branch,
     '--json',
     'number,url,state,isDraft,headRefName,baseRefName,headRepositoryOwner,isCrossRepository'
   ];
@@ -481,11 +481,24 @@ export function findExistingPullRequest(
   const expectedOwner = String(resolvedHeadRepository?.owner ?? '')
     .trim()
     .toLowerCase();
-  const pulls =
-    runGhJsonFn(repoRoot, buildGhPrListArgs({ upstream, branch, base }), {
-      spawnSyncFn
-    }) ?? [];
-  if (!Array.isArray(pulls) || pulls.length === 0) {
+  const headSelectors = Array.from(
+    new Set([
+      expectedOwner ? `${resolvedHeadRepository.owner}:${branch}` : null,
+      branch
+    ].filter(Boolean))
+  );
+  const pulls = [];
+  for (const headSelector of headSelectors) {
+    const response =
+      runGhJsonFn(repoRoot, buildGhPrListArgs({ upstream, branch, base, head: headSelector }), {
+        spawnSyncFn
+      }) ?? [];
+    if (Array.isArray(response) && response.length > 0) {
+      pulls.push(...response);
+      break;
+    }
+  }
+  if (pulls.length === 0) {
     return null;
   }
 

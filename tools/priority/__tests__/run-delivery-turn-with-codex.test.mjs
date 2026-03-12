@@ -195,3 +195,19 @@ test('runCodexDeliveryTurn plans review restoration from the original PR state, 
     /const reviewCycle = planPullRequestReviewCycle\(\{\s*initialPullRequest,\s*finalPullRequest: pullRequest,/s
   );
 });
+
+test('runCodexDeliveryTurn records broker-managed PR ready-state helper calls even when the gh command fails', () => {
+  const source = readFileSync(path.join(repoRoot, 'tools/priority/run-delivery-turn-with-codex.ts'), 'utf8');
+
+  assert.match(source, /if \(toDraft\.helperCall\) \{\s*brokerHelperCalls\.push\(toDraft\.helperCall\);/s);
+  assert.match(source, /if \(toReady\.helperCall\) \{\s*brokerHelperCalls\.push\(toReady\.helperCall\);/s);
+});
+
+test('runCodexDeliveryTurn surfaces broker-managed PR ready-state transition failures in receipt notes', () => {
+  const source = readFileSync(path.join(repoRoot, 'tools/priority/run-delivery-turn-with-codex.ts'), 'utf8');
+
+  assert.match(source, /brokerTransitionNotes = \[\]/);
+  assert.match(source, /Broker failed to mark PR #\$\{initialPullRequest\.number\} as draft before mutation:/);
+  assert.match(source, /Broker failed to mark PR #\$\{pullRequest\.number\} ready for review after mutation:/);
+  assert.match(source, /brokerTransitionNotes = \[\],[\s\S]*noteParts = \[[\s\S]*brokerTransitionNotes\.map/s);
+});

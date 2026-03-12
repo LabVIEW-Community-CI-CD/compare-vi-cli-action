@@ -255,11 +255,12 @@ test('buildGhPrCreateArgs preserves the standard gh create path for user forks',
   ]);
 });
 
-test('buildGhPrListArgs targets the upstream repository and branch-only head selector', () => {
+test('buildGhPrListArgs targets the upstream repository and supports owner-qualified head selectors', () => {
   const args = buildGhPrListArgs({
     upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
     branch: 'issue/963-org-owned-fork-pr-helper',
-    base: 'develop'
+    base: 'develop',
+    head: 'LabVIEW-Community-CI-CD:issue/963-org-owned-fork-pr-helper'
   });
 
   assert.deepEqual(args, [
@@ -272,7 +273,7 @@ test('buildGhPrListArgs targets the upstream repository and branch-only head sel
     '--base',
     'develop',
     '--head',
-    'issue/963-org-owned-fork-pr-helper',
+    'LabVIEW-Community-CI-CD:issue/963-org-owned-fork-pr-helper',
     '--json',
     'number,url,state,isDraft,headRefName,baseRefName,headRepositoryOwner,isCrossRepository'
   ]);
@@ -313,6 +314,7 @@ test('graphql PR helpers expose the same-owner fork mutation contract', () => {
 });
 
 test('findExistingPullRequest matches the branch/base pair and same-owner cross-repo head', () => {
+  const calls = [];
   const pullRequest = findExistingPullRequest(
     '/tmp/repo',
     {
@@ -323,6 +325,7 @@ test('findExistingPullRequest matches the branch/base pair and same-owner cross-
     },
     {
       runGhJsonFn: (_repoRoot, args) => {
+        calls.push(args);
         assert.deepEqual(args, [
           'pr',
           'list',
@@ -333,7 +336,7 @@ test('findExistingPullRequest matches the branch/base pair and same-owner cross-
           '--base',
           'develop',
           '--head',
-          'issue/963-org-owned-fork-pr-helper',
+          'LabVIEW-Community-CI-CD:issue/963-org-owned-fork-pr-helper',
           '--json',
           'number,url,state,isDraft,headRefName,baseRefName,headRepositoryOwner,isCrossRepository'
         ]);
@@ -351,6 +354,43 @@ test('findExistingPullRequest matches the branch/base pair and same-owner cross-
     }
   );
 
+  assert.equal(pullRequest.number, 963);
+  assert.equal(calls.length, 1);
+});
+
+test('findExistingPullRequest falls back to the unqualified branch selector when the owner-qualified lookup misses', () => {
+  const calls = [];
+  const pullRequest = findExistingPullRequest(
+    '/tmp/repo',
+    {
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      headRepository: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+      branch: 'issue/963-org-owned-fork-pr-helper',
+      base: 'develop'
+    },
+    {
+      runGhJsonFn: (_repoRoot, args) => {
+        calls.push(args);
+        if (calls.length === 1) {
+          return [];
+        }
+        return [
+          {
+            number: 963,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963',
+            headRefName: 'issue/963-org-owned-fork-pr-helper',
+            baseRefName: 'develop',
+            headRepositoryOwner: { login: 'LabVIEW-Community-CI-CD' },
+            isCrossRepository: true
+          }
+        ];
+      }
+    }
+  );
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0][9], 'LabVIEW-Community-CI-CD:issue/963-org-owned-fork-pr-helper');
+  assert.equal(calls[1][9], 'issue/963-org-owned-fork-pr-helper');
   assert.equal(pullRequest.number, 963);
 });
 
