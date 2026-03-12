@@ -8,6 +8,12 @@ import { fileURLToPath } from 'node:url';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { resolveGitAdminPaths } from './lib/git-admin-paths.mjs';
 import { resolveActiveForkRemoteName } from './lib/remote-utils.mjs';
+import {
+  DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
+  assertAllowedTransition,
+  classifyBranch,
+  loadBranchClassContract
+} from './lib/branch-classification.mjs';
 
 const DEFAULT_REPORT_PATH = path.join('tests', 'results', '_agent', 'issue', 'develop-sync-report.json');
 const SUPPORTED_FORK_REMOTES = new Set(['origin', 'personal']);
@@ -115,6 +121,57 @@ export function buildPwshArgs({ repoRoot, remote, parityReportPath }) {
   ];
 }
 
+function requireClassifiedBranch({
+  branch,
+  repositoryRole,
+  contract,
+  contractPath = DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH
+}) {
+  const classified = classifyBranch({
+    branch,
+    contract,
+    repositoryRole
+  });
+  if (!classified) {
+    throw new Error(
+      `Unable to classify branch '${branch}' for repository role '${repositoryRole}' using '${contractPath}'.`
+    );
+  }
+  return classified;
+}
+
+export function buildDevelopSyncBranchClassTrace(repoRoot) {
+  const contractPath = DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH.replace(/\\/g, '/');
+  const contract = loadBranchClassContract(repoRoot, {
+    relativePath: DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH
+  });
+  const source = requireClassifiedBranch({
+    branch: 'develop',
+    contract,
+    repositoryRole: 'upstream',
+    contractPath
+  });
+  const target = requireClassifiedBranch({
+    branch: 'develop',
+    contract,
+    repositoryRole: 'fork',
+    contractPath
+  });
+  const transition = assertAllowedTransition({
+    from: source.id,
+    to: target.id,
+    action: 'sync',
+    contract
+  });
+
+  return {
+    contractPath,
+    source,
+    target,
+    transition
+  };
+}
+
 function writeDevelopSyncReport({ repoRoot, reportPath, remotes, actions, status }) {
   mkdirSync(path.dirname(reportPath), { recursive: true });
   const report = {
@@ -146,6 +203,7 @@ export function runDevelopSync({
   const remotes = resolveForkRemoteTargets(options.forkRemote, env);
   const actions = [];
   const reportPath = path.isAbsolute(options.reportPath) ? options.reportPath : path.join(repoRoot, options.reportPath);
+  const branchClassTrace = buildDevelopSyncBranchClassTrace(repoRoot);
 
   for (const remote of remotes) {
     const parityReportPath = buildParityReportPath(repoRoot, remote);
@@ -198,6 +256,7 @@ export function runDevelopSync({
       status: 'ok',
       parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/'),
       adminPaths,
+      branchClassTrace,
       syncMode: parityReport?.syncResult?.mode ?? 'direct-push',
       syncReason: parityReport?.syncResult?.reason ?? 'direct-push',
       parityConverged:

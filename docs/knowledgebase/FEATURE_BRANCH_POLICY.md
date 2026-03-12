@@ -8,6 +8,10 @@ _Last updated: 2026-03-05 (standing priority #719)._
 Serve as the canonical quick reference for how contributors branch, validate, and promote work while satisfying the
 standing GitHub protection rules (including queue-managed `develop` and `main`).
 
+Canonical branch-role definitions now live in [docs/BRANCH_ROLE_CONTRACT.md](../BRANCH_ROLE_CONTRACT.md) and
+[tools/policy/branch-classes.json](../../tools/policy/branch-classes.json). This page focuses on enforcement and
+promotion behavior, not the branch-class source of truth.
+
 ## Branch Expectations
 
 | Branch pattern            | Purpose                               | Creation helper                                                 | Merge target |

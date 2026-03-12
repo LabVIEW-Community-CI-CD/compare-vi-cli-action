@@ -1,0 +1,188 @@
+{
+  "schema": "branch-classes/v1",
+  "schemaVersion": "1.0.0",
+  "upstreamRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+  "classes": [
+    {
+      "id": "upstream-integration",
+      "repositoryRoles": [
+        "upstream"
+      ],
+      "branchPatterns": [
+        "develop"
+      ],
+      "purpose": "Canonical integration branch. Standing work lands here through queue-managed squash promotion.",
+      "prSourceAllowed": false,
+      "prTargetAllowed": true,
+      "mergePolicy": "merge-queue-squash"
+    },
+    {
+      "id": "upstream-release",
+      "repositoryRoles": [
+        "upstream"
+      ],
+      "branchPatterns": [
+        "main"
+      ],
+      "purpose": "Protected release branch.",
+      "prSourceAllowed": false,
+      "prTargetAllowed": true,
+      "mergePolicy": "merge-queue-squash"
+    },
+    {
+      "id": "upstream-release-prep",
+      "repositoryRoles": [
+        "upstream"
+      ],
+      "branchPatterns": [
+        "release/*"
+      ],
+      "purpose": "Release-preparation branches promoted into upstream main.",
+      "prSourceAllowed": false,
+      "prTargetAllowed": true,
+      "mergePolicy": "rebase-only"
+    },
+    {
+      "id": "fork-mirror-develop",
+      "repositoryRoles": [
+        "fork"
+      ],
+      "branchPatterns": [
+        "develop"
+      ],
+      "purpose": "Mirror/sync copy of upstream develop. This is not an implementation or promotion surface.",
+      "prSourceAllowed": false,
+      "prTargetAllowed": false,
+      "mergePolicy": "mirror-only"
+    },
+    {
+      "id": "fork-passive-main",
+      "repositoryRoles": [
+        "fork"
+      ],
+      "branchPatterns": [
+        "main"
+      ],
+      "purpose": "Optional passive mirror of upstream main.",
+      "prSourceAllowed": false,
+      "prTargetAllowed": false,
+      "mergePolicy": "mirror-only"
+    },
+    {
+      "id": "lane",
+      "repositoryRoles": [
+        "upstream",
+        "fork"
+      ],
+      "branchPatterns": [
+        "issue/*"
+      ],
+      "purpose": "Short-lived implementation branches tied to issues.",
+      "prSourceAllowed": true,
+      "prTargetAllowed": false,
+      "mergePolicy": "n/a"
+    },
+    {
+      "id": "feature",
+      "repositoryRoles": [
+        "upstream",
+        "fork"
+      ],
+      "branchPatterns": [
+        "feature/*"
+      ],
+      "purpose": "Explicitly non-standing experimental branches.",
+      "prSourceAllowed": true,
+      "prTargetAllowed": false,
+      "mergePolicy": "n/a"
+    },
+    {
+      "id": "merge-queue",
+      "repositoryRoles": [
+        "upstream"
+      ],
+      "branchPatterns": [
+        "gh-readonly-queue/**"
+      ],
+      "purpose": "Ephemeral merge-queue evaluation refs owned by GitHub.",
+      "prSourceAllowed": false,
+      "prTargetAllowed": false,
+      "mergePolicy": "queue-owned"
+    }
+  ],
+  "allowedTransitions": [
+    {
+      "from": "lane",
+      "action": "promote",
+      "to": "upstream-integration",
+      "via": "pull-request"
+    },
+    {
+      "from": "feature",
+      "action": "promote",
+      "to": "upstream-integration",
+      "via": "pull-request"
+    },
+    {
+      "from": "lane",
+      "action": "promote",
+      "to": "upstream-release-prep",
+      "via": "pull-request"
+    },
+    {
+      "from": "upstream-release-prep",
+      "action": "promote",
+      "to": "upstream-release",
+      "via": "pull-request"
+    },
+    {
+      "from": "upstream-integration",
+      "action": "sync",
+      "to": "fork-mirror-develop",
+      "via": "priority:develop:sync"
+    },
+    {
+      "from": "upstream-integration",
+      "action": "queue",
+      "to": "merge-queue",
+      "via": "priority:merge-sync"
+    },
+    {
+      "from": "upstream-release",
+      "action": "queue",
+      "to": "merge-queue",
+      "via": "priority:merge-sync"
+    },
+    {
+      "from": "merge-queue",
+      "action": "merge",
+      "to": "upstream-integration",
+      "via": "github-merge-queue"
+    },
+    {
+      "from": "merge-queue",
+      "action": "merge",
+      "to": "upstream-release",
+      "via": "github-merge-queue"
+    },
+    {
+      "from": "upstream-integration",
+      "action": "branch",
+      "to": "lane",
+      "via": "issue/*"
+    },
+    {
+      "from": "upstream-integration",
+      "action": "branch",
+      "to": "feature",
+      "via": "feature/*"
+    },
+    {
+      "from": "fork-mirror-develop",
+      "action": "branch",
+      "to": "lane",
+      "via": "issue/*",
+      "notes": "Fork lanes may branch from the mirror, but promotion still targets upstream integration."
+    }
+  ]
+}

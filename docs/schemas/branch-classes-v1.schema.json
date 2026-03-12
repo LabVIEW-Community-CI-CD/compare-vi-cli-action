@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/branch-classes-v1.schema.json",
+  "title": "Branch Classes v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "upstreamRepository",
+    "classes",
+    "allowedTransitions"
+  ],
+  "properties": {
+    "schema": {
+      "const": "branch-classes/v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "upstreamRepository": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "classes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "repositoryRoles",
+          "branchPatterns",
+          "purpose",
+          "prSourceAllowed",
+          "prTargetAllowed",
+          "mergePolicy"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repositoryRoles": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "upstream",
+                "fork"
+              ]
+            }
+          },
+          "branchPatterns": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1
+          },
+          "prSourceAllowed": {
+            "type": "boolean"
+          },
+          "prTargetAllowed": {
+            "type": "boolean"
+          },
+          "mergePolicy": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "allowedTransitions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "action",
+          "to",
+          "via"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string",
+            "minLength": 1
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1
+          },
+          "via": {
+            "type": "string",
+            "minLength": 1
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

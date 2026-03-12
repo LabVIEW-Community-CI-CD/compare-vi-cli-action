@@ -8,6 +8,12 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { ensureGhCli, resolveUpstream } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
+import {
+  DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
+  classifyBranch,
+  loadBranchClassContract,
+  resolveRepositoryRole
+} from './lib/branch-classification.mjs';
 
 const manifestPath = new URL('./policy.json', import.meta.url);
 
@@ -180,6 +186,16 @@ export function buildPolicyTrace(mergeQueueBranches = new Set()) {
   };
 }
 
+export function buildBranchClassTrace({ targetRepositoryRole = null, baseBranchClass = null } = {}) {
+  return {
+    contractPath: DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH.replace(/\\/g, '/'),
+    targetRepositoryRole,
+    baseBranchClassId: baseBranchClass?.id ?? null,
+    baseBranchMergePolicy: baseBranchClass?.mergePolicy ?? null,
+    baseBranchPattern: baseBranchClass?.matchedPattern ?? null
+  };
+}
+
 export function resolveHeadRepositoryOwner(prInfo = {}) {
   const owner = prInfo?.headRepositoryOwner;
   if (typeof owner === 'string') {
@@ -215,6 +231,7 @@ export function buildMergeSummaryPayload({
   mergeQueueBranches,
   attempts,
   prInfo,
+  branchClassTrace = null,
   promotion = null,
   createdAt = new Date().toISOString()
 }) {
@@ -232,6 +249,7 @@ export function buildMergeSummaryPayload({
     finalReason,
     dryRun,
     policyTrace: buildPolicyTrace(mergeQueueBranches),
+    branchClassTrace,
     attempts,
     prState: {
       state: prInfo?.state ?? null,
@@ -294,7 +312,7 @@ export function classifyPromotionState(initialState = {}, finalState = {}, { fin
   };
 }
 
-export function selectMergeMode(prInfo, { admin = false, mergeQueueBranches = new Set() } = {}) {
+export function selectMergeMode(prInfo, { admin = false, mergeQueueBranches = new Set(), baseBranchClass = null } = {}) {
   const state = normalizeUpper(prInfo?.state);
   const mergeState = normalizeUpper(prInfo?.mergeStateStatus);
   const mergeable = normalizeUpper(prInfo?.mergeable);
@@ -320,7 +338,11 @@ export function selectMergeMode(prInfo, { admin = false, mergeQueueBranches = ne
     throw new Error('PR is UNMERGEABLE. Resolve branch/ruleset blockers before merge automation.');
   }
 
-  if (baseRefName && mergeQueueBranches.has(baseRefName)) {
+  if (baseBranchClass?.mergePolicy === 'merge-queue-squash') {
+    return { mode: 'auto', reason: `merge-queue-branch-${baseRefName || baseBranchClass.id}` };
+  }
+
+  if (!baseBranchClass && baseRefName && mergeQueueBranches.has(baseRefName)) {
     return { mode: 'auto', reason: `merge-queue-branch-${baseRefName}` };
   }
 
@@ -520,13 +542,24 @@ export async function runMergeSync({
   const policyRaw = await readFile(manifestPath, 'utf8');
   const policy = JSON.parse(policyRaw);
   const mergeQueueBranches = getMergeQueueBranches(policy);
+  const branchClassContract = loadBranchClassContract(repoRoot);
 
   const prInfo = readPrInfoFn({
     repoRoot,
     repo: resolvedRepo,
     pr: options.pr
   });
-  const selection = selectMergeMode(prInfo, { admin: options.admin, mergeQueueBranches });
+  const targetRepositoryRole = resolveRepositoryRole(resolvedRepo, branchClassContract);
+  const baseBranchClass = classifyBranch({
+    branch: prInfo?.baseRefName,
+    contract: branchClassContract,
+    repositoryRole: targetRepositoryRole
+  });
+  const selection = selectMergeMode(prInfo, {
+    admin: options.admin,
+    mergeQueueBranches,
+    baseBranchClass
+  });
   const initialPromotionState =
     selection.mode === 'none'
       ? {
@@ -642,6 +675,10 @@ export async function runMergeSync({
     mergeQueueBranches,
     attempts,
     prInfo,
+    branchClassTrace: buildBranchClassTrace({
+      targetRepositoryRole,
+      baseBranchClass
+    }),
     promotion
   });
   await maybeWriteSummary(options.summaryPath, payload);
