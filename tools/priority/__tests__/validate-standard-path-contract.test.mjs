@@ -33,6 +33,7 @@ test('hook-parity checks out the PR head directly instead of the merge ref on pu
   const workflow = readRepoFile('.github/workflows/validate.yml');
   const hookParitySection = extractWorkflowJobSection(workflow, 'hook-parity', 'semver');
 
+  assert.match(hookParitySection, /name:\s+hook-parity \(ubuntu-latest\)/);
   assert.match(
     hookParitySection,
     /- uses: actions\/checkout@v5\s*\r?\n\s+with:\s*\r?\n\s+repository: \$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.repo\.full_name \|\| github\.repository \}\}\s*\r?\n\s+ref: \$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/

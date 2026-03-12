@@ -584,6 +584,7 @@ jobs:
 
   hook-parity:
     needs: lint
+    name: hook-parity (ubuntu-latest)
     runs-on: ubuntu-latest
     env:
       PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS: '1'
