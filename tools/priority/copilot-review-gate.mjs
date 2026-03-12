@@ -467,7 +467,7 @@ async function loadLiveReviewRun(options, token = getAuthToken()) {
   }
 
   const payload = await githubRequestJson(
-    `${GITHUB_API_URL}/repos/${options.repo}/actions/runs?head_sha=${options.headSha}&per_page=100`,
+    `${GITHUB_API_URL}/repos/${options.repo}/actions/runs?per_page=100`,
     { token: resolvedToken },
   );
   return selectCopilotWorkflowRun(payload, options.headSha);

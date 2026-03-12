@@ -144,6 +144,49 @@ test('copilot review signal keeps review state in attention while the current-he
   assert.equal(report.reviewRun.observationState, 'in_progress');
 });
 
+test('copilot review signal selects the current-head Copilot dynamic run from an unfiltered workflow-run list', async () => {
+  const { selectCopilotWorkflowRun } = await loadModule();
+  const currentHead = '1234123412341234123412341234123412341234';
+  const otherHead = '9999999999999999999999999999999999999999';
+
+  const selected = selectCopilotWorkflowRun(
+    {
+      workflow_runs: [
+        {
+          id: 92003,
+          name: 'Validate',
+          head_sha: currentHead,
+          updated_at: '2026-03-08T05:20:00Z',
+        },
+        {
+          id: 92004,
+          name: 'Copilot code review',
+          event: 'dynamic',
+          head_sha: otherHead,
+          status: 'completed',
+          conclusion: 'success',
+          updated_at: '2026-03-08T05:21:00Z',
+        },
+        {
+          id: 92005,
+          name: 'Copilot code review',
+          event: 'dynamic',
+          head_sha: currentHead,
+          status: 'completed',
+          conclusion: 'success',
+          updated_at: '2026-03-08T05:22:00Z',
+          html_url: 'https://github.com/example/actions/runs/92005',
+        },
+      ],
+    },
+    currentHead,
+  );
+
+  assert.equal(selected?.id, 92005);
+  assert.equal(selected?.head_sha, currentHead);
+  assert.equal(selected?.name, 'Copilot code review');
+});
+
 test('copilot review signal detects stale reviews on older head SHAs', async () => {
   const { analyzeCopilotReviewSignal } = await loadModule();
   const headSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';

@@ -680,7 +680,7 @@ function loadThreadsPayload(options: CliOptions): ReviewThreadsGraphQlPayload {
   ]) as ReviewThreadsGraphQlPayload;
 }
 
-function selectCopilotWorkflowRun(
+export function selectCopilotWorkflowRun(
   payload: unknown,
   headSha: string | null,
 ): WorkflowRunPayload | null {
@@ -717,7 +717,7 @@ function loadWorkflowRunPayload(
 
   const payload = runGhJson([
     'api',
-    `repos/${options.repo}/actions/runs?head_sha=${context.headSha}&per_page=100`,
+    `repos/${options.repo}/actions/runs?per_page=100`,
   ]);
   return selectCopilotWorkflowRun(payload, context.headSha);
 }
