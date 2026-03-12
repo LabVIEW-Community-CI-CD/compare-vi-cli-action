@@ -183,6 +183,27 @@ function normalizeBaseRefList(value) {
     .filter((item) => Boolean(item));
 }
 
+export function parseMergeGroupHeadBranch(headBranch) {
+  const normalized = normalizeText(headBranch);
+  if (!normalized) {
+    return null;
+  }
+
+  const match = /^gh-readonly-queue\/(?<baseRef>.+)\/pr-(?<prNumber>\d+)-(?<headSha>[0-9a-f]{40})$/i.exec(
+    normalized,
+  );
+  if (!match?.groups) {
+    return null;
+  }
+
+  return {
+    headBranch: normalized,
+    baseRef: normalizeBaseRef(match.groups.baseRef),
+    prNumber: Number.parseInt(match.groups.prNumber, 10),
+    sourceHeadSha: normalizeSha(match.groups.headSha),
+  };
+}
+
 export function parseRepoSlug(repo) {
   const normalized = normalizeText(repo);
   if (!normalized) {
@@ -219,6 +240,7 @@ function printUsage() {
     '  --repo <owner/repo>        Repository slug used for live GitHub API lookups.',
     '  --pr <number>              Pull request number for live lookups.',
     '  --head-sha <sha>           Current pull request head SHA.',
+    '  --head-branch <branch>     Current merge-group head branch or explicit PR head branch.',
     '  --base-ref <branch>        Pull request base ref or merge-group base ref.',
     '  --draft <true|false>       Whether the pull request is currently a draft.',
     '  --signal <path>            Optional Copilot review signal report produced on pull_request_target.',
@@ -248,6 +270,7 @@ export function parseCliArgs(argv = process.argv) {
     repo: null,
     prNumber: null,
     headSha: null,
+    headBranch: null,
     baseRef: null,
     draft: null,
     signalPath: null,
@@ -276,6 +299,7 @@ export function parseCliArgs(argv = process.argv) {
       token === '--repo' ||
       token === '--pr' ||
       token === '--head-sha' ||
+      token === '--head-branch' ||
       token === '--base-ref' ||
       token === '--draft' ||
       token === '--signal' ||
@@ -298,6 +322,7 @@ export function parseCliArgs(argv = process.argv) {
       if (token === '--repo') options.repo = normalizeText(next);
       if (token === '--pr') options.prNumber = normalizeInteger(next);
       if (token === '--head-sha') options.headSha = normalizeSha(next);
+      if (token === '--head-branch') options.headBranch = normalizeText(next);
       if (token === '--base-ref') options.baseRef = normalizeBaseRef(next);
       if (token === '--draft') options.draft = normalizeBoolean(next);
       if (token === '--signal') options.signalPath = normalizeText(next);
@@ -318,10 +343,13 @@ export function parseCliArgs(argv = process.argv) {
   }
 
   if (!options.help) {
+    if (!options.signalPath && !options.repo) {
+      throw new Error('Repository slug is required. Pass --repo <owner/repo>.');
+    }
+    if (options.eventName === 'merge_group' && !options.signalPath && !options.headBranch) {
+      throw new Error('Merge-group evaluation requires --head-branch <branch>.');
+    }
     if (options.eventName !== 'merge_group' && !options.signalPath) {
-      if (!options.repo) {
-        throw new Error('Repository slug is required. Pass --repo <owner/repo>.');
-      }
       if (options.prNumber === null) {
         throw new Error('Pull request number is required. Pass --pr <number>.');
       }
@@ -473,6 +501,17 @@ async function loadLiveReviewRun(options, token = getAuthToken()) {
   return selectCopilotWorkflowRun(payload, options.headSha);
 }
 
+async function loadLivePullRequest(options, token = getAuthToken()) {
+  if (!options.repo || options.prNumber === null) {
+    throw new Error('Live pull-request lookups require both --repo and --pr.');
+  }
+
+  return githubRequestJson(
+    `${GITHUB_API_URL}/repos/${options.repo}/pulls/${options.prNumber}`,
+    { token },
+  );
+}
+
 function readJsonFile(filePath) {
   const resolved = path.resolve(process.cwd(), filePath);
   if (!existsSync(resolved)) {
@@ -591,18 +630,26 @@ function normalizeReviews(reviews, headSha) {
     });
 }
 
-function buildPullRequest(options, signalReport = null) {
+function buildPullRequest(options, signalReport = null, livePullRequest = null, mergeGroupSource = null) {
   const signalPull = signalReport?.pullRequest ?? {};
   const repository = normalizeText(signalReport?.repository) ?? normalizeText(options.repo);
-  const number = normalizeInteger(signalPull.number) ?? options.prNumber;
+  const livePull = livePullRequest ?? {};
+  const signalNumber = normalizeInteger(signalPull.number);
+  const liveNumber = normalizeInteger(livePull.number);
+  const mergeGroupNumber = normalizeInteger(mergeGroupSource?.prNumber);
+  const number = signalNumber ?? options.prNumber ?? liveNumber ?? mergeGroupNumber;
   return {
     number,
     url:
       normalizeText(signalPull.url) ??
+      normalizeText(livePull.html_url) ??
       (repository && number !== null ? `https://github.com/${repository}/pull/${number}` : null),
-    baseRef: normalizeBaseRef(signalPull.baseRef ?? options.baseRef),
-    draft: normalizeBoolean(signalPull.draft) ?? options.draft ?? false,
-    headSha: normalizeSha(signalPull.headSha ?? options.headSha),
+    baseRef: normalizeBaseRef(signalPull.baseRef ?? livePull.base?.ref ?? mergeGroupSource?.baseRef ?? options.baseRef),
+    draft: normalizeBoolean(signalPull.draft) ?? normalizeBoolean(livePull.draft) ?? options.draft ?? false,
+    headSha: normalizeSha(signalPull.headSha ?? mergeGroupSource?.sourceHeadSha ?? options.headSha),
+    liveHeadSha: normalizeSha(livePull.head?.sha),
+    headBranch: normalizeText(options.headBranch),
+    mergeGroupSource,
   };
 }
 
@@ -711,9 +758,17 @@ function evaluateGateOutcome({
   const reasons = [];
   const normalizedBaseRef = normalizeBaseRef(pullRequest.baseRef)?.toLowerCase() ?? null;
   const canonicalRepository = isCanonicalRepository(repository);
+  const mergeGroupSource = pullRequest.mergeGroupSource ?? null;
+  const mergeGroupSourceResolved = eventName !== 'merge_group' || mergeGroupSource !== null;
+  const mergeGroupSourceHeadMatchesPullRequestHead =
+    eventName !== 'merge_group' ||
+    !pullRequest.liveHeadSha ||
+    !pullRequest.headSha ||
+    pullRequest.liveHeadSha === pullRequest.headSha;
   const gateApplies =
-    eventName !== 'merge_group' &&
     pullRequest.draft !== true &&
+    mergeGroupSourceResolved &&
+    mergeGroupSourceHeadMatchesPullRequestHead &&
     Boolean(normalizedBaseRef && gatedBaseRefs.includes(normalizedBaseRef) && canonicalRepository);
 
   const summary = {
@@ -755,6 +810,7 @@ function evaluateGateOutcome({
   const staleReviewCleanFollowup =
     Boolean(latestCopilotReview) &&
     eventName !== 'pull_request_target' &&
+    eventName !== 'merge_group' &&
     latestCopilotReview.isCurrentHead === false &&
     summary.currentHeadReviewCount === 0 &&
     summary.staleReviewCount > 0 &&
@@ -769,9 +825,14 @@ function evaluateGateOutcome({
   let status = 'pass';
   let gateState = 'ready';
 
-  if (eventName === 'merge_group') {
-    gateState = 'skipped';
-    reasons.push('merge-group-skip');
+  if (eventName === 'merge_group' && !mergeGroupSourceResolved) {
+    status = 'fail';
+    gateState = 'error';
+    reasons.push('merge-group-source-unresolved');
+  } else if (eventName === 'merge_group' && !mergeGroupSourceHeadMatchesPullRequestHead) {
+    status = 'fail';
+    gateState = 'blocked';
+    reasons.push('merge-group-source-head-stale');
   } else if (pullRequest.draft === true) {
     gateState = 'skipped';
     reasons.push('draft-pr-skip');
@@ -836,6 +897,15 @@ function evaluateGateOutcome({
     source: {
       mode: sourceMode,
       eventName,
+      mergeGroup:
+        mergeGroupSource !== null
+          ? {
+              headBranch: mergeGroupSource.headBranch,
+              prNumber: mergeGroupSource.prNumber,
+              sourceHeadSha: mergeGroupSource.sourceHeadSha,
+              sourceHeadMatchesPullRequestHead: mergeGroupSourceHeadMatchesPullRequestHead,
+            }
+          : null,
     },
     pullRequest: {
       number: pullRequest.number,
@@ -843,6 +913,7 @@ function evaluateGateOutcome({
       baseRef: pullRequest.baseRef,
       draft: pullRequest.draft,
       headSha: pullRequest.headSha,
+      liveHeadSha: pullRequest.liveHeadSha ?? null,
     },
     summary,
     signals: {
@@ -972,8 +1043,16 @@ function buildReportFromSignal(options, signalReport, now) {
   });
 }
 
-function buildReportFromLiveData(options, reviewsPayload, threadsPayload, now, workflowRun = null) {
-  const pullRequest = buildPullRequest(options);
+function buildReportFromLiveData(
+  options,
+  reviewsPayload,
+  threadsPayload,
+  now,
+  workflowRun = null,
+  livePullRequest = null,
+  mergeGroupSource = null,
+) {
+  const pullRequest = buildPullRequest(options, null, livePullRequest, mergeGroupSource);
   const reviews = normalizeReviews(reviewsPayload, pullRequest.headSha);
   const threads = extractThreadNodes(threadsPayload)
     .map((thread) => normalizeThread(thread, pullRequest.headSha))
@@ -983,7 +1062,7 @@ function buildReportFromLiveData(options, reviewsPayload, threadsPayload, now, w
   return evaluateGateOutcome({
     eventName: options.eventName,
     repository: normalizeText(options.repo),
-    sourceMode: 'live',
+    sourceMode: options.eventName === 'merge_group' ? 'merge-group-live' : 'live',
     pullRequest,
     reviews,
     threads,
@@ -995,7 +1074,8 @@ function buildReportFromLiveData(options, reviewsPayload, threadsPayload, now, w
 }
 
 function buildFailureReport(options, now, error) {
-  const pullRequest = buildPullRequest(options);
+  const mergeGroupSource = options.eventName === 'merge_group' ? parseMergeGroupHeadBranch(options.headBranch) : null;
+  const pullRequest = buildPullRequest(options, null, null, mergeGroupSource);
   return {
     schema: COPILOT_REVIEW_GATE_SCHEMA,
     schemaVersion: '1.0.0',
@@ -1006,6 +1086,15 @@ function buildFailureReport(options, now, error) {
     source: {
       mode: options.eventName === 'merge_group' ? 'merge-group' : 'live',
       eventName: options.eventName,
+      mergeGroup:
+        mergeGroupSource !== null
+          ? {
+              headBranch: mergeGroupSource.headBranch,
+              prNumber: mergeGroupSource.prNumber,
+              sourceHeadSha: mergeGroupSource.sourceHeadSha,
+              sourceHeadMatchesPullRequestHead: false,
+            }
+          : null,
     },
     pullRequest: {
       number: pullRequest.number,
@@ -1013,6 +1102,7 @@ function buildFailureReport(options, now, error) {
       baseRef: pullRequest.baseRef,
       draft: pullRequest.draft,
       headSha: pullRequest.headSha,
+      liveHeadSha: pullRequest.liveHeadSha ?? null,
     },
     summary: {
       copilotReviewCount: 0,
@@ -1149,6 +1239,7 @@ export async function runCopilotReviewGate({
   argv = process.argv,
   now = new Date(),
   readSignalFn = readJsonFile,
+  loadPullRequestFn = loadLivePullRequest,
   loadReviewsFn = loadLiveReviews,
   loadThreadsFn = loadLiveThreads,
   loadReviewRunFn = loadLiveReviewRun,
@@ -1171,13 +1262,22 @@ export async function runCopilotReviewGate({
   try {
     const signalPathExists = options.signalPath && existsSync(path.resolve(process.cwd(), options.signalPath));
     const signalReport = signalPathExists ? readSignalFn(options.signalPath) : null;
-    const preflightPullRequest = buildPullRequest(options, signalReport);
+    const mergeGroupSource = options.eventName === 'merge_group' ? parseMergeGroupHeadBranch(options.headBranch) : null;
+    const resolvedOptions =
+      options.eventName === 'merge_group' && mergeGroupSource
+        ? {
+            ...options,
+            prNumber: mergeGroupSource.prNumber,
+            headSha: mergeGroupSource.sourceHeadSha,
+            baseRef: mergeGroupSource.baseRef ?? options.baseRef,
+          }
+        : options;
+    const preflightPullRequest = buildPullRequest(resolvedOptions, signalReport, null, mergeGroupSource);
     const preflightBaseRef = normalizeBaseRef(preflightPullRequest.baseRef)?.toLowerCase() ?? null;
     const preflightRepository =
       normalizeText(signalReport?.repository) ??
-      normalizeText(options.repo);
+      normalizeText(resolvedOptions.repo);
     const shouldSkipWithoutLookup =
-      options.eventName === 'merge_group' ||
       preflightPullRequest.draft === true ||
       !preflightBaseRef ||
       !options.gatedBaseRefs.includes(preflightBaseRef) ||
@@ -1187,22 +1287,31 @@ export async function runCopilotReviewGate({
       report = evaluateGateOutcome({
         eventName: options.eventName,
         repository: preflightRepository,
-        sourceMode: options.eventName === 'merge_group' ? 'merge-group' : 'metadata',
+        sourceMode: options.eventName === 'merge_group' ? 'merge-group-metadata' : 'metadata',
         pullRequest: preflightPullRequest,
         reviews: [],
         threads: [],
-        reviewRun: buildReviewRunFromSignal(signalReport, options),
+        reviewRun: buildReviewRunFromSignal(signalReport, resolvedOptions),
         errors: [],
         gatedBaseRefs: options.gatedBaseRefs,
         now,
       });
     } else if (signalReport) {
-      report = buildReportFromSignal(options, signalReport, now);
+      report = buildReportFromSignal(resolvedOptions, signalReport, now);
     } else {
-      const reviews = await loadReviewsFn(options);
-      const threads = await loadThreadsFn(options);
-      const reviewRun = await loadReviewRunFn(options);
-      report = buildReportFromLiveData(options, reviews, threads, now, reviewRun);
+      const livePullRequest = options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions) : null;
+      const reviews = await loadReviewsFn(resolvedOptions);
+      const threads = await loadThreadsFn(resolvedOptions);
+      const reviewRun = await loadReviewRunFn(resolvedOptions);
+      report = buildReportFromLiveData(
+        resolvedOptions,
+        reviews,
+        threads,
+        now,
+        reviewRun,
+        livePullRequest,
+        mergeGroupSource,
+      );
     }
 
     if (shouldPollForInitialCopilotReview(report, options)) {
@@ -1210,10 +1319,19 @@ export async function runCopilotReviewGate({
       while (attemptsUsed < options.pollAttempts) {
         attemptsUsed += 1;
         await sleep(options.pollDelayMs);
-        const reviews = await loadReviewsFn(options);
-        const threads = await loadThreadsFn(options);
-        const reviewRun = await loadReviewRunFn(options);
-        report = buildReportFromLiveData(options, reviews, threads, now, reviewRun);
+        const livePullRequest = options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions) : null;
+        const reviews = await loadReviewsFn(resolvedOptions);
+        const threads = await loadThreadsFn(resolvedOptions);
+        const reviewRun = await loadReviewRunFn(resolvedOptions);
+        report = buildReportFromLiveData(
+          resolvedOptions,
+          reviews,
+          threads,
+          now,
+          reviewRun,
+          livePullRequest,
+          mergeGroupSource,
+        );
         if (!shouldContinuePolling(report)) {
           break;
         }
