@@ -276,6 +276,39 @@ function Invoke-PushWithTransportFallback {
   }
 }
 
+function Remove-RemoteBranchWithTransportFallback {
+  param(
+    [Parameter(Mandatory)][string]$Remote,
+    [Parameter(Mandatory)][string]$BranchName
+  )
+
+  $deleteRefSpec = ":refs/heads/{0}" -f $BranchName
+  try {
+    Invoke-Git -Arguments @('push', $Remote, $deleteRefSpec) | Out-Null
+    return
+  }
+  catch {
+    $message = $_.Exception.Message
+    $fetchUrl = Get-GitOptionalValue -Arguments @('remote', 'get-url', $Remote)
+    $pushUrl = Get-GitOptionalValue -Arguments @('remote', 'get-url', '--push', $Remote)
+    $canFallback = (
+      (Test-GitHubSshAuthFailure -Message $message) -and
+      -not [string]::IsNullOrWhiteSpace($fetchUrl) -and
+      $fetchUrl -ne $pushUrl
+    )
+    if (-not $canFallback) {
+      throw
+    }
+
+    Write-Warning ("[sync] Remote branch delete via '{0}' failed with SSH auth; retrying against fetch URL {1}" -f $Remote, (Get-SafeRemoteLocation -Location $fetchUrl))
+    Invoke-Git -Arguments @(
+      '-c', 'credential.interactive=never',
+      '-c', 'core.askpass=',
+      'push', $fetchUrl, $deleteRefSpec
+    ) | Out-Null
+  }
+}
+
 function Get-ProtectedSyncBranchName {
   param(
     [Parameter(Mandatory)][string]$Remote,
@@ -371,11 +404,10 @@ try {
           throw
         }
 
-        $attemptSyncMode = 'protected-pr'
         $attemptSyncReason = Get-ProtectedBranchSyncReason -Message $message
         $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
         $syncBranch = Get-ProtectedSyncBranchName -Remote $HeadRemote -BranchName $Branch
-        Write-Warning ("[sync] Protected branch rejected direct push to {0}/{1}; staging sync PR on {2}" -f $HeadRemote, $Branch, $syncBranch)
+        Write-Warning ("[sync] Protected branch rejected direct push to {0}/{1}; routing through protected sync helper (sync branch {2})" -f $HeadRemote, $Branch, $syncBranch)
         $attemptPushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch -SourceRef 'HEAD' -TargetBranch $syncBranch
         $attemptProtectedSyncReportPath = Join-Path $repoRoot ("tests/results/_agent/issue/{0}-protected-develop-sync.json" -f $HeadRemote)
         Invoke-Node -Arguments @(
@@ -399,6 +431,11 @@ try {
           throw ("Protected sync report not found: {0}" -f $attemptProtectedSyncReportPath)
         }
         $attemptProtectedSync = Get-Content -LiteralPath $attemptProtectedSyncReportPath -Raw | ConvertFrom-Json -AsHashtable
+        $attemptSyncMode = [string]($attemptProtectedSync['syncMethod'] ?? 'protected-pr')
+        if ($attemptSyncMode -eq 'fork-sync') {
+          Remove-RemoteBranchWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch
+          $attemptPushTransport = $null
+        }
       }
 
       $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
@@ -406,7 +443,7 @@ try {
         throw 'Unable to resolve local HEAD after push.'
       }
 
-      if ($attemptSyncMode -eq 'direct-push') {
+      if ($attemptSyncMode -eq 'direct-push' -or $attemptSyncMode -eq 'fork-sync') {
         $converged = Wait-ForRemoteHead -Remote $HeadRemote -BranchName $Branch -ExpectedSha $localHead -Attempts $RemoteHeadPollAttempts -DelaySeconds $RemoteHeadPollDelaySeconds
         if (-not $converged) {
           throw ("Push completed but remote head did not converge to local HEAD ({0}) within {1} poll(s)." -f $localHead, $RemoteHeadPollAttempts)
@@ -477,9 +514,9 @@ try {
   }
   if ($tipDiffCount -ne 0 -and $syncMode -eq 'protected-pr') {
     Write-Host ("[sync] Protected sync staged via PR path; parity remains pending with tipDiff.fileCount={0}" -f $tipDiffCount)
+  } else {
+    Write-Host ("[sync] Parity OK for {0} vs {1}" -f $baseRef, $headRef)
   }
-
-  Write-Host ("[sync] Parity OK for {0} vs {1}" -f $baseRef, $headRef)
 }
 finally {
   if ($lockStream) {

@@ -24,8 +24,6 @@ const DEFAULT_REPORT_PATH = path.join(
 );
 const DEFAULT_BRANCH = 'develop';
 const DEFAULT_BASE_REMOTE = 'upstream';
-const DEFAULT_MERGE_METHOD = 'squash';
-
 function printUsage() {
   console.log('Usage: node tools/priority/protected-develop-sync-pr.mjs [options]');
   console.log('');
@@ -149,6 +147,9 @@ export function buildProtectedSyncSummaryPayload({
   pullRequest,
   readyState,
   mergeRequest,
+  syncMethod = 'protected-pr',
+  allowForkSyncing = false,
+  mergeUpstream = null,
   createdAt = new Date().toISOString()
 }) {
   return {
@@ -162,6 +163,9 @@ export function buildProtectedSyncSummaryPayload({
     localHead: localHead ?? null,
     upstreamRepository: upstream ? `${upstream.owner}/${upstream.repo}` : null,
     targetRepository: targetRepository ? `${targetRepository.owner}/${targetRepository.repo}` : null,
+    syncMethod,
+    allowForkSyncing,
+    mergeUpstream,
     pullRequest: pullRequest ?? null,
     readyState: readyState ?? null,
     mergeRequest: mergeRequest ?? null
@@ -201,8 +205,21 @@ function buildPrReadyArgs({ repo, number }) {
   return ['pr', 'ready', String(number), '--repo', repo];
 }
 
-function buildPrMergeAutoArgs({ repo, number, method = DEFAULT_MERGE_METHOD }) {
-  return ['pr', 'merge', String(number), '--repo', repo, `--${method}`, '--auto'];
+function buildPrMergeAutoArgs({ repo, number, method = null }) {
+  const args = ['pr', 'merge', String(number), '--repo', repo];
+  if (typeof method === 'string' && method.trim().length > 0) {
+    args.push(`--${method}`);
+  }
+  args.push('--auto');
+  return args;
+}
+
+function buildBranchProtectionArgs({ repo, branch }) {
+  return ['api', `repos/${repo}/branches/${branch}/protection`];
+}
+
+function buildMergeUpstreamArgs({ repo, branch }) {
+  return ['api', '-X', 'POST', `repos/${repo}/merge-upstream`, '-f', `branch=${branch}`];
 }
 
 function buildGhError(args, result) {
@@ -221,6 +238,24 @@ function runGh(args, { repoRoot, spawnSyncFn = spawnSync, ignoreExitCode = false
     throw new Error(buildGhError(args, result));
   }
   return result;
+}
+
+function loadBranchProtection(repoRoot, repoSlug, branch, { runGhJsonFn = runGhJson, spawnSyncFn = spawnSync } = {}) {
+  return runGhJsonFn(repoRoot, buildBranchProtectionArgs({ repo: repoSlug, branch }), { spawnSyncFn });
+}
+
+function resolveAllowForkSyncing(value) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (value && typeof value === 'object') {
+    return value.enabled === true;
+  }
+  return false;
+}
+
+function requestMergeUpstream(repoRoot, repoSlug, branch, { runGhJsonFn = runGhJson, spawnSyncFn = spawnSync } = {}) {
+  return runGhJsonFn(repoRoot, buildMergeUpstreamArgs({ repo: repoSlug, branch }), { spawnSyncFn });
 }
 
 function isAlreadyReadyMessage(message) {
@@ -330,6 +365,36 @@ export function runProtectedDevelopSync({
   const upstream = resolveUpstreamFn(repoRoot);
   const targetRepository = ensureForkRemoteFn(repoRoot, upstream, options.targetRemote, { spawnSyncFn });
   const targetRepoSlug = `${targetRepository.owner}/${targetRepository.repo}`;
+  const protection = loadBranchProtection(repoRoot, targetRepoSlug, options.branch, {
+    runGhJsonFn,
+    spawnSyncFn
+  });
+  const allowForkSyncing = resolveAllowForkSyncing(protection?.allow_fork_syncing);
+
+  try {
+    const mergeUpstream = requestMergeUpstream(repoRoot, targetRepoSlug, options.branch, {
+      runGhJsonFn,
+      spawnSyncFn
+    });
+    const report = buildProtectedSyncSummaryPayload({
+      targetRemote: options.targetRemote,
+      baseRemote: options.baseRemote,
+      branch: options.branch,
+      syncBranch,
+      reason: options.reason,
+      localHead: options.localHead,
+      upstream,
+      targetRepository,
+      syncMethod: 'fork-sync',
+      allowForkSyncing,
+      mergeUpstream
+    });
+    writeReport(reportPath, report);
+    return { reportPath, report };
+  } catch {
+    // Fall back to PR handoff when the sync API is unavailable on the target fork.
+  }
+
   const title = buildProtectedSyncPrTitle({ baseRemote: options.baseRemote, branch: options.branch });
   const body = buildProtectedSyncPrBody({
     upstream,
@@ -411,6 +476,8 @@ export function runProtectedDevelopSync({
     localHead: options.localHead,
     upstream,
     targetRepository,
+    syncMethod: 'protected-pr',
+    allowForkSyncing,
     pullRequest: {
       number: viewedPr.number,
       url: viewedPr.url,

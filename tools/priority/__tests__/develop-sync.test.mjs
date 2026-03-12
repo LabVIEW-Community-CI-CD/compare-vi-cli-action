@@ -120,7 +120,7 @@ test('Sync-OriginUpstreamDevelop retries SSH auth failures against the fetch URL
   assert.match(source, /fetch', '--no-tags', \$Remote, \$refSpec/);
 });
 
-test('Sync-OriginUpstreamDevelop stages a protected-branch sync PR when GH013 blocks direct push', () => {
+test('Sync-OriginUpstreamDevelop routes GH013 through protected sync helper paths', () => {
   const scriptPath = path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1');
   const source = readFileSyncImmediate(scriptPath, 'utf8');
 
@@ -130,10 +130,18 @@ test('Sync-OriginUpstreamDevelop stages a protected-branch sync PR when GH013 bl
   assert.match(source, /Changes must be made through a pull request/);
   assert.match(source, /Changes must be made through the merge queue/);
   assert.match(source, /protected-develop-sync-pr\.mjs/);
+  assert.match(source, /function Remove-RemoteBranchWithTransportFallback/);
+  assert.match(source, /Protected branch rejected direct push to \{0\}\/\{1\}; routing through protected sync helper/);
   assert.match(source, /Protected sync staged via PR path/);
   assert.match(source, /\$attemptSyncReason = Get-ProtectedBranchSyncReason -Message \$message/);
   assert.match(source, /\$attemptSyncMode = 'direct-push'/);
+  assert.match(source, /\$attemptSyncMode = \[string\]\(\$attemptProtectedSync\['syncMethod'\] \?\? 'protected-pr'\)/);
+  assert.match(source, /if \(\$attemptSyncMode -eq 'fork-sync'\)/);
+  assert.match(source, /Remove-RemoteBranchWithTransportFallback -Remote \$HeadRemote -BranchName \$syncBranch/);
   assert.match(source, /\$syncMode = \$attemptSyncMode/);
+  assert.match(source, /if \(\$tipDiffCount -ne 0 -and \$syncMode -eq 'protected-pr'\)/);
+  assert.match(source, /if \(\$attemptSyncMode -eq 'direct-push' -or \$attemptSyncMode -eq 'fork-sync'\)/);
+  assert.match(source, /else \{\s*Write-Host \("\[sync\] Parity OK for \{0\} vs \{1\}"/s);
   assert.equal((source.match(/Set-Content -LiteralPath \$parityReportPath -Encoding utf8/g) ?? []).length, 1);
 });
 
@@ -243,6 +251,67 @@ test('runDevelopSync records protected sync mode details from the parity report'
   assert.equal(report.actions[0].syncReason, 'protected-branch-gh013');
   assert.equal(report.actions[0].parityConverged, false);
   assert.equal(report.actions[0].protectedSync.pullRequest.number, 44);
+});
+
+test('runDevelopSync records fork-sync mode details from the parity report', async (t) => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-fork-sync-report-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+  initTempGitRepo(tempRoot);
+
+  const parityReportPath = path.join(tempRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
+  await mkdir(path.dirname(parityReportPath), { recursive: true });
+  await writeFile(
+    parityReportPath,
+    JSON.stringify({
+      schema: 'origin-upstream-parity@v1',
+      status: 'ok',
+      tipDiff: { fileCount: 0 },
+      syncResult: {
+        mode: 'fork-sync',
+        reason: 'protected-branch-gh013',
+        parityConverged: true,
+        protectedSync: {
+          syncMethod: 'fork-sync',
+          mergeUpstream: {
+            message: 'Branch synced',
+            merge_type: 'fast-forward'
+          }
+        }
+      }
+    }, null, 2),
+    'utf8'
+  );
+
+  const reportPath = path.join(tempRoot, 'develop-sync-report.json');
+  const { report } = runDevelopSync({
+    repoRoot: tempRoot,
+    options: {
+      forkRemote: 'origin',
+      reportPath
+    },
+    spawnSyncFn: (command, args, options = {}) => {
+      if (command === 'git') {
+        return spawnSync(command, args, {
+          ...options,
+          cwd: tempRoot,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+      }
+      if (command === 'pwsh') {
+        return { status: 0, stdout: '', stderr: '' };
+      }
+      throw new Error(`Unexpected command ${command}`);
+    }
+  });
+
+  assert.equal(report.status, 'ok');
+  assert.equal(report.actions[0].syncMode, 'fork-sync');
+  assert.equal(report.actions[0].parityConverged, true);
+  assert.equal(report.actions[0].protectedSync.syncMethod, 'fork-sync');
+  assert.equal(report.actions[0].protectedSync.mergeUpstream.merge_type, 'fast-forward');
 });
 
 test('runDevelopSync fails closed when the parity report is unreadable', async (t) => {
