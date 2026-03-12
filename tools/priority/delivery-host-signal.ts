@@ -221,18 +221,25 @@ function normalizeServiceStatus(value: string | null): string | null {
   const text = normalizeText(value);
   switch (text) {
     case '1':
+    case 'STOPPED':
       return 'Stopped';
     case '2':
+    case 'START_PENDING':
       return 'StartPending';
     case '3':
+    case 'STOP_PENDING':
       return 'StopPending';
     case '4':
+    case 'RUNNING':
       return 'Running';
     case '5':
+    case 'CONTINUE_PENDING':
       return 'ContinuePending';
     case '6':
+    case 'PAUSE_PENDING':
       return 'PausePending';
     case '7':
+    case 'PAUSED':
       return 'Paused';
     default:
       return text || null;
@@ -243,10 +250,15 @@ function normalizeServiceStartType(value: string | null): string | null {
   const text = normalizeText(value);
   switch (text) {
     case '2':
+    case 'AUTO_START':
+    case 'AUTO':
       return 'Automatic';
     case '3':
+    case 'DEMAND_START':
+    case 'DEMAND':
       return 'Manual';
     case '4':
+    case 'DISABLED':
       return 'Disabled';
     default:
       return text || null;
@@ -282,10 +294,6 @@ function defaultRunner(filePath: string, args: string[], options: { cwd?: string
     stderr: result.stderr ?? '',
     error: result.error as Error | undefined,
   };
-}
-
-function escapePowerShellSingleQuoted(text: string): string {
-  return `'${text.replace(/'/g, "''")}'`;
 }
 
 function readJsonIfPresent<T>(filePath: string, fallback: T): T {
@@ -395,31 +403,47 @@ function classifyHostSignal({
   };
 }
 
-function runPowerShellJson<T>(script: string, runner: CommandRunner): T {
-  const result = runner('pwsh', ['-NoLogo', '-NoProfile', '-Command', script]);
-  if (result.error) {
-    throw result.error;
+function parseScServiceNames(stdout: string): string[] {
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.match(/^\s*SERVICE_NAME\s*:\s*(.+)\s*$/i)?.[1] ?? '')
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+}
+
+function parseScValue(stdout: string, label: string): string | null {
+  const regex = new RegExp(`^\\s*${label}\\s*:\\s*(.+)\\s*$`, 'im');
+  const match = stdout.match(regex);
+  return match ? normalizeText(match[1]) || null : null;
+}
+
+function parseScState(stdout: string): string | null {
+  const match = stdout.match(/^\s*STATE\s*:\s*(\d+)\s+([A-Z_]+)\s*$/im);
+  if (!match) {
+    return null;
   }
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || 'PowerShell command failed.');
-  }
-  return parseJson<T>(result.stdout, [] as T);
+  return normalizeServiceStatus(match[2] || match[1]);
 }
 
 function collectRunnerServices(runner: CommandRunner): RunnerServicesSignal {
-  const script = [
-    "$ErrorActionPreference='Stop'",
-    "$services = @(Get-Service -Name 'actions.runner.*' -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object Name,DisplayName,Status,StartType)",
-    '$services | ConvertTo-Json -Depth 6',
-  ].join('; ');
-  const discovered = runPowerShellJson<Array<Record<string, unknown>> | Record<string, unknown>>(script, runner);
-  const rawRecords = Array.isArray(discovered) ? discovered : discovered ? [discovered] : [];
-  const normalized = rawRecords.map((entry) => ({
-    name: getRecordText(entry, ['name', 'Name']),
-    displayName: getRecordText(entry, ['displayName', 'DisplayName']),
-    status: normalizeServiceStatus(getRecordText(entry, ['status', 'Status', 'state', 'State'])),
-    startType: normalizeServiceStartType(getRecordText(entry, ['startType', 'StartType', 'startMode', 'StartMode'])),
-  }));
+  const listResult = runner('sc.exe', ['query', 'state=', 'all']);
+  if (listResult.error) {
+    throw listResult.error;
+  }
+  if (listResult.status !== 0) {
+    throw new Error(listResult.stderr || listResult.stdout || 'sc.exe query failed.');
+  }
+  const serviceNames = parseScServiceNames(listResult.stdout).filter((entry) => entry.startsWith(DEFAULT_RUNNER_SERVICE_PREFIX));
+  const normalized = serviceNames.map((name) => {
+    const queryResult = runner('sc.exe', ['query', name]);
+    const qcResult = runner('sc.exe', ['qc', name]);
+    return {
+      name,
+      displayName: name,
+      status: normalizeServiceStatus(parseScState(queryResult.stdout) || parseScValue(queryResult.stdout, 'STATE')),
+      startType: normalizeServiceStartType(parseScValue(qcResult.stdout, 'START_TYPE')?.split(/\s+/)[0] || null),
+    };
+  });
   const running = normalized
     .filter((entry) => normalizeText(entry.status).toLowerCase() === 'running')
     .map((entry) => normalizeText(entry.name))
@@ -449,28 +473,15 @@ function mutateRunnerServices(
   if (serviceNames.length === 0) {
     return [];
   }
-  const namesLiteral = `@(${serviceNames.map((entry) => escapePowerShellSingleQuoted(entry)).join(',')})`;
-  const verb = action === 'stop' ? 'Stop-Service' : 'Start-Service';
-  const script = [
-    "$ErrorActionPreference='Stop'",
-    `$names = ${namesLiteral}`,
-    '$results = @()',
-    'foreach ($name in $names) {',
-    '  try {',
-    `    ${verb} -Name $name -ErrorAction Stop`,
-    "    $results += [pscustomobject]@{ name = $name; status = 'ok' }",
-    '  } catch {',
-    "    $results += [pscustomobject]@{ name = $name; status = 'failed'; error = $_.Exception.Message }",
-    '  }',
-    '}',
-    '$results | ConvertTo-Json -Depth 6',
-  ].join('; ');
-  const result = runPowerShellJson<Array<{ name?: string; status?: string }>>(script, runner);
-  const normalized = Array.isArray(result) ? result : result ? [result] : [];
-  return normalized
-    .filter((entry) => normalizeText(entry.status).toLowerCase() === 'ok')
-    .map((entry) => normalizeText(entry.name))
-    .filter(Boolean);
+  const verb = action === 'stop' ? 'stop' : 'start';
+  const mutated: string[] = [];
+  for (const serviceName of serviceNames) {
+    const result = runner('sc.exe', [verb, serviceName]);
+    if (!result.error && result.status === 0) {
+      mutated.push(serviceName);
+    }
+  }
+  return mutated;
 }
 
 function collectWindowsDocker(runner: CommandRunner): WindowsDockerSignal {

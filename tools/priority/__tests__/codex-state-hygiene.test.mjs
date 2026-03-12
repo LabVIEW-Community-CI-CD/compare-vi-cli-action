@@ -180,6 +180,7 @@ test('runCodexStateHygiene archives stale threads, prunes old null logs, and wri
       '2026-03-11 12:35:03.809 [error] Error fetching errorMessage="local-environments is not supported in the extension"',
       '2026-03-11 12:35:03.810 [error] Error fetching errorMessage="open-in-target not supported in extension"',
       '2026-03-11 12:35:03.811 [warning] [IpcClient] Received broadcast but no handler is configured method=thread-stream-state-changed',
+      '2026-03-11 12:35:03.811 [warning] [IpcClient] Received broadcast but no handler is configured method=thread-queued-followups-changed',
       '2026-03-11 12:35:03.812 [warning] [git-origin-and-roots] Failed to resolve origin for workspace'
     ].join('\n'),
     'utf8'
@@ -281,8 +282,14 @@ test('runCodexStateHygiene archives stale threads, prunes old null logs, and wri
     assert.equal(result.applied.rewrittenRolloutCount, 1);
     assert.equal(result.extensionLog.counts.localEnvironmentsUnsupported, 1);
     assert.equal(result.extensionLog.counts.openInTargetUnsupported, 1);
+    assert.equal(result.extensionLog.counts.unhandledBroadcastNoHandler, 2);
     assert.equal(result.extensionLog.counts.threadStreamStateChanged, 1);
+    assert.equal(result.extensionLog.counts.threadQueuedFollowupsChanged, 1);
     assert.equal(result.extensionLog.counts.gitOriginAndRoots, 1);
+    assert.equal(result.observer.status, 'degraded');
+    assert.equal(result.observer.deliveryCritical, false);
+    assert.equal(result.observer.hotPathEligible, false);
+    assert.match(result.observer.reasons.join(','), /thread-stream-state-changed/);
     assert.equal(oldNullCount, 0);
     assert.equal(recentNullCount, 1);
     assert.match(String(olderRuntime.rollout_path), /archive[\\/]sessions/);

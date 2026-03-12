@@ -11,6 +11,7 @@
     "stateDb",
     "sessions",
     "extensionLog",
+    "observer",
     "database",
     "applied",
     "status"
@@ -78,7 +79,9 @@
             "gitOriginAndRoots",
             "localEnvironmentsUnsupported",
             "openInTargetUnsupported",
+            "unhandledBroadcastNoHandler",
             "threadStreamStateChanged",
+            "threadQueuedFollowupsChanged",
             "databaseLocked",
             "slowStatement"
           ],
@@ -86,7 +89,49 @@
             "gitOriginAndRoots": { "type": "integer", "minimum": 0 },
             "localEnvironmentsUnsupported": { "type": "integer", "minimum": 0 },
             "openInTargetUnsupported": { "type": "integer", "minimum": 0 },
+            "unhandledBroadcastNoHandler": { "type": "integer", "minimum": 0 },
             "threadStreamStateChanged": { "type": "integer", "minimum": 0 },
+            "threadQueuedFollowupsChanged": { "type": "integer", "minimum": 0 },
+            "databaseLocked": { "type": "integer", "minimum": 0 },
+            "slowStatement": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "observer": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["plane", "status", "deliveryCritical", "hotPathEligible", "deliveryImpact", "reasons", "counts"],
+      "properties": {
+        "plane": { "const": "observer" },
+        "status": { "enum": ["healthy", "degraded", "unknown"] },
+        "deliveryCritical": { "type": "boolean" },
+        "hotPathEligible": { "type": "boolean" },
+        "deliveryImpact": { "const": "none" },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "gitOriginAndRoots",
+            "localEnvironmentsUnsupported",
+            "openInTargetUnsupported",
+            "unhandledBroadcastNoHandler",
+            "threadStreamStateChanged",
+            "threadQueuedFollowupsChanged",
+            "databaseLocked",
+            "slowStatement"
+          ],
+          "properties": {
+            "gitOriginAndRoots": { "type": "integer", "minimum": 0 },
+            "localEnvironmentsUnsupported": { "type": "integer", "minimum": 0 },
+            "openInTargetUnsupported": { "type": "integer", "minimum": 0 },
+            "unhandledBroadcastNoHandler": { "type": "integer", "minimum": 0 },
+            "threadStreamStateChanged": { "type": "integer", "minimum": 0 },
+            "threadQueuedFollowupsChanged": { "type": "integer", "minimum": 0 },
             "databaseLocked": { "type": "integer", "minimum": 0 },
             "slowStatement": { "type": "integer", "minimum": 0 }
           }

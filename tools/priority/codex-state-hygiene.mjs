@@ -397,7 +397,9 @@ async function collectLogPatternCounts(logPath, recentLogLines) {
     ['gitOriginAndRoots', '[git-origin-and-roots]'],
     ['localEnvironmentsUnsupported', 'local-environments is not supported in the extension'],
     ['openInTargetUnsupported', 'open-in-target not supported in extension'],
+    ['unhandledBroadcastNoHandler', 'Received broadcast but no handler is configured'],
     ['threadStreamStateChanged', 'thread-stream-state-changed'],
+    ['threadQueuedFollowupsChanged', 'thread-queued-followups-changed'],
     ['databaseLocked', 'database is locked'],
     ['slowStatement', 'slow statement: execution time exceeded alert threshold']
   ];
@@ -425,6 +427,63 @@ async function collectLogPatternCounts(logPath, recentLogLines) {
     path: logPath,
     lineCount: lines.filter(Boolean).length,
     recentLineCount: recentLines.filter(Boolean).length,
+    counts
+  };
+}
+
+function deriveObserverSummary(logSummary, options = {}) {
+  const counts = logSummary?.counts || {};
+  const reasons = [];
+  const unhandledBroadcastThreshold = toPositiveNumber(options.observerUnhandledBroadcastThreshold, 1);
+  const databaseLockedThreshold = toPositiveNumber(options.observerDatabaseLockedThreshold, 1);
+  const slowStatementThreshold = toPositiveNumber(options.observerSlowStatementThreshold, 1);
+
+  if (!logSummary?.available) {
+    return {
+      plane: 'observer',
+      source: 'codex-state-hygiene',
+      status: 'unknown',
+      deliveryCritical: false,
+      hotPathEligible: false,
+      deliveryImpact: 'none',
+      reasons: ['extension-log-unavailable'],
+      counts
+    };
+  }
+
+  if ((counts.unhandledBroadcastNoHandler || 0) >= unhandledBroadcastThreshold) {
+    reasons.push('unhandled-ipc-broadcast');
+  }
+  if ((counts.threadStreamStateChanged || 0) > 0) {
+    reasons.push('thread-stream-state-changed');
+  }
+  if ((counts.threadQueuedFollowupsChanged || 0) > 0) {
+    reasons.push('thread-queued-followups-changed');
+  }
+  if ((counts.localEnvironmentsUnsupported || 0) > 0) {
+    reasons.push('local-environments-unsupported');
+  }
+  if ((counts.openInTargetUnsupported || 0) > 0) {
+    reasons.push('open-in-target-unsupported');
+  }
+  if ((counts.gitOriginAndRoots || 0) > 0) {
+    reasons.push('git-origin-and-roots');
+  }
+  if ((counts.databaseLocked || 0) >= databaseLockedThreshold) {
+    reasons.push('database-locked');
+  }
+  if ((counts.slowStatement || 0) >= slowStatementThreshold) {
+    reasons.push('slow-statement');
+  }
+
+  return {
+    plane: 'observer',
+    source: 'codex-state-hygiene',
+    status: reasons.length > 0 ? 'degraded' : 'healthy',
+    deliveryCritical: false,
+    hotPathEligible: false,
+    deliveryImpact: 'none',
+    reasons,
     counts
   };
 }
@@ -599,6 +658,7 @@ export async function runCodexStateHygiene(options = {}, deps = {}) {
     sessions: sessionSummary,
     archiveSessions: archiveSessionSummary,
     extensionLog: logSummary,
+    observer: deriveObserverSummary(logSummary, options),
     database: {
       journalMode: null,
       walAutocheckpoint: null,

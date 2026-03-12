@@ -310,7 +310,7 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
   );
 });
 
-test('comparevi worker checkout allocator stashes stale runtime drift before reusing a lane worktree', async () => {
+test('comparevi worker checkout allocator quarantines stale runtime drift before recreating a lane worktree', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-repair-'));
   const laneId = 'origin-959';
   const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
@@ -325,7 +325,6 @@ test('comparevi worker checkout allocator stashes stale runtime drift before reu
   await writeFile(path.join(worktreeAdminDir, 'gitdir'), '/mnt/c/stale/linux/path/.git\n', 'utf8');
 
   const calls = [];
-  let statusCalls = 0;
   const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
     repoRoot,
     repository: 'example/repo',
@@ -343,14 +342,10 @@ test('comparevi worker checkout allocator stashes stale runtime drift before reu
           throw new Error(`unexpected command: ${command}`);
         }
         if (args[0] === 'status' && args[1] === '--porcelain' && args[2] === '--untracked-files=all') {
-          statusCalls += 1;
           return {
-            stdout: statusCalls === 1 ? 'M  tools/priority/delivery-agent.mjs\n' : '',
+            stdout: 'M  tools/priority/delivery-agent.mjs\n',
             stderr: ''
           };
-        }
-        if (args[0] === 'stash' && args[1] === 'push') {
-          return { stdout: 'Saved working directory and index state', stderr: '' };
         }
         if (args[0] === 'remote') {
           if (args[1] === 'get-url' && args[2] === 'origin') {
@@ -367,6 +362,15 @@ test('comparevi worker checkout allocator stashes stale runtime drift before reu
         if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '--prune') {
           return { stdout: '', stderr: '' };
         }
+        if (args[0] === 'worktree' && args[1] === 'remove' && args[2] === '--force') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'worktree' && args[1] === 'prune') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'worktree' && args[1] === 'add' && args[2] === '--detach') {
+          return { stdout: '', stderr: '' };
+        }
         if (args[0] === 'checkout' && args[1] === '--force' && args[2] === '--detach' && args[3] === 'upstream/develop') {
           return { stdout: '', stderr: '' };
         }
@@ -375,17 +379,27 @@ test('comparevi worker checkout allocator stashes stale runtime drift before reu
     }
   });
 
-  assert.equal(prepared.status, 'reused');
-  assert.equal(prepared.worktreeStateRepair.repaired, true);
+  assert.equal(prepared.status, 'created');
+  assert.equal(prepared.worktreeStateRepair.repaired, false);
+  assert.equal(prepared.worktreeStateRepair.quarantined, true);
   assert.deepEqual(prepared.worktreeStateRepair.dirtyEntries, ['M  tools/priority/delivery-agent.mjs']);
-  assert.match(prepared.worktreeStateRepair.stashMessage, /^priority-runtime-worktree-repair:origin-959:/);
+  assert.equal(prepared.worktreeStateRepair.quarantineReason, 'dirty-existing-checkout');
   assert.ok(
     calls.some(
       (entry) =>
         entry.command === 'git' &&
-        entry.args[0] === 'stash' &&
-        entry.args[1] === 'push' &&
-        entry.args.includes('--include-untracked')
+        entry.args[0] === 'worktree' &&
+        entry.args[1] === 'remove' &&
+        entry.args[2] === '--force'
+    )
+  );
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'worktree' &&
+        entry.args[1] === 'add' &&
+        entry.args[2] === '--detach'
     )
   );
 });
