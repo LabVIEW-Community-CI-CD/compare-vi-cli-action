@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { existsSync, readFileSync as readFileSyncImmediate } from 'node:fs';
+import { existsSync, readFileSync as readFileSyncImmediate, writeFileSync as writeFileSyncImmediate } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,6 +44,13 @@ function initRepo(repoDir) {
   run('git', ['init', '--initial-branch=develop', repoDir], { cwd: path.dirname(repoDir) });
   run('git', ['config', 'user.email', 'agent@example.com'], { cwd: repoDir });
   run('git', ['config', 'user.name', 'Agent Runner'], { cwd: repoDir });
+}
+
+function initTempGitRepo(repoDir) {
+  initRepo(repoDir);
+  writeFileSyncImmediate(path.join(repoDir, '.gitkeep'), 'temp\n', 'utf8');
+  run('git', ['add', '.gitkeep'], { cwd: repoDir });
+  run('git', ['commit', '-m', 'temp init'], { cwd: repoDir });
 }
 
 function initBareRepo(repoDir) {
@@ -124,7 +131,9 @@ test('Sync-OriginUpstreamDevelop stages a protected-branch sync PR when GH013 bl
   assert.match(source, /Changes must be made through the merge queue/);
   assert.match(source, /protected-develop-sync-pr\.mjs/);
   assert.match(source, /Protected sync staged via PR path/);
-  assert.match(source, /\$syncReason = Get-ProtectedBranchSyncReason -Message \$message/);
+  assert.match(source, /\$attemptSyncReason = Get-ProtectedBranchSyncReason -Message \$message/);
+  assert.match(source, /\$attemptSyncMode = 'direct-push'/);
+  assert.match(source, /\$syncMode = \$attemptSyncMode/);
   assert.equal((source.match(/Set-Content -LiteralPath \$parityReportPath -Encoding utf8/g) ?? []).length, 1);
 });
 
@@ -181,6 +190,7 @@ test('runDevelopSync records protected sync mode details from the parity report'
   t.after(async () => {
     await rm(tempRoot, { recursive: true, force: true });
   });
+  initTempGitRepo(tempRoot);
 
   const parityReportPath = path.join(tempRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
   await mkdir(path.dirname(parityReportPath), { recursive: true });
@@ -212,9 +222,14 @@ test('runDevelopSync records protected sync mode details from the parity report'
       forkRemote: 'origin',
       reportPath
     },
-    spawnSyncFn: (command, args) => {
+    spawnSyncFn: (command, args, options = {}) => {
       if (command === 'git') {
-        return spawnSync(command, args, { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        return spawnSync(command, args, {
+          ...options,
+          cwd: tempRoot,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
       }
       if (command === 'pwsh') {
         return { status: 0, stdout: '', stderr: '' };
@@ -235,6 +250,7 @@ test('runDevelopSync fails closed when the parity report is unreadable', async (
   t.after(async () => {
     await rm(tempRoot, { recursive: true, force: true });
   });
+  initTempGitRepo(tempRoot);
 
   const parityReportPath = path.join(tempRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
   await mkdir(path.dirname(parityReportPath), { recursive: true });
@@ -249,9 +265,14 @@ test('runDevelopSync fails closed when the parity report is unreadable', async (
           forkRemote: 'origin',
           reportPath
         },
-        spawnSyncFn: (command, args) => {
+        spawnSyncFn: (command, args, options = {}) => {
           if (command === 'git') {
-            return spawnSync(command, args, { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+            return spawnSync(command, args, {
+              ...options,
+              cwd: tempRoot,
+              encoding: 'utf8',
+              stdio: ['ignore', 'pipe', 'pipe']
+            });
           }
           if (command === 'pwsh') {
             return { status: 0, stdout: '', stderr: '' };
@@ -589,7 +610,7 @@ test('Sync-OriginUpstreamDevelop treats GH013 as a protected sync PR handoff ins
   await mkdir(path.join(worktreeRepo, 'tools', 'priority'), { recursive: true });
   const source = readFileSyncImmediate(path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'), 'utf8');
   const protectedSource = source.replace(
-    "$pushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $Branch",
+    "$attemptPushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $Branch",
     "throw \"GH013: Changes must be made through a pull request. Changes must be made through the merge queue.\""
   );
   await writeFile(path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'), protectedSource, 'utf8');

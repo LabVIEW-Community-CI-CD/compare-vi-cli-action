@@ -352,13 +352,18 @@ try {
 
   $syncSucceeded = $false
   for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+    $attemptPushTransport = $null
+    $attemptSyncMode = 'direct-push'
+    $attemptSyncReason = 'direct-push'
+    $attemptProtectedSync = $null
+    $attemptProtectedSyncReportPath = ''
     try {
       Write-Host ("[sync] Attempt {0}/{1}: pull+push {2}" -f $attempt, $MaxAttempts, $Branch)
 
       # Sequential by design: pull must complete before push starts.
       Invoke-Git -Arguments @('pull', '--ff-only', $BaseRemote, $Branch) | Out-Null
       try {
-        $pushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $Branch
+        $attemptPushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $Branch
       }
       catch {
         $message = $_.Exception.Message
@@ -366,13 +371,13 @@ try {
           throw
         }
 
-        $syncMode = 'protected-pr'
-        $syncReason = Get-ProtectedBranchSyncReason -Message $message
+        $attemptSyncMode = 'protected-pr'
+        $attemptSyncReason = Get-ProtectedBranchSyncReason -Message $message
         $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
         $syncBranch = Get-ProtectedSyncBranchName -Remote $HeadRemote -BranchName $Branch
         Write-Warning ("[sync] Protected branch rejected direct push to {0}/{1}; staging sync PR on {2}" -f $HeadRemote, $Branch, $syncBranch)
-        $pushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch -SourceRef 'HEAD' -TargetBranch $syncBranch
-        $protectedSyncReportPath = Join-Path $repoRoot ("tests/results/_agent/issue/{0}-protected-develop-sync.json" -f $HeadRemote)
+        $attemptPushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch -SourceRef 'HEAD' -TargetBranch $syncBranch
+        $attemptProtectedSyncReportPath = Join-Path $repoRoot ("tests/results/_agent/issue/{0}-protected-develop-sync.json" -f $HeadRemote)
         Invoke-Node -Arguments @(
           'tools/priority/protected-develop-sync-pr.mjs',
           '--target-remote',
@@ -384,16 +389,16 @@ try {
           '--sync-branch',
           $syncBranch,
           '--reason',
-          $syncReason,
+          $attemptSyncReason,
           '--local-head',
           $localHead,
           '--report-path',
-          $protectedSyncReportPath
+          $attemptProtectedSyncReportPath
         )
-        if (-not (Test-Path -LiteralPath $protectedSyncReportPath -PathType Leaf)) {
-          throw ("Protected sync report not found: {0}" -f $protectedSyncReportPath)
+        if (-not (Test-Path -LiteralPath $attemptProtectedSyncReportPath -PathType Leaf)) {
+          throw ("Protected sync report not found: {0}" -f $attemptProtectedSyncReportPath)
         }
-        $protectedSync = Get-Content -LiteralPath $protectedSyncReportPath -Raw | ConvertFrom-Json -AsHashtable
+        $attemptProtectedSync = Get-Content -LiteralPath $attemptProtectedSyncReportPath -Raw | ConvertFrom-Json -AsHashtable
       }
 
       $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
@@ -401,7 +406,7 @@ try {
         throw 'Unable to resolve local HEAD after push.'
       }
 
-      if ($syncMode -eq 'direct-push') {
+      if ($attemptSyncMode -eq 'direct-push') {
         $converged = Wait-ForRemoteHead -Remote $HeadRemote -BranchName $Branch -ExpectedSha $localHead -Attempts $RemoteHeadPollAttempts -DelaySeconds $RemoteHeadPollDelaySeconds
         if (-not $converged) {
           throw ("Push completed but remote head did not converge to local HEAD ({0}) within {1} poll(s)." -f $localHead, $RemoteHeadPollAttempts)
@@ -409,6 +414,11 @@ try {
         Refresh-RemoteTrackingRef -Remote $HeadRemote -BranchName $Branch -ExpectedSha $localHead
       }
 
+      $pushTransport = $attemptPushTransport
+      $syncMode = $attemptSyncMode
+      $syncReason = $attemptSyncReason
+      $protectedSync = $attemptProtectedSync
+      $protectedSyncReportPath = $attemptProtectedSyncReportPath
       $syncSucceeded = $true
       break
     }
