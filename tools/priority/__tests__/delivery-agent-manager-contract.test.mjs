@@ -122,6 +122,13 @@ test('delivery-agent manager persists and reports control-root workspace quarant
   assert.match(manager, /Control workspace is quarantined for unattended delivery/);
 });
 
+test('delivery-agent manager tolerates one-shot WSL daemon launches that do not leave a stable MainPID', async () => {
+  const manager = await readText('tools/priority/lib/delivery-agent-manager.ts');
+
+  assert.match(manager, /one-shot systemd-run unit/);
+  assert.match(manager, /return 0;/);
+});
+
 test('delivery-agent manager status ignores stale heartbeat state from before the current manager start', async (t) => {
   const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-stale-'));
   const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);

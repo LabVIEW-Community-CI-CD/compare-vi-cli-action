@@ -102,7 +102,9 @@ export function startWslRuntimeDaemon({
   }
   const pid = Number(normalizeText(result.stdout.split(/\r?\n/).pop() || result.stdout));
   if (!Number.isInteger(pid) || pid <= 0) {
-    throw new Error(`WSL runtime daemon did not return a valid PID for distro '${distro}'.`);
+    // The runtime observer can complete as a one-shot systemd-run unit before MainPID is queried.
+    // Treat that as a valid start with no persistent PID so the manager can keep cycling on reports.
+    return 0;
   }
   return pid;
 }
