@@ -14,7 +14,10 @@ function readRepoFile(relativePath) {
 test('bootstrap enforces workspace health gate before and after lease acquisition', () => {
   const content = readRepoFile('tools/priority/bootstrap.ps1');
   assert.match(content, /Invoke-WorkspaceHealthGate -LeaseMode 'optional' -ReportName 'bootstrap-preflight-workspace-health\.json'/);
-  assert.match(content, /Invoke-WorkspaceHealthGate -LeaseMode 'required' -ReportName 'bootstrap-postlease-workspace-health\.json'/);
+  assert.match(content, /\$leaseResult = Invoke-AgentWriterLeaseAcquire/);
+  assert.match(content, /\$postLeaseMode = if \(\$leaseResult -and \$leaseResult\.PSObject\.Properties\['lease'\] -and \$leaseResult\.lease\) \{\s*'required'\s*\} else \{\s*'optional'\s*\}/);
+  assert.match(content, /Invoke-WorkspaceHealthGate -LeaseMode \$postLeaseMode -ReportName 'bootstrap-postlease-workspace-health\.json'/);
+  assert.doesNotMatch(content, /Invoke-WorkspaceHealthGate -LeaseMode 'required' -ReportName 'bootstrap-postlease-workspace-health\.json'/);
 });
 
 test('PrePush-Checks invokes workspace health gate in optional lease mode', () => {

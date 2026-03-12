@@ -479,10 +479,16 @@ if ($VerboseHooks) {
 
 if (-not $PreflightOnly) {
   Write-Host '[bootstrap] Acquiring agent writer lease…'
-  Invoke-AgentWriterLeaseAcquire | Out-Null
+  $leaseResult = Invoke-AgentWriterLeaseAcquire
 
-  Write-Host '[bootstrap] Running workspace health gate (post-lease)…'
-  Invoke-WorkspaceHealthGate -LeaseMode 'required' -ReportName 'bootstrap-postlease-workspace-health.json'
+  $postLeaseMode = if ($leaseResult -and $leaseResult.PSObject.Properties['lease'] -and $leaseResult.lease) {
+    'required'
+  } else {
+    'optional'
+  }
+
+  Write-Host ("[bootstrap] Running workspace health gate (post-lease, mode={0})…" -f $postLeaseMode)
+  Invoke-WorkspaceHealthGate -LeaseMode $postLeaseMode -ReportName 'bootstrap-postlease-workspace-health.json'
 
   Write-Host '[bootstrap] Syncing standing priority snapshot…'
   Invoke-Npm -Script 'priority:sync:lane'
