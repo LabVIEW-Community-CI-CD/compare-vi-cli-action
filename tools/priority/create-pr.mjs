@@ -21,6 +21,7 @@ import {
 const ROUTER_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'router.json');
 const CACHE_RELATIVE_PATH = '.agent_priority_cache.json';
 const NO_STANDING_REPORT_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'no-standing-priority.json');
+const DEFAULT_PR_TEMPLATE_RELATIVE_PATH = path.join('.github', 'pull_request_template.md');
 const STANDING_PRIORITY_LABELS = new Set(['standing-priority', 'fork-standing-priority']);
 const USAGE_LINES = [
   'Usage: node tools/npm/run-script.mjs priority:pr -- [options]',
@@ -358,62 +359,113 @@ function formatIssueReference(issueNumber, issueTitle = '') {
   return `#${issueNumber}${titleSuffix}`;
 }
 
-export function buildBody(issueOrContext, env = process.env) {
+function buildSummaryLine(context, base) {
+  const issueReference = formatIssueReference(context.issueNumber, context.issueTitle);
+  if (context.issueNumber) {
+    return `Delivers issue ${issueReference} into \`${base}\` using the standard automation PR helper.`;
+  }
+  return `Delivers branch \`${context.branch || '(not supplied)'}\` into \`${base}\` using the standard automation PR helper.`;
+}
+
+function renderDefaultAutomationTemplate(templateText, context, base) {
+  const issueReference = formatIssueReference(context.issueNumber, context.issueTitle);
+  const issueUrl = context.issueUrl || '(not supplied)';
+  const branch = context.branch || '(not supplied)';
+  const lines = String(templateText || '').replace(/\r\n/g, '\n').split('\n');
+  const rendered = [];
+  let inSummarySection = false;
+  let summaryInserted = false;
+
+  for (const line of lines) {
+    if (line === '# Summary') {
+      rendered.push(line, '', buildSummaryLine(context, base));
+      inSummarySection = true;
+      summaryInserted = true;
+      continue;
+    }
+
+    if (inSummarySection) {
+      if (line.startsWith('## ')) {
+        inSummarySection = false;
+        rendered.push('', line);
+        continue;
+      }
+      continue;
+    }
+
+    if (line.startsWith('- Primary issue or standing-priority context:')) {
+      rendered.push(`- Primary issue or standing-priority context: ${issueReference}`);
+      rendered.push(`- Issue URL: ${issueUrl}`);
+      continue;
+    }
+    if (line.startsWith('- Files, tools, workflows, or policies touched:')) {
+      rendered.push(`- Files, tools, workflows, or policies touched: Helper-driven PR creation path for \`${branch}\`.`);
+      continue;
+    }
+    if (line.startsWith('- Cross-repo or external-consumer impact:')) {
+      rendered.push('- Cross-repo or external-consumer impact: None expected at PR creation time.');
+      continue;
+    }
+    if (line.startsWith('- Required checks, merge-queue behavior, or approval flows affected:')) {
+      rendered.push(`- Required checks, merge-queue behavior, or approval flows affected: Standard \`${base}\` branch protections and required checks apply.`);
+      continue;
+    }
+    if (line.trim() === '- `node tools/npm/run-script.mjs <script>`') {
+      rendered.push('  - None yet; this body was generated during PR creation.');
+      continue;
+    }
+    if (line.trim() === '- `tests/results/...`') {
+      rendered.push('  - None yet.');
+      continue;
+    }
+    if (line.trim() === '- None or explain why') {
+      rendered.push('  - Validation is deferred until implementation commits land on the branch.');
+      continue;
+    }
+    if (line.startsWith('- Residual risks:')) {
+      rendered.push('- Residual risks: This body should be refreshed if the branch scope changes materially before merge.');
+      continue;
+    }
+    if (line.startsWith('- Follow-up issues or deferred work:')) {
+      rendered.push('- Follow-up issues or deferred work: None at PR creation time.');
+      continue;
+    }
+    if (line.startsWith('- Deployment, approval, or rollback notes:')) {
+      rendered.push('- Deployment, approval, or rollback notes: Standard PR review and required-check flow.');
+      continue;
+    }
+    if (line.startsWith('- Please verify:')) {
+      rendered.push('- Please verify: issue linkage, branch/base selection, and metadata routing are correct.');
+      continue;
+    }
+    if (line.startsWith('- Areas where the reasoning is subtle:')) {
+      rendered.push('- Areas where the reasoning is subtle: None at PR creation time.');
+      continue;
+    }
+    if (line.startsWith('- Manual spot checks requested:')) {
+      rendered.push('- Manual spot checks requested: None.');
+      continue;
+    }
+
+    rendered.push(line);
+  }
+
+  if (!summaryInserted) {
+    rendered.unshift('# Summary', '', buildSummaryLine(context, base), '');
+  }
+
+  return rendered.join('\n').trimEnd();
+}
+
+export function buildBody(issueOrContext, env = process.env, { repoRoot = process.cwd(), readFileSyncFn = readFileSync } = {}) {
   if (env.PR_BODY) {
     return env.PR_BODY;
   }
   const context = normalizePrBodyContext(issueOrContext);
   const base = context.base || env.PR_BASE || 'develop';
-  const branch = context.branch || env.PR_BRANCH || '(not supplied)';
-  const agentId = env.PR_AGENT_ID || 'agent/copilot-codex-a';
-  const operator = env.PR_OPERATOR || '@svelderrainruiz';
-  const reviewerRequired = env.PR_REVIEWER_REQUIRED || '@svelderrainruiz';
-  const bypassLabel = env.PR_EMERGENCY_BYPASS_LABEL || 'AllowCIBypass';
-  const issueReference = formatIssueReference(context.issueNumber, context.issueTitle);
   const closesLine = context.issueNumber ? `\nCloses #${context.issueNumber}` : '';
-
-  return [
-    '# Summary',
-    '',
-    `Delivers ${context.issueNumber ? `issue ${issueReference}` : `branch \`${branch}\``} into \`${base}\` using the standard automation PR helper.`,
-    '',
-    '## Agent Metadata (required for automation-authored PRs)',
-    '',
-    `- Agent-ID: \`${agentId}\``,
-    `- Operator: \`${operator}\``,
-    `- Reviewer-Required: \`${reviewerRequired}\``,
-    `- Emergency-Bypass-Label: \`${bypassLabel}\``,
-    '',
-    '## Change Surface',
-    '',
-    `- Primary issue or standing-priority context: ${issueReference}`,
-    `- Issue URL: ${context.issueUrl || '(not supplied)'}`,
-    `- Files, tools, workflows, or policies touched: Helper-driven PR creation path for \`${branch}\`.`,
-    '- Cross-repo or external-consumer impact: None expected at PR creation time.',
-    `- Required checks, merge-queue behavior, or approval flows affected: Standard \`${base}\` branch protections and required checks apply.`,
-    '',
-    '## Validation Evidence',
-    '',
-    '- Commands run:',
-    '  - None yet; this body was generated during PR creation.',
-    '- Key artifacts, logs, or workflow runs:',
-    '  - None yet.',
-    '- Risk-based checks not run:',
-    '  - Validation is deferred until implementation commits land on the branch.',
-    '',
-    '## Risks and Follow-ups',
-    '',
-    '- Residual risks: This body should be refreshed if the branch scope changes materially before merge.',
-    '- Follow-up issues or deferred work: None at PR creation time.',
-    '- Deployment, approval, or rollback notes: Standard PR review and required-check flow.',
-    '',
-    '## Reviewer Focus',
-    '',
-    '- Please verify: issue linkage, branch/base selection, and metadata routing are correct.',
-    '- Areas where the reasoning is subtle: None at PR creation time.',
-    '- Manual spot checks requested: None.',
-    closesLine
-  ].join('\n').trimEnd();
+  const templateText = readFileSyncFn(path.join(repoRoot, DEFAULT_PR_TEMPLATE_RELATIVE_PATH), 'utf8');
+  return `${renderDefaultAutomationTemplate(templateText, context, base)}${closesLine}`.trimEnd();
 }
 
 export function resolveBody({ options, issueNumber, env = process.env, readFileSyncFn = readFileSync }) {
@@ -434,7 +486,11 @@ export function resolveBody({ options, issueNumber, env = process.env, readFileS
       branch: options.branch ?? env.PR_BRANCH ?? '',
       base: options.base ?? env.PR_BASE ?? ''
     },
-    env
+    env,
+    {
+      repoRoot: options.repoRoot ?? process.cwd(),
+      readFileSyncFn
+    }
   );
 }
 
@@ -485,7 +541,8 @@ export function createPriorityPr({
       branch,
       base,
       issueTitle: resolvedIssue?.issueTitle ?? '',
-      issueUrl: resolvedIssue?.issueUrl ?? ''
+      issueUrl: resolvedIssue?.issueUrl ?? '',
+      repoRoot
     },
     issueNumber,
     env,

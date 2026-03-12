@@ -2,6 +2,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import { readFileSync as nodeReadFileSync } from 'node:fs';
 import {
   parseArgs,
   parseRouterIssueNumber,
@@ -16,6 +18,10 @@ import {
   resolveBody,
   createPriorityPr
 } from '../create-pr.mjs';
+
+function readDefaultPrTemplate(_filePath, encoding) {
+  return nodeReadFileSync(path.join(process.cwd(), '.github', 'pull_request_template.md'), encoding);
+}
 
 test('parseArgs accepts explicit PR helper overrides', () => {
   const options = parseArgs([
@@ -351,6 +357,7 @@ test('createPriorityPr builds PR metadata from resolved standing issue', () => {
   const result = createPriorityPr({
     env: {},
     options: {},
+    readFileSyncFn: readDefaultPrTemplate,
     getRepoRootFn: () => '/tmp/repo',
     getCurrentBranchFn: () => 'issue/680-sync-standing-priority',
     ensureGhCliFn: () => {},
@@ -469,6 +476,7 @@ test('createPriorityPr uses mirror metadata for PR closing references while matc
   createPriorityPr({
     env: { AGENT_PRIORITY_ACTIVE_FORK_REMOTE: 'personal' },
     options: {},
+    readFileSyncFn: readDefaultPrTemplate,
     getRepoRootFn: () => '/tmp/repo',
     getCurrentBranchFn: () => 'issue/personal-1-artifact-download-helper',
     ensureGhCliFn: () => {},
