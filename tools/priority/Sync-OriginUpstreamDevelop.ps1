@@ -203,7 +203,11 @@ function Invoke-PushWithTransportFallback {
     }
 
     Write-Warning ("[sync] Push via remote '{0}' failed with SSH auth; retrying against fetch URL {1}" -f $Remote, $fetchUrl)
-    Invoke-Git -Arguments @('push', $fetchUrl, ("{0}:{0}" -f $BranchName)) | Out-Null
+    Invoke-Git -Arguments @(
+      '-c', 'credential.interactive=never',
+      '-c', 'core.askpass=',
+      'push', $fetchUrl, ("{0}:{0}" -f $BranchName)
+    ) | Out-Null
     return [ordered]@{
       target = $fetchUrl
       usedFallback = $true
