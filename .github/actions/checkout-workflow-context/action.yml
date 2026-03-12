@@ -1,0 +1,75 @@
+name: Checkout Workflow Context
+description: Resolve and check out the correct repository/ref for the active workflow event.
+inputs:
+  mode:
+    description: Checkout resolution mode (default|pr-head|base-safe)
+    required: false
+    default: default
+  fetch-depth:
+    description: Fetch depth passed through to actions/checkout
+    required: false
+    default: '1'
+  persist-credentials:
+    description: Persist credentials passed through to actions/checkout
+    required: false
+    default: 'true'
+  submodules:
+    description: Submodules passed through to actions/checkout
+    required: false
+    default: 'false'
+  lfs:
+    description: LFS passed through to actions/checkout
+    required: false
+    default: 'false'
+  clean:
+    description: Clean passed through to actions/checkout
+    required: false
+    default: 'true'
+  repository:
+    description: Optional explicit repository override
+    required: false
+    default: ''
+  ref:
+    description: Optional explicit ref override
+    required: false
+    default: ''
+outputs:
+  repository:
+    description: Resolved repository passed to actions/checkout
+    value: ${{ steps.resolve.outputs.repository }}
+  ref:
+    description: Resolved ref passed to actions/checkout
+    value: ${{ steps.resolve.outputs.ref }}
+  effective-mode:
+    description: Effective resolution mode
+    value: ${{ steps.resolve.outputs.effective-mode }}
+runs:
+  using: composite
+  steps:
+    - name: Resolve checkout target
+      id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+        node "$GITHUB_ACTION_PATH/resolve.mjs" \
+          --mode '${{ inputs.mode }}' \
+          --event-name '${{ github.event_name }}' \
+          --repository '${{ github.repository }}' \
+          --sha '${{ github.sha }}' \
+          --pr-head-repository '${{ github.event.pull_request.head.repo.full_name || '' }}' \
+          --pr-head-sha '${{ github.event.pull_request.head.sha || '' }}' \
+          --pr-base-sha '${{ github.event.pull_request.base.sha || '' }}' \
+          --override-repository '${{ inputs.repository }}' \
+          --override-ref '${{ inputs.ref }}' \
+          --output "$GITHUB_OUTPUT"
+
+    - name: Checkout resolved target
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ steps.resolve.outputs.repository }}
+        ref: ${{ steps.resolve.outputs.ref }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        persist-credentials: ${{ inputs.persist-credentials }}
+        submodules: ${{ inputs.submodules }}
+        lfs: ${{ inputs.lfs }}
+        clean: ${{ inputs.clean }}

@@ -3,29 +3,29 @@ name: Policy Guard (Upstream)
 on:
   pull_request:
     types:
-      - opened
-      - synchronize
-      - reopened
+    - opened
+    - synchronize
+    - reopened
     branches:
-      - main
-      - develop
-      - release/**
+    - main
+    - develop
+    - release/**
   pull_request_target:
     types:
-      - opened
-      - synchronize
-      - reopened
+    - opened
+    - synchronize
+    - reopened
     branches:
-      - main
-      - develop
-      - release/**
+    - main
+    - develop
+    - release/**
   merge_group:
     branches:
-      - main
-      - develop
+    - main
+    - develop
   workflow_dispatch:
   schedule:
-    - cron: '17 3 * * 1'
+  - cron: '17 3 * * 1'
 
 concurrency:
   group: policy-guard-upstream-${{ github.event_name }}-${{ (contains(github.event_name, 'pull_request') && github.event.pull_request.number) || github.ref }}
@@ -44,50 +44,50 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
+    - name: Checkout repository
+      uses: ./.github/actions/checkout-workflow-context
+      with:
+        mode: "${{ github.event_name == 'pull_request_target' && 'base-safe' || github.event_name == 'pull_request' && 'pr-head' || 'default' }}"
+        fetch-depth: 0
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '20'
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: '20'
+    - name: Workspace health gate
+      run: |
+        node tools/priority/check-workspace-health.mjs --repo-root . --lease-mode ignore --report tests/results/_agent/health/policy-guard-workspace-health.json
 
-      - name: Workspace health gate
-        run: |
-          node tools/priority/check-workspace-health.mjs --repo-root . --lease-mode ignore --report tests/results/_agent/health/policy-guard-workspace-health.json
+    - name: Prepare policy guard token
+      shell: pwsh
+      env:
+        INPUT_TOKEN_PRIMARY: ${{ secrets.GH_TOKEN }}
+        INPUT_TOKEN_SECONDARY: ${{ secrets.GITHUB_TOKEN }}
+        INPUT_TOKEN_TERTIARY: ${{ github.token }}
+      run: |
+        pwsh -NoLogo -NoProfile -File tools/priority/Resolve-PolicyToken.ps1 -TokenFileName policy-guard-gh-token.txt
 
-      - name: Prepare policy guard token
-        shell: pwsh
-        env:
-          INPUT_TOKEN_PRIMARY: ${{ secrets.GH_TOKEN }}
-          INPUT_TOKEN_SECONDARY: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_TOKEN_TERTIARY: ${{ github.token }}
-        run: |
-          pwsh -NoLogo -NoProfile -File tools/priority/Resolve-PolicyToken.ps1 -TokenFileName policy-guard-gh-token.txt
+    - name: Verify remote refs are unambiguous
+      shell: pwsh
+      run: pwsh -NoLogo -NoProfile -File tools/Assert-NoAmbiguousRemoteRefs.ps1
 
-      - name: Verify remote refs are unambiguous
-        shell: pwsh
-        run: pwsh -NoLogo -NoProfile -File tools/Assert-NoAmbiguousRemoteRefs.ps1
+    - name: Run policy guard
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -FailOnSkip -ResultsDir tests/results/_agent/policy
 
-      - name: Run policy guard
-        shell: pwsh
-        run: |
-          pwsh -NoLogo -NoProfile -File tools/priority/Sync-BranchProtectionPolicy.ps1 -FailOnSkip -ResultsDir tests/results/_agent/policy
+    - name: Verify deployment environment gate policy
+      shell: pwsh
+      run: |
+        node tools/npm/run-script.mjs priority:deployment:gate-policy -- --report tests/results/_agent/deployments/environment-gate-policy.json
 
-      - name: Verify deployment environment gate policy
-        shell: pwsh
-        run: |
-          node tools/npm/run-script.mjs priority:deployment:gate-policy -- --report tests/results/_agent/deployments/environment-gate-policy.json
-
-      - name: Upload policy drift artifact
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: policy-drift-${{ github.run_id }}
-          path: |
-            tests/results/_agent/policy/policy-drift-report.json
-            tests/results/_agent/health/policy-guard-workspace-health.json
-            tests/results/_agent/deployments/environment-gate-policy.json
-          if-no-files-found: error
+    - name: Upload policy drift artifact
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: policy-drift-${{ github.run_id }}
+        path: |
+          tests/results/_agent/policy/policy-drift-report.json
+          tests/results/_agent/health/policy-guard-workspace-health.json
+          tests/results/_agent/deployments/environment-gate-policy.json
+        if-no-files-found: error

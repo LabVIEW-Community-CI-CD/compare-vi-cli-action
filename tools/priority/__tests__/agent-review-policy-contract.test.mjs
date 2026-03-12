@@ -12,11 +12,11 @@ test('agent-review-policy keeps heavyweight collection on pull_request_target an
 
   assert.match(workflow, /merge_group:/);
   assert.match(workflow, /pull_request_review:\s+types: \[submitted\]/);
-  assert.match(workflow, /uses: actions\/checkout@v5/);
-  assert.match(
-    workflow,
-    /uses: actions\/checkout@v5\s+with:\s+ref: \$\{\{ github\.event_name == 'pull_request_review' && github\.event\.pull_request\.base\.sha \|\| github\.sha \}\}/,
-  );
+  assert.match(workflow, /uses: \.\/\.github\/actions\/checkout-workflow-context/);
+  assert.match(workflow, /uses: \.\/\.github\/actions\/checkout-workflow-context\s+with:\s+mode: 'base-safe'/);
+  assert.doesNotMatch(workflow, /actions\/checkout@v5/);
+  assert.doesNotMatch(workflow, /repository:\s+\$\{\{\s*github\.event\.pull_request\.head\.repo\.full_name\s*\}\}/);
+  assert.doesNotMatch(workflow, /ref:\s+\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/);
   assert.match(workflow, /actions\/setup-node@v5/);
   assert.match(workflow, /name: Install Node dependencies\s+if: github\.event_name == 'pull_request_target'\s+run: npm ci --ignore-scripts/);
   assert.match(workflow, /name: Build TypeScript utilities\s+if: github\.event_name == 'pull_request_target'\s+run: node tools\/npm\/run-script\.mjs build/);

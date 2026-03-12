@@ -3,11 +3,11 @@ name: Fixture Drift Validation
 on:
   pull_request:
     paths:
-      - 'fixtures.manifest.json'
-      - 'VI*.vi'
-      - 'scripts/**'
-      - 'tools/**'
-      - 'docs/schemas/**'
+    - 'fixtures.manifest.json'
+    - 'VI*.vi'
+    - 'scripts/**'
+    - 'tools/**'
+    - 'docs/schemas/**'
   workflow_dispatch:
     inputs:
       sample_id:
@@ -33,65 +33,65 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
+    - name: Checkout
+      uses: ./.github/actions/checkout-workflow-context
+      with:
+        mode: 'pr-head'
+        fetch-depth: 0
+    - name: LV Guard (pre)
+      uses: ./.github/actions/runner-unblock-guard
+      with:
+        snapshot-path: results/fixture-drift/lv-guard-pre.json
+        cleanup: ${{ env.CLEAN_LV_BEFORE == 'true' }}
+        process-names: 'LVCompare,LabVIEW'
 
-      - name: LV Guard (pre)
-        uses: ./.github/actions/runner-unblock-guard
-        with:
-          snapshot-path: results/fixture-drift/lv-guard-pre.json
-          cleanup: ${{ env.CLEAN_LV_BEFORE == 'true' }}
-          process-names: 'LVCompare,LabVIEW'
+    - name: LabVIEW warmup (best-effort)
+      shell: pwsh
+      run: pwsh -File tools/Warmup-LabVIEW.ps1
 
-      - name: LabVIEW warmup (best-effort)
-        shell: pwsh
-        run: pwsh -File tools/Warmup-LabVIEW.ps1
+    - name: Ensure Invoker (start)
+      uses: ./.github/actions/ensure-invoker
+      with:
+        mode: start
+        results-dir: results/fixture-drift
 
-      - name: Ensure Invoker (start)
-        uses: ./.github/actions/ensure-invoker
-        with:
-          mode: start
-          results-dir: results/fixture-drift
-
-      - name: Detect docs-only change
-        id: docs
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Continue'
-          $docsOnly = 'false'
-          if ('${{ github.event_name }}' -eq 'pull_request') {
-            $ownerRepo = '${{ github.repository }}'
-            $pr = '${{ github.event.pull_request.number }}'
-            $uri = "https://api.github.com/repos/$ownerRepo/pulls/$pr/files"
-            $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28'; Accept='application/vnd.github+json' }
-            try {
-              $files = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop
-              $names = @($files | ForEach-Object { $_.filename })
-              if ($names.Count -gt 0) {
-                $isDocs = $true
-                foreach ($n in $names) {
-                  $inDocs = ($n -like 'docs/**' -or $n -like '**/*.md')
-                  $isSchema = ($n -like 'docs/schemas/**')
-                  if (-not $inDocs -or $isSchema) { $isDocs = $false; break }
-                }
-                if ($isDocs) { $docsOnly = 'true' }
+    - name: Detect docs-only change
+      id: docs
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Continue'
+        $docsOnly = 'false'
+        if ('${{ github.event_name }}' -eq 'pull_request') {
+          $ownerRepo = '${{ github.repository }}'
+          $pr = '${{ github.event.pull_request.number }}'
+          $uri = "https://api.github.com/repos/$ownerRepo/pulls/$pr/files"
+          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28'; Accept='application/vnd.github+json' }
+          try {
+            $files = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop
+            $names = @($files | ForEach-Object { $_.filename })
+            if ($names.Count -gt 0) {
+              $isDocs = $true
+              foreach ($n in $names) {
+                $inDocs = ($n -like 'docs/**' -or $n -like '**/*.md')
+                $isSchema = ($n -like 'docs/schemas/**')
+                if (-not $inDocs -or $isSchema) { $isDocs = $false; break }
               }
-            } catch {
-              Write-Host '::notice::Docs-only detection skipped (unable to query PR files). Treating as non-docs.'
+              if ($isDocs) { $docsOnly = 'true' }
             }
+          } catch {
+            Write-Host '::notice::Docs-only detection skipped (unable to query PR files). Treating as non-docs.'
           }
-          "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        }
+        "docs_only=$docsOnly" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      - name: Fixture Drift Orchestrator
-        uses: ./.github/actions/fixture-drift
-        with:
-          render-report: 'false'
-          comment-on-fail: 'true'
-          upload-artifacts: 'true'
-          artifact-name: fixture-drift-ubuntu
-          soft-fail: ${{ steps.docs.outputs.docs_only }}
+    - name: Fixture Drift Orchestrator
+      uses: ./.github/actions/fixture-drift
+      with:
+        render-report: 'false'
+        comment-on-fail: 'true'
+        upload-artifacts: 'true'
+        artifact-name: fixture-drift-ubuntu
+        soft-fail: ${{ steps.docs.outputs.docs_only }}
 
   ni-linux-container-hosted:
     name: NI Linux Container Compare (Hosted)
@@ -104,62 +104,97 @@ jobs:
       actions: read
       contents: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
+    - name: Checkout
+      uses: ./.github/actions/checkout-workflow-context
+      with:
+        mode: 'pr-head'
+        fetch-depth: 0
+    - name: Prepare fixture copies (base/head)
+      id: prep
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $tmp = Join-Path $env:RUNNER_TEMP ("fixtures-linux-" + [guid]::NewGuid().ToString())
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        $base = Join-Path $tmp 'base.vi'
+        $head = Join-Path $tmp 'head.vi'
+        Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI1.vi') -Destination $base -Force
+        Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI2.vi') -Destination $head -Force
+        "base=$base`nhead=$head" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      - name: Prepare fixture copies (base/head)
-        id: prep
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $tmp = Join-Path $env:RUNNER_TEMP ("fixtures-linux-" + [guid]::NewGuid().ToString())
-          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
-          $base = Join-Path $tmp 'base.vi'
-          $head = Join-Path $tmp 'head.vi'
-          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI1.vi') -Destination $base -Force
-          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'VI2.vi') -Destination $head -Force
-          "base=$base`nhead=$head" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+    - name: Pull NI Linux image
+      shell: bash
+      run: docker pull "${NI_LINUX_IMAGE}"
 
-      - name: Pull NI Linux image
-        shell: bash
-        run: docker pull "${NI_LINUX_IMAGE}"
+    - name: NI Linux review suite artifacts
+      id: ni_linux_review_suite
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $outDir = 'results/fixture-drift/ni-linux-container'
+        $historyBranchRef = '${{ github.sha }}'
+        $historyBaselineRef = ''
+        if ('${{ github.event_name }}' -eq 'pull_request') {
+          $historyBranchRef = '${{ github.event.pull_request.head.sha }}'
+          $historyBaselineRef = '${{ github.event.pull_request.base.sha }}'
+        }
+        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
-      - name: NI Linux review suite artifacts
-        id: ni_linux_review_suite
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $outDir = 'results/fixture-drift/ni-linux-container'
-          $historyBranchRef = '${{ github.sha }}'
-          $historyBaselineRef = ''
-          if ('${{ github.event_name }}' -eq 'pull_request') {
-            $historyBranchRef = '${{ github.event.pull_request.head.sha }}'
-            $historyBaselineRef = '${{ github.event.pull_request.base.sha }}'
-          }
-          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+        pwsh -NoLogo -NoProfile -File tools/Invoke-NILinuxReviewSuite.ps1 `
+          -BaseVi '${{ steps.prep.outputs.base }}' `
+          -HeadVi '${{ steps.prep.outputs.head }}' `
+          -ResultsRoot $outDir `
+          -Image $env:NI_LINUX_IMAGE `
+          -LabVIEWPath $env:NI_LINUX_LABVIEW_PATH `
+          -HistoryTargetPath 'fixtures/vi-attr/Head.vi' `
+          -HistoryBranchRef $historyBranchRef `
+          -HistoryBaselineRef $historyBaselineRef `
+          -TimeoutSeconds 240 `
+          -HeartbeatSeconds 15 `
+          -RuntimeEngineReadyTimeoutSeconds 120 `
+          -RuntimeEngineReadyPollSeconds 3 `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -GitHubStepSummaryPath $env:GITHUB_STEP_SUMMARY
 
-          pwsh -NoLogo -NoProfile -File tools/Invoke-NILinuxReviewSuite.ps1 `
-            -BaseVi '${{ steps.prep.outputs.base }}' `
-            -HeadVi '${{ steps.prep.outputs.head }}' `
-            -ResultsRoot $outDir `
-            -Image $env:NI_LINUX_IMAGE `
-            -LabVIEWPath $env:NI_LINUX_LABVIEW_PATH `
-            -HistoryTargetPath 'fixtures/vi-attr/Head.vi' `
-            -HistoryBranchRef $historyBranchRef `
-            -HistoryBaselineRef $historyBaselineRef `
-            -TimeoutSeconds 240 `
-            -HeartbeatSeconds 15 `
-            -RuntimeEngineReadyTimeoutSeconds 120 `
-            -RuntimeEngineReadyPollSeconds 3 `
-            -GitHubOutputPath $env:GITHUB_OUTPUT `
-            -GitHubStepSummaryPath $env:GITHUB_STEP_SUMMARY
-
-      - name: Upload NI Linux container compare artifacts
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: fixture-drift-ni-linux-container
-          path: results/fixture-drift/ni-linux-container/**
-          if-no-files-found: warn
+    - name: Upload NI Linux container compare artifacts
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: fixture-drift-ni-linux-container
+        path: results/fixture-drift/ni-linux-container/**
+        if-no-files-found: warn
+  preflight-windows:
+    runs-on: windows-latest
+    timeout-minutes: 3
+    steps:
+    - uses: ./.github/actions/checkout-workflow-context
+      with:
+        mode: 'default'
+    - name: Verify Windows runner and idle LabVIEW (surface LVCompare notice)
+      shell: pwsh
+      run: |-
+        Write-Host "Runner: $([System.Environment]::OSVersion.VersionString)"
+        Write-Host "Pwsh:   $($PSVersionTable.PSVersion)"
+        $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+        if (-not (Test-Path -LiteralPath $cli)) {
+          Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
+        } else { Write-Host "LVCompare present: $cli" }
+        $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+        if ($lv) { $pids = ($lv | ForEach-Object Id); $msg = "::error::LabVIEW.exe is running (PID(s): {0})" -f ([string]::Join(",", $pids)); Write-Host $msg; exit 1 }
+        Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $note = @('Note:', '- This preflight runs on hosted Windows (windows-latest); LVCompare presence is not required here.', '- Self-hosted Windows steps later in this workflow enforce LVCompare at the canonical path.') -join "`n"
+          $note | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+        }
+    - name: Verify LVCompare and idle LabVIEW state (notice-only on hosted)
+      shell: pwsh
+      run: |-
+        $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+        if (-not (Test-Path -LiteralPath $cli)) {
+          Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
+        } else {
+          Write-Host "LVCompare present: $cli"
+        }
+        $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+        if ($lv) { $pids = ($lv | ForEach-Object Id); $msg = '::notice::LabVIEW.exe is running (PID(s): {0}).' -f ([string]::Join(',', $pids)); Write-Host $msg } else { Write-Host 'LabVIEW not running.' }
+        Write-Host 'Preflight check complete.'

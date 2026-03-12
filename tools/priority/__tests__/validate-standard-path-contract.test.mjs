@@ -17,3 +17,11 @@ test('Validate standard path is not blocked by a validation environment approval
   assert.doesNotMatch(workflow, /^\s*deployment-determinism:\s*$/m);
   assert.doesNotMatch(workflow, /priority:deployment:assert/);
 });
+
+test('Validate resolves checkout through the workflow context helper on PR-capable lanes', () => {
+  const workflow = readRepoFile('.github/workflows/validate.yml');
+
+  assert.match(workflow, /uses: \.\/\.github\/actions\/checkout-workflow-context/);
+  assert.match(workflow, /mode: 'pr-head'/);
+  assert.doesNotMatch(workflow, /actions\/checkout@v5/);
+});

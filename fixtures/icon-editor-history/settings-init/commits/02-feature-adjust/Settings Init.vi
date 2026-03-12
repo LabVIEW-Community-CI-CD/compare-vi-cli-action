@@ -1,8 +1,0 @@
-Icon Editor Settings Init snapshot (feature branch)
-
-- Initializes references cluster with default data.
-- Glyph tree remains empty.
-- Adds clipboard label hiding logic.
-- Seeds glyph tree with template category metadata.
-- Refactors reference cluster wiring for Bundle By Name.
-- Adds safety guard for glyph clipboard operations.

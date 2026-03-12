@@ -19,62 +19,58 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+    - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '20'
+    - uses: actions/setup-node@v5
+      with:
+        node-version: '20'
 
-      - name: Install dependencies (no scripts)
-        run: node tools/npm/cli.mjs ci --ignore-scripts
+    - name: Install dependencies (no scripts)
+      run: node tools/npm/cli.mjs ci --ignore-scripts
 
-      - name: Runner health (notice-only)
-        if: ${{ vars.RUNNER_HEALTH != '0' }}
-        shell: pwsh
-        run: pwsh -File tools/Collect-RunnerHealth.ps1 -AppendSummary -EmitJson
+    - name: Runner health (notice-only)
+      if: ${{ vars.RUNNER_HEALTH != '0' }}
+      shell: pwsh
+      run: pwsh -File tools/Collect-RunnerHealth.ps1 -AppendSummary -EmitJson
 
-      - name: Verify LVCompare and idle LabVIEW state (notice-only on hosted)
-        shell: pwsh
-        run: |
-          $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
-          if (-not (Test-Path -LiteralPath $cli)) {
-            Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted parity)"
-          } else {
-            Write-Host "LVCompare present: $cli"
-          }
-          $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-          if ($lv) {
-            $pids = ($lv | ForEach-Object Id) -join ','
-            Write-Host "::notice::LabVIEW.exe is running (PID(s): $pids)."
-          } else {
-            Write-Host 'LabVIEW not running.'
-          }
+    - name: Verify LVCompare and idle LabVIEW state (notice-only on hosted)
+      shell: pwsh
+      run: |-
+        $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
+        if (-not (Test-Path -LiteralPath $cli)) {
+          Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
+        } else {
+          Write-Host "LVCompare present: $cli"
+        }
+        $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
+        if ($lv) { $pids = ($lv | ForEach-Object Id); $msg = '::notice::LabVIEW.exe is running (PID(s): {0}).' -f ([string]::Join(',', $pids)); Write-Host $msg } else { Write-Host 'LabVIEW not running.' }
+        Write-Host 'Preflight check complete.'
 
-      - name: Hooks preflight parity
-        run: |
-          node tools/npm/run-script.mjs hooks:plane
-          node tools/npm/run-script.mjs hooks:preflight
+    - name: Hooks preflight parity
+      run: |
+        node tools/npm/run-script.mjs hooks:plane
+        node tools/npm/run-script.mjs hooks:preflight
 
-      - name: Write parity summary
-        shell: pwsh
-        run: |
-          $outDir = 'tests/results/windows-hosted-parity'
-          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-          $summary = [ordered]@{
-            schema = 'windows-hosted-parity@v1'
-            generatedAt = (Get-Date).ToUniversalTime().ToString('o')
-            workflow = '${{ github.workflow }}'
-            runId = '${{ github.run_id }}'
-            runAttempt = '${{ github.run_attempt }}'
-            runnerOs = '${{ runner.os }}'
-            note = 'Hosted Windows parity only; no Docker engine mutation and no NI Windows container compare.'
-          }
-          $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outDir 'summary.json') -Encoding utf8
+    - name: Write parity summary
+      shell: pwsh
+      run: |
+        $outDir = 'tests/results/windows-hosted-parity'
+        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+        $summary = [ordered]@{
+          schema = 'windows-hosted-parity@v1'
+          generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+          workflow = '${{ github.workflow }}'
+          runId = '${{ github.run_id }}'
+          runAttempt = '${{ github.run_attempt }}'
+          runnerOs = '${{ runner.os }}'
+          note = 'Hosted Windows parity only; no Docker engine mutation and no NI Windows container compare.'
+        }
+        $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outDir 'summary.json') -Encoding utf8
 
-      - name: Upload parity artifacts
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: windows-hosted-parity
-          path: tests/results/windows-hosted-parity/**
-          if-no-files-found: warn
+    - name: Upload parity artifacts
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: windows-hosted-parity
+        path: tests/results/windows-hosted-parity/**
+        if-no-files-found: warn

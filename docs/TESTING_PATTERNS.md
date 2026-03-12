@@ -12,18 +12,18 @@ Patterns for structuring Pester tests in this repository.
 
 - Keep tags concise and meaningful; prefer a small curated set.
 - Common tags by dimension:
-  - Component: `IconEditor`, `CompareVI`, `Watcher`
-  - Feature: `DevMode`, `INI`, `Manifest`, `VIPC`, `Build`
+  - Component: `CompareVI`, `Watcher`, `Dispatcher`
+  - Feature: `CLI`, `History`, `Routing`, `Build`
   - Layer: `Unit`, `Integration`, `E2E`, `Smoke`
-  - Environment: `RequiresGCLI`, `RequiresLabVIEW`, `RequiresLabVIEW2025`, `RequiresVIPM`, `SelfHosted`
+  - Environment: `RequiresGCLI`, `RequiresLabVIEW`, `RequiresLabVIEW2025`, `SelfHosted`
   - Speed: `Slow` (mark long/expensive paths)
 - Traceability: add `REQ:XYZ`, `ADR:0001` when linking to requirements or design records.
 
-Examples (Icon Editor):
-- Suite: `Describe 'IconEditor …' -Tag 'IconEditor'`
-- Unit context (no external tools): `-Tag 'IconEditor','DevMode','Unit'`
-- Package validation (VIP smoke): `-Tag 'IconEditor','Packaging','Unit'`
-- INI round-trip (real installs): `-Tag 'IconEditor','DevMode','INI','Integration','E2E','RequiresGCLI','RequiresLabVIEW'`
+Examples (CompareVI):
+- Suite: `Describe 'CompareVI CLI session index' -Tag 'CompareVI'`
+- Unit context (no external tools): `-Tag 'CompareVI','CLI','Unit'`
+- History routing coverage: `-Tag 'CompareVI','History','Unit'`
+- Hosted integration path: `-Tag 'CompareVI','Routing','Integration','RequiresGCLI','RequiresLabVIEW'`
 
 ## Dispatcher behaviour
 

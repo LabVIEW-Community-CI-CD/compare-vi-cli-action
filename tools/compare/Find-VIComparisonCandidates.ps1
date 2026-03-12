@@ -63,7 +63,7 @@ function Invoke-Git {
 }
 
 $repoRoot = Resolve-RepoRoot
-$repoResolved = Resolve-PathMaybeRelative -Path ($RepoPath ?? (Join-Path $repoRoot 'vendor/icon-editor')) -Base $repoRoot
+$repoResolved = Resolve-PathMaybeRelative -Path ($RepoPath ?? $repoRoot) -Base $repoRoot
 if (-not $repoResolved -or -not (Test-Path -LiteralPath $repoResolved -PathType Container)) {
   throw "Repository path '$repoResolved' not found."
 }

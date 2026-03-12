@@ -19,12 +19,6 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   - The active icon editor codebase and runbooks live in
     `svelderrainruiz/labview-icon-editor`.
   - Keep icon-editor automation out of standing-priority work in this repo.
-  - `docs/ICON_EDITOR_PACKAGE.md` remains as historical reference only.
-- **VIPM provider comparison**
-- `pwsh -File tools/Vipm/Invoke-ProviderComparison.ps1` runs the default single-lane scenario (runner dependency `.vipc` on LabVIEW 2025 × 64-bit) through each registered VIPM provider and appends telemetry to `tests/results/_agent/vipm-provider-matrix.json`. Pass `-ScenarioFile` or `-Scenario` to exercise custom matrices (see `tools/Vipm/example-scenarios.json`) when you need multi-target coverage.
-  - Set `VIPM_PROVIDER_COMPARISON=skip` to bypass runs in local environments without VIPM.
-  - Results include duration, exit code, warnings, and artifact hashes so discrepancies surface quickly; the script prints a plain-text summary for at-a-glance review.
-  - `pwsh -File tools/Vipm/Test-ProviderTelemetry.ps1` validates the aggregated telemetry (failing on non-success scenarios) and is intended for CI gating; the helper supports `-TreatMissingAsWarning` for optional runs.
 - **Smoke tests**
   - `pwsh -File tools/Test-PRVIStagingSmoke.ps1 -DryRun`
     (planning pass; prints the branch/PR that would be created)

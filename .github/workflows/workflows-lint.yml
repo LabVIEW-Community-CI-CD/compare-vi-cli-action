@@ -9,36 +9,37 @@ jobs:
     env:
       ACTIONLINT_VERSION: ${{ vars.ACTIONLINT_VERSION || '1.7.7' }}
     steps:
-      - uses: actions/checkout@v5
+    - uses: ./.github/actions/checkout-workflow-context
+      with:
+        mode: 'pr-head'
+    - name: Install actionlint (pinned)
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ./bin
+        ver="${ACTIONLINT_VERSION:-1.7.7}"
+        for i in 1 2 3; do
+          if curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- "$ver" ./bin; then
+            break
+          else
+            echo "retry $i"; sleep 2
+          fi
+        done
 
-      - name: Install actionlint (pinned)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p ./bin
-          ver="${ACTIONLINT_VERSION:-1.7.7}"
-          for i in 1 2 3; do
-            if curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- "$ver" ./bin; then
-              break
-            else
-              echo "retry $i"; sleep 2
-            fi
-          done
+    - name: Run actionlint
+      run: ./bin/actionlint -color
 
-      - name: Run actionlint
-        run: ./bin/actionlint -color
+    - name: Assert requirements-verification check contract
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
 
-      - name: Assert requirements-verification check contract
-        shell: pwsh
-        run: |
-          pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
+    - name: Assert policy-guard check contract
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-PolicyGuardCheckContract.ps1
 
-      - name: Assert policy-guard check contract
-        shell: pwsh
-        run: |
-          pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-PolicyGuardCheckContract.ps1
-
-      - name: Assert commit-integrity contract
-        shell: pwsh
-        run: |
-          pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-CommitIntegrityContract.ps1
+    - name: Assert commit-integrity contract
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-CommitIntegrityContract.ps1

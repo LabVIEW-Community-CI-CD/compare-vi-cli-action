@@ -27,6 +27,10 @@ yaml = YAML(typ='rt')
 yaml.preserve_quotes = True
 yaml.width = 4096  # avoid folding
 
+CHECKOUT_CONTEXT_HELPER = './.github/actions/checkout-workflow-context'
+CHECKOUT_PASSTHROUGH_KEYS = ('fetch-depth', 'persist-credentials', 'submodules', 'lfs', 'clean')
+EXPLICIT_CHECKOUT_ALLOWLIST = {'vi-compare-fork.yml'}
+
 
 def load_yaml(path: Path):
     with path.open('r', encoding='utf-8') as fp:
@@ -38,6 +42,82 @@ def dump_yaml(doc, path: Path) -> str:
     sio = StringIO()
     yaml.dump(doc, sio)
     return sio.getvalue()
+
+
+def get_workflow_on(doc):
+    return doc.get('on') or doc.get('on:') or {}
+
+
+def get_workflow_trigger_names(doc) -> set[str]:
+    on = get_workflow_on(doc)
+    if isinstance(on, dict):
+        return {str(key) for key in on.keys()}
+    return set()
+
+
+def is_raw_checkout_step(step) -> bool:
+    return isinstance(step, dict) and str(step.get('uses', '')).startswith('actions/checkout@')
+
+
+def is_checkout_context_step(step) -> bool:
+    return isinstance(step, dict) and str(step.get('uses', '')) == CHECKOUT_CONTEXT_HELPER
+
+
+def is_checkout_step(step) -> bool:
+    return is_raw_checkout_step(step) or is_checkout_context_step(step)
+
+
+def make_checkout_context_step(mode, original_step=None) -> dict:
+    step = {}
+    if isinstance(original_step, dict):
+        if 'name' in original_step:
+            step['name'] = original_step['name']
+        if 'if' in original_step:
+            step['if'] = original_step['if']
+    step['uses'] = CHECKOUT_CONTEXT_HELPER
+    with_block = {'mode': mode}
+    if isinstance(original_step, dict):
+        original_with = original_step.get('with') or {}
+        for key in CHECKOUT_PASSTHROUGH_KEYS:
+            if key in original_with:
+                with_block[key] = original_with[key]
+    step['with'] = with_block
+    return step
+
+
+def get_checkout_mode_for_workflow(path: Path, doc):
+    triggers = get_workflow_trigger_names(doc)
+    if 'pull_request' in triggers and 'pull_request_target' in triggers:
+        return DQS("${{ github.event_name == 'pull_request_target' && 'base-safe' || github.event_name == 'pull_request' && 'pr-head' || 'default' }}")
+    if 'pull_request_target' in triggers or 'pull_request_review' in triggers:
+        return SQS('base-safe')
+    if 'pull_request' in triggers:
+        return SQS('pr-head')
+    return None
+
+
+def ensure_checkout_context_helper(doc, path: Path) -> bool:
+    mode = get_checkout_mode_for_workflow(path, doc)
+    if mode is None:
+        return False
+    changed = False
+    jobs = doc.get('jobs') or {}
+    if not isinstance(jobs, dict):
+        return False
+    for job in jobs.values():
+        if not isinstance(job, dict):
+            continue
+        steps = job.get('steps') or []
+        if not isinstance(steps, list):
+            continue
+        for idx, step in enumerate(steps):
+            if not is_raw_checkout_step(step):
+                continue
+            if path.name in EXPLICIT_CHECKOUT_ALLOWLIST:
+                continue
+            steps[idx] = make_checkout_context_step(mode, step)
+            changed = True
+    return changed
 
 
 def ensure_force_run_input(doc) -> bool:
@@ -221,7 +301,7 @@ def _insert_wire_j1_j2_in_job(job: dict, results_dir: str = 'tests/results') -> 
         kept.append(st)
     steps = kept
     job['steps'] = steps
-    checkout_idx = next((i for i, s in enumerate(steps) if isinstance(s, dict) and str(s.get('uses', '')).startswith('actions/checkout@')), None)
+    checkout_idx = next((i for i, s in enumerate(steps) if is_checkout_step(s)), None)
     if checkout_idx is None:
         return changed
     insert_after = checkout_idx + 1
@@ -614,7 +694,7 @@ def ensure_interactivity_probe_job(doc) -> bool:
             'ok': SQS("${{ steps.out.outputs.ok }}"),
         },
         'steps': [
-            {'uses': 'actions/checkout@v5'},
+            make_checkout_context_step(SQS('default')),
             {
                 'name': 'Run interactivity probe',
                 'id': 'out',
@@ -689,7 +769,7 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
     # Determine checkout index for insertion points
     checkout_idx = _find_step_index(steps, 'actions/checkout@v5')
     if checkout_idx is None:
-        checkout_idx = next((i for i, st in enumerate(steps) if isinstance(st, dict) and str(st.get('uses', '')).startswith('actions/checkout@')), None)
+        checkout_idx = next((i for i, st in enumerate(steps) if is_checkout_step(st)), None)
 
     def insert_after_checkout(step_dict):
         nonlocal changed
@@ -889,7 +969,7 @@ def ensure_hosted_preflight(doc, job_key: str) -> bool:
             'runs-on': 'windows-latest',
             'timeout-minutes': 3,
             'steps': [
-                {'uses': 'actions/checkout@v5'},
+                make_checkout_context_step(SQS('default')),
             ],
         }
         jobs[job_key] = job
@@ -900,9 +980,9 @@ def ensure_hosted_preflight(doc, job_key: str) -> bool:
         changed = True
     steps = job.setdefault('steps', [])
     # Ensure checkout exists
-    has_checkout = any(isinstance(s, dict) and str(s.get('uses', '')).startswith('actions/checkout@') for s in steps)
+    has_checkout = any(is_checkout_step(s) for s in steps)
     if not has_checkout:
-        steps.insert(0, {'uses': 'actions/checkout@v5'})
+        steps.insert(0, make_checkout_context_step(SQS('default')))
         changed = True
     # Ensure verify step exists/updated
     idx_verify = None
@@ -1136,7 +1216,7 @@ def ensure_long_wire_fixture_drift_windows(doc) -> bool:
     steps = job.setdefault('steps', [])
 
     # Ensure J1 before checkout and J2 after checkout
-    checkout_idx = next((i for i, s in enumerate(steps) if isinstance(s, dict) and str(s.get('uses','')).startswith('actions/checkout@')), None)
+    checkout_idx = next((i for i, s in enumerate(steps) if is_checkout_step(s)), None)
     if checkout_idx is not None:
         # J1
         if not _step_exists(steps, lambda s: isinstance(s, dict) and s.get('name') == 'Wire Probe (J1)'):
@@ -1212,6 +1292,8 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
     doc = load_yaml(path)
     changed = False
     name = doc.get('name', '')
+    c_checkout = ensure_checkout_context_helper(doc, path)
+    changed = changed or c_checkout
     # Only transform self-hosted Pester workflow here
     if name in ('Pester (self-hosted)', 'Pester (integration)') or path.name == 'pester-selfhosted.yml':
         c1 = ensure_force_run_input(doc)
@@ -1294,7 +1376,7 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
             job = jobs.get('preflight')
             if isinstance(job, dict):
                 steps = job.setdefault('steps', [])
-                insert_at = 1 if steps and isinstance(steps[0], dict) and str(steps[0].get('uses','')).startswith('actions/checkout') else 0
+                insert_at = 1 if steps and is_checkout_step(steps[0]) else 0
                 has_guard = any(isinstance(st, dict) and str(st.get('uses','')).endswith('runner-unblock-guard') for st in steps)
                 if not has_guard:
                     guard = {

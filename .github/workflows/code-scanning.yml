@@ -3,16 +3,16 @@ name: Code Scanning
 on:
   pull_request:
     branches:
-      - develop
-      - main
+    - develop
+    - main
   merge_group:
     branches:
-      - develop
-      - main
+    - develop
+    - main
   push:
     branches:
-      - develop
-      - main
+    - develop
+    - main
   workflow_dispatch:
 
 permissions:
@@ -30,18 +30,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
+    - name: Checkout
+      uses: ./.github/actions/checkout-workflow-context
+      with:
+        mode: 'pr-head'
+        fetch-depth: 0
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: javascript-typescript
+        queries: security-and-quality
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: javascript-typescript
-          queries: security-and-quality
-
-      - name: Analyze
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: /language:javascript-typescript
+    - name: Analyze
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: /language:javascript-typescript

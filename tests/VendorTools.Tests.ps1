@@ -265,23 +265,4 @@ Describe 'VendorTools LabVIEW helpers' {
     $resolved | Should -Be $cliResolved
   }
 
-  It 'resolves VIPM path from config overrides' {
-    if (-not $IsWindows) {
-      Set-ItResult -Skipped -Because 'VIPM resolution only applies on Windows'
-      return
-    }
-
-    $tempRoot = Join-Path $TestDrive 'vipm-config'
-    New-Item -ItemType Directory -Path $tempRoot | Out-Null
-    $vipmPath = Join-Path $tempRoot 'VIPM.exe'
-    Set-Content -LiteralPath $vipmPath -Value '' -Encoding ascii
-
-    $config = @{
-      VipmPath = $vipmPath
-    } | ConvertTo-Json -Depth 3
-    Set-Content -LiteralPath $script:localConfigPath -Value $config -Encoding utf8
-
-    $resolved = Resolve-VIPMPath
-    $resolved | Should -Be (Resolve-Path -LiteralPath $vipmPath).Path
-  }
 }
