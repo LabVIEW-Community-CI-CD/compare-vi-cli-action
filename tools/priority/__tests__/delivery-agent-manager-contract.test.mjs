@@ -129,6 +129,15 @@ test('delivery-agent manager tolerates one-shot WSL daemon launches that do not 
   assert.match(manager, /return 0;/);
 });
 
+test('delivery-agent manager launches the runtime daemon with stale-lease takeover enabled', async () => {
+  const manager = await readText('tools/priority/lib/delivery-agent-manager.ts');
+  const startScript = await readText('tools/priority/bash/start-runtime-daemon.sh');
+
+  assert.match(manager, /AGENT_WRITER_LEASE_FORCE_TAKEOVER=\$\{shellQuote\('true'\)\}/);
+  assert.match(manager, /leaseRecovery:\s*\{\s*forceTakeover:\s*true/s);
+  assert.match(startScript, /export AGENT_WRITER_LEASE_FORCE_TAKEOVER="\$\{AGENT_WRITER_LEASE_FORCE_TAKEOVER:-true\}"/);
+});
+
 test('delivery-agent manager status ignores stale heartbeat state from before the current manager start', async (t) => {
   const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-stale-'));
   const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);

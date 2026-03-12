@@ -88,6 +88,7 @@ export function startWslRuntimeDaemon({
     `COMPAREVI_RUNTIME_DAEMON_LEASE_ROOT=${shellQuote(leaseRootWsl)}`,
     `COMPAREVI_RUNTIME_DAEMON_POLL_INTERVAL=${shellQuote(String(daemonPollIntervalSeconds))}`,
     `AGENT_WRITER_LEASE_OWNER=${shellQuote(leaseOwner)}`,
+    `AGENT_WRITER_LEASE_FORCE_TAKEOVER=${shellQuote('true')}`,
     `DOCKER_HOST=${shellQuote(DEFAULTS.dockerHost)}`,
     `COMPAREVI_DOCKER_RUNTIME_PROVIDER=${shellQuote('native-wsl')}`,
     `COMPAREVI_DOCKER_EXPECTED_CONTEXT=${shellQuote('')}`,
@@ -676,6 +677,9 @@ export async function runManagerLoop(options) {
             String(options.daemonPollIntervalSeconds),
             '--execute-turn',
           ],
+          leaseRecovery: {
+            forceTakeover: true,
+          },
         });
         await sleep(3000);
         daemonAlive = testWslProcessAlive(options.wslDistro, activeDaemonPid);
