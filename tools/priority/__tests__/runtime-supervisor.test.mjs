@@ -544,6 +544,29 @@ test('canonical delivery scheduler skips Copilot review metadata lookups for sta
   assert.equal(decision.artifacts.pullRequest.copilotReviewSignal, null);
 });
 
+test('classifyPullRequestWork keeps approved clean lanes merge-ready even when Copilot workflow metadata is present', () => {
+  const prStatus = classifyPullRequestWork({
+    number: 1015,
+    isDraft: false,
+    reviewDecision: 'APPROVED',
+    mergeStateStatus: 'CLEAN',
+    mergeable: 'MERGEABLE',
+    statusCheckRollup: [
+      { __typename: 'CheckRun', name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' }
+    ],
+    copilotReviewWorkflow: {
+      workflowName: 'Copilot code review',
+      status: 'COMPLETED',
+      conclusion: 'SUCCESS'
+    }
+  });
+
+  assert.equal(prStatus.laneLifecycle, 'ready-merge');
+  assert.equal(prStatus.readyToMerge, true);
+  assert.equal(prStatus.nextWakeCondition, 'merge-attempt');
+  assert.equal(prStatus.pollIntervalSecondsHint, undefined);
+});
+
 test('canonical delivery scheduler caches Copilot review metadata by head sha while a lane waits for review', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-canonical-copilot-cache-'));
   let workflowLookups = 0;

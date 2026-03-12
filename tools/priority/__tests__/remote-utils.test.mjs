@@ -185,6 +185,26 @@ test('pushBranch still fails when the remote branch is not published', () => {
   );
 });
 
+test('pushBranch preserves the original push failure context when recovery is not possible', () => {
+  assert.throws(
+    () =>
+      pushBranch('/tmp/repo', 'issue/963-org-owned-fork-pr-helper', 'origin', {
+        runFn: (_command, args) => {
+          if (args[0] === 'push') {
+            const error = new Error('Permission denied (publickey)');
+            error.stderr = 'fatal: Permission denied (publickey)';
+            throw error;
+          }
+          if (args[0] === 'ls-remote') {
+            return '';
+          }
+          throw new Error(`Unexpected git args: ${args.join(' ')}`);
+        }
+      }),
+    /Failed to push branch to origin\.\s+fatal: Permission denied \(publickey\)/i
+  );
+});
+
 test('pushBranch still fails when the remote branch exists but does not match the local head after a push failure', () => {
   assert.throws(
     () =>

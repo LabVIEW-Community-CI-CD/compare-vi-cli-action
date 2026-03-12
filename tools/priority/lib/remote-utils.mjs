@@ -336,7 +336,7 @@ export function pushBranch(
       remote: selectedRemote,
       branch
     };
-  } catch {
+  } catch (error) {
     const remoteHead = getRemoteBranchHeadFn(repoRoot, selectedRemote, branch, { runFn });
     const localHead = getLocalBranchHeadFn(repoRoot, branch, { runFn });
     if (remoteHead && localHead && remoteHead === localHead) {
@@ -347,7 +347,9 @@ export function pushBranch(
         recoveredFromPushFailure: true
       };
     }
-    throw new Error(`Failed to push branch to ${selectedRemote}. Resolve the push error above.`);
+    const cause = String(error?.stderr ?? error?.message ?? error ?? '').trim();
+    const detail = cause ? ` ${cause}` : '';
+    throw new Error(`Failed to push branch to ${selectedRemote}.${detail}`);
   }
 }
 

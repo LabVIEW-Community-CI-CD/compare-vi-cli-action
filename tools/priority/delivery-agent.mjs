@@ -170,7 +170,7 @@ async function readJsonIfPresent(filePath, { deleteCorrupt = false } = {}) {
 
 async function writeJsonAtomically(filePath, payload) {
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(tempPath, payload);
+  await writeFile(tempPath, payload, 'utf8');
   try {
     await rename(tempPath, filePath);
   } catch (error) {
@@ -354,13 +354,16 @@ export function classifyPullRequestWork(pr = {}) {
   const copilotReviewWorkflowStatus = normalizeText(copilotReviewWorkflow?.status).toUpperCase();
   const copilotReviewWorkflowConclusion = normalizeText(copilotReviewWorkflow?.conclusion).toUpperCase();
   const hasActionableCurrentHeadComments = (copilotReviewSignal?.actionableCommentCount ?? 0) > 0;
+  const reviewPendingRequired =
+    !reviewDecision || reviewDecision === 'REVIEW_REQUIRED' || reviewDecision === 'CHANGES_REQUESTED';
   const reviewPendingFromSignal =
-    (copilotReviewSignal != null &&
+    reviewPendingRequired &&
+    ((copilotReviewSignal != null &&
       (copilotReviewSignal.hasCurrentHeadReview !== true || hasActionableCurrentHeadComments)) ||
-    (copilotReviewSignal == null &&
-      copilotReviewWorkflow != null &&
-      (PENDING_WORKFLOW_RUN_STATUSES.has(copilotReviewWorkflowStatus) ||
-        (copilotReviewWorkflowStatus === 'COMPLETED' && copilotReviewWorkflowConclusion === 'SUCCESS')));
+      (copilotReviewSignal == null &&
+        copilotReviewWorkflow != null &&
+        (PENDING_WORKFLOW_RUN_STATUSES.has(copilotReviewWorkflowStatus) ||
+          (copilotReviewWorkflowStatus === 'COMPLETED' && copilotReviewWorkflowConclusion === 'SUCCESS'))));
   let nextWakeCondition = 'review-disposition-updated';
   let pollIntervalSecondsHint = null;
 
