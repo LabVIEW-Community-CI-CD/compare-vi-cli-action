@@ -152,6 +152,30 @@ function deriveActiveQueueManagedBranches(manifest, portabilityProfile) {
   return deriveQueueManagedBranches(manifest);
 }
 
+function resolveManifestPortabilityOverride(manifest, repositorySlug) {
+  const repoProfile = manifest?.repoProfiles?.[repositorySlug];
+  if (!repoProfile || typeof repoProfile !== 'object') {
+    return null;
+  }
+
+  const mode = String(repoProfile.rulesetMode ?? '').trim();
+  if (mode === 'throughput-fork-relaxed') {
+    return {
+      queueManagedRulesetsPortable: false,
+      detectedBy: 'repo-profile',
+      reason: repoProfile.reason ?? `repo-profile:${repositorySlug}`
+    };
+  }
+  if (mode === 'standard') {
+    return {
+      queueManagedRulesetsPortable: true,
+      detectedBy: 'repo-profile',
+      reason: repoProfile.reason ?? null
+    };
+  }
+  return null;
+}
+
 function buildRulesetPortabilityProfile(repoData, overrides = {}) {
   const isFork = repoData?.fork === true;
   const ownerType = String(repoData?.owner?.type ?? '').toLowerCase();
@@ -1236,7 +1260,8 @@ export async function run({
   fetchFn = globalThis.fetch,
   execSyncFn = execSync,
   log = console.log,
-  error = console.error
+  error = console.error,
+  manifestOverride = null
 } = {}) {
   const options = parseArgs(argv);
   if (options.help) {
@@ -1319,7 +1344,7 @@ export async function run({
   try {
     const dbg = options.debug ? (...args) => log('[policy][debug]', ...args) : () => {};
 
-    const manifest = await loadManifest();
+    const manifest = manifestOverride ?? await loadManifest();
     const forkRun = await detectForkRun(env);
     report.forkRun = forkRun;
     const tokenCandidates = await resolveTokenCandidates(env);
@@ -1419,9 +1444,14 @@ export async function run({
       }
     }
 
-    let portabilityProfile = buildRulesetPortabilityProfile(initialState.repoData);
+    const manifestPortabilityOverride = resolveManifestPortabilityOverride(manifest, `${owner}/${repo}`);
+    let portabilityProfile = buildRulesetPortabilityProfile(initialState.repoData, manifestPortabilityOverride ?? {});
     report.portability = portabilityProfile;
-    if (portabilityProfile.queueManagedRulesetsPortable === false) {
+    if (portabilityProfile.queueManagedRulesetsPortable === false && manifestPortabilityOverride) {
+      log(
+        `[policy] Portability profile override detected for ${report.repository}; queue-managed fork-local ruleset enforcement is relaxed for this repository.`
+      );
+    } else if (portabilityProfile.queueManagedRulesetsPortable === false) {
       log('[policy] User-owned throughput fork detected; skipping queue-managed fork-local ruleset enforcement because merge_queue rulesets are not portable to user-owned forks.');
     }
 

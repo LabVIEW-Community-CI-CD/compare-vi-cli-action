@@ -1174,6 +1174,86 @@ test('priority:policy verify passes on user-owned throughput forks while still e
   });
 });
 
+test('priority:policy verify honors repo portability overrides for forks that cannot host merge_queue rulesets', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-fork';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const reportDir = await mkdtemp(path.join(os.tmpdir(), 'priority-policy-throughput-override-'));
+  const reportPath = path.join(reportDir, 'policy-report.json');
+  const alignedRulesets = createAlignedRulesets();
+  const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
+  manifestOverride.repoProfiles = {
+    ...(manifestOverride.repoProfiles ?? {}),
+    'test-org/test-fork': {
+      rulesetMode: 'throughput-fork-relaxed',
+      reason: 'merge_queue-unsupported-throughput-fork'
+    }
+  };
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'Organization', login: 'test-org' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(alignedRulesets.release);
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse([]);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--report', reportPath],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-fork',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    manifestOverride,
+    log: (msg) => logMessages.push(msg),
+    error: () => {}
+  });
+
+  assert.equal(code, 0, 'verify mode should pass when a repo portability profile relaxes queue-managed fork rulesets');
+  assert.ok(
+    logMessages.some((msg) => msg.includes('Portability profile override detected')),
+    'expected repo-profile portability log'
+  );
+  const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  assert.deepEqual(report.portability, {
+    rulesetMode: 'throughput-fork-relaxed',
+    queueManagedRulesetsPortable: false,
+    detectedBy: 'repo-profile',
+    reason: 'merge_queue-unsupported-throughput-fork'
+  });
+});
+
 test('priority:policy --apply skips queue-managed rulesets on user-owned throughput forks but still creates non-queue rulesets', async () => {
   const repoUrl = 'https://api.github.com/repos/test-user/test-repo';
   const listUrl = `${repoUrl}/rulesets`;
