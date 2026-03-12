@@ -160,6 +160,23 @@ function Wait-ForRemoteHead {
   return $false
 }
 
+function Update-RemoteTrackingRef {
+  param(
+    [Parameter(Mandatory)][string]$Remote,
+    [Parameter(Mandatory)][string]$BranchName,
+    [Parameter(Mandatory)][string]$ExpectedSha
+  )
+
+  $trackingRef = 'refs/remotes/{0}/{1}' -f $Remote, $BranchName
+  Invoke-Git -Arguments @('update-ref', $trackingRef, $ExpectedSha) | Out-Null
+  $resolvedSha = Get-GitValue -Arguments @('rev-parse', '--verify', $trackingRef)
+  if ($resolvedSha -ne $ExpectedSha) {
+    throw ("Failed to refresh local tracking ref {0} to {1}." -f $trackingRef, $ExpectedSha)
+  }
+
+  Write-Host ("[sync] Refreshed local tracking ref {0} -> {1}" -f $trackingRef, $ExpectedSha)
+}
+
 function Test-NonRetryableSyncFailure {
   param([Parameter(Mandatory)][string]$Message)
 
@@ -304,6 +321,7 @@ try {
       if (-not $converged) {
         throw ("Push completed but remote head did not converge to local HEAD ({0}) within {1} poll(s)." -f $localHead, $RemoteHeadPollAttempts)
       }
+      Update-RemoteTrackingRef -Remote $HeadRemote -BranchName $Branch -ExpectedSha $localHead
 
       $syncSucceeded = $true
       break

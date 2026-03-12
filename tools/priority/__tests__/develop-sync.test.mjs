@@ -25,7 +25,8 @@ function run(command, args, options = {}) {
     cwd: options.cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
-    timeout: options.timeout ?? 120000
+    timeout: options.timeout ?? 120000,
+    env: options.env ?? process.env
   });
 
   if (result.status !== 0) {
@@ -109,6 +110,7 @@ test('Sync-OriginUpstreamDevelop retries SSH auth failures against the fetch URL
   assert.match(source, /Get-SafeRemoteLocation -Location \(\[string\]\$_\)/);
   assert.match(source, /\("\{0\}:\{0\}" -f \$BranchName\)/);
   assert.match(source, /Permission denied \\\(publickey\\\)/);
+  assert.match(source, /update-ref', \$trackingRef, \$ExpectedSha/);
 });
 
 test('buildSyncAdminPaths uses git-common-dir for repo-wide lock serialization in a linked worktree', () => {
@@ -240,4 +242,90 @@ test('Sync-OriginUpstreamDevelop succeeds from a linked worktree and writes admi
   assert.equal(typeof parityReport.adminPaths.lockPath, 'string');
   assert.equal(parityReport.adminPaths.lockPath.startsWith(parityReport.adminPaths.gitCommonDir), true);
   assert.notEqual(parityReport.adminPaths.lockPath, path.join(worktreeRepo, '.git', buildSyncLockName()));
+});
+
+test('Sync-OriginUpstreamDevelop refreshes the local tracking ref after SSH fallback push succeeds', async (t) => {
+  const sandboxRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-fallback-'));
+  const upstreamBare = path.join(sandboxRoot, 'upstream.git');
+  const originBare = path.join(sandboxRoot, 'origin.git');
+  const seedRepo = path.join(sandboxRoot, 'seed');
+  const controlRepo = path.join(sandboxRoot, 'control');
+  const worktreeRepo = path.join(sandboxRoot, 'worktree');
+  const updaterRepo = path.join(sandboxRoot, 'updater');
+  const fakeSshPath = path.join(sandboxRoot, 'fake-ssh.cmd');
+  t.after(async () => {
+    await rm(sandboxRoot, { recursive: true, force: true });
+  });
+
+  initBareRepo(upstreamBare);
+  initBareRepo(originBare);
+
+  initRepo(seedRepo);
+  await writeFile(path.join(seedRepo, 'README.md'), 'seed\n', 'utf8');
+  run('git', ['add', 'README.md'], { cwd: seedRepo });
+  run('git', ['commit', '-m', 'seed'], { cwd: seedRepo });
+  run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: seedRepo });
+  run('git', ['remote', 'add', 'origin', originBare], { cwd: seedRepo });
+  run('git', ['push', 'upstream', 'develop'], { cwd: seedRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: seedRepo });
+
+  run('git', ['clone', originBare, controlRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: controlRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: controlRepo });
+  run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: controlRepo });
+  run('git', ['fetch', 'upstream'], { cwd: controlRepo });
+  run('git', ['worktree', 'add', '-b', 'issue/test-sync-fallback', worktreeRepo, 'develop'], { cwd: controlRepo });
+  run('git', ['checkout', '--detach'], { cwd: controlRepo });
+
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority'), { recursive: true });
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'),
+    path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'report-origin-upstream-parity.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'report-origin-upstream-parity.mjs')
+  );
+
+  await writeFile(
+    fakeSshPath,
+    '@echo off\r\n>&2 echo Permission denied (publickey).\r\nexit /b 255\r\n',
+    'utf8'
+  );
+  run('git', ['config', 'core.sshCommand', `cmd /c "${fakeSshPath}"`], { cwd: controlRepo });
+  run('git', ['remote', 'set-url', '--push', 'origin', 'git@github.com:LabVIEW-Community-CI-CD/compare-vi-cli-action-fork.git'], {
+    cwd: controlRepo
+  });
+
+  run('git', ['clone', upstreamBare, updaterRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: updaterRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: updaterRepo });
+  await writeFile(path.join(updaterRepo, 'CHANGE.txt'), 'upstream advance\n', 'utf8');
+  run('git', ['add', 'CHANGE.txt'], { cwd: updaterRepo });
+  run('git', ['commit', '-m', 'advance upstream'], { cwd: updaterRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: updaterRepo });
+
+  const parityReportPath = path.join(worktreeRepo, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
+  run(
+    'pwsh',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-File',
+      path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'),
+      '-HeadRemote',
+      'origin',
+      '-ParityReportPath',
+      parityReportPath
+    ],
+    { cwd: worktreeRepo, timeout: 180000 }
+  );
+
+  const upstreamHead = run('git', ['--git-dir', upstreamBare, 'rev-parse', 'develop'], { cwd: sandboxRoot });
+  const remoteTrackingHead = run('git', ['rev-parse', '--verify', 'origin/develop'], { cwd: worktreeRepo });
+  assert.equal(remoteTrackingHead, upstreamHead);
+
+  const parityReport = JSON.parse(await readFile(parityReportPath, 'utf8'));
+  assert.equal(parityReport.tipDiff.fileCount, 0);
+  assert.equal(parityReport.pushTransport.usedFallback, true);
 });
