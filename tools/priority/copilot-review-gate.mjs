@@ -609,6 +609,7 @@ function evaluateGateOutcome({
     }));
   const staleReviewCleanFollowup =
     Boolean(latestCopilotReview) &&
+    eventName !== 'pull_request_target' &&
     latestCopilotReview.isCurrentHead === false &&
     summary.currentHeadReviewCount === 0 &&
     summary.staleReviewCount > 0 &&

@@ -222,6 +222,7 @@ test('buildGhPrCreateArgs preserves the standard gh create path for user forks',
     'develop',
     '--head',
     'fork-owner:issue/963-test',
+    '--draft',
     '--title',
     'Helper title',
     '--body',
@@ -280,6 +281,7 @@ test('graphql PR helpers expose the same-owner fork mutation contract', () => {
     body: 'Body'
   });
   assert.match(request.query, /createPullRequest/);
+  assert.match(request.query, /draft: true/);
   assert.equal(request.variables.repositoryId, 'R_upstream');
   assert.equal(request.variables.headRepositoryId, 'R_fork');
   assert.equal(request.variables.headRefName, 'issue/963-org-owned-fork-pr-helper');
@@ -513,6 +515,7 @@ test('runGhPrCreate preserves the gh CLI path for user-owned forks', () => {
     'develop',
     '--head',
     'svelderrainruiz:issue/963-org-owned-fork-pr-helper',
+    '--draft',
     '--title',
     'Fix #963',
     '--body',

@@ -715,7 +715,7 @@ function evaluateDecision({
       if (!reviewSignal.hasCurrentHeadReview) {
         blockers.push('current-head-review-missing');
       }
-      if (reviewSignal.staleReviewCount > 0) {
+      if (reviewSignal.staleReviewCount > 0 && !reviewSignal.hasCurrentHeadReview) {
         blockers.push('stale-review-present');
       }
       if (reviewSignal.actionableCommentCount > 0) {
