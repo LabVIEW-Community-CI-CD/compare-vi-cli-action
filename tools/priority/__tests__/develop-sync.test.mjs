@@ -110,7 +110,7 @@ test('Sync-OriginUpstreamDevelop retries SSH auth failures against the fetch URL
   assert.match(source, /Get-SafeRemoteLocation -Location \(\[string\]\$_\)/);
   assert.match(source, /\("\{0\}:\{0\}" -f \$BranchName\)/);
   assert.match(source, /Permission denied \\\(publickey\\\)/);
-  assert.match(source, /update-ref', \$trackingRef, \$ExpectedSha/);
+  assert.match(source, /fetch', '--no-tags', \$Remote, \$refSpec/);
 });
 
 test('buildSyncAdminPaths uses git-common-dir for repo-wide lock serialization in a linked worktree', () => {
@@ -340,4 +340,109 @@ test('Sync-OriginUpstreamDevelop refreshes the local tracking ref after SSH fall
   const parityReport = JSON.parse(await readFile(parityReportPath, 'utf8'));
   assert.equal(parityReport.tipDiff.fileCount, 0);
   assert.equal(parityReport.pushTransport.usedFallback, true);
+});
+
+test('Sync-OriginUpstreamDevelop targeted refresh detects a newer remote head instead of clobbering it', async (t) => {
+  const sandboxRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-refresh-guard-'));
+  const upstreamBare = path.join(sandboxRoot, 'upstream.git');
+  const originBare = path.join(sandboxRoot, 'origin.git');
+  const seedRepo = path.join(sandboxRoot, 'seed');
+  const controlRepo = path.join(sandboxRoot, 'control');
+  const updaterRepo = path.join(sandboxRoot, 'updater');
+  const worktreeRepo = path.join(sandboxRoot, 'worktree');
+  t.after(async () => {
+    await rm(sandboxRoot, { recursive: true, force: true });
+  });
+
+  initBareRepo(upstreamBare);
+  initBareRepo(originBare);
+
+  initRepo(seedRepo);
+  await writeFile(path.join(seedRepo, 'README.md'), 'seed\n', 'utf8');
+  run('git', ['add', 'README.md'], { cwd: seedRepo });
+  run('git', ['commit', '-m', 'seed'], { cwd: seedRepo });
+  run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: seedRepo });
+  run('git', ['remote', 'add', 'origin', originBare], { cwd: seedRepo });
+  run('git', ['push', 'upstream', 'develop'], { cwd: seedRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: seedRepo });
+
+  run('git', ['clone', originBare, controlRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: controlRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: controlRepo });
+  run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: controlRepo });
+  run('git', ['fetch', 'upstream'], { cwd: controlRepo });
+  run('git', ['worktree', 'add', '-b', 'issue/test-sync-refresh-guard', worktreeRepo, 'develop'], { cwd: controlRepo });
+  run('git', ['checkout', '--detach'], { cwd: controlRepo });
+
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority'), { recursive: true });
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'),
+    path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'report-origin-upstream-parity.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'report-origin-upstream-parity.mjs')
+  );
+
+  run('git', ['clone', upstreamBare, updaterRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: updaterRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: updaterRepo });
+  await writeFile(path.join(updaterRepo, 'CHANGE.txt'), 'upstream advance\n', 'utf8');
+  run('git', ['add', 'CHANGE.txt'], { cwd: updaterRepo });
+  run('git', ['commit', '-m', 'advance upstream'], { cwd: updaterRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: updaterRepo });
+
+  const source = readFileSyncImmediate(path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'), 'utf8');
+  const mutatedSource = source
+    .replace(
+      "Invoke-Git -Arguments @('fetch', '--no-tags', $Remote, $refSpec) | Out-Null",
+      `Write-Host "[test-hook] simulate concurrent remote advance"
+  $advancerPath = Join-Path $env:COMPAREVI_SYNC_TEST_CONCURRENT_UPDATE_ROOT 'advancer'
+  if (-not (Test-Path -LiteralPath $advancerPath)) {
+    git clone $env:COMPAREVI_SYNC_TEST_ORIGIN_BARE $advancerPath | Out-Null
+  }
+  Push-Location -LiteralPath $advancerPath
+  try {
+    git config user.email agent@example.com | Out-Null
+    git config user.name "Agent Runner" | Out-Null
+    "remote moved\`n" | Set-Content -LiteralPath concurrent.txt -Encoding utf8
+    git add concurrent.txt | Out-Null
+    git commit -m "advance origin again" | Out-Null
+    git push origin develop | Out-Null
+  }
+  finally {
+    Pop-Location
+  }
+  Invoke-Git -Arguments @('fetch', '--no-tags', $Remote, $refSpec) | Out-Null`
+    );
+  await writeFile(path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'), mutatedSource, 'utf8');
+
+  const parityReportPath = path.join(worktreeRepo, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
+  const result = spawnSync(
+    'pwsh',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-File',
+      path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'),
+      '-HeadRemote',
+      'origin',
+      '-ParityReportPath',
+      parityReportPath
+    ],
+    {
+      cwd: worktreeRepo,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 180000,
+      env: {
+        ...process.env,
+        COMPAREVI_SYNC_TEST_CONCURRENT_UPDATE_ROOT: sandboxRoot,
+        COMPAREVI_SYNC_TEST_ORIGIN_BARE: originBare
+      }
+    }
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stdout}\n${result.stderr}`, /Remote tracking ref .* expected/);
 });
