@@ -188,7 +188,7 @@ test('planPullRequestReviewCycle restores a previously ready PR without demandin
 });
 
 test('runCodexDeliveryTurn plans review restoration from the original PR state, not the broker-forced draft clone', () => {
-  const source = readFileSync(path.join(repoRoot, 'tools/priority/run-delivery-turn-with-codex.mjs'), 'utf8');
+  const source = readFileSync(path.join(repoRoot, 'tools/priority/run-delivery-turn-with-codex.ts'), 'utf8');
 
   assert.match(
     source,

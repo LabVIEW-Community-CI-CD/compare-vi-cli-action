@@ -188,6 +188,7 @@ export function buildCodexTurnPrompt({ taskPacket, repoRoot, workDir }) {
     '- Prefer checked-in repo helpers over raw GitHub commands.',
     '- Do not mutate branch protection, repo policy/rulesets, or release-admin surfaces.',
     '- Keep the turn bounded to one deliverable increment or one explicit blocker diagnosis.',
+    '- All automation-authored PRs begin as drafts; the broker will manage draft/ready transitions.',
     '- If you make implementation progress, run focused validation, commit with the issue number in the subject, push the lane branch, and open or update the PR if needed.',
     '- If a PR already exists, update the branch and leave the lane ready for CI.',
     '- If you are blocked, stop and report the blocker directly; do not claim success.',
@@ -301,20 +302,94 @@ function findPullRequest({ repository, branch, workDir, env = process.env }) {
   return Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : null;
 }
 
+export function buildPrReadyArgs({ repository, pullRequestNumber, ready }) {
+  const args = ['pr', 'ready', String(pullRequestNumber), '--repo', repository];
+  if (!ready) {
+    args.push('--undo');
+  }
+  return args;
+}
+
+function setPullRequestReadyState({
+  repository,
+  pullRequest,
+  ready,
+  workDir,
+  env = process.env
+}) {
+  const pullRequestNumber = Number.isInteger(pullRequest?.number) ? pullRequest.number : null;
+  if (!normalizeText(repository) || !pullRequestNumber) {
+    return {
+      ok: false,
+      helperCall: null,
+      result: {
+        status: 1,
+        stdout: '',
+        stderr: 'Pull request number or repository is missing.'
+      }
+    };
+  }
+
+  const args = buildPrReadyArgs({
+    repository,
+    pullRequestNumber,
+    ready
+  });
+  const result = runCommand('gh', args, { cwd: workDir, env });
+  return {
+    ok: result.status === 0,
+    helperCall: `gh ${args.join(' ')}`,
+    result
+  };
+}
+
+export function planPullRequestReviewCycle({
+  initialPullRequest,
+  finalPullRequest,
+  startHead,
+  endHead,
+  codexSucceeded
+}) {
+  const initialPullRequestNumber = Number.isInteger(initialPullRequest?.number) ? initialPullRequest.number : null;
+  const finalPullRequestNumber = Number.isInteger(finalPullRequest?.number) ? finalPullRequest.number : null;
+  const headChanged = Boolean(startHead && endHead && startHead !== endHead);
+  const initialWasReady = initialPullRequestNumber != null && initialPullRequest?.isDraft === false;
+  const finalIsDraft = finalPullRequestNumber != null && finalPullRequest?.isDraft === true;
+  const finalExists = finalPullRequestNumber != null;
+  const draftBeforeMutation = initialWasReady;
+  const readyAfterMutation =
+    finalExists &&
+    finalIsDraft &&
+    ((codexSucceeded === true && headChanged) || (initialWasReady && headChanged === false));
+  const restoreReadyWithoutMutation = finalExists && finalIsDraft && initialWasReady && headChanged === false;
+  return {
+    draftBeforeMutation,
+    readyAfterMutation,
+    restoreReadyWithoutMutation,
+    freshCopilotReviewExpected: readyAfterMutation && headChanged,
+    headChanged,
+    initialPullRequestNumber,
+    finalPullRequestNumber
+  };
+}
+
 function buildExecutionReceipt({
   taskPacket,
   codexResult,
   codexCommand,
+  brokerHelperCalls = [],
   filesTouched,
   startHead,
   endHead,
   branchName,
   pullRequest,
+  reviewCycle = null,
   artifacts,
   failure
 }) {
   const issueNumber = taskPacket?.evidence?.delivery?.selectedIssue?.number ?? taskPacket?.issue ?? null;
   const helperCallsExecuted = [
+    ...brokerHelperCalls,
     codexCommand,
     ...(Array.isArray(codexResult?.helperCallsExecuted) ? codexResult.helperCallsExecuted : [])
   ];
@@ -326,6 +401,12 @@ function buildExecutionReceipt({
   const effectiveFilesTouched = Array.isArray(codexResult?.filesTouched) && codexResult.filesTouched.length > 0
     ? Array.from(new Set([...filesTouched, ...codexResult.filesTouched.map((entry) => normalizeText(entry)).filter(Boolean)])).sort()
     : filesTouched;
+  const noteParts = [
+    normalizeText(codexResult?.notes) || null,
+    reviewCycle?.freshCopilotReviewExpected
+      ? 'Broker marked the PR ready for review and is waiting for a fresh current-head Copilot review.'
+      : null
+  ].filter(Boolean);
 
   if (failure) {
     return {
@@ -358,7 +439,9 @@ function buildExecutionReceipt({
   }
 
   let laneLifecycle = normalizeText(codexResult?.laneLifecycle) || 'coding';
-  if (pullRequestUrl && laneLifecycle === 'coding') {
+  if (reviewCycle?.freshCopilotReviewExpected && pullRequestUrl && laneLifecycle === 'coding') {
+    laneLifecycle = 'waiting-review';
+  } else if (pullRequestUrl && laneLifecycle === 'coding') {
     laneLifecycle = 'waiting-ci';
   }
   const blockerClass = normalizeText(codexResult?.blockerClass) || (laneLifecycle === 'blocked' ? 'scope' : 'none');
@@ -381,14 +464,20 @@ function buildExecutionReceipt({
       laneLifecycle,
       blockerClass,
       retryable: Boolean(codexResult?.retryable),
-      nextWakeCondition: codexResult?.nextWakeCondition ?? (pullRequestUrl ? 'checks-green' : 'scheduler-rescan'),
+      nextWakeCondition:
+        codexResult?.nextWakeCondition ??
+        (reviewCycle?.freshCopilotReviewExpected
+          ? 'review-disposition-updated'
+          : pullRequestUrl
+            ? 'checks-green'
+            : 'scheduler-rescan'),
       helperCallsExecuted,
       filesTouched: effectiveFilesTouched,
       branch: branchName || null,
       startHead: startHead || null,
       endHead: endHead || null,
       pullRequestUrl,
-      notes: normalizeText(codexResult?.notes) || null
+      notes: noteParts.length > 0 ? noteParts.join(' ') : null
     },
     artifacts
   };
@@ -417,6 +506,25 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
 
   const startHead = gitStdout(workDir, ['rev-parse', 'HEAD'], unattendedEnv);
   const branchName = gitStdout(workDir, ['branch', '--show-current'], unattendedEnv);
+  const initialPullRequest = findPullRequest({
+    repository: normalizeText(packet.repository),
+    branch: branchName,
+    workDir,
+    env: unattendedEnv
+  });
+  const brokerHelperCalls = [];
+  if (initialPullRequest?.isDraft === false) {
+    const toDraft = setPullRequestReadyState({
+      repository: normalizeText(packet.repository),
+      pullRequest: initialPullRequest,
+      ready: false,
+      workDir,
+      env: unattendedEnv
+    });
+    if (toDraft.ok && toDraft.helperCall) {
+      brokerHelperCalls.push(toDraft.helperCall);
+    }
+  }
   const codexArgs = [
     'exec',
     '--json',
@@ -448,6 +556,25 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
     workDir,
     env: unattendedEnv
   });
+  const reviewCycle = planPullRequestReviewCycle({
+    initialPullRequest,
+    finalPullRequest: pullRequest,
+    startHead,
+    endHead,
+    codexSucceeded: codexResult.status === 0
+  });
+  if (reviewCycle.readyAfterMutation || reviewCycle.restoreReadyWithoutMutation) {
+    const toReady = setPullRequestReadyState({
+      repository: normalizeText(packet.repository),
+      pullRequest,
+      ready: true,
+      workDir,
+      env: unattendedEnv
+    });
+    if (toReady.ok && toReady.helperCall) {
+      brokerHelperCalls.push(toReady.helperCall);
+    }
+  }
   const artifacts = {
     taskPacketPath,
     promptPath,
@@ -465,11 +592,13 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
       taskPacket: packet,
       codexResult: parsedLastMessage,
       codexCommand: ['codex', ...codexArgs].join(' '),
+      brokerHelperCalls,
       filesTouched,
       startHead,
       endHead,
       branchName,
       pullRequest,
+      reviewCycle,
       artifacts,
       failure: {
         ...failure,
@@ -481,11 +610,13 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
       taskPacket: packet,
       codexResult: parsedLastMessage,
       codexCommand: ['codex', ...codexArgs].join(' '),
+      brokerHelperCalls,
       filesTouched,
       startHead,
       endHead,
       branchName,
       pullRequest,
+      reviewCycle,
       artifacts,
       failure: null
     });

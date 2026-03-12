@@ -394,7 +394,7 @@ export function classifyPullRequestWork(pr = {}) {
       reviewMonitor: {
         workflow: copilotReviewWorkflow,
         signal: copilotReviewSignal
-      }
+      },
       syncRequired: false
     };
   }
@@ -1406,21 +1406,74 @@ async function closeIssueWithComment({ repository, issueNumber, repoRoot, commen
   return result;
 }
 
+function buildRemoveLabelHelperCall(issueNumber, repository, labels = []) {
+  const removeLabelFlags = labels
+    .map((label) => normalizeText(label))
+    .filter(Boolean)
+    .map((label) => `--remove-label ${label}`)
+    .join(' ');
+  return [`gh issue edit ${issueNumber}`, `--repo ${repository}`, removeLabelFlags].filter(Boolean).join(' ');
+}
+
+function buildCloseIssueHelperCall(issueNumber, repository, { hasComment = false } = {}) {
+  return hasComment
+    ? `gh issue close ${issueNumber} --repo ${repository} --comment <omitted>`
+    : `gh issue close ${issueNumber} --repo ${repository}`;
+}
+
+async function syncStandingPriorityForRepo({ repository, repoRoot, deps = {} }) {
+  if (typeof deps.syncStandingPriorityFn === 'function') {
+    return deps.syncStandingPriorityFn({
+      repository,
+      repoRoot,
+      env: {
+        ...process.env,
+        GITHUB_REPOSITORY: repository
+      }
+    });
+  }
+
+  const syncResult = await runCommand(
+    'node',
+    ['tools/priority/sync-standing-priority.mjs'],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        GITHUB_REPOSITORY: repository
+      }
+    },
+    deps
+  );
+  if (syncResult.status !== 0) {
+    throw new Error(
+      normalizeText(syncResult.stderr) || normalizeText(syncResult.stdout) || 'priority sync failed after merge finalization'
+    );
+  }
+  return syncResult;
+}
+
 function buildMergedIssueCloseComment({ issueNumber, pullRequestNumber, pullRequestUrl, nextStandingIssueNumber }) {
-  const prReference = pullRequestUrl
-    ? `PR #${pullRequestNumber} (${pullRequestUrl})`
-    : pullRequestNumber
-      ? `PR #${pullRequestNumber}`
-      : 'the merged pull request';
+  const parsedPullRequestNumber = Number.isInteger(pullRequestNumber)
+    ? pullRequestNumber
+    : Number.parseInt(String(pullRequestNumber ?? ''), 10);
+  let prReference = 'the merged pull request';
+  if (pullRequestUrl && Number.isInteger(parsedPullRequestNumber)) {
+    prReference = `PR #${parsedPullRequestNumber} (${pullRequestUrl})`;
+  } else if (pullRequestUrl) {
+    prReference = `PR ${pullRequestUrl}`;
+  } else if (Number.isInteger(parsedPullRequestNumber)) {
+    prReference = `PR #${parsedPullRequestNumber}`;
+  }
   if (nextStandingIssueNumber) {
     return `Completed by ${prReference}. Standing priority has advanced from #${issueNumber} to #${nextStandingIssueNumber}.`;
   }
   return `Completed by ${prReference}. No next standing-priority issue is currently labeled, so the queue is now idle until a new issue is promoted.`;
 }
 
-async function finalizeMergedPullRequest({ taskPacket, mergeResult, repoRoot, deps = {} }) {
+async function finalizeMergedPullRequest({ taskPacket, repoRoot, deps = {} }) {
   if (typeof deps.finalizeMergedPullRequestFn === 'function') {
-    return deps.finalizeMergedPullRequestFn({ taskPacket, mergeResult, repoRoot });
+    return deps.finalizeMergedPullRequestFn({ taskPacket, repoRoot });
   }
 
   const repository = normalizeText(taskPacket?.repository);
@@ -1472,34 +1525,9 @@ async function finalizeMergedPullRequest({ taskPacket, mergeResult, repoRoot, de
           removeLabels: standingLabels,
           deps
         });
-        helperCallsExecuted.push(`gh issue edit ${standingIssueNumber} --remove-label ${standingLabels.join(',')}`);
+        helperCallsExecuted.push(buildRemoveLabelHelperCall(standingIssueNumber, repository, standingLabels));
       }
-      if (typeof deps.syncStandingPriorityFn === 'function') {
-        await deps.syncStandingPriorityFn({
-          env: {
-            ...process.env,
-            GITHUB_REPOSITORY: repository
-          }
-        });
-      } else {
-        const syncResult = await runCommand(
-          'node',
-          ['tools/priority/sync-standing-priority.mjs'],
-          {
-            cwd: repoRoot,
-            env: {
-              ...process.env,
-              GITHUB_REPOSITORY: repository
-            }
-          },
-          deps
-        );
-        if (syncResult.status !== 0) {
-          throw new Error(
-            normalizeText(syncResult.stderr) || normalizeText(syncResult.stdout) || 'priority sync failed after merge finalization'
-          );
-        }
-      }
+      await syncStandingPriorityForRepo({ repository, repoRoot, deps });
       helperCallsExecuted.push('node tools/priority/sync-standing-priority.mjs');
     }
   }
@@ -1516,7 +1544,7 @@ async function finalizeMergedPullRequest({ taskPacket, mergeResult, repoRoot, de
     }),
     deps
   });
-  helperCallsExecuted.push(`gh issue close ${selectedIssueNumber}`);
+  helperCallsExecuted.push(buildCloseIssueHelperCall(selectedIssueNumber, repository, { hasComment: true }));
 
   return {
     selectedIssueNumber,
@@ -2168,7 +2196,6 @@ export async function runDeliveryTurnBroker({
     try {
       const finalization = await finalizeMergedPullRequest({
         taskPacket: enrichedPacket,
-        mergeResult,
         repoRoot,
         deps
       });

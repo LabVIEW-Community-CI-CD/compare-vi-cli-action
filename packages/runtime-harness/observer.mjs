@@ -611,7 +611,7 @@ function resolvePollIntervalSeconds(options, executionReceipt) {
   if (defaultSeconds <= 0) {
     return defaultSeconds;
   }
-  return Math.min(defaultSeconds, Math.floor(hintedSeconds));
+  return Math.min(defaultSeconds, Math.max(1, Math.floor(hintedSeconds)));
 }
 
 async function writeExecutionReceipt(executionPaths, executionReceipt) {

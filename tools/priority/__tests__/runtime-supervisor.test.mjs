@@ -869,10 +869,10 @@ test('comparevi canonical execution persists a broker-managed ready-for-review r
       }
     },
     taskPacketArtifacts: {
-      latestPath: '/tmp/repo/tests/results/_agent/runtime/task-packet.json'
+      latestPath: path.join(runtimeDir, 'task-packet.json')
     },
     runtimeArtifactPaths: {
-      runtimeDir: '/tmp/repo/tests/results/_agent/runtime'
+      runtimeDir
     },
     deps: {
       invokeDeliveryTurnBrokerFn: async () => ({
@@ -1085,7 +1085,7 @@ test('delivery broker finalizes merged standing issues by handing off priority a
     [
       'node tools/priority/merge-sync-pr.mjs',
       'node tools/priority/standing-priority-handoff.mjs --auto',
-      'gh issue close 1010 --comment <omitted>'
+      'gh issue close 1010 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --comment <omitted>'
     ]
   );
   assert.equal(handoffCalls.length, 1);
@@ -1188,9 +1188,9 @@ test('delivery broker clears standing-priority immediately when a merged standin
     brokerResult.details.helperCallsExecuted,
     [
       'node tools/priority/merge-sync-pr.mjs',
-      'gh issue edit 1010 --remove-label standing-priority',
+      'gh issue edit 1010 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --remove-label standing-priority',
       'node tools/priority/sync-standing-priority.mjs',
-      'gh issue close 1010 --comment <omitted>'
+      'gh issue close 1010 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --comment <omitted>'
     ]
   );
   assert.equal(editCalls.length, 1);
