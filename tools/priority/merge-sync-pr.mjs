@@ -2,6 +2,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +27,8 @@ const USAGE_LINES = [
 ];
 
 const MERGE_METHODS = new Set(['merge', 'squash', 'rebase']);
+const MERGE_ACTIVATION_POLL_ATTEMPTS = 5;
+const MERGE_ACTIVATION_POLL_DELAY_MS = 1500;
 const POLICY_BLOCK_PATTERNS = [
   /merge queue/i,
   /required checks?.*not (?:passing|successful|complete)/i,
@@ -84,9 +87,7 @@ function parseArgs(argv = process.argv) {
         }
         options.pr = parsed;
       } else if (arg === '--repo') {
-        if (!value.includes('/')) {
-          throw new Error(`Invalid --repo value '${value}'. Expected owner/repo.`);
-        }
+        parseRepoSlug(value);
         options.repo = value;
       } else if (arg === '--method') {
         if (!MERGE_METHODS.has(value)) {
@@ -120,6 +121,18 @@ function normalizeLower(value) {
 
 function normalizeOwner(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function parseRepoSlug(repo) {
+  const parts = String(repo ?? '')
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length !== 2) {
+    throw new Error(`Invalid repo slug '${repo}'. Expected owner/repo.`);
+  }
+  const [owner, name] = parts;
+  return { owner, name };
 }
 
 export function normalizeBaseRefName(value) {
@@ -202,6 +215,7 @@ export function buildMergeSummaryPayload({
   mergeQueueBranches,
   attempts,
   prInfo,
+  promotion = null,
   createdAt = new Date().toISOString()
 }) {
   const normalizedBaseRefName = normalizeBaseRefName(prInfo?.baseRefName);
@@ -230,7 +244,53 @@ export function buildMergeSummaryPayload({
       isCrossRepository: Boolean(prInfo?.isCrossRepository),
       upstreamHeadOwned: isUpstreamOwnedHead(prInfo, repo)
     },
+    promotion,
     prUrl: prInfo?.url ?? null
+  };
+}
+
+export function classifyPromotionState(initialState = {}, finalState = {}, { finalMode = 'auto' } = {}) {
+  const initialQueued = Boolean(initialState?.isInMergeQueue);
+  const finalQueued = Boolean(finalState?.isInMergeQueue);
+  const initialAutoMerge = Boolean(initialState?.autoMergeRequest);
+  const finalAutoMerge = Boolean(finalState?.autoMergeRequest);
+  const finalMerged = normalizeUpper(finalState?.state) === 'MERGED';
+
+  let status = 'unchanged';
+  let materialized = false;
+
+  if (finalMerged) {
+    status = normalizeUpper(initialState?.state) === 'MERGED' ? 'already-merged' : 'merged';
+    materialized = true;
+  } else if (finalQueued) {
+    status = initialQueued ? 'already-queued' : 'queued';
+    materialized = true;
+  } else if (finalAutoMerge) {
+    status = initialAutoMerge ? 'already-auto-merge-enabled' : 'auto-merge-enabled';
+    materialized = true;
+  } else if (finalMode === 'none' && normalizeUpper(initialState?.state) === 'MERGED') {
+    status = 'already-merged';
+    materialized = true;
+  }
+
+  return {
+    status,
+    materialized,
+    finalMode,
+    initial: {
+      state: initialState?.state ?? null,
+      mergeStateStatus: initialState?.mergeStateStatus ?? null,
+      isInMergeQueue: Boolean(initialState?.isInMergeQueue),
+      autoMergeEnabled: Boolean(initialState?.autoMergeRequest),
+      mergedAt: initialState?.mergedAt ?? null
+    },
+    final: {
+      state: finalState?.state ?? null,
+      mergeStateStatus: finalState?.mergeStateStatus ?? null,
+      isInMergeQueue: Boolean(finalState?.isInMergeQueue),
+      autoMergeEnabled: Boolean(finalState?.autoMergeRequest),
+      mergedAt: finalState?.mergedAt ?? null
+    }
   };
 }
 
@@ -320,6 +380,40 @@ function readPrInfo({ repoRoot, repo, pr }) {
   return parseJsonOutput(result.stdout ?? '{}', { label: 'gh pr view output' });
 }
 
+function readPromotionState({ repoRoot, repo, pr }) {
+  const { owner, name } = parseRepoSlug(repo);
+  const query = [
+    'query($owner:String!, $name:String!, $pr:Int!) {',
+    '  repository(owner:$owner, name:$name) {',
+    '    pullRequest(number:$pr) {',
+    '      state',
+    '      mergeStateStatus',
+    '      isInMergeQueue',
+    '      mergedAt',
+    '      autoMergeRequest {',
+    '        enabledAt',
+    '      }',
+    '    }',
+    '  }',
+    '}'
+  ].join('\n');
+  const result = spawnSync(
+    'gh',
+    ['api', 'graphql', '-f', `query=${query}`, '-F', `owner=${owner}`, '-F', `name=${name}`, '-F', `pr=${pr}`],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    }
+  );
+  if (result.status !== 0) {
+    const combined = `${result.stderr ?? ''}${result.stdout ?? ''}`.trim();
+    throw new Error(`gh api graphql failed for PR #${pr}: ${combined || `exit ${result.status}`}`);
+  }
+  const payload = parseJsonOutput(result.stdout ?? '{}', { label: 'gh api graphql output' });
+  return payload?.data?.repository?.pullRequest ?? {};
+}
+
 export function buildMergeArgs({ pr, repo, method, mode, keepBranch }) {
   const args = ['pr', 'merge', String(pr), '--repo', repo, `--${method}`];
   if (!keepBranch && mode !== 'auto') {
@@ -331,6 +425,50 @@ export function buildMergeArgs({ pr, repo, method, mode, keepBranch }) {
     args.push('--admin');
   }
   return args;
+}
+
+async function verifyPromotionActivation({
+  repoRoot,
+  repo,
+  pr,
+  finalMode,
+  initialPromotionState,
+  readPromotionStateFn = readPromotionState,
+  sleepFn = delay,
+  pollAttempts = MERGE_ACTIVATION_POLL_ATTEMPTS,
+  pollDelayMs = MERGE_ACTIVATION_POLL_DELAY_MS
+}) {
+  let finalPromotionState = initialPromotionState;
+  let activation = classifyPromotionState(initialPromotionState, finalPromotionState, { finalMode });
+
+  if (activation.materialized || finalMode === 'none') {
+    return {
+      ...activation,
+      observedAt: new Date().toISOString(),
+      pollAttemptsUsed: 0
+    };
+  }
+
+  for (let attempt = 1; attempt <= pollAttempts; attempt += 1) {
+    finalPromotionState = readPromotionStateFn({ repoRoot, repo, pr });
+    activation = classifyPromotionState(initialPromotionState, finalPromotionState, { finalMode });
+    if (activation.materialized) {
+      return {
+        ...activation,
+        observedAt: new Date().toISOString(),
+        pollAttemptsUsed: attempt
+      };
+    }
+    if (attempt < pollAttempts) {
+      await sleepFn(pollDelayMs);
+    }
+  }
+
+  return {
+    ...activation,
+    observedAt: new Date().toISOString(),
+    pollAttemptsUsed: pollAttempts
+  };
 }
 
 function runMergeAttempt({ repoRoot, args, dryRun }) {
@@ -365,7 +503,11 @@ export async function runMergeSync({
   argv = process.argv,
   repoRoot = getRepoRoot(),
   ensureGhCliFn = ensureGhCli,
-  resolveUpstreamFn = resolveUpstream
+  resolveUpstreamFn = resolveUpstream,
+  readPrInfoFn = readPrInfo,
+  readPromotionStateFn = readPromotionState,
+  sleepFn = delay,
+  runMergeAttemptFn = runMergeAttempt
 } = {}) {
   const options = parseArgs(argv);
 
@@ -379,12 +521,26 @@ export async function runMergeSync({
   const policy = JSON.parse(policyRaw);
   const mergeQueueBranches = getMergeQueueBranches(policy);
 
-  const prInfo = readPrInfo({
+  const prInfo = readPrInfoFn({
     repoRoot,
     repo: resolvedRepo,
     pr: options.pr
   });
   const selection = selectMergeMode(prInfo, { admin: options.admin, mergeQueueBranches });
+  const initialPromotionState =
+    selection.mode === 'none'
+      ? {
+          state: prInfo?.state ?? null,
+          mergeStateStatus: prInfo?.mergeStateStatus ?? null,
+          isInMergeQueue: false,
+          autoMergeRequest: null,
+          mergedAt: null
+        }
+      : readPromotionStateFn({
+          repoRoot,
+          repo: resolvedRepo,
+          pr: options.pr
+        });
   console.log(
     `[priority:merge-sync] selected mode=${selection.mode} reason=${selection.reason} mergeState=${prInfo.mergeStateStatus ?? 'n/a'}`
   );
@@ -392,6 +548,7 @@ export async function runMergeSync({
   const attempts = [];
   let finalMode = selection.mode;
   let finalReason = selection.reason;
+  let promotion = null;
 
   if (selection.mode !== 'none') {
     const initialArgs = buildMergeArgs({
@@ -401,7 +558,7 @@ export async function runMergeSync({
       mode: selection.mode,
       keepBranch: options.keepBranch
     });
-    const initialResult = runMergeAttempt({ repoRoot, args: initialArgs, dryRun: options.dryRun });
+    const initialResult = runMergeAttemptFn({ repoRoot, args: initialArgs, dryRun: options.dryRun });
     attempts.push({
       mode: selection.mode,
       args: initialArgs,
@@ -425,16 +582,14 @@ export async function runMergeSync({
           mode: 'auto',
           keepBranch: options.keepBranch
         });
-        const retryResult = runMergeAttempt({ repoRoot, args: retryArgs, dryRun: options.dryRun });
+        const retryResult = runMergeAttemptFn({ repoRoot, args: retryArgs, dryRun: options.dryRun });
         attempts.push({
           mode: 'auto',
           args: retryArgs,
           exitCode: retryResult.status ?? 1
         });
         if (retryResult.status !== 0) {
-          throw new Error(
-            `[priority:merge-sync] auto-merge retry failed. Use --admin only when explicitly required for policy exception.`
-          );
+          throw new Error('[priority:merge-sync] auto-merge retry failed. Use --admin only when explicitly required for policy exception.');
         }
       } else {
         if (!options.admin) {
@@ -445,6 +600,34 @@ export async function runMergeSync({
         throw new Error('[priority:merge-sync] merge failed in admin mode. Resolve policy or branch state and retry.');
       }
     }
+  }
+
+  if (options.dryRun) {
+    promotion = {
+      status: 'dry-run',
+      materialized: false,
+      finalMode,
+      initial: {
+        state: initialPromotionState?.state ?? null,
+        mergeStateStatus: initialPromotionState?.mergeStateStatus ?? null,
+        isInMergeQueue: Boolean(initialPromotionState?.isInMergeQueue),
+        autoMergeEnabled: Boolean(initialPromotionState?.autoMergeRequest),
+        mergedAt: initialPromotionState?.mergedAt ?? null
+      },
+      final: null,
+      observedAt: new Date().toISOString(),
+      pollAttemptsUsed: 0
+    };
+  } else {
+    promotion = await verifyPromotionActivation({
+      repoRoot,
+      repo: resolvedRepo,
+      pr: options.pr,
+      finalMode,
+      initialPromotionState,
+      readPromotionStateFn,
+      sleepFn
+    });
   }
 
   const payload = buildMergeSummaryPayload({
@@ -458,9 +641,16 @@ export async function runMergeSync({
     dryRun: options.dryRun,
     mergeQueueBranches,
     attempts,
-    prInfo
+    prInfo,
+    promotion
   });
   await maybeWriteSummary(options.summaryPath, payload);
+
+  if (!options.dryRun && selection.mode !== 'none' && !promotion.materialized) {
+    throw new Error(
+      `[priority:merge-sync] merge command completed but no durable promotion state was observed (status=${promotion.status}).`
+    );
+  }
 
   console.log(`[priority:merge-sync] final mode=${finalMode} reason=${finalReason}`);
   return payload;

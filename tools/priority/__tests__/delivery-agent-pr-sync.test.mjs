@@ -631,9 +631,9 @@ test('runDeliveryTurnBroker keeps priority sync stdout chatter out of merge rece
   assert.equal(brokerResult.details.finalizedIssueNumber, 959);
   assert.deepEqual(brokerResult.details.helperCallsExecuted, [
     'node tools/priority/merge-sync-pr.mjs',
-    'gh issue edit 959 --remove-label standing-priority',
+    'gh issue edit 959 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --remove-label standing-priority',
     'node tools/priority/sync-standing-priority.mjs',
-    'gh issue close 959'
+    'gh issue close 959 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --comment <omitted>'
   ]);
   assert.deepEqual(commandLog, [
     {

@@ -810,7 +810,19 @@ test('runQueueSupervisor enqueues eligible PRs in dependency-safe deterministic 
     runGhJsonFn,
     runCommandFn,
     readJsonFileFn,
-    readOptionalJsonFn: async () => ({}),
+    readOptionalJsonFn: async (filePath) => {
+      if (String(filePath).includes('merge-sync-')) {
+        return {
+          finalMode: 'auto',
+          finalReason: 'merge-queue-branch-develop',
+          promotion: {
+            status: 'queued',
+            materialized: true
+          }
+        };
+      }
+      return {};
+    },
     writeReportFn: async (reportPath) => reportPath
   });
 
@@ -830,6 +842,114 @@ test('runQueueSupervisor enqueues eligible PRs in dependency-safe deterministic 
     (call) => call.command === 'node' && call.args[0] === 'tools/priority/merge-sync-pr.mjs'
   );
   assert.equal(mergeSyncInvocations.length, 3);
+});
+
+test('runQueueSupervisor does not mark enqueue success when merge-sync exits 0 without durable promotion state', async () => {
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'pr' && args[1] === 'list') {
+      return [
+        {
+          number: 611,
+          title: '[P0] eligible change',
+          body: 'Coupling: independent',
+          baseRefName: 'develop',
+          headRepositoryOwner: { login: 'owner' },
+          isDraft: false,
+          mergeStateStatus: 'CLEAN',
+          mergeable: 'MERGEABLE',
+          updatedAt: '2026-03-05T20:05:00Z',
+          url: 'https://example.test/pr/611',
+          labels: [],
+          statusCheckRollup: [successCheck('lint')],
+          autoMergeRequest: null
+        }
+      ];
+    }
+    if (args[0] === 'api' && String(args[1]).includes('validate.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:50:00Z', updated_at: '2026-03-05T20:52:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('policy-guard-upstream.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:40:00Z', updated_at: '2026-03-05T20:41:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('fixture-drift.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('commit-integrity.yml')) return { workflow_runs: [] };
+    throw new Error(`Unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const runCommandFn = (command, args) => {
+    if (command === 'node' && args[0] === 'tools/priority/merge-sync-pr.mjs') {
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    return { status: 0, stdout: '', stderr: '' };
+  };
+
+  const readJsonFileFn = async (filePath) => {
+    if (String(filePath).endsWith('branch-required-checks.json')) {
+      return { branches: { develop: ['lint'] } };
+    }
+    if (String(filePath).endsWith('policy.json')) {
+      return {
+        rulesets: {
+          develop: {
+            includes: ['refs/heads/develop'],
+            merge_queue: { merge_method: 'SQUASH' }
+          }
+        }
+      };
+    }
+    throw new Error(`Unexpected read path: ${filePath}`);
+  };
+
+  const { report } = await runQueueSupervisor({
+    repoRoot: process.cwd(),
+    args: {
+      apply: true,
+      dryRun: false,
+      reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      maxInflight: 5,
+      minInflight: 1,
+      adaptiveCap: false,
+      maxQueuedRuns: 6,
+      maxInProgressRuns: 8,
+      stallThresholdMinutes: 45,
+      repo: 'owner/repo',
+      baseBranches: ['develop', 'main'],
+      healthBranch: 'develop',
+      help: false
+    },
+    now: new Date('2026-03-05T21:30:00.000Z'),
+    runGhJsonFn,
+    runCommandFn,
+    readJsonFileFn,
+    readOptionalJsonFn: async (filePath) => {
+      if (String(filePath).includes('merge-sync-')) {
+        return {
+          finalMode: 'auto',
+          finalReason: 'merge-queue-branch-develop',
+          promotion: {
+            status: 'unchanged',
+            materialized: false
+          }
+        };
+      }
+      return {};
+    },
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(report.summary.enqueuedCount, 0);
+  assert.equal(report.actions.length, 1);
+  assert.equal(report.actions[0].status, 'failed');
+  assert.equal(report.actions[0].mergeSummary.materialized, false);
+  assert.equal(report.actions[0].mergeSummary.promotionStatus, 'unchanged');
 });
 
 test('runQueueSupervisor respects governor pause mode before enqueue actions', async () => {

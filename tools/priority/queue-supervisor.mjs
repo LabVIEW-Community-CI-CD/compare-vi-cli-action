@@ -116,6 +116,20 @@ function parseBurstMode(value, { label }) {
   return normalized;
 }
 
+function isMaterializedMergeSyncSummary(summary) {
+  return Boolean(summary?.promotion?.materialized);
+}
+
+function summarizeMergeSyncSummary(summary, summaryPath) {
+  return {
+    path: summaryPath,
+    finalMode: summary?.finalMode ?? null,
+    finalReason: summary?.finalReason ?? null,
+    promotionStatus: summary?.promotion?.status ?? null,
+    materialized: isMaterializedMergeSyncSummary(summary)
+  };
+}
+
 export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
@@ -1609,8 +1623,10 @@ export async function runQueueSupervisor(options = {}) {
       status: mergeResult.status,
       stderr: mergeResult.stderr
     });
+    const mergeSummary = await readOptionalJsonFn(path.resolve(repoRoot, mergeSummaryPath));
+    action.mergeSummary = summarizeMergeSyncSummary(mergeSummary, mergeSummaryPath);
 
-    let merged = mergeResult.status === 0;
+    let merged = mergeResult.status === 0 && isMaterializedMergeSyncSummary(mergeSummary);
     if (!merged && candidate.mergeStateStatus === 'BEHIND') {
       action.retriedUpdateBranch = true;
       const updateResult = runCommandFn(
@@ -1631,7 +1647,9 @@ export async function runQueueSupervisor(options = {}) {
           status: retryMerge.status,
           stderr: retryMerge.stderr
         });
-        merged = retryMerge.status === 0;
+        const retrySummary = await readOptionalJsonFn(path.resolve(repoRoot, mergeSummaryPath));
+        action.mergeSummary = summarizeMergeSyncSummary(retrySummary, mergeSummaryPath);
+        merged = retryMerge.status === 0 && isMaterializedMergeSyncSummary(retrySummary);
       }
     }
 

@@ -1,12 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
+import { mkdtemp, readFile } from 'node:fs/promises';
 import {
   assertUpstreamOwnedHead,
   buildMergeArgs,
   buildMergeSummaryPayload,
   buildPolicyTrace,
+  classifyPromotionState,
   isUpstreamOwnedHead,
   normalizeBaseRefName,
+  runMergeSync,
   selectMergeMode,
   shouldRetryWithAuto,
   getMergeQueueBranches
@@ -522,6 +527,204 @@ test('buildMergeSummaryPayload preserves selected/final reason fields for diagno
 
   assert.equal(payload.selectedReason, 'merge-state-unstable');
   assert.equal(payload.finalReason, 'direct-merge-policy-block-retry-auto');
+});
+
+test('classifyPromotionState reports queued and already-queued distinctly', () => {
+  assert.deepEqual(
+    classifyPromotionState(
+      {
+        state: 'OPEN',
+        isInMergeQueue: false,
+        autoMergeRequest: null
+      },
+      {
+        state: 'OPEN',
+        isInMergeQueue: true,
+        autoMergeRequest: null
+      },
+      { finalMode: 'auto' }
+    ),
+    {
+      status: 'queued',
+      materialized: true,
+      finalMode: 'auto',
+      initial: {
+        state: 'OPEN',
+        mergeStateStatus: null,
+        isInMergeQueue: false,
+        autoMergeEnabled: false,
+        mergedAt: null
+      },
+      final: {
+        state: 'OPEN',
+        mergeStateStatus: null,
+        isInMergeQueue: true,
+        autoMergeEnabled: false,
+        mergedAt: null
+      }
+    }
+  );
+
+  assert.equal(
+    classifyPromotionState(
+      {
+        state: 'OPEN',
+        isInMergeQueue: true,
+        autoMergeRequest: null
+      },
+      {
+        state: 'OPEN',
+        isInMergeQueue: true,
+        autoMergeRequest: null
+      },
+      { finalMode: 'auto' }
+    ).status,
+    'already-queued'
+  );
+});
+
+test('runMergeSync records queued promotion state after auto merge activation materializes', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'merge-sync-pr-queued-'));
+  const promotionStates = [
+    {
+      state: 'OPEN',
+      mergeStateStatus: 'BLOCKED',
+      isInMergeQueue: false,
+      autoMergeRequest: null,
+      mergedAt: null
+    },
+    {
+      state: 'OPEN',
+      mergeStateStatus: 'BLOCKED',
+      isInMergeQueue: true,
+      autoMergeRequest: null,
+      mergedAt: null
+    }
+  ];
+  let promotionReads = 0;
+  const payload = await runMergeSync({
+    argv: [
+      'node',
+      'tools/priority/merge-sync-pr.mjs',
+      '--pr',
+      '123',
+      '--repo',
+      'owner/repo',
+      '--summary-path',
+      path.join(tempDir, 'summary.json')
+    ],
+    repoRoot: process.cwd(),
+    ensureGhCliFn: () => {},
+    readPrInfoFn: () => ({
+      number: 123,
+      state: 'OPEN',
+      isDraft: false,
+      mergeStateStatus: 'BLOCKED',
+      mergeable: 'MERGEABLE',
+      baseRefName: 'develop',
+      url: 'https://example.test/pr/123'
+    }),
+    readPromotionStateFn: () => {
+      const value = promotionStates[Math.min(promotionReads, promotionStates.length - 1)];
+      promotionReads += 1;
+      return structuredClone(value);
+    },
+    runMergeAttemptFn: () => ({ status: 0, stdout: 'queued', stderr: '' }),
+    sleepFn: async () => {}
+  });
+
+  assert.equal(payload.promotion.status, 'queued');
+  assert.equal(payload.promotion.materialized, true);
+  assert.ok(payload.promotion.pollAttemptsUsed >= 1);
+
+  const written = JSON.parse(await readFile(path.join(tempDir, 'summary.json'), 'utf8'));
+  assert.equal(written.promotion.status, 'queued');
+});
+
+test('runMergeSync fails when auto merge command succeeds but no durable promotion state appears', async () => {
+  await assert.rejects(
+    () =>
+      runMergeSync({
+        argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '124', '--repo', 'owner/repo'],
+        repoRoot: process.cwd(),
+        ensureGhCliFn: () => {},
+        readPrInfoFn: () => ({
+          number: 124,
+          state: 'OPEN',
+          isDraft: false,
+          mergeStateStatus: 'BLOCKED',
+          mergeable: 'MERGEABLE',
+          baseRefName: 'develop',
+          url: 'https://example.test/pr/124'
+        }),
+        readPromotionStateFn: () => ({
+          state: 'OPEN',
+          mergeStateStatus: 'BLOCKED',
+          isInMergeQueue: false,
+          autoMergeRequest: null,
+          mergedAt: null
+        }),
+        runMergeAttemptFn: () => ({ status: 0, stdout: 'queued', stderr: '' }),
+        sleepFn: async () => {}
+      }),
+    /no durable promotion state was observed/
+  );
+});
+
+test('runMergeSync does not query promotion state when the PR is already merged', async () => {
+  let promotionReads = 0;
+  const payload = await runMergeSync({
+    argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '125', '--repo', 'owner/repo'],
+    repoRoot: process.cwd(),
+    ensureGhCliFn: () => {},
+    readPrInfoFn: () => ({
+      number: 125,
+      state: 'MERGED',
+      isDraft: false,
+      mergeStateStatus: 'CLEAN',
+      mergeable: 'MERGEABLE',
+      baseRefName: 'develop',
+      url: 'https://example.test/pr/125'
+    }),
+    readPromotionStateFn: () => {
+      promotionReads += 1;
+      throw new Error('should not be called');
+    }
+  });
+
+  assert.equal(promotionReads, 0);
+  assert.equal(payload.finalMode, 'none');
+  assert.equal(payload.promotion.status, 'already-merged');
+});
+
+test('runMergeSync rejects repo slugs with extra path segments', async () => {
+  await assert.rejects(
+    () =>
+      runMergeSync({
+        argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '126', '--repo', 'owner/repo/extra'],
+        repoRoot: process.cwd(),
+        ensureGhCliFn: () => {},
+        readPrInfoFn: () => ({
+          number: 126,
+          state: 'OPEN',
+          isDraft: false,
+          mergeStateStatus: 'BLOCKED',
+          mergeable: 'MERGEABLE',
+          baseRefName: 'develop',
+          url: 'https://example.test/pr/126'
+        }),
+        readPromotionStateFn: () => ({
+          state: 'OPEN',
+          mergeStateStatus: 'BLOCKED',
+          isInMergeQueue: false,
+          autoMergeRequest: null,
+          mergedAt: null
+        }),
+        runMergeAttemptFn: () => ({ status: 0, stdout: '', stderr: '' }),
+        sleepFn: async () => {}
+      }),
+    /Invalid repo slug/
+  );
 });
 
 test('isUpstreamOwnedHead returns true only when PR head owner matches repo owner', () => {
