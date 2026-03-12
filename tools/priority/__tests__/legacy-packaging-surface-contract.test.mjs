@@ -105,8 +105,10 @@ test('shared docs and helpers do not keep root VIPM references', () => {
 
 test('stale payload filename classes stay out of the repo root and issues-drafts', () => {
   const repoEntries = readdirSync(repoRoot, { withFileTypes: true }).map((entry) => entry.name);
-  const issueDraftEntries = readdirSync(path.join(repoRoot, 'issues-drafts'), { withFileTypes: true })
-    .map((entry) => entry.name);
+  const issuesDraftsPath = path.join(repoRoot, 'issues-drafts');
+  const issueDraftEntries = existsSync(issuesDraftsPath)
+    ? readdirSync(issuesDraftsPath, { withFileTypes: true }).map((entry) => entry.name)
+    : [];
 
   for (const entryName of repoEntries) {
     assert.doesNotMatch(entryName, /^issue\d+\.html$/i, `${entryName} should not be a checked-in GitHub HTML dump`);

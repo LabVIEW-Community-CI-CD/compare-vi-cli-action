@@ -3,8 +3,9 @@ name: Agent Review Policy
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled, review_requested, review_request_removed]
-  pull_request_review:
-    types: [submitted]
+  workflow_run:
+    workflows: ['Copilot code review']
+    types: [completed]
   merge_group:
 
 permissions:
@@ -18,7 +19,7 @@ jobs:
     - uses: actions/checkout@v5
       with:
         repository: ${{ github.repository }}
-        ref: ${{ (github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review') && github.event.pull_request.base.sha || github.sha }}
+        ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.sha }}
     - uses: actions/setup-node@v5
       with:
         node-version: '20'
@@ -57,8 +58,51 @@ jobs:
         path: tests/results/_agent/reviews/copilot-review-signal.json
         if-no-files-found: error
 
+    - name: Resolve workflow-run PR context
+      if: github.event_name == 'workflow_run'
+      id: workflow_run_pr
+      shell: bash
+      env:
+        PULL_REQUESTS_JSON: ${{ toJson(github.event.workflow_run.pull_requests) }}
+        WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      run: |
+        set -euo pipefail
+
+        node <<'NODE' >> "$GITHUB_OUTPUT"
+        const pullRequests = JSON.parse(process.env.PULL_REQUESTS_JSON || '[]');
+        const firstPullRequest = Array.isArray(pullRequests) ? pullRequests[0] : null;
+        const headSha = (process.env.WORKFLOW_HEAD_SHA || '').trim();
+
+        if (!firstPullRequest?.number || !headSha) {
+          console.log('has_pr=false');
+          process.exit(0);
+        }
+
+        console.log('has_pr=true');
+        console.log(`pr=${firstPullRequest.number}`);
+        console.log(`head_sha=${headSha}`);
+        NODE
+
+    - name: Load workflow-run pull request metadata
+      if: github.event_name == 'workflow_run' && steps.workflow_run_pr.outputs.has_pr == 'true'
+      id: workflow_run_metadata
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        gh api "repos/${{ github.repository }}/pulls/${{ steps.workflow_run_pr.outputs.pr }}" \
+          --jq '"draft=\(.draft)\nbase_ref=\(.base.ref)\nhead_sha=\(.head.sha)\n"' >> "$GITHUB_OUTPUT"
+
     - name: Evaluate Copilot queue gate
-      if: always() && (github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review' || github.event_name == 'merge_group')
+      if: >
+        always() && (
+          github.event_name == 'pull_request_target' ||
+          github.event_name == 'merge_group' ||
+          (github.event_name == 'workflow_run' && steps.workflow_run_pr.outputs.has_pr == 'true')
+        )
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -78,6 +122,13 @@ jobs:
           args+=(
             "--head-sha" "${{ github.sha }}"
             "--base-ref" "${{ github.event.merge_group.base_ref }}"
+          )
+        elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+          args+=(
+            "--pr" "${{ steps.workflow_run_pr.outputs.pr }}"
+            "--head-sha" "${{ steps.workflow_run_metadata.outputs.head_sha || steps.workflow_run_pr.outputs.head_sha }}"
+            "--base-ref" "${{ steps.workflow_run_metadata.outputs.base_ref }}"
+            "--draft" "${{ steps.workflow_run_metadata.outputs.draft }}"
           )
         else
           args+=(

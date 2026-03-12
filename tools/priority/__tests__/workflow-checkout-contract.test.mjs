@@ -14,7 +14,7 @@ const prHeadRefPattern =
   /ref:\s+\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.sha \|\| github\.sha\s*\}\}/;
 const baseSafeRepositoryPattern = /repository:\s+\$\{\{\s*github\.repository\s*\}\}/;
 const baseSafeRefPattern =
-  /ref:\s+\$\{\{\s*\(github\.event_name == 'pull_request_target' \|\| github\.event_name == 'pull_request_review'\) && github\.event\.pull_request\.base\.sha \|\| github\.sha\s*\}\}/;
+  /ref:\s+\$\{\{\s*github\.event_name == 'pull_request_target' && github\.event\.pull_request\.base\.sha \|\| github\.sha\s*\}\}/;
 
 function readText(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), 'utf8');
@@ -95,7 +95,7 @@ test('PR-capable workflows no longer depend on the removed local checkout helper
   for (const entry of workflowFiles) {
     const raw = readText(path.join('.github', 'workflows', entry));
     const triggers = getTopLevelTriggers(raw);
-    const isPrCapable = ['pull_request', 'pull_request_target', 'pull_request_review', 'merge_group']
+    const isPrCapable = ['pull_request', 'pull_request_target', 'merge_group']
       .some((trigger) => triggers.has(trigger));
     if (!isPrCapable) {
       continue;
