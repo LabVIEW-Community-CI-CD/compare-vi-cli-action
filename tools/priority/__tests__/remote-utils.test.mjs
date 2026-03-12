@@ -147,13 +147,17 @@ test('pushBranch treats an already-published remote branch as success when the p
       if (args[0] === 'ls-remote') {
         return '5fe002b6\trefs/heads/issue/963-org-owned-fork-pr-helper';
       }
+      if (args[0] === 'rev-parse') {
+        return '5fe002b6';
+      }
       throw new Error(`Unexpected git args: ${args.join(' ')}`);
     }
   });
 
   assert.deepEqual(calls, [
     ['push', '--set-upstream', 'origin', 'issue/963-org-owned-fork-pr-helper'],
-    ['ls-remote', '--heads', 'origin', 'issue/963-org-owned-fork-pr-helper']
+    ['ls-remote', '--heads', 'origin', 'issue/963-org-owned-fork-pr-helper'],
+    ['rev-parse', 'issue/963-org-owned-fork-pr-helper']
   ]);
   assert.deepEqual(result, {
     status: 'already-published',
@@ -173,6 +177,27 @@ test('pushBranch still fails when the remote branch is not published', () => {
           }
           if (args[0] === 'ls-remote') {
             return '';
+          }
+          throw new Error(`Unexpected git args: ${args.join(' ')}`);
+        }
+      }),
+    /Failed to push branch to origin/i
+  );
+});
+
+test('pushBranch still fails when the remote branch exists but does not match the local head after a push failure', () => {
+  assert.throws(
+    () =>
+      pushBranch('/tmp/repo', 'issue/963-org-owned-fork-pr-helper', 'origin', {
+        runFn: (_command, args) => {
+          if (args[0] === 'push') {
+            throw new Error('Permission denied (publickey)');
+          }
+          if (args[0] === 'ls-remote') {
+            return '5fe002b6\trefs/heads/issue/963-org-owned-fork-pr-helper';
+          }
+          if (args[0] === 'rev-parse') {
+            return '8ad91377';
           }
           throw new Error(`Unexpected git args: ${args.join(' ')}`);
         }
@@ -522,6 +547,38 @@ test('runGhPrCreate preserves the gh CLI path for user-owned forks', () => {
     'Body'
   ]);
   assert.equal(result.strategy, 'gh-pr-create');
+});
+
+test('runGhPrCreate surfaces gh CLI stdout and parses the created PR URL on success', () => {
+  const writes = [];
+  const result = runGhPrCreate(
+    {
+      repoRoot: '/tmp/repo',
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      origin: { owner: 'svelderrainruiz', repo: 'compare-vi-cli-action', sameOwnerFork: false },
+      branch: 'issue/963-org-owned-fork-pr-helper',
+      base: 'develop',
+      title: 'Fix #963',
+      body: 'Body'
+    },
+    {
+      spawnSyncFn: () => ({
+        status: 0,
+        stdout: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963\n',
+        stderr: ''
+      }),
+      writeStdoutFn: (text) => {
+        writes.push(text);
+      }
+    }
+  );
+
+  assert.deepEqual(writes, ['https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963\n']);
+  assert.equal(result.strategy, 'gh-pr-create');
+  assert.deepEqual(result.pullRequest, {
+    number: 963,
+    url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963'
+  });
 });
 
 test('runGhPrCreate reuses an existing PR when gh pr create reports a duplicate', () => {

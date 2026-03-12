@@ -292,13 +292,38 @@ export function remoteBranchExists(repoRoot, remote, branch, { runFn = run } = {
   }
 }
 
+export function getRemoteBranchHead(repoRoot, remote, branch, { runFn = run } = {}) {
+  try {
+    const output = runFn('git', ['ls-remote', '--heads', remote, branch], {
+      cwd: repoRoot
+    });
+    const firstLine = String(output || '').trim().split(/\r?\n/, 1)[0] ?? '';
+    const [sha] = firstLine.split(/\s+/);
+    return sha ? sha.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getLocalBranchHead(repoRoot, branch, { runFn = run } = {}) {
+  try {
+    const output = runFn('git', ['rev-parse', branch], {
+      cwd: repoRoot
+    });
+    return String(output || '').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export function pushBranch(
   repoRoot,
   branch,
   remote = DEFAULT_FORK_REMOTE,
   {
     runFn = run,
-    remoteBranchExistsFn = remoteBranchExists
+    getRemoteBranchHeadFn = getRemoteBranchHead,
+    getLocalBranchHeadFn = getLocalBranchHead
   } = {}
 ) {
   const selectedRemote = normalizeForkRemoteName(remote);
@@ -312,7 +337,9 @@ export function pushBranch(
       branch
     };
   } catch {
-    if (remoteBranchExistsFn(repoRoot, selectedRemote, branch, { runFn })) {
+    const remoteHead = getRemoteBranchHeadFn(repoRoot, selectedRemote, branch, { runFn });
+    const localHead = getLocalBranchHeadFn(repoRoot, branch, { runFn });
+    if (remoteHead && localHead && remoteHead === localHead) {
       return {
         status: 'already-published',
         remote: selectedRemote,
@@ -488,7 +515,8 @@ export function runGhPrCreate(
     loadRepositoryGraphMetadataFn = loadRepositoryGraphMetadata,
     runGhGraphqlFn = runGhGraphql,
     runGhJsonFn = runGhJson,
-    findExistingPullRequestFn = findExistingPullRequest
+    findExistingPullRequestFn = findExistingPullRequest,
+    writeStdoutFn = (text) => process.stdout.write(text)
   } = {}
 ) {
   const resolvedHeadRepository = headRepository ?? origin;
@@ -605,8 +633,21 @@ export function runGhPrCreate(
     throw error;
   }
 
+  const stdout = String(result.stdout ?? '');
+  if (stdout) {
+    writeStdoutFn(stdout);
+  }
+
+  const urlMatch = stdout.match(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(?<number>\d+)/);
+  const pullRequest = urlMatch?.[0]
+    ? {
+        number: Number.parseInt(urlMatch.groups.number, 10),
+        url: urlMatch[0]
+      }
+    : null;
+
   return {
     strategy,
-    pullRequest: null
+    pullRequest
   };
 }

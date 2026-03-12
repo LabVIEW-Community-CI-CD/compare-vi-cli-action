@@ -416,6 +416,10 @@ test('delivery-agent manager status synthesizes the active lane from the freshes
   const manager = await readText('tools/priority/Manage-UnattendedDeliveryAgent.ps1');
 
   assert.match(manager, /function Resolve-DeliveryStateForStatus/);
+  assert.match(manager, /function Get-SanitizedSegment/);
   assert.match(manager, /derivedFromHeartbeat/);
   assert.match(manager, /Read-JsonFile -Path \$Paths\.ObserverHeartbeatPath/);
+  assert.match(manager, /\$laneId = "issue-\$heartbeatIssue"/);
+  assert.match(manager, /\$sanitizedLaneId = Get-SanitizedSegment -Value \$laneId -Fallback "issue-\$heartbeatIssue"/);
+  assert.match(manager, /\$blockerClass = 'none'/);
 });

@@ -776,7 +776,7 @@ test('delivery broker finalizes merged standing issues by handing off priority a
     [
       'node tools/priority/merge-sync-pr.mjs',
       'node tools/priority/standing-priority-handoff.mjs --auto',
-      'gh issue close 1010'
+      'gh issue close 1010 --comment <omitted>'
     ]
   );
   assert.equal(handoffCalls.length, 1);
@@ -881,14 +881,100 @@ test('delivery broker clears standing-priority immediately when a merged standin
       'node tools/priority/merge-sync-pr.mjs',
       'gh issue edit 1010 --remove-label standing-priority',
       'node tools/priority/sync-standing-priority.mjs',
-      'gh issue close 1010'
+      'gh issue close 1010 --comment <omitted>'
     ]
   );
   assert.equal(editCalls.length, 1);
   assert.deepEqual(editCalls[0].removeLabels, ['standing-priority']);
   assert.equal(syncCalls.length, 1);
+  assert.equal(syncCalls[0].repoRoot, repoRoot);
   assert.equal(closeCalls.length, 1);
   assert.match(closeCalls[0].comment, /queue is now idle/i);
+});
+
+test('delivery broker formats merged issue close comments without PR #null when only a PR URL is available', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-merge-comment-'));
+  const closeCalls = [];
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'ready-merge',
+      objective: {
+        summary: 'Advance issue #1010'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'ready-merge',
+          standingIssue: {
+            number: 1010,
+            title: 'Containerize NILinuxCompare tests via tools image Docker contract',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
+          },
+          selectedIssue: {
+            number: 1010,
+            title: 'Containerize NILinuxCompare tests via tools image Docker contract',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
+          },
+          pullRequest: {
+            number: null,
+            url: 'https://example.invalid/pr/custom',
+            readyToMerge: true
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: []
+      }),
+      mergePullRequestFn: async () => ({
+        status: 'completed',
+        outcome: 'merged',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'merge-pr',
+          laneLifecycle: 'complete',
+          blockerClass: 'none',
+          retryable: false,
+          nextWakeCondition: 'next-scheduler-cycle',
+          helperCallsExecuted: ['node tools/priority/merge-sync-pr.mjs'],
+          filesTouched: []
+        }
+      }),
+      listOpenIssuesFn: async () => [
+        {
+          number: 1010,
+          title: 'Containerize NILinuxCompare tests via tools image Docker contract',
+          state: 'OPEN',
+          labels: ['standing-priority'],
+          createdAt: '2026-03-11T00:00:00Z',
+          updatedAt: '2026-03-11T00:00:00Z',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
+        }
+      ],
+      editIssueLabelsFn: async () => ({ status: 0 }),
+      syncStandingPriorityFn: async () => {},
+      closeIssueWithCommentFn: async ({ repository, issueNumber, comment }) => {
+        closeCalls.push({ repository, issueNumber, comment });
+        return { status: 0 };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.outcome, 'merged');
+  assert.equal(closeCalls.length, 1);
+  assert.doesNotMatch(closeCalls[0].comment, /PR #null/i);
+  assert.match(closeCalls[0].comment, /PR https:\/\/example\.invalid\/pr\/custom/i);
 });
 
 test('delivery broker classifies rate-limit failures with a retryable blocker', async () => {

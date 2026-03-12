@@ -2,6 +2,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   buildCodexTurnPrompt,
@@ -9,6 +12,8 @@ import {
   buildUnattendedCommandEnv,
   planPullRequestReviewCycle
 } from '../run-delivery-turn-with-codex.mjs';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 test('buildCodexTurnPrompt includes bounded delivery context and helper surfaces', () => {
   const prompt = buildCodexTurnPrompt({
@@ -180,4 +185,13 @@ test('planPullRequestReviewCycle restores a previously ready PR without demandin
     initialPullRequestNumber: 1015,
     finalPullRequestNumber: 1015
   });
+});
+
+test('runCodexDeliveryTurn plans review restoration from the original PR state, not the broker-forced draft clone', () => {
+  const source = readFileSync(path.join(repoRoot, 'tools/priority/run-delivery-turn-with-codex.mjs'), 'utf8');
+
+  assert.match(
+    source,
+    /const reviewCycle = planPullRequestReviewCycle\(\{\s*initialPullRequest,\s*finalPullRequest: pullRequest,/s
+  );
 });
