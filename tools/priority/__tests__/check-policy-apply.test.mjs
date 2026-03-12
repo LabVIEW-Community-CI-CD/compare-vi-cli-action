@@ -1263,6 +1263,74 @@ test('priority:policy verify honors repo portability overrides for forks that ca
   });
 });
 
+test('priority:policy fails closed on invalid repo portability profile modes', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-fork';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const alignedRulesets = createAlignedRulesets();
+  const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
+  manifestOverride.repoProfiles = {
+    ...(manifestOverride.repoProfiles ?? {}),
+    'test-org/test-fork': {
+      rulesetMode: 'invalid-mode',
+      reason: 'bad-config'
+    }
+  };
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'Organization', login: 'test-org' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(alignedRulesets.release);
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse([]);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  await assert.rejects(
+    () =>
+      run({
+        argv: ['node', 'check-policy.mjs'],
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: 'test-org/test-fork',
+          GITHUB_TOKEN: 'fake-token'
+        },
+        fetchFn: fetchMock,
+        execSyncFn: () => {
+          throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+        },
+        manifestOverride,
+        log: () => {},
+        error: () => {}
+      }),
+    /Invalid repo portability profile for test-org\/test-fork: unsupported rulesetMode 'invalid-mode'/
+  );
+});
+
 test('priority:policy --apply skips queue-managed rulesets on user-owned throughput forks but still creates non-queue rulesets', async () => {
   const repoUrl = 'https://api.github.com/repos/test-user/test-repo';
   const listUrl = `${repoUrl}/rulesets`;

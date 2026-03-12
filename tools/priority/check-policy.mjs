@@ -181,7 +181,12 @@ function resolveManifestPortabilityOverride(manifest, repositorySlug) {
       reason: normalizePortabilityReason(repoProfile.reason, null)
     };
   }
-  return null;
+  if (mode.length === 0) {
+    return null;
+  }
+  throw new Error(
+    `Invalid repo portability profile for ${repositorySlug}: unsupported rulesetMode '${mode}'.`
+  );
 }
 
 function buildRulesetPortabilityProfile(_repoData, overrides = {}) {
