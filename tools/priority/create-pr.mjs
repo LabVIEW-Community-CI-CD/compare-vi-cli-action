@@ -259,12 +259,17 @@ export function resolveStandingIssueNumberForPr(repoRoot, { readJsonFn = readJso
           url: typeof cache.mirrorOf.url === 'string' ? cache.mirrorOf.url : null
         }
       : null;
-  const issueTitle = extractIssueTitle(cache);
-  const issueUrl = extractIssueUrl(cache, mirrorOf);
   const localIssueNumber =
     router && Object.prototype.hasOwnProperty.call(router, 'issue')
       ? parseRouterIssueNumber(router)
       : parseCacheIssueNumber(cache);
+  const cacheIssueNumber = parseCacheIssueNumber(cache);
+  const shouldUseCachedMetadata =
+    Boolean(cacheIssueNumber) &&
+    ((localIssueNumber && cacheIssueNumber === localIssueNumber) ||
+      (mirrorOf?.number && cacheIssueNumber === mirrorOf.number));
+  const issueTitle = shouldUseCachedMetadata ? extractIssueTitle(cache) : null;
+  const issueUrl = shouldUseCachedMetadata ? extractIssueUrl(cache, mirrorOf) : null;
   if (router && Object.prototype.hasOwnProperty.call(router, 'issue')) {
     if (!localIssueNumber) {
       return {
@@ -367,6 +372,30 @@ function buildSummaryLine(context, base) {
   return `Delivers branch \`${context.branch || '(not supplied)'}\` into \`${base}\` using the standard automation PR helper.`;
 }
 
+function renderFallbackAutomationBody(context, base) {
+  const issueReference = formatIssueReference(context.issueNumber, context.issueTitle);
+  const lines = [
+    '# Summary',
+    '',
+    buildSummaryLine(context, base),
+    '',
+    '## Agent Metadata (required for automation-authored PRs)',
+    '',
+    '- Agent-ID: `agent/copilot-codex-a`',
+    '- Operator: `@svelderrainruiz`',
+    '- Reviewer-Required: `@svelderrainruiz`',
+    '- Emergency-Bypass-Label: `AllowCIBypass`',
+    '',
+    '## Change Surface',
+    '',
+    `- Primary issue or standing-priority context: ${issueReference}`,
+    `- Issue URL: ${context.issueUrl || '(not supplied)'}`,
+    `- Files, tools, workflows, or policies touched: Helper-driven PR creation path for \`${context.branch || '(not supplied)'}\`.`,
+    `- Required checks, merge-queue behavior, or approval flows affected: Standard \`${base}\` branch protections and required checks apply.`
+  ];
+  return lines.join('\n').trimEnd();
+}
+
 function renderDefaultAutomationTemplate(templateText, context, base) {
   const issueReference = formatIssueReference(context.issueNumber, context.issueTitle);
   const issueUrl = context.issueUrl || '(not supplied)';
@@ -463,9 +492,14 @@ export function buildBody(issueOrContext, env = process.env, { repoRoot = proces
   }
   const context = normalizePrBodyContext(issueOrContext);
   const base = context.base || env.PR_BASE || 'develop';
-  const closesLine = context.issueNumber ? `\nCloses #${context.issueNumber}` : '';
-  const templateText = readFileSyncFn(path.join(repoRoot, DEFAULT_PR_TEMPLATE_RELATIVE_PATH), 'utf8');
-  return `${renderDefaultAutomationTemplate(templateText, context, base)}${closesLine}`.trimEnd();
+  const closesLine = context.issueNumber ? `\n\nCloses #${context.issueNumber}` : '';
+
+  try {
+    const templateText = readFileSyncFn(path.join(repoRoot, DEFAULT_PR_TEMPLATE_RELATIVE_PATH), 'utf8');
+    return `${renderDefaultAutomationTemplate(templateText, context, base)}${closesLine}`.trimEnd();
+  } catch {
+    return `${renderFallbackAutomationBody(context, base)}${closesLine}`.trimEnd();
+  }
 }
 
 export function resolveBody({ options, issueNumber, env = process.env, readFileSyncFn = readFileSync }) {

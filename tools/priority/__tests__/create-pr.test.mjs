@@ -19,8 +19,8 @@ import {
   createPriorityPr
 } from '../create-pr.mjs';
 
-function readDefaultPrTemplate(_filePath, encoding) {
-  return nodeReadFileSync(path.join(process.cwd(), '.github', 'pull_request_template.md'), encoding);
+function readDefaultPrTemplate(filePath, encoding) {
+  return nodeReadFileSync(filePath, encoding);
 }
 
 test('parseArgs accepts explicit PR helper overrides', () => {
@@ -313,7 +313,11 @@ test('buildBody emits populated automation-authored metadata instead of placehol
       branch: 'issue/origin-680-standing-helper-fix',
       base: 'develop'
     },
-    {}
+    {},
+    {
+      repoRoot: process.cwd(),
+      readFileSyncFn: nodeReadFileSync
+    }
   );
 
   assert.match(body, /^# Summary/m);
@@ -334,7 +338,11 @@ test('buildBody reflects the resolved base branch in required-check guidance', (
       branch: 'issue/origin-681-main-hotfix',
       base: 'main'
     },
-    {}
+    {},
+    {
+      repoRoot: process.cwd(),
+      readFileSyncFn: nodeReadFileSync
+    }
   );
 
   assert.match(body, /Standard `main` branch protections and required checks apply\./);
@@ -403,6 +411,27 @@ test('resolveStandingIssueNumberForPr carries cached issue metadata into the PR 
 
   assert.equal(result.issueTitle, 'priority:pr should not open automation PRs with placeholder bodies');
   assert.equal(result.issueUrl, 'https://github.com/example/repo/issues/1033');
+});
+
+test('resolveStandingIssueNumberForPr drops stale cached metadata when router-selected issue does not match cache', () => {
+  const result = resolveStandingIssueNumberForPr('/tmp/repo', {
+    readJsonFn: (filePath) => {
+      if (filePath.endsWith('router.json')) {
+        return { issue: 1033 };
+      }
+      return {
+        number: 9000,
+        title: 'Stale issue title',
+        url: 'https://github.com/example/repo/issues/9000',
+        state: 'open',
+        labels: ['standing-priority']
+      };
+    }
+  });
+
+  assert.equal(result.issueNumber, 1033);
+  assert.equal(result.issueTitle, null);
+  assert.equal(result.issueUrl, null);
 });
 
 test('createPriorityPr honors explicit CLI overrides and body files', () => {
