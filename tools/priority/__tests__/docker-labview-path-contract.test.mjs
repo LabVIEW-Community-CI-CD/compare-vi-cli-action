@@ -90,6 +90,14 @@ test('runbook validation no longer executes windows docker fast-loop canary job'
   assert.doesNotMatch(workflow, /NI_WINDOWS_IMAGE/);
 });
 
+test('windows hosted parity no longer includes hosted LVCompare babysitting debt', () => {
+  const workflow = readRepoFile('.github/workflows/windows-hosted-parity.yml');
+
+  assert.doesNotMatch(workflow, /Verify LVCompare and idle LabVIEW state \(notice-only on hosted\)/);
+  assert.doesNotMatch(workflow, /LVCompare\.exe not found at canonical path/);
+  assert.match(workflow, /name:\s*Hooks preflight parity/);
+});
+
 test('docker desktop fast-loop only accepts lane-specific LabVIEW path contracts', () => {
   const script = readRepoFile('tools/Test-DockerDesktopFastLoop.ps1');
 

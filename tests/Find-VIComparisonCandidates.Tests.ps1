@@ -88,4 +88,8 @@ Describe 'Find-VIComparisonCandidates.ps1' -Tag 'Compare','Analysis','Unit' {
         $json.totalCommits | Should -Be 1
         $json.commits[0].files[0].path | Should -Be $script:renameTarget
     }
+
+    It 'requires RepoPath now that the vendored icon-editor baseline is removed' {
+        { & $script:scriptPath -HeadRef $script:renameCommit } | Should -Throw -ExpectedMessage '*RepoPath is required*'
+    }
 }

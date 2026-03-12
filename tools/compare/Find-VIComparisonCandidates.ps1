@@ -63,7 +63,11 @@ function Invoke-Git {
 }
 
 $repoRoot = Resolve-RepoRoot
-$repoResolved = Resolve-PathMaybeRelative -Path ($RepoPath ?? $repoRoot) -Base $repoRoot
+$repoPathInput = if ([string]::IsNullOrWhiteSpace($RepoPath)) { $null } else { $RepoPath }
+if (-not $repoPathInput) {
+  throw 'RepoPath is required. Pass an explicit repository path now that the vendored icon-editor baseline is removed.'
+}
+$repoResolved = Resolve-PathMaybeRelative -Path $repoPathInput -Base $repoRoot
 if (-not $repoResolved -or -not (Test-Path -LiteralPath $repoResolved -PathType Container)) {
   throw "Repository path '$repoResolved' not found."
 }

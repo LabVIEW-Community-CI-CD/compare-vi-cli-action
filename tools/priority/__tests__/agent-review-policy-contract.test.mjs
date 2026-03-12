@@ -17,7 +17,7 @@ test('agent-review-policy keeps heavyweight collection on pull_request_target an
   assert.match(workflow, /repository:\s+\$\{\{\s*github\.repository\s*\}\}/);
   assert.match(
     workflow,
-    /ref:\s+\$\{\{\s*github\.event_name == 'pull_request_target' && github\.event\.pull_request\.base\.sha \|\| github\.sha\s*\}\}/
+    /ref:\s+\$\{\{\s*github\.event_name == 'pull_request_target' && github\.event\.pull_request\.base\.sha \|\| github\.event_name == 'workflow_run' && github\.event\.repository\.default_branch \|\| github\.sha\s*\}\}/
   );
   assert.doesNotMatch(workflow, /checkout-workflow-context/);
   assert.doesNotMatch(workflow, /repository:\s+\$\{\{\s*github\.event\.pull_request\.head\.repo\.full_name\s*\}\}/);

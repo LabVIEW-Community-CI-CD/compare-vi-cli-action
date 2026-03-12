@@ -297,6 +297,19 @@ test('buildGhPrEditArgs targets the existing PR with explicit title/body updates
   ]);
 });
 
+test('buildGhPrEditArgs fails fast when upstream coordinates are missing', () => {
+  assert.throws(
+    () =>
+      buildGhPrEditArgs({
+        upstream: { owner: 'upstream-owner' },
+        pullRequest: { number: 963 },
+        title: 'Updated helper title',
+        body: 'Updated helper body'
+      }),
+    /Invalid upstream repository coordinates/i
+  );
+});
+
 test('buildGhPrListArgs targets the upstream repository and supports owner-qualified head selectors', () => {
   const args = buildGhPrListArgs({
     upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
@@ -775,4 +788,36 @@ test('runGhPrCreate reuses an existing PR when gh pr create reports a duplicate'
       body: 'Body'
     }
   ]);
+});
+
+test('runGhPrCreate surfaces update failures when a duplicate PR is reused', () => {
+  assert.throws(
+    () =>
+      runGhPrCreate(
+        {
+          repoRoot: '/tmp/repo',
+          upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+          origin: { owner: 'svelderrainruiz', repo: 'compare-vi-cli-action', sameOwnerFork: false },
+          branch: 'issue/963-org-owned-fork-pr-helper',
+          base: 'develop',
+          title: 'Fix #963',
+          body: 'Body'
+        },
+        {
+          spawnSyncFn: () => ({
+            status: 1,
+            stdout: '',
+            stderr: 'gh: A pull request already exists for svelderrainruiz:issue/963-org-owned-fork-pr-helper.'
+          }),
+          findExistingPullRequestFn: () => ({
+            number: 963,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963'
+          }),
+          updateExistingPullRequestFn: () => {
+            throw new Error('failed to refresh existing PR metadata');
+          }
+        }
+      ),
+    /failed to refresh existing PR metadata/i
+  );
 });

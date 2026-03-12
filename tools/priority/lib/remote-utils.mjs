@@ -67,6 +67,28 @@ export function buildRepositorySlug(repository) {
   return `${repository.owner}/${repository.repo}`;
 }
 
+function requireRepositorySlug(repository, label) {
+  const repoSlug = buildRepositorySlug(repository);
+  if (!repoSlug) {
+    throw new Error(`Invalid ${label} repository coordinates. Expected owner and repo.`);
+  }
+  return repoSlug;
+}
+
+function normalizePrText(value, { label, allowEmpty = false } = {}) {
+  if (value === null || value === undefined) {
+    if (allowEmpty) {
+      return '';
+    }
+    throw new Error(`${label} is required.`);
+  }
+  const text = String(value);
+  if (!allowEmpty && text.trim().length === 0) {
+    throw new Error(`${label} is required.`);
+  }
+  return text;
+}
+
 export function isSameRepository(left, right) {
   const leftSlug = buildRepositorySlug(left);
   const rightSlug = buildRepositorySlug(right);
@@ -365,34 +387,40 @@ export function pushToRemote(repoRoot, remote, ref) {
 
 export function buildGhPrCreateArgs({ upstream, origin, headRepository, branch, base, title, body }) {
   const resolvedHeadRepository = headRepository ?? origin;
+  const repoSlug = requireRepositorySlug(upstream, 'upstream');
   return [
     'pr',
     'create',
     '--repo',
-    buildRepositorySlug(upstream),
+    repoSlug,
     '--base',
     base,
     '--head',
     `${resolvedHeadRepository.owner}:${branch}`,
     '--draft',
     '--title',
-    title,
+    normalizePrText(title, { label: 'PR title' }),
     '--body',
-    body
+    normalizePrText(body, { label: 'PR body', allowEmpty: true })
   ];
 }
 
 export function buildGhPrEditArgs({ upstream, pullRequest, title, body }) {
+  const repoSlug = requireRepositorySlug(upstream, 'upstream');
+  const pullRequestNumber = Number.parseInt(String(pullRequest?.number ?? ''), 10);
+  if (!Number.isInteger(pullRequestNumber) || pullRequestNumber <= 0) {
+    throw new Error('Existing pull request number is required.');
+  }
   return [
     'pr',
     'edit',
-    String(pullRequest.number),
+    String(pullRequestNumber),
     '--repo',
-    buildRepositorySlug(upstream),
+    repoSlug,
     '--title',
-    title,
+    normalizePrText(title, { label: 'PR title' }),
     '--body',
-    body
+    normalizePrText(body, { label: 'PR body', allowEmpty: true })
   ];
 }
 

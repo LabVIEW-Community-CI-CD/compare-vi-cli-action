@@ -14,7 +14,7 @@ const prHeadRefPattern =
   /ref:\s+\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.sha \|\| github\.sha\s*\}\}/;
 const baseSafeRepositoryPattern = /repository:\s+\$\{\{\s*github\.repository\s*\}\}/;
 const baseSafeRefPattern =
-  /ref:\s+\$\{\{\s*github\.event_name == 'pull_request_target' && github\.event\.pull_request\.base\.sha \|\| github\.sha\s*\}\}/;
+  /ref:\s+\$\{\{\s*github\.event_name == 'pull_request_target' && github\.event\.pull_request\.base\.sha \|\| github\.event_name == 'workflow_run' && github\.event\.repository\.default_branch \|\| github\.sha\s*\}\}/;
 
 function readText(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), 'utf8');
