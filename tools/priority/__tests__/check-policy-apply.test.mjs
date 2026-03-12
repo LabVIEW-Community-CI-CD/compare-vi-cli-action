@@ -1169,7 +1169,7 @@ test('priority:policy verify passes on user-owned throughput forks while still e
   assert.deepEqual(report.portability, {
     rulesetMode: 'throughput-fork-relaxed',
     queueManagedRulesetsPortable: false,
-    detectedBy: 'repo-profile',
+    detectedBy: 'default',
     reason: 'user-owned-fork'
   });
 });
@@ -1188,7 +1188,7 @@ test('priority:policy verify honors repo portability overrides for forks that ca
     ...(manifestOverride.repoProfiles ?? {}),
     'test-org/test-fork': {
       rulesetMode: 'throughput-fork-relaxed',
-      reason: 'merge_queue-unsupported-throughput-fork'
+      reason: 422
     }
   };
 
@@ -1250,7 +1250,7 @@ test('priority:policy verify honors repo portability overrides for forks that ca
     rulesetMode: 'throughput-fork-relaxed',
     queueManagedRulesetsPortable: false,
     detectedBy: 'repo-profile',
-    reason: 'merge_queue-unsupported-throughput-fork'
+    reason: '422'
   });
 });
 

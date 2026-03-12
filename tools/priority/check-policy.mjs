@@ -152,6 +152,14 @@ function deriveActiveQueueManagedBranches(manifest, portabilityProfile) {
   return deriveQueueManagedBranches(manifest);
 }
 
+function normalizePortabilityReason(reason, fallback = null) {
+  if (reason === null || reason === undefined) {
+    return fallback;
+  }
+  const normalized = String(reason).trim();
+  return normalized.length > 0 ? normalized : fallback;
+}
+
 function resolveManifestPortabilityOverride(manifest, repositorySlug) {
   const repoProfile = manifest?.repoProfiles?.[repositorySlug];
   if (!repoProfile || typeof repoProfile !== 'object') {
@@ -163,14 +171,14 @@ function resolveManifestPortabilityOverride(manifest, repositorySlug) {
     return {
       queueManagedRulesetsPortable: false,
       detectedBy: 'repo-profile',
-      reason: repoProfile.reason ?? `repo-profile:${repositorySlug}`
+      reason: normalizePortabilityReason(repoProfile.reason, `repo-profile:${repositorySlug}`)
     };
   }
   if (mode === 'standard') {
     return {
       queueManagedRulesetsPortable: true,
       detectedBy: 'repo-profile',
-      reason: repoProfile.reason ?? null
+      reason: normalizePortabilityReason(repoProfile.reason, null)
     };
   }
   return null;
@@ -185,10 +193,12 @@ function buildRulesetPortabilityProfile(repoData, overrides = {}) {
   const rulesetMode = queueManagedRulesetsPortable ? 'standard' : 'throughput-fork-relaxed';
   const detectedBy =
     overrides.detectedBy ??
-    (heuristicRelaxation ? 'repo-profile' : 'default');
+    'default';
   const reason =
-    overrides.reason ??
-    (heuristicRelaxation ? 'user-owned-fork' : null);
+    normalizePortabilityReason(
+      overrides.reason,
+      heuristicRelaxation ? 'user-owned-fork' : null
+    );
 
   return {
     rulesetMode,
@@ -1184,6 +1194,31 @@ async function collectState(manifest, repoUrl, token, fetchFn, logFn = console.l
   return { repoData, branchStates, rulesetStates };
 }
 
+async function refreshBranchStates(branchStates, repoUrl, token, fetchFn) {
+  const refreshed = [];
+  for (const entry of branchStates) {
+    const state = {
+      branch: entry.branch,
+      expectations: entry.expectations,
+      protection: null,
+      error: null,
+      skipReason: entry.skipReason ?? null
+    };
+    if (state.skipReason === 'pattern') {
+      refreshed.push(state);
+      continue;
+    }
+    try {
+      const protectionUrl = `${repoUrl}/branches/${encodeURIComponent(entry.branch)}/protection`;
+      state.protection = await fetchJson(protectionUrl, token, fetchFn);
+    } catch (branchError) {
+      state.error = branchError;
+    }
+    refreshed.push(state);
+  }
+  return refreshed;
+}
+
 function evaluateDiffs(manifest, state, options = {}) {
   const repoDiffs = compareRepoSettings(manifest.repo ?? {}, state.repoData ?? {});
   const queueManagedBranches =
@@ -1540,6 +1575,7 @@ export async function run({
             isQueueManagedRulesetExpectation(entry.expectations) &&
             isMergeQueueRulesetUnsupportedError(rulesetError)
           ) {
+            const previouslyQueueManagedBranches = new Set(queueManagedBranches);
             portabilityProfile = buildRulesetPortabilityProfile(initialState.repoData, {
               queueManagedRulesetsPortable: false,
               detectedBy: 'api-rejection',
@@ -1550,8 +1586,18 @@ export async function run({
             log(
               `[policy] Fork ruleset portability downgrade detected for ${report.repository}: merge_queue rules are unsupported on this fork. Continuing with non-queue ruleset enforcement only.`
             );
+            const refreshedBranchStates = await invokeWithAuthFallback(
+              'refreshBranchStates(portability-downgrade)',
+              (token) =>
+                refreshBranchStates(
+                  initialState.branchStates.filter((branchState) => previouslyQueueManagedBranches.has(branchState.branch)),
+                  repoUrl,
+                  token,
+                  fetchFn
+                )
+            );
             await applyBranchUpdates(
-              collectBranchStatesNeedingUpdates(initialState.branchStates, queueManagedBranches)
+              collectBranchStatesNeedingUpdates(refreshedBranchStates, queueManagedBranches)
             );
             continue;
           }
