@@ -33,6 +33,33 @@ test('resolveRepositoryRole distinguishes upstream and fork repositories', () =>
   assert.equal(resolveRepositoryRole('LabVIEW-Community-CI-CD/compare-vi-cli-action-fork', contract), 'fork');
 });
 
+test('loadBranchClassContract rejects missing or invalid upstreamRepository slugs', () => {
+  const missingUpstream = JSON.stringify({
+    ...contract,
+    upstreamRepository: ''
+  });
+  const invalidUpstream = JSON.stringify({
+    ...contract,
+    upstreamRepository: 'LabVIEW-Community-CI-CD'
+  });
+
+  assert.throws(
+    () =>
+      loadBranchClassContract(repoRoot, {
+        readFileSyncFn: () => missingUpstream
+      }),
+    /must define a non-empty upstreamRepository owner\/repo slug/i
+  );
+
+  assert.throws(
+    () =>
+      loadBranchClassContract(repoRoot, {
+        readFileSyncFn: () => invalidUpstream
+      }),
+    /has invalid upstreamRepository/i
+  );
+});
+
 test('classifyBranch resolves upstream integration, fork mirror, and lane branches', () => {
   assert.equal(
     classifyBranch({

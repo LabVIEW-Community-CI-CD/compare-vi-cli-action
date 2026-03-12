@@ -82,6 +82,17 @@ export function loadBranchClassContract(
   if (!Array.isArray(contract.allowedTransitions) || contract.allowedTransitions.length === 0) {
     throw new Error(`Branch class contract in ${contractPath} does not define any transitions.`);
   }
+  const normalizedUpstream = normalizeRepositorySlug(contract?.upstreamRepository);
+  if (!normalizedUpstream) {
+    throw new Error(
+      `Branch class contract in ${contractPath} must define a non-empty upstreamRepository owner/repo slug.`
+    );
+  }
+  if (!/^[^/]+\/[^/]+$/.test(normalizedUpstream)) {
+    throw new Error(
+      `Branch class contract in ${contractPath} has invalid upstreamRepository '${contract.upstreamRepository}'. Expected an owner/repo slug.`
+    );
+  }
   return contract;
 }
 
