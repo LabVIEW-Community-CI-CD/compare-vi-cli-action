@@ -87,9 +87,7 @@ function parseArgs(argv = process.argv) {
         }
         options.pr = parsed;
       } else if (arg === '--repo') {
-        if (!value.includes('/')) {
-          throw new Error(`Invalid --repo value '${value}'. Expected owner/repo.`);
-        }
+        parseRepoSlug(value);
         options.repo = value;
       } else if (arg === '--method') {
         if (!MERGE_METHODS.has(value)) {
@@ -126,10 +124,14 @@ function normalizeOwner(value) {
 }
 
 function parseRepoSlug(repo) {
-  const [owner, name] = String(repo ?? '').split('/');
-  if (!owner || !name) {
+  const parts = String(repo ?? '')
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length !== 2) {
     throw new Error(`Invalid repo slug '${repo}'. Expected owner/repo.`);
   }
+  const [owner, name] = parts;
   return { owner, name };
 }
 
@@ -524,12 +526,21 @@ export async function runMergeSync({
     repo: resolvedRepo,
     pr: options.pr
   });
-  const initialPromotionState = readPromotionStateFn({
-    repoRoot,
-    repo: resolvedRepo,
-    pr: options.pr
-  });
   const selection = selectMergeMode(prInfo, { admin: options.admin, mergeQueueBranches });
+  const initialPromotionState =
+    selection.mode === 'none'
+      ? {
+          state: prInfo?.state ?? null,
+          mergeStateStatus: prInfo?.mergeStateStatus ?? null,
+          isInMergeQueue: false,
+          autoMergeRequest: null,
+          mergedAt: null
+        }
+      : readPromotionStateFn({
+          repoRoot,
+          repo: resolvedRepo,
+          pr: options.pr
+        });
   console.log(
     `[priority:merge-sync] selected mode=${selection.mode} reason=${selection.reason} mergeState=${prInfo.mergeStateStatus ?? 'n/a'}`
   );
@@ -630,8 +641,7 @@ export async function runMergeSync({
     dryRun: options.dryRun,
     mergeQueueBranches,
     attempts,
-    prInfo
-    ,
+    prInfo,
     promotion
   });
   await maybeWriteSummary(options.summaryPath, payload);

@@ -671,6 +671,62 @@ test('runMergeSync fails when auto merge command succeeds but no durable promoti
   );
 });
 
+test('runMergeSync does not query promotion state when the PR is already merged', async () => {
+  let promotionReads = 0;
+  const payload = await runMergeSync({
+    argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '125', '--repo', 'owner/repo'],
+    repoRoot: process.cwd(),
+    ensureGhCliFn: () => {},
+    readPrInfoFn: () => ({
+      number: 125,
+      state: 'MERGED',
+      isDraft: false,
+      mergeStateStatus: 'CLEAN',
+      mergeable: 'MERGEABLE',
+      baseRefName: 'develop',
+      url: 'https://example.test/pr/125'
+    }),
+    readPromotionStateFn: () => {
+      promotionReads += 1;
+      throw new Error('should not be called');
+    }
+  });
+
+  assert.equal(promotionReads, 0);
+  assert.equal(payload.finalMode, 'none');
+  assert.equal(payload.promotion.status, 'already-merged');
+});
+
+test('runMergeSync rejects repo slugs with extra path segments', async () => {
+  await assert.rejects(
+    () =>
+      runMergeSync({
+        argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '126', '--repo', 'owner/repo/extra'],
+        repoRoot: process.cwd(),
+        ensureGhCliFn: () => {},
+        readPrInfoFn: () => ({
+          number: 126,
+          state: 'OPEN',
+          isDraft: false,
+          mergeStateStatus: 'BLOCKED',
+          mergeable: 'MERGEABLE',
+          baseRefName: 'develop',
+          url: 'https://example.test/pr/126'
+        }),
+        readPromotionStateFn: () => ({
+          state: 'OPEN',
+          mergeStateStatus: 'BLOCKED',
+          isInMergeQueue: false,
+          autoMergeRequest: null,
+          mergedAt: null
+        }),
+        runMergeAttemptFn: () => ({ status: 0, stdout: '', stderr: '' }),
+        sleepFn: async () => {}
+      }),
+    /Invalid repo slug/
+  );
+});
+
 test('isUpstreamOwnedHead returns true only when PR head owner matches repo owner', () => {
   assert.equal(
     isUpstreamOwnedHead(
