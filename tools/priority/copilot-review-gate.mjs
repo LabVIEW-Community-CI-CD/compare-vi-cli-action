@@ -18,6 +18,7 @@ const DEFAULT_POLL_ATTEMPTS = 1;
 const DEFAULT_POLL_DELAY_MS = 10000;
 const GITHUB_API_URL = 'https://api.github.com';
 const CANONICAL_REPOSITORY = 'LabVIEW-Community-CI-CD/compare-vi-cli-action';
+const COPILOT_REVIEW_WORKFLOW_NAME = 'Copilot code review';
 const PENDING_WORKFLOW_RUN_STATUSES = new Set(['QUEUED', 'IN_PROGRESS', 'PENDING', 'REQUESTED', 'WAITING']);
 
 const COPILOT_LOGINS = new Set([
@@ -436,6 +437,42 @@ async function loadLiveThreads(options, token = getAuthToken()) {
   return payload;
 }
 
+function selectCopilotWorkflowRun(payload, headSha) {
+  const runs = Array.isArray(payload?.workflow_runs) ? payload.workflow_runs : [];
+  const normalizedHeadSha = normalizeSha(headSha);
+  const candidates = runs
+    .filter((run) => normalizeText(run?.name) === COPILOT_REVIEW_WORKFLOW_NAME)
+    .filter((run) => !normalizedHeadSha || normalizeSha(run?.head_sha) === normalizedHeadSha)
+    .sort((left, right) => {
+      const byTime = compareIsoDescending(normalizeIso(left?.updated_at), normalizeIso(right?.updated_at));
+      if (byTime !== 0) {
+        return byTime;
+      }
+      return compareIdDescending(
+        normalizeInteger(left?.id)?.toString() ?? '0',
+        normalizeInteger(right?.id)?.toString() ?? '0',
+      );
+    });
+  return candidates[0] ?? null;
+}
+
+async function loadLiveReviewRun(options, token = getAuthToken()) {
+  if (!options.repo || !options.headSha) {
+    return null;
+  }
+
+  const resolvedToken = normalizeText(token);
+  if (!resolvedToken) {
+    return null;
+  }
+
+  const payload = await githubRequestJson(
+    `${GITHUB_API_URL}/repos/${options.repo}/actions/runs?head_sha=${options.headSha}&per_page=100`,
+    { token: resolvedToken },
+  );
+  return selectCopilotWorkflowRun(payload, options.headSha);
+}
+
 function readJsonFile(filePath) {
   const resolved = path.resolve(process.cwd(), filePath);
   if (!existsSync(resolved)) {
@@ -570,7 +607,7 @@ function buildPullRequest(options, signalReport = null) {
 }
 
 function buildReviewRunFromOptions(options) {
-  const workflowName = normalizeText(options.reviewRunWorkflowName) || 'Copilot code review';
+  const workflowName = normalizeText(options.reviewRunWorkflowName) || COPILOT_REVIEW_WORKFLOW_NAME;
   const status = normalizeText(options.reviewRunStatus)?.toUpperCase() || null;
   const conclusion = normalizeText(options.reviewRunConclusion)?.toUpperCase() || null;
   const runId = normalizeInteger(options.reviewRunId);
@@ -608,7 +645,7 @@ function buildReviewRunFromSignal(signalReport, options) {
     optionRun.conclusion === null
   ) {
     return {
-      workflowName: normalizeText(signalRun.workflowName) || 'Copilot code review',
+      workflowName: normalizeText(signalRun.workflowName) || COPILOT_REVIEW_WORKFLOW_NAME,
       runId: normalizeInteger(signalRun.runId),
       status: normalizeText(signalRun.status)?.toUpperCase() || null,
       conclusion: normalizeText(signalRun.conclusion)?.toUpperCase() || null,
@@ -621,6 +658,38 @@ function buildReviewRunFromSignal(signalReport, options) {
     };
   }
   return optionRun;
+}
+
+function buildReviewRunFromLiveRun(workflowRun, options) {
+  if (!workflowRun || typeof workflowRun !== 'object') {
+    return buildReviewRunFromOptions(options);
+  }
+
+  const status = normalizeText(workflowRun.status)?.toUpperCase() || null;
+  const conclusion = normalizeText(workflowRun.conclusion)?.toUpperCase() || null;
+  const headSha = normalizeSha(workflowRun.head_sha ?? options.headSha);
+  const optionHeadSha = normalizeSha(options.headSha);
+  let observationState = 'unobserved';
+  if (normalizeInteger(workflowRun.id) !== null) {
+    if (status && PENDING_WORKFLOW_RUN_STATUSES.has(status)) {
+      observationState = 'in_progress';
+    } else if (status === 'COMPLETED' && conclusion === 'SUCCESS') {
+      observationState = 'completed-clean';
+    } else if (status === 'COMPLETED') {
+      observationState = 'completed-failure';
+    }
+  }
+
+  return {
+    workflowName: normalizeText(workflowRun.name) || COPILOT_REVIEW_WORKFLOW_NAME,
+    runId: normalizeInteger(workflowRun.id),
+    status,
+    conclusion,
+    url: normalizeText(workflowRun.html_url),
+    headSha,
+    isCurrentHead: Boolean(headSha && optionHeadSha && headSha === optionHeadSha),
+    observationState,
+  };
 }
 
 function sleep(delayMs) {
@@ -903,7 +972,7 @@ function buildReportFromSignal(options, signalReport, now) {
   });
 }
 
-function buildReportFromLiveData(options, reviewsPayload, threadsPayload, now) {
+function buildReportFromLiveData(options, reviewsPayload, threadsPayload, now, workflowRun = null) {
   const pullRequest = buildPullRequest(options);
   const reviews = normalizeReviews(reviewsPayload, pullRequest.headSha);
   const threads = extractThreadNodes(threadsPayload)
@@ -918,7 +987,7 @@ function buildReportFromLiveData(options, reviewsPayload, threadsPayload, now) {
     pullRequest,
     reviews,
     threads,
-    reviewRun: buildReviewRunFromOptions(options),
+    reviewRun: buildReviewRunFromLiveRun(workflowRun, options),
     errors,
     gatedBaseRefs: options.gatedBaseRefs,
     now,
@@ -1072,12 +1141,17 @@ function shouldPollForInitialCopilotReview(report, options) {
   );
 }
 
+function shouldContinuePolling(report) {
+  return isMissingInitialCopilotReview(report) || isWaitingForCurrentHeadCopilotReview(report);
+}
+
 export async function runCopilotReviewGate({
   argv = process.argv,
   now = new Date(),
   readSignalFn = readJsonFile,
   loadReviewsFn = loadLiveReviews,
   loadThreadsFn = loadLiveThreads,
+  loadReviewRunFn = loadLiveReviewRun,
   writeReportFn = writeReport,
   appendStepSummaryFn = appendStepSummary,
 } = {}) {
@@ -1127,7 +1201,8 @@ export async function runCopilotReviewGate({
     } else {
       const reviews = await loadReviewsFn(options);
       const threads = await loadThreadsFn(options);
-      report = buildReportFromLiveData(options, reviews, threads, now);
+      const reviewRun = await loadReviewRunFn(options);
+      report = buildReportFromLiveData(options, reviews, threads, now, reviewRun);
     }
 
     if (shouldPollForInitialCopilotReview(report, options)) {
@@ -1137,8 +1212,9 @@ export async function runCopilotReviewGate({
         await sleep(options.pollDelayMs);
         const reviews = await loadReviewsFn(options);
         const threads = await loadThreadsFn(options);
-        report = buildReportFromLiveData(options, reviews, threads, now);
-        if (!isMissingInitialCopilotReview(report)) {
+        const reviewRun = await loadReviewRunFn(options);
+        report = buildReportFromLiveData(options, reviews, threads, now, reviewRun);
+        if (!shouldContinuePolling(report)) {
           break;
         }
       }

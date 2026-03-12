@@ -456,6 +456,182 @@ test('copilot-review-gate polls live data when the collected signal only contain
   assert.equal(threadsCallCount, 1);
 });
 
+test('copilot-review-gate keeps polling stale-signal current-head gaps until the observed Copilot workflow run completes cleanly', async (t) => {
+  const { runCopilotReviewGate } = await loadModule();
+  const currentHead = 'ababcdcdababcdcdababcdcdababcdcdababcdcd';
+  const staleHead = 'fefefefefefefefefefefefefefefefefefefefe';
+  const signalPath = createSignalFixture(t, 'copilot-review-signal-stale-run-race.json');
+  let reviewRunCallCount = 0;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '885',
+      '--head-sha',
+      currentHead,
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+      '--signal',
+      signalPath,
+      '--poll-attempts',
+      '4',
+      '--poll-delay-ms',
+      '1',
+    ]),
+    readSignalFn: () => ({
+      schema: 'priority/copilot-review-signal@v1',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pullRequest: {
+        number: 885,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/885',
+        draft: false,
+        headSha: currentHead,
+        baseRef: 'develop',
+      },
+      latestCopilotReview: {
+        id: '52',
+        state: 'COMMENTED',
+        commitId: staleHead,
+        submittedAt: '2026-03-12T16:33:35Z',
+        url: 'https://github.com/example/review/52',
+        isCurrentHead: false,
+        bodySummary: 'Copilot reviewed the previous head before the new ready-for-review cycle.',
+      },
+      staleReviews: [],
+      unresolvedThreads: [],
+      actionableComments: [],
+      errors: [],
+    }),
+    loadReviewsFn: async () => [],
+    loadThreadsFn: async () => ({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [],
+            },
+          },
+        },
+      },
+    }),
+    loadReviewRunFn: async () => {
+      reviewRunCallCount += 1;
+      if (reviewRunCallCount === 1) {
+        return {
+          id: 93010,
+          name: 'Copilot code review',
+          status: 'in_progress',
+          conclusion: null,
+          html_url: 'https://github.com/example/actions/runs/93010',
+          head_sha: currentHead,
+        };
+      }
+      return {
+        id: 93010,
+        name: 'Copilot code review',
+        status: 'completed',
+        conclusion: 'success',
+        html_url: 'https://github.com/example/actions/runs/93010',
+        head_sha: currentHead,
+      };
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-stale-run-race.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.gateState, 'ready');
+  assert.deepEqual(result.report?.reasons, ['current-head-review-run-completed-clean']);
+  assert.equal(result.report?.reviewRun?.observationState, 'completed-clean');
+  assert.deepEqual(result.report?.poll, {
+    attemptsRequested: 4,
+    attemptsUsed: 3,
+    delayMs: 1,
+  });
+  assert.equal(reviewRunCallCount, 2);
+});
+
+test('copilot-review-gate passes from live polling when the Copilot workflow run completes cleanly before any review object is posted', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  const currentHead = 'cdcdababcdcdababcdcdababcdcdababcdcdabab';
+  let reviewRunCallCount = 0;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '885',
+      '--head-sha',
+      currentHead,
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+      '--poll-attempts',
+      '4',
+      '--poll-delay-ms',
+      '1',
+    ]),
+    loadReviewsFn: async () => [],
+    loadThreadsFn: async () => ({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [],
+            },
+          },
+        },
+      },
+    }),
+    loadReviewRunFn: async () => {
+      reviewRunCallCount += 1;
+      if (reviewRunCallCount < 3) {
+        return {
+          id: 93011,
+          name: 'Copilot code review',
+          status: 'in_progress',
+          conclusion: null,
+          html_url: 'https://github.com/example/actions/runs/93011',
+          head_sha: currentHead,
+        };
+      }
+      return {
+        id: 93011,
+        name: 'Copilot code review',
+        status: 'completed',
+        conclusion: 'success',
+        html_url: 'https://github.com/example/actions/runs/93011',
+        head_sha: currentHead,
+      };
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-live-run-clean.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.gateState, 'ready');
+  assert.deepEqual(result.report?.reasons, ['current-head-review-run-completed-clean']);
+  assert.equal(result.report?.reviewRun?.observationState, 'completed-clean');
+  assert.deepEqual(result.report?.poll, {
+    attemptsRequested: 4,
+    attemptsUsed: 3,
+    delayMs: 1,
+  });
+  assert.equal(reviewRunCallCount, 3);
+});
+
 test('copilot-review-gate blocks unresolved current-head Copilot threads', async () => {
   const { runCopilotReviewGate } = await loadModule();
   const currentHead = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
