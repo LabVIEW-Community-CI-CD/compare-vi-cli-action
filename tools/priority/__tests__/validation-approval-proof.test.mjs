@@ -326,7 +326,7 @@ test('runValidationApprovalProof emits a passing report with conservative false-
   assert.equal(result.report?.verdict.policyFlipRecommended, true);
   assert.equal(result.report?.samples[0].comparison, 'match-ready');
   assert.equal(result.report?.samples[1].comparison, 'false-blocked');
-  assert.ok(result.report?.samples[1].reasons.includes('current-head-review-missing'));
+  assert.ok(result.report?.samples[1].reasons.includes('copilot-review-run-unobserved'));
   assert.ok(fs.existsSync(reportPath));
 });
 

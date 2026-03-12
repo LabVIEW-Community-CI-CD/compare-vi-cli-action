@@ -86,6 +86,105 @@ test('copilot review signal reports a clean current-head review state', async ()
   assert.equal(report.summary.unresolvedThreadCount, 0);
   assert.equal(report.summary.actionableCommentCount, 0);
   assert.equal(report.latestCopilotReview?.commitId, headSha);
+  assert.equal(report.reviewRun.observationState, 'unobserved');
+});
+
+test('copilot review signal treats a completed current-head review run with no actionable comments as clean even when no review object is emitted', async () => {
+  const { analyzeCopilotReviewSignal } = await loadModule();
+  const headSha = '9999999999999999999999999999999999999999';
+  const report = analyzeCopilotReviewSignal({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    pull: makePull(headSha),
+    reviews: [],
+    threads: makeThreads([]),
+    workflowRun: {
+      id: 92001,
+      name: 'Copilot code review',
+      status: 'completed',
+      conclusion: 'success',
+      html_url: 'https://github.com/example/actions/runs/92001',
+      head_sha: headSha,
+      head_branch: 'issue/863-copilot-review-signal',
+      created_at: '2026-03-08T05:20:30Z',
+      updated_at: '2026-03-08T05:21:00Z',
+    },
+    now: new Date('2026-03-08T05:22:00Z'),
+  });
+
+  assert.equal(report.status, 'pass');
+  assert.equal(report.reviewState, 'clean');
+  assert.equal(report.signals.hasCurrentHeadReview, false);
+  assert.equal(report.reviewRun.runId, 92001);
+  assert.equal(report.reviewRun.observationState, 'completed-clean');
+});
+
+test('copilot review signal keeps review state in attention while the current-head review run is still active', async () => {
+  const { analyzeCopilotReviewSignal } = await loadModule();
+  const headSha = '9898989898989898989898989898989898989898';
+  const report = analyzeCopilotReviewSignal({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    pull: makePull(headSha),
+    reviews: [],
+    threads: makeThreads([]),
+    workflowRun: {
+      id: 92002,
+      name: 'Copilot code review',
+      status: 'in_progress',
+      conclusion: null,
+      html_url: 'https://github.com/example/actions/runs/92002',
+      head_sha: headSha,
+      head_branch: 'issue/863-copilot-review-signal',
+      created_at: '2026-03-08T05:20:30Z',
+      updated_at: '2026-03-08T05:21:00Z',
+    },
+    now: new Date('2026-03-08T05:22:00Z'),
+  });
+
+  assert.equal(report.reviewState, 'attention');
+  assert.equal(report.reviewRun.observationState, 'in_progress');
+});
+
+test('copilot review signal selects the current-head Copilot dynamic run from an unfiltered workflow-run list', async () => {
+  const { selectCopilotWorkflowRun } = await loadModule();
+  const currentHead = '1234123412341234123412341234123412341234';
+  const otherHead = '9999999999999999999999999999999999999999';
+
+  const selected = selectCopilotWorkflowRun(
+    {
+      workflow_runs: [
+        {
+          id: 92003,
+          name: 'Validate',
+          head_sha: currentHead,
+          updated_at: '2026-03-08T05:20:00Z',
+        },
+        {
+          id: 92004,
+          name: 'Copilot code review',
+          event: 'dynamic',
+          head_sha: otherHead,
+          status: 'completed',
+          conclusion: 'success',
+          updated_at: '2026-03-08T05:21:00Z',
+        },
+        {
+          id: 92005,
+          name: 'Copilot code review',
+          event: 'dynamic',
+          head_sha: currentHead,
+          status: 'completed',
+          conclusion: 'success',
+          updated_at: '2026-03-08T05:22:00Z',
+          html_url: 'https://github.com/example/actions/runs/92005',
+        },
+      ],
+    },
+    currentHead,
+  );
+
+  assert.equal(selected?.id, 92005);
+  assert.equal(selected?.head_sha, currentHead);
+  assert.equal(selected?.name, 'Copilot code review');
 });
 
 test('copilot review signal detects stale reviews on older head SHAs', async () => {

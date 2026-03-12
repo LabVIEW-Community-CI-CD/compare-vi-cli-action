@@ -47,6 +47,11 @@ test('agent-review-policy keeps heavyweight collection on pull_request_target an
   assert.match(workflow, /"--head-sha" "\$\{\{ steps\.workflow_run_metadata\.outputs\.head_sha \|\| steps\.workflow_run_pr\.outputs\.head_sha \}\}"/);
   assert.match(workflow, /"--base-ref" "\$\{\{ steps\.workflow_run_metadata\.outputs\.base_ref \}\}"/);
   assert.match(workflow, /"--draft" "\$\{\{ steps\.workflow_run_metadata\.outputs\.draft \}\}"/);
+  assert.match(workflow, /"--review-run-id" "\$\{\{ github\.event\.workflow_run\.id \}\}"/);
+  assert.match(workflow, /"--review-run-status" "\$\{\{ github\.event\.workflow_run\.status \}\}"/);
+  assert.match(workflow, /"--review-run-conclusion" "\$\{\{ github\.event\.workflow_run\.conclusion \}\}"/);
+  assert.match(workflow, /"--review-run-url" "\$\{\{ github\.event\.workflow_run\.html_url \}\}"/);
+  assert.match(workflow, /"--review-run-workflow-name" "\$\{\{ github\.event\.workflow_run\.name \}\}"/);
   assert.match(workflow, /else\s+args\+=\(\s+"--pr" "\$\{\{ github\.event\.pull_request\.number \}\}"/s);
   assert.match(workflow, /if \[\[ "\$\{\{ github\.event_name \}\}" == "pull_request_target" && -f tests\/results\/_agent\/reviews\/copilot-review-signal\.json \]\]; then/);
   assert.match(workflow, /node "\$\{args\[@\]\}"/);
