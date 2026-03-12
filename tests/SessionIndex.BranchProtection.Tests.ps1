@@ -72,6 +72,10 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $digestScript = Join-Path $script:repoRoot 'tools/Get-FileSha256.ps1'
     $digest = & $digestScript -Path $script:policyPath
     $bp.contract.mappingDigest | Should -Be $digest
+
+    $schemaScript = Join-Path $script:repoRoot 'tools/Invoke-JsonSchemaLite.ps1'
+    $schemaPath = Join-Path $script:repoRoot 'docs/schemas/session-index-v1.schema.json'
+    { & $schemaScript -JsonPath (Join-Path $resultsDir 'session-index.json') -SchemaPath $schemaPath } | Should -Not -Throw
   }
 
   It 'resolves pull request refs to the base branch when available' {
