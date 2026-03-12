@@ -1101,11 +1101,15 @@ test('priority:policy --apply creates missing fork-local rulesets when no identi
   );
 });
 
-test('priority:policy verify passes on user-owned throughput forks without queue-managed rulesets', async () => {
+test('priority:policy verify passes on user-owned throughput forks while still enforcing non-queue rulesets', async () => {
   const repoUrl = 'https://api.github.com/repos/test-user/test-repo';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const reportDir = await mkdtemp(path.join(os.tmpdir(), 'priority-policy-throughput-verify-'));
+  const reportPath = path.join(reportDir, 'policy-report.json');
+  const alignedRulesets = createAlignedRulesets();
 
   const fetchMock = async (url, options = {}) => {
     const method = options.method ?? 'GET';
@@ -1129,8 +1133,8 @@ test('priority:policy verify passes on user-owned throughput forks without queue
     if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
-    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
-      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(alignedRulesets.release);
     }
     if (method === 'GET' && url === listUrl) {
       return createResponse([]);
@@ -1141,7 +1145,7 @@ test('priority:policy verify passes on user-owned throughput forks without queue
   const logMessages = [];
   const errorMessages = [];
   const code = await run({
-    argv: ['node', 'check-policy.mjs'],
+    argv: ['node', 'check-policy.mjs', '--report', reportPath],
     env: {
       ...process.env,
       GITHUB_REPOSITORY: 'test-user/test-repo',
@@ -1155,24 +1159,33 @@ test('priority:policy verify passes on user-owned throughput forks without queue
     error: (msg) => errorMessages.push(msg)
   });
 
-  assert.equal(code, 0, 'verify mode should pass on user-owned throughput forks without rulesets');
+  assert.equal(code, 0, 'verify mode should pass on user-owned throughput forks when non-queue rulesets align');
   assert.ok(
     logMessages.some((msg) => msg.includes('User-owned throughput fork detected')),
     'expected throughput-fork relaxation log'
   );
   assert.deepEqual(errorMessages, []);
+  const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  assert.deepEqual(report.portability, {
+    rulesetMode: 'throughput-fork-relaxed',
+    queueManagedRulesetsPortable: false,
+    detectedBy: 'repo-profile',
+    reason: 'user-owned-fork'
+  });
 });
 
-test('priority:policy --apply does not create queue-managed rulesets on user-owned throughput forks', async () => {
+test('priority:policy --apply skips queue-managed rulesets on user-owned throughput forks but still creates non-queue rulesets', async () => {
   const repoUrl = 'https://api.github.com/repos/test-user/test-repo';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
   const requests = [];
+  let createdReleaseRuleset = null;
 
   const fetchMock = async (url, options = {}) => {
     const method = options.method ?? 'GET';
-    requests.push({ method, url });
+    requests.push({ method, url, body: options.body });
     if (method === 'GET' && url === repoUrl) {
       return createResponse({
         ...createAlignedRepoState(),
@@ -1193,11 +1206,25 @@ test('priority:policy --apply does not create queue-managed rulesets on user-own
     if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
-    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      if (createdReleaseRuleset) {
+        return createResponse(createdReleaseRuleset);
+      }
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === listUrl) {
       return createResponse([]);
+    }
+    if (method === 'POST' && url === listUrl) {
+      const payload = JSON.parse(options.body);
+      createdReleaseRuleset = {
+        ...payload,
+        id: 8614172,
+        enforcement: payload.enforcement ?? 'active',
+        target: payload.target ?? 'branch',
+        bypass_actors: payload.bypass_actors ?? []
+      };
+      return createResponse(createdReleaseRuleset, 201, 'Created');
     }
     throw new Error(`Unexpected request ${method} ${url}`);
   };
@@ -1217,11 +1244,118 @@ test('priority:policy --apply does not create queue-managed rulesets on user-own
     error: () => {}
   });
 
-  assert.equal(code, 0, 'apply mode should succeed on user-owned throughput forks without rulesets');
+  assert.equal(code, 0, 'apply mode should succeed on user-owned throughput forks');
+  const createRequests = requests.filter((entry) => entry.method === 'POST' && entry.url === listUrl);
+  assert.equal(createRequests.length, 1, 'apply mode should only create the non-queue release ruleset');
+  const createdPayload = JSON.parse(createRequests[0].body);
   assert.equal(
-    requests.some((entry) => entry.method === 'POST' && entry.url === listUrl),
+    createdPayload.rules.some((rule) => rule?.type === 'merge_queue'),
     false,
-    'apply mode should not create rulesets for user-owned throughput forks'
+    'apply mode should not create queue-managed rulesets for throughput forks'
+  );
+});
+
+test('priority:policy --apply downgrades queue-managed rulesets when a fork rejects merge_queue rules', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-fork';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const reportDir = await mkdtemp(path.join(os.tmpdir(), 'priority-policy-throughput-apply-'));
+  const reportPath = path.join(reportDir, 'policy-report.json');
+  const requests = [];
+  let createdReleaseRuleset = null;
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    requests.push({ method, url, body: options.body });
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'Organization', login: 'test-org' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      if (createdReleaseRuleset) {
+        return createResponse(createdReleaseRuleset);
+      }
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse([]);
+    }
+    if (method === 'POST' && url === listUrl) {
+      const payload = JSON.parse(options.body);
+      if (payload.rules.some((rule) => rule?.type === 'merge_queue')) {
+        return createResponse(
+          {
+            message: 'Validation Failed',
+            errors: [{ message: "Invalid rule 'merge_queue'" }]
+          },
+          422,
+          'Unprocessable Entity'
+        );
+      }
+      createdReleaseRuleset = {
+        ...payload,
+        id: 8614172,
+        enforcement: payload.enforcement ?? 'active',
+        target: payload.target ?? 'branch',
+        bypass_actors: payload.bypass_actors ?? []
+      };
+      return createResponse(createdReleaseRuleset, 201, 'Created');
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const errorMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--apply', '--report', reportPath],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-fork',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, `apply mode should downgrade and succeed on merge_queue-portability forks: ${errorMessages.join(' | ')}`);
+  assert.ok(
+    logMessages.some((msg) => msg.includes('Fork ruleset portability downgrade detected')),
+    'expected portability downgrade log'
+  );
+  const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  assert.equal(report.portability.rulesetMode, 'throughput-fork-relaxed');
+  assert.equal(report.portability.queueManagedRulesetsPortable, false);
+  assert.equal(report.portability.detectedBy, 'api-rejection');
+  assert.match(report.portability.reason ?? '', /^ruleset (8811898|8614140): merge_queue unsupported$/);
+  assert.ok(
+    requests.some((entry) => entry.method === 'POST' && entry.url === listUrl && JSON.parse(entry.body).rules.some((rule) => rule?.type === 'merge_queue')),
+    'expected an initial queue-managed ruleset create attempt'
+  );
+  assert.ok(
+    requests.some((entry) => entry.method === 'POST' && entry.url === listUrl && JSON.parse(entry.body).rules.every((rule) => rule?.type !== 'merge_queue')),
+    'expected a non-queue ruleset create attempt after downgrade'
   );
 });
 
