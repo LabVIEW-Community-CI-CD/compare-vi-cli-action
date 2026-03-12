@@ -72,6 +72,7 @@ const COPILOT_REVIEW_WORKFLOW_NAME = 'Copilot code review';
 const PENDING_WORKFLOW_RUN_STATUSES = new Set(['QUEUED', 'IN_PROGRESS', 'PENDING', 'REQUESTED', 'WAITING']);
 const COPILOT_REVIEW_ACTIVE_POLL_HINT_SECONDS = 10;
 const COPILOT_REVIEW_POST_POLL_HINT_SECONDS = 5;
+const COPILOT_REVIEW_METADATA_CACHE_TTL_MS = 60 * 1000;
 const COPILOT_LOGINS = new Set([
   'copilot',
   'copilot-pull-request-reviewer',
@@ -698,6 +699,9 @@ function loadCopilotReviewWorkflowRun({ repoRoot, repository, headSha, deps = {}
   if (!normalizeText(repository) || !normalizeText(headSha)) {
     return null;
   }
+  if (typeof deps.loadCopilotReviewWorkflowRunFn === 'function') {
+    return deps.loadCopilotReviewWorkflowRunFn({ repoRoot, repository, headSha });
+  }
   const { owner, repo } = parseRepositorySlug(repository);
   const endpoint = `repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(headSha)}&per_page=20`;
   const payload = runGhApiJson(repoRoot, endpoint, deps);
@@ -1001,7 +1005,8 @@ export async function buildCanonicalDeliveryDecision({
   targetRepository,
   policy,
   source = 'comparevi-standing-priority-live',
-  deps = {}
+  deps = {},
+  now = new Date()
 }) {
   const effectivePolicy = policy ?? (await loadDeliveryAgentPolicy(repoRoot));
   const implementationRemote = normalizeText(effectivePolicy.implementationRemote) || 'origin';
@@ -1027,7 +1032,7 @@ export async function buildCanonicalDeliveryDecision({
   const selectedIssue = selected.selectedIssue;
   let pullRequest = selected.pullRequest ?? null;
   let pullRequestStatus = selected.pullRequestStatus ?? null;
-  if (pullRequest && pullRequest.headRefOid) {
+  if (pullRequest && shouldLoadCopilotReviewMetadata(pullRequest, pullRequestStatus)) {
     const pullRequestRepository =
       normalizeText(pullRequest.repository) ||
       normalizeText(targetRepository) ||
@@ -1036,19 +1041,14 @@ export async function buildCanonicalDeliveryDecision({
     let reviewWorkflow = null;
     let reviewSignal = null;
     try {
-      reviewWorkflow = loadCopilotReviewWorkflowRun({
-        repoRoot,
-        repository: pullRequestRepository,
-        headSha: pullRequest.headRefOid,
-        deps
-      });
-      reviewSignal = loadCopilotReviewSignal({
+      ({ reviewWorkflow, reviewSignal } = await loadCachedCopilotReviewMetadata({
         repoRoot,
         repository: pullRequestRepository,
         pullRequestNumber: pullRequest.number,
         headSha: pullRequest.headRefOid,
-        deps
-      });
+        deps,
+        now
+      }));
     } catch {
       reviewWorkflow = null;
       reviewSignal = null;
@@ -1141,6 +1141,103 @@ export async function buildCanonicalDeliveryDecision({
 
 function isRateLimitMessage(message) {
   return /rate limit/i.test(normalizeText(message));
+}
+
+function shouldLoadCopilotReviewMetadata(pr, prStatus = null) {
+  if (!pr?.headRefOid) {
+    return false;
+  }
+  const laneLifecycle = normalizeText(prStatus?.laneLifecycle).toLowerCase();
+  if (laneLifecycle === 'waiting-review' || laneLifecycle === 'coding') {
+    return true;
+  }
+  if (laneLifecycle !== 'ready-merge') {
+    return false;
+  }
+  const reviewDecision = normalizeText(pr.reviewDecision).toUpperCase();
+  const mergeStateStatus = normalizeText(pr.mergeStateStatus).toUpperCase();
+  return !reviewDecision && mergeStateStatus === 'BLOCKED';
+}
+
+function resolveCopilotReviewMetadataCachePath({ repoRoot, repository, pullRequestNumber, headSha }) {
+  const repositorySegment = sanitizeSegment(repository || 'repo');
+  const pullRequestSegment = sanitizeSegment(`pr-${pullRequestNumber || 'unknown'}`);
+  const headSegment = sanitizeSegment(headSha || 'head');
+  return path.join(
+    repoRoot,
+    'tests',
+    'results',
+    '_agent',
+    'runtime',
+    'copilot-review-cache',
+    `${repositorySegment}-${pullRequestSegment}-${headSegment}.json`
+  );
+}
+
+async function loadCachedCopilotReviewMetadata({
+  repoRoot,
+  repository,
+  pullRequestNumber,
+  headSha,
+  deps = {},
+  now = new Date()
+}) {
+  const cachePath = resolveCopilotReviewMetadataCachePath({
+    repoRoot,
+    repository,
+    pullRequestNumber,
+    headSha
+  });
+  const cached = await readJsonIfPresent(cachePath);
+  const nowTime = now instanceof Date ? now.getTime() : Date.parse(now);
+  const cachedTime = Date.parse(cached?.generatedAt || '');
+  if (
+    cached &&
+    cached.repository === repository &&
+    cached.pullRequestNumber === pullRequestNumber &&
+    cached.headSha === headSha &&
+    Number.isFinite(nowTime) &&
+    Number.isFinite(cachedTime) &&
+    nowTime - cachedTime <= COPILOT_REVIEW_METADATA_CACHE_TTL_MS
+  ) {
+    return {
+      reviewWorkflow: cached.reviewWorkflow ?? null,
+      reviewSignal: cached.reviewSignal ?? null
+    };
+  }
+  const reviewWorkflow = loadCopilotReviewWorkflowRun({
+    repoRoot,
+    repository,
+    headSha,
+    deps
+  });
+  const reviewSignal = loadCopilotReviewSignal({
+    repoRoot,
+    repository,
+    pullRequestNumber,
+    headSha,
+    deps
+  });
+  await mkdir(path.dirname(cachePath), { recursive: true });
+  await writeFile(
+    cachePath,
+    JSON.stringify(
+      {
+        generatedAt: Number.isFinite(nowTime) ? new Date(nowTime).toISOString() : toIso(),
+        repository,
+        pullRequestNumber,
+        headSha,
+        reviewWorkflow,
+        reviewSignal
+      },
+      null,
+      2
+    )
+  );
+  return {
+    reviewWorkflow,
+    reviewSignal
+  };
 }
 
 function extractIssueNumberFromUrl(url) {
