@@ -3,7 +3,8 @@
 param(
   [switch]$AutoFix,
   [switch]$Stage,
-  [string]$CommitMessage
+  [string]$CommitMessage,
+  [switch]$FailOnDrift
 )
 
 Set-StrictMode -Version Latest
@@ -27,13 +28,79 @@ function Resolve-PythonExe {
   return $null
 }
 
+function Get-WorkflowDriftStateRoot {
+  if ($env:RUNNER_TEMP -and $env:RUNNER_TEMP.Trim()) {
+    return (Join-Path $env:RUNNER_TEMP 'comparevi-workflow-drift')
+  }
+
+  return (Join-Path (Join-Path (Get-Location) '.tmp') 'workflow-drift')
+}
+
+function Get-VenvPythonPath {
+  param([Parameter(Mandatory)][string]$VenvPath)
+
+  if ($IsWindows -or $env:OS -eq 'Windows_NT') {
+    return (Join-Path $VenvPath 'Scripts\python.exe')
+  }
+
+  return (Join-Path $VenvPath 'bin/python')
+}
+
+function Test-RuamelYamlImport {
+  param([Parameter(Mandatory)][string]$PythonExe)
+
+  $null = & $PythonExe -c 'import ruamel.yaml' 2>&1
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Ensure-WorkflowUpdaterPython {
+  param([Parameter(Mandatory)][string]$BasePythonExe)
+
+  if (Test-RuamelYamlImport -PythonExe $BasePythonExe) {
+    return $BasePythonExe
+  }
+
+  $stateRoot = Get-WorkflowDriftStateRoot
+  $venvPath = Join-Path $stateRoot 'venv'
+  $venvPython = Get-VenvPythonPath -VenvPath $venvPath
+
+  if (-not (Test-Path -LiteralPath $venvPython)) {
+    New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
+    & $BasePythonExe -m venv $venvPath
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $venvPython)) {
+      throw "Failed to create workflow drift virtualenv at $venvPath"
+    }
+  }
+
+  if (-not (Test-RuamelYamlImport -PythonExe $venvPython)) {
+    $attempt = 0
+    $maxAttempts = 4
+    while ($attempt -lt $maxAttempts) {
+      $attempt++
+      & $venvPython -m pip install --disable-pip-version-check ruamel.yaml | Out-Host
+      if ($LASTEXITCODE -eq 0 -and (Test-RuamelYamlImport -PythonExe $venvPython)) {
+        break
+      }
+
+      if ($attempt -ge $maxAttempts) {
+        throw "Failed to install ruamel.yaml for workflow drift after $attempt attempts"
+      }
+
+      $delaySeconds = [Math]::Min(20, [Math]::Pow(2, $attempt))
+      Start-Sleep -Seconds $delaySeconds
+    }
+  }
+
+  return $venvPython
+}
+
 $py = Resolve-PythonExe
 if (-not $py) {
   Write-Host '::notice::Python not found; skipping workflow drift check.'
   exit 0
 }
 
-& $py -m pip install --user ruamel.yaml > $null 2>&1
+$workflowPython = Ensure-WorkflowUpdaterPython -BasePythonExe $py
 
 function Process-Staging {
   param([string[]]$ChangedFiles)
@@ -65,10 +132,10 @@ function Process-Staging {
 }
 
 if ($AutoFix) {
-  & $py tools/workflows/update_workflows.py --write @workflowFiles | Out-Host
+  & $workflowPython tools/workflows/update_workflows.py --write @workflowFiles | Out-Host
 }
 
-& $py tools/workflows/update_workflows.py --check @workflowFiles | Out-Host
+& $workflowPython tools/workflows/update_workflows.py --check @workflowFiles | Out-Host
 $exitCode = $LASTEXITCODE
 
 switch ($exitCode) {
@@ -86,7 +153,11 @@ switch ($exitCode) {
     exit 0
   }
   3 {
-    Write-Warning 'Workflow drift detected (auto-fix applied).'
+    if ($AutoFix) {
+      Write-Warning 'Workflow drift detected (auto-fix applied).'
+    } else {
+      Write-Warning 'Workflow drift detected.'
+    }
     $changed = @()
     foreach ($wf in $workflowFiles) {
       if (git status --porcelain $wf) { $changed += $wf }
@@ -96,6 +167,10 @@ switch ($exitCode) {
       git --no-pager diff @changed | Out-Host
     }
     Process-Staging -ChangedFiles $changed
+    if ($FailOnDrift) {
+      exit 3
+    }
+
     exit 0
   }
   default {

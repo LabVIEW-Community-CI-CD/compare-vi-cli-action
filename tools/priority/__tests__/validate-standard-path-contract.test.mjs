@@ -29,6 +29,15 @@ test('Validate standard path is not blocked by a validation environment approval
   assert.doesNotMatch(workflow, /priority:deployment:assert/);
 });
 
+test('validate workflow uses the repo workflow-drift helper instead of inline ruamel installs', () => {
+  const workflow = readRepoFile('.github/workflows/validate.yml');
+
+  assert.match(workflow, /tools\/Check-WorkflowDrift\.ps1/);
+  assert.doesNotMatch(workflow, /pip install --user ruamel\.yaml/);
+  assert.doesNotMatch(workflow, /python tools\/workflows\/update_workflows\.py --check/);
+  assert.match(workflow, /tools\/Check-WorkflowDrift\.ps1 -FailOnDrift/);
+});
+
 test('hook-parity checks out the PR head directly instead of the merge ref on pull_request', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
   const hookParitySection = extractWorkflowJobSection(workflow, 'hook-parity', 'semver');
