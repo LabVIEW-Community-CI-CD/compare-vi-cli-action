@@ -200,6 +200,52 @@ test('copilot-review-gate blocks merge-group runs when the queued source head is
   assert.equal(result.report?.source.mergeGroup?.sourceHeadMatchesPullRequestHead, false);
 });
 
+test('copilot-review-gate fails early when a merge-group head branch cannot be resolved', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  let pullRequestLookupCalled = false;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'merge_group',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--head-sha',
+      '7c5a463fc1c90edff1bc7671a22cd2bb1308def5',
+      '--head-branch',
+      'feature/not-a-queue-branch',
+      '--base-ref',
+      'refs/heads/develop',
+    ]),
+    loadPullRequestFn: async () => {
+      pullRequestLookupCalled = true;
+      throw new Error('loadPullRequestFn should not be called for unresolved merge-group metadata');
+    },
+    loadReviewsFn: async () => [],
+    loadThreadsFn: async () => ({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [],
+            },
+          },
+        },
+      },
+    }),
+    writeReportFn: () => 'memory://copilot-review-gate-merge-group-unresolved.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report?.status, 'fail');
+  assert.equal(result.report?.gateState, 'error');
+  assert.deepEqual(result.report?.reasons, ['merge-group-source-unresolved']);
+  assert.match(result.report?.errors?.[0] ?? '', /expected gh-readonly-queue\/<base>\/pr-<number>-<sha> pattern/i);
+  assert.equal(result.report?.source.mode, 'merge-group-metadata');
+  assert.equal(pullRequestLookupCalled, false);
+});
+
 test('copilot-review-gate skips throughput fork repos before any live lookup', async () => {
   const { runCopilotReviewGate } = await loadModule();
   let reviewsCalled = false;

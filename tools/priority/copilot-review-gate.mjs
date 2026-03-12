@@ -1263,62 +1263,58 @@ export async function runCopilotReviewGate({
     const signalPathExists = options.signalPath && existsSync(path.resolve(process.cwd(), options.signalPath));
     const signalReport = signalPathExists ? readSignalFn(options.signalPath) : null;
     const mergeGroupSource = options.eventName === 'merge_group' ? parseMergeGroupHeadBranch(options.headBranch) : null;
-    const resolvedOptions =
-      options.eventName === 'merge_group' && mergeGroupSource
-        ? {
-            ...options,
-            prNumber: mergeGroupSource.prNumber,
-            headSha: mergeGroupSource.sourceHeadSha,
-            baseRef: mergeGroupSource.baseRef ?? options.baseRef,
-          }
-        : options;
-    const preflightPullRequest = buildPullRequest(resolvedOptions, signalReport, null, mergeGroupSource);
-    const preflightBaseRef = normalizeBaseRef(preflightPullRequest.baseRef)?.toLowerCase() ?? null;
-    const preflightRepository =
-      normalizeText(signalReport?.repository) ??
-      normalizeText(resolvedOptions.repo);
-    const shouldSkipWithoutLookup =
-      preflightPullRequest.draft === true ||
-      !preflightBaseRef ||
-      !options.gatedBaseRefs.includes(preflightBaseRef) ||
-      (preflightRepository !== null && !isCanonicalRepository(preflightRepository));
-
-    if (shouldSkipWithoutLookup) {
+    if (options.eventName === 'merge_group' && !mergeGroupSource) {
       report = evaluateGateOutcome({
         eventName: options.eventName,
-        repository: preflightRepository,
-        sourceMode: options.eventName === 'merge_group' ? 'merge-group-metadata' : 'metadata',
-        pullRequest: preflightPullRequest,
+        repository: normalizeText(options.repo),
+        sourceMode: 'merge-group-metadata',
+        pullRequest: buildPullRequest(options, signalReport, null, null),
         reviews: [],
         threads: [],
-        reviewRun: buildReviewRunFromSignal(signalReport, resolvedOptions),
-        errors: [],
+        reviewRun: buildReviewRunFromSignal(signalReport, options),
+        errors: [
+          `Merge-group head branch '${options.headBranch ?? 'unknown'}' did not match the expected gh-readonly-queue/<base>/pr-<number>-<sha> pattern.`,
+        ],
         gatedBaseRefs: options.gatedBaseRefs,
         now,
       });
-    } else if (signalReport) {
-      report = buildReportFromSignal(resolvedOptions, signalReport, now);
     } else {
-      const livePullRequest = options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions) : null;
-      const reviews = await loadReviewsFn(resolvedOptions);
-      const threads = await loadThreadsFn(resolvedOptions);
-      const reviewRun = await loadReviewRunFn(resolvedOptions);
-      report = buildReportFromLiveData(
-        resolvedOptions,
-        reviews,
-        threads,
-        now,
-        reviewRun,
-        livePullRequest,
-        mergeGroupSource,
-      );
-    }
+      const resolvedOptions =
+        options.eventName === 'merge_group' && mergeGroupSource
+          ? {
+              ...options,
+              prNumber: mergeGroupSource.prNumber,
+              headSha: mergeGroupSource.sourceHeadSha,
+              baseRef: mergeGroupSource.baseRef ?? options.baseRef,
+            }
+          : options;
+      const preflightPullRequest = buildPullRequest(resolvedOptions, signalReport, null, mergeGroupSource);
+      const preflightBaseRef = normalizeBaseRef(preflightPullRequest.baseRef)?.toLowerCase() ?? null;
+      const preflightRepository =
+        normalizeText(signalReport?.repository) ??
+        normalizeText(resolvedOptions.repo);
+      const shouldSkipWithoutLookup =
+        preflightPullRequest.draft === true ||
+        !preflightBaseRef ||
+        !options.gatedBaseRefs.includes(preflightBaseRef) ||
+        (preflightRepository !== null && !isCanonicalRepository(preflightRepository));
 
-    if (shouldPollForInitialCopilotReview(report, options)) {
-      let attemptsUsed = 1;
-      while (attemptsUsed < options.pollAttempts) {
-        attemptsUsed += 1;
-        await sleep(options.pollDelayMs);
+      if (shouldSkipWithoutLookup) {
+        report = evaluateGateOutcome({
+          eventName: options.eventName,
+          repository: preflightRepository,
+          sourceMode: options.eventName === 'merge_group' ? 'merge-group-metadata' : 'metadata',
+          pullRequest: preflightPullRequest,
+          reviews: [],
+          threads: [],
+          reviewRun: buildReviewRunFromSignal(signalReport, resolvedOptions),
+          errors: [],
+          gatedBaseRefs: options.gatedBaseRefs,
+          now,
+        });
+      } else if (signalReport) {
+        report = buildReportFromSignal(resolvedOptions, signalReport, now);
+      } else {
         const livePullRequest = options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions) : null;
         const reviews = await loadReviewsFn(resolvedOptions);
         const threads = await loadThreadsFn(resolvedOptions);
@@ -1332,19 +1328,40 @@ export async function runCopilotReviewGate({
           livePullRequest,
           mergeGroupSource,
         );
-        if (!shouldContinuePolling(report)) {
-          break;
-        }
       }
 
-      report = {
-        ...report,
-        poll: {
-          attemptsRequested: options.pollAttempts,
-          attemptsUsed,
-          delayMs: options.pollDelayMs,
-        },
-      };
+      if (shouldPollForInitialCopilotReview(report, options)) {
+        let attemptsUsed = 1;
+        while (attemptsUsed < options.pollAttempts) {
+          attemptsUsed += 1;
+          await sleep(options.pollDelayMs);
+          const livePullRequest = options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions) : null;
+          const reviews = await loadReviewsFn(resolvedOptions);
+          const threads = await loadThreadsFn(resolvedOptions);
+          const reviewRun = await loadReviewRunFn(resolvedOptions);
+          report = buildReportFromLiveData(
+            resolvedOptions,
+            reviews,
+            threads,
+            now,
+            reviewRun,
+            livePullRequest,
+            mergeGroupSource,
+          );
+          if (!shouldContinuePolling(report)) {
+            break;
+          }
+        }
+
+        report = {
+          ...report,
+          poll: {
+            attemptsRequested: options.pollAttempts,
+            attemptsUsed,
+            delayMs: options.pollDelayMs,
+          },
+        };
+      }
     }
 
     if (report.status !== 'pass') {

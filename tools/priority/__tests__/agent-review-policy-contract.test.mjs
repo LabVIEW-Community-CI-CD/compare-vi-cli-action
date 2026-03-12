@@ -13,6 +13,7 @@ test('agent-review-policy keeps heavyweight collection on pull_request_target an
   assert.match(workflow, /merge_group:/);
   assert.doesNotMatch(workflow, /workflow_run:/);
   assert.match(workflow, /pull_request_review:\s+types:\s+\[submitted\]/);
+  assert.match(workflow, /permissions:\s+actions: read\s+pull-requests: read\s+contents: read/ms);
   assert.match(workflow, /uses: actions\/checkout@v5/);
   assert.match(workflow, /repository:\s+\$\{\{\s*github\.repository\s*\}\}/);
   assert.match(

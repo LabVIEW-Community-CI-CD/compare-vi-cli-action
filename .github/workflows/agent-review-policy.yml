@@ -8,6 +8,7 @@ on:
   merge_group:
 
 permissions:
+  actions: read
   pull-requests: read
   contents: read
 
