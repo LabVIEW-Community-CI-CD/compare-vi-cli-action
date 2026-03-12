@@ -603,12 +603,16 @@ function normalizeExecutionReceipt(executionReceipt, { now, adapter, repository,
 }
 
 function resolvePollIntervalSeconds(options, executionReceipt) {
-  const defaultSeconds = Number.isInteger(options?.pollIntervalSeconds) ? options.pollIntervalSeconds : DEFAULT_POLL_INTERVAL_SECONDS;
+  const configuredSeconds = Number.isInteger(options?.pollIntervalSeconds) ? options.pollIntervalSeconds : undefined;
+  let defaultSeconds =
+    typeof configuredSeconds === 'number' && configuredSeconds > 0
+      ? configuredSeconds
+      : DEFAULT_POLL_INTERVAL_SECONDS;
+  if (!Number.isFinite(defaultSeconds) || defaultSeconds <= 0) {
+    defaultSeconds = 1;
+  }
   const hintedSeconds = Number(executionReceipt?.details?.pollIntervalSecondsHint);
   if (!Number.isFinite(hintedSeconds) || hintedSeconds <= 0) {
-    return defaultSeconds;
-  }
-  if (defaultSeconds <= 0) {
     return defaultSeconds;
   }
   return Math.min(defaultSeconds, Math.max(1, Math.floor(hintedSeconds)));

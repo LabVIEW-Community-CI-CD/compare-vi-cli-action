@@ -73,6 +73,7 @@ const PENDING_WORKFLOW_RUN_STATUSES = new Set(['QUEUED', 'IN_PROGRESS', 'PENDING
 const COPILOT_REVIEW_ACTIVE_POLL_HINT_SECONDS = 10;
 const COPILOT_REVIEW_POST_POLL_HINT_SECONDS = 5;
 const COPILOT_REVIEW_METADATA_CACHE_TTL_MS = 60 * 1000;
+const COPILOT_REVIEW_METADATA_RETENTION_MS = 24 * 60 * 60 * 1000;
 const GH_JSON_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 const COPILOT_LOGINS = new Set([
   'copilot',
@@ -698,12 +699,12 @@ function selectCopilotReviewWorkflowRun(runs, headSha) {
   return normalizedRuns[0] ?? null;
 }
 
-function loadCopilotReviewWorkflowRun({ repoRoot, repository, headSha, deps = {} }) {
+async function loadCopilotReviewWorkflowRun({ repoRoot, repository, headSha, deps = {} }) {
   if (!normalizeText(repository) || !normalizeText(headSha)) {
     return null;
   }
   if (typeof deps.loadCopilotReviewWorkflowRunFn === 'function') {
-    return deps.loadCopilotReviewWorkflowRunFn({ repoRoot, repository, headSha });
+    return await deps.loadCopilotReviewWorkflowRunFn({ repoRoot, repository, headSha });
   }
   const { owner, repo } = parseRepositorySlug(repository);
   const endpoint = `repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(headSha)}&per_page=100`;
@@ -767,12 +768,12 @@ function normalizeCopilotThread(thread, headSha) {
   };
 }
 
-function loadCopilotReviewSignal({ repoRoot, repository, pullRequestNumber, headSha, deps = {} }) {
+async function loadCopilotReviewSignal({ repoRoot, repository, pullRequestNumber, headSha, deps = {} }) {
   if (!normalizeText(repository) || !coercePositiveInteger(pullRequestNumber) || !normalizeText(headSha)) {
     return null;
   }
   if (typeof deps.loadCopilotReviewSignalFn === 'function') {
-    return deps.loadCopilotReviewSignalFn({ repoRoot, repository, pullRequestNumber, headSha });
+    return await deps.loadCopilotReviewSignalFn({ repoRoot, repository, pullRequestNumber, headSha });
   }
   const { owner, repo } = parseRepositorySlug(repository);
   const reviewsPayload = runGhApiJson(repoRoot, `repos/${owner}/${repo}/pulls/${pullRequestNumber}/reviews?per_page=100`, deps);
@@ -1177,7 +1178,7 @@ function resolveCopilotReviewMetadataCachePath({ repoRoot, repository, pullReque
   );
 }
 
-async function pruneCopilotReviewMetadataCache({ repoRoot, repository, pullRequestNumber, headSha }) {
+async function pruneCopilotReviewMetadataCache({ repoRoot, repository, pullRequestNumber, headSha, now = new Date() }) {
   const cachePath = resolveCopilotReviewMetadataCachePath({
     repoRoot,
     repository,
@@ -1188,6 +1189,7 @@ async function pruneCopilotReviewMetadataCache({ repoRoot, repository, pullReque
   const repositorySegment = sanitizeSegment(repository || 'repo');
   const pullRequestSegment = sanitizeSegment(`pr-${pullRequestNumber || 'unknown'}`);
   const cachePrefix = `${repositorySegment}-${pullRequestSegment}-`;
+  const nowTime = now instanceof Date ? now.getTime() : Date.parse(now);
   let entries = [];
   try {
     entries = await readdir(cacheDir, { withFileTypes: true });
@@ -1206,6 +1208,25 @@ async function pruneCopilotReviewMetadataCache({ repoRoot, repository, pullReque
           return;
         }
         await rm(entryPath, { force: true });
+      })
+  );
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      .map(async (entry) => {
+        const entryPath = path.join(cacheDir, entry.name);
+        if (entryPath === cachePath) {
+          return;
+        }
+        const cached = await readJsonIfPresent(entryPath);
+        const generatedAt = Date.parse(cached?.generatedAt || '');
+        if (
+          Number.isFinite(nowTime) &&
+          Number.isFinite(generatedAt) &&
+          nowTime - generatedAt > COPILOT_REVIEW_METADATA_RETENTION_MS
+        ) {
+          await rm(entryPath, { force: true });
+        }
       })
   );
 }
@@ -1241,13 +1262,13 @@ async function loadCachedCopilotReviewMetadata({
       reviewSignal: cached.reviewSignal ?? null
     };
   }
-  const reviewWorkflow = loadCopilotReviewWorkflowRun({
+  const reviewWorkflow = await loadCopilotReviewWorkflowRun({
     repoRoot,
     repository,
     headSha,
     deps
   });
-  const reviewSignal = loadCopilotReviewSignal({
+  const reviewSignal = await loadCopilotReviewSignal({
     repoRoot,
     repository,
     pullRequestNumber,
@@ -1274,7 +1295,8 @@ async function loadCachedCopilotReviewMetadata({
     repoRoot,
     repository,
     pullRequestNumber,
-    headSha
+    headSha,
+    now
   });
   return {
     reviewWorkflow,

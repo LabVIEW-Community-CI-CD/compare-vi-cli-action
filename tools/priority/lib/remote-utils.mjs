@@ -516,7 +516,7 @@ export function findExistingPullRequest(
       if (!expectedOwner) {
         return true;
       }
-      return !headOwner || headOwner === expectedOwner;
+      return headOwner === expectedOwner;
     }) ?? null
   );
 }

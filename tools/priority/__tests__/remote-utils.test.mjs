@@ -394,6 +394,30 @@ test('findExistingPullRequest falls back to the unqualified branch selector when
   assert.equal(pullRequest.number, 963);
 });
 
+test('findExistingPullRequest rejects ambiguous matches when an expected owner is known but the response omits headRepositoryOwner', () => {
+  const pullRequest = findExistingPullRequest(
+    '/tmp/repo',
+    {
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      headRepository: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+      branch: 'issue/963-org-owned-fork-pr-helper',
+      base: 'develop'
+    },
+    {
+      runGhJsonFn: () => [
+        {
+          number: 963,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963',
+          headRefName: 'issue/963-org-owned-fork-pr-helper',
+          baseRefName: 'develop'
+        }
+      ]
+    }
+  );
+
+  assert.equal(pullRequest, null);
+});
+
 test('isExistingPullRequestError detects duplicate-create responses', () => {
   assert.equal(
     isExistingPullRequestError(new Error('gh: A pull request already exists for owner:branch.')),
