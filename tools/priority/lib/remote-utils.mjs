@@ -382,6 +382,20 @@ export function buildGhPrCreateArgs({ upstream, origin, headRepository, branch, 
   ];
 }
 
+export function buildGhPrEditArgs({ upstream, pullRequest, title, body }) {
+  return [
+    'pr',
+    'edit',
+    String(pullRequest.number),
+    '--repo',
+    buildRepositorySlug(upstream),
+    '--title',
+    title,
+    '--body',
+    body
+  ];
+}
+
 export function buildGhPrListArgs({ upstream, branch, base, head }) {
   return [
     'pr',
@@ -531,6 +545,7 @@ export function runGhPrCreate(
     runGhGraphqlFn = runGhGraphql,
     runGhJsonFn = runGhJson,
     findExistingPullRequestFn = findExistingPullRequest,
+    updateExistingPullRequestFn = updateExistingPullRequest,
     writeStdoutFn = (text) => process.stdout.write(text)
   } = {}
 ) {
@@ -589,6 +604,18 @@ export function runGhPrCreate(
             }
           );
           if (pullRequest?.url) {
+            updateExistingPullRequestFn(
+              repoRoot,
+              {
+                upstream,
+                pullRequest,
+                title,
+                body
+              },
+              {
+                spawnSyncFn
+              }
+            );
             writeStdoutFn(`${pullRequest.url}\n`);
             return {
               strategy,
@@ -637,6 +664,18 @@ export function runGhPrCreate(
         }
       );
       if (pullRequest?.url) {
+        updateExistingPullRequestFn(
+          repoRoot,
+          {
+            upstream,
+            pullRequest,
+            title,
+            body
+          },
+          {
+            spawnSyncFn
+          }
+        );
         writeStdoutFn(`${pullRequest.url}\n`);
         return {
           strategy,
@@ -665,4 +704,21 @@ export function runGhPrCreate(
     strategy,
     pullRequest
   };
+}
+
+export function updateExistingPullRequest(
+  repoRoot,
+  { upstream, pullRequest, title, body },
+  {
+    spawnSyncFn = spawnSync
+  } = {}
+) {
+  const args = buildGhPrEditArgs({ upstream, pullRequest, title, body });
+  const result = spawnSyncFn('gh', args, {
+    cwd: repoRoot,
+    ...DEFAULT_GH_OPTIONS
+  });
+  if (result.status !== 0) {
+    throw new Error(buildGhCommandError(args, result, `exit ${result.status}`));
+  }
 }
