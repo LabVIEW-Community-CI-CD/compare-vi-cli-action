@@ -1195,7 +1195,7 @@ test('priority:policy verify honors repo portability overrides for forks that ca
   const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
   manifestOverride.repoProfiles = {
     ...(manifestOverride.repoProfiles ?? {}),
-    'test-org/test-fork': {
+    'Test-Org/Test-Fork': {
       rulesetMode: 'throughput-fork-relaxed',
       reason: 422
     }
@@ -1261,6 +1261,74 @@ test('priority:policy verify honors repo portability overrides for forks that ca
     detectedBy: 'repo-profile',
     reason: '422'
   });
+});
+
+test('priority:policy fails closed when throughput portability override targets a non-fork repo', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const alignedRulesets = createAlignedRulesets();
+  const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
+  manifestOverride.repoProfiles = {
+    ...(manifestOverride.repoProfiles ?? {}),
+    'test-org/test-repo': {
+      rulesetMode: 'throughput-fork-relaxed',
+      reason: 'bad-non-fork-override'
+    }
+  };
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: false,
+        owner: { type: 'Organization', login: 'test-org' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse(alignedRulesets.develop);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse(alignedRulesets.main);
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(alignedRulesets.release);
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse(Object.values(alignedRulesets).map(toRulesetSummary));
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  await assert.rejects(
+    () =>
+      run({
+        argv: ['node', 'check-policy.mjs'],
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: 'test-org/test-repo',
+          GITHUB_TOKEN: 'fake-token'
+        },
+        fetchFn: fetchMock,
+        execSyncFn: () => {
+          throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+        },
+        manifestOverride,
+        log: () => {},
+        error: () => {}
+      }),
+    /Invalid repo portability profile for test-org\/test-repo: throughput-fork-relaxed requires a fork repository/
+  );
 });
 
 test('priority:policy fails closed on invalid repo portability profile modes', async () => {

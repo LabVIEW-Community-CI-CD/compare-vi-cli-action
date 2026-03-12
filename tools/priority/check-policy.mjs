@@ -161,7 +161,11 @@ function normalizePortabilityReason(reason, fallback = null) {
 }
 
 function resolveManifestPortabilityOverride(manifest, repositorySlug) {
-  const repoProfile = manifest?.repoProfiles?.[repositorySlug];
+  const normalizedRepositorySlug = String(repositorySlug ?? '').trim().toLowerCase();
+  const repoProfileEntry = Object.entries(manifest?.repoProfiles ?? {}).find(
+    ([slug]) => String(slug ?? '').trim().toLowerCase() === normalizedRepositorySlug
+  );
+  const repoProfile = repoProfileEntry?.[1];
   if (!repoProfile || typeof repoProfile !== 'object') {
     return null;
   }
@@ -171,7 +175,7 @@ function resolveManifestPortabilityOverride(manifest, repositorySlug) {
     return {
       queueManagedRulesetsPortable: false,
       detectedBy: 'repo-profile',
-      reason: normalizePortabilityReason(repoProfile.reason, `repo-profile:${repositorySlug}`)
+      reason: normalizePortabilityReason(repoProfile.reason, `repo-profile:${normalizedRepositorySlug}`)
     };
   }
   if (mode === 'standard') {
@@ -1481,7 +1485,16 @@ export async function run({
       }
     }
 
-    const manifestPortabilityOverride = resolveManifestPortabilityOverride(manifest, `${owner}/${repo}`);
+    const repositorySlug = `${owner}/${repo}`;
+    const manifestPortabilityOverride = resolveManifestPortabilityOverride(manifest, repositorySlug);
+    if (
+      manifestPortabilityOverride?.queueManagedRulesetsPortable === false &&
+      initialState.repoData?.fork !== true
+    ) {
+      throw new Error(
+        `Invalid repo portability profile for ${repositorySlug}: throughput-fork-relaxed requires a fork repository.`
+      );
+    }
     let portabilityProfile = buildRulesetPortabilityProfile(initialState.repoData, manifestPortabilityOverride ?? {});
     report.portability = portabilityProfile;
     if (portabilityProfile.queueManagedRulesetsPortable === false && manifestPortabilityOverride) {
