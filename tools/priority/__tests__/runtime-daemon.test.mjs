@@ -219,12 +219,12 @@ test('runtime-daemon wrapper schedules from the comparevi standing-priority cach
 
 test('comparevi worker checkout allocator refreshes and reuses an existing lane worktree path', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-reuse-'));
-  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+  const { checkoutPath, checkoutSegment } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
     repoRoot,
     repository: 'example/repo',
     laneId: 'personal-995'
   });
-  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', 'personal-995');
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', checkoutSegment);
   await mkdir(checkoutPath, { recursive: true });
   await mkdir(worktreeAdminDir, { recursive: true });
   await writeFile(path.join(checkoutPath, '.git'), 'gitdir: C:/stale/windows/path\n', 'utf8');
@@ -282,7 +282,7 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
   assert.deepEqual(prepared.worktreeStateRepair, { repaired: false, dirtyEntries: [] });
   assert.equal(
     await readFile(path.join(checkoutPath, '.git'), 'utf8'),
-    `gitdir: ${path.relative(checkoutPath, path.join(repoRoot, '.git', 'worktrees', 'personal-995')).replace(/\\/g, '/')}\n`
+    `gitdir: ${path.relative(checkoutPath, worktreeAdminDir).replace(/\\/g, '/')}\n`
   );
   assert.equal(
     await readFile(path.join(worktreeAdminDir, 'gitdir'), 'utf8'),
@@ -313,12 +313,12 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
 test('comparevi worker checkout allocator quarantines stale runtime drift before recreating a lane worktree', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-repair-'));
   const laneId = 'origin-959';
-  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+  const { checkoutPath, checkoutSegment } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
     repoRoot,
     repository: 'example/repo',
     laneId
   });
-  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', laneId);
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', checkoutSegment);
   await mkdir(checkoutPath, { recursive: true });
   await mkdir(worktreeAdminDir, { recursive: true });
   await writeFile(path.join(checkoutPath, '.git'), 'gitdir: C:/stale/windows/path\n', 'utf8');
@@ -407,12 +407,12 @@ test('comparevi worker checkout allocator quarantines stale runtime drift before
 test('comparevi worker checkout allocator rewrites new WSL worktree pointers into cross-plane relative metadata', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-create-relative-'));
   const laneId = 'origin-1201';
-  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+  const { checkoutPath, checkoutSegment } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
     repoRoot,
     repository: 'example/repo',
     laneId
   });
-  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', laneId);
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', checkoutSegment);
 
   const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
     repoRoot,
@@ -435,8 +435,8 @@ test('comparevi worker checkout allocator rewrites new WSL worktree pointers int
         if (args[0] === 'worktree' && args[1] === 'add') {
           await mkdir(checkoutPath, { recursive: true });
           await mkdir(worktreeAdminDir, { recursive: true });
-          await writeFile(path.join(checkoutPath, '.git'), `gitdir: /mnt/c/mock/.git/worktrees/${laneId}\n`, 'utf8');
-          await writeFile(path.join(worktreeAdminDir, 'gitdir'), `/mnt/c/mock/.runtime-worktrees/example-repo/${laneId}/.git\n`, 'utf8');
+          await writeFile(path.join(checkoutPath, '.git'), `gitdir: /mnt/c/mock/.git/worktrees/${checkoutSegment}\n`, 'utf8');
+          await writeFile(path.join(worktreeAdminDir, 'gitdir'), `/mnt/c/mock/.runtime-worktrees/example-repo/${checkoutSegment}/.git\n`, 'utf8');
           return { stdout: '', stderr: '' };
         }
         if (args[0] === 'remote') {
@@ -515,12 +515,12 @@ test('comparevi worker checkout allocator reuses runtime worktrees from a clean 
   const commonRepoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-common-root-'));
   const repoRoot = path.join(commonRepoRoot, 'repair');
   const laneId = 'origin-959';
-  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+  const { checkoutPath, checkoutSegment } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
     repoRoot,
     repository: 'example/repo',
     laneId
   });
-  const worktreeAdminDir = path.join(commonRepoRoot, '.git', 'worktrees', laneId);
+  const worktreeAdminDir = path.join(commonRepoRoot, '.git', 'worktrees', checkoutSegment);
 
   await mkdir(checkoutPath, { recursive: true });
   await mkdir(worktreeAdminDir, { recursive: true });
@@ -576,16 +576,36 @@ test('comparevi worker checkout allocator reuses runtime worktrees from a clean 
   );
 });
 
+test('comparevi worker checkout segment is unique per control root for the same lane id', () => {
+  const laneId = 'origin-963';
+  const left = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot: path.join('C:', 'repo', 'compare-vi-cli-action'),
+    repository: 'example/repo',
+    laneId
+  });
+  const right = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot: path.join('C:', 'repo', 'compare-vi-cli-action.repair-959'),
+    repository: 'example/repo',
+    laneId
+  });
+
+  assert.notEqual(left.checkoutSegment, right.checkoutSegment);
+  assert.notEqual(path.basename(left.checkoutPath), path.basename(right.checkoutPath));
+  assert.match(left.checkoutSegment, /compare-vi-cli-action--origin-963/);
+  assert.match(right.checkoutSegment, /compare-vi-cli-action\.repair-959--origin-963/);
+});
+
 test('comparevi worker checkout path sanitizes traversal-only segments and keeps the root under repoRoot', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-sanitize-'));
-  const { checkoutRoot, checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+  const { checkoutRoot, checkoutPath, checkoutSegment } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
     repoRoot,
     repository: '',
     laneId: '..'
   });
 
   assert.equal(checkoutRoot, path.join(repoRoot, '.runtime-worktrees', path.basename(repoRoot)));
-  assert.equal(checkoutPath, path.join(checkoutRoot, 'runtime'));
+  assert.equal(checkoutSegment, `${path.basename(repoRoot)}--runtime`);
+  assert.equal(checkoutPath, path.join(checkoutRoot, checkoutSegment));
 });
 
 test('comparevi worker path containment helper treats the root itself as within scope', () => {

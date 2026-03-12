@@ -479,11 +479,19 @@ export function resolveCompareviWorkerCheckoutRoot({ repoRoot, repository }) {
   return path.join(repoRoot, '.runtime-worktrees', repoKey);
 }
 
+export function resolveCompareviWorkerCheckoutSegment({ repoRoot, laneId }) {
+  const controlRootSegment = sanitizeSegment(path.basename(repoRoot));
+  const laneSegment = sanitizeSegment(laneId);
+  return sanitizeSegment(`${controlRootSegment}--${laneSegment}`);
+}
+
 export function resolveCompareviWorkerCheckoutPath({ repoRoot, repository, laneId }) {
   const checkoutRoot = resolveCompareviWorkerCheckoutRoot({ repoRoot, repository });
+  const checkoutSegment = resolveCompareviWorkerCheckoutSegment({ repoRoot, laneId });
   return {
     checkoutRoot,
-    checkoutPath: path.join(checkoutRoot, sanitizeSegment(laneId))
+    checkoutSegment,
+    checkoutPath: path.join(checkoutRoot, checkoutSegment)
   };
 }
 
@@ -499,7 +507,7 @@ export async function prepareCompareviWorkerCheckout({
     return null;
   }
 
-  const { checkoutRoot, checkoutPath } = resolveCompareviWorkerCheckoutPath({
+  const { checkoutRoot, checkoutPath, checkoutSegment } = resolveCompareviWorkerCheckoutPath({
     repoRoot,
     repository,
     laneId: activeLane.laneId
@@ -517,7 +525,7 @@ export async function prepareCompareviWorkerCheckout({
       await repairExistingWorktreeGitPointers({
         repoRoot,
         checkoutPath,
-        laneSegment: activeLane.laneId,
+        laneSegment: checkoutSegment,
         gitCommonDir
       });
       worktreeStateRepair = await inspectReusedWorktreeState(execFileFn, checkoutPath);
@@ -526,7 +534,7 @@ export async function prepareCompareviWorkerCheckout({
           execFileFn,
           repoRoot,
           checkoutPath,
-          laneId: activeLane.laneId,
+          laneId: checkoutSegment,
           gitCommonDir,
           dirtyEntries: worktreeStateRepair.dirtyEntries
         });
@@ -601,7 +609,7 @@ export async function prepareCompareviWorkerCheckout({
   await repairExistingWorktreeGitPointers({
     repoRoot,
     checkoutPath,
-    laneSegment: activeLane.laneId,
+    laneSegment: checkoutSegment,
     gitCommonDir
   });
   const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, checkoutPath, {
