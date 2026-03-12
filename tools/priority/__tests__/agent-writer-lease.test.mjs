@@ -164,7 +164,7 @@ test('defaultOwner prefers AGENT_WRITER_LEASE_OWNER when provided', () => {
   }
 });
 
-test('defaultLeaseRoot resolves the active worktree gitdir instead of assuming repoRoot/.git', () => {
+test('defaultLeaseRoot resolves git-common-dir instead of assuming repoRoot/.git', () => {
   const probe = spawnSync('git', ['rev-parse', '--git-common-dir'], {
     cwd: repoRoot,
     encoding: 'utf8',
