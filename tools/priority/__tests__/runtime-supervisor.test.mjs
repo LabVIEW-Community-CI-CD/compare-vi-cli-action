@@ -859,6 +859,13 @@ test('delivery agent review-thread query omits comment bodies to keep Copilot sc
   assert.doesNotMatch(source, /REVIEW_THREADS_QUERY[\s\S]*'body',/);
 });
 
+test('delivery agent helper-call audit strings shell-escape repository and label values', async () => {
+  const source = await readFile(new URL('../delivery-agent.mjs', import.meta.url), 'utf8');
+  assert.match(source, /function shellEscapeHelperValue\(value\)/);
+  assert.match(source, /--remove-label \$\{shellEscapeHelperValue\(label\)\}/);
+  assert.match(source, /--repo \$\{shellEscapeHelperValue\(repository\)\}/);
+});
+
 test('classifyPullRequestWork compresses waiting-review polling after the Copilot workflow completes on the current head', () => {
   const prStatus = classifyPullRequestWork({
     number: 1015,

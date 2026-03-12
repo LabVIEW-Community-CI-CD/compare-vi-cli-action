@@ -1548,19 +1548,34 @@ async function closeIssueWithComment({ repository, issueNumber, repoRoot, commen
   return result;
 }
 
+function shellEscapeHelperValue(value) {
+  if (value == null) {
+    return '';
+  }
+  const text = String(value);
+  if (text === '') {
+    return "''";
+  }
+  if (/^[A-Za-z0-9._\-/:]+$/.test(text)) {
+    return text;
+  }
+  return `'${text.replace(/'/g, `'\\''`)}'`;
+}
+
 function buildRemoveLabelHelperCall(issueNumber, repository, labels = []) {
   const removeLabelFlags = labels
     .map((label) => normalizeText(label))
     .filter(Boolean)
-    .map((label) => `--remove-label ${label}`)
+    .map((label) => `--remove-label ${shellEscapeHelperValue(label)}`)
     .join(' ');
-  return [`gh issue edit ${issueNumber}`, `--repo ${repository}`, removeLabelFlags].filter(Boolean).join(' ');
+  return [`gh issue edit ${issueNumber}`, `--repo ${shellEscapeHelperValue(repository)}`, removeLabelFlags].filter(Boolean).join(' ');
 }
 
 function buildCloseIssueHelperCall(issueNumber, repository, { hasComment = false } = {}) {
+  const repoArgument = `--repo ${shellEscapeHelperValue(repository)}`;
   return hasComment
-    ? `gh issue close ${issueNumber} --repo ${repository} --comment <omitted>`
-    : `gh issue close ${issueNumber} --repo ${repository}`;
+    ? `gh issue close ${issueNumber} ${repoArgument} --comment <omitted>`
+    : `gh issue close ${issueNumber} ${repoArgument}`;
 }
 
 async function syncStandingPriorityForRepo({ repository, repoRoot, deps = {} }) {

@@ -20,7 +20,6 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.base.sha || github.sha }}
 
       - uses: actions/setup-node@v5
-        if: github.event_name != 'merge_group'
         with:
           node-version: '20'
           cache: 'npm'
@@ -59,7 +58,7 @@ jobs:
           if-no-files-found: error
 
       - name: Evaluate Copilot queue gate
-        if: always() && (github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review')
+        if: always() && (github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review' || github.event_name == 'merge_group')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -69,32 +68,31 @@ jobs:
             "tools/priority/copilot-review-gate.mjs"
             "--event-name" "${{ github.event_name }}"
             "--repo" "${{ github.repository }}"
-            "--pr" "${{ github.event.pull_request.number }}"
-            "--head-sha" "${{ github.event.pull_request.head.sha }}"
-            "--base-ref" "${{ github.event.pull_request.base.ref }}"
-            "--draft" "${{ github.event.pull_request.draft }}"
             "--poll-attempts" "18"
             "--poll-delay-ms" "10000"
             "--out" "tests/results/_agent/reviews/copilot-review-gate.json"
             "--step-summary" "$GITHUB_STEP_SUMMARY"
           )
 
-          if [[ -f tests/results/_agent/reviews/copilot-review-signal.json ]]; then
+          if [[ "${{ github.event_name }}" == "merge_group" ]]; then
+            args+=(
+              "--head-sha" "${{ github.sha }}"
+              "--base-ref" "${{ github.event.merge_group.base_ref }}"
+            )
+          else
+            args+=(
+              "--pr" "${{ github.event.pull_request.number }}"
+              "--head-sha" "${{ github.event.pull_request.head.sha }}"
+              "--base-ref" "${{ github.event.pull_request.base.ref }}"
+              "--draft" "${{ github.event.pull_request.draft }}"
+            )
+          fi
+
+          if [[ "${{ github.event_name }}" == "pull_request_target" && -f tests/results/_agent/reviews/copilot-review-signal.json ]]; then
             args+=("--signal" "tests/results/_agent/reviews/copilot-review-signal.json")
           fi
 
           node "${args[@]}"
-
-      - name: Evaluate Copilot queue gate (merge_group)
-        if: always() && github.event_name == 'merge_group'
-        run: |
-          node tools/priority/copilot-review-gate.mjs \
-            --event-name "${{ github.event_name }}" \
-            --repo "${{ github.repository }}" \
-            --head-sha "${{ github.sha }}" \
-            --base-ref "${{ github.event.merge_group.base_ref }}" \
-            --out tests/results/_agent/reviews/copilot-review-gate.json \
-            --step-summary "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Copilot queue gate artifact
         if: always()
