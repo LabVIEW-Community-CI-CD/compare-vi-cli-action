@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
@@ -72,7 +72,8 @@ const COPILOT_REVIEW_WORKFLOW_NAME = 'Copilot code review';
 const PENDING_WORKFLOW_RUN_STATUSES = new Set(['QUEUED', 'IN_PROGRESS', 'PENDING', 'REQUESTED', 'WAITING']);
 const COPILOT_REVIEW_ACTIVE_POLL_HINT_SECONDS = 10;
 const COPILOT_REVIEW_POST_POLL_HINT_SECONDS = 5;
-const COPILOT_REVIEW_METADATA_CACHE_TTL_MS = 60 * 1000;
+const COPILOT_REVIEW_METADATA_CACHE_TTL_MS =
+  Math.max(COPILOT_REVIEW_ACTIVE_POLL_HINT_SECONDS, COPILOT_REVIEW_POST_POLL_HINT_SECONDS) * 1000;
 const COPILOT_REVIEW_METADATA_RETENTION_MS = 24 * 60 * 60 * 1000;
 const GH_JSON_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 const COPILOT_LOGINS = new Set([
@@ -150,12 +151,36 @@ function resolveExecutionRoot(repoRoot, taskPacket) {
   return workerCheckoutPath ? resolvePath(repoRoot, workerCheckoutPath) : repoRoot;
 }
 
-async function readJsonIfPresent(filePath) {
+function isJsonParseError(error) {
+  return error instanceof SyntaxError || error?.name === 'SyntaxError';
+}
+
+async function readJsonIfPresent(filePath, { deleteCorrupt = false } = {}) {
   try {
     return JSON.parse(await readFile(filePath, 'utf8'));
   } catch (error) {
     if (error?.code === 'ENOENT') return null;
+    if (deleteCorrupt && isJsonParseError(error)) {
+      await rm(filePath, { force: true });
+      return null;
+    }
     throw error;
+  }
+}
+
+async function writeJsonAtomically(filePath, payload) {
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tempPath, payload);
+  try {
+    await rename(tempPath, filePath);
+  } catch (error) {
+    if (error?.code !== 'EEXIST' && error?.code !== 'EPERM') {
+      throw error;
+    }
+    await rm(filePath, { force: true });
+    await rename(tempPath, filePath);
+  } finally {
+    await rm(tempPath, { force: true });
   }
 }
 
@@ -1218,7 +1243,7 @@ async function pruneCopilotReviewMetadataCache({ repoRoot, repository, pullReque
         if (entryPath === cachePath) {
           return;
         }
-        const cached = await readJsonIfPresent(entryPath);
+        const cached = await readJsonIfPresent(entryPath, { deleteCorrupt: true });
         const generatedAt = Date.parse(cached?.generatedAt || '');
         if (
           Number.isFinite(nowTime) &&
@@ -1245,7 +1270,7 @@ async function loadCachedCopilotReviewMetadata({
     pullRequestNumber,
     headSha
   });
-  const cached = await readJsonIfPresent(cachePath);
+  const cached = await readJsonIfPresent(cachePath, { deleteCorrupt: true });
   const nowTime = now instanceof Date ? now.getTime() : Date.parse(now);
   const cachedTime = Date.parse(cached?.generatedAt || '');
   if (
@@ -1276,7 +1301,7 @@ async function loadCachedCopilotReviewMetadata({
     deps
   });
   await mkdir(path.dirname(cachePath), { recursive: true });
-  await writeFile(
+  await writeJsonAtomically(
     cachePath,
     JSON.stringify(
       {
