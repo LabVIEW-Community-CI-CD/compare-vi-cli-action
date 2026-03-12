@@ -933,11 +933,19 @@ function isMissingInitialCopilotReview(report) {
   );
 }
 
+function isWaitingForCurrentHeadCopilotReview(report) {
+  return (
+    report?.status === 'fail' &&
+    Array.isArray(report?.reasons) &&
+    report.reasons.includes('current-head-review-missing')
+  );
+}
+
 function shouldPollForInitialCopilotReview(report, options) {
   return (
     options.eventName === 'pull_request_target' &&
     options.pollAttempts > 1 &&
-    isMissingInitialCopilotReview(report)
+    (isMissingInitialCopilotReview(report) || isWaitingForCurrentHeadCopilotReview(report))
   );
 }
 
