@@ -1110,6 +1110,14 @@ test('priority:policy verify passes on user-owned throughput forks while still e
   const reportDir = await mkdtemp(path.join(os.tmpdir(), 'priority-policy-throughput-verify-'));
   const reportPath = path.join(reportDir, 'policy-report.json');
   const alignedRulesets = createAlignedRulesets();
+  const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
+  manifestOverride.repoProfiles = {
+    ...(manifestOverride.repoProfiles ?? {}),
+    'test-user/test-repo': {
+      rulesetMode: 'throughput-fork-relaxed',
+      reason: 'user-owned-fork'
+    }
+  };
 
   const fetchMock = async (url, options = {}) => {
     const method = options.method ?? 'GET';
@@ -1155,21 +1163,22 @@ test('priority:policy verify passes on user-owned throughput forks while still e
     execSyncFn: () => {
       throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
     },
+    manifestOverride,
     log: (msg) => logMessages.push(msg),
     error: (msg) => errorMessages.push(msg)
   });
 
   assert.equal(code, 0, 'verify mode should pass on user-owned throughput forks when non-queue rulesets align');
   assert.ok(
-    logMessages.some((msg) => msg.includes('User-owned throughput fork detected')),
-    'expected throughput-fork relaxation log'
+    logMessages.some((msg) => msg.includes('Portability profile override detected')),
+    'expected repo-profile portability log'
   );
   assert.deepEqual(errorMessages, []);
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
   assert.deepEqual(report.portability, {
     rulesetMode: 'throughput-fork-relaxed',
     queueManagedRulesetsPortable: false,
-    detectedBy: 'default',
+    detectedBy: 'repo-profile',
     reason: 'user-owned-fork'
   });
 });
@@ -1262,6 +1271,14 @@ test('priority:policy --apply skips queue-managed rulesets on user-owned through
   const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
   const requests = [];
   let createdReleaseRuleset = null;
+  const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
+  manifestOverride.repoProfiles = {
+    ...(manifestOverride.repoProfiles ?? {}),
+    'test-user/test-repo': {
+      rulesetMode: 'throughput-fork-relaxed',
+      reason: 'user-owned-fork'
+    }
+  };
 
   const fetchMock = async (url, options = {}) => {
     const method = options.method ?? 'GET';
@@ -1320,6 +1337,7 @@ test('priority:policy --apply skips queue-managed rulesets on user-owned through
     execSyncFn: () => {
       throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
     },
+    manifestOverride,
     log: () => {},
     error: () => {}
   });

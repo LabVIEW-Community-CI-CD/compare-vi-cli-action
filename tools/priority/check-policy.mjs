@@ -184,12 +184,9 @@ function resolveManifestPortabilityOverride(manifest, repositorySlug) {
   return null;
 }
 
-function buildRulesetPortabilityProfile(repoData, overrides = {}) {
-  const isFork = repoData?.fork === true;
-  const ownerType = String(repoData?.owner?.type ?? '').toLowerCase();
-  const heuristicRelaxation = isFork && ownerType === 'user';
+function buildRulesetPortabilityProfile(_repoData, overrides = {}) {
   const queueManagedRulesetsPortable =
-    overrides.queueManagedRulesetsPortable ?? !heuristicRelaxation;
+    overrides.queueManagedRulesetsPortable ?? true;
   const rulesetMode = queueManagedRulesetsPortable ? 'standard' : 'throughput-fork-relaxed';
   const detectedBy =
     overrides.detectedBy ??
@@ -197,7 +194,7 @@ function buildRulesetPortabilityProfile(repoData, overrides = {}) {
   const reason =
     normalizePortabilityReason(
       overrides.reason,
-      heuristicRelaxation ? 'user-owned-fork' : null
+      null
     );
 
   return {
@@ -1487,7 +1484,7 @@ export async function run({
         `[policy] Portability profile override detected for ${report.repository}; queue-managed fork-local ruleset enforcement is relaxed for this repository.`
       );
     } else if (portabilityProfile.queueManagedRulesetsPortable === false) {
-      log('[policy] User-owned throughput fork detected; skipping queue-managed fork-local ruleset enforcement because merge_queue rulesets are not portable to user-owned forks.');
+      log('[policy] Queue-managed fork-local ruleset enforcement is relaxed for this repository.');
     }
 
     let queueManagedBranches = deriveActiveQueueManagedBranches(manifest, portabilityProfile);
