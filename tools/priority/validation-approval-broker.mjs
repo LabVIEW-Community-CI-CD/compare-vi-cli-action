@@ -454,6 +454,7 @@ function summarizeReviewSignal(signal, signalPath) {
     throw new Error(`Unexpected review signal schema '${String(signal?.schema ?? 'unknown')}'.`);
   }
 
+  const reviewRunState = normalizeText(signal.reviewRun?.observationState) ?? 'unobserved';
   return {
     path: signalPath,
     available: true,
@@ -465,6 +466,11 @@ function summarizeReviewSignal(signal, signalPath) {
     actionableCommentCount: normalizeInteger(signal.summary?.actionableCommentCount) ?? 0,
     unresolvedThreadCount: normalizeInteger(signal.summary?.unresolvedThreadCount) ?? 0,
     staleReviewCount: normalizeInteger(signal.summary?.staleReviewCount) ?? 0,
+    reviewRunState,
+    reviewRunId: normalizeInteger(signal.reviewRun?.runId),
+    reviewRunCompletedClean: reviewRunState === 'completed-clean',
+    reviewRunInProgress: reviewRunState === 'in_progress',
+    reviewRunCompletedFailure: reviewRunState === 'completed-failure',
     errorCount: Array.isArray(signal.errors) ? signal.errors.length : 0,
   };
 }
@@ -712,10 +718,24 @@ function evaluateDecision({
       ) {
         blockers.push('review-signal-invalid');
       }
-      if (!reviewSignal.hasCurrentHeadReview) {
-        blockers.push('current-head-review-missing');
+      if (reviewSignal.reviewRunInProgress) {
+        blockers.push('copilot-review-run-active');
       }
-      if (reviewSignal.staleReviewCount > 0 && !reviewSignal.hasCurrentHeadReview) {
+      if (reviewSignal.reviewRunCompletedFailure) {
+        blockers.push('copilot-review-run-failed');
+      }
+      if (!reviewSignal.hasCurrentHeadReview && !reviewSignal.reviewRunCompletedClean) {
+        blockers.push(
+          reviewSignal.reviewRunState === 'unobserved'
+            ? 'copilot-review-run-unobserved'
+            : 'current-head-review-missing',
+        );
+      }
+      if (
+        reviewSignal.staleReviewCount > 0 &&
+        !reviewSignal.hasCurrentHeadReview &&
+        !reviewSignal.reviewRunCompletedClean
+      ) {
         blockers.push('stale-review-present');
       }
       if (reviewSignal.actionableCommentCount > 0) {

@@ -18,6 +18,7 @@ const DEFAULT_POLL_ATTEMPTS = 1;
 const DEFAULT_POLL_DELAY_MS = 10000;
 const GITHUB_API_URL = 'https://api.github.com';
 const CANONICAL_REPOSITORY = 'LabVIEW-Community-CI-CD/compare-vi-cli-action';
+const PENDING_WORKFLOW_RUN_STATUSES = new Set(['QUEUED', 'IN_PROGRESS', 'PENDING', 'REQUESTED', 'WAITING']);
 
 const COPILOT_LOGINS = new Set([
   'copilot',
@@ -213,13 +214,18 @@ function printUsage() {
     'Evaluate whether a ready develop PR is allowed into the merge queue after Copilot review.',
     '',
     'Options:',
-    '  --event-name <name>        Workflow event name (pull_request_target, pull_request_review, pull_request_review_thread, merge_group).',
+    '  --event-name <name>        Workflow event name (pull_request_target, workflow_run, pull_request_review, pull_request_review_thread, merge_group).',
     '  --repo <owner/repo>        Repository slug used for live GitHub API lookups.',
     '  --pr <number>              Pull request number for live lookups.',
     '  --head-sha <sha>           Current pull request head SHA.',
     '  --base-ref <branch>        Pull request base ref or merge-group base ref.',
     '  --draft <true|false>       Whether the pull request is currently a draft.',
     '  --signal <path>            Optional Copilot review signal report produced on pull_request_target.',
+    '  --review-run-id <id>       Optional observed Copilot review workflow run id for the current head.',
+    '  --review-run-status <status> Optional observed Copilot review workflow run status.',
+    '  --review-run-conclusion <conclusion> Optional observed Copilot review workflow run conclusion.',
+    '  --review-run-url <url>     Optional observed Copilot review workflow run URL.',
+    '  --review-run-workflow-name <name> Optional observed Copilot review workflow name.',
     `  --poll-attempts <n>        Live poll attempts when the initial Copilot review is missing (default: ${DEFAULT_POLL_ATTEMPTS}).`,
     `  --poll-delay-ms <n>        Delay between live poll attempts in milliseconds (default: ${DEFAULT_POLL_DELAY_MS}).`,
     `  --out <path>               Output JSON path (default: ${DEFAULT_REPORT_PATH}).`,
@@ -244,6 +250,11 @@ export function parseCliArgs(argv = process.argv) {
     baseRef: null,
     draft: null,
     signalPath: null,
+    reviewRunId: null,
+    reviewRunStatus: null,
+    reviewRunConclusion: null,
+    reviewRunUrl: null,
+    reviewRunWorkflowName: null,
     pollAttempts: DEFAULT_POLL_ATTEMPTS,
     pollDelayMs: DEFAULT_POLL_DELAY_MS,
     outPath: DEFAULT_REPORT_PATH,
@@ -267,6 +278,11 @@ export function parseCliArgs(argv = process.argv) {
       token === '--base-ref' ||
       token === '--draft' ||
       token === '--signal' ||
+      token === '--review-run-id' ||
+      token === '--review-run-status' ||
+      token === '--review-run-conclusion' ||
+      token === '--review-run-url' ||
+      token === '--review-run-workflow-name' ||
       token === '--poll-attempts' ||
       token === '--poll-delay-ms' ||
       token === '--out' ||
@@ -284,6 +300,11 @@ export function parseCliArgs(argv = process.argv) {
       if (token === '--base-ref') options.baseRef = normalizeBaseRef(next);
       if (token === '--draft') options.draft = normalizeBoolean(next);
       if (token === '--signal') options.signalPath = normalizeText(next);
+      if (token === '--review-run-id') options.reviewRunId = normalizeInteger(next);
+      if (token === '--review-run-status') options.reviewRunStatus = normalizeText(next)?.toUpperCase() ?? null;
+      if (token === '--review-run-conclusion') options.reviewRunConclusion = normalizeText(next)?.toUpperCase() ?? null;
+      if (token === '--review-run-url') options.reviewRunUrl = normalizeText(next);
+      if (token === '--review-run-workflow-name') options.reviewRunWorkflowName = normalizeText(next);
       if (token === '--poll-attempts') options.pollAttempts = parsePositiveInteger(next, { label: '--poll-attempts' });
       if (token === '--poll-delay-ms') options.pollDelayMs = parsePositiveInteger(next, { label: '--poll-delay-ms' });
       if (token === '--out') options.outPath = next;
@@ -548,6 +569,60 @@ function buildPullRequest(options, signalReport = null) {
   };
 }
 
+function buildReviewRunFromOptions(options) {
+  const workflowName = normalizeText(options.reviewRunWorkflowName) || 'Copilot code review';
+  const status = normalizeText(options.reviewRunStatus)?.toUpperCase() || null;
+  const conclusion = normalizeText(options.reviewRunConclusion)?.toUpperCase() || null;
+  const runId = normalizeInteger(options.reviewRunId);
+  const isCurrentHead = Boolean(options.headSha);
+  let observationState = 'unobserved';
+  if (runId !== null) {
+    if (status && PENDING_WORKFLOW_RUN_STATUSES.has(status)) {
+      observationState = 'in_progress';
+    } else if (status === 'COMPLETED' && conclusion === 'SUCCESS') {
+      observationState = 'completed-clean';
+    } else if (status === 'COMPLETED') {
+      observationState = 'completed-failure';
+    }
+  }
+  return {
+    workflowName,
+    runId,
+    status,
+    conclusion,
+    url: normalizeText(options.reviewRunUrl),
+    headSha: normalizeSha(options.headSha),
+    isCurrentHead,
+    observationState,
+  };
+}
+
+function buildReviewRunFromSignal(signalReport, options) {
+  const signalRun = signalReport?.reviewRun;
+  const optionRun = buildReviewRunFromOptions(options);
+  if (
+    signalRun &&
+    typeof signalRun === 'object' &&
+    optionRun.runId === null &&
+    optionRun.status === null &&
+    optionRun.conclusion === null
+  ) {
+    return {
+      workflowName: normalizeText(signalRun.workflowName) || 'Copilot code review',
+      runId: normalizeInteger(signalRun.runId),
+      status: normalizeText(signalRun.status)?.toUpperCase() || null,
+      conclusion: normalizeText(signalRun.conclusion)?.toUpperCase() || null,
+      url: normalizeText(signalRun.url),
+      headSha: normalizeSha(signalRun.headSha ?? options.headSha),
+      isCurrentHead:
+        signalRun.isCurrentHead === true ||
+        (normalizeSha(signalRun.headSha) && normalizeSha(signalRun.headSha) === normalizeSha(options.headSha)),
+      observationState: normalizeText(signalRun.observationState) || 'unobserved',
+    };
+  }
+  return optionRun;
+}
+
 function sleep(delayMs) {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
@@ -559,6 +634,7 @@ function evaluateGateOutcome({
   pullRequest,
   reviews,
   threads,
+  reviewRun,
   errors = [],
   gatedBaseRefs,
   now,
@@ -615,6 +691,11 @@ function evaluateGateOutcome({
     summary.staleReviewCount > 0 &&
     summary.actionableThreadCount === 0 &&
     summary.actionableCommentCount === 0;
+  const reviewRunState = normalizeText(reviewRun?.observationState) || 'unobserved';
+  const reviewRunObserved = reviewRunState !== 'unobserved';
+  const reviewRunInProgress = reviewRunState === 'in_progress';
+  const reviewRunCompletedClean = reviewRunState === 'completed-clean';
+  const reviewRunCompletedFailure = reviewRunState === 'completed-failure';
 
   let status = 'pass';
   let gateState = 'ready';
@@ -635,12 +716,30 @@ function evaluateGateOutcome({
     status = 'fail';
     gateState = 'error';
     reasons.push('copilot-review-data-error');
-  } else if (!latestCopilotReview) {
+  } else if (reviewRunInProgress) {
     status = 'fail';
     gateState = 'blocked';
-    reasons.push('copilot-review-missing');
+    reasons.push('copilot-review-run-active');
+  } else if (reviewRunCompletedFailure) {
+    status = 'fail';
+    gateState = 'blocked';
+    reasons.push('copilot-review-run-failed');
+  } else if (!latestCopilotReview) {
+    if (reviewRunCompletedClean && summary.actionableThreadCount === 0 && summary.actionableCommentCount === 0) {
+      reasons.push('current-head-review-run-completed-clean');
+    } else if (!reviewRunObserved) {
+      status = 'fail';
+      gateState = 'blocked';
+      reasons.push('copilot-review-run-unobserved');
+    } else {
+      status = 'fail';
+      gateState = 'blocked';
+      reasons.push('copilot-review-missing');
+    }
   } else if (!latestCopilotReview.isCurrentHead || summary.currentHeadReviewCount === 0) {
-    if (staleReviewCleanFollowup) {
+    if (reviewRunCompletedClean && summary.actionableThreadCount === 0 && summary.actionableCommentCount === 0) {
+      reasons.push('current-head-review-run-completed-clean');
+    } else if (staleReviewCleanFollowup) {
       reasons.push('stale-review-clean-followup');
     } else {
       status = 'fail';
@@ -684,7 +783,11 @@ function evaluateGateOutcome({
       latestReviewIsCurrentHead: latestCopilotReview?.isCurrentHead ?? false,
       hasActionableCurrentHeadComments: summary.actionableCommentCount > 0,
       staleReviewCleanFollowup,
+      hasObservedReviewRun: reviewRunObserved,
+      reviewRunInProgress,
+      reviewRunCompletedClean,
     },
+    reviewRun,
     latestCopilotReview,
     actionableThreads,
     reasons,
@@ -778,6 +881,13 @@ function buildReportFromSignal(options, signalReport, now) {
   const errors = Array.isArray(signalReport.errors)
     ? signalReport.errors.map((entry) => normalizeText(entry)).filter((entry) => Boolean(entry))
     : [];
+  const reviewRun = buildReviewRunFromSignal(signalReport, options);
+  if (
+    reviewRun.observationState === 'completed-clean' &&
+    (normalizeInteger(signalReport.summary?.actionableThreadCount) ?? 0) + (normalizeInteger(signalReport.summary?.actionableCommentCount) ?? 0) > 0
+  ) {
+    reviewRun.observationState = 'completed-attention';
+  }
 
   return evaluateGateOutcome({
     eventName: options.eventName,
@@ -786,6 +896,7 @@ function buildReportFromSignal(options, signalReport, now) {
     pullRequest,
     reviews,
     threads: actionableThreads,
+    reviewRun,
     errors,
     gatedBaseRefs: options.gatedBaseRefs,
     now,
@@ -807,6 +918,7 @@ function buildReportFromLiveData(options, reviewsPayload, threadsPayload, now) {
     pullRequest,
     reviews,
     threads,
+    reviewRun: buildReviewRunFromOptions(options),
     errors,
     gatedBaseRefs: options.gatedBaseRefs,
     now,
@@ -848,7 +960,11 @@ function buildFailureReport(options, now, error) {
       latestReviewIsCurrentHead: false,
       hasActionableCurrentHeadComments: false,
       staleReviewCleanFollowup: false,
+      hasObservedReviewRun: false,
+      reviewRunInProgress: false,
+      reviewRunCompletedClean: false,
     },
+    reviewRun: buildReviewRunFromOptions(options),
     latestCopilotReview: null,
     actionableThreads: [],
     reasons: ['copilot-review-data-error'],
@@ -883,6 +999,8 @@ function appendStepSummary(stepSummaryPath, report) {
     `- base_ref: \`${report.pullRequest.baseRef ?? 'unknown'}\``,
     `- draft: \`${report.pullRequest.draft}\``,
     `- head_sha: \`${report.pullRequest.headSha ?? 'unknown'}\``,
+    `- review_run_state: \`${report.reviewRun?.observationState ?? 'unobserved'}\``,
+    `- review_run_id: \`${report.reviewRun?.runId ?? 'unknown'}\``,
     `- current_head_review_count: \`${report.summary.currentHeadReviewCount}\``,
     `- actionable_current_head_threads: \`${report.summary.actionableThreadCount}\``,
     `- actionable_current_head_comments: \`${report.summary.actionableCommentCount}\``,
@@ -900,6 +1018,9 @@ function appendStepSummary(stepSummaryPath, report) {
     lines.push(
       `- latest_review_submitted_at: \`${report.latestCopilotReview.submittedAt ?? 'unknown'}\``,
     );
+  }
+  if (report.reviewRun?.url) {
+    lines.push(`- review_run_url: ${report.reviewRun.url}`);
   }
 
   if (report.actionableThreads.length > 0) {
@@ -929,7 +1050,9 @@ function isMissingInitialCopilotReview(report) {
     report?.status === 'fail' &&
     Array.isArray(report?.reasons) &&
     report.reasons.length === 1 &&
-    report.reasons[0] === 'copilot-review-missing'
+    ['copilot-review-missing', 'copilot-review-run-unobserved', 'copilot-review-run-active'].includes(
+      report.reasons[0],
+    )
   );
 }
 
@@ -994,6 +1117,7 @@ export async function runCopilotReviewGate({
         pullRequest: preflightPullRequest,
         reviews: [],
         threads: [],
+        reviewRun: buildReviewRunFromSignal(signalReport, options),
         errors: [],
         gatedBaseRefs: options.gatedBaseRefs,
         now,

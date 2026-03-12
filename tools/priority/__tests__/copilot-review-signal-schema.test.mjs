@@ -129,6 +129,17 @@ test('copilot review signal schema validates a generated artifact with stale and
         },
       },
     }),
+    loadWorkflowRunFn: () => ({
+      id: 91001,
+      name: 'Copilot code review',
+      status: 'completed',
+      conclusion: 'success',
+      html_url: 'https://github.com/example/actions/runs/91001',
+      head_sha: headSha,
+      head_branch: 'issue/863-copilot-review-signal',
+      created_at: '2026-03-08T05:28:30Z',
+      updated_at: '2026-03-08T05:29:35Z',
+    }),
   });
 
   assert.equal(result.exitCode, 0);
@@ -143,6 +154,8 @@ test('copilot review signal schema validates a generated artifact with stale and
   assert.equal(report.schema, 'priority/copilot-review-signal@v1');
   assert.equal(report.summary.staleReviewCount, 1);
   assert.equal(report.summary.actionableCommentCount, 1);
+  assert.equal(report.reviewRun.runId, 91001);
+  assert.equal(report.reviewRun.observationState, 'completed-attention');
 });
 
 test('copilot review signal exits non-zero when thread comments are truncated', async (t) => {
@@ -222,6 +235,17 @@ test('copilot review signal exits non-zero when thread comments are truncated', 
           },
         },
       },
+    }),
+    loadWorkflowRunFn: () => ({
+      id: 91002,
+      name: 'Copilot code review',
+      status: 'completed',
+      conclusion: 'success',
+      html_url: 'https://github.com/example/actions/runs/91002',
+      head_sha: headSha,
+      head_branch: 'issue/864-validation-agent-attestation',
+      created_at: '2026-03-08T05:32:35Z',
+      updated_at: '2026-03-08T05:32:45Z',
     }),
   });
 

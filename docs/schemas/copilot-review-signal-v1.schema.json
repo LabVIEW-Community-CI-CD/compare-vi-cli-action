@@ -42,11 +42,12 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["pull", "reviews", "threads"],
+      "required": ["pull", "reviews", "threads", "workflowRuns"],
       "properties": {
         "pull": { "type": "string", "enum": ["file", "gh"] },
         "reviews": { "type": "string", "enum": ["file", "gh"] },
-        "threads": { "type": "string", "enum": ["file", "gh"] }
+        "threads": { "type": "string", "enum": ["file", "gh"] },
+        "workflowRuns": { "type": "string", "enum": ["file", "gh"] }
       }
     },
     "reviewState": {
@@ -125,11 +126,49 @@
         "hasSuppressedNotesInLatestReview": { "type": "boolean" }
       }
     },
+    "reviewRun": {
+      "$ref": "#/$defs/reviewRun"
+    },
     "latestCopilotReview": {
       "anyOf": [
         { "$ref": "#/$defs/latestReview" },
         { "type": "null" }
       ]
+    },
+    "reviewRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflowName",
+        "runId",
+        "event",
+        "status",
+        "conclusion",
+        "url",
+        "headSha",
+        "headBranch",
+        "createdAt",
+        "updatedAt",
+        "isCurrentHead",
+        "observationState"
+      ],
+      "properties": {
+        "workflowName": { "$ref": "#/$defs/nullableString" },
+        "runId": { "type": ["integer", "null"] },
+        "event": { "$ref": "#/$defs/nullableString" },
+        "status": { "$ref": "#/$defs/nullableString" },
+        "conclusion": { "$ref": "#/$defs/nullableString" },
+        "url": { "$ref": "#/$defs/nullableString" },
+        "headSha": { "$ref": "#/$defs/nullableString" },
+        "headBranch": { "$ref": "#/$defs/nullableString" },
+        "createdAt": { "type": ["string", "null"], "format": "date-time" },
+        "updatedAt": { "type": ["string", "null"], "format": "date-time" },
+        "isCurrentHead": { "type": "boolean" },
+        "observationState": {
+          "type": "string",
+          "enum": ["unobserved", "in_progress", "completed-clean", "completed-attention", "completed-failure"]
+        }
+      }
     },
     "staleReviews": {
       "type": "array",

@@ -39,7 +39,7 @@ function createSuccessRollup(contexts) {
   }));
 }
 
-function createSignal(headSha, prNumber) {
+function createSignal(headSha, prNumber, reviewRun = null) {
   return {
     schema: 'priority/copilot-review-signal@v1',
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
@@ -52,6 +52,20 @@ function createSignal(headSha, prNumber) {
     },
     signals: {
       hasCurrentHeadReview: true,
+    },
+    reviewRun: reviewRun ?? {
+      workflowName: 'Copilot code review',
+      runId: null,
+      event: null,
+      status: null,
+      conclusion: null,
+      url: null,
+      headSha,
+      headBranch: `issue/${prNumber}-test`,
+      createdAt: null,
+      updatedAt: null,
+      isCurrentHead: false,
+      observationState: 'unobserved',
     },
     summary: {
       actionableCommentCount: 0,
@@ -252,6 +266,92 @@ test('validation approval broker accepts a fresh current-head Copilot review eve
   assert.deepEqual(result.report?.decision.reasons, ['approval-ready']);
   assert.equal(result.report?.providers.reviewSignal.staleReviewCount, 1);
   assert.equal(result.report?.providers.reviewSignal.hasCurrentHeadReview, true);
+});
+
+test('validation approval broker accepts a completed clean Copilot review run for the current head when no current-head review object was emitted', async (t) => {
+  const { runValidationApprovalBroker } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-broker-run-clean-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const headSha = 'afafafafafafafafafafafafafafafafafafafaf';
+  const prNumber = 8652;
+  const signalPath = path.join(tmpDir, 'signal.json');
+  const attestationPath = path.join(tmpDir, 'attestation.json');
+  const deploymentPath = path.join(tmpDir, 'deployment.json');
+  const pullPath = path.join(tmpDir, 'pull.json');
+
+  writeJson(
+    signalPath,
+    {
+      ...createSignal(headSha, prNumber, {
+        workflowName: 'Copilot code review',
+        runId: 94001,
+        event: 'pull_request',
+        status: 'COMPLETED',
+        conclusion: 'SUCCESS',
+        url: 'https://github.com/example/actions/runs/94001',
+        headSha,
+        headBranch: `issue/${prNumber}-test`,
+        createdAt: '2026-03-08T08:00:00.000Z',
+        updatedAt: '2026-03-08T08:01:00.000Z',
+        isCurrentHead: true,
+        observationState: 'completed-clean',
+      }),
+      signals: {
+        hasCurrentHeadReview: false,
+      },
+      summary: {
+        actionableCommentCount: 0,
+        unresolvedThreadCount: 0,
+        staleReviewCount: 1,
+      },
+      latestCopilotReview: {
+        id: 'stale-1',
+        state: 'COMMENTED',
+        commitId: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        submittedAt: '2026-03-08T07:50:00.000Z',
+        url: 'https://github.com/example/review/stale-1',
+        isCurrentHead: false,
+        bodySummary: 'Older stale review.',
+      },
+    },
+  );
+  writeJson(attestationPath, createAttestation(headSha, prNumber));
+  writeJson(deploymentPath, createDeploymentDeterminism());
+  writeJson(
+    pullPath,
+    createPullContext({
+      headSha,
+      prNumber,
+      statusCheckRollup: createSuccessRollup(readDevelopRequiredChecks()),
+    }),
+  );
+
+  const result = await runValidationApprovalBroker({
+    argv: [
+      'node',
+      'validation-approval-broker.mjs',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      String(prNumber),
+      '--signal',
+      signalPath,
+      '--attestation',
+      attestationPath,
+      '--deployment-determinism',
+      deploymentPath,
+      '--pull-file',
+      pullPath,
+    ],
+    now: new Date('2026-03-08T08:01:30Z'),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.decision.state, 'ready');
+  assert.deepEqual(result.report?.decision.reasons, ['approval-ready']);
+  assert.equal(result.report?.providers.reviewSignal.hasCurrentHeadReview, false);
+  assert.equal(result.report?.providers.reviewSignal.reviewRunCompletedClean, true);
 });
 
 test('validation approval broker blocks when required checks are not ready', async (t) => {

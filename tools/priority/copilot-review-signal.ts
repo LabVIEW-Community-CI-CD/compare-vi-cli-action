@@ -21,6 +21,14 @@ const COPILOT_LOGINS = new Set([
   'copilot-pull-request-reviewer',
   'copilot-pull-request-reviewer[bot]',
 ]);
+const COPILOT_REVIEW_WORKFLOW_NAME = 'Copilot code review';
+const PENDING_WORKFLOW_RUN_STATUSES = new Set([
+  'QUEUED',
+  'IN_PROGRESS',
+  'PENDING',
+  'REQUESTED',
+  'WAITING',
+]);
 
 const REVIEW_THREADS_QUERY = [
   'query($owner:String!,$repo:String!,$number:Int!){',
@@ -77,6 +85,21 @@ interface CliOptions {
   pullFile: string | null;
   reviewsFile: string | null;
   threadsFile: string | null;
+  workflowRunFile: string | null;
+}
+
+interface WorkflowRunPayload {
+  id?: number;
+  name?: string;
+  path?: string;
+  html_url?: string;
+  event?: string;
+  status?: string;
+  conclusion?: string | null;
+  head_sha?: string;
+  head_branch?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface PullPayload {
@@ -238,6 +261,29 @@ interface ReviewSignalSource {
   pull: 'file' | 'gh';
   reviews: 'file' | 'gh';
   threads: 'file' | 'gh';
+  workflowRuns: 'file' | 'gh';
+}
+
+type ReviewRunObservationState =
+  | 'unobserved'
+  | 'in_progress'
+  | 'completed-clean'
+  | 'completed-attention'
+  | 'completed-failure';
+
+interface ReviewSignalReviewRun {
+  workflowName: string | null;
+  runId: number | null;
+  event: string | null;
+  status: string | null;
+  conclusion: string | null;
+  url: string | null;
+  headSha: string | null;
+  headBranch: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  isCurrentHead: boolean;
+  observationState: ReviewRunObservationState;
 }
 
 interface ReviewSignalLatestReview {
@@ -305,6 +351,7 @@ interface ReviewSignalReport {
     hasActionableComments: boolean;
     hasSuppressedNotesInLatestReview: boolean;
   };
+  reviewRun: ReviewSignalReviewRun;
   latestCopilotReview: ReviewSignalLatestReview | null;
   staleReviews: ReviewSignalStaleReview[];
   unresolvedThreads: ReviewSignalUnresolvedThread[];
@@ -317,6 +364,7 @@ interface AnalyzeOptions {
   pull: PullPayload;
   reviews: ReviewPayload[];
   threads: ReviewThreadsGraphQlPayload | ReviewThreadPayload[];
+  workflowRun?: WorkflowRunPayload | null;
   now?: Date;
   source?: Partial<ReviewSignalSource>;
   headShaOverride?: string | null;
@@ -328,6 +376,10 @@ interface RunCopilotReviewSignalOptions {
   loadPullFn?: (options: CliOptions) => PullPayload;
   loadReviewsFn?: (options: CliOptions) => ReviewPayload[];
   loadThreadsFn?: (options: CliOptions) => ReviewThreadsGraphQlPayload | ReviewThreadPayload[];
+  loadWorkflowRunFn?: (
+    options: CliOptions,
+    context: { pull: PullPayload; headSha: string | null },
+  ) => WorkflowRunPayload | null;
   writeReportFn?: (reportPath: string, report: ReviewSignalReport) => string;
   appendStepSummaryFn?: (stepSummaryPath: string | null, report: ReviewSignalReport) => void;
 }
@@ -347,6 +399,7 @@ function printUsage(): void {
     '  --pull-file <path>        Optional captured pull payload JSON for offline tests.',
     '  --reviews-file <path>     Optional captured pull reviews JSON for offline tests.',
     '  --threads-file <path>     Optional captured GraphQL review threads JSON for offline tests.',
+    '  --workflow-run-file <path> Optional captured workflow-run JSON for offline tests.',
     '  -h, --help                Show help.',
   ];
 
@@ -520,6 +573,7 @@ export function parseCliArgs(argv = process.argv): CliOptions {
     pullFile: null,
     reviewsFile: null,
     threadsFile: null,
+    workflowRunFile: null,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -538,7 +592,8 @@ export function parseCliArgs(argv = process.argv): CliOptions {
       token === '--step-summary' ||
       token === '--pull-file' ||
       token === '--reviews-file' ||
-      token === '--threads-file'
+      token === '--threads-file' ||
+      token === '--workflow-run-file'
     ) {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
@@ -552,6 +607,7 @@ export function parseCliArgs(argv = process.argv): CliOptions {
       if (token === '--pull-file') options.pullFile = next;
       if (token === '--reviews-file') options.reviewsFile = next;
       if (token === '--threads-file') options.threadsFile = next;
+      if (token === '--workflow-run-file') options.workflowRunFile = next;
       continue;
     }
 
@@ -622,6 +678,48 @@ function loadThreadsPayload(options: CliOptions): ReviewThreadsGraphQlPayload {
     '-F',
     `number=${options.prNumber}`,
   ]) as ReviewThreadsGraphQlPayload;
+}
+
+function selectCopilotWorkflowRun(
+  payload: unknown,
+  headSha: string | null,
+): WorkflowRunPayload | null {
+  const runs = Array.isArray((payload as { workflow_runs?: unknown[] } | null)?.workflow_runs)
+    ? (payload as { workflow_runs: WorkflowRunPayload[] }).workflow_runs
+    : [];
+  const normalizedHeadSha = normalizeSha(headSha);
+  const candidates = runs
+    .filter((run) => normalizeText(run?.name) === COPILOT_REVIEW_WORKFLOW_NAME)
+    .filter((run) => !normalizedHeadSha || normalizeSha(run?.head_sha) === normalizedHeadSha)
+    .sort((left, right) =>
+      compareIsoDescending(normalizeIso(left?.updated_at), normalizeIso(right?.updated_at)),
+    );
+  return candidates[0] ?? null;
+}
+
+function loadWorkflowRunPayload(
+  options: CliOptions,
+  context: { pull: PullPayload; headSha: string | null },
+): WorkflowRunPayload | null {
+  if (options.workflowRunFile) {
+    const payload = readJsonFile<WorkflowRunPayload | { workflow_runs?: WorkflowRunPayload[] }>(
+      options.workflowRunFile,
+    );
+    if (Array.isArray((payload as { workflow_runs?: unknown[] }).workflow_runs)) {
+      return selectCopilotWorkflowRun(payload, context.headSha);
+    }
+    return payload as WorkflowRunPayload;
+  }
+
+  if (!options.repo || !context.headSha) {
+    return null;
+  }
+
+  const payload = runGhJson([
+    'api',
+    `repos/${options.repo}/actions/runs?head_sha=${context.headSha}&per_page=100`,
+  ]);
+  return selectCopilotWorkflowRun(payload, context.headSha);
 }
 
 function extractThreadNodes(
@@ -780,13 +878,33 @@ function buildSource(options: CliOptions): ReviewSignalSource {
     pull: options.pullFile ? 'file' : 'gh',
     reviews: options.reviewsFile ? 'file' : 'gh',
     threads: options.threadsFile ? 'file' : 'gh',
+    workflowRuns: options.workflowRunFile ? 'file' : 'gh',
   };
 }
 
 function determineReviewState(
   signals: ReviewSignalReport['signals'],
+  reviewRun: ReviewSignalReviewRun,
 ): 'clean' | 'attention' {
+  if (reviewRun.observationState === 'completed-clean') {
+    return 'clean';
+  }
   if (
+    reviewRun.observationState !== 'in_progress' &&
+    reviewRun.observationState !== 'completed-attention' &&
+    reviewRun.observationState !== 'completed-failure' &&
+    signals.hasCopilotReview &&
+    signals.hasCurrentHeadReview &&
+    !signals.hasStaleReview &&
+    !signals.hasUnresolvedThreads &&
+    !signals.hasActionableComments
+  ) {
+    return 'clean';
+  }
+  if (
+    reviewRun.observationState === 'in_progress' ||
+    reviewRun.observationState === 'completed-attention' ||
+    reviewRun.observationState === 'completed-failure' ||
     !signals.hasCopilotReview ||
     !signals.hasCurrentHeadReview ||
     signals.hasStaleReview ||
@@ -799,11 +917,57 @@ function determineReviewState(
   return 'clean';
 }
 
+function normalizeWorkflowRun(
+  run: WorkflowRunPayload | null | undefined,
+  headSha: string | null,
+): ReviewSignalReviewRun {
+  const workflowName = normalizeText(run?.name) ?? COPILOT_REVIEW_WORKFLOW_NAME;
+  const normalizedHeadSha = normalizeSha(run?.head_sha);
+  return {
+    workflowName,
+    runId: normalizeInteger(run?.id),
+    event: normalizeText(run?.event),
+    status: normalizeText(run?.status)?.toUpperCase() ?? null,
+    conclusion: normalizeText(run?.conclusion)?.toUpperCase() ?? null,
+    url: normalizeText(run?.html_url),
+    headSha: normalizedHeadSha,
+    headBranch: normalizeText(run?.head_branch),
+    createdAt: normalizeIso(run?.created_at),
+    updatedAt: normalizeIso(run?.updated_at),
+    isCurrentHead: Boolean(headSha && normalizedHeadSha && normalizedHeadSha === headSha),
+    observationState: 'unobserved',
+  };
+}
+
+function finalizeWorkflowRunObservation(
+  reviewRun: ReviewSignalReviewRun,
+  summary: ReviewSignalSummary,
+): ReviewSignalReviewRun {
+  let observationState: ReviewRunObservationState = 'unobserved';
+  if (reviewRun.runId !== null && reviewRun.isCurrentHead) {
+    if (reviewRun.status && PENDING_WORKFLOW_RUN_STATUSES.has(reviewRun.status)) {
+      observationState = 'in_progress';
+    } else if (reviewRun.status === 'COMPLETED' && reviewRun.conclusion === 'SUCCESS') {
+      observationState =
+        summary.actionableCommentCount > 0 || summary.unresolvedThreadCount > 0
+          ? 'completed-attention'
+          : 'completed-clean';
+    } else if (reviewRun.status === 'COMPLETED') {
+      observationState = 'completed-failure';
+    }
+  }
+  return {
+    ...reviewRun,
+    observationState,
+  };
+}
+
 export function analyzeCopilotReviewSignal({
   repository,
   pull,
   reviews,
   threads,
+  workflowRun = null,
   now = new Date(),
   source = {},
   headShaOverride = null,
@@ -861,6 +1025,10 @@ export function analyzeCopilotReviewSignal({
     suppressedNotesObservedInLatestReview: latestReview?.suppressedNotesObserved ?? false,
     suppressedNoteCountInLatestReview: latestReview?.suppressedNoteCount ?? null,
   };
+  const reviewRunObservation = finalizeWorkflowRunObservation(
+    normalizeWorkflowRun(workflowRun, headSha),
+    summary,
+  );
 
   const signals = {
     hasCopilotReview: normalizedReviews.length > 0,
@@ -881,11 +1049,13 @@ export function analyzeCopilotReviewSignal({
       pull: source.pull ?? 'gh',
       reviews: source.reviews ?? 'gh',
       threads: source.threads ?? 'gh',
+      workflowRuns: source.workflowRuns ?? 'gh',
     },
-    reviewState: errors.length > 0 ? 'error' : determineReviewState(signals),
+    reviewState: errors.length > 0 ? 'error' : determineReviewState(signals, reviewRunObservation),
     pullRequest,
     summary,
     signals,
+    reviewRun: reviewRunObservation,
     latestCopilotReview: latestReview
       ? {
           id: latestReview.id,
@@ -957,6 +1127,20 @@ function buildFailureReport(
       hasActionableComments: false,
       hasSuppressedNotesInLatestReview: false,
     },
+    reviewRun: {
+      workflowName: COPILOT_REVIEW_WORKFLOW_NAME,
+      runId: null,
+      event: null,
+      status: null,
+      conclusion: null,
+      url: null,
+      headSha: options.headSha,
+      headBranch: null,
+      createdAt: null,
+      updatedAt: null,
+      isCurrentHead: false,
+      observationState: 'unobserved',
+    },
     latestCopilotReview: null,
     staleReviews: [],
     unresolvedThreads: [],
@@ -991,6 +1175,8 @@ function appendStepSummary(
     `- repository: \`${report.repository ?? 'unknown'}\``,
     `- pull_request: \`#${report.pullRequest.number ?? 'unknown'}\``,
     `- head_sha: \`${report.pullRequest.headSha ?? 'unknown'}\``,
+    `- review_run_state: \`${report.reviewRun.observationState}\``,
+    `- review_run_id: \`${report.reviewRun.runId ?? 'unknown'}\``,
     `- current_head_review: \`${report.signals.hasCurrentHeadReview}\``,
     `- stale_review: \`${report.signals.hasStaleReview}\``,
     `- unresolved_threads: \`${report.summary.unresolvedThreadCount}\``,
@@ -1001,6 +1187,9 @@ function appendStepSummary(
   if (report.latestCopilotReview) {
     lines.push(`- latest_review_commit: \`${report.latestCopilotReview.commitId ?? 'unknown'}\``);
     lines.push(`- latest_review_submitted_at: \`${report.latestCopilotReview.submittedAt ?? 'unknown'}\``);
+  }
+  if (report.reviewRun.url) {
+    lines.push(`- review_run_url: ${report.reviewRun.url}`);
   }
 
   if (report.actionableComments.length > 0) {
@@ -1029,6 +1218,7 @@ export function runCopilotReviewSignal({
   loadPullFn = loadPullPayload,
   loadReviewsFn = loadReviewsPayload,
   loadThreadsFn = loadThreadsPayload,
+  loadWorkflowRunFn = loadWorkflowRunPayload,
   writeReportFn = writeReport,
   appendStepSummaryFn = appendStepSummary,
 }: RunCopilotReviewSignalOptions = {}): {
@@ -1051,16 +1241,19 @@ export function runCopilotReviewSignal({
 
   try {
     const pull = loadPullFn(options);
+    const headSha = normalizeSha(options.headSha ?? pull.head?.sha);
     const reviews = loadReviewsFn(options);
     const threads = loadThreadsFn(options);
+    const workflowRun = loadWorkflowRunFn(options, { pull, headSha });
     report = analyzeCopilotReviewSignal({
       repository: options.repo,
       pull,
       reviews,
       threads,
+      workflowRun,
       now,
       source: buildSource(options),
-      headShaOverride: options.headSha,
+      headShaOverride: headSha,
     });
     if (report.status !== 'pass') {
       exitCode = 1;

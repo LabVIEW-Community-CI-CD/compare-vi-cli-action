@@ -129,6 +129,11 @@ jobs:
             "--head-sha" "${{ steps.workflow_run_metadata.outputs.head_sha || steps.workflow_run_pr.outputs.head_sha }}"
             "--base-ref" "${{ steps.workflow_run_metadata.outputs.base_ref }}"
             "--draft" "${{ steps.workflow_run_metadata.outputs.draft }}"
+            "--review-run-id" "${{ github.event.workflow_run.id }}"
+            "--review-run-status" "${{ github.event.workflow_run.status }}"
+            "--review-run-conclusion" "${{ github.event.workflow_run.conclusion }}"
+            "--review-run-url" "${{ github.event.workflow_run.html_url }}"
+            "--review-run-workflow-name" "${{ github.event.workflow_run.name }}"
           )
         else
           args+=(
