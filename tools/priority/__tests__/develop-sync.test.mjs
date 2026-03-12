@@ -252,7 +252,11 @@ test('Sync-OriginUpstreamDevelop refreshes the local tracking ref after SSH fall
   const controlRepo = path.join(sandboxRoot, 'control');
   const worktreeRepo = path.join(sandboxRoot, 'worktree');
   const updaterRepo = path.join(sandboxRoot, 'updater');
-  const fakeSshPath = path.join(sandboxRoot, 'fake-ssh.cmd');
+  const fakeSshPath = path.join(sandboxRoot, process.platform === 'win32' ? 'fake-ssh.cmd' : 'fake-ssh.sh');
+  const fakeSshCommand =
+    process.platform === 'win32'
+      ? `cmd /c "${fakeSshPath}"`
+      : `sh "${fakeSshPath}"`;
   t.after(async () => {
     await rm(sandboxRoot, { recursive: true, force: true });
   });
@@ -289,10 +293,11 @@ test('Sync-OriginUpstreamDevelop refreshes the local tracking ref after SSH fall
 
   await writeFile(
     fakeSshPath,
-    '@echo off\r\n>&2 echo Permission denied (publickey).\r\nexit /b 255\r\n',
+    process.platform === 'win32'
+      ? '@echo off\r\n>&2 echo Permission denied (publickey).\r\nexit /b 255\r\n'
+      : '#!/bin/sh\nprintf \'Permission denied (publickey).\\n\' >&2\nexit 255\n',
     'utf8'
   );
-  run('git', ['config', 'core.sshCommand', `cmd /c "${fakeSshPath}"`], { cwd: controlRepo });
   run('git', ['remote', 'set-url', '--push', 'origin', 'git@github.com:LabVIEW-Community-CI-CD/compare-vi-cli-action-fork.git'], {
     cwd: controlRepo
   });
@@ -318,7 +323,14 @@ test('Sync-OriginUpstreamDevelop refreshes the local tracking ref after SSH fall
       '-ParityReportPath',
       parityReportPath
     ],
-    { cwd: worktreeRepo, timeout: 180000 }
+    {
+      cwd: worktreeRepo,
+      timeout: 180000,
+      env: {
+        ...process.env,
+        GIT_SSH_COMMAND: fakeSshCommand
+      }
+    }
   );
 
   const upstreamHead = run('git', ['--git-dir', upstreamBare, 'rev-parse', 'develop'], { cwd: sandboxRoot });
