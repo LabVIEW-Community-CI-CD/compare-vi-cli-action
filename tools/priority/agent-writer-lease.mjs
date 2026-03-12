@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { resolveGitAdminPaths } from './lib/git-admin-paths.mjs';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(MODULE_DIR, '..', '..');
@@ -39,26 +40,20 @@ function envBool(name, fallback = false) {
   return raw === '1' || raw.toLowerCase() === 'true';
 }
 
-function resolveDefaultGitDir(repoRoot = REPO_ROOT) {
-  const probe = spawnSync('git', ['rev-parse', '--git-dir'], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-  if (probe.status !== 0) {
-    return path.join(repoRoot, '.git');
+function resolveDefaultGitCommonDir(options = {}) {
+  try {
+    return resolveGitAdminPaths({
+      cwd: options.repoRoot || REPO_ROOT,
+      env: options.env || process.env,
+      spawnSyncFn: options.spawnSyncFn || spawnSync
+    }).gitCommonDir;
+  } catch {
+    return path.join(options.repoRoot || REPO_ROOT, '.git');
   }
-
-  const gitDir = String(probe.stdout ?? '').trim();
-  if (!gitDir) {
-    return path.join(repoRoot, '.git');
-  }
-
-  return path.isAbsolute(gitDir) ? path.normalize(gitDir) : path.normalize(path.resolve(repoRoot, gitDir));
 }
 
-export function defaultLeaseRoot() {
-  return process.env.AGENT_WRITER_LEASE_ROOT || path.join(resolveDefaultGitDir(), 'agent-writer-leases');
+export function defaultLeaseRoot(options = {}) {
+  return process.env.AGENT_WRITER_LEASE_ROOT || path.join(resolveDefaultGitCommonDir(options), 'agent-writer-leases');
 }
 
 export function defaultOwner() {

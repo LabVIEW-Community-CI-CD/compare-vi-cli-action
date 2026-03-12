@@ -91,6 +91,33 @@ function Get-GitValue {
   return ([string]$result.Lines[0]).Trim()
 }
 
+function Get-GitOptionalValue {
+  param([Parameter(Mandatory)][string[]]$Arguments)
+  $result = Invoke-Git -Arguments $Arguments -IgnoreExitCode
+  if ($result.ExitCode -ne 0 -or -not $result.Text) {
+    return ''
+  }
+  return ([string]$result.Lines[0]).Trim()
+}
+
+function Resolve-GitAdminPath {
+  param(
+    [Parameter(Mandatory)][string[]]$Arguments,
+    [Parameter(Mandatory)][string]$BasePath
+  )
+
+  $value = Get-GitValue -Arguments $Arguments
+  if ([string]::IsNullOrWhiteSpace($value)) {
+    throw ("git {0} returned an empty path." -f ($Arguments -join ' '))
+  }
+
+  if ([System.IO.Path]::IsPathRooted($value)) {
+    return [System.IO.Path]::GetFullPath($value)
+  }
+
+  return [System.IO.Path]::GetFullPath((Join-Path $BasePath $value))
+}
+
 function Get-RemoteHeadSha {
   param(
     [Parameter(Mandatory)][string]$Remote,
@@ -140,6 +167,51 @@ function Test-NonRetryableSyncFailure {
   return $false
 }
 
+function Test-GitHubSshAuthFailure {
+  param([Parameter(Mandatory)][string]$Message)
+
+  if ($Message -match '(?i)Permission denied \(publickey\)') { return $true }
+  if ($Message -match '(?i)Could not read from remote repository') { return $true }
+  return $false
+}
+
+function Invoke-PushWithTransportFallback {
+  param(
+    [Parameter(Mandatory)][string]$Remote,
+    [Parameter(Mandatory)][string]$BranchName
+  )
+
+  try {
+    Invoke-Git -Arguments @('push', $Remote, $BranchName) | Out-Null
+    return [ordered]@{
+      target = $Remote
+      usedFallback = $false
+    }
+  }
+  catch {
+    $message = $_.Exception.Message
+    $fetchUrl = Get-GitOptionalValue -Arguments @('remote', 'get-url', $Remote)
+    $pushUrl = Get-GitOptionalValue -Arguments @('remote', 'get-url', '--push', $Remote)
+    $canFallback = (
+      (Test-GitHubSshAuthFailure -Message $message) -and
+      -not [string]::IsNullOrWhiteSpace($fetchUrl) -and
+      $fetchUrl -ne $pushUrl
+    )
+    if (-not $canFallback) {
+      throw
+    }
+
+    Write-Warning ("[sync] Push via remote '{0}' failed with SSH auth; retrying against fetch URL {1}" -f $Remote, $fetchUrl)
+    Invoke-Git -Arguments @('push', $fetchUrl, ("{0}:{0}" -f $BranchName)) | Out-Null
+    return [ordered]@{
+      target = $fetchUrl
+      usedFallback = $true
+      primaryRemote = $Remote
+      primaryPushUrl = $pushUrl
+    }
+  }
+}
+
 $repoRoot = Get-GitValue -Arguments @('rev-parse', '--show-toplevel')
 if ([string]::IsNullOrWhiteSpace($repoRoot)) {
   throw 'Unable to resolve git repository root.'
@@ -162,10 +234,26 @@ $lockStream = $null
 $restoreBranch = $false
 $startingBranch = ''
 $pushedLocation = $false
+$gitDir = ''
+$gitCommonDir = ''
+$gitConfigPath = ''
+$adminPaths = $null
+$pushTransport = $null
 
 Push-Location -LiteralPath $repoRoot
 $pushedLocation = $true
 try {
+  $gitDir = Resolve-GitAdminPath -Arguments @('rev-parse', '--git-dir') -BasePath $repoRoot
+  $gitCommonDir = Resolve-GitAdminPath -Arguments @('rev-parse', '--git-common-dir') -BasePath $repoRoot
+  $gitConfigPath = Resolve-GitAdminPath -Arguments @('rev-parse', '--git-path', 'config') -BasePath $repoRoot
+  $lockPath = Join-Path $gitCommonDir $lockName
+  $adminPaths = [ordered]@{
+    gitDir = $gitDir
+    gitCommonDir = $gitCommonDir
+    gitConfigPath = $gitConfigPath
+    lockPath = $lockPath
+  }
+
   $startingBranch = Get-GitValue -Arguments @('branch', '--show-current')
   $restoreBranch = (
     -not $KeepCurrentBranch -and
@@ -189,7 +277,7 @@ try {
 
       # Sequential by design: pull must complete before push starts.
       Invoke-Git -Arguments @('pull', '--ff-only', $BaseRemote, $Branch) | Out-Null
-      Invoke-Git -Arguments @('push', $HeadRemote, $Branch) | Out-Null
+      $pushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $Branch
 
       $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
       if ([string]::IsNullOrWhiteSpace($localHead)) {
@@ -235,7 +323,12 @@ try {
     throw ("Parity report not found: {0}" -f $parityReportPath)
   }
 
-  $parityReport = Get-Content -LiteralPath $parityReportPath -Raw | ConvertFrom-Json
+  $parityReport = Get-Content -LiteralPath $parityReportPath -Raw | ConvertFrom-Json -AsHashtable
+  $parityReport['adminPaths'] = $adminPaths
+  if ($pushTransport) {
+    $parityReport['pushTransport'] = $pushTransport
+  }
+  ($parityReport | ConvertTo-Json -Depth 20) + "`n" | Set-Content -LiteralPath $parityReportPath -Encoding utf8
   $tipDiffCount = [int]($parityReport.tipDiff.fileCount)
   if ($tipDiffCount -ne 0) {
     throw ("Origin/upstream parity failed: tipDiff.fileCount={0} (expected 0)." -f $tipDiffCount)
