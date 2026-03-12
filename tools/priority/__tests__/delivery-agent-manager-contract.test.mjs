@@ -411,3 +411,11 @@ test('delivery-agent manager status emits bounded log-tail trace events for daem
   assert.match(traceText, /"source":"manager-stderr"/);
   assert.match(traceText, /"reason":"status:status"/);
 });
+
+test('delivery-agent manager status synthesizes the active lane from the freshest heartbeat when delivery state is stale', async () => {
+  const manager = await readText('tools/priority/Manage-UnattendedDeliveryAgent.ps1');
+
+  assert.match(manager, /function Resolve-DeliveryStateForStatus/);
+  assert.match(manager, /derivedFromHeartbeat/);
+  assert.match(manager, /Read-JsonFile -Path \$Paths\.ObserverHeartbeatPath/);
+});
