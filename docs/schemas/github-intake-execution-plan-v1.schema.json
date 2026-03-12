@@ -214,6 +214,18 @@
         },
         "snapshotResolved": {
           "type": "boolean"
+        },
+        "forkRemote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headRemote": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     },
@@ -261,6 +273,18 @@
           ]
         },
         "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "forkRemote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headRemote": {
           "type": [
             "string",
             "null"
