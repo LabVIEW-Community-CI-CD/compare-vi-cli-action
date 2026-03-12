@@ -49,7 +49,8 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
       -ResultsDir $resultsDir `
       -PolicyPath $script:policyPath `
       -Branch 'develop' `
-      -ProducedContexts $script:developExpected
+      -ProducedContexts $script:developExpected `
+      -ActualContexts $script:developExpected
 
     $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
     $bp = $idx.branchProtection
@@ -68,6 +69,11 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $digestScript = Join-Path $script:repoRoot 'tools/Get-FileSha256.ps1'
     $digest = & $digestScript -Path $script:policyPath
     $bp.contract.mappingDigest | Should -Be $digest
+
+    $v2 = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index-v2.json') -Raw | ConvertFrom-Json
+    $v2.branchProtection.status | Should -Be 'ok'
+    ($v2.branchProtection.expected | Sort-Object) | Should -Be ($script:developExpected | Sort-Object)
+    ($v2.branchProtection.actual | Sort-Object) | Should -Be ($script:developExpected | Sort-Object)
   }
 
   It 'resolves pull request refs to the base branch when available' {

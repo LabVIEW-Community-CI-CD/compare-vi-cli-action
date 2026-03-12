@@ -349,6 +349,7 @@ $idx['branchProtection'] = $bpObject
 
 $jsonOut = ($idx | ConvertTo-Json -Depth 10)
 Set-Content -LiteralPath $idxPath -Value $jsonOut -Encoding UTF8
+& (Join-Path $PSScriptRoot 'Ensure-SessionIndex.ps1') -ResultsDir $ResultsDir -RefreshSessionIndexV2 | Out-Null
 
 if ($env:GITHUB_STEP_SUMMARY) {
   $summaryLines = @('### Branch Protection Verification','')

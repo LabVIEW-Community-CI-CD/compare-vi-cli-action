@@ -52,3 +52,13 @@ test('hook-parity checks out the PR head directly instead of the merge ref on pu
     /- uses: actions\/checkout@v5\s*\r?\n(?!\s+with:)[\s\S]*?actions\/setup-node@v5/
   );
 });
+
+test('session-index job refreshes the v2 artifact explicitly before validation and upload', () => {
+  const workflow = readRepoFile('.github/workflows/validate.yml');
+  const sessionIndexSection = extractWorkflowJobSection(workflow, 'session-index', 'session-index-v2-contract');
+
+  assert.match(
+    sessionIndexSection,
+    /- name: Refresh session index v2 artifact\s*\r?\n\s+shell: pwsh\s*\r?\n\s+run: \|\s*\r?\n\s+\$res = Join-Path \$env:RUNNER_TEMP 'sessionindex'\s*\r?\n\s+\.\/tools\/Ensure-SessionIndex\.ps1 -ResultsDir \$res -RefreshSessionIndexV2/
+  );
+});

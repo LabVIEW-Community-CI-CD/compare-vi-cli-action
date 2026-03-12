@@ -84,4 +84,5 @@ $index.runContext.runnerLabelContract = [ordered]@{
 }
 
 ($index | ConvertTo-Json -Depth 30) | Set-Content -LiteralPath $sessionPathResolved -Encoding utf8
+& (Join-Path $PSScriptRoot 'Ensure-SessionIndex.ps1') -ResultsDir $resultsResolved -RefreshSessionIndexV2 | Out-Null
 Write-Output $sessionPathResolved

@@ -1,7 +1,8 @@
 param(
   [Parameter(Mandatory=$false)] [string]$ResultsDir = 'tests/results',
   [Parameter(Mandatory=$false)] [string]$SummaryJson = 'pester-summary.json',
-  [Parameter(Mandatory=$false)] [switch]$DisableSessionIndexV2
+  [Parameter(Mandatory=$false)] [switch]$DisableSessionIndexV2,
+  [Parameter(Mandatory=$false)] [switch]$RefreshSessionIndexV2
 )
 
 Set-StrictMode -Version Latest
@@ -26,7 +27,7 @@ try {
 
   $idxExists = Test-Path -LiteralPath $idxPath -PathType Leaf
   $v2Exists = Test-Path -LiteralPath $v2Path -PathType Leaf
-  if ($idxExists -and ($disableV2 -or $v2Exists)) { return }
+  if ($idxExists -and ($disableV2 -or ($v2Exists -and -not $RefreshSessionIndexV2.IsPresent))) { return }
 
   if (-not $idxExists) {
     $idx = [ordered]@{
@@ -85,11 +86,11 @@ try {
     Write-Host ("Fallback session index created at: {0}" -f $idxPath)
   }
 
-  if (-not $disableV2 -and -not (Test-Path -LiteralPath $v2Path -PathType Leaf)) {
+  if (-not $disableV2 -and ((-not (Test-Path -LiteralPath $v2Path -PathType Leaf)) -or $RefreshSessionIndexV2.IsPresent)) {
     try {
       $cliPath = Join-Path $PSScriptRoot '..' 'dist' 'src' 'session-index' 'cli.js'
       if (Test-Path -LiteralPath $cliPath -PathType Leaf) {
-        & node $cliPath --sample --out $v2Path
+        & node $cliPath --from-v1 $idxPath --out $v2Path
         if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $v2Path -PathType Leaf)) {
           Write-Host ("Session index v2 created at: {0}" -f $v2Path)
         } else {

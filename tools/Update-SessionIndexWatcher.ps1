@@ -144,7 +144,7 @@ if (-not (Test-Path -LiteralPath $ResultsDir -PathType Container)) {
 $idxPath = Join-Path $ResultsDir 'session-index.json'
 if (-not (Test-Path -LiteralPath $idxPath -PathType Leaf)) {
   try {
-    pwsh -NoLogo -NoProfile -File ./tools/Ensure-SessionIndex.ps1 -ResultsDir $ResultsDir | Out-Null
+    & (Join-Path $PSScriptRoot 'Ensure-SessionIndex.ps1') -ResultsDir $ResultsDir | Out-Null
   } catch {
     Write-Warning "[watcher-session] Ensure-SessionIndex failed: $_"
   }
@@ -203,4 +203,5 @@ if ($watch -and $events) {
 $idx = Update-SessionIndexWithWatcher -SessionIndex $idx -WatcherPayload $watch -SummaryLine $summaryLine
 
 $idx | ConvertTo-Json -Depth 10 | Out-File -FilePath $idxPath -Encoding utf8
+& (Join-Path $PSScriptRoot 'Ensure-SessionIndex.ps1') -ResultsDir $ResultsDir -RefreshSessionIndexV2 | Out-Null
 Write-Verbose "[watcher-session] Updated session index with REST watcher summary."

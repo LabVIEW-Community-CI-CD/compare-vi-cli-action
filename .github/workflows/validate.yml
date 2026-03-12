@@ -902,6 +902,12 @@ jobs:
         node tools/priority/report-origin-upstream-parity.mjs --base-ref 'upstream/develop' --head-ref 'origin/develop' --sample-limit 20 --output-path "$parityPath"
         pwsh -File tools/Update-SessionIndexParity.ps1 -ResultsDir $res -ParityReportPath $parityPath -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
+    - name: Refresh session index v2 artifact
+      shell: pwsh
+      run: |
+        $res = Join-Path $env:RUNNER_TEMP 'sessionindex'
+        ./tools/Ensure-SessionIndex.ps1 -ResultsDir $res -RefreshSessionIndexV2
+
     - name: Validate session index schemas (v1 + optional v2)
       shell: pwsh
       run: |

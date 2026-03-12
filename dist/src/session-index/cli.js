@@ -1,6 +1,7 @@
 import { ArgumentParser } from 'argparse';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createSessionIndexBuilder } from './builder.js';
+import { convertSessionIndexV1ToV2 } from './convert.js';
 const parser = new ArgumentParser({
     description: 'Session Index v2 helper'
 });
@@ -11,6 +12,9 @@ parser.add_argument('--sample', {
     help: 'Emit a sample session index with placeholder data',
     action: 'store_true'
 });
+parser.add_argument('--from-v1', {
+    help: 'Convert an existing session-index/v1 payload into session-index/v2'
+});
 parser.add_argument('--workflow', {
     help: 'Workflow name when generating real output',
     default: process.env.GITHUB_WORKFLOW || 'unknown'
@@ -20,8 +24,12 @@ parser.add_argument('--job', {
     default: process.env.GITHUB_JOB
 });
 const args = parser.parse_args();
-const builder = createSessionIndexBuilder();
+let index;
+if (args.sample && args.from_v1) {
+    throw new Error('--sample and --from-v1 are mutually exclusive');
+}
 if (args.sample) {
+    const builder = createSessionIndexBuilder();
     builder
         .setRun({
         workflow: args.workflow,
@@ -83,8 +91,24 @@ if (args.sample) {
         mimeType: 'text/html'
     })
         .addNote('Sample session index generated for demonstration.');
+    index = builder.build();
+}
+else if (args.from_v1) {
+    const sourcePath = String(args.from_v1);
+    const source = JSON.parse(readFileSync(sourcePath, 'utf8'));
+    index = convertSessionIndexV1ToV2(source, {
+        v1Path: sourcePath,
+        eventName: process.env.GITHUB_EVENT_NAME,
+        githubWorkflow: args.workflow,
+        githubJob: args.job ?? process.env.GITHUB_JOB,
+        githubRepository: process.env.GITHUB_REPOSITORY,
+        githubRefName: process.env.GITHUB_REF_NAME,
+        githubSha: process.env.GITHUB_SHA,
+        nodeVersion: process.version
+    });
 }
 else {
+    const builder = createSessionIndexBuilder();
     builder.setRun({
         workflow: args.workflow,
         job: args.job ?? process.env.GITHUB_JOB,
@@ -95,8 +119,8 @@ else {
             kind: process.env.GITHUB_EVENT_NAME
         }
     });
+    index = builder.build();
 }
-const index = builder.build();
 const json = JSON.stringify(index, null, 2);
 if (args.out) {
     writeFileSync(args.out, json, { encoding: 'utf8' });
