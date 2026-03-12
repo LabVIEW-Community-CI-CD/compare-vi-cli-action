@@ -14,6 +14,7 @@ import {
   ensureOriginFork,
   pushBranch,
   buildGhPrCreateArgs,
+  buildGhPrEditArgs,
   buildGhPrListArgs,
   selectPullRequestCreateStrategy,
   buildCreatePullRequestMutation,
@@ -275,6 +276,40 @@ test('buildGhPrCreateArgs preserves the standard gh create path for user forks',
   ]);
 });
 
+test('buildGhPrEditArgs targets the existing PR with explicit title/body updates', () => {
+  const args = buildGhPrEditArgs({
+    upstream: { owner: 'upstream-owner', repo: 'repo' },
+    pullRequest: { number: 963 },
+    title: 'Updated helper title',
+    body: 'Updated helper body'
+  });
+
+  assert.deepEqual(args, [
+    'pr',
+    'edit',
+    '963',
+    '--repo',
+    'upstream-owner/repo',
+    '--title',
+    'Updated helper title',
+    '--body',
+    'Updated helper body'
+  ]);
+});
+
+test('buildGhPrEditArgs fails fast when upstream coordinates are missing', () => {
+  assert.throws(
+    () =>
+      buildGhPrEditArgs({
+        upstream: { owner: 'upstream-owner' },
+        pullRequest: { number: 963 },
+        title: 'Updated helper title',
+        body: 'Updated helper body'
+      }),
+    /Invalid upstream repository coordinates/i
+  );
+});
+
 test('buildGhPrListArgs targets the upstream repository and supports owner-qualified head selectors', () => {
   const args = buildGhPrListArgs({
     upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
@@ -522,6 +557,7 @@ test('runGhPrCreate retries same-owner fork GraphQL creation with a namespaced h
 
 test('runGhPrCreate reuses an existing PR when same-owner fork GraphQL creation reports a duplicate', () => {
   const writes = [];
+  const edits = [];
   const result = runGhPrCreate(
     {
       repoRoot: '/tmp/repo',
@@ -551,6 +587,9 @@ test('runGhPrCreate reuses an existing PR when same-owner fork GraphQL creation 
         number: 963,
         url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963'
       }),
+      updateExistingPullRequestFn: (_repoRoot, payload) => {
+        edits.push(payload);
+      },
       writeStdoutFn: (text) => {
         writes.push(text);
       }
@@ -560,11 +599,23 @@ test('runGhPrCreate reuses an existing PR when same-owner fork GraphQL creation 
   assert.equal(result.strategy, 'graphql-same-owner-fork');
   assert.equal(result.reusedExisting, true);
   assert.equal(result.pullRequest.number, 963);
+  assert.deepEqual(edits, [
+    {
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      pullRequest: {
+        number: 963,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963'
+      },
+      title: 'Fix #963',
+      body: 'Body'
+    }
+  ]);
   assert.deepEqual(writes, ['https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963\n']);
 });
 
 test('runGhPrCreate reuses an existing human-drafted PR so it can later return to ready-for-review for a fresh Copilot review', () => {
   const writes = [];
+  const edits = [];
   const result = runGhPrCreate(
     {
       repoRoot: '/tmp/repo',
@@ -595,6 +646,9 @@ test('runGhPrCreate reuses an existing human-drafted PR so it can later return t
         url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963',
         isDraft: true
       }),
+      updateExistingPullRequestFn: (_repoRoot, payload) => {
+        edits.push(payload);
+      },
       writeStdoutFn: (text) => {
         writes.push(text);
       }
@@ -605,6 +659,18 @@ test('runGhPrCreate reuses an existing human-drafted PR so it can later return t
   assert.equal(result.reusedExisting, true);
   assert.equal(result.pullRequest.number, 963);
   assert.equal(result.pullRequest.isDraft, true);
+  assert.deepEqual(edits, [
+    {
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      pullRequest: {
+        number: 963,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963',
+        isDraft: true
+      },
+      title: 'Fix #963',
+      body: 'Body'
+    }
+  ]);
   assert.deepEqual(writes, ['https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963\n']);
 });
 
@@ -681,6 +747,7 @@ test('runGhPrCreate surfaces gh CLI stdout and parses the created PR URL on succ
 });
 
 test('runGhPrCreate reuses an existing PR when gh pr create reports a duplicate', () => {
+  const edits = [];
   const result = runGhPrCreate(
     {
       repoRoot: '/tmp/repo',
@@ -700,11 +767,92 @@ test('runGhPrCreate reuses an existing PR when gh pr create reports a duplicate'
       findExistingPullRequestFn: () => ({
         number: 963,
         url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963'
-      })
+      }),
+      updateExistingPullRequestFn: (_repoRoot, payload) => {
+        edits.push(payload);
+      }
     }
   );
 
   assert.equal(result.strategy, 'gh-pr-create');
   assert.equal(result.reusedExisting, true);
   assert.equal(result.pullRequest.number, 963);
+  assert.equal(result.updateWarning, null);
+  assert.deepEqual(edits, [
+    {
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      pullRequest: {
+        number: 963,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963'
+      },
+      title: 'Fix #963',
+      body: 'Body'
+    }
+  ]);
+});
+
+test('runGhPrCreate treats existing PR refresh failures as warnings and still returns the PR URL', () => {
+  const warnings = [];
+  const result = runGhPrCreate(
+    {
+      repoRoot: '/tmp/repo',
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      origin: { owner: 'svelderrainruiz', repo: 'compare-vi-cli-action', sameOwnerFork: false },
+      branch: 'issue/963-org-owned-fork-pr-helper',
+      base: 'develop',
+      title: 'Fix #963',
+      body: 'Body'
+    },
+    {
+      spawnSyncFn: () => ({
+        status: 1,
+        stdout: '',
+        stderr: 'gh: A pull request already exists for svelderrainruiz:issue/963-org-owned-fork-pr-helper.'
+      }),
+      findExistingPullRequestFn: () => ({
+        number: 963,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963'
+      }),
+      updateExistingPullRequestFn: () => {
+        throw new Error('failed to refresh existing PR metadata');
+      },
+      writeStderrFn: (text) => {
+        warnings.push(text);
+      }
+    }
+  );
+
+  assert.equal(result.reusedExisting, true);
+  assert.equal(result.pullRequest.number, 963);
+  assert.equal(result.updateWarning, 'failed to refresh existing PR metadata');
+  assert.match(
+    warnings.join(''),
+    /Warning: Failed to update existing pull request https:\/\/github\.com\/LabVIEW-Community-CI-CD\/compare-vi-cli-action\/pull\/963: failed to refresh existing PR metadata/
+  );
+});
+
+test('runGhPrCreate redacts title and body from gh command errors', () => {
+  assert.throws(
+    () =>
+      runGhPrCreate(
+        {
+          repoRoot: '/tmp/repo',
+          upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+          origin: { owner: 'svelderrainruiz', repo: 'compare-vi-cli-action', sameOwnerFork: false },
+          branch: 'issue/963-org-owned-fork-pr-helper',
+          base: 'develop',
+          title: 'Very sensitive PR title',
+          body: 'Very sensitive PR body'
+        },
+        {
+          spawnSyncFn: () => ({
+            status: 1,
+            stdout: '',
+            stderr: 'gh: create failed'
+          }),
+          findExistingPullRequestFn: () => null
+        }
+      ),
+    /gh pr create --repo LabVIEW-Community-CI-CD\/compare-vi-cli-action --base develop --head svelderrainruiz:issue\/963-org-owned-fork-pr-helper --draft --title <redacted:title> --body <redacted:body> failed: gh: create failed/i
+  );
 });

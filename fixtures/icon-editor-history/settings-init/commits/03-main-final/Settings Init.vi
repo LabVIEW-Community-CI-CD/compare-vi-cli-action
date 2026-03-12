@@ -1,8 +1,0 @@
-Icon Editor Settings Init snapshot (main refinement)
-
-- Initializes references cluster with default data.
-- Glyph tree remains empty.
-- Adds clipboard label hiding logic.
-- Seeds glyph tree with template category metadata.
-- Tweaks settings defaults after clipboard update.
-- Prepares merge with feature adjustments.

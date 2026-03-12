@@ -165,7 +165,7 @@ $suiteManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path 
     $harnessRoot = Join-Path $TestDrive 'stub-harness'
     $toolsDir = Join-Path $harnessRoot 'tools'
     $fixturesDir = Join-Path $harnessRoot 'fixtures' 'real-history'
-    $externalRepoDir = Join-Path $harnessRoot 'vendor' 'icon-editor'
+    $externalRepoDir = Join-Path $harnessRoot 'external' 'labview-icon-editor'
     New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
     New-Item -ItemType Directory -Path $fixturesDir -Force | Out-Null
     New-Item -ItemType Directory -Path $externalRepoDir -Force | Out-Null
@@ -196,7 +196,7 @@ $suiteManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path 
       "repo": {
         "slug": "svelderrainruiz/labview-icon-editor",
         "localPathHints": [
-          "vendor/icon-editor"
+          "external/labview-icon-editor"
         ],
         "startRef": "HEAD",
         "endRef": null

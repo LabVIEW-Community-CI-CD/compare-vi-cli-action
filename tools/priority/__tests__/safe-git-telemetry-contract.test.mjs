@@ -28,6 +28,7 @@ test('pre-push checks summarize safe-git reliability telemetry', () => {
   assert.match(content, /Invoke-SafeGitReliabilitySummary/);
   assert.match(content, /summarize-safe-git-telemetry\.mjs/);
   assert.match(content, /safe-git-trend-summary\.json/);
+  assert.match(content, /PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS/);
 });
 
 test('bootstrap summarizes safe-git reliability telemetry', () => {
@@ -36,4 +37,3 @@ test('bootstrap summarizes safe-git reliability telemetry', () => {
   assert.match(content, /summarize-safe-git-telemetry\.mjs/);
   assert.match(content, /safe-git-trend-summary\.json/);
 });
-

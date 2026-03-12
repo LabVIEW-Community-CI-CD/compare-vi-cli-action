@@ -67,13 +67,7 @@ $reportLane = New-LaneReport -Name 'report' -Requirements @(
   (New-Requirement -Key 'LVCompare.exe' -Value $lvCompare)
 )
 
-$vipmPath = Resolve-VIPMPath
-$packagingLane = New-LaneReport -Name 'packaging' -Requirements @(
-  (New-Requirement -Key 'LabVIEW 2021 (32-bit)' -Value $lv2021x86),
-  (New-Requirement -Key 'VIPM' -Value $vipmPath)
-)
-
-$lanes = @($sourceLane, $reportLane, $packagingLane)
+$lanes = @($sourceLane, $reportLane)
 
 if ($Json) {
   $lanes | ConvertTo-Json -Depth 5

@@ -9,36 +9,46 @@ jobs:
     env:
       ACTIONLINT_VERSION: ${{ vars.ACTIONLINT_VERSION || '1.7.7' }}
     steps:
-      - uses: actions/checkout@v5
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Install actionlint (pinned)
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ./bin
+        ver="${ACTIONLINT_VERSION:-1.7.7}"
+        for i in 1 2 3; do
+          if curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- "$ver" ./bin; then
+            break
+          else
+            echo "retry $i"; sleep 2
+          fi
+        done
 
-      - name: Install actionlint (pinned)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p ./bin
-          ver="${ACTIONLINT_VERSION:-1.7.7}"
-          for i in 1 2 3; do
-            if curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- "$ver" ./bin; then
-              break
-            else
-              echo "retry $i"; sleep 2
-            fi
-          done
+    - name: Run actionlint
+      run: ./bin/actionlint -color
 
-      - name: Run actionlint
-        run: ./bin/actionlint -color
+    - name: Assert workflow checkout contract
+      run: >
+        node --test
+        tools/priority/__tests__/workflow-checkout-contract.test.mjs
+        tools/priority/__tests__/workflows-lint-workflow-contract.test.mjs
+        tools/priority/__tests__/agent-review-policy-contract.test.mjs
+        tools/priority/__tests__/validate-standard-path-contract.test.mjs
 
-      - name: Assert requirements-verification check contract
-        shell: pwsh
-        run: |
-          pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
+    - name: Assert requirements-verification check contract
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-RequirementsVerificationCheckContract.ps1
 
-      - name: Assert policy-guard check contract
-        shell: pwsh
-        run: |
-          pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-PolicyGuardCheckContract.ps1
+    - name: Assert policy-guard check contract
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-PolicyGuardCheckContract.ps1
 
-      - name: Assert commit-integrity contract
-        shell: pwsh
-        run: |
-          pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-CommitIntegrityContract.ps1
+    - name: Assert commit-integrity contract
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-CommitIntegrityContract.ps1

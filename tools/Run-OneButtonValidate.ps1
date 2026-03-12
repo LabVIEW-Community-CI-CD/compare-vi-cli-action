@@ -74,7 +74,7 @@ $validateSteps = @(
   @{ Name = 'Docs links check'; Action = { Invoke-CommandWithExit -Command 'pwsh' -Arguments @(
       '-NoLogo','-NoProfile','-File','./tools/Check-DocsLinks.ps1','-Path','docs',
       '-AllowListPath','.ci/link-allowlist.txt','-OutputJson','tests/results/lint/docs-links.json') -FailureMessage 'Docs link check failed.' } },
-  @{ Name = 'Workflow drift (auto-fix)'; Action = { Invoke-CommandWithExit -Command 'pwsh' -Arguments @('-NoLogo','-NoProfile','-File','./tools/Check-WorkflowDrift.ps1','-AutoFix') -FailureMessage 'Workflow drift check failed.' } },
+  @{ Name = 'Workflow checkout contracts'; Action = { Invoke-CommandWithExit -Command 'node' -Arguments @('--test','tools/priority/__tests__/workflow-checkout-contract.test.mjs','tools/priority/__tests__/workflows-lint-workflow-contract.test.mjs','tools/priority/__tests__/agent-review-policy-contract.test.mjs','tools/priority/__tests__/validate-standard-path-contract.test.mjs') -FailureMessage 'Workflow checkout contract tests failed.' } },
   @{ Name = 'Loop determinism (enforced)'; Action = { Invoke-CommandWithExit -Command 'pwsh' -Arguments @('-NoLogo','-NoProfile','-File','./tools/Run-LoopDeterminism.ps1','-FailOnViolation') -FailureMessage 'Loop determinism lint failed.' } },
   @{ Name = 'Derive environment snapshot'; Action = { Invoke-CommandWithExit -Command 'pwsh' -Arguments @('-NoLogo','-NoProfile','-File','./tools/Write-DerivedEnv.ps1') -FailureMessage 'Derive environment snapshot failed.' } },
   @{ Name = 'Session index validation'; Action = { Invoke-CommandWithExit -Command 'pwsh' -Arguments @('-NoLogo','-NoProfile','-File','./tools/Run-SessionIndexValidation.ps1') -FailureMessage 'Session index validation failed.' } },
@@ -86,14 +86,6 @@ $validateSteps = @(
 
 foreach ($step in $validateSteps) {
   Invoke-Step -Name $step.Name -Action $step.Action
-}
-
-if ($Stage -or $Commit -or $Push -or $CreatePR) {
-  Invoke-Step -Name 'Workflow drift (stage)' -Action { Invoke-CommandWithExit -Command 'pwsh' -Arguments @('-NoLogo','-NoProfile','-File','./tools/Check-WorkflowDrift.ps1','-AutoFix','-Stage') -FailureMessage 'Workflow drift stage failed.' }
-}
-
-  if ($Commit) {
-    Invoke-Step -Name 'Workflow drift commit' -Action { Invoke-CommandWithExit -Command 'pwsh' -Arguments @('-NoLogo','-NoProfile','-File','./tools/Check-WorkflowDrift.ps1','-AutoFix','-Stage','-CommitMessage','Normalize: ci-orchestrated via ruamel (#127)') -FailureMessage 'Workflow drift commit failed.' }
 }
 
 if ($Stage -or $Commit) {

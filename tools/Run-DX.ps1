@@ -68,17 +68,16 @@ Write-DxLine "dx-start suite=$Suite results=$ResultsPath"
 # Pre snapshot
 try { & (Join-Path $PSScriptRoot 'Debug-ChildProcesses.ps1') -ResultsDir $ResultsPath | Out-Null } catch {}
 
-# Flag active processes pre-run (LVCompare, LabVIEW, LabVIEWCLI, g-cli, VIPM)
+# Flag active processes pre-run (LVCompare, LabVIEW, LabVIEWCLI, g-cli)
 try {
   $pre = @{}
   try { $pre.lvcompare = @(Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | Select-Object -Expand Id) } catch {}
   try { $pre.labview   = @(Get-Process -Name 'LabVIEW'   -ErrorAction SilentlyContinue | Select-Object -Expand Id) } catch {}
   try { $pre.labviewcli = @(Get-Process -Name 'LabVIEWCLI' -ErrorAction SilentlyContinue | Select-Object -Expand Id) } catch { try { $pre.labviewcli = @(Get-CimInstance Win32_Process -Filter "Name='LabVIEWCLI.exe'" -ErrorAction SilentlyContinue | Select-Object -Expand ProcessId) } catch {} }
   try { $pre.gcli      = @(Get-CimInstance Win32_Process -Filter "Name='g-cli.exe'" -ErrorAction SilentlyContinue | Select-Object -Expand ProcessId) } catch {}
-  try { $pre.vipm      = @(Get-Process -Name 'VIPM' -ErrorAction SilentlyContinue | Select-Object -Expand Id) } catch { try { $pre.vipm = @(Get-CimInstance Win32_Process -Filter "Name='VIPM.exe'" -ErrorAction SilentlyContinue | Select-Object -Expand ProcessId) } catch {} }
-  $cnt = (($pre.lvcompare|Measure-Object).Count + ($pre.labview|Measure-Object).Count + ($pre.labviewcli|Measure-Object).Count + ($pre.gcli|Measure-Object).Count + ($pre.vipm|Measure-Object).Count)
+  $cnt = (($pre.lvcompare|Measure-Object).Count + ($pre.labview|Measure-Object).Count + ($pre.labviewcli|Measure-Object).Count + ($pre.gcli|Measure-Object).Count)
   if ($cnt -gt 0) {
-    Write-DxLine ("procs pre lvcompare={0} labview={1} labviewcli={2} gcli={3} vipm={4}" -f ($pre.lvcompare -join ','), ($pre.labview -join ','), ($pre.labviewcli -join ','), ($pre.gcli -join ','), ($pre.vipm -join ',')) 'warn'
+    Write-DxLine ("procs pre lvcompare={0} labview={1} labviewcli={2} gcli={3}" -f ($pre.lvcompare -join ','), ($pre.labview -join ','), ($pre.labviewcli -join ','), ($pre.gcli -join ',')) 'warn'
   }
 } catch {}
 
@@ -382,17 +381,16 @@ if ($Suite -eq 'TestStand') {
   } catch {}
 }
 
-# Flag active processes post-run (LVCompare, LabVIEW, LabVIEWCLI, g-cli, VIPM)
+# Flag active processes post-run (LVCompare, LabVIEW, LabVIEWCLI, g-cli)
 try {
   $post = @{}
   try { $post.lvcompare = @(Get-Process -Name 'LVCompare' -ErrorAction SilentlyContinue | Select-Object -Expand Id) } catch {}
   try { $post.labview   = @(Get-Process -Name 'LabVIEW'   -ErrorAction SilentlyContinue | Select-Object -Expand Id) } catch {}
   try { $post.labviewcli = @(Get-Process -Name 'LabVIEWCLI' -ErrorAction SilentlyContinue | Select-Object -Expand Id) } catch { try { $post.labviewcli = @(Get-CimInstance Win32_Process -Filter "Name='LabVIEWCLI.exe'" -ErrorAction SilentlyContinue | Select-Object -Expand ProcessId) } catch {} }
   try { $post.gcli      = @(Get-CimInstance Win32_Process -Filter "Name='g-cli.exe'" -ErrorAction SilentlyContinue | Select-Object -Expand ProcessId) } catch {}
-  try { $post.vipm      = @(Get-Process -Name 'VIPM' -ErrorAction SilentlyContinue | Select-Object -Expand Id) } catch { try { $post.vipm = @(Get-CimInstance Win32_Process -Filter "Name='VIPM.exe'" -ErrorAction SilentlyContinue | Select-Object -Expand ProcessId) } catch {} }
-  $cnt2 = (($post.lvcompare|Measure-Object).Count + ($post.labview|Measure-Object).Count + ($post.labviewcli|Measure-Object).Count + ($post.gcli|Measure-Object).Count + ($post.vipm|Measure-Object).Count)
+  $cnt2 = (($post.lvcompare|Measure-Object).Count + ($post.labview|Measure-Object).Count + ($post.labviewcli|Measure-Object).Count + ($post.gcli|Measure-Object).Count)
   if ($cnt2 -gt 0) {
-    Write-DxLine ("procs post lvcompare={0} labview={1} labviewcli={2} gcli={3} vipm={4}" -f ($post.lvcompare -join ','), ($post.labview -join ','), ($post.labviewcli -join ','), ($post.gcli -join ','), ($post.vipm -join ',')) 'warn'
+    Write-DxLine ("procs post lvcompare={0} labview={1} labviewcli={2} gcli={3}" -f ($post.lvcompare -join ','), ($post.labview -join ','), ($post.labviewcli -join ','), ($post.gcli -join ',')) 'warn'
   }
 } catch {}
 
@@ -404,11 +402,11 @@ try {
   if ($null -eq $statusEnvelope) { $statusEnvelope = [ordered]@{ schema='dx-status/v1'; at=(Get-Date).ToUniversalTime().ToString('o'); resultsDir=(Resolve-PathSafe $ResultsPath) } }
   try {
     $procInfo = [ordered]@{
-      pre  = @{ lvcompare = @($pre.lvcompare); labview = @($pre.labview); labviewcli = @($pre.labviewcli); gcli = @($pre.gcli); vipm = @($pre.vipm) }
-      post = @{ lvcompare = @($post.lvcompare); labview = @($post.labview); labviewcli = @($post.labviewcli); gcli = @($post.gcli); vipm = @($post.vipm) }
+      pre  = @{ lvcompare = @($pre.lvcompare); labview = @($pre.labview); labviewcli = @($pre.labviewcli); gcli = @($pre.gcli) }
+      post = @{ lvcompare = @($post.lvcompare); labview = @($post.labview); labviewcli = @($post.labviewcli); gcli = @($post.gcli) }
     }
-    $preCount  = ((@($pre.lvcompare)|Measure-Object).Count + (@($pre.labview)|Measure-Object).Count + (@($pre.labviewcli)|Measure-Object).Count + (@($pre.gcli)|Measure-Object).Count + (@($pre.vipm)|Measure-Object).Count)
-    $postCount = ((@($post.lvcompare)|Measure-Object).Count + (@($post.labview)|Measure-Object).Count + (@($post.labviewcli)|Measure-Object).Count + (@($post.gcli)|Measure-Object).Count + (@($post.vipm)|Measure-Object).Count)
+    $preCount  = ((@($pre.lvcompare)|Measure-Object).Count + (@($pre.labview)|Measure-Object).Count + (@($pre.labviewcli)|Measure-Object).Count + (@($pre.gcli)|Measure-Object).Count)
+    $postCount = ((@($post.lvcompare)|Measure-Object).Count + (@($post.labview)|Measure-Object).Count + (@($post.labviewcli)|Measure-Object).Count + (@($post.gcli)|Measure-Object).Count)
     $statusEnvelope.processes = $procInfo
     $statusEnvelope.processWarn = ($postCount -gt 0)
   } catch {}

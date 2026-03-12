@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Capture a snapshot of child processes (pwsh, conhost, LabVIEW, LVCompare) with memory usage.
+  Capture a snapshot of child processes (pwsh, conhost, LabVIEW, LVCompare, LabVIEWCLI, g-cli) with memory usage.
 
 .DESCRIPTION
   Writes a JSON snapshot to tests/results/_agent/child-procs.json and optionally appends
@@ -9,7 +9,7 @@
 [CmdletBinding()]
 param(
   [string]$ResultsDir = 'tests/results',
-  [string[]]$Names = @('pwsh','conhost','LabVIEW','LVCompare','LabVIEWCLI','g-cli','VIPM'),
+  [string[]]$Names = @('pwsh','conhost','LabVIEW','LVCompare','LabVIEWCLI','g-cli'),
   [switch]$AppendStepSummary
 )
 Set-StrictMode -Version Latest
@@ -46,12 +46,6 @@ foreach ($name in $Names) {
   try {
     if ($name -ieq 'g-cli') {
       $procs = @(Get-CimInstance Win32_Process -Filter "Name='g-cli.exe'" -ErrorAction SilentlyContinue)
-    } elseif ($name -ieq 'VIPM') {
-      $procs = @(Get-Process -Name 'VIPM' -ErrorAction SilentlyContinue)
-      if (-not $procs -or $procs.Count -eq 0) {
-        # Fallback via CIM (in case of session/bitness differences)
-        $procs = @(Get-CimInstance Win32_Process -Filter "Name='VIPM.exe'" -ErrorAction SilentlyContinue)
-      }
     } elseif ($name -ieq 'LabVIEWCLI') {
       $procs = @(Get-Process -Name 'LabVIEWCLI' -ErrorAction SilentlyContinue)
       if (-not $procs -or $procs.Count -eq 0) {

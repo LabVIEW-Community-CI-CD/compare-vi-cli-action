@@ -23,6 +23,9 @@ jobs:
       docs_only: ${{ steps.d.outputs.normalized }}
     steps:
     - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Detect docs-only change
       id: detect
       shell: pwsh

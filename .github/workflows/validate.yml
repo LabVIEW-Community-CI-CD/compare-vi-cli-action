@@ -42,19 +42,19 @@ jobs:
     outputs:
       skip: ${{ steps.determine.outputs.skip }}
     steps:
-      - name: Determine skip for smoke branches
-        id: determine
-        shell: pwsh
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          $isSmoke = $false
-          if ($env:EVENT_NAME -eq 'pull_request' -and $env:HEAD_REF -and $env:HEAD_REF.StartsWith('smoke/')) {
-            $isSmoke = $true
-          }
-          $value = if ($isSmoke) { 'true' } else { 'false' }
-          "skip=$value" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+    - name: Determine skip for smoke branches
+      id: determine
+      shell: pwsh
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        HEAD_REF: ${{ github.head_ref }}
+      run: |
+        $isSmoke = $false
+        if ($env:EVENT_NAME -eq 'pull_request' -and $env:HEAD_REF -and $env:HEAD_REF.StartsWith('smoke/')) {
+          $isSmoke = $true
+        }
+        $value = if ($isSmoke) { 'true' } else { 'false' }
+        "skip=$value" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
 
   lint:
     needs: smoke-gate
@@ -62,13 +62,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
-    - name: Check PR mergeability
-      if: ${{ github.event_name == 'pull_request' }}
-      shell: pwsh
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        ./tools/Check-PRMergeable.ps1 -Number ${{ github.event.pull_request.number }} -FailOnConflict
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -81,6 +77,29 @@ jobs:
       with:
         phase: J2
         results-dir: tests/results
+    - name: Install actionlint (retry)
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ./bin
+        ver="${ACTIONLINT_VERSION:-1.7.7}"
+        for i in 1 2 3; do
+          if curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- "$ver" ./bin; then
+            break
+          else
+            echo "retry $i"; sleep 2
+          fi
+        done
+    - name: Run actionlint
+      run: |
+        ./bin/actionlint -color
+    - name: Check PR mergeability
+      if: ${{ github.event_name == 'pull_request' }}
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        ./tools/Check-PRMergeable.ps1 -Number ${{ github.event.pull_request.number }} -FailOnConflict
     - name: Setup Node with cache
       uses: actions/setup-node@v5
       with:
@@ -148,7 +167,6 @@ jobs:
     - name: PrePush local gates (includes watcher schema validation)
       shell: pwsh
       env:
-        PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS: '1'
         PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS: '1'
       run: |
         pwsh -File tools/PrePush-Checks.ps1
@@ -197,33 +215,6 @@ jobs:
           echo "- markdownlint: $(markdownlint --version || echo 'n/a')"
         } >> "$GITHUB_STEP_SUMMARY"
 
-    - name: Workflow drift check (ruamel updater — notice on develop)
-      if: github.ref_name == 'develop' || github.base_ref == 'develop'
-      shell: pwsh
-      continue-on-error: true
-      run: |
-        python -m pip install --user ruamel.yaml
-        python tools/workflows/update_workflows.py --check `
-          .github/workflows/pester-selfhosted.yml `
-          .github/workflows/fixture-drift.yml `
-          .github/workflows/ci-orchestrated.yml `
-          .github/workflows/pester-integration-on-label.yml `
-          .github/workflows/smoke.yml `
-          .github/workflows/compare-artifacts.yml
-        if ($LASTEXITCODE -eq 3) { Write-Host '::notice::Workflow drift detected (develop). See ruamel updater output.' }
-
-    - name: Workflow drift check (ruamel updater — enforced on main)
-      if: github.ref_name == 'main' || github.base_ref == 'main'
-      shell: pwsh
-      run: |
-        python -m pip install --user ruamel.yaml
-        python tools/workflows/update_workflows.py --check `
-          .github/workflows/pester-selfhosted.yml `
-          .github/workflows/fixture-drift.yml `
-          .github/workflows/ci-orchestrated.yml `
-          .github/workflows/pester-integration-on-label.yml `
-          .github/workflows/smoke.yml `
-          .github/workflows/compare-artifacts.yml
 
     - name: Lint loop determinism (notice only on non-main)
       if: github.ref_name != 'main'
@@ -381,6 +372,25 @@ jobs:
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
+    - name: Install markdownlint-cli (retry)
+      shell: bash
+      run: |
+        set -euo pipefail
+        for i in 1 2 3; do
+          if node tools/npm/cli.mjs install -g markdownlint-cli; then
+            break
+          else
+            node tools/npm/cli.mjs cache clean --force || true
+            echo "retry $i"
+            sleep 2
+          fi
+        done
+    - name: Run markdownlint (non-blocking)
+      run: |
+        markdownlint "**/*.md" --ignore node_modules
+      continue-on-error: true
+    env:
+      ACTIONLINT_VERSION: '${{ vars.ACTIONLINT_VERSION || ''1.7.7'' }}'
   validate-scope-plan:
     needs: smoke-gate
     if: needs.smoke-gate.outputs.skip != 'true'
@@ -400,8 +410,21 @@ jobs:
     steps:
     - uses: actions/checkout@v5
       with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         fetch-depth: 0
-
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
     - name: Resolve Validate scope plan
       id: plan
       shell: pwsh
@@ -464,16 +487,19 @@ jobs:
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
-    - uses: actions/checkout@v5
-      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
+    - if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Wire Probe (J1)
-      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && vars.WIRE_PROBES != '0'
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
       with:
         phase: J1
         results-dir: tests/results
     - name: Wire Probe (J2)
-      if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && vars.WIRE_PROBES != '0'
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
       with:
         phase: J2
@@ -586,11 +612,24 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     env:
-      PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS: '1'
       PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS: '1'
     steps:
     - uses: actions/checkout@v5
-
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
     - uses: actions/setup-node@v5
       with:
         node-version: '20'
@@ -620,7 +659,7 @@ jobs:
 
     - name: Prime actionlint binary
       shell: pwsh
-      run: ./tools/PrePush-Checks.ps1 -SkipIconEditorFixtureChecks
+      run: ./tools/PrePush-Checks.ps1 -SkipLegacyFixtureChecks
 
     - name: Hooks plane info
       run: node tools/npm/run-script.mjs hooks:plane
@@ -652,93 +691,153 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '20'
-      - name: Install dependencies (no scripts)
-        run: npm ci --ignore-scripts
-      - name: SemVer check
-        run: node tools/npm/run-script.mjs semver:check
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
+    - uses: actions/setup-node@v5
+      with:
+        node-version: '20'
+    - name: Install dependencies (no scripts)
+      run: npm ci --ignore-scripts
+    - name: SemVer check
+      run: node tools/npm/run-script.mjs semver:check
 
   release-branch:
     if: startsWith(github.head_ref, 'release/')
     needs: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '20'
-      - name: Install dependencies (no scripts)
-        run: npm ci --ignore-scripts
-      - name: Verify release branch
-        env:
-          GITHUB_HEAD_REF: ${{ github.head_ref }}
-          RELEASE_VALIDATE_BASE: origin/develop
-        run: node tools/priority/verify-release-branch.mjs
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
+    - uses: actions/setup-node@v5
+      with:
+        node-version: '20'
+    - name: Install dependencies (no scripts)
+      run: npm ci --ignore-scripts
+    - name: Verify release branch
+      env:
+        GITHUB_HEAD_REF: ${{ github.head_ref }}
+        RELEASE_VALIDATE_BASE: origin/develop
+      run: node tools/priority/verify-release-branch.mjs
 
   feature-handoff:
     if: startsWith(github.head_ref, 'feature/')
     needs: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '20'
-      - name: Install dependencies (no scripts)
-        run: npm ci --ignore-scripts
-      - name: Run priority handoff tests
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PRIORITY_HANDOFF_SKIP_POLICY: '1'
-        run: node tools/npm/run-script.mjs priority:handoff-tests
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
+    - uses: actions/setup-node@v5
+      with:
+        node-version: '20'
+    - name: Install dependencies (no scripts)
+      run: npm ci --ignore-scripts
+    - name: Run priority handoff tests
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PRIORITY_HANDOFF_SKIP_POLICY: '1'
+      run: node tools/npm/run-script.mjs priority:handoff-tests
 
   issue-snapshot:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '20'
-      - name: Sync standing-priority snapshot
-        env:
-          AGENT_PRIORITY_UPSTREAM_REPOSITORY: LabVIEW-Community-CI-CD/compare-vi-cli-action
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-        run: |
-          if [ -z "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
-            echo "::error::GH_TOKEN/GITHUB_TOKEN is required for priority:sync:lane"
-            exit 1
-          fi
-          node tools/npm/run-script.mjs priority:sync:lane
-      - name: Validate snapshot schema (best-effort)
-        continue-on-error: true
-        run: |
-          node tools/npm/run-script.mjs priority:schema
-      - name: Upload issue snapshot artifacts
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: standing-priority-snapshot
-          path: |
-            tests/results/_agent/issue/*.json
-            tests/results/_agent/issue/*.digest
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
+    - uses: actions/setup-node@v5
+      with:
+        node-version: '20'
+    - name: Sync standing-priority snapshot
+      env:
+        AGENT_PRIORITY_UPSTREAM_REPOSITORY: LabVIEW-Community-CI-CD/compare-vi-cli-action
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+      run: |
+        if [ -z "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
+          echo "::error::GH_TOKEN/GITHUB_TOKEN is required for priority:sync:lane"
+          exit 1
+        fi
+        node tools/npm/run-script.mjs priority:sync:lane
+    - name: Validate snapshot schema (best-effort)
+      continue-on-error: true
+      run: |
+        node tools/npm/run-script.mjs priority:schema
+    - name: Upload issue snapshot artifacts
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: standing-priority-snapshot
+        path: |
+          tests/results/_agent/issue/*.json
+          tests/results/_agent/issue/*.digest
 
   session-index:
     needs: lint
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
-
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     - name: Wire Probe (J1)
       if: '${{ vars.WIRE_PROBES != ''0'' }}'
       uses: ./.github/actions/wire-probe
@@ -946,7 +1045,21 @@ jobs:
       SESSION_INDEX_V2_CONTRACT_ENFORCE: ${{ vars.SESSION_INDEX_V2_CONTRACT_ENFORCE || 'false' }}
     steps:
     - uses: actions/checkout@v5
-
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
     - name: Download session index artifact
       uses: actions/download-artifact@v5
       with:
@@ -994,74 +1107,87 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
+    - name: Setup Node 20
+      uses: actions/setup-node@v5
+      with:
+        node-version: '20'
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v5
-        with:
-          node-version: '20'
+    - name: Install Node dependencies
+      run: node tools/npm/cli.mjs ci
 
-      - name: Install Node dependencies
-        run: node tools/npm/cli.mjs ci
+    - name: Publish CompareVI.Tools bundle for certification
+      id: bundle
+      run: |
+        $resultsRoot = 'tests/results/_agent/comparevi-history-bundle-certification'
+        $bundleOutputRoot = Join-Path $resultsRoot 'bundle-artifacts'
+        $metadataPath = Join-Path $resultsRoot 'comparevi-tools-artifact.json'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        pwsh -NoLogo -NoProfile -File tools/Publish-CompareVIToolsArtifact.ps1 `
+          -OutputRoot $bundleOutputRoot `
+          -MetadataReportPath $metadataPath
+        $bundleMetadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json -Depth 12
+        $bundleArchivePath = Join-Path (Resolve-Path -LiteralPath $bundleOutputRoot).Path $bundleMetadata.bundle.archiveName
+        "bundle_archive_path=$bundleArchivePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "bundle_metadata_path=$metadataPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Publish CompareVI.Tools bundle for certification
-        id: bundle
-        run: |
-          $resultsRoot = 'tests/results/_agent/comparevi-history-bundle-certification'
-          $bundleOutputRoot = Join-Path $resultsRoot 'bundle-artifacts'
-          $metadataPath = Join-Path $resultsRoot 'comparevi-tools-artifact.json'
-          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
-          pwsh -NoLogo -NoProfile -File tools/Publish-CompareVIToolsArtifact.ps1 `
-            -OutputRoot $bundleOutputRoot `
-            -MetadataReportPath $metadataPath
-          $bundleMetadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json -Depth 12
-          $bundleArchivePath = Join-Path (Resolve-Path -LiteralPath $bundleOutputRoot).Path $bundleMetadata.bundle.archiveName
-          "bundle_archive_path=$bundleArchivePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "bundle_metadata_path=$metadataPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+    - name: Validate CompareVI.Tools metadata schema
+      run: |
+        node tools/npm/run-script.mjs schema:validate -- `
+          --schema docs/schemas/comparevi-tools-release-manifest-v1.schema.json `
+          --data '${{ steps.bundle.outputs.bundle_metadata_path }}'
 
-      - name: Validate CompareVI.Tools metadata schema
-        run: |
-          node tools/npm/run-script.mjs schema:validate -- `
-            --schema docs/schemas/comparevi-tools-release-manifest-v1.schema.json `
-            --data '${{ steps.bundle.outputs.bundle_metadata_path }}'
+    - name: Run CompareVI history bundle certification
+      id: certification
+      run: |
+        $resultsRoot = 'tests/results/_agent/comparevi-history-bundle-certification'
+        $summaryPath = Join-Path $resultsRoot 'comparevi-history-bundle-certification.json'
+        pwsh -NoLogo -NoProfile -File tools/Test-CompareVIHistoryBundleCertification.ps1 `
+          -ResultsDir $resultsRoot `
+          -SummaryJsonPath $summaryPath `
+          -BundleArchivePath '${{ steps.bundle.outputs.bundle_archive_path }}' `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
-      - name: Run CompareVI history bundle certification
-        id: certification
-        run: |
-          $resultsRoot = 'tests/results/_agent/comparevi-history-bundle-certification'
-          $summaryPath = Join-Path $resultsRoot 'comparevi-history-bundle-certification.json'
-          pwsh -NoLogo -NoProfile -File tools/Test-CompareVIHistoryBundleCertification.ps1 `
-            -ResultsDir $resultsRoot `
-            -SummaryJsonPath $summaryPath `
-            -BundleArchivePath '${{ steps.bundle.outputs.bundle_archive_path }}' `
-            -GitHubOutputPath $env:GITHUB_OUTPUT `
-            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+    - name: Validate bundle certification schema
+      run: |
+        node tools/npm/run-script.mjs schema:validate -- `
+          --schema docs/schemas/comparevi-history-bundle-certification-v1.schema.json `
+          --data '${{ steps.certification.outputs.summary-json-path }}'
 
-      - name: Validate bundle certification schema
-        run: |
-          node tools/npm/run-script.mjs schema:validate -- `
-            --schema docs/schemas/comparevi-history-bundle-certification-v1.schema.json `
-            --data '${{ steps.certification.outputs.summary-json-path }}'
+    - name: Render bundle certification markdown
+      run: |
+        $resultsRoot = 'tests/results/_agent/comparevi-history-bundle-certification'
+        $markdownPath = Join-Path $resultsRoot 'comparevi-history-bundle-certification.md'
+        node tools/npm/run-script.mjs history:bundle:verify -- `
+          --summary '${{ steps.certification.outputs.summary-json-path }}' `
+          --markdown $markdownPath `
+          --step-summary $env:GITHUB_STEP_SUMMARY
 
-      - name: Render bundle certification markdown
-        run: |
-          $resultsRoot = 'tests/results/_agent/comparevi-history-bundle-certification'
-          $markdownPath = Join-Path $resultsRoot 'comparevi-history-bundle-certification.md'
-          node tools/npm/run-script.mjs history:bundle:verify -- `
-            --summary '${{ steps.certification.outputs.summary-json-path }}' `
-            --markdown $markdownPath `
-            --step-summary $env:GITHUB_STEP_SUMMARY
-
-      - name: Upload bundle certification artifacts
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: validate-comparevi-history-bundle-certification
-          path: |
-            tests/results/_agent/comparevi-history-bundle-certification/**
-          if-no-files-found: error
+    - name: Upload bundle certification artifacts
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: validate-comparevi-history-bundle-certification
+        path: |
+          tests/results/_agent/comparevi-history-bundle-certification/**
+        if-no-files-found: error
 
   vi-history-scenarios-plan:
     needs: [smoke-gate, lint, validate-scope-plan, session-index, session-index-v2-contract]
@@ -1076,49 +1202,63 @@ jobs:
       requested_history_scenario_set: ${{ steps.plan.outputs.requested_history_scenario_set }}
       downgraded_history_core: ${{ steps.plan.outputs.downgraded_history_core }}
     steps:
-      - uses: actions/checkout@v5
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
+    - name: Resolve VI history dispatch plan
+      id: plan
+      shell: pwsh
+      env:
+        VALIDATE_EVENT_NAME: ${{ github.event_name }}
+        VALIDATE_REPOSITORY: ${{ github.repository }}
+        VALIDATE_IS_FORK: ${{ github.event.repository.fork }}
+        VALIDATE_HISTORY_SCENARIO_SET: ${{ github.event.inputs.history_scenario_set }}
+        VALIDATE_ALLOW_NONCANONICAL: ${{ github.event.inputs.allow_noncanonical_vi_history }}
+        VALIDATE_ALLOW_NONCANONICAL_HISTORY_CORE: ${{ github.event.inputs.allow_noncanonical_history_core }}
+        VALIDATE_SCOPE_RUN_VI_HISTORY: ${{ needs.validate-scope-plan.outputs.run_vi_history }}
+        VALIDATE_SCOPE_VI_HISTORY_REASON: ${{ needs.validate-scope-plan.outputs.vi_history_reason }}
+      run: |
+        $resultsRoot = 'tests/results/_agent/vi-history-dispatch'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $planPath = Join-Path $resultsRoot 'validate-vi-history-dispatch-plan.json'
+        $isForkRepository = "$env:VALIDATE_IS_FORK" -eq 'true'
+        $allowNonCanonical = "$env:VALIDATE_ALLOW_NONCANONICAL" -eq 'true'
+        $allowNonCanonicalHistoryCore = "$env:VALIDATE_ALLOW_NONCANONICAL_HISTORY_CORE" -eq 'true'
+        $enableScopedExecution = "$env:VALIDATE_SCOPE_RUN_VI_HISTORY" -eq 'true'
+        pwsh -NoLogo -NoProfile -File tools/Resolve-ValidateVIHistoryDispatchPlan.ps1 `
+          -EventName $env:VALIDATE_EVENT_NAME `
+          -Repository $env:VALIDATE_REPOSITORY `
+          -IsForkRepository:$isForkRepository `
+          -HistoryScenarioSet $env:VALIDATE_HISTORY_SCENARIO_SET `
+          -AllowNonCanonical:$allowNonCanonical `
+          -AllowNonCanonicalHistoryCore:$allowNonCanonicalHistoryCore `
+          -EnableScopedExecution:$enableScopedExecution `
+          -ScopedSkipReason $env:VALIDATE_SCOPE_VI_HISTORY_REASON `
+          -ScopedHistoryScenarioSet 'smoke' `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY `
+          -JsonPath $planPath
 
-      - name: Resolve VI history dispatch plan
-        id: plan
-        shell: pwsh
-        env:
-          VALIDATE_EVENT_NAME: ${{ github.event_name }}
-          VALIDATE_REPOSITORY: ${{ github.repository }}
-          VALIDATE_IS_FORK: ${{ github.event.repository.fork }}
-          VALIDATE_HISTORY_SCENARIO_SET: ${{ github.event.inputs.history_scenario_set }}
-          VALIDATE_ALLOW_NONCANONICAL: ${{ github.event.inputs.allow_noncanonical_vi_history }}
-          VALIDATE_ALLOW_NONCANONICAL_HISTORY_CORE: ${{ github.event.inputs.allow_noncanonical_history_core }}
-          VALIDATE_SCOPE_RUN_VI_HISTORY: ${{ needs.validate-scope-plan.outputs.run_vi_history }}
-          VALIDATE_SCOPE_VI_HISTORY_REASON: ${{ needs.validate-scope-plan.outputs.vi_history_reason }}
-        run: |
-          $resultsRoot = 'tests/results/_agent/vi-history-dispatch'
-          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
-          $planPath = Join-Path $resultsRoot 'validate-vi-history-dispatch-plan.json'
-          $isForkRepository = "$env:VALIDATE_IS_FORK" -eq 'true'
-          $allowNonCanonical = "$env:VALIDATE_ALLOW_NONCANONICAL" -eq 'true'
-          $allowNonCanonicalHistoryCore = "$env:VALIDATE_ALLOW_NONCANONICAL_HISTORY_CORE" -eq 'true'
-          $enableScopedExecution = "$env:VALIDATE_SCOPE_RUN_VI_HISTORY" -eq 'true'
-          pwsh -NoLogo -NoProfile -File tools/Resolve-ValidateVIHistoryDispatchPlan.ps1 `
-            -EventName $env:VALIDATE_EVENT_NAME `
-            -Repository $env:VALIDATE_REPOSITORY `
-            -IsForkRepository:$isForkRepository `
-            -HistoryScenarioSet $env:VALIDATE_HISTORY_SCENARIO_SET `
-            -AllowNonCanonical:$allowNonCanonical `
-            -AllowNonCanonicalHistoryCore:$allowNonCanonicalHistoryCore `
-            -EnableScopedExecution:$enableScopedExecution `
-            -ScopedSkipReason $env:VALIDATE_SCOPE_VI_HISTORY_REASON `
-            -ScopedHistoryScenarioSet 'smoke' `
-            -GitHubOutputPath $env:GITHUB_OUTPUT `
-            -StepSummaryPath $env:GITHUB_STEP_SUMMARY `
-            -JsonPath $planPath
-
-      - name: Upload VI history dispatch plan artifact
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: validate-vi-history-dispatch-plan
-          path: tests/results/_agent/vi-history-dispatch/validate-vi-history-dispatch-plan.json
-          if-no-files-found: error
+    - name: Upload VI history dispatch plan artifact
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: validate-vi-history-dispatch-plan
+        path: tests/results/_agent/vi-history-dispatch/validate-vi-history-dispatch-plan.json
+        if-no-files-found: error
 
   vi-history-scenarios-linux:
     needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan]
@@ -1133,161 +1273,175 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - name: Append VI history Linux lane plan
-        run: |
-          if ($env:GITHUB_STEP_SUMMARY) {
-            $lines = @(
-              '### VI History Scenarios (Linux lane)',
-              '',
-              ('- execute_lanes: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.execute_lanes }}'),
-              ('- skip_reason: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.skip_reason }}'),
-              ('- requested_history_scenario_set: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.requested_history_scenario_set }}'),
-              ('- history_scenario_set: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.history_scenario_set }}'),
-              ('- downgraded_history_core: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.downgraded_history_core }}')
-            )
-            $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+    - name: Append VI history Linux lane plan
+      run: |
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines = @(
+            '### VI History Scenarios (Linux lane)',
+            '',
+            ('- execute_lanes: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.execute_lanes }}'),
+            ('- skip_reason: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.skip_reason }}'),
+            ('- requested_history_scenario_set: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.requested_history_scenario_set }}'),
+            ('- history_scenario_set: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.history_scenario_set }}'),
+            ('- downgraded_history_core: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.downgraded_history_core }}')
+          )
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+        }
+
+    - if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
+    - name: Pull NI Linux image (2026q1-linux)
+      if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
+      run: docker pull $env:NI_LINUX_IMAGE
+
+    - name: Manage Docker runtime (Linux preflight)
+      if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
+      run: |
+        $resultsRoot = 'tests/results/local-parity/linux'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $snapshotPath = Join-Path $resultsRoot 'runtime-manager-preflight-linux.json'
+        pwsh -NoLogo -NoProfile -File tools/Assert-DockerRuntimeDeterminism.ps1 `
+          -ExpectedOsType linux `
+          -ExpectedContext desktop-linux `
+          -AutoRepair:$true `
+          -ManageDockerEngine:$false `
+          -EngineReadyTimeoutSeconds 300 `
+          -EngineReadyPollSeconds 3 `
+          -SnapshotPath $snapshotPath `
+          -GitHubOutputPath ''
+
+    - name: Run NI Linux create comparison report (fail-fast)
+      id: linux-compare
+      if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
+      run: |
+        $resultsRoot = 'tests/results/local-parity/linux'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $reportPath = Join-Path $resultsRoot 'linux-compare-report.html'
+        "linux_compare_report=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-compare-linux.json'
+        pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
+          -BaseVi 'fixtures/vi-stage/control-rename/Base.vi' `
+          -HeadVi 'fixtures/vi-stage/control-rename/Head.vi' `
+          -Image $env:NI_LINUX_IMAGE `
+          -LabVIEWPath $env:NI_LINUX_LABVIEW_PATH `
+          -ReportPath $reportPath `
+          -TimeoutSeconds 300 `
+          -AutoRepairRuntime:$true `
+          -RuntimeEngineReadyTimeoutSeconds 120 `
+          -RuntimeEngineReadyPollSeconds 3 `
+          -RuntimeSnapshotPath $runtimeSnapshot
+        $compareExit = $LASTEXITCODE
+
+        $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
+        if (Test-Path -LiteralPath $capturePath -PathType Leaf) {
+          "linux_compare_capture=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+          $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+          $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+          Write-Host ("[linux-compare] exit={0} gateOutcome={1} resultClass={2}" -f $compareExit, $gateOutcome, $resultClass)
+          if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
+            exit $compareExit
           }
+        } elseif ($compareExit -ne 0) {
+          throw ("Linux compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
+        }
 
-      - uses: actions/checkout@v5
-        if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
-
-      - name: Pull NI Linux image (2026q1-linux)
-        if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
-        run: docker pull $env:NI_LINUX_IMAGE
-
-      - name: Manage Docker runtime (Linux preflight)
-        if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
-        run: |
-          $resultsRoot = 'tests/results/local-parity/linux'
-          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
-          $snapshotPath = Join-Path $resultsRoot 'runtime-manager-preflight-linux.json'
-          pwsh -NoLogo -NoProfile -File tools/Assert-DockerRuntimeDeterminism.ps1 `
-            -ExpectedOsType linux `
-            -ExpectedContext desktop-linux `
-            -AutoRepair:$true `
-            -ManageDockerEngine:$false `
-            -EngineReadyTimeoutSeconds 300 `
-            -EngineReadyPollSeconds 3 `
-            -SnapshotPath $snapshotPath `
-            -GitHubOutputPath ''
-
-      - name: Run NI Linux create comparison report (fail-fast)
-        id: linux-compare
-        if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
-        run: |
-          $resultsRoot = 'tests/results/local-parity/linux'
-          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+    - name: Validate Linux comparison report artifact contract
+      if: always() && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
+      run: |
+        $resultsRoot = 'tests/results/local-parity/linux'
+        $reportPath = '${{ steps.linux-compare.outputs.linux_compare_report }}'
+        if ([string]::IsNullOrWhiteSpace($reportPath)) {
           $reportPath = Join-Path $resultsRoot 'linux-compare-report.html'
-          "linux_compare_report=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-compare-linux.json'
-          pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
-            -BaseVi 'fixtures/vi-stage/control-rename/Base.vi' `
-            -HeadVi 'fixtures/vi-stage/control-rename/Head.vi' `
-            -Image $env:NI_LINUX_IMAGE `
-            -LabVIEWPath $env:NI_LINUX_LABVIEW_PATH `
-            -ReportPath $reportPath `
-            -TimeoutSeconds 300 `
-            -AutoRepairRuntime:$true `
-            -RuntimeEngineReadyTimeoutSeconds 120 `
-            -RuntimeEngineReadyPollSeconds 3 `
-            -RuntimeSnapshotPath $runtimeSnapshot
-          $compareExit = $LASTEXITCODE
+        }
+        $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
+        $summaryPath = Join-Path $resultsRoot 'linux-compare-artifact-summary.json'
 
-          $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
-          if (Test-Path -LiteralPath $capturePath -PathType Leaf) {
-            "linux_compare_capture=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        $captureExists = Test-Path -LiteralPath $capturePath -PathType Leaf
+        $recoveredFromCapture = $false
+        $recoveredReportPath = ''
+        $captureResultClass = ''
+        $captureGateOutcome = ''
+        if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf) -and $captureExists) {
+          try {
             $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
-            $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
-            $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
-            Write-Host ("[linux-compare] exit={0} gateOutcome={1} resultClass={2}" -f $compareExit, $gateOutcome, $resultClass)
-            if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
-              exit $compareExit
-            }
-          } elseif ($compareExit -ne 0) {
-            throw ("Linux compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
-          }
-
-      - name: Validate Linux comparison report artifact contract
-        if: always() && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
-        run: |
-          $resultsRoot = 'tests/results/local-parity/linux'
-          $reportPath = '${{ steps.linux-compare.outputs.linux_compare_report }}'
-          if ([string]::IsNullOrWhiteSpace($reportPath)) {
-            $reportPath = Join-Path $resultsRoot 'linux-compare-report.html'
-          }
-          $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
-          $summaryPath = Join-Path $resultsRoot 'linux-compare-artifact-summary.json'
-
-          $captureExists = Test-Path -LiteralPath $capturePath -PathType Leaf
-          $recoveredFromCapture = $false
-          $recoveredReportPath = ''
-          $captureResultClass = ''
-          $captureGateOutcome = ''
-          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf) -and $captureExists) {
-            try {
-              $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
-              $captureResultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
-              $captureGateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
-              if ($capture.PSObject.Properties['reportAnalysis'] -and $capture.reportAnalysis) {
-                $candidate = if ($capture.reportAnalysis.PSObject.Properties['reportPathExtracted']) { [string]$capture.reportAnalysis.reportPathExtracted } else { '' }
-                if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
-                  Copy-Item -LiteralPath $candidate -Destination $reportPath -Force
-                  $recoveredFromCapture = $true
-                  $recoveredReportPath = $candidate
-                }
+            $captureResultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+            $captureGateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+            if ($capture.PSObject.Properties['reportAnalysis'] -and $capture.reportAnalysis) {
+              $candidate = if ($capture.reportAnalysis.PSObject.Properties['reportPathExtracted']) { [string]$capture.reportAnalysis.reportPathExtracted } else { '' }
+              if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                Copy-Item -LiteralPath $candidate -Destination $reportPath -Force
+                $recoveredFromCapture = $true
+                $recoveredReportPath = $candidate
               }
-            } catch {
-              Write-Host ("::warning::Unable to parse Linux compare capture for report recovery: {0}" -f $_.Exception.Message)
             }
-          } elseif ($captureExists) {
-            try {
-              $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
-              $captureResultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
-              $captureGateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
-            } catch {}
+          } catch {
+            Write-Host ("::warning::Unable to parse Linux compare capture for report recovery: {0}" -f $_.Exception.Message)
           }
+        } elseif ($captureExists) {
+          try {
+            $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+            $captureResultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+            $captureGateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+          } catch {}
+        }
 
-          $reportExists = Test-Path -LiteralPath $reportPath -PathType Leaf
-          $compareSucceeded = '${{ steps.linux-compare.conclusion }}' -eq 'success'
+        $reportExists = Test-Path -LiteralPath $reportPath -PathType Leaf
+        $compareSucceeded = '${{ steps.linux-compare.conclusion }}' -eq 'success'
 
-          $payload = [ordered]@{
-            schema = 'vi-history/linux-compare-artifact-summary@v1'
-            generatedAt = (Get-Date).ToUniversalTime().ToString('o')
-            compareStepConclusion = '${{ steps.linux-compare.conclusion }}'
-            reportPath = $reportPath
-            reportExists = [bool]$reportExists
-            reportRecoveredFromCapture = [bool]$recoveredFromCapture
-            recoveredReportPath = $recoveredReportPath
-            capturePath = $capturePath
-            captureExists = [bool]$captureExists
-            captureResultClass = $captureResultClass
-            captureGateOutcome = $captureGateOutcome
-          }
-          $payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+        $payload = [ordered]@{
+          schema = 'vi-history/linux-compare-artifact-summary@v1'
+          generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+          compareStepConclusion = '${{ steps.linux-compare.conclusion }}'
+          reportPath = $reportPath
+          reportExists = [bool]$reportExists
+          reportRecoveredFromCapture = [bool]$recoveredFromCapture
+          recoveredReportPath = $recoveredReportPath
+          capturePath = $capturePath
+          captureExists = [bool]$captureExists
+          captureResultClass = $captureResultClass
+          captureGateOutcome = $captureGateOutcome
+        }
+        $payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
 
-          $requireReport = $compareSucceeded -and [string]::Equals($captureResultClass, 'success-diff', [System.StringComparison]::OrdinalIgnoreCase)
-          if ($requireReport -and -not $reportExists) {
-            throw ("Linux compare classified success-diff but report file was not found: {0}" -f $reportPath)
-          }
-          if ($compareSucceeded -and -not $reportExists -and -not $requireReport) {
-            Write-Host ("::warning::Linux compare succeeded without diff classification ({0}); no report file was generated at {1}." -f $captureResultClass, $reportPath)
-          }
-          if (-not $reportExists) {
-            Write-Host ("::warning::Linux comparison report not found at {0}" -f $reportPath)
-          }
+        $requireReport = $compareSucceeded -and [string]::Equals($captureResultClass, 'success-diff', [System.StringComparison]::OrdinalIgnoreCase)
+        if ($requireReport -and -not $reportExists) {
+          throw ("Linux compare classified success-diff but report file was not found: {0}" -f $reportPath)
+        }
+        if ($compareSucceeded -and -not $reportExists -and -not $requireReport) {
+          Write-Host ("::warning::Linux compare succeeded without diff classification ({0}); no report file was generated at {1}." -f $captureResultClass, $reportPath)
+        }
+        if (-not $reportExists) {
+          Write-Host ("::warning::Linux comparison report not found at {0}" -f $reportPath)
+        }
 
-      - name: Upload VI history scenario artifacts (Linux lane)
-        if: always() && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
-        uses: actions/upload-artifact@v5
-        with:
-          name: validate-vi-history-scenarios-linux
-          path: |
-            tests/results/local-parity/linux/linux-compare-report.html
-            tests/results/local-parity/linux/linux-compare-artifact-summary.json
-            tests/results/local-parity/linux/ni-linux-container-capture.json
-            tests/results/local-parity/linux/ni-linux-container-stdout.txt
-            tests/results/local-parity/linux/ni-linux-container-stderr.txt
-            tests/results/local-parity/linux/container-export/**
-            tests/results/local-parity/linux/runtime-manager-preflight-linux.json
-            tests/results/local-parity/linux/runtime-manager-compare-linux.json
-          if-no-files-found: warn
+    - name: Upload VI history scenario artifacts (Linux lane)
+      if: always() && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
+      uses: actions/upload-artifact@v5
+      with:
+        name: validate-vi-history-scenarios-linux
+        path: |
+          tests/results/local-parity/linux/linux-compare-report.html
+          tests/results/local-parity/linux/linux-compare-artifact-summary.json
+          tests/results/local-parity/linux/ni-linux-container-capture.json
+          tests/results/local-parity/linux/ni-linux-container-stdout.txt
+          tests/results/local-parity/linux/ni-linux-container-stderr.txt
+          tests/results/local-parity/linux/container-export/**
+          tests/results/local-parity/linux/runtime-manager-preflight-linux.json
+          tests/results/local-parity/linux/runtime-manager-compare-linux.json
+        if-no-files-found: warn

@@ -50,6 +50,22 @@ tests/results/flaky-delta.json
 tests/results/flaky-demo-state.txt
 tests/results/custom-summary.json
 
+# Root-level generated diagnostics
+/baseline-fixture-validation.json
+/current-fixture-validation.json
+/debug-*.log
+/derived-env.json
+/fixture-summary.md
+/fixture-validation*.json
+/full-run.log
+/last-run.log
+/loop-run-summary.json
+/loop-snapshots.ndjson
+/outcome.log
+/override.json
+/single.log
+/timeline.json
+
 # Temporary files
 *.tmp
 .DS_Store

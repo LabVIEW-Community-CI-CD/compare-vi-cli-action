@@ -42,6 +42,10 @@ test('fixture-drift hosted Linux lane passes explicit linux container LabVIEW pa
   assert.doesNotMatch(workflow, /self-hosted-docker-windows/);
   assert.doesNotMatch(workflow, /NI_WINDOWS_IMAGE/);
   assert.doesNotMatch(workflow, /Run-NIWindowsContainerCompare\.ps1/);
+  assert.doesNotMatch(workflow, /preflight-windows:/);
+  assert.doesNotMatch(workflow, /Verify Windows runner and idle LabVIEW \(surface LVCompare notice\)/);
+  assert.doesNotMatch(workflow, /Verify LVCompare and idle LabVIEW state \(notice-only on hosted\)/);
+  assert.doesNotMatch(workflow, /LVCompare\.exe not found at canonical path/);
 });
 
 test('vi-compare-fork workflow uses hosted linux NI container compare path', () => {
@@ -86,6 +90,14 @@ test('runbook validation no longer executes windows docker fast-loop canary job'
   assert.doesNotMatch(workflow, /runbook-check-container:/);
   assert.doesNotMatch(workflow, /Test-DockerDesktopFastLoop\.ps1/);
   assert.doesNotMatch(workflow, /NI_WINDOWS_IMAGE/);
+});
+
+test('windows hosted parity no longer includes hosted LVCompare babysitting debt', () => {
+  const workflow = readRepoFile('.github/workflows/windows-hosted-parity.yml');
+
+  assert.doesNotMatch(workflow, /Verify LVCompare and idle LabVIEW state \(notice-only on hosted\)/);
+  assert.doesNotMatch(workflow, /LVCompare\.exe not found at canonical path/);
+  assert.match(workflow, /name:\s*Hooks preflight parity/);
 });
 
 test('docker desktop fast-loop only accepts lane-specific LabVIEW path contracts', () => {

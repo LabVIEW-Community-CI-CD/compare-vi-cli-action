@@ -1,6 +1,0 @@
-Icon Editor Settings Init snapshot (main update)
-
-- Initializes references cluster with default data.
-- Glyph tree remains empty.
-- Adds clipboard label hiding logic.
-- Seeds glyph tree with template category metadata.

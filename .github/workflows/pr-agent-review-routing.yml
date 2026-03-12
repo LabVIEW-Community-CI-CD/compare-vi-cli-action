@@ -16,7 +16,7 @@ jobs:
       - name: Route reviewer for agent-authored PRs
         uses: actions/github-script@v8
         env:
-          REQUIRED_AGENT_REVIEWER: ${{ vars.REQUIRED_AGENT_REVIEWER || github.repository_owner }}
+          REQUIRED_AGENT_REVIEWER: ${{ vars.REQUIRED_AGENT_REVIEWER || 'Copilot' }}
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -35,7 +35,7 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const pull_number = pr.number;
-            const requiredReviewer = (process.env.REQUIRED_AGENT_REVIEWER || owner).trim();
+            const requiredReviewer = (process.env.REQUIRED_AGENT_REVIEWER || 'Copilot').trim();
 
             // Skip if the required reviewer is the PR author (can't request review from yourself)
             if (pr.user && pr.user.login === requiredReviewer) {

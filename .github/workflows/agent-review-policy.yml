@@ -3,8 +3,9 @@ name: Agent Review Policy
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled, review_requested, review_request_removed]
-  pull_request_review:
-    types: [submitted]
+  workflow_run:
+    workflows: ['Copilot code review']
+    types: [completed]
   merge_group:
 
 permissions:
@@ -15,89 +16,139 @@ jobs:
   agent-review-policy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.base.sha || github.sha }}
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.repository }}
+        ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'workflow_run' && github.event.repository.default_branch || github.sha }}
+    - uses: actions/setup-node@v5
+      with:
+        node-version: '20'
+        cache: 'npm'
 
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '20'
-          cache: 'npm'
+    - name: Install Node dependencies
+      if: github.event_name == 'pull_request_target'
+      run: npm ci --ignore-scripts
 
-      - name: Install Node dependencies
-        if: github.event_name == 'pull_request_target'
-        run: npm ci --ignore-scripts
+    - name: Build TypeScript utilities
+      if: github.event_name == 'pull_request_target'
+      run: node tools/npm/run-script.mjs build
 
-      - name: Build TypeScript utilities
-        if: github.event_name == 'pull_request_target'
-        run: node tools/npm/run-script.mjs build
+    - name: Collect Copilot review signal
+      if: github.event_name == 'pull_request_target'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        node dist/tools/priority/copilot-review-signal.js \
+          --repo "${{ github.repository }}" \
+          --pr "${{ github.event.pull_request.number }}" \
+          --head-sha "${{ github.event.pull_request.head.sha }}" \
+          --out tests/results/_agent/reviews/copilot-review-signal.json \
+          --step-summary "$GITHUB_STEP_SUMMARY"
 
-      - name: Collect Copilot review signal
-        if: github.event_name == 'pull_request_target'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          node dist/tools/priority/copilot-review-signal.js \
-            --repo "${{ github.repository }}" \
-            --pr "${{ github.event.pull_request.number }}" \
-            --head-sha "${{ github.event.pull_request.head.sha }}" \
-            --out tests/results/_agent/reviews/copilot-review-signal.json \
-            --step-summary "$GITHUB_STEP_SUMMARY"
+    - name: Validate Copilot review signal schema
+      if: github.event_name == 'pull_request_target'
+      run: node tools/npm/run-script.mjs schema:copilot-review-signal:validate
 
-      - name: Validate Copilot review signal schema
-        if: github.event_name == 'pull_request_target'
-        run: node tools/npm/run-script.mjs schema:copilot-review-signal:validate
+    - name: Upload Copilot review signal artifact
+      if: always() && github.event_name == 'pull_request_target'
+      uses: actions/upload-artifact@v5
+      with:
+        name: copilot-review-signal-${{ github.event.pull_request.number }}
+        path: tests/results/_agent/reviews/copilot-review-signal.json
+        if-no-files-found: error
 
-      - name: Upload Copilot review signal artifact
-        if: always() && github.event_name == 'pull_request_target'
-        uses: actions/upload-artifact@v5
-        with:
-          name: copilot-review-signal-${{ github.event.pull_request.number }}
-          path: tests/results/_agent/reviews/copilot-review-signal.json
-          if-no-files-found: error
+    - name: Resolve workflow-run PR context
+      if: github.event_name == 'workflow_run'
+      id: workflow_run_pr
+      shell: bash
+      env:
+        PULL_REQUESTS_JSON: ${{ toJson(github.event.workflow_run.pull_requests) }}
+        WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      run: |
+        set -euo pipefail
 
-      - name: Evaluate Copilot queue gate
-        if: always() && (github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review' || github.event_name == 'merge_group')
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          args=(
-            "tools/priority/copilot-review-gate.mjs"
-            "--event-name" "${{ github.event_name }}"
-            "--repo" "${{ github.repository }}"
-            "--poll-attempts" "18"
-            "--poll-delay-ms" "10000"
-            "--out" "tests/results/_agent/reviews/copilot-review-gate.json"
-            "--step-summary" "$GITHUB_STEP_SUMMARY"
+        node <<'NODE' >> "$GITHUB_OUTPUT"
+        const pullRequests = JSON.parse(process.env.PULL_REQUESTS_JSON || '[]');
+        const firstPullRequest = Array.isArray(pullRequests) ? pullRequests[0] : null;
+        const headSha = (process.env.WORKFLOW_HEAD_SHA || '').trim();
+
+        if (!firstPullRequest?.number || !headSha) {
+          console.log('has_pr=false');
+          process.exit(0);
+        }
+
+        console.log('has_pr=true');
+        console.log(`pr=${firstPullRequest.number}`);
+        console.log(`head_sha=${headSha}`);
+        NODE
+
+    - name: Load workflow-run pull request metadata
+      if: github.event_name == 'workflow_run' && steps.workflow_run_pr.outputs.has_pr == 'true'
+      id: workflow_run_metadata
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        gh api "repos/${{ github.repository }}/pulls/${{ steps.workflow_run_pr.outputs.pr }}" \
+          --jq '"draft=\(.draft)\nbase_ref=\(.base.ref)\nhead_sha=\(.head.sha)\n"' >> "$GITHUB_OUTPUT"
+
+    - name: Evaluate Copilot queue gate
+      if: >
+        always() && (
+          github.event_name == 'pull_request_target' ||
+          github.event_name == 'merge_group' ||
+          (github.event_name == 'workflow_run' && steps.workflow_run_pr.outputs.has_pr == 'true')
+        )
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      shell: bash
+      run: |
+        args=(
+          "tools/priority/copilot-review-gate.mjs"
+          "--event-name" "${{ github.event_name }}"
+          "--repo" "${{ github.repository }}"
+          "--poll-attempts" "18"
+          "--poll-delay-ms" "10000"
+          "--out" "tests/results/_agent/reviews/copilot-review-gate.json"
+          "--step-summary" "$GITHUB_STEP_SUMMARY"
+        )
+
+        if [[ "${{ github.event_name }}" == "merge_group" ]]; then
+          args+=(
+            "--head-sha" "${{ github.sha }}"
+            "--base-ref" "${{ github.event.merge_group.base_ref }}"
           )
+        elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+          args+=(
+            "--pr" "${{ steps.workflow_run_pr.outputs.pr }}"
+            "--head-sha" "${{ steps.workflow_run_metadata.outputs.head_sha || steps.workflow_run_pr.outputs.head_sha }}"
+            "--base-ref" "${{ steps.workflow_run_metadata.outputs.base_ref }}"
+            "--draft" "${{ steps.workflow_run_metadata.outputs.draft }}"
+          )
+        else
+          args+=(
+            "--pr" "${{ github.event.pull_request.number }}"
+            "--head-sha" "${{ github.event.pull_request.head.sha }}"
+            "--base-ref" "${{ github.event.pull_request.base.ref }}"
+            "--draft" "${{ github.event.pull_request.draft }}"
+          )
+        fi
 
-          if [[ "${{ github.event_name }}" == "merge_group" ]]; then
-            args+=(
-              "--head-sha" "${{ github.sha }}"
-              "--base-ref" "${{ github.event.merge_group.base_ref }}"
-            )
-          else
-            args+=(
-              "--pr" "${{ github.event.pull_request.number }}"
-              "--head-sha" "${{ github.event.pull_request.head.sha }}"
-              "--base-ref" "${{ github.event.pull_request.base.ref }}"
-              "--draft" "${{ github.event.pull_request.draft }}"
-            )
-          fi
+        if [[ "${{ github.event_name }}" == "pull_request_target" && -f tests/results/_agent/reviews/copilot-review-signal.json ]]; then
+          args+=("--signal" "tests/results/_agent/reviews/copilot-review-signal.json")
+        fi
 
-          if [[ "${{ github.event_name }}" == "pull_request_target" && -f tests/results/_agent/reviews/copilot-review-signal.json ]]; then
-            args+=("--signal" "tests/results/_agent/reviews/copilot-review-signal.json")
-          fi
+        node "${args[@]}"
 
-          node "${args[@]}"
-
-      - name: Upload Copilot queue gate artifact
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: copilot-review-gate-${{ github.run_id }}-${{ github.run_attempt }}
-          path: tests/results/_agent/reviews/copilot-review-gate.json
-          if-no-files-found: error
+    - name: Upload Copilot queue gate artifact
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: copilot-review-gate-${{ github.run_id }}-${{ github.run_attempt }}
+        path: tests/results/_agent/reviews/copilot-review-gate.json
+        if-no-files-found: error

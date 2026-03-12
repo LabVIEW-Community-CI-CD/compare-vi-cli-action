@@ -3,21 +3,24 @@ name: markdownlint
 on:
   pull_request:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-      - name: Lint changed Markdown (PR)
-        if: github.event_name == 'pull_request'
-        shell: pwsh
-        run: pwsh -File tools/Lint-Markdown.ps1
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Lint changed Markdown (PR)
+      if: github.event_name == 'pull_request'
+      shell: pwsh
+      run: pwsh -File tools/Lint-Markdown.ps1
 
-      - name: Lint all Markdown (notice-only)
-        if: github.event_name != 'pull_request'
-        shell: pwsh
-        continue-on-error: true
-        run: pwsh -File tools/Lint-Markdown.ps1 -All
+    - name: Lint all Markdown (notice-only)
+      if: github.event_name != 'pull_request'
+      shell: pwsh
+      continue-on-error: true
+      run: pwsh -File tools/Lint-Markdown.ps1 -All

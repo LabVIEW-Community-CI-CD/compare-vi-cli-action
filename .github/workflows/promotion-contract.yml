@@ -3,31 +3,31 @@ name: Promotion Contract
 on:
   pull_request:
     paths:
-      - '.github/workflows/promotion-contract.yml'
-      - '.github/workflows/release.yml'
-      - '.github/workflows/publish-tools-image.yml'
-      - '.github/workflows/publish-shared-package.yml'
-      - '.github/workflows/monthly-stability-release.yml'
-      - 'tools/policy/promotion-contract.json'
-      - 'tools/policy/release-rollback-policy.json'
-      - 'tools/policy/branch-required-checks.json'
-      - 'tools/priority/policy.json'
-      - 'tools/priority/rollback-release.mjs'
-      - 'tools/priority/rollback-drill-health.mjs'
-      - 'tools/Assert-PromotionContractAlignment.ps1'
-      - 'tools/Write-PromotionEvidenceLedger.ps1'
-      - 'docs/RELEASE_PROMOTION_CONTRACT.md'
-      - 'docs/schemas/promotion-evidence-ledger-v1.schema.json'
-      - 'docs/schemas/release-rollback-v1.schema.json'
-      - 'docs/schemas/release-rollback-drill-health-v1.schema.json'
+    - '.github/workflows/promotion-contract.yml'
+    - '.github/workflows/release.yml'
+    - '.github/workflows/publish-tools-image.yml'
+    - '.github/workflows/publish-shared-package.yml'
+    - '.github/workflows/monthly-stability-release.yml'
+    - 'tools/policy/promotion-contract.json'
+    - 'tools/policy/release-rollback-policy.json'
+    - 'tools/policy/branch-required-checks.json'
+    - 'tools/priority/policy.json'
+    - 'tools/priority/rollback-release.mjs'
+    - 'tools/priority/rollback-drill-health.mjs'
+    - 'tools/Assert-PromotionContractAlignment.ps1'
+    - 'tools/Write-PromotionEvidenceLedger.ps1'
+    - 'docs/RELEASE_PROMOTION_CONTRACT.md'
+    - 'docs/schemas/promotion-evidence-ledger-v1.schema.json'
+    - 'docs/schemas/release-rollback-v1.schema.json'
+    - 'docs/schemas/release-rollback-drill-health-v1.schema.json'
   push:
     branches:
-      - develop
-      - 'release/**'
+    - develop
+    - 'release/**'
   merge_group:
     branches:
-      - develop
-      - 'release/**'
+    - develop
+    - 'release/**'
   workflow_dispatch:
 
 permissions:
@@ -39,41 +39,43 @@ jobs:
     name: promotion-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Assert promotion contract alignment
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
-      - name: Assert promotion contract alignment
-        shell: pwsh
-        run: |
-          pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+    - name: Write promotion evidence ledger
+      if: always()
+      shell: pwsh
+      run: |
+        $gateStatus = switch ('${{ job.status }}') {
+          'success' { 'pass' }
+          'cancelled' { 'blocked' }
+          default { 'fail' }
+        }
+        pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/promotion-contract-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'promotion-contract' -Channel 'stable' -Version '${{ github.sha }}' -GateStatus $gateStatus -GateReason 'promotion-contract workflow result' -SummaryPath 'tests/results/promotion-contract/alignment.json' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
-      - name: Write promotion evidence ledger
-        if: always()
-        shell: pwsh
-        run: |
-          $gateStatus = switch ('${{ job.status }}') {
-            'success' { 'pass' }
-            'cancelled' { 'blocked' }
-            default { 'fail' }
-          }
-          pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/promotion-contract-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'promotion-contract' -Channel 'stable' -Version '${{ github.sha }}' -GateStatus $gateStatus -GateReason 'promotion-contract workflow result' -SummaryPath 'tests/results/promotion-contract/alignment.json' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+    - name: Emit SLO metrics
+      if: always()
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        node tools/priority/slo-metrics.mjs \
+          --repo "${{ github.repository }}" \
+          --output tests/results/_agent/slo/promotion-contract-slo-metrics.json
 
-      - name: Emit SLO metrics
-        if: always()
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          node tools/priority/slo-metrics.mjs \
-            --repo "${{ github.repository }}" \
-            --output tests/results/_agent/slo/promotion-contract-slo-metrics.json
-
-      - name: Upload promotion contract artifacts
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: promotion-contract-${{ github.run_id }}
-          path: |
-            tests/results/promotion-contract/alignment.json
-            tests/results/promotion-contract/promotion-contract-ledger.json
-            tests/results/_agent/slo/promotion-contract-slo-metrics.json
-          if-no-files-found: error
+    - name: Upload promotion contract artifacts
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: promotion-contract-${{ github.run_id }}
+        path: |
+          tests/results/promotion-contract/alignment.json
+          tests/results/promotion-contract/promotion-contract-ledger.json
+          tests/results/_agent/slo/promotion-contract-slo-metrics.json
+        if-no-files-found: error
