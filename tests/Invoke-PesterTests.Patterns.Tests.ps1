@@ -88,7 +88,7 @@ Describe "{0}" {{
       Push-Location $TestDrive
       $selection = Invoke-DispatcherIncludeExcludeFilter -Files $script:fixtureFiles -IncludePatterns @('fixture-tests/Alpha.Unit.Tests.ps1')
     } finally {
-      Set-Location $originalLocation
+      Pop-Location
     }
 
     $selection.Include.Applied | Should -BeTrue

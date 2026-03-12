@@ -95,9 +95,9 @@ function Test-DispatcherPatternMatch {
       $candidates.Add(($File.FullName -replace '\\', '/')) | Out-Null
 
       try {
-        $repoRelative = [System.IO.Path]::GetRelativePath((Get-Location).Path, $File.FullName)
-        if (-not [string]::IsNullOrWhiteSpace($repoRelative)) {
-          $candidates.Add(($repoRelative -replace '\\', '/')) | Out-Null
+        $cwdRelative = [System.IO.Path]::GetRelativePath((Get-Location).Path, $File.FullName)
+        if (-not [string]::IsNullOrWhiteSpace($cwdRelative)) {
+          $candidates.Add(($cwdRelative -replace '\\', '/')) | Out-Null
         }
       } catch {}
 
