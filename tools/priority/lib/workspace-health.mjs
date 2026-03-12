@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { defaultOwner } from '../agent-writer-lease.mjs';
+import { defaultLeaseRoot, defaultOwner } from '../agent-writer-lease.mjs';
 
 const DEFAULT_LOCK_STALE_SECONDS = 30;
 const LOCK_FILENAMES = ['index.lock', 'HEAD.lock', 'packed-refs.lock', 'shallow.lock'];
@@ -33,7 +33,7 @@ const HINTS = {
   'lease-missing':
     'Acquire the writer lease (`tools/priority/bootstrap.ps1`) before running mutating automation.',
   'lease-read-error':
-    'Repair or remove the corrupted lease file under `.git/agent-writer-leases/` and re-run bootstrap.',
+    'Repair or remove the corrupted lease file under the resolved writer-lease root (typically the git common dir `agent-writer-leases/` directory) and re-run bootstrap.',
   'lease-owner-mismatch':
     'Only the active lease owner may proceed. Reacquire lease or hand off ownership first.',
   'lease-id-mismatch':
@@ -281,7 +281,11 @@ export function evaluateWorkspaceHealth(options = {}, depOverrides = {}) {
 
   const leaseRoot = options.leaseRoot
     ? path.resolve(repoRoot, options.leaseRoot)
-    : path.join(gitDir, 'agent-writer-leases');
+    : defaultLeaseRoot({
+        repoRoot,
+        env: process.env,
+        spawnSyncFn: deps.spawnSyncFn
+      });
   const leasePath = path.join(leaseRoot, `${leaseScope}.json`);
   if (leaseMode === 'ignore') {
     pushCheck(checks, 'writer-lease', 'skipped', { mode: leaseMode, path: leasePath });

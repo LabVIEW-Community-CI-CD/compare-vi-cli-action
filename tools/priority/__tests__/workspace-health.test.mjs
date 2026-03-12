@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { evaluateWorkspaceHealth } from '../lib/workspace-health.mjs';
 import { runCli } from '../check-workspace-health.mjs';
@@ -134,7 +134,8 @@ test('evaluateWorkspaceHealth fails when required lease owner mismatches', () =>
     {
       repoRoot,
       leaseMode: 'required',
-      expectedLeaseOwner: 'agent-a@host:default'
+      expectedLeaseOwner: 'agent-a@host:default',
+      leaseRoot: path.join(gitDir, 'agent-writer-leases')
     },
     makeDeps({
       existing: [indexPath, leasePath],
@@ -147,6 +148,96 @@ test('evaluateWorkspaceHealth fails when required lease owner mismatches', () =>
 
   assert.equal(report.status, 'fail');
   assert.ok(report.failures.some((entry) => entry.id === 'lease-owner-mismatch'));
+});
+
+test('evaluateWorkspaceHealth reads required writer lease from git-common-dir in a linked worktree', async (t) => {
+  const sandboxRoot = await mkdtemp(path.join(tmpdir(), 'workspace-health-worktree-'));
+  const repoDir = path.join(sandboxRoot, 'repo');
+  const worktreeDir = path.join(sandboxRoot, 'worktree');
+  t.after(async () => {
+    await rm(sandboxRoot, { recursive: true, force: true });
+  });
+
+  const run = (command, args, cwd) => {
+    const result = spawnSync(command, args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    assert.equal(result.status, 0, result.stderr || `${command} ${args.join(' ')} failed`);
+    return String(result.stdout ?? '').trim();
+  };
+
+  run('git', ['init', '--initial-branch=develop', repoDir], sandboxRoot);
+  run('git', ['config', 'user.email', 'agent@example.com'], repoDir);
+  run('git', ['config', 'user.name', 'Agent Runner'], repoDir);
+  await writeFile(path.join(repoDir, 'README.md'), 'workspace health\n', 'utf8');
+  run('git', ['add', 'README.md'], repoDir);
+  run('git', ['commit', '-m', 'seed'], repoDir);
+  run('git', ['worktree', 'add', '-b', 'issue/test-workspace-health', worktreeDir, 'develop'], repoDir);
+
+  const rawGitDir = run('git', ['rev-parse', '--git-dir'], worktreeDir);
+  const rawGitCommonDir = run('git', ['rev-parse', '--git-common-dir'], worktreeDir);
+  const resolvedGitDir = path.isAbsolute(rawGitDir)
+    ? path.normalize(rawGitDir)
+    : path.resolve(worktreeDir, rawGitDir);
+  const resolvedGitCommonDir = path.isAbsolute(rawGitCommonDir)
+    ? path.normalize(rawGitCommonDir)
+    : path.resolve(worktreeDir, rawGitCommonDir);
+
+  const expectedOwner = 'agent@example.com:linked-worktree';
+  const expectedLeaseId = 'lease-worktree-123';
+  const commonLeasePath = path.join(resolvedGitCommonDir, 'agent-writer-leases', 'workspace.json');
+  await mkdir(path.dirname(commonLeasePath), { recursive: true });
+  await writeFile(
+    commonLeasePath,
+    `${JSON.stringify({ owner: expectedOwner, leaseId: expectedLeaseId }, null, 2)}\n`,
+    'utf8'
+  );
+
+  const report = evaluateWorkspaceHealth({
+    repoRoot: worktreeDir,
+    leaseMode: 'required',
+    expectedLeaseOwner: expectedOwner,
+    expectedLeaseId
+  });
+
+  assert.equal(report.status, 'pass');
+  const writerLease = report.checks.find((entry) => entry.id === 'writer-lease');
+  assert.ok(writerLease);
+  assert.equal(writerLease.status, 'pass');
+  assert.equal(path.normalize(writerLease.path), path.normalize(commonLeasePath));
+  assert.notEqual(
+    path.normalize(writerLease.path),
+    path.normalize(path.join(resolvedGitDir, 'agent-writer-leases', 'workspace.json'))
+  );
+});
+
+test('evaluateWorkspaceHealth hints point to the resolved writer-lease root for corrupted lease files', () => {
+  const report = evaluateWorkspaceHealth(
+    {
+      repoRoot,
+      leaseMode: 'required',
+      leaseRoot: path.join(gitDir, 'agent-writer-leases')
+    },
+    makeDeps({
+      existing: [indexPath, leasePath],
+      writable: [indexPath],
+      files: {
+        [leasePath]: '{not-valid-json'
+      }
+    })
+  );
+
+  assert.equal(report.status, 'fail');
+  assert.ok(report.failures.some((entry) => entry.id === 'lease-read-error'));
+  assert.ok(
+    report.hints.some(
+      (entry) =>
+        entry.includes('resolved writer-lease root') && entry.includes('git common dir')
+    )
+  );
+  assert.ok(report.hints.every((entry) => !entry.includes('.git/agent-writer-leases/')));
 });
 
 test('workspace health CLI writes report even when failing', async () => {
