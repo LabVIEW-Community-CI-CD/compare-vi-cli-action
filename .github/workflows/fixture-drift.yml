@@ -165,27 +165,3 @@ jobs:
         name: fixture-drift-ni-linux-container
         path: results/fixture-drift/ni-linux-container/**
         if-no-files-found: warn
-  preflight-windows:
-    runs-on: windows-latest
-    timeout-minutes: 3
-    steps:
-    - uses: actions/checkout@v5
-      with:
-        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
-        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-    - name: Verify Windows runner and idle LabVIEW (surface LVCompare notice)
-      shell: pwsh
-      run: |-
-        Write-Host "Runner: $([System.Environment]::OSVersion.VersionString)"
-        Write-Host "Pwsh:   $($PSVersionTable.PSVersion)"
-        $cli = 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
-        if (-not (Test-Path -LiteralPath $cli)) {
-          Write-Host "::notice::LVCompare.exe not found at canonical path: $cli (hosted preflight)"
-        } else { Write-Host "LVCompare present: $cli" }
-        $lv = Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue
-        if ($lv) { $pids = ($lv | ForEach-Object Id); $msg = "::error::LabVIEW.exe is running (PID(s): {0})" -f ([string]::Join(",", $pids)); Write-Host $msg; exit 1 }
-        Write-Host 'Preflight OK: Windows runner healthy; LabVIEW not running.'
-        if ($env:GITHUB_STEP_SUMMARY) {
-          $note = @('Note:', '- This preflight runs on hosted Windows (windows-latest); LVCompare presence is not required here.', '- Self-hosted Windows steps later in this workflow enforce LVCompare at the canonical path.') -join "`n"
-          $note | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-        }

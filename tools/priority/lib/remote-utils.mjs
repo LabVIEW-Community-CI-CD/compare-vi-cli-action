@@ -134,11 +134,25 @@ export function ensureGhCli({ spawnSyncFn = spawnSync } = {}) {
   }
 }
 
+function sanitizeGhArgs(args) {
+  const sensitiveFlags = new Set(['--title', '--body']);
+  const sanitized = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    sanitized.push(value);
+    if (sensitiveFlags.has(value) && index + 1 < args.length) {
+      sanitized.push(`<redacted:${value.slice(2)}>`);
+      index += 1;
+    }
+  }
+  return sanitized;
+}
+
 function buildGhCommandError(args, result, fallbackMessage) {
   const stderr = String(result?.stderr ?? '').trim();
   const stdout = String(result?.stdout ?? '').trim();
   const diagnostic = stderr || stdout || fallbackMessage;
-  return `gh ${args.join(' ')} failed: ${diagnostic}`;
+  return `gh ${sanitizeGhArgs(args).join(' ')} failed: ${diagnostic}`;
 }
 
 export function runGhJson(repoRoot, args, { spawnSyncFn = spawnSync } = {}) {
@@ -574,7 +588,8 @@ export function runGhPrCreate(
     runGhJsonFn = runGhJson,
     findExistingPullRequestFn = findExistingPullRequest,
     updateExistingPullRequestFn = updateExistingPullRequest,
-    writeStdoutFn = (text) => process.stdout.write(text)
+    writeStdoutFn = (text) => process.stdout.write(text),
+    writeStderrFn = (text) => process.stderr.write(text)
   } = {}
 ) {
   const resolvedHeadRepository = headRepository ?? origin;
@@ -632,7 +647,7 @@ export function runGhPrCreate(
             }
           );
           if (pullRequest?.url) {
-            updateExistingPullRequestFn(
+            const updateResult = tryUpdateExistingPullRequest(
               repoRoot,
               {
                 upstream,
@@ -641,6 +656,8 @@ export function runGhPrCreate(
                 body
               },
               {
+                updateExistingPullRequestFn,
+                writeStderrFn,
                 spawnSyncFn
               }
             );
@@ -648,7 +665,8 @@ export function runGhPrCreate(
             return {
               strategy,
               pullRequest,
-              reusedExisting: true
+              reusedExisting: true,
+              updateWarning: updateResult.warning
             };
           }
         }
@@ -692,7 +710,7 @@ export function runGhPrCreate(
         }
       );
       if (pullRequest?.url) {
-        updateExistingPullRequestFn(
+        const updateResult = tryUpdateExistingPullRequest(
           repoRoot,
           {
             upstream,
@@ -701,6 +719,8 @@ export function runGhPrCreate(
             body
           },
           {
+            updateExistingPullRequestFn,
+            writeStderrFn,
             spawnSyncFn
           }
         );
@@ -708,7 +728,8 @@ export function runGhPrCreate(
         return {
           strategy,
           pullRequest,
-          reusedExisting: true
+          reusedExisting: true,
+          updateWarning: updateResult.warning
         };
       }
     }
@@ -748,5 +769,41 @@ export function updateExistingPullRequest(
   });
   if (result.status !== 0) {
     throw new Error(buildGhCommandError(args, result, `exit ${result.status}`));
+  }
+}
+
+function tryUpdateExistingPullRequest(
+  repoRoot,
+  { upstream, pullRequest, title, body },
+  {
+    updateExistingPullRequestFn = updateExistingPullRequest,
+    writeStderrFn = (text) => process.stderr.write(text),
+    spawnSyncFn = spawnSync
+  } = {}
+) {
+  try {
+    updateExistingPullRequestFn(
+      repoRoot,
+      {
+        upstream,
+        pullRequest,
+        title,
+        body
+      },
+      {
+        spawnSyncFn
+      }
+    );
+    return {
+      updated: true,
+      warning: null
+    };
+  } catch (error) {
+    const message = String(error?.message ?? error ?? '').trim() || 'unknown update error';
+    writeStderrFn(`Warning: Failed to update existing pull request ${pullRequest?.url ?? '<unknown>'}: ${message}\n`);
+    return {
+      updated: false,
+      warning: message
+    };
   }
 }

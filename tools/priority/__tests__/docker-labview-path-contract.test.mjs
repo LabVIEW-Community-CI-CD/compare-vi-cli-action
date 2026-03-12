@@ -42,8 +42,10 @@ test('fixture-drift hosted Linux lane passes explicit linux container LabVIEW pa
   assert.doesNotMatch(workflow, /self-hosted-docker-windows/);
   assert.doesNotMatch(workflow, /NI_WINDOWS_IMAGE/);
   assert.doesNotMatch(workflow, /Run-NIWindowsContainerCompare\.ps1/);
-  assert.match(workflow, /name: Verify Windows runner and idle LabVIEW \(surface LVCompare notice\)/);
+  assert.doesNotMatch(workflow, /preflight-windows:/);
+  assert.doesNotMatch(workflow, /Verify Windows runner and idle LabVIEW \(surface LVCompare notice\)/);
   assert.doesNotMatch(workflow, /Verify LVCompare and idle LabVIEW state \(notice-only on hosted\)/);
+  assert.doesNotMatch(workflow, /LVCompare\.exe not found at canonical path/);
 });
 
 test('vi-compare-fork workflow uses hosted linux NI container compare path', () => {

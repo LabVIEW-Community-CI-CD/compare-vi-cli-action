@@ -777,6 +777,7 @@ test('runGhPrCreate reuses an existing PR when gh pr create reports a duplicate'
   assert.equal(result.strategy, 'gh-pr-create');
   assert.equal(result.reusedExisting, true);
   assert.equal(result.pullRequest.number, 963);
+  assert.equal(result.updateWarning, null);
   assert.deepEqual(edits, [
     {
       upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
@@ -790,7 +791,47 @@ test('runGhPrCreate reuses an existing PR when gh pr create reports a duplicate'
   ]);
 });
 
-test('runGhPrCreate surfaces update failures when a duplicate PR is reused', () => {
+test('runGhPrCreate treats existing PR refresh failures as warnings and still returns the PR URL', () => {
+  const warnings = [];
+  const result = runGhPrCreate(
+    {
+      repoRoot: '/tmp/repo',
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      origin: { owner: 'svelderrainruiz', repo: 'compare-vi-cli-action', sameOwnerFork: false },
+      branch: 'issue/963-org-owned-fork-pr-helper',
+      base: 'develop',
+      title: 'Fix #963',
+      body: 'Body'
+    },
+    {
+      spawnSyncFn: () => ({
+        status: 1,
+        stdout: '',
+        stderr: 'gh: A pull request already exists for svelderrainruiz:issue/963-org-owned-fork-pr-helper.'
+      }),
+      findExistingPullRequestFn: () => ({
+        number: 963,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963'
+      }),
+      updateExistingPullRequestFn: () => {
+        throw new Error('failed to refresh existing PR metadata');
+      },
+      writeStderrFn: (text) => {
+        warnings.push(text);
+      }
+    }
+  );
+
+  assert.equal(result.reusedExisting, true);
+  assert.equal(result.pullRequest.number, 963);
+  assert.equal(result.updateWarning, 'failed to refresh existing PR metadata');
+  assert.match(
+    warnings.join(''),
+    /Warning: Failed to update existing pull request https:\/\/github\.com\/LabVIEW-Community-CI-CD\/compare-vi-cli-action\/pull\/963: failed to refresh existing PR metadata/
+  );
+});
+
+test('runGhPrCreate redacts title and body from gh command errors', () => {
   assert.throws(
     () =>
       runGhPrCreate(
@@ -800,24 +841,18 @@ test('runGhPrCreate surfaces update failures when a duplicate PR is reused', () 
           origin: { owner: 'svelderrainruiz', repo: 'compare-vi-cli-action', sameOwnerFork: false },
           branch: 'issue/963-org-owned-fork-pr-helper',
           base: 'develop',
-          title: 'Fix #963',
-          body: 'Body'
+          title: 'Very sensitive PR title',
+          body: 'Very sensitive PR body'
         },
         {
           spawnSyncFn: () => ({
             status: 1,
             stdout: '',
-            stderr: 'gh: A pull request already exists for svelderrainruiz:issue/963-org-owned-fork-pr-helper.'
+            stderr: 'gh: create failed'
           }),
-          findExistingPullRequestFn: () => ({
-            number: 963,
-            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963'
-          }),
-          updateExistingPullRequestFn: () => {
-            throw new Error('failed to refresh existing PR metadata');
-          }
+          findExistingPullRequestFn: () => null
         }
       ),
-    /failed to refresh existing PR metadata/i
+    /gh pr create --repo LabVIEW-Community-CI-CD\/compare-vi-cli-action --base develop --head svelderrainruiz:issue\/963-org-owned-fork-pr-helper --draft --title <redacted:title> --body <redacted:body> failed: gh: create failed/i
   );
 });
