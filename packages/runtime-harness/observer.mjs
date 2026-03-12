@@ -602,6 +602,18 @@ function normalizeExecutionReceipt(executionReceipt, { now, adapter, repository,
   };
 }
 
+function resolvePollIntervalSeconds(options, executionReceipt) {
+  const defaultSeconds = Number.isInteger(options?.pollIntervalSeconds) ? options.pollIntervalSeconds : DEFAULT_POLL_INTERVAL_SECONDS;
+  const hintedSeconds = Number(executionReceipt?.details?.pollIntervalSecondsHint);
+  if (!Number.isFinite(hintedSeconds) || hintedSeconds <= 0) {
+    return defaultSeconds;
+  }
+  if (defaultSeconds <= 0) {
+    return defaultSeconds;
+  }
+  return Math.min(defaultSeconds, Math.floor(hintedSeconds));
+}
+
 async function writeExecutionReceipt(executionPaths, executionReceipt) {
   await mkdir(executionPaths.historyDir, { recursive: true });
   const historyPath = path.join(
@@ -1743,7 +1755,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
       return { exitCode: 0, report };
     }
 
-    await sleepFn(options.pollIntervalSeconds * 1000);
+    await sleepFn(resolvePollIntervalSeconds(options, executionReceipt) * 1000);
   }
 }
 

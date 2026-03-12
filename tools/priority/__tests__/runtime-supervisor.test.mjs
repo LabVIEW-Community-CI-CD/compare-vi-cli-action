@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { compareviRuntimeTest, parseArgs, runRuntimeSupervisor } from '../runtime-supervisor.mjs';
-import { buildCanonicalDeliveryDecision, fetchIssueExecutionGraph, runDeliveryTurnBroker } from '../delivery-agent.mjs';
+import { buildCanonicalDeliveryDecision, classifyPullRequestWork, fetchIssueExecutionGraph, planDeliveryBrokerAction, runDeliveryTurnBroker } from '../delivery-agent.mjs';
 
 async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, 'utf8'));
@@ -336,6 +336,196 @@ test('canonical delivery scheduler ranks existing PR unblock before ready child 
   assert.equal(decision.artifacts.laneLifecycle, 'ready-merge');
 });
 
+test('canonical delivery scheduler attaches the live Copilot review workflow to waiting-review lanes', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-canonical-copilot-watch-'));
+  const decision = await buildCanonicalDeliveryDecision({
+    repoRoot,
+    upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    targetRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    issueSnapshot: {
+      number: 1010,
+      title: 'Epic: Linux-first unattended delivery runtime',
+      body: 'epic body',
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    issueGraph: {
+      standingIssue: {
+        number: 1010,
+        title: 'Epic: Linux-first unattended delivery runtime',
+        body: 'epic body',
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+        state: 'OPEN',
+        labels: [],
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        createdAt: '2026-03-10T00:00:00Z',
+        updatedAt: '2026-03-10T00:00:00Z',
+        priority: 1,
+        epic: true,
+        pullRequests: []
+      },
+      subIssues: [
+        {
+          number: 1015,
+          title: '[P1] Auto-finalize merged standing lanes',
+          body: 'child',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1015',
+          state: 'OPEN',
+          labels: [],
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          createdAt: '2026-03-10T00:00:00Z',
+          updatedAt: '2026-03-10T00:00:00Z',
+          priority: 1,
+          epic: false,
+          pullRequests: [
+            {
+              number: 1015,
+              title: 'Auto-finalize merged standing lanes',
+              url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1015',
+              state: 'OPEN',
+              isDraft: false,
+              reviewDecision: null,
+              headRefName: 'issue/origin-1010-auto-finalize-merged-standing-lanes',
+              headRefOid: '021c02d383a974c5ec3fe6c3ef32f54391f7f6ab',
+              mergeStateStatus: 'BLOCKED',
+              mergeable: 'MERGEABLE',
+              repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+              statusCheckRollup: [
+                { __typename: 'CheckRun', name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' }
+              ]
+            }
+          ]
+        }
+      ],
+      pullRequests: []
+    },
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      backlogAuthority: 'issues',
+      implementationRemote: 'origin',
+      autoSlice: true,
+      autoMerge: true,
+      maxActiveCodingLanes: 1,
+      allowPolicyMutations: false,
+      allowReleaseAdmin: false,
+      stopWhenNoOpenEpics: true
+    },
+    deps: {
+      runGhApiJsonFn: ({ endpoint }) => {
+        if (endpoint.includes('/actions/runs?')) {
+          return {
+            workflow_runs: [
+              {
+                name: 'Copilot code review',
+                id: 22968811761,
+                event: 'dynamic',
+                status: 'in_progress',
+                conclusion: null,
+                head_sha: '021c02d383a974c5ec3fe6c3ef32f54391f7f6ab',
+                html_url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/22968811761',
+                created_at: '2026-03-11T18:43:13Z',
+                updated_at: '2026-03-11T18:44:00Z'
+              }
+            ]
+          };
+        }
+        if (endpoint.includes('/pulls/1015/reviews')) {
+          return [];
+        }
+        throw new Error(`Unexpected endpoint: ${endpoint}`);
+      },
+      runGhGraphqlFn: () => ({
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: []
+              }
+            }
+          }
+        }
+      })
+    }
+  });
+
+  assert.equal(decision.artifacts.laneLifecycle, 'waiting-review');
+  assert.equal(decision.artifacts.pullRequest.nextWakeCondition, 'copilot-review-workflow-completed');
+  assert.equal(decision.artifacts.pullRequest.pollIntervalSecondsHint, 10);
+  assert.equal(decision.artifacts.pullRequest.copilotReviewWorkflow.workflowName, 'Copilot code review');
+});
+
+test('classifyPullRequestWork compresses waiting-review polling after the Copilot workflow completes on the current head', () => {
+  const prStatus = classifyPullRequestWork({
+    number: 1015,
+    isDraft: false,
+    reviewDecision: 'REVIEW_REQUIRED',
+    headRefOid: '021c02d383a974c5ec3fe6c3ef32f54391f7f6ab',
+    statusCheckRollup: [
+      { name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' }
+    ],
+    copilotReviewWorkflow: {
+      workflowName: 'Copilot code review',
+      runId: 22968811761,
+      status: 'COMPLETED',
+      conclusion: 'SUCCESS',
+      headSha: '021c02d383a974c5ec3fe6c3ef32f54391f7f6ab',
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/22968811761',
+      createdAt: '2026-03-11T18:43:13Z',
+      updatedAt: '2026-03-11T18:48:14Z'
+    }
+  });
+
+  assert.equal(prStatus.laneLifecycle, 'waiting-review');
+  assert.equal(prStatus.nextWakeCondition, 'copilot-review-post-expected');
+  assert.equal(prStatus.pollIntervalSecondsHint, 5);
+  assert.equal(prStatus.reviewMonitor.workflow.workflowName, 'Copilot code review');
+});
+
+test('classifyPullRequestWork reopens an existing PR for coding when Copilot posts actionable current-head comments', () => {
+  const prStatus = classifyPullRequestWork({
+    number: 1015,
+    isDraft: false,
+    reviewDecision: null,
+    headRefOid: '021c02d383a974c5ec3fe6c3ef32f54391f7f6ab',
+    statusCheckRollup: [
+      { name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' }
+    ],
+    copilotReviewSignal: {
+      hasCopilotReview: true,
+      hasCurrentHeadReview: true,
+      latestCopilotReview: {
+        id: 3931659485,
+        commitId: '021c02d383a974c5ec3fe6c3ef32f54391f7f6ab'
+      },
+      actionableThreadCount: 1,
+      actionableCommentCount: 2
+    }
+  });
+
+  assert.equal(prStatus.laneLifecycle, 'coding');
+  assert.equal(prStatus.blockerClass, 'review');
+  assert.equal(prStatus.nextWakeCondition, 'review-comments-addressed');
+});
+
+test('planDeliveryBrokerAction executes a coding turn when an existing PR has actionable review comments', () => {
+  const planned = planDeliveryBrokerAction({
+    status: 'coding',
+    evidence: {
+      delivery: {
+        laneLifecycle: 'coding',
+        pullRequest: {
+          number: 1015,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1015',
+          nextWakeCondition: 'review-comments-addressed'
+        }
+      }
+    }
+  });
+
+  assert.equal(planned.actionType, 'execute-coding-turn');
+  assert.equal(planned.laneLifecycle, 'coding');
+});
+
 test('fetchIssueExecutionGraph normalizes status rollup contexts from GraphQL payloads', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-canonical-graph-'));
   const graph = await fetchIssueExecutionGraph({
@@ -617,6 +807,125 @@ test('comparevi canonical execution consumes the broker receipt file when stdout
   assert.equal(execution.reason, 'Merged PR #1018 and closed issue #962.');
   assert.equal(execution.details.actionType, 'merge-pr');
   assert.equal(execution.details.finalizedIssueNumber, 962);
+});
+
+test('comparevi canonical execution persists a broker-managed ready-for-review refresh as waiting-review runtime state', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'comparevi-runtime-waiting-review-'));
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-1012',
+        issue: 1012,
+        forkRemote: 'origin',
+        branch: 'issue/origin-1012-wire-canonical-delivery-broker',
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1015'
+      },
+      artifacts: {
+        standingRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        standingIssueNumber: 1010,
+        laneLifecycle: 'coding',
+        selectedActionType: 'advance-child-issue'
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      laneId: 'origin-1012',
+      branch: {
+        name: 'issue/origin-1012-wire-canonical-delivery-broker',
+        forkRemote: 'origin'
+      },
+      objective: { summary: 'Advance issue #1012' },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'coding',
+          selectedActionType: 'advance-child-issue',
+          selectedIssue: {
+            number: 1012
+          },
+          standingIssue: {
+            number: 1010
+          },
+          pullRequest: {
+            number: 1015,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1015',
+            isDraft: false
+          },
+          mutationEnvelope: {
+            maxActiveCodingLanes: 1
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    taskPacketArtifacts: {
+      latestPath: '/tmp/repo/tests/results/_agent/runtime/task-packet.json'
+    },
+    runtimeArtifactPaths: {
+      runtimeDir: '/tmp/repo/tests/results/_agent/runtime'
+    },
+    deps: {
+      invokeDeliveryTurnBrokerFn: async () => ({
+        status: 'completed',
+        outcome: 'coding-command-finished',
+        reason: 'Broker pushed a follow-up commit, marked the PR ready for review, and is waiting for a fresh current-head Copilot review.',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'execute-coding-turn',
+          laneLifecycle: 'waiting-review',
+          blockerClass: 'review',
+          retryable: true,
+          nextWakeCondition: 'copilot-review-workflow-completed',
+          pollIntervalSecondsHint: 10,
+          reviewMonitor: {
+            workflowName: 'Copilot code review',
+            runId: 22968811761,
+            status: 'IN_PROGRESS',
+            conclusion: null,
+            headSha: '021c02d383a974c5ec3fe6c3ef32f54391f7f6ab',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/22968811761'
+          },
+          helperCallsExecuted: [
+            'gh pr ready 1015 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --undo',
+            'codex exec --json --color never --cd /work/origin-1012 --dangerously-bypass-approvals-and-sandbox',
+            'gh pr ready 1015 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action'
+          ],
+          filesTouched: ['tools/priority/runtime-supervisor.mjs'],
+          pullRequestUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1015',
+          notes: 'Broker restored ready-for-review so Copilot can issue a fresh current-head review.'
+        }
+      })
+    }
+  });
+
+  assert.equal(execution.outcome, 'coding-command-finished');
+  assert.equal(execution.details.laneLifecycle, 'waiting-review');
+  assert.equal(execution.details.blockerClass, 'review');
+  assert.equal(execution.details.nextWakeCondition, 'copilot-review-workflow-completed');
+  assert.equal(execution.details.pollIntervalSecondsHint, 10);
+  assert.equal(execution.details.helperCallsExecuted[0], 'gh pr ready 1015 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --undo');
+  assert.equal(execution.details.helperCallsExecuted[2], 'gh pr ready 1015 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action');
+
+  const persistedState = await readJson(path.join(runtimeDir, 'delivery-agent-state.json'));
+  assert.equal(persistedState.status, 'running');
+  assert.equal(persistedState.laneLifecycle, 'waiting-review');
+  assert.equal(persistedState.activeLane.laneId, 'origin-1012');
+  assert.equal(persistedState.activeLane.prUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1015');
+  assert.equal(persistedState.activeLane.blockerClass, 'review');
+  assert.equal(persistedState.activeLane.laneLifecycle, 'waiting-review');
+  assert.equal(persistedState.activeLane.nextWakeCondition, 'copilot-review-workflow-completed');
+  assert.equal(persistedState.activeLane.pollIntervalSecondsHint, 10);
+  assert.equal(persistedState.activeLane.reviewMonitor.workflowName, 'Copilot code review');
 });
 
 test('delivery broker auto-slices epics by creating and linking a child issue', async () => {

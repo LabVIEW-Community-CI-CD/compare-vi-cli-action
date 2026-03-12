@@ -374,7 +374,8 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
           upstreamRepository,
           targetRepository,
           policy: deliveryPolicy,
-          source: 'comparevi-standing-priority-live'
+          source: 'comparevi-standing-priority-live',
+          deps
         });
       } catch {
         // Fall back to snapshot-only scheduling when the live execution graph
