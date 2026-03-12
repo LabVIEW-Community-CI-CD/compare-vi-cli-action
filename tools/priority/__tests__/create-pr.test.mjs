@@ -182,6 +182,8 @@ test('resolveStandingIssueNumberForPr prefers router over cache', () => {
   assert.deepEqual(result, {
     issueNumber: 680,
     localIssueNumber: 680,
+    issueTitle: null,
+    issueUrl: null,
     source: 'router',
     noStandingReason: null,
     mirrorOf: null
@@ -211,6 +213,8 @@ test('resolveStandingIssueNumberForPr treats explicit empty router issue as auth
   assert.deepEqual(result, {
     issueNumber: null,
     localIssueNumber: null,
+    issueTitle: null,
+    issueUrl: null,
     source: 'router',
     noStandingReason: 'queue-empty',
     mirrorOf: null
@@ -234,6 +238,8 @@ test('resolveStandingIssueNumberForPr falls back to cache when router is unavail
   assert.deepEqual(result, {
     issueNumber: 680,
     localIssueNumber: 680,
+    issueTitle: null,
+    issueUrl: null,
     source: 'cache',
     noStandingReason: null,
     mirrorOf: null
@@ -285,6 +291,28 @@ test('buildTitle and buildBody honor env overrides', () => {
   );
 });
 
+test('buildBody emits populated automation-authored metadata instead of placeholder bullets', () => {
+  const body = buildBody(
+    {
+      issueNumber: 680,
+      issueTitle: 'Standing helper fix',
+      issueUrl: 'https://github.com/example/repo/issues/680',
+      branch: 'issue/origin-680-standing-helper-fix',
+      base: 'develop'
+    },
+    {}
+  );
+
+  assert.match(body, /^# Summary/m);
+  assert.match(body, /## Agent Metadata \(required for automation-authored PRs\)/);
+  assert.match(body, /- Agent-ID: `agent\/copilot-codex-a`/);
+  assert.match(body, /Primary issue or standing-priority context: #680 - Standing helper fix/);
+  assert.match(body, /Issue URL: https:\/\/github.com\/example\/repo\/issues\/680/);
+  assert.match(body, /Closes #680/);
+  assert.doesNotMatch(body, /\(fill in summary\)/);
+  assert.doesNotMatch(body, /\(document testing\)/);
+});
+
 test('resolveBody prefers explicit body-file content over env defaults', () => {
   const body = resolveBody({
     options: { bodyFile: 'pr-body.md' },
@@ -320,10 +348,32 @@ test('createPriorityPr builds PR metadata from resolved standing issue', () => {
   assert.ok(prPayload);
   assert.equal(prPayload.base, 'develop');
   assert.equal(prPayload.title, 'Update for standing priority #680');
+  assert.match(prPayload.body, /## Agent Metadata \(required for automation-authored PRs\)/);
   assert.match(prPayload.body, /Closes #680/);
+  assert.doesNotMatch(prPayload.body, /\(fill in summary\)/);
   assert.equal(result.issueNumber, 680);
   assert.equal(result.issueSource, 'router');
   assert.equal(result.strategy, 'gh-pr-create');
+});
+
+test('resolveStandingIssueNumberForPr carries cached issue metadata into the PR helper context', () => {
+  const result = resolveStandingIssueNumberForPr('/tmp/repo', {
+    readJsonFn: (filePath) => {
+      if (filePath.endsWith('router.json')) {
+        return { issue: 1033 };
+      }
+      return {
+        number: 1033,
+        title: 'priority:pr should not open automation PRs with placeholder bodies',
+        url: 'https://github.com/example/repo/issues/1033',
+        state: 'open',
+        labels: ['standing-priority']
+      };
+    }
+  });
+
+  assert.equal(result.issueTitle, 'priority:pr should not open automation PRs with placeholder bodies');
+  assert.equal(result.issueUrl, 'https://github.com/example/repo/issues/1033');
 });
 
 test('createPriorityPr honors explicit CLI overrides and body files', () => {
