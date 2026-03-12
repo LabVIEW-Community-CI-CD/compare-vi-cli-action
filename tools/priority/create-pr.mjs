@@ -265,6 +265,18 @@ export function resolveStandingIssueNumberForPr(repoRoot, { readJsonFn = readJso
       ? parseRouterIssueNumber(router)
       : parseCacheIssueNumber(cache);
   if (router && Object.prototype.hasOwnProperty.call(router, 'issue')) {
+    if (!localIssueNumber) {
+      return {
+        issueNumber: null,
+        localIssueNumber: null,
+        issueTitle: null,
+        issueUrl: null,
+        source: 'router',
+        noStandingReason,
+        mirrorOf: null
+      };
+    }
+
     return {
       issueNumber: mirrorOf?.number ?? localIssueNumber,
       localIssueNumber,
@@ -378,7 +390,7 @@ export function buildBody(issueOrContext, env = process.env) {
     `- Issue URL: ${context.issueUrl || '(not supplied)'}`,
     `- Files, tools, workflows, or policies touched: Helper-driven PR creation path for \`${branch}\`.`,
     '- Cross-repo or external-consumer impact: None expected at PR creation time.',
-    '- Required checks, merge-queue behavior, or approval flows affected: Standard develop required checks apply.',
+    `- Required checks, merge-queue behavior, or approval flows affected: Standard \`${base}\` branch protections and required checks apply.`,
     '',
     '## Validation Evidence',
     '',

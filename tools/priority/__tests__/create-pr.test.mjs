@@ -204,6 +204,13 @@ test('resolveStandingIssueNumberForPr treats explicit empty router issue as auth
       }
       return {
         number: 680,
+        title: 'Stale mirrored issue',
+        url: 'https://github.com/example/repo/issues/680',
+        mirrorOf: {
+          number: 966,
+          repository: 'upstream-owner/repo',
+          url: 'https://github.com/upstream-owner/repo/issues/966'
+        },
         state: 'NONE',
         labels: []
       };
@@ -308,9 +315,24 @@ test('buildBody emits populated automation-authored metadata instead of placehol
   assert.match(body, /- Agent-ID: `agent\/copilot-codex-a`/);
   assert.match(body, /Primary issue or standing-priority context: #680 - Standing helper fix/);
   assert.match(body, /Issue URL: https:\/\/github.com\/example\/repo\/issues\/680/);
+  assert.match(body, /Standard `develop` branch protections and required checks apply\./);
   assert.match(body, /Closes #680/);
   assert.doesNotMatch(body, /\(fill in summary\)/);
   assert.doesNotMatch(body, /\(document testing\)/);
+});
+
+test('buildBody reflects the resolved base branch in required-check guidance', () => {
+  const body = buildBody(
+    {
+      issueNumber: 681,
+      branch: 'issue/origin-681-main-hotfix',
+      base: 'main'
+    },
+    {}
+  );
+
+  assert.match(body, /Standard `main` branch protections and required checks apply\./);
+  assert.doesNotMatch(body, /Standard develop required checks apply\./);
 });
 
 test('resolveBody prefers explicit body-file content over env defaults', () => {
