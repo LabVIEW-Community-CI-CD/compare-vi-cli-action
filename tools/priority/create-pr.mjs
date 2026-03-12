@@ -21,6 +21,7 @@ import {
 const ROUTER_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'router.json');
 const CACHE_RELATIVE_PATH = '.agent_priority_cache.json';
 const NO_STANDING_REPORT_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'no-standing-priority.json');
+const DEFAULT_PR_TEMPLATE_RELATIVE_PATH = path.join('.github', 'pull_request_template.md');
 const STANDING_PRIORITY_LABELS = new Set(['standing-priority', 'fork-standing-priority']);
 const USAGE_LINES = [
   'Usage: node tools/npm/run-script.mjs priority:pr -- [options]',
@@ -216,6 +217,19 @@ export function parseCacheNoStandingReason(cache) {
   return reason || null;
 }
 
+function extractIssueTitle(cache) {
+  const value = cache?.title ?? cache?.issue?.title;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function extractIssueUrl(cache, mirrorOf = null) {
+  if (typeof mirrorOf?.url === 'string' && mirrorOf.url.trim()) {
+    return mirrorOf.url.trim();
+  }
+  const value = cache?.url ?? cache?.issue?.url;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 export function parseNoStandingReasonFromReport(report) {
   if (!report || typeof report !== 'object') {
     return null;
@@ -249,10 +263,31 @@ export function resolveStandingIssueNumberForPr(repoRoot, { readJsonFn = readJso
     router && Object.prototype.hasOwnProperty.call(router, 'issue')
       ? parseRouterIssueNumber(router)
       : parseCacheIssueNumber(cache);
+  const cacheIssueNumber = parseCacheIssueNumber(cache);
+  const shouldUseCachedMetadata =
+    Boolean(cacheIssueNumber) &&
+    ((localIssueNumber && cacheIssueNumber === localIssueNumber) ||
+      (mirrorOf?.number && cacheIssueNumber === mirrorOf.number));
+  const issueTitle = shouldUseCachedMetadata ? extractIssueTitle(cache) : null;
+  const issueUrl = shouldUseCachedMetadata ? extractIssueUrl(cache, mirrorOf) : null;
   if (router && Object.prototype.hasOwnProperty.call(router, 'issue')) {
+    if (!localIssueNumber) {
+      return {
+        issueNumber: null,
+        localIssueNumber: null,
+        issueTitle: null,
+        issueUrl: null,
+        source: 'router',
+        noStandingReason,
+        mirrorOf: null
+      };
+    }
+
     return {
       issueNumber: mirrorOf?.number ?? localIssueNumber,
       localIssueNumber,
+      issueTitle,
+      issueUrl,
       source: 'router',
       noStandingReason,
       mirrorOf
@@ -262,6 +297,8 @@ export function resolveStandingIssueNumberForPr(repoRoot, { readJsonFn = readJso
   return {
     issueNumber: mirrorOf?.number ?? localIssueNumber,
     localIssueNumber,
+    issueTitle,
+    issueUrl,
     source: 'cache',
     noStandingReason,
     mirrorOf
@@ -299,12 +336,170 @@ export function buildTitle(branch, issueNumber, env = process.env) {
   return `Update ${branch}`;
 }
 
-export function buildBody(issueNumber, env = process.env) {
+function normalizePrBodyContext(issueOrContext) {
+  if (issueOrContext && typeof issueOrContext === 'object' && !Array.isArray(issueOrContext)) {
+    return {
+      issueNumber: toPositiveInteger(issueOrContext.issueNumber ?? issueOrContext.issue ?? null),
+      issueTitle: typeof issueOrContext.issueTitle === 'string' ? issueOrContext.issueTitle.trim() : '',
+      issueUrl: typeof issueOrContext.issueUrl === 'string' ? issueOrContext.issueUrl.trim() : '',
+      branch: typeof issueOrContext.branch === 'string' ? issueOrContext.branch.trim() : '',
+      base: typeof issueOrContext.base === 'string' ? issueOrContext.base.trim() : ''
+    };
+  }
+
+  return {
+    issueNumber: toPositiveInteger(issueOrContext),
+    issueTitle: '',
+    issueUrl: '',
+    branch: '',
+    base: ''
+  };
+}
+
+function formatIssueReference(issueNumber, issueTitle = '') {
+  if (!issueNumber) {
+    return 'Not linked yet';
+  }
+  const titleSuffix = issueTitle ? ` - ${issueTitle}` : '';
+  return `#${issueNumber}${titleSuffix}`;
+}
+
+function buildSummaryLine(context, base) {
+  const issueReference = formatIssueReference(context.issueNumber, context.issueTitle);
+  if (context.issueNumber) {
+    return `Delivers issue ${issueReference} into \`${base}\` using the standard automation PR helper.`;
+  }
+  return `Delivers branch \`${context.branch || '(not supplied)'}\` into \`${base}\` using the standard automation PR helper.`;
+}
+
+function renderFallbackAutomationBody(context, base) {
+  const issueReference = formatIssueReference(context.issueNumber, context.issueTitle);
+  const lines = [
+    '# Summary',
+    '',
+    buildSummaryLine(context, base),
+    '',
+    '## Agent Metadata (required for automation-authored PRs)',
+    '',
+    '- Agent-ID: `agent/copilot-codex-a`',
+    '- Operator: `@svelderrainruiz`',
+    '- Reviewer-Required: `@svelderrainruiz`',
+    '- Emergency-Bypass-Label: `AllowCIBypass`',
+    '',
+    '## Change Surface',
+    '',
+    `- Primary issue or standing-priority context: ${issueReference}`,
+    `- Issue URL: ${context.issueUrl || '(not supplied)'}`,
+    `- Files, tools, workflows, or policies touched: Helper-driven PR creation path for \`${context.branch || '(not supplied)'}\`.`,
+    `- Required checks, merge-queue behavior, or approval flows affected: Standard \`${base}\` branch protections and required checks apply.`
+  ];
+  return lines.join('\n').trimEnd();
+}
+
+function renderDefaultAutomationTemplate(templateText, context, base) {
+  const issueReference = formatIssueReference(context.issueNumber, context.issueTitle);
+  const issueUrl = context.issueUrl || '(not supplied)';
+  const branch = context.branch || '(not supplied)';
+  const lines = String(templateText || '').replace(/\r\n/g, '\n').split('\n');
+  const rendered = [];
+  let inSummarySection = false;
+  let summaryInserted = false;
+
+  for (const line of lines) {
+    if (line === '# Summary') {
+      rendered.push(line, '', buildSummaryLine(context, base));
+      inSummarySection = true;
+      summaryInserted = true;
+      continue;
+    }
+
+    if (inSummarySection) {
+      if (line.startsWith('## ')) {
+        inSummarySection = false;
+        rendered.push('', line);
+        continue;
+      }
+      continue;
+    }
+
+    if (line.startsWith('- Primary issue or standing-priority context:')) {
+      rendered.push(`- Primary issue or standing-priority context: ${issueReference}`);
+      rendered.push(`- Issue URL: ${issueUrl}`);
+      continue;
+    }
+    if (line.startsWith('- Files, tools, workflows, or policies touched:')) {
+      rendered.push(`- Files, tools, workflows, or policies touched: Helper-driven PR creation path for \`${branch}\`.`);
+      continue;
+    }
+    if (line.startsWith('- Cross-repo or external-consumer impact:')) {
+      rendered.push('- Cross-repo or external-consumer impact: None expected at PR creation time.');
+      continue;
+    }
+    if (line.startsWith('- Required checks, merge-queue behavior, or approval flows affected:')) {
+      rendered.push(`- Required checks, merge-queue behavior, or approval flows affected: Standard \`${base}\` branch protections and required checks apply.`);
+      continue;
+    }
+    if (line.trim() === '- `node tools/npm/run-script.mjs <script>`') {
+      rendered.push('  - None yet; this body was generated during PR creation.');
+      continue;
+    }
+    if (line.trim() === '- `tests/results/...`') {
+      rendered.push('  - None yet.');
+      continue;
+    }
+    if (line.trim() === '- None or explain why') {
+      rendered.push('  - Validation is deferred until implementation commits land on the branch.');
+      continue;
+    }
+    if (line.startsWith('- Residual risks:')) {
+      rendered.push('- Residual risks: This body should be refreshed if the branch scope changes materially before merge.');
+      continue;
+    }
+    if (line.startsWith('- Follow-up issues or deferred work:')) {
+      rendered.push('- Follow-up issues or deferred work: None at PR creation time.');
+      continue;
+    }
+    if (line.startsWith('- Deployment, approval, or rollback notes:')) {
+      rendered.push('- Deployment, approval, or rollback notes: Standard PR review and required-check flow.');
+      continue;
+    }
+    if (line.startsWith('- Please verify:')) {
+      rendered.push('- Please verify: issue linkage, branch/base selection, and metadata routing are correct.');
+      continue;
+    }
+    if (line.startsWith('- Areas where the reasoning is subtle:')) {
+      rendered.push('- Areas where the reasoning is subtle: None at PR creation time.');
+      continue;
+    }
+    if (line.startsWith('- Manual spot checks requested:')) {
+      rendered.push('- Manual spot checks requested: None.');
+      continue;
+    }
+
+    rendered.push(line);
+  }
+
+  if (!summaryInserted) {
+    rendered.unshift('# Summary', '', buildSummaryLine(context, base), '');
+  }
+
+  return rendered.join('\n').trimEnd();
+}
+
+export function buildBody(issueOrContext, env = process.env, { repoRoot = process.cwd(), readFileSyncFn = readFileSync } = {}) {
   if (env.PR_BODY) {
     return env.PR_BODY;
   }
-  const suffix = issueNumber ? `\n\nCloses #${issueNumber}` : '';
-  return `## Summary\n- (fill in summary)\n\n## Testing\n- (document testing)${suffix}`;
+  const context = normalizePrBodyContext(issueOrContext);
+  const base = context.base || env.PR_BASE || 'develop';
+  const closesLine = context.issueNumber ? `\n\nCloses #${context.issueNumber}` : '';
+
+  try {
+    const templateText = readFileSyncFn(path.join(repoRoot, DEFAULT_PR_TEMPLATE_RELATIVE_PATH), 'utf8');
+    return `${renderDefaultAutomationTemplate(templateText, context, base)}${closesLine}`.trimEnd();
+  } catch {
+    return `${renderFallbackAutomationBody(context, base)}${closesLine}`.trimEnd();
+  }
 }
 
 export function resolveBody({ options, issueNumber, env = process.env, readFileSyncFn = readFileSync }) {
@@ -317,7 +512,20 @@ export function resolveBody({ options, issueNumber, env = process.env, readFileS
   if (options.body) {
     return options.body;
   }
-  return buildBody(issueNumber, env);
+  return buildBody(
+    {
+      issueNumber,
+      issueTitle: options.issueTitle ?? '',
+      issueUrl: options.issueUrl ?? '',
+      branch: options.branch ?? env.PR_BRANCH ?? '',
+      base: options.base ?? env.PR_BASE ?? ''
+    },
+    env,
+    {
+      repoRoot: options.repoRoot ?? process.cwd(),
+      readFileSyncFn
+    }
+  );
 }
 
 export function createPriorityPr({
@@ -361,7 +569,19 @@ export function createPriorityPr({
   const pushResult = pushBranchFn(repoRoot, branch, headRemote);
   const base = options.base || env.PR_BASE || 'develop';
   const title = options.title || buildTitle(branch, issueNumber, env);
-  const body = resolveBody({ options, issueNumber, env, readFileSyncFn });
+  const body = resolveBody({
+    options: {
+      ...options,
+      branch,
+      base,
+      issueTitle: resolvedIssue?.issueTitle ?? '',
+      issueUrl: resolvedIssue?.issueUrl ?? '',
+      repoRoot
+    },
+    issueNumber,
+    env,
+    readFileSyncFn
+  });
 
   const prResult = runGhPrCreateFn({
     repoRoot,

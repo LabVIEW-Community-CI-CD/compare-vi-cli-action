@@ -2,6 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync as nodeReadFileSync } from 'node:fs';
 import {
   parseArgs,
   parseRouterIssueNumber,
@@ -16,6 +17,10 @@ import {
   resolveBody,
   createPriorityPr
 } from '../create-pr.mjs';
+
+function readDefaultPrTemplate(filePath, encoding) {
+  return nodeReadFileSync(filePath, encoding);
+}
 
 test('parseArgs accepts explicit PR helper overrides', () => {
   const options = parseArgs([
@@ -182,6 +187,8 @@ test('resolveStandingIssueNumberForPr prefers router over cache', () => {
   assert.deepEqual(result, {
     issueNumber: 680,
     localIssueNumber: 680,
+    issueTitle: null,
+    issueUrl: null,
     source: 'router',
     noStandingReason: null,
     mirrorOf: null
@@ -202,6 +209,13 @@ test('resolveStandingIssueNumberForPr treats explicit empty router issue as auth
       }
       return {
         number: 680,
+        title: 'Stale mirrored issue',
+        url: 'https://github.com/example/repo/issues/680',
+        mirrorOf: {
+          number: 966,
+          repository: 'upstream-owner/repo',
+          url: 'https://github.com/upstream-owner/repo/issues/966'
+        },
         state: 'NONE',
         labels: []
       };
@@ -211,6 +225,8 @@ test('resolveStandingIssueNumberForPr treats explicit empty router issue as auth
   assert.deepEqual(result, {
     issueNumber: null,
     localIssueNumber: null,
+    issueTitle: null,
+    issueUrl: null,
     source: 'router',
     noStandingReason: 'queue-empty',
     mirrorOf: null
@@ -234,6 +250,8 @@ test('resolveStandingIssueNumberForPr falls back to cache when router is unavail
   assert.deepEqual(result, {
     issueNumber: 680,
     localIssueNumber: 680,
+    issueTitle: null,
+    issueUrl: null,
     source: 'cache',
     noStandingReason: null,
     mirrorOf: null
@@ -285,6 +303,51 @@ test('buildTitle and buildBody honor env overrides', () => {
   );
 });
 
+test('buildBody emits populated automation-authored metadata instead of placeholder bullets', () => {
+  const body = buildBody(
+    {
+      issueNumber: 680,
+      issueTitle: 'Standing helper fix',
+      issueUrl: 'https://github.com/example/repo/issues/680',
+      branch: 'issue/origin-680-standing-helper-fix',
+      base: 'develop'
+    },
+    {},
+    {
+      repoRoot: process.cwd(),
+      readFileSyncFn: nodeReadFileSync
+    }
+  );
+
+  assert.match(body, /^# Summary/m);
+  assert.match(body, /## Agent Metadata \(required for automation-authored PRs\)/);
+  assert.match(body, /- Agent-ID: `agent\/copilot-codex-a`/);
+  assert.match(body, /Primary issue or standing-priority context: #680 - Standing helper fix/);
+  assert.match(body, /Issue URL: https:\/\/github.com\/example\/repo\/issues\/680/);
+  assert.match(body, /Standard `develop` branch protections and required checks apply\./);
+  assert.match(body, /Closes #680/);
+  assert.doesNotMatch(body, /\(fill in summary\)/);
+  assert.doesNotMatch(body, /\(document testing\)/);
+});
+
+test('buildBody reflects the resolved base branch in required-check guidance', () => {
+  const body = buildBody(
+    {
+      issueNumber: 681,
+      branch: 'issue/origin-681-main-hotfix',
+      base: 'main'
+    },
+    {},
+    {
+      repoRoot: process.cwd(),
+      readFileSyncFn: nodeReadFileSync
+    }
+  );
+
+  assert.match(body, /Standard `main` branch protections and required checks apply\./);
+  assert.doesNotMatch(body, /Standard develop required checks apply\./);
+});
+
 test('resolveBody prefers explicit body-file content over env defaults', () => {
   const body = resolveBody({
     options: { bodyFile: 'pr-body.md' },
@@ -301,6 +364,7 @@ test('createPriorityPr builds PR metadata from resolved standing issue', () => {
   const result = createPriorityPr({
     env: {},
     options: {},
+    readFileSyncFn: readDefaultPrTemplate,
     getRepoRootFn: () => '/tmp/repo',
     getCurrentBranchFn: () => 'issue/680-sync-standing-priority',
     ensureGhCliFn: () => {},
@@ -320,10 +384,53 @@ test('createPriorityPr builds PR metadata from resolved standing issue', () => {
   assert.ok(prPayload);
   assert.equal(prPayload.base, 'develop');
   assert.equal(prPayload.title, 'Update for standing priority #680');
+  assert.match(prPayload.body, /## Agent Metadata \(required for automation-authored PRs\)/);
   assert.match(prPayload.body, /Closes #680/);
+  assert.doesNotMatch(prPayload.body, /\(fill in summary\)/);
   assert.equal(result.issueNumber, 680);
   assert.equal(result.issueSource, 'router');
   assert.equal(result.strategy, 'gh-pr-create');
+});
+
+test('resolveStandingIssueNumberForPr carries cached issue metadata into the PR helper context', () => {
+  const result = resolveStandingIssueNumberForPr('/tmp/repo', {
+    readJsonFn: (filePath) => {
+      if (filePath.endsWith('router.json')) {
+        return { issue: 1033 };
+      }
+      return {
+        number: 1033,
+        title: 'priority:pr should not open automation PRs with placeholder bodies',
+        url: 'https://github.com/example/repo/issues/1033',
+        state: 'open',
+        labels: ['standing-priority']
+      };
+    }
+  });
+
+  assert.equal(result.issueTitle, 'priority:pr should not open automation PRs with placeholder bodies');
+  assert.equal(result.issueUrl, 'https://github.com/example/repo/issues/1033');
+});
+
+test('resolveStandingIssueNumberForPr drops stale cached metadata when router-selected issue does not match cache', () => {
+  const result = resolveStandingIssueNumberForPr('/tmp/repo', {
+    readJsonFn: (filePath) => {
+      if (filePath.endsWith('router.json')) {
+        return { issue: 1033 };
+      }
+      return {
+        number: 9000,
+        title: 'Stale issue title',
+        url: 'https://github.com/example/repo/issues/9000',
+        state: 'open',
+        labels: ['standing-priority']
+      };
+    }
+  });
+
+  assert.equal(result.issueNumber, 1033);
+  assert.equal(result.issueTitle, null);
+  assert.equal(result.issueUrl, null);
 });
 
 test('createPriorityPr honors explicit CLI overrides and body files', () => {
@@ -397,6 +504,7 @@ test('createPriorityPr uses mirror metadata for PR closing references while matc
   createPriorityPr({
     env: { AGENT_PRIORITY_ACTIVE_FORK_REMOTE: 'personal' },
     options: {},
+    readFileSyncFn: readDefaultPrTemplate,
     getRepoRootFn: () => '/tmp/repo',
     getCurrentBranchFn: () => 'issue/personal-1-artifact-download-helper',
     ensureGhCliFn: () => {},
