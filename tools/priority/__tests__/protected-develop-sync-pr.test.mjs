@@ -30,6 +30,8 @@ test('parseArgs accepts protected sync options', () => {
     'protected-branch-gh013',
     '--local-head',
     'abc123',
+    '--reference',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action#986',
     '--report-path',
     'custom/report.json'
   ]);
@@ -40,6 +42,7 @@ test('parseArgs accepts protected sync options', () => {
   assert.equal(options.syncBranch, 'sync/origin-develop');
   assert.equal(options.reason, 'protected-branch-gh013');
   assert.equal(options.localHead, 'abc123');
+  assert.equal(options.reference, 'LabVIEW-Community-CI-CD/compare-vi-cli-action#986');
   assert.equal(options.reportPath, 'custom/report.json');
 });
 
@@ -59,13 +62,26 @@ test('buildProtectedSyncPrTitle and body describe protected branch staging', () 
     branch: 'develop',
     syncBranch: 'sync/origin-develop',
     reason: 'protected-branch-gh013',
-    localHead: 'abc123'
+    localHead: 'abc123',
+    reference: 'LabVIEW-Community-CI-CD/compare-vi-cli-action#986'
   });
 
   assert.match(body, /align `LabVIEW-Community-CI-CD\/compare-vi-cli-action-fork:develop` with `LabVIEW-Community-CI-CD\/compare-vi-cli-action:develop`/);
   assert.match(body, /stage protected-fork `develop` sync through a PR \/ merge-queue path instead of direct push/);
   assert.match(body, /sync branch: `sync\/origin-develop`/);
   assert.match(body, /Refs LabVIEW-Community-CI-CD\/compare-vi-cli-action#986/);
+});
+
+test('buildProtectedSyncPrBody omits refs when no reference is provided', () => {
+  const body = buildProtectedSyncPrBody({
+    upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+    targetRepository: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+    targetRemote: 'origin',
+    syncBranch: 'sync/origin-develop',
+    reason: 'protected-branch-gh013'
+  });
+
+  assert.doesNotMatch(body, /^Refs /m);
 });
 
 test('protected sync usage text is generic across protected branches', async () => {
@@ -86,12 +102,14 @@ test('buildProtectedSyncSummaryPayload captures PR and merge request details', (
     pullRequest: { number: 42, url: 'https://example.test/pull/42' },
     readyState: { status: 'marked-ready' },
     mergeRequest: { status: 'requested' },
+    mergeUpstreamError: 'sync unavailable',
     createdAt: '2026-03-12T00:00:00.000Z'
   });
 
   assert.equal(payload.schema, 'priority/protected-develop-sync@v1');
   assert.equal(payload.targetRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork');
   assert.equal(payload.syncMethod, 'protected-pr');
+  assert.equal(payload.mergeUpstreamError, 'sync unavailable');
   assert.equal(payload.pullRequest.number, 42);
   assert.equal(payload.readyState.status, 'marked-ready');
   assert.equal(payload.mergeRequest.status, 'requested');
@@ -165,6 +183,7 @@ test('runProtectedDevelopSync reuses an existing draft PR, marks it ready, and r
       syncBranch: 'sync/origin-develop',
       reason: 'protected-branch-gh013',
       localHead: 'abc123',
+      reference: 'LabVIEW-Community-CI-CD/compare-vi-cli-action#986',
       reportPath
     },
     ensureGhCliFn: () => {},
@@ -208,6 +227,7 @@ test('runProtectedDevelopSync reuses an existing draft PR, marks it ready, and r
   assert.equal(updated.length, 1);
   assert.equal(report.pullRequest.number, 42);
   assert.equal(report.pullRequest.reusedExisting, true);
+  assert.match(report.mergeUpstreamError, /Unexpected gh json args/);
   assert.equal(report.readyState.status, 'marked-ready');
   assert.equal(report.mergeRequest.status, 'requested');
   assert.equal(
@@ -242,6 +262,7 @@ test('runProtectedDevelopSync creates a new PR when no existing sync PR is open'
       syncBranch: 'sync/personal-develop',
       reason: 'protected-branch-gh013',
       localHead: 'def456',
+      reference: 'LabVIEW-Community-CI-CD/compare-vi-cli-action#986',
       reportPath
     },
     ensureGhCliFn: () => {},
@@ -290,6 +311,7 @@ test('runProtectedDevelopSync creates a new PR when no existing sync PR is open'
   assert.equal(created[0].branch, 'sync/personal-develop');
   assert.equal(report.pullRequest.number, 77);
   assert.equal(report.pullRequest.reusedExisting, false);
+  assert.match(report.mergeUpstreamError, /Unexpected gh json args/);
 });
 
 test('runProtectedDevelopSync prefers merge-upstream when the GitHub sync API is available', async (t) => {
@@ -311,6 +333,7 @@ test('runProtectedDevelopSync prefers merge-upstream when the GitHub sync API is
       syncBranch: 'sync/origin-develop',
       reason: 'protected-branch-gh013',
       localHead: 'abc123',
+      reference: 'LabVIEW-Community-CI-CD/compare-vi-cli-action#986',
       reportPath
     },
     ensureGhCliFn: () => {},
@@ -347,4 +370,47 @@ test('runProtectedDevelopSync prefers merge-upstream when the GitHub sync API is
     ghCalls.some((args) => args[0] === 'api' && args[1] === '-X' && args[2] === 'POST' && args[3].endsWith('/merge-upstream')),
     true
   );
+});
+
+test('runProtectedDevelopSync tolerates branch protection lookup failures', async (t) => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'protected-sync-protection-failure-'));
+  t.after(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  const reportPath = path.join(repoRoot, 'tests', 'results', '_agent', 'issue', 'origin-protected-develop-sync.json');
+
+  const { report } = runProtectedDevelopSync({
+    repoRoot,
+    options: {
+      targetRemote: 'origin',
+      baseRemote: 'upstream',
+      branch: 'develop',
+      syncBranch: 'sync/origin-develop',
+      reason: 'protected-branch-gh013',
+      localHead: 'abc123',
+      reportPath
+    },
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' }),
+    ensureForkRemoteFn: () => ({
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action-fork',
+      remoteName: 'origin',
+      sameOwnerFork: true,
+      repositoryId: 'fork-repo-id'
+    }),
+    runGhJsonFn: (_repoRoot, args) => {
+      if (args[0] === 'api' && args[1] === 'repos/LabVIEW-Community-CI-CD/compare-vi-cli-action-fork/branches/develop/protection') {
+        throw new Error('403 protection unavailable');
+      }
+      if (args[0] === 'api' && args[1] === '-X' && args[2] === 'POST' && args[3] === 'repos/LabVIEW-Community-CI-CD/compare-vi-cli-action-fork/merge-upstream') {
+        return { message: 'Branch synced', merge_type: 'fast-forward', base_branch: 'develop' };
+      }
+      throw new Error(`Unexpected gh json args: ${args.join(' ')}`);
+    }
+  });
+
+  assert.equal(report.syncMethod, 'fork-sync');
+  assert.equal(report.allowForkSyncing, false);
 });

@@ -34,6 +34,7 @@ function printUsage() {
   console.log('  --sync-branch <name>                 Deterministic sync branch already pushed to the target remote.');
   console.log('  --reason <text>                      Machine-readable reason for falling back to the PR path.');
   console.log('  --local-head <sha>                   Local HEAD SHA staged onto the sync branch.');
+  console.log('  --reference <text>                   Optional issue/epic reference to append to PR body metadata.');
   console.log(`  --report-path <path>                 JSON report path (default: ${DEFAULT_REPORT_PATH}).`);
   console.log('  -h, --help                           Show this help text and exit.');
 }
@@ -47,6 +48,7 @@ export function parseArgs(argv = process.argv) {
     syncBranch: null,
     reason: 'protected-branch-gh013',
     localHead: null,
+    reference: null,
     reportPath: DEFAULT_REPORT_PATH,
     help: false
   };
@@ -64,6 +66,7 @@ export function parseArgs(argv = process.argv) {
       arg === '--sync-branch' ||
       arg === '--reason' ||
       arg === '--local-head' ||
+      arg === '--reference' ||
       arg === '--report-path'
     ) {
       const next = args[index + 1];
@@ -77,6 +80,7 @@ export function parseArgs(argv = process.argv) {
       if (arg === '--sync-branch') options.syncBranch = next;
       if (arg === '--reason') options.reason = next;
       if (arg === '--local-head') options.localHead = next;
+      if (arg === '--reference') options.reference = next;
       if (arg === '--report-path') options.reportPath = next;
       continue;
     }
@@ -110,7 +114,8 @@ export function buildProtectedSyncPrBody({
   branch = DEFAULT_BRANCH,
   syncBranch,
   reason,
-  localHead
+  localHead,
+  reference = null
 }) {
   const upstreamSlug = upstream ? `${upstream.owner}/${upstream.repo}` : '<unknown>';
   const targetSlug = targetRepository ? `${targetRepository.owner}/${targetRepository.repo}` : '<unknown>';
@@ -131,7 +136,9 @@ export function buildProtectedSyncPrBody({
   if (localHead) {
     lines.push(`- staged head: \`${localHead}\``);
   }
-  lines.push('', 'Refs LabVIEW-Community-CI-CD/compare-vi-cli-action#986');
+  if (reference) {
+    lines.push('', `Refs ${reference}`);
+  }
   return lines.join('\n');
 }
 
@@ -150,6 +157,7 @@ export function buildProtectedSyncSummaryPayload({
   syncMethod = 'protected-pr',
   allowForkSyncing = false,
   mergeUpstream = null,
+  mergeUpstreamError = null,
   createdAt = new Date().toISOString()
 }) {
   return {
@@ -166,6 +174,7 @@ export function buildProtectedSyncSummaryPayload({
     syncMethod,
     allowForkSyncing,
     mergeUpstream,
+    mergeUpstreamError,
     pullRequest: pullRequest ?? null,
     readyState: readyState ?? null,
     mergeRequest: mergeRequest ?? null
@@ -365,11 +374,17 @@ export function runProtectedDevelopSync({
   const upstream = resolveUpstreamFn(repoRoot);
   const targetRepository = ensureForkRemoteFn(repoRoot, upstream, options.targetRemote, { spawnSyncFn });
   const targetRepoSlug = `${targetRepository.owner}/${targetRepository.repo}`;
-  const protection = loadBranchProtection(repoRoot, targetRepoSlug, options.branch, {
-    runGhJsonFn,
-    spawnSyncFn
-  });
+  let protection = null;
+  try {
+    protection = loadBranchProtection(repoRoot, targetRepoSlug, options.branch, {
+      runGhJsonFn,
+      spawnSyncFn
+    });
+  } catch {
+    protection = null;
+  }
   const allowForkSyncing = resolveAllowForkSyncing(protection?.allow_fork_syncing);
+  let mergeUpstreamError = null;
 
   try {
     const mergeUpstream = requestMergeUpstream(repoRoot, targetRepoSlug, options.branch, {
@@ -387,11 +402,13 @@ export function runProtectedDevelopSync({
       targetRepository,
       syncMethod: 'fork-sync',
       allowForkSyncing,
-      mergeUpstream
+      mergeUpstream,
+      mergeUpstreamError
     });
     writeReport(reportPath, report);
     return { reportPath, report };
-  } catch {
+  } catch (error) {
+    mergeUpstreamError = String(error?.message ?? error ?? '').trim() || 'merge-upstream failed';
     // Fall back to PR handoff when the sync API is unavailable on the target fork.
   }
 
@@ -404,7 +421,8 @@ export function runProtectedDevelopSync({
     branch: options.branch,
     syncBranch,
     reason: options.reason,
-    localHead: options.localHead
+    localHead: options.localHead,
+    reference: options.reference
   });
 
   let pullRequest = findExistingProtectedSyncPr(repoRoot, targetRepoSlug, options.branch, syncBranch, {
@@ -478,6 +496,7 @@ export function runProtectedDevelopSync({
     targetRepository,
     syncMethod: 'protected-pr',
     allowForkSyncing,
+    mergeUpstreamError,
     pullRequest: {
       number: viewedPr.number,
       url: viewedPr.url,
