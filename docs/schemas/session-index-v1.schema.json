@@ -163,6 +163,9 @@
           }
         },
         "branch": { "type": "string" },
+        "branchClassId": {
+          "type": ["string", "null"]
+        },
         "expected": {
           "type": "array",
           "items": { "type": "string" }

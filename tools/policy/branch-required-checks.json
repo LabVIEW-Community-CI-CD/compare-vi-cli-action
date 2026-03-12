@@ -1,6 +1,41 @@
 {
   "schema": "branch-required-checks/v1",
   "schemaVersion": "1.0.0",
+  "branchClassBindings": {
+    "develop": "upstream-integration",
+    "main": "upstream-release",
+    "release/*": "upstream-release-prep"
+  },
+  "branchClassRequiredChecks": {
+    "upstream-integration": [
+      "lint",
+      "fixtures",
+      "session-index",
+      "issue-snapshot",
+      "semver",
+      "Policy Guard (Upstream) / policy-guard",
+      "vi-history-scenarios-linux",
+      "agent-review-policy",
+      "commit-integrity"
+    ],
+    "upstream-release": [
+      "lint",
+      "pester",
+      "vi-binary-check",
+      "vi-compare",
+      "Policy Guard (Upstream) / policy-guard",
+      "commit-integrity"
+    ],
+    "upstream-release-prep": [
+      "lint",
+      "pester",
+      "publish",
+      "vi-binary-check",
+      "vi-compare",
+      "mock-cli",
+      "Policy Guard (Upstream) / policy-guard"
+    ]
+  },
   "branches": {
     "develop": [
       "lint",
@@ -9,7 +44,6 @@
       "issue-snapshot",
       "semver",
       "Policy Guard (Upstream) / policy-guard",
-      "hook-parity (ubuntu-latest)",
       "vi-history-scenarios-linux",
       "agent-review-policy",
       "commit-integrity"

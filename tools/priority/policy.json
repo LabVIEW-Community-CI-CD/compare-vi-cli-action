@@ -8,6 +8,7 @@
   },
   "branches": {
     "develop": {
+      "branch_class_id": "upstream-integration",
       "required_status_checks_strict": true,
       "required_status_checks": [
         "lint",
@@ -16,7 +17,6 @@
         "issue-snapshot",
         "semver",
         "Policy Guard (Upstream) / policy-guard",
-        "hook-parity (ubuntu-latest)",
         "vi-history-scenarios-linux",
         "agent-review-policy",
         "commit-integrity"
@@ -37,6 +37,7 @@
       "allow_fork_syncing": false
     },
     "main": {
+      "branch_class_id": "upstream-release",
       "required_status_checks_strict": true,
       "required_status_checks": [
         "lint",
@@ -61,6 +62,7 @@
       "allow_fork_syncing": false
     },
     "release/*": {
+      "branch_class_id": "upstream-release-prep",
       "required_status_checks": [
         "lint",
         "pester",
@@ -76,6 +78,7 @@
   "rulesets": {
     "8811898": {
       "name": "develop",
+      "branch_class_id": "upstream-integration",
       "includes": [
         "refs/heads/develop"
       ],
@@ -87,7 +90,6 @@
         "issue-snapshot",
         "semver",
         "Policy Guard (Upstream) / policy-guard",
-        "hook-parity (ubuntu-latest)",
         "vi-history-scenarios-linux",
         "agent-review-policy",
         "commit-integrity"
@@ -126,6 +128,7 @@
     },
     "8614140": {
       "name": "main",
+      "branch_class_id": "upstream-release",
       "includes": [
         "refs/heads/main"
       ],
@@ -163,6 +166,7 @@
     },
     "8614172": {
       "name": "release",
+      "branch_class_id": "upstream-release-prep",
       "includes": [
         "refs/heads/release/*"
       ],
