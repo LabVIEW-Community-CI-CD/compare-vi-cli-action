@@ -39,6 +39,7 @@ $hookSummary  = Read-HandoffJson -Name 'hook-summary.json'
 $watcherTelemetry = Read-HandoffJson -Name 'watcher-telemetry.json'
 $releaseSummary = Read-HandoffJson -Name 'release-summary.json'
 $testSummary = Read-HandoffJson -Name 'test-summary.json'
+$dockerReviewLoopSummary = Read-HandoffJson -Name 'docker-review-loop-summary.json'
 $entrypointStatus = Read-HandoffJson -Name 'entrypoint-status.json'
 
 if ($issueSummary) {
@@ -148,6 +149,29 @@ if ($testSummary) {
     Write-Host ("  {0} => exit {1}" -f ($entry.command ?? '(unknown)'), (Format-NullableValue $entry.exitCode))
   }
   Set-Variable -Name TestHandoffSummary -Scope Global -Value $testSummary -Force
+}
+
+if ($dockerReviewLoopSummary) {
+  Write-Host '[handoff] Docker review loop summary' -ForegroundColor Cyan
+  if ($dockerReviewLoopSummary.PSObject.Properties['overall'] -and $dockerReviewLoopSummary.overall) {
+    Write-Host ("  status   : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.overall.status))
+    Write-Host ("  failed   : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.overall.failedCheck))
+    Write-Host ("  exitCode : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.overall.exitCode))
+    if ($dockerReviewLoopSummary.overall.message) {
+      Write-Host ("  message  : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.overall.message))
+    }
+  }
+  if ($dockerReviewLoopSummary.PSObject.Properties['git'] -and $dockerReviewLoopSummary.git) {
+    Write-Host ("  branch   : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.git.branch))
+    Write-Host ("  head     : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.git.headSha))
+    Write-Host ("  mergeBase: {0}" -f (Format-NullableValue $dockerReviewLoopSummary.git.upstreamDevelopMergeBase))
+    Write-Host ("  dirty    : {0}" -f (Format-BoolLabel $dockerReviewLoopSummary.git.dirtyTracked))
+  }
+  if ($dockerReviewLoopSummary.PSObject.Properties['requirementsCoverage'] -and $dockerReviewLoopSummary.requirementsCoverage) {
+    $coverage = $dockerReviewLoopSummary.requirementsCoverage
+    Write-Host ("  reqs     : total={0} covered={1} uncovered={2}" -f (Format-NullableValue $coverage.requirementTotal), (Format-NullableValue $coverage.requirementCovered), (Format-NullableValue $coverage.requirementUncovered))
+  }
+  Set-Variable -Name DockerReviewLoopHandoffSummary -Scope Global -Value $dockerReviewLoopSummary -Force
 }
 
 if ($entrypointStatus) {

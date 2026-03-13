@@ -129,8 +129,8 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 
   ```powershell
   pwsh -NoLogo -NonInteractive -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 \
-    -JsonPath tests/results/_agent/verification/verification-summary.json \
-    -SchemaPath docs/schemas/requirements-verification-v1.schema.json
+    -JsonPath tests/results/_agent/verification/docker-review-loop-summary.json \
+    -SchemaPath docs/schemas/docker-tools-parity-agent-verification-v1.schema.json
   ```
 
 - Assert check naming drift guard (workflow + policy contract alignment):
