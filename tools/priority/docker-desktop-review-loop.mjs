@@ -76,10 +76,12 @@ export function resolveRepoGitState(repoRoot) {
   }
   const branch = readGitCommand(repoRoot, ['branch', '--show-current']) || null;
   const upstreamDevelopMergeBase = readGitCommand(repoRoot, ['merge-base', 'HEAD', 'upstream/develop']) || null;
+  const dirtyTracked = Boolean(readGitCommand(repoRoot, ['status', '--short', '--untracked-files=no']));
   return {
     headSha,
     branch,
-    upstreamDevelopMergeBase
+    upstreamDevelopMergeBase,
+    dirtyTracked
   };
 }
 
@@ -237,6 +239,124 @@ export function buildDockerDesktopReviewLoopPowerShellArgs(request = {}) {
   return args;
 }
 
+export async function assessDockerDesktopReviewLoopReceipt({
+  repoRoot,
+  receiptPath,
+  resolveRepoGitStateFn = resolveRepoGitState
+}) {
+  let resolvedReceiptPathInfo;
+  try {
+    resolvedReceiptPathInfo = assertRepoContainedReceiptPath(repoRoot, receiptPath);
+  } catch (error) {
+    return {
+      status: 'failed',
+      source: 'docker-desktop-review-loop',
+      reason: normalizeText(error?.message) || 'Invalid Docker/Desktop review loop receipt path.',
+      receiptPath,
+      receipt: null,
+      currentHeadSha: null,
+      receiptHeadSha: null,
+      receiptFreshForHead: false,
+      reusable: false
+    };
+  }
+
+  const resolvedReceiptPath = resolvedReceiptPathInfo.resolved;
+  const receipt = await readJsonIfPresent(resolvedReceiptPath);
+  if (!receipt) {
+    return {
+      status: 'missing',
+      source: 'docker-desktop-review-loop',
+      reason: 'Docker/Desktop review loop receipt does not exist yet.',
+      receiptPath: resolvedReceiptPathInfo.normalized,
+      receipt: null,
+      currentHeadSha: normalizeReceiptGitMetadata({ git: resolveRepoGitStateFn(repoRoot) ?? {} }).headSha || null,
+      receiptHeadSha: null,
+      receiptFreshForHead: null,
+      reusable: false
+    };
+  }
+  if (receipt.__parseError) {
+    return {
+      status: 'failed',
+      source: 'docker-desktop-review-loop',
+      reason: `Docker/Desktop review loop produced a corrupt receipt: ${receipt.__parseError}`,
+      receiptPath: resolvedReceiptPathInfo.normalized,
+      receipt: null,
+      currentHeadSha: normalizeReceiptGitMetadata({ git: resolveRepoGitStateFn(repoRoot) ?? {} }).headSha || null,
+      receiptHeadSha: null,
+      receiptFreshForHead: false,
+      reusable: false
+    };
+  }
+
+  const currentGitState =
+    typeof resolveRepoGitStateFn === 'function' ? normalizeReceiptGitMetadata({ git: resolveRepoGitStateFn(repoRoot) ?? {} }) : null;
+  const receiptGit = normalizeReceiptGitMetadata(receipt);
+  if (!receiptGit.headSha) {
+    return {
+      status: 'failed',
+      source: 'docker-desktop-review-loop',
+      reason: 'Docker/Desktop review loop receipt is missing git.headSha metadata.',
+      receiptPath: resolvedReceiptPathInfo.normalized,
+      receipt,
+      currentHeadSha: currentGitState?.headSha || null,
+      receiptHeadSha: null,
+      receiptFreshForHead: false,
+      reusable: false
+    };
+  }
+  const receiptFreshForHead = currentGitState?.headSha ? currentGitState.headSha === receiptGit.headSha : null;
+  if (receiptFreshForHead === false) {
+    return {
+      status: 'failed',
+      source: 'docker-desktop-review-loop',
+      reason: `Docker/Desktop review loop receipt is stale for the current HEAD (${receiptGit.headSha} != ${currentGitState.headSha}).`,
+      receiptPath: resolvedReceiptPathInfo.normalized,
+      receipt,
+      currentHeadSha: currentGitState.headSha,
+      receiptHeadSha: receiptGit.headSha,
+      receiptFreshForHead,
+      reusable: false
+    };
+  }
+
+  const overallStatus = normalizeText(receipt?.overall?.status).toLowerCase();
+  const failedCheck = normalizeText(receipt?.overall?.failedCheck);
+  const failureReason =
+    normalizeText(receipt?.overall?.message) ||
+    (failedCheck ? `Docker/Desktop review loop failed on ${failedCheck}.` : '') ||
+    'Docker/Desktop review loop failed without a receipt.';
+  if (overallStatus !== 'passed') {
+    return {
+      status: 'failed',
+      source: 'docker-desktop-review-loop',
+      reason: failureReason,
+      receiptPath: resolvedReceiptPathInfo.normalized,
+      receipt,
+      currentHeadSha: currentGitState?.headSha || null,
+      receiptHeadSha: receiptGit.headSha,
+      receiptFreshForHead,
+      reusable: false
+    };
+  }
+
+  const reusable = currentGitState?.dirtyTracked === false && receiptGit.dirtyTracked === false;
+  return {
+    status: 'passed',
+    source: 'docker-desktop-review-loop',
+    reason: reusable
+      ? 'Docker/Desktop review loop receipt is current for this clean HEAD.'
+      : 'Docker/Desktop review loop receipt is current, but the working tree is still dirty.',
+    receiptPath: resolvedReceiptPathInfo.normalized,
+    receipt,
+    currentHeadSha: currentGitState?.headSha || null,
+    receiptHeadSha: receiptGit.headSha,
+    receiptFreshForHead,
+    reusable
+  };
+}
+
 function defaultRunCommand(command, args, { cwd, env }) {
   return normalizeCommandResult(
     spawnSync(command, args, {
@@ -294,66 +414,27 @@ export async function runDockerDesktopReviewLoop({
     cwd: repoRoot,
     env: process.env
   }));
-  const receipt = await readJsonIfPresent(receiptPath);
-  if (receipt?.__parseError) {
-    return {
-      status: 'failed',
-      source: 'docker-desktop-review-loop',
-      reason: `Docker/Desktop review loop produced a corrupt receipt: ${receipt.__parseError}`,
-      commandLine,
-      receiptPath,
-      receipt: null
-    };
-  }
-  const currentGitState =
-    typeof resolveRepoGitStateFn === 'function' ? normalizeReceiptGitMetadata({ git: resolveRepoGitStateFn(repoRoot) ?? {} }) : null;
-  const receiptGit = normalizeReceiptGitMetadata(receipt);
-  if (receipt && !receiptGit.headSha) {
-    return {
-      status: 'failed',
-      source: 'docker-desktop-review-loop',
-      reason: 'Docker/Desktop review loop receipt is missing git.headSha metadata.',
-      commandLine,
-      receiptPath,
-      currentHeadSha: currentGitState?.headSha || null,
-      receiptHeadSha: null,
-      receiptFreshForHead: false,
-      receipt
-    };
-  }
-  if (receipt && currentGitState?.headSha && receiptGit.headSha && currentGitState.headSha !== receiptGit.headSha) {
-    return {
-      status: 'failed',
-      source: 'docker-desktop-review-loop',
-      reason: `Docker/Desktop review loop receipt is stale for the current HEAD (${receiptGit.headSha} != ${currentGitState.headSha}).`,
-      commandLine,
-      receiptPath,
-      currentHeadSha: currentGitState.headSha,
-      receiptHeadSha: receiptGit.headSha,
-      receiptFreshForHead: false,
-      receipt
-    };
-  }
-  const overallStatus = normalizeText(receipt?.overall?.status).toLowerCase();
-  const failedCheck = normalizeText(receipt?.overall?.failedCheck);
-  const failureReason =
-    normalizeText(receipt?.overall?.message) ||
-    (failedCheck ? `Docker/Desktop review loop failed on ${failedCheck}.` : '') ||
-    normalizeText(result.stderr) ||
-    normalizeText(result.stdout) ||
-    'Docker/Desktop review loop failed without a receipt.';
+  const assessment = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: normalized.receiptPath,
+    resolveRepoGitStateFn
+  });
 
-  if (result.status !== 0 || overallStatus !== 'passed') {
+  if (result.status !== 0 || assessment.status !== 'passed') {
+    const failureReason =
+      result.status !== 0
+        ? normalizeText(result.stderr) || normalizeText(result.stdout) || normalizeText(assessment.reason)
+        : normalizeText(assessment.reason) || normalizeText(result.stderr) || normalizeText(result.stdout);
     return {
       status: 'failed',
       source: 'docker-desktop-review-loop',
-      reason: failureReason,
+      reason: failureReason || 'Docker/Desktop review loop failed without a receipt.',
       commandLine,
       receiptPath,
-      currentHeadSha: currentGitState?.headSha || null,
-      receiptHeadSha: receiptGit.headSha || null,
-      receiptFreshForHead: currentGitState?.headSha ? currentGitState.headSha === receiptGit.headSha : null,
-      receipt
+      currentHeadSha: assessment.currentHeadSha,
+      receiptHeadSha: assessment.receiptHeadSha,
+      receiptFreshForHead: assessment.receiptFreshForHead,
+      receipt: assessment.receipt
     };
   }
 
@@ -363,10 +444,10 @@ export async function runDockerDesktopReviewLoop({
     reason: 'Docker/Desktop review loop passed.',
     commandLine,
     receiptPath,
-    currentHeadSha: currentGitState?.headSha || null,
-    receiptHeadSha: receiptGit.headSha || null,
-    receiptFreshForHead: currentGitState?.headSha ? currentGitState.headSha === receiptGit.headSha : null,
-    receipt
+    currentHeadSha: assessment.currentHeadSha,
+    receiptHeadSha: assessment.receiptHeadSha,
+    receiptFreshForHead: assessment.receiptFreshForHead,
+    receipt: assessment.receipt
   };
 }
 
