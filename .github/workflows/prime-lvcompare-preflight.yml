@@ -32,9 +32,10 @@ jobs:
 
       - name: Upload prime artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: prime-lvcompare-preflight
           path: |
             tests/results/_warmup/prime-lvcompare.ndjson
           if-no-files-found: warn
+

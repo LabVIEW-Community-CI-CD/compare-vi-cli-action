@@ -135,7 +135,7 @@ jobs:
 
       - name: Upload artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: vi-compare-artifacts
           path: |
@@ -222,3 +222,4 @@ jobs:
           $headers = @{ Authorization = "Bearer $env:XCLI_PAT"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'xcli-bot' }
           $uri = "https://api.github.com/repos/$env:GH_REPO/issues/$env:PR_NUMBER/comments"
           Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -ContentType 'application/json' -Body $payload
+

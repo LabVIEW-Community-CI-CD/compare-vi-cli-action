@@ -68,7 +68,7 @@ jobs:
 
     - name: Upload compare artifacts
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: compare-vi-artifacts
         path: |
@@ -165,3 +165,4 @@ jobs:
         snapshot-path: tests/results/runner-unblock-snapshot.json
         cleanup: "${{ env.UNBLOCK_GUARD == '1' }}"
         process-names: conhost,pwsh,LabVIEW,LVCompare
+

@@ -91,7 +91,7 @@ jobs:
 
       - name: Download existing broker decision artifact
         if: inputs.broker_mode == 'consume'
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           github-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           run-id: ${{ inputs.artifact_run_id || inputs.run_id }}
@@ -100,7 +100,7 @@ jobs:
 
       - name: Download validation attestation artifact
         if: inputs.broker_mode == 'evaluate'
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           github-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           run-id: ${{ inputs.artifact_run_id || inputs.run_id }}
@@ -109,7 +109,7 @@ jobs:
 
       - name: Download validation deployment determinism artifact
         if: inputs.broker_mode == 'evaluate'
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           github-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           run-id: ${{ inputs.artifact_run_id || inputs.run_id }}
@@ -155,10 +155,11 @@ jobs:
 
       - name: Upload validation approval artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: validation-approval-helper-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tests/results/_agent/approvals/validation-approval-decision.json
             tests/results/_agent/approvals/validation-approval-helper.json
           if-no-files-found: error
+

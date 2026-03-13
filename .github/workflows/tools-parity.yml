@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -80,7 +80,7 @@ jobs:
         run: Remove-Item -LiteralPath dist/comparevi-cli -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Upload parity evidence
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: docker-parity-linux
           path: |
@@ -90,7 +90,7 @@ jobs:
 
       - name: Upload Docker parity review receipt
         if: ${{ always() }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: docker-parity-linux-review-loop
           path: |
@@ -98,7 +98,7 @@ jobs:
 
       - name: Upload NI Linux review-suite evidence
         if: ${{ inputs.runNiLinuxReviewSuite == 'true' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: docker-parity-linux-ni-review-suite
           path: |
@@ -106,8 +106,9 @@ jobs:
 
       - name: Upload requirements verification evidence
         if: ${{ inputs.runRequirementsVerification == 'true' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: docker-parity-linux-requirements-verification
           path: |
             tests/results/docker-tools-parity/requirements-verification
+

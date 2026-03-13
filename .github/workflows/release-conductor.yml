@@ -129,10 +129,11 @@ jobs:
 
       - name: Upload release conductor artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: release-conductor-${{ github.run_id }}
           path: |
             tests/results/_agent/release/release-conductor-report.json
             tests/results/_agent/policy/policy-state-snapshot.json
           if-no-files-found: error
+

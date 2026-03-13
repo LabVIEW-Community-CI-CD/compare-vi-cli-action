@@ -559,7 +559,7 @@ jobs:
 
       - name: Upload Pester artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: pester-results
           path: |
@@ -682,7 +682,7 @@ jobs:
 
       - name: Upload dev dashboard artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: dev-dashboard
           path: |
@@ -708,7 +708,7 @@ jobs:
 
       - name: Upload compact totals artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: pester-totals
           path: tests/results/pester-totals.json
@@ -761,3 +761,4 @@ jobs:
         if: always()
         shell: pwsh
         run: pwsh -File tools/Print-AgentHandoff.ps1 -AutoTrim
+

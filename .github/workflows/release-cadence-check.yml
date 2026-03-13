@@ -26,8 +26,9 @@ jobs:
             --out tests/results/_agent/release/release-cadence-check-report.json
 
       - name: Upload cadence report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: release-cadence-check-report-${{ github.run_id }}
           path: tests/results/_agent/release/release-cadence-check-report.json
           if-no-files-found: error
+

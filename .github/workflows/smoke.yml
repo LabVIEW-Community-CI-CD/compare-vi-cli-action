@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload fixture validation JSON
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: fixture-validation-json
           path: fixture-validation.json
@@ -190,7 +190,7 @@ jobs:
 
       - name: Upload smoke HTML report
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: smoke-html-report
           path: ${{ runner.temp }}/smoke-report/compare-report.html
@@ -232,3 +232,4 @@ jobs:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.sample_id || github.ref }}
   cancel-in-progress: true
+

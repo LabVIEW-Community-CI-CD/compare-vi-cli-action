@@ -56,8 +56,9 @@ jobs:
 
     - name: Upload parity artifacts
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: windows-hosted-parity
         path: tests/results/windows-hosted-parity/**
         if-no-files-found: warn
+

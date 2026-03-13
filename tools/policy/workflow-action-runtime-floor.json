@@ -1,0 +1,44 @@
+{
+  "schema": "workflow-action-runtime-floor@v1",
+  "generatedAt": "2026-03-13T00:00:00Z",
+  "controlledNode24ValidationWorkflow": ".github/workflows/validate.yml",
+  "actions": {
+    "actions/cache": {
+      "minimumMajor": 5,
+      "expectedRuntime": "node24"
+    },
+    "actions/cache/restore": {
+      "minimumMajor": 5,
+      "expectedRuntime": "node24"
+    },
+    "actions/cache/save": {
+      "minimumMajor": 5,
+      "expectedRuntime": "node24"
+    },
+    "actions/checkout": {
+      "minimumMajor": 5,
+      "expectedRuntime": "node24"
+    },
+    "actions/download-artifact": {
+      "minimumMajor": 6,
+      "expectedRuntime": "node20-latest",
+      "note": "Latest published major still advertises node20; validate.yml forces Node 24 to surface compatibility regressions early."
+    },
+    "actions/github-script": {
+      "minimumMajor": 8,
+      "expectedRuntime": "node24"
+    },
+    "actions/setup-node": {
+      "minimumMajor": 5,
+      "expectedRuntime": "node24"
+    },
+    "actions/setup-python": {
+      "minimumMajor": 6,
+      "expectedRuntime": "node24"
+    },
+    "actions/upload-artifact": {
+      "minimumMajor": 6,
+      "expectedRuntime": "node24"
+    }
+  }
+}

@@ -59,9 +59,10 @@ jobs:
 
       - name: Upload rollback drill artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: rollback-drill-${{ github.run_id }}
           path: tests/results/_agent/release/rollback-drill-report.json
           if-no-files-found: error
+
 
