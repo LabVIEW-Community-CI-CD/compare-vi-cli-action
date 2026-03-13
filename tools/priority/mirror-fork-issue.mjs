@@ -132,9 +132,44 @@ function listForkLabels(repoRoot, repoSlug) {
   return labels.map((entry) => entry?.name).filter(Boolean);
 }
 
-function findMirrorIssue(issues, upstreamUrl) {
+function normalizeIssueLabelEntries(labels = []) {
+  return labels
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        const name = entry.trim();
+        return name ? { name, normalized: name.toLowerCase() } : null;
+      }
+      const name = String(entry?.name || '').trim();
+      return name ? { name, normalized: name.toLowerCase() } : null;
+    })
+    .filter(Boolean);
+}
+
+export function findMirrorIssue(issues, upstreamUrl) {
   const pointer = `${POINTER_PREFIX}${upstreamUrl} -->`;
-  return (issues || []).find((issue) => String(issue?.body || '').includes(pointer)) ?? null;
+  const mirrors = (issues || []).filter((issue) => String(issue?.body || '').includes(pointer));
+  return mirrors.find((issue) => String(issue?.state || '').toLowerCase() === 'open') ?? null;
+}
+
+export function planStandingLabelDemotions(forkIssues = [], targetIssueNumber = null) {
+  return (forkIssues || [])
+    .filter((issue) => String(issue?.state || '').toLowerCase() === 'open')
+    .filter((issue) => Number(issue?.number) !== Number(targetIssueNumber))
+    .map((issue) => {
+      const labels = normalizeIssueLabelEntries(issue?.labels);
+      const retainedLabels = labels
+        .filter((entry) => !STANDING_LABELS.has(entry.normalized))
+        .map((entry) => entry.name);
+      const hadStandingLabel = labels.some((entry) => STANDING_LABELS.has(entry.normalized));
+      if (!hadStandingLabel) {
+        return null;
+      }
+      return {
+        number: issue.number,
+        labels: retainedLabels
+      };
+    })
+    .filter(Boolean);
 }
 
 export function runMirrorForkIssue({
@@ -196,6 +231,13 @@ export function runMirrorForkIssue({
     });
   }
 
+  const demotions = planStandingLabelDemotions(forkIssues, forkIssue.number);
+  for (const issue of demotions) {
+    ghApi(repoRoot, `repos/${forkSlug}/issues/${issue.number}`, 'PATCH', {
+      labels: issue.labels
+    });
+  }
+
   const reportDir = path.isAbsolute(options.reportDir) ? options.reportDir : path.join(repoRoot, options.reportDir);
   const reportPath = path.join(reportDir, `fork-issue-mirror-${forkRemote}-${options.issue}.json`);
   const report = {
@@ -213,6 +255,7 @@ export function runMirrorForkIssue({
       issueUrl: forkIssue.html_url ?? forkIssue.url ?? null
     },
     labels: desiredLabels,
+    demotedIssues: demotions.map((entry) => entry.number),
     action: existingMirror?.number ? 'updated' : 'created'
   };
   mkdirSync(reportDir, { recursive: true });
