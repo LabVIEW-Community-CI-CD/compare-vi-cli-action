@@ -21,7 +21,8 @@ ARG ACTIONLINT_VERSION
 
 ENV DEBIAN_FRONTEND=noninteractive \
     NODE_VERSION=${NODE_VERSION} \
-    ACTIONLINT_VERSION=${ACTIONLINT_VERSION}
+    ACTIONLINT_VERSION=${ACTIONLINT_VERSION} \
+    COMPAREVI_WORKFLOW_ENCLAVE_HOME=/opt/comparevi-workflow-enclave
 
 COPY --from=restore /root/.nuget /root/.nuget
 
@@ -88,8 +89,10 @@ RUN npm install -g markdownlint-cli2@0.14.0 markdownlint-cli@0.31.1 \
 
 # Python retained for workflow-maintenance tooling and test surfaces
 COPY tools/workflows/requirements.txt /tmp/tools-workflows-requirements.txt
-RUN python3 -m pip install --break-system-packages --no-cache-dir --upgrade pip \
-    && python3 -m pip install --break-system-packages --no-cache-dir --requirement /tmp/tools-workflows-requirements.txt
+RUN python3 -m venv "${COMPAREVI_WORKFLOW_ENCLAVE_HOME}" \
+    && "${COMPAREVI_WORKFLOW_ENCLAVE_HOME}/bin/python" -m pip install --disable-pip-version-check --upgrade pip \
+    && "${COMPAREVI_WORKFLOW_ENCLAVE_HOME}/bin/python" -m pip install --disable-pip-version-check --requirement /tmp/tools-workflows-requirements.txt \
+    && sha256sum /tmp/tools-workflows-requirements.txt | cut -d' ' -f1 > "${COMPAREVI_WORKFLOW_ENCLAVE_HOME}/.requirements.sha256"
 
 # Install actionlint (pinned)
 RUN set -eux; \

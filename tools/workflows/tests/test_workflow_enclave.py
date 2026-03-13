@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 SCRIPT_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = SCRIPT_ROOT.parents[1]
 if str(SCRIPT_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPT_ROOT))
 
@@ -42,9 +43,9 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
 
     def test_enclave_wrapper_check_is_noop_for_normalized_workflows(self) -> None:
         source_paths = [
-            Path.cwd() / '.github' / 'workflows' / 'validate.yml',
-            Path.cwd() / '.github' / 'workflows' / 'ci-orchestrated.yml',
-            Path.cwd() / '.github' / 'workflows' / 'fixture-drift.yml',
+            REPO_ROOT / '.github' / 'workflows' / 'validate.yml',
+            REPO_ROOT / '.github' / 'workflows' / 'ci-orchestrated.yml',
+            REPO_ROOT / '.github' / 'workflows' / 'fixture-drift.yml',
         ]
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_paths = []
@@ -76,6 +77,28 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
         scope = load_default_scope()
         self.assertIn('.github/workflows/validate.yml', scope)
         self.assertIn('.github/workflows/ci-orchestrated.yml', scope)
+
+    def test_enclave_home_env_override_is_honored(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            override_dir = Path(temp_dir) / 'custom-venv'
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    '-c',
+                    'import os; '
+                    'os.environ["COMPAREVI_WORKFLOW_ENCLAVE_HOME"]=r"%s"; '
+                    'import _enclave; '
+                    'print(_enclave.VENV_DIR)'
+                    % str(override_dir).replace('\\', '\\\\')
+                ],
+                capture_output=True,
+                text=True,
+                cwd=str(SCRIPT_ROOT),
+                check=False
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            self.assertEqual(Path(completed.stdout.strip()), override_dir)
 
 
 if __name__ == '__main__':

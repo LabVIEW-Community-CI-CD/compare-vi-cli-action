@@ -6,6 +6,7 @@ import path from 'node:path';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 
 const repoRoot = process.cwd();
+const ignoredDirNames = new Set(['.venv', '__pycache__', 'node_modules']);
 
 function walk(relativeDir, predicate) {
   const start = path.join(repoRoot, relativeDir);
@@ -16,6 +17,9 @@ function walk(relativeDir, predicate) {
       const absolutePath = path.join(currentPath, entry.name);
       const relativePath = path.relative(repoRoot, absolutePath).replace(/\\/g, '/');
       if (entry.isDirectory()) {
+        if (ignoredDirNames.has(entry.name)) {
+          continue;
+        }
         visit(absolutePath);
         continue;
       }
@@ -89,9 +93,9 @@ test('workflow-writing callers use the enclave wrapper instead of the low-level 
 
 test('package scripts expose first-class workflow drift and markdown surfaces', () => {
   const packageJson = readPackageJson();
-  assert.equal(packageJson.scripts['workflow:drift:ensure'], 'python tools/workflows/workflow_enclave.py --ensure-only');
-  assert.equal(packageJson.scripts['workflow:drift:check'], 'python tools/workflows/workflow_enclave.py --default-scope --check');
-  assert.equal(packageJson.scripts['workflow:drift:write'], 'python tools/workflows/workflow_enclave.py --default-scope --write');
+  assert.equal(packageJson.scripts['workflow:drift:ensure'], 'node tools/workflows/run-workflow-enclave.mjs --ensure-only');
+  assert.equal(packageJson.scripts['workflow:drift:check'], 'node tools/workflows/run-workflow-enclave.mjs --default-scope --check');
+  assert.equal(packageJson.scripts['workflow:drift:write'], 'node tools/workflows/run-workflow-enclave.mjs --default-scope --write');
   assert.equal(packageJson.scripts['lint:md'], 'node tools/lint-markdown.mjs --all');
 });
 
@@ -100,6 +104,7 @@ test('workflow enclave state is ignored and the compatibility surfaces exist', (
   assert.match(gitignore, /tools\/workflows\/\.venv\//);
   assert.equal(statSync(path.join(repoRoot, 'tools', 'workflows', 'update_workflows.py')).isFile(), true);
   assert.equal(statSync(path.join(repoRoot, 'tools', 'workflows', 'workflow_enclave.py')).isFile(), true);
+  assert.equal(statSync(path.join(repoRoot, 'tools', 'workflows', 'run-workflow-enclave.mjs')).isFile(), true);
   assert.equal(statSync(path.join(repoRoot, 'tools', 'workflows', 'requirements.txt')).isFile(), true);
   assert.equal(statSync(path.join(repoRoot, 'tools', 'workflows', 'workflow-manifest.json')).isFile(), true);
 });

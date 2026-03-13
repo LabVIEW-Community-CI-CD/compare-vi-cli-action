@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 WORKFLOWS_ROOT = Path(__file__).resolve().parent
-VENV_DIR = WORKFLOWS_ROOT / '.venv'
+VENV_DIR = Path(os.environ.get('COMPAREVI_WORKFLOW_ENCLAVE_HOME', str(WORKFLOWS_ROOT / '.venv'))).resolve()
 STAMP_PATH = VENV_DIR / '.requirements.sha256'
 REQUIREMENTS_PATH = WORKFLOWS_ROOT / 'requirements.txt'
 UPDATE_WORKFLOWS_PATH = WORKFLOWS_ROOT / 'update_workflows.py'
