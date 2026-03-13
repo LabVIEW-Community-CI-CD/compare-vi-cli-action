@@ -11,6 +11,7 @@ tmp-agg/
 tmp-orch/
 tmp-rc-pester-results/
 artifacts/
+docs/archive/
 backup-original-vis/
 fixtures/vi-attr/
 job-*.log

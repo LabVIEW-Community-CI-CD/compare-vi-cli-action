@@ -1,8 +1,9 @@
 # v0.5.2 Tag Preparation Checklist
 <!-- markdownlint-disable-next-line MD041 -->
 
-Helper reference for cutting the `v0.5.2` tag. Aligns with the release notes (`RELEASE_NOTES_v0.5.2.md`) and the
-standing-priority issue (#273). Update or archive once the tag is live.
+Helper reference for cutting the `v0.5.2` tag. Aligns with the archived release notes
+(`../archive/releases/RELEASE_NOTES_v0.5.2.md`) and the standing-priority issue (#273). Update or archive once the tag
+is live.
 
 ## 1. Pre-flight Verification
 
@@ -46,8 +47,8 @@ standing-priority issue (#273). Update or archive once the tag is live.
 
 ## 5. Release Materials Review
 
-- [ ] `PR_RELEASE_DESCRIPTION_v0.5.2.md`, `PR_RELEASE_CHECKLIST_v0.5.2.md`, and `RELEASE_NOTES_v0.5.2.md` are updated
-      and consistent with each other.
+- [ ] `../archive/releases/PR_RELEASE_DESCRIPTION_v0.5.2.md`, `../archive/releases/PR_RELEASE_CHECKLIST_v0.5.2.md`,
+      and `../archive/releases/RELEASE_NOTES_v0.5.2.md` are updated and consistent with each other.
 - [ ] `PR_NOTES.md` summarizes the 0.5.2 release (history suite, branch-policy guard, release automation, Docker parity,
       auto-publish refs).
 - [ ] Helper docs (`AGENTS.md`, `AGENT_HANDOFF.txt`, `docs/DEV_DASHBOARD_PLAN.md`, `docs/knowledgebase/FEATURE_BRANCH_POLICY.md`,

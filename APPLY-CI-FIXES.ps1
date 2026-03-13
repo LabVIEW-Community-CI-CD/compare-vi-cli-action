@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     This script cherry-picks the test stabilization fixes to the release branch.
-    Run this from the repository root after reviewing the CI-FIX-SUMMARY.md.
+    Run this from the repository root after reviewing docs/archive/project-history/CI-FIX-SUMMARY.md.
 
 .EXAMPLE
     pwsh -File APPLY-CI-FIXES.ps1

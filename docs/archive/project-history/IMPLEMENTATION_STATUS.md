@@ -30,11 +30,11 @@ Snapshot of features, workflows, and docs supporting self-hosted Windows runners
 
 ## Documentation set
 
-- [`README.md`](README.md) – Quick start + action usage.
-- [`docs/runner-setup.md`](docs/runner-setup.md) – Runner provisioning.
-- [`docs/SELFHOSTED_CI_SETUP.md`](docs/SELFHOSTED_CI_SETUP.md) – Detailed setup guide.
-- [`docs/E2E_TESTING_GUIDE.md`](docs/E2E_TESTING_GUIDE.md) – End-to-end validation.
-- [`docs/DEV_DASHBOARD_PLAN.md`](docs/DEV_DASHBOARD_PLAN.md) – Telemetry dashboard plan.
+- [`README.md`](../../../README.md) – Quick start + action usage.
+- [`docs/runner-setup.md`](../../runner-setup.md) – Runner provisioning.
+- [`docs/SELFHOSTED_CI_SETUP.md`](../../SELFHOSTED_CI_SETUP.md) – Detailed setup guide.
+- [`docs/E2E_TESTING_GUIDE.md`](../../E2E_TESTING_GUIDE.md) – End-to-end validation.
+- [`docs/DEV_DASHBOARD_PLAN.md`](../../DEV_DASHBOARD_PLAN.md) – Telemetry dashboard plan.
 
 ## Verification checklist
 

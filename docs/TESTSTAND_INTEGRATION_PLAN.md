@@ -62,7 +62,7 @@ immediately when the harness outputs change.
    - Calls `TestStand-CompareHarness.ps1` instead of invoking Pester.
    - Records results in the JSON summary schema so downstream jobs continue to operate.
 3. Add README / docs snippets guiding the local developer through prerequisites, environment variables, and expected
-   outputs. Link this doc from `README.md` and from `PARAMS_AND_OUTPUTS.md`.
+   outputs. Link this doc from `README.md` and from `docs/archive/project-history/PARAMS_AND_OUTPUTS.md`.
 
 ### 1.4 Validation loop
 

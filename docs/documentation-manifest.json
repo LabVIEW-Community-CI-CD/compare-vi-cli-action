@@ -2,52 +2,32 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-09T23:10:00Z",
+  "updated": "2026-03-13T06:15:00Z",
   "entries": [
     {
-      "name": "Root Playbooks",
+      "name": "Root Entry Points",
       "category": "root",
       "status": "authoritative",
-      "description": "Primary guidance, release runbooks, and standing priority documentation located at the repository root.",
+      "description": "Minimal operator and contributor entry points that remain at the repository root.",
       "files": [
-        ".copilot-instructions.md",
         "AGENTS.md",
         "CHANGELOG.md",
-        "CI-FIX-SUMMARY.md",
         "CONTRIBUTING.md",
-        "fixture-summary.md",
-        "IMPLEMENTATION_STATUS.md",
-        "IMPLEMENTATION_STATUS_v0.5.0.md",
-        "INTEGRATION_PLAN.md",
-        "PARAMS_AND_OUTPUTS.md",
-        "PESTER_DISPATCHER_REFINEMENT.md",
-        "PESTER_SELFHOSTED_FIXES.md",
-        "POST_RELEASE_FOLLOWUPS.md",
-        "PR_ACCEPTANCE_CRITERIA.md",
-        "PR_DESCRIPTION.md",
-        "PR_NOTES.md",
-        "PR_RELEASE_CHECKLIST_v0.5.0.md",
-        "PR_RELEASE_DESCRIPTION_v0.5.0.md",
-        "PR_RELEASE_CHECKLIST_v0.5.1.md",
-        "PR_RELEASE_DESCRIPTION_v0.5.1.md",
-        "PR_RELEASE_CHECKLIST_v0.5.2.md",
-        "PR_RELEASE_DESCRIPTION_v0.5.2.md",
-        "PR_RELEASE_CHECKLIST_v0.5.3.md",
-        "PR_RELEASE_DESCRIPTION_v0.5.3.md",
-        "PR_RELEASE_CHECKLIST_v0.5.4.md",
-        "PR_RELEASE_DESCRIPTION_v0.5.4.md",
-        "PR_RELEASE_CHECKLIST_v0.6.0.md",
-        "PR_RELEASE_DESCRIPTION_v0.6.0.md",
         "README.md",
-        "RELEASE_NOTES_v0.4.1.md",
-        "RELEASE_NOTES_v0.5.0.md",
-        "RELEASE_NOTES_v0.5.2.md",
-        "RELEASE_NOTES_v0.5.3.md",
-        "RELEASE_NOTES_v0.5.4.md",
-        "RELEASE_NOTES_v0.6.0.md",
-        "ROLLBACK_PLAN.md",
-        "SECURITY.md",
-        "TAG_PREP_CHECKLIST.md"
+        "SECURITY.md"
+      ]
+    },
+    {
+      "name": "Release Operations",
+      "category": "docs",
+      "status": "authoritative",
+      "description": "Active release helper documents used by operators and future agents during release preparation and rollback.",
+      "files": [
+        "docs/release/README.md",
+        "docs/release/POST_RELEASE_FOLLOWUPS.md",
+        "docs/release/PR_NOTES.md",
+        "docs/release/ROLLBACK_PLAN.md",
+        "docs/release/TAG_PREP_CHECKLIST.md"
       ]
     },
     {
@@ -116,6 +96,15 @@
         "docs/TROUBLESHOOTING.md",
         "docs/USAGE_GUIDE.md",
         "docs/WATCHER_TELEMETRY_DX.md"
+      ]
+    },
+    {
+      "name": "Historical Archive",
+      "category": "archive",
+      "status": "archive",
+      "description": "Historical release and project-history markdown retained for traceability but not intended as the primary operator path.",
+      "include": [
+        "docs/archive/**/*.md"
       ]
     },
     {

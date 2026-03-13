@@ -83,6 +83,6 @@ The Integration tests (tagged with `Integration`) require:
 ```text
 scripts/CompareVI.ps1       | Updated Resolve-Cli to enforce canonical path only
 tests/CompareVI.Tests.ps1   | Updated tests to verify rejection of non-canonical paths
-INTEGRATION_PLAN.md         | Updated to reflect canonical-only policy
+docs/archive/project-history/INTEGRATION_PLAN.md | Updated to reflect canonical-only policy
 3 files changed
 ```

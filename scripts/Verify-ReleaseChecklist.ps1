@@ -1,14 +1,14 @@
 #Requires -Version 7.0
 <#!
 .SYNOPSIS
-  Verifies key preconditions from TAG_PREP_CHECKLIST.md prior to tagging a release.
+  Verifies key preconditions from docs/release/TAG_PREP_CHECKLIST.md prior to tagging a release.
 
 .DESCRIPTION
   Performs a series of non-destructive validations:
     * Branch naming & cleanliness
     * CHANGELOG presence of target version & date format
     * action.yml outputs vs docs/action-outputs.md synchronization
-    * Presence of migration helper files (PR_NOTES.md, TAG_PREP_CHECKLIST.md, etc.)
+    * Presence of release helper files under docs/release/ (PR_NOTES.md, TAG_PREP_CHECKLIST.md, etc.)
     * Markdown lint (`node tools/npm/run-script.mjs lint:md`) status
     * Unit test dispatcher run (always) + optional integration run if canonical LVCompare + VI assets detected or -ForceIntegration specified
     * Verification of shortCircuitedIdentical output key
@@ -150,7 +150,7 @@ try {
   }
 
   Write-Section 'Helper Files'
-  $helpers = 'PR_NOTES.md','TAG_PREP_CHECKLIST.md','POST_RELEASE_FOLLOWUPS.md','ROLLBACK_PLAN.md'
+  $helpers = 'docs/release/PR_NOTES.md','docs/release/TAG_PREP_CHECKLIST.md','docs/release/POST_RELEASE_FOLLOWUPS.md','docs/release/ROLLBACK_PLAN.md'
   foreach ($h in $helpers) {
     if (Test-Path (Join-Path $repoRoot $h)) { $summary.helperFilesPresent += $h } else { $summary.helperFilesMissing += $h }
   }
@@ -211,4 +211,3 @@ finally {
 }
 
 if ($summary.overallStatus -eq 'FAIL') { exit 1 } else { exit 0 }
-

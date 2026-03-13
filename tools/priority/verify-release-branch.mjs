@@ -55,9 +55,9 @@ function fileContainsTag(contents, tag) {
 
 function ensureReleaseDocsConsistency(repoRoot, tag) {
   const docs = [
-    { relPath: 'PR_NOTES.md', label: 'PR notes' },
-    { relPath: 'TAG_PREP_CHECKLIST.md', label: 'tag checklist' },
-    { relPath: `RELEASE_NOTES_${tag}.md`, label: 'release notes' }
+    { relPath: path.join('docs', 'release', 'PR_NOTES.md'), label: 'PR notes' },
+    { relPath: path.join('docs', 'release', 'TAG_PREP_CHECKLIST.md'), label: 'tag checklist' },
+    { relPath: path.join('docs', 'archive', 'releases', `RELEASE_NOTES_${tag}.md`), label: 'release notes' }
   ];
 
   for (const doc of docs) {
