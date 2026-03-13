@@ -20,6 +20,7 @@ test('Validate standard path is not blocked by a validation environment approval
 
 test('Validate uses explicit PR-head checkout expressions and routes workflow drift through the enclave', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
+  const markdownInvocations = workflow.match(/node tools\/npm\/run-script\.mjs lint:md:changed/g) || [];
 
   assert.match(workflow, /uses: actions\/checkout@v5/);
   assert.match(
@@ -33,8 +34,7 @@ test('Validate uses explicit PR-head checkout expressions and routes workflow dr
   assert.doesNotMatch(workflow, /checkout-workflow-context/);
   assert.match(workflow, /Setup Python for workflow enclave/);
   assert.match(workflow, /pwsh -NoLogo -NoProfile -File tools\/Check-WorkflowDrift\.ps1 -FailOnDrift/);
-  assert.match(workflow, /node tools\/npm\/run-script\.mjs lint:md:changed/);
-  assert.doesNotMatch(workflow, /^\s*-\s+name:\s+Run markdownlint\s*$/m);
+  assert.equal(markdownInvocations.length, 1);
   assert.doesNotMatch(workflow, /update_workflows\.py/);
   assert.doesNotMatch(workflow, /pip install[^\n]*ruamel/i);
   assert.doesNotMatch(workflow, /Install markdownlint-cli \(retry\)/);

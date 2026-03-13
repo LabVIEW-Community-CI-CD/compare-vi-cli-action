@@ -89,7 +89,8 @@ test('workflow-writing callers use the enclave wrapper instead of the low-level 
   assert.match(checkWorkflowDrift, /Push-Location \$repoRoot/);
   assert.match(checkWorkflowDrift, /git -C \$repoRoot/);
   assert.match(checkWorkflowDrift, /managedWorkflowFiles array of repo-relative \.github\/workflows paths/);
-  assert.match(checkWorkflowDrift, /Test-ManagedWorkflowManifestEntry/);
+  assert.match(checkWorkflowDrift, /Normalize-ManagedWorkflowManifestEntry/);
+  assert.match(checkWorkflowDrift, /PSObject\.Properties\.Name -contains 'managedWorkflowFiles'/);
   assert.match(checkWorkflowDrift, /\.github\/workflows/);
   assert.match(checkWorkflowDrift, /Contains\('\/\.\.\/'\)/);
   assert.doesNotMatch(checkWorkflowDrift, /update_workflows\.py/);
@@ -97,6 +98,7 @@ test('workflow-writing callers use the enclave wrapper instead of the low-level 
   const dockerChecks = read('tools/Run-NonLVChecksInDocker.ps1');
   assert.match(dockerChecks, /workflow_enclave\.py/);
   assert.match(dockerChecks, /--default-scope/);
+  assert.match(dockerChecks, /'python3', 'tools\/workflows\/workflow_enclave\.py', '--default-scope', '--check'/);
   assert.match(dockerChecks, /COMPAREVI_WORKFLOW_ENCLAVE_HOME=\/opt\/comparevi-workflow-enclave/);
   assert.match(dockerChecks, /COMPAREVI_WORKFLOW_ENCLAVE_HOME=\/tmp\/comparevi-workflow-enclave/);
   assert.match(dockerChecks, /node tools\/npm\/run-script\.mjs lint:md/);
@@ -112,7 +114,7 @@ test('workflow-writing callers use the enclave wrapper instead of the low-level 
 test('workflow updater normalizes checkout insertion and docs-only expressions correctly', () => {
   const updater = read('tools/workflows/_update_workflows_impl.py');
   assert.match(updater, /managed workflow set under `\.github\/workflows\/\*\*`/);
-  assert.match(updater, /def dump_yaml\(doc, _path: Path\)/);
+  assert.match(updater, /def dump_yaml\(doc\) -> str:/);
   assert.match(updater, /steps\.g\.outputs\.docs_only \|\| 'false'/);
   assert.doesNotMatch(updater, /docs_only \|\| ''false''/);
   assert.match(updater, /True in doc/);
@@ -152,16 +154,19 @@ test('workflow enclave node wrapper only accepts Python 3 interpreters', () => {
   const pythonWrapper = read('tools/workflows/workflow_enclave.py');
   assert.match(
     pythonWrapper,
-    /Usage: workflow_enclave\.py \[--ensure-only\|--default-scope \(\--check\|\--write\)\|\(\--check\|\--write\) <files\.\.\.>\]/
+    /workflow_enclave\.py --ensure-only/
   );
+  assert.match(pythonWrapper, /workflow_enclave\.py --default-scope \(\--check\|\--write\)/);
+  assert.match(pythonWrapper, /workflow_enclave\.py \(\--check\|\--write\) <files\.\.\.>/);
 });
 
 test('workflow and composite lint surfaces use repo-owned markdown commands', () => {
   const validateWorkflow = read('.github/workflows/validate.yml');
   const orchestratedWorkflow = read('.github/workflows/ci-orchestrated.yml');
   const cliLintsAction = read('.github/actions/cli-lints/action.yml');
+  const validateMarkdownInvocations = validateWorkflow.match(/node tools\/npm\/run-script\.mjs lint:md:changed/g) || [];
 
-  assert.match(validateWorkflow, /node tools\/npm\/run-script\.mjs lint:md:changed/);
+  assert.equal(validateMarkdownInvocations.length, 1);
   assert.match(orchestratedWorkflow, /node tools\/npm\/run-script\.mjs lint:md:changed/);
   assert.doesNotMatch(validateWorkflow, /Install markdownlint-cli \(retry\)/);
   assert.doesNotMatch(orchestratedWorkflow, /Install markdownlint-cli \(retry\)/);

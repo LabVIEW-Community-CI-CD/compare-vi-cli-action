@@ -45,7 +45,7 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
             )
 
             doc = load_yaml(sample_path)
-            rendered = dump_yaml(doc, sample_path)
+            rendered = dump_yaml(doc)
 
             self.assertIn('# header comment', rendered)
             self.assertIn("name: 'Quoted Name'", rendered)
@@ -120,12 +120,14 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
             [sys.executable, str(SCRIPT_ROOT / 'workflow_enclave.py')],
             capture_output=True,
             text=True,
+            env={**os.environ, 'COMPAREVI_WORKFLOW_ENCLAVE_HOME': str(Path(tempfile.gettempdir()) / 'comparevi-workflow-enclave-usage')},
             check=False
         )
 
         self.assertEqual(completed.returncode, 2)
-        self.assertIn('--default-scope (--check|--write)', completed.stdout)
-        self.assertIn('(--check|--write) <files...>', completed.stdout)
+        self.assertIn('workflow_enclave.py --ensure-only', completed.stdout)
+        self.assertIn('workflow_enclave.py --default-scope (--check|--write)', completed.stdout)
+        self.assertIn('workflow_enclave.py (--check|--write) <files...>', completed.stdout)
 
     def test_force_run_input_supports_booleanized_on_key(self) -> None:
         doc = {

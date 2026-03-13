@@ -20,7 +20,10 @@ def main(argv: list[str]) -> int:
         use_default_scope = True
         argv = argv[1:]
     if not argv or argv[0] not in ('--check', '--write'):
-        print('Usage: workflow_enclave.py [--ensure-only|--default-scope (--check|--write)|(--check|--write) <files...>]')
+        print('Usage:')
+        print('  workflow_enclave.py --ensure-only')
+        print('  workflow_enclave.py --default-scope (--check|--write)')
+        print('  workflow_enclave.py (--check|--write) <files...>')
         return 2
     if use_default_scope:
         argv = [argv[0], *load_default_scope()]

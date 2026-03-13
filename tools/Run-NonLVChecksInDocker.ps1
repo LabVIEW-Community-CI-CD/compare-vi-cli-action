@@ -618,7 +618,7 @@ if ($UseToolsImage -and $ToolsImageTag) {
   }
   if ($checkStates.workflowDrift.enabled) {
     Invoke-DockerParityStep -StepRecord $checkStates.workflowDrift -Name 'workflowDrift' -RunRecord $runRecord -Action {
-      $workflowDriftArgs = @('python', 'tools/workflows/workflow_enclave.py', '--default-scope', '--check')
+      $workflowDriftArgs = @('python3', 'tools/workflows/workflow_enclave.py', '--default-scope', '--check')
       $workflowDriftDockerArgs = @('-e', 'COMPAREVI_WORKFLOW_ENCLAVE_HOME=/opt/comparevi-workflow-enclave')
       Invoke-Container -Image $ToolsImageTag -Arguments $workflowDriftArgs -DockerRunArguments $workflowDriftDockerArgs -Label 'workflow-drift (tools)' | Out-Null
     }
@@ -648,7 +648,7 @@ if ($UseToolsImage -and $ToolsImageTag) {
   }
   if ($checkStates.workflowDrift.enabled) {
     Invoke-DockerParityStep -StepRecord $checkStates.workflowDrift -Name 'workflowDrift' -RunRecord $runRecord -Action {
-      $workflowDriftArgs = @('python', 'tools/workflows/workflow_enclave.py', '--default-scope', '--check')
+      $workflowDriftArgs = @('python3', 'tools/workflows/workflow_enclave.py', '--default-scope', '--check')
       $workflowDriftDockerArgs = @('-e', 'COMPAREVI_WORKFLOW_ENCLAVE_HOME=/tmp/comparevi-workflow-enclave')
       Invoke-Container -Image 'python:3.12' -Arguments $workflowDriftArgs -DockerRunArguments $workflowDriftDockerArgs -Label 'workflow-drift' | Out-Null
     }

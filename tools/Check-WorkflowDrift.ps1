@@ -16,31 +16,44 @@ $enclaveScript = Join-Path $repoRoot 'tools/workflows/workflow_enclave.py'
 $workflowManifestPath = Join-Path $repoRoot 'tools/workflows/workflow-manifest.json'
 $workflowManifest = Get-Content -LiteralPath $workflowManifestPath -Raw | ConvertFrom-Json -Depth 6
 
-function Test-ManagedWorkflowManifestEntry {
+function Normalize-ManagedWorkflowManifestEntry {
   param(
     [object]$Entry
   )
 
   if (-not ($Entry -is [string])) {
-    return $false
+    throw "Workflow manifest entry must be a string."
   }
 
   $normalized = $Entry.Replace('\', '/').Trim()
   if ([string]::IsNullOrWhiteSpace($normalized)) {
-    return $false
+    throw "Workflow manifest entry must not be empty."
   }
 
   if ($normalized.StartsWith('/') -or $normalized.StartsWith('../') -or $normalized.Contains('/../') -or $normalized.EndsWith('/..')) {
-    return $false
+    throw "Workflow manifest entry must be repo-relative."
   }
 
-  return $normalized -like '.github/workflows/*'
+  if ($normalized -notlike '.github/workflows/*') {
+    throw "Workflow manifest entry must live under .github/workflows."
+  }
+
+  return $normalized
 }
 
-$workflowEntries = @($workflowManifest.managedWorkflowFiles)
-$workflowFiles = @($workflowEntries | Where-Object { Test-ManagedWorkflowManifestEntry $_ })
-$invalidWorkflowFiles = @($workflowEntries | Where-Object { -not (Test-ManagedWorkflowManifestEntry $_) })
-if ($workflowFiles.Count -eq 0 -or $invalidWorkflowFiles.Count -gt 0) {
+if (-not ($workflowManifest.PSObject.Properties.Name -contains 'managedWorkflowFiles') -or -not ($workflowManifest.managedWorkflowFiles -is [System.Collections.IEnumerable])) {
+  throw "Workflow manifest must define a non-empty managedWorkflowFiles array of repo-relative .github/workflows paths: $workflowManifestPath"
+}
+
+$workflowFiles = New-Object System.Collections.Generic.List[string]
+foreach ($entry in @($workflowManifest.managedWorkflowFiles)) {
+  try {
+    $workflowFiles.Add((Normalize-ManagedWorkflowManifestEntry -Entry $entry))
+  } catch {
+    throw "Workflow manifest must define a non-empty managedWorkflowFiles array of repo-relative .github/workflows paths: $workflowManifestPath`nInvalid entry '$entry': $($_.Exception.Message)"
+  }
+}
+if ($workflowFiles.Count -eq 0) {
   throw "Workflow manifest must define a non-empty managedWorkflowFiles array of repo-relative .github/workflows paths: $workflowManifestPath"
 }
 

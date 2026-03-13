@@ -35,7 +35,7 @@ def load_yaml(path: Path):
         return yaml.load(fp)
 
 
-def dump_yaml(doc, _path: Path) -> str:
+def dump_yaml(doc) -> str:
     from io import StringIO
     sio = StringIO()
     yaml.dump(doc, sio)
@@ -1402,7 +1402,7 @@ def apply_transforms(path: Path) -> tuple[bool, str]:
 
 
     if changed:
-        new = dump_yaml(doc, path)
+        new = dump_yaml(doc)
         if new == orig:
             return False, orig
         return True, new
