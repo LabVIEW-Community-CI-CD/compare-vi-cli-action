@@ -32,6 +32,11 @@ async function readJsonIfPresent(filePath) {
     if (error?.code === 'ENOENT') {
       return null;
     }
+    if (error instanceof SyntaxError || error?.name === 'SyntaxError') {
+      return {
+        __parseError: error.message
+      };
+    }
     throw error;
   }
 }
@@ -168,6 +173,16 @@ export async function runDockerDesktopReviewLoop({
     env: process.env
   });
   const receipt = await readJsonIfPresent(receiptPath);
+  if (receipt?.__parseError) {
+    return {
+      status: 'failed',
+      source: 'docker-desktop-review-loop',
+      reason: `Docker/Desktop review loop produced a corrupt receipt: ${receipt.__parseError}`,
+      commandLine,
+      receiptPath,
+      receipt: null
+    };
+  }
   const overallStatus = normalizeText(receipt?.overall?.status).toLowerCase();
   const failedCheck = normalizeText(receipt?.overall?.failedCheck);
   const failureReason =

@@ -170,6 +170,54 @@ test('buildCompareviTaskPacket carries a daemon-requested Docker/Desktop review 
   assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory.branchRef, 'develop');
 });
 
+test('buildCompareviTaskPacket honors local review-loop directives from the selected issue when the standing issue body lacks them', async () => {
+  const packet = await compareviRuntimeTest.buildCompareviTaskPacket({
+    repoRoot,
+    schedulerDecision: {
+      activeLane: {
+        issue: 1054,
+        branch: 'issue/origin-1054-slice',
+        forkRemote: 'origin'
+      },
+      artifacts: {
+        executionMode: 'canonical-delivery',
+        selectedActionType: 'advance-child-issue',
+        laneLifecycle: 'coding',
+        selectedIssueSnapshot: {
+          number: 1054,
+          title: 'Child slice',
+          body: [
+            '## Daemon-first local iteration extension',
+            '- requirements verification',
+            '- single-VI touch-aware history on develop'
+          ].join('\n'),
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1054'
+        },
+        standingIssueSnapshot: {
+          number: 1053,
+          title: 'Standing issue',
+          body: 'No review-loop marker here.',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1053'
+        }
+      }
+    },
+    preparedWorker: {
+      checkoutPath: '/tmp/worker'
+    },
+    workerReady: {
+      checkoutPath: '/tmp/worker'
+    },
+    workerBranch: {
+      branch: 'issue/origin-1054-slice',
+      checkoutPath: '/tmp/worker'
+    }
+  });
+
+  assert.equal(packet.evidence.delivery.localReviewLoop.requested, true);
+  assert.equal(packet.evidence.delivery.localReviewLoop.requirementsVerification, true);
+  assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory.enabled, true);
+});
+
 test('comparevi branch resolver matches the repo issue branch naming contract', () => {
   const branch = compareviRuntimeTest.resolveCompareviIssueBranchName({
     issueNumber: 998,

@@ -147,3 +147,30 @@ test('runDockerDesktopReviewLoop fails closed when the receipt reports a failed 
   assert.equal(result.status, 'failed');
   assert.match(result.reason, /markdownlint/i);
 });
+
+test('runDockerDesktopReviewLoop fails closed with a deterministic reason when the receipt JSON is corrupt', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-corrupt-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(receiptPath, '{ not-json }\n', 'utf8');
+
+  const result = await runDockerDesktopReviewLoop({
+    repoRoot,
+    request: {
+      requested: true,
+      receiptPath: path.relative(repoRoot, receiptPath),
+      markdownlint: true,
+      requirementsVerification: false,
+      niLinuxReviewSuite: false
+    },
+    runCommandFn: () => ({
+      status: 0,
+      stdout: '',
+      stderr: ''
+    })
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.match(result.reason, /corrupt receipt/i);
+  assert.equal(result.receipt, null);
+});

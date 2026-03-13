@@ -264,7 +264,7 @@ export function buildLocalReviewLoopRequest({ standingIssue, selectedIssue, poli
   }
   const standingBody = typeof standingIssue?.body === 'string' ? standingIssue.body : '';
   const selectedBody = typeof selectedIssue?.body === 'string' ? selectedIssue.body : '';
-  const directiveBody = standingBody || selectedBody;
+  const directiveBody = [standingBody, selectedBody].filter(Boolean).join('\n');
   if (!bodyContainsAnyMarker(directiveBody, localReviewLoopPolicy.bodyMarkers)) {
     return null;
   }
