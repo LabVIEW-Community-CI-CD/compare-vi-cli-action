@@ -10,6 +10,8 @@ import {
   buildDockerDesktopReviewLoopPowerShellArgs,
   buildLocalReviewLoopCliArgs,
   DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES,
+  normalizeRequest,
+  parseArgs,
   runDockerDesktopReviewLoop
 } from '../docker-desktop-review-loop.mjs';
 
@@ -110,6 +112,28 @@ test('buildDockerDesktopReviewLoopPowerShellArgs only emits skip flags when expl
   assert.match(args.join(' '), /-SkipDocs/);
   assert.match(args.join(' '), /-SkipWorkflow/);
   assert.match(args.join(' '), /-SkipDotnetCliBuild/);
+});
+
+test('normalizeRequest does not force NI Linux review from a stray single-VI target path', () => {
+  const normalized = normalizeRequest({
+    requested: true,
+    niLinuxReviewSuite: false,
+    singleViHistory: {
+      enabled: false,
+      targetPath: 'fixtures/vi-attr/Head.vi',
+      branchRef: 'develop'
+    }
+  });
+
+  assert.equal(normalized.niLinuxReviewSuite, false);
+  assert.equal(normalized.singleViHistory.enabled, false);
+});
+
+test('parseArgs reports unknown trailing options as unknown instead of missing value', () => {
+  assert.throws(
+    () => parseArgs(['node', 'docker-desktop-review-loop.mjs', '--unknown']),
+    /Unknown option: --unknown/
+  );
 });
 
 test('default docker desktop review-loop command pins an explicit spawn maxBuffer', () => {

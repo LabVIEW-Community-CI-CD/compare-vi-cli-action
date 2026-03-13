@@ -70,8 +70,8 @@ const DEFAULT_POLICY = {
     requirementsVerification: true,
     niLinuxReviewSuite: true,
     singleViHistory: {
-      enabled: true,
-      targetPath: path.join('fixtures', 'vi-attr', 'Head.vi'),
+      enabled: false,
+      targetPath: '',
       branchRef: 'develop',
       baselineRef: '',
       maxCommitCount: 256
@@ -285,35 +285,37 @@ export function buildLocalReviewLoopRequest({ standingIssue, selectedIssue, poli
     return null;
   }
 
-  const markdownRequested = /markdownlint|markdown/i.test(directiveBody);
-  const requirementsRequested = /requirements verification|requirements coverage extension|requirements/i.test(directiveBody);
-  const niLinuxRequested = /ni linux|vi history|review suite/i.test(directiveBody);
   const singleViRequested = /single-vi|single vi|touch-aware/i.test(directiveBody);
+  const singleViTargetPath = normalizeText(localReviewLoopPolicy.singleViHistory.targetPath);
   const singleViHistory =
-    localReviewLoopPolicy.singleViHistory?.enabled === true && singleViRequested
+    localReviewLoopPolicy.singleViHistory?.enabled === true && singleViRequested && singleViTargetPath
       ? {
           enabled: true,
-          targetPath: normalizeText(localReviewLoopPolicy.singleViHistory.targetPath) || null,
+          targetPath: singleViTargetPath,
           branchRef: normalizeText(localReviewLoopPolicy.singleViHistory.branchRef) || null,
           baselineRef: normalizeText(localReviewLoopPolicy.singleViHistory.baselineRef) || null,
           maxCommitCount: coercePositiveInteger(localReviewLoopPolicy.singleViHistory.maxCommitCount) ?? 0
         }
       : null;
+  const source = standingHasMarker && selectedHasMarker
+    ? 'both-issue-bodies'
+    : standingHasMarker
+      ? 'standing-issue-body'
+      : 'selected-issue-body';
 
   return {
     requested: true,
-    source: standingHasMarker ? 'standing-issue-body' : 'selected-issue-body',
+    source,
     standingIssueNumber: coercePositiveInteger(standingIssue?.number),
     standingIssueUrl: normalizeText(standingIssue?.url) || null,
     receiptPath: localReviewLoopPolicy.receiptPath,
     actionlint: localReviewLoopPolicy.actionlint === true,
-    markdownlint: localReviewLoopPolicy.markdownlint === true && markdownRequested,
+    markdownlint: localReviewLoopPolicy.markdownlint === true,
     docs: localReviewLoopPolicy.docs === true,
     workflow: localReviewLoopPolicy.workflow === true,
     dotnetCliBuild: localReviewLoopPolicy.dotnetCliBuild === true,
-    requirementsVerification: localReviewLoopPolicy.requirementsVerification === true && requirementsRequested,
-    niLinuxReviewSuite:
-      localReviewLoopPolicy.niLinuxReviewSuite === true && (niLinuxRequested || singleViHistory?.enabled === true),
+    requirementsVerification: localReviewLoopPolicy.requirementsVerification === true,
+    niLinuxReviewSuite: localReviewLoopPolicy.niLinuxReviewSuite === true || singleViHistory?.enabled === true,
     singleViHistory
   };
 }

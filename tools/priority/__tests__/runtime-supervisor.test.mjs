@@ -161,13 +161,11 @@ test('buildCompareviTaskPacket carries a daemon-requested Docker/Desktop review 
   });
 
   assert.equal(packet.evidence.delivery.localReviewLoop.requested, true);
-  assert.equal(packet.evidence.delivery.localReviewLoop.source, 'standing-issue-body');
+  assert.equal(packet.evidence.delivery.localReviewLoop.source, 'both-issue-bodies');
   assert.equal(packet.evidence.delivery.localReviewLoop.markdownlint, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.requirementsVerification, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.niLinuxReviewSuite, true);
-  assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory.enabled, true);
-  assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory.targetPath, 'fixtures/vi-attr/Head.vi');
-  assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory.branchRef, 'develop');
+  assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory, null);
 });
 
 test('buildCompareviTaskPacket honors local review-loop directives from the selected issue when the standing issue body lacks them', async () => {
@@ -215,8 +213,9 @@ test('buildCompareviTaskPacket honors local review-loop directives from the sele
 
   assert.equal(packet.evidence.delivery.localReviewLoop.requested, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.source, 'selected-issue-body');
+  assert.equal(packet.evidence.delivery.localReviewLoop.markdownlint, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.requirementsVerification, true);
-  assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory.enabled, true);
+  assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory, null);
 });
 
 test('buildCompareviTaskPacket only reads local review-loop directives from bodies that contain the marker', async () => {
@@ -266,7 +265,7 @@ test('buildCompareviTaskPacket only reads local review-loop directives from bodi
 
   assert.equal(packet.evidence.delivery.localReviewLoop.requested, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.source, 'selected-issue-body');
-  assert.equal(packet.evidence.delivery.localReviewLoop.markdownlint, false);
+  assert.equal(packet.evidence.delivery.localReviewLoop.markdownlint, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.requirementsVerification, true);
 });
 

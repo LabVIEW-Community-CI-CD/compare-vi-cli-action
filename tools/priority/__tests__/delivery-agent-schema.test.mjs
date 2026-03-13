@@ -56,8 +56,8 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
     requirementsVerification: true,
     niLinuxReviewSuite: true,
     singleViHistory: {
-      enabled: true,
-      targetPath: 'fixtures/vi-attr/Head.vi',
+      enabled: false,
+      targetPath: '',
       branchRef: 'develop',
       baselineRef: '',
       maxCommitCount: 256

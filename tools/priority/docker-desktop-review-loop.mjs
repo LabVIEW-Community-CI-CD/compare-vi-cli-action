@@ -64,6 +64,7 @@ export function normalizeRequest(request = {}) {
       : {};
   const targetPath = normalizeText(singleViHistory.targetPath);
   const branchRef = normalizeText(singleViHistory.branchRef);
+  const singleViHistoryEnabled = singleViHistory.enabled === true && Boolean(targetPath);
   return {
     requested: request.requested === true,
     receiptPath: normalizeText(request.receiptPath) || DEFAULT_REVIEW_LOOP_RECEIPT_PATH,
@@ -73,9 +74,9 @@ export function normalizeRequest(request = {}) {
     workflow: request.workflow !== false,
     dotnetCliBuild: request.dotnetCliBuild !== false,
     requirementsVerification: request.requirementsVerification === true,
-    niLinuxReviewSuite: request.niLinuxReviewSuite === true || Boolean(targetPath),
+    niLinuxReviewSuite: request.niLinuxReviewSuite === true || singleViHistoryEnabled,
     singleViHistory: {
-      enabled: singleViHistory.enabled === true && Boolean(targetPath),
+      enabled: singleViHistoryEnabled,
       targetPath: targetPath || '',
       branchRef: branchRef || '',
       baselineRef: normalizeText(singleViHistory.baselineRef),
@@ -303,6 +304,14 @@ export function parseArgs(argv = process.argv) {
       }
     }
   };
+  const optionsWithValues = new Set([
+    '--repo-root',
+    '--receipt-path',
+    '--history-target-path',
+    '--history-branch-ref',
+    '--history-baseline-ref',
+    '--history-max-commit-count'
+  ]);
 
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
@@ -340,6 +349,10 @@ export function parseArgs(argv = process.argv) {
       continue;
     }
 
+    if (token.startsWith('-') && !optionsWithValues.has(token)) {
+      throw new Error(`Unknown option: ${token}`);
+    }
+
     const next = args[index + 1];
     if (!next || next.startsWith('-')) {
       throw new Error(`Missing value for ${token}.`);
@@ -357,8 +370,6 @@ export function parseArgs(argv = process.argv) {
       options.request.singleViHistory.baselineRef = next;
     } else if (token === '--history-max-commit-count') {
       options.request.singleViHistory.maxCommitCount = coerceNonNegativeInteger(next);
-    } else {
-      throw new Error(`Unknown option: ${token}`);
     }
   }
 
