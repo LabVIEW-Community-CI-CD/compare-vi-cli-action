@@ -784,7 +784,6 @@ test('runMergeSync fails when auto merge command succeeds but no durable promoti
 
 test('evaluatePromotionReviewClearance summarizes a passing current-head no-comment review run', async () => {
   const result = await evaluatePromotionReviewClearance({
-    repoRoot,
     repo: 'owner/repo',
     pr: 125,
     prInfo: {

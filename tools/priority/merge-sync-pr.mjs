@@ -447,7 +447,6 @@ function readPromotionState({ repoRoot, repo, pr }) {
 }
 
 export async function evaluatePromotionReviewClearance({
-  repoRoot,
   repo,
   pr,
   prInfo,
@@ -641,7 +640,6 @@ export async function runMergeSync({
           }
         }
       : await evaluatePromotionReviewClearanceFn({
-          repoRoot,
           repo: resolvedRepo,
           pr: options.pr,
           prInfo
