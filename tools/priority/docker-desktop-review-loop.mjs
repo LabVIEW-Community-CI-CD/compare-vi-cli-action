@@ -66,7 +66,11 @@ export function normalizeRequest(request = {}) {
   return {
     requested: request.requested === true,
     receiptPath: normalizeText(request.receiptPath) || DEFAULT_REVIEW_LOOP_RECEIPT_PATH,
+    actionlint: request.actionlint !== false,
     markdownlint: request.markdownlint !== false,
+    docs: request.docs !== false,
+    workflow: request.workflow !== false,
+    dotnetCliBuild: request.dotnetCliBuild !== false,
     requirementsVerification: request.requirementsVerification === true,
     niLinuxReviewSuite: request.niLinuxReviewSuite === true || Boolean(targetPath),
     singleViHistory: {
@@ -82,8 +86,20 @@ export function normalizeRequest(request = {}) {
 export function buildLocalReviewLoopCliArgs({ repoRoot, request }) {
   const normalized = normalizeRequest(request);
   const args = ['--repo-root', repoRoot, '--receipt-path', normalized.receiptPath];
+  if (!normalized.actionlint) {
+    args.push('--skip-actionlint');
+  }
   if (!normalized.markdownlint) {
     args.push('--skip-markdown');
+  }
+  if (!normalized.docs) {
+    args.push('--skip-docs');
+  }
+  if (!normalized.workflow) {
+    args.push('--skip-workflow');
+  }
+  if (!normalized.dotnetCliBuild) {
+    args.push('--skip-dotnet-cli-build');
   }
   if (normalized.requirementsVerification) {
     args.push('--requirements-verification');
@@ -114,16 +130,24 @@ export function buildDockerDesktopReviewLoopPowerShellArgs(request = {}) {
     '-File',
     path.join('tools', 'Run-NonLVChecksInDocker.ps1'),
     '-UseToolsImage',
-    '-SkipActionlint',
-    '-SkipDocs',
-    '-SkipWorkflow',
-    '-SkipDotnetCliBuild',
     '-DockerParityReviewReceiptPath',
     normalized.receiptPath
   ];
 
+  if (!normalized.actionlint) {
+    args.push('-SkipActionlint');
+  }
   if (!normalized.markdownlint) {
     args.push('-SkipMarkdown');
+  }
+  if (!normalized.docs) {
+    args.push('-SkipDocs');
+  }
+  if (!normalized.workflow) {
+    args.push('-SkipWorkflow');
+  }
+  if (!normalized.dotnetCliBuild) {
+    args.push('-SkipDotnetCliBuild');
   }
   if (normalized.requirementsVerification) {
     args.push('-RequirementsVerification');
@@ -239,7 +263,11 @@ function printUsage() {
   console.log('Options:');
   console.log('  --repo-root <path>              Repository root (default: current working directory).');
   console.log(`  --receipt-path <path>           Review-loop receipt path (default: ${DEFAULT_REVIEW_LOOP_RECEIPT_PATH}).`);
+  console.log('  --skip-actionlint               Skip actionlint in the Docker/Desktop review loop.');
   console.log('  --skip-markdown                 Skip markdownlint in the Docker/Desktop review loop.');
+  console.log('  --skip-docs                     Skip docs link validation in the Docker/Desktop review loop.');
+  console.log('  --skip-workflow                 Skip workflow drift/contract checks in the Docker/Desktop review loop.');
+  console.log('  --skip-dotnet-cli-build         Skip the CompareVI .NET CLI build in the Docker/Desktop review loop.');
   console.log('  --requirements-verification     Include requirements verification.');
   console.log('  --ni-linux-review-suite         Include the NI Linux smoke + VI history review suite.');
   console.log('  --history-target-path <path>    Single-VI history target path.');
@@ -257,7 +285,11 @@ export function parseArgs(argv = process.argv) {
     request: {
       requested: true,
       receiptPath: DEFAULT_REVIEW_LOOP_RECEIPT_PATH,
+      actionlint: true,
       markdownlint: true,
+      docs: true,
+      workflow: true,
+      dotnetCliBuild: true,
       requirementsVerification: false,
       niLinuxReviewSuite: false,
       singleViHistory: {
@@ -277,8 +309,24 @@ export function parseArgs(argv = process.argv) {
       continue;
     }
 
+    if (token === '--skip-actionlint') {
+      options.request.actionlint = false;
+      continue;
+    }
     if (token === '--skip-markdown') {
       options.request.markdownlint = false;
+      continue;
+    }
+    if (token === '--skip-docs') {
+      options.request.docs = false;
+      continue;
+    }
+    if (token === '--skip-workflow') {
+      options.request.workflow = false;
+      continue;
+    }
+    if (token === '--skip-dotnet-cli-build') {
+      options.request.dotnetCliBuild = false;
       continue;
     }
     if (token === '--requirements-verification') {

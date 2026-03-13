@@ -62,7 +62,11 @@
           "type": "array",
           "items": { "type": "string" }
         },
+        "actionlint": { "type": "boolean" },
         "markdownlint": { "type": "boolean" },
+        "docs": { "type": "boolean" },
+        "workflow": { "type": "boolean" },
+        "dotnetCliBuild": { "type": "boolean" },
         "requirementsVerification": { "type": "boolean" },
         "niLinuxReviewSuite": { "type": "boolean" },
         "singleViHistory": {

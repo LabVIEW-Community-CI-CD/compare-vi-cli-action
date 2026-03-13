@@ -62,7 +62,11 @@ const DEFAULT_POLICY = {
     bodyMarkers: ['Daemon-first local iteration extension'],
     receiptPath: path.join('tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json'),
     command: [...DEFAULT_LOCAL_REVIEW_LOOP_COMMAND],
+    actionlint: true,
     markdownlint: true,
+    docs: true,
+    workflow: true,
+    dotnetCliBuild: true,
     requirementsVerification: true,
     niLinuxReviewSuite: true,
     singleViHistory: {
@@ -269,7 +273,12 @@ export function buildLocalReviewLoopRequest({ standingIssue, selectedIssue, poli
   const selectedBody = typeof selectedIssue?.body === 'string' ? selectedIssue.body : '';
   const standingHasMarker = bodyContainsAnyMarker(standingBody, localReviewLoopPolicy.bodyMarkers);
   const selectedHasMarker = bodyContainsAnyMarker(selectedBody, localReviewLoopPolicy.bodyMarkers);
-  const directiveBody = [standingBody, selectedBody].filter(Boolean).join('\n');
+  const directiveBody = [
+    standingHasMarker ? standingBody : '',
+    selectedHasMarker ? selectedBody : ''
+  ]
+    .filter(Boolean)
+    .join('\n');
   if (!standingHasMarker && !selectedHasMarker) {
     return null;
   }
@@ -295,7 +304,11 @@ export function buildLocalReviewLoopRequest({ standingIssue, selectedIssue, poli
     standingIssueNumber: coercePositiveInteger(standingIssue?.number),
     standingIssueUrl: normalizeText(standingIssue?.url) || null,
     receiptPath: localReviewLoopPolicy.receiptPath,
+    actionlint: localReviewLoopPolicy.actionlint === true,
     markdownlint: localReviewLoopPolicy.markdownlint === true && markdownRequested,
+    docs: localReviewLoopPolicy.docs === true,
+    workflow: localReviewLoopPolicy.workflow === true,
+    dotnetCliBuild: localReviewLoopPolicy.dotnetCliBuild === true,
     requirementsVerification: localReviewLoopPolicy.requirementsVerification === true && requirementsRequested,
     niLinuxReviewSuite:
       localReviewLoopPolicy.niLinuxReviewSuite === true && (niLinuxRequested || singleViHistory?.enabled === true),

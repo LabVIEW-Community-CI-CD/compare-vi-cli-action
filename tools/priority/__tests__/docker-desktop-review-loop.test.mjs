@@ -17,7 +17,11 @@ test('buildLocalReviewLoopCliArgs forwards receipt, requirements, and single-VI 
     request: {
       requested: true,
       receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+      actionlint: false,
       markdownlint: false,
+      docs: false,
+      workflow: false,
+      dotnetCliBuild: false,
       requirementsVerification: true,
       niLinuxReviewSuite: true,
       singleViHistory: {
@@ -35,7 +39,11 @@ test('buildLocalReviewLoopCliArgs forwards receipt, requirements, and single-VI 
     '/tmp/repo',
     '--receipt-path',
     'tests/results/docker-tools-parity/review-loop-receipt.json',
+    '--skip-actionlint',
     '--skip-markdown',
+    '--skip-docs',
+    '--skip-workflow',
+    '--skip-dotnet-cli-build',
     '--requirements-verification',
     '--ni-linux-review-suite',
     '--history-target-path',
@@ -53,7 +61,11 @@ test('buildDockerDesktopReviewLoopPowerShellArgs uses the Docker helper contract
   const args = buildDockerDesktopReviewLoopPowerShellArgs({
     requested: true,
     receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+    actionlint: true,
     markdownlint: true,
+    docs: true,
+    workflow: true,
+    dotnetCliBuild: true,
     requirementsVerification: true,
     niLinuxReviewSuite: true,
     singleViHistory: {
@@ -65,21 +77,37 @@ test('buildDockerDesktopReviewLoopPowerShellArgs uses the Docker helper contract
     }
   });
 
-  assert.deepEqual(args.slice(0, 10), [
+  assert.deepEqual(args.slice(0, 6), [
     '-NoLogo',
     '-NoProfile',
     '-File',
     path.join('tools', 'Run-NonLVChecksInDocker.ps1'),
     '-UseToolsImage',
-    '-SkipActionlint',
-    '-SkipDocs',
-    '-SkipWorkflow',
-    '-SkipDotnetCliBuild',
     '-DockerParityReviewReceiptPath'
   ]);
   assert.match(args.join(' '), /-RequirementsVerification/);
   assert.match(args.join(' '), /-NILinuxReviewSuite/);
   assert.match(args.join(' '), /-NILinuxReviewSuiteHistoryTargetPath/);
+});
+
+test('buildDockerDesktopReviewLoopPowerShellArgs only emits skip flags when explicitly requested', () => {
+  const args = buildDockerDesktopReviewLoopPowerShellArgs({
+    requested: true,
+    receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+    actionlint: false,
+    markdownlint: false,
+    docs: false,
+    workflow: false,
+    dotnetCliBuild: false,
+    requirementsVerification: false,
+    niLinuxReviewSuite: false
+  });
+
+  assert.match(args.join(' '), /-SkipActionlint/);
+  assert.match(args.join(' '), /-SkipMarkdown/);
+  assert.match(args.join(' '), /-SkipDocs/);
+  assert.match(args.join(' '), /-SkipWorkflow/);
+  assert.match(args.join(' '), /-SkipDotnetCliBuild/);
 });
 
 test('runDockerDesktopReviewLoop returns passed when the receipt reports passed', async () => {

@@ -219,6 +219,57 @@ test('buildCompareviTaskPacket honors local review-loop directives from the sele
   assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory.enabled, true);
 });
 
+test('buildCompareviTaskPacket only reads local review-loop directives from bodies that contain the marker', async () => {
+  const packet = await compareviRuntimeTest.buildCompareviTaskPacket({
+    repoRoot,
+    schedulerDecision: {
+      activeLane: {
+        issue: 1054,
+        branch: 'issue/origin-1054-slice',
+        forkRemote: 'origin'
+      },
+      artifacts: {
+        executionMode: 'canonical-delivery',
+        selectedActionType: 'advance-child-issue',
+        laneLifecycle: 'coding',
+        selectedIssueSnapshot: {
+          number: 1054,
+          title: 'Child slice',
+          body: [
+            '## daemon-FIRST local ITERATION extension',
+            '- requirements verification'
+          ].join('\n'),
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1054'
+        },
+        standingIssueSnapshot: {
+          number: 1053,
+          title: 'Standing issue',
+          body: [
+            'This epic mentions markdownlint in unrelated background text.',
+            'It intentionally lacks the local iteration marker.'
+          ].join('\n'),
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1053'
+        }
+      }
+    },
+    preparedWorker: {
+      checkoutPath: '/tmp/worker'
+    },
+    workerReady: {
+      checkoutPath: '/tmp/worker'
+    },
+    workerBranch: {
+      branch: 'issue/origin-1054-slice',
+      checkoutPath: '/tmp/worker'
+    }
+  });
+
+  assert.equal(packet.evidence.delivery.localReviewLoop.requested, true);
+  assert.equal(packet.evidence.delivery.localReviewLoop.source, 'selected-issue-body');
+  assert.equal(packet.evidence.delivery.localReviewLoop.markdownlint, false);
+  assert.equal(packet.evidence.delivery.localReviewLoop.requirementsVerification, true);
+});
+
 test('comparevi branch resolver matches the repo issue branch naming contract', () => {
   const branch = compareviRuntimeTest.resolveCompareviIssueBranchName({
     issueNumber: 998,
