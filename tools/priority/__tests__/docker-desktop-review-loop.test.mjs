@@ -175,6 +175,12 @@ test('runDockerDesktopReviewLoop returns passed when the receipt reports passed'
         receiptPath,
         `${JSON.stringify({
           schema: 'docker-tools-parity-review-loop@v1',
+          git: {
+            headSha: 'abc123',
+            branch: 'issue/test',
+            upstreamDevelopMergeBase: 'base123',
+            dirtyTracked: false
+          },
           overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
         })}\n`,
         'utf8'
@@ -184,11 +190,17 @@ test('runDockerDesktopReviewLoop returns passed when the receipt reports passed'
         stdout: '',
         stderr: ''
       };
-    }
+    },
+    resolveRepoGitStateFn: () => ({
+      headSha: 'abc123',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123'
+    })
   });
 
   assert.equal(result.status, 'passed');
   assert.equal(result.receipt.overall.status, 'passed');
+  assert.equal(result.receiptFreshForHead, true);
 });
 
 test('runDockerDesktopReviewLoop fails closed when the receipt reports a failed check', async () => {
@@ -251,6 +263,55 @@ test('runDockerDesktopReviewLoop fails closed with a deterministic reason when t
   assert.equal(result.status, 'failed');
   assert.match(result.reason, /corrupt receipt/i);
   assert.equal(result.receipt, null);
+});
+
+test('runDockerDesktopReviewLoop fails closed when the receipt head does not match the current repo head', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-stale-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+
+  const result = await runDockerDesktopReviewLoop({
+    repoRoot,
+    request: {
+      requested: true,
+      receiptPath: path.relative(repoRoot, receiptPath),
+      markdownlint: true,
+      requirementsVerification: false,
+      niLinuxReviewSuite: false
+    },
+    runCommandFn: async () => {
+      await mkdir(path.dirname(receiptPath), { recursive: true });
+      await writeFile(
+        receiptPath,
+        `${JSON.stringify({
+          schema: 'docker-tools-parity-review-loop@v1',
+          git: {
+            headSha: 'stale-head',
+            branch: 'issue/test',
+            upstreamDevelopMergeBase: 'base123',
+            dirtyTracked: false
+          },
+          overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
+        })}\n`,
+        'utf8'
+      );
+      return {
+        status: 0,
+        stdout: '',
+        stderr: ''
+      };
+    },
+    resolveRepoGitStateFn: () => ({
+      headSha: 'current-head',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123'
+    })
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.receiptFreshForHead, false);
+  assert.equal(result.receiptHeadSha, 'stale-head');
+  assert.equal(result.currentHeadSha, 'current-head');
+  assert.match(result.reason, /stale for the current HEAD/i);
 });
 
 test('runDockerDesktopReviewLoop rejects receipt paths outside docker parity results', async () => {

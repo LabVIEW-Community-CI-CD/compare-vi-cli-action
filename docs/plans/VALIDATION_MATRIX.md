@@ -24,6 +24,9 @@ single source of truth when deciding which helper to run locally, invoke from VS
   - Exit semantics: first failing container exit (`0` happy, `3` = drift).
   - Artifacts: container logs, optional `dist/comparevi-cli/*`, and the combined
     `tests/results/docker-tools-parity/review-loop-receipt.json`.
+  - Receipt freshness: the review-loop receipt is now stamped with `git.headSha`
+    and related branch metadata so daemon/local consumers can fail closed on
+    stale green parity after the branch head changes.
 - **`tools/Check-WorkflowDrift.ps1`**
   - Scope: workflow rewrite drift via the pinned `ruamel.yaml` enclave under `tools/workflows/**`.
   - Typical invocation: `pwsh -File tools/Check-WorkflowDrift.ps1`.

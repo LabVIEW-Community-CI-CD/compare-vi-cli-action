@@ -335,6 +335,37 @@ function Read-JsonHashtable {
   return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable)
 }
 
+function Get-GitReviewLoopMetadata {
+  param([string]$RepoRoot)
+
+  $headSha = (& git -C $RepoRoot rev-parse HEAD 2>$null | Select-Object -First 1)
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($headSha)) {
+    throw 'Unable to resolve git HEAD for Docker/Desktop review-loop receipt generation.'
+  }
+
+  $branchName = (& git -C $RepoRoot branch --show-current 2>$null | Select-Object -First 1)
+  if ($LASTEXITCODE -ne 0) {
+    $branchName = ''
+  }
+
+  $mergeBase = (& git -C $RepoRoot merge-base HEAD upstream/develop 2>$null | Select-Object -First 1)
+  if ($LASTEXITCODE -ne 0) {
+    $mergeBase = ''
+  }
+
+  $trackedStatus = (& git -C $RepoRoot status --short --untracked-files=no 2>$null)
+  if ($LASTEXITCODE -ne 0) {
+    $trackedStatus = @()
+  }
+
+  return [ordered]@{
+    headSha = $headSha.Trim()
+    branch = if ([string]::IsNullOrWhiteSpace($branchName)) { $null } else { $branchName.Trim() }
+    upstreamDevelopMergeBase = if ([string]::IsNullOrWhiteSpace($mergeBase)) { $null } else { $mergeBase.Trim() }
+    dirtyTracked = @($trackedStatus).Count -gt 0
+  }
+}
+
 function Invoke-DockerParityStep {
   param(
     $StepRecord,
@@ -392,6 +423,7 @@ function Write-DockerParityReviewLoopReceipt {
   $historyReceipt = Read-JsonHashtable -Path $historyReviewReceiptPath
   $requirementsSummary = Read-JsonHashtable -Path $requirementsSummaryPath
   $traceMatrix = Read-JsonHashtable -Path $traceMatrixJsonPath
+  $gitMetadata = Get-GitReviewLoopMetadata -RepoRoot $RepoRoot
 
   $artifacts = [ordered]@{
     reviewLoopReceiptPath = $receiptRelativePath
@@ -441,6 +473,7 @@ function Write-DockerParityReviewLoopReceipt {
     generatedAt = (Get-Date).ToUniversalTime().ToString('o')
     repoRoot = $RepoRoot
     resultsRoot = 'tests/results/docker-tools-parity'
+    git = $gitMetadata
     overall = [ordered]@{
       status = $RunRecord.status
       failedCheck = $RunRecord.failedCheck
@@ -475,6 +508,7 @@ function Write-DockerParityReviewLoopReceipt {
     schema = 'docker-tools-parity-agent-verification@v1'
     generatedAt = (Get-Date).ToUniversalTime().ToString('o')
     authoritativeSource = 'docker-tools-parity'
+    git = $gitMetadata
     reviewLoopReceiptPath = $receiptRelativePath
     overall = $receipt.overall
     requirementsCoverage = $requirementsCoverage

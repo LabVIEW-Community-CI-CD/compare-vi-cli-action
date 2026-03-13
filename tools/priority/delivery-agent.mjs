@@ -1494,6 +1494,7 @@ function buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt }) {
   const receipt = normalizeOptionalObject(details?.receipt);
   const overall = normalizeOptionalObject(receipt?.overall);
   const artifacts = normalizeOptionalObject(receipt?.artifacts);
+  const git = normalizeOptionalObject(receipt?.git);
   const niLinuxHistoryReview = normalizeOptionalObject(receipt?.niLinuxHistoryReview);
   const requirementsCoverage = normalizeOptionalObject(receipt?.requirementsCoverage);
   const recommendedReviewOrder = uniqueStrings(Array.isArray(receipt?.recommendedReviewOrder) ? receipt.recommendedReviewOrder : []);
@@ -1511,6 +1512,17 @@ function buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt }) {
     receiptPath: normalizeText(details?.receiptPath) || normalizeText(request?.receiptPath) || null,
     receiptStatus: normalizeText(overall?.status) || null,
     failedCheck: normalizeText(overall?.failedCheck) || null,
+    currentHeadSha: normalizeText(details?.currentHeadSha) || null,
+    receiptHeadSha: normalizeText(details?.receiptHeadSha) || normalizeText(git?.headSha) || null,
+    receiptFreshForHead: typeof details?.receiptFreshForHead === 'boolean' ? details.receiptFreshForHead : null,
+    git: git
+      ? {
+          headSha: normalizeText(git.headSha) || null,
+          branch: normalizeText(git.branch) || null,
+          upstreamDevelopMergeBase: normalizeText(git.upstreamDevelopMergeBase) || null,
+          dirtyTracked: git.dirtyTracked === true
+        }
+      : null,
     requirementsVerificationRequested: request?.requirementsVerification === true,
     markdownlintRequested: request?.markdownlint === true,
     niLinuxReviewSuiteRequested: request?.niLinuxReviewSuite === true,
@@ -1850,6 +1862,9 @@ async function maybeRunLocalReviewLoop({
       normalizeText(result.stdout) ||
       'Docker/Desktop review loop did not return a status.',
     receiptPath,
+    currentHeadSha: normalizeText(reviewLoopResult?.currentHeadSha) || null,
+    receiptHeadSha: normalizeText(reviewLoopResult?.receiptHeadSha) || normalizeText(receiptFromFile?.git?.headSha) || null,
+    receiptFreshForHead: typeof reviewLoopResult?.receiptFreshForHead === 'boolean' ? reviewLoopResult.receiptFreshForHead : null,
     receipt: reviewLoopResult?.receipt ?? receiptFromFile ?? null
   };
 

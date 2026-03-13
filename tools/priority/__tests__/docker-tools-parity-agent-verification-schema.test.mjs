@@ -27,6 +27,12 @@ test('docker parity agent verification schema validates the bounded _agent recei
     schema: 'docker-tools-parity-agent-verification@v1',
     generatedAt: '2026-03-13T09:00:00.000Z',
     authoritativeSource: 'docker-tools-parity',
+    git: {
+      headSha: '433e8aa70326007be74c27ccf54c1ae91559b6f3',
+      branch: 'issue/origin-1053-agent-verification-receipt',
+      upstreamDevelopMergeBase: 'ccbdc75d4bfbcbe6580abb989b2d4e819e1a1e99',
+      dirtyTracked: false
+    },
     reviewLoopReceiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
     overall: {
       status: 'passed',

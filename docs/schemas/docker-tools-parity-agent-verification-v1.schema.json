@@ -8,6 +8,7 @@
     "schema",
     "generatedAt",
     "authoritativeSource",
+    "git",
     "reviewLoopReceiptPath",
     "overall",
     "requirementsCoverage",
@@ -24,6 +25,37 @@
     },
     "authoritativeSource": {
       "const": "docker-tools-parity"
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headSha",
+        "branch",
+        "upstreamDevelopMergeBase",
+        "dirtyTracked"
+      ],
+      "properties": {
+        "headSha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "upstreamDevelopMergeBase": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dirtyTracked": {
+          "type": "boolean"
+        }
+      }
     },
     "reviewLoopReceiptPath": {
       "type": "string",
