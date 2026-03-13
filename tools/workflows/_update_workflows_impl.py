@@ -624,7 +624,8 @@ def ensure_interactivity_probe_job(doc) -> bool:
                     "$ui = [System.Environment]::UserInteractive\n"
                     "$in = $false; try { $in  = [Console]::IsInputRedirected } catch {}\n"
                     "$ok = ($ui -and -not $in)\n"
-                    '"ok=$ok" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8\n'
+                    '$okString = if ($ok) { "true" } else { "false" }\n'
+                    '"ok=$okString" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8\n'
                 ),
             },
         ],
@@ -758,6 +759,8 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
             if insert_at is None:
                 insert_at = _find_step_index(steps, 'Run markdownlint (non-blocking)')
             if insert_at is None:
+                insert_at = _find_step_index(steps, 'Run markdownlint (scoped changed files)')
+            if insert_at is None:
                 insert_at = len(steps)
             steps.insert(insert_at, node_step)
             changed = True
@@ -776,6 +779,7 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
     # Run markdownlint step
     name_md = 'Run markdownlint (non-blocking)' if markdown_non_blocking else 'Run markdownlint'
     alt_name_md = 'Run markdownlint' if markdown_non_blocking else 'Run markdownlint (non-blocking)'
+    scoped_name_md = 'Run markdownlint (scoped changed files)'
     md_run_step = {
         'name': name_md,
         'run': LIT('node tools/npm/run-script.mjs lint:md:changed\n'),
@@ -786,26 +790,41 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
     if idx_target is None:
         idx_target = _find_step_index(steps, alt_name_md)
     if idx_target is None:
+        idx_target = _find_step_index(steps, scoped_name_md)
+    if idx_target is None:
         steps.append(md_run_step)
         changed = True
     else:
         cur = steps[idx_target]
-        need_update = False
-        if cur.get('name') != name_md:
-            cur['name'] = name_md
+        preserve_scoped_name = cur.get('name') == scoped_name_md
+        desired_name = scoped_name_md if preserve_scoped_name else name_md
+        if cur.get('name') != desired_name:
+            cur['name'] = desired_name
             changed = True
-        if cur.get('run') != md_run_step['run']:
-            need_update = True
-        if markdown_non_blocking:
-            if cur.get('continue-on-error') is not True:
-                need_update = True
-        else:
-            if 'continue-on-error' in cur:
-                del cur['continue-on-error']
+        if preserve_scoped_name:
+            if cur.get('run') != md_run_step['run']:
+                cur['run'] = md_run_step['run']
                 changed = True
-        if need_update:
-            steps[idx_target] = md_run_step
-            changed = True
+            if markdown_non_blocking:
+                if cur.get('continue-on-error') is not True:
+                    cur['continue-on-error'] = True
+                    changed = True
+            else:
+                if 'continue-on-error' in cur:
+                    del cur['continue-on-error']
+                    changed = True
+        else:
+            need_update = cur.get('run') != md_run_step['run']
+            if markdown_non_blocking:
+                if cur.get('continue-on-error') is not True:
+                    need_update = True
+            else:
+                if 'continue-on-error' in cur:
+                    del cur['continue-on-error']
+                    changed = True
+            if need_update:
+                steps[idx_target] = md_run_step
+                changed = True
 
     job['steps'] = steps
     return changed

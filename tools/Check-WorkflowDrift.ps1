@@ -17,25 +17,64 @@ $workflowManifestPath = Join-Path $repoRoot 'tools/workflows/workflow-manifest.j
 $workflowManifest = Get-Content -LiteralPath $workflowManifestPath -Raw | ConvertFrom-Json -Depth 6
 $workflowFiles = @($workflowManifest.managedWorkflowFiles)
 
-function Resolve-PythonExe {
-  $candidates = @('python','py')
-  foreach ($name in $candidates) {
+function Test-Python3Command {
+  param(
+    [string[]]$Command
+  )
+
+  if (-not $Command -or $Command.Count -eq 0) {
+    return $false
+  }
+
+  $probeArguments = @($Command | Select-Object -Skip 1) + @('-c', 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)')
+  & $Command[0] @probeArguments *> $null
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Resolve-PythonCommand {
+  if (-not [string]::IsNullOrWhiteSpace($env:COMPAREVI_PYTHON_EXE)) {
+    $override = (Get-Command $env:COMPAREVI_PYTHON_EXE -ErrorAction SilentlyContinue)
+    if ($override -and (Test-Python3Command -Command @($override.Source))) {
+      return @($override.Source)
+    }
+  }
+
+  $candidates = @()
+  if ($IsWindows) {
+    $py = Get-Command 'py' -ErrorAction SilentlyContinue
+    if ($py) {
+      $candidates += ,@($py.Source, '-3')
+    }
+  }
+  foreach ($name in @('python3', 'python')) {
     $cmd = Get-Command $name -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
+    if ($cmd) {
+      $candidates += ,@($cmd.Source)
+    }
+  }
+
+  foreach ($candidate in $candidates) {
+    if (Test-Python3Command -Command $candidate) {
+      return $candidate
+    }
   }
   return $null
 }
 
-$py = Resolve-PythonExe
-if (-not $py) {
-  Write-Host '::notice::Python not found; skipping workflow drift check.'
+$pythonCommand = Resolve-PythonCommand
+if (-not $pythonCommand) {
+  Write-Host '::notice::Python 3 not found; skipping workflow drift check.'
+  if ($FailOnDrift) {
+    exit 2
+  }
   exit 0
 }
 
 function Invoke-WorkflowEnclave {
   param([string[]]$Arguments)
 
-  & $py $enclaveScript @Arguments | Out-Host
+  $pythonArguments = @($pythonCommand | Select-Object -Skip 1) + @($enclaveScript) + @($Arguments)
+  & $pythonCommand[0] @pythonArguments | Out-Host
   return $LASTEXITCODE
 }
 

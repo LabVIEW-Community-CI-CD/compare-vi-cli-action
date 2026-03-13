@@ -34,6 +34,7 @@ test('Validate uses explicit PR-head checkout expressions and routes workflow dr
   assert.match(workflow, /Setup Python for workflow enclave/);
   assert.match(workflow, /pwsh -NoLogo -NoProfile -File tools\/Check-WorkflowDrift\.ps1 -FailOnDrift/);
   assert.match(workflow, /node tools\/npm\/run-script\.mjs lint:md:changed/);
+  assert.doesNotMatch(workflow, /^\s*-\s+name:\s+Run markdownlint\s*$/m);
   assert.doesNotMatch(workflow, /update_workflows\.py/);
   assert.doesNotMatch(workflow, /pip install[^\n]*ruamel/i);
   assert.doesNotMatch(workflow, /Install markdownlint-cli \(retry\)/);

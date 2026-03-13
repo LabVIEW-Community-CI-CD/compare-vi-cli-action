@@ -78,11 +78,15 @@ test('workflow-writing callers use the enclave wrapper instead of the low-level 
   const checkWorkflowDrift = read('tools/Check-WorkflowDrift.ps1');
   assert.match(checkWorkflowDrift, /workflow_enclave\.py/);
   assert.match(checkWorkflowDrift, /--default-scope/);
+  assert.match(checkWorkflowDrift, /COMPAREVI_PYTHON_EXE/);
+  assert.match(checkWorkflowDrift, /-3/);
+  assert.match(checkWorkflowDrift, /if \(\$FailOnDrift\)\s*\{\s*exit 2\s*\}/);
   assert.doesNotMatch(checkWorkflowDrift, /update_workflows\.py/);
 
   const dockerChecks = read('tools/Run-NonLVChecksInDocker.ps1');
   assert.match(dockerChecks, /workflow_enclave\.py/);
   assert.match(dockerChecks, /--default-scope/);
+  assert.match(dockerChecks, /COMPAREVI_WORKFLOW_ENCLAVE_HOME=\/tmp\/comparevi-workflow-enclave/);
   assert.match(dockerChecks, /node tools\/npm\/run-script\.mjs lint:md/);
   assert.doesNotMatch(dockerChecks, /update_workflows\.py/);
 

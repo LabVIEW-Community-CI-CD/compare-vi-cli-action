@@ -342,7 +342,9 @@ jobs:
 
     - name: Run markdownlint (scoped changed files)
       shell: bash
-      run: node tools/npm/run-script.mjs lint:md:changed
+      run: |
+        node tools/npm/run-script.mjs lint:md:changed
+
 
     - name: Markdown lint determinism regression (Pester)
       shell: pwsh
@@ -380,9 +382,6 @@ jobs:
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
-    - name: Run markdownlint
-      run: |
-        node tools/npm/run-script.mjs lint:md:changed
     env:
       ACTIONLINT_VERSION: '${{ vars.ACTIONLINT_VERSION || ''1.7.7'' }}'
   validate-scope-plan:
