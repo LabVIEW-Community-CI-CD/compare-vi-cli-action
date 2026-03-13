@@ -302,6 +302,14 @@ export function buildLocalReviewLoopRequest({ standingIssue, selectedIssue, poli
     : standingHasMarker
       ? 'standing-issue-body'
       : 'selected-issue-body';
+  const requestedChecks = {
+    actionlint: localReviewLoopPolicy.actionlint === true,
+    markdownlint: localReviewLoopPolicy.markdownlint === true,
+    docs: localReviewLoopPolicy.docs === true,
+    workflow: localReviewLoopPolicy.workflow === true,
+    dotnetCliBuild: localReviewLoopPolicy.dotnetCliBuild === true,
+    requirementsVerification: localReviewLoopPolicy.requirementsVerification === true
+  };
 
   return {
     requested: true,
@@ -309,12 +317,7 @@ export function buildLocalReviewLoopRequest({ standingIssue, selectedIssue, poli
     standingIssueNumber: coercePositiveInteger(standingIssue?.number),
     standingIssueUrl: normalizeText(standingIssue?.url) || null,
     receiptPath: localReviewLoopPolicy.receiptPath,
-    actionlint: localReviewLoopPolicy.actionlint === true,
-    markdownlint: localReviewLoopPolicy.markdownlint === true,
-    docs: localReviewLoopPolicy.docs === true,
-    workflow: localReviewLoopPolicy.workflow === true,
-    dotnetCliBuild: localReviewLoopPolicy.dotnetCliBuild === true,
-    requirementsVerification: localReviewLoopPolicy.requirementsVerification === true,
+    ...requestedChecks,
     niLinuxReviewSuite: localReviewLoopPolicy.niLinuxReviewSuite === true || singleViHistory?.enabled === true,
     singleViHistory
   };

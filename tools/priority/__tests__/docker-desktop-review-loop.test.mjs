@@ -136,9 +136,16 @@ test('parseArgs reports unknown trailing options as unknown instead of missing v
   );
 });
 
+test('parseArgs reports unknown options as unknown even when they have a trailing value', () => {
+  assert.throws(
+    () => parseArgs(['node', 'docker-desktop-review-loop.mjs', '--unknown', 'value']),
+    /Unknown option: --unknown/
+  );
+});
+
 test('default docker desktop review-loop command pins an explicit spawn maxBuffer', () => {
   const source = readFileSync(new URL('../docker-desktop-review-loop.mjs', import.meta.url), 'utf8');
-  assert.equal(DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES, 32 * 1024 * 1024);
+  assert.equal(DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES, 64 * 1024 * 1024);
   assert.match(source, /maxBuffer:\s*DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES/);
 });
 

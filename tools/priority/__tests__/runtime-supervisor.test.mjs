@@ -7,7 +7,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compareviRuntimeTest, parseArgs, runRuntimeSupervisor } from '../runtime-supervisor.mjs';
-import { buildCanonicalDeliveryDecision, classifyPullRequestWork, fetchIssueExecutionGraph, planDeliveryBrokerAction, runDeliveryTurnBroker } from '../delivery-agent.mjs';
+import {
+  buildCanonicalDeliveryDecision,
+  buildLocalReviewLoopRequest,
+  classifyPullRequestWork,
+  fetchIssueExecutionGraph,
+  planDeliveryBrokerAction,
+  runDeliveryTurnBroker
+} from '../delivery-agent.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -267,6 +274,61 @@ test('buildCompareviTaskPacket only reads local review-loop directives from bodi
   assert.equal(packet.evidence.delivery.localReviewLoop.source, 'selected-issue-body');
   assert.equal(packet.evidence.delivery.localReviewLoop.markdownlint, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.requirementsVerification, true);
+});
+
+test('buildLocalReviewLoopRequest treats policy booleans as the full requested check set once the marker is present', () => {
+  const request = buildLocalReviewLoopRequest({
+    standingIssue: {
+      number: 1053,
+      body: [
+        '## Daemon-first local iteration extension',
+        '- single-VI touch-aware history on develop'
+      ].join('\n'),
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1053'
+    },
+    selectedIssue: {
+      number: 1054,
+      body: 'No local review loop marker here.',
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1054'
+    },
+    policy: {
+      localReviewLoop: {
+        enabled: true,
+        bodyMarkers: ['Daemon-first local iteration extension'],
+        receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+        actionlint: false,
+        markdownlint: true,
+        docs: false,
+        workflow: true,
+        dotnetCliBuild: false,
+        requirementsVerification: true,
+        niLinuxReviewSuite: false,
+        singleViHistory: {
+          enabled: true,
+          targetPath: 'fixtures/vi-attr/Head.vi',
+          branchRef: 'develop',
+          baselineRef: '',
+          maxCommitCount: 256
+        }
+      }
+    }
+  });
+
+  assert.equal(request.source, 'standing-issue-body');
+  assert.equal(request.actionlint, false);
+  assert.equal(request.markdownlint, true);
+  assert.equal(request.docs, false);
+  assert.equal(request.workflow, true);
+  assert.equal(request.dotnetCliBuild, false);
+  assert.equal(request.requirementsVerification, true);
+  assert.equal(request.niLinuxReviewSuite, true);
+  assert.deepEqual(request.singleViHistory, {
+    enabled: true,
+    targetPath: 'fixtures/vi-attr/Head.vi',
+    branchRef: 'develop',
+    baselineRef: null,
+    maxCommitCount: 256
+  });
 });
 
 test('comparevi branch resolver matches the repo issue branch naming contract', () => {

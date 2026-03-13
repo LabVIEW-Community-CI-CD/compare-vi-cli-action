@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_REVIEW_LOOP_RECEIPT_PATH = path.join('tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
 export const DEFAULT_LOCAL_REVIEW_LOOP_COMMAND = ['node', 'tools/priority/docker-desktop-review-loop.mjs'];
-export const DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
+export const DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
 function normalizeText(value) {
   if (value == null) {
@@ -304,13 +304,19 @@ export function parseArgs(argv = process.argv) {
       }
     }
   };
-  const optionsWithValues = new Set([
-    '--repo-root',
-    '--receipt-path',
-    '--history-target-path',
-    '--history-branch-ref',
-    '--history-baseline-ref',
-    '--history-max-commit-count'
+  const valueOptionHandlers = new Map([
+    ['--repo-root', (value) => { options.repoRoot = value; }],
+    ['--receipt-path', (value) => { options.request.receiptPath = value; }],
+    ['--history-target-path', (value) => {
+      options.request.singleViHistory.enabled = true;
+      options.request.niLinuxReviewSuite = true;
+      options.request.singleViHistory.targetPath = value;
+    }],
+    ['--history-branch-ref', (value) => { options.request.singleViHistory.branchRef = value; }],
+    ['--history-baseline-ref', (value) => { options.request.singleViHistory.baselineRef = value; }],
+    ['--history-max-commit-count', (value) => {
+      options.request.singleViHistory.maxCommitCount = coerceNonNegativeInteger(value);
+    }]
   ]);
 
   for (let index = 0; index < args.length; index += 1) {
@@ -349,7 +355,7 @@ export function parseArgs(argv = process.argv) {
       continue;
     }
 
-    if (token.startsWith('-') && !optionsWithValues.has(token)) {
+    if (token.startsWith('-') && !valueOptionHandlers.has(token)) {
       throw new Error(`Unknown option: ${token}`);
     }
 
@@ -358,19 +364,7 @@ export function parseArgs(argv = process.argv) {
       throw new Error(`Missing value for ${token}.`);
     }
     index += 1;
-    if (token === '--repo-root') options.repoRoot = next;
-    else if (token === '--receipt-path') options.request.receiptPath = next;
-    else if (token === '--history-target-path') {
-      options.request.singleViHistory.enabled = true;
-      options.request.niLinuxReviewSuite = true;
-      options.request.singleViHistory.targetPath = next;
-    } else if (token === '--history-branch-ref') {
-      options.request.singleViHistory.branchRef = next;
-    } else if (token === '--history-baseline-ref') {
-      options.request.singleViHistory.baselineRef = next;
-    } else if (token === '--history-max-commit-count') {
-      options.request.singleViHistory.maxCommitCount = coerceNonNegativeInteger(next);
-    }
+    valueOptionHandlers.get(token)(next);
   }
 
   return options;
