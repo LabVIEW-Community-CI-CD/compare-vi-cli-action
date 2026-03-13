@@ -19,10 +19,19 @@ single source of truth when deciding which helper to run locally, invoke from VS
   - Platform note: install PowerShell 7 (`pwsh`) on macOS/Linux; when LabVIEW is unavailable, run the command
     without leak-cleanup switches until parity wiring lands.
 - **`tools/Run-NonLVChecksInDocker.ps1`**
-  - Scope: containerised lint, docs links, workflow checkout contracts, CLI build.
+  - Scope: containerised lint, docs links, workflow checkout contracts, workflow drift, CLI build.
   - Typical invocation: `pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage`.
-  - Exit semantics: first failing container exit (`0` happy, `3` = drift).
+  - Exit semantics: first failing container exit.
   - Artifacts: container logs, optional `dist/comparevi-cli/*`.
+- **`tools/Check-WorkflowDrift.ps1`**
+  - Scope: workflow rewrite drift via the pinned `ruamel.yaml` enclave under `tools/workflows/**`.
+  - Typical invocation: `pwsh -File tools/Check-WorkflowDrift.ps1`.
+  - Repo script equivalents:
+    - `node tools/npm/run-script.mjs workflow:drift:ensure`
+    - `node tools/npm/run-script.mjs workflow:drift:check`
+    - `node tools/npm/run-script.mjs workflow:drift:write`
+  - Exit semantics: `0` = clean or notice-only drift, `3` = drift when `-FailOnDrift` is used.
+  - Artifacts: console diff plus optional git staging/commit.
 - **`tools/Start-IntegrationGated.ps1`**
   - Scope: orchestrated integration gate with watcher + auto-push.
   - Typical invocation: `pwsh -File tools/Start-IntegrationGated.ps1 -AutoPush -Start -Watch`.
@@ -80,19 +89,19 @@ Audience: local validation for PowerShell unit/integration suites and leak detec
 Audience: contributors without the full local toolchain or anyone mirroring CI behaviour.
 
 - **What it does** – Spins up Docker containers for `actionlint`, `markdownlint`, documentation link checks, workflow
-  checkout contract validation, and optional CompareVI CLI builds. Supports the published tools image (`-UseToolsImage`) or
-  per-check public images.
+  checkout contract validation, workflow drift validation, and optional CompareVI CLI builds. Supports the published
+  tools image (`-UseToolsImage`) or per-check public images.
 - **Inputs** – Common switches:
   - `-UseToolsImage [-ToolsImageTag <tag>]` to route everything through the curated tools container (honours
     `COMPAREVI_TOOLS_IMAGE`).
   - `-PrioritySync` to run `priority:sync` inside the container (requires `GH_TOKEN`).
-  - `-FailOnWorkflowDrift` remains as a deprecated compatibility switch; workflow checkout contracts now fail
-    immediately when enabled.
+  - `-FailOnWorkflowDrift` remains as a deprecated compatibility switch; workflow drift is enforced whenever
+    `-SkipWorkflow` is not set.
   - Skip flags (`-SkipActionlint`, `-SkipMarkdown`, `-SkipDocs`, `-SkipWorkflow`, `-SkipDotnetCliBuild`) for tight
     loops.
 - **Expected output** - Console logs reflect each container invocation. The CLI build emits `dist/comparevi-cli/*` when
-  enabled. Workflow checkout contracts run through the pinned Node test surface and fail cleanly when the checkout
-  contract drifts.
+  enabled. Workflow checkout contracts run through the pinned Node test surface, and workflow drift runs through the
+  pinned `ruamel.yaml` enclave wrapper.
 - **Failure modes** - Missing Docker daemon, authentication gaps (when the tools image is private), or missing GH
   tokens during priority sync. Exit code is the first failing container code.
 - **When to run** - Before publishing documentation, when validating the tools image, or after editing workflows to
@@ -103,6 +112,21 @@ Audience: contributors without the full local toolchain or anyone mirroring CI b
   `docs/knowledgebase/DOCKER_TOOLS_PARITY.md` for contribution notes).
 - **Further reading** - `docs/knowledgebase/DOCKER_TOOLS_PARITY.md` captures environment prerequisites, expected
   artifacts, and cleanup guidance.
+
+## `tools/Check-WorkflowDrift.ps1`
+
+Audience: operators and CI surfaces that need deterministic workflow rewrite validation.
+
+- **What it does** – Invokes `tools/workflows/workflow_enclave.py`, which provisions a repo-local virtual environment
+  at `tools/workflows/.venv`, installs the pinned `ruamel.yaml` requirements, and runs the low-level
+  `update_workflows.py` compatibility CLI across the managed workflow set declared in
+  `tools/workflows/workflow-manifest.json`.
+- **Inputs** – `-AutoFix`, `-FailOnDrift`, `-Stage`, and `-CommitMessage`.
+- **Expected output** – Console diff for changed workflows, plus optional staging/commit when explicitly requested.
+- **Failure modes** – Missing Python, pinned dependency installation failures, or actual workflow drift when
+  `-FailOnDrift` is used.
+- **When to run** – Before workflow PRs, from `validate.yml`, or whenever a containerized parity run needs the same
+  rewrite contract as local execution.
 
 ## `tools/Start-IntegrationGated.ps1`
 

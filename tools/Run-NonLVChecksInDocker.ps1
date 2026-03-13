@@ -286,7 +286,7 @@ function Invoke-Container {
 }
 
 if ($FailOnWorkflowDrift) {
-  Write-Verbose 'FailOnWorkflowDrift is deprecated; workflow checkout contract checks are enforced whenever SkipWorkflow is not set.'
+  Write-Verbose 'FailOnWorkflowDrift is deprecated; workflow drift is enforced whenever SkipWorkflow is not set.'
 }
 
 # Build CLI via tools image or plain SDK
@@ -351,7 +351,7 @@ if ($UseToolsImage -and $ToolsImageTag) {
     Invoke-Container -Image $ToolsImageTag -Arguments @('actionlint','-color') -Label 'actionlint (tools)'
   }
   if (-not $SkipMarkdown) {
-    $cmd = 'markdownlint "**/*.md" --config .markdownlint.jsonc --ignore node_modules --ignore bin --ignore vendor'
+    $cmd = 'node tools/npm/run-script.mjs lint:md'
     Invoke-Container -Image $ToolsImageTag -Arguments @('bash','-lc',$cmd) -AcceptExitCodes @(0,1) -Label 'markdownlint (tools)'
   }
   if (-not $SkipDocs) {
@@ -360,16 +360,15 @@ if ($UseToolsImage -and $ToolsImageTag) {
   if (-not $SkipWorkflow) {
     $testArgs = @('--test') + $workflowContractTests
     Invoke-Container -Image $ToolsImageTag -Arguments (@('node') + $testArgs) -Label 'workflow-contracts (tools)' | Out-Null
+    $workflowDriftArgs = @('python', 'tools/workflows/workflow_enclave.py', '--default-scope', '--check')
+    Invoke-Container -Image $ToolsImageTag -Arguments $workflowDriftArgs -Label 'workflow-drift (tools)' | Out-Null
   }
 } else {
   if (-not $SkipActionlint) {
     Invoke-Container -Image 'rhysd/actionlint:1.7.7' -Arguments @('-color') -Label 'actionlint'
   }
   if (-not $SkipMarkdown) {
-    $cmd = @'
-npm install -g markdownlint-cli && \
-markdownlint "**/*.md" --config .markdownlint.jsonc --ignore node_modules --ignore bin --ignore vendor
-'@
+    $cmd = 'node tools/npm/run-script.mjs lint:md'
     Invoke-Container -Image 'node:20-alpine' -Arguments @('sh','-lc',$cmd) -AcceptExitCodes @(0,1) -Label 'markdownlint'
   }
   if (-not $SkipDocs) {
@@ -378,6 +377,8 @@ markdownlint "**/*.md" --config .markdownlint.jsonc --ignore node_modules --igno
   if (-not $SkipWorkflow) {
     $testArgs = @('--test') + $workflowContractTests
     Invoke-Container -Image 'node:20' -Arguments (@('node') + $testArgs) -Label 'workflow-contracts' | Out-Null
+    $workflowDriftArgs = @('python', 'tools/workflows/workflow_enclave.py', '--default-scope', '--check')
+    Invoke-Container -Image 'python:3.12' -Arguments $workflowDriftArgs -Label 'workflow-drift' | Out-Null
   }
 }
 
