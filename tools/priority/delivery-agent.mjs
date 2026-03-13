@@ -253,8 +253,11 @@ function normalizeLocalReviewLoopPolicy(value) {
 }
 
 function bodyContainsAnyMarker(body, markers = []) {
-  const normalizedBody = String(body || '');
-  return normalizeStringList(markers).some((marker) => normalizedBody.includes(marker));
+  const normalizedBody = normalizeText(body).toLowerCase();
+  if (!normalizedBody) {
+    return false;
+  }
+  return normalizeStringList(markers).some((marker) => normalizedBody.includes(normalizeText(marker).toLowerCase()));
 }
 
 export function buildLocalReviewLoopRequest({ standingIssue, selectedIssue, policy } = {}) {
@@ -264,8 +267,10 @@ export function buildLocalReviewLoopRequest({ standingIssue, selectedIssue, poli
   }
   const standingBody = typeof standingIssue?.body === 'string' ? standingIssue.body : '';
   const selectedBody = typeof selectedIssue?.body === 'string' ? selectedIssue.body : '';
+  const standingHasMarker = bodyContainsAnyMarker(standingBody, localReviewLoopPolicy.bodyMarkers);
+  const selectedHasMarker = bodyContainsAnyMarker(selectedBody, localReviewLoopPolicy.bodyMarkers);
   const directiveBody = [standingBody, selectedBody].filter(Boolean).join('\n');
-  if (!bodyContainsAnyMarker(directiveBody, localReviewLoopPolicy.bodyMarkers)) {
+  if (!standingHasMarker && !selectedHasMarker) {
     return null;
   }
 
@@ -286,7 +291,7 @@ export function buildLocalReviewLoopRequest({ standingIssue, selectedIssue, poli
 
   return {
     requested: true,
-    source: 'standing-issue-body',
+    source: standingHasMarker ? 'standing-issue-body' : 'selected-issue-body',
     standingIssueNumber: coercePositiveInteger(standingIssue?.number),
     standingIssueUrl: normalizeText(standingIssue?.url) || null,
     receiptPath: localReviewLoopPolicy.receiptPath,
@@ -1659,25 +1664,52 @@ async function maybeRunLocalReviewLoop({
   const args = [...wrapperCommand.slice(1), ...wrapperArgs];
   const result = await runCommand(command, args, { cwd: repoRoot, env: process.env }, deps);
   let reviewLoopResult = null;
+  let stdoutParseError = '';
   try {
     reviewLoopResult = parseJsonObjectOutput(result.stdout, 'local review loop stdout');
-  } catch {
+  } catch (error) {
+    stdoutParseError = normalizeText(error?.message);
     reviewLoopResult = null;
   }
 
   const commandText = [command, ...args].join(' ');
   const receiptPath = normalizeText(request.receiptPath) || localReviewLoopPolicy.receiptPath;
+  const resolvedReceiptPath = path.resolve(repoRoot, receiptPath);
+  let receiptFromFile = null;
+  let receiptReadError = '';
+  try {
+    receiptFromFile = await readJsonIfPresent(resolvedReceiptPath);
+  } catch (error) {
+    receiptReadError = normalizeText(error?.message);
+  }
+  if (!reviewLoopResult && receiptFromFile && typeof receiptFromFile === 'object') {
+    reviewLoopResult = {
+      status: normalizeText(receiptFromFile?.overall?.status) || 'failed',
+      source: 'docker-desktop-review-loop-receipt',
+      reason: normalizeText(receiptFromFile?.overall?.message),
+      receiptPath,
+      receipt: receiptFromFile
+    };
+  }
+  const ambiguousOutputReason = [
+    stdoutParseError ? `Local review loop stdout was not valid JSON: ${stdoutParseError}` : '',
+    receiptReadError ? `Receipt read failed: ${receiptReadError}` : '',
+    !reviewLoopResult ? 'Docker/Desktop review loop did not yield a valid machine-readable result.' : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
   const localReviewLoopDetails = {
-    status: normalizeText(reviewLoopResult?.status) || (result.status === 0 ? 'passed' : 'failed'),
+    status: normalizeText(reviewLoopResult?.status) || 'failed',
     source: normalizeText(reviewLoopResult?.source) || 'docker-desktop-review-loop',
     reason:
       normalizeText(reviewLoopResult?.reason) ||
       normalizeText(reviewLoopResult?.receipt?.overall?.message) ||
+      ambiguousOutputReason ||
       normalizeText(result.stderr) ||
       normalizeText(result.stdout) ||
       'Docker/Desktop review loop did not return a status.',
     receiptPath,
-    receipt: reviewLoopResult?.receipt ?? null
+    receipt: reviewLoopResult?.receipt ?? receiptFromFile ?? null
   };
 
   if (result.status !== 0 || localReviewLoopDetails.status !== 'passed') {

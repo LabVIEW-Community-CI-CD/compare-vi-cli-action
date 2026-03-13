@@ -85,15 +85,6 @@ test('buildDockerDesktopReviewLoopPowerShellArgs uses the Docker helper contract
 test('runDockerDesktopReviewLoop returns passed when the receipt reports passed', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-'));
   const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
-  await mkdir(path.dirname(receiptPath), { recursive: true });
-  await writeFile(
-    receiptPath,
-    `${JSON.stringify({
-      schema: 'docker-tools-parity-review-loop@v1',
-      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
-    })}\n`,
-    'utf8'
-  );
 
   const result = await runDockerDesktopReviewLoop({
     repoRoot,
@@ -104,11 +95,22 @@ test('runDockerDesktopReviewLoop returns passed when the receipt reports passed'
       requirementsVerification: true,
       niLinuxReviewSuite: false
     },
-    runCommandFn: () => ({
-      status: 0,
-      stdout: '',
-      stderr: ''
-    })
+    runCommandFn: async () => {
+      await mkdir(path.dirname(receiptPath), { recursive: true });
+      await writeFile(
+        receiptPath,
+        `${JSON.stringify({
+          schema: 'docker-tools-parity-review-loop@v1',
+          overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
+        })}\n`,
+        'utf8'
+      );
+      return {
+        status: 0,
+        stdout: '',
+        stderr: ''
+      };
+    }
   });
 
   assert.equal(result.status, 'passed');
@@ -151,8 +153,44 @@ test('runDockerDesktopReviewLoop fails closed when the receipt reports a failed 
 test('runDockerDesktopReviewLoop fails closed with a deterministic reason when the receipt JSON is corrupt', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-corrupt-'));
   const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+
+  const result = await runDockerDesktopReviewLoop({
+    repoRoot,
+    request: {
+      requested: true,
+      receiptPath: path.relative(repoRoot, receiptPath),
+      markdownlint: true,
+      requirementsVerification: false,
+      niLinuxReviewSuite: false
+    },
+    runCommandFn: async () => {
+      await mkdir(path.dirname(receiptPath), { recursive: true });
+      await writeFile(receiptPath, '{ not-json }\n', 'utf8');
+      return {
+        status: 0,
+        stdout: '',
+        stderr: ''
+      };
+    }
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.match(result.reason, /corrupt receipt/i);
+  assert.equal(result.receipt, null);
+});
+
+test('runDockerDesktopReviewLoop deletes stale receipts and fails closed on spawn errors', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-spawn-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
   await mkdir(path.dirname(receiptPath), { recursive: true });
-  await writeFile(receiptPath, '{ not-json }\n', 'utf8');
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'docker-tools-parity-review-loop@v1',
+      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
+    })}\n`,
+    'utf8'
+  );
 
   const result = await runDockerDesktopReviewLoop({
     repoRoot,
@@ -164,13 +202,14 @@ test('runDockerDesktopReviewLoop fails closed with a deterministic reason when t
       niLinuxReviewSuite: false
     },
     runCommandFn: () => ({
-      status: 0,
+      status: null,
       stdout: '',
-      stderr: ''
+      stderr: '',
+      error: new Error('spawn pwsh ENOENT')
     })
   });
 
   assert.equal(result.status, 'failed');
-  assert.match(result.reason, /corrupt receipt/i);
+  assert.match(result.reason, /spawn pwsh ENOENT/i);
   assert.equal(result.receipt, null);
 });

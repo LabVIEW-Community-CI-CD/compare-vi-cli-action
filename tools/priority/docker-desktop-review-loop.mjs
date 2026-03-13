@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +39,21 @@ async function readJsonIfPresent(filePath) {
     }
     throw error;
   }
+}
+
+function normalizeCommandResult(result = {}) {
+  const stderr = [
+    normalizeText(result.stderr),
+    normalizeText(result.error?.message),
+    normalizeText(result.signal ? `Process terminated by signal ${result.signal}.` : '')
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    status: Number.isInteger(result.status) ? result.status : 1,
+    stdout: normalizeText(result.stdout),
+    stderr
+  };
 }
 
 export function normalizeRequest(request = {}) {
@@ -133,17 +148,14 @@ export function buildDockerDesktopReviewLoopPowerShellArgs(request = {}) {
 }
 
 function defaultRunCommand(command, args, { cwd, env }) {
-  const result = spawnSync(command, args, {
-    cwd,
-    env,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-  return {
-    status: result.status ?? 0,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? ''
-  };
+  return normalizeCommandResult(
+    spawnSync(command, args, {
+      cwd,
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+  );
 }
 
 export async function runDockerDesktopReviewLoop({
@@ -168,10 +180,16 @@ export async function runDockerDesktopReviewLoop({
     };
   }
 
-  const result = await runCommandFn(command, args, {
+  await rm(receiptPath, { force: true }).catch((error) => {
+    if (error?.code !== 'ENOENT') {
+      throw error;
+    }
+  });
+
+  const result = normalizeCommandResult(await runCommandFn(command, args, {
     cwd: repoRoot,
     env: process.env
-  });
+  }));
   const receipt = await readJsonIfPresent(receiptPath);
   if (receipt?.__parseError) {
     return {
