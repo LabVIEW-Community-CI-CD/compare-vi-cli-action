@@ -87,9 +87,16 @@ function coercePositiveInteger(value, fallback = 0) {
 }
 
 function normalizeStringList(value) {
-  return Array.isArray(value)
-    ? value.map((entry) => normalizeText(entry)).filter(Boolean)
-    : [];
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeText(entry)).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(/\r?\n/)
+      .map((entry) => normalizeText(entry))
+      .filter(Boolean);
+  }
+  return [];
 }
 
 function normalizeProfileName(value) {
@@ -128,6 +135,28 @@ function runCommand(command, args, { cwd, env } = {}) {
 
 function runGit(repoRoot, args, env = process.env) {
   return runCommand('git', ['-C', repoRoot, ...args], { cwd: repoRoot, env });
+}
+
+function buildMergeBaseCandidates(env = process.env) {
+  const baseRef = normalizeText(env.VALIDATE_BASE_REF) || normalizeText(env.GITHUB_BASE_REF);
+  const baseSha = normalizeText(env.VALIDATE_BASE_SHA) || normalizeText(env.GITHUB_BASE_SHA);
+  const candidates = [];
+
+  if (baseSha) {
+    candidates.push(['merge-base', 'HEAD', baseSha]);
+  }
+  if (baseRef) {
+    candidates.push(['merge-base', 'HEAD', `upstream/${baseRef}`]);
+    candidates.push(['merge-base', 'HEAD', `origin/${baseRef}`]);
+    candidates.push(['merge-base', 'HEAD', baseRef]);
+  }
+  candidates.push(['merge-base', 'HEAD', 'upstream/develop']);
+  candidates.push(['merge-base', 'HEAD', 'origin/develop']);
+  candidates.push(['rev-parse', 'HEAD~1']);
+  return {
+    baseRef,
+    candidates
+  };
 }
 
 function resolveRepoPath(repoRoot, candidatePath) {
@@ -387,15 +416,29 @@ export function resolveRepoGitState(repoRoot) {
   };
 }
 
-function resolveMergeBase(repoRoot) {
-  for (const candidate of [
-    ['merge-base', 'HEAD', 'upstream/develop'],
-    ['merge-base', 'HEAD', 'origin/develop'],
-    ['rev-parse', 'HEAD~1']
-  ]) {
+function resolveMergeBase(repoRoot, env = process.env) {
+  const { baseRef, candidates } = buildMergeBaseCandidates(env);
+  for (const candidate of candidates) {
     const result = runGit(repoRoot, candidate);
     if (result.status === 0 && normalizeText(result.stdout)) {
       return normalizeText(result.stdout);
+    }
+  }
+  if (baseRef && env.GITHUB_ACTIONS === 'true') {
+    for (const remote of ['origin', 'upstream']) {
+      const fetchResult = runGit(repoRoot, ['fetch', '--no-tags', '--prune', '--depth=1', remote, baseRef], env);
+      if (fetchResult.status !== 0) {
+        continue;
+      }
+      for (const candidate of [
+        ['merge-base', 'HEAD', `refs/remotes/${remote}/${baseRef}`],
+        ['merge-base', 'HEAD', 'FETCH_HEAD']
+      ]) {
+        const result = runGit(repoRoot, candidate, env);
+        if (result.status === 0 && normalizeText(result.stdout)) {
+          return normalizeText(result.stdout);
+        }
+      }
     }
   }
   return null;

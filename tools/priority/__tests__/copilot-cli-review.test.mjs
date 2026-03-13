@@ -302,3 +302,61 @@ test('runCopilotCliReview accumulates novel findings across bounded passes', asy
   assert.equal(result.receipt.passes[2].novelActionableFindingCount, 0);
   assert.equal(result.receipt.passes[3].noNovelFindingStreak, 2);
 });
+
+test('runCopilotCliReview resolves head-mode merge base from the validate base sha env when upstream refs are absent', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-review-head-env-'));
+  runGit(repoRoot, ['init']);
+  runGit(repoRoot, ['config', 'user.name', 'Agent Runner']);
+  runGit(repoRoot, ['config', 'user.email', 'agent@example.com']);
+  await writeFile(path.join(repoRoot, 'README.md'), '# repo\n', 'utf8');
+  runGit(repoRoot, ['add', 'README.md']);
+  runGit(repoRoot, ['commit', '-m', 'init']);
+  const baseSha = runGit(repoRoot, ['rev-parse', 'HEAD']);
+  await writeFile(path.join(repoRoot, 'docs.md'), '# docs\n', 'utf8');
+  runGit(repoRoot, ['add', 'docs.md']);
+  runGit(repoRoot, ['commit', '-m', 'update']);
+
+  const previousValidateBaseSha = process.env.VALIDATE_BASE_SHA;
+  const previousValidateBaseRef = process.env.VALIDATE_BASE_REF;
+  try {
+    process.env.VALIDATE_BASE_SHA = baseSha;
+    process.env.VALIDATE_BASE_REF = 'develop';
+
+    const result = await runCopilotCliReview({
+      repoRoot,
+      profile: 'daemon',
+      runCommandFn: async () => ({
+        status: 0,
+        stdout: [
+          JSON.stringify({ type: 'session.tools_updated', data: { model: 'gpt-5.4' } }),
+          JSON.stringify({
+            type: 'assistant.message',
+            data: {
+              content: JSON.stringify({
+                status: 'approved',
+                summary: 'No actionable findings.',
+                findings: []
+              })
+            }
+          })
+        ].join('\n'),
+        stderr: ''
+      })
+    });
+
+    assert.equal(result.status, 'passed');
+    assert.equal(result.receipt.context.baseRef, baseSha);
+    assert.deepEqual(result.receipt.context.selectedFiles, ['docs.md']);
+  } finally {
+    if (previousValidateBaseSha == null) {
+      delete process.env.VALIDATE_BASE_SHA;
+    } else {
+      process.env.VALIDATE_BASE_SHA = previousValidateBaseSha;
+    }
+    if (previousValidateBaseRef == null) {
+      delete process.env.VALIDATE_BASE_REF;
+    } else {
+      process.env.VALIDATE_BASE_REF = previousValidateBaseRef;
+    }
+  }
+});
