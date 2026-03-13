@@ -3175,7 +3175,7 @@ export async function runDeliveryTurnBroker({
             : 'checks-green',
         pollIntervalSecondsHint:
           coercePositiveInteger(planned.pullRequest?.pollIntervalSecondsHint) ?? null,
-        reviewPhase: planned.laneLifecycle === 'waiting-review' ? 'draft-review' : 'ready-validation',
+        reviewPhase: planned.pullRequest?.isDraft === true ? 'draft-review' : 'ready-validation',
         reviewMonitor:
           planned.laneLifecycle === 'waiting-review'
             ? planned.pullRequest?.copilotReviewWorkflow ?? null

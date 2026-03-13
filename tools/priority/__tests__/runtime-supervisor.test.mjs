@@ -3057,6 +3057,64 @@ test('delivery broker returns a prematurely ready PR to draft when draft-phase r
   assert.equal(brokerResult.details.reviewMonitor, null);
 });
 
+test('delivery broker keeps ready PR waiting-review state in ready-validation when the PR is not draft', async () => {
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: '/tmp/repo',
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-review',
+      objective: {
+        summary: 'Advance issue #1067'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-review',
+          pullRequest: {
+            number: 1067,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1067',
+            isDraft: false,
+            nextWakeCondition: 'review-disposition-updated',
+            pollIntervalSecondsHint: 30,
+            copilotReviewWorkflow: {
+              status: 'COMPLETED',
+              conclusion: 'SUCCESS'
+            }
+          },
+          mutationEnvelope: {
+            copilotReviewStrategy: 'draft-only-explicit',
+            maxActiveCodingLanes: 1
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: ['node', 'mock-broker']
+      })
+    }
+  });
+
+  assert.equal(brokerResult.status, 'completed');
+  assert.equal(brokerResult.outcome, 'waiting-review');
+  assert.equal(brokerResult.details.laneLifecycle, 'waiting-review');
+  assert.equal(brokerResult.details.reviewPhase, 'ready-validation');
+  assert.deepEqual(brokerResult.details.helperCallsExecuted, []);
+});
+
 test('delivery broker fails closed and re-drafts when a ready PR local receipt is stale and cannot be refreshed', async () => {
   const tempRepo = await mkdtemp(path.join(os.tmpdir(), 'delivery-broker-redraft-stale-receipt-'));
   runGit(tempRepo, ['init']);
