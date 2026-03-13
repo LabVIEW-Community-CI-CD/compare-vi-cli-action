@@ -16,7 +16,8 @@ $enclaveScript = Join-Path $repoRoot 'tools/workflows/workflow_enclave.py'
 $workflowManifestPath = Join-Path $repoRoot 'tools/workflows/workflow-manifest.json'
 $workflowManifest = Get-Content -LiteralPath $workflowManifestPath -Raw | ConvertFrom-Json -Depth 6
 $workflowFiles = @($workflowManifest.managedWorkflowFiles | Where-Object { $_ -is [string] })
-if ($workflowFiles.Count -eq 0 -or ($workflowFiles | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
+$blankWorkflowFiles = @($workflowFiles | Where-Object { [string]::IsNullOrWhiteSpace($_) })
+if ($workflowFiles.Count -eq 0 -or $blankWorkflowFiles.Count -gt 0) {
   throw "Workflow manifest must define a non-empty managedWorkflowFiles array of non-empty strings: $workflowManifestPath"
 }
 
