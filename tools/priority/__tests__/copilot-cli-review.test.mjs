@@ -27,6 +27,13 @@ test('normalizeCopilotCliReviewPolicy keeps the prompt-only no-tool default', ()
   assert.equal(policy.allowAllTools, false);
   assert.equal(policy.availableTools, '');
   assert.equal(policy.promptOnly, true);
+  assert.deepEqual(policy.convergence, {
+    minPasses: 2,
+    maxPasses: 4,
+    stopOnCleanPass: true,
+    stopOnNoNovelFindingsCount: 2,
+    promoteInstructionGapAfterRepeatedFindings: 2
+  });
   assert.deepEqual(policy.collaboration, DEFAULT_COPILOT_CLI_REVIEW_POLICY.collaboration);
 });
 
@@ -110,8 +117,13 @@ test('runCopilotCliReview writes a deterministic passed receipt for staged revie
   assert.equal(result.receipt.overall.status, 'passed');
   assert.equal(result.receipt.copilot.model, 'gpt-5.4-mini');
   assert.equal(result.receipt.context.selectedFiles[0], 'README.md');
+  assert.equal(result.receipt.convergence.passCount, 2);
+  assert.equal(result.receipt.convergence.stoppedReason, 'clean-pass');
+  assert.equal(result.receipt.passes.length, 2);
   await access(path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit-copilot-cli-review.prompt.txt'));
   await access(path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit-copilot-cli-review.jsonl'));
+  await access(path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit-copilot-cli-review.pass-1.jsonl'));
+  await access(path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit-copilot-cli-review.pass-2.jsonl'));
 });
 
 test('runCopilotCliReview fails closed on actionable findings', async () => {
@@ -157,4 +169,136 @@ test('runCopilotCliReview fails closed on actionable findings', async () => {
   assert.equal(result.status, 'failed');
   assert.equal(result.receipt.overall.actionableFindingCount, 1);
   assert.equal(result.receipt.findings[0].path, 'README.md');
+  assert.equal(result.receipt.convergence.passCount, 3);
+  assert.equal(result.receipt.convergence.stoppedReason, 'no-novel-findings');
+  assert.equal(result.receipt.convergence.instructionGapCandidate, true);
+  assert.equal(result.receipt.convergence.repeatedFindingFingerprints.length, 1);
+});
+
+test('runCopilotCliReview accumulates novel findings across bounded passes', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-review-convergence-'));
+  runGit(repoRoot, ['init']);
+  runGit(repoRoot, ['config', 'user.name', 'Agent Runner']);
+  runGit(repoRoot, ['config', 'user.email', 'agent@example.com']);
+  await writeFile(path.join(repoRoot, 'README.md'), '# repo\n', 'utf8');
+  runGit(repoRoot, ['add', 'README.md']);
+  runGit(repoRoot, ['commit', '-m', 'init']);
+  await writeFile(path.join(repoRoot, 'README.md'), '# repo\n\nupdated\n', 'utf8');
+  runGit(repoRoot, ['add', 'README.md']);
+
+  let invocation = 0;
+  const payloads = [
+    {
+      status: 'changes-requested',
+      summary: 'First finding.',
+      findings: [
+        {
+          severity: 'warning',
+          path: 'README.md',
+          line: 2,
+          title: 'Adjust wording',
+          body: 'First finding body.',
+          actionable: true
+        }
+      ]
+    },
+    {
+      status: 'changes-requested',
+      summary: 'Second finding.',
+      findings: [
+        {
+          severity: 'warning',
+          path: 'README.md',
+          line: 2,
+          title: 'Adjust wording',
+          body: 'First finding body.',
+          actionable: true
+        },
+        {
+          severity: 'warning',
+          path: 'README.md',
+          line: 3,
+          title: 'Add coverage',
+          body: 'Second finding body.',
+          actionable: true
+        }
+      ]
+    },
+    {
+      status: 'changes-requested',
+      summary: 'No novel findings remain.',
+      findings: [
+        {
+          severity: 'warning',
+          path: 'README.md',
+          line: 2,
+          title: 'Adjust wording',
+          body: 'First finding body.',
+          actionable: true
+        },
+        {
+          severity: 'warning',
+          path: 'README.md',
+          line: 3,
+          title: 'Add coverage',
+          body: 'Second finding body.',
+          actionable: true
+        }
+      ]
+    },
+    {
+      status: 'changes-requested',
+      summary: 'Still no novel findings remain.',
+      findings: [
+        {
+          severity: 'warning',
+          path: 'README.md',
+          line: 2,
+          title: 'Adjust wording',
+          body: 'First finding body.',
+          actionable: true
+        },
+        {
+          severity: 'warning',
+          path: 'README.md',
+          line: 3,
+          title: 'Add coverage',
+          body: 'Second finding body.',
+          actionable: true
+        }
+      ]
+    }
+  ];
+
+  const result = await runCopilotCliReview({
+    repoRoot,
+    profile: 'pre-commit',
+    stagedFiles: ['README.md'],
+    runCommandFn: async () => {
+      const payload = payloads[Math.min(invocation, payloads.length - 1)];
+      invocation += 1;
+      return {
+        status: 0,
+        stdout: [
+          JSON.stringify({ type: 'session.tools_updated', data: { model: 'gpt-5.4' } }),
+          JSON.stringify({
+            type: 'assistant.message',
+            data: {
+              content: JSON.stringify(payload)
+            }
+          })
+        ].join('\n'),
+        stderr: ''
+      };
+    }
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.receipt.overall.actionableFindingCount, 2);
+  assert.equal(result.receipt.convergence.passCount, 4);
+  assert.equal(result.receipt.convergence.stoppedReason, 'no-novel-findings');
+  assert.equal(result.receipt.passes[0].novelActionableFindingCount, 1);
+  assert.equal(result.receipt.passes[1].novelActionableFindingCount, 1);
+  assert.equal(result.receipt.passes[2].novelActionableFindingCount, 0);
+  assert.equal(result.receipt.passes[3].noNovelFindingStreak, 2);
 });

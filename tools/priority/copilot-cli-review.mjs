@@ -19,6 +19,13 @@ export const DEFAULT_COPILOT_CLI_REVIEW_POLICY = {
   disableBuiltinMcps: true,
   allowAllTools: false,
   availableTools: '',
+  convergence: {
+    minPasses: 2,
+    maxPasses: 4,
+    stopOnCleanPass: true,
+    stopOnNoNovelFindingsCount: 2,
+    promoteInstructionGapAfterRepeatedFindings: 2
+  },
   profiles: {
     preCommit: {
       enabled: true,
@@ -241,6 +248,22 @@ function normalizeProfilePolicy(value = {}) {
   };
 }
 
+function normalizeConvergencePolicy(value = {}) {
+  const convergence = value && typeof value === 'object' ? value : {};
+  const maxPasses = Math.max(coercePositiveInteger(convergence.maxPasses, 4), 1);
+  const minPasses = Math.min(Math.max(coercePositiveInteger(convergence.minPasses, 1), 1), maxPasses);
+  return {
+    minPasses,
+    maxPasses,
+    stopOnCleanPass: convergence.stopOnCleanPass !== false,
+    stopOnNoNovelFindingsCount: coercePositiveInteger(convergence.stopOnNoNovelFindingsCount, 2),
+    promoteInstructionGapAfterRepeatedFindings: coercePositiveInteger(
+      convergence.promoteInstructionGapAfterRepeatedFindings,
+      2
+    )
+  };
+}
+
 export function normalizeCopilotCliReviewPolicy(value = {}) {
   const policy = value && typeof value === 'object' ? value : {};
   const profiles = policy.profiles && typeof policy.profiles === 'object' ? policy.profiles : {};
@@ -256,6 +279,10 @@ export function normalizeCopilotCliReviewPolicy(value = {}) {
       policy.availableTools === ''
         ? ''
         : normalizeText(policy.availableTools) || DEFAULT_COPILOT_CLI_REVIEW_POLICY.availableTools,
+    convergence: normalizeConvergencePolicy({
+      ...DEFAULT_COPILOT_CLI_REVIEW_POLICY.convergence,
+      ...(policy.convergence && typeof policy.convergence === 'object' ? policy.convergence : {})
+    }),
     profiles: {
       preCommit: {
         ...DEFAULT_COPILOT_CLI_REVIEW_POLICY.profiles.preCommit,
@@ -302,6 +329,37 @@ export function normalizeCopilotCliReviewPolicy(value = {}) {
         DEFAULT_COPILOT_CLI_REVIEW_POLICY.collaboration.reviewPersona
     }
   };
+}
+
+function normalizeFingerprintText(value) {
+  return normalizeText(value).replace(/\s+/g, ' ').toLowerCase();
+}
+
+function buildFindingFingerprint(finding) {
+  return [
+    normalizeFingerprintText(finding.severity),
+    normalizeFingerprintText(finding.path),
+    Number.isInteger(finding.line) ? String(finding.line) : '',
+    normalizeFingerprintText(finding.title),
+    normalizeFingerprintText(finding.body).slice(0, 160)
+  ].join('|');
+}
+
+function dedupeFindings(findings = []) {
+  const unique = [];
+  const seen = new Set();
+  for (const finding of findings) {
+    const fingerprint = buildFindingFingerprint(finding);
+    if (seen.has(fingerprint)) {
+      continue;
+    }
+    seen.add(fingerprint);
+    unique.push({
+      ...finding,
+      fingerprint
+    });
+  }
+  return unique;
 }
 
 export async function loadCopilotCliReviewPolicy(repoRoot) {
@@ -519,7 +577,10 @@ function buildArtifactPaths(resolvedReceiptPath) {
   const stem = path.basename(resolvedReceiptPath, path.extname(resolvedReceiptPath));
   return {
     promptPath: path.join(directory, `${stem}.prompt.txt`),
-    responsePath: path.join(directory, `${stem}.jsonl`)
+    responsePath: path.join(directory, `${stem}.jsonl`),
+    responsePathForPass(passNumber) {
+      return path.join(directory, `${stem}.pass-${passNumber}.jsonl`);
+    }
   };
 }
 
@@ -570,6 +631,16 @@ export async function runCopilotCliReview({
       availableTools: normalizedPolicy.availableTools,
       exitCode: null
     },
+    convergence: {
+      ...normalizedPolicy.convergence,
+      passCount: 0,
+      stoppedReason: 'not-started',
+      noNovelFindingStreak: 0,
+      cleanPassCount: 0,
+      instructionGapCandidate: false,
+      instructionGapReason: '',
+      repeatedFindingFingerprints: []
+    },
     overall: {
       status: 'skipped',
       actionableFindingCount: 0,
@@ -577,6 +648,7 @@ export async function runCopilotCliReview({
       exitCode: 0
     },
     findings: [],
+    passes: [],
     artifacts: {
       receiptPath: resolvedReceiptPathInfo.normalized,
       promptPath: path.relative(repoRoot, artifactPaths.promptPath).replace(/\\/g, '/'),
@@ -661,59 +733,169 @@ export async function runCopilotCliReview({
     args.push('--model', normalizedPolicy.model);
   }
   args.push('--prompt', prompt);
+  const aggregatedFindings = [];
+  const findingOccurrences = new Map();
+  let noNovelFindingStreak = 0;
+  let cleanPassCount = 0;
+  let stoppedReason = 'max-passes';
+  let failureReason = '';
+  let lastPassExitCode = 0;
 
-  const commandResult = buildCommandResult(
-    await runCommandFn('copilot', args, {
-      cwd: repoRoot,
-      env: process.env
-    })
-  );
-  await writeFile(artifactPaths.responsePath, `${commandResult.stdout}\n`, 'utf8');
+  for (let passIndex = 1; passIndex <= normalizedPolicy.convergence.maxPasses; passIndex += 1) {
+    const startedAt = new Date();
+    const commandResult = buildCommandResult(
+      await runCommandFn('copilot', args, {
+        cwd: repoRoot,
+        env: process.env
+      })
+    );
+    lastPassExitCode = commandResult.status;
+    const passResponsePath = artifactPaths.responsePathForPass(passIndex);
+    await writeFile(passResponsePath, `${commandResult.stdout}\n`, 'utf8');
+    if (passIndex === 1) {
+      await writeFile(artifactPaths.responsePath, `${commandResult.stdout}\n`, 'utf8');
+    }
+
+    let structured = null;
+    let parsedJsonl = null;
+    let passFailureReason = '';
+    try {
+      parsedJsonl = parseCopilotJsonLines(commandResult.stdout);
+      receipt.copilot.model = parsedJsonl.model || receipt.copilot.model;
+      structured = parseStructuredAssistantPayload(parsedJsonl.assistantContent);
+    } catch (error) {
+      passFailureReason = normalizeText(error?.message);
+    }
+
+    if (commandResult.status !== 0) {
+      passFailureReason =
+        normalizeText(commandResult.stderr) ||
+        normalizeText(commandResult.stdout) ||
+        passFailureReason ||
+        'Copilot CLI review command failed.';
+    }
+
+    const passFindings = dedupeFindings(structured?.findings ?? []);
+    const passActionableFindings = passFindings.filter((entry) => entry.actionable !== false);
+    const novelActionableFindings = [];
+    const repeatedActionableFingerprints = [];
+
+    for (const finding of passActionableFindings) {
+      if (!findingOccurrences.has(finding.fingerprint)) {
+        novelActionableFindings.push(finding);
+        aggregatedFindings.push(finding);
+        findingOccurrences.set(finding.fingerprint, 1);
+      } else {
+        repeatedActionableFingerprints.push(finding.fingerprint);
+        findingOccurrences.set(finding.fingerprint, findingOccurrences.get(finding.fingerprint) + 1);
+      }
+    }
+
+    if (passActionableFindings.length === 0) {
+      cleanPassCount += 1;
+      noNovelFindingStreak = 0;
+    } else if (novelActionableFindings.length === 0) {
+      noNovelFindingStreak += 1;
+    } else {
+      noNovelFindingStreak = 0;
+    }
+
+    receipt.passes.push({
+      passNumber: passIndex,
+      startedAt: toIso(startedAt),
+      completedAt: toIso(),
+      durationMs: Math.max(Date.now() - startedAt.getTime(), 0),
+      status:
+        passFailureReason
+          ? 'failed'
+          : structured?.status === 'approved' && passActionableFindings.length === 0
+            ? 'approved'
+            : 'changes-requested',
+      summary:
+        passFailureReason ||
+        structured?.summary ||
+        (passActionableFindings.length === 0
+          ? 'Copilot CLI review reported no actionable findings.'
+          : 'Copilot CLI review reported actionable findings.'),
+      actionableFindingCount: passActionableFindings.length,
+      novelActionableFindingCount: novelActionableFindings.length,
+      noNovelFindingStreak,
+      repeatedActionableFingerprints,
+      model: receipt.copilot.model,
+      responsePath: path.relative(repoRoot, passResponsePath).replace(/\\/g, '/'),
+      findings: passFindings
+    });
+
+    if (passFailureReason) {
+      failureReason = passFailureReason;
+      stoppedReason = 'command-failed';
+      break;
+    }
+
+    const currentUnionActionableCount = aggregatedFindings.length;
+    if (
+      currentUnionActionableCount === 0 &&
+      normalizedPolicy.convergence.stopOnCleanPass === true &&
+      passIndex >= normalizedPolicy.convergence.minPasses
+    ) {
+      stoppedReason = 'clean-pass';
+      break;
+    }
+
+    if (
+      currentUnionActionableCount > 0 &&
+      normalizedPolicy.convergence.stopOnNoNovelFindingsCount > 0 &&
+      noNovelFindingStreak >= normalizedPolicy.convergence.stopOnNoNovelFindingsCount
+    ) {
+      stoppedReason = 'no-novel-findings';
+      break;
+    }
+  }
+
   receipt.copilot = {
     ...receipt.copilot,
-    executed: true,
-    exitCode: commandResult.status
+    executed: receipt.passes.length > 0,
+    exitCode: lastPassExitCode
   };
 
-  let structured = null;
-  let parsedJsonl = null;
-  let failureReason = '';
-  try {
-    parsedJsonl = parseCopilotJsonLines(commandResult.stdout);
-    receipt.copilot.model = parsedJsonl.model || receipt.copilot.model;
-    structured = parseStructuredAssistantPayload(parsedJsonl.assistantContent);
-  } catch (error) {
-    failureReason = normalizeText(error?.message);
-  }
+  const repeatedFindingFingerprints = [...findingOccurrences.entries()]
+    .filter(([, count]) => count >= normalizedPolicy.convergence.promoteInstructionGapAfterRepeatedFindings)
+    .map(([fingerprint]) => fingerprint)
+    .sort();
+  const instructionGapCandidate =
+    aggregatedFindings.length > 0 &&
+    repeatedFindingFingerprints.length > 0 &&
+    (stoppedReason === 'no-novel-findings' || stoppedReason === 'max-passes');
+  const instructionGapReason = instructionGapCandidate
+    ? 'Repeated local Copilot CLI findings converged without novel issues; refine Codex/Copilot instruction surfaces.'
+    : '';
 
-  if (commandResult.status !== 0) {
-    failureReason =
-      normalizeText(commandResult.stderr) ||
-      normalizeText(commandResult.stdout) ||
-      failureReason ||
-      'Copilot CLI review command failed.';
-  }
-
-  const findings = structured?.findings ?? [];
-  const actionableFindingCount = findings.filter((entry) => entry.actionable !== false).length;
-  const reviewApproved = structured?.status === 'approved' && actionableFindingCount === 0;
   const overallStatus =
-    failureReason || !reviewApproved
+    failureReason || aggregatedFindings.length > 0
       ? 'failed'
       : 'passed';
   const overallMessage =
     failureReason ||
-    structured?.summary ||
-    (reviewApproved
-      ? 'Copilot CLI review reported no actionable findings.'
-      : 'Copilot CLI review reported actionable findings.');
+    (aggregatedFindings.length > 0
+      ? `Copilot CLI review reported ${aggregatedFindings.length} unique actionable finding(s) across ${receipt.passes.length} pass(es).`
+      : `Copilot CLI review converged cleanly after ${receipt.passes.length} pass(es).`);
 
-  receipt.findings = findings;
+  receipt.findings = aggregatedFindings.map(({ fingerprint, ...finding }) => finding);
+  receipt.convergence = {
+    ...receipt.convergence,
+    passCount: receipt.passes.length,
+    stoppedReason,
+    noNovelFindingStreak,
+    cleanPassCount,
+    instructionGapCandidate,
+    instructionGapReason,
+    repeatedFindingFingerprints
+  };
   receipt.overall = {
     status: overallStatus,
-    actionableFindingCount,
+    actionableFindingCount: aggregatedFindings.length,
     message: overallMessage,
-    exitCode: commandResult.status
+    exitCode: lastPassExitCode
   };
   await writeFile(resolvedReceiptPathInfo.resolved, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
   return {

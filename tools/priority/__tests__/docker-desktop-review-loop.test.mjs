@@ -273,7 +273,11 @@ test('runDockerDesktopReviewLoop appends a passing Copilot CLI receipt to the co
       reason: 'Copilot CLI found no actionable issues.',
       receiptPath: 'tests/results/docker-tools-parity/copilot-cli-review/receipt.json',
       receipt: {
-        generatedAt: '2026-03-13T10:00:00.000Z'
+        generatedAt: '2026-03-13T10:00:00.000Z',
+        convergence: {
+          passCount: 2,
+          stoppedReason: 'clean-pass'
+        }
       }
     }),
     resolveRepoGitStateFn: () => ({
@@ -286,6 +290,7 @@ test('runDockerDesktopReviewLoop appends a passing Copilot CLI receipt to the co
 
   assert.equal(result.status, 'passed');
   assert.equal(result.receipt.checks.copilotCliReview.status, 'passed');
+  assert.equal(result.receipt.checks.copilotCliReview.convergence.passCount, 2);
   assert.equal(
     result.receipt.artifacts.copilotCliReviewReceiptPath,
     'tests/results/docker-tools-parity/copilot-cli-review/receipt.json'

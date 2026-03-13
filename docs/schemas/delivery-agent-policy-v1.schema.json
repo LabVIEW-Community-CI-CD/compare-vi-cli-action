@@ -72,7 +72,18 @@
             "promptOnly": { "type": "boolean" },
             "disableBuiltinMcps": { "type": "boolean" },
             "allowAllTools": { "type": "boolean" },
-            "availableTools": { "type": "string" }
+            "availableTools": { "type": "string" },
+            "convergence": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "minPasses": { "type": "integer", "minimum": 1 },
+                "maxPasses": { "type": "integer", "minimum": 1 },
+                "stopOnCleanPass": { "type": "boolean" },
+                "stopOnNoNovelFindingsCount": { "type": "integer", "minimum": 0 },
+                "promoteInstructionGapAfterRepeatedFindings": { "type": "integer", "minimum": 0 }
+              }
+            }
           }
         },
         "actionlint": { "type": "boolean" },

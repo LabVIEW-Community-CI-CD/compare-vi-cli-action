@@ -566,6 +566,7 @@ async function updateCombinedReviewLoopReceipt({
         startedAt: normalizeText(copilotCliResult.receipt?.generatedAt) || new Date().toISOString(),
         completedAt: new Date().toISOString(),
         error: normalizedStatus === 'failed' ? normalizeText(copilotCliResult.reason) || null : null,
+        convergence: copilotCliResult.receipt?.convergence ?? null,
         artifacts: {
           receiptPath: normalizeText(copilotCliResult.receiptPath) || ''
         }

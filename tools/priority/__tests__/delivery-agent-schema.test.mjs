@@ -56,6 +56,13 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
       disableBuiltinMcps: true,
       allowAllTools: false,
       availableTools: '',
+      convergence: {
+        minPasses: 2,
+        maxPasses: 4,
+        stopOnCleanPass: true,
+        stopOnNoNovelFindingsCount: 2,
+        promoteInstructionGapAfterRepeatedFindings: 2
+      },
       profiles: {
         preCommit: {
           enabled: true,
