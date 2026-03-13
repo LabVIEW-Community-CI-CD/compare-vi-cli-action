@@ -382,7 +382,7 @@ jobs:
         }
     - name: Run markdownlint
       run: |
-        node tools/npm/run-script.mjs lint:md
+        node tools/npm/run-script.mjs lint:md:changed
     env:
       ACTIONLINT_VERSION: '${{ vars.ACTIONLINT_VERSION || ''1.7.7'' }}'
   validate-scope-plan:

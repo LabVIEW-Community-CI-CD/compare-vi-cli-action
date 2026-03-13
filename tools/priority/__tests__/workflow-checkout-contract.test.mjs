@@ -161,7 +161,7 @@ test('workflow maintenance surfaces use the enclave and keep the removed checkou
 
   const validateWorkflow = readText('.github/workflows/validate.yml');
   assert.match(validateWorkflow, /Check-WorkflowDrift\.ps1 -FailOnDrift/, 'Validate should enforce workflow drift through the supported entrypoint');
-  assert.match(validateWorkflow, /node tools\/npm\/run-script\.mjs lint:md/, 'Validate markdownlint should block on the full repo markdown sweep through the repo script');
+  assert.match(validateWorkflow, /node tools\/npm\/run-script\.mjs lint:md:changed/, 'Validate markdownlint should block on the repo-owned changed markdown surface');
   assert.doesNotMatch(validateWorkflow, /Install markdownlint-cli \(retry\)/, 'Validate should not reinstall markdownlint globally');
   assert.doesNotMatch(validateWorkflow, /Run markdownlint \(non-blocking\)/);
 });

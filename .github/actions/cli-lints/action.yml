@@ -53,8 +53,8 @@ runs:
       shell: bash
       continue-on-error: ${{ inputs.enforce != 'true' }}
       run: |
-        if [ -f "docs/.markdownlint.relaxed.jsonc" ]; then
-          node tools/npm/cli.mjs exec -- markdownlint-cli2 --config docs/.markdownlint.relaxed.jsonc "${{ inputs.relaxed-path }}"
+        if [ -f "docs/relaxed.markdownlint-cli2.jsonc" ]; then
+          node tools/npm/cli.mjs exec -- markdownlint-cli2 --config docs/relaxed.markdownlint-cli2.jsonc "${{ inputs.relaxed-path }}"
         fi
 
     - name: Docs link check (optional)

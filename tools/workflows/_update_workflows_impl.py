@@ -778,7 +778,7 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
     alt_name_md = 'Run markdownlint' if markdown_non_blocking else 'Run markdownlint (non-blocking)'
     md_run_step = {
         'name': name_md,
-        'run': LIT('node tools/npm/run-script.mjs lint:md\n'),
+        'run': LIT('node tools/npm/run-script.mjs lint:md:changed\n'),
     }
     if markdown_non_blocking:
         md_run_step['continue-on-error'] = True

@@ -227,7 +227,7 @@ jobs:
       run: node tools/npm/cli.mjs ci
     - name: Run markdownlint
       run: |
-        node tools/npm/run-script.mjs lint:md
+        node tools/npm/run-script.mjs lint:md:changed
   preflight:
     runs-on: windows-latest
     timeout-minutes: 3

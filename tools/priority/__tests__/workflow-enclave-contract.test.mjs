@@ -109,11 +109,11 @@ test('workflow and composite lint surfaces use repo-owned markdown commands', ()
   const orchestratedWorkflow = read('.github/workflows/ci-orchestrated.yml');
   const cliLintsAction = read('.github/actions/cli-lints/action.yml');
 
-  assert.match(validateWorkflow, /node tools\/npm\/run-script\.mjs lint:md/);
-  assert.match(orchestratedWorkflow, /node tools\/npm\/run-script\.mjs lint:md/);
+  assert.match(validateWorkflow, /node tools\/npm\/run-script\.mjs lint:md:changed/);
+  assert.match(orchestratedWorkflow, /node tools\/npm\/run-script\.mjs lint:md:changed/);
   assert.doesNotMatch(validateWorkflow, /Install markdownlint-cli \(retry\)/);
   assert.doesNotMatch(orchestratedWorkflow, /Install markdownlint-cli \(retry\)/);
   assert.doesNotMatch(cliLintsAction, /install -g markdownlint-cli/);
   assert.match(cliLintsAction, /node tools\/npm\/run-script\.mjs lint:md:changed/);
-  assert.match(cliLintsAction, /markdownlint-cli2 --config docs\/\.markdownlint\.relaxed\.jsonc/);
+  assert.match(cliLintsAction, /markdownlint-cli2 --config docs\/relaxed\.markdownlint-cli2\.jsonc/);
 });
