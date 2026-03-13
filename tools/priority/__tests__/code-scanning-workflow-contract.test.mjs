@@ -24,9 +24,9 @@ test('code scanning workflow is deterministic across pull_request, merge_group, 
 
 test('code scanning workflow uses CodeQL security-and-quality queries for JavaScript/TypeScript', () => {
   const workflow = readRepoFile('.github/workflows/code-scanning.yml');
-  assert.match(workflow, /github\/codeql-action\/init@v3/);
+  assert.match(workflow, /github\/codeql-action\/init@v4/);
   assert.match(workflow, /languages:\s+javascript-typescript/);
   assert.match(workflow, /queries:\s+security-and-quality/);
-  assert.match(workflow, /github\/codeql-action\/analyze@v3/);
+  assert.match(workflow, /github\/codeql-action\/analyze@v4/);
   assert.match(workflow, /category:\s+\/language:javascript-typescript/);
 });

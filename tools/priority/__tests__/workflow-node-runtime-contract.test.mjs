@@ -6,7 +6,8 @@ import path from 'node:path';
 import { readdirSync, readFileSync } from 'node:fs';
 
 const repoRoot = process.cwd();
-const actionVersionPattern = /uses:\s*(actions\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?)@v(\d+)/g;
+const githubMaintainedActionPattern =
+  /uses:\s*((?:actions|github)\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?)@v(\d+)/g;
 const runtimeFloorPolicy = JSON.parse(
   readFileSync(path.join(repoRoot, 'tools', 'policy', 'workflow-action-runtime-floor.json'), 'utf8')
 );
@@ -45,11 +46,15 @@ test('GitHub workflow actions meet the repo Node 24 runtime floor', () => {
 
   for (const relativePath of files) {
     const content = readFileSync(path.join(repoRoot, relativePath), 'utf8');
-    for (const match of content.matchAll(actionVersionPattern)) {
+    for (const match of content.matchAll(githubMaintainedActionPattern)) {
       const action = match[1];
       const major = Number(match[2]);
       const minimumMajor = minimumMajors.get(action);
-      if (minimumMajor && major < minimumMajor) {
+      if (!minimumMajor) {
+        failures.push(`${relativePath}: ${action}@v${major} missing from workflow-action-runtime-floor policy`);
+        continue;
+      }
+      if (major < minimumMajor) {
         failures.push(`${relativePath}: ${action}@v${major} < required v${minimumMajor}`);
       }
     }

@@ -32,12 +32,28 @@
       "minimumMajor": 5,
       "expectedRuntime": "node24"
     },
+    "actions/setup-dotnet": {
+      "minimumMajor": 5,
+      "expectedRuntime": "node24"
+    },
     "actions/setup-python": {
       "minimumMajor": 6,
       "expectedRuntime": "node24"
     },
+    "actions/attest-build-provenance": {
+      "minimumMajor": 2,
+      "expectedRuntime": "composite"
+    },
     "actions/upload-artifact": {
       "minimumMajor": 6,
+      "expectedRuntime": "node24"
+    },
+    "github/codeql-action/init": {
+      "minimumMajor": 4,
+      "expectedRuntime": "node24"
+    },
+    "github/codeql-action/analyze": {
+      "minimumMajor": 4,
       "expectedRuntime": "node24"
     }
   }
