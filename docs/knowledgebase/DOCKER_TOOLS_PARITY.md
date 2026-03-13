@@ -67,6 +67,14 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerific
   - VI history review artifacts are coherent and reviewable
 - Treat hosted runs as confirmation and publication surfaces once the local loop
   is already green.
+- A local receipt is reusable authority only when it is:
+  - green,
+  - current for the exact `git.headSha`, and
+  - tracked-clean in both the live worktree and the receipt metadata, and
+  - complete for the requested review surfaces (for example markdown, requirements,
+    NI Linux suite, and any requested single-VI history target).
+  A current-head receipt that skipped one of the requested surfaces must be
+  treated as under-scoped and rerun locally before another hosted confirmation pass.
 
 ## Targeted single-VI history follow-up
 

@@ -246,6 +246,9 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
           currentHeadSha: '433e8aa70326007be74c27ccf54c1ae91559b6f3',
           receiptHeadSha: '433e8aa70326007be74c27ccf54c1ae91559b6f3',
           receiptFreshForHead: true,
+          requestedCoverageSatisfied: true,
+          requestedCoverageReason: 'Docker/Desktop review loop receipt covers the requested review surfaces.',
+          requestedCoverageMissingChecks: [],
           receipt: {
             git: {
               headSha: '433e8aa70326007be74c27ccf54c1ae91559b6f3',
@@ -297,6 +300,9 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
   assert.equal(state.localReviewLoop.currentHeadSha, '433e8aa70326007be74c27ccf54c1ae91559b6f3');
   assert.equal(state.localReviewLoop.receiptHeadSha, '433e8aa70326007be74c27ccf54c1ae91559b6f3');
   assert.equal(state.localReviewLoop.receiptFreshForHead, true);
+  assert.equal(state.localReviewLoop.requestedCoverageSatisfied, true);
+  assert.equal(state.localReviewLoop.requestedCoverageReason, 'Docker/Desktop review loop receipt covers the requested review surfaces.');
+  assert.deepEqual(state.localReviewLoop.requestedCoverageMissingChecks, []);
   assert.equal(state.localReviewLoop.niLinuxReviewSuiteRequested, true);
   assert.equal(state.localReviewLoop.singleViHistory.targetPath, 'fixtures/vi-attr/Head.vi');
   assert.equal(state.localReviewLoop.git.branch, 'issue/origin-1053-agent-verification-receipt');

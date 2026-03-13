@@ -2707,6 +2707,10 @@ test('delivery broker reuses a current clean Docker/Desktop review loop receipt 
         failedCheck: '',
         message: '',
         exitCode: 0
+      },
+      checks: {
+        markdownlint: { enabled: true, status: 'passed' },
+        requirementsVerification: { enabled: true, status: 'passed' }
       }
     })}\n`,
     'utf8'
@@ -2727,7 +2731,11 @@ test('delivery broker reuses a current clean Docker/Desktop review loop receipt 
             requested: true,
             source: 'standing-issue-body',
             receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            actionlint: false,
             markdownlint: true,
+            docs: false,
+            workflow: false,
+            dotnetCliBuild: false,
             requirementsVerification: true,
             niLinuxReviewSuite: false,
             singleViHistory: null
@@ -2787,6 +2795,169 @@ test('delivery broker reuses a current clean Docker/Desktop review loop receipt 
   assert.equal(brokerResult.details.localReviewLoop.source, 'docker-desktop-review-loop-cache');
   assert.equal(brokerResult.details.localReviewLoop.receiptFreshForHead, true);
   assert.equal(brokerResult.details.localReviewLoop.currentHeadSha, headSha);
+  assert.equal(brokerResult.details.localReviewLoop.requestedCoverageSatisfied, true);
+});
+
+test('delivery broker reruns the local review loop when the current-head receipt is under-scoped for the requested checks', async () => {
+  const tempRepo = await mkdtemp(path.join(os.tmpdir(), 'delivery-broker-local-review-rerun-'));
+  runGit(tempRepo, ['init']);
+  runGit(tempRepo, ['config', 'user.name', 'Agent Runner']);
+  runGit(tempRepo, ['config', 'user.email', 'agent@example.com']);
+  await writeFile(path.join(tempRepo, 'README.md'), '# temp\n', 'utf8');
+  runGit(tempRepo, ['add', 'README.md']);
+  runGit(tempRepo, ['commit', '-m', 'init']);
+  const headSha = runGit(tempRepo, ['rev-parse', 'HEAD']);
+  const receiptPath = path.join(tempRepo, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'docker-tools-parity-review-loop@v1',
+      git: {
+        headSha,
+        branch: 'issue/test',
+        upstreamDevelopMergeBase: null,
+        dirtyTracked: false
+      },
+      overall: {
+        status: 'passed',
+        failedCheck: '',
+        message: '',
+        exitCode: 0
+      },
+      checks: {
+        markdownlint: { enabled: true, status: 'passed' },
+        requirementsVerification: { enabled: false, status: 'skipped' }
+      }
+    })}\n`,
+    'utf8'
+  );
+
+  let runCount = 0;
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: tempRepo,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'coding',
+      objective: {
+        summary: 'Advance issue #1053'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'coding',
+          localReviewLoop: {
+            requested: true,
+            source: 'standing-issue-body',
+            receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            actionlint: false,
+            markdownlint: true,
+            docs: false,
+            workflow: false,
+            dotnetCliBuild: false,
+            requirementsVerification: true,
+            niLinuxReviewSuite: false,
+            singleViHistory: null
+          },
+          mutationEnvelope: {
+            maxActiveCodingLanes: 1
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        localReviewLoop: {
+          enabled: true,
+          receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+          command: ['node', 'tools/priority/docker-desktop-review-loop.mjs']
+        },
+        codingTurnCommand: ['node', 'mock-broker']
+      }),
+      invokeCodingTurnFn: async () => ({
+        status: 'completed',
+        outcome: 'waiting-review',
+        source: 'delivery-agent-broker',
+        reason: 'Broker refreshed the PR and requested a new Copilot review.',
+        details: {
+          actionType: 'execute-coding-turn',
+          laneLifecycle: 'waiting-review',
+          blockerClass: 'review',
+          retryable: true,
+          nextWakeCondition: 'copilot-review-workflow-completed',
+          helperCallsExecuted: ['node dist/tools/priority/run-delivery-turn-with-codex.js'],
+          filesTouched: ['docs/knowledgebase/DOCKER_TOOLS_PARITY.md']
+        }
+      }),
+      runCommandFn: async (_command, _args) => {
+        runCount += 1;
+        await writeFile(
+          receiptPath,
+          `${JSON.stringify({
+            schema: 'docker-tools-parity-review-loop@v1',
+            git: {
+              headSha,
+              branch: 'issue/test',
+              upstreamDevelopMergeBase: null,
+              dirtyTracked: false
+            },
+            overall: {
+              status: 'passed',
+              failedCheck: '',
+              message: '',
+              exitCode: 0
+            },
+            checks: {
+              markdownlint: { enabled: true, status: 'passed' },
+              requirementsVerification: { enabled: true, status: 'passed' }
+            }
+          })}\n`,
+          'utf8'
+        );
+        return {
+          status: 0,
+          stdout: JSON.stringify({
+            status: 'passed',
+            source: 'docker-desktop-review-loop',
+            reason: 'Docker/Desktop review loop passed.',
+            receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            currentHeadSha: headSha,
+            receiptHeadSha: headSha,
+            receiptFreshForHead: true,
+            requestedCoverageSatisfied: true,
+            requestedCoverageReason: 'Docker/Desktop review loop receipt covers the requested review surfaces.',
+            requestedCoverageMissingChecks: [],
+            receipt: {
+              overall: {
+                status: 'passed',
+                failedCheck: '',
+                message: '',
+                exitCode: 0
+              }
+            }
+          }),
+          stderr: ''
+        };
+      }
+    }
+  });
+
+  assert.equal(runCount, 1);
+  assert.equal(brokerResult.status, 'completed');
+  assert.equal(brokerResult.details.localReviewLoop.source, 'docker-desktop-review-loop');
+  assert.equal(brokerResult.details.localReviewLoop.requestedCoverageSatisfied, true);
 });
 
 test('delivery broker fails closed when the requested local Docker/Desktop review loop fails', async () => {
