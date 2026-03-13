@@ -75,7 +75,7 @@ function resolveRef(ref) {
   return result || null;
 }
 
-function resolveMergeBase(candidates) {
+export function resolveMergeBase(candidates) {
   for (const candidate of candidates) {
     if (!candidate) {
       continue;
@@ -84,7 +84,7 @@ function resolveMergeBase(candidates) {
     if (!resolved) {
       continue;
     }
-    const mergeBase = runGit(['merge-base', 'HEAD', resolved]);
+    const mergeBase = readGitOutput(['merge-base', 'HEAD', resolved]);
     if (mergeBase) {
       return mergeBase;
     }

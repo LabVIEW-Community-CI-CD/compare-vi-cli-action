@@ -74,6 +74,7 @@ test('hosted NI Linux review suite helper includes flag combinations and VI hist
   assert.match(script, /history-report\.md/);
   assert.match(script, /history-report\.html/);
   assert.match(script, /history-summary\.json/);
+  assert.match(script, /vi-history-review-loop-receipt\.json/);
   assert.match(script, /history-suite-inspection\.html/);
   assert.match(script, /history-suite-inspection\.json/);
   assert.match(script, /review-suite-summary\.json/);
@@ -81,6 +82,10 @@ test('hosted NI Linux review suite helper includes flag combinations and VI hist
   assert.match(script, /requestedBranchRef/);
   assert.match(script, /effectiveBranchRef/);
   assert.match(script, /HistoryMaxCommitCount/);
+  assert.match(script, /HistoryReviewReceiptPath/);
+  assert.match(script, /touchAware = \$true/);
+  assert.match(script, /recommendedReviewOrder/);
+  assert.match(script, /vi_history_review_receipt_path/);
 });
 
 test('runbook validation no longer executes windows docker fast-loop canary job', () => {

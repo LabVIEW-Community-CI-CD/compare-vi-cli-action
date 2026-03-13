@@ -34,6 +34,7 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerific
   - `vi-history-report/results/history-report.html`
   - `vi-history-report/results/history-summary.json`
   - `vi-history-report/results/history-suite-inspection.html`
+  - `vi-history-review-loop-receipt.json`
 - `-RequirementsVerification` runs `tools/Verify-RequirementsGate.ps1` inside the tools container and writes
   deterministic traceability artifacts under `tests/results/docker-tools-parity/requirements-verification/`, including:
   - `verification-summary.json`
@@ -56,12 +57,27 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerific
 
 ## Targeted single-VI history follow-up
 
-- The current helper generates the suite-level NI Linux review outputs.
-- Follow-up work tracked in `#1053` extends this with a single-VI branch-history
-  review mode.
+- The parity helper now surfaces the targeted branch-history inputs directly:
+
+```powershell
+pwsh -File tools/Run-NonLVChecksInDocker.ps1 `
+  -UseToolsImage `
+  -SkipActionlint -SkipDocs -SkipWorkflow -SkipDotnetCliBuild `
+  -SkipMarkdown `
+  -NILinuxReviewSuite `
+  -NILinuxReviewSuiteHistoryTargetPath 'fixtures/vi-attr/Head.vi' `
+  -NILinuxReviewSuiteHistoryBranchRef 'develop' `
+  -NILinuxReviewSuiteHistoryBaselineRef 'HEAD~128' `
+  -NILinuxReviewSuiteHistoryMaxCommitCount 1024
+```
+
 - That targeted path must be touch-aware for deep branches such as `develop`, so
   it reviews only the commits that actually changed the selected VI instead of
   replaying all branch commits.
+- The helper now emits `vi-history-review-loop-receipt.json`, a deterministic
+  artifact that records the selected target/ref inputs, the effective refs, the
+  bootstrap pair-selection counts, and the recommended artifact review order so
+  future agents can resume after context compaction.
 
 ## Cleanup expectations
 

@@ -91,6 +91,9 @@ Audience: contributors without the full local toolchain or anyone mirroring CI b
     `tests/results/docker-tools-parity/requirements-verification`.
   - `-NILinuxReviewSuite` to run the NI Linux smoke + VI history suite through Docker Desktop/Linux and emit the
     review-suite HTML/JSON outputs under `tests/results/docker-tools-parity/ni-linux-review-suite`.
+  - `-NILinuxReviewSuiteHistoryTargetPath`, `-NILinuxReviewSuiteHistoryBranchRef`,
+    `-NILinuxReviewSuiteHistoryBaselineRef`, and `-NILinuxReviewSuiteHistoryMaxCommitCount`
+    to run the touch-aware single-VI branch-history review loop for deep branches.
   - `-FailOnWorkflowDrift` remains as a deprecated compatibility switch; workflow checkout contracts now fail
     immediately when enabled.
   - Skip flags (`-SkipActionlint`, `-SkipMarkdown`, `-SkipDocs`, `-SkipWorkflow`, `-SkipDotnetCliBuild`) for tight
@@ -98,7 +101,8 @@ Audience: contributors without the full local toolchain or anyone mirroring CI b
 - **Expected output** - Console logs reflect each container invocation. The CLI build emits `dist/comparevi-cli/*` when
   enabled. Workflow checkout contracts run through the pinned Node test surface and fail cleanly when the checkout
   contract drifts. When `-NILinuxReviewSuite` is set, the helper also emits `review-suite-summary.html`,
-  `history-report.html`, `history-summary.json`, and `history-suite-inspection.html`. When
+  `history-report.html`, `history-summary.json`, `history-suite-inspection.html`, and
+  `vi-history-review-loop-receipt.json`. When
   `-RequirementsVerification` is set, the helper emits the requirements verification summary and trace matrix outputs.
 - **Failure modes** - Missing Docker daemon, authentication gaps (when the tools image is private), or missing GH
   tokens during priority sync. Exit code is the first failing container code.

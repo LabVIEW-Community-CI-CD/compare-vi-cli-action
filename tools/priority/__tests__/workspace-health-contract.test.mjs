@@ -114,6 +114,10 @@ test('Run-NonLVChecksInDocker exposes Docker Desktop NI Linux review-suite parit
   const content = readRepoFile('tools/Run-NonLVChecksInDocker.ps1');
   assert.match(content, /\[switch\]\$NILinuxReviewSuite/);
   assert.match(content, /\[switch\]\$RequirementsVerification/);
+  assert.match(content, /\[string\]\$NILinuxReviewSuiteHistoryTargetPath/);
+  assert.match(content, /\[string\]\$NILinuxReviewSuiteHistoryBranchRef/);
+  assert.match(content, /\[string\]\$NILinuxReviewSuiteHistoryBaselineRef/);
+  assert.match(content, /\[int\]\$NILinuxReviewSuiteHistoryMaxCommitCount/);
   assert.match(content, /tests\/results\/docker-tools-parity\/ni-linux-review-suite/);
   assert.match(content, /tests\/results\/docker-tools-parity\/requirements-verification/);
   assert.match(content, /Invoke-NILinuxReviewSuite\.ps1/);
@@ -121,6 +125,7 @@ test('Run-NonLVChecksInDocker exposes Docker Desktop NI Linux review-suite parit
   assert.match(content, /review-suite-summary\.html/);
   assert.match(content, /history-report\.html/);
   assert.match(content, /history-summary\.json/);
+  assert.match(content, /vi-history-review-loop-receipt\.json/);
   assert.match(content, /verification-summary\.json/);
   assert.match(content, /trace-matrix\.json/);
   assert.match(content, /command -v git >\/dev\/null 2>&1/);
@@ -144,6 +149,8 @@ test('Docker parity knowledgebase distinguishes current host-plane behavior from
   assert.match(content, /Review-loop policy/);
   assert.match(content, /Targeted single-VI history follow-up/);
   assert.match(content, /touch-aware for deep branches such as `develop`/);
+  assert.match(content, /NILinuxReviewSuiteHistoryTargetPath/);
+  assert.match(content, /vi-history-review-loop-receipt\.json/);
 });
 
 test('PrePush emits deterministic incident-event report for NI known-flag failures', () => {

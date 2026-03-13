@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 
-import { isSuppressedMarkdownPath } from '../lint-markdown.mjs';
+import { isSuppressedMarkdownPath, resolveMergeBase } from '../lint-markdown.mjs';
 
 test('suppresses known generated markdown names', () => {
   assert.equal(isSuppressedMarkdownPath('CHANGELOG.md'), true);
@@ -35,4 +35,9 @@ test('fails clearly when git is unavailable for markdown discovery', () => {
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /git is required for markdown lint repository discovery/i);
+});
+
+test('resolves merge-base for changed-file mode without stale git helper references', () => {
+  const mergeBase = resolveMergeBase(['HEAD~1']);
+  assert.match(mergeBase, /^[0-9a-f]{40}$/i);
 });

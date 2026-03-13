@@ -87,6 +87,14 @@ artifacts under `tests/results/_agent/`.
   smoke, or VI history artifact quality, iterate locally through Docker
   Desktop first and use GitHub Actions for confirmation only after the local
   parity loop is green.
+- For targeted VI History review on deep branches, prefer the Docker/Desktop
+  single-VI path via `tools/Run-NonLVChecksInDocker.ps1` with
+  `-NILinuxReviewSuiteHistoryTargetPath`,
+  `-NILinuxReviewSuiteHistoryBranchRef`,
+  `-NILinuxReviewSuiteHistoryBaselineRef`, and
+  `-NILinuxReviewSuiteHistoryMaxCommitCount`. Read
+  `tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-review-loop-receipt.json`
+  first after compaction instead of reconstructing the artifact set manually.
 - Keep bulky diagnostics out of source. Large logs and artifacts belong in
   issue attachments or generated artifact folders, not in committed history.
 - Use vendor resolvers from `tools/VendorTools.psm1` rather than ad-hoc PATH
