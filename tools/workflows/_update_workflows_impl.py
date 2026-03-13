@@ -42,7 +42,11 @@ def dump_yaml(doc, path: Path) -> str:
 
 def ensure_force_run_input(doc) -> bool:
     changed = False
-    on = doc.get('on') or doc.get('on:') or {}
+    on = doc.get('on')
+    if on is None and True in doc:
+        on = doc.get(True)
+    if on is None:
+        on = {}
     if not on:
         return changed
     wd = on.get('workflow_dispatch')
@@ -820,7 +824,7 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
     if include_node:
         node_step = {
             'name': 'Setup Node with cache',
-            'uses': 'actions/setup-node@v4',
+            'uses': 'actions/setup-node@v5',
             'with': {
                 'node-version': DQS('20'),
                 'cache': DQS('npm'),
@@ -839,6 +843,9 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
             changed = True
         else:
             # Ensure with block is normalized
+            if steps[idx_node].get('uses') != node_step['uses']:
+                steps[idx_node]['uses'] = node_step['uses']
+                changed = True
             cur_with = steps[idx_node].setdefault('with', {})
             if cur_with.get('node-version') != DQS('20') or cur_with.get('cache') != DQS('npm'):
                 steps[idx_node]['with'] = node_step['with']

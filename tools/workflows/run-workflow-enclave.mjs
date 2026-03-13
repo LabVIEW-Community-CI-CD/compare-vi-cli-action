@@ -15,20 +15,31 @@ function canRun(command, args = []) {
   return probe.status === 0;
 }
 
+function canRunPython3(command, args = []) {
+  return canRun(command, [
+    ...args,
+    '-c',
+    'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)'
+  ]);
+}
+
 function resolvePythonCommand() {
   if (process.env.COMPAREVI_PYTHON_EXE) {
+    if (!canRunPython3(process.env.COMPAREVI_PYTHON_EXE)) {
+      throw new Error('COMPAREVI_PYTHON_EXE must resolve to a Python 3 interpreter.');
+    }
     return [process.env.COMPAREVI_PYTHON_EXE];
   }
 
-  if (process.platform === 'win32' && canRun('py', ['-3', '--version'])) {
+  if (process.platform === 'win32' && canRunPython3('py', ['-3'])) {
     return ['py', '-3'];
   }
 
-  if (canRun('python3', ['--version'])) {
+  if (canRunPython3('python3')) {
     return ['python3'];
   }
 
-  if (canRun('python', ['--version'])) {
+  if (canRunPython3('python')) {
     return ['python'];
   }
 

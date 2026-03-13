@@ -107,8 +107,11 @@ test('workflow updater normalizes checkout insertion and docs-only expressions c
   const updater = read('tools/workflows/_update_workflows_impl.py');
   assert.match(updater, /steps\.g\.outputs\.docs_only \|\| 'false'/);
   assert.doesNotMatch(updater, /docs_only \|\| ''false''/);
+  assert.match(updater, /True in doc/);
   assert.match(updater, /def _find_step_uses_index/);
   assert.doesNotMatch(updater, /_find_step_index\(steps, 'actions\/checkout@v5'\)/);
+  assert.match(updater, /actions\/setup-node@v5/);
+  assert.doesNotMatch(updater, /actions\/setup-node@v4/);
 });
 
 test('package scripts expose first-class workflow drift and markdown surfaces', () => {
@@ -127,6 +130,14 @@ test('workflow enclave state is ignored and the compatibility surfaces exist', (
   assert.equal(statSync(path.join(repoRoot, 'tools', 'workflows', 'run-workflow-enclave.mjs')).isFile(), true);
   assert.equal(statSync(path.join(repoRoot, 'tools', 'workflows', 'requirements.txt')).isFile(), true);
   assert.equal(statSync(path.join(repoRoot, 'tools', 'workflows', 'workflow-manifest.json')).isFile(), true);
+});
+
+test('workflow enclave node wrapper only accepts Python 3 interpreters', () => {
+  const wrapper = read('tools/workflows/run-workflow-enclave.mjs');
+  assert.match(wrapper, /sys\.version_info\[0\] == 3/);
+  assert.match(wrapper, /COMPAREVI_PYTHON_EXE must resolve to a Python 3 interpreter/);
+  assert.match(wrapper, /canRunPython3\('python3'\)/);
+  assert.match(wrapper, /canRunPython3\('python'\)/);
 });
 
 test('workflow and composite lint surfaces use repo-owned markdown commands', () => {

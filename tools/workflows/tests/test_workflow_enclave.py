@@ -18,6 +18,7 @@ import _enclave
 from _enclave import REQUIREMENTS_PATH, load_default_scope
 from _update_workflows_impl import (
     dump_yaml,
+    ensure_force_run_input,
     ensure_interactivity_probe_job,
     ensure_lint_resiliency,
     ensure_preinit_force_run_outputs,
@@ -113,6 +114,20 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'repo-relative workflow path'):
                     load_default_scope()
 
+    def test_force_run_input_supports_booleanized_on_key(self) -> None:
+        doc = {
+            True: {
+                'workflow_dispatch': {
+                    'inputs': {},
+                },
+            },
+        }
+
+        changed = ensure_force_run_input(doc)
+
+        self.assertTrue(changed)
+        self.assertIn('force_run', doc[True]['workflow_dispatch']['inputs'])
+
     def test_interactivity_probe_emits_lowercase_output(self) -> None:
         doc = {
             'jobs': {
@@ -180,6 +195,38 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
         matching = [step for step in lint_steps if step.get('name') == 'Run markdownlint (scoped changed files)']
         self.assertEqual(len(matching), 1)
         self.assertFalse(any(step.get('name') == 'Run markdownlint' for step in lint_steps if isinstance(step, dict)))
+        setup_node_steps = [step for step in lint_steps if step.get('name') == 'Setup Node with cache']
+        self.assertEqual(len(setup_node_steps), 1)
+        self.assertEqual(setup_node_steps[0].get('uses'), 'actions/setup-node@v5')
+
+    def test_lint_resiliency_normalizes_existing_setup_node_major(self) -> None:
+        doc = {
+            'jobs': {
+                'lint': {
+                    'steps': [
+                        {'uses': 'actions/checkout@v5'},
+                        {
+                            'name': 'Setup Node with cache',
+                            'uses': 'actions/setup-node@v4',
+                            'with': {
+                                'node-version': '20',
+                                'cache': 'npm',
+                            },
+                        },
+                        {
+                            'name': 'Run markdownlint (scoped changed files)',
+                            'run': 'node tools/npm/run-script.mjs lint:md:changed\n',
+                        },
+                    ]
+                }
+            }
+        }
+
+        changed = ensure_lint_resiliency(doc, 'lint', include_node=True)
+
+        self.assertTrue(changed)
+        setup_node_step = next(step for step in doc['jobs']['lint']['steps'] if step.get('name') == 'Setup Node with cache')
+        self.assertEqual(setup_node_step.get('uses'), 'actions/setup-node@v5')
 
     def test_force_run_output_uses_standard_false_literal(self) -> None:
         doc = {
