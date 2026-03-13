@@ -513,7 +513,7 @@ jobs:
     - name: Restore previous fixture validation snapshot (cache)
       if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       id: restore_prev_fixture_validation
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v5
       with:
         path: fixture-validation-prev.json
         key: fixture-validation-${{ github.sha }}
@@ -581,7 +581,7 @@ jobs:
         path: fixture-summary.md
     - name: Save current snapshot to cache
       if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v5
       with:
         path: fixture-validation.json
         key: fixture-validation-${{ github.sha }}
