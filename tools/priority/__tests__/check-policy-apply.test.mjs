@@ -2651,6 +2651,81 @@ test('priority:policy --apply preserves branch required checks when queue-manage
   );
 });
 
+test('priority:policy --apply defers queue-managed branch updates until rulesets succeed', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const developRulesetUrl = `${repoUrl}/rulesets/8811898`;
+  const rulesets = createAlignedRulesets();
+  const developStatusRule = rulesets.develop.rules.find((rule) => rule.type === 'required_status_checks');
+  developStatusRule.parameters.required_status_checks = developStatusRule.parameters.required_status_checks.filter(
+    (check) => check.context !== 'commit-integrity'
+  );
+  let developProtection = {
+    ...createAlignedBranchProtection([]),
+    allow_force_pushes: { enabled: true }
+  };
+  const requests = [];
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    requests.push({ method, url, body: options.body });
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === developRulesetUrl) {
+      return createResponse(rulesets.develop);
+    }
+    if (method === 'PUT' && url === developRulesetUrl) {
+      return createResponse({ message: 'boom' }, 500, 'Internal Server Error');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse(rulesets.main);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
+      return createResponse(rulesets.release);
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse(Object.values(rulesets).map(toRulesetSummary));
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  await assert.rejects(
+    () =>
+      run({
+        argv: ['node', 'check-policy.mjs', '--apply'],
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: 'test-org/test-repo',
+          GITHUB_TOKEN: 'fake-token'
+        },
+        fetchFn: fetchMock,
+        execSyncFn: () => {
+          throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+        },
+        log: () => {},
+        error: () => {}
+      }),
+    /GitHub API request failed: 500 Internal Server Error/
+  );
+
+  assert.ok(
+    !requests.some((entry) => entry.method === 'PUT' && entry.url === branchDevelopUrl),
+    'queue-managed branch protection should not be updated before queue-managed rulesets succeed'
+  );
+});
+
 test('priority:policy --fail-on-skip fails non-apply validation when GH_TOKEN 401 has no fallback', async () => {
   const fetchMock = async () => createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
   const logMessages = [];

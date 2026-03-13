@@ -1240,6 +1240,11 @@ async function refreshBranchStates(branchStates, repoUrl, token, fetchFn) {
   return refreshed;
 }
 
+function mergeBranchStatesByName(branchStates, refreshedBranchStates) {
+  const replacements = new Map(refreshedBranchStates.map((entry) => [entry.branch, entry]));
+  return branchStates.map((entry) => replacements.get(entry.branch) ?? entry);
+}
+
 function evaluateDiffs(manifest, state, options = {}) {
   const repoDiffs = compareRepoSettings(manifest.repo ?? {}, state.repoData ?? {});
   const queueManagedBranches =
@@ -1564,8 +1569,7 @@ export async function run({
           }
         }
       };
-
-      await applyBranchUpdates(collectBranchStatesNeedingUpdates(initialState.branchStates, queueManagedBranches));
+      let branchStatesForApply = initialState.branchStates;
 
       for (const entry of initialState.rulesetStates) {
         if (shouldIgnoreRulesetEntry(entry, portabilityProfile)) {
@@ -1622,20 +1626,23 @@ export async function run({
               'refreshBranchStates(portability-downgrade)',
               (token) =>
                 refreshBranchStates(
-                  initialState.branchStates.filter((branchState) => previouslyQueueManagedBranches.has(branchState.branch)),
+                  branchStatesForApply.filter((branchState) => previouslyQueueManagedBranches.has(branchState.branch)),
                   repoUrl,
                   token,
                   fetchFn
                 )
             );
-            await applyBranchUpdates(
-              collectBranchStatesNeedingUpdates(refreshedBranchStates, queueManagedBranches)
+            branchStatesForApply = mergeBranchStatesByName(
+              branchStatesForApply,
+              refreshedBranchStates
             );
             continue;
           }
           throw rulesetError;
         }
       }
+
+      await applyBranchUpdates(collectBranchStatesNeedingUpdates(branchStatesForApply, queueManagedBranches));
 
       const postState = await invokeWithAuthFallback('collectState(post-apply)', (token) =>
         collectState(manifest, repoUrl, token, fetchFn, log)
@@ -1697,6 +1704,7 @@ export const __test = Object.freeze({
   normalizeOptionalRuleExpectation,
   normalizeRulesetListResponse,
   normalizeRulesetIncludes,
+  mergeBranchStatesByName,
   prefixRulesetDiffs,
   rulesetIncludesMatch,
   rulesetIdentityMatches,
