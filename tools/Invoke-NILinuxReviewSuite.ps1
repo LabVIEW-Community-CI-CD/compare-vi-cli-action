@@ -18,6 +18,7 @@ param(
   [int]$HistoryMaxPairs = 2,
   [ValidateRange(1, 4096)]
   [int]$HistoryMaxCommitCount = 64,
+  [string]$HistoryReviewReceiptPath = '',
   [ValidateRange(30, 900)]
   [int]$TimeoutSeconds = 240,
   [ValidateRange(5, 120)]
@@ -355,6 +356,11 @@ $historySummaryPath = Join-Path $historyResultsDir 'history-summary.json'
 $historyReceiptPath = Join-Path $historyResultsDir 'vi-history-bootstrap-receipt.json'
 $historyInspectionJsonPath = Join-Path $historyResultsDir 'history-suite-inspection.json'
 $historyInspectionHtmlPath = Join-Path $historyResultsDir 'history-suite-inspection.html'
+$historyReviewReceiptPathResolved = if ([string]::IsNullOrWhiteSpace($HistoryReviewReceiptPath)) {
+  Join-Path $resultsRootResolved 'vi-history-review-loop-receipt.json'
+} else {
+  Resolve-AbsolutePath -Path $HistoryReviewReceiptPath -BasePath $repoRootResolved
+}
 
 $historyContract = [ordered]@{
   schema = 'ni-linux-runtime-bootstrap/v1'
@@ -428,6 +434,64 @@ if ($LASTEXITCODE -ne 0) {
   throw ("VI history artifact inspection failed (exit={0})." -f $LASTEXITCODE)
 }
 
+$historyBootstrapReceipt = Get-Content -LiteralPath $historyReceiptPath -Raw | ConvertFrom-Json -Depth 16
+$historyInspection = Get-Content -LiteralPath $historyInspectionJsonPath -Raw | ConvertFrom-Json -Depth 16
+$historyReviewReceipt = [ordered]@{
+  schema = 'ni-linux-review-suite-review-loop@v1'
+  generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+  resultsRoot = $resultsRootResolved
+  historyReview = [ordered]@{
+    targetPath = $historyContract.viHistory.targetPath
+    requestedBranchRef = [string]$historyRefSelection.requestedBranchRef
+    requestedBaselineRef = [string]$historyRefSelection.requestedBaselineRef
+    effectiveBranchRef = [string]$historyRefSelection.effectiveBranchRef
+    effectiveBaselineRef = [string]$historyRefSelection.effectiveBaselineRef
+    maxCommitCount = [int]$HistoryMaxCommitCount
+    touchAware = $true
+    selectionSource = [string]$historyRefSelection.source
+  }
+  artifacts = [ordered]@{
+    reviewSuiteSummaryJsonPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $summaryJsonPath
+    reviewSuiteSummaryMarkdownPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $summaryMarkdownPath
+    reviewSuiteSummaryHtmlPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $summaryHtmlPath
+    historyReportMarkdownPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $historyMarkdownPath
+    historyReportHtmlPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $historyHtmlPath
+    historySummaryPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $historySummaryPath
+    historyInspectionJsonPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $historyInspectionJsonPath
+    historyInspectionHtmlPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $historyInspectionHtmlPath
+    historyBootstrapReceiptPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $historyReceiptPath
+  }
+  bootstrap = [ordered]@{
+    mode = [string]$historyBootstrapReceipt.mode
+    requestedStartRef = [string]$historyBootstrapReceipt.requestedStartRef
+    startRef = [string]$historyBootstrapReceipt.startRef
+    endRef = [string]$historyBootstrapReceipt.endRef
+    processedPairs = [int]$historyBootstrapReceipt.processedPairs
+    selectedPairs = [int]$historyBootstrapReceipt.selectedPairs
+    compareExitCode = [int]$historyBootstrapReceipt.compareExitCode
+    pairPlanPath = [string]$historyBootstrapReceipt.pairPlanPath
+    resultLedgerPath = [string]$historyBootstrapReceipt.resultLedgerPath
+  }
+  inspection = [ordered]@{
+    schema = [string]$historyInspection.schema
+    overallStatus = [string]$historyInspection.overallStatus
+    summary = $historyInspection.summary
+  }
+  recommendedReviewOrder = @(
+    'review-suite-summary.html',
+    'history-report.md',
+    'history-report.html',
+    'history-summary.json',
+    'history-suite-inspection.html',
+    'history-suite-inspection.json'
+  )
+}
+$historyReviewReceiptParent = Split-Path -Parent $historyReviewReceiptPathResolved
+if ($historyReviewReceiptParent -and -not (Test-Path -LiteralPath $historyReviewReceiptParent -PathType Container)) {
+  New-Item -ItemType Directory -Path $historyReviewReceiptParent -Force | Out-Null
+}
+$historyReviewReceipt | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $historyReviewReceiptPathResolved -Encoding utf8
+
 $scenarioResults += [pscustomobject]@{
   kind = 'vi-history-report'
   name = 'vi-history-report'
@@ -443,6 +507,7 @@ $scenarioResults += [pscustomobject]@{
   historyHtmlPath = $historyHtmlPath
   historySummaryPath = $historySummaryPath
   historyReceiptPath = $historyReceiptPath
+  historyReviewReceiptPath = $historyReviewReceiptPathResolved
   historyInspectionJsonPath = $historyInspectionJsonPath
   historyInspectionHtmlPath = $historyInspectionHtmlPath
 }
@@ -469,6 +534,10 @@ $summaryRows = foreach ($entry in @($scenarioResults)) {
   if ($entry.PSObject.Properties['historyInspectionHtmlPath']) {
     $historyInspectionHtmlRelativePath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path ([string]$entry.historyInspectionHtmlPath)
   }
+  $historyReviewReceiptRelativePath = ''
+  if ($entry.PSObject.Properties['historyReviewReceiptPath']) {
+    $historyReviewReceiptRelativePath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path ([string]$entry.historyReviewReceiptPath)
+  }
 
   [pscustomobject]@{
     kind = [string]$entry.kind
@@ -482,6 +551,7 @@ $summaryRows = foreach ($entry in @($scenarioResults)) {
     historyMarkdownPath = $historyMarkdownRelativePath
     historyHtmlPath = $historyHtmlRelativePath
     historySummaryPath = $historySummaryRelativePath
+    historyReviewReceiptPath = $historyReviewReceiptRelativePath
     historyInspectionJsonPath = $historyInspectionJsonRelativePath
     historyInspectionHtmlPath = $historyInspectionHtmlRelativePath
   }
@@ -524,7 +594,7 @@ $markdownLines = @(
 )
 foreach ($entry in @($summaryRows)) {
   $extra = if ([string]::Equals([string]$entry.kind, 'vi-history-report', [System.StringComparison]::OrdinalIgnoreCase)) {
-    ('[history-report.md](./{0}), [history-report.html](./{1}), [history-summary.json](./{2}), [inspection.html](./{3}), [inspection.json](./{4})' -f $entry.historyMarkdownPath, $entry.historyHtmlPath, $entry.historySummaryPath, $entry.historyInspectionHtmlPath, $entry.historyInspectionJsonPath)
+    ('[history-report.md](./{0}), [history-report.html](./{1}), [history-summary.json](./{2}), [inspection.html](./{3}), [inspection.json](./{4}), [review-loop-receipt.json](./{5})' -f $entry.historyMarkdownPath, $entry.historyHtmlPath, $entry.historySummaryPath, $entry.historyInspectionHtmlPath, $entry.historyInspectionJsonPath, $entry.historyReviewReceiptPath)
   } else {
     ('[capture](./{0})' -f $entry.capturePath)
   }
@@ -541,7 +611,7 @@ $htmlLines = @(
 )
 foreach ($entry in @($summaryRows)) {
   $extra = if ([string]::Equals([string]$entry.kind, 'vi-history-report', [System.StringComparison]::OrdinalIgnoreCase)) {
-    ('<a href="./{0}">history-report.md</a>; <a href="./{1}">history-report.html</a>; <a href="./{2}">history-summary.json</a>; <a href="./{3}">inspection.html</a>; <a href="./{4}">inspection.json</a>' -f $entry.historyMarkdownPath, $entry.historyHtmlPath, $entry.historySummaryPath, $entry.historyInspectionHtmlPath, $entry.historyInspectionJsonPath)
+    ('<a href="./{0}">history-report.md</a>; <a href="./{1}">history-report.html</a>; <a href="./{2}">history-summary.json</a>; <a href="./{3}">inspection.html</a>; <a href="./{4}">inspection.json</a>; <a href="./{5}">review-loop-receipt.json</a>' -f $entry.historyMarkdownPath, $entry.historyHtmlPath, $entry.historySummaryPath, $entry.historyInspectionHtmlPath, $entry.historyInspectionJsonPath, $entry.historyReviewReceiptPath)
   } else {
     ('<a href="./{0}">capture</a>' -f $entry.capturePath)
   }
@@ -574,6 +644,7 @@ Write-GitHubOutput -Key 'history_effective_baseline_ref' -Value ([string]$histor
 Write-GitHubOutput -Key 'vi_history_markdown_path' -Value $historyMarkdownPath -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'vi_history_html_path' -Value $historyHtmlPath -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'vi_history_summary_path' -Value $historySummaryPath -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'vi_history_review_receipt_path' -Value $historyReviewReceiptPathResolved -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'vi_history_inspection_json_path' -Value $historyInspectionJsonPath -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'vi_history_inspection_html_path' -Value $historyInspectionHtmlPath -Path $GitHubOutputPath
 

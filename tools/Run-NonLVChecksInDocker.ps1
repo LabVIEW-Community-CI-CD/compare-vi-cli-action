@@ -40,6 +40,18 @@
   Base VI used for the NI Linux review suite smoke compare. Defaults to fixtures/vi-attr/Base.vi.
 .PARAMETER NILinuxReviewSuiteHeadVi
   Head VI used for the NI Linux review suite smoke compare. Defaults to fixtures/vi-attr/Head.vi.
+.PARAMETER NILinuxReviewSuiteHistoryTargetPath
+  Optional single-VI history target path forwarded to tools/Invoke-NILinuxReviewSuite.ps1.
+.PARAMETER NILinuxReviewSuiteHistoryBranchRef
+  Optional branch ref / commit SHA used for touch-aware single-VI history review.
+.PARAMETER NILinuxReviewSuiteHistoryBaselineRef
+  Optional baseline ref used for touch-aware single-VI history review.
+.PARAMETER NILinuxReviewSuiteHistoryMaxCommitCount
+  Optional max commit scan depth for the touch-aware single-VI history review loop.
+.PARAMETER NILinuxReviewSuiteHistoryReviewReceiptPath
+  Optional output path for the single-VI review-loop receipt. Relative paths are resolved from the
+  repository root. When omitted, tools/Invoke-NILinuxReviewSuite.ps1 writes the receipt under the
+  selected NI Linux review-suite results root.
 .PARAMETER PesterPath
   Optional Pester path(s) to execute inside the tools container. When provided, the host only orchestrates Docker and
   the requested Pester run happens in-container.
@@ -69,6 +81,11 @@ param(
   [string]$RequirementsVerificationResultsRoot = 'tests/results/docker-tools-parity/requirements-verification',
   [string]$NILinuxReviewSuiteBaseVi = 'fixtures/vi-attr/Base.vi',
   [string]$NILinuxReviewSuiteHeadVi = 'fixtures/vi-attr/Head.vi',
+  [string]$NILinuxReviewSuiteHistoryTargetPath = '',
+  [string]$NILinuxReviewSuiteHistoryBranchRef = '',
+  [string]$NILinuxReviewSuiteHistoryBaselineRef = '',
+  [int]$NILinuxReviewSuiteHistoryMaxCommitCount = 0,
+  [string]$NILinuxReviewSuiteHistoryReviewReceiptPath = 'tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-review-loop-receipt.json',
   [string]$ToolsImageTag,
   [switch]$UseToolsImage,
   [string[]]$PesterPath,
@@ -412,16 +429,38 @@ if ($NILinuxReviewSuite) {
   $historyMarkdownPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.md'
   $historyHtmlPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.html'
   $historySummaryPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-summary.json'
+  $historyReviewReceiptPath = Join-Path $resultsRootResolved 'vi-history-review-loop-receipt.json'
   $historyInspectionHtmlPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-suite-inspection.html'
 
   Write-Host '[docker] ni-linux-review-suite (host)' -ForegroundColor Cyan
   Write-Host ("`tresultsRoot=" + [System.IO.Path]::GetRelativePath($repoRootResolved, $resultsRootResolved).Replace('\', '/')) -ForegroundColor DarkGray
+  $reviewSuiteParams = @{
+    BaseVi = $NILinuxReviewSuiteBaseVi
+    HeadVi = $NILinuxReviewSuiteHeadVi
+    ResultsRoot = $NILinuxReviewSuiteResultsRoot
+  }
+  if (
+    $PSBoundParameters.ContainsKey('NILinuxReviewSuiteHistoryReviewReceiptPath') -and
+    -not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryReviewReceiptPath)
+  ) {
+    $reviewSuiteParams.HistoryReviewReceiptPath = $NILinuxReviewSuiteHistoryReviewReceiptPath
+    $historyReviewReceiptPath = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $NILinuxReviewSuiteHistoryReviewReceiptPath))
+  }
+  if (-not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryTargetPath)) {
+    $reviewSuiteParams.HistoryTargetPath = $NILinuxReviewSuiteHistoryTargetPath
+  }
+  if (-not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryBranchRef)) {
+    $reviewSuiteParams.HistoryBranchRef = $NILinuxReviewSuiteHistoryBranchRef
+  }
+  if (-not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryBaselineRef)) {
+    $reviewSuiteParams.HistoryBaselineRef = $NILinuxReviewSuiteHistoryBaselineRef
+  }
+  if ($NILinuxReviewSuiteHistoryMaxCommitCount -gt 0) {
+    $reviewSuiteParams.HistoryMaxCommitCount = $NILinuxReviewSuiteHistoryMaxCommitCount
+  }
   Push-Location $repoRootResolved
   try {
-    & $reviewSuiteScriptPath `
-      -BaseVi $NILinuxReviewSuiteBaseVi `
-      -HeadVi $NILinuxReviewSuiteHeadVi `
-      -ResultsRoot $NILinuxReviewSuiteResultsRoot
+    & $reviewSuiteScriptPath @reviewSuiteParams
     $reviewSuiteExit = $LASTEXITCODE
     if ($reviewSuiteExit -ne 0) {
       throw ("NI Linux review suite exited with code {0}." -f $reviewSuiteExit)
@@ -436,6 +475,7 @@ if ($NILinuxReviewSuite) {
       $historyMarkdownPath,
       $historyHtmlPath,
       $historySummaryPath,
+      $historyReviewReceiptPath,
       $historyInspectionHtmlPath
     )) {
     if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
