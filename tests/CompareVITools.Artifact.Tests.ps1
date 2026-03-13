@@ -1,4 +1,4 @@
-Describe 'CompareVI.Tools artifact publishing' {
+Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSET','REQ:DOTNET_CLI_RELEASE_CHECKLIST' {
   BeforeAll {
     $candidateRoots = @()
     foreach ($candidate in @($PSScriptRoot, $PSCommandPath, (Get-Location).Path)) {

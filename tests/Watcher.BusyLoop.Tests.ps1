@@ -1,4 +1,4 @@
-Describe 'Pester Watcher Busy Loop Detection' -Tag 'Unit' {
+Describe 'Pester Watcher Busy Loop Detection' -Tag 'Unit','REQ:WATCHER_BUSY_LOOP' {
   BeforeAll {
     . (Join-Path $PSScriptRoot '_TestPathHelper.ps1')
     $nodeCmd = Get-Command node -ErrorAction Stop

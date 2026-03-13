@@ -1,4 +1,4 @@
-Describe 'Publish-Cli shared package feed resolution' {
+Describe 'Publish-Cli shared package feed resolution' -Tag 'REQ:DOTNET_CLI_POWERSHELL_MAPPING' {
   BeforeAll {
     $candidateRoots = @()
     foreach ($candidate in @($PSScriptRoot, $PSCommandPath, (Get-Location).Path)) {

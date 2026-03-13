@@ -1,4 +1,4 @@
-Describe 'Release metadata generators' {
+Describe 'Release metadata generators' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSET','REQ:DOTNET_CLI_RELEASE_CHECKLIST' {
   BeforeAll {
     $script:RepoRoot = Split-Path -Parent $PSScriptRoot
     $script:SbomScript = Join-Path $script:RepoRoot 'tools' 'Generate-ReleaseSbom.ps1'

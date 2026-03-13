@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Describe 'Dev Dashboard loaders' -Tag 'Unit' {
+Describe 'Dev Dashboard loaders' -Tag 'Unit','REQ:WATCH_AND_QUEUE' {
   BeforeAll {
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
     $modulePath = Join-Path $repoRoot 'tools' 'Dev-Dashboard.psm1'
