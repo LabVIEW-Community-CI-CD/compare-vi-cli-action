@@ -145,7 +145,7 @@ jobs:
 
       - name: Upload queue supervisor artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: queue-supervisor-${{ github.run_id }}
           path: |
@@ -153,3 +153,4 @@ jobs:
             tests/results/_agent/slo/ops-governor-state.json
             tests/results/_agent/slo/remediation-slo-report.json
           if-no-files-found: error
+

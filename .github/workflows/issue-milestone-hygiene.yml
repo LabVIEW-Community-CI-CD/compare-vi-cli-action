@@ -158,8 +158,9 @@ jobs:
 
       - name: Upload milestone hygiene report
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: issue-milestone-hygiene-report
           path: tests/results/_agent/issue/milestone-hygiene-report.json
           if-no-files-found: error
+

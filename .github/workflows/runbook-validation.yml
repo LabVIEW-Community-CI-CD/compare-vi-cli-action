@@ -37,7 +37,7 @@ jobs:
           Get-Content runbook-ci.json
 
       - name: Upload Runbook Artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: integration-runbook-result
           path: runbook-ci.json
@@ -48,3 +48,4 @@ jobs:
           $json = Get-Content runbook-ci.json -Raw | ConvertFrom-Json
           if ($json.schema -ne 'integration-runbook-v1') { throw 'Schema mismatch' }
           if (-not $json.phases) { throw 'No phases in runbook output' }
+

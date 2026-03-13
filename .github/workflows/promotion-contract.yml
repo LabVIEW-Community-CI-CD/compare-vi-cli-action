@@ -71,7 +71,7 @@ jobs:
 
     - name: Upload promotion contract artifacts
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: promotion-contract-${{ github.run_id }}
         path: |
@@ -79,3 +79,4 @@ jobs:
           tests/results/promotion-contract/promotion-contract-ledger.json
           tests/results/_agent/slo/promotion-contract-slo-metrics.json
         if-no-files-found: error
+

@@ -27,7 +27,7 @@ jobs:
       COMPARE_TIMEOUT_SECONDS: 600
     steps:
       - name: Checkout base (parent repository)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ env.BASE_SHA }}
           fetch-depth: 0
@@ -278,9 +278,10 @@ jobs:
 
       - name: Upload VI compare artifacts
         if: always() && steps.compare.outputs.compare_dir != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: vi-compare-${{ github.run_id }}
           path: |
             ${{ steps.compare.outputs.compare_dir }}
             vi-diff-manifest.json
+

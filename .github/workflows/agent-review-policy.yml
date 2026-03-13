@@ -52,7 +52,7 @@ jobs:
 
     - name: Upload Copilot review signal artifact
       if: always() && github.event_name == 'pull_request_target'
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: copilot-review-signal-${{ github.event.pull_request.number }}
         path: tests/results/_agent/reviews/copilot-review-signal.json
@@ -103,8 +103,9 @@ jobs:
 
     - name: Upload Copilot queue gate artifact
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: copilot-review-gate-${{ github.run_id }}-${{ github.run_attempt }}
         path: tests/results/_agent/reviews/copilot-review-gate.json
         if-no-files-found: error
+

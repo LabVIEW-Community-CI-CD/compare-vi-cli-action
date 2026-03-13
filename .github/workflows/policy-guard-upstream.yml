@@ -84,7 +84,7 @@ jobs:
 
     - name: Upload policy drift artifact
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: policy-drift-${{ github.run_id }}
         path: |
@@ -92,3 +92,4 @@ jobs:
           tests/results/_agent/health/policy-guard-workspace-health.json
           tests/results/_agent/deployments/environment-gate-policy.json
         if-no-files-found: error
+

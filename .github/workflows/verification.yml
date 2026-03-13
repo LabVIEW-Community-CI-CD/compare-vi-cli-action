@@ -49,7 +49,7 @@ jobs:
 
       - name: Upload verification artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: requirements-verification-${{ github.run_id }}
           path: |
@@ -57,3 +57,4 @@ jobs:
             tests/results/_agent/verification/trace-matrix.html
             tests/results/_agent/verification/verification-summary.json
           if-no-files-found: error
+

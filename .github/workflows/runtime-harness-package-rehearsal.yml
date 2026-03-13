@@ -178,7 +178,7 @@ jobs:
 
       - name: Upload rehearsal artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: runtime-harness-package-rehearsal-${{ github.run_id }}
           path: |
@@ -190,3 +190,4 @@ jobs:
             tests/results/_agent/slo/runtime-harness-package-rehearsal-slo-metrics.json
             tests/results/_agent/release/runtime-harness-package/tarballs/*.tgz
           if-no-files-found: error
+

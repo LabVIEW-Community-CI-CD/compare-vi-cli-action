@@ -25,9 +25,10 @@ jobs:
           node tools/npm/run-script.mjs priority:sync:lane
       - name: Upload snapshot
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: standing-priority-snapshot-${{ github.run_id }}
           path: |
             tests/results/_agent/issue/*.json
             tests/results/_agent/issue/*.digest
+

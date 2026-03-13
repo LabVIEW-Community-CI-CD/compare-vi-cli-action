@@ -93,10 +93,11 @@ jobs:
 
     - name: Upload commit integrity artifact
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: commit-integrity-${{ github.run_id }}
         path: |
           tests/results/_agent/commit-integrity/commit-integrity-report.json
           tests/results/_agent/commit-integrity/commit-integrity-bypass-ledger.json
         if-no-files-found: error
+

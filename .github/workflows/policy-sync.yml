@@ -49,10 +49,11 @@ jobs:
 
       - name: Upload policy sync artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: policy-sync-${{ github.run_id }}
           path: |
             tests/results/_agent/policy/policy-drift-report.json
             tests/results/_agent/health/policy-sync-workspace-health.json
           if-no-files-found: error
+

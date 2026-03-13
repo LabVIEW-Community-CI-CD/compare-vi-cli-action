@@ -278,7 +278,7 @@ runs:
 
     - name: Upload drift artifacts (with retention)
       if: always() && inputs.upload-artifacts == 'true' && (inputs.only-upload-on-failure != 'true' || steps.orchestrate.outputs.status != 'ok') && inputs.retention-days != ''
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ inputs.artifact-name }}
         path: |
@@ -289,7 +289,7 @@ runs:
 
     - name: Upload drift artifacts (default retention)
       if: always() && inputs.upload-artifacts == 'true' && (inputs.only-upload-on-failure != 'true' || steps.orchestrate.outputs.status != 'ok') && inputs.retention-days == ''
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ inputs.artifact-name }}
         path: |
@@ -468,7 +468,7 @@ runs:
 
     - name: Upload refreshed manifest (if any)
       if: steps.manifest.outputs.written == 'true' && inputs.upload-artifacts == 'true'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: fixture-manifest-refreshed
         path: ${{ steps.manifest.outputs.path }}
@@ -504,3 +504,4 @@ runs:
           $lines += '- Fixture Drift: ./docs/FIXTURE_DRIFT.md'
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
+

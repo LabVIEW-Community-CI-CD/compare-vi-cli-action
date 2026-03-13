@@ -43,10 +43,10 @@ jobs:
       DOWNSTREAM_PILOT_REPO: ${{ vars.DOWNSTREAM_PILOT_REPO }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -107,7 +107,7 @@ jobs:
 
       - name: Upload onboarding artifacts
         if: ${{ always() && hashFiles('tests/results/_agent/onboarding/*.json') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: downstream-onboarding-feedback
           path: tests/results/_agent/onboarding/*.json
@@ -118,3 +118,4 @@ jobs:
         run: |
           echo "Downstream onboarding feedback reported a failure."
           exit 1
+

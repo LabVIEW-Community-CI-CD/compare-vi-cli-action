@@ -125,7 +125,7 @@ jobs:
           -p:Version=${{ steps.ctx.outputs.version }}
 
       - name: Upload package artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: comparevi-shared-package-${{ steps.ctx.outputs.version }}
           path: |
@@ -189,10 +189,11 @@ jobs:
 
       - name: Upload promotion evidence artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: promotion-evidence-shared-${{ github.run_id }}
           path: |
             tests/results/promotion-contract/publish-shared-ledger.json
             tests/results/_agent/slo/publish-shared-slo-metrics.json
           if-no-files-found: error
+

@@ -36,6 +36,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.pull_request.number) || github.event.inputs.sample_id || github.ref }}
   cancel-in-progress: true
 
+env:
+  # Controlled opt-in for the June 2026 JavaScript action runtime migration.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   smoke-gate:
     runs-on: ubuntu-latest
@@ -101,7 +105,7 @@ jobs:
       run: |
         ./tools/Check-PRMergeable.ps1 -Number ${{ github.event.pull_request.number }} -FailOnConflict
     - name: Setup Python for workflow enclave
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.12'
     - name: Workflow drift check
@@ -195,7 +199,7 @@ jobs:
 
     - name: Upload policy drift artifact
       if: ${{ always() && github.event.repository.fork == false }}
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: policy-drift-validate-${{ github.run_id }}-${{ github.run_attempt }}
         path: tests/results/_agent/policy/policy-drift-report.json
@@ -446,7 +450,7 @@ jobs:
 
     - name: Upload Validate scope plan artifact
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: validate-scope-plan
         path: tests/results/_agent/validate-scope-plan/validate-scope-plan.json
@@ -513,7 +517,7 @@ jobs:
     - name: Restore previous fixture validation snapshot (cache)
       if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
       id: restore_prev_fixture_validation
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v5
       with:
         path: fixture-validation-prev.json
         key: fixture-validation-${{ github.sha }}
@@ -546,13 +550,13 @@ jobs:
         pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation-delta.json -SchemaPath docs/schemas/fixture-validation-delta-v1.schema.json
     - name: Upload fixture validation delta JSON
       if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: validate-fixture-validation-delta-json
         path: fixture-validation-delta.json
     - name: Upload fixture validation JSON
       if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: validate-fixture-validation-json
         path: fixture-validation.json
@@ -575,13 +579,13 @@ jobs:
       run: pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json -SummaryPath fixture-summary.md
     - name: Upload fixture summary artifact
       if: always() && env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && hashFiles('fixture-summary.md') != ''
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: fixture-validation-summary
         path: fixture-summary.md
     - name: Save current snapshot to cache
       if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v5
       with:
         path: fixture-validation.json
         key: fixture-validation-${{ github.sha }}
@@ -665,7 +669,7 @@ jobs:
 
     - name: Upload hook parity summaries
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: hook-parity-ubuntu-latest
         path: tests/results/_hooks/*.json
@@ -813,7 +817,7 @@ jobs:
         node tools/npm/run-script.mjs priority:schema
     - name: Upload issue snapshot artifacts
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: standing-priority-snapshot
         path: |
@@ -1019,7 +1023,7 @@ jobs:
 
     - name: Upload session index artifact
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: validate-session-index
         path: |
@@ -1051,7 +1055,7 @@ jobs:
         phase: J2
         results-dir: tests/results
     - name: Download session index artifact
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v6
       with:
         name: validate-session-index
         path: ${{ runner.temp }}/sessionindex-v2-contract
@@ -1079,7 +1083,7 @@ jobs:
 
     - name: Upload v2 contract report
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: validate-session-index-v2-contract
         path: ${{ runner.temp }}/sessionindex-v2-contract/session-index-v2-contract.json
@@ -1172,7 +1176,7 @@ jobs:
 
     - name: Upload bundle certification artifacts
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: validate-comparevi-history-bundle-certification
         path: |
@@ -1244,7 +1248,7 @@ jobs:
 
     - name: Upload VI history dispatch plan artifact
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: validate-vi-history-dispatch-plan
         path: tests/results/_agent/vi-history-dispatch/validate-vi-history-dispatch-plan.json
@@ -1422,7 +1426,7 @@ jobs:
 
     - name: Upload VI history scenario artifacts (Linux lane)
       if: always() && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: validate-vi-history-scenarios-linux
         path: |
@@ -1435,3 +1439,4 @@ jobs:
           tests/results/local-parity/linux/runtime-manager-preflight-linux.json
           tests/results/local-parity/linux/runtime-manager-compare-linux.json
         if-no-files-found: warn
+

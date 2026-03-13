@@ -68,7 +68,7 @@ test('release workflow explicitly dispatches publish-tools-image with actions wr
 
   assert.equal(releaseJob?.permissions?.actions, 'write');
   assert.ok(dispatchStep, 'release workflow should dispatch publish-tools-image explicitly');
-  assert.equal(dispatchStep.uses, 'actions/github-script@v7');
+  assert.equal(dispatchStep.uses, 'actions/github-script@v8');
   assert.match(dispatchStep.with.script, /workflow_id:\s*'publish-tools-image\.yml'/);
   assert.match(dispatchStep.with.script, /ref:\s*'\$\{\{\s*github\.ref_name\s*\}\}'/);
   assert.match(

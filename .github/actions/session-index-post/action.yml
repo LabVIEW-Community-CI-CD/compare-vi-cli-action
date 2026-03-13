@@ -76,9 +76,10 @@ runs:
 
     - name: Upload session index artifact
       if: ${{ inputs.upload == 'true' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ inputs.artifact-name }}
         path: |
           ${{ inputs.results-dir }}/session-index.json
           ${{ inputs.results-dir }}/session-index-v2.json
+
