@@ -502,13 +502,15 @@ export function classifyPullRequestWork(pr = {}) {
   const copilotReviewWorkflow = pr.copilotReviewWorkflow ?? null;
   const copilotReviewWorkflowStatus = normalizeText(copilotReviewWorkflow?.status).toUpperCase();
   const copilotReviewWorkflowConclusion = normalizeText(copilotReviewWorkflow?.conclusion).toUpperCase();
-  const hasActionableCurrentHeadComments = (copilotReviewSignal?.actionableCommentCount ?? 0) > 0;
+  const hasActionableCurrentHeadItems =
+    (copilotReviewSignal?.actionableCommentCount ?? 0) > 0 ||
+    (copilotReviewSignal?.actionableThreadCount ?? 0) > 0;
   const reviewPendingRequired =
     !reviewDecision || reviewDecision === 'REVIEW_REQUIRED' || reviewDecision === 'CHANGES_REQUESTED';
   const reviewPendingFromSignal =
     reviewPendingRequired &&
     ((copilotReviewSignal != null &&
-      (copilotReviewSignal.hasCurrentHeadReview !== true || hasActionableCurrentHeadComments)) ||
+      (copilotReviewSignal.hasCurrentHeadReview !== true || hasActionableCurrentHeadItems)) ||
       (copilotReviewSignal == null &&
         copilotReviewWorkflow != null &&
         (PENDING_WORKFLOW_RUN_STATUSES.has(copilotReviewWorkflowStatus) ||
@@ -546,7 +548,7 @@ export function classifyPullRequestWork(pr = {}) {
     nextWakeCondition = 'copilot-review-workflow-rerun-or-fixed';
   }
 
-  if (hasActionableCurrentHeadComments) {
+  if (hasActionableCurrentHeadItems) {
     return {
       laneLifecycle: 'coding',
       blockerClass: 'review',
@@ -1810,12 +1812,12 @@ function evaluateDraftPhaseCopilotClearance(pullRequest = {}) {
   const ok =
     actionableCommentCount === 0 &&
     actionableThreadCount === 0 &&
-    (hasCurrentHeadReview || reviewRunCompletedClean);
+    hasCurrentHeadReview;
   const reasons = [];
   if (hasActionableItems) {
     reasons.push('actionable-current-head-comments');
   }
-  if (!hasCurrentHeadReview && !reviewRunCompletedClean) {
+  if (!hasCurrentHeadReview) {
     if (PENDING_WORKFLOW_RUN_STATUSES.has(workflowStatus)) {
       reasons.push('draft-review-workflow-pending');
     } else if (workflowStatus === 'COMPLETED' && workflowConclusion && workflowConclusion !== 'SUCCESS') {

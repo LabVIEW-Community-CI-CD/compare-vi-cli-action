@@ -1694,6 +1694,32 @@ test('classifyPullRequestWork reopens an existing PR for coding when Copilot pos
   assert.equal(prStatus.nextWakeCondition, 'review-comments-addressed');
 });
 
+test('classifyPullRequestWork reopens an existing PR for coding when Copilot leaves an actionable thread with no inline comment count', () => {
+  const prStatus = classifyPullRequestWork({
+    number: 1015,
+    isDraft: false,
+    reviewDecision: null,
+    headRefOid: '021c02d383a974c5ec3fe6c3ef32f54391f7f6ab',
+    statusCheckRollup: [
+      { name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' }
+    ],
+    copilotReviewSignal: {
+      hasCopilotReview: true,
+      hasCurrentHeadReview: true,
+      latestCopilotReview: {
+        id: 3931659485,
+        commitId: '021c02d383a974c5ec3fe6c3ef32f54391f7f6ab'
+      },
+      actionableThreadCount: 1,
+      actionableCommentCount: 0
+    }
+  });
+
+  assert.equal(prStatus.laneLifecycle, 'coding');
+  assert.equal(prStatus.blockerClass, 'review');
+  assert.equal(prStatus.nextWakeCondition, 'review-comments-addressed');
+});
+
 test('planDeliveryBrokerAction executes a coding turn when an existing PR has actionable review comments', () => {
   const planned = planDeliveryBrokerAction({
     status: 'coding',
@@ -3092,6 +3118,77 @@ test('delivery broker keeps a draft PR waiting-review when local receipt freshne
   assert.match(brokerResult.reason, /current-head, clean, and request-complete/i);
 });
 
+test('delivery broker keeps a draft PR waiting-review when the Copilot workflow succeeded but no current-head review is observable', async () => {
+  const helperCalls = [];
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: '/tmp/repo',
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-review',
+      objective: {
+        summary: 'Advance issue #1067'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-review',
+          pullRequest: {
+            number: 1067,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1067',
+            isDraft: true,
+            copilotReviewSignal: {
+              hasCurrentHeadReview: false,
+              actionableCommentCount: 0,
+              actionableThreadCount: 0
+            },
+            copilotReviewWorkflow: {
+              status: 'COMPLETED',
+              conclusion: 'SUCCESS'
+            }
+          },
+          mutationEnvelope: {
+            copilotReviewStrategy: 'draft-only-explicit',
+            maxActiveCodingLanes: 1
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: ['node', 'mock-broker']
+      }),
+      runCommandFn: async (command, args) => {
+        helperCalls.push([command, ...args].join(' '));
+        return {
+          status: 0,
+          stdout: '',
+          stderr: ''
+        };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.status, 'completed');
+  assert.equal(brokerResult.outcome, 'waiting-review');
+  assert.equal(brokerResult.details.reviewPhase, 'draft-review');
+  assert.equal(brokerResult.details.nextWakeCondition, 'copilot-review-post-expected');
+  assert.equal(helperCalls.length, 0);
+  assert.match(brokerResult.reason, /draft-phase Copilot review clearance exists on the current head/i);
+});
+
 test('delivery broker returns a prematurely ready PR to draft when draft-phase review clearance is missing', async () => {
   const helperCalls = [];
   const brokerResult = await runDeliveryTurnBroker({
@@ -3187,6 +3284,11 @@ test('delivery broker keeps ready PR waiting-review state in ready-validation wh
             isDraft: false,
             nextWakeCondition: 'review-disposition-updated',
             pollIntervalSecondsHint: 30,
+            copilotReviewSignal: {
+              hasCurrentHeadReview: true,
+              actionableCommentCount: 0,
+              actionableThreadCount: 0
+            },
             copilotReviewWorkflow: {
               status: 'COMPLETED',
               conclusion: 'SUCCESS'
