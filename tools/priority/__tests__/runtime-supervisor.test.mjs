@@ -5,8 +5,11 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { compareviRuntimeTest, parseArgs, runRuntimeSupervisor } from '../runtime-supervisor.mjs';
 import { buildCanonicalDeliveryDecision, classifyPullRequestWork, fetchIssueExecutionGraph, planDeliveryBrokerAction, runDeliveryTurnBroker } from '../delivery-agent.mjs';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, 'utf8'));
@@ -104,6 +107,67 @@ test('parseArgs accepts runtime action, lane metadata, and lease options', () =>
   assert.equal(parsed.leaseScope, 'workspace');
   assert.equal(parsed.leaseRoot, '.tmp/leases');
   assert.equal(parsed.owner, 'agent@example');
+});
+
+test('buildCompareviTaskPacket carries a daemon-requested Docker/Desktop review loop from standing issue metadata', async () => {
+  const packet = await compareviRuntimeTest.buildCompareviTaskPacket({
+    repoRoot,
+    schedulerDecision: {
+      activeLane: {
+        issue: 1053,
+        branch: 'issue/origin-1053-daemon-docker-desktop-review-loop',
+        forkRemote: 'origin'
+      },
+      artifacts: {
+        executionMode: 'canonical-delivery',
+        selectedActionType: 'advance-child-issue',
+        laneLifecycle: 'coding',
+        selectedIssueSnapshot: {
+          number: 1053,
+          title: 'CI: extend Docker Desktop parity to NI Linux smoke and VI history suite generation',
+          body: [
+            '## Daemon-first local iteration extension',
+            '- markdownlint',
+            '- requirements verification',
+            '- NI Linux review suite',
+            '- single-VI touch-aware history on develop'
+          ].join('\n'),
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1053'
+        },
+        standingIssueSnapshot: {
+          number: 1053,
+          title: 'CI: extend Docker Desktop parity to NI Linux smoke and VI history suite generation',
+          body: [
+            '## Daemon-first local iteration extension',
+            '- markdownlint',
+            '- requirements verification',
+            '- NI Linux review suite',
+            '- single-VI touch-aware history on develop'
+          ].join('\n'),
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1053'
+        }
+      }
+    },
+    preparedWorker: {
+      checkoutPath: '/tmp/worker'
+    },
+    workerReady: {
+      checkoutPath: '/tmp/worker'
+    },
+    workerBranch: {
+      branch: 'issue/origin-1053-daemon-docker-desktop-review-loop',
+      checkoutPath: '/tmp/worker'
+    }
+  });
+
+  assert.equal(packet.evidence.delivery.localReviewLoop.requested, true);
+  assert.equal(packet.evidence.delivery.localReviewLoop.source, 'standing-issue-body');
+  assert.equal(packet.evidence.delivery.localReviewLoop.markdownlint, true);
+  assert.equal(packet.evidence.delivery.localReviewLoop.requirementsVerification, true);
+  assert.equal(packet.evidence.delivery.localReviewLoop.niLinuxReviewSuite, true);
+  assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory.enabled, true);
+  assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory.targetPath, 'fixtures/vi-attr/Head.vi');
+  assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory.branchRef, 'develop');
 });
 
 test('comparevi branch resolver matches the repo issue branch naming contract', () => {
@@ -2199,4 +2263,213 @@ test('delivery broker classifies rate-limit failures with a retryable blocker', 
   assert.equal(brokerResult.outcome, 'rate-limit');
   assert.equal(brokerResult.details.blockerClass, 'rate-limit');
   assert.equal(brokerResult.details.retryable, true);
+});
+
+test('delivery broker appends a passed local Docker/Desktop review loop to coding receipts when requested', async () => {
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: '/tmp/repo',
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'coding',
+      objective: {
+        summary: 'Advance issue #1053'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'coding',
+          localReviewLoop: {
+            requested: true,
+            source: 'standing-issue-body',
+            receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            markdownlint: true,
+            requirementsVerification: true,
+            niLinuxReviewSuite: true,
+            singleViHistory: {
+              enabled: true,
+              targetPath: 'fixtures/vi-attr/Head.vi',
+              branchRef: 'develop',
+              baselineRef: null,
+              maxCommitCount: 256
+            }
+          },
+          mutationEnvelope: {
+            maxActiveCodingLanes: 1
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        localReviewLoop: {
+          enabled: true,
+          bodyMarkers: ['Daemon-first local iteration extension'],
+          receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+          command: ['node', 'tools/priority/docker-desktop-review-loop.mjs'],
+          markdownlint: true,
+          requirementsVerification: true,
+          niLinuxReviewSuite: true,
+          singleViHistory: {
+            enabled: true,
+            targetPath: 'fixtures/vi-attr/Head.vi',
+            branchRef: 'develop',
+            baselineRef: '',
+            maxCommitCount: 256
+          }
+        },
+        codingTurnCommand: ['node', 'mock-broker']
+      }),
+      invokeCodingTurnFn: async () => ({
+        status: 'completed',
+        outcome: 'waiting-review',
+        source: 'delivery-agent-broker',
+        reason: 'Broker refreshed the PR and requested a new Copilot review.',
+        details: {
+          actionType: 'execute-coding-turn',
+          laneLifecycle: 'waiting-review',
+          blockerClass: 'review',
+          retryable: true,
+          nextWakeCondition: 'copilot-review-workflow-completed',
+          helperCallsExecuted: ['node dist/tools/priority/run-delivery-turn-with-codex.js'],
+          filesTouched: ['docs/knowledgebase/DOCKER_TOOLS_PARITY.md']
+        }
+      }),
+      runCommandFn: async (command, args) => {
+        assert.equal(command, 'node');
+        assert.equal(args[0], 'tools/priority/docker-desktop-review-loop.mjs');
+        return {
+          status: 0,
+          stdout: JSON.stringify({
+            status: 'passed',
+            source: 'docker-desktop-review-loop',
+            reason: 'Docker/Desktop review loop passed.',
+            receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            receipt: {
+              overall: {
+                status: 'passed',
+                failedCheck: '',
+                message: '',
+                exitCode: 0
+              }
+            }
+          }),
+          stderr: ''
+        };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.status, 'completed');
+  assert.equal(brokerResult.outcome, 'waiting-review');
+  assert.match(brokerResult.reason, /Local Docker\/Desktop review loop passed/i);
+  assert.equal(brokerResult.details.localReviewLoop.status, 'passed');
+  assert.equal(brokerResult.details.localReviewLoop.receipt.overall.status, 'passed');
+  assert.match(
+    brokerResult.details.helperCallsExecuted.join('\n'),
+    /node tools\/priority\/docker-desktop-review-loop\.mjs --repo-root \/tmp\/repo/
+  );
+});
+
+test('delivery broker fails closed when the requested local Docker/Desktop review loop fails', async () => {
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: '/tmp/repo',
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'coding',
+      objective: {
+        summary: 'Advance issue #1053'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'coding',
+          localReviewLoop: {
+            requested: true,
+            source: 'standing-issue-body',
+            receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            markdownlint: true,
+            requirementsVerification: true,
+            niLinuxReviewSuite: false,
+            singleViHistory: null
+          },
+          mutationEnvelope: {
+            maxActiveCodingLanes: 1
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        localReviewLoop: {
+          enabled: true,
+          receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+          command: ['node', 'tools/priority/docker-desktop-review-loop.mjs']
+        },
+        codingTurnCommand: ['node', 'mock-broker']
+      }),
+      invokeCodingTurnFn: async () => ({
+        status: 'completed',
+        outcome: 'coding-command-finished',
+        source: 'delivery-agent-broker',
+        reason: 'Coding turn completed without an explicit receipt payload.',
+        details: {
+          actionType: 'execute-coding-turn',
+          laneLifecycle: 'coding',
+          blockerClass: 'none',
+          retryable: true,
+          nextWakeCondition: 'scheduler-rescan',
+          helperCallsExecuted: ['node dist/tools/priority/run-delivery-turn-with-codex.js'],
+          filesTouched: ['tools/priority/delivery-agent.mjs']
+        }
+      }),
+      runCommandFn: async () => ({
+        status: 1,
+        stdout: JSON.stringify({
+          status: 'failed',
+          source: 'docker-desktop-review-loop',
+          reason: 'Docker/Desktop review loop failed on markdownlint.',
+          receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+          receipt: {
+            overall: {
+              status: 'failed',
+              failedCheck: 'markdownlint',
+              message: 'markdownlint failed',
+              exitCode: 1
+            }
+          }
+        }),
+        stderr: 'markdownlint failed'
+      })
+    }
+  });
+
+  assert.equal(brokerResult.status, 'blocked');
+  assert.equal(brokerResult.outcome, 'local-review-loop-failed');
+  assert.equal(brokerResult.details.blockerClass, 'ci');
+  assert.equal(brokerResult.details.localReviewLoop.status, 'failed');
+  assert.match(brokerResult.reason, /markdownlint/i);
 });

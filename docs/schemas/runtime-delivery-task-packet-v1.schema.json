@@ -56,6 +56,7 @@
             "issueGraph": { "type": ["object", "null"], "additionalProperties": true },
             "pullRequest": { "type": ["object", "null"], "additionalProperties": true },
             "backlog": { "type": ["object", "null"], "additionalProperties": true },
+            "localReviewLoop": { "type": ["object", "null"], "additionalProperties": true },
             "mutationEnvelope": { "type": "object", "additionalProperties": true },
             "turnBudget": { "type": "object", "additionalProperties": true },
             "relevantFiles": {
