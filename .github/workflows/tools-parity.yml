@@ -15,6 +15,14 @@ on:
         description: 'Skip markdown lint'
         default: 'true'
         required: false
+      runNiLinuxReviewSuite:
+        description: 'Run the NI Linux smoke + VI history review suite'
+        default: 'false'
+        required: false
+      runRequirementsVerification:
+        description: 'Run requirements verification / traceability generation'
+        default: 'false'
+        required: false
 
 permissions:
   contents: read
@@ -41,6 +49,8 @@ jobs:
           if ('${{ inputs.skipDocs }}' -eq 'true') { $args += '-SkipDocs' }
           if ('${{ inputs.skipWorkflow }}' -eq 'true') { $args += '-SkipWorkflow' }
           if ('${{ inputs.skipMarkdown }}' -eq 'true') { $args += '-SkipMarkdown' }
+          if ('${{ inputs.runNiLinuxReviewSuite }}' -eq 'true') { $args += '-NILinuxReviewSuite' }
+          if ('${{ inputs.runRequirementsVerification }}' -eq 'true') { $args += '-RequirementsVerification' }
           ./tools/Run-NonLVChecksInDocker.ps1 @args 2>&1 | Tee-Object -FilePath parity-log.txt
 
       - name: Clean generated CLI artifacts
@@ -54,3 +64,19 @@ jobs:
           path: |
             docker-version.txt
             parity-log.txt
+
+      - name: Upload NI Linux review-suite evidence
+        if: ${{ inputs.runNiLinuxReviewSuite == 'true' }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: docker-parity-linux-ni-review-suite
+          path: |
+            tests/results/docker-tools-parity/ni-linux-review-suite
+
+      - name: Upload requirements verification evidence
+        if: ${{ inputs.runRequirementsVerification == 'true' }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: docker-parity-linux-requirements-verification
+          path: |
+            tests/results/docker-tools-parity/requirements-verification

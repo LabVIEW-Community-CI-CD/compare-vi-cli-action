@@ -1,8 +1,11 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # Docker Tools Parity Checklist
 
-This note captures the current state of the containerized validation helpers and how to confirm they match the Windows
-tooling. It supports standing priority #127 (Phase 1a: Docker image alignment).
+This note captures the current state of the Docker/Desktop validation helpers and how to confirm they match the Windows
+tooling. It now covers both the non-LV parity path and the NI Linux review-suite evidence path.
+
+The intended operating model is local-first: use Docker Desktop to clear deterministic markdown, workflow-drift,
+NI Linux smoke, and VI history artifact defects before paying for another GitHub Actions review cycle.
 
 ## Environment prerequisites
 
@@ -14,6 +17,8 @@ tooling. It supports standing priority #127 (Phase 1a: Docker image alignment).
 
 ```powershell
 pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
+pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -NILinuxReviewSuite
+pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerification
 ```
 
 - The `dotnet-cli-build (sdk)` container publishes the CompareVI CLI into `dist/comparevi-cli/`. Expect artifacts:
@@ -22,6 +27,41 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
   print `[docker] actionlint OK`.
 - Optional flags (`-SkipDocs`, `-SkipWorkflow`, `-SkipMarkdown`) remain available when you want a quicker loop while
   iterating locally.
+- `-NILinuxReviewSuite` drives `tools/Invoke-NILinuxReviewSuite.ps1` from the host plane against Docker Desktop/Linux
+  and writes GitHub Pages-ready HTML/JSON outputs under
+  `tests/results/docker-tools-parity/ni-linux-review-suite/`, including:
+  - `review-suite-summary.html`
+  - `vi-history-report/results/history-report.html`
+  - `vi-history-report/results/history-summary.json`
+  - `vi-history-report/results/history-suite-inspection.html`
+- `-RequirementsVerification` runs `tools/Verify-RequirementsGate.ps1` inside the tools container and writes
+  deterministic traceability artifacts under `tests/results/docker-tools-parity/requirements-verification/`, including:
+  - `verification-summary.json`
+  - `trace-matrix.json`
+  - `trace-matrix.html`
+
+## Review-loop policy
+
+- First-discovery on GitHub Actions is acceptable. Repeat discovery of the same
+  deterministic defect class is not.
+- After the first hosted failure or review comment, prefer the local
+  Docker/Desktop loop until:
+  - markdownlint is clean
+  - workflow-drift checks are clean
+  - requirements traceability / verification is updated locally
+  - NI Linux smoke is green
+  - VI history review artifacts are coherent and reviewable
+- Treat hosted runs as confirmation and publication surfaces once the local loop
+  is already green.
+
+## Targeted single-VI history follow-up
+
+- The current helper generates the suite-level NI Linux review outputs.
+- Follow-up work tracked in `#1053` extends this with a single-VI branch-history
+  review mode.
+- That targeted path must be touch-aware for deep branches such as `develop`, so
+  it reviews only the commits that actually changed the selected VI instead of
+  replaying all branch commits.
 
 ## Cleanup expectations
 
@@ -47,7 +87,10 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
 - GitHub workflow `Tools Parity (Linux)` (`.github/workflows/tools-parity.yml`) runs the helper on `ubuntu-latest`.
   Trigger it via `workflow_dispatch` to capture fresh parity logs and a `docker version` snapshot. Artifacts are uploaded
   as `docker-parity-linux` (example run: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18703466772).
-- Adjust the workflow inputs to re-enable docs, workflow checkout contracts, or markdown checks when validating broader coverage.
+- Adjust the workflow inputs to re-enable docs, workflow checkout contracts, markdown checks, or the NI Linux review
+  suite when validating broader coverage.
+- The workflow can also upload requirements traceability evidence as
+  `docker-parity-linux-requirements-verification`.
 
 ## macOS coverage (help wanted)
 

@@ -80,19 +80,26 @@ Audience: local validation for PowerShell unit/integration suites and leak detec
 Audience: contributors without the full local toolchain or anyone mirroring CI behaviour.
 
 - **What it does** – Spins up Docker containers for `actionlint`, `markdownlint`, documentation link checks, workflow
-  checkout contract validation, and optional CompareVI CLI builds. Supports the published tools image (`-UseToolsImage`) or
-  per-check public images.
+  checkout contract validation, and optional CompareVI CLI builds. Supports the published tools image
+  (`-UseToolsImage`) or per-check public images.
 - **Inputs** – Common switches:
   - `-UseToolsImage [-ToolsImageTag <tag>]` to route everything through the curated tools container (honours
     `COMPAREVI_TOOLS_IMAGE`).
   - `-PrioritySync` to run `priority:sync` inside the container (requires `GH_TOKEN`).
+  - `-RequirementsVerification` to run `tools/Verify-RequirementsGate.ps1` inside Docker and emit
+    `verification-summary.json`, `trace-matrix.json`, and `trace-matrix.html` under
+    `tests/results/docker-tools-parity/requirements-verification`.
+  - `-NILinuxReviewSuite` to run the NI Linux smoke + VI history suite through Docker Desktop/Linux and emit the
+    review-suite HTML/JSON outputs under `tests/results/docker-tools-parity/ni-linux-review-suite`.
   - `-FailOnWorkflowDrift` remains as a deprecated compatibility switch; workflow checkout contracts now fail
     immediately when enabled.
   - Skip flags (`-SkipActionlint`, `-SkipMarkdown`, `-SkipDocs`, `-SkipWorkflow`, `-SkipDotnetCliBuild`) for tight
     loops.
 - **Expected output** - Console logs reflect each container invocation. The CLI build emits `dist/comparevi-cli/*` when
   enabled. Workflow checkout contracts run through the pinned Node test surface and fail cleanly when the checkout
-  contract drifts.
+  contract drifts. When `-NILinuxReviewSuite` is set, the helper also emits `review-suite-summary.html`,
+  `history-report.html`, `history-summary.json`, and `history-suite-inspection.html`. When
+  `-RequirementsVerification` is set, the helper emits the requirements verification summary and trace matrix outputs.
 - **Failure modes** - Missing Docker daemon, authentication gaps (when the tools image is private), or missing GH
   tokens during priority sync. Exit code is the first failing container code.
 - **When to run** - Before publishing documentation, when validating the tools image, or after editing workflows to

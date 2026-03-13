@@ -1,13 +1,14 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  Runs non-LabVIEW validation checks (actionlint, markdownlint, docs links, workflow contracts)
-  inside Docker containers for consistent local results.
+  Runs Docker/Desktop-backed validation checks for repo linting, workflow drift, and NI Linux review evidence.
 
 .DESCRIPTION
   Executes the repository's non-LV tooling in containerized environments to mirror CI behaviour
   while keeping the working tree deterministic. Each check mounts the repository read/write and
-  runs against the current workspace.
+  runs against the current workspace. When requested, the helper also drives the NI Linux review
+  suite from the host plane against Docker Desktop/Linux so the same entrypoint can produce
+  `history-report.html`, `history-summary.json`, and related GitHub Pages-ready outputs.
 
   Exit codes:
     - 0 : success
@@ -25,6 +26,20 @@
   Skip building the CompareVI .NET CLI inside the dotnet SDK container (outputs to dist/comparevi-cli by default).
 .PARAMETER PrioritySync
   Run standing-priority sync inside the tools container (requires GH_TOKEN or cached priority artifacts).
+.PARAMETER NILinuxReviewSuite
+  Run the hosted NI Linux smoke + VI history suite using Docker Desktop/Linux from the host plane.
+.PARAMETER RequirementsVerification
+  Run requirements traceability / verification inside Docker so uncovered requirement IDs can be iterated locally.
+.PARAMETER NILinuxReviewSuiteResultsRoot
+  Results root for NI Linux smoke + VI history outputs. Defaults to
+  tests/results/docker-tools-parity/ni-linux-review-suite.
+.PARAMETER RequirementsVerificationResultsRoot
+  Results root for requirements traceability / verification outputs. Defaults to
+  tests/results/docker-tools-parity/requirements-verification.
+.PARAMETER NILinuxReviewSuiteBaseVi
+  Base VI used for the NI Linux review suite smoke compare. Defaults to fixtures/vi-attr/Base.vi.
+.PARAMETER NILinuxReviewSuiteHeadVi
+  Head VI used for the NI Linux review suite smoke compare. Defaults to fixtures/vi-attr/Head.vi.
 .PARAMETER PesterPath
   Optional Pester path(s) to execute inside the tools container. When provided, the host only orchestrates Docker and
   the requested Pester run happens in-container.
@@ -48,6 +63,12 @@ param(
   [switch]$FailOnWorkflowDrift,
   [switch]$SkipDotnetCliBuild,
   [switch]$PrioritySync,
+  [switch]$NILinuxReviewSuite,
+  [switch]$RequirementsVerification,
+  [string]$NILinuxReviewSuiteResultsRoot = 'tests/results/docker-tools-parity/ni-linux-review-suite',
+  [string]$RequirementsVerificationResultsRoot = 'tests/results/docker-tools-parity/requirements-verification',
+  [string]$NILinuxReviewSuiteBaseVi = 'fixtures/vi-attr/Base.vi',
+  [string]$NILinuxReviewSuiteHeadVi = 'fixtures/vi-attr/Head.vi',
   [string]$ToolsImageTag,
   [switch]$UseToolsImage,
   [string[]]$PesterPath,
@@ -321,6 +342,7 @@ if ($UseToolsImage -and -not $ToolsImageTag -and $env:COMPAREVI_TOOLS_IMAGE) {
   $ToolsImageTag = $env:COMPAREVI_TOOLS_IMAGE
 }
 
+$repoRootResolved = (Resolve-Path -LiteralPath '.').Path
 $pesterRequested = $PSBoundParameters.ContainsKey('PesterPath') -or
   $PSBoundParameters.ContainsKey('PesterFullName') -or
   $PSBoundParameters.ContainsKey('PesterTag') -or
@@ -351,8 +373,8 @@ if ($UseToolsImage -and $ToolsImageTag) {
     Invoke-Container -Image $ToolsImageTag -Arguments @('actionlint','-color') -Label 'actionlint (tools)'
   }
   if (-not $SkipMarkdown) {
-    $cmd = 'markdownlint "**/*.md" --config .markdownlint.jsonc --ignore node_modules --ignore bin --ignore vendor'
-    Invoke-Container -Image $ToolsImageTag -Arguments @('bash','-lc',$cmd) -AcceptExitCodes @(0,1) -Label 'markdownlint (tools)'
+    $cmd = 'if ! command -v git >/dev/null 2>&1; then echo "git is required for markdownlint discovery" >&2; exit 1; fi; git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs lint:md'
+    Invoke-Container -Image $ToolsImageTag -Arguments @('bash','-lc',$cmd) -Label 'markdownlint (tools)'
   }
   if (-not $SkipDocs) {
     Invoke-Container -Image $ToolsImageTag -Arguments @('pwsh','-NoLogo','-NoProfile','-File','tools/Check-DocsLinks.ps1','-Path','docs') -Label 'docs-links (tools)'
@@ -366,11 +388,8 @@ if ($UseToolsImage -and $ToolsImageTag) {
     Invoke-Container -Image 'rhysd/actionlint:1.7.7' -Arguments @('-color') -Label 'actionlint'
   }
   if (-not $SkipMarkdown) {
-    $cmd = @'
-npm install -g markdownlint-cli && \
-markdownlint "**/*.md" --config .markdownlint.jsonc --ignore node_modules --ignore bin --ignore vendor
-'@
-    Invoke-Container -Image 'node:20-alpine' -Arguments @('sh','-lc',$cmd) -AcceptExitCodes @(0,1) -Label 'markdownlint'
+    $cmd = 'if ! command -v git >/dev/null 2>&1; then echo "git is required for markdownlint discovery" >&2; exit 1; fi; git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs lint:md'
+    Invoke-Container -Image 'node:20' -Arguments @('bash','-lc',$cmd) -Label 'markdownlint'
   }
   if (-not $SkipDocs) {
     Invoke-Container -Image 'mcr.microsoft.com/powershell:7.4-debian-12' -Arguments @('pwsh','-NoLogo','-NoProfile','-File','tools/Check-DocsLinks.ps1','-Path','docs') -Label 'docs-links'
@@ -379,6 +398,88 @@ markdownlint "**/*.md" --config .markdownlint.jsonc --ignore node_modules --igno
     $testArgs = @('--test') + $workflowContractTests
     Invoke-Container -Image 'node:20' -Arguments (@('node') + $testArgs) -Label 'workflow-contracts' | Out-Null
   }
+}
+
+if ($NILinuxReviewSuite) {
+  $reviewSuiteScriptPath = Join-Path $repoRootResolved 'tools' 'Invoke-NILinuxReviewSuite.ps1'
+  if (-not (Test-Path -LiteralPath $reviewSuiteScriptPath -PathType Leaf)) {
+    throw ("NI Linux review suite helper not found: {0}" -f $reviewSuiteScriptPath)
+  }
+
+  $resultsRootResolved = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $NILinuxReviewSuiteResultsRoot))
+  $reviewSuiteSummaryHtmlPath = Join-Path $resultsRootResolved 'review-suite-summary.html'
+  $reviewSuiteSummaryJsonPath = Join-Path $resultsRootResolved 'review-suite-summary.json'
+  $historyMarkdownPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.md'
+  $historyHtmlPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.html'
+  $historySummaryPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-summary.json'
+  $historyInspectionHtmlPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-suite-inspection.html'
+
+  Write-Host '[docker] ni-linux-review-suite (host)' -ForegroundColor Cyan
+  Write-Host ("`tresultsRoot=" + [System.IO.Path]::GetRelativePath($repoRootResolved, $resultsRootResolved).Replace('\', '/')) -ForegroundColor DarkGray
+  Push-Location $repoRootResolved
+  try {
+    & $reviewSuiteScriptPath `
+      -BaseVi $NILinuxReviewSuiteBaseVi `
+      -HeadVi $NILinuxReviewSuiteHeadVi `
+      -ResultsRoot $NILinuxReviewSuiteResultsRoot
+    $reviewSuiteExit = $LASTEXITCODE
+    if ($reviewSuiteExit -ne 0) {
+      throw ("NI Linux review suite exited with code {0}." -f $reviewSuiteExit)
+    }
+  } finally {
+    Pop-Location | Out-Null
+  }
+
+  foreach ($artifactPath in @(
+      $reviewSuiteSummaryHtmlPath,
+      $reviewSuiteSummaryJsonPath,
+      $historyMarkdownPath,
+      $historyHtmlPath,
+      $historySummaryPath,
+      $historyInspectionHtmlPath
+    )) {
+    if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+      throw ("NI Linux review suite missing expected artifact: {0}" -f $artifactPath)
+    }
+  }
+
+  Write-Host ("[docker] ni-linux-review-suite OK (summary={0}; history={1}; facade={2})" -f
+      ([System.IO.Path]::GetRelativePath($repoRootResolved, $reviewSuiteSummaryHtmlPath).Replace('\', '/')),
+      ([System.IO.Path]::GetRelativePath($repoRootResolved, $historyHtmlPath).Replace('\', '/')),
+      ([System.IO.Path]::GetRelativePath($repoRootResolved, $historySummaryPath).Replace('\', '/'))) -ForegroundColor Green
+}
+
+if ($RequirementsVerification) {
+  $requirementsResultsRootResolved = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $RequirementsVerificationResultsRoot))
+  $requirementsSummaryPath = Join-Path $requirementsResultsRootResolved 'verification-summary.json'
+  $traceMatrixJsonPath = Join-Path $requirementsResultsRootResolved 'trace-matrix.json'
+  $traceMatrixHtmlPath = Join-Path $requirementsResultsRootResolved 'trace-matrix.html'
+  $requirementsImage = if ($UseToolsImage -and $ToolsImageTag) { $ToolsImageTag } else { 'mcr.microsoft.com/powershell:7.4-debian-12' }
+  $requirementsCommand = @(
+    '$ErrorActionPreference = ''Stop''',
+    'if (Get-Command git -ErrorAction SilentlyContinue) { try { git config --global --add safe.directory /work | Out-Null } catch { Write-Warning ''Unable to mark /work as a safe git directory; continuing with requirements verification.'' } }',
+    ('& ./tools/Verify-RequirementsGate.ps1 -TestsPath ''tests'' -ResultsRoot ''tests/results'' -OutDir {0}' -f
+      (ConvertTo-PowerShellSingleQuotedLiteral -Value $RequirementsVerificationResultsRoot)),
+    'exit $LASTEXITCODE'
+  ) -join [Environment]::NewLine
+
+  Invoke-Container -Image $requirementsImage `
+    -Arguments @('pwsh', '-NoLogo', '-NoProfile', '-Command', $requirementsCommand) `
+    -Label 'requirements-verification' | Out-Null
+
+  foreach ($artifactPath in @(
+      $requirementsSummaryPath,
+      $traceMatrixJsonPath,
+      $traceMatrixHtmlPath
+    )) {
+    if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+      throw ("Requirements verification missing expected artifact: {0}" -f $artifactPath)
+    }
+  }
+
+  Write-Host ("[docker] requirements-verification OK (summary={0}; trace={1})" -f
+      ([System.IO.Path]::GetRelativePath($repoRootResolved, $requirementsSummaryPath).Replace('\', '/')),
+      ([System.IO.Path]::GetRelativePath($repoRootResolved, $traceMatrixJsonPath).Replace('\', '/'))) -ForegroundColor Green
 }
 
 if ($PrioritySync) {

@@ -12,9 +12,10 @@ This document tracks the atomic test requirements for `tools/Compare-VIHistory.p
    - `attributes`: includes `-noattr` only.
    - `front-panel`: includes `-nofp`, `-nofppos` only.
    - `block-diagram`: includes `-nobdcosm` only.
-- `full`: no ignore flags present (all ignore flags disabled).
-- `all`: legacy alias for `full` (the tooling rewrites it and warns).
+   - `full`: no ignore flags present (all ignore flags disabled).
+   - `all`: legacy alias for `full` (the tooling rewrites it and warns).
    - `custom`: flag list matches explicit inputs.
+
 1. `requestedStartRef` and `startRef` shall be written; `startRef` resolves to the nearest commit that touches the VI.
 1. Helper shall pass `-RenderReport` for `html` format.
 1. Helper shall pass `-Report` + `-RepFormat xml` for `xml` format.
@@ -38,7 +39,8 @@ real LVCompare artifacts are captured in CI. Current tests verify flag wiring vi
 1. `modes` input shall accept comma/semicolon separated tokens (case-insensitive) and default to `default`.
 1. Workflow shall invoke the helper once per mode, writing outputs to `tests/results/ref-compare/history/<mode>`.
 1. `steps.history.outputs['manifest-path']` shall resolve to the aggregate history suite manifest.
-1. The aggregate suite manifest shall record normalized `requestedModes[]` and `executedModes[]` arrays so consumers can distinguish the requested mode bundle from the modes that actually ran.
+1. The aggregate suite manifest shall record normalized `requestedModes[]` and `executedModes[]` arrays so consumers
+   can distinguish the requested mode bundle from the modes that actually ran.
 1. `steps.history.outputs['mode-manifests-json']` shall emit a JSON array describing each requested mode (slug,
    manifest path, results directory, processed count, diff count, signal diff count, collapsed noise count, error
    count, category counts, bucket counts, and status).

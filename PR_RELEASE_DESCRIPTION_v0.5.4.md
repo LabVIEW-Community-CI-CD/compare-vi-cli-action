@@ -37,5 +37,6 @@ Post-Release
 
 - Tag v0.5.4 on `main`.
 - Monitor release workflows (`Validate`, `vi-compare-refs`, staging smoke) to ensure bucket totals render as expected.
-- Fast-forward `develop` from `release/v0.5.4` (handled via `node tools/npm/run-script.mjs release:finalize -- 0.5.4`) and track any follow-up
-  fixes (fixture drift, additional bucket coverage).
+- Fast-forward `develop` from `release/v0.5.4` (handled via
+  `node tools/npm/run-script.mjs release:finalize -- 0.5.4`) and track any follow-up fixes (fixture drift, additional
+  bucket coverage).

@@ -110,6 +110,42 @@ test('Run-NonLVChecksInDocker honors explicit containerized Pester requests with
   assert.match(content, /\$PSBoundParameters\.ContainsKey\('PesterResultsDir'\)/);
 });
 
+test('Run-NonLVChecksInDocker exposes Docker Desktop NI Linux review-suite parity and a truthful markdown fallback', () => {
+  const content = readRepoFile('tools/Run-NonLVChecksInDocker.ps1');
+  assert.match(content, /\[switch\]\$NILinuxReviewSuite/);
+  assert.match(content, /\[switch\]\$RequirementsVerification/);
+  assert.match(content, /tests\/results\/docker-tools-parity\/ni-linux-review-suite/);
+  assert.match(content, /tests\/results\/docker-tools-parity\/requirements-verification/);
+  assert.match(content, /Invoke-NILinuxReviewSuite\.ps1/);
+  assert.match(content, /Verify-RequirementsGate\.ps1/);
+  assert.match(content, /review-suite-summary\.html/);
+  assert.match(content, /history-report\.html/);
+  assert.match(content, /history-summary\.json/);
+  assert.match(content, /verification-summary\.json/);
+  assert.match(content, /trace-matrix\.json/);
+  assert.match(content, /command -v git >\/dev\/null 2>&1/);
+  assert.match(content, /Get-Command git -ErrorAction SilentlyContinue/);
+  assert.match(content, /git config --global --add safe\.directory \/work/);
+  assert.match(content, /node:20'/);
+  assert.doesNotMatch(content, /node:20-alpine/);
+});
+
+test('AGENTS documents the Docker Desktop local-first review loop for repeat passes', () => {
+  const content = readRepoFile('AGENTS.md');
+  assert.match(content, /Run-NonLVChecksInDocker\.ps1 -UseToolsImage/);
+  assert.match(content, /Run-NonLVChecksInDocker\.ps1 -UseToolsImage -NILinuxReviewSuite/);
+  assert.match(content, /iterate locally through Docker\s+Desktop first/i);
+  assert.match(content, /DOCKER_TOOLS_PARITY\.md/);
+});
+
+test('Docker parity knowledgebase distinguishes current host-plane behavior from planned single-VI history follow-up', () => {
+  const content = readRepoFile('docs/knowledgebase/DOCKER_TOOLS_PARITY.md');
+  assert.match(content, /local-first: use Docker Desktop/i);
+  assert.match(content, /Review-loop policy/);
+  assert.match(content, /Targeted single-VI history follow-up/);
+  assert.match(content, /touch-aware for deep branches such as `develop`/);
+});
+
 test('PrePush emits deterministic incident-event report for NI known-flag failures', () => {
   const content = readRepoFile('tools/PrePush-Checks.ps1');
   assert.match(content, /function Write-PrePushNIKnownFlagIncidentEvent/);

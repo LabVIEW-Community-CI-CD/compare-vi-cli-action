@@ -39,5 +39,5 @@ Post-Release
 - Tag `v0.6.0` on `main` once required checks complete.
 - Monitor release workflows (`Validate`, `vi-compare-refs`, staging smoke) and ensure the auto-config tasks surface in
   summaries.
-- Run `node tools/npm/run-script.mjs release:finalize -- 0.6.0` to fast-forward `main`/`develop`, draft the GitHub release, and archive the
-  finalize metadata.
+- Run `node tools/npm/run-script.mjs release:finalize -- 0.6.0` to fast-forward `main`/`develop`, draft the GitHub
+  release, and archive the finalize metadata.

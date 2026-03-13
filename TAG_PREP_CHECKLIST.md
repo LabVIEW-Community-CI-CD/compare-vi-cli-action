@@ -8,7 +8,8 @@ standing-priority issue (#273). Update or archive once the tag is live.
 
 - [ ] Work from the release branch (`release/v0.5.2-rc1`, or latest RC) and ensure it contains all changes targeted for
       0.5.2 (history suite, branch guard, release tooling updates).
-- [ ] CI is green on the RC branch (Validate, fixtures, session-index, `vi-compare-refs`, `vi-staging-smoke`, and any integration workflows).
+- [ ] CI is green on the RC branch (Validate, fixtures, session-index, `vi-compare-refs`, `vi-staging-smoke`, and any
+      integration workflows).
 - [ ] Release PR required contexts are all `COMPLETED/SUCCESS` before finalize: `lint`, `pester`, `publish`,
       `vi-binary-check`, `vi-compare`, `mock-cli`, and `Policy Guard (Upstream) / policy-guard`.
 - [ ] `node tools/npm/run-script.mjs lint` completes without errors (markdownlint + docs checks) on the RC branch.
@@ -75,14 +76,16 @@ Suggested outline:
 1. Summary: history suite telemetry, branch-policy guard + release automation, auto-publish refs, Docker parity helper.
 2. Upgrade notes: history manifests + Dev Dashboard samples, release tooling scripts (`tools/priority/*`), branch guard
    expectations for `develop`.
-3. Validation snapshot: mention required checks (Validate, fixtures, session-index, `vi-compare-refs`, `vi-staging-smoke`) and guard outcomes.
+3. Validation snapshot: mention required checks (Validate, fixtures, session-index, `vi-compare-refs`,
+   `vi-staging-smoke`) and guard outcomes.
 4. Known issues / follow-ups: monitor history ingestion dashboards, finalize release branch merger back to `develop`.
 5. Rollback: link to `ROLLBACK_PLAN.md`.
 
 ## 8. Post-Tag Actions
 
 - [ ] Merge the release branch back to `develop` (keep CHANGELOG/readme updates in sync).
-- [ ] Dispatch `vi-compare-refs.yml` and `vi-staging-smoke.yml` on `develop` to confirm both compare evidence flows stay green with artifacts.
+- [ ] Dispatch `vi-compare-refs.yml` and `vi-staging-smoke.yml` on `develop` to confirm both compare evidence flows
+      stay green with artifacts.
 - [ ] Update `POST_RELEASE_FOLLOWUPS.md` with completed vs pending items for the 0.5.2 roadmap.
 - [ ] Dispatch the orchestrated watcher or `node tools/npm/run-script.mjs ci:watch:rest --branch main` to monitor the
       first runs on the tagged commit.
