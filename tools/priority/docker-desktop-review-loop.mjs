@@ -265,7 +265,22 @@ export async function assessDockerDesktopReviewLoopReceipt({
   const resolvedReceiptPath = resolvedReceiptPathInfo.resolved;
   const currentGitState =
     typeof resolveRepoGitStateFn === 'function' ? normalizeReceiptGitMetadata({ git: resolveRepoGitStateFn(repoRoot) ?? {} }) : null;
-  const receipt = await readJsonIfPresent(resolvedReceiptPath);
+  let receipt;
+  try {
+    receipt = await readJsonIfPresent(resolvedReceiptPath);
+  } catch (error) {
+    return {
+      status: 'failed',
+      source: 'docker-desktop-review-loop',
+      reason: `Docker/Desktop review loop receipt could not be read: ${normalizeText(error?.message) || 'unknown error'}`,
+      receiptPath: resolvedReceiptPathInfo.normalized,
+      receipt: null,
+      currentHeadSha: currentGitState?.headSha || null,
+      receiptHeadSha: null,
+      receiptFreshForHead: false,
+      reusable: false
+    };
+  }
   if (!receipt) {
     return {
       status: 'missing',
@@ -342,9 +357,11 @@ export async function assessDockerDesktopReviewLoopReceipt({
     };
   }
 
-  const reusable = currentGitState?.dirtyTracked === false && receiptGit.dirtyTracked === false;
+  const reusable = receiptFreshForHead === true && currentGitState?.dirtyTracked === false && receiptGit.dirtyTracked === false;
   const reuseReason = reusable
     ? 'Docker/Desktop review loop receipt is current for this clean HEAD.'
+    : receiptFreshForHead !== true
+      ? 'Docker/Desktop review loop receipt passed, but the current HEAD could not be verified for reuse.'
     : currentGitState?.dirtyTracked === true || receiptGit.dirtyTracked === true
       ? 'Docker/Desktop review loop receipt is current, but tracked changes are present.'
       : 'Docker/Desktop review loop receipt is current, but tracked-clean state could not be verified.';
