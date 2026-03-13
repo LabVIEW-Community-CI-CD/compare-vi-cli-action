@@ -744,6 +744,17 @@ function buildReviewRunFromLiveRun(workflowRun, options) {
   };
 }
 
+export function resolveLiveHeadOptions(options, livePullRequest = null) {
+  if (options?.eventName !== 'merge_group' || !livePullRequest?.head?.sha) {
+    return options;
+  }
+
+  return {
+    ...options,
+    headSha: normalizeSha(livePullRequest.head.sha),
+  };
+}
+
 function sleep(delayMs) {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
@@ -1308,13 +1319,7 @@ export async function runCopilotReviewGate({
         report = buildReportFromSignal(resolvedOptions, signalReport, now);
       } else {
         const livePullRequest = options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions) : null;
-        const liveResolvedOptions =
-          options.eventName === 'merge_group' && livePullRequest?.head?.sha
-            ? {
-                ...resolvedOptions,
-                headSha: normalizeSha(livePullRequest.head.sha),
-              }
-            : resolvedOptions;
+        const liveResolvedOptions = resolveLiveHeadOptions(resolvedOptions, livePullRequest);
         const reviews = await loadReviewsFn(liveResolvedOptions);
         const threads = await loadThreadsFn(liveResolvedOptions);
         const reviewRun = await loadReviewRunFn(liveResolvedOptions);
@@ -1335,11 +1340,12 @@ export async function runCopilotReviewGate({
           attemptsUsed += 1;
           await sleep(options.pollDelayMs);
           const livePullRequest = options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions) : null;
-          const reviews = await loadReviewsFn(resolvedOptions);
-          const threads = await loadThreadsFn(resolvedOptions);
-          const reviewRun = await loadReviewRunFn(resolvedOptions);
+          const liveResolvedOptions = resolveLiveHeadOptions(resolvedOptions, livePullRequest);
+          const reviews = await loadReviewsFn(liveResolvedOptions);
+          const threads = await loadThreadsFn(liveResolvedOptions);
+          const reviewRun = await loadReviewRunFn(liveResolvedOptions);
           report = buildReportFromLiveData(
-            resolvedOptions,
+            liveResolvedOptions,
             reviews,
             threads,
             now,

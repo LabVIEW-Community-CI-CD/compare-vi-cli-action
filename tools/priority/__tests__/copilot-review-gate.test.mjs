@@ -105,6 +105,38 @@ test('parseMergeGroupHeadBranch resolves the queued PR number and queue token fr
   assert.equal(parseMergeGroupHeadBranch('feature/not-a-queue-branch'), null);
 });
 
+test('resolveLiveHeadOptions rehydrates merge-group lookups from the live PR head', async () => {
+  const { resolveLiveHeadOptions } = await loadModule();
+  const baseOptions = {
+    eventName: 'merge_group',
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    prNumber: 1012,
+    headSha: '7c5a463fc1c90edff1bc7671a22cd2bb1308def5',
+    baseRef: 'develop',
+  };
+
+  assert.deepEqual(
+    resolveLiveHeadOptions(baseOptions, {
+      head: {
+        sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
+    }),
+    {
+      ...baseOptions,
+      headSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
+  );
+  assert.equal(resolveLiveHeadOptions(baseOptions, null), baseOptions);
+  const prTargetOptions = {
+    ...baseOptions,
+    eventName: 'pull_request_target',
+  };
+  assert.equal(
+    resolveLiveHeadOptions(prTargetOptions, { head: { sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' } }),
+    prTargetOptions,
+  );
+});
+
 test('copilot-review-gate evaluates merge-group runs against the live PR head instead of the queue token', async () => {
   const { runCopilotReviewGate } = await loadModule();
   const queueToken = '23324a081abaf177d24ea295e6da805ce541465a';
