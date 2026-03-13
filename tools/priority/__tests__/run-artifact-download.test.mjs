@@ -266,6 +266,45 @@ test('downloadNamedArtifacts paginates artifact discovery until a later page con
   ]);
 });
 
+test('downloadNamedArtifacts reuses provided availableArtifacts instead of rediscovering the run', async (t) => {
+  const { downloadNamedArtifacts } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-prefetched-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  let discoveryCallCount = 0;
+  const result = downloadNamedArtifacts({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runId: '22879026878',
+    artifactNames: ['prefetched-artifact'],
+    availableArtifacts: [
+      {
+        id: 1,
+        name: 'prefetched-artifact',
+        sizeInBytes: 1,
+        expired: false,
+      },
+    ],
+    discoveryCommand: 'prefetched discovery',
+    destinationRoot: path.join(tmpDir, 'artifacts'),
+    reportPath: path.join(tmpDir, 'report.json'),
+    runGhJsonFn() {
+      discoveryCallCount += 1;
+      return { artifacts: [] };
+    },
+    runProcessFn(_command, args) {
+      const destinationIndex = args.indexOf('-D');
+      const destination = args[destinationIndex + 1];
+      writeFile(path.join(destination, 'artifact.txt'), 'ok\n');
+      return { status: 0, stdout: '', stderr: '', error: null };
+    },
+  });
+
+  assert.equal(result.report.status, 'pass');
+  assert.equal(result.report.summary.availableArtifactCount, 1);
+  assert.equal(result.report.discovery.command, 'prefetched discovery');
+  assert.equal(discoveryCallCount, 0);
+});
+
 test('downloadNamedArtifacts treats null gh exit status as a failed download', async (t) => {
   const { downloadNamedArtifacts } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-null-status-'));

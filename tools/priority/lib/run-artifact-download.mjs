@@ -222,6 +222,8 @@ export function downloadNamedArtifacts({
   destinationRoot = DEFAULT_DESTINATION_ROOT,
   reportPath = DEFAULT_REPORT_PATH,
   now = new Date(),
+  availableArtifacts = null,
+  discoveryCommand = null,
   runGhJsonFn = runGhJson,
   runProcessFn = runProcess,
 }) {
@@ -277,31 +279,37 @@ export function downloadNamedArtifacts({
     return { report, reportPath: resolvedReportPath };
   }
 
-  let availableArtifacts = [];
-  try {
-    const discovery = listRunArtifacts({
-      repository: normalizedRepository,
-      runId: normalizedRunId,
-      runGhJsonFn,
-    });
-    availableArtifacts = discovery.artifacts;
-    report.discovery.command = discovery.command;
-    report.discovery.availableArtifacts = discovery.artifacts;
-    report.summary.availableArtifactCount = discovery.artifacts.length;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    report.status = 'fail';
-    report.discovery.status = 'fail';
-    report.discovery.failureClass = classifyArtifactDownloadFailure(message, 'discovery-failed', {
-      notFoundClass: 'discovery-failed',
-    });
-    report.discovery.errorMessage = message;
-    report.errors.push(message);
-    const resolvedReportPath = writeJsonFile(reportPath, report);
-    return { report, reportPath: resolvedReportPath };
+  let normalizedAvailableArtifacts = Array.isArray(availableArtifacts) ? availableArtifacts : null;
+  if (normalizedAvailableArtifacts) {
+    report.discovery.command = normalizeText(discoveryCommand);
+    report.discovery.availableArtifacts = normalizedAvailableArtifacts;
+    report.summary.availableArtifactCount = normalizedAvailableArtifacts.length;
+  } else {
+    try {
+      const discovery = listRunArtifacts({
+        repository: normalizedRepository,
+        runId: normalizedRunId,
+        runGhJsonFn,
+      });
+      normalizedAvailableArtifacts = discovery.artifacts;
+      report.discovery.command = discovery.command;
+      report.discovery.availableArtifacts = discovery.artifacts;
+      report.summary.availableArtifactCount = discovery.artifacts.length;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      report.status = 'fail';
+      report.discovery.status = 'fail';
+      report.discovery.failureClass = classifyArtifactDownloadFailure(message, 'discovery-failed', {
+        notFoundClass: 'discovery-failed',
+      });
+      report.discovery.errorMessage = message;
+      report.errors.push(message);
+      const resolvedReportPath = writeJsonFile(reportPath, report);
+      return { report, reportPath: resolvedReportPath };
+    }
   }
 
-  const artifactsByName = new Map(availableArtifacts.map((artifact) => [artifact.name, artifact]));
+  const artifactsByName = new Map(normalizedAvailableArtifacts.map((artifact) => [artifact.name, artifact]));
 
   for (const artifactName of requestedArtifacts) {
     const artifact = artifactsByName.get(artifactName) ?? null;

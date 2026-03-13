@@ -32,6 +32,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$script:RepoRoot = Split-Path -Parent $PSScriptRoot
 
 function Assert-Tool {
   param([string]$Name)
@@ -128,7 +129,16 @@ function Download-RunArtifacts {
   )
   New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null
   $reportPath = Join-Path $TargetDir 'run-artifact-download.json'
-  node tools/npm/run-script.mjs priority:artifact:download -- --repo $Repo --run-id $RunId --all --destination-root $TargetDir --report $reportPath | Out-Null
+  $runScript = Join-Path $script:RepoRoot 'tools' 'npm' 'run-script.mjs'
+  Push-Location $script:RepoRoot
+  try {
+    & node $runScript priority:artifact:download -- --repo $Repo --run-id $RunId --all --destination-root $TargetDir --report $reportPath | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+      throw "Artifact download helper failed for run $RunId (exit=$LASTEXITCODE)."
+    }
+  } finally {
+    Pop-Location
+  }
 }
 
 function Write-LocalSummary {
@@ -267,7 +277,7 @@ if (-not $orchId) { throw 'Unable to locate orchestrated run after dispatch.' }
 $orch = Wait-Run -Repo $repo -RunId $orchId -TimeoutSeconds 3600 -PollSeconds 12
 
 # 3) Download artifacts and write local summary
-$root = Join-Path $PWD 'tests/results/_onebutton'
+$root = Join-Path $script:RepoRoot 'tests/results/_onebutton'
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 $orchDir = Join-Path $root ("orchestrated-" + $orchId)
 $valDir = $null

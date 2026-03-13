@@ -33,6 +33,36 @@ test('parseArgs accepts --all for whole-run downloads', async () => {
   assert.deepEqual(options.artifactNames, []);
 });
 
+test('parseArgs trims artifact names and rejects whitespace-only values', async () => {
+  const { parseArgs } = await loadModule();
+  const parsed = parseArgs([
+    'node',
+    'download-run-artifact.mjs',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--run-id',
+    '23031304891',
+    '--artifact',
+    '  compare-changed-vis  ',
+  ]);
+
+  assert.deepEqual(parsed.artifactNames, ['compare-changed-vis']);
+  assert.throws(
+    () =>
+      parseArgs([
+        'node',
+        'download-run-artifact.mjs',
+        '--repo',
+        'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        '--run-id',
+        '23031304891',
+        '--artifact',
+        '   ',
+      ]),
+    /Artifact name is required for --artifact/i,
+  );
+});
+
 test('parseArgs rejects mixing --all with explicit artifact names', async () => {
   const { parseArgs } = await loadModule();
   assert.throws(

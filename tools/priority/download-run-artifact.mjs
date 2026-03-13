@@ -116,26 +116,36 @@ export async function main(argv = process.argv) {
     return 0;
   }
 
-  const artifactNames = options.all
-    ? listRunArtifacts({
-        repository: options.repo,
-        runId: options.runId,
-      }).artifacts.map((artifact) => artifact.name).filter(Boolean)
-    : options.artifactNames;
+  try {
+    const discovery = options.all
+      ? listRunArtifacts({
+          repository: options.repo,
+          runId: options.runId,
+        })
+      : null;
+    const artifactNames = options.all
+      ? discovery.artifacts.map((artifact) => artifact.name).filter(Boolean)
+      : options.artifactNames;
 
-  const result = downloadNamedArtifacts({
-    repository: options.repo,
-    runId: options.runId,
-    artifactNames,
-    destinationRoot: options.destinationRoot,
-    reportPath: options.reportPath,
-  });
+    const result = downloadNamedArtifacts({
+      repository: options.repo,
+      runId: options.runId,
+      artifactNames,
+      destinationRoot: options.destinationRoot,
+      reportPath: options.reportPath,
+      availableArtifacts: discovery?.artifacts ?? null,
+      discoveryCommand: discovery?.command ?? null,
+    });
 
-  console.log(`[run-artifact-download] report: ${result.reportPath}`);
-  console.log(
-    `[run-artifact-download] status=${result.report.status} requested=${result.report.summary.requestedArtifactCount} downloaded=${result.report.summary.downloadedCount} missing=${result.report.summary.missingCount} failed=${result.report.summary.failedCount}`,
-  );
-  return result.report.status === 'pass' ? 0 : 1;
+    console.log(`[run-artifact-download] report: ${result.reportPath}`);
+    console.log(
+      `[run-artifact-download] status=${result.report.status} requested=${result.report.summary.requestedArtifactCount} downloaded=${result.report.summary.downloadedCount} missing=${result.report.summary.missingCount} failed=${result.report.summary.failedCount}`,
+    );
+    return result.report.status === 'pass' ? 0 : 1;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
 }
 
 export function isDirectExecution(argv = process.argv, metaUrl = import.meta.url) {
