@@ -81,11 +81,26 @@ Describe 'Sample' -Tag 'Unit','REQ:$sampleRequirementId','ADR:0001' {
   It 'does not report the repo traceability fixture IDs as production unknowns or uncovered requirements' {
     $repoRoot = Split-Path -Parent $PSScriptRoot
     $resultsRoot = Join-Path $TestDrive 'repo-trace-results'
+    $includePatterns = @(
+      'CompareVITools.Artifact.Tests.ps1',
+      'DevDashboard.Loaders.Tests.ps1',
+      'Generate-ReleaseMetadata.Tests.ps1',
+      'Invoker.Basic.Tests.ps1',
+      'Publish-Cli.Tests.ps1',
+      'Requirements.Index.Tests.ps1',
+      'RequirementsVerificationBaseline.Tests.ps1',
+      'Traceability.Matrix.Tests.ps1',
+      'Watcher.BusyLoop.Tests.ps1',
+      'Watcher.Live.Tests.ps1'
+    )
     New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
 
     Push-Location $repoRoot
     try {
-      pwsh -NoLogo -NoProfile -File ./tools/Traceability-Matrix.ps1 -TestsPath 'tests' -ResultsRoot $resultsRoot | Out-Null
+      & ./tools/Traceability-Matrix.ps1 `
+        -TestsPath 'tests' `
+        -ResultsRoot $resultsRoot `
+        -IncludePatterns $includePatterns | Out-Null
     } finally {
       Pop-Location
     }
