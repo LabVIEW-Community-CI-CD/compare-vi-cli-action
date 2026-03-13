@@ -43,6 +43,10 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerific
 - Every run now also emits the combined top-level receipt
   `tests/results/docker-tools-parity/review-loop-receipt.json`. Read that file first after compaction; it records
   per-check status, links to the current NI Linux and requirements artifacts, and lists the recommended review order.
+- When the unattended delivery daemon consumes that receipt, it now mirrors the normalized summary into
+  `tests/results/_agent/runtime/delivery-agent-state.json` and the active lane record under
+  `tests/results/_agent/runtime/delivery-agent-lanes/`. Future agents should read the runtime-state `localReviewLoop`
+  node first when resuming a daemon-driven lane, then open the deeper Docker/Desktop receipt paths only when needed.
 
 ## Review-loop policy
 

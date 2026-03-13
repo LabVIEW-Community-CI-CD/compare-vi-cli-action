@@ -44,6 +44,26 @@
         "maxActiveCodingLanes": { "type": "integer", "minimum": 1 }
       }
     },
+    "localReviewLoop": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "requested": { "type": "boolean" },
+        "status": { "type": ["string", "null"] },
+        "source": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] },
+        "receiptPath": { "type": ["string", "null"] },
+        "receiptStatus": { "type": ["string", "null"] },
+        "failedCheck": { "type": ["string", "null"] },
+        "requirementsVerificationRequested": { "type": "boolean" },
+        "markdownlintRequested": { "type": "boolean" },
+        "niLinuxReviewSuiteRequested": { "type": "boolean" },
+        "recommendedReviewOrder": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        }
+      }
+    },
     "activeLane": {
       "type": "object",
       "additionalProperties": true,
@@ -75,7 +95,27 @@
         "outcome": { "type": ["string", "null"] },
         "reason": { "type": ["string", "null"] },
         "retryable": { "type": "boolean" },
-        "nextWakeCondition": { "type": ["string", "null"] }
+        "nextWakeCondition": { "type": ["string", "null"] },
+        "localReviewLoop": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "properties": {
+            "requested": { "type": "boolean" },
+            "status": { "type": ["string", "null"] },
+            "source": { "type": ["string", "null"] },
+            "reason": { "type": ["string", "null"] },
+            "receiptPath": { "type": ["string", "null"] },
+            "receiptStatus": { "type": ["string", "null"] },
+            "failedCheck": { "type": ["string", "null"] },
+            "requirementsVerificationRequested": { "type": "boolean" },
+            "markdownlintRequested": { "type": "boolean" },
+            "niLinuxReviewSuiteRequested": { "type": "boolean" },
+            "recommendedReviewOrder": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            }
+          }
+        }
       }
     },
     "artifacts": { "type": "object", "additionalProperties": true }
