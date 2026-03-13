@@ -86,6 +86,15 @@ jobs:
           path: |
             docker-version.txt
             parity-log.txt
+            tests/results/docker-tools-parity/review-loop-receipt.json
+
+      - name: Upload Docker parity review receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: docker-parity-linux-review-loop
+          path: |
+            tests/results/docker-tools-parity/review-loop-receipt.json
 
       - name: Upload NI Linux review-suite evidence
         if: ${{ inputs.runNiLinuxReviewSuite == 'true' }}

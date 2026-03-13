@@ -36,6 +36,10 @@
 .PARAMETER RequirementsVerificationResultsRoot
   Results root for requirements traceability / verification outputs. Defaults to
   tests/results/docker-tools-parity/requirements-verification.
+.PARAMETER DockerParityReviewReceiptPath
+  Combined Docker/Desktop review-loop receipt written after each run so future agents can resume from
+  one authoritative artifact instead of reconstructing state from scattered NI Linux, markdown, and
+  requirements outputs.
 .PARAMETER NILinuxReviewSuiteBaseVi
   Base VI used for the NI Linux review suite smoke compare. Defaults to fixtures/vi-attr/Base.vi.
 .PARAMETER NILinuxReviewSuiteHeadVi
@@ -79,6 +83,7 @@ param(
   [switch]$RequirementsVerification,
   [string]$NILinuxReviewSuiteResultsRoot = 'tests/results/docker-tools-parity/ni-linux-review-suite',
   [string]$RequirementsVerificationResultsRoot = 'tests/results/docker-tools-parity/requirements-verification',
+  [string]$DockerParityReviewReceiptPath = 'tests/results/docker-tools-parity/review-loop-receipt.json',
   [string]$NILinuxReviewSuiteBaseVi = 'fixtures/vi-attr/Base.vi',
   [string]$NILinuxReviewSuiteHeadVi = 'fixtures/vi-attr/Head.vi',
   [string]$NILinuxReviewSuiteHistoryTargetPath = '',
@@ -283,6 +288,185 @@ function ConvertTo-PowerShellSingleQuotedLiteral {
   return "'" + $Value.Replace("'", "''") + "'"
 }
 
+function New-DockerParityStepState {
+  param(
+    [bool]$Enabled,
+    [string]$Surface
+  )
+
+  return [ordered]@{
+    enabled = $Enabled
+    status = if ($Enabled) { 'pending' } else { 'skipped' }
+    surface = $Surface
+    startedAt = $null
+    completedAt = $null
+    error = $null
+    artifacts = [ordered]@{}
+  }
+}
+
+function Get-RepoRelativePath {
+  param(
+    [string]$RepoRoot,
+    [string]$Path
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return ''
+  }
+
+  $resolvedPath = $Path
+  if ([System.IO.Path]::IsPathRooted($Path)) {
+    $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+  } else {
+    $resolvedPath = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $Path))
+  }
+
+  return [System.IO.Path]::GetRelativePath($RepoRoot, $resolvedPath).Replace('\', '/')
+}
+
+function Read-JsonHashtable {
+  param([string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return $null
+  }
+
+  return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable)
+}
+
+function Invoke-DockerParityStep {
+  param(
+    $StepRecord,
+    [string]$Name,
+    [scriptblock]$Action,
+    [hashtable]$RunRecord
+  )
+
+  $StepRecord['startedAt'] = (Get-Date).ToUniversalTime().ToString('o')
+  try {
+    & $Action
+    $StepRecord['status'] = 'passed'
+    $StepRecord['completedAt'] = (Get-Date).ToUniversalTime().ToString('o')
+  } catch {
+    $StepRecord['status'] = 'failed'
+    $StepRecord['completedAt'] = (Get-Date).ToUniversalTime().ToString('o')
+    $StepRecord['error'] = $_.Exception.Message
+    if ($RunRecord.status -ne 'failed') {
+      $RunRecord.status = 'failed'
+      $RunRecord.failedCheck = $Name
+      $RunRecord.message = $_.Exception.Message
+      $RunRecord.exitCode = if ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }
+    }
+    throw
+  }
+}
+
+function Write-DockerParityReviewLoopReceipt {
+  param(
+    [string]$RepoRoot,
+    [string]$ReceiptPath,
+    [hashtable]$Checks,
+    [hashtable]$RunRecord,
+    [string]$NILinuxResultsRoot,
+    [string]$RequirementsResultsRoot
+  )
+
+  $receiptDirectory = Split-Path -Parent $ReceiptPath
+  if (-not [string]::IsNullOrWhiteSpace($receiptDirectory) -and -not (Test-Path -LiteralPath $receiptDirectory -PathType Container)) {
+    New-Item -ItemType Directory -Path $receiptDirectory -Force | Out-Null
+  }
+
+  $receiptRelativePath = Get-RepoRelativePath -RepoRoot $RepoRoot -Path $ReceiptPath
+  $niResultsRootResolved = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $NILinuxResultsRoot))
+  $requirementsResultsRootResolved = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $RequirementsResultsRoot))
+
+  $reviewSuiteSummaryJsonPath = Join-Path $niResultsRootResolved 'review-suite-summary.json'
+  $reviewSuiteSummaryHtmlPath = Join-Path $niResultsRootResolved 'review-suite-summary.html'
+  $historyReviewReceiptPath = Join-Path $niResultsRootResolved 'vi-history-review-loop-receipt.json'
+  $requirementsSummaryPath = Join-Path $requirementsResultsRootResolved 'verification-summary.json'
+  $traceMatrixJsonPath = Join-Path $requirementsResultsRootResolved 'trace-matrix.json'
+  $traceMatrixHtmlPath = Join-Path $requirementsResultsRootResolved 'trace-matrix.html'
+
+  $historyReceipt = Read-JsonHashtable -Path $historyReviewReceiptPath
+  $requirementsSummary = Read-JsonHashtable -Path $requirementsSummaryPath
+  $traceMatrix = Read-JsonHashtable -Path $traceMatrixJsonPath
+
+  $artifacts = [ordered]@{
+    reviewLoopReceiptPath = $receiptRelativePath
+    reviewSuiteSummaryJsonPath = if (Test-Path -LiteralPath $reviewSuiteSummaryJsonPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $reviewSuiteSummaryJsonPath } else { '' }
+    reviewSuiteSummaryHtmlPath = if (Test-Path -LiteralPath $reviewSuiteSummaryHtmlPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $reviewSuiteSummaryHtmlPath } else { '' }
+    historyReviewReceiptPath = if (Test-Path -LiteralPath $historyReviewReceiptPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $historyReviewReceiptPath } else { '' }
+    requirementsSummaryPath = if (Test-Path -LiteralPath $requirementsSummaryPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $requirementsSummaryPath } else { '' }
+    traceMatrixJsonPath = if (Test-Path -LiteralPath $traceMatrixJsonPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $traceMatrixJsonPath } else { '' }
+    traceMatrixHtmlPath = if (Test-Path -LiteralPath $traceMatrixHtmlPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $traceMatrixHtmlPath } else { '' }
+  }
+
+  $recommendedReviewOrder = [System.Collections.Generic.List[string]]::new()
+  $recommendedReviewOrder.Add('tests/results/docker-tools-parity/review-loop-receipt.json')
+  if ($artifacts.reviewSuiteSummaryHtmlPath) {
+    $recommendedReviewOrder.Add($artifacts.reviewSuiteSummaryHtmlPath)
+  }
+  if ($historyReceipt -and $historyReceipt.ContainsKey('artifacts')) {
+    foreach ($artifactKey in @(
+        'historyReportMarkdownPath',
+        'historyReportHtmlPath',
+        'historySummaryPath',
+        'historyInspectionHtmlPath',
+        'historyInspectionJsonPath'
+      )) {
+      $artifactValue = $historyReceipt.artifacts[$artifactKey]
+      if (-not [string]::IsNullOrWhiteSpace($artifactValue)) {
+        $recommendedReviewOrder.Add(("tests/results/docker-tools-parity/ni-linux-review-suite/{0}" -f $artifactValue))
+      }
+    }
+  }
+  if ($artifacts.requirementsSummaryPath) { $recommendedReviewOrder.Add($artifacts.requirementsSummaryPath) }
+  if ($artifacts.traceMatrixJsonPath) { $recommendedReviewOrder.Add($artifacts.traceMatrixJsonPath) }
+  if ($artifacts.traceMatrixHtmlPath) { $recommendedReviewOrder.Add($artifacts.traceMatrixHtmlPath) }
+
+  $requirementsCoverage = [ordered]@{
+    requirementTotal = if ($requirementsSummary) { $requirementsSummary.metrics.requirementTotal } else { $null }
+    requirementCovered = if ($requirementsSummary) { $requirementsSummary.metrics.requirementCovered } else { $null }
+    requirementUncovered = if ($requirementsSummary) { $requirementsSummary.metrics.requirementUncovered } else { $null }
+    uncoveredRequirementIds = if ($traceMatrix) { @($traceMatrix.gaps.requirementsWithoutTests) } else { @() }
+    unknownRequirementIds = if ($traceMatrix) { @($traceMatrix.gaps.unknownRequirementIds) } else { @() }
+  }
+
+  $receipt = [ordered]@{
+    schema = 'docker-tools-parity-review-loop@v1'
+    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    repoRoot = $RepoRoot
+    resultsRoot = 'tests/results/docker-tools-parity'
+    overall = [ordered]@{
+      status = $RunRecord.status
+      failedCheck = $RunRecord.failedCheck
+      message = $RunRecord.message
+      exitCode = $RunRecord.exitCode
+    }
+    checks = $Checks
+    artifacts = $artifacts
+    niLinuxHistoryReview = if ($historyReceipt) {
+      [ordered]@{
+        targetPath = $historyReceipt.historyReview.targetPath
+        requestedBranchRef = $historyReceipt.historyReview.requestedBranchRef
+        requestedBaselineRef = $historyReceipt.historyReview.requestedBaselineRef
+        effectiveBranchRef = $historyReceipt.historyReview.effectiveBranchRef
+        effectiveBaselineRef = $historyReceipt.historyReview.effectiveBaselineRef
+        maxCommitCount = $historyReceipt.historyReview.maxCommitCount
+        touchAware = $historyReceipt.historyReview.touchAware
+        selectionSource = $historyReceipt.historyReview.selectionSource
+      }
+    } else {
+      $null
+    }
+    requirementsCoverage = $requirementsCoverage
+    recommendedReviewOrder = @($recommendedReviewOrder)
+  }
+
+  $receipt | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $ReceiptPath -Encoding UTF8
+}
+
 function Invoke-Container {
   param(
     [string]$Image,
@@ -323,49 +507,42 @@ function Invoke-Container {
   return $code
 }
 
-if ($FailOnWorkflowDrift) {
-  Write-Verbose 'FailOnWorkflowDrift is deprecated; workflow checkout contract checks are enforced whenever SkipWorkflow is not set.'
-}
-
-# Build CLI via tools image or plain SDK
-if (-not $SkipDotnetCliBuild) {
-  $cliOutput = 'dist/comparevi-cli'
-  $projectPath = 'src/CompareVi.Tools.Cli/CompareVi.Tools.Cli.csproj'
-  if (-not (Test-Path -LiteralPath $projectPath -PathType Leaf)) {
-    Write-Host ("[docker] CompareVI CLI project not found at {0}; skipping build." -f $projectPath) -ForegroundColor Yellow
-  } else {
-    if (Test-Path -LiteralPath $cliOutput) {
-      Remove-Item -LiteralPath $cliOutput -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    $publishLines = @(
-      'rm -rf src/CompareVi.Shared/obj src/CompareVi.Tools.Cli/obj || true',
-      'BASE_VERSION=$(grep -oPm1 "(?<=<Version>)[^<]+" Directory.Build.props || echo "0.0.0")',
-      'if [ -n "$BUILD_GIT_SHA" ]; then',
-      '  IV="${BASE_VERSION}+${BUILD_GIT_SHA}"',
-      'else',
-      '  IV="${BASE_VERSION}+local"',
-      'fi',
-      ('dotnet publish "' + $projectPath + '" -c Release -nologo -o "' + $cliOutput + '" -p:UseAppHost=false -p:InformationalVersion="$IV"')
-    )
-    $publishCommand = ($publishLines -join "`n")
-    # Build with official .NET SDK container to avoid file-permission quirks in tools image
-    Invoke-Container -Image 'mcr.microsoft.com/dotnet/sdk:8.0' `
-      -Arguments @('bash','-lc',$publishCommand) `
-      -Label 'dotnet-cli-build (sdk)'
-  }
-}
-
 if ($UseToolsImage -and -not $ToolsImageTag -and $env:COMPAREVI_TOOLS_IMAGE) {
   $ToolsImageTag = $env:COMPAREVI_TOOLS_IMAGE
 }
 
 $repoRootResolved = (Resolve-Path -LiteralPath '.').Path
+$dockerParityReviewReceiptPathResolved = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $DockerParityReviewReceiptPath))
+$checkStates = [ordered]@{
+  dotnetCliBuild = New-DockerParityStepState -Enabled (-not $SkipDotnetCliBuild) -Surface 'container'
+  actionlint = New-DockerParityStepState -Enabled (-not $SkipActionlint) -Surface 'container'
+  markdownlint = New-DockerParityStepState -Enabled (-not $SkipMarkdown) -Surface 'container'
+  docsLinks = New-DockerParityStepState -Enabled (-not $SkipDocs) -Surface 'container'
+  workflowContracts = New-DockerParityStepState -Enabled (-not $SkipWorkflow) -Surface 'container'
+  niLinuxReviewSuite = New-DockerParityStepState -Enabled $NILinuxReviewSuite -Surface 'docker-desktop-host'
+  requirementsVerification = New-DockerParityStepState -Enabled $RequirementsVerification -Surface 'container'
+  prioritySync = New-DockerParityStepState -Enabled $PrioritySync -Surface 'container'
+  pester = New-DockerParityStepState -Enabled $false -Surface 'container'
+}
+$runRecord = [ordered]@{
+  status = 'running'
+  failedCheck = ''
+  message = ''
+  exitCode = 0
+}
 $pesterRequested = $PSBoundParameters.ContainsKey('PesterPath') -or
   $PSBoundParameters.ContainsKey('PesterFullName') -or
   $PSBoundParameters.ContainsKey('PesterTag') -or
   $PSBoundParameters.ContainsKey('PesterExcludeTag') -or
   $PSBoundParameters.ContainsKey('PesterIncludeIntegration') -or
   $PSBoundParameters.ContainsKey('PesterResultsDir')
+
+$checkStates.pester.enabled = $pesterRequested
+$checkStates.pester.status = if ($pesterRequested) { 'pending' } else { 'skipped' }
+
+if ($FailOnWorkflowDrift) {
+  Write-Verbose 'FailOnWorkflowDrift is deprecated; workflow checkout contract checks are enforced whenever SkipWorkflow is not set.'
+}
 
 if ($pesterRequested -and -not $UseToolsImage) {
   $UseToolsImage = $true
@@ -385,161 +562,226 @@ if ($requiresDockerSocketPassthrough) {
   Write-Host '[docker] Enabling Docker socket passthrough for tools-container Pester execution.' -ForegroundColor Cyan
 }
 
+try {
+if ($checkStates.dotnetCliBuild.enabled) {
+  Invoke-DockerParityStep -StepRecord $checkStates.dotnetCliBuild -Name 'dotnetCliBuild' -RunRecord $runRecord -Action {
+    $cliOutput = 'dist/comparevi-cli'
+    $projectPath = 'src/CompareVi.Tools.Cli/CompareVi.Tools.Cli.csproj'
+    if (-not (Test-Path -LiteralPath $projectPath -PathType Leaf)) {
+      Write-Host ("[docker] CompareVI CLI project not found at {0}; skipping build." -f $projectPath) -ForegroundColor Yellow
+    } else {
+      if (Test-Path -LiteralPath $cliOutput) {
+        Remove-Item -LiteralPath $cliOutput -Recurse -Force -ErrorAction SilentlyContinue
+      }
+      $publishLines = @(
+        'rm -rf src/CompareVi.Shared/obj src/CompareVi.Tools.Cli/obj || true',
+        'BASE_VERSION=$(grep -oPm1 "(?<=<Version>)[^<]+" Directory.Build.props || echo "0.0.0")',
+        'if [ -n "$BUILD_GIT_SHA" ]; then',
+        '  IV="${BASE_VERSION}+${BUILD_GIT_SHA}"',
+        'else',
+        '  IV="${BASE_VERSION}+local"',
+        'fi',
+        ('dotnet publish "' + $projectPath + '" -c Release -nologo -o "' + $cliOutput + '" -p:UseAppHost=false -p:InformationalVersion="$IV"')
+      )
+      $publishCommand = ($publishLines -join "`n")
+      Invoke-Container -Image 'mcr.microsoft.com/dotnet/sdk:8.0' `
+        -Arguments @('bash','-lc',$publishCommand) `
+        -Label 'dotnet-cli-build (sdk)'
+    }
+    $checkStates.dotnetCliBuild.artifacts.outputDirectory = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path 'dist/comparevi-cli'
+  }
+}
+
 if ($UseToolsImage -and $ToolsImageTag) {
-  if (-not $SkipActionlint) {
-    Invoke-Container -Image $ToolsImageTag -Arguments @('actionlint','-color') -Label 'actionlint (tools)'
+  if ($checkStates.actionlint.enabled) {
+    Invoke-DockerParityStep -StepRecord $checkStates.actionlint -Name 'actionlint' -RunRecord $runRecord -Action {
+      Invoke-Container -Image $ToolsImageTag -Arguments @('actionlint','-color') -Label 'actionlint (tools)'
+    }
   }
-  if (-not $SkipMarkdown) {
-    $cmd = 'if ! command -v git >/dev/null 2>&1; then echo "git is required for markdownlint discovery" >&2; exit 1; fi; git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs lint:md'
-    Invoke-Container -Image $ToolsImageTag -Arguments @('bash','-lc',$cmd) -Label 'markdownlint (tools)'
+  if ($checkStates.markdownlint.enabled) {
+    Invoke-DockerParityStep -StepRecord $checkStates.markdownlint -Name 'markdownlint' -RunRecord $runRecord -Action {
+      $cmd = 'if ! command -v git >/dev/null 2>&1; then echo "git is required for markdownlint discovery" >&2; exit 1; fi; git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs lint:md'
+      Invoke-Container -Image $ToolsImageTag -Arguments @('bash','-lc',$cmd) -Label 'markdownlint (tools)'
+    }
   }
-  if (-not $SkipDocs) {
-    Invoke-Container -Image $ToolsImageTag -Arguments @('pwsh','-NoLogo','-NoProfile','-File','tools/Check-DocsLinks.ps1','-Path','docs') -Label 'docs-links (tools)'
+  if ($checkStates.docsLinks.enabled) {
+    Invoke-DockerParityStep -StepRecord $checkStates.docsLinks -Name 'docsLinks' -RunRecord $runRecord -Action {
+      Invoke-Container -Image $ToolsImageTag -Arguments @('pwsh','-NoLogo','-NoProfile','-File','tools/Check-DocsLinks.ps1','-Path','docs') -Label 'docs-links (tools)'
+    }
   }
-  if (-not $SkipWorkflow) {
-    $testArgs = @('--test') + $workflowContractTests
-    Invoke-Container -Image $ToolsImageTag -Arguments (@('node') + $testArgs) -Label 'workflow-contracts (tools)' | Out-Null
+  if ($checkStates.workflowContracts.enabled) {
+    Invoke-DockerParityStep -StepRecord $checkStates.workflowContracts -Name 'workflowContracts' -RunRecord $runRecord -Action {
+      $testArgs = @('--test') + $workflowContractTests
+      Invoke-Container -Image $ToolsImageTag -Arguments (@('node') + $testArgs) -Label 'workflow-contracts (tools)' | Out-Null
+    }
   }
 } else {
-  if (-not $SkipActionlint) {
-    Invoke-Container -Image 'rhysd/actionlint:1.7.7' -Arguments @('-color') -Label 'actionlint'
+  if ($checkStates.actionlint.enabled) {
+    Invoke-DockerParityStep -StepRecord $checkStates.actionlint -Name 'actionlint' -RunRecord $runRecord -Action {
+      Invoke-Container -Image 'rhysd/actionlint:1.7.7' -Arguments @('-color') -Label 'actionlint'
+    }
   }
-  if (-not $SkipMarkdown) {
-    $cmd = 'if ! command -v git >/dev/null 2>&1; then echo "git is required for markdownlint discovery" >&2; exit 1; fi; git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs lint:md'
-    Invoke-Container -Image 'node:20' -Arguments @('bash','-lc',$cmd) -Label 'markdownlint'
+  if ($checkStates.markdownlint.enabled) {
+    Invoke-DockerParityStep -StepRecord $checkStates.markdownlint -Name 'markdownlint' -RunRecord $runRecord -Action {
+      $cmd = 'if ! command -v git >/dev/null 2>&1; then echo "git is required for markdownlint discovery" >&2; exit 1; fi; git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs lint:md'
+      Invoke-Container -Image 'node:20' -Arguments @('bash','-lc',$cmd) -Label 'markdownlint'
+    }
   }
-  if (-not $SkipDocs) {
-    Invoke-Container -Image 'mcr.microsoft.com/powershell:7.4-debian-12' -Arguments @('pwsh','-NoLogo','-NoProfile','-File','tools/Check-DocsLinks.ps1','-Path','docs') -Label 'docs-links'
+  if ($checkStates.docsLinks.enabled) {
+    Invoke-DockerParityStep -StepRecord $checkStates.docsLinks -Name 'docsLinks' -RunRecord $runRecord -Action {
+      Invoke-Container -Image 'mcr.microsoft.com/powershell:7.4-debian-12' -Arguments @('pwsh','-NoLogo','-NoProfile','-File','tools/Check-DocsLinks.ps1','-Path','docs') -Label 'docs-links'
+    }
   }
-  if (-not $SkipWorkflow) {
-    $testArgs = @('--test') + $workflowContractTests
-    Invoke-Container -Image 'node:20' -Arguments (@('node') + $testArgs) -Label 'workflow-contracts' | Out-Null
+  if ($checkStates.workflowContracts.enabled) {
+    Invoke-DockerParityStep -StepRecord $checkStates.workflowContracts -Name 'workflowContracts' -RunRecord $runRecord -Action {
+      $testArgs = @('--test') + $workflowContractTests
+      Invoke-Container -Image 'node:20' -Arguments (@('node') + $testArgs) -Label 'workflow-contracts' | Out-Null
+    }
   }
 }
 
-if ($NILinuxReviewSuite) {
-  $reviewSuiteScriptPath = Join-Path $repoRootResolved 'tools' 'Invoke-NILinuxReviewSuite.ps1'
-  if (-not (Test-Path -LiteralPath $reviewSuiteScriptPath -PathType Leaf)) {
-    throw ("NI Linux review suite helper not found: {0}" -f $reviewSuiteScriptPath)
-  }
-
-  $resultsRootResolved = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $NILinuxReviewSuiteResultsRoot))
-  $reviewSuiteSummaryHtmlPath = Join-Path $resultsRootResolved 'review-suite-summary.html'
-  $reviewSuiteSummaryJsonPath = Join-Path $resultsRootResolved 'review-suite-summary.json'
-  $historyMarkdownPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.md'
-  $historyHtmlPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.html'
-  $historySummaryPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-summary.json'
-  $historyReviewReceiptPath = Join-Path $resultsRootResolved 'vi-history-review-loop-receipt.json'
-  $historyInspectionHtmlPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-suite-inspection.html'
-
-  Write-Host '[docker] ni-linux-review-suite (host)' -ForegroundColor Cyan
-  Write-Host ("`tresultsRoot=" + [System.IO.Path]::GetRelativePath($repoRootResolved, $resultsRootResolved).Replace('\', '/')) -ForegroundColor DarkGray
-  $reviewSuiteParams = @{
-    BaseVi = $NILinuxReviewSuiteBaseVi
-    HeadVi = $NILinuxReviewSuiteHeadVi
-    ResultsRoot = $NILinuxReviewSuiteResultsRoot
-  }
-  if (
-    $PSBoundParameters.ContainsKey('NILinuxReviewSuiteHistoryReviewReceiptPath') -and
-    -not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryReviewReceiptPath)
-  ) {
-    $reviewSuiteParams.HistoryReviewReceiptPath = $NILinuxReviewSuiteHistoryReviewReceiptPath
-    $historyReviewReceiptPath = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $NILinuxReviewSuiteHistoryReviewReceiptPath))
-  }
-  if (-not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryTargetPath)) {
-    $reviewSuiteParams.HistoryTargetPath = $NILinuxReviewSuiteHistoryTargetPath
-  }
-  if (-not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryBranchRef)) {
-    $reviewSuiteParams.HistoryBranchRef = $NILinuxReviewSuiteHistoryBranchRef
-  }
-  if (-not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryBaselineRef)) {
-    $reviewSuiteParams.HistoryBaselineRef = $NILinuxReviewSuiteHistoryBaselineRef
-  }
-  if ($NILinuxReviewSuiteHistoryMaxCommitCount -gt 0) {
-    $reviewSuiteParams.HistoryMaxCommitCount = $NILinuxReviewSuiteHistoryMaxCommitCount
-  }
-  Push-Location $repoRootResolved
-  try {
-    & $reviewSuiteScriptPath @reviewSuiteParams
-    $reviewSuiteExit = $LASTEXITCODE
-    if ($reviewSuiteExit -ne 0) {
-      throw ("NI Linux review suite exited with code {0}." -f $reviewSuiteExit)
+if ($checkStates.niLinuxReviewSuite.enabled) {
+  Invoke-DockerParityStep -StepRecord $checkStates.niLinuxReviewSuite -Name 'niLinuxReviewSuite' -RunRecord $runRecord -Action {
+    $reviewSuiteScriptPath = Join-Path $repoRootResolved 'tools' 'Invoke-NILinuxReviewSuite.ps1'
+    if (-not (Test-Path -LiteralPath $reviewSuiteScriptPath -PathType Leaf)) {
+      throw ("NI Linux review suite helper not found: {0}" -f $reviewSuiteScriptPath)
     }
-  } finally {
-    Pop-Location | Out-Null
-  }
 
-  foreach ($artifactPath in @(
-      $reviewSuiteSummaryHtmlPath,
-      $reviewSuiteSummaryJsonPath,
-      $historyMarkdownPath,
-      $historyHtmlPath,
-      $historySummaryPath,
-      $historyReviewReceiptPath,
-      $historyInspectionHtmlPath
-    )) {
-    if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
-      throw ("NI Linux review suite missing expected artifact: {0}" -f $artifactPath)
+    $resultsRootResolved = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $NILinuxReviewSuiteResultsRoot))
+    $reviewSuiteSummaryHtmlPath = Join-Path $resultsRootResolved 'review-suite-summary.html'
+    $reviewSuiteSummaryJsonPath = Join-Path $resultsRootResolved 'review-suite-summary.json'
+    $historyMarkdownPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.md'
+    $historyHtmlPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.html'
+    $historySummaryPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-summary.json'
+    $historyReviewReceiptPath = Join-Path $resultsRootResolved 'vi-history-review-loop-receipt.json'
+    $historyInspectionHtmlPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-suite-inspection.html'
+
+    Write-Host '[docker] ni-linux-review-suite (host)' -ForegroundColor Cyan
+    Write-Host ("`tresultsRoot=" + [System.IO.Path]::GetRelativePath($repoRootResolved, $resultsRootResolved).Replace('\', '/')) -ForegroundColor DarkGray
+    $reviewSuiteParams = @{
+      BaseVi = $NILinuxReviewSuiteBaseVi
+      HeadVi = $NILinuxReviewSuiteHeadVi
+      ResultsRoot = $NILinuxReviewSuiteResultsRoot
     }
-  }
-
-  Write-Host ("[docker] ni-linux-review-suite OK (summary={0}; history={1}; facade={2})" -f
-      ([System.IO.Path]::GetRelativePath($repoRootResolved, $reviewSuiteSummaryHtmlPath).Replace('\', '/')),
-      ([System.IO.Path]::GetRelativePath($repoRootResolved, $historyHtmlPath).Replace('\', '/')),
-      ([System.IO.Path]::GetRelativePath($repoRootResolved, $historySummaryPath).Replace('\', '/'))) -ForegroundColor Green
-}
-
-if ($RequirementsVerification) {
-  $requirementsResultsRootResolved = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $RequirementsVerificationResultsRoot))
-  $requirementsSummaryPath = Join-Path $requirementsResultsRootResolved 'verification-summary.json'
-  $traceMatrixJsonPath = Join-Path $requirementsResultsRootResolved 'trace-matrix.json'
-  $traceMatrixHtmlPath = Join-Path $requirementsResultsRootResolved 'trace-matrix.html'
-  $requirementsImage = if ($UseToolsImage -and $ToolsImageTag) { $ToolsImageTag } else { 'mcr.microsoft.com/powershell:7.4-debian-12' }
-  $requirementsCommand = @(
-    '$ErrorActionPreference = ''Stop''',
-    'if (Get-Command git -ErrorAction SilentlyContinue) { try { git config --global --add safe.directory /work | Out-Null } catch { Write-Warning ''Unable to mark /work as a safe git directory; continuing with requirements verification.'' } }',
-    ('& ./tools/Verify-RequirementsGate.ps1 -TestsPath ''tests'' -ResultsRoot ''tests/results'' -OutDir {0}' -f
-      (ConvertTo-PowerShellSingleQuotedLiteral -Value $RequirementsVerificationResultsRoot)),
-    'exit $LASTEXITCODE'
-  ) -join [Environment]::NewLine
-
-  Invoke-Container -Image $requirementsImage `
-    -Arguments @('pwsh', '-NoLogo', '-NoProfile', '-Command', $requirementsCommand) `
-    -Label 'requirements-verification' | Out-Null
-
-  foreach ($artifactPath in @(
-      $requirementsSummaryPath,
-      $traceMatrixJsonPath,
-      $traceMatrixHtmlPath
-    )) {
-    if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
-      throw ("Requirements verification missing expected artifact: {0}" -f $artifactPath)
+    if (
+      $PSBoundParameters.ContainsKey('NILinuxReviewSuiteHistoryReviewReceiptPath') -and
+      -not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryReviewReceiptPath)
+    ) {
+      $reviewSuiteParams.HistoryReviewReceiptPath = $NILinuxReviewSuiteHistoryReviewReceiptPath
+      $historyReviewReceiptPath = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $NILinuxReviewSuiteHistoryReviewReceiptPath))
     }
-  }
-
-  Write-Host ("[docker] requirements-verification OK (summary={0}; trace={1})" -f
-      ([System.IO.Path]::GetRelativePath($repoRootResolved, $requirementsSummaryPath).Replace('\', '/')),
-      ([System.IO.Path]::GetRelativePath($repoRootResolved, $traceMatrixJsonPath).Replace('\', '/'))) -ForegroundColor Green
-}
-
-if ($PrioritySync) {
-  $syncScript = 'git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs priority:sync:strict'
-  $ran = $false
-  if ($UseToolsImage -and $ToolsImageTag) {
-    $imageCheck = & docker image inspect $ToolsImageTag 2>$null
-    if ($LASTEXITCODE -eq 0) {
-      Invoke-Container -Image $ToolsImageTag -Arguments @('bash','-lc',$syncScript) -Label 'priority-sync (tools)' | Out-Null
-      $ran = $true
-    } else {
-      Write-Warning "Tools image '$ToolsImageTag' not found; falling back to node:20 for priority sync." 
+    if (-not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryTargetPath)) {
+      $reviewSuiteParams.HistoryTargetPath = $NILinuxReviewSuiteHistoryTargetPath
     }
-  }
-  if (-not $ran) {
-    Invoke-Container -Image 'node:20' -Arguments @('bash','-lc',$syncScript) -Label 'priority-sync' | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryBranchRef)) {
+      $reviewSuiteParams.HistoryBranchRef = $NILinuxReviewSuiteHistoryBranchRef
+    }
+    if (-not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryBaselineRef)) {
+      $reviewSuiteParams.HistoryBaselineRef = $NILinuxReviewSuiteHistoryBaselineRef
+    }
+    if ($NILinuxReviewSuiteHistoryMaxCommitCount -gt 0) {
+      $reviewSuiteParams.HistoryMaxCommitCount = $NILinuxReviewSuiteHistoryMaxCommitCount
+    }
+    Push-Location $repoRootResolved
+    try {
+      & $reviewSuiteScriptPath @reviewSuiteParams
+      $reviewSuiteExit = $LASTEXITCODE
+      if ($reviewSuiteExit -ne 0) {
+        throw ("NI Linux review suite exited with code {0}." -f $reviewSuiteExit)
+      }
+    } finally {
+      Pop-Location | Out-Null
+    }
+
+    foreach ($artifactPath in @(
+        $reviewSuiteSummaryHtmlPath,
+        $reviewSuiteSummaryJsonPath,
+        $historyMarkdownPath,
+        $historyHtmlPath,
+        $historySummaryPath,
+        $historyReviewReceiptPath,
+        $historyInspectionHtmlPath
+      )) {
+      if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+        throw ("NI Linux review suite missing expected artifact: {0}" -f $artifactPath)
+      }
+    }
+
+    $checkStates.niLinuxReviewSuite.artifacts.resultsRoot = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $resultsRootResolved
+    $checkStates.niLinuxReviewSuite.artifacts.reviewSuiteSummaryJsonPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $reviewSuiteSummaryJsonPath
+    $checkStates.niLinuxReviewSuite.artifacts.reviewSuiteSummaryHtmlPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $reviewSuiteSummaryHtmlPath
+    $checkStates.niLinuxReviewSuite.artifacts.historyReportHtmlPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $historyHtmlPath
+    $checkStates.niLinuxReviewSuite.artifacts.historySummaryPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $historySummaryPath
+    $checkStates.niLinuxReviewSuite.artifacts.historyReviewReceiptPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $historyReviewReceiptPath
+
+    Write-Host ("[docker] ni-linux-review-suite OK (summary={0}; history={1}; facade={2})" -f
+        ([System.IO.Path]::GetRelativePath($repoRootResolved, $reviewSuiteSummaryHtmlPath).Replace('\', '/')),
+        ([System.IO.Path]::GetRelativePath($repoRootResolved, $historyHtmlPath).Replace('\', '/')),
+        ([System.IO.Path]::GetRelativePath($repoRootResolved, $historySummaryPath).Replace('\', '/'))) -ForegroundColor Green
   }
 }
 
-if ($pesterRequested) {
+if ($checkStates.requirementsVerification.enabled) {
+  Invoke-DockerParityStep -StepRecord $checkStates.requirementsVerification -Name 'requirementsVerification' -RunRecord $runRecord -Action {
+    $requirementsResultsRootResolved = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $RequirementsVerificationResultsRoot))
+    $requirementsSummaryPath = Join-Path $requirementsResultsRootResolved 'verification-summary.json'
+    $traceMatrixJsonPath = Join-Path $requirementsResultsRootResolved 'trace-matrix.json'
+    $traceMatrixHtmlPath = Join-Path $requirementsResultsRootResolved 'trace-matrix.html'
+    $requirementsImage = if ($UseToolsImage -and $ToolsImageTag) { $ToolsImageTag } else { 'mcr.microsoft.com/powershell:7.4-debian-12' }
+    $requirementsCommand = @(
+      '$ErrorActionPreference = ''Stop''',
+      'if (Get-Command git -ErrorAction SilentlyContinue) { try { git config --global --add safe.directory /work | Out-Null } catch { Write-Warning ''Unable to mark /work as a safe git directory; continuing with requirements verification.'' } }',
+      ('& ./tools/Verify-RequirementsGate.ps1 -TestsPath ''tests'' -ResultsRoot ''tests/results'' -OutDir {0}' -f
+        (ConvertTo-PowerShellSingleQuotedLiteral -Value $RequirementsVerificationResultsRoot)),
+      'exit $LASTEXITCODE'
+    ) -join [Environment]::NewLine
+
+    Invoke-Container -Image $requirementsImage `
+      -Arguments @('pwsh', '-NoLogo', '-NoProfile', '-Command', $requirementsCommand) `
+      -Label 'requirements-verification' | Out-Null
+
+    foreach ($artifactPath in @(
+        $requirementsSummaryPath,
+        $traceMatrixJsonPath,
+        $traceMatrixHtmlPath
+      )) {
+      if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+        throw ("Requirements verification missing expected artifact: {0}" -f $artifactPath)
+      }
+    }
+
+    $checkStates.requirementsVerification.artifacts.resultsRoot = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $requirementsResultsRootResolved
+    $checkStates.requirementsVerification.artifacts.summaryPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $requirementsSummaryPath
+    $checkStates.requirementsVerification.artifacts.traceMatrixJsonPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $traceMatrixJsonPath
+    $checkStates.requirementsVerification.artifacts.traceMatrixHtmlPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $traceMatrixHtmlPath
+
+    Write-Host ("[docker] requirements-verification OK (summary={0}; trace={1})" -f
+        ([System.IO.Path]::GetRelativePath($repoRootResolved, $requirementsSummaryPath).Replace('\', '/')),
+        ([System.IO.Path]::GetRelativePath($repoRootResolved, $traceMatrixJsonPath).Replace('\', '/'))) -ForegroundColor Green
+  }
+}
+
+if ($checkStates.prioritySync.enabled) {
+  Invoke-DockerParityStep -StepRecord $checkStates.prioritySync -Name 'prioritySync' -RunRecord $runRecord -Action {
+    $syncScript = 'git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs priority:sync:strict'
+    $ran = $false
+    if ($UseToolsImage -and $ToolsImageTag) {
+      $imageCheck = & docker image inspect $ToolsImageTag 2>$null
+      if ($LASTEXITCODE -eq 0) {
+        Invoke-Container -Image $ToolsImageTag -Arguments @('bash','-lc',$syncScript) -Label 'priority-sync (tools)' | Out-Null
+        $ran = $true
+      } else {
+        Write-Warning "Tools image '$ToolsImageTag' not found; falling back to node:20 for priority sync."
+      }
+    }
+    if (-not $ran) {
+      Invoke-Container -Image 'node:20' -Arguments @('bash','-lc',$syncScript) -Label 'priority-sync' | Out-Null
+    }
+  }
+}
+
+if ($checkStates.pester.enabled) {
+  Invoke-DockerParityStep -StepRecord $checkStates.pester -Name 'pester' -RunRecord $runRecord -Action {
   $pesterScriptLines = New-Object System.Collections.Generic.List[string]
   $pesterScriptLines.Add('$ErrorActionPreference = ''Stop''')
   $pesterScriptLines.Add('git config --global --add safe.directory /work | Out-Null')
@@ -581,6 +823,26 @@ if ($pesterRequested) {
     -Arguments @('pwsh', '-NoLogo', '-NoProfile', '-Command', $pesterScript) `
     -Label 'pester (tools)' `
     -DockerRunArguments $dockerSocketPassthroughArgs | Out-Null
+    $checkStates.pester.artifacts.resultsDirectory = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $PesterResultsDir
+  }
 }
 
+$runRecord.status = 'passed'
+$runRecord.exitCode = 0
 Write-Host 'Non-LabVIEW container checks completed.' -ForegroundColor Green
+} catch {
+  if ($runRecord.status -ne 'failed') {
+    $runRecord.status = 'failed'
+    $runRecord.message = $_.Exception.Message
+    $runRecord.exitCode = if ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }
+  }
+  throw
+} finally {
+  Write-DockerParityReviewLoopReceipt `
+    -RepoRoot $repoRootResolved `
+    -ReceiptPath $dockerParityReviewReceiptPathResolved `
+    -Checks $checkStates `
+    -RunRecord $runRecord `
+    -NILinuxResultsRoot $NILinuxReviewSuiteResultsRoot `
+    -RequirementsResultsRoot $RequirementsVerificationResultsRoot
+}
