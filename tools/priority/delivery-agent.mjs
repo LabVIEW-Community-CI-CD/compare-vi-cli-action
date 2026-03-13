@@ -235,15 +235,17 @@ function normalizeLocalReviewLoopPolicy(value) {
     localReviewLoop.singleViHistory && typeof localReviewLoop.singleViHistory === 'object'
       ? localReviewLoop.singleViHistory
       : {};
+  const bodyMarkers = normalizeStringList(localReviewLoop.bodyMarkers);
+  const command = normalizeCommandList(localReviewLoop.command);
   return {
     ...DEFAULT_POLICY.localReviewLoop,
     ...localReviewLoop,
-    bodyMarkers: normalizeStringList(localReviewLoop.bodyMarkers).length > 0
-      ? normalizeStringList(localReviewLoop.bodyMarkers)
+    bodyMarkers: bodyMarkers.length > 0
+      ? bodyMarkers
       : [...DEFAULT_POLICY.localReviewLoop.bodyMarkers],
     receiptPath: normalizeText(localReviewLoop.receiptPath) || DEFAULT_POLICY.localReviewLoop.receiptPath,
-    command: normalizeCommandList(localReviewLoop.command).length > 0
-      ? normalizeCommandList(localReviewLoop.command)
+    command: command.length > 0
+      ? command
       : [...DEFAULT_POLICY.localReviewLoop.command],
     singleViHistory: {
       ...DEFAULT_POLICY.localReviewLoop.singleViHistory,

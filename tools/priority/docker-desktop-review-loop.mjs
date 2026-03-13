@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_REVIEW_LOOP_RECEIPT_PATH = path.join('tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
 export const DEFAULT_LOCAL_REVIEW_LOOP_COMMAND = ['node', 'tools/priority/docker-desktop-review-loop.mjs'];
+export const DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
 
 function normalizeText(value) {
   if (value == null) {
@@ -177,6 +178,7 @@ function defaultRunCommand(command, args, { cwd, env }) {
       cwd,
       env,
       encoding: 'utf8',
+      maxBuffer: DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES,
       stdio: ['ignore', 'pipe', 'pipe']
     })
   );

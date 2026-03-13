@@ -3,11 +3,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
   buildDockerDesktopReviewLoopPowerShellArgs,
   buildLocalReviewLoopCliArgs,
+  DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES,
   runDockerDesktopReviewLoop
 } from '../docker-desktop-review-loop.mjs';
 
@@ -108,6 +110,12 @@ test('buildDockerDesktopReviewLoopPowerShellArgs only emits skip flags when expl
   assert.match(args.join(' '), /-SkipDocs/);
   assert.match(args.join(' '), /-SkipWorkflow/);
   assert.match(args.join(' '), /-SkipDotnetCliBuild/);
+});
+
+test('default docker desktop review-loop command pins an explicit spawn maxBuffer', () => {
+  const source = readFileSync(new URL('../docker-desktop-review-loop.mjs', import.meta.url), 'utf8');
+  assert.equal(DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES, 32 * 1024 * 1024);
+  assert.match(source, /maxBuffer:\s*DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES/);
 });
 
 test('runDockerDesktopReviewLoop returns passed when the receipt reports passed', async () => {
