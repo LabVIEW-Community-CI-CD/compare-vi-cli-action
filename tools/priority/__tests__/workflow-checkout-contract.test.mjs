@@ -132,22 +132,36 @@ test('repo-local composite actions do not embed raw checkout or the removed help
   }
 });
 
-test('removed checkout helper and workflow updater surfaces stay absent', () => {
+test('workflow maintenance surfaces use the enclave and keep the removed checkout helper absent', () => {
   assert.equal(existsSync(path.join(repoRoot, '.github', 'actions', 'checkout-workflow-context', 'action.yml')), false);
-  assert.equal(existsSync(path.join(repoRoot, 'tools', 'workflows', 'update_workflows.py')), false);
+  assert.equal(existsSync(path.join(repoRoot, 'tools', 'workflows', 'update_workflows.py')), true);
+  assert.equal(existsSync(path.join(repoRoot, 'tools', 'workflows', 'workflow_enclave.py')), true);
 
   const hotPathFiles = [
     'AGENTS.md',
     '.github/workflows/validate.yml',
     '.github/workflows/workflows-lint.yml',
     'tools/Run-OneButtonValidate.ps1',
-    'tools/Run-NonLVChecksInDocker.ps1'
+    'tools/Run-NonLVChecksInDocker.ps1',
+    'tools/Check-WorkflowDrift.ps1'
   ];
 
   for (const relativePath of hotPathFiles) {
     const raw = readText(relativePath);
     assert.doesNotMatch(raw, /checkout-workflow-context/, `${relativePath} should not mention the removed checkout helper`);
-    assert.doesNotMatch(raw, /update_workflows\.py/, `${relativePath} should not mention the removed workflow updater`);
-    assert.doesNotMatch(raw, /Check-WorkflowDrift/, `${relativePath} should not mention the removed workflow drift shim`);
+    assert.doesNotMatch(raw, /pip install[^\n]*ruamel/i, `${relativePath} should not inline-install ruamel`);
   }
+
+  const driftShim = readText('tools/Check-WorkflowDrift.ps1');
+  assert.match(driftShim, /workflow_enclave\.py/, 'Check-WorkflowDrift should use the workflow enclave wrapper');
+  assert.doesNotMatch(driftShim, /update_workflows\.py/, 'Check-WorkflowDrift should not call the low-level updater directly');
+
+  const dockerShim = readText('tools/Run-NonLVChecksInDocker.ps1');
+  assert.match(dockerShim, /workflow_enclave\.py/, 'Run-NonLVChecksInDocker should use the workflow enclave wrapper');
+
+  const validateWorkflow = readText('.github/workflows/validate.yml');
+  assert.match(validateWorkflow, /Check-WorkflowDrift\.ps1 -FailOnDrift/, 'Validate should enforce workflow drift through the supported entrypoint');
+  assert.match(validateWorkflow, /node tools\/npm\/run-script\.mjs lint:md:changed/, 'Validate markdownlint should block on the repo-owned changed markdown surface');
+  assert.doesNotMatch(validateWorkflow, /Install markdownlint-cli \(retry\)/, 'Validate should not reinstall markdownlint globally');
+  assert.doesNotMatch(validateWorkflow, /Run markdownlint \(non-blocking\)/);
 });

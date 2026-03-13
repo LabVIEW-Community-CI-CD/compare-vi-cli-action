@@ -519,6 +519,7 @@ $checkStates = [ordered]@{
   markdownlint = New-DockerParityStepState -Enabled (-not $SkipMarkdown) -Surface 'container'
   docsLinks = New-DockerParityStepState -Enabled (-not $SkipDocs) -Surface 'container'
   workflowContracts = New-DockerParityStepState -Enabled (-not $SkipWorkflow) -Surface 'container'
+  workflowDrift = New-DockerParityStepState -Enabled (-not $SkipWorkflow) -Surface 'container'
   niLinuxReviewSuite = New-DockerParityStepState -Enabled $NILinuxReviewSuite -Surface 'docker-desktop-host'
   requirementsVerification = New-DockerParityStepState -Enabled $RequirementsVerification -Surface 'container'
   prioritySync = New-DockerParityStepState -Enabled $PrioritySync -Surface 'container'
@@ -541,7 +542,7 @@ $checkStates.pester.enabled = $pesterRequested
 $checkStates.pester.status = if ($pesterRequested) { 'pending' } else { 'skipped' }
 
 if ($FailOnWorkflowDrift) {
-  Write-Verbose 'FailOnWorkflowDrift is deprecated; workflow checkout contract checks are enforced whenever SkipWorkflow is not set.'
+  Write-Verbose 'FailOnWorkflowDrift is deprecated; workflow drift is enforced whenever SkipWorkflow is not set.'
 }
 
 if ($pesterRequested -and -not $UseToolsImage) {
@@ -589,8 +590,8 @@ if ($checkStates.dotnetCliBuild.enabled) {
         -Label 'dotnet-cli-build (sdk)'
     }
     $checkStates.dotnetCliBuild.artifacts.outputDirectory = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path 'dist/comparevi-cli'
+    }
   }
-}
 
 if ($UseToolsImage -and $ToolsImageTag) {
   if ($checkStates.actionlint.enabled) {
@@ -615,6 +616,13 @@ if ($UseToolsImage -and $ToolsImageTag) {
       Invoke-Container -Image $ToolsImageTag -Arguments (@('node') + $testArgs) -Label 'workflow-contracts (tools)' | Out-Null
     }
   }
+  if ($checkStates.workflowDrift.enabled) {
+    Invoke-DockerParityStep -StepRecord $checkStates.workflowDrift -Name 'workflowDrift' -RunRecord $runRecord -Action {
+      $workflowDriftArgs = @('python3', 'tools/workflows/workflow_enclave.py', '--default-scope', '--check')
+      $workflowDriftDockerArgs = @('-e', 'COMPAREVI_WORKFLOW_ENCLAVE_HOME=/opt/comparevi-workflow-enclave')
+      Invoke-Container -Image $ToolsImageTag -Arguments $workflowDriftArgs -DockerRunArguments $workflowDriftDockerArgs -Label 'workflow-drift (tools)' | Out-Null
+    }
+  }
 } else {
   if ($checkStates.actionlint.enabled) {
     Invoke-DockerParityStep -StepRecord $checkStates.actionlint -Name 'actionlint' -RunRecord $runRecord -Action {
@@ -636,6 +644,13 @@ if ($UseToolsImage -and $ToolsImageTag) {
     Invoke-DockerParityStep -StepRecord $checkStates.workflowContracts -Name 'workflowContracts' -RunRecord $runRecord -Action {
       $testArgs = @('--test') + $workflowContractTests
       Invoke-Container -Image 'node:20' -Arguments (@('node') + $testArgs) -Label 'workflow-contracts' | Out-Null
+    }
+  }
+  if ($checkStates.workflowDrift.enabled) {
+    Invoke-DockerParityStep -StepRecord $checkStates.workflowDrift -Name 'workflowDrift' -RunRecord $runRecord -Action {
+      $workflowDriftArgs = @('python3', 'tools/workflows/workflow_enclave.py', '--default-scope', '--check')
+      $workflowDriftDockerArgs = @('-e', 'COMPAREVI_WORKFLOW_ENCLAVE_HOME=/tmp/comparevi-workflow-enclave')
+      Invoke-Container -Image 'python:3.12' -Arguments $workflowDriftArgs -DockerRunArguments $workflowDriftDockerArgs -Label 'workflow-drift' | Out-Null
     }
   }
 }

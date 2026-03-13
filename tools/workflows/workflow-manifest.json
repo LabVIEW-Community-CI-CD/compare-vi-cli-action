@@ -1,0 +1,13 @@
+{
+  "schema": "comparevi/workflow-enclave-manifest@v1",
+  "managedWorkflowFiles": [
+    ".github/workflows/pester-selfhosted.yml",
+    ".github/workflows/fixture-drift.yml",
+    ".github/workflows/ci-orchestrated.yml",
+    ".github/workflows/pester-integration-on-label.yml",
+    ".github/workflows/pester-reusable.yml",
+    ".github/workflows/smoke.yml",
+    ".github/workflows/compare-artifacts.yml",
+    ".github/workflows/validate.yml"
+  ]
+}

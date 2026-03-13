@@ -225,23 +225,9 @@ jobs:
         cache: "npm"
     - name: Install CLI validation deps
       run: node tools/npm/cli.mjs ci
-    - name: Install markdownlint-cli (retry)
-      shell: bash
+    - name: Run markdownlint
       run: |
-        set -euo pipefail
-        for i in 1 2 3; do
-          if node tools/npm/cli.mjs install -g markdownlint-cli; then
-            break
-          else
-            node tools/npm/cli.mjs cache clean --force || true
-            echo "retry $i"
-            sleep 2
-          fi
-        done
-    - name: Run markdownlint (non-blocking)
-      run: |
-        markdownlint "**/*.md" --ignore node_modules
-      continue-on-error: true
+        node tools/npm/run-script.mjs lint:md:changed
   preflight:
     runs-on: windows-latest
     timeout-minutes: 3
@@ -327,7 +313,8 @@ jobs:
         $ui = [System.Environment]::UserInteractive
         $in = $false; try { $in  = [Console]::IsInputRedirected } catch {}
         $ok = ($ui -and -not $in)
-        "ok=$ok" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        $okString = if ($ok) { "true" } else { "false" }
+        "ok=$okString" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
   pester-category:
     if: ${{ inputs.strategy == 'matrix' || vars.ORCH_STRATEGY == 'matrix' || (inputs.strategy == '' && vars.ORCH_STRATEGY == '') || (inputs.strategy == 'single' && needs.probe.outputs.ok == 'false') }}
