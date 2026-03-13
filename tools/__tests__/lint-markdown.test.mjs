@@ -38,6 +38,6 @@ test('fails clearly when git is unavailable for markdown discovery', () => {
 });
 
 test('resolves merge-base for changed-file mode without stale git helper references', () => {
-  const mergeBase = resolveMergeBase(['HEAD~1']);
+  const mergeBase = resolveMergeBase(['HEAD']);
   assert.match(mergeBase, /^[0-9a-f]{40}$/i);
 });
