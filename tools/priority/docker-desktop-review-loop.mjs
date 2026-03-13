@@ -58,30 +58,31 @@ function normalizeCommandResult(result = {}) {
   };
 }
 
-function readGitCommand(repoRoot, args) {
+function runGitCommand(repoRoot, args) {
   const result = spawnSync('git', ['-C', repoRoot, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe']
   });
-  if (result.status !== 0) {
-    return '';
-  }
-  return normalizeText(result.stdout);
+  return {
+    ok: result.status === 0,
+    stdout: normalizeText(result.stdout),
+    stderr: normalizeText(result.stderr)
+  };
 }
 
 export function resolveRepoGitState(repoRoot) {
-  const headSha = readGitCommand(repoRoot, ['rev-parse', 'HEAD']);
-  if (!headSha) {
+  const headShaResult = runGitCommand(repoRoot, ['rev-parse', 'HEAD']);
+  if (!headShaResult.ok || !headShaResult.stdout) {
     return null;
   }
-  const branch = readGitCommand(repoRoot, ['branch', '--show-current']) || null;
-  const upstreamDevelopMergeBase = readGitCommand(repoRoot, ['merge-base', 'HEAD', 'upstream/develop']) || null;
-  const dirtyTracked = Boolean(readGitCommand(repoRoot, ['status', '--short', '--untracked-files=no']));
+  const branchResult = runGitCommand(repoRoot, ['branch', '--show-current']);
+  const upstreamDevelopMergeBaseResult = runGitCommand(repoRoot, ['merge-base', 'HEAD', 'upstream/develop']);
+  const dirtyTrackedResult = runGitCommand(repoRoot, ['status', '--short', '--untracked-files=no']);
   return {
-    headSha,
-    branch,
-    upstreamDevelopMergeBase,
-    dirtyTracked
+    headSha: headShaResult.stdout,
+    branch: branchResult.ok ? branchResult.stdout || null : null,
+    upstreamDevelopMergeBase: upstreamDevelopMergeBaseResult.ok ? upstreamDevelopMergeBaseResult.stdout || null : null,
+    dirtyTracked: dirtyTrackedResult.ok ? dirtyTrackedResult.stdout.length > 0 : null
   };
 }
 
@@ -90,7 +91,7 @@ function normalizeReceiptGitMetadata(receipt = {}) {
   const headSha = normalizeText(git.headSha);
   const branch = normalizeText(git.branch) || null;
   const upstreamDevelopMergeBase = normalizeText(git.upstreamDevelopMergeBase) || null;
-  const dirtyTracked = git.dirtyTracked === true;
+  const dirtyTracked = typeof git.dirtyTracked === 'boolean' ? git.dirtyTracked : null;
   return {
     headSha,
     branch,
@@ -262,6 +263,8 @@ export async function assessDockerDesktopReviewLoopReceipt({
   }
 
   const resolvedReceiptPath = resolvedReceiptPathInfo.resolved;
+  const currentGitState =
+    typeof resolveRepoGitStateFn === 'function' ? normalizeReceiptGitMetadata({ git: resolveRepoGitStateFn(repoRoot) ?? {} }) : null;
   const receipt = await readJsonIfPresent(resolvedReceiptPath);
   if (!receipt) {
     return {
@@ -270,7 +273,7 @@ export async function assessDockerDesktopReviewLoopReceipt({
       reason: 'Docker/Desktop review loop receipt does not exist yet.',
       receiptPath: resolvedReceiptPathInfo.normalized,
       receipt: null,
-      currentHeadSha: normalizeReceiptGitMetadata({ git: resolveRepoGitStateFn(repoRoot) ?? {} }).headSha || null,
+      currentHeadSha: currentGitState?.headSha || null,
       receiptHeadSha: null,
       receiptFreshForHead: null,
       reusable: false
@@ -283,15 +286,13 @@ export async function assessDockerDesktopReviewLoopReceipt({
       reason: `Docker/Desktop review loop produced a corrupt receipt: ${receipt.__parseError}`,
       receiptPath: resolvedReceiptPathInfo.normalized,
       receipt: null,
-      currentHeadSha: normalizeReceiptGitMetadata({ git: resolveRepoGitStateFn(repoRoot) ?? {} }).headSha || null,
+      currentHeadSha: currentGitState?.headSha || null,
       receiptHeadSha: null,
       receiptFreshForHead: false,
       reusable: false
     };
   }
 
-  const currentGitState =
-    typeof resolveRepoGitStateFn === 'function' ? normalizeReceiptGitMetadata({ git: resolveRepoGitStateFn(repoRoot) ?? {} }) : null;
   const receiptGit = normalizeReceiptGitMetadata(receipt);
   if (!receiptGit.headSha) {
     return {
@@ -342,12 +343,15 @@ export async function assessDockerDesktopReviewLoopReceipt({
   }
 
   const reusable = currentGitState?.dirtyTracked === false && receiptGit.dirtyTracked === false;
+  const reuseReason = reusable
+    ? 'Docker/Desktop review loop receipt is current for this clean HEAD.'
+    : currentGitState?.dirtyTracked === true || receiptGit.dirtyTracked === true
+      ? 'Docker/Desktop review loop receipt is current, but tracked changes are present.'
+      : 'Docker/Desktop review loop receipt is current, but tracked-clean state could not be verified.';
   return {
     status: 'passed',
     source: 'docker-desktop-review-loop',
-    reason: reusable
-      ? 'Docker/Desktop review loop receipt is current for this clean HEAD.'
-      : 'Docker/Desktop review loop receipt is current, but the working tree is still dirty.',
+    reason: reuseReason,
     receiptPath: resolvedReceiptPathInfo.normalized,
     receipt,
     currentHeadSha: currentGitState?.headSha || null,
