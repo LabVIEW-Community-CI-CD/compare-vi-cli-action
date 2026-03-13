@@ -33,7 +33,7 @@ def load_yaml(path: Path):
         return yaml.load(fp)
 
 
-def dump_yaml(doc, path: Path) -> str:
+def dump_yaml(doc, _path: Path) -> str:
     from io import StringIO
     sio = StringIO()
     yaml.dump(doc, sio)

@@ -88,6 +88,7 @@ test('workflow-writing callers use the enclave wrapper instead of the low-level 
   assert.match(checkWorkflowDrift, /& \$pythonCommand\.Executable @pythonArguments/);
   assert.match(checkWorkflowDrift, /Push-Location \$repoRoot/);
   assert.match(checkWorkflowDrift, /git -C \$repoRoot/);
+  assert.match(checkWorkflowDrift, /managedWorkflowFiles array of non-empty strings/);
   assert.doesNotMatch(checkWorkflowDrift, /update_workflows\.py/);
 
   const dockerChecks = read('tools/Run-NonLVChecksInDocker.ps1');
@@ -107,6 +108,7 @@ test('workflow-writing callers use the enclave wrapper instead of the low-level 
 
 test('workflow updater normalizes checkout insertion and docs-only expressions correctly', () => {
   const updater = read('tools/workflows/_update_workflows_impl.py');
+  assert.match(updater, /def dump_yaml\(doc, _path: Path\)/);
   assert.match(updater, /steps\.g\.outputs\.docs_only \|\| 'false'/);
   assert.doesNotMatch(updater, /docs_only \|\| ''false''/);
   assert.match(updater, /True in doc/);
@@ -140,6 +142,12 @@ test('workflow enclave node wrapper only accepts Python 3 interpreters', () => {
   assert.match(wrapper, /COMPAREVI_PYTHON_EXE must resolve to a Python 3 interpreter/);
   assert.match(wrapper, /canRunPython3\('python3'\)/);
   assert.match(wrapper, /canRunPython3\('python'\)/);
+
+  const pythonWrapper = read('tools/workflows/workflow_enclave.py');
+  assert.match(
+    pythonWrapper,
+    /Usage: workflow_enclave\.py \[--ensure-only\|--default-scope \(\--check\|\--write\)\|\(\--check\|\--write\) <files\.\.\.>\]/
+  );
 });
 
 test('workflow and composite lint surfaces use repo-owned markdown commands', () => {

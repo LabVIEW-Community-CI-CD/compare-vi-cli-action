@@ -114,6 +114,18 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'repo-relative workflow path'):
                     load_default_scope()
 
+    def test_wrapper_usage_mentions_default_scope_without_explicit_files(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, str(SCRIPT_ROOT / 'workflow_enclave.py')],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn('--default-scope (--check|--write)', completed.stdout)
+        self.assertIn('(--check|--write) <files...>', completed.stdout)
+
     def test_force_run_input_supports_booleanized_on_key(self) -> None:
         doc = {
             True: {
