@@ -3111,7 +3111,11 @@ test('delivery broker keeps a draft PR waiting-review when local receipt freshne
   assert.equal(brokerResult.outcome, 'waiting-review');
   assert.equal(brokerResult.details.reviewPhase, 'draft-review');
   assert.equal(helperCalls.length, 1);
-  assert.equal(brokerResult.details.helperCallsExecuted.length, 0);
+  assert.equal(brokerResult.details.helperCallsExecuted.length, 1);
+  assert.match(
+    brokerResult.details.helperCallsExecuted[0],
+    /^node tools\/priority\/docker-desktop-review-loop\.mjs\b/
+  );
   assert.equal(brokerResult.details.localReviewLoop.receiptFreshForHead, null);
   assert.equal(brokerResult.details.localReviewLoop.requestedCoverageSatisfied, null);
   assert.equal(brokerResult.details.nextWakeCondition, 'local-review-loop-green');

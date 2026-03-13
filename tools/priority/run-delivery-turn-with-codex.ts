@@ -190,7 +190,7 @@ export function buildCodexTurnPrompt({ taskPacket, repoRoot, workDir }) {
     '- Keep the turn bounded to one deliverable increment or one explicit blocker diagnosis.',
     '- All automation-authored PRs begin as drafts; the broker may draft before mutation, but only the outer delivery layer restores ready for review after local and Copilot clearance.',
     '- If you make implementation progress, run focused validation, commit with the issue number in the subject, push the lane branch, and open or update the PR if needed.',
-    '- If a PR already exists, update the branch and leave the lane ready for CI.',
+    '- If a PR already exists, update the branch and leave the lane in draft review phase while ensuring CI is green.',
     '- If you are blocked, stop and report the blocker directly; do not claim success.',
     '',
     'Preferred helpers:',
@@ -465,7 +465,13 @@ function buildExecutionReceipt({
   } else if (pullRequestUrl && laneLifecycle === 'coding') {
     laneLifecycle = 'waiting-ci';
   }
-  const blockerClass = normalizeText(codexResult?.blockerClass) || (laneLifecycle === 'blocked' ? 'scope' : 'none');
+  const reviewWaitEnforced =
+    pullRequestUrl &&
+    laneLifecycle === 'waiting-review' &&
+    (reviewCycle?.readyDeferredToOuterLayer || reviewCycle?.freshCopilotReviewExpected);
+  const blockerClass = reviewWaitEnforced
+    ? 'review'
+    : normalizeText(codexResult?.blockerClass) || (laneLifecycle === 'blocked' ? 'scope' : 'none');
   const status = normalizeText(codexResult?.status) || (laneLifecycle === 'blocked' ? 'blocked' : 'completed');
 
   return {

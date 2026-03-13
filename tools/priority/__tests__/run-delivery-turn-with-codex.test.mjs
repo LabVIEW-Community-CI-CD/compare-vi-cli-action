@@ -63,6 +63,7 @@ test('buildCodexTurnPrompt includes bounded delivery context and helper surfaces
   assert.match(prompt, /runtime-supervisor\.mjs/);
   assert.match(prompt, /All automation-authored PRs begin as drafts/i);
   assert.match(prompt, /only the outer delivery layer restores ready for review/i);
+  assert.match(prompt, /leave the lane in draft review phase while ensuring CI is green/i);
   assert.match(prompt, /returning only JSON/i);
 });
 
@@ -214,4 +215,21 @@ test('runCodexDeliveryTurn surfaces broker-managed draft transition failures and
   assert.match(source, /Broker failed to mark PR #\$\{pullRequest\.number\} ready for review after mutation:/);
   assert.match(source, /brokerTransitionNotes = \[\],[\s\S]*noteParts = \[[\s\S]*brokerTransitionNotes\.map/s);
   assert.match(source, /Broker left the PR draft; the outer delivery layer must restore ready for review after local review and current-head draft-phase Copilot clearance\./);
+});
+
+test('runCodexDeliveryTurn marks forced waiting-review receipts with blockerClass review', () => {
+  const source = readFileSync(path.join(repoRoot, 'tools/priority/run-delivery-turn-with-codex.ts'), 'utf8');
+
+  assert.match(source, /const reviewWaitEnforced =[\s\S]*laneLifecycle === 'waiting-review'[\s\S]*readyDeferredToOuterLayer \|\| reviewCycle\?\.freshCopilotReviewExpected/s);
+  assert.match(source, /const blockerClass = reviewWaitEnforced\s*\?\s*'review'/);
+});
+
+test('delivery agent retains local review loop audit helpers when watch receipts restore ready or draft state', () => {
+  const source = readFileSync(path.join(repoRoot, 'tools/priority/delivery-agent.mjs'), 'utf8');
+
+  assert.match(source, /let localReviewLoopHelperCalls = \[\];/);
+  assert.match(source, /localReviewLoopHelperCalls = uniqueStrings\(/);
+  assert.match(source, /helperCallsExecuted: uniqueStrings\(\[\.\.\.localReviewLoopHelperCalls, toReady\.helperCall\]\)/);
+  assert.match(source, /helperCallsExecuted: uniqueStrings\(\[\.\.\.localReviewLoopHelperCalls, toDraft\.helperCall\]\)/);
+  assert.match(source, /helperCallsExecuted: localReviewLoopHelperCalls,/);
 });

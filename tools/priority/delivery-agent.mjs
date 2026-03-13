@@ -1889,6 +1889,8 @@ async function enforceDraftOnlyReviewContract({
 
   const localReviewRequested = taskPacket?.evidence?.delivery?.localReviewLoop?.requested === true;
   let localReviewLoopReceipt = null;
+  let localReviewLoopHelperCalls = [];
+  let localReviewLoopFilesTouched = [];
   if (localReviewRequested) {
     const localReviewResult = await maybeRunLocalReviewLoop({
       baseReceipt: {
@@ -1937,6 +1939,12 @@ async function enforceDraftOnlyReviewContract({
       return localReviewResult;
     }
     localReviewLoopReceipt = normalizeOptionalObject(localReviewResult?.details?.localReviewLoop);
+    localReviewLoopHelperCalls = uniqueStrings(
+      Array.isArray(localReviewResult.details?.helperCallsExecuted) ? localReviewResult.details.helperCallsExecuted : []
+    );
+    localReviewLoopFilesTouched = uniqueStrings(
+      Array.isArray(localReviewResult.details?.filesTouched) ? localReviewResult.details.filesTouched : []
+    );
   }
 
   const reviewClearance = evaluateDraftPhaseCopilotClearance(pullRequest);
@@ -1967,8 +1975,8 @@ async function enforceDraftOnlyReviewContract({
             retryable: false,
             nextWakeCondition: 'ready-transition-fixed',
             reviewPhase: 'ready-validation',
-            helperCallsExecuted: uniqueStrings([toReady.helperCall]),
-            filesTouched: [],
+            helperCallsExecuted: uniqueStrings([...localReviewLoopHelperCalls, toReady.helperCall]),
+            filesTouched: localReviewLoopFilesTouched,
             localReviewLoop: localReviewLoopReceipt
           }
         };
@@ -1985,8 +1993,8 @@ async function enforceDraftOnlyReviewContract({
           retryable: true,
           nextWakeCondition: 'checks-green',
           reviewPhase: 'ready-validation',
-          helperCallsExecuted: uniqueStrings([toReady.helperCall]),
-          filesTouched: [],
+          helperCallsExecuted: uniqueStrings([...localReviewLoopHelperCalls, toReady.helperCall]),
+          filesTouched: localReviewLoopFilesTouched,
           localReviewLoop: localReviewLoopReceipt
         }
       };
@@ -2011,8 +2019,8 @@ async function enforceDraftOnlyReviewContract({
         pollIntervalSecondsHint: localReviewRequested && !localReviewSatisfiedFlag ? null : reviewClearance.pollIntervalSecondsHint,
         reviewMonitor: reviewClearance.workflow,
         reviewPhase: 'draft-review',
-        helperCallsExecuted: [],
-        filesTouched: [],
+        helperCallsExecuted: localReviewLoopHelperCalls,
+        filesTouched: localReviewLoopFilesTouched,
         localReviewLoop: localReviewLoopReceipt
       }
     };
@@ -2042,8 +2050,8 @@ async function enforceDraftOnlyReviewContract({
           retryable: false,
           nextWakeCondition: 'draft-transition-fixed',
           reviewPhase: 'draft-review',
-          helperCallsExecuted: uniqueStrings([toDraft.helperCall]),
-          filesTouched: [],
+          helperCallsExecuted: uniqueStrings([...localReviewLoopHelperCalls, toDraft.helperCall]),
+          filesTouched: localReviewLoopFilesTouched,
           localReviewLoop: localReviewLoopReceipt
         }
       };
@@ -2067,8 +2075,8 @@ async function enforceDraftOnlyReviewContract({
         pollIntervalSecondsHint: localReviewRequested && !localReviewSatisfiedFlag ? null : reviewClearance.pollIntervalSecondsHint,
         reviewMonitor: reviewClearance.workflow,
         reviewPhase: 'draft-review',
-        helperCallsExecuted: uniqueStrings([toDraft.helperCall]),
-        filesTouched: [],
+        helperCallsExecuted: uniqueStrings([...localReviewLoopHelperCalls, toDraft.helperCall]),
+        filesTouched: localReviewLoopFilesTouched,
         localReviewLoop: localReviewLoopReceipt
       }
     };
