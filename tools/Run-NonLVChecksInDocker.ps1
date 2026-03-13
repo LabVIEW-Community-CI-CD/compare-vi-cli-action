@@ -48,6 +48,10 @@
   Optional baseline ref used for touch-aware single-VI history review.
 .PARAMETER NILinuxReviewSuiteHistoryMaxCommitCount
   Optional max commit scan depth for the touch-aware single-VI history review loop.
+.PARAMETER NILinuxReviewSuiteHistoryReviewReceiptPath
+  Optional output path for the single-VI review-loop receipt. Relative paths are resolved from the
+  repository root. When omitted, tools/Invoke-NILinuxReviewSuite.ps1 writes the receipt under the
+  selected NI Linux review-suite results root.
 .PARAMETER PesterPath
   Optional Pester path(s) to execute inside the tools container. When provided, the host only orchestrates Docker and
   the requested Pester run happens in-container.
@@ -425,7 +429,7 @@ if ($NILinuxReviewSuite) {
   $historyMarkdownPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.md'
   $historyHtmlPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.html'
   $historySummaryPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-summary.json'
-  $historyReviewReceiptPath = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $NILinuxReviewSuiteHistoryReviewReceiptPath))
+  $historyReviewReceiptPath = Join-Path $resultsRootResolved 'vi-history-review-loop-receipt.json'
   $historyInspectionHtmlPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-suite-inspection.html'
 
   Write-Host '[docker] ni-linux-review-suite (host)' -ForegroundColor Cyan
@@ -434,7 +438,13 @@ if ($NILinuxReviewSuite) {
     BaseVi = $NILinuxReviewSuiteBaseVi
     HeadVi = $NILinuxReviewSuiteHeadVi
     ResultsRoot = $NILinuxReviewSuiteResultsRoot
-    HistoryReviewReceiptPath = $NILinuxReviewSuiteHistoryReviewReceiptPath
+  }
+  if (
+    $PSBoundParameters.ContainsKey('NILinuxReviewSuiteHistoryReviewReceiptPath') -and
+    -not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryReviewReceiptPath)
+  ) {
+    $reviewSuiteParams.HistoryReviewReceiptPath = $NILinuxReviewSuiteHistoryReviewReceiptPath
+    $historyReviewReceiptPath = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $NILinuxReviewSuiteHistoryReviewReceiptPath))
   }
   if (-not [string]::IsNullOrWhiteSpace($NILinuxReviewSuiteHistoryTargetPath)) {
     $reviewSuiteParams.HistoryTargetPath = $NILinuxReviewSuiteHistoryTargetPath

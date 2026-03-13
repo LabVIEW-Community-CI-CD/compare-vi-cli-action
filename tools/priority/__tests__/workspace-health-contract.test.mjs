@@ -118,6 +118,7 @@ test('Run-NonLVChecksInDocker exposes Docker Desktop NI Linux review-suite parit
   assert.match(content, /\[string\]\$NILinuxReviewSuiteHistoryBranchRef/);
   assert.match(content, /\[string\]\$NILinuxReviewSuiteHistoryBaselineRef/);
   assert.match(content, /\[int\]\$NILinuxReviewSuiteHistoryMaxCommitCount/);
+  assert.match(content, /\.PARAMETER NILinuxReviewSuiteHistoryReviewReceiptPath/);
   assert.match(content, /tests\/results\/docker-tools-parity\/ni-linux-review-suite/);
   assert.match(content, /tests\/results\/docker-tools-parity\/requirements-verification/);
   assert.match(content, /Invoke-NILinuxReviewSuite\.ps1/);
@@ -126,6 +127,7 @@ test('Run-NonLVChecksInDocker exposes Docker Desktop NI Linux review-suite parit
   assert.match(content, /history-report\.html/);
   assert.match(content, /history-summary\.json/);
   assert.match(content, /vi-history-review-loop-receipt\.json/);
+  assert.match(content, /\$PSBoundParameters\.ContainsKey\('NILinuxReviewSuiteHistoryReviewReceiptPath'\)/);
   assert.match(content, /verification-summary\.json/);
   assert.match(content, /trace-matrix\.json/);
   assert.match(content, /command -v git >\/dev\/null 2>&1/);
