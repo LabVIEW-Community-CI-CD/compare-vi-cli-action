@@ -1,4 +1,4 @@
-Describe 'Pester Watcher Live Feed' -Tag 'Unit' {
+Describe 'Pester Watcher Live Feed' -Tag 'Unit','REQ:WATCHER_LIVE_FEED' {
   BeforeAll {
     . (Join-Path $PSScriptRoot '_TestPathHelper.ps1')
     $nodeCmd = Get-Command node -ErrorAction Stop

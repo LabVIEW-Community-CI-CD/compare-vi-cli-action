@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_Pester5Guard.ps1')
 [void](Assert-PesterV5OrNewer -Caller $PSCommandPath)
 
-Describe 'Invoker (basic)' -Tag 'Unit' {
+Describe 'Invoker (basic)' -Tag 'Unit','REQ:PESTER_SINGLE_INVOKER','REQ:SINGLE_INVOKER_SYSTEM_DEFINITION' {
   It 'starts and stops with markers and responds to Ping' {
     $root = (Get-Location).Path
     $res  = Join-Path $TestDrive 'invoker-basic/results'

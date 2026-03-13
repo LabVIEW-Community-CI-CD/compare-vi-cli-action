@@ -59,3 +59,6 @@ Environment shortcuts:
 - Tag each new test with at least one requirement (`REQ:`).
 - Reference ADRs when tests verify architectural decisions.
 - Review the HTML report locally before enabling traceability in CI.
+- When a traceability self-test needs synthetic requirement IDs, construct those IDs at runtime inside the fixture
+  content instead of leaving literal `REQ:` examples in the checked-in test file. That keeps production trace-matrix
+  scans from reporting fixture-only unknown requirements.

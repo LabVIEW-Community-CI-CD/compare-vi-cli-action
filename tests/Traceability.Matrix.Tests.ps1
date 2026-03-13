@@ -21,19 +21,23 @@ Describe 'Traceability matrix builder' -Tag 'Unit' {
 
     $testsDir = Join-Path $root 'tests'
     New-Item -ItemType Directory -Path $testsDir -Force | Out-Null
+    $sampleRequirementId = 'REQ_ONE'
+    $unknownRequirementId = 'REQ_UNKNOWN'
     $sampleTest = @"
-Describe 'Sample' -Tag 'Unit','REQ:REQ_ONE','ADR:0001' {
+Describe 'Sample' -Tag 'Unit','REQ:$sampleRequirementId','ADR:0001' {
   It 'is covered' { 1 | Should -Be 1 }
 }
 "@
     Set-Content -LiteralPath (Join-Path $testsDir 'Sample.Tests.ps1') -Value $sampleTest -Encoding utf8
 
-    $orphanTest = @"
-# trace: req=REQ_UNKNOWN
-Describe 'Unknown coverage' -Tag 'Unit' {
-  It 'has no results' { 1 | Should -Be 1 }
-}
-"@
+    $traceHeader = ('#' + ' trace: req=' + $unknownRequirementId)
+    $orphanTest = @(
+      $traceHeader
+      "Describe 'Unknown coverage' -Tag 'Unit' {"
+      "  It 'has no results' { 1 | Should -Be 1 }"
+      "}"
+      ''
+    ) -join "`n"
     Set-Content -LiteralPath (Join-Path $testsDir 'Orphan.Tests.ps1') -Value $orphanTest -Encoding utf8
 
     $resultsDir = Join-Path $root 'tests/results/pester/Sample-Tests-ps1'
@@ -73,5 +77,53 @@ Describe 'Unknown coverage' -Tag 'Unit' {
     $matrix.gaps.requirementsWithoutTests | Should -Contain 'REQ_TWO'
     $matrix.gaps.testsWithoutRequirements | Should -Contain 'tests/Orphan.Tests.ps1'
   }
-}
 
+  It 'does not report the repo traceability fixture IDs as production unknowns or uncovered requirements' {
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $resultsRoot = Join-Path $TestDrive 'repo-trace-results'
+    $includePatterns = @(
+      'CompareVITools.Artifact.Tests.ps1',
+      'DevDashboard.Loaders.Tests.ps1',
+      'Generate-ReleaseMetadata.Tests.ps1',
+      'Invoker.Basic.Tests.ps1',
+      'Publish-Cli.Tests.ps1',
+      'Requirements.Index.Tests.ps1',
+      'RequirementsVerificationBaseline.Tests.ps1',
+      'Traceability.Matrix.Tests.ps1',
+      'Watcher.BusyLoop.Tests.ps1',
+      'Watcher.Live.Tests.ps1'
+    )
+    New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+
+    Push-Location $repoRoot
+    try {
+      & ./tools/Traceability-Matrix.ps1 `
+        -TestsPath 'tests' `
+        -ResultsRoot $resultsRoot `
+        -IncludePatterns $includePatterns | Out-Null
+    } finally {
+      Pop-Location
+    }
+
+    $jsonPath = Join-Path $resultsRoot '_trace/trace-matrix.json'
+    Test-Path -LiteralPath $jsonPath | Should -BeTrue
+    $matrix = Get-Content -LiteralPath $jsonPath -Raw | ConvertFrom-Json
+
+    @($matrix.gaps.unknownRequirementIds) | Should -Not -Contain 'REQ_ONE'
+    @($matrix.gaps.unknownRequirementIds) | Should -Not -Contain 'REQ_UNKNOWN'
+
+    foreach ($requirementId in @(
+      'DOTNET_CLI_POWERSHELL_MAPPING',
+      'DOTNET_CLI_RELEASE_ASSET',
+      'DOTNET_CLI_RELEASE_CHECKLIST',
+      'INDEX',
+      'PESTER_SINGLE_INVOKER',
+      'SINGLE_INVOKER_SYSTEM_DEFINITION',
+      'WATCH_AND_QUEUE',
+      'WATCHER_BUSY_LOOP',
+      'WATCHER_LIVE_FEED'
+    )) {
+      @($matrix.gaps.requirementsWithoutTests) | Should -Not -Contain $requirementId
+    }
+  }
+}

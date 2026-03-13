@@ -2,20 +2,7 @@
   "schema": "requirements-verification-baseline/v1",
   "schemaVersion": "1.0.0",
   "allowlist": {
-    "unknownRequirementIds": [
-      "REQ_ONE",
-      "REQ_UNKNOWN"
-    ],
-    "uncoveredRequirementIds": [
-      "DOTNET_CLI_POWERSHELL_MAPPING",
-      "DOTNET_CLI_RELEASE_ASSET",
-      "DOTNET_CLI_RELEASE_CHECKLIST",
-      "INDEX",
-      "PESTER_SINGLE_INVOKER",
-      "SINGLE_INVOKER_SYSTEM_DEFINITION",
-      "WATCH_AND_QUEUE",
-      "WATCHER_BUSY_LOOP",
-      "WATCHER_LIVE_FEED"
-    ]
+    "unknownRequirementIds": [],
+    "uncoveredRequirementIds": []
   }
 }
