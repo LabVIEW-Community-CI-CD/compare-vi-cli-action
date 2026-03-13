@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  assessDockerDesktopReviewLoopReceipt,
   buildDockerDesktopReviewLoopPowerShellArgs,
   buildLocalReviewLoopCliArgs,
   DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES,
@@ -312,6 +313,216 @@ test('runDockerDesktopReviewLoop fails closed when the receipt head does not mat
   assert.equal(result.receiptHeadSha, 'stale-head');
   assert.equal(result.currentHeadSha, 'current-head');
   assert.match(result.reason, /stale for the current HEAD/i);
+});
+
+test('assessDockerDesktopReviewLoopReceipt marks a current clean receipt as reusable', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-assess-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'docker-tools-parity-review-loop@v1',
+      git: {
+        headSha: 'current-head',
+        branch: 'issue/test',
+        upstreamDevelopMergeBase: 'base123',
+        dirtyTracked: false
+      },
+      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
+    })}\n`,
+    'utf8'
+  );
+
+  const result = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: path.relative(repoRoot, receiptPath),
+    resolveRepoGitStateFn: () => ({
+      headSha: 'current-head',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false
+    })
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.receiptFreshForHead, true);
+  assert.equal(result.reusable, true);
+});
+
+test('assessDockerDesktopReviewLoopReceipt does not reuse receipts when receipt tracked-clean state is unknown', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-unknown-receipt-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'docker-tools-parity-review-loop@v1',
+      git: {
+        headSha: 'current-head',
+        branch: 'issue/test',
+        upstreamDevelopMergeBase: 'base123'
+      },
+      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
+    })}\n`,
+    'utf8'
+  );
+
+  const result = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: path.relative(repoRoot, receiptPath),
+    resolveRepoGitStateFn: () => ({
+      headSha: 'current-head',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false
+    })
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.receiptFreshForHead, true);
+  assert.equal(result.reusable, false);
+  assert.match(result.reason, /tracked-clean state could not be verified/i);
+});
+
+test('assessDockerDesktopReviewLoopReceipt does not reuse receipts when current tracked-clean state is unknown', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-unknown-current-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'docker-tools-parity-review-loop@v1',
+      git: {
+        headSha: 'current-head',
+        branch: 'issue/test',
+        upstreamDevelopMergeBase: 'base123',
+        dirtyTracked: false
+      },
+      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
+    })}\n`,
+    'utf8'
+  );
+
+  const result = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: path.relative(repoRoot, receiptPath),
+    resolveRepoGitStateFn: () => ({
+      headSha: 'current-head',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: 'unknown'
+    })
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.receiptFreshForHead, true);
+  assert.equal(result.reusable, false);
+  assert.match(result.reason, /tracked-clean state could not be verified/i);
+});
+
+test('assessDockerDesktopReviewLoopReceipt handles missing receipts without a git-state resolver', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-missing-no-resolver-'));
+
+  const result = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+    resolveRepoGitStateFn: null
+  });
+
+  assert.equal(result.status, 'missing');
+  assert.equal(result.currentHeadSha, null);
+  assert.equal(result.reusable, false);
+});
+
+test('assessDockerDesktopReviewLoopReceipt fails closed when the receipt path cannot be read', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-unreadable-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+  await mkdir(receiptPath, { recursive: true });
+
+  const result = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: path.relative(repoRoot, receiptPath),
+    resolveRepoGitStateFn: () => ({
+      headSha: 'current-head',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false
+    })
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.reusable, false);
+  assert.equal(result.currentHeadSha, 'current-head');
+  assert.match(result.reason, /could not be read/i);
+});
+
+test('assessDockerDesktopReviewLoopReceipt reports unverifiable HEAD state distinctly from tracked dirt', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-unknown-head-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'docker-tools-parity-review-loop@v1',
+      git: {
+        headSha: 'current-head',
+        branch: 'issue/test',
+        upstreamDevelopMergeBase: 'base123',
+        dirtyTracked: false
+      },
+      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
+    })}\n`,
+    'utf8'
+  );
+
+  const result = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: path.relative(repoRoot, receiptPath),
+    resolveRepoGitStateFn: () => ({
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false
+    })
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.receiptFreshForHead, null);
+  assert.equal(result.reusable, false);
+  assert.match(result.reason, /current HEAD could not be verified/i);
+});
+
+test('assessDockerDesktopReviewLoopReceipt fails closed when the git-state resolver throws', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-resolver-throws-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'docker-tools-parity-review-loop@v1',
+      git: {
+        headSha: 'current-head',
+        branch: 'issue/test',
+        upstreamDevelopMergeBase: 'base123',
+        dirtyTracked: false
+      },
+      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
+    })}\n`,
+    'utf8'
+  );
+
+  const result = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: path.relative(repoRoot, receiptPath),
+    resolveRepoGitStateFn: () => {
+      throw new Error('resolver exploded');
+    }
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.receiptFreshForHead, null);
+  assert.equal(result.reusable, false);
+  assert.match(result.reason, /current git state could not be resolved/i);
 });
 
 test('runDockerDesktopReviewLoop rejects receipt paths outside docker parity results', async () => {

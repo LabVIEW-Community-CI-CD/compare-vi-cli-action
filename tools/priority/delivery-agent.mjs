@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:f
 import os from 'node:os';
 import path from 'node:path';
 import {
+  assessDockerDesktopReviewLoopReceipt,
   buildLocalReviewLoopCliArgs,
   DOCKER_PARITY_RESULTS_ROOT,
   DEFAULT_LOCAL_REVIEW_LOOP_COMMAND
@@ -1819,6 +1820,34 @@ async function maybeRunLocalReviewLoop({
   }
   const receiptPath = resolvedReceiptPathInfo.normalized;
   const resolvedReceiptPath = resolvedReceiptPathInfo.resolved;
+  const existingReceiptAssessment = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath
+  });
+  if (existingReceiptAssessment.status === 'passed' && existingReceiptAssessment.reusable === true) {
+    return {
+      ...baseReceipt,
+      reason: `${normalizeText(baseReceipt.reason) || 'Coding turn completed.'} Reused current Docker/Desktop review loop receipt.`,
+      details: {
+        ...(baseReceipt.details && typeof baseReceipt.details === 'object' ? baseReceipt.details : {}),
+        helperCallsExecuted: uniqueStrings(Array.isArray(baseReceipt?.details?.helperCallsExecuted) ? baseReceipt.details.helperCallsExecuted : []),
+        filesTouched: uniqueStrings([
+          ...(Array.isArray(baseReceipt?.details?.filesTouched) ? baseReceipt.details.filesTouched : []),
+          receiptPath
+        ]),
+        localReviewLoop: {
+          status: 'passed',
+          source: 'docker-desktop-review-loop-cache',
+          reason: existingReceiptAssessment.reason,
+          receiptPath,
+          currentHeadSha: existingReceiptAssessment.currentHeadSha,
+          receiptHeadSha: existingReceiptAssessment.receiptHeadSha,
+          receiptFreshForHead: existingReceiptAssessment.receiptFreshForHead,
+          receipt: existingReceiptAssessment.receipt
+        }
+      }
+    };
+  }
   const result = await runCommand(command, args, { cwd: repoRoot, env: process.env }, deps);
   let reviewLoopResult = null;
   let stdoutParseError = '';
