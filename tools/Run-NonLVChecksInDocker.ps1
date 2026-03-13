@@ -380,6 +380,7 @@ function Write-DockerParityReviewLoopReceipt {
   $receiptRelativePath = Get-RepoRelativePath -RepoRoot $RepoRoot -Path $ReceiptPath
   $niResultsRootResolved = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $NILinuxResultsRoot))
   $requirementsResultsRootResolved = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $RequirementsResultsRoot))
+  $agentVerificationSummaryPath = Join-Path $RepoRoot 'tests/results/_agent/verification/docker-review-loop-summary.json'
 
   $reviewSuiteSummaryJsonPath = Join-Path $niResultsRootResolved 'review-suite-summary.json'
   $reviewSuiteSummaryHtmlPath = Join-Path $niResultsRootResolved 'review-suite-summary.html'
@@ -394,6 +395,7 @@ function Write-DockerParityReviewLoopReceipt {
 
   $artifacts = [ordered]@{
     reviewLoopReceiptPath = $receiptRelativePath
+    agentVerificationSummaryPath = Get-RepoRelativePath -RepoRoot $RepoRoot -Path $agentVerificationSummaryPath
     reviewSuiteSummaryJsonPath = if (Test-Path -LiteralPath $reviewSuiteSummaryJsonPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $reviewSuiteSummaryJsonPath } else { '' }
     reviewSuiteSummaryHtmlPath = if (Test-Path -LiteralPath $reviewSuiteSummaryHtmlPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $reviewSuiteSummaryHtmlPath } else { '' }
     historyReviewReceiptPath = if (Test-Path -LiteralPath $historyReviewReceiptPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $historyReviewReceiptPath } else { '' }
@@ -404,6 +406,7 @@ function Write-DockerParityReviewLoopReceipt {
 
   $recommendedReviewOrder = [System.Collections.Generic.List[string]]::new()
   $recommendedReviewOrder.Add('tests/results/docker-tools-parity/review-loop-receipt.json')
+  $recommendedReviewOrder.Add($artifacts.agentVerificationSummaryPath)
   if ($artifacts.reviewSuiteSummaryHtmlPath) {
     $recommendedReviewOrder.Add($artifacts.reviewSuiteSummaryHtmlPath)
   }
@@ -464,7 +467,34 @@ function Write-DockerParityReviewLoopReceipt {
     recommendedReviewOrder = @($recommendedReviewOrder)
   }
 
+  $agentVerificationDirectory = Split-Path -Parent $agentVerificationSummaryPath
+  if (-not (Test-Path -LiteralPath $agentVerificationDirectory -PathType Container)) {
+    New-Item -ItemType Directory -Path $agentVerificationDirectory -Force | Out-Null
+  }
+  $agentVerificationSummary = [ordered]@{
+    schema = 'docker-tools-parity-agent-verification@v1'
+    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    authoritativeSource = 'docker-tools-parity'
+    reviewLoopReceiptPath = $receiptRelativePath
+    overall = $receipt.overall
+    requirementsCoverage = $requirementsCoverage
+    artifacts = [ordered]@{
+      reviewLoopReceiptPath = $receiptRelativePath
+      requirementsSummaryPath = $artifacts.requirementsSummaryPath
+      traceMatrixJsonPath = $artifacts.traceMatrixJsonPath
+      traceMatrixHtmlPath = $artifacts.traceMatrixHtmlPath
+    }
+    recommendedReviewOrder = @(
+      $artifacts.reviewLoopReceiptPath,
+      $artifacts.agentVerificationSummaryPath,
+      $artifacts.requirementsSummaryPath,
+      $artifacts.traceMatrixJsonPath,
+      $artifacts.traceMatrixHtmlPath
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  }
+
   $receipt | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $ReceiptPath -Encoding UTF8
+  $agentVerificationSummary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $agentVerificationSummaryPath -Encoding UTF8
 }
 
 function Invoke-Container {

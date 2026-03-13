@@ -123,6 +123,7 @@ test('Run-NonLVChecksInDocker exposes Docker Desktop NI Linux review-suite parit
   assert.match(content, /tests\/results\/docker-tools-parity\/ni-linux-review-suite/);
   assert.match(content, /tests\/results\/docker-tools-parity\/requirements-verification/);
   assert.match(content, /tests\/results\/docker-tools-parity\/review-loop-receipt\.json/);
+  assert.match(content, /tests\/results\/_agent\/verification\/docker-review-loop-summary\.json/);
   assert.match(content, /Invoke-NILinuxReviewSuite\.ps1/);
   assert.match(content, /Verify-RequirementsGate\.ps1/);
   assert.match(content, /schema = 'docker-tools-parity-review-loop@v1'/);

@@ -116,7 +116,9 @@ Audience: contributors without the full local toolchain or anyone mirroring CI b
   `vi-history-review-loop-receipt.json`. When
   `-RequirementsVerification` is set, the helper emits the requirements verification summary and trace matrix outputs.
   Every run also refreshes `tests/results/docker-tools-parity/review-loop-receipt.json`; future agents should read
-  that file first after compaction.
+  that file first after compaction. The helper also refreshes
+  `tests/results/_agent/verification/docker-review-loop-summary.json` so the `_agent` surface points back to the
+  authoritative Docker/Desktop requirements verification artifacts instead of stale generic gate output.
 - **Failure modes** - Missing Docker daemon, authentication gaps (when the tools image is private), or missing GH
   tokens during priority sync. Exit code is the first failing container code.
 - **When to run** - Before publishing documentation, when validating the tools image, or after editing workflows to

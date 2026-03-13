@@ -252,6 +252,7 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
             },
             artifacts: {
               reviewLoopReceiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+              agentVerificationSummaryPath: 'tests/results/_agent/verification/docker-review-loop-summary.json',
               historyReviewReceiptPath: 'tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-review-loop-receipt.json',
               requirementsSummaryPath: 'tests/results/docker-tools-parity/requirements-verification/verification-summary.json'
             },
@@ -286,6 +287,10 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
   assert.equal(state.localReviewLoop.receiptStatus, 'passed');
   assert.equal(state.localReviewLoop.niLinuxReviewSuiteRequested, true);
   assert.equal(state.localReviewLoop.singleViHistory.targetPath, 'fixtures/vi-attr/Head.vi');
+  assert.equal(
+    state.localReviewLoop.artifacts.agentVerificationSummaryPath,
+    'tests/results/_agent/verification/docker-review-loop-summary.json'
+  );
   assert.equal(
     state.localReviewLoop.artifacts.historyReviewReceiptPath,
     'tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-review-loop-receipt.json'

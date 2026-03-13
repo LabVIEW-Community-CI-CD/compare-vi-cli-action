@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-ci-cd.example/compare-vi-cli-action/docker-tools-parity-agent-verification-v1.schema.json",
+  "title": "Docker Tools Parity Agent Verification Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "authoritativeSource",
+    "reviewLoopReceiptPath",
+    "overall",
+    "requirementsCoverage",
+    "artifacts",
+    "recommendedReviewOrder"
+  ],
+  "properties": {
+    "schema": {
+      "const": "docker-tools-parity-agent-verification@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "authoritativeSource": {
+      "const": "docker-tools-parity"
+    },
+    "reviewLoopReceiptPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "failedCheck",
+        "message",
+        "exitCode"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "running",
+            "passed",
+            "failed"
+          ]
+        },
+        "failedCheck": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "exitCode": {
+          "type": "integer"
+        }
+      }
+    },
+    "requirementsCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requirementTotal",
+        "requirementCovered",
+        "requirementUncovered",
+        "uncoveredRequirementIds",
+        "unknownRequirementIds"
+      ],
+      "properties": {
+        "requirementTotal": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "requirementCovered": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "requirementUncovered": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "uncoveredRequirementIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unknownRequirementIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewLoopReceiptPath",
+        "requirementsSummaryPath",
+        "traceMatrixJsonPath",
+        "traceMatrixHtmlPath"
+      ],
+      "properties": {
+        "reviewLoopReceiptPath": {
+          "type": "string"
+        },
+        "requirementsSummaryPath": {
+          "type": "string"
+        },
+        "traceMatrixJsonPath": {
+          "type": "string"
+        },
+        "traceMatrixHtmlPath": {
+          "type": "string"
+        }
+      }
+    },
+    "recommendedReviewOrder": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
