@@ -48,6 +48,49 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
     bodyMarkers: ['Daemon-first local iteration extension'],
     receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
     command: ['node', 'tools/priority/docker-desktop-review-loop.mjs'],
+    copilotCliReview: true,
+    copilotCliReviewConfig: {
+      enabled: true,
+      model: 'gpt-5.4',
+      promptOnly: true,
+      disableBuiltinMcps: true,
+      allowAllTools: false,
+      availableTools: '',
+      profiles: {
+        preCommit: {
+          enabled: true,
+          mode: 'staged',
+          receiptPath: 'tests/results/_hooks/pre-commit-copilot-cli-review.json',
+          failOnFindings: true,
+          maxFiles: 12,
+          maxDiffBytes: 12288
+        },
+        daemon: {
+          enabled: true,
+          mode: 'head',
+          receiptPath: 'tests/results/docker-tools-parity/copilot-cli-review/receipt.json',
+          failOnFindings: true,
+          maxFiles: 24,
+          maxDiffBytes: 16384
+        },
+        prePush: {
+          enabled: true,
+          mode: 'head',
+          receiptPath: 'tests/results/_hooks/pre-push-copilot-cli-review.json',
+          failOnFindings: true,
+          maxFiles: 24,
+          maxDiffBytes: 16384
+        }
+      },
+      collaboration: {
+        coordinationRemote: 'upstream',
+        coordinationPersona: 'daemon',
+        authoringRemote: 'personal',
+        authoringPersona: 'codex',
+        reviewRemote: 'origin',
+        reviewPersona: 'copilot-cli'
+      }
+    },
     actionlint: true,
     markdownlint: true,
     docs: true,
@@ -215,6 +258,7 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
             requested: true,
             source: 'standing-issue-body',
             receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            copilotCliReview: true,
             markdownlint: true,
             requirementsVerification: true,
             niLinuxReviewSuite: true,
@@ -300,10 +344,11 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
   assert.equal(state.localReviewLoop.currentHeadSha, '433e8aa70326007be74c27ccf54c1ae91559b6f3');
   assert.equal(state.localReviewLoop.receiptHeadSha, '433e8aa70326007be74c27ccf54c1ae91559b6f3');
   assert.equal(state.localReviewLoop.receiptFreshForHead, true);
-  assert.equal(state.localReviewLoop.requestedCoverageSatisfied, true);
-  assert.equal(state.localReviewLoop.requestedCoverageReason, 'Docker/Desktop review loop receipt covers the requested review surfaces.');
-  assert.deepEqual(state.localReviewLoop.requestedCoverageMissingChecks, []);
-  assert.equal(state.localReviewLoop.niLinuxReviewSuiteRequested, true);
+    assert.equal(state.localReviewLoop.requestedCoverageSatisfied, true);
+    assert.equal(state.localReviewLoop.requestedCoverageReason, 'Docker/Desktop review loop receipt covers the requested review surfaces.');
+    assert.deepEqual(state.localReviewLoop.requestedCoverageMissingChecks, []);
+    assert.equal(state.localReviewLoop.copilotCliReviewRequested, true);
+    assert.equal(state.localReviewLoop.niLinuxReviewSuiteRequested, true);
   assert.equal(state.localReviewLoop.singleViHistory.targetPath, 'fixtures/vi-attr/Head.vi');
   assert.equal(state.localReviewLoop.git.branch, 'issue/origin-1053-agent-verification-receipt');
   assert.equal(

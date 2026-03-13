@@ -181,6 +181,7 @@ test('buildCompareviTaskPacket carries a daemon-requested Docker/Desktop review 
 
   assert.equal(packet.evidence.delivery.localReviewLoop.requested, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.source, 'both-issue-bodies');
+  assert.equal(packet.evidence.delivery.localReviewLoop.copilotCliReview, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.markdownlint, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.requirementsVerification, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.niLinuxReviewSuite, true);
@@ -232,6 +233,7 @@ test('buildCompareviTaskPacket honors local review-loop directives from the sele
 
   assert.equal(packet.evidence.delivery.localReviewLoop.requested, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.source, 'selected-issue-body');
+  assert.equal(packet.evidence.delivery.localReviewLoop.copilotCliReview, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.markdownlint, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.requirementsVerification, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory, null);
@@ -284,6 +286,7 @@ test('buildCompareviTaskPacket only reads local review-loop directives from bodi
 
   assert.equal(packet.evidence.delivery.localReviewLoop.requested, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.source, 'selected-issue-body');
+  assert.equal(packet.evidence.delivery.localReviewLoop.copilotCliReview, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.markdownlint, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.requirementsVerification, true);
 });
@@ -395,6 +398,7 @@ test('buildLocalReviewLoopRequest treats policy booleans as the full requested c
   });
 
   assert.equal(request.source, 'standing-issue-body');
+  assert.equal(request.copilotCliReview, true);
   assert.equal(request.actionlint, false);
   assert.equal(request.markdownlint, true);
   assert.equal(request.docs, false);

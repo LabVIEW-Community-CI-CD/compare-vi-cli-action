@@ -15,7 +15,8 @@ param(
   [bool]$InstallIfMissing = $true,
   [switch]$SkipNiImageFlagScenarios,
   [switch]$SkipLegacyFixtureChecks,
-  [switch]$SkipPSScriptAnalyzer
+  [switch]$SkipPSScriptAnalyzer,
+  [switch]$SkipCopilotCliReview
 )
 
 $ErrorActionPreference = 'Stop'
@@ -292,6 +293,31 @@ function Invoke-WatcherTelemetrySchemaGate([string]$repoRoot) {
   Write-Host '[pre-push] watcher telemetry schema OK' -ForegroundColor Green
 }
 
+function Invoke-CopilotCliReviewGate([string]$repoRoot) {
+  $skipReview = $SkipCopilotCliReview -or ($env:PREPUSH_SKIP_COPILOT_CLI_REVIEW -match '^(1|true|yes|on)$')
+  if ($skipReview) {
+    Write-Host '[pre-push] Skipping Copilot CLI pre-push review by request' -ForegroundColor Yellow
+    return
+  }
+
+  $reviewScriptPath = Join-Path $repoRoot 'tools' 'priority' 'copilot-cli-review.mjs'
+  if (-not (Test-Path -LiteralPath $reviewScriptPath -PathType Leaf)) {
+    throw ("Copilot CLI review script not found: {0}" -f $reviewScriptPath)
+  }
+
+  Write-Host '[pre-push] Running final local Copilot CLI review' -ForegroundColor Cyan
+  Push-Location $repoRoot
+  try {
+    & node $reviewScriptPath --repo-root $repoRoot --profile pre-push
+    if ($LASTEXITCODE -ne 0) {
+      throw ("Copilot CLI pre-push review failed (exit={0})." -f $LASTEXITCODE)
+    }
+  } finally {
+    Pop-Location | Out-Null
+  }
+  Write-Host '[pre-push] Copilot CLI review OK' -ForegroundColor Green
+}
+
 function Write-PrePushNIKnownFlagIncidentEvent {
   param(
     [string]$repoRoot,
@@ -463,21 +489,19 @@ $skipNiImageChecks = $SkipNiImageFlagScenarios `
   -or ($env:PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS -match '^(1|true|yes|on)$')
 if ($skipNiImageChecks) {
   Write-Host '[pre-push] Skipping VI Comparison Report flag combination scenarios by request' -ForegroundColor Yellow
-  return
-}
-
-$niCompareScript = Join-Path $root 'tools' 'Run-NILinuxContainerCompare.ps1'
-if (-not (Test-Path -LiteralPath $niCompareScript -PathType Leaf)) {
-  throw ("NI image compare script not found: {0}" -f $niCompareScript)
-}
-$baseVi = Join-Path $root 'VI1.vi'
-$headVi = Join-Path $root 'VI2.vi'
-if (-not (Test-Path -LiteralPath $baseVi -PathType Leaf)) {
-  throw ("Base VI not found for NI image known-flag scenario: {0}" -f $baseVi)
-}
-if (-not (Test-Path -LiteralPath $headVi -PathType Leaf)) {
-  throw ("Head VI not found for NI image known-flag scenario: {0}" -f $headVi)
-}
+} else {
+  $niCompareScript = Join-Path $root 'tools' 'Run-NILinuxContainerCompare.ps1'
+  if (-not (Test-Path -LiteralPath $niCompareScript -PathType Leaf)) {
+    throw ("NI image compare script not found: {0}" -f $niCompareScript)
+  }
+  $baseVi = Join-Path $root 'VI1.vi'
+  $headVi = Join-Path $root 'VI2.vi'
+  if (-not (Test-Path -LiteralPath $baseVi -PathType Leaf)) {
+    throw ("Base VI not found for NI image known-flag scenario: {0}" -f $baseVi)
+  }
+  if (-not (Test-Path -LiteralPath $headVi -PathType Leaf)) {
+    throw ("Head VI not found for NI image known-flag scenario: {0}" -f $headVi)
+  }
 
 $expectedImage = 'nationalinstruments/labview:2026q1-linux'
 $containerLabVIEWPath = if ([string]::IsNullOrWhiteSpace($env:NI_LINUX_LABVIEW_PATH)) {
@@ -529,7 +553,7 @@ $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
 $capturePath = Join-Path $scenarioDir 'ni-linux-container-capture.json'
 $scenarioResults = New-Object System.Collections.Generic.List[object]
 
-try {
+  try {
   Write-Host '[pre-push] Running VI Comparison Report flag combination scenarios (real container compare)' -ForegroundColor Cyan
   foreach ($scenario in $knownFlagScenarios) {
     $activeScenarioName = [string]$scenario.name
@@ -906,7 +930,7 @@ try {
     $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
   }
   Write-Host '[pre-push] VI Comparison Report flag combination scenarios OK' -ForegroundColor Green
-} catch {
+  } catch {
   $failureMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { [string]$_ }
   $eventReportPath = Write-PrePushNIKnownFlagIncidentEvent `
     -repoRoot $root `
@@ -923,4 +947,7 @@ try {
     Write-Host ("[pre-push] NI known-flag incident event report: {0}" -f $eventReportPath) -ForegroundColor Yellow
   }
   throw
+  }
 }
+
+Invoke-CopilotCliReviewGate -repoRoot $root

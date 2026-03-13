@@ -62,6 +62,19 @@ test('buildLocalReviewLoopCliArgs forwards receipt, requirements, and single-VI 
   ]);
 });
 
+test('buildLocalReviewLoopCliArgs forwards the local Copilot CLI review flag when requested', () => {
+  const args = buildLocalReviewLoopCliArgs({
+    repoRoot: '/tmp/repo',
+    request: {
+      requested: true,
+      receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+      copilotCliReview: true
+    }
+  });
+
+  assert.match(args.join(' '), /--copilot-cli-review/);
+});
+
 test('buildDockerDesktopReviewLoopPowerShellArgs uses the Docker helper contract', () => {
   const args = buildDockerDesktopReviewLoopPowerShellArgs({
     requested: true,
@@ -210,6 +223,137 @@ test('runDockerDesktopReviewLoop returns passed when the receipt reports passed'
   assert.equal(result.status, 'passed');
   assert.equal(result.receipt.overall.status, 'passed');
   assert.equal(result.receiptFreshForHead, true);
+});
+
+test('runDockerDesktopReviewLoop appends a passing Copilot CLI receipt to the combined review-loop receipt', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-copilot-pass-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+
+  const result = await runDockerDesktopReviewLoop({
+    repoRoot,
+    request: {
+      requested: true,
+      receiptPath: path.relative(repoRoot, receiptPath),
+      copilotCliReview: true,
+      actionlint: false,
+      markdownlint: true,
+      docs: false,
+      workflow: false,
+      dotnetCliBuild: false,
+      requirementsVerification: false,
+      niLinuxReviewSuite: false
+    },
+    runCommandFn: async () => {
+      await mkdir(path.dirname(receiptPath), { recursive: true });
+      await writeFile(
+        receiptPath,
+        `${JSON.stringify({
+          schema: 'docker-tools-parity-review-loop@v1',
+          git: {
+            headSha: 'abc123',
+            branch: 'issue/test',
+            upstreamDevelopMergeBase: 'base123',
+            dirtyTracked: false
+          },
+          overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 },
+          checks: {
+            markdownlint: { enabled: true, status: 'passed' }
+          }
+        })}\n`,
+        'utf8'
+      );
+      return {
+        status: 0,
+        stdout: '',
+        stderr: ''
+      };
+    },
+    runCopilotCliReviewFn: async () => ({
+      status: 'passed',
+      reason: 'Copilot CLI found no actionable issues.',
+      receiptPath: 'tests/results/docker-tools-parity/copilot-cli-review/receipt.json',
+      receipt: {
+        generatedAt: '2026-03-13T10:00:00.000Z'
+      }
+    }),
+    resolveRepoGitStateFn: () => ({
+      headSha: 'abc123',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false
+    })
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.receipt.checks.copilotCliReview.status, 'passed');
+  assert.equal(
+    result.receipt.artifacts.copilotCliReviewReceiptPath,
+    'tests/results/docker-tools-parity/copilot-cli-review/receipt.json'
+  );
+});
+
+test('runDockerDesktopReviewLoop fails closed when Copilot CLI review reports local findings', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-copilot-fail-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+
+  const result = await runDockerDesktopReviewLoop({
+    repoRoot,
+    request: {
+      requested: true,
+      receiptPath: path.relative(repoRoot, receiptPath),
+      copilotCliReview: true,
+      actionlint: false,
+      markdownlint: true,
+      docs: false,
+      workflow: false,
+      dotnetCliBuild: false,
+      requirementsVerification: false,
+      niLinuxReviewSuite: false
+    },
+    runCommandFn: async () => {
+      await mkdir(path.dirname(receiptPath), { recursive: true });
+      await writeFile(
+        receiptPath,
+        `${JSON.stringify({
+          schema: 'docker-tools-parity-review-loop@v1',
+          git: {
+            headSha: 'abc123',
+            branch: 'issue/test',
+            upstreamDevelopMergeBase: 'base123',
+            dirtyTracked: false
+          },
+          overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 },
+          checks: {
+            markdownlint: { enabled: true, status: 'passed' }
+          }
+        })}\n`,
+        'utf8'
+      );
+      return {
+        status: 0,
+        stdout: '',
+        stderr: ''
+      };
+    },
+    runCopilotCliReviewFn: async () => ({
+      status: 'failed',
+      reason: 'Copilot CLI found actionable local issues.',
+      receiptPath: 'tests/results/docker-tools-parity/copilot-cli-review/receipt.json',
+      receipt: {
+        generatedAt: '2026-03-13T10:00:00.000Z'
+      }
+    }),
+    resolveRepoGitStateFn: () => ({
+      headSha: 'abc123',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false
+    })
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.match(result.reason, /Copilot CLI found actionable local issues/i);
+  assert.equal(result.receipt.checks.copilotCliReview.status, 'failed');
 });
 
 test('runDockerDesktopReviewLoop fails closed when the receipt reports a failed check', async () => {

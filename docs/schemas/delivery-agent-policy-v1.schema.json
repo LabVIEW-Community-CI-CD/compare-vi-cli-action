@@ -62,6 +62,19 @@
           "type": "array",
           "items": { "type": "string" }
         },
+        "copilotCliReview": { "type": "boolean" },
+        "copilotCliReviewConfig": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "model": { "type": "string" },
+            "promptOnly": { "type": "boolean" },
+            "disableBuiltinMcps": { "type": "boolean" },
+            "allowAllTools": { "type": "boolean" },
+            "availableTools": { "type": "string" }
+          }
+        },
         "actionlint": { "type": "boolean" },
         "markdownlint": { "type": "boolean" },
         "docs": { "type": "boolean" },

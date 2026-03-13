@@ -10,6 +10,10 @@ import {
   DOCKER_PARITY_RESULTS_ROOT,
   DEFAULT_LOCAL_REVIEW_LOOP_COMMAND
 } from './docker-desktop-review-loop.mjs';
+import {
+  DEFAULT_COPILOT_CLI_REVIEW_POLICY,
+  normalizeCopilotCliReviewPolicy
+} from './copilot-cli-review.mjs';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
 import {
   resolveStandingPriorityLabels,
@@ -64,6 +68,8 @@ const DEFAULT_POLICY = {
     bodyMarkers: ['Daemon-first local iteration extension'],
     receiptPath: path.join('tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json'),
     command: [...DEFAULT_LOCAL_REVIEW_LOOP_COMMAND],
+    copilotCliReview: true,
+    copilotCliReviewConfig: { ...DEFAULT_COPILOT_CLI_REVIEW_POLICY },
     actionlint: true,
     markdownlint: true,
     docs: true,
@@ -249,6 +255,8 @@ function normalizeLocalReviewLoopPolicy(value) {
     command: command.length > 0
       ? command
       : [...DEFAULT_POLICY.localReviewLoop.command],
+    copilotCliReview: localReviewLoop.copilotCliReview !== false,
+    copilotCliReviewConfig: normalizeCopilotCliReviewPolicy(localReviewLoop.copilotCliReviewConfig),
     singleViHistory: {
       ...DEFAULT_POLICY.localReviewLoop.singleViHistory,
       ...singleViHistory,
@@ -305,6 +313,7 @@ export function buildLocalReviewLoopRequest({ standingIssue, selectedIssue, poli
       ? 'standing-issue-body'
       : 'selected-issue-body';
   const requestedChecks = {
+    copilotCliReview: localReviewLoopPolicy.copilotCliReview === true,
     actionlint: localReviewLoopPolicy.actionlint === true,
     markdownlint: localReviewLoopPolicy.markdownlint === true,
     docs: localReviewLoopPolicy.docs === true,
@@ -1531,6 +1540,7 @@ function buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt }) {
         }
       : null,
     requirementsVerificationRequested: request?.requirementsVerification === true,
+    copilotCliReviewRequested: request?.copilotCliReview === true,
     markdownlintRequested: request?.markdownlint === true,
     niLinuxReviewSuiteRequested: request?.niLinuxReviewSuite === true,
     singleViHistory:

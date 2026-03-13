@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { runCopilotCliReview } from './copilot-cli-review.mjs';
 
 export const DEFAULT_REVIEW_LOOP_RECEIPT_PATH = path.join('tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
 export const DEFAULT_LOCAL_REVIEW_LOOP_COMMAND = ['node', 'tools/priority/docker-desktop-review-loop.mjs'];
@@ -155,6 +156,7 @@ export function normalizeRequest(request = {}) {
   return {
     requested: request.requested === true,
     receiptPath: normalizeText(request.receiptPath) || DEFAULT_REVIEW_LOOP_RECEIPT_PATH,
+    copilotCliReview: request.copilotCliReview === true,
     actionlint: request.actionlint !== false,
     markdownlint: request.markdownlint !== false,
     docs: request.docs !== false,
@@ -206,6 +208,7 @@ function assessRequestedCoverage(receipt = {}, request = {}) {
   requireEnabledCheck(normalizedRequest.dotnetCliBuild, 'dotnetCliBuild', 'dotnetCliBuild');
   requireEnabledCheck(normalizedRequest.requirementsVerification, 'requirementsVerification', 'requirementsVerification');
   requireEnabledCheck(normalizedRequest.niLinuxReviewSuite, 'niLinuxReviewSuite', 'niLinuxReviewSuite');
+  requireEnabledCheck(normalizedRequest.copilotCliReview, 'copilotCliReview', 'copilotCliReview');
 
   const requestedSingleViHistory = normalizedRequest.singleViHistory;
   if (requestedSingleViHistory.enabled === true) {
@@ -255,6 +258,9 @@ export function buildLocalReviewLoopCliArgs({ repoRoot, request }) {
   const args = ['--repo-root', repoRoot, '--receipt-path', normalized.receiptPath];
   if (!normalized.actionlint) {
     args.push('--skip-actionlint');
+  }
+  if (normalized.copilotCliReview) {
+    args.push('--copilot-cli-review');
   }
   if (!normalized.markdownlint) {
     args.push('--skip-markdown');
@@ -532,11 +538,69 @@ function defaultRunCommand(command, args, { cwd, env }) {
   );
 }
 
+async function updateCombinedReviewLoopReceipt({
+  repoRoot,
+  receiptPath,
+  copilotCliResult
+}) {
+  const resolvedReceiptPath = assertRepoContainedReceiptPath(repoRoot, receiptPath).resolved;
+  const receipt = await readJsonIfPresent(resolvedReceiptPath);
+  if (!receipt || receipt.__parseError) {
+    return null;
+  }
+
+  const normalizedStatus =
+    copilotCliResult.status === 'passed'
+      ? 'passed'
+      : copilotCliResult.status === 'skipped'
+        ? 'skipped'
+        : 'failed';
+  const updatedReceipt = {
+    ...receipt,
+    checks: {
+      ...(receipt.checks && typeof receipt.checks === 'object' ? receipt.checks : {}),
+      copilotCliReview: {
+        enabled: true,
+        status: normalizedStatus,
+        surface: 'local-cli',
+        startedAt: normalizeText(copilotCliResult.receipt?.generatedAt) || new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        error: normalizedStatus === 'failed' ? normalizeText(copilotCliResult.reason) || null : null,
+        artifacts: {
+          receiptPath: normalizeText(copilotCliResult.receiptPath) || ''
+        }
+      }
+    },
+    artifacts: {
+      ...(receipt.artifacts && typeof receipt.artifacts === 'object' ? receipt.artifacts : {}),
+      copilotCliReviewReceiptPath: normalizeText(copilotCliResult.receiptPath) || ''
+    },
+    recommendedReviewOrder: Array.from(
+      new Set([...(Array.isArray(receipt.recommendedReviewOrder) ? receipt.recommendedReviewOrder : []), 'copilotCliReview'])
+    )
+  };
+
+  if (normalizedStatus === 'failed') {
+    updatedReceipt.overall = {
+      ...(receipt.overall && typeof receipt.overall === 'object' ? receipt.overall : {}),
+      status: 'failed',
+      failedCheck: 'copilotCliReview',
+      message: normalizeText(copilotCliResult.reason) || 'Copilot CLI review reported actionable local findings.',
+      exitCode: 1
+    };
+  }
+
+  await rm(resolvedReceiptPath, { force: true });
+  await writeFile(resolvedReceiptPath, `${JSON.stringify(updatedReceipt, null, 2)}\n`, 'utf8');
+  return updatedReceipt;
+}
+
 export async function runDockerDesktopReviewLoop({
   repoRoot,
   request,
   runCommandFn = defaultRunCommand,
-  resolveRepoGitStateFn = resolveRepoGitState
+  resolveRepoGitStateFn = resolveRepoGitState,
+  runCopilotCliReviewFn = runCopilotCliReview
 }) {
   const normalized = normalizeRequest(request);
   const command = 'pwsh';
@@ -580,7 +644,10 @@ export async function runDockerDesktopReviewLoop({
   const assessment = await assessDockerDesktopReviewLoopReceipt({
     repoRoot,
     receiptPath: normalized.receiptPath,
-    request: normalized,
+    request: {
+      ...normalized,
+      copilotCliReview: false
+    },
     resolveRepoGitStateFn
   });
 
@@ -605,19 +672,57 @@ export async function runDockerDesktopReviewLoop({
     };
   }
 
+  let combinedReceipt = assessment.receipt;
+  if (normalized.copilotCliReview) {
+    const copilotCliResult = await runCopilotCliReviewFn({
+      repoRoot,
+      profile: 'daemon'
+    });
+    combinedReceipt =
+      (await updateCombinedReviewLoopReceipt({
+        repoRoot,
+        receiptPath: normalized.receiptPath,
+        copilotCliResult
+      })) ?? combinedReceipt;
+  }
+
+  const combinedAssessment = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: normalized.receiptPath,
+    request: normalized,
+    resolveRepoGitStateFn
+  });
+
+  if (combinedAssessment.status !== 'passed') {
+    return {
+      status: 'failed',
+      source: 'docker-desktop-review-loop',
+      reason: normalizeText(combinedAssessment.reason) || 'Combined local review loop failed.',
+      commandLine,
+      receiptPath,
+      currentHeadSha: combinedAssessment.currentHeadSha,
+      receiptHeadSha: combinedAssessment.receiptHeadSha,
+      receiptFreshForHead: combinedAssessment.receiptFreshForHead,
+      requestedCoverageSatisfied: combinedAssessment.requestedCoverageSatisfied,
+      requestedCoverageReason: combinedAssessment.requestedCoverageReason,
+      requestedCoverageMissingChecks: combinedAssessment.requestedCoverageMissingChecks,
+      receipt: combinedAssessment.receipt ?? combinedReceipt
+    };
+  }
+
   return {
     status: 'passed',
     source: 'docker-desktop-review-loop',
     reason: 'Docker/Desktop review loop passed.',
     commandLine,
     receiptPath,
-    currentHeadSha: assessment.currentHeadSha,
-    receiptHeadSha: assessment.receiptHeadSha,
-    receiptFreshForHead: assessment.receiptFreshForHead,
-    requestedCoverageSatisfied: assessment.requestedCoverageSatisfied,
-    requestedCoverageReason: assessment.requestedCoverageReason,
-    requestedCoverageMissingChecks: assessment.requestedCoverageMissingChecks,
-    receipt: assessment.receipt
+    currentHeadSha: combinedAssessment.currentHeadSha,
+    receiptHeadSha: combinedAssessment.receiptHeadSha,
+    receiptFreshForHead: combinedAssessment.receiptFreshForHead,
+    requestedCoverageSatisfied: combinedAssessment.requestedCoverageSatisfied,
+    requestedCoverageReason: combinedAssessment.requestedCoverageReason,
+    requestedCoverageMissingChecks: combinedAssessment.requestedCoverageMissingChecks,
+    receipt: combinedAssessment.receipt ?? combinedReceipt
   };
 }
 
@@ -634,6 +739,7 @@ function printUsage() {
   console.log('  --skip-docs                     Skip docs link validation in the Docker/Desktop review loop.');
   console.log('  --skip-workflow                 Skip workflow drift/contract checks in the Docker/Desktop review loop.');
   console.log('  --skip-dotnet-cli-build         Skip the CompareVI .NET CLI build in the Docker/Desktop review loop.');
+  console.log('  --copilot-cli-review           Include local Copilot CLI review after Docker/Desktop parity passes.');
   console.log('  --requirements-verification     Include requirements verification.');
   console.log('  --ni-linux-review-suite         Include the NI Linux smoke + VI history review suite.');
   console.log('  --history-target-path <path>    Single-VI history target path.');
@@ -651,6 +757,7 @@ export function parseArgs(argv = process.argv) {
     request: {
       requested: true,
       receiptPath: DEFAULT_REVIEW_LOOP_RECEIPT_PATH,
+      copilotCliReview: false,
       actionlint: true,
       markdownlint: true,
       docs: true,
@@ -714,6 +821,10 @@ export function parseArgs(argv = process.argv) {
     }
     if (token === '--requirements-verification') {
       options.request.requirementsVerification = true;
+      continue;
+    }
+    if (token === '--copilot-cli-review') {
+      options.request.copilotCliReview = true;
       continue;
     }
     if (token === '--ni-linux-review-suite') {

@@ -75,6 +75,7 @@
           }
         },
         "requirementsVerificationRequested": { "type": "boolean" },
+        "copilotCliReviewRequested": { "type": "boolean" },
         "markdownlintRequested": { "type": "boolean" },
         "niLinuxReviewSuiteRequested": { "type": "boolean" },
         "recommendedReviewOrder": {
@@ -146,6 +147,7 @@
               }
             },
             "requirementsVerificationRequested": { "type": "boolean" },
+            "copilotCliReviewRequested": { "type": "boolean" },
             "markdownlintRequested": { "type": "boolean" },
             "niLinuxReviewSuiteRequested": { "type": "boolean" },
             "recommendedReviewOrder": {

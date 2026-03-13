@@ -33,6 +33,49 @@
       "node",
       "tools/priority/docker-desktop-review-loop.mjs"
     ],
+    "copilotCliReview": true,
+    "copilotCliReviewConfig": {
+      "enabled": true,
+      "model": "gpt-5.4",
+      "promptOnly": true,
+      "disableBuiltinMcps": true,
+      "allowAllTools": false,
+      "availableTools": "",
+      "profiles": {
+        "preCommit": {
+          "enabled": true,
+          "mode": "staged",
+          "receiptPath": "tests/results/_hooks/pre-commit-copilot-cli-review.json",
+          "failOnFindings": true,
+          "maxFiles": 12,
+          "maxDiffBytes": 12288
+        },
+        "daemon": {
+          "enabled": true,
+          "mode": "head",
+          "receiptPath": "tests/results/docker-tools-parity/copilot-cli-review/receipt.json",
+          "failOnFindings": true,
+          "maxFiles": 24,
+          "maxDiffBytes": 16384
+        },
+        "prePush": {
+          "enabled": true,
+          "mode": "head",
+          "receiptPath": "tests/results/_hooks/pre-push-copilot-cli-review.json",
+          "failOnFindings": true,
+          "maxFiles": 24,
+          "maxDiffBytes": 16384
+        }
+      },
+      "collaboration": {
+        "coordinationRemote": "upstream",
+        "coordinationPersona": "daemon",
+        "authoringRemote": "personal",
+        "authoringPersona": "codex",
+        "reviewRemote": "origin",
+        "reviewPersona": "copilot-cli"
+      }
+    },
     "actionlint": true,
     "markdownlint": true,
     "docs": true,

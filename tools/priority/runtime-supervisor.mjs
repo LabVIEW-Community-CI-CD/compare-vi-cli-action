@@ -622,6 +622,7 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
           path.join(repoRoot, 'tools', 'priority', 'runtime-turn-broker.mjs'),
           path.join(repoRoot, 'tools', 'priority', 'delivery-agent.policy.json'),
           path.join(repoRoot, 'tools', 'priority', 'docker-desktop-review-loop.mjs'),
+          path.join(repoRoot, 'tools', 'priority', 'copilot-cli-review.mjs'),
           path.join(repoRoot, 'tools', 'Run-NonLVChecksInDocker.ps1')
         ]
       }
