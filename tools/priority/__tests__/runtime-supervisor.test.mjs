@@ -2998,9 +2998,9 @@ test('delivery broker returns a prematurely ready PR to draft when draft-phase r
             url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1067',
             isDraft: false,
             copilotReviewSignal: {
-              hasCurrentHeadReview: false,
+              hasCurrentHeadReview: true,
               actionableCommentCount: 0,
-              actionableThreadCount: 0
+              actionableThreadCount: 1
             },
             copilotReviewWorkflow: null
           },
@@ -3054,6 +3054,7 @@ test('delivery broker returns a prematurely ready PR to draft when draft-phase r
   assert.equal(brokerResult.details.reviewPhase, 'draft-review');
   assert.equal(helperCalls.length, 1);
   assert.match(brokerResult.reason, /returned to draft/i);
+  assert.equal(brokerResult.details.reviewMonitor, null);
 });
 
 test('delivery broker fails closed and re-drafts when a ready PR local receipt is stale and cannot be refreshed', async () => {

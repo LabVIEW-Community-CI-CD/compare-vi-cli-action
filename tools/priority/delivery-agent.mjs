@@ -233,7 +233,8 @@ function normalizeStringList(value) {
 }
 
 function normalizeCopilotReviewStrategy(value) {
-  return normalizeText(value) === 'draft-only-explicit' ? 'draft-only-explicit' : 'draft-only-explicit';
+  const normalized = normalizeText(value);
+  return normalized === 'draft-only-explicit' ? 'draft-only-explicit' : DEFAULT_POLICY.copilotReviewStrategy;
 }
 
 function normalizeLocalReviewLoopPolicy(value) {
@@ -1791,6 +1792,7 @@ function evaluateDraftPhaseCopilotClearance(pullRequest = {}) {
   const copilotReviewWorkflow = normalizeOptionalObject(pullRequest?.copilotReviewWorkflow);
   const actionableCommentCount = Number(copilotReviewSignal?.actionableCommentCount ?? 0) || 0;
   const actionableThreadCount = Number(copilotReviewSignal?.actionableThreadCount ?? 0) || 0;
+  const hasActionableItems = actionableCommentCount > 0 || actionableThreadCount > 0;
   const hasCurrentHeadReview = copilotReviewSignal?.hasCurrentHeadReview === true;
   const workflowStatus = normalizeText(copilotReviewWorkflow?.status).toUpperCase();
   const workflowConclusion = normalizeText(copilotReviewWorkflow?.conclusion).toUpperCase();
@@ -1799,9 +1801,9 @@ function evaluateDraftPhaseCopilotClearance(pullRequest = {}) {
     workflowConclusion === 'SUCCESS' &&
     actionableCommentCount === 0 &&
     actionableThreadCount === 0;
-  const ok = actionableCommentCount === 0 && (hasCurrentHeadReview || reviewRunCompletedClean);
+  const ok = !hasActionableItems && (hasCurrentHeadReview || reviewRunCompletedClean);
   const reasons = [];
-  if (actionableCommentCount > 0 || actionableThreadCount > 0) {
+  if (hasActionableItems) {
     reasons.push('actionable-current-head-comments');
   }
   if (!hasCurrentHeadReview && !reviewRunCompletedClean) {
@@ -1814,7 +1816,7 @@ function evaluateDraftPhaseCopilotClearance(pullRequest = {}) {
     }
   }
   const nextWakeCondition =
-    actionableCommentCount > 0 || actionableThreadCount > 0
+    hasActionableItems
       ? 'review-comments-addressed'
       : PENDING_WORKFLOW_RUN_STATUSES.has(workflowStatus)
         ? 'copilot-review-workflow-completed'
@@ -1854,29 +1856,6 @@ function localReviewLoopSatisfied(localReviewLoop) {
     normalizeText(overall?.status).toLowerCase() === 'passed' &&
     git?.dirtyTracked !== true
   );
-}
-
-function buildBaseWatchReceipt({ planned, reason, nextWakeCondition, pollIntervalSecondsHint }) {
-  return {
-    status: 'completed',
-    outcome: planned.laneLifecycle,
-    reason,
-    source: 'delivery-agent-broker',
-    details: {
-      actionType: 'watch-pr',
-      laneLifecycle: planned.laneLifecycle,
-      blockerClass: planned.laneLifecycle === 'waiting-review' ? 'review' : 'ci',
-      retryable: true,
-      nextWakeCondition,
-      pollIntervalSecondsHint,
-      reviewMonitor:
-        planned.laneLifecycle === 'waiting-review'
-          ? planned.pullRequest?.copilotReviewWorkflow ?? null
-          : null,
-      helperCallsExecuted: [],
-      filesTouched: []
-    }
-  };
 }
 
 async function enforceDraftOnlyReviewContract({
