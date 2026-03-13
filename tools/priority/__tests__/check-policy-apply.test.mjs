@@ -2911,8 +2911,7 @@ test('priority:policy branch-protection seams accept required-check contexts whe
   const actualProtection = {
     required_status_checks: {
       strict: true,
-      contexts: expected.required_status_checks.slice(),
-      checks: []
+      contexts: expected.required_status_checks.slice()
     },
     required_linear_history: { enabled: true },
     enforce_admins: { enabled: false },
