@@ -166,7 +166,11 @@ test('runDockerDesktopReviewLoop returns passed when the receipt reports passed'
     request: {
       requested: true,
       receiptPath: path.relative(repoRoot, receiptPath),
+      actionlint: false,
       markdownlint: true,
+      docs: false,
+      workflow: false,
+      dotnetCliBuild: false,
       requirementsVerification: true,
       niLinuxReviewSuite: false
     },
@@ -182,7 +186,11 @@ test('runDockerDesktopReviewLoop returns passed when the receipt reports passed'
             upstreamDevelopMergeBase: 'base123',
             dirtyTracked: false
           },
-          overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
+          overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 },
+          checks: {
+            markdownlint: { enabled: true, status: 'passed' },
+            requirementsVerification: { enabled: true, status: 'passed' }
+          }
         })}\n`,
         'utf8'
       );
@@ -329,7 +337,11 @@ test('assessDockerDesktopReviewLoopReceipt marks a current clean receipt as reus
         upstreamDevelopMergeBase: 'base123',
         dirtyTracked: false
       },
-      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
+      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 },
+      checks: {
+        markdownlint: { enabled: true, status: 'passed' },
+        requirementsVerification: { enabled: true, status: 'passed' }
+      }
     })}\n`,
     'utf8'
   );
@@ -337,6 +349,16 @@ test('assessDockerDesktopReviewLoopReceipt marks a current clean receipt as reus
   const result = await assessDockerDesktopReviewLoopReceipt({
     repoRoot,
     receiptPath: path.relative(repoRoot, receiptPath),
+    request: {
+      requested: true,
+      receiptPath: path.relative(repoRoot, receiptPath),
+      actionlint: false,
+      markdownlint: true,
+      docs: false,
+      workflow: false,
+      dotnetCliBuild: false,
+      requirementsVerification: true
+    },
     resolveRepoGitStateFn: () => ({
       headSha: 'current-head',
       branch: 'issue/test',
@@ -348,6 +370,119 @@ test('assessDockerDesktopReviewLoopReceipt marks a current clean receipt as reus
   assert.equal(result.status, 'passed');
   assert.equal(result.receiptFreshForHead, true);
   assert.equal(result.reusable, true);
+  assert.equal(result.requestedCoverageSatisfied, true);
+});
+
+test('assessDockerDesktopReviewLoopReceipt fails closed when a passed receipt does not cover the requested checks', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-under-scoped-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'docker-tools-parity-review-loop@v1',
+      git: {
+        headSha: 'current-head',
+        branch: 'issue/test',
+        upstreamDevelopMergeBase: 'base123',
+        dirtyTracked: false
+      },
+      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 },
+      checks: {
+        markdownlint: { enabled: true, status: 'passed' },
+        requirementsVerification: { enabled: false, status: 'skipped' }
+      }
+    })}\n`,
+    'utf8'
+  );
+
+  const result = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: path.relative(repoRoot, receiptPath),
+    request: {
+      requested: true,
+      receiptPath: path.relative(repoRoot, receiptPath),
+      actionlint: false,
+      markdownlint: true,
+      docs: false,
+      workflow: false,
+      dotnetCliBuild: false,
+      requirementsVerification: true
+    },
+    resolveRepoGitStateFn: () => ({
+      headSha: 'current-head',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false
+    })
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.reusable, false);
+  assert.equal(result.requestedCoverageSatisfied, false);
+  assert.deepEqual(result.requestedCoverageMissingChecks, ['requirementsVerification']);
+  assert.match(result.reason, /does not cover the requested review surfaces/i);
+});
+
+test('assessDockerDesktopReviewLoopReceipt fails closed when single-VI coverage does not match the requested branch-history target', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-single-vi-mismatch-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'docker-tools-parity-review-loop@v1',
+      git: {
+        headSha: 'current-head',
+        branch: 'issue/test',
+        upstreamDevelopMergeBase: 'base123',
+        dirtyTracked: false
+      },
+      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 },
+      checks: {
+        niLinuxReviewSuite: { enabled: true, status: 'passed' }
+      },
+      niLinuxHistoryReview: {
+        targetPath: 'fixtures/vi-attr/Tail.vi',
+        effectiveBranchRef: 'develop',
+        requestedBaselineRef: '',
+        maxCommitCount: 128
+      }
+    })}\n`,
+    'utf8'
+  );
+
+  const result = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: path.relative(repoRoot, receiptPath),
+    request: {
+      requested: true,
+      receiptPath: path.relative(repoRoot, receiptPath),
+      actionlint: false,
+      markdownlint: false,
+      docs: false,
+      workflow: false,
+      dotnetCliBuild: false,
+      niLinuxReviewSuite: true,
+      singleViHistory: {
+        enabled: true,
+        targetPath: 'fixtures/vi-attr/Head.vi',
+        branchRef: 'develop',
+        baselineRef: '',
+        maxCommitCount: 256
+      }
+    },
+    resolveRepoGitStateFn: () => ({
+      headSha: 'current-head',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false
+    })
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.requestedCoverageSatisfied, false);
+  assert.deepEqual(result.requestedCoverageMissingChecks, ['singleViHistory.targetPath', 'singleViHistory.maxCommitCount']);
 });
 
 test('assessDockerDesktopReviewLoopReceipt does not reuse receipts when receipt tracked-clean state is unknown', async () => {
@@ -371,6 +506,7 @@ test('assessDockerDesktopReviewLoopReceipt does not reuse receipts when receipt 
   const result = await assessDockerDesktopReviewLoopReceipt({
     repoRoot,
     receiptPath: path.relative(repoRoot, receiptPath),
+    request: null,
     resolveRepoGitStateFn: () => ({
       headSha: 'current-head',
       branch: 'issue/test',
@@ -407,6 +543,7 @@ test('assessDockerDesktopReviewLoopReceipt does not reuse receipts when current 
   const result = await assessDockerDesktopReviewLoopReceipt({
     repoRoot,
     receiptPath: path.relative(repoRoot, receiptPath),
+    request: null,
     resolveRepoGitStateFn: () => ({
       headSha: 'current-head',
       branch: 'issue/test',
@@ -443,6 +580,7 @@ test('assessDockerDesktopReviewLoopReceipt fails closed when the receipt path ca
   const result = await assessDockerDesktopReviewLoopReceipt({
     repoRoot,
     receiptPath: path.relative(repoRoot, receiptPath),
+    request: null,
     resolveRepoGitStateFn: () => ({
       headSha: 'current-head',
       branch: 'issue/test',
@@ -514,6 +652,7 @@ test('assessDockerDesktopReviewLoopReceipt fails closed when the git-state resol
   const result = await assessDockerDesktopReviewLoopReceipt({
     repoRoot,
     receiptPath: path.relative(repoRoot, receiptPath),
+    request: null,
     resolveRepoGitStateFn: () => {
       throw new Error('resolver exploded');
     }

@@ -58,6 +58,12 @@
         "currentHeadSha": { "type": ["string", "null"] },
         "receiptHeadSha": { "type": ["string", "null"] },
         "receiptFreshForHead": { "type": ["boolean", "null"] },
+        "requestedCoverageSatisfied": { "type": ["boolean", "null"] },
+        "requestedCoverageReason": { "type": ["string", "null"] },
+        "requestedCoverageMissingChecks": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
         "git": {
           "type": ["object", "null"],
           "additionalProperties": true,
@@ -123,6 +129,12 @@
             "currentHeadSha": { "type": ["string", "null"] },
             "receiptHeadSha": { "type": ["string", "null"] },
             "receiptFreshForHead": { "type": ["boolean", "null"] },
+            "requestedCoverageSatisfied": { "type": ["boolean", "null"] },
+            "requestedCoverageReason": { "type": ["string", "null"] },
+            "requestedCoverageMissingChecks": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
             "git": {
               "type": ["object", "null"],
               "additionalProperties": true,

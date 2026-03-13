@@ -172,6 +172,103 @@ export function normalizeRequest(request = {}) {
   };
 }
 
+function normalizeReceiptCheck(receipt = {}, key) {
+  const checks = receipt && typeof receipt === 'object' && receipt.checks && typeof receipt.checks === 'object' ? receipt.checks : {};
+  const check = checks[key];
+  return check && typeof check === 'object' ? check : null;
+}
+
+function assessRequestedCoverage(receipt = {}, request = {}) {
+  const rawRequest = request && typeof request === 'object' ? request : {};
+  const rawSingleViHistory =
+    rawRequest.singleViHistory && typeof rawRequest.singleViHistory === 'object' ? rawRequest.singleViHistory : {};
+  const requestedSingleViTargetPath = normalizeText(rawSingleViHistory.targetPath);
+  const normalizedRequest = {
+    requested: rawRequest.requested === true,
+    actionlint: rawRequest.actionlint === true,
+    markdownlint: rawRequest.markdownlint === true,
+    docs: rawRequest.docs === true,
+    workflow: rawRequest.workflow === true,
+    dotnetCliBuild: rawRequest.dotnetCliBuild === true,
+    requirementsVerification: rawRequest.requirementsVerification === true,
+    niLinuxReviewSuite: rawRequest.niLinuxReviewSuite === true || rawSingleViHistory.enabled === true,
+    singleViHistory: {
+      enabled: rawSingleViHistory.enabled === true && Boolean(requestedSingleViTargetPath),
+      targetPath: requestedSingleViTargetPath,
+      branchRef: normalizeText(rawSingleViHistory.branchRef),
+      baselineRef: normalizeText(rawSingleViHistory.baselineRef),
+      maxCommitCount: coerceNonNegativeInteger(rawSingleViHistory.maxCommitCount)
+    }
+  };
+  if (normalizedRequest.requested !== true) {
+    return {
+      satisfied: null,
+      reason: 'Local Docker/Desktop review loop coverage was not requested.',
+      missingChecks: []
+    };
+  }
+
+  const missingChecks = [];
+  const requireEnabledCheck = (requested, receiptKey, label) => {
+    if (requested !== true) {
+      return;
+    }
+    if (normalizeReceiptCheck(receipt, receiptKey)?.enabled !== true) {
+      missingChecks.push(label);
+    }
+  };
+
+  requireEnabledCheck(normalizedRequest.actionlint, 'actionlint', 'actionlint');
+  requireEnabledCheck(normalizedRequest.markdownlint, 'markdownlint', 'markdownlint');
+  requireEnabledCheck(normalizedRequest.docs, 'docsLinks', 'docsLinks');
+  requireEnabledCheck(normalizedRequest.workflow, 'workflowDrift', 'workflowDrift');
+  requireEnabledCheck(normalizedRequest.dotnetCliBuild, 'dotnetCliBuild', 'dotnetCliBuild');
+  requireEnabledCheck(normalizedRequest.requirementsVerification, 'requirementsVerification', 'requirementsVerification');
+  requireEnabledCheck(normalizedRequest.niLinuxReviewSuite, 'niLinuxReviewSuite', 'niLinuxReviewSuite');
+
+  const requestedSingleViHistory = normalizedRequest.singleViHistory;
+  if (requestedSingleViHistory.enabled === true) {
+    const receiptHistory =
+      receipt && typeof receipt === 'object' && receipt.niLinuxHistoryReview && typeof receipt.niLinuxHistoryReview === 'object'
+        ? receipt.niLinuxHistoryReview
+        : {};
+    const receiptTargetPath = normalizeText(receiptHistory.targetPath);
+    const receiptBranchRef = normalizeText(receiptHistory.effectiveBranchRef || receiptHistory.requestedBranchRef);
+    const receiptBaselineRef = normalizeText(receiptHistory.effectiveBaselineRef || receiptHistory.requestedBaselineRef);
+    const receiptMaxCommitCount = coerceNonNegativeInteger(receiptHistory.maxCommitCount);
+
+    if (receiptTargetPath !== requestedSingleViHistory.targetPath) {
+      missingChecks.push('singleViHistory.targetPath');
+    }
+    if (requestedSingleViHistory.branchRef && receiptBranchRef !== requestedSingleViHistory.branchRef) {
+      missingChecks.push('singleViHistory.branchRef');
+    }
+    if (requestedSingleViHistory.baselineRef && receiptBaselineRef !== requestedSingleViHistory.baselineRef) {
+      missingChecks.push('singleViHistory.baselineRef');
+    }
+    if (
+      requestedSingleViHistory.maxCommitCount > 0 &&
+      (!receiptMaxCommitCount || receiptMaxCommitCount < requestedSingleViHistory.maxCommitCount)
+    ) {
+      missingChecks.push('singleViHistory.maxCommitCount');
+    }
+  }
+
+  if (missingChecks.length > 0) {
+    return {
+      satisfied: false,
+      reason: `Docker/Desktop review loop receipt does not cover the requested review surfaces: ${missingChecks.join(', ')}.`,
+      missingChecks
+    };
+  }
+
+  return {
+    satisfied: true,
+    reason: 'Docker/Desktop review loop receipt covers the requested review surfaces.',
+    missingChecks: []
+  };
+}
+
 export function buildLocalReviewLoopCliArgs({ repoRoot, request }) {
   const normalized = normalizeRequest(request);
   const args = ['--repo-root', repoRoot, '--receipt-path', normalized.receiptPath];
@@ -263,6 +360,7 @@ export function buildDockerDesktopReviewLoopPowerShellArgs(request = {}) {
 export async function assessDockerDesktopReviewLoopReceipt({
   repoRoot,
   receiptPath,
+  request = null,
   resolveRepoGitStateFn = resolveRepoGitState
 }) {
   let resolvedReceiptPathInfo;
@@ -278,7 +376,10 @@ export async function assessDockerDesktopReviewLoopReceipt({
       currentHeadSha: null,
       receiptHeadSha: null,
       receiptFreshForHead: false,
-      reusable: false
+      reusable: false,
+      requestedCoverageSatisfied: request ? false : null,
+      requestedCoverageReason: request ? 'Local Docker/Desktop review loop request could not be validated.' : null,
+      requestedCoverageMissingChecks: request ? [] : null
     };
   }
 
@@ -297,7 +398,10 @@ export async function assessDockerDesktopReviewLoopReceipt({
       currentHeadSha: currentGitState?.headSha || null,
       receiptHeadSha: null,
       receiptFreshForHead: false,
-      reusable: false
+      reusable: false,
+      requestedCoverageSatisfied: request ? false : null,
+      requestedCoverageReason: request ? 'Local Docker/Desktop review loop receipt could not be read.' : null,
+      requestedCoverageMissingChecks: request ? [] : null
     };
   }
   if (!receipt) {
@@ -310,7 +414,10 @@ export async function assessDockerDesktopReviewLoopReceipt({
       currentHeadSha: currentGitState?.headSha || null,
       receiptHeadSha: null,
       receiptFreshForHead: null,
-      reusable: false
+      reusable: false,
+      requestedCoverageSatisfied: request ? false : null,
+      requestedCoverageReason: request ? 'Docker/Desktop review loop receipt does not exist yet.' : null,
+      requestedCoverageMissingChecks: request ? [] : null
     };
   }
   if (receipt.__parseError) {
@@ -323,7 +430,10 @@ export async function assessDockerDesktopReviewLoopReceipt({
       currentHeadSha: currentGitState?.headSha || null,
       receiptHeadSha: null,
       receiptFreshForHead: false,
-      reusable: false
+      reusable: false,
+      requestedCoverageSatisfied: request ? false : null,
+      requestedCoverageReason: request ? `Docker/Desktop review loop produced a corrupt receipt: ${receipt.__parseError}` : null,
+      requestedCoverageMissingChecks: request ? [] : null
     };
   }
 
@@ -338,7 +448,10 @@ export async function assessDockerDesktopReviewLoopReceipt({
       currentHeadSha: currentGitState?.headSha || null,
       receiptHeadSha: null,
       receiptFreshForHead: false,
-      reusable: false
+      reusable: false,
+      requestedCoverageSatisfied: request ? false : null,
+      requestedCoverageReason: request ? 'Docker/Desktop review loop receipt is missing git.headSha metadata.' : null,
+      requestedCoverageMissingChecks: request ? [] : null
     };
   }
   const receiptFreshForHead = currentGitState?.headSha ? currentGitState.headSha === receiptGit.headSha : null;
@@ -352,7 +465,10 @@ export async function assessDockerDesktopReviewLoopReceipt({
       currentHeadSha: currentGitState.headSha,
       receiptHeadSha: receiptGit.headSha,
       receiptFreshForHead,
-      reusable: false
+      reusable: false,
+      requestedCoverageSatisfied: request ? false : null,
+      requestedCoverageReason: request ? 'Docker/Desktop review loop receipt is stale for the current HEAD.' : null,
+      requestedCoverageMissingChecks: request ? [] : null
     };
   }
 
@@ -372,7 +488,28 @@ export async function assessDockerDesktopReviewLoopReceipt({
       currentHeadSha: currentGitState?.headSha || null,
       receiptHeadSha: receiptGit.headSha,
       receiptFreshForHead,
-      reusable: false
+      reusable: false,
+      requestedCoverageSatisfied: request ? false : null,
+      requestedCoverageReason: request ? failureReason : null,
+      requestedCoverageMissingChecks: request ? [] : null
+    };
+  }
+
+  const coverage = assessRequestedCoverage(receipt, request);
+  if (coverage.satisfied === false) {
+    return {
+      status: 'failed',
+      source: 'docker-desktop-review-loop',
+      reason: coverage.reason,
+      receiptPath: resolvedReceiptPathInfo.normalized,
+      receipt,
+      currentHeadSha: currentGitState?.headSha || null,
+      receiptHeadSha: receiptGit.headSha,
+      receiptFreshForHead,
+      reusable: false,
+      requestedCoverageSatisfied: false,
+      requestedCoverageReason: coverage.reason,
+      requestedCoverageMissingChecks: coverage.missingChecks
     };
   }
 
@@ -395,7 +532,10 @@ export async function assessDockerDesktopReviewLoopReceipt({
     currentHeadSha: currentGitState?.headSha || null,
     receiptHeadSha: receiptGit.headSha,
     receiptFreshForHead,
-    reusable
+    reusable,
+    requestedCoverageSatisfied: coverage.satisfied,
+    requestedCoverageReason: coverage.reason,
+    requestedCoverageMissingChecks: coverage.missingChecks
   };
 }
 
@@ -459,6 +599,7 @@ export async function runDockerDesktopReviewLoop({
   const assessment = await assessDockerDesktopReviewLoopReceipt({
     repoRoot,
     receiptPath: normalized.receiptPath,
+    request: normalized,
     resolveRepoGitStateFn
   });
 
@@ -476,6 +617,9 @@ export async function runDockerDesktopReviewLoop({
       currentHeadSha: assessment.currentHeadSha,
       receiptHeadSha: assessment.receiptHeadSha,
       receiptFreshForHead: assessment.receiptFreshForHead,
+      requestedCoverageSatisfied: assessment.requestedCoverageSatisfied,
+      requestedCoverageReason: assessment.requestedCoverageReason,
+      requestedCoverageMissingChecks: assessment.requestedCoverageMissingChecks,
       receipt: assessment.receipt
     };
   }
@@ -489,6 +633,9 @@ export async function runDockerDesktopReviewLoop({
     currentHeadSha: assessment.currentHeadSha,
     receiptHeadSha: assessment.receiptHeadSha,
     receiptFreshForHead: assessment.receiptFreshForHead,
+    requestedCoverageSatisfied: assessment.requestedCoverageSatisfied,
+    requestedCoverageReason: assessment.requestedCoverageReason,
+    requestedCoverageMissingChecks: assessment.requestedCoverageMissingChecks,
     receipt: assessment.receipt
   };
 }

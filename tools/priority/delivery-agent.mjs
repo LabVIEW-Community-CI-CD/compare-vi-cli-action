@@ -1516,6 +1516,12 @@ function buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt }) {
     currentHeadSha: normalizeText(details?.currentHeadSha) || null,
     receiptHeadSha: normalizeText(details?.receiptHeadSha) || normalizeText(git?.headSha) || null,
     receiptFreshForHead: typeof details?.receiptFreshForHead === 'boolean' ? details.receiptFreshForHead : null,
+    requestedCoverageSatisfied:
+      typeof details?.requestedCoverageSatisfied === 'boolean' ? details.requestedCoverageSatisfied : null,
+    requestedCoverageReason: normalizeText(details?.requestedCoverageReason) || null,
+    requestedCoverageMissingChecks: uniqueStrings(
+      Array.isArray(details?.requestedCoverageMissingChecks) ? details.requestedCoverageMissingChecks : []
+    ),
     git: git
       ? {
           headSha: normalizeText(git.headSha) || null,
@@ -1822,7 +1828,8 @@ async function maybeRunLocalReviewLoop({
   const resolvedReceiptPath = resolvedReceiptPathInfo.resolved;
   const existingReceiptAssessment = await assessDockerDesktopReviewLoopReceipt({
     repoRoot,
-    receiptPath
+    receiptPath,
+    request
   });
   if (existingReceiptAssessment.status === 'passed' && existingReceiptAssessment.reusable === true) {
     return {
@@ -1843,6 +1850,9 @@ async function maybeRunLocalReviewLoop({
           currentHeadSha: existingReceiptAssessment.currentHeadSha,
           receiptHeadSha: existingReceiptAssessment.receiptHeadSha,
           receiptFreshForHead: existingReceiptAssessment.receiptFreshForHead,
+          requestedCoverageSatisfied: existingReceiptAssessment.requestedCoverageSatisfied,
+          requestedCoverageReason: existingReceiptAssessment.requestedCoverageReason,
+          requestedCoverageMissingChecks: existingReceiptAssessment.requestedCoverageMissingChecks,
           receipt: existingReceiptAssessment.receipt
         }
       }
@@ -1894,6 +1904,12 @@ async function maybeRunLocalReviewLoop({
     currentHeadSha: normalizeText(reviewLoopResult?.currentHeadSha) || null,
     receiptHeadSha: normalizeText(reviewLoopResult?.receiptHeadSha) || normalizeText(receiptFromFile?.git?.headSha) || null,
     receiptFreshForHead: typeof reviewLoopResult?.receiptFreshForHead === 'boolean' ? reviewLoopResult.receiptFreshForHead : null,
+    requestedCoverageSatisfied:
+      typeof reviewLoopResult?.requestedCoverageSatisfied === 'boolean' ? reviewLoopResult.requestedCoverageSatisfied : null,
+    requestedCoverageReason: normalizeText(reviewLoopResult?.requestedCoverageReason) || null,
+    requestedCoverageMissingChecks: uniqueStrings(
+      Array.isArray(reviewLoopResult?.requestedCoverageMissingChecks) ? reviewLoopResult.requestedCoverageMissingChecks : []
+    ),
     receipt: reviewLoopResult?.receipt ?? receiptFromFile ?? null
   };
 
