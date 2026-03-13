@@ -81,7 +81,7 @@ test('copilot-review-gate skips draft PRs before any live lookup', async () => {
   assert.equal(threadsCalled, false);
 });
 
-test('parseMergeGroupHeadBranch resolves the queued PR number and source head SHA from the merge-group branch', async () => {
+test('parseMergeGroupHeadBranch resolves the queued PR number and queue token from the merge-group branch', async () => {
   const { parseMergeGroupHeadBranch } = await loadModule();
 
   assert.deepEqual(
@@ -90,7 +90,7 @@ test('parseMergeGroupHeadBranch resolves the queued PR number and source head SH
       headBranch: 'gh-readonly-queue/develop/pr-1012-23324a081abaf177d24ea295e6da805ce541465a',
       baseRef: 'develop',
       prNumber: 1012,
-      sourceHeadSha: '23324a081abaf177d24ea295e6da805ce541465a',
+      queueRefToken: '23324a081abaf177d24ea295e6da805ce541465a',
     },
   );
   assert.deepEqual(
@@ -99,15 +99,16 @@ test('parseMergeGroupHeadBranch resolves the queued PR number and source head SH
       headBranch: 'gh-readonly-queue/develop/pr-1012-23324a081abaf177d24ea295e6da805ce541465a',
       baseRef: 'develop',
       prNumber: 1012,
-      sourceHeadSha: '23324a081abaf177d24ea295e6da805ce541465a',
+      queueRefToken: '23324a081abaf177d24ea295e6da805ce541465a',
     },
   );
   assert.equal(parseMergeGroupHeadBranch('feature/not-a-queue-branch'), null);
 });
 
-test('copilot-review-gate evaluates merge-group runs against the queued PR head instead of skipping', async () => {
+test('copilot-review-gate evaluates merge-group runs against the live PR head instead of the queue token', async () => {
   const { runCopilotReviewGate } = await loadModule();
-  const sourceHead = '23324a081abaf177d24ea295e6da805ce541465a';
+  const queueToken = '23324a081abaf177d24ea295e6da805ce541465a';
+  const liveHead = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
   const result = await runCopilotReviewGate({
     argv: createArgv([
@@ -126,7 +127,7 @@ test('copilot-review-gate evaluates merge-group runs against the queued PR head 
       number: 1012,
       html_url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1012',
       draft: false,
-      head: { sha: sourceHead },
+      head: { sha: liveHead },
       base: { ref: 'develop' },
     }),
     loadReviewsFn: async () => [],
@@ -147,7 +148,7 @@ test('copilot-review-gate evaluates merge-group runs against the queued PR head 
       status: 'completed',
       conclusion: 'success',
       html_url: 'https://github.com/example/actions/runs/93020',
-      head_sha: sourceHead,
+      head_sha: liveHead,
     }),
     writeReportFn: () => 'memory://copilot-review-gate.json',
     appendStepSummaryFn: () => {},
@@ -159,12 +160,14 @@ test('copilot-review-gate evaluates merge-group runs against the queued PR head 
   assert.deepEqual(result.report?.reasons, ['current-head-review-run-completed-clean']);
   assert.equal(result.report?.source.mode, 'merge-group-live');
   assert.equal(result.report?.source.mergeGroup?.prNumber, 1012);
-  assert.equal(result.report?.source.mergeGroup?.sourceHeadSha, sourceHead);
-  assert.equal(result.report?.pullRequest.liveHeadSha, sourceHead);
+  assert.equal(result.report?.source.mergeGroup?.queueRefToken, queueToken);
+  assert.equal(result.report?.pullRequest.headSha, liveHead);
+  assert.equal(result.report?.pullRequest.liveHeadSha, liveHead);
 });
 
-test('copilot-review-gate blocks merge-group runs when the queued source head is stale relative to the live PR head', async () => {
+test('copilot-review-gate does not invent a stale-head block from the merge-group queue token', async () => {
   const { runCopilotReviewGate } = await loadModule();
+  const liveHead = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
   const result = await runCopilotReviewGate({
     argv: createArgv([
@@ -183,7 +186,7 @@ test('copilot-review-gate blocks merge-group runs when the queued source head is
       number: 1012,
       html_url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1012',
       draft: false,
-      head: { sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+      head: { sha: liveHead },
       base: { ref: 'develop' },
     }),
     loadReviewsFn: async () => [],
@@ -205,8 +208,10 @@ test('copilot-review-gate blocks merge-group runs when the queued source head is
 
   assert.equal(result.exitCode, 1);
   assert.equal(result.report?.gateState, 'blocked');
-  assert.deepEqual(result.report?.reasons, ['merge-group-source-head-stale']);
-  assert.equal(result.report?.source.mergeGroup?.sourceHeadMatchesPullRequestHead, false);
+  assert.deepEqual(result.report?.reasons, ['copilot-review-run-unobserved']);
+  assert.equal(result.report?.pullRequest.headSha, liveHead);
+  assert.equal(result.report?.pullRequest.liveHeadSha, liveHead);
+  assert.ok(!(result.report?.reasons ?? []).includes('merge-group-source-head-stale'));
 });
 
 test('copilot-review-gate fails early when a merge-group head branch cannot be resolved', async () => {
