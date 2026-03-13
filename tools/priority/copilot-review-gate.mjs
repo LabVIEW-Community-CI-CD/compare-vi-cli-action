@@ -189,18 +189,23 @@ export function parseMergeGroupHeadBranch(headBranch) {
     return null;
   }
 
+  const refsHeadsPrefix = 'refs/heads/';
+  const queueBranch = normalized.toLowerCase().startsWith(refsHeadsPrefix)
+    ? normalized.slice(refsHeadsPrefix.length)
+    : normalized;
+
   const match = /^gh-readonly-queue\/(?<baseRef>.+)\/pr-(?<prNumber>\d+)-(?<headSha>[0-9a-f]{40})$/i.exec(
-    normalized,
+    queueBranch,
   );
   if (!match?.groups) {
     return null;
   }
 
   return {
-    headBranch: normalized,
+    headBranch: queueBranch,
     baseRef: normalizeBaseRef(match.groups.baseRef),
     prNumber: Number.parseInt(match.groups.prNumber, 10),
-    sourceHeadSha: normalizeSha(match.groups.headSha),
+    queueRefToken: normalizeSha(match.groups.headSha),
   };
 }
 
@@ -646,7 +651,7 @@ function buildPullRequest(options, signalReport = null, livePullRequest = null, 
       (repository && number !== null ? `https://github.com/${repository}/pull/${number}` : null),
     baseRef: normalizeBaseRef(signalPull.baseRef ?? livePull.base?.ref ?? mergeGroupSource?.baseRef ?? options.baseRef),
     draft: normalizeBoolean(signalPull.draft) ?? normalizeBoolean(livePull.draft) ?? options.draft ?? false,
-    headSha: normalizeSha(signalPull.headSha ?? mergeGroupSource?.sourceHeadSha ?? options.headSha),
+    headSha: normalizeSha(signalPull.headSha ?? livePull.head?.sha ?? options.headSha),
     liveHeadSha: normalizeSha(livePull.head?.sha),
     headBranch: normalizeText(options.headBranch),
     mergeGroupSource,
@@ -739,6 +744,17 @@ function buildReviewRunFromLiveRun(workflowRun, options) {
   };
 }
 
+export function resolveLiveHeadOptions(options, livePullRequest = null) {
+  if (options?.eventName !== 'merge_group' || !livePullRequest?.head?.sha) {
+    return options;
+  }
+
+  return {
+    ...options,
+    headSha: normalizeSha(livePullRequest.head.sha),
+  };
+}
+
 function sleep(delayMs) {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
@@ -760,15 +776,9 @@ function evaluateGateOutcome({
   const canonicalRepository = isCanonicalRepository(repository);
   const mergeGroupSource = pullRequest.mergeGroupSource ?? null;
   const mergeGroupSourceResolved = eventName !== 'merge_group' || mergeGroupSource !== null;
-  const mergeGroupSourceHeadMatchesPullRequestHead =
-    eventName !== 'merge_group' ||
-    !pullRequest.liveHeadSha ||
-    !pullRequest.headSha ||
-    pullRequest.liveHeadSha === pullRequest.headSha;
   const gateApplies =
     pullRequest.draft !== true &&
     mergeGroupSourceResolved &&
-    mergeGroupSourceHeadMatchesPullRequestHead &&
     Boolean(normalizedBaseRef && gatedBaseRefs.includes(normalizedBaseRef) && canonicalRepository);
 
   const summary = {
@@ -829,10 +839,6 @@ function evaluateGateOutcome({
     status = 'fail';
     gateState = 'error';
     reasons.push('merge-group-source-unresolved');
-  } else if (eventName === 'merge_group' && !mergeGroupSourceHeadMatchesPullRequestHead) {
-    status = 'fail';
-    gateState = 'blocked';
-    reasons.push('merge-group-source-head-stale');
   } else if (pullRequest.draft === true) {
     gateState = 'skipped';
     reasons.push('draft-pr-skip');
@@ -902,8 +908,7 @@ function evaluateGateOutcome({
           ? {
               headBranch: mergeGroupSource.headBranch,
               prNumber: mergeGroupSource.prNumber,
-              sourceHeadSha: mergeGroupSource.sourceHeadSha,
-              sourceHeadMatchesPullRequestHead: mergeGroupSourceHeadMatchesPullRequestHead,
+              queueRefToken: mergeGroupSource.queueRefToken,
             }
           : null,
     },
@@ -1091,8 +1096,7 @@ function buildFailureReport(options, now, error) {
           ? {
               headBranch: mergeGroupSource.headBranch,
               prNumber: mergeGroupSource.prNumber,
-              sourceHeadSha: mergeGroupSource.sourceHeadSha,
-              sourceHeadMatchesPullRequestHead: false,
+              queueRefToken: mergeGroupSource.queueRefToken,
             }
           : null,
     },
@@ -1284,7 +1288,6 @@ export async function runCopilotReviewGate({
           ? {
               ...options,
               prNumber: mergeGroupSource.prNumber,
-              headSha: mergeGroupSource.sourceHeadSha,
               baseRef: mergeGroupSource.baseRef ?? options.baseRef,
             }
           : options;
@@ -1316,11 +1319,12 @@ export async function runCopilotReviewGate({
         report = buildReportFromSignal(resolvedOptions, signalReport, now);
       } else {
         const livePullRequest = options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions) : null;
-        const reviews = await loadReviewsFn(resolvedOptions);
-        const threads = await loadThreadsFn(resolvedOptions);
-        const reviewRun = await loadReviewRunFn(resolvedOptions);
+        const liveResolvedOptions = resolveLiveHeadOptions(resolvedOptions, livePullRequest);
+        const reviews = await loadReviewsFn(liveResolvedOptions);
+        const threads = await loadThreadsFn(liveResolvedOptions);
+        const reviewRun = await loadReviewRunFn(liveResolvedOptions);
         report = buildReportFromLiveData(
-          resolvedOptions,
+          liveResolvedOptions,
           reviews,
           threads,
           now,
@@ -1336,11 +1340,12 @@ export async function runCopilotReviewGate({
           attemptsUsed += 1;
           await sleep(options.pollDelayMs);
           const livePullRequest = options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions) : null;
-          const reviews = await loadReviewsFn(resolvedOptions);
-          const threads = await loadThreadsFn(resolvedOptions);
-          const reviewRun = await loadReviewRunFn(resolvedOptions);
+          const liveResolvedOptions = resolveLiveHeadOptions(resolvedOptions, livePullRequest);
+          const reviews = await loadReviewsFn(liveResolvedOptions);
+          const threads = await loadThreadsFn(liveResolvedOptions);
+          const reviewRun = await loadReviewRunFn(liveResolvedOptions);
           report = buildReportFromLiveData(
-            resolvedOptions,
+            liveResolvedOptions,
             reviews,
             threads,
             now,

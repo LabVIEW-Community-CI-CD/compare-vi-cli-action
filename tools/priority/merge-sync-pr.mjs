@@ -6,6 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { runCopilotReviewGate } from './copilot-review-gate.mjs';
 import { ensureGhCli, resolveUpstream } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import {
@@ -35,6 +36,8 @@ const USAGE_LINES = [
 const MERGE_METHODS = new Set(['merge', 'squash', 'rebase']);
 const MERGE_ACTIVATION_POLL_ATTEMPTS = 5;
 const MERGE_ACTIVATION_POLL_DELAY_MS = 1500;
+const PROMOTION_REVIEW_GATE_POLL_ATTEMPTS = 1;
+const PROMOTION_REVIEW_GATE_POLL_DELAY_MS = 1000;
 const POLICY_BLOCK_PATTERNS = [
   /merge queue/i,
   /required checks?.*not (?:passing|successful|complete)/i,
@@ -123,6 +126,10 @@ function normalizeUpper(value) {
 
 function normalizeLower(value) {
   return typeof value === 'string' ? value.toLowerCase() : '';
+}
+
+function normalizeText(value) {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 function normalizeOwner(value) {
@@ -232,6 +239,7 @@ export function buildMergeSummaryPayload({
   attempts,
   prInfo,
   branchClassTrace = null,
+  reviewClearance = null,
   promotion = null,
   createdAt = new Date().toISOString()
 }) {
@@ -251,6 +259,7 @@ export function buildMergeSummaryPayload({
     policyTrace: buildPolicyTrace(mergeQueueBranches),
     branchClassTrace,
     attempts,
+    reviewClearance,
     prState: {
       state: prInfo?.state ?? null,
       mergeStateStatus: prInfo?.mergeStateStatus ?? null,
@@ -258,6 +267,7 @@ export function buildMergeSummaryPayload({
       baseRefName: normalizedBaseRefName || null,
       isDraft: Boolean(prInfo?.isDraft),
       headRefName: prInfo?.headRefName ?? null,
+      headRefOid: prInfo?.headRefOid ?? null,
       headRepositoryOwner,
       isCrossRepository: Boolean(prInfo?.isCrossRepository),
       upstreamHeadOwned: isUpstreamOwnedHead(prInfo, repo)
@@ -387,7 +397,7 @@ function readPrInfo({ repoRoot, repo, pr }) {
       '--repo',
       repo,
       '--json',
-      'number,state,isDraft,mergeStateStatus,mergeable,baseRefName,url,headRefName,headRepositoryOwner,isCrossRepository'
+      'number,state,isDraft,mergeStateStatus,mergeable,baseRefName,url,headRefName,headRefOid,headRepositoryOwner,isCrossRepository'
     ],
     {
       cwd: repoRoot,
@@ -434,6 +444,59 @@ function readPromotionState({ repoRoot, repo, pr }) {
   }
   const payload = parseJsonOutput(result.stdout ?? '{}', { label: 'gh api graphql output' });
   return payload?.data?.repository?.pullRequest ?? {};
+}
+
+export async function evaluatePromotionReviewClearance({
+  repo,
+  pr,
+  prInfo,
+  runCopilotReviewGateFn = runCopilotReviewGate,
+  pollAttempts = PROMOTION_REVIEW_GATE_POLL_ATTEMPTS,
+  pollDelayMs = PROMOTION_REVIEW_GATE_POLL_DELAY_MS
+}) {
+  const result = await runCopilotReviewGateFn({
+    argv: [
+      'node',
+      'tools/priority/copilot-review-gate.mjs',
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      repo,
+      '--pr',
+      String(pr),
+      '--head-sha',
+      normalizeText(prInfo?.headRefOid),
+      '--base-ref',
+      normalizeBaseRefName(prInfo?.baseRefName),
+      '--draft',
+      prInfo?.isDraft ? 'true' : 'false',
+      '--poll-attempts',
+      String(pollAttempts),
+      '--poll-delay-ms',
+      String(pollDelayMs),
+      '--out',
+      'memory://merge-sync-copilot-review-gate.json'
+    ],
+    writeReportFn: () => 'memory://merge-sync-copilot-review-gate.json',
+    appendStepSummaryFn: () => {}
+  });
+
+  const report = result?.report ?? null;
+  return {
+    ok: result?.exitCode === 0,
+    report: report
+      ? {
+          status: report.status ?? null,
+          gateState: report.gateState ?? null,
+          reasons: Array.isArray(report.reasons) ? [...report.reasons] : [],
+          actionableCommentCount: report.summary?.actionableCommentCount ?? 0,
+          actionableThreadCount: report.summary?.actionableThreadCount ?? 0,
+          hasCurrentHeadReview: report.signals?.hasCurrentHeadReview ?? false,
+          latestReviewIsCurrentHead: report.signals?.latestReviewIsCurrentHead ?? false,
+          reviewRunCompletedClean: report.signals?.reviewRunCompletedClean ?? false
+        }
+      : null
+  };
 }
 
 export function buildMergeArgs({ pr, repo, method, mode, keepBranch }) {
@@ -529,7 +592,8 @@ export async function runMergeSync({
   readPrInfoFn = readPrInfo,
   readPromotionStateFn = readPromotionState,
   sleepFn = delay,
-  runMergeAttemptFn = runMergeAttempt
+  runMergeAttemptFn = runMergeAttempt,
+  evaluatePromotionReviewClearanceFn = evaluatePromotionReviewClearance
 } = {}) {
   const options = parseArgs(argv);
 
@@ -560,6 +624,26 @@ export async function runMergeSync({
     mergeQueueBranches,
     baseBranchClass
   });
+  const reviewClearance =
+    selection.mode === 'none'
+      ? {
+          ok: true,
+          report: {
+            status: 'skipped',
+            gateState: 'skipped',
+            reasons: ['already-merged'],
+            actionableCommentCount: 0,
+            actionableThreadCount: 0,
+            hasCurrentHeadReview: false,
+            latestReviewIsCurrentHead: false,
+            reviewRunCompletedClean: false
+          }
+        }
+      : await evaluatePromotionReviewClearanceFn({
+          repo: resolvedRepo,
+          pr: options.pr,
+          prInfo
+        });
   const initialPromotionState =
     selection.mode === 'none'
       ? {
@@ -577,6 +661,13 @@ export async function runMergeSync({
   console.log(
     `[priority:merge-sync] selected mode=${selection.mode} reason=${selection.reason} mergeState=${prInfo.mergeStateStatus ?? 'n/a'}`
   );
+
+  if (!reviewClearance?.ok) {
+    const reasons = Array.isArray(reviewClearance?.report?.reasons) ? reviewClearance.report.reasons : [];
+    throw new Error(
+      `[priority:merge-sync] current-head Copilot review clearance failed: ${reasons.join(', ') || 'review-clearance-failed'}`
+    );
+  }
 
   const attempts = [];
   let finalMode = selection.mode;
@@ -679,6 +770,7 @@ export async function runMergeSync({
       targetRepositoryRole,
       baseBranchClass
     }),
+    reviewClearance: reviewClearance?.report ?? null,
     promotion
   });
   await maybeWriteSummary(options.summaryPath, payload);
