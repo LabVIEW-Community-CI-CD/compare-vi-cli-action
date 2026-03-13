@@ -3480,6 +3480,131 @@ test('delivery broker fails closed and re-drafts when a ready PR local receipt i
   assert.match(helperCalls.join('\n'), /gh pr ready 1067 .* --undo/);
 });
 
+test('delivery broker fails closed when re-drafting after a local review failure does not succeed', async () => {
+  const tempRepo = await mkdtemp(path.join(os.tmpdir(), 'delivery-broker-redraft-failure-'));
+  runGit(tempRepo, ['init']);
+  runGit(tempRepo, ['config', 'user.name', 'Agent Runner']);
+  runGit(tempRepo, ['config', 'user.email', 'agent@example.com']);
+  await writeFile(path.join(tempRepo, 'README.md'), '# temp\n', 'utf8');
+  runGit(tempRepo, ['add', 'README.md']);
+  runGit(tempRepo, ['commit', '-m', 'init']);
+
+  const helperCalls = [];
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: tempRepo,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-ci',
+      objective: {
+        summary: 'Advance issue #1067'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-ci',
+          pullRequest: {
+            number: 1067,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1067',
+            isDraft: false,
+            copilotReviewSignal: {
+              hasCurrentHeadReview: true,
+              actionableCommentCount: 0,
+              actionableThreadCount: 0
+            },
+            copilotReviewWorkflow: {
+              status: 'COMPLETED',
+              conclusion: 'SUCCESS'
+            }
+          },
+          localReviewLoop: {
+            requested: true,
+            source: 'standing-issue-body',
+            receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            markdownlint: true,
+            requirementsVerification: true,
+            niLinuxReviewSuite: false,
+            singleViHistory: null
+          },
+          mutationEnvelope: {
+            copilotReviewStrategy: 'draft-only-explicit',
+            maxActiveCodingLanes: 1
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        localReviewLoop: {
+          enabled: true,
+          receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+          command: ['node', 'tools/priority/docker-desktop-review-loop.mjs']
+        },
+        codingTurnCommand: ['node', 'mock-broker']
+      }),
+      runCommandFn: async (command, args) => {
+        helperCalls.push([command, ...args].join(' '));
+        if (command === 'node') {
+          return {
+            status: 1,
+            stdout: JSON.stringify({
+              status: 'failed',
+              source: 'docker-desktop-review-loop',
+              reason: 'Docker/Desktop review loop failed on markdownlint.',
+              receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+              receipt: {
+                overall: {
+                  status: 'failed',
+                  failedCheck: 'markdownlint',
+                  message: 'markdownlint failed',
+                  exitCode: 1
+                }
+              }
+            }),
+            stderr: 'markdownlint failed'
+          };
+        }
+        assert.equal(command, 'gh');
+        assert.deepEqual(args, [
+          'pr',
+          'ready',
+          '1067',
+          '--repo',
+          'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          '--undo'
+        ]);
+        return {
+          status: 1,
+          stdout: '',
+          stderr: 'GraphQL: cannot convert pull request back to draft'
+        };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.status, 'blocked');
+  assert.equal(brokerResult.outcome, 'draft-transition-failed');
+  assert.equal(brokerResult.details.blockerClass, 'helperbug');
+  assert.equal(brokerResult.details.reviewPhase, 'draft-review');
+  assert.equal(brokerResult.details.nextWakeCondition, 'draft-transition-fixed');
+  assert.equal(brokerResult.details.localReviewLoop.status, 'failed');
+  assert.match(brokerResult.reason, /cannot convert pull request back to draft/i);
+  assert.match(helperCalls.join('\n'), /node tools\/priority\/docker-desktop-review-loop\.mjs/);
+  assert.match(helperCalls.join('\n'), /gh pr ready 1067 .* --undo/);
+});
+
 test('delivery broker reruns the local review loop when the current-head receipt is under-scoped for the requested checks', async () => {
   const tempRepo = await mkdtemp(path.join(os.tmpdir(), 'delivery-broker-local-review-rerun-'));
   runGit(tempRepo, ['init']);

@@ -1923,6 +1923,35 @@ async function enforceDraftOnlyReviewContract({
           repoRoot,
           deps
         });
+        if (!toDraft.ok) {
+          return {
+            status: 'blocked',
+            outcome: 'draft-transition-failed',
+            reason:
+              normalizeText(toDraft.result?.stderr) ||
+              normalizeText(toDraft.result?.stdout) ||
+              `Failed to mark PR #${pullRequest.number} as draft after local review clearance failed.`,
+            source: 'delivery-agent-broker',
+            details: {
+              actionType: 'watch-pr',
+              laneLifecycle: 'blocked',
+              blockerClass: 'helperbug',
+              retryable: false,
+              nextWakeCondition: 'draft-transition-fixed',
+              reviewPhase: 'draft-review',
+              helperCallsExecuted: uniqueStrings([
+                ...(Array.isArray(localReviewResult.details?.helperCallsExecuted)
+                  ? localReviewResult.details.helperCallsExecuted
+                  : []),
+                toDraft.helperCall
+              ]),
+              filesTouched: Array.isArray(localReviewResult.details?.filesTouched)
+                ? localReviewResult.details.filesTouched
+                : [],
+              localReviewLoop: normalizeOptionalObject(localReviewResult.details?.localReviewLoop)
+            }
+          };
+        }
         if (toDraft.helperCall) {
           localReviewResult.details.helperCallsExecuted = uniqueStrings([
             ...(Array.isArray(localReviewResult.details?.helperCallsExecuted)
