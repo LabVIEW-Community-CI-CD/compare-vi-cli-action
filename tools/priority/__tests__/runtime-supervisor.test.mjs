@@ -1847,6 +1847,21 @@ test('comparevi canonical execution delegates to the delivery broker instead of 
           turnBudget: {
             maxMinutes: 20,
             maxToolCalls: 12
+          },
+          localReviewLoop: {
+            requested: true,
+            source: 'selected-issue-body',
+            receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            markdownlint: true,
+            requirementsVerification: true,
+            niLinuxReviewSuite: true,
+            singleViHistory: {
+              enabled: true,
+              targetPath: 'fixtures/vi-attr/Head.vi',
+              branchRef: 'develop',
+              baselineRef: '',
+              maxCommitCount: 256
+            }
           }
         }
       }
@@ -2056,7 +2071,39 @@ test('comparevi canonical execution persists a broker-managed ready-for-review r
           ],
           filesTouched: ['tools/priority/runtime-supervisor.mjs'],
           pullRequestUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1015',
-          notes: 'Broker restored ready-for-review so Copilot can issue a fresh current-head review.'
+          notes: 'Broker restored ready-for-review so Copilot can issue a fresh current-head review.',
+          localReviewLoop: {
+            status: 'passed',
+            source: 'docker-desktop-review-loop',
+            reason: 'Docker/Desktop review loop passed.',
+            receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            receipt: {
+              overall: {
+                status: 'passed',
+                failedCheck: '',
+                message: '',
+                exitCode: 0
+              },
+              artifacts: {
+                reviewLoopReceiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+                historyReviewReceiptPath:
+                  'tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-review-loop-receipt.json',
+                requirementsSummaryPath:
+                  'tests/results/docker-tools-parity/requirements-verification/verification-summary.json'
+              },
+              requirementsCoverage: {
+                requirementTotal: 9,
+                requirementCovered: 9,
+                requirementUncovered: 0,
+                uncoveredRequirementIds: null,
+                unknownRequirementIds: null
+              },
+              recommendedReviewOrder: [
+                'tests/results/docker-tools-parity/review-loop-receipt.json',
+                'tests/results/docker-tools-parity/ni-linux-review-suite/review-suite-summary.html'
+              ]
+            }
+          }
         }
       })
     }
@@ -2080,6 +2127,17 @@ test('comparevi canonical execution persists a broker-managed ready-for-review r
   assert.equal(persistedState.activeLane.nextWakeCondition, 'copilot-review-workflow-completed');
   assert.equal(persistedState.activeLane.pollIntervalSecondsHint, 10);
   assert.equal(persistedState.activeLane.reviewMonitor.workflowName, 'Copilot code review');
+  assert.equal(persistedState.localReviewLoop.status, 'passed');
+  assert.equal(persistedState.localReviewLoop.receiptStatus, 'passed');
+  assert.equal(persistedState.localReviewLoop.requirementsCoverage.requirementCovered, 9);
+  assert.equal(
+    persistedState.activeLane.localReviewLoop.artifacts.historyReviewReceiptPath,
+    'tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-review-loop-receipt.json'
+  );
+  assert.equal(
+    persistedState.artifacts.localReviewLoopReceiptPath,
+    'tests/results/docker-tools-parity/review-loop-receipt.json'
+  );
 });
 
 test('delivery broker auto-slices epics by creating and linking a child issue', async () => {

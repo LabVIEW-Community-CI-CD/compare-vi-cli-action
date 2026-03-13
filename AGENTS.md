@@ -111,7 +111,12 @@ artifacts under `tests/results/_agent/`.
   `tests/results/docker-tools-parity/review-loop-receipt.json` first after
   compaction; it points to
   `tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-review-loop-receipt.json`
-  and the rest of the authoritative local review artifacts.
+  and the rest of the authoritative local review artifacts. When the daemon is
+  active, the same summary is mirrored into
+  `tests/results/_agent/runtime/delivery-agent-state.json` and
+  `tests/results/_agent/runtime/delivery-agent-lanes/*.json` under the
+  `localReviewLoop` node so future agents can resume from runtime state before
+  reopening deeper receipts.
 - Keep bulky diagnostics out of source. Large logs and artifacts belong in
   issue attachments or generated artifact folders, not in committed history.
 - Use vendor resolvers from `tools/VendorTools.psm1` rather than ad-hoc PATH

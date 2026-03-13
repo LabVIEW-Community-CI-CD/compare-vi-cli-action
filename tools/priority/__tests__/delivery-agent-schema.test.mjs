@@ -210,7 +210,22 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
       },
       evidence: {
         delivery: {
-          laneLifecycle: 'ready-merge'
+          laneLifecycle: 'ready-merge',
+          localReviewLoop: {
+            requested: true,
+            source: 'standing-issue-body',
+            receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            markdownlint: true,
+            requirementsVerification: true,
+            niLinuxReviewSuite: true,
+            singleViHistory: {
+              enabled: true,
+              targetPath: 'fixtures/vi-attr/Head.vi',
+              branchRef: 'develop',
+              baselineRef: '',
+              maxCommitCount: 256
+            }
+          }
         }
       }
     },
@@ -222,7 +237,43 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
         laneLifecycle: 'complete',
         blockerClass: 'none',
         retryable: false,
-        nextWakeCondition: 'next-scheduler-cycle'
+        nextWakeCondition: 'next-scheduler-cycle',
+        localReviewLoop: {
+          status: 'passed',
+          source: 'docker-desktop-review-loop',
+          reason: 'Docker/Desktop review loop passed.',
+          receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+          receipt: {
+            overall: {
+              status: 'passed',
+              failedCheck: '',
+              message: '',
+              exitCode: 0
+            },
+            artifacts: {
+              reviewLoopReceiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+              historyReviewReceiptPath: 'tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-review-loop-receipt.json',
+              requirementsSummaryPath: 'tests/results/docker-tools-parity/requirements-verification/verification-summary.json'
+            },
+            niLinuxHistoryReview: {
+              targetPath: 'fixtures/vi-attr/Head.vi',
+              effectiveBranchRef: 'develop',
+              maxCommitCount: 256,
+              touchAware: true
+            },
+            requirementsCoverage: {
+              requirementTotal: 9,
+              requirementCovered: 9,
+              requirementUncovered: 0,
+              uncoveredRequirementIds: null,
+              unknownRequirementIds: null
+            },
+            recommendedReviewOrder: [
+              'tests/results/docker-tools-parity/review-loop-receipt.json',
+              'tests/results/docker-tools-parity/ni-linux-review-suite/review-suite-summary.html'
+            ]
+          }
+        }
       }
     },
     statePath: path.join(repoRoot, 'tests/results/_agent/runtime/delivery-agent-state.json'),
@@ -231,6 +282,19 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
   const ajv = makeAjv();
   const validate = ajv.compile(schema);
   assert.equal(validate(state), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(state.localReviewLoop.status, 'passed');
+  assert.equal(state.localReviewLoop.receiptStatus, 'passed');
+  assert.equal(state.localReviewLoop.niLinuxReviewSuiteRequested, true);
+  assert.equal(state.localReviewLoop.singleViHistory.targetPath, 'fixtures/vi-attr/Head.vi');
+  assert.equal(
+    state.localReviewLoop.artifacts.historyReviewReceiptPath,
+    'tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-review-loop-receipt.json'
+  );
+  assert.equal(state.activeLane.localReviewLoop.receiptStatus, 'passed');
+  assert.equal(
+    state.artifacts.localReviewLoopReceiptPath,
+    'tests/results/docker-tools-parity/review-loop-receipt.json'
+  );
 });
 
 test('delivery memory schema validates suite-aware terminal PR history', async () => {

@@ -1483,6 +1483,54 @@ function normalizeLifecycle(value, fallback = 'idle') {
   const normalized = normalizeText(value).toLowerCase();
   return DELIVERY_AGENT_LIFECYCLE_STATES.has(normalized) ? normalized : fallback;
 }
+
+function normalizeOptionalObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
+function buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt }) {
+  const request = normalizeOptionalObject(taskPacket?.evidence?.delivery?.localReviewLoop);
+  const details = normalizeOptionalObject(executionReceipt?.details?.localReviewLoop);
+  const receipt = normalizeOptionalObject(details?.receipt);
+  const overall = normalizeOptionalObject(receipt?.overall);
+  const artifacts = normalizeOptionalObject(receipt?.artifacts);
+  const niLinuxHistoryReview = normalizeOptionalObject(receipt?.niLinuxHistoryReview);
+  const requirementsCoverage = normalizeOptionalObject(receipt?.requirementsCoverage);
+  const recommendedReviewOrder = uniqueStrings(Array.isArray(receipt?.recommendedReviewOrder) ? receipt.recommendedReviewOrder : []);
+  const singleViHistoryRequest = normalizeOptionalObject(request?.singleViHistory);
+
+  if (!request && !details && !receipt) {
+    return null;
+  }
+
+  return {
+    requested: request?.requested === true,
+    status: normalizeText(details?.status) || (request?.requested === true ? 'requested' : null),
+    source: normalizeText(details?.source) || normalizeText(request?.source) || null,
+    reason: normalizeText(details?.reason) || normalizeText(overall?.message) || null,
+    receiptPath: normalizeText(details?.receiptPath) || normalizeText(request?.receiptPath) || null,
+    receiptStatus: normalizeText(overall?.status) || null,
+    failedCheck: normalizeText(overall?.failedCheck) || null,
+    requirementsVerificationRequested: request?.requirementsVerification === true,
+    markdownlintRequested: request?.markdownlint === true,
+    niLinuxReviewSuiteRequested: request?.niLinuxReviewSuite === true,
+    singleViHistory:
+      singleViHistoryRequest?.enabled === true
+        ? {
+            enabled: true,
+            targetPath: normalizeText(singleViHistoryRequest.targetPath) || null,
+            branchRef: normalizeText(singleViHistoryRequest.branchRef) || null,
+            baselineRef: normalizeText(singleViHistoryRequest.baselineRef) || null,
+            maxCommitCount: coercePositiveInteger(singleViHistoryRequest.maxCommitCount)
+          }
+        : null,
+    artifacts,
+    niLinuxHistoryReview,
+    requirementsCoverage,
+    recommendedReviewOrder: recommendedReviewOrder.length > 0 ? recommendedReviewOrder : null
+  };
+}
+
 export function buildDeliveryAgentRuntimeRecord({
   now = new Date(),
   repository,
@@ -1530,6 +1578,7 @@ export function buildDeliveryAgentRuntimeRecord({
     coercePositiveInteger(taskPacket?.evidence?.delivery?.pullRequest?.pollIntervalSecondsHint) ??
     coercePositiveInteger(schedulerDecision?.artifacts?.pullRequest?.pollIntervalSecondsHint) ??
     null;
+  const localReviewLoop = buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt });
   return {
     schema: DELIVERY_AGENT_RUNTIME_STATE_SCHEMA,
     generatedAt: toIso(now),
@@ -1549,6 +1598,7 @@ export function buildDeliveryAgentRuntimeRecord({
     status: laneLifecycle === 'blocked' ? 'blocked' : laneLifecycle === 'idle' ? 'idle' : 'running',
     laneLifecycle,
     activeCodingLanes,
+    localReviewLoop,
     activeLane: {
       schema: DELIVERY_AGENT_LANE_STATE_SCHEMA,
       generatedAt: toIso(now),
@@ -1572,11 +1622,13 @@ export function buildDeliveryAgentRuntimeRecord({
       retryable: executionReceipt?.details?.retryable === true,
       nextWakeCondition: normalizeText(executionReceipt?.details?.nextWakeCondition) || null,
       pollIntervalSecondsHint,
-      reviewMonitor
+      reviewMonitor,
+      localReviewLoop
     },
     artifacts: {
       statePath,
-      lanePath
+      lanePath,
+      localReviewLoopReceiptPath: normalizeText(localReviewLoop?.receiptPath) || null
     }
   };
 }
