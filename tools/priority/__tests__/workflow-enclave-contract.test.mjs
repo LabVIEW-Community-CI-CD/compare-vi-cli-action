@@ -81,6 +81,10 @@ test('workflow-writing callers use the enclave wrapper instead of the low-level 
   assert.match(checkWorkflowDrift, /COMPAREVI_PYTHON_EXE/);
   assert.match(checkWorkflowDrift, /-3/);
   assert.match(checkWorkflowDrift, /if \(\$FailOnDrift\)\s*\{\s*exit 2\s*\}/);
+  assert.match(checkWorkflowDrift, /Executable\s*=/);
+  assert.match(checkWorkflowDrift, /Arguments\s*=/);
+  assert.match(checkWorkflowDrift, /\$pythonCommand = Resolve-PythonCommand/);
+  assert.match(checkWorkflowDrift, /& \$pythonCommand\.Executable @pythonArguments/);
   assert.doesNotMatch(checkWorkflowDrift, /update_workflows\.py/);
 
   const dockerChecks = read('tools/Run-NonLVChecksInDocker.ps1');
