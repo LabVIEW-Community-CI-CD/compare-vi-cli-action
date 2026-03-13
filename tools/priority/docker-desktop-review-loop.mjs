@@ -100,6 +100,26 @@ function normalizeReceiptGitMetadata(receipt = {}) {
   };
 }
 
+function tryResolveCurrentGitState(repoRoot, resolveRepoGitStateFn) {
+  if (typeof resolveRepoGitStateFn !== 'function') {
+    return {
+      currentGitState: null,
+      currentGitStateError: null
+    };
+  }
+  try {
+    return {
+      currentGitState: normalizeReceiptGitMetadata({ git: resolveRepoGitStateFn(repoRoot) ?? {} }),
+      currentGitStateError: null
+    };
+  } catch (error) {
+    return {
+      currentGitState: null,
+      currentGitStateError: normalizeText(error?.message) || 'unknown error'
+    };
+  }
+}
+
 function assertRepoContainedReceiptPath(repoRoot, receiptPath) {
   const normalized = normalizeText(receiptPath);
   if (!normalized) {
@@ -263,8 +283,7 @@ export async function assessDockerDesktopReviewLoopReceipt({
   }
 
   const resolvedReceiptPath = resolvedReceiptPathInfo.resolved;
-  const currentGitState =
-    typeof resolveRepoGitStateFn === 'function' ? normalizeReceiptGitMetadata({ git: resolveRepoGitStateFn(repoRoot) ?? {} }) : null;
+  const { currentGitState, currentGitStateError } = tryResolveCurrentGitState(repoRoot, resolveRepoGitStateFn);
   let receipt;
   try {
     receipt = await readJsonIfPresent(resolvedReceiptPath);
@@ -360,6 +379,8 @@ export async function assessDockerDesktopReviewLoopReceipt({
   const reusable = receiptFreshForHead === true && currentGitState?.dirtyTracked === false && receiptGit.dirtyTracked === false;
   const reuseReason = reusable
     ? 'Docker/Desktop review loop receipt is current for this clean HEAD.'
+    : currentGitStateError
+      ? `Docker/Desktop review loop receipt passed, but current git state could not be resolved for reuse: ${currentGitStateError}.`
     : receiptFreshForHead !== true
       ? 'Docker/Desktop review loop receipt passed, but the current HEAD could not be verified for reuse.'
     : currentGitState?.dirtyTracked === true || receiptGit.dirtyTracked === true

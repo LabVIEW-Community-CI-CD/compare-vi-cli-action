@@ -492,6 +492,39 @@ test('assessDockerDesktopReviewLoopReceipt reports unverifiable HEAD state disti
   assert.match(result.reason, /current HEAD could not be verified/i);
 });
 
+test('assessDockerDesktopReviewLoopReceipt fails closed when the git-state resolver throws', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-resolver-throws-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'docker-tools-parity-review-loop@v1',
+      git: {
+        headSha: 'current-head',
+        branch: 'issue/test',
+        upstreamDevelopMergeBase: 'base123',
+        dirtyTracked: false
+      },
+      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 }
+    })}\n`,
+    'utf8'
+  );
+
+  const result = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: path.relative(repoRoot, receiptPath),
+    resolveRepoGitStateFn: () => {
+      throw new Error('resolver exploded');
+    }
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.receiptFreshForHead, null);
+  assert.equal(result.reusable, false);
+  assert.match(result.reason, /current git state could not be resolved/i);
+});
+
 test('runDockerDesktopReviewLoop rejects receipt paths outside docker parity results', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-path-'));
 
