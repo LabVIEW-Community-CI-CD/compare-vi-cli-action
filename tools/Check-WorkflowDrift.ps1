@@ -15,10 +15,33 @@ $repoRoot = Split-Path -Parent $scriptRoot
 $enclaveScript = Join-Path $repoRoot 'tools/workflows/workflow_enclave.py'
 $workflowManifestPath = Join-Path $repoRoot 'tools/workflows/workflow-manifest.json'
 $workflowManifest = Get-Content -LiteralPath $workflowManifestPath -Raw | ConvertFrom-Json -Depth 6
-$workflowFiles = @($workflowManifest.managedWorkflowFiles | Where-Object { $_ -is [string] })
-$blankWorkflowFiles = @($workflowFiles | Where-Object { [string]::IsNullOrWhiteSpace($_) })
-if ($workflowFiles.Count -eq 0 -or $blankWorkflowFiles.Count -gt 0) {
-  throw "Workflow manifest must define a non-empty managedWorkflowFiles array of non-empty strings: $workflowManifestPath"
+
+function Test-ManagedWorkflowManifestEntry {
+  param(
+    [object]$Entry
+  )
+
+  if (-not ($Entry -is [string])) {
+    return $false
+  }
+
+  $normalized = $Entry.Replace('\', '/').Trim()
+  if ([string]::IsNullOrWhiteSpace($normalized)) {
+    return $false
+  }
+
+  if ($normalized.StartsWith('/') -or $normalized.StartsWith('../') -or $normalized.Contains('/../') -or $normalized.EndsWith('/..')) {
+    return $false
+  }
+
+  return $normalized -like '.github/workflows/*'
+}
+
+$workflowEntries = @($workflowManifest.managedWorkflowFiles)
+$workflowFiles = @($workflowEntries | Where-Object { Test-ManagedWorkflowManifestEntry $_ })
+$invalidWorkflowFiles = @($workflowEntries | Where-Object { -not (Test-ManagedWorkflowManifestEntry $_) })
+if ($workflowFiles.Count -eq 0 -or $invalidWorkflowFiles.Count -gt 0) {
+  throw "Workflow manifest must define a non-empty managedWorkflowFiles array of repo-relative .github/workflows paths: $workflowManifestPath"
 }
 
 function Test-Python3Command {

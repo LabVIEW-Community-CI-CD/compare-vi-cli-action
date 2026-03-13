@@ -2,17 +2,19 @@
 """
 Workflow updater (ruamel.yaml round-trip)
 
-Initial transforms (safe, minimal):
-- pester-selfhosted.yml
-  * Ensure workflow_dispatch.inputs.force_run exists
-  * In jobs.pre-init:
-      - Gate pre-init-gate step with `if: ${{ inputs.force_run != 'true' }}`
-      - Add `Compute docs_only (force_run aware)` step (id: out)
-      - Set outputs.docs_only to `${{ steps.out.outputs.docs_only }}`
+This module is the comment-preserving rewrite engine for the repository's
+managed workflow set under `.github/workflows/**`. It is intentionally broader
+than the original pester-selfhosted transform:
+
+- normalize workflow_dispatch / docs-only gates
+- keep orchestrated workflow routing and probe surfaces deterministic
+- normalize hosted lint / setup-node / checkout maintenance seams
+- maintain fixture-drift, validate, smoke, and session-index wiring
+- preserve formatting, quotes, and comments through ruamel round-trips
 
 Usage:
-  python tools/workflows/update_workflows.py --check .github/workflows/pester-selfhosted.yml
-  python tools/workflows/update_workflows.py --write .github/workflows/pester-selfhosted.yml
+  python tools/workflows/update_workflows.py --check .github/workflows/validate.yml
+  python tools/workflows/update_workflows.py --write .github/workflows/ci-orchestrated.yml
 """
 from __future__ import annotations
 import sys
@@ -1417,11 +1419,13 @@ def main(argv: List[str]) -> int:
         print('No files provided')
         return 2
     changed_any = False
+    failed_files: list[tuple[Path, str]] = []
     for f in files:
         try:
             was_changed, new_text = apply_transforms(f)
         except Exception as e:
-            print(f'::warning::Skipping {f}: {e}')
+            failed_files.append((f, str(e)))
+            print(f'::error::Failed to process {f}: {e}')
             continue
         if was_changed:
             changed_any = True
@@ -1430,6 +1434,8 @@ def main(argv: List[str]) -> int:
                 print(f'updated: {f}')
             else:
                 print(f'NEEDS UPDATE: {f}')
+    if failed_files:
+        return 4
     if mode == '--check' and changed_any:
         return 3
     return 0

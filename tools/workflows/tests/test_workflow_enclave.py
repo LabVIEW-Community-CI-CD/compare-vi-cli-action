@@ -23,6 +23,7 @@ from _update_workflows_impl import (
     ensure_lint_resiliency,
     ensure_preinit_force_run_outputs,
     load_yaml,
+    main as updater_main,
 )
 
 
@@ -283,6 +284,16 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
 
             self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
             self.assertEqual(Path(completed.stdout.strip()), override_dir)
+
+    def test_updater_check_fails_closed_when_a_requested_file_cannot_be_transformed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflow_path = Path(temp_dir) / 'validate.yml'
+            workflow_path.write_text('name: Validate\n', encoding='utf-8')
+
+            with patch('_update_workflows_impl.apply_transforms', side_effect=RuntimeError('boom')):
+                exit_code = updater_main(['--check', str(workflow_path)])
+
+        self.assertEqual(exit_code, 4)
 
 
 if __name__ == '__main__':
