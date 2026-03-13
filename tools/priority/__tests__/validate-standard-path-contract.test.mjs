@@ -34,6 +34,8 @@ test('Validate uses explicit PR-head checkout expressions and routes workflow dr
   assert.doesNotMatch(workflow, /checkout-workflow-context/);
   assert.match(workflow, /Setup Python for workflow enclave/);
   assert.match(workflow, /pwsh -NoLogo -NoProfile -File tools\/Check-WorkflowDrift\.ps1 -FailOnDrift/);
+  assert.match(workflow, /- name: PrePush local gates \(includes watcher schema validation\)[\s\S]*VALIDATE_BASE_SHA:/);
+  assert.match(workflow, /- name: PrePush local gates \(includes watcher schema validation\)[\s\S]*VALIDATE_BASE_REF:/);
   assert.equal(markdownInvocations.length, 1);
   assert.doesNotMatch(workflow, /update_workflows\.py/);
   assert.doesNotMatch(workflow, /pip install[^\n]*ruamel/i);

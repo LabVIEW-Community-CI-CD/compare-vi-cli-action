@@ -176,6 +176,8 @@ jobs:
       shell: pwsh
       env:
         PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS: '1'
+        VALIDATE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || '' }}
+        VALIDATE_BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref || '' }}
       run: |
         pwsh -File tools/PrePush-Checks.ps1
 
