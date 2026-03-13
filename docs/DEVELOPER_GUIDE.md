@@ -319,7 +319,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
     `RELEASE_PARITY_BASE_REF`, `RELEASE_PARITY_HEAD_REF`,
     `RELEASE_PARITY_TIP_DIFF_TARGET`.
 - `tools/priority/verify-release-branch.mjs` enforces release-doc consistency before tag cut by requiring
-  `PR_NOTES.md`, `TAG_PREP_CHECKLIST.md`, and `RELEASE_NOTES_<tag>.md` to reference the current release tag.
+  `docs/release/PR_NOTES.md`, `docs/release/TAG_PREP_CHECKLIST.md`, and
+  `docs/archive/releases/RELEASE_NOTES_<tag>.md` to reference the current release tag.
   It also requires both `package.json` and `CHANGELOG.md` to change relative to the configured release base ref.
 - `tools/priority/validate-semver.mjs` now performs branch-aware integrity checks: on `release/<tag>` heads it enforces
   `package.json` SemVer parity with the branch tag.

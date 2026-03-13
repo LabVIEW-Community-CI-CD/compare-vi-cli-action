@@ -16,19 +16,21 @@ function runGit(cwd, args) {
 }
 
 async function writeReleaseDocs(repoDir, tag, { includeReleaseNotes = true, notesTag = tag } = {}) {
+  await mkdir(path.join(repoDir, 'docs', 'release'), { recursive: true });
+  await mkdir(path.join(repoDir, 'docs', 'archive', 'releases'), { recursive: true });
   await writeFile(
-    path.join(repoDir, 'PR_NOTES.md'),
+    path.join(repoDir, 'docs', 'release', 'PR_NOTES.md'),
     `# Release ${notesTag} Notes\n\nPrepared for ${notesTag}.\n`,
     'utf8'
   );
   await writeFile(
-    path.join(repoDir, 'TAG_PREP_CHECKLIST.md'),
+    path.join(repoDir, 'docs', 'release', 'TAG_PREP_CHECKLIST.md'),
     `# ${notesTag} Tag Checklist\n\n- [ ] Verify ${notesTag} changelog and release notes.\n`,
     'utf8'
   );
   if (includeReleaseNotes) {
     await writeFile(
-      path.join(repoDir, `RELEASE_NOTES_${tag}.md`),
+      path.join(repoDir, 'docs', 'archive', 'releases', `RELEASE_NOTES_${tag}.md`),
       `# Release Notes ${notesTag}\n\nThis release ships ${notesTag}.\n`,
       'utf8'
     );

@@ -208,8 +208,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   (pre-tag gating of CHANGELOG version/date, outputs/doc sync, helper artifact presence, markdown lint cleanliness).
 - Short-circuit contract test: `CompareVI.ShortCircuitContract.Tests.ps1` validating `shortCircuitedIdentical` output
   and exit semantics.
-- Release helper documentation set: `PR_NOTES.md`, `TAG_PREP_CHECKLIST.md`, `POST_RELEASE_FOLLOWUPS.md`,
-  `ROLLBACK_PLAN.md` to standardize release and rollback procedures.
+- Release helper documentation set moved under `docs/release/`: `PR_NOTES.md`, `TAG_PREP_CHECKLIST.md`,
+  `POST_RELEASE_FOLLOWUPS.md`, `ROLLBACK_PLAN.md` to standardize release and rollback procedures.
 - Artifact naming migration assets retained with explicit `VI1.vi` / `VI2.vi` presence (legacy names still available
   this release for compatibility) preparing consumers for removal window.
 

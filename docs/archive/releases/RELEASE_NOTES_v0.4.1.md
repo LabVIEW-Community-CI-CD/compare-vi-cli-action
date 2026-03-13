@@ -17,7 +17,8 @@ rewriting already-published history while still delivering the planned reliabili
 - New JSON schema: `integration-runbook-v1.schema.json`
 - Pre-tag verification script (`Verify-ReleaseChecklist.ps1`) producing machine-readable summary
 - Short-circuit contract test (`CompareVI.ShortCircuitContract.Tests.ps1`) enforcing `shortCircuitedIdentical` semantics
-- Release process helper docs: `PR_NOTES.md`, `TAG_PREP_CHECKLIST.md`, `POST_RELEASE_FOLLOWUPS.md`, `ROLLBACK_PLAN.md`
+- Release process helper docs: `../../release/PR_NOTES.md`, `../../release/TAG_PREP_CHECKLIST.md`,
+  `../../release/POST_RELEASE_FOLLOWUPS.md`, `../../release/ROLLBACK_PLAN.md`
 - README usage examples updated to reference `@v0.4.1`
 
 ## ➕ Added

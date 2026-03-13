@@ -101,7 +101,7 @@ Release v0.5.2 focuses on four pillars:
 
 - Focus reviews on history suite manifest correctness, Dev Dashboard telemetry, branch-policy guard wiring, and release
   automation scripts.
-- Verify `CHANGELOG.md`, `RELEASE_NOTES_v0.5.2.md`, and README/docs align with shipped features.
+- Verify `CHANGELOG.md`, `../archive/releases/RELEASE_NOTES_v0.5.2.md`, and README/docs align with shipped features.
 - Double-check `docs/documentation-manifest.json` includes the new release docs.
 - Ensure auto-publish workflows (`vi-compare-refs`) and Docker parity job stay green alongside traditional gates.
 

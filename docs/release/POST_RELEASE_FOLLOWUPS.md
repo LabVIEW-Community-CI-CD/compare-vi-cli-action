@@ -70,7 +70,7 @@ The remaining items live in `issues-drafts/` and can be implemented without bloc
 - **Completed**: Issues 01, 04, 07, 08 implemented in v0.5.0.
 - **Deferred**: Issues 02, 03, 05, 06, 09, 10 queued for future releases.
 - **Last updated**: 2025-10-03.
-- **Implementation tracking**: See `IMPLEMENTATION_STATUS_v0.5.0.md` for detailed status.
+- **Implementation tracking**: See `../archive/project-history/IMPLEMENTATION_STATUS_v0.5.0.md` for detailed status.
 
 ### Recommended Implementation Order for Deferred Issues
 
