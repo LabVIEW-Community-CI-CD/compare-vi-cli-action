@@ -128,7 +128,7 @@ function normalizeHeadRefToBranchName(value) {
 function deriveQueueManagedBranches(manifest) {
   const branches = new Set();
   for (const expectations of Object.values(manifest?.rulesets ?? {})) {
-    if (!expectations || expectations.merge_queue === null || expectations.merge_queue === undefined) {
+    if (!isQueueManagedRulesetExpectation(expectations)) {
       continue;
     }
     for (const include of expectations.includes ?? []) {
@@ -139,6 +139,92 @@ function deriveQueueManagedBranches(manifest) {
     }
   }
   return branches;
+}
+
+function isQueueManagedRulesetExpectation(expectations) {
+  return Boolean(expectations) && expectations.merge_queue !== null && expectations.merge_queue !== undefined;
+}
+
+function deriveActiveQueueManagedBranches(manifest, portabilityProfile) {
+  if (portabilityProfile?.queueManagedRulesetsPortable === false) {
+    return new Set();
+  }
+  return deriveQueueManagedBranches(manifest);
+}
+
+function normalizePortabilityReason(reason, fallback = null) {
+  if (reason === null || reason === undefined) {
+    return fallback;
+  }
+  const normalized = String(reason).trim();
+  return normalized.length > 0 ? normalized : fallback;
+}
+
+function resolveManifestPortabilityOverride(manifest, repositorySlug) {
+  const normalizedRepositorySlug = String(repositorySlug ?? '').trim().toLowerCase();
+  const repoProfileEntry = Object.entries(manifest?.repoProfiles ?? {}).find(
+    ([slug]) => String(slug ?? '').trim().toLowerCase() === normalizedRepositorySlug
+  );
+  const repoProfile = repoProfileEntry?.[1];
+  if (!repoProfile || typeof repoProfile !== 'object') {
+    return null;
+  }
+
+  const mode = String(repoProfile.rulesetMode ?? '').trim();
+  if (mode === 'throughput-fork-relaxed') {
+    return {
+      queueManagedRulesetsPortable: false,
+      detectedBy: 'repo-profile',
+      reason: normalizePortabilityReason(repoProfile.reason, `repo-profile:${normalizedRepositorySlug}`)
+    };
+  }
+  if (mode === 'standard') {
+    return {
+      queueManagedRulesetsPortable: true,
+      detectedBy: 'repo-profile',
+      reason: normalizePortabilityReason(repoProfile.reason, null)
+    };
+  }
+  if (mode.length === 0) {
+    return null;
+  }
+  throw new Error(
+    `Invalid repo portability profile for ${repositorySlug}: unsupported rulesetMode '${mode}'.`
+  );
+}
+
+function buildRulesetPortabilityProfile(_repoData, overrides = {}) {
+  const queueManagedRulesetsPortable =
+    overrides.queueManagedRulesetsPortable ?? true;
+  const rulesetMode = queueManagedRulesetsPortable ? 'standard' : 'throughput-fork-relaxed';
+  const detectedBy =
+    overrides.detectedBy ??
+    'default';
+  const reason =
+    normalizePortabilityReason(
+      overrides.reason,
+      null
+    );
+
+  return {
+    rulesetMode,
+    queueManagedRulesetsPortable,
+    detectedBy,
+    reason
+  };
+}
+
+function shouldIgnoreRulesetEntry(entry, portabilityProfile) {
+  return portabilityProfile?.queueManagedRulesetsPortable === false &&
+    isQueueManagedRulesetExpectation(entry?.expectations);
+}
+
+function isMergeQueueRulesetUnsupportedError(error) {
+  if (!error) {
+    return false;
+  }
+  const message = typeof error.message === 'string' ? error.message : String(error);
+  return /422/.test(message) && /Invalid rule ['"]merge_queue['"]/.test(message);
 }
 
 function getRepoFromEnv(env = process.env, execSyncFn = execSync) {
@@ -486,8 +572,7 @@ function compareBranchSettings(branch, expected, actualProtection, options = {})
   }
 
   if (!skipRequiredStatusChecks && Array.isArray(expected.required_status_checks)) {
-    const actualChecks =
-      actualProtection.required_status_checks?.checks?.map((check) => check.context).filter(Boolean) ?? [];
+    const actualChecks = normalizeActualRequiredStatusChecks(actualProtection);
     const normalizedExpected = [...new Set(expected.required_status_checks)].sort();
     const normalizedActual = [...new Set(actualChecks)].sort();
 
@@ -764,13 +849,26 @@ function resolveEnabledFlag(value, fallback = false) {
   return Boolean(fallback);
 }
 
-function buildBranchProtectionPayload(expected, actual) {
-  const expectedChecks = Array.isArray(expected.required_status_checks)
-    ? expected.required_status_checks
+function normalizeActualRequiredStatusChecks(actual) {
+  const explicitChecks = actual?.required_status_checks?.checks?.map((check) => check?.context).filter(Boolean);
+  if (Array.isArray(explicitChecks) && explicitChecks.length > 0) {
+    return explicitChecks;
+  }
+  return Array.isArray(actual?.required_status_checks?.contexts)
+    ? actual.required_status_checks.contexts.filter(Boolean)
     : [];
-  const strictSetting = hasOwnProperty(expected, 'required_status_checks_strict')
-    ? Boolean(expected.required_status_checks_strict)
-    : actual?.required_status_checks?.strict ?? true;
+}
+
+function buildBranchProtectionPayload(expected, actual, options = {}) {
+  const skipRequiredStatusChecks = options.skipRequiredStatusChecks === true;
+  const expectedChecks = skipRequiredStatusChecks
+    ? normalizeActualRequiredStatusChecks(actual)
+    : (Array.isArray(expected.required_status_checks) ? expected.required_status_checks : []);
+  const strictSetting = skipRequiredStatusChecks
+    ? actual?.required_status_checks?.strict ?? true
+    : (hasOwnProperty(expected, 'required_status_checks_strict')
+        ? Boolean(expected.required_status_checks_strict)
+        : actual?.required_status_checks?.strict ?? true);
   const enforceAdmins = hasOwnProperty(expected, 'enforce_admins')
     ? Boolean(expected.enforce_admins)
     : resolveEnabledFlag(actual?.enforce_admins, false);
@@ -1000,9 +1098,11 @@ function buildRulesetPayload(expectations, actual = null) {
   };
 }
 
-async function applyBranchProtection(repoUrl, token, branch, expected, actual, fetchFn, logFn = console.log) {
+async function applyBranchProtection(repoUrl, token, branch, expected, actual, fetchFn, logFn = console.log, options = {}) {
   const protectionUrl = `${repoUrl}/branches/${encodeURIComponent(branch)}/protection`;
-  const payload = buildBranchProtectionPayload(expected, actual);
+  const payload = buildBranchProtectionPayload(expected, actual, {
+    skipRequiredStatusChecks: options.skipRequiredStatusChecks === true
+  });
   await requestJson(protectionUrl, token, { method: 'PUT', body: payload, fetchFn });
   logFn(`[policy] branch ${branch}: applied protection settings.`);
 }
@@ -1114,14 +1214,45 @@ async function collectState(manifest, repoUrl, token, fetchFn, logFn = console.l
   return { repoData, branchStates, rulesetStates };
 }
 
-function shouldRelaxRulesetEnforcement(repoData) {
-  return repoData?.fork === true && String(repoData?.owner?.type ?? '').toLowerCase() === 'user';
+async function refreshBranchStates(branchStates, repoUrl, token, fetchFn) {
+  const refreshed = [];
+  for (const entry of branchStates) {
+    const state = {
+      branch: entry.branch,
+      expectations: entry.expectations,
+      protection: null,
+      error: null,
+      skipReason: entry.skipReason ?? null
+    };
+    if (state.skipReason === 'pattern') {
+      refreshed.push(state);
+      continue;
+    }
+    try {
+      const protectionUrl = `${repoUrl}/branches/${encodeURIComponent(entry.branch)}/protection`;
+      state.protection = await fetchJson(protectionUrl, token, fetchFn);
+    } catch (branchError) {
+      state.error = branchError;
+    }
+    refreshed.push(state);
+  }
+  return refreshed;
+}
+
+function mergeBranchStatesByName(branchStates, refreshedBranchStates) {
+  const replacements = new Map(refreshedBranchStates.map((entry) => [entry.branch, entry]));
+  return branchStates.map((entry) => replacements.get(entry.branch) ?? entry);
 }
 
 function evaluateDiffs(manifest, state, options = {}) {
   const repoDiffs = compareRepoSettings(manifest.repo ?? {}, state.repoData ?? {});
-  const queueManagedBranches = deriveQueueManagedBranches(manifest);
+  const queueManagedBranches =
+    options.queueManagedBranches instanceof Set
+      ? options.queueManagedBranches
+      : deriveQueueManagedBranches(manifest);
   const ignoreRulesetDiffs = options.ignoreRulesetDiffs === true;
+  const ignoreRulesetEntryFn =
+    typeof options.ignoreRulesetEntryFn === 'function' ? options.ignoreRulesetEntryFn : () => false;
 
   const branchDiffs = [];
   for (const entry of state.branchStates) {
@@ -1142,6 +1273,9 @@ function evaluateDiffs(manifest, state, options = {}) {
   const rulesetDiffs = [];
   if (!ignoreRulesetDiffs) {
     for (const entry of state.rulesetStates) {
+      if (ignoreRulesetEntryFn(entry)) {
+        continue;
+      }
       if (entry.error) {
         rulesetDiffs.push(
           `ruleset ${entry.id}: failed to load -> ${entry.error.message}`
@@ -1160,13 +1294,34 @@ function evaluateDiffs(manifest, state, options = {}) {
   return { repoDiffs, branchDiffs, rulesetDiffs };
 }
 
+function collectBranchStatesNeedingUpdates(branchStates, queueManagedBranches) {
+  return branchStates.filter((entry) => {
+    if (entry.skipReason === 'pattern') {
+      return false;
+    }
+    if (entry.error) {
+      return isNotFoundError(entry.error);
+    }
+    const diffs = compareBranchSettings(
+      entry.branch,
+      entry.expectations,
+      entry.protection,
+      {
+        skipRequiredStatusChecks: queueManagedBranches.has(entry.branch)
+      }
+    );
+    return diffs.length > 0;
+  });
+}
+
 export async function run({
   argv = process.argv,
   env = process.env,
   fetchFn = globalThis.fetch,
   execSyncFn = execSync,
   log = console.log,
-  error = console.error
+  error = console.error,
+  manifestOverride = null
 } = {}) {
   const options = parseArgs(argv);
   if (options.help) {
@@ -1182,6 +1337,12 @@ export async function run({
     repository: null,
     authSource: null,
     forkRun: false,
+    portability: {
+      rulesetMode: 'standard',
+      queueManagedRulesetsPortable: true,
+      detectedBy: 'default',
+      reason: null
+    },
     result: 'unknown',
     skippedReason: null,
     summary: {
@@ -1243,7 +1404,7 @@ export async function run({
   try {
     const dbg = options.debug ? (...args) => log('[policy][debug]', ...args) : () => {};
 
-    const manifest = await loadManifest();
+    const manifest = manifestOverride ?? await loadManifest();
     const forkRun = await detectForkRun(env);
     report.forkRun = forkRun;
     const tokenCandidates = await resolveTokenCandidates(env);
@@ -1343,15 +1504,31 @@ export async function run({
       }
     }
 
-    const relaxRulesetsForRepo = shouldRelaxRulesetEnforcement(initialState.repoData);
-    if (relaxRulesetsForRepo) {
-      log('[policy] User-owned throughput fork detected; skipping fork-local ruleset enforcement because queue-managed rulesets are not portable to user-owned forks.');
+    const repositorySlug = `${owner}/${repo}`;
+    const manifestPortabilityOverride = resolveManifestPortabilityOverride(manifest, repositorySlug);
+    if (
+      manifestPortabilityOverride?.queueManagedRulesetsPortable === false &&
+      initialState.repoData?.fork !== true
+    ) {
+      throw new Error(
+        `Invalid repo portability profile for ${repositorySlug}: throughput-fork-relaxed requires a fork repository.`
+      );
+    }
+    let portabilityProfile = buildRulesetPortabilityProfile(initialState.repoData, manifestPortabilityOverride ?? {});
+    report.portability = portabilityProfile;
+    if (portabilityProfile.queueManagedRulesetsPortable === false && manifestPortabilityOverride) {
+      log(
+        `[policy] Portability profile override detected for ${report.repository}; queue-managed fork-local ruleset enforcement is relaxed for this repository.`
+      );
+    } else if (portabilityProfile.queueManagedRulesetsPortable === false) {
+      log('[policy] Queue-managed fork-local ruleset enforcement is relaxed for this repository.');
     }
 
+    let queueManagedBranches = deriveActiveQueueManagedBranches(manifest, portabilityProfile);
     const initialDiffs = evaluateDiffs(manifest, initialState, {
-      ignoreRulesetDiffs: relaxRulesetsForRepo
+      queueManagedBranches,
+      ignoreRulesetEntryFn: (entry) => shouldIgnoreRulesetEntry(entry, portabilityProfile)
     });
-    const queueManagedBranches = deriveQueueManagedBranches(manifest);
     applyDiffsToReport(initialDiffs);
 
     const allDiffs = [
@@ -1371,78 +1548,107 @@ export async function run({
     }
 
     if (options.apply) {
-      const branchStatesNeedingUpdates = initialState.branchStates.filter((entry) => {
-        if (entry.skipReason === 'pattern') {
-          return false;
-        }
-        if (entry.error) {
-          return isNotFoundError(entry.error);
-        }
-        const diffs = compareBranchSettings(
-          entry.branch,
-          entry.expectations,
-          entry.protection,
-          {
-            skipRequiredStatusChecks: queueManagedBranches.has(entry.branch)
-          }
-        );
-        return diffs.length > 0;
-      });
-
-      for (const entry of branchStatesNeedingUpdates) {
-        await invokeWithAuthFallback(`applyBranchProtection(${entry.branch})`, (token) =>
-          applyBranchProtection(
-            repoUrl,
-            token,
-            entry.branch,
-            entry.expectations,
-            entry.protection,
-            fetchFn,
-            log
-          )
-        );
-        report.applied.branches.push(entry.branch);
-      }
-
-      const rulesetStatesNeedingUpdates = relaxRulesetsForRepo
-        ? []
-        : initialState.rulesetStates.filter((entry) => {
-            if (entry.error) {
-              return isNotFoundError(entry.error);
-            }
-            const diffs = compareRuleset(entry.resolvedId ?? entry.id, entry.expectations, entry.ruleset);
-            return diffs.length > 0;
-          });
-
-      for (const entry of rulesetStatesNeedingUpdates) {
-        if (entry.error && isNotFoundError(entry.error)) {
-          const created = await invokeWithAuthFallback(`createRuleset(${entry.id})`, (token) =>
-            createRuleset(repoUrl, token, entry.expectations, fetchFn, log)
+      const applyBranchUpdates = async (branchStates) => {
+        for (const entry of branchStates) {
+          const skipRequiredStatusChecks = queueManagedBranches.has(entry.branch);
+          await invokeWithAuthFallback(`applyBranchProtection(${entry.branch})`, (token) =>
+            applyBranchProtection(
+              repoUrl,
+              token,
+              entry.branch,
+              entry.expectations,
+              entry.protection,
+              fetchFn,
+              log,
+              { skipRequiredStatusChecks }
+            )
           );
-          report.applied.rulesets.push(created?.id ?? entry.id);
+          if (!report.applied.branches.includes(entry.branch)) {
+            report.applied.branches.push(entry.branch);
+          }
+        }
+      };
+      let branchStatesForApply = initialState.branchStates;
+
+      for (const entry of initialState.rulesetStates) {
+        if (shouldIgnoreRulesetEntry(entry, portabilityProfile)) {
           continue;
         }
 
-        const appliedRulesetId = entry.resolvedId ?? entry.id;
-        await invokeWithAuthFallback(`applyRuleset(${appliedRulesetId})`, (token) =>
-          applyRuleset(
-            repoUrl,
-            token,
-            appliedRulesetId,
-            entry.expectations,
-            entry.ruleset,
-            fetchFn,
-            log
-          )
-        );
-        report.applied.rulesets.push(appliedRulesetId);
+        const needsUpdate = entry.error
+          ? isNotFoundError(entry.error)
+          : compareRuleset(entry.resolvedId ?? entry.id, entry.expectations, entry.ruleset).length > 0;
+        if (!needsUpdate) {
+          continue;
+        }
+
+        try {
+          if (entry.error && isNotFoundError(entry.error)) {
+            const created = await invokeWithAuthFallback(`createRuleset(${entry.id})`, (token) =>
+              createRuleset(repoUrl, token, entry.expectations, fetchFn, log)
+            );
+            report.applied.rulesets.push(created?.id ?? entry.id);
+            continue;
+          }
+
+          const appliedRulesetId = entry.resolvedId ?? entry.id;
+          await invokeWithAuthFallback(`applyRuleset(${appliedRulesetId})`, (token) =>
+            applyRuleset(
+              repoUrl,
+              token,
+              appliedRulesetId,
+              entry.expectations,
+              entry.ruleset,
+              fetchFn,
+              log
+            )
+          );
+          report.applied.rulesets.push(appliedRulesetId);
+        } catch (rulesetError) {
+          if (
+            initialState.repoData?.fork === true &&
+            isQueueManagedRulesetExpectation(entry.expectations) &&
+            isMergeQueueRulesetUnsupportedError(rulesetError)
+          ) {
+            const previouslyQueueManagedBranches = new Set(queueManagedBranches);
+            portabilityProfile = buildRulesetPortabilityProfile(initialState.repoData, {
+              queueManagedRulesetsPortable: false,
+              detectedBy: 'api-rejection',
+              reason: `ruleset ${entry.id}: merge_queue unsupported`
+            });
+            report.portability = portabilityProfile;
+            queueManagedBranches = deriveActiveQueueManagedBranches(manifest, portabilityProfile);
+            log(
+              `[policy] Fork ruleset portability downgrade detected for ${report.repository}: merge_queue rules are unsupported on this fork. Continuing with non-queue ruleset enforcement only.`
+            );
+            const refreshedBranchStates = await invokeWithAuthFallback(
+              'refreshBranchStates(portability-downgrade)',
+              (token) =>
+                refreshBranchStates(
+                  branchStatesForApply.filter((branchState) => previouslyQueueManagedBranches.has(branchState.branch)),
+                  repoUrl,
+                  token,
+                  fetchFn
+                )
+            );
+            branchStatesForApply = mergeBranchStatesByName(
+              branchStatesForApply,
+              refreshedBranchStates
+            );
+            continue;
+          }
+          throw rulesetError;
+        }
       }
+
+      await applyBranchUpdates(collectBranchStatesNeedingUpdates(branchStatesForApply, queueManagedBranches));
 
       const postState = await invokeWithAuthFallback('collectState(post-apply)', (token) =>
         collectState(manifest, repoUrl, token, fetchFn, log)
       );
       const postDiffs = evaluateDiffs(manifest, postState, {
-        ignoreRulesetDiffs: relaxRulesetsForRepo
+        queueManagedBranches,
+        ignoreRulesetEntryFn: (entry) => shouldIgnoreRulesetEntry(entry, portabilityProfile)
       });
       applyDiffsToReport(postDiffs);
       const remainingDiffs = [
@@ -1497,6 +1703,7 @@ export const __test = Object.freeze({
   normalizeOptionalRuleExpectation,
   normalizeRulesetListResponse,
   normalizeRulesetIncludes,
+  mergeBranchStatesByName,
   prefixRulesetDiffs,
   rulesetIncludesMatch,
   rulesetIdentityMatches,

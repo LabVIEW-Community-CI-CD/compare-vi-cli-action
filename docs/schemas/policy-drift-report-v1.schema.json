@@ -7,6 +7,7 @@
     "schemaVersion",
     "generatedAt",
     "apply",
+    "portability",
     "result",
     "summary",
     "diffs",
@@ -41,6 +42,42 @@
     },
     "forkRun": {
       "type": "boolean"
+    },
+    "portability": {
+      "type": "object",
+      "required": [
+        "rulesetMode",
+        "queueManagedRulesetsPortable",
+        "detectedBy",
+        "reason"
+      ],
+      "properties": {
+        "rulesetMode": {
+          "type": "string",
+          "enum": [
+            "standard",
+            "throughput-fork-relaxed"
+          ]
+        },
+        "queueManagedRulesetsPortable": {
+          "type": "boolean"
+        },
+        "detectedBy": {
+          "type": "string",
+          "enum": [
+            "default",
+            "repo-profile",
+            "api-rejection"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "result": {
       "type": "string",

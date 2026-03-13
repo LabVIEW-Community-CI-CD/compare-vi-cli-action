@@ -220,6 +220,18 @@ function toRulesetSummary(ruleset) {
 
 test('priority:policy --apply updates rulesets for develop/main/release', async () => {
   const expectedDevelopChecks = [...EXPECTED_DEVELOP_CHECKS];
+  const existingDevelopBranchChecks = [
+    'Validate / lint',
+    'Validate / fixtures',
+    'Validate / session-index',
+    'Validate / issue-snapshot'
+  ];
+  const existingMainBranchChecks = [
+    'pester',
+    'vi-binary-check',
+    'vi-compare',
+    'Policy Guard (Upstream) / policy-guard'
+  ];
   const expectedMainChecks = [
     'lint',
     'pester',
@@ -403,12 +415,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   let branchDevelopProtection = {
     required_status_checks: {
       strict: true,
-      contexts: [
-        'Validate / lint',
-        'Validate / fixtures',
-        'Validate / session-index',
-        'Validate / issue-snapshot'
-      ],
+      contexts: existingDevelopBranchChecks.slice(),
       checks: [
         { context: 'Validate / lint', app_id: 15368 },
         { context: 'Validate / fixtures', app_id: 15368 },
@@ -431,7 +438,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   let branchMainProtection = {
     required_status_checks: {
       strict: true,
-      contexts: ['pester', 'vi-binary-check', 'vi-compare', 'Policy Guard (Upstream) / policy-guard'],
+      contexts: existingMainBranchChecks.slice(),
       checks: [
         { context: 'pester', app_id: 15368 },
         { context: 'vi-binary-check', app_id: 15368 },
@@ -676,15 +683,15 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   const developApplied = branchDevelopProtection.required_status_checks.checks.map((check) => check.context).sort();
   assert.deepEqual(
     developApplied,
-    expectedDevelopChecks.slice().sort(),
-    'develop branch contexts should match expectations'
+    existingDevelopBranchChecks.slice().sort(),
+    'develop branch contexts should preserve existing branch protection on queue-managed branches'
   );
 
   const mainApplied = branchMainProtection.required_status_checks.checks.map((check) => check.context).sort();
   assert.deepEqual(
     mainApplied,
-    expectedMainChecks.slice().sort(),
-    'main branch contexts should match expectations'
+    existingMainBranchChecks.slice().sort(),
+    'main branch contexts should preserve existing branch protection on queue-managed branches'
   );
 
   assert.deepEqual(errorMessages, []);
@@ -1101,11 +1108,23 @@ test('priority:policy --apply creates missing fork-local rulesets when no identi
   );
 });
 
-test('priority:policy verify passes on user-owned throughput forks without queue-managed rulesets', async () => {
+test('priority:policy verify passes on user-owned throughput forks while still enforcing non-queue rulesets', async () => {
   const repoUrl = 'https://api.github.com/repos/test-user/test-repo';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const reportDir = await mkdtemp(path.join(os.tmpdir(), 'priority-policy-throughput-verify-'));
+  const reportPath = path.join(reportDir, 'policy-report.json');
+  const alignedRulesets = createAlignedRulesets();
+  const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
+  manifestOverride.repoProfiles = {
+    ...(manifestOverride.repoProfiles ?? {}),
+    'test-user/test-repo': {
+      rulesetMode: 'throughput-fork-relaxed',
+      reason: 'user-owned-fork'
+    }
+  };
 
   const fetchMock = async (url, options = {}) => {
     const method = options.method ?? 'GET';
@@ -1129,8 +1148,8 @@ test('priority:policy verify passes on user-owned throughput forks without queue
     if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
-    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
-      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(alignedRulesets.release);
     }
     if (method === 'GET' && url === listUrl) {
       return createResponse([]);
@@ -1141,7 +1160,7 @@ test('priority:policy verify passes on user-owned throughput forks without queue
   const logMessages = [];
   const errorMessages = [];
   const code = await run({
-    argv: ['node', 'check-policy.mjs'],
+    argv: ['node', 'check-policy.mjs', '--report', reportPath],
     env: {
       ...process.env,
       GITHUB_REPOSITORY: 'test-user/test-repo',
@@ -1151,28 +1170,262 @@ test('priority:policy verify passes on user-owned throughput forks without queue
     execSyncFn: () => {
       throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
     },
+    manifestOverride,
     log: (msg) => logMessages.push(msg),
     error: (msg) => errorMessages.push(msg)
   });
 
-  assert.equal(code, 0, 'verify mode should pass on user-owned throughput forks without rulesets');
+  assert.equal(code, 0, 'verify mode should pass on user-owned throughput forks when non-queue rulesets align');
   assert.ok(
-    logMessages.some((msg) => msg.includes('User-owned throughput fork detected')),
-    'expected throughput-fork relaxation log'
+    logMessages.some((msg) => msg.includes('Portability profile override detected')),
+    'expected repo-profile portability log'
   );
   assert.deepEqual(errorMessages, []);
+  const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  assert.deepEqual(report.portability, {
+    rulesetMode: 'throughput-fork-relaxed',
+    queueManagedRulesetsPortable: false,
+    detectedBy: 'repo-profile',
+    reason: 'user-owned-fork'
+  });
 });
 
-test('priority:policy --apply does not create queue-managed rulesets on user-owned throughput forks', async () => {
+test('priority:policy verify honors repo portability overrides for forks that cannot host merge_queue rulesets', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-fork';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const reportDir = await mkdtemp(path.join(os.tmpdir(), 'priority-policy-throughput-override-'));
+  const reportPath = path.join(reportDir, 'policy-report.json');
+  const alignedRulesets = createAlignedRulesets();
+  const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
+  manifestOverride.repoProfiles = {
+    ...(manifestOverride.repoProfiles ?? {}),
+    'Test-Org/Test-Fork': {
+      rulesetMode: 'throughput-fork-relaxed',
+      reason: 422
+    }
+  };
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'Organization', login: 'test-org' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(alignedRulesets.release);
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse([]);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--report', reportPath],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-fork',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    manifestOverride,
+    log: (msg) => logMessages.push(msg),
+    error: () => {}
+  });
+
+  assert.equal(code, 0, 'verify mode should pass when a repo portability profile relaxes queue-managed fork rulesets');
+  assert.ok(
+    logMessages.some((msg) => msg.includes('Portability profile override detected')),
+    'expected repo-profile portability log'
+  );
+  const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  assert.deepEqual(report.portability, {
+    rulesetMode: 'throughput-fork-relaxed',
+    queueManagedRulesetsPortable: false,
+    detectedBy: 'repo-profile',
+    reason: '422'
+  });
+});
+
+test('priority:policy fails closed when throughput portability override targets a non-fork repo', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const alignedRulesets = createAlignedRulesets();
+  const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
+  manifestOverride.repoProfiles = {
+    ...(manifestOverride.repoProfiles ?? {}),
+    'test-org/test-repo': {
+      rulesetMode: 'throughput-fork-relaxed',
+      reason: 'bad-non-fork-override'
+    }
+  };
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: false,
+        owner: { type: 'Organization', login: 'test-org' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse(alignedRulesets.develop);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse(alignedRulesets.main);
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(alignedRulesets.release);
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse(Object.values(alignedRulesets).map(toRulesetSummary));
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  await assert.rejects(
+    () =>
+      run({
+        argv: ['node', 'check-policy.mjs'],
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: 'test-org/test-repo',
+          GITHUB_TOKEN: 'fake-token'
+        },
+        fetchFn: fetchMock,
+        execSyncFn: () => {
+          throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+        },
+        manifestOverride,
+        log: () => {},
+        error: () => {}
+      }),
+    /Invalid repo portability profile for test-org\/test-repo: throughput-fork-relaxed requires a fork repository/
+  );
+});
+
+test('priority:policy fails closed on invalid repo portability profile modes', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-fork';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const alignedRulesets = createAlignedRulesets();
+  const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
+  manifestOverride.repoProfiles = {
+    ...(manifestOverride.repoProfiles ?? {}),
+    'test-org/test-fork': {
+      rulesetMode: 'invalid-mode',
+      reason: 'bad-config'
+    }
+  };
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'Organization', login: 'test-org' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      return createResponse(alignedRulesets.release);
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse([]);
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  await assert.rejects(
+    () =>
+      run({
+        argv: ['node', 'check-policy.mjs'],
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: 'test-org/test-fork',
+          GITHUB_TOKEN: 'fake-token'
+        },
+        fetchFn: fetchMock,
+        execSyncFn: () => {
+          throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+        },
+        manifestOverride,
+        log: () => {},
+        error: () => {}
+      }),
+    /Invalid repo portability profile for test-org\/test-fork: unsupported rulesetMode 'invalid-mode'/
+  );
+});
+
+test('priority:policy --apply skips queue-managed rulesets on user-owned throughput forks but still creates non-queue rulesets', async () => {
   const repoUrl = 'https://api.github.com/repos/test-user/test-repo';
   const listUrl = `${repoUrl}/rulesets`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
   const requests = [];
+  let createdReleaseRuleset = null;
+  const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
+  manifestOverride.repoProfiles = {
+    ...(manifestOverride.repoProfiles ?? {}),
+    'test-user/test-repo': {
+      rulesetMode: 'throughput-fork-relaxed',
+      reason: 'user-owned-fork'
+    }
+  };
 
   const fetchMock = async (url, options = {}) => {
     const method = options.method ?? 'GET';
-    requests.push({ method, url });
+    requests.push({ method, url, body: options.body });
     if (method === 'GET' && url === repoUrl) {
       return createResponse({
         ...createAlignedRepoState(),
@@ -1193,11 +1446,25 @@ test('priority:policy --apply does not create queue-managed rulesets on user-own
     if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
-    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      if (createdReleaseRuleset) {
+        return createResponse(createdReleaseRuleset);
+      }
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === listUrl) {
       return createResponse([]);
+    }
+    if (method === 'POST' && url === listUrl) {
+      const payload = JSON.parse(options.body);
+      createdReleaseRuleset = {
+        ...payload,
+        id: 8614172,
+        enforcement: payload.enforcement ?? 'active',
+        target: payload.target ?? 'branch',
+        bypass_actors: payload.bypass_actors ?? []
+      };
+      return createResponse(createdReleaseRuleset, 201, 'Created');
     }
     throw new Error(`Unexpected request ${method} ${url}`);
   };
@@ -1213,15 +1480,248 @@ test('priority:policy --apply does not create queue-managed rulesets on user-own
     execSyncFn: () => {
       throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
     },
+    manifestOverride,
     log: () => {},
     error: () => {}
   });
 
-  assert.equal(code, 0, 'apply mode should succeed on user-owned throughput forks without rulesets');
+  assert.equal(code, 0, 'apply mode should succeed on user-owned throughput forks');
+  const createRequests = requests.filter((entry) => entry.method === 'POST' && entry.url === listUrl);
+  assert.equal(createRequests.length, 1, 'apply mode should only create the non-queue release ruleset');
+  const createdPayload = JSON.parse(createRequests[0].body);
   assert.equal(
-    requests.some((entry) => entry.method === 'POST' && entry.url === listUrl),
+    createdPayload.rules.some((rule) => rule?.type === 'merge_queue'),
     false,
-    'apply mode should not create rulesets for user-owned throughput forks'
+    'apply mode should not create queue-managed rulesets for throughput forks'
+  );
+});
+
+test('priority:policy --apply downgrades queue-managed rulesets when a fork rejects merge_queue rules', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-fork';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const reportDir = await mkdtemp(path.join(os.tmpdir(), 'priority-policy-throughput-apply-'));
+  const reportPath = path.join(reportDir, 'policy-report.json');
+  const requests = [];
+  let createdReleaseRuleset = null;
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    requests.push({ method, url, body: options.body });
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'Organization', login: 'test-org' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      if (createdReleaseRuleset) {
+        return createResponse(createdReleaseRuleset);
+      }
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse([]);
+    }
+    if (method === 'POST' && url === listUrl) {
+      const payload = JSON.parse(options.body);
+      if (payload.rules.some((rule) => rule?.type === 'merge_queue')) {
+        return createResponse(
+          {
+            message: 'Validation Failed',
+            errors: [{ message: "Invalid rule 'merge_queue'" }]
+          },
+          422,
+          'Unprocessable Entity'
+        );
+      }
+      createdReleaseRuleset = {
+        ...payload,
+        id: 8614172,
+        enforcement: payload.enforcement ?? 'active',
+        target: payload.target ?? 'branch',
+        bypass_actors: payload.bypass_actors ?? []
+      };
+      return createResponse(createdReleaseRuleset, 201, 'Created');
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const errorMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--apply', '--report', reportPath],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-fork',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, `apply mode should downgrade and succeed on merge_queue-portability forks: ${errorMessages.join(' | ')}`);
+  assert.ok(
+    logMessages.some((msg) => msg.includes('Fork ruleset portability downgrade detected')),
+    'expected portability downgrade log'
+  );
+  const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  assert.equal(report.portability.rulesetMode, 'throughput-fork-relaxed');
+  assert.equal(report.portability.queueManagedRulesetsPortable, false);
+  assert.equal(report.portability.detectedBy, 'api-rejection');
+  assert.match(report.portability.reason ?? '', /^ruleset (8811898|8614140): merge_queue unsupported$/);
+  assert.ok(
+    requests.some((entry) => entry.method === 'POST' && entry.url === listUrl && JSON.parse(entry.body).rules.some((rule) => rule?.type === 'merge_queue')),
+    'expected an initial queue-managed ruleset create attempt'
+  );
+  assert.ok(
+    requests.some((entry) => entry.method === 'POST' && entry.url === listUrl && JSON.parse(entry.body).rules.every((rule) => rule?.type !== 'merge_queue')),
+    'expected a non-queue ruleset create attempt after downgrade'
+  );
+});
+
+test('priority:policy --apply enforces required checks after merge_queue portability downgrade', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-fork';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
+  const requests = [];
+  let createdReleaseRuleset = null;
+  let developProtection = createAlignedBranchProtection([]);
+  let mainProtection = createAlignedBranchProtection([]);
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    requests.push({ method, url, body: options.body });
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'Organization', login: 'test-org' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(mainProtection);
+    }
+    if (method === 'PUT' && url === branchDevelopUrl) {
+      const payload = JSON.parse(options.body);
+      developProtection = {
+        ...payload,
+        required_status_checks: {
+          ...payload.required_status_checks,
+          checks: (payload.required_status_checks?.contexts ?? []).map((context) => ({ context }))
+        }
+      };
+      return createResponse(developProtection);
+    }
+    if (method === 'PUT' && url === branchMainUrl) {
+      const payload = JSON.parse(options.body);
+      mainProtection = {
+        ...payload,
+        required_status_checks: {
+          ...payload.required_status_checks,
+          checks: (payload.required_status_checks?.contexts ?? []).map((context) => ({ context }))
+        }
+      };
+      return createResponse(mainProtection);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === rulesetReleaseUrl) {
+      if (createdReleaseRuleset) {
+        return createResponse(createdReleaseRuleset);
+      }
+      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse([]);
+    }
+    if (method === 'POST' && url === listUrl) {
+      const payload = JSON.parse(options.body);
+      if (payload.rules.some((rule) => rule?.type === 'merge_queue')) {
+        return createResponse(
+          {
+            message: 'Validation Failed',
+            errors: [{ message: "Invalid rule 'merge_queue'" }]
+          },
+          422,
+          'Unprocessable Entity'
+        );
+      }
+      createdReleaseRuleset = {
+        ...payload,
+        id: 8614172,
+        enforcement: payload.enforcement ?? 'active',
+        target: payload.target ?? 'branch',
+        bypass_actors: payload.bypass_actors ?? []
+      };
+      return createResponse(createdReleaseRuleset, 201, 'Created');
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--apply'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-fork',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: () => {},
+    error: () => {}
+  });
+
+  assert.equal(code, 0, 'apply mode should recover branch protection enforcement after portability downgrade');
+  assert.deepEqual(
+    developProtection.required_status_checks.contexts.slice().sort(),
+    EXPECTED_DEVELOP_CHECKS.slice().sort(),
+    'develop required checks should be enforced after downgrade'
+  );
+  assert.deepEqual(
+    mainProtection.required_status_checks.contexts.slice().sort(),
+    EXPECTED_MAIN_CHECKS.slice().sort(),
+    'main required checks should be enforced after downgrade'
+  );
+  assert.ok(
+    requests.some((entry) => entry.method === 'PUT' && entry.url === branchDevelopUrl),
+    'expected develop branch protection update after downgrade'
+  );
+  assert.ok(
+    requests.some((entry) => entry.method === 'PUT' && entry.url === branchMainUrl),
+    'expected main branch protection update after downgrade'
   );
 });
 
@@ -2068,6 +2568,164 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
   );
 });
 
+test('priority:policy --apply preserves branch required checks when queue-managed branches drift on other settings', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesets = createAlignedRulesets();
+  let developProtection = {
+    ...createAlignedBranchProtection([]),
+    allow_force_pushes: { enabled: true }
+  };
+  let mainProtection = createAlignedBranchProtection(EXPECTED_MAIN_CHECKS);
+  let developPutPayload = null;
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(mainProtection);
+    }
+    if (method === 'PUT' && url === branchDevelopUrl) {
+      developPutPayload = JSON.parse(options.body);
+      developProtection = {
+        ...developPutPayload,
+        required_status_checks: {
+          ...developPutPayload.required_status_checks,
+          checks: (developPutPayload.required_status_checks?.contexts ?? []).map((context) => ({ context }))
+        },
+        allow_force_pushes: { enabled: Boolean(developPutPayload.allow_force_pushes) }
+      };
+      return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse(rulesets.develop);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse(rulesets.main);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
+      return createResponse(rulesets.release);
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse(Object.values(rulesets).map(toRulesetSummary));
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--apply'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: () => {},
+    error: () => {}
+  });
+
+  assert.equal(code, 0, 'apply mode should succeed when only a non-check branch setting drifts');
+  assert.ok(developPutPayload, 'expected develop branch protection update');
+  assert.deepEqual(
+    developPutPayload.required_status_checks.contexts,
+    [],
+    'queue-managed branch apply should preserve actual branch required checks'
+  );
+  assert.equal(
+    developPutPayload.allow_force_pushes,
+    false,
+    'queue-managed branch apply should still fix non-check drift'
+  );
+});
+
+test('priority:policy --apply defers queue-managed branch updates until rulesets succeed', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const developRulesetUrl = `${repoUrl}/rulesets/8811898`;
+  const rulesets = createAlignedRulesets();
+  const developStatusRule = rulesets.develop.rules.find((rule) => rule.type === 'required_status_checks');
+  developStatusRule.parameters.required_status_checks = developStatusRule.parameters.required_status_checks.filter(
+    (check) => check.context !== 'commit-integrity'
+  );
+  let developProtection = {
+    ...createAlignedBranchProtection([]),
+    allow_force_pushes: { enabled: true }
+  };
+  const requests = [];
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    requests.push({ method, url, body: options.body });
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === developRulesetUrl) {
+      return createResponse(rulesets.develop);
+    }
+    if (method === 'PUT' && url === developRulesetUrl) {
+      return createResponse({ message: 'boom' }, 500, 'Internal Server Error');
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse(rulesets.main);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
+      return createResponse(rulesets.release);
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse(Object.values(rulesets).map(toRulesetSummary));
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  await assert.rejects(
+    () =>
+      run({
+        argv: ['node', 'check-policy.mjs', '--apply'],
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: 'test-org/test-repo',
+          GITHUB_TOKEN: 'fake-token'
+        },
+        fetchFn: fetchMock,
+        execSyncFn: () => {
+          throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+        },
+        log: () => {},
+        error: () => {}
+      }),
+    /GitHub API request failed: 500 Internal Server Error/
+  );
+
+  assert.ok(
+    !requests.some((entry) => entry.method === 'PUT' && entry.url === branchDevelopUrl),
+    'queue-managed branch protection should not be updated before queue-managed rulesets succeed'
+  );
+});
+
 test('priority:policy --fail-on-skip fails non-apply validation when GH_TOKEN 401 has no fallback', async () => {
   const fetchMock = async () => createResponse({ message: 'Bad credentials', status: '401' }, 401, 'Unauthorized');
   const logMessages = [];
@@ -2217,6 +2875,43 @@ test('priority:policy branch-protection seams pass when disabled settings are ex
     required_status_checks: {
       strict: true,
       checks: expected.required_status_checks.map((context) => ({ context }))
+    },
+    required_linear_history: { enabled: true },
+    enforce_admins: { enabled: false },
+    required_pull_request_reviews: null,
+    restrictions: null,
+    allow_force_pushes: { enabled: false },
+    allow_deletions: { enabled: false },
+    block_creations: { enabled: false },
+    required_conversation_resolution: { enabled: false },
+    lock_branch: { enabled: false },
+    allow_fork_syncing: { enabled: false }
+  };
+
+  const diffs = __test.compareBranchSettings('develop', expected, actualProtection);
+  assert.deepEqual(diffs, []);
+});
+
+test('priority:policy branch-protection seams accept required-check contexts when checks array is absent', () => {
+  const expected = {
+    required_status_checks_strict: true,
+    required_status_checks: ['lint', 'session-index'],
+    required_linear_history: true,
+    enforce_admins: false,
+    required_pull_request_reviews: null,
+    restrictions: null,
+    allow_force_pushes: false,
+    allow_deletions: false,
+    block_creations: false,
+    required_conversation_resolution: false,
+    lock_branch: false,
+    allow_fork_syncing: false
+  };
+
+  const actualProtection = {
+    required_status_checks: {
+      strict: true,
+      contexts: expected.required_status_checks.slice()
     },
     required_linear_history: { enabled: true },
     enforce_admins: { enabled: false },
