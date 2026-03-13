@@ -16,7 +16,8 @@ entrypoint and machine-generated live state.
 - It refreshes `tests/results/_agent/handoff/entrypoint-status.json`, which is
   the canonical machine-readable index for future agents.
 - It also refreshes the standing-priority summary, router copy, watcher
-  telemetry, and session capsule surfaces under `tests/results/_agent/`.
+  telemetry, Docker/Desktop verification summary mirror, and session capsule
+  surfaces under `tests/results/_agent/`.
 
 ## Consumer Paths
 
@@ -34,7 +35,9 @@ entrypoint and machine-generated live state.
 - `.agent_priority_cache.json`
 - `tests/results/_agent/issue/router.json`
 - `tests/results/_agent/issue/no-standing-priority.json`
+- `tests/results/_agent/verification/docker-review-loop-summary.json`
 - `tests/results/_agent/handoff/entrypoint-status.json`
+- `tests/results/_agent/handoff/docker-review-loop-summary.json`
 - `tests/results/_agent/handoff/*.json`
 - `tests/results/_agent/sessions/*.json`
 

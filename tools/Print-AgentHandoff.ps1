@@ -540,6 +540,7 @@ function Write-AgentSessionCapsule {
     @{ name = 'handoff.watcherTelemetry'; path = Join-Path $handoffDir 'watcher-telemetry.json' },
     @{ name = 'handoff.releaseSummary'; path = Join-Path $handoffDir 'release-summary.json' },
     @{ name = 'handoff.issueSummary'; path = Join-Path $handoffDir 'issue-summary.json' },
+    @{ name = 'handoff.dockerReviewLoopSummary'; path = Join-Path $handoffDir 'docker-review-loop-summary.json' },
     @{ name = 'handoff.router'; path = Join-Path $handoffDir 'issue-router.json' },
     @{ name = 'handoff.localStatus'; path = Join-Path $handoffDir 'local-status.txt' },
     @{ name = 'handoff.localDiff'; path = Join-Path $handoffDir 'local-diff.txt' },
@@ -1151,6 +1152,78 @@ try {
   }
 } catch {
   Write-Warning ("Failed to load SemVer summary: {0}" -f $_.Exception.Message)
+}
+
+try {
+  $dockerReviewLoopSummaryPath = Join-Path (Resolve-Path '.').Path 'tests/results/_agent/verification/docker-review-loop-summary.json'
+  if (Test-Path -LiteralPath $dockerReviewLoopSummaryPath -PathType Leaf) {
+    $dockerReviewLoopSummary = Get-Content -LiteralPath $dockerReviewLoopSummaryPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    Write-Host ''
+    Write-Host '[Docker Review Loop Summary]' -ForegroundColor Cyan
+    Write-Host ("  source   : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.authoritativeSource))
+    if ($dockerReviewLoopSummary.PSObject.Properties['overall'] -and $dockerReviewLoopSummary.overall) {
+      Write-Host ("  status   : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.overall.status))
+      if ($dockerReviewLoopSummary.overall.failedCheck) {
+        Write-Host ("  failed   : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.overall.failedCheck))
+      }
+      if ($dockerReviewLoopSummary.overall.message) {
+        Write-Host ("  message  : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.overall.message))
+      }
+      Write-Host ("  exitCode : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.overall.exitCode))
+    }
+    if ($dockerReviewLoopSummary.PSObject.Properties['git'] -and $dockerReviewLoopSummary.git) {
+      Write-Host ("  branch   : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.git.branch))
+      Write-Host ("  head     : {0}" -f (Format-NullableValue $dockerReviewLoopSummary.git.headSha))
+      Write-Host ("  mergeBase: {0}" -f (Format-NullableValue $dockerReviewLoopSummary.git.upstreamDevelopMergeBase))
+      Write-Host ("  dirty    : {0}" -f (Format-BoolLabel $dockerReviewLoopSummary.git.dirtyTracked))
+    }
+    if ($dockerReviewLoopSummary.PSObject.Properties['requirementsCoverage'] -and $dockerReviewLoopSummary.requirementsCoverage) {
+      $coverage = $dockerReviewLoopSummary.requirementsCoverage
+      Write-Host ("  reqs     : total={0} covered={1} uncovered={2}" -f (Format-NullableValue $coverage.requirementTotal), (Format-NullableValue $coverage.requirementCovered), (Format-NullableValue $coverage.requirementUncovered))
+      if ($coverage.uncoveredRequirementIds -and @($coverage.uncoveredRequirementIds).Count -gt 0) {
+        Write-Host ("  uncovered: {0}" -f ((@($coverage.uncoveredRequirementIds) -join ', ')))
+      }
+      if ($coverage.unknownRequirementIds -and @($coverage.unknownRequirementIds).Count -gt 0) {
+        Write-Host ("  unknown  : {0}" -f ((@($coverage.unknownRequirementIds) -join ', ')))
+      }
+    }
+    $handoffDir = Join-Path $ResultsRoot '_agent/handoff'
+    New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+    $dockerReviewLoopSummaryDest = Join-Path $handoffDir 'docker-review-loop-summary.json'
+    $dockerReviewLoopSummarySourceFull = $dockerReviewLoopSummaryPath
+    $dockerReviewLoopSummaryDestFull = $dockerReviewLoopSummaryDest
+    try { $dockerReviewLoopSummarySourceFull = [System.IO.Path]::GetFullPath($dockerReviewLoopSummaryPath) } catch {}
+    try { $dockerReviewLoopSummaryDestFull = [System.IO.Path]::GetFullPath($dockerReviewLoopSummaryDest) } catch {}
+    if (-not [string]::Equals($dockerReviewLoopSummarySourceFull, $dockerReviewLoopSummaryDestFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+      Copy-Item -LiteralPath $dockerReviewLoopSummaryPath -Destination $dockerReviewLoopSummaryDest -Force
+    } else {
+      Write-Verbose 'Docker review-loop summary already present at destination; skipping copy.'
+    }
+
+    if ($env:GITHUB_STEP_SUMMARY) {
+      $dockerReviewLines = @(
+        '### Docker Review Loop Summary',
+        '',
+        ('- Source: {0}' -f (Format-NullableValue $dockerReviewLoopSummary.authoritativeSource))
+      )
+      if ($dockerReviewLoopSummary.PSObject.Properties['overall'] -and $dockerReviewLoopSummary.overall) {
+        $dockerReviewLines += ('- Status: {0}  Failed check: {1}  Exit: {2}' -f (Format-NullableValue $dockerReviewLoopSummary.overall.status), (Format-NullableValue $dockerReviewLoopSummary.overall.failedCheck), (Format-NullableValue $dockerReviewLoopSummary.overall.exitCode))
+        if ($dockerReviewLoopSummary.overall.message) {
+          $dockerReviewLines += ('- Message: {0}' -f (Format-NullableValue $dockerReviewLoopSummary.overall.message))
+        }
+      }
+      if ($dockerReviewLoopSummary.PSObject.Properties['git'] -and $dockerReviewLoopSummary.git) {
+        $dockerReviewLines += ('- Git: branch={0} head={1} mergeBase={2} dirty={3}' -f (Format-NullableValue $dockerReviewLoopSummary.git.branch), (Format-NullableValue $dockerReviewLoopSummary.git.headSha), (Format-NullableValue $dockerReviewLoopSummary.git.upstreamDevelopMergeBase), (Format-BoolLabel $dockerReviewLoopSummary.git.dirtyTracked))
+      }
+      if ($dockerReviewLoopSummary.PSObject.Properties['requirementsCoverage'] -and $dockerReviewLoopSummary.requirementsCoverage) {
+        $coverage = $dockerReviewLoopSummary.requirementsCoverage
+        $dockerReviewLines += ('- Requirements: total={0} covered={1} uncovered={2}' -f (Format-NullableValue $coverage.requirementTotal), (Format-NullableValue $coverage.requirementCovered), (Format-NullableValue $coverage.requirementUncovered))
+      }
+      ($dockerReviewLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+    }
+  }
+} catch {
+  Write-Warning ("Failed to load Docker review-loop summary: {0}" -f $_.Exception.Message)
 }
 
 try {

@@ -26,6 +26,7 @@ test('AGENT_HANDOFF stays bounded and points agents to live state artifacts', ()
   assert.match(handoff, /\.agent_priority_cache\.json/);
   assert.match(handoff, /tests\/results\/_agent\/issue\/router\.json/);
   assert.match(handoff, /tests\/results\/_agent\/issue\/no-standing-priority\.json/);
+  assert.match(handoff, /tests\/results\/_agent\/verification\/docker-review-loop-summary\.json/);
   assert.match(handoff, /tests\/results\/_agent\/handoff\/entrypoint-status\.json/);
   assert.match(handoff, /tests\/results\/_agent\/handoff\/\*\.json/);
   assert.match(handoff, /tests\/results\/_agent\/sessions\/\*\.json/);
@@ -52,16 +53,20 @@ test('handoff entrypoint contract is wired into automation and operator docs', (
   assert.match(runHandoffTests, /handoff:entrypoint:check/);
   assert.match(printHandoff, /Test-AgentHandoffEntryPoint\.ps1/);
   assert.match(printHandoff, /-ResultsRoot \$ResultsRoot -Quiet/);
+  assert.match(printHandoff, /docker-review-loop-summary\.json/);
   assert.match(importHandoff, /entrypoint-status\.json/);
+  assert.match(importHandoff, /docker-review-loop-summary\.json/);
   assert.match(importHandoff, /\[handoff\] Entrypoint index/);
   assert.match(agents, /handoff:entrypoint:check/);
   assert.match(agents, /priority:handoff/);
   assert.match(agents, /machine-readable index/i);
+  assert.match(agents, /docker-review-loop-summary\.json/);
   assert.match(developerGuide, /handoff:entrypoint:check/);
   assert.match(developerGuide, /priority:handoff/);
   assert.match(developerGuide, /machine-readable index/i);
   assert.match(handoffGuide, /AGENT_HANDOFF\.txt/);
   assert.match(handoffGuide, /entrypoint-status\.json/);
+  assert.match(handoffGuide, /docker-review-loop-summary\.json/);
   assert.match(handoffGuide, /priority:handoff/);
   assert.match(handoffGuide, /queue-empty/);
 });

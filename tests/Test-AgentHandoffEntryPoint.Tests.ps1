@@ -27,6 +27,7 @@ Describe 'Agent Handoff entrypoint contract' -Tag 'Unit' {
     $status.commands.bootstrap | Should -Be 'pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1'
     $status.commands.printHandoff | Should -Be 'pwsh -NoLogo -NoProfile -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim'
     $status.artifacts.entrypointStatus | Should -Be 'tests/results/_agent/handoff/entrypoint-status.json'
+    $status.artifacts.dockerReviewLoopSummary | Should -Be 'tests/results/_agent/verification/docker-review-loop-summary.json'
     $status.artifacts.router | Should -Be 'tests/results/_agent/issue/router.json'
     $status.artifacts.noStandingPriority | Should -Be 'tests/results/_agent/issue/no-standing-priority.json'
     @($status.violations).Count | Should -Be 0

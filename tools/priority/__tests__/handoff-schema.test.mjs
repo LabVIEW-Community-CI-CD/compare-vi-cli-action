@@ -77,3 +77,11 @@ test('handoff entrypoint status matches schema', () => {
     'tools/priority/__fixtures__/handoff/entrypoint-status.json'
   );
 });
+
+test('handoff docker review loop summary matches schema', () => {
+  validateFixture(
+    'docker review loop summary',
+    'docs/schemas/docker-tools-parity-agent-verification-v1.schema.json',
+    'tools/priority/__fixtures__/handoff/docker-review-loop-summary.json'
+  );
+});

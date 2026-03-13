@@ -47,8 +47,8 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerific
   reject stale green receipts after the branch head changes.
 - The same run also refreshes
   `tests/results/_agent/verification/docker-review-loop-summary.json`, a bounded `_agent`-facing bridge that points to
-  the authoritative Docker/Desktop requirements verification artifacts. Future agents should prefer that file over stale
-  legacy `_agent/verification/verification-summary.json` snapshots when resuming local review work.
+  the authoritative Docker/Desktop requirements verification artifacts. Future agents should treat this file as the
+  authoritative `_agent` verification surface when resuming local review work.
 - When the unattended delivery daemon consumes that receipt, it now mirrors the normalized summary into
   `tests/results/_agent/runtime/delivery-agent-state.json` and the active lane record under
   `tests/results/_agent/runtime/delivery-agent-lanes/`. Future agents should read the runtime-state `localReviewLoop`
