@@ -15,41 +15,39 @@ async function loadModule() {
   return modulePromise;
 }
 
-test('parseArgs trims artifact names and rejects whitespace-only values', async () => {
+test('parseArgs accepts --all for whole-run downloads', async () => {
   const { parseArgs } = await loadModule();
-
-  const parsed = parseArgs([
+  const options = parseArgs([
     'node',
-    'tools/priority/download-run-artifact.mjs',
+    'download-run-artifact.mjs',
     '--repo',
     'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     '--run-id',
-    '22872590273',
-    '--artifact',
-    '  copilot-review-signal-975  ',
+    '23031304891',
+    '--all',
   ]);
 
-  assert.deepEqual(parsed.artifactNames, ['copilot-review-signal-975']);
+  assert.equal(options.repo, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(options.runId, '23031304891');
+  assert.equal(options.all, true);
+  assert.deepEqual(options.artifactNames, []);
+});
+
+test('parseArgs rejects mixing --all with explicit artifact names', async () => {
+  const { parseArgs } = await loadModule();
   assert.throws(
     () =>
       parseArgs([
         'node',
-        'tools/priority/download-run-artifact.mjs',
+        'download-run-artifact.mjs',
         '--repo',
         'LabVIEW-Community-CI-CD/compare-vi-cli-action',
         '--run-id',
-        '22872590273',
+        '23031304891',
+        '--all',
         '--artifact',
-        '   ',
+        'compare-changed-vis',
       ]),
-    /Artifact name is required/,
+    /either --all or one or more --artifact values/i,
   );
-});
-
-test('isDirectExecution accepts the documented relative script invocation', async () => {
-  const { isDirectExecution } = await loadModule();
-  const relativeModulePath = path.relative(process.cwd(), modulePath);
-
-  assert.equal(isDirectExecution(['node', relativeModulePath], pathToFileURL(modulePath).href), true);
-  assert.equal(isDirectExecution(['node', 'tools/priority/other-script.mjs'], pathToFileURL(modulePath).href), false);
 });

@@ -127,7 +127,8 @@ function Download-RunArtifacts {
     [Parameter(Mandatory=$true)][string]$TargetDir
   )
   New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null
-  gh run download $RunId -R $Repo -D $TargetDir | Out-Null
+  $reportPath = Join-Path $TargetDir 'run-artifact-download.json'
+  node tools/npm/run-script.mjs priority:artifact:download -- --repo $Repo --run-id $RunId --all --destination-root $TargetDir --report $reportPath | Out-Null
 }
 
 function Write-LocalSummary {
