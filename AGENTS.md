@@ -56,6 +56,21 @@ artifacts under `tests/results/_agent/`.
   - `node tools/npm/run-script.mjs priority:codex:state:hygiene`
   - `node tools/npm/run-script.mjs priority:codex:state:hygiene:apply`
 
+## Workflow Maintenance
+
+- `ruamel.yaml` is the canonical workflow rewrite engine for this repo.
+- Python workflow mutation is confined to `tools/workflows/**`.
+- Use `pwsh -File tools/Check-WorkflowDrift.ps1` as the supported operator
+  entrypoint.
+- Repo-native command surfaces are:
+  - `node tools/npm/run-script.mjs workflow:drift:ensure`
+  - `node tools/npm/run-script.mjs workflow:drift:check`
+  - `node tools/npm/run-script.mjs workflow:drift:write`
+  - `node tools/npm/run-script.mjs lint:md`
+- The managed workflow set lives in `tools/workflows/workflow-manifest.json`.
+- `python tools/workflows/update_workflows.py --check|--write ...` remains the
+  low-level compatibility surface, not a free-form scripting escape hatch.
+
 ## Intake And PR Flow
 
 - Use the GitHub intake catalog in

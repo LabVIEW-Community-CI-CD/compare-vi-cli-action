@@ -225,23 +225,9 @@ jobs:
         cache: "npm"
     - name: Install CLI validation deps
       run: node tools/npm/cli.mjs ci
-    - name: Install markdownlint-cli (retry)
-      shell: bash
+    - name: Run markdownlint
       run: |
-        set -euo pipefail
-        for i in 1 2 3; do
-          if node tools/npm/cli.mjs install -g markdownlint-cli; then
-            break
-          else
-            node tools/npm/cli.mjs cache clean --force || true
-            echo "retry $i"
-            sleep 2
-          fi
-        done
-    - name: Run markdownlint (non-blocking)
-      run: |
-        markdownlint "**/*.md" --ignore node_modules
-      continue-on-error: true
+        node tools/npm/run-script.mjs lint:md
   preflight:
     runs-on: windows-latest
     timeout-minutes: 3

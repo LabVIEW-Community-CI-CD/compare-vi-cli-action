@@ -43,16 +43,6 @@ runs:
       continue-on-error: ${{ inputs.enforce != 'true' }}
       run: ./bin/actionlint -color
 
-    - name: Cache npm (markdownlint-cli)
-      uses: actions/cache@v4
-      with:
-        path: ~/.npm
-        key: npm-markdownlint-cli-${{ runner.os }}-${{ hashFiles('.markdownlint.json*', '.markdownlintignore') }}
-
-    - name: Install markdownlint-cli
-      shell: bash
-      run: node tools/npm/cli.mjs install -g markdownlint-cli
-
     - name: Run markdownlint (strict)
       shell: pwsh
       continue-on-error: ${{ inputs.enforce != 'true' }}
@@ -64,7 +54,7 @@ runs:
       continue-on-error: ${{ inputs.enforce != 'true' }}
       run: |
         if [ -f "docs/.markdownlint.relaxed.jsonc" ]; then
-          markdownlint "${{ inputs.relaxed-path }}" -c docs/.markdownlint.relaxed.jsonc --ignore node_modules
+          node tools/npm/cli.mjs exec -- markdownlint-cli2 --config docs/.markdownlint.relaxed.jsonc "${{ inputs.relaxed-path }}"
         fi
 
     - name: Docs link check (optional)

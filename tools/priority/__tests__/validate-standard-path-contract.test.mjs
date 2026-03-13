@@ -18,7 +18,7 @@ test('Validate standard path is not blocked by a validation environment approval
   assert.doesNotMatch(workflow, /priority:deployment:assert/);
 });
 
-test('Validate uses explicit PR-head checkout expressions and no longer references the removed updater', () => {
+test('Validate uses explicit PR-head checkout expressions and routes workflow drift through the enclave', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
 
   assert.match(workflow, /uses: actions\/checkout@v5/);
@@ -31,6 +31,11 @@ test('Validate uses explicit PR-head checkout expressions and no longer referenc
     /ref:\s+\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.sha \|\| github\.sha\s*\}\}/
   );
   assert.doesNotMatch(workflow, /checkout-workflow-context/);
+  assert.match(workflow, /Setup Python for workflow enclave/);
+  assert.match(workflow, /pwsh -NoLogo -NoProfile -File tools\/Check-WorkflowDrift\.ps1 -FailOnDrift/);
+  assert.match(workflow, /node tools\/npm\/run-script\.mjs lint:md/);
   assert.doesNotMatch(workflow, /update_workflows\.py/);
-  assert.doesNotMatch(workflow, /Workflow drift check/);
+  assert.doesNotMatch(workflow, /pip install[^\n]*ruamel/i);
+  assert.doesNotMatch(workflow, /Install markdownlint-cli \(retry\)/);
+  assert.doesNotMatch(workflow, /Run markdownlint \(non-blocking\)/);
 });

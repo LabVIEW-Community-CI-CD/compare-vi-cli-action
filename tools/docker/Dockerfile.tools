@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Unified tools image for non-LV checks, CLI build, and standing-priority sync flows.
-# Base: .NET SDK 8 (Debian). Adds Node 20, PowerShell 7, Python + ruamel.yaml, actionlint,
+# Base: .NET SDK 8 (Debian). Adds Node 20, PowerShell 7, Python + pinned workflow enclave deps, actionlint,
 # markdownlint tooling, Docker CLI, GitHub CLI, jq, curl/git, and pre-populated NuGet caches
 # for offline builds.
 
@@ -86,9 +86,10 @@ RUN npm install -g markdownlint-cli2@0.14.0 markdownlint-cli@0.31.1 \
  && ln -sf /usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-x64/bin/markdownlint /usr/local/bin/markdownlint \
  && ln -sf /usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-x64/bin/markdownlint-cli2 /usr/local/bin/markdownlint-cli2
 
-# Python retained for helper scripts and test tooling
+# Python retained for workflow-maintenance tooling and test surfaces
+COPY tools/workflows/requirements.txt /tmp/tools-workflows-requirements.txt
 RUN python3 -m pip install --break-system-packages --no-cache-dir --upgrade pip \
-    && python3 -m pip install --break-system-packages --no-cache-dir ruamel.yaml
+    && python3 -m pip install --break-system-packages --no-cache-dir --requirement /tmp/tools-workflows-requirements.txt
 
 # Install actionlint (pinned)
 RUN set -eux; \

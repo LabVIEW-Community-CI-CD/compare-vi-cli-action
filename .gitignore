@@ -121,6 +121,7 @@ tools/vscode/comparevi-extension/.vscode-test/
 # Python bytecode caches
 **/__pycache__/
 *.pyc
+tools/workflows/.venv/
 
 # Allow committed fixtures under the VS Code helper
 !vscode/comparevi-helper/test/fixtures/workspace/tmp-commit-236ffab/

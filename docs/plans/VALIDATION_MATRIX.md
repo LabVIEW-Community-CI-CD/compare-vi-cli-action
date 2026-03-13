@@ -19,11 +19,20 @@ single source of truth when deciding which helper to run locally, invoke from VS
   - Platform note: install PowerShell 7 (`pwsh`) on macOS/Linux; when LabVIEW is unavailable, run the command
     without leak-cleanup switches until parity wiring lands.
 - **`tools/Run-NonLVChecksInDocker.ps1`**
-  - Scope: containerised lint, docs links, workflow checkout contracts, CLI build.
+  - Scope: containerised lint, docs links, workflow checkout contracts, workflow drift, CLI build.
   - Typical invocation: `pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage`.
   - Exit semantics: first failing container exit (`0` happy, `3` = drift).
   - Artifacts: container logs, optional `dist/comparevi-cli/*`, and the combined
     `tests/results/docker-tools-parity/review-loop-receipt.json`.
+- **`tools/Check-WorkflowDrift.ps1`**
+  - Scope: workflow rewrite drift via the pinned `ruamel.yaml` enclave under `tools/workflows/**`.
+  - Typical invocation: `pwsh -File tools/Check-WorkflowDrift.ps1`.
+  - Repo script equivalents:
+    - `node tools/npm/run-script.mjs workflow:drift:ensure`
+    - `node tools/npm/run-script.mjs workflow:drift:check`
+    - `node tools/npm/run-script.mjs workflow:drift:write`
+  - Exit semantics: `0` = clean or notice-only drift, `3` = drift when `-FailOnDrift` is used.
+  - Artifacts: console diff plus optional git staging/commit.
 - **`tools/Start-IntegrationGated.ps1`**
   - Scope: orchestrated integration gate with watcher + auto-push.
   - Typical invocation: `pwsh -File tools/Start-IntegrationGated.ps1 -AutoPush -Start -Watch`.
@@ -81,8 +90,8 @@ Audience: local validation for PowerShell unit/integration suites and leak detec
 Audience: contributors without the full local toolchain or anyone mirroring CI behaviour.
 
 - **What it does** – Spins up Docker containers for `actionlint`, `markdownlint`, documentation link checks, workflow
-  checkout contract validation, and optional CompareVI CLI builds. Supports the published tools image
-  (`-UseToolsImage`) or per-check public images.
+  checkout contract validation, workflow drift validation, and optional CompareVI CLI builds. Supports the published
+  tools image (`-UseToolsImage`) or per-check public images.
 - **Inputs** – Common switches:
   - `-UseToolsImage [-ToolsImageTag <tag>]` to route everything through the curated tools container (honours
     `COMPAREVI_TOOLS_IMAGE`).
@@ -95,13 +104,13 @@ Audience: contributors without the full local toolchain or anyone mirroring CI b
   - `-NILinuxReviewSuiteHistoryTargetPath`, `-NILinuxReviewSuiteHistoryBranchRef`,
     `-NILinuxReviewSuiteHistoryBaselineRef`, and `-NILinuxReviewSuiteHistoryMaxCommitCount`
     to run the touch-aware single-VI branch-history review loop for deep branches.
-  - `-FailOnWorkflowDrift` remains as a deprecated compatibility switch; workflow checkout contracts now fail
-    immediately when enabled.
+  - `-FailOnWorkflowDrift` remains as a deprecated compatibility switch; workflow drift is enforced whenever
+    `-SkipWorkflow` is not set.
   - Skip flags (`-SkipActionlint`, `-SkipMarkdown`, `-SkipDocs`, `-SkipWorkflow`, `-SkipDotnetCliBuild`) for tight
     loops.
 - **Expected output** - Console logs reflect each container invocation. The CLI build emits `dist/comparevi-cli/*` when
-  enabled. Workflow checkout contracts run through the pinned Node test surface and fail cleanly when the checkout
-  contract drifts. When `-NILinuxReviewSuite` is set, the helper also emits `review-suite-summary.html`,
+  enabled. Workflow checkout contracts run through the pinned Node test surface, and workflow drift runs through the
+  pinned `ruamel.yaml` enclave wrapper. When `-NILinuxReviewSuite` is set, the helper also emits `review-suite-summary.html`,
   `history-report.html`, `history-summary.json`, `history-suite-inspection.html`, and
   `vi-history-review-loop-receipt.json`. When
   `-RequirementsVerification` is set, the helper emits the requirements verification summary and trace matrix outputs.
