@@ -6,7 +6,15 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { getRepoRoot } from './lib/branch-utils.mjs';
-import { buildRepositorySlug, ensureForkRemote, resolveActiveForkRemoteName, resolveUpstream, runGhJson } from './lib/remote-utils.mjs';
+import {
+  buildRepositorySlug,
+  ensureForkRemote,
+  parseRepositorySlug,
+  resolveActiveForkRemoteName,
+  resolveUpstream,
+  runGhGraphql,
+  runGhJson
+} from './lib/remote-utils.mjs';
 
 const POINTER_PREFIX = '<!-- upstream-issue-url: ';
 const DEFAULT_REPORT_DIR = path.join('tests', 'results', '_agent', 'issue');
@@ -132,27 +140,142 @@ function listForkLabels(repoRoot, repoSlug) {
   return labels.map((entry) => entry?.name).filter(Boolean);
 }
 
-function findMirrorIssue(issues, upstreamUrl) {
-  const pointer = `${POINTER_PREFIX}${upstreamUrl} -->`;
-  return (issues || []).find((issue) => String(issue?.body || '').includes(pointer)) ?? null;
+function normalizeIssueLabelEntries(labels = []) {
+  return labels
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        const name = entry.trim();
+        return name ? { name, normalized: name.toLowerCase() } : null;
+      }
+      const name = String(entry?.name || '').trim();
+      return name ? { name, normalized: name.toLowerCase() } : null;
+    })
+    .filter(Boolean);
+}
+
+function normalizePointerText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function buildMirrorPointer(upstreamUrl) {
+  return `${POINTER_PREFIX}${upstreamUrl} -->`;
+}
+
+export function findMirrorIssue(issues, upstreamUrl) {
+  const pointer = normalizePointerText(buildMirrorPointer(upstreamUrl));
+  const mirrors = (issues || []).filter((issue) => normalizePointerText(issue?.body).includes(pointer));
+  return mirrors.find((issue) => String(issue?.state || '').toLowerCase() === 'open') ?? null;
+}
+
+export function planStandingLabelDemotions(forkIssues = [], targetIssueNumber = null) {
+  return (forkIssues || [])
+    .filter((issue) => String(issue?.state || '').toLowerCase() === 'open')
+    .filter((issue) => Number(issue?.number) !== Number(targetIssueNumber))
+    .map((issue) => {
+      const labels = normalizeIssueLabelEntries(issue?.labels);
+      const retainedLabels = labels
+        .filter((entry) => !STANDING_LABELS.has(entry.normalized))
+        .map((entry) => entry.name);
+      const hadStandingLabel = labels.some((entry) => STANDING_LABELS.has(entry.normalized));
+      if (!hadStandingLabel) {
+        return null;
+      }
+      return {
+        number: issue.number,
+        labels: retainedLabels
+      };
+    })
+    .filter(Boolean);
+}
+
+export function listOpenForkIssues(
+  repoRoot,
+  repoSlug,
+  {
+    runGhGraphqlFn = runGhGraphql
+  } = {}
+) {
+  const repository = parseRepositorySlug(repoSlug);
+  const query = `
+    query($owner: String!, $repo: String!, $cursor: String) {
+      repository(owner: $owner, name: $repo) {
+        issues(states: OPEN, first: 100, after: $cursor, orderBy: { field: CREATED_AT, direction: ASC }) {
+          nodes {
+            number
+            title
+            body
+            url
+            state
+            labels(first: 100) {
+              nodes {
+                name
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+  `;
+
+  const issues = [];
+  let cursor = null;
+  while (true) {
+    const payload = runGhGraphqlFn(
+      repoRoot,
+      query,
+      {
+        owner: repository.owner,
+        repo: repository.repo,
+        cursor
+      }
+    );
+    const connection = payload?.data?.repository?.issues;
+    const nodes = Array.isArray(connection?.nodes) ? connection.nodes : [];
+    issues.push(
+      ...nodes.map((issue) => ({
+        ...issue,
+        labels: issue?.labels?.nodes ?? []
+      }))
+    );
+
+    if (!connection?.pageInfo?.hasNextPage) {
+      return issues;
+    }
+    cursor = connection.pageInfo.endCursor;
+    if (!cursor) {
+      throw new Error(`GitHub issue pagination for ${repoSlug} reported hasNextPage without an end cursor.`);
+    }
+  }
 }
 
 export function runMirrorForkIssue({
   repoRoot = getRepoRoot(),
   options = parseArgs(),
-  env = process.env
+  env = process.env,
+  resolveUpstreamFn = resolveUpstream,
+  resolveActiveForkRemoteNameFn = resolveActiveForkRemoteName,
+  ensureForkRemoteFn = ensureForkRemote,
+  runGhJsonFn = runGhJson,
+  ghApiFn = ghApi,
+  ensureLabelFn = ensureLabel,
+  listForkLabelsFn = listForkLabels,
+  listOpenForkIssuesFn = listOpenForkIssues
 } = {}) {
   if (!options.issue) {
     throw new Error('Missing required --issue option.');
   }
 
-  const upstream = resolveUpstream(repoRoot);
-  const forkRemote = options.forkRemote || resolveActiveForkRemoteName(env);
-  const forkRepository = ensureForkRemote(repoRoot, upstream, forkRemote);
+  const upstream = resolveUpstreamFn(repoRoot);
+  const forkRemote = options.forkRemote || resolveActiveForkRemoteNameFn(env);
+  const forkRepository = ensureForkRemoteFn(repoRoot, upstream, forkRemote);
   const upstreamSlug = buildRepositorySlug(upstream);
   const forkSlug = buildRepositorySlug(forkRepository);
 
-  const upstreamIssue = runGhJson(
+  const upstreamIssue = runGhJsonFn(
     repoRoot,
     [
       'issue',
@@ -168,32 +291,40 @@ export function runMirrorForkIssue({
     throw new Error(`Unable to load upstream issue #${options.issue} from ${upstreamSlug}.`);
   }
 
-  ensureLabel(repoRoot, forkSlug, 'fork-standing-priority');
-  const existingForkLabels = listForkLabels(repoRoot, forkSlug);
+  ensureLabelFn(repoRoot, forkSlug, 'fork-standing-priority');
+  const existingForkLabels = listForkLabelsFn(repoRoot, forkSlug);
   const desiredLabels = buildDesiredLabels(
     (upstreamIssue.labels || []).map((entry) => entry?.name || entry),
     existingForkLabels
   );
   const desiredBody = buildMirrorBody(upstreamIssue);
-  const forkIssues = runGhJson(
-    repoRoot,
-    ['issue', 'list', '--repo', forkSlug, '--state', 'all', '--limit', '200', '--json', 'number,title,body,url,labels,state']
-  ) ?? [];
+  const forkIssues = listOpenForkIssuesFn(repoRoot, forkSlug) ?? [];
   const existingMirror = findMirrorIssue(forkIssues, upstreamIssue.url);
 
   let forkIssue;
   if (existingMirror?.number) {
-    forkIssue = ghApi(repoRoot, `repos/${forkSlug}/issues/${existingMirror.number}`, 'PATCH', {
+    forkIssue = ghApiFn(repoRoot, `repos/${forkSlug}/issues/${existingMirror.number}`, 'PATCH', {
       title: upstreamIssue.title,
       body: desiredBody,
       labels: desiredLabels
     });
   } else {
-    forkIssue = ghApi(repoRoot, `repos/${forkSlug}/issues`, 'POST', {
+    forkIssue = ghApiFn(repoRoot, `repos/${forkSlug}/issues`, 'POST', {
       title: upstreamIssue.title,
       body: desiredBody,
       labels: desiredLabels
     });
+  }
+
+  const demotions = planStandingLabelDemotions(forkIssues, forkIssue.number);
+  for (const issue of demotions) {
+    try {
+      ghApiFn(repoRoot, `repos/${forkSlug}/issues/${issue.number}`, 'PATCH', {
+        labels: issue.labels
+      });
+    } catch (error) {
+      throw new Error(`Failed to demote stale standing labels on ${forkSlug}#${issue.number}: ${error.message}`);
+    }
   }
 
   const reportDir = path.isAbsolute(options.reportDir) ? options.reportDir : path.join(repoRoot, options.reportDir);
@@ -213,6 +344,7 @@ export function runMirrorForkIssue({
       issueUrl: forkIssue.html_url ?? forkIssue.url ?? null
     },
     labels: desiredLabels,
+    demotedIssues: demotions.map((entry) => entry.number),
     action: existingMirror?.number ? 'updated' : 'created'
   };
   mkdirSync(reportDir, { recursive: true });
