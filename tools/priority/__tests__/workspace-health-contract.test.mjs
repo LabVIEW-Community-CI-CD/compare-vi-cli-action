@@ -123,6 +123,8 @@ test('Run-NonLVChecksInDocker exposes Docker Desktop NI Linux review-suite parit
   assert.match(content, /history-summary\.json/);
   assert.match(content, /verification-summary\.json/);
   assert.match(content, /trace-matrix\.json/);
+  assert.match(content, /command -v git >\/dev\/null 2>&1/);
+  assert.match(content, /Get-Command git -ErrorAction SilentlyContinue/);
   assert.match(content, /git config --global --add safe\.directory \/work/);
   assert.match(content, /node:20'/);
   assert.doesNotMatch(content, /node:20-alpine/);

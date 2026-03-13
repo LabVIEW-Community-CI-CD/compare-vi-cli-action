@@ -373,7 +373,7 @@ if ($UseToolsImage -and $ToolsImageTag) {
     Invoke-Container -Image $ToolsImageTag -Arguments @('actionlint','-color') -Label 'actionlint (tools)'
   }
   if (-not $SkipMarkdown) {
-    $cmd = 'git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs lint:md'
+    $cmd = 'if ! command -v git >/dev/null 2>&1; then echo "git is required for markdownlint discovery" >&2; exit 1; fi; git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs lint:md'
     Invoke-Container -Image $ToolsImageTag -Arguments @('bash','-lc',$cmd) -Label 'markdownlint (tools)'
   }
   if (-not $SkipDocs) {
@@ -388,7 +388,7 @@ if ($UseToolsImage -and $ToolsImageTag) {
     Invoke-Container -Image 'rhysd/actionlint:1.7.7' -Arguments @('-color') -Label 'actionlint'
   }
   if (-not $SkipMarkdown) {
-    $cmd = 'git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs lint:md'
+    $cmd = 'if ! command -v git >/dev/null 2>&1; then echo "git is required for markdownlint discovery" >&2; exit 1; fi; git config --global --add safe.directory /work >/dev/null 2>&1 || true; node tools/npm/run-script.mjs lint:md'
     Invoke-Container -Image 'node:20' -Arguments @('bash','-lc',$cmd) -Label 'markdownlint'
   }
   if (-not $SkipDocs) {
@@ -457,7 +457,7 @@ if ($RequirementsVerification) {
   $requirementsImage = if ($UseToolsImage -and $ToolsImageTag) { $ToolsImageTag } else { 'mcr.microsoft.com/powershell:7.4-debian-12' }
   $requirementsCommand = @(
     '$ErrorActionPreference = ''Stop''',
-    'git config --global --add safe.directory /work | Out-Null',
+    'if (Get-Command git -ErrorAction SilentlyContinue) { try { git config --global --add safe.directory /work | Out-Null } catch { Write-Warning ''Unable to mark /work as a safe git directory; continuing with requirements verification.'' } }',
     ('& ./tools/Verify-RequirementsGate.ps1 -TestsPath ''tests'' -ResultsRoot ''tests/results'' -OutDir {0}' -f
       (ConvertTo-PowerShellSingleQuotedLiteral -Value $RequirementsVerificationResultsRoot)),
     'exit $LASTEXITCODE'

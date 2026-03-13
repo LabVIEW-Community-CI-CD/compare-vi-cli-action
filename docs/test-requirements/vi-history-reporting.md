@@ -12,10 +12,9 @@ This document tracks the atomic test requirements for `tools/Compare-VIHistory.p
    - `attributes`: includes `-noattr` only.
    - `front-panel`: includes `-nofp`, `-nofppos` only.
    - `block-diagram`: includes `-nobdcosm` only.
-
-- `full`: no ignore flags present (all ignore flags disabled).
-- `all`: legacy alias for `full` (the tooling rewrites it and warns).
-  - `custom`: flag list matches explicit inputs.
+   - `full`: no ignore flags present (all ignore flags disabled).
+   - `all`: legacy alias for `full` (the tooling rewrites it and warns).
+   - `custom`: flag list matches explicit inputs.
 
 1. `requestedStartRef` and `startRef` shall be written; `startRef` resolves to the nearest commit that touches the VI.
 1. Helper shall pass `-RenderReport` for `html` format.

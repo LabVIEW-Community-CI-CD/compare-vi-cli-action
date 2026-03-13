@@ -108,30 +108,6 @@ Notes:
 - These toggles are process‑scoped. Set them in the same shell/terminal that runs the compare.
 - When suppression is active, the capture JSON records `environment.cli.skipped=true` with a `skipReason` (e.g., `git-context`).
 
-- Suppress CLI capture during Git difftool sessions:
-
-```powershell
-$env:COMPAREVI_SUPPRESS_CLI_IN_GIT = '1'   # skip CLI when a Git context is detected
-$env:COMPAREVI_WARN_CLI_IN_GIT     = '1'   # optional: emit a warning when in Git context
-```
-
-- Short‑TTL duplicate suppression for repeated compare of the same pair:
-
-```powershell
-$env:COMPAREVI_CLI_SENTINEL_TTL = '60'     # seconds; suppress duplicate CLI for (vi1,vi2[,reportPath]) within TTL
-```
-
-- Hard opt‑out (no CLI capture at all in the current process):
-
-```powershell
-$env:COMPAREVI_NO_CLI_CAPTURE = '1'
-```
-
-Notes:
-
-- These toggles are process‑scoped. Set them in the same shell/terminal that runs the compare.
-- When suppression is active, the capture JSON records `environment.cli.skipped=true` with a `skipReason` (e.g., `git-context`).
-
 ## Further reading
 
 - [`README.md`](../README.md)

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 
 function parseArgs(argv) {
@@ -26,16 +26,34 @@ function parseArgs(argv) {
   return args;
 }
 
-function runGit(args) {
-  const result = spawnSync('git', args, { encoding: 'utf8' });
-  if (result.status !== 0) {
-    return null;
-  }
-  return result.stdout.trim();
+function runGitResult(args) {
+  return spawnSync('git', args, { encoding: 'utf8' });
 }
 
-function runGitLines(args) {
-  const output = runGit(args);
+function readGitOutput(args, { required = false, failureMessage = 'git command failed' } = {}) {
+  const result = runGitResult(args);
+  if (result.status === 0) {
+    return result.stdout.trim();
+  }
+
+  if (!required) {
+    return null;
+  }
+
+  if (result.error && result.error.code === 'ENOENT') {
+    throw new Error(`${failureMessage}: git is not installed or not on PATH.`);
+  }
+
+  const detail = result.stderr?.trim() || result.stdout?.trim();
+  if (detail) {
+    throw new Error(`${failureMessage}: ${detail}`);
+  }
+
+  throw new Error(failureMessage);
+}
+
+function runGitLines(args, options) {
+  const output = readGitOutput(args, options);
   if (!output) {
     return [];
   }
@@ -46,16 +64,14 @@ function runGitLines(args) {
 }
 
 function resolveRepoRoot() {
-  const resolved = runGit(['rev-parse', '--show-toplevel']);
-  if (resolved) {
-    return resolved;
-  }
-  const current = dirname(fileURLToPath(import.meta.url));
-  return current;
+  return readGitOutput(['rev-parse', '--show-toplevel'], {
+    required: true,
+    failureMessage: 'git is required for markdown lint repository discovery',
+  });
 }
 
 function resolveRef(ref) {
-  const result = runGit(['rev-parse', '--verify', ref]);
+  const result = readGitOutput(['rev-parse', '--verify', ref]);
   return result || null;
 }
 
@@ -80,24 +96,39 @@ function resolveMergeBase(candidates) {
 function getChangedMarkdownFiles(base) {
   const results = new Set();
   if (base) {
-    runGitLines(['diff', '--name-only', '--diff-filter=ACMRTUXB', `${base}..HEAD`]).forEach((entry) =>
+    runGitLines(['diff', '--name-only', '--diff-filter=ACMRTUXB', `${base}..HEAD`], {
+      required: true,
+      failureMessage: 'git is required to compute changed Markdown files',
+    }).forEach((entry) =>
       results.add(entry)
     );
   }
-  runGitLines(['diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD']).forEach((entry) =>
+  runGitLines(['diff', '--name-only', '--diff-filter=ACMRTUXB', 'HEAD'], {
+    required: true,
+    failureMessage: 'git is required to compute changed Markdown files',
+  }).forEach((entry) =>
     results.add(entry)
   );
-  runGitLines(['diff', '--name-only', '--cached', '--diff-filter=ACMRTUXB']).forEach((entry) =>
+  runGitLines(['diff', '--name-only', '--cached', '--diff-filter=ACMRTUXB'], {
+    required: true,
+    failureMessage: 'git is required to compute changed Markdown files',
+  }).forEach((entry) =>
     results.add(entry)
   );
-  runGitLines(['ls-files', '--others', '--exclude-standard', '*.md']).forEach((entry) =>
+  runGitLines(['ls-files', '--others', '--exclude-standard', '*.md'], {
+    required: true,
+    failureMessage: 'git is required to compute changed Markdown files',
+  }).forEach((entry) =>
     results.add(entry)
   );
   return Array.from(results).filter((file) => file.toLowerCase().endsWith('.md')).sort();
 }
 
 function getAllMarkdownFiles() {
-  return runGitLines(['ls-files', '*.md']).sort();
+  return runGitLines(['ls-files', '*.md'], {
+    required: true,
+    failureMessage: 'git is required to enumerate Markdown files',
+  }).sort();
 }
 
 function resolveMarkdownlintCli(repoRoot) {
