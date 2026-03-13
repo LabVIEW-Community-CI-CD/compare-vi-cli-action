@@ -43,6 +43,26 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
     manageDockerEngine: false,
     allowHostEngineMutation: false
   });
+  assert.deepEqual(data.localReviewLoop, {
+    enabled: true,
+    bodyMarkers: ['Daemon-first local iteration extension'],
+    receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+    command: ['node', 'tools/priority/docker-desktop-review-loop.mjs'],
+    actionlint: true,
+    markdownlint: true,
+    docs: true,
+    workflow: true,
+    dotnetCliBuild: true,
+    requirementsVerification: true,
+    niLinuxReviewSuite: true,
+    singleViHistory: {
+      enabled: false,
+      targetPath: '',
+      branchRef: 'develop',
+      baselineRef: '',
+      maxCommitCount: 256
+    }
+  });
 });
 
 test('runtime delivery task packet schema validates canonical delivery packets', async () => {
@@ -72,6 +92,27 @@ test('runtime delivery task packet schema validates canonical delivery packets',
           number: 1012,
           title: 'Wire canonical delivery broker',
           url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1012'
+        },
+        localReviewLoop: {
+          requested: true,
+          source: 'standing-issue-body',
+          standingIssueNumber: 1010,
+          standingIssueUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+          receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+          actionlint: true,
+          markdownlint: true,
+          docs: true,
+          workflow: true,
+          dotnetCliBuild: true,
+          requirementsVerification: true,
+          niLinuxReviewSuite: true,
+          singleViHistory: {
+            enabled: true,
+            targetPath: 'fixtures/vi-attr/Head.vi',
+            branchRef: 'develop',
+            baselineRef: null,
+            maxCommitCount: 256
+          }
         },
         mutationEnvelope: {
           backlogAuthority: 'issues',

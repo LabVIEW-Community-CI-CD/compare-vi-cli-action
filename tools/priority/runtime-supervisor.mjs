@@ -47,6 +47,7 @@ import {
   selectAutoStandingPriorityCandidate
 } from './sync-standing-priority.mjs';
 import {
+  buildLocalReviewLoopRequest,
   buildCanonicalDeliveryDecision,
   DELIVERY_AGENT_POLICY_RELATIVE_PATH,
   fetchIssueExecutionGraph,
@@ -514,9 +515,13 @@ async function resolveCompareviTaskPacketSnapshot({ repoRoot, schedulerDecision 
   return readJsonIfPresent(path.join(repoRoot, PRIORITY_ISSUE_DIR, `${issueNumber}.json`));
 }
 
-async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedWorker, workerReady, workerBranch }) {
+async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedWorker, workerReady, workerBranch, deps = {} }) {
   const activeLane = schedulerDecision?.activeLane ?? null;
   const artifacts = schedulerDecision?.artifacts ?? {};
+  const deliveryPolicy = await loadDeliveryAgentPolicy(repoRoot, {
+    ...deps,
+    policyPath: deps.deliveryAgentPolicyPath || DELIVERY_AGENT_POLICY_RELATIVE_PATH
+  });
   const snapshot = await resolveCompareviTaskPacketSnapshot({ repoRoot, schedulerDecision });
   const issueNumber = activeLane?.issue;
   const issueTitle = normalizeText(snapshot?.title);
@@ -531,6 +536,11 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
         : normalizeText(schedulerDecision?.reason) || 'No compare-vi lane selected.';
   const pullRequestArtifact = artifacts.pullRequest ?? null;
   const standingIssueSnapshot = artifacts.standingIssueSnapshot ?? null;
+  const localReviewLoop = buildLocalReviewLoopRequest({
+    standingIssue: standingIssueSnapshot,
+    selectedIssue: snapshot,
+    policy: deliveryPolicy
+  });
 
   return {
     source: 'comparevi-runtime',
@@ -598,6 +608,7 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
         issueGraph: artifacts.issueGraph ?? null,
         pullRequest: pullRequestArtifact,
         backlog: artifacts.backlogRepair ?? null,
+        localReviewLoop,
         mutationEnvelope: {
           backlogAuthority: 'issues',
           implementationRemote: normalizeText(activeLane?.forkRemote) || 'origin',
@@ -605,14 +616,13 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
           allowReleaseAdmin: false,
           maxActiveCodingLanes: 1
         },
-        turnBudget: {
-          maxMinutes: 20,
-          maxToolCalls: 12
-        },
+        turnBudget: deliveryPolicy.turnBudget,
         relevantFiles: [
           path.join(repoRoot, 'tools', 'priority', 'runtime-supervisor.mjs'),
           path.join(repoRoot, 'tools', 'priority', 'runtime-turn-broker.mjs'),
-          path.join(repoRoot, 'tools', 'priority', 'delivery-agent.policy.json')
+          path.join(repoRoot, 'tools', 'priority', 'delivery-agent.policy.json'),
+          path.join(repoRoot, 'tools', 'priority', 'docker-desktop-review-loop.mjs'),
+          path.join(repoRoot, 'tools', 'Run-NonLVChecksInDocker.ps1')
         ]
       }
     }

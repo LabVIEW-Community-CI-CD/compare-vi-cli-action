@@ -48,6 +48,40 @@
         "allowHostEngineMutation": { "type": "boolean" }
       }
     },
+    "localReviewLoop": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "bodyMarkers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "receiptPath": { "type": "string" },
+        "command": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "actionlint": { "type": "boolean" },
+        "markdownlint": { "type": "boolean" },
+        "docs": { "type": "boolean" },
+        "workflow": { "type": "boolean" },
+        "dotnetCliBuild": { "type": "boolean" },
+        "requirementsVerification": { "type": "boolean" },
+        "niLinuxReviewSuite": { "type": "boolean" },
+        "singleViHistory": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "targetPath": { "type": "string" },
+            "branchRef": { "type": "string" },
+            "baselineRef": { "type": "string" },
+            "maxCommitCount": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
     "turnBudget": {
       "type": "object",
       "additionalProperties": true,

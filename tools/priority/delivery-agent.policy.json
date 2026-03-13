@@ -23,6 +23,31 @@
     "manageDockerEngine": false,
     "allowHostEngineMutation": false
   },
+  "localReviewLoop": {
+    "enabled": true,
+    "bodyMarkers": [
+      "Daemon-first local iteration extension"
+    ],
+    "receiptPath": "tests/results/docker-tools-parity/review-loop-receipt.json",
+    "command": [
+      "node",
+      "tools/priority/docker-desktop-review-loop.mjs"
+    ],
+    "actionlint": true,
+    "markdownlint": true,
+    "docs": true,
+    "workflow": true,
+    "dotnetCliBuild": true,
+    "requirementsVerification": true,
+    "niLinuxReviewSuite": true,
+    "singleViHistory": {
+      "enabled": false,
+      "targetPath": "",
+      "branchRef": "develop",
+      "baselineRef": "",
+      "maxCommitCount": 256
+    }
+  },
   "turnBudget": {
     "maxMinutes": 20,
     "maxToolCalls": 12

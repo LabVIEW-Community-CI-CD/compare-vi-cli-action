@@ -4,6 +4,11 @@ import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {
+  buildLocalReviewLoopCliArgs,
+  DOCKER_PARITY_RESULTS_ROOT,
+  DEFAULT_LOCAL_REVIEW_LOOP_COMMAND
+} from './docker-desktop-review-loop.mjs';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
 import {
   resolveStandingPriorityLabels,
@@ -52,6 +57,26 @@ const DEFAULT_POLICY = {
     expectedContext: '',
     manageDockerEngine: false,
     allowHostEngineMutation: false,
+  },
+  localReviewLoop: {
+    enabled: true,
+    bodyMarkers: ['Daemon-first local iteration extension'],
+    receiptPath: path.join('tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json'),
+    command: [...DEFAULT_LOCAL_REVIEW_LOOP_COMMAND],
+    actionlint: true,
+    markdownlint: true,
+    docs: true,
+    workflow: true,
+    dotnetCliBuild: true,
+    requirementsVerification: true,
+    niLinuxReviewSuite: true,
+    singleViHistory: {
+      enabled: false,
+      targetPath: '',
+      branchRef: 'develop',
+      baselineRef: '',
+      maxCommitCount: 256
+    }
   },
   turnBudget: {
     maxMinutes: 20,
@@ -168,6 +193,19 @@ async function readJsonIfPresent(filePath, { deleteCorrupt = false } = {}) {
   }
 }
 
+function parseJsonObjectOutput(raw, source = 'command output') {
+  const trimmed = normalizeText(raw);
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (error) {
+    throw new Error(`Unable to parse ${source} as JSON: ${error.message}`);
+  }
+}
+
 async function writeJsonAtomically(filePath, payload) {
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tempPath, payload, 'utf8');
@@ -186,6 +224,104 @@ async function writeJsonAtomically(filePath, payload) {
 
 function normalizeCommandList(value) {
   return Array.isArray(value) ? value.map((entry) => normalizeText(entry)).filter(Boolean) : [];
+}
+
+function normalizeStringList(value) {
+  return Array.isArray(value) ? value.map((entry) => normalizeText(entry)).filter(Boolean) : [];
+}
+
+function normalizeLocalReviewLoopPolicy(value) {
+  const localReviewLoop = value && typeof value === 'object' ? value : {};
+  const singleViHistory =
+    localReviewLoop.singleViHistory && typeof localReviewLoop.singleViHistory === 'object'
+      ? localReviewLoop.singleViHistory
+      : {};
+  const bodyMarkers = normalizeStringList(localReviewLoop.bodyMarkers);
+  const command = normalizeCommandList(localReviewLoop.command);
+  return {
+    ...DEFAULT_POLICY.localReviewLoop,
+    ...localReviewLoop,
+    bodyMarkers: bodyMarkers.length > 0
+      ? bodyMarkers
+      : [...DEFAULT_POLICY.localReviewLoop.bodyMarkers],
+    receiptPath: normalizeText(localReviewLoop.receiptPath) || DEFAULT_POLICY.localReviewLoop.receiptPath,
+    command: command.length > 0
+      ? command
+      : [...DEFAULT_POLICY.localReviewLoop.command],
+    singleViHistory: {
+      ...DEFAULT_POLICY.localReviewLoop.singleViHistory,
+      ...singleViHistory,
+      targetPath: normalizeText(singleViHistory.targetPath) || DEFAULT_POLICY.localReviewLoop.singleViHistory.targetPath,
+      branchRef: normalizeText(singleViHistory.branchRef) || DEFAULT_POLICY.localReviewLoop.singleViHistory.branchRef,
+      baselineRef: normalizeText(singleViHistory.baselineRef),
+      maxCommitCount: coercePositiveInteger(singleViHistory.maxCommitCount) ?? 0
+    }
+  };
+}
+
+function bodyContainsAnyMarker(body, markers = []) {
+  const normalizedBody = normalizeText(body).toLowerCase();
+  if (!normalizedBody) {
+    return false;
+  }
+  return normalizeStringList(markers).some((marker) => normalizedBody.includes(normalizeText(marker).toLowerCase()));
+}
+
+export function buildLocalReviewLoopRequest({ standingIssue, selectedIssue, policy } = {}) {
+  const localReviewLoopPolicy = normalizeLocalReviewLoopPolicy(policy?.localReviewLoop);
+  if (localReviewLoopPolicy.enabled !== true) {
+    return null;
+  }
+  const standingBody = typeof standingIssue?.body === 'string' ? standingIssue.body : '';
+  const selectedBody = typeof selectedIssue?.body === 'string' ? selectedIssue.body : '';
+  const standingHasMarker = bodyContainsAnyMarker(standingBody, localReviewLoopPolicy.bodyMarkers);
+  const selectedHasMarker = bodyContainsAnyMarker(selectedBody, localReviewLoopPolicy.bodyMarkers);
+  const directiveBody = [
+    standingHasMarker ? standingBody : '',
+    selectedHasMarker ? selectedBody : ''
+  ]
+    .filter(Boolean)
+    .join('\n');
+  if (!standingHasMarker && !selectedHasMarker) {
+    return null;
+  }
+
+  const singleViRequested = /single-vi|single vi|touch-aware/i.test(directiveBody);
+  const singleViTargetPath = normalizeText(localReviewLoopPolicy.singleViHistory.targetPath);
+  const singleViHistory =
+    localReviewLoopPolicy.singleViHistory?.enabled === true && singleViRequested && singleViTargetPath
+      ? {
+          enabled: true,
+          targetPath: singleViTargetPath,
+          branchRef: normalizeText(localReviewLoopPolicy.singleViHistory.branchRef) || null,
+          baselineRef: normalizeText(localReviewLoopPolicy.singleViHistory.baselineRef) || null,
+          maxCommitCount: coercePositiveInteger(localReviewLoopPolicy.singleViHistory.maxCommitCount) ?? 0
+        }
+      : null;
+  const source = standingHasMarker && selectedHasMarker
+    ? 'both-issue-bodies'
+    : standingHasMarker
+      ? 'standing-issue-body'
+      : 'selected-issue-body';
+  const requestedChecks = {
+    actionlint: localReviewLoopPolicy.actionlint === true,
+    markdownlint: localReviewLoopPolicy.markdownlint === true,
+    docs: localReviewLoopPolicy.docs === true,
+    workflow: localReviewLoopPolicy.workflow === true,
+    dotnetCliBuild: localReviewLoopPolicy.dotnetCliBuild === true,
+    requirementsVerification: localReviewLoopPolicy.requirementsVerification === true
+  };
+
+  return {
+    requested: true,
+    source,
+    standingIssueNumber: coercePositiveInteger(standingIssue?.number),
+    standingIssueUrl: normalizeText(standingIssue?.url) || null,
+    receiptPath: localReviewLoopPolicy.receiptPath,
+    ...requestedChecks,
+    niLinuxReviewSuite: localReviewLoopPolicy.niLinuxReviewSuite === true || singleViHistory?.enabled === true,
+    singleViHistory
+  };
 }
 
 function parsePriorityOrdinal(title) {
@@ -856,6 +992,7 @@ export async function loadDeliveryAgentPolicy(repoRoot, deps = {}) {
       ...DEFAULT_POLICY.dockerRuntime,
       ...(filePolicy?.dockerRuntime && typeof filePolicy.dockerRuntime === 'object' ? filePolicy.dockerRuntime : {})
     },
+    localReviewLoop: normalizeLocalReviewLoopPolicy(filePolicy?.localReviewLoop),
     codingTurnCommand: normalizeCommandList(filePolicy?.codingTurnCommand)
   };
 }
@@ -1513,9 +1650,197 @@ async function runCommand(command, args, { cwd, env }, deps = {}) {
     stdio: ['ignore', 'pipe', 'pipe']
   });
   return {
-    status: result.status ?? 0,
+    status: Number.isInteger(result.status) ? result.status : 1,
     stdout: result.stdout ?? '',
-    stderr: result.stderr ?? ''
+    stderr: [
+      normalizeText(result.stderr),
+      normalizeText(result.error?.message),
+      normalizeText(result.signal ? `Process terminated by signal ${result.signal}.` : '')
+    ]
+      .filter(Boolean)
+      .join('\n')
+  };
+}
+
+function uniqueStrings(values = []) {
+  return [...new Set(values.map((entry) => normalizeText(entry)).filter(Boolean))];
+}
+
+function resolveRepoContainedPath(repoRoot, candidatePath, { label = 'path', requiredRoot = '' } = {}) {
+  const normalized = normalizeText(candidatePath);
+  if (!normalized) {
+    throw new Error(`${label} must be a non-empty repo-relative path.`);
+  }
+  if (path.isAbsolute(normalized)) {
+    throw new Error(`${label} must stay under the repository root: ${normalized}`);
+  }
+  const resolved = path.resolve(repoRoot, normalized);
+  const relativeToRepo = path.relative(repoRoot, resolved);
+  if (!relativeToRepo || relativeToRepo.startsWith('..') || path.isAbsolute(relativeToRepo)) {
+    throw new Error(`${label} escapes the repository root: ${normalized}`);
+  }
+  if (requiredRoot) {
+    const requiredRootPath = path.resolve(repoRoot, requiredRoot);
+    const relativeToRequiredRoot = path.relative(requiredRootPath, resolved);
+    if (!relativeToRequiredRoot || relativeToRequiredRoot.startsWith('..') || path.isAbsolute(relativeToRequiredRoot)) {
+      throw new Error(`${label} must stay under ${requiredRoot}: ${normalized}`);
+    }
+  }
+  return {
+    normalized,
+    resolved
+  };
+}
+
+async function maybeRunLocalReviewLoop({
+  baseReceipt,
+  taskPacket,
+  policy,
+  repoRoot,
+  deps = {}
+}) {
+  const request = taskPacket?.evidence?.delivery?.localReviewLoop;
+  if (!request || request.requested !== true) {
+    return baseReceipt;
+  }
+  if (baseReceipt?.status !== 'completed') {
+    return baseReceipt;
+  }
+
+  const localReviewLoopPolicy = normalizeLocalReviewLoopPolicy(policy?.localReviewLoop);
+  const wrapperCommand =
+    normalizeCommandList(localReviewLoopPolicy.command).length > 0
+      ? normalizeCommandList(localReviewLoopPolicy.command)
+      : [...DEFAULT_LOCAL_REVIEW_LOOP_COMMAND];
+  const wrapperArgs = buildLocalReviewLoopCliArgs({ repoRoot, request });
+  const command = wrapperCommand[0];
+  const args = [...wrapperCommand.slice(1), ...wrapperArgs];
+  const commandText = [command, ...args].join(' ');
+  let resolvedReceiptPathInfo;
+  try {
+    resolvedReceiptPathInfo = resolveRepoContainedPath(
+      repoRoot,
+      normalizeText(request.receiptPath) || localReviewLoopPolicy.receiptPath,
+      {
+        label: 'Local review loop receipt path',
+        requiredRoot: DOCKER_PARITY_RESULTS_ROOT
+      }
+    );
+  } catch (error) {
+    return {
+      status: 'blocked',
+      outcome: 'local-review-loop-failed',
+      reason: normalizeText(error?.message) || 'Invalid local review loop receipt path.',
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'local-review-loop',
+        laneLifecycle: 'blocked',
+        blockerClass: 'policy',
+        retryable: false,
+        nextWakeCondition: 'local-review-loop-policy-fixed',
+        helperCallsExecuted: uniqueStrings([
+          ...(Array.isArray(baseReceipt?.details?.helperCallsExecuted) ? baseReceipt.details.helperCallsExecuted : []),
+          commandText
+        ]),
+        filesTouched: uniqueStrings(Array.isArray(baseReceipt?.details?.filesTouched) ? baseReceipt.details.filesTouched : []),
+        localReviewLoop: {
+          status: 'failed',
+          source: 'docker-desktop-review-loop',
+          reason: normalizeText(error?.message) || 'Invalid local review loop receipt path.',
+          receiptPath: normalizeText(request.receiptPath) || localReviewLoopPolicy.receiptPath,
+          receipt: null
+        }
+      }
+    };
+  }
+  const receiptPath = resolvedReceiptPathInfo.normalized;
+  const resolvedReceiptPath = resolvedReceiptPathInfo.resolved;
+  const result = await runCommand(command, args, { cwd: repoRoot, env: process.env }, deps);
+  let reviewLoopResult = null;
+  let stdoutParseError = '';
+  try {
+    reviewLoopResult = parseJsonObjectOutput(result.stdout, 'local review loop stdout');
+  } catch (error) {
+    stdoutParseError = normalizeText(error?.message);
+    reviewLoopResult = null;
+  }
+  let receiptFromFile = null;
+  let receiptReadError = '';
+  try {
+    receiptFromFile = await readJsonIfPresent(resolvedReceiptPath);
+  } catch (error) {
+    receiptReadError = normalizeText(error?.message);
+  }
+  if (!reviewLoopResult && receiptFromFile && typeof receiptFromFile === 'object') {
+    reviewLoopResult = {
+      status: normalizeText(receiptFromFile?.overall?.status) || 'failed',
+      source: 'docker-desktop-review-loop-receipt',
+      reason: normalizeText(receiptFromFile?.overall?.message),
+      receiptPath,
+      receipt: receiptFromFile
+    };
+  }
+  const ambiguousOutputReason = [
+    stdoutParseError ? `Local review loop stdout was not valid JSON: ${stdoutParseError}` : '',
+    receiptReadError ? `Receipt read failed: ${receiptReadError}` : '',
+    !reviewLoopResult ? 'Docker/Desktop review loop did not yield a valid machine-readable result.' : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const localReviewLoopDetails = {
+    status: normalizeText(reviewLoopResult?.status) || 'failed',
+    source: normalizeText(reviewLoopResult?.source) || 'docker-desktop-review-loop',
+    reason:
+      normalizeText(reviewLoopResult?.reason) ||
+      normalizeText(reviewLoopResult?.receipt?.overall?.message) ||
+      ambiguousOutputReason ||
+      normalizeText(result.stderr) ||
+      normalizeText(result.stdout) ||
+      'Docker/Desktop review loop did not return a status.',
+    receiptPath,
+    receipt: reviewLoopResult?.receipt ?? receiptFromFile ?? null
+  };
+
+  if (result.status !== 0 || localReviewLoopDetails.status !== 'passed') {
+    return {
+      status: 'blocked',
+      outcome: 'local-review-loop-failed',
+      reason: localReviewLoopDetails.reason,
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'local-review-loop',
+        laneLifecycle: 'blocked',
+        blockerClass: 'ci',
+        retryable: true,
+        nextWakeCondition: 'local-review-loop-green',
+        helperCallsExecuted: uniqueStrings([
+          ...(Array.isArray(baseReceipt?.details?.helperCallsExecuted) ? baseReceipt.details.helperCallsExecuted : []),
+          commandText
+        ]),
+        filesTouched: uniqueStrings([
+          ...(Array.isArray(baseReceipt?.details?.filesTouched) ? baseReceipt.details.filesTouched : []),
+          receiptPath
+        ]),
+        localReviewLoop: localReviewLoopDetails
+      }
+    };
+  }
+
+  return {
+    ...baseReceipt,
+    reason: `${normalizeText(baseReceipt.reason) || 'Coding turn completed.'} Local Docker/Desktop review loop passed.`,
+    details: {
+      ...(baseReceipt.details && typeof baseReceipt.details === 'object' ? baseReceipt.details : {}),
+      helperCallsExecuted: uniqueStrings([
+        ...(Array.isArray(baseReceipt?.details?.helperCallsExecuted) ? baseReceipt.details.helperCallsExecuted : []),
+        commandText
+      ]),
+      filesTouched: uniqueStrings([
+        ...(Array.isArray(baseReceipt?.details?.filesTouched) ? baseReceipt.details.filesTouched : []),
+        receiptPath
+      ]),
+      localReviewLoop: localReviewLoopDetails
+    }
   };
 }
 
@@ -2154,7 +2479,14 @@ async function updatePullRequestBranch({ taskPacket, repoRoot, executionRoot = r
 
 async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, executionRoot = repoRoot, policyPath, deps = {} }) {
   if (typeof deps.invokeCodingTurnFn === 'function') {
-    return deps.invokeCodingTurnFn({ taskPacket, policy, repoRoot, executionRoot, policyPath });
+    const injectedReceipt = await deps.invokeCodingTurnFn({ taskPacket, policy, repoRoot, executionRoot, policyPath });
+    return maybeRunLocalReviewLoop({
+      baseReceipt: injectedReceipt,
+      taskPacket,
+      policy,
+      repoRoot,
+      deps
+    });
   }
 
   const command = normalizeCommandList(policy?.codingTurnCommand);
@@ -2208,7 +2540,8 @@ async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, execution
       };
     }
     if (fileReceipt && typeof fileReceipt === 'object') {
-      return {
+      return maybeRunLocalReviewLoop({
+        baseReceipt: {
         ...fileReceipt,
         source: normalizeText(fileReceipt.source) || 'delivery-agent-broker',
         details: {
@@ -2216,20 +2549,32 @@ async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, execution
           helperCallsExecuted: [command.join(' '), ...(Array.isArray(fileReceipt.details?.helperCallsExecuted) ? fileReceipt.details.helperCallsExecuted : [])],
           laneLifecycle: normalizeLifecycle(fileReceipt.details?.laneLifecycle, 'coding')
         }
-      };
+        },
+        taskPacket,
+        policy,
+        repoRoot,
+        deps
+      });
     }
     try {
       const stdoutReceipt = JSON.parse(result.stdout);
       if (stdoutReceipt && typeof stdoutReceipt === 'object') {
-        return {
+        return maybeRunLocalReviewLoop({
+          baseReceipt: {
           ...stdoutReceipt,
           source: normalizeText(stdoutReceipt.source) || 'delivery-agent-broker'
-        };
+          },
+          taskPacket,
+          policy,
+          repoRoot,
+          deps
+        });
       }
     } catch {
       // Ignore stdout parse failures and fall back to a generic success receipt.
     }
-    return {
+    return maybeRunLocalReviewLoop({
+      baseReceipt: {
       status: 'completed',
       outcome: 'coding-command-finished',
       reason: 'codingTurnCommand completed without an explicit receipt payload.',
@@ -2243,7 +2588,12 @@ async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, execution
         helperCallsExecuted: [command.join(' ')],
         filesTouched: []
       }
-    };
+      },
+      taskPacket,
+      policy,
+      repoRoot,
+      deps
+    });
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
