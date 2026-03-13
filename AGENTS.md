@@ -44,6 +44,10 @@ artifacts under `tests/results/_agent/`.
 - Prefer `node tools/npm/run-script.mjs priority:pr` over raw `gh pr create`.
 - Prefer `node tools/npm/run-script.mjs priority:validate -- --ref <branch>`
   over manual Validate dispatches.
+- Prefer the local Docker/Desktop parity loop before spending repeated GitHub
+  Actions cycles on the same defect class:
+  - `pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage`
+  - `pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -NILinuxReviewSuite`
 - Detached unattended delivery surfaces:
   - `node tools/npm/run-script.mjs priority:delivery:agent:ensure`
   - `node tools/npm/run-script.mjs priority:delivery:agent:status`
@@ -79,6 +83,10 @@ artifacts under `tests/results/_agent/`.
   in `tools/policy/branch-required-checks.json`.
 - Use safe repo helpers instead of hand-rolled git mutation flows whenever a
   helper exists.
+- For second and later review passes on markdown, workflow drift, NI Linux
+  smoke, or VI history artifact quality, iterate locally through Docker
+  Desktop first and use GitHub Actions for confirmation only after the local
+  parity loop is green.
 - Keep bulky diagnostics out of source. Large logs and artifacts belong in
   issue attachments or generated artifact folders, not in committed history.
 - Use vendor resolvers from `tools/VendorTools.psm1` rather than ad-hoc PATH
@@ -106,5 +114,6 @@ artifacts under `tests/results/_agent/`.
 - `docs/SESSION_LOCK_HANDOFF.md`
 - `docs/INTEGRATION_RUNBOOK.md`
 - `docs/RELEASE_OPERATIONS_RUNBOOK.md`
+- `docs/knowledgebase/DOCKER_TOOLS_PARITY.md`
 - `docs/knowledgebase/GitHub-Intake-Layer.md`
 - `docs/knowledgebase/Agent-Handoff-Surfaces.md`

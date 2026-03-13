@@ -37,5 +37,5 @@ Post-Release
 
 - Tag `v0.5.4` on `main` once required checks complete.
 - Monitor release workflows (`Validate`, `vi-compare-refs`, staging smoke) and ensure bucket totals render in summaries.
-- Run `node tools/npm/run-script.mjs release:finalize -- 0.5.4` to fast-forward `main`/`develop`, draft the GitHub release, and archive the
-  finalize metadata.
+- Run `node tools/npm/run-script.mjs release:finalize -- 0.5.4` to fast-forward `main`/`develop`, draft the GitHub
+  release, and archive the finalize metadata.

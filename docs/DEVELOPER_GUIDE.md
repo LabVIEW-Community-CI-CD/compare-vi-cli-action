@@ -78,7 +78,7 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       also executes an unsuppressed `full` pass so block diagram/front panel edits
       are never hidden; both modes surface in the PR summary's **Flags** column.
       LVCompare reports now use the multi-file HTML layout (`compare-report.html`
-      + `compare-report_files/`) so the 2025 CLI retains category headings and images.
+      and `compare-report_files/`) so the 2025 CLI retains category headings and images.
       Set `COMPAREVI_REPORT_FORMAT=html-single` when you explicitly need the legacy
       single-file artifact.
     - Staged compare automation exposes runtime toggles for LVCompare execution:
@@ -120,37 +120,37 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       3. `tools/Summarize-PRVIHistory.ps1` renders the PR table with change types, comparison/diff counts, and
          relative report paths so reviewers can triage without downloading the artifact bundle.
         The summary contract now includes additive image metadata for report rendering:
-        - target node `reportImages` (`enabled`, `indexPath`, `previewCount`, `previews[]`)
-        - totals `previewImages` and `markdownTruncated` in `pr-vi-history-summary@v1`
-        - per-pair rows under `pairTimeline[]`:
+      - target node `reportImages` (`enabled`, `indexPath`, `previewCount`, `previews[]`)
+      - totals `previewImages` and `markdownTruncated` in `pr-vi-history-summary@v1`
+      - per-pair rows under `pairTimeline[]`:
           `targetPath`, `baseRef`, `headRef`, `classification`, `diff`, `durationSeconds`,
           `previewStatus`, `reportPath`, `imageIndexPath`
-        - run-level `kpi` envelope:
+      - run-level `kpi` envelope:
           `signalRecall`, `noisePrecisionMasscompile`, `previewCoverage`,
           `timingP50Seconds`, `timingP95Seconds`, `commentTruncated`, `truncationReason`
         Classification enum contract for `pairTimeline[].classification`:
-        - `signal`
-        - `noise-masscompile`
-        - `noise-cosmetic`
-        - `unknown`
+      - `signal`
+      - `noise-masscompile`
+      - `noise-cosmetic`
+      - `unknown`
         The same helper emits a `### Mobile Preview` section in the PR comment/summary markdown when previews are
         available, and writes extracted files to `tests/results/pr-vi-history/<target>/previews/` with index contract
         `pr-vi-history-image-index@v1`.
         The on-demand smoke harness (`tools/Test-PRVIHistorySmoke.ps1`) enforces hybrid gate policy:
-        - strict targets (`requireDiff=true`) are hard-fail
-        - smoke targets (`requireDiff=false`) are non-blocking warnings
-        - summary output includes `Policy` (`vi-history-policy-gate@v1`) with separated strict failures and smoke warnings
+      - strict targets (`requireDiff=true`) are hard-fail
+      - smoke targets (`requireDiff=false`) are non-blocking warnings
+      - summary output includes `Policy` (`vi-history-policy-gate@v1`) with separated strict failures and smoke warnings
         Smoke KPI artifacts are additive and emitted per run:
-        - `tests/results/_agent/smoke/vi-history/benchmarks/vi-history-benchmark-*.json`
+      - `tests/results/_agent/smoke/vi-history/benchmarks/vi-history-benchmark-*.json`
           (`schema: vi-history-benchmark@v1`)
-        - `tests/results/_agent/smoke/vi-history/benchmarks/vi-history-benchmark-delta-*.json`
+      - `tests/results/_agent/smoke/vi-history/benchmarks/vi-history-benchmark-delta-*.json`
           (`schema: vi-history-benchmark-delta@v1`)
-        - `tests/results/_agent/smoke/vi-history/benchmarks/vi-history-benchmark-delta-*.md`
+      - `tests/results/_agent/smoke/vi-history/benchmarks/vi-history-benchmark-delta-*.md`
           (PR/issue evidence comment body)
         Use `-EvidenceIssueNumber <n>` to mirror KPI delta comments to a tracking issue.
         Extractor toggles:
-        - `PR_VI_HISTORY_EXTRACT_REPORT_IMAGES`
-        - `VI_HISTORY_EXTRACT_REPORT_IMAGES`
+      - `PR_VI_HISTORY_EXTRACT_REPORT_IMAGES`
+      - `VI_HISTORY_EXTRACT_REPORT_IMAGES`
     - Override history depth with `-MaxPairs` when you need a longer runway; otherwise accept
       the default for quick attribution.
     - History runs now keep the full signal by default (no quiet bundle). Override the compare flags with repository or
@@ -163,7 +163,8 @@ Quick reference for building, testing, and releasing the LVCompare composite act
 ## GitHub helper utilities
 
 - `node tools/priority/github-helper.mjs sanitize --input issue-body.md --output issue-body.gh.txt`  
-  Doubles backslashes and normalises line endings so literal sequences (for example `\t`, `\tools`) survive `gh issue create/edit`. Omit `--output` to print to STDOUT.
+  Doubles backslashes and normalises line endings so literal sequences (for example `\t`, `\tools`) survive
+  `gh issue create/edit`. Omit `--output` to print to STDOUT.
 - `node tools/priority/github-helper.mjs snippet --issue 531 --prefix Fixes`  
   Emits an auto-link snippet (defaults to `Fixes #531`) you can drop into PR descriptions so GitHub auto-closes the issue.
 - `node tools/npm/run-script.mjs priority:project:portfolio:apply -- --url <issue-or-pr-url> --use-config`  
@@ -183,9 +184,13 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   projected target state. Use this when the issue/PR metadata itself is the source of truth; use the project helper
   only for board fields.
 - `node tools/priority/standing-priority-handoff.mjs [--repo <owner/repo>] [--dry-run] <next-issue>`  
-  Normalizes the current repository lane back to exactly one standing issue, using the repo-aware label set (`fork-standing-priority` first on fork lanes, `standing-priority` on upstream), removes legacy standing labels from non-target issues, and re-runs the cache sync (`tools/priority/sync-standing-priority.mjs`).
+  Normalizes the current repository lane back to exactly one standing issue, using the repo-aware label set
+  (`fork-standing-priority` first on fork lanes, `standing-priority` on upstream), removes legacy standing labels from
+  non-target issues, and re-runs the cache sync (`tools/priority/sync-standing-priority.mjs`).
 - `node tools/priority/standing-priority-handoff.mjs [--repo <owner/repo>] [--dry-run] --auto`  
-  Lists all open issues in the current repository, excludes the currently labelled standing issue, auto-selects the next actionable development item deterministically, and then applies the same label normalization flow. Cadence alert issues are deprioritized when non-cadence development issues are available.
+  Lists all open issues in the current repository, excludes the currently labelled standing issue, auto-selects the
+  next actionable development item deterministically, and then applies the same label normalization flow. Cadence alert
+  issues are deprioritized when non-cadence development issues are available.
 - Standing-priority repository resolution is owner-agnostic. Order:
   1. `GITHUB_REPOSITORY`
   2. git remotes (`upstream`, then `origin`)
@@ -221,14 +226,16 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 
 ## Runtime daemon
 
-- The portable observer loop remains Linux-only. On this Windows workspace, run it through the existing Docker/Linux path rather than invoking `tools/priority/runtime-daemon.mjs` directly.
+- The portable observer loop remains Linux-only. On this Windows workspace, run it through the existing Docker/Linux
+  path rather than invoking `tools/priority/runtime-daemon.mjs` directly.
 - `node tools/priority/runtime-daemon.mjs --repo <owner/repo> --stop-on-idle --execute-turn`
   enables the unattended execution seam:
   - planner prefers live standing-priority state for the target repo
   - the loop exits cleanly when no actionable work remains
   - compare-vi fork mirrors can be closed and advanced deterministically
   - cadence-only standing issues stop the loop instead of spinning
-- For fork-drain runs, point `--repo` at the fork queue you want to drain and set `AGENT_PRIORITY_UPSTREAM_REPOSITORY=<upstream-owner/repo>` when the canonical upstream differs from the target repo.
+- For fork-drain runs, point `--repo` at the fork queue you want to drain and set
+  `AGENT_PRIORITY_UPSTREAM_REPOSITORY=<upstream-owner/repo>` when the canonical upstream differs from the target repo.
 
 ## Release checklist
 
@@ -244,9 +251,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - `main` reflects the latest release. Use release branches to promote changes from `develop` to `main`.
 - For standing-priority work, create `issue/<number>-<slug>` and merge back with squash once checks are green.
 - When the standing-priority issue changes mid-flight, realign the branch name and PR head with  
-  `node tools/npm/run-script.mjs priority:branch:rename -- --issue <number>`. The helper derives the slug from the issue title, renames the
-  local branch, pushes the new name to any remotes that carried the old branch, retargets the matching PR, and (unless
-  you pass `--keep-remote`) deletes the stale remote ref.
+  `node tools/npm/run-script.mjs priority:branch:rename -- --issue <number>`. The helper derives the slug from the
+  issue title, renames the local branch, pushes the new name to any remotes that carried the old branch, retargets the
+  matching PR, and (unless you pass `--keep-remote`) deletes the stale remote ref.
 - Use short-lived `feature/<slug>` branches when parallel threads are needed. Rebase on `develop` frequently and
   open PRs with `node tools/npm/run-script.mjs priority:pr`.
 - When preparing a release:
@@ -254,21 +261,23 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
     pushes the branch to your fork, and opens a PR targeting `main`. Use `node tools/npm/run-script.mjs release:branch:dry`
      when you want to rehearse the flow without touching remotes.
   2. Finish release-only work on feature branches targeting `release/<version>`.
-   3. Merge the release branch into `main`, create the draft release, then fast-forward `develop`
-     with `node tools/npm/run-script.mjs release:finalize -- <version>`. The helper fast-forwards `main`, creates a draft
-      GitHub release, fast-forwards `develop`, and records metadata under `tests/results/_agent/release/`.
+  3. Merge the release branch into `main`, create the draft release, then fast-forward `develop`
+     with `node tools/npm/run-script.mjs release:finalize -- <version>`. The helper fast-forwards `main`, creates a
+     draft GitHub release, fast-forwards `develop`, and records metadata under `tests/results/_agent/release/`.
      Use `node tools/npm/run-script.mjs release:finalize:dry` to rehearse the flow without pushing.
-      - Finalize now requires the release branch metadata artifact (`release-<tag>-branch.json`) to be present before it
-        cuts a draft tag, and it verifies both branch/finalize artifacts are retained under
+     - Finalize now requires the release branch metadata artifact (`release-<tag>-branch.json`) to be present before it
+       cuts a draft tag, and it verifies both branch/finalize artifacts are retained under
         `tests/results/_agent/release/`.
-      - The finalize helper blocks if the release PR has pending or failing checks; set
-        `RELEASE_FINALIZE_SKIP_CHECKS=1` (or `RELEASE_FINALIZE_ALLOW_MERGED=1` / `RELEASE_FINALIZE_ALLOW_DIRTY=1`)
-        to override in emergencies.
+     - The finalize helper blocks if the release PR has pending or failing checks; set
+       `RELEASE_FINALIZE_SKIP_CHECKS=1` (or `RELEASE_FINALIZE_ALLOW_MERGED=1` / `RELEASE_FINALIZE_ALLOW_DIRTY=1`) to
+       override in emergencies.
      - If `main` and the release branch no longer share history (for example, after cutting over to a new repository
        baseline), rerun the helper with `RELEASE_FINALIZE_ALLOW_RESET=1` so it can reset `main` to the release tip and
-       push with `--force-with-lease`. Leave the variable unset during normal releases so unintended history rewrites are blocked.
+       push with `--force-with-lease`. Leave the variable unset during normal releases so unintended history rewrites
+       are blocked.
 - When rehearsing feature branch work, use `node tools/npm/run-script.mjs feature:branch:dry -- my-feature` and
-  `node tools/npm/run-script.mjs feature:finalize:dry -- my-feature` to simulate branch creation and finalization without touching remotes.
+  `node tools/npm/run-script.mjs feature:finalize:dry -- my-feature` to simulate branch creation and finalization
+  without touching remotes.
 - Delete branches automatically after merging (GitHub setting) so the standing-priority flow starts clean each time.
 
 ## Deployment approval gates
@@ -321,8 +330,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   - commit divergence from `git rev-list --left-right --count upstream/develop...origin/develop` (telemetry only)
 - Validate `session-index` now embeds parity telemetry under `runContext.parity` and appends an
   `Origin/Upstream Parity Telemetry` block to the step summary.
-- The release router now suggests `node tools/npm/run-script.mjs release:finalize -- <version>` automatically when the latest branch artifact
-  lacks a matching finalize record.
+- The release router now suggests `node tools/npm/run-script.mjs release:finalize -- <version>` automatically when the
+  latest branch artifact lacks a matching finalize record.
 
 ## Pull request & merge policy
 
@@ -338,7 +347,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Scoped skip surfaces:
   Required checks stay deterministic: `fixtures` and `vi-history-scenarios-linux` still report status for lightweight
   scopes, but their expensive steps no-op when routing says the lane is out of scope.
-  `fixtures` heavy work only runs for `compare-engine-history`, `mixed-runtime`, `unclassified`, and explicit full-validation modes.
+  `fixtures` heavy work only runs for `compare-engine-history`, `mixed-runtime`, `unclassified`, and explicit
+  full-validation modes.
   `comparevi-history-bundle-certification` follows the same routing.
   `vi-history-scenarios-*` runs for `compare-engine-history`, `docker-vi-history`, `mixed-runtime`, `unclassified`, and
   explicit manual dispatches; the final VI-history plan still honors `history_scenario_set`.
@@ -460,7 +470,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - When you need the repository's richer intake metadata blocks and template variants, prefer
   `pwsh -File tools/Branch-Orchestrator.ps1 -Issue <number> -Execute [-PRTemplate <variant>]` or
   `pwsh -File tools/New-PullRequestBody.ps1 ... -OutputPath pr-body.md` plus
-  `node tools/npm/run-script.mjs priority:pr -- --issue <number> --repo <owner/repo> --branch <branch> --base <base> --title <title> --body-file pr-body.md`.
+  `node tools/npm/run-script.mjs priority:pr -- --issue <number> --repo <owner/repo> --branch <branch> --base <base>
+  --title <title> --body-file pr-body.md`.
 - Detailed enforcement notes (feature-branch guards, merge history workflow,
   merge queue parameters) live in
   [`docs/knowledgebase/FEATURE_BRANCH_POLICY.md`](./knowledgebase/FEATURE_BRANCH_POLICY.md).

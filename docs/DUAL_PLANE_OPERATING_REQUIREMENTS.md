@@ -40,4 +40,5 @@ Passing these checks demonstrates the R1-R6 contract is executable, observable, 
 
 - Requirement-to-issue traceability is anchored in this matrix and the linked implementation issues (#666, #667, #668).
 - Telemetry migration traceability for R6 is anchored in #675 -> #676 -> #677 -> #678 -> #679.
-- Follow-up issues that alter plane behavior, guardrails, snapshot/triage outputs, or telemetry schemas must update this document and keep ownership boundaries explicit.
+- Follow-up issues that alter plane behavior, guardrails, snapshot/triage outputs, or telemetry schemas must update
+  this document and keep ownership boundaries explicit.

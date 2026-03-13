@@ -74,12 +74,16 @@ Set `fail-on-diff: false` to treat code 1 as notice-only.
 
 ## Git difftool overlap (duplicate CLI invocations)
 
-Symptoms: LabVIEWCLI.exe appears to launch twice during a manual diff, or CLI capture runs unexpectedly when using a Git difftool/IDE diff.
+Symptoms: LabVIEWCLI.exe appears to launch twice during a manual diff, or CLI capture runs unexpectedly when using a
+Git difftool/IDE diff.
 
 Why it happens:
-- Git difftool/mergetool may be configured to invoke LabVIEWCLI, while the compare helper also uses the CLI (CreateComparisonReport) to generate HTML artifacts. Both can fire for the same intent.
+
+- Git difftool/mergetool may be configured to invoke LabVIEWCLI, while the compare helper also uses the CLI
+  (CreateComparisonReport) to generate HTML artifacts. Both can fire for the same intent.
 
 Mitigations:
+
 - Suppress CLI capture during Git difftool sessions:
 
 ```powershell
@@ -100,17 +104,10 @@ $env:COMPAREVI_NO_CLI_CAPTURE = '1'
 ```
 
 Notes:
+
 - These toggles are process‑scoped. Set them in the same shell/terminal that runs the compare.
 - When suppression is active, the capture JSON records `environment.cli.skipped=true` with a `skipReason` (e.g., `git-context`).
 
-## Git difftool overlap (duplicate CLI invocations)
-
-Symptoms: LabVIEWCLI.exe appears to launch twice during a manual diff, or CLI capture runs unexpectedly when using a Git difftool/IDE diff.
-
-Why it happens:
-- Git difftool/mergetool may be configured to invoke LabVIEWCLI, while the compare helper also uses the CLI (CreateComparisonReport) to generate HTML artifacts. Both can fire for the same intent.
-
-Mitigations:
 - Suppress CLI capture during Git difftool sessions:
 
 ```powershell
@@ -131,6 +128,7 @@ $env:COMPAREVI_NO_CLI_CAPTURE = '1'
 ```
 
 Notes:
+
 - These toggles are process‑scoped. Set them in the same shell/terminal that runs the compare.
 - When suppression is active, the capture JSON records `environment.cli.skipped=true` with a `skipReason` (e.g., `git-context`).
 
@@ -140,4 +138,3 @@ Notes:
 - [`docs/USAGE_GUIDE.md`](./USAGE_GUIDE.md)
 - [`docs/COMPARE_LOOP_MODULE.md`](./COMPARE_LOOP_MODULE.md)
 - [`docs/DEV_DASHBOARD_PLAN.md`](./DEV_DASHBOARD_PLAN.md)
-

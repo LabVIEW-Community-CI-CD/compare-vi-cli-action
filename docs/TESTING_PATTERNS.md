@@ -20,6 +20,7 @@ Patterns for structuring Pester tests in this repository.
 - Traceability: add `REQ:XYZ`, `ADR:0001` when linking to requirements or design records.
 
 Examples (CompareVI):
+
 - Suite: `Describe 'CompareVI CLI session index' -Tag 'CompareVI'`
 - Unit context (no external tools): `-Tag 'CompareVI','CLI','Unit'`
 - History routing coverage: `-Tag 'CompareVI','History','Unit'`
