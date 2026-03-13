@@ -3898,3 +3898,8 @@ test('delivery agent runCommand keeps spawn errors non-zero and preserves diagno
   assert.match(source, /normalizeText\(result\.error\?\.message\)/);
   assert.match(source, /Process terminated by signal/);
 });
+
+test('draft review clearance diagnostics report actionable current-head items', () => {
+  const source = readFileSync(new URL('../delivery-agent.mjs', import.meta.url), 'utf8');
+  assert.match(source, /reasons\.push\('actionable-current-head-items'\)/);
+});

@@ -408,3 +408,30 @@ test('delivery memory schema validates suite-aware terminal PR history', async (
   const validate = ajv.compile(schema);
   assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
 });
+
+test('delivery agent runtime state schema accepts legacy policy payloads without copilotReviewStrategy', async () => {
+  const schema = await loadSchema('docs/schemas/delivery-agent-runtime-state-v1.schema.json');
+  const ajv = makeAjv();
+  const validate = ajv.compile(schema);
+  const state = {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: '2026-03-13T19:00:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: 'tests/results/_agent/runtime',
+    status: 'running',
+    laneLifecycle: 'waiting-review',
+    activeCodingLanes: 0,
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      implementationRemote: 'origin',
+      maxActiveCodingLanes: 1
+    },
+    activeLane: {
+      schema: 'priority/delivery-agent-lane-state@v1',
+      laneId: 'origin-1067',
+      laneLifecycle: 'waiting-review',
+      blockerClass: 'review'
+    }
+  };
+  assert.equal(validate(state), true, JSON.stringify(validate.errors, null, 2));
+});

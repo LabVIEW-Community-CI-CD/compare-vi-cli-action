@@ -1815,7 +1815,7 @@ function evaluateDraftPhaseCopilotClearance(pullRequest = {}) {
     hasCurrentHeadReview;
   const reasons = [];
   if (hasActionableItems) {
-    reasons.push('actionable-current-head-comments');
+    reasons.push('actionable-current-head-items');
   }
   if (!hasCurrentHeadReview) {
     if (PENDING_WORKFLOW_RUN_STATUSES.has(workflowStatus)) {

@@ -37,7 +37,7 @@
     "policy": {
       "type": "object",
       "additionalProperties": true,
-      "required": ["schema", "implementationRemote", "copilotReviewStrategy", "maxActiveCodingLanes"],
+      "required": ["schema", "implementationRemote", "maxActiveCodingLanes"],
       "properties": {
         "schema": { "const": "priority/delivery-agent-policy@v1" },
         "implementationRemote": { "type": "string" },
