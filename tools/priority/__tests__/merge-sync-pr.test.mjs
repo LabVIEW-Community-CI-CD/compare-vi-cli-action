@@ -11,6 +11,7 @@ import {
   buildMergeSummaryPayload,
   buildPolicyTrace,
   classifyPromotionState,
+  evaluatePromotionReviewClearance,
   isUpstreamOwnedHead,
   normalizeBaseRefName,
   runMergeSync,
@@ -714,7 +715,16 @@ test('runMergeSync records queued promotion state after auto merge activation ma
       mergeStateStatus: 'BLOCKED',
       mergeable: 'MERGEABLE',
       baseRefName: 'develop',
+      headRefOid: '1234567890123456789012345678901234567890',
       url: 'https://example.test/pr/123'
+    }),
+    evaluatePromotionReviewClearanceFn: async () => ({
+      ok: true,
+      report: {
+        status: 'pass',
+        gateState: 'ready',
+        reasons: ['current-head-review-run-completed-clean']
+      }
     }),
     readPromotionStateFn: () => {
       const value = promotionStates[Math.min(promotionReads, promotionStates.length - 1)];
@@ -747,7 +757,16 @@ test('runMergeSync fails when auto merge command succeeds but no durable promoti
           mergeStateStatus: 'BLOCKED',
           mergeable: 'MERGEABLE',
           baseRefName: 'develop',
+          headRefOid: '1234567890123456789012345678901234567890',
           url: 'https://example.test/pr/124'
+        }),
+        evaluatePromotionReviewClearanceFn: async () => ({
+          ok: true,
+          report: {
+            status: 'pass',
+            gateState: 'ready',
+            reasons: ['current-head-review-run-completed-clean']
+          }
         }),
         readPromotionStateFn: () => ({
           state: 'OPEN',
@@ -761,6 +780,164 @@ test('runMergeSync fails when auto merge command succeeds but no durable promoti
       }),
     /no durable promotion state was observed/
   );
+});
+
+test('evaluatePromotionReviewClearance summarizes a passing current-head no-comment review run', async () => {
+  const result = await evaluatePromotionReviewClearance({
+    repoRoot,
+    repo: 'owner/repo',
+    pr: 125,
+    prInfo: {
+      isDraft: false,
+      baseRefName: 'develop',
+      headRefOid: '1234567890123456789012345678901234567890'
+    },
+    runCopilotReviewGateFn: async () => ({
+      exitCode: 0,
+      report: {
+        status: 'pass',
+        gateState: 'ready',
+        reasons: ['current-head-review-run-completed-clean'],
+        summary: {
+          actionableCommentCount: 0,
+          actionableThreadCount: 0
+        },
+        signals: {
+          hasCurrentHeadReview: false,
+          latestReviewIsCurrentHead: false,
+          reviewRunCompletedClean: true
+        }
+      }
+    })
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.report, {
+    status: 'pass',
+    gateState: 'ready',
+    reasons: ['current-head-review-run-completed-clean'],
+    actionableCommentCount: 0,
+    actionableThreadCount: 0,
+    hasCurrentHeadReview: false,
+    latestReviewIsCurrentHead: false,
+    reviewRunCompletedClean: true
+  });
+});
+
+test('runMergeSync fails closed when current-head Copilot comments remain unresolved', async () => {
+  let mergeAttempted = false;
+  await assert.rejects(
+    () =>
+      runMergeSync({
+        argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '124', '--repo', 'owner/repo'],
+        repoRoot,
+        ensureGhCliFn: () => {},
+        readPrInfoFn: () => ({
+          number: 124,
+          state: 'OPEN',
+          isDraft: false,
+          mergeStateStatus: 'BLOCKED',
+          mergeable: 'MERGEABLE',
+          baseRefName: 'develop',
+          headRefOid: '1234567890123456789012345678901234567890',
+          url: 'https://example.test/pr/124'
+        }),
+        readPromotionStateFn: () => ({
+          state: 'OPEN',
+          mergeStateStatus: 'BLOCKED',
+          isInMergeQueue: false,
+          autoMergeRequest: null,
+          mergedAt: null
+        }),
+        evaluatePromotionReviewClearanceFn: async () => ({
+          ok: false,
+          report: {
+            status: 'fail',
+            gateState: 'blocked',
+            reasons: ['actionable-comments-present']
+          }
+        }),
+        runMergeAttemptFn: () => {
+          mergeAttempted = true;
+          return { status: 0, stdout: '', stderr: '' };
+        },
+        sleepFn: async () => {}
+      }),
+    /actionable-comments-present/
+  );
+
+  assert.equal(mergeAttempted, false);
+});
+
+test('runMergeSync includes review clearance evidence when clean current-head admission is allowed', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'merge-sync-pr-review-clearance-'));
+  const payload = await runMergeSync({
+    argv: [
+      'node',
+      'tools/priority/merge-sync-pr.mjs',
+      '--pr',
+      '127',
+      '--repo',
+      'owner/repo',
+      '--summary-path',
+      path.join(tempDir, 'summary.json')
+    ],
+    repoRoot,
+    ensureGhCliFn: () => {},
+    readPrInfoFn: () => ({
+      number: 127,
+      state: 'OPEN',
+      isDraft: false,
+      mergeStateStatus: 'BLOCKED',
+      mergeable: 'MERGEABLE',
+      baseRefName: 'develop',
+      headRefOid: '1234567890123456789012345678901234567890',
+      url: 'https://example.test/pr/127'
+    }),
+    evaluatePromotionReviewClearanceFn: async () => ({
+      ok: true,
+      report: {
+        status: 'pass',
+        gateState: 'ready',
+        reasons: ['current-head-review-run-completed-clean'],
+        actionableCommentCount: 0,
+        actionableThreadCount: 0,
+        hasCurrentHeadReview: false,
+        latestReviewIsCurrentHead: false,
+        reviewRunCompletedClean: true
+      }
+    }),
+    readPromotionStateFn: (() => {
+      let reads = 0;
+      return () => {
+        reads += 1;
+        return reads === 1
+          ? {
+              state: 'OPEN',
+              mergeStateStatus: 'BLOCKED',
+              isInMergeQueue: false,
+              autoMergeRequest: null,
+              mergedAt: null
+            }
+          : {
+              state: 'OPEN',
+              mergeStateStatus: 'BLOCKED',
+              isInMergeQueue: true,
+              autoMergeRequest: null,
+              mergedAt: null
+            };
+      };
+    })(),
+    runMergeAttemptFn: () => ({ status: 0, stdout: 'queued', stderr: '' }),
+    sleepFn: async () => {}
+  });
+
+  assert.equal(payload.reviewClearance.status, 'pass');
+  assert.deepEqual(payload.reviewClearance.reasons, ['current-head-review-run-completed-clean']);
+
+  const written = JSON.parse(await readFile(path.join(tempDir, 'summary.json'), 'utf8'));
+  assert.equal(written.reviewClearance.status, 'pass');
+  assert.deepEqual(written.reviewClearance.reasons, ['current-head-review-run-completed-clean']);
 });
 
 test('runMergeSync does not query promotion state when the PR is already merged', async () => {
