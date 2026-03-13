@@ -30,7 +30,7 @@ test('agent-review-policy keeps heavyweight collection on pull_request_target an
   assert.match(workflow, /node dist\/tools\/priority\/copilot-review-signal\.js/);
   assert.match(workflow, /name: Validate Copilot review signal schema\s+if: github\.event_name == 'pull_request_target'/);
   assert.match(workflow, /tests\/results\/_agent\/reviews\/copilot-review-signal\.json/);
-  assert.match(workflow, /if: always\(\) && github\.event_name == 'pull_request_target'\s+uses: actions\/upload-artifact@v5/);
+  assert.match(workflow, /if: always\(\) && github\.event_name == 'pull_request_target'\s+uses: actions\/upload-artifact@v6/);
   assert.doesNotMatch(workflow, /name: Resolve workflow-run PR context/);
   assert.doesNotMatch(workflow, /name: Load workflow-run pull request metadata/);
   assert.match(
@@ -49,6 +49,6 @@ test('agent-review-policy keeps heavyweight collection on pull_request_target an
   assert.match(workflow, /if \[\[ "\$\{\{ github\.event_name \}\}" == "pull_request_target" && -f tests\/results\/_agent\/reviews\/copilot-review-signal\.json \]\]; then/);
   assert.match(workflow, /node "\$\{args\[@\]\}"/);
   assert.doesNotMatch(workflow, /name: Evaluate Copilot queue gate \(merge_group\)/);
-  assert.match(workflow, /name: Upload Copilot queue gate artifact\s+if: always\(\)\s+uses: actions\/upload-artifact@v5/);
+  assert.match(workflow, /name: Upload Copilot queue gate artifact\s+if: always\(\)\s+uses: actions\/upload-artifact@v6/);
   assert.doesNotMatch(workflow, /Enforce required reviewer for agent-authored PRs/);
 });
