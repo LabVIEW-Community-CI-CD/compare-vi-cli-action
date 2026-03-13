@@ -95,6 +95,7 @@ test('workflow-writing callers use the enclave wrapper instead of the low-level 
   assert.match(dockerChecks, /COMPAREVI_WORKFLOW_ENCLAVE_HOME=\/opt\/comparevi-workflow-enclave/);
   assert.match(dockerChecks, /COMPAREVI_WORKFLOW_ENCLAVE_HOME=\/tmp\/comparevi-workflow-enclave/);
   assert.match(dockerChecks, /node tools\/npm\/run-script\.mjs lint:md/);
+  assert.match(dockerChecks, /git config --global --add safe\.directory \/work/);
   assert.doesNotMatch(dockerChecks, /-AcceptExitCodes\s+@\(0,1\)\s+-Label 'markdownlint(?: \(tools\))?'/);
   assert.doesNotMatch(dockerChecks, /update_workflows\.py/);
 
