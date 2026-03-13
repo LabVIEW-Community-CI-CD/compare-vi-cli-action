@@ -189,15 +189,20 @@ export function parseMergeGroupHeadBranch(headBranch) {
     return null;
   }
 
+  const refsHeadsPrefix = 'refs/heads/';
+  const queueBranch = normalized.toLowerCase().startsWith(refsHeadsPrefix)
+    ? normalized.slice(refsHeadsPrefix.length)
+    : normalized;
+
   const match = /^gh-readonly-queue\/(?<baseRef>.+)\/pr-(?<prNumber>\d+)-(?<headSha>[0-9a-f]{40})$/i.exec(
-    normalized,
+    queueBranch,
   );
   if (!match?.groups) {
     return null;
   }
 
   return {
-    headBranch: normalized,
+    headBranch: queueBranch,
     baseRef: normalizeBaseRef(match.groups.baseRef),
     prNumber: Number.parseInt(match.groups.prNumber, 10),
     sourceHeadSha: normalizeSha(match.groups.headSha),

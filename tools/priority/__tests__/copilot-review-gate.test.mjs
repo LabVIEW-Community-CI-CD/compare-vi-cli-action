@@ -93,6 +93,15 @@ test('parseMergeGroupHeadBranch resolves the queued PR number and source head SH
       sourceHeadSha: '23324a081abaf177d24ea295e6da805ce541465a',
     },
   );
+  assert.deepEqual(
+    parseMergeGroupHeadBranch('refs/heads/gh-readonly-queue/develop/pr-1012-23324a081abaf177d24ea295e6da805ce541465a'),
+    {
+      headBranch: 'gh-readonly-queue/develop/pr-1012-23324a081abaf177d24ea295e6da805ce541465a',
+      baseRef: 'develop',
+      prNumber: 1012,
+      sourceHeadSha: '23324a081abaf177d24ea295e6da805ce541465a',
+    },
+  );
   assert.equal(parseMergeGroupHeadBranch('feature/not-a-queue-branch'), null);
 });
 
