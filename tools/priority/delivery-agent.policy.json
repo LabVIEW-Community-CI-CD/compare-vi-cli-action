@@ -2,6 +2,7 @@
   "schema": "priority/delivery-agent-policy@v1",
   "backlogAuthority": "issues",
   "implementationRemote": "origin",
+  "copilotReviewStrategy": "draft-only-explicit",
   "autoSlice": true,
   "autoMerge": true,
   "maxActiveCodingLanes": 1,

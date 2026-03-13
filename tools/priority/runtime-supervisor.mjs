@@ -612,6 +612,8 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
         mutationEnvelope: {
           backlogAuthority: 'issues',
           implementationRemote: normalizeText(activeLane?.forkRemote) || 'origin',
+          copilotReviewStrategy: deliveryPolicy.copilotReviewStrategy,
+          readyForReviewPurpose: 'final-validation',
           allowPolicyMutations: false,
           allowReleaseAdmin: false,
           maxActiveCodingLanes: 1

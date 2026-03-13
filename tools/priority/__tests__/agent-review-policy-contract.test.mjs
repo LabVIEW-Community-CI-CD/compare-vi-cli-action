@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const workflowPath = path.join(repoRoot, '.github', 'workflows', 'agent-review-policy.yml');
 
-test('agent-review-policy keeps heavyweight collection on pull_request_target and evaluates the queue gate only on PR-scoped and merge-group events', () => {
+test('agent-review-policy validates existing draft-phase review state from pull_request_target, pull_request_review, and merge_group', () => {
   const workflow = readFileSync(workflowPath, 'utf8');
 
   assert.match(workflow, /merge_group:/);

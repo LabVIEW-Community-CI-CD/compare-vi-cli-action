@@ -2,12 +2,13 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import { buildDeliveryAgentRuntimeRecord } from '../delivery-agent.mjs';
+import { buildDeliveryAgentRuntimeRecord, loadDeliveryAgentPolicy } from '../delivery-agent.mjs';
 import { buildDeliveryMemoryReport } from '../delivery-memory.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -28,6 +29,7 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
   const ajv = makeAjv();
   const validate = ajv.compile(schema);
   assert.equal(validate(data), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(data.copilotReviewStrategy, 'draft-only-explicit');
   assert.deepEqual(data.hostIsolation, {
     mode: 'hard-cutover',
     wslDistro: 'Ubuntu',
@@ -63,6 +65,33 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
       maxCommitCount: 256
     }
   });
+});
+
+test('loadDeliveryAgentPolicy fails closed on unsupported copilot review strategies', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-policy-invalid-'));
+  const policyDir = path.join(repoRoot, 'tools', 'priority');
+  await mkdir(policyDir, { recursive: true });
+  await writeFile(
+    path.join(policyDir, 'delivery-agent.policy.json'),
+    JSON.stringify({
+      schema: 'priority/delivery-agent-policy@v1',
+      backlogAuthority: 'issues',
+      implementationRemote: 'origin',
+      copilotReviewStrategy: 'disabled',
+      autoSlice: true,
+      autoMerge: true,
+      maxActiveCodingLanes: 1,
+      allowPolicyMutations: false,
+      allowReleaseAdmin: false,
+      stopWhenNoOpenEpics: true
+    }),
+    'utf8'
+  );
+
+  await assert.rejects(
+    loadDeliveryAgentPolicy(repoRoot),
+    /Unsupported copilotReviewStrategy: disabled/
+  );
 });
 
 test('runtime delivery task packet schema validates canonical delivery packets', async () => {
@@ -117,6 +146,8 @@ test('runtime delivery task packet schema validates canonical delivery packets',
         mutationEnvelope: {
           backlogAuthority: 'issues',
           implementationRemote: 'origin',
+          copilotReviewStrategy: 'draft-only-explicit',
+          readyForReviewPurpose: 'final-validation',
           allowPolicyMutations: false,
           allowReleaseAdmin: false,
           maxActiveCodingLanes: 1
@@ -173,6 +204,7 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
       schema: 'priority/delivery-agent-policy@v1',
       backlogAuthority: 'issues',
       implementationRemote: 'origin',
+      copilotReviewStrategy: 'draft-only-explicit',
       autoSlice: true,
       autoMerge: true,
       maxActiveCodingLanes: 1,
@@ -295,6 +327,7 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
   const ajv = makeAjv();
   const validate = ajv.compile(schema);
   assert.equal(validate(state), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(state.policy.copilotReviewStrategy, 'draft-only-explicit');
   assert.equal(state.localReviewLoop.status, 'passed');
   assert.equal(state.localReviewLoop.receiptStatus, 'passed');
   assert.equal(state.localReviewLoop.currentHeadSha, '433e8aa70326007be74c27ccf54c1ae91559b6f3');
@@ -374,4 +407,31 @@ test('delivery memory schema validates suite-aware terminal PR history', async (
   const ajv = makeAjv();
   const validate = ajv.compile(schema);
   assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
+});
+
+test('delivery agent runtime state schema accepts legacy policy payloads without copilotReviewStrategy', async () => {
+  const schema = await loadSchema('docs/schemas/delivery-agent-runtime-state-v1.schema.json');
+  const ajv = makeAjv();
+  const validate = ajv.compile(schema);
+  const state = {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: '2026-03-13T19:00:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: 'tests/results/_agent/runtime',
+    status: 'running',
+    laneLifecycle: 'waiting-review',
+    activeCodingLanes: 0,
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      implementationRemote: 'origin',
+      maxActiveCodingLanes: 1
+    },
+    activeLane: {
+      schema: 'priority/delivery-agent-lane-state@v1',
+      laneId: 'origin-1067',
+      laneLifecycle: 'waiting-review',
+      blockerClass: 'review'
+    }
+  };
+  assert.equal(validate(state), true, JSON.stringify(validate.errors, null, 2));
 });

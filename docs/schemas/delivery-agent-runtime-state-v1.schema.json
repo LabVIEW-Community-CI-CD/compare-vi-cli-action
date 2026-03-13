@@ -41,6 +41,7 @@
       "properties": {
         "schema": { "const": "priority/delivery-agent-policy@v1" },
         "implementationRemote": { "type": "string" },
+        "copilotReviewStrategy": { "enum": ["draft-only-explicit"] },
         "maxActiveCodingLanes": { "type": "integer", "minimum": 1 }
       }
     },
@@ -115,6 +116,7 @@
         "reason": { "type": ["string", "null"] },
         "retryable": { "type": "boolean" },
         "nextWakeCondition": { "type": ["string", "null"] },
+        "reviewPhase": { "type": ["string", "null"] },
         "localReviewLoop": {
           "type": ["object", "null"],
           "additionalProperties": true,
