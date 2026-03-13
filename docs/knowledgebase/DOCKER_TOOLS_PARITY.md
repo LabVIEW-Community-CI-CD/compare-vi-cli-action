@@ -40,6 +40,9 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerific
   - `verification-summary.json`
   - `trace-matrix.json`
   - `trace-matrix.html`
+- Every run now also emits the combined top-level receipt
+  `tests/results/docker-tools-parity/review-loop-receipt.json`. Read that file first after compaction; it records
+  per-check status, links to the current NI Linux and requirements artifacts, and lists the recommended review order.
 
 ## Review-loop policy
 
@@ -78,6 +81,10 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 `
   artifact that records the selected target/ref inputs, the effective refs, the
   bootstrap pair-selection counts, and the recommended artifact review order so
   future agents can resume after context compaction.
+- The top-level `review-loop-receipt.json` now wraps that single-VI receipt
+  together with markdown/docs/workflow status and requirements coverage so
+  future agents only need one starting artifact before opening the deeper VI
+  history evidence.
 
 ## Cleanup expectations
 
@@ -102,7 +109,8 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 `
 
 - GitHub workflow `Tools Parity (Linux)` (`.github/workflows/tools-parity.yml`) runs the helper on `ubuntu-latest`.
   Trigger it via `workflow_dispatch` to capture fresh parity logs and a `docker version` snapshot. Artifacts are uploaded
-  as `docker-parity-linux` (example run: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18703466772).
+  as `docker-parity-linux` and `docker-parity-linux-review-loop` (example run:
+  https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/18703466772).
 - Adjust the workflow inputs to re-enable docs, workflow checkout contracts, markdown checks, or the NI Linux review
   suite when validating broader coverage.
 - The workflow can also upload requirements traceability evidence as

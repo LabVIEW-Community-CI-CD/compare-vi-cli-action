@@ -119,10 +119,13 @@ test('Run-NonLVChecksInDocker exposes Docker Desktop NI Linux review-suite parit
   assert.match(content, /\[string\]\$NILinuxReviewSuiteHistoryBaselineRef/);
   assert.match(content, /\[int\]\$NILinuxReviewSuiteHistoryMaxCommitCount/);
   assert.match(content, /\.PARAMETER NILinuxReviewSuiteHistoryReviewReceiptPath/);
+  assert.match(content, /\.PARAMETER DockerParityReviewReceiptPath/);
   assert.match(content, /tests\/results\/docker-tools-parity\/ni-linux-review-suite/);
   assert.match(content, /tests\/results\/docker-tools-parity\/requirements-verification/);
+  assert.match(content, /tests\/results\/docker-tools-parity\/review-loop-receipt\.json/);
   assert.match(content, /Invoke-NILinuxReviewSuite\.ps1/);
   assert.match(content, /Verify-RequirementsGate\.ps1/);
+  assert.match(content, /schema = 'docker-tools-parity-review-loop@v1'/);
   assert.match(content, /review-suite-summary\.html/);
   assert.match(content, /history-report\.html/);
   assert.match(content, /history-summary\.json/);
@@ -130,6 +133,7 @@ test('Run-NonLVChecksInDocker exposes Docker Desktop NI Linux review-suite parit
   assert.match(content, /\$PSBoundParameters\.ContainsKey\('NILinuxReviewSuiteHistoryReviewReceiptPath'\)/);
   assert.match(content, /verification-summary\.json/);
   assert.match(content, /trace-matrix\.json/);
+  assert.match(content, /recommendedReviewOrder/);
   assert.match(content, /command -v git >\/dev\/null 2>&1/);
   assert.match(content, /Get-Command git -ErrorAction SilentlyContinue/);
   assert.match(content, /git config --global --add safe\.directory \/work/);
@@ -153,6 +157,7 @@ test('Docker parity knowledgebase distinguishes current host-plane behavior from
   assert.match(content, /touch-aware for deep branches such as `develop`/);
   assert.match(content, /NILinuxReviewSuiteHistoryTargetPath/);
   assert.match(content, /vi-history-review-loop-receipt\.json/);
+  assert.match(content, /review-loop-receipt\.json/);
 });
 
 test('PrePush emits deterministic incident-event report for NI known-flag failures', () => {

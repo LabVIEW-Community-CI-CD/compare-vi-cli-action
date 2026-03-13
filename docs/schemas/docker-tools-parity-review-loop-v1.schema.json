@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-ci-cd.example/compare-vi-cli-action/docker-tools-parity-review-loop-v1.schema.json",
+  "title": "Docker Tools Parity Review Loop",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repoRoot",
+    "resultsRoot",
+    "overall",
+    "checks",
+    "artifacts",
+    "requirementsCoverage",
+    "recommendedReviewOrder"
+  ],
+  "properties": {
+    "schema": {
+      "const": "docker-tools-parity-review-loop@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repoRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resultsRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "failedCheck",
+        "message",
+        "exitCode"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "running",
+            "passed",
+            "failed"
+          ]
+        },
+        "failedCheck": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "exitCode": {
+          "type": "integer"
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/checkState"
+      }
+    },
+    "artifacts": {
+      "$ref": "#/$defs/stringMap"
+    },
+    "niLinuxHistoryReview": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "targetPath": {
+          "type": "string"
+        },
+        "requestedBranchRef": {
+          "type": "string"
+        },
+        "requestedBaselineRef": {
+          "type": "string"
+        },
+        "effectiveBranchRef": {
+          "type": "string"
+        },
+        "effectiveBaselineRef": {
+          "type": "string"
+        },
+        "maxCommitCount": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "touchAware": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "selectionSource": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "requirementsCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requirementTotal",
+        "requirementCovered",
+        "requirementUncovered",
+        "uncoveredRequirementIds",
+        "unknownRequirementIds"
+      ],
+      "properties": {
+        "requirementTotal": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "requirementCovered": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "requirementUncovered": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "uncoveredRequirementIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unknownRequirementIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "recommendedReviewOrder": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "checkState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "status",
+        "surface",
+        "startedAt",
+        "completedAt",
+        "error",
+        "artifacts"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "skipped",
+            "passed",
+            "failed"
+          ]
+        },
+        "surface": {
+          "type": "string"
+        },
+        "startedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "completedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifacts": {
+          "$ref": "#/$defs/stringMap"
+        }
+      }
+    },
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}

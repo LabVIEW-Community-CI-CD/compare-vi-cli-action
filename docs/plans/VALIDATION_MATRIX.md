@@ -22,7 +22,8 @@ single source of truth when deciding which helper to run locally, invoke from VS
   - Scope: containerised lint, docs links, workflow checkout contracts, CLI build.
   - Typical invocation: `pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage`.
   - Exit semantics: first failing container exit (`0` happy, `3` = drift).
-  - Artifacts: container logs, optional `dist/comparevi-cli/*`.
+  - Artifacts: container logs, optional `dist/comparevi-cli/*`, and the combined
+    `tests/results/docker-tools-parity/review-loop-receipt.json`.
 - **`tools/Start-IntegrationGated.ps1`**
   - Scope: orchestrated integration gate with watcher + auto-push.
   - Typical invocation: `pwsh -File tools/Start-IntegrationGated.ps1 -AutoPush -Start -Watch`.
@@ -104,6 +105,8 @@ Audience: contributors without the full local toolchain or anyone mirroring CI b
   `history-report.html`, `history-summary.json`, `history-suite-inspection.html`, and
   `vi-history-review-loop-receipt.json`. When
   `-RequirementsVerification` is set, the helper emits the requirements verification summary and trace matrix outputs.
+  Every run also refreshes `tests/results/docker-tools-parity/review-loop-receipt.json`; future agents should read
+  that file first after compaction.
 - **Failure modes** - Missing Docker daemon, authentication gaps (when the tools image is private), or missing GH
   tokens during priority sync. Exit code is the first failing container code.
 - **When to run** - Before publishing documentation, when validating the tools image, or after editing workflows to

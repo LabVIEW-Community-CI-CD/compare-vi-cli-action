@@ -28,6 +28,9 @@ test('tools parity workflow can dispatch the NI Linux review suite and upload it
   assert.match(workflow, /-NILinuxReviewSuiteHistoryMaxCommitCount/);
   assert.match(workflow, /docker-parity-linux-ni-review-suite/);
   assert.match(workflow, /docker-parity-linux-requirements-verification/);
+  assert.match(workflow, /docker-parity-linux-review-loop/);
   assert.match(workflow, /tests\/results\/docker-tools-parity\/ni-linux-review-suite/);
   assert.match(workflow, /tests\/results\/docker-tools-parity\/requirements-verification/);
+  assert.match(workflow, /tests\/results\/docker-tools-parity\/review-loop-receipt\.json/);
+  assert.match(workflow, /if: \$\{\{ always\(\) \}\}/);
 });
