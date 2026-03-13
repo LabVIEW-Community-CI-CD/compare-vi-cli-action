@@ -220,6 +220,18 @@ function toRulesetSummary(ruleset) {
 
 test('priority:policy --apply updates rulesets for develop/main/release', async () => {
   const expectedDevelopChecks = [...EXPECTED_DEVELOP_CHECKS];
+  const existingDevelopBranchChecks = [
+    'Validate / lint',
+    'Validate / fixtures',
+    'Validate / session-index',
+    'Validate / issue-snapshot'
+  ];
+  const existingMainBranchChecks = [
+    'pester',
+    'vi-binary-check',
+    'vi-compare',
+    'Policy Guard (Upstream) / policy-guard'
+  ];
   const expectedMainChecks = [
     'lint',
     'pester',
@@ -403,12 +415,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   let branchDevelopProtection = {
     required_status_checks: {
       strict: true,
-      contexts: [
-        'Validate / lint',
-        'Validate / fixtures',
-        'Validate / session-index',
-        'Validate / issue-snapshot'
-      ],
+      contexts: existingDevelopBranchChecks.slice(),
       checks: [
         { context: 'Validate / lint', app_id: 15368 },
         { context: 'Validate / fixtures', app_id: 15368 },
@@ -431,7 +438,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   let branchMainProtection = {
     required_status_checks: {
       strict: true,
-      contexts: ['pester', 'vi-binary-check', 'vi-compare', 'Policy Guard (Upstream) / policy-guard'],
+      contexts: existingMainBranchChecks.slice(),
       checks: [
         { context: 'pester', app_id: 15368 },
         { context: 'vi-binary-check', app_id: 15368 },
@@ -676,15 +683,15 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   const developApplied = branchDevelopProtection.required_status_checks.checks.map((check) => check.context).sort();
   assert.deepEqual(
     developApplied,
-    expectedDevelopChecks.slice().sort(),
-    'develop branch contexts should match expectations'
+    existingDevelopBranchChecks.slice().sort(),
+    'develop branch contexts should preserve existing branch protection on queue-managed branches'
   );
 
   const mainApplied = branchMainProtection.required_status_checks.checks.map((check) => check.context).sort();
   assert.deepEqual(
     mainApplied,
-    expectedMainChecks.slice().sort(),
-    'main branch contexts should match expectations'
+    existingMainBranchChecks.slice().sort(),
+    'main branch contexts should preserve existing branch protection on queue-managed branches'
   );
 
   assert.deepEqual(errorMessages, []);
@@ -2558,6 +2565,89 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
   assert.ok(
     logMessages.some((msg) => msg.includes('auth source: GITHUB_TOKEN')),
     'auth source log expected'
+  );
+});
+
+test('priority:policy --apply preserves branch required checks when queue-managed branches drift on other settings', async () => {
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const rulesets = createAlignedRulesets();
+  let developProtection = {
+    ...createAlignedBranchProtection([]),
+    allow_force_pushes: { enabled: true }
+  };
+  let mainProtection = createAlignedBranchProtection(EXPECTED_MAIN_CHECKS);
+  let developPutPayload = null;
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(mainProtection);
+    }
+    if (method === 'PUT' && url === branchDevelopUrl) {
+      developPutPayload = JSON.parse(options.body);
+      developProtection = {
+        ...developPutPayload,
+        required_status_checks: {
+          ...developPutPayload.required_status_checks,
+          checks: (developPutPayload.required_status_checks?.contexts ?? []).map((context) => ({ context }))
+        },
+        allow_force_pushes: { enabled: Boolean(developPutPayload.allow_force_pushes) }
+      };
+      return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse(rulesets.develop);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse(rulesets.main);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
+      return createResponse(rulesets.release);
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse(Object.values(rulesets).map(toRulesetSummary));
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--apply'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: () => {},
+    error: () => {}
+  });
+
+  assert.equal(code, 0, 'apply mode should succeed when only a non-check branch setting drifts');
+  assert.ok(developPutPayload, 'expected develop branch protection update');
+  assert.deepEqual(
+    developPutPayload.required_status_checks.contexts,
+    [],
+    'queue-managed branch apply should preserve actual branch required checks'
+  );
+  assert.equal(
+    developPutPayload.allow_force_pushes,
+    false,
+    'queue-managed branch apply should still fix non-check drift'
   );
 });
 

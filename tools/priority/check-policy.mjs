@@ -850,13 +850,26 @@ function resolveEnabledFlag(value, fallback = false) {
   return Boolean(fallback);
 }
 
-function buildBranchProtectionPayload(expected, actual) {
-  const expectedChecks = Array.isArray(expected.required_status_checks)
-    ? expected.required_status_checks
+function normalizeActualRequiredStatusChecks(actual) {
+  const explicitChecks = actual?.required_status_checks?.checks?.map((check) => check?.context).filter(Boolean);
+  if (Array.isArray(explicitChecks) && explicitChecks.length > 0) {
+    return explicitChecks;
+  }
+  return Array.isArray(actual?.required_status_checks?.contexts)
+    ? actual.required_status_checks.contexts.filter(Boolean)
     : [];
-  const strictSetting = hasOwnProperty(expected, 'required_status_checks_strict')
-    ? Boolean(expected.required_status_checks_strict)
-    : actual?.required_status_checks?.strict ?? true;
+}
+
+function buildBranchProtectionPayload(expected, actual, options = {}) {
+  const skipRequiredStatusChecks = options.skipRequiredStatusChecks === true;
+  const expectedChecks = skipRequiredStatusChecks
+    ? normalizeActualRequiredStatusChecks(actual)
+    : (Array.isArray(expected.required_status_checks) ? expected.required_status_checks : []);
+  const strictSetting = skipRequiredStatusChecks
+    ? actual?.required_status_checks?.strict ?? true
+    : (hasOwnProperty(expected, 'required_status_checks_strict')
+        ? Boolean(expected.required_status_checks_strict)
+        : actual?.required_status_checks?.strict ?? true);
   const enforceAdmins = hasOwnProperty(expected, 'enforce_admins')
     ? Boolean(expected.enforce_admins)
     : resolveEnabledFlag(actual?.enforce_admins, false);
@@ -1086,9 +1099,11 @@ function buildRulesetPayload(expectations, actual = null) {
   };
 }
 
-async function applyBranchProtection(repoUrl, token, branch, expected, actual, fetchFn, logFn = console.log) {
+async function applyBranchProtection(repoUrl, token, branch, expected, actual, fetchFn, logFn = console.log, options = {}) {
   const protectionUrl = `${repoUrl}/branches/${encodeURIComponent(branch)}/protection`;
-  const payload = buildBranchProtectionPayload(expected, actual);
+  const payload = buildBranchProtectionPayload(expected, actual, {
+    skipRequiredStatusChecks: options.skipRequiredStatusChecks === true
+  });
   await requestJson(protectionUrl, token, { method: 'PUT', body: payload, fetchFn });
   logFn(`[policy] branch ${branch}: applied protection settings.`);
 }
@@ -1531,6 +1546,7 @@ export async function run({
     if (options.apply) {
       const applyBranchUpdates = async (branchStates) => {
         for (const entry of branchStates) {
+          const skipRequiredStatusChecks = queueManagedBranches.has(entry.branch);
           await invokeWithAuthFallback(`applyBranchProtection(${entry.branch})`, (token) =>
             applyBranchProtection(
               repoUrl,
@@ -1539,7 +1555,8 @@ export async function run({
               entry.expectations,
               entry.protection,
               fetchFn,
-              log
+              log,
+              { skipRequiredStatusChecks }
             )
           );
           if (!report.applied.branches.includes(entry.branch)) {
