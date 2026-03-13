@@ -6,12 +6,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPT_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = SCRIPT_ROOT.parents[1]
 if str(SCRIPT_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPT_ROOT))
 
+import _enclave
 from _enclave import REQUIREMENTS_PATH, load_default_scope
 from _update_workflows_impl import dump_yaml, ensure_interactivity_probe_job, ensure_lint_resiliency, load_yaml
 
@@ -77,6 +79,30 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
         scope = load_default_scope()
         self.assertIn('.github/workflows/validate.yml', scope)
         self.assertIn('.github/workflows/ci-orchestrated.yml', scope)
+
+    def test_default_scope_rejects_non_workflow_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manifest_path = Path(temp_dir) / 'workflow-manifest.json'
+            manifest_path.write_text(
+                '{"managedWorkflowFiles":[".github/workflows/validate.yml", null]}',
+                encoding='utf-8'
+            )
+
+            with patch.object(_enclave, 'MANIFEST_PATH', manifest_path):
+                with self.assertRaisesRegex(RuntimeError, 'invalid managed workflow entry'):
+                    load_default_scope()
+
+    def test_default_scope_rejects_non_repo_relative_workflow_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manifest_path = Path(temp_dir) / 'workflow-manifest.json'
+            manifest_path.write_text(
+                '{"managedWorkflowFiles":["../../outside.yml"]}',
+                encoding='utf-8'
+            )
+
+            with patch.object(_enclave, 'MANIFEST_PATH', manifest_path):
+                with self.assertRaisesRegex(RuntimeError, 'repo-relative workflow path'):
+                    load_default_scope()
 
     def test_interactivity_probe_emits_lowercase_output(self) -> None:
         doc = {

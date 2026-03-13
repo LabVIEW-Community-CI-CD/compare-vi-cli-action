@@ -6,7 +6,7 @@ import json
 import os
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 WORKFLOWS_ROOT = Path(__file__).resolve().parent
 VENV_DIR = Path(os.environ.get('COMPAREVI_WORKFLOW_ENCLAVE_HOME', str(WORKFLOWS_ROOT / '.venv'))).resolve()
@@ -58,12 +58,26 @@ def ensure_enclave() -> Path:
     return venv_python
 
 
+def _normalize_managed_workflow_file(entry: object) -> str:
+    if not isinstance(entry, str) or not entry.strip():
+        raise RuntimeError(f'invalid managed workflow entry: {entry!r}')
+
+    normalized = entry.replace('\\', '/').strip()
+    workflow_path = PurePosixPath(normalized)
+    if workflow_path.is_absolute() or '..' in workflow_path.parts:
+        raise RuntimeError(f'managed workflow entry must be a repo-relative workflow path: {entry!r}')
+    if len(workflow_path.parts) < 3 or workflow_path.parts[0] != '.github' or workflow_path.parts[1] != 'workflows':
+        raise RuntimeError(f'managed workflow entry must live under .github/workflows: {entry!r}')
+
+    return workflow_path.as_posix()
+
+
 def load_default_scope() -> list[str]:
     payload = json.loads(MANIFEST_PATH.read_text(encoding='utf-8'))
     workflows = payload.get('managedWorkflowFiles')
     if not isinstance(workflows, list) or not workflows:
         raise RuntimeError(f'workflow manifest has no managedWorkflowFiles: {MANIFEST_PATH}')
-    return [str(item) for item in workflows]
+    return [_normalize_managed_workflow_file(item) for item in workflows]
 
 
 def run_updater(argv: list[str]) -> int:

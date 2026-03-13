@@ -590,8 +590,8 @@ if ($checkStates.dotnetCliBuild.enabled) {
         -Label 'dotnet-cli-build (sdk)'
     }
     $checkStates.dotnetCliBuild.artifacts.outputDirectory = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path 'dist/comparevi-cli'
+    }
   }
-}
 
 if ($UseToolsImage -and $ToolsImageTag) {
   if ($checkStates.actionlint.enabled) {
@@ -861,4 +861,3 @@ Write-Host 'Non-LabVIEW container checks completed.' -ForegroundColor Green
     -NILinuxResultsRoot $NILinuxReviewSuiteResultsRoot `
     -RequirementsResultsRoot $RequirementsVerificationResultsRoot
 }
-
