@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,7 +16,13 @@ if str(SCRIPT_ROOT) not in sys.path:
 
 import _enclave
 from _enclave import REQUIREMENTS_PATH, load_default_scope
-from _update_workflows_impl import dump_yaml, ensure_interactivity_probe_job, ensure_lint_resiliency, load_yaml
+from _update_workflows_impl import (
+    dump_yaml,
+    ensure_interactivity_probe_job,
+    ensure_lint_resiliency,
+    ensure_preinit_force_run_outputs,
+    load_yaml,
+)
 
 
 class WorkflowUpdaterRoundTripTests(unittest.TestCase):
@@ -50,6 +57,7 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
             REPO_ROOT / '.github' / 'workflows' / 'fixture-drift.yml',
         ]
         with tempfile.TemporaryDirectory() as temp_dir:
+            enclave_home = Path(temp_dir) / 'workflow-enclave-home'
             temp_paths = []
             originals = {}
             for source_path in source_paths:
@@ -63,6 +71,7 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
                 [sys.executable, str(SCRIPT_ROOT / 'workflow_enclave.py'), '--check', *[str(temp_path) for temp_path in temp_paths]],
                 capture_output=True,
                 text=True,
+                env={**os.environ, 'COMPAREVI_WORKFLOW_ENCLAVE_HOME': str(enclave_home)},
                 check=False
             )
 
@@ -120,6 +129,35 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
         self.assertIn('$okString = if ($ok) { "true" } else { "false" }', run_script)
         self.assertIn('"ok=$okString" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8', run_script)
 
+    def test_existing_interactivity_probe_is_normalized_to_lowercase_output(self) -> None:
+        doc = {
+            'jobs': {
+                'normalize': {},
+                'preflight': {},
+                'probe': {
+                    'steps': [
+                        {'uses': 'actions/checkout@v5'},
+                        {
+                            'name': 'Run interactivity probe',
+                            'id': 'out',
+                            'shell': 'pwsh',
+                            'run': (
+                                "$ok = $true\n"
+                                '"ok=$ok" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8\n'
+                            ),
+                        },
+                    ],
+                },
+            }
+        }
+
+        changed = ensure_interactivity_probe_job(doc)
+
+        self.assertTrue(changed)
+        run_script = doc['jobs']['probe']['steps'][1]['run']
+        self.assertIn('$okString = if ($ok) { "true" } else { "false" }', run_script)
+        self.assertNotIn('"ok=$ok"', run_script)
+
     def test_lint_resiliency_preserves_scoped_markdown_step_name(self) -> None:
         doc = {
             'jobs': {
@@ -142,6 +180,28 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
         matching = [step for step in lint_steps if step.get('name') == 'Run markdownlint (scoped changed files)']
         self.assertEqual(len(matching), 1)
         self.assertFalse(any(step.get('name') == 'Run markdownlint' for step in lint_steps if isinstance(step, dict)))
+
+    def test_force_run_output_uses_standard_false_literal(self) -> None:
+        doc = {
+            'jobs': {
+                'pre-init': {
+                    'steps': [
+                        {
+                            'name': 'Gate docs-only',
+                            'id': 'g',
+                            'uses': './.github/actions/pre-init-gate',
+                        },
+                    ],
+                },
+            }
+        }
+
+        changed = ensure_preinit_force_run_outputs(doc)
+
+        self.assertTrue(changed)
+        out_step = next(step for step in doc['jobs']['pre-init']['steps'] if step.get('id') == 'out')
+        self.assertIn("steps.g.outputs.docs_only || 'false'", out_step['run'])
+        self.assertNotIn("''false''", out_step['run'])
 
     def test_enclave_home_env_override_is_honored(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

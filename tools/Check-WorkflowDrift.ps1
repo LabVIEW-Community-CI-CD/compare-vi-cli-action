@@ -84,8 +84,19 @@ function Invoke-WorkflowEnclave {
   param([string[]]$Arguments)
 
   $pythonArguments = @($pythonCommand.Arguments) + @($enclaveScript) + @($Arguments)
-  & $pythonCommand.Executable @pythonArguments | Out-Host
-  return $LASTEXITCODE
+  Push-Location $repoRoot
+  try {
+    & $pythonCommand.Executable @pythonArguments | Out-Host
+    return $LASTEXITCODE
+  } finally {
+    Pop-Location
+  }
+}
+
+function Invoke-RepoGit {
+  param([string[]]$Arguments)
+
+  & git -C $repoRoot @Arguments
 }
 
 function Process-Staging {
@@ -98,12 +109,12 @@ function Process-Staging {
     return
   }
 
-  git add $ChangedFiles | Out-Null
+  Invoke-RepoGit -Arguments (@('add') + $ChangedFiles) | Out-Null
   Write-Host ('Staged workflow drift changes: {0}' -f ($ChangedFiles -join ', '))
 
   if (-not $CommitMessage) { return }
 
-  $staged = git diff --cached --name-only | Where-Object { $_ }
+  $staged = Invoke-RepoGit -Arguments @('diff', '--cached', '--name-only') | Where-Object { $_ }
   $extra = @($staged | Where-Object { $ChangedFiles -notcontains $_ })
   if ($extra.Count -gt 0) {
     Write-Host ('::warning::Additional files already staged (skipping auto-commit): {0}' -f ($extra -join ', '))
@@ -111,7 +122,7 @@ function Process-Staging {
   }
 
   try {
-    git commit -m $CommitMessage | Out-Host
+    Invoke-RepoGit -Arguments @('commit', '-m', $CommitMessage) | Out-Host
   } catch {
     Write-Host "::notice::Commit failed or nothing to commit: $_"
   }
@@ -131,11 +142,11 @@ switch ($exitCode) {
     Write-Host 'Workflow drift check passed.'
     $changed = @()
     foreach ($wf in $workflowFiles) {
-      if (git status --porcelain $wf) { $changed += $wf }
+      if (Invoke-RepoGit -Arguments @('status', '--porcelain', '--', $wf)) { $changed += $wf }
     }
     if ($changed.Count -gt 0) {
-      git --no-pager diff --stat @changed | Out-Host
-      git --no-pager diff @changed | Out-Host
+      Invoke-RepoGit -Arguments (@('--no-pager', 'diff', '--stat', '--') + $changed) | Out-Host
+      Invoke-RepoGit -Arguments (@('--no-pager', 'diff', '--') + $changed) | Out-Host
     }
     Process-Staging -ChangedFiles $changed
     exit 0
@@ -148,11 +159,11 @@ switch ($exitCode) {
     Write-Warning $message
     $changed = @()
     foreach ($wf in $workflowFiles) {
-      if (git status --porcelain $wf) { $changed += $wf }
+      if (Invoke-RepoGit -Arguments @('status', '--porcelain', '--', $wf)) { $changed += $wf }
     }
     if ($changed.Count -gt 0) {
-      git --no-pager diff --stat @changed | Out-Host
-      git --no-pager diff @changed | Out-Host
+      Invoke-RepoGit -Arguments (@('--no-pager', 'diff', '--stat', '--') + $changed) | Out-Host
+      Invoke-RepoGit -Arguments (@('--no-pager', 'diff', '--') + $changed) | Out-Host
     }
     Process-Staging -ChangedFiles $changed
     if ($FailOnDrift) {

@@ -85,6 +85,8 @@ test('workflow-writing callers use the enclave wrapper instead of the low-level 
   assert.match(checkWorkflowDrift, /Arguments\s*=/);
   assert.match(checkWorkflowDrift, /\$pythonCommand = Resolve-PythonCommand/);
   assert.match(checkWorkflowDrift, /& \$pythonCommand\.Executable @pythonArguments/);
+  assert.match(checkWorkflowDrift, /Push-Location \$repoRoot/);
+  assert.match(checkWorkflowDrift, /git -C \$repoRoot/);
   assert.doesNotMatch(checkWorkflowDrift, /update_workflows\.py/);
 
   const dockerChecks = read('tools/Run-NonLVChecksInDocker.ps1');
@@ -93,11 +95,20 @@ test('workflow-writing callers use the enclave wrapper instead of the low-level 
   assert.match(dockerChecks, /COMPAREVI_WORKFLOW_ENCLAVE_HOME=\/opt\/comparevi-workflow-enclave/);
   assert.match(dockerChecks, /COMPAREVI_WORKFLOW_ENCLAVE_HOME=\/tmp\/comparevi-workflow-enclave/);
   assert.match(dockerChecks, /node tools\/npm\/run-script\.mjs lint:md/);
+  assert.doesNotMatch(dockerChecks, /-AcceptExitCodes\s+@\(0,1\)\s+-Label 'markdownlint(?: \(tools\))?'/);
   assert.doesNotMatch(dockerChecks, /update_workflows\.py/);
 
   const validateWorkflow = read('.github/workflows/validate.yml');
   assert.match(validateWorkflow, /Check-WorkflowDrift\.ps1 -FailOnDrift/);
   assert.doesNotMatch(validateWorkflow, /update_workflows\.py/);
+});
+
+test('workflow updater normalizes checkout insertion and docs-only expressions correctly', () => {
+  const updater = read('tools/workflows/_update_workflows_impl.py');
+  assert.match(updater, /steps\.g\.outputs\.docs_only \|\| 'false'/);
+  assert.doesNotMatch(updater, /docs_only \|\| ''false''/);
+  assert.match(updater, /def _find_step_uses_index/);
+  assert.doesNotMatch(updater, /_find_step_index\(steps, 'actions\/checkout@v5'\)/);
 });
 
 test('package scripts expose first-class workflow drift and markdown surfaces', () => {

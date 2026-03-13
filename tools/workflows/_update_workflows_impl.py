@@ -90,7 +90,7 @@ def ensure_preinit_force_run_outputs(doc) -> bool:
         if not has_out:
             run_body = (
                 "$force = '${{ inputs.force_run }}'\n"
-                "if ($force -ieq 'true') { $val = 'false' } else { $val = '${{ steps.g.outputs.docs_only || ''false'' }}' }\n"
+                "if ($force -ieq 'true') { $val = 'false' } else { $val = '${{ steps.g.outputs.docs_only || 'false' }}' }\n"
                 '"docs_only=$val" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8\n'
             )
             out_step = {
@@ -603,36 +603,104 @@ def ensure_interactivity_probe_job(doc) -> bool:
     jobs = doc.get('jobs') or {}
     if not isinstance(jobs, dict):
         return False
-    if 'probe' in jobs:
-        return False
+    changed = False
+    desired_if = SQS("${{ inputs.strategy == 'single' || vars.ORCH_STRATEGY == 'single' }}")
+    desired_outputs = {
+        'ok': SQS("${{ steps.out.outputs.ok }}"),
+    }
+    desired_run = LIT(
+        "pwsh -File tools/Write-InteractivityProbe.ps1\n"
+        "$ui = [System.Environment]::UserInteractive\n"
+        "$in = $false; try { $in  = [Console]::IsInputRedirected } catch {}\n"
+        "$ok = ($ui -and -not $in)\n"
+        '$okString = if ($ok) { "true" } else { "false" }\n'
+        '"ok=$okString" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8\n'
+    )
     job = {
-        'if': SQS("${{ inputs.strategy == 'single' || vars.ORCH_STRATEGY == 'single' }}"),
+        'if': desired_if,
         'runs-on': ['self-hosted', 'Windows', 'X64'],
         'timeout-minutes': 2,
         'needs': ['normalize', 'preflight'],
-        'outputs': {
-            'ok': SQS("${{ steps.out.outputs.ok }}"),
-        },
+        'outputs': desired_outputs,
         'steps': [
             {'uses': 'actions/checkout@v5'},
             {
                 'name': 'Run interactivity probe',
                 'id': 'out',
                 'shell': 'pwsh',
-                'run': LIT(
-                    "pwsh -File tools/Write-InteractivityProbe.ps1\n"
-                    "$ui = [System.Environment]::UserInteractive\n"
-                    "$in = $false; try { $in  = [Console]::IsInputRedirected } catch {}\n"
-                    "$ok = ($ui -and -not $in)\n"
-                    '$okString = if ($ok) { "true" } else { "false" }\n'
-                    '"ok=$okString" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8\n'
-                ),
+                'run': desired_run,
             },
         ],
     }
-    jobs['probe'] = job
+    existing = jobs.get('probe')
+    if not isinstance(existing, dict):
+        jobs['probe'] = job
+        doc['jobs'] = jobs
+        return True
+
+    if existing.get('if') != desired_if:
+        existing['if'] = desired_if
+        changed = True
+    if existing.get('runs-on') != job['runs-on']:
+        existing['runs-on'] = list(job['runs-on'])
+        changed = True
+    if existing.get('timeout-minutes') != job['timeout-minutes']:
+        existing['timeout-minutes'] = job['timeout-minutes']
+        changed = True
+    if existing.get('outputs') != desired_outputs:
+        existing['outputs'] = dict(desired_outputs)
+        changed = True
+
+    needs = existing.get('needs')
+    desired_needs = ['normalize', 'preflight']
+    if needs is None:
+        existing['needs'] = list(desired_needs)
+        changed = True
+    elif isinstance(needs, list):
+        for need in desired_needs:
+            if need not in needs:
+                needs.append(need)
+                changed = True
+    else:
+        existing['needs'] = list(desired_needs)
+        changed = True
+
+    steps = existing.setdefault('steps', [])
+    if not isinstance(steps, list):
+        existing['steps'] = list(job['steps'])
+        changed = True
+    else:
+        checkout_idx = next(
+            (i for i, st in enumerate(steps) if isinstance(st, dict) and str(st.get('uses', '')).startswith('actions/checkout@')),
+            None,
+        )
+        if checkout_idx is None:
+            steps.insert(0, {'uses': 'actions/checkout@v5'})
+            changed = True
+
+        out_idx = next((i for i, st in enumerate(steps) if isinstance(st, dict) and st.get('id') == 'out'), None)
+        desired_out = job['steps'][1]
+        if out_idx is None:
+            insert_at = next(
+                (i + 1 for i, st in enumerate(steps) if isinstance(st, dict) and str(st.get('uses', '')).startswith('actions/checkout@')),
+                len(steps),
+            )
+            steps.insert(insert_at, dict(desired_out))
+            changed = True
+        else:
+            out_step = steps[out_idx]
+            if out_step.get('name') != desired_out['name']:
+                out_step['name'] = desired_out['name']
+                changed = True
+            if out_step.get('shell') != desired_out['shell']:
+                out_step['shell'] = desired_out['shell']
+                changed = True
+            if out_step.get('run') != desired_run:
+                out_step['run'] = desired_run
+                changed = True
+
     doc['jobs'] = jobs
-    return True
+    return changed
 
 
 def _ensure_job_needs(doc, job_name: str, need: str) -> bool:
@@ -671,6 +739,13 @@ def _find_step_index(steps: list, name: str) -> int | None:
     return None
 
 
+def _find_step_uses_index(steps: list, prefix: str) -> int | None:
+    for idx, st in enumerate(steps):
+        if isinstance(st, dict) and str(st.get('uses', '')).startswith(prefix):
+            return idx
+    return None
+
+
 def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdown_non_blocking: bool = False) -> bool:
     jobs = doc.get('jobs') or {}
     job = jobs.get(job_name)
@@ -688,9 +763,7 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
     steps = job.setdefault('steps', [])
 
     # Determine checkout index for insertion points
-    checkout_idx = _find_step_index(steps, 'actions/checkout@v5')
-    if checkout_idx is None:
-        checkout_idx = next((i for i, st in enumerate(steps) if isinstance(st, dict) and str(st.get('uses', '')).startswith('actions/checkout@')), None)
+    checkout_idx = _find_step_uses_index(steps, 'actions/checkout@')
 
     def insert_after_checkout(step_dict):
         nonlocal changed

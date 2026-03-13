@@ -89,9 +89,10 @@ Audience: local validation for PowerShell unit/integration suites and leak detec
 
 Audience: contributors without the full local toolchain or anyone mirroring CI behaviour.
 
-- **What it does** – Spins up Docker containers for `actionlint`, `markdownlint`, documentation link checks, workflow
-  checkout contract validation, workflow drift validation, and optional CompareVI CLI builds. Supports the published
-  tools image (`-UseToolsImage`) or per-check public images.
+- **What it does** – Spins up Docker containers for `actionlint`, blocking `markdownlint` over tracked repository
+  Markdown/documentation, documentation link checks, workflow checkout contract validation, workflow drift validation,
+  and optional CompareVI CLI builds. Supports the published tools image (`-UseToolsImage`) or per-check public
+  images.
 - **Inputs** – Common switches:
   - `-UseToolsImage [-ToolsImageTag <tag>]` to route everything through the curated tools container (honours
     `COMPAREVI_TOOLS_IMAGE`).
