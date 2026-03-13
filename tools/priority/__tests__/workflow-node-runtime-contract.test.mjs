@@ -73,5 +73,5 @@ test('validate workflow opts into forced Node 24 JavaScript action execution', (
     'utf8'
   );
 
-  assert.match(validateWorkflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24:\s*'true'/);
+  assert.match(validateWorkflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24:\s*(?:'true'|"true"|true)/);
 });
