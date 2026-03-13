@@ -572,8 +572,7 @@ function compareBranchSettings(branch, expected, actualProtection, options = {})
   }
 
   if (!skipRequiredStatusChecks && Array.isArray(expected.required_status_checks)) {
-    const actualChecks =
-      actualProtection.required_status_checks?.checks?.map((check) => check.context).filter(Boolean) ?? [];
+    const actualChecks = normalizeActualRequiredStatusChecks(actualProtection);
     const normalizedExpected = [...new Set(expected.required_status_checks)].sort();
     const normalizedActual = [...new Set(actualChecks)].sort();
 

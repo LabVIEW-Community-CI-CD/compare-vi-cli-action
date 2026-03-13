@@ -2892,6 +2892,44 @@ test('priority:policy branch-protection seams pass when disabled settings are ex
   assert.deepEqual(diffs, []);
 });
 
+test('priority:policy branch-protection seams accept required-check contexts when checks array is absent', () => {
+  const expected = {
+    required_status_checks_strict: true,
+    required_status_checks: ['lint', 'session-index'],
+    required_linear_history: true,
+    enforce_admins: false,
+    required_pull_request_reviews: null,
+    restrictions: null,
+    allow_force_pushes: false,
+    allow_deletions: false,
+    block_creations: false,
+    required_conversation_resolution: false,
+    lock_branch: false,
+    allow_fork_syncing: false
+  };
+
+  const actualProtection = {
+    required_status_checks: {
+      strict: true,
+      contexts: expected.required_status_checks.slice(),
+      checks: []
+    },
+    required_linear_history: { enabled: true },
+    enforce_admins: { enabled: false },
+    required_pull_request_reviews: null,
+    restrictions: null,
+    allow_force_pushes: { enabled: false },
+    allow_deletions: { enabled: false },
+    block_creations: { enabled: false },
+    required_conversation_resolution: { enabled: false },
+    lock_branch: { enabled: false },
+    allow_fork_syncing: { enabled: false }
+  };
+
+  const diffs = __test.compareBranchSettings('develop', expected, actualProtection);
+  assert.deepEqual(diffs, []);
+});
+
 test('priority:policy branch-protection seams fail when disabled settings drift to enabled', () => {
   const expected = {
     required_status_checks_strict: true,
