@@ -360,3 +360,79 @@ test('runCopilotCliReview resolves head-mode merge base from the validate base s
     }
   }
 });
+
+test('runCopilotCliReview fetches the validate base in detached-head CI when only the PR head was checked out', async () => {
+  const sourceRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-review-source-'));
+  runGit(sourceRoot, ['init']);
+  runGit(sourceRoot, ['config', 'user.name', 'Agent Runner']);
+  runGit(sourceRoot, ['config', 'user.email', 'agent@example.com']);
+  await writeFile(path.join(sourceRoot, 'README.md'), '# repo\n', 'utf8');
+  runGit(sourceRoot, ['add', 'README.md']);
+  runGit(sourceRoot, ['commit', '-m', 'init']);
+  runGit(sourceRoot, ['branch', '-M', 'develop']);
+  const baseSha = runGit(sourceRoot, ['rev-parse', 'HEAD']);
+  runGit(sourceRoot, ['switch', '-c', 'issue/test']);
+  await writeFile(path.join(sourceRoot, 'docs.md'), '# docs\n', 'utf8');
+  runGit(sourceRoot, ['add', 'docs.md']);
+  runGit(sourceRoot, ['commit', '-m', 'update']);
+
+  const remoteRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-review-remote-'));
+  runGit(path.dirname(remoteRoot), ['clone', '--bare', sourceRoot, remoteRoot]);
+
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-review-detached-'));
+  runGit(repoRoot, ['init']);
+  runGit(repoRoot, ['remote', 'add', 'origin', remoteRoot]);
+  runGit(repoRoot, ['fetch', '--depth=1', 'origin', 'issue/test']);
+  runGit(repoRoot, ['checkout', '--detach', 'FETCH_HEAD']);
+
+  const previousGithubActions = process.env.GITHUB_ACTIONS;
+  const previousValidateBaseSha = process.env.VALIDATE_BASE_SHA;
+  const previousValidateBaseRef = process.env.VALIDATE_BASE_REF;
+  try {
+    process.env.GITHUB_ACTIONS = 'true';
+    process.env.VALIDATE_BASE_SHA = baseSha;
+    process.env.VALIDATE_BASE_REF = 'develop';
+
+    const result = await runCopilotCliReview({
+      repoRoot,
+      profile: 'daemon',
+      runCommandFn: async () => ({
+        status: 0,
+        stdout: [
+          JSON.stringify({ type: 'session.tools_updated', data: { model: 'gpt-5.4' } }),
+          JSON.stringify({
+            type: 'assistant.message',
+            data: {
+              content: JSON.stringify({
+                status: 'approved',
+                summary: 'No actionable findings.',
+                findings: []
+              })
+            }
+          })
+        ].join('\n'),
+        stderr: ''
+      })
+    });
+
+    assert.equal(result.status, 'passed');
+    assert.equal(result.receipt.context.baseRef, baseSha);
+    assert.deepEqual(result.receipt.context.selectedFiles, ['docs.md']);
+  } finally {
+    if (previousGithubActions == null) {
+      delete process.env.GITHUB_ACTIONS;
+    } else {
+      process.env.GITHUB_ACTIONS = previousGithubActions;
+    }
+    if (previousValidateBaseSha == null) {
+      delete process.env.VALIDATE_BASE_SHA;
+    } else {
+      process.env.VALIDATE_BASE_SHA = previousValidateBaseSha;
+    }
+    if (previousValidateBaseRef == null) {
+      delete process.env.VALIDATE_BASE_REF;
+    } else {
+      process.env.VALIDATE_BASE_REF = previousValidateBaseRef;
+    }
+  }
+});

@@ -154,6 +154,7 @@ function buildMergeBaseCandidates(env = process.env) {
   candidates.push(['merge-base', 'HEAD', 'origin/develop']);
   candidates.push(['rev-parse', 'HEAD~1']);
   return {
+    baseSha,
     baseRef,
     candidates
   };
@@ -417,11 +418,29 @@ export function resolveRepoGitState(repoRoot) {
 }
 
 function resolveMergeBase(repoRoot, env = process.env) {
-  const { baseRef, candidates } = buildMergeBaseCandidates(env);
+  const { baseRef, baseSha, candidates } = buildMergeBaseCandidates(env);
   for (const candidate of candidates) {
     const result = runGit(repoRoot, candidate);
     if (result.status === 0 && normalizeText(result.stdout)) {
       return normalizeText(result.stdout);
+    }
+  }
+  if (env.GITHUB_ACTIONS === 'true' && baseSha) {
+    for (const remote of ['origin', 'upstream']) {
+      const fetchResult = runGit(repoRoot, ['fetch', '--no-tags', '--prune', '--depth=1', remote, baseSha], env);
+      if (fetchResult.status !== 0) {
+        continue;
+      }
+      for (const candidate of [
+        ['merge-base', 'HEAD', baseSha],
+        ['merge-base', 'HEAD', 'FETCH_HEAD'],
+        ['rev-parse', baseSha]
+      ]) {
+        const result = runGit(repoRoot, candidate, env);
+        if (result.status === 0 && normalizeText(result.stdout)) {
+          return normalizeText(result.stdout);
+        }
+      }
     }
   }
   if (baseRef && env.GITHUB_ACTIONS === 'true') {
