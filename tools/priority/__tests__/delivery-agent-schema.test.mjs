@@ -28,6 +28,7 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
   const ajv = makeAjv();
   const validate = ajv.compile(schema);
   assert.equal(validate(data), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(data.copilotReviewStrategy, 'draft-only-explicit');
   assert.deepEqual(data.hostIsolation, {
     mode: 'hard-cutover',
     wslDistro: 'Ubuntu',
@@ -117,6 +118,8 @@ test('runtime delivery task packet schema validates canonical delivery packets',
         mutationEnvelope: {
           backlogAuthority: 'issues',
           implementationRemote: 'origin',
+          copilotReviewStrategy: 'draft-only-explicit',
+          readyForReviewPurpose: 'final-validation',
           allowPolicyMutations: false,
           allowReleaseAdmin: false,
           maxActiveCodingLanes: 1
@@ -173,6 +176,7 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
       schema: 'priority/delivery-agent-policy@v1',
       backlogAuthority: 'issues',
       implementationRemote: 'origin',
+      copilotReviewStrategy: 'draft-only-explicit',
       autoSlice: true,
       autoMerge: true,
       maxActiveCodingLanes: 1,
@@ -295,6 +299,7 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
   const ajv = makeAjv();
   const validate = ajv.compile(schema);
   assert.equal(validate(state), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(state.policy.copilotReviewStrategy, 'draft-only-explicit');
   assert.equal(state.localReviewLoop.status, 'passed');
   assert.equal(state.localReviewLoop.receiptStatus, 'passed');
   assert.equal(state.localReviewLoop.currentHeadSha, '433e8aa70326007be74c27ccf54c1ae91559b6f3');

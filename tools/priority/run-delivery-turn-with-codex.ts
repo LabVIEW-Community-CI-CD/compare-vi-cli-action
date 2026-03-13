@@ -188,7 +188,7 @@ export function buildCodexTurnPrompt({ taskPacket, repoRoot, workDir }) {
     '- Prefer checked-in repo helpers over raw GitHub commands.',
     '- Do not mutate branch protection, repo policy/rulesets, or release-admin surfaces.',
     '- Keep the turn bounded to one deliverable increment or one explicit blocker diagnosis.',
-    '- All automation-authored PRs begin as drafts; the broker will manage draft/ready transitions.',
+    '- All automation-authored PRs begin as drafts; the broker may draft before mutation, but only the outer delivery layer restores ready for review after local and Copilot clearance.',
     '- If you make implementation progress, run focused validation, commit with the issue number in the subject, push the lane branch, and open or update the PR if needed.',
     '- If a PR already exists, update the branch and leave the lane ready for CI.',
     '- If you are blocked, stop and report the blocker directly; do not claim success.',
@@ -348,7 +348,8 @@ export function planPullRequestReviewCycle({
   finalPullRequest,
   startHead,
   endHead,
-  codexSucceeded
+  codexSucceeded,
+  reviewStrategy = 'draft-only-explicit'
 }) {
   const initialPullRequestNumber = Number.isInteger(initialPullRequest?.number) ? initialPullRequest.number : null;
   const finalPullRequestNumber = Number.isInteger(finalPullRequest?.number) ? finalPullRequest.number : null;
@@ -357,6 +358,18 @@ export function planPullRequestReviewCycle({
   const finalIsDraft = finalPullRequestNumber != null && finalPullRequest?.isDraft === true;
   const finalExists = finalPullRequestNumber != null;
   const draftBeforeMutation = initialWasReady;
+  if (normalizeText(reviewStrategy) === 'draft-only-explicit') {
+    return {
+      draftBeforeMutation,
+      readyAfterMutation: false,
+      restoreReadyWithoutMutation: false,
+      readyDeferredToOuterLayer: finalExists && finalIsDraft,
+      freshCopilotReviewExpected: false,
+      headChanged,
+      initialPullRequestNumber,
+      finalPullRequestNumber
+    };
+  }
   const readyAfterMutation =
     finalExists &&
     finalIsDraft &&
@@ -366,6 +379,7 @@ export function planPullRequestReviewCycle({
     draftBeforeMutation,
     readyAfterMutation,
     restoreReadyWithoutMutation,
+    readyDeferredToOuterLayer: false,
     freshCopilotReviewExpected: readyAfterMutation && headChanged,
     headChanged,
     initialPullRequestNumber,
@@ -405,6 +419,9 @@ function buildExecutionReceipt({
   const noteParts = [
     normalizeText(codexResult?.notes) || null,
     ...brokerTransitionNotes.map((entry) => normalizeText(entry)).filter(Boolean),
+    reviewCycle?.readyDeferredToOuterLayer
+      ? 'Broker left the PR draft; the outer delivery layer must restore ready for review after local review and current-head draft-phase Copilot clearance.'
+      : null,
     reviewCycle?.freshCopilotReviewExpected
       ? 'Broker marked the PR ready for review and is waiting for a fresh current-head Copilot review.'
       : null
@@ -441,7 +458,9 @@ function buildExecutionReceipt({
   }
 
   let laneLifecycle = normalizeText(codexResult?.laneLifecycle) || 'coding';
-  if (reviewCycle?.freshCopilotReviewExpected && pullRequestUrl && laneLifecycle === 'coding') {
+  if (reviewCycle?.readyDeferredToOuterLayer && pullRequestUrl && laneLifecycle === 'coding') {
+    laneLifecycle = 'waiting-review';
+  } else if (reviewCycle?.freshCopilotReviewExpected && pullRequestUrl && laneLifecycle === 'coding') {
     laneLifecycle = 'waiting-review';
   } else if (pullRequestUrl && laneLifecycle === 'coding') {
     laneLifecycle = 'waiting-ci';
@@ -468,11 +487,20 @@ function buildExecutionReceipt({
       retryable: Boolean(codexResult?.retryable),
       nextWakeCondition:
         codexResult?.nextWakeCondition ??
+        (reviewCycle?.readyDeferredToOuterLayer
+          ? 'draft-review-clearance'
+          : null) ??
         (reviewCycle?.freshCopilotReviewExpected
           ? 'review-disposition-updated'
           : pullRequestUrl
             ? 'checks-green'
             : 'scheduler-rescan'),
+      reviewPhase:
+        reviewCycle?.readyDeferredToOuterLayer
+          ? 'draft-review'
+          : pullRequestUrl
+            ? 'ready-validation'
+            : null,
       helperCallsExecuted,
       filesTouched: effectiveFilesTouched,
       branch: branchName || null,
@@ -569,7 +597,8 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
     finalPullRequest: pullRequest,
     startHead,
     endHead,
-    codexSucceeded: codexResult.status === 0
+    codexSucceeded: codexResult.status === 0,
+    reviewStrategy: normalizeText(packet?.evidence?.delivery?.mutationEnvelope?.copilotReviewStrategy) || 'draft-only-explicit'
   });
   if (reviewCycle.readyAfterMutation || reviewCycle.restoreReadyWithoutMutation) {
     const toReady = setPullRequestReadyState({

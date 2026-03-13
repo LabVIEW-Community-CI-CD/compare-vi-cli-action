@@ -62,7 +62,7 @@ test('buildCodexTurnPrompt includes bounded delivery context and helper surfaces
   assert.match(prompt, /priority:pr/);
   assert.match(prompt, /runtime-supervisor\.mjs/);
   assert.match(prompt, /All automation-authored PRs begin as drafts/i);
-  assert.match(prompt, /broker will manage draft\/ready transitions/i);
+  assert.match(prompt, /only the outer delivery layer restores ready for review/i);
   assert.match(prompt, /returning only JSON/i);
 });
 
@@ -112,7 +112,7 @@ test('buildPrReadyArgs uses gh pr ready and --undo for broker-managed draft tran
   );
 });
 
-test('planPullRequestReviewCycle drafts an existing ready PR before mutation and returns it to ready for a fresh Copilot review after a new head is pushed', () => {
+test('planPullRequestReviewCycle leaves an existing ready PR in draft for outer-layer ready restoration under the draft-only strategy', () => {
   const plan = planPullRequestReviewCycle({
     initialPullRequest: {
       number: 1015,
@@ -129,16 +129,17 @@ test('planPullRequestReviewCycle drafts an existing ready PR before mutation and
 
   assert.deepEqual(plan, {
     draftBeforeMutation: true,
-    readyAfterMutation: true,
+    readyAfterMutation: false,
     restoreReadyWithoutMutation: false,
-    freshCopilotReviewExpected: true,
+    readyDeferredToOuterLayer: true,
+    freshCopilotReviewExpected: false,
     headChanged: true,
     initialPullRequestNumber: 1015,
     finalPullRequestNumber: 1015
   });
 });
 
-test('planPullRequestReviewCycle treats a new draft PR as waiting on the first broker-managed Copilot review after it returns to ready', () => {
+test('planPullRequestReviewCycle leaves a new draft PR draft for outer-layer ready restoration', () => {
   const plan = planPullRequestReviewCycle({
     initialPullRequest: null,
     finalPullRequest: {
@@ -152,16 +153,17 @@ test('planPullRequestReviewCycle treats a new draft PR as waiting on the first b
 
   assert.deepEqual(plan, {
     draftBeforeMutation: false,
-    readyAfterMutation: true,
+    readyAfterMutation: false,
     restoreReadyWithoutMutation: false,
-    freshCopilotReviewExpected: true,
+    readyDeferredToOuterLayer: true,
+    freshCopilotReviewExpected: false,
     headChanged: true,
     initialPullRequestNumber: null,
     finalPullRequestNumber: 1016
   });
 });
 
-test('planPullRequestReviewCycle restores a previously ready PR without demanding a fresh Copilot review when the broker made no new commit', () => {
+test('planPullRequestReviewCycle leaves a previously ready PR draft even when the broker made no new commit under the draft-only strategy', () => {
   const plan = planPullRequestReviewCycle({
     initialPullRequest: {
       number: 1015,
@@ -178,8 +180,9 @@ test('planPullRequestReviewCycle restores a previously ready PR without demandin
 
   assert.deepEqual(plan, {
     draftBeforeMutation: true,
-    readyAfterMutation: true,
-    restoreReadyWithoutMutation: true,
+    readyAfterMutation: false,
+    restoreReadyWithoutMutation: false,
+    readyDeferredToOuterLayer: true,
     freshCopilotReviewExpected: false,
     headChanged: false,
     initialPullRequestNumber: 1015,
@@ -203,11 +206,12 @@ test('runCodexDeliveryTurn records broker-managed PR ready-state helper calls ev
   assert.match(source, /if \(toReady\.helperCall\) \{\s*brokerHelperCalls\.push\(toReady\.helperCall\);/s);
 });
 
-test('runCodexDeliveryTurn surfaces broker-managed PR ready-state transition failures in receipt notes', () => {
+test('runCodexDeliveryTurn surfaces broker-managed draft transition failures and outer-layer ready deferral in receipt notes', () => {
   const source = readFileSync(path.join(repoRoot, 'tools/priority/run-delivery-turn-with-codex.ts'), 'utf8');
 
   assert.match(source, /brokerTransitionNotes = \[\]/);
   assert.match(source, /Broker failed to mark PR #\$\{initialPullRequest\.number\} as draft before mutation:/);
   assert.match(source, /Broker failed to mark PR #\$\{pullRequest\.number\} ready for review after mutation:/);
   assert.match(source, /brokerTransitionNotes = \[\],[\s\S]*noteParts = \[[\s\S]*brokerTransitionNotes\.map/s);
+  assert.match(source, /Broker left the PR draft; the outer delivery layer must restore ready for review after local review and current-head draft-phase Copilot clearance\./);
 });

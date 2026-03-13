@@ -38,6 +38,7 @@ const DEFAULT_POLICY = {
   schema: DELIVERY_AGENT_POLICY_SCHEMA,
   backlogAuthority: 'issues',
   implementationRemote: 'origin',
+  copilotReviewStrategy: 'draft-only-explicit',
   autoSlice: true,
   autoMerge: true,
   maxActiveCodingLanes: 1,
@@ -229,6 +230,10 @@ function normalizeCommandList(value) {
 
 function normalizeStringList(value) {
   return Array.isArray(value) ? value.map((entry) => normalizeText(entry)).filter(Boolean) : [];
+}
+
+function normalizeCopilotReviewStrategy(value) {
+  return normalizeText(value) === 'draft-only-explicit' ? 'draft-only-explicit' : 'draft-only-explicit';
 }
 
 function normalizeLocalReviewLoopPolicy(value) {
@@ -977,6 +982,7 @@ export async function loadDeliveryAgentPolicy(repoRoot, deps = {}) {
     ...DEFAULT_POLICY,
     ...(filePolicy && typeof filePolicy === 'object' ? filePolicy : {}),
     schema: DELIVERY_AGENT_POLICY_SCHEMA,
+    copilotReviewStrategy: normalizeCopilotReviewStrategy(filePolicy?.copilotReviewStrategy),
     turnBudget: {
       ...DEFAULT_POLICY.turnBudget,
       ...(filePolicy?.turnBudget && typeof filePolicy.turnBudget === 'object' ? filePolicy.turnBudget : {})
@@ -1282,6 +1288,7 @@ export async function buildCanonicalDeliveryDecision({
               url: pullRequest.url,
               title: pullRequest.title,
               state: pullRequest.state,
+              isDraft: pullRequest.isDraft === true,
               headRefName: pullRequest.headRefName,
               headRefOid: pullRequest.headRefOid,
               baseRefName: pullRequest.baseRefName,
@@ -1607,6 +1614,7 @@ export function buildDeliveryAgentRuntimeRecord({
       schema: DELIVERY_AGENT_POLICY_SCHEMA,
       backlogAuthority: policy.backlogAuthority,
       implementationRemote: policy.implementationRemote,
+      copilotReviewStrategy: normalizeCopilotReviewStrategy(policy.copilotReviewStrategy),
       autoSlice: policy.autoSlice === true,
       autoMerge: policy.autoMerge === true,
       maxActiveCodingLanes: policy.maxActiveCodingLanes,
@@ -1640,6 +1648,7 @@ export function buildDeliveryAgentRuntimeRecord({
       reason: normalizeText(executionReceipt?.reason) || null,
       retryable: executionReceipt?.details?.retryable === true,
       nextWakeCondition: normalizeText(executionReceipt?.details?.nextWakeCondition) || null,
+      reviewPhase: normalizeText(executionReceipt?.details?.reviewPhase) || null,
       pollIntervalSecondsHint,
       reviewMonitor,
       localReviewLoop
@@ -1733,8 +1742,349 @@ async function runCommand(command, args, { cwd, env }, deps = {}) {
   };
 }
 
+function buildPrReadyArgs({ repository, pullRequestNumber, ready }) {
+  const args = ['pr', 'ready', String(pullRequestNumber), '--repo', repository];
+  if (!ready) {
+    args.push('--undo');
+  }
+  return args;
+}
+
+async function setPullRequestReadyState({
+  repository,
+  pullRequest,
+  ready,
+  repoRoot,
+  deps = {}
+}) {
+  const pullRequestNumber = coercePositiveInteger(pullRequest?.number);
+  if (!normalizeText(repository) || !pullRequestNumber) {
+    return {
+      ok: false,
+      helperCall: null,
+      result: {
+        status: 1,
+        stdout: '',
+        stderr: 'Pull request number or repository is missing.'
+      }
+    };
+  }
+  const args = buildPrReadyArgs({
+    repository,
+    pullRequestNumber,
+    ready
+  });
+  const result = await runCommand('gh', args, { cwd: repoRoot, env: process.env }, deps);
+  return {
+    ok: result.status === 0,
+    helperCall: `gh ${args.join(' ')}`,
+    result
+  };
+}
+
 function uniqueStrings(values = []) {
   return [...new Set(values.map((entry) => normalizeText(entry)).filter(Boolean))];
+}
+
+function evaluateDraftPhaseCopilotClearance(pullRequest = {}) {
+  const copilotReviewSignal = normalizeOptionalObject(pullRequest?.copilotReviewSignal);
+  const copilotReviewWorkflow = normalizeOptionalObject(pullRequest?.copilotReviewWorkflow);
+  const actionableCommentCount = Number(copilotReviewSignal?.actionableCommentCount ?? 0) || 0;
+  const actionableThreadCount = Number(copilotReviewSignal?.actionableThreadCount ?? 0) || 0;
+  const hasCurrentHeadReview = copilotReviewSignal?.hasCurrentHeadReview === true;
+  const workflowStatus = normalizeText(copilotReviewWorkflow?.status).toUpperCase();
+  const workflowConclusion = normalizeText(copilotReviewWorkflow?.conclusion).toUpperCase();
+  const reviewRunCompletedClean =
+    workflowStatus === 'COMPLETED' &&
+    workflowConclusion === 'SUCCESS' &&
+    actionableCommentCount === 0 &&
+    actionableThreadCount === 0;
+  const ok = actionableCommentCount === 0 && (hasCurrentHeadReview || reviewRunCompletedClean);
+  const reasons = [];
+  if (actionableCommentCount > 0 || actionableThreadCount > 0) {
+    reasons.push('actionable-current-head-comments');
+  }
+  if (!hasCurrentHeadReview && !reviewRunCompletedClean) {
+    if (PENDING_WORKFLOW_RUN_STATUSES.has(workflowStatus)) {
+      reasons.push('draft-review-workflow-pending');
+    } else if (workflowStatus === 'COMPLETED' && workflowConclusion && workflowConclusion !== 'SUCCESS') {
+      reasons.push('draft-review-workflow-failed');
+    } else {
+      reasons.push('draft-review-clearance-missing');
+    }
+  }
+  const nextWakeCondition =
+    actionableCommentCount > 0 || actionableThreadCount > 0
+      ? 'review-comments-addressed'
+      : PENDING_WORKFLOW_RUN_STATUSES.has(workflowStatus)
+        ? 'copilot-review-workflow-completed'
+        : workflowStatus === 'COMPLETED' && workflowConclusion === 'SUCCESS'
+          ? 'copilot-review-post-expected'
+          : 'review-disposition-updated';
+  const pollIntervalSecondsHint = PENDING_WORKFLOW_RUN_STATUSES.has(workflowStatus)
+    ? COPILOT_REVIEW_ACTIVE_POLL_HINT_SECONDS
+    : workflowStatus === 'COMPLETED' && workflowConclusion === 'SUCCESS'
+      ? COPILOT_REVIEW_POST_POLL_HINT_SECONDS
+      : null;
+  return {
+    ok,
+    reasons,
+    nextWakeCondition,
+    pollIntervalSecondsHint,
+    signal: copilotReviewSignal,
+    workflow: copilotReviewWorkflow,
+    hasCurrentHeadReview,
+    reviewRunCompletedClean,
+    actionableCommentCount,
+    actionableThreadCount
+  };
+}
+
+function localReviewLoopSatisfied(localReviewLoop) {
+  if (!localReviewLoop || typeof localReviewLoop !== 'object') {
+    return true;
+  }
+  const receipt = normalizeOptionalObject(localReviewLoop.receipt);
+  const git = normalizeOptionalObject(receipt?.git);
+  const overall = normalizeOptionalObject(receipt?.overall);
+  return (
+    normalizeText(localReviewLoop.status).toLowerCase() === 'passed' &&
+    (localReviewLoop.receiptFreshForHead !== false) &&
+    (localReviewLoop.requestedCoverageSatisfied !== false) &&
+    normalizeText(overall?.status).toLowerCase() === 'passed' &&
+    git?.dirtyTracked !== true
+  );
+}
+
+function buildBaseWatchReceipt({ planned, reason, nextWakeCondition, pollIntervalSecondsHint }) {
+  return {
+    status: 'completed',
+    outcome: planned.laneLifecycle,
+    reason,
+    source: 'delivery-agent-broker',
+    details: {
+      actionType: 'watch-pr',
+      laneLifecycle: planned.laneLifecycle,
+      blockerClass: planned.laneLifecycle === 'waiting-review' ? 'review' : 'ci',
+      retryable: true,
+      nextWakeCondition,
+      pollIntervalSecondsHint,
+      reviewMonitor:
+        planned.laneLifecycle === 'waiting-review'
+          ? planned.pullRequest?.copilotReviewWorkflow ?? null
+          : null,
+      helperCallsExecuted: [],
+      filesTouched: []
+    }
+  };
+}
+
+async function enforceDraftOnlyReviewContract({
+  planned,
+  taskPacket,
+  policy,
+  repoRoot,
+  deps = {}
+}) {
+  const pullRequest = normalizeOptionalObject(planned?.pullRequest);
+  if (!pullRequest?.url || !coercePositiveInteger(pullRequest.number)) {
+    return null;
+  }
+  const reviewStrategy = normalizeCopilotReviewStrategy(
+    taskPacket?.evidence?.delivery?.mutationEnvelope?.copilotReviewStrategy || policy?.copilotReviewStrategy
+  );
+  if (reviewStrategy !== 'draft-only-explicit') {
+    return null;
+  }
+
+  const localReviewRequested = taskPacket?.evidence?.delivery?.localReviewLoop?.requested === true;
+  let localReviewLoopReceipt = null;
+  if (localReviewRequested) {
+    const localReviewResult = await maybeRunLocalReviewLoop({
+      baseReceipt: {
+        status: 'completed',
+        outcome: 'draft-review-assessment',
+        reason: 'Assessing local Docker/Desktop review receipt before final ready validation.',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'local-review-loop',
+          laneLifecycle: 'waiting-review',
+          blockerClass: 'review',
+          retryable: true,
+          nextWakeCondition: 'local-review-loop-green',
+          helperCallsExecuted: [],
+          filesTouched: [],
+          reviewPhase: 'draft-review'
+        }
+      },
+      taskPacket,
+      policy,
+      repoRoot,
+      deps
+    });
+    if (localReviewResult.status !== 'completed') {
+      if (pullRequest.isDraft !== true) {
+        const toDraft = await setPullRequestReadyState({
+          repository: normalizeText(taskPacket?.repository),
+          pullRequest,
+          ready: false,
+          repoRoot,
+          deps
+        });
+        if (toDraft.helperCall) {
+          localReviewResult.details.helperCallsExecuted = uniqueStrings([
+            ...(Array.isArray(localReviewResult.details?.helperCallsExecuted)
+              ? localReviewResult.details.helperCallsExecuted
+              : []),
+            toDraft.helperCall
+          ]);
+        }
+      }
+      localReviewResult.details = {
+        ...(localReviewResult.details && typeof localReviewResult.details === 'object' ? localReviewResult.details : {}),
+        reviewPhase: 'draft-review'
+      };
+      return localReviewResult;
+    }
+    localReviewLoopReceipt = normalizeOptionalObject(localReviewResult?.details?.localReviewLoop);
+  }
+
+  const reviewClearance = evaluateDraftPhaseCopilotClearance(pullRequest);
+  const localReviewSatisfiedFlag = !localReviewRequested || localReviewLoopSatisfied(localReviewLoopReceipt);
+
+  if (pullRequest.isDraft === true) {
+    if (reviewClearance.ok && localReviewSatisfiedFlag) {
+      const toReady = await setPullRequestReadyState({
+        repository: normalizeText(taskPacket?.repository),
+        pullRequest,
+        ready: true,
+        repoRoot,
+        deps
+      });
+      if (!toReady.ok) {
+        return {
+          status: 'blocked',
+          outcome: 'ready-transition-failed',
+          reason:
+            normalizeText(toReady.result?.stderr) ||
+            normalizeText(toReady.result?.stdout) ||
+            `Failed to mark PR #${pullRequest.number} ready for review.`,
+          source: 'delivery-agent-broker',
+          details: {
+            actionType: 'watch-pr',
+            laneLifecycle: 'blocked',
+            blockerClass: 'helperbug',
+            retryable: false,
+            nextWakeCondition: 'ready-transition-fixed',
+            reviewPhase: 'ready-validation',
+            helperCallsExecuted: uniqueStrings([toReady.helperCall]),
+            filesTouched: [],
+            localReviewLoop: localReviewLoopReceipt
+          }
+        };
+      }
+      return {
+        status: 'completed',
+        outcome: 'waiting-ci',
+        reason: 'Marked the PR ready for review after clean draft-phase Copilot review and local validation.',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'watch-pr',
+          laneLifecycle: 'waiting-ci',
+          blockerClass: 'ci',
+          retryable: true,
+          nextWakeCondition: 'checks-green',
+          reviewPhase: 'ready-validation',
+          helperCallsExecuted: uniqueStrings([toReady.helperCall]),
+          filesTouched: [],
+          localReviewLoop: localReviewLoopReceipt
+        }
+      };
+    }
+
+    return {
+      status: 'completed',
+      outcome: 'waiting-review',
+      reason:
+        localReviewRequested && !localReviewSatisfiedFlag
+          ? 'Pull request remains draft until the local Docker/Desktop review receipt is current-head, clean, and request-complete.'
+          : 'Pull request remains draft until draft-phase Copilot review clearance exists on the current head.',
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'watch-pr',
+        laneLifecycle: 'waiting-review',
+        blockerClass: 'review',
+        retryable: true,
+        nextWakeCondition: localReviewRequested && !localReviewSatisfiedFlag
+          ? 'local-review-loop-green'
+          : reviewClearance.nextWakeCondition,
+        pollIntervalSecondsHint: localReviewRequested && !localReviewSatisfiedFlag ? null : reviewClearance.pollIntervalSecondsHint,
+        reviewMonitor: reviewClearance.workflow,
+        reviewPhase: 'draft-review',
+        helperCallsExecuted: [],
+        filesTouched: [],
+        localReviewLoop: localReviewLoopReceipt
+      }
+    };
+  }
+
+  if (!reviewClearance.ok || !localReviewSatisfiedFlag) {
+    const toDraft = await setPullRequestReadyState({
+      repository: normalizeText(taskPacket?.repository),
+      pullRequest,
+      ready: false,
+      repoRoot,
+      deps
+    });
+    if (!toDraft.ok) {
+      return {
+        status: 'blocked',
+        outcome: 'draft-transition-failed',
+        reason:
+          normalizeText(toDraft.result?.stderr) ||
+          normalizeText(toDraft.result?.stdout) ||
+          `Failed to mark PR #${pullRequest.number} as draft.`,
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'watch-pr',
+          laneLifecycle: 'blocked',
+          blockerClass: 'helperbug',
+          retryable: false,
+          nextWakeCondition: 'draft-transition-fixed',
+          reviewPhase: 'draft-review',
+          helperCallsExecuted: uniqueStrings([toDraft.helperCall]),
+          filesTouched: [],
+          localReviewLoop: localReviewLoopReceipt
+        }
+      };
+    }
+    return {
+      status: 'completed',
+      outcome: 'waiting-review',
+      reason:
+        localReviewRequested && !localReviewSatisfiedFlag
+          ? 'PR was returned to draft because local Docker/Desktop review clearance no longer matches the current head.'
+          : 'PR was returned to draft because current-head draft-phase Copilot review clearance is missing or unresolved.',
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'watch-pr',
+        laneLifecycle: 'waiting-review',
+        blockerClass: 'review',
+        retryable: true,
+        nextWakeCondition: localReviewRequested && !localReviewSatisfiedFlag
+          ? 'local-review-loop-green'
+          : reviewClearance.nextWakeCondition,
+        pollIntervalSecondsHint: localReviewRequested && !localReviewSatisfiedFlag ? null : reviewClearance.pollIntervalSecondsHint,
+        reviewMonitor: reviewClearance.workflow,
+        reviewPhase: 'draft-review',
+        helperCallsExecuted: uniqueStrings([toDraft.helperCall]),
+        filesTouched: [],
+        localReviewLoop: localReviewLoopReceipt
+      }
+    };
+  }
+
+  return null;
 }
 
 function resolveRepoContainedPath(repoRoot, candidatePath, { label = 'path', requiredRoot = '' } = {}) {
@@ -2817,6 +3167,16 @@ export async function runDeliveryTurnBroker({
   }
 
   if (planned.actionType === 'watch-pr') {
+    const draftOnlyResult = await enforceDraftOnlyReviewContract({
+      planned,
+      taskPacket: enrichedPacket,
+      policy,
+      repoRoot,
+      deps
+    });
+    if (draftOnlyResult) {
+      return draftOnlyResult;
+    }
     return {
       status: 'completed',
       outcome: planned.laneLifecycle,
@@ -2836,6 +3196,7 @@ export async function runDeliveryTurnBroker({
             : 'checks-green',
         pollIntervalSecondsHint:
           coercePositiveInteger(planned.pullRequest?.pollIntervalSecondsHint) ?? null,
+        reviewPhase: planned.laneLifecycle === 'waiting-review' ? 'draft-review' : 'ready-validation',
         reviewMonitor:
           planned.laneLifecycle === 'waiting-review'
             ? planned.pullRequest?.copilotReviewWorkflow ?? null

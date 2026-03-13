@@ -7,12 +7,12 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const workflowPath = path.join(repoRoot, '.github', 'workflows', 'agent-review-policy.yml');
 
-test('agent-review-policy keeps heavyweight collection on pull_request_target and evaluates the queue gate only on PR-scoped and merge-group events', () => {
+test('agent-review-policy validates existing draft-phase review state from pull_request_target and merge_group only', () => {
   const workflow = readFileSync(workflowPath, 'utf8');
 
   assert.match(workflow, /merge_group:/);
   assert.doesNotMatch(workflow, /workflow_run:/);
-  assert.match(workflow, /pull_request_review:\s+types:\s+\[submitted\]/);
+  assert.doesNotMatch(workflow, /pull_request_review:/);
   assert.match(workflow, /permissions:\s+actions: read\s+pull-requests: read\s+contents: read/ms);
   assert.match(workflow, /uses: actions\/checkout@v5/);
   assert.match(workflow, /repository:\s+\$\{\{\s*github\.repository\s*\}\}/);
@@ -35,8 +35,9 @@ test('agent-review-policy keeps heavyweight collection on pull_request_target an
   assert.doesNotMatch(workflow, /name: Load workflow-run pull request metadata/);
   assert.match(
     workflow,
-    /name: Evaluate Copilot queue gate\s+if: >[\s\S]*github\.event_name == 'pull_request_target'[\s\S]*github\.event_name == 'pull_request_review'[\s\S]*github\.event_name == 'merge_group'/,
+    /name: Evaluate Copilot queue gate\s+if: >[\s\S]*github\.event_name == 'pull_request_target'[\s\S]*github\.event_name == 'merge_group'/,
   );
+  assert.doesNotMatch(workflow, /github\.event_name == 'pull_request_review'/);
   assert.match(workflow, /"--poll-attempts" "60"/);
   assert.match(workflow, /"--poll-delay-ms" "10000"/);
   assert.match(workflow, /if \[\[ "\$\{\{ github\.event_name \}\}" == "merge_group" \]\]; then/);
