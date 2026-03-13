@@ -2,12 +2,13 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import { buildDeliveryAgentRuntimeRecord } from '../delivery-agent.mjs';
+import { buildDeliveryAgentRuntimeRecord, loadDeliveryAgentPolicy } from '../delivery-agent.mjs';
 import { buildDeliveryMemoryReport } from '../delivery-memory.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -64,6 +65,33 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
       maxCommitCount: 256
     }
   });
+});
+
+test('loadDeliveryAgentPolicy fails closed on unsupported copilot review strategies', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-policy-invalid-'));
+  const policyDir = path.join(repoRoot, 'tools', 'priority');
+  await mkdir(policyDir, { recursive: true });
+  await writeFile(
+    path.join(policyDir, 'delivery-agent.policy.json'),
+    JSON.stringify({
+      schema: 'priority/delivery-agent-policy@v1',
+      backlogAuthority: 'issues',
+      implementationRemote: 'origin',
+      copilotReviewStrategy: 'disabled',
+      autoSlice: true,
+      autoMerge: true,
+      maxActiveCodingLanes: 1,
+      allowPolicyMutations: false,
+      allowReleaseAdmin: false,
+      stopWhenNoOpenEpics: true
+    }),
+    'utf8'
+  );
+
+  await assert.rejects(
+    loadDeliveryAgentPolicy(repoRoot),
+    /Unsupported copilotReviewStrategy: disabled/
+  );
 });
 
 test('runtime delivery task packet schema validates canonical delivery packets', async () => {

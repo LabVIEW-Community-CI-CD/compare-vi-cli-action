@@ -2980,6 +2980,118 @@ test('delivery broker restores ready only after clean current-head draft review 
   assert.match(brokerResult.reason, /marked the pr ready for review/i);
 });
 
+test('delivery broker keeps a draft PR waiting-review when local receipt freshness or coverage cannot be proven', async () => {
+  const helperCalls = [];
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: '/tmp/repo',
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-review',
+      objective: {
+        summary: 'Advance issue #1067'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-review',
+          pullRequest: {
+            number: 1067,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1067',
+            isDraft: true,
+            copilotReviewSignal: {
+              hasCurrentHeadReview: true,
+              actionableCommentCount: 0,
+              actionableThreadCount: 0
+            },
+            copilotReviewWorkflow: {
+              status: 'COMPLETED',
+              conclusion: 'SUCCESS'
+            }
+          },
+          localReviewLoop: {
+            requested: true,
+            source: 'standing-issue-body',
+            receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            markdownlint: true,
+            requirementsVerification: true,
+            niLinuxReviewSuite: false,
+            singleViHistory: null
+          },
+          mutationEnvelope: {
+            copilotReviewStrategy: 'draft-only-explicit',
+            maxActiveCodingLanes: 1
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        localReviewLoop: {
+          enabled: true,
+          receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+          command: ['node', 'tools/priority/docker-desktop-review-loop.mjs']
+        },
+        codingTurnCommand: ['node', 'mock-broker']
+      }),
+      runCommandFn: async (command, args) => {
+        helperCalls.push([command, ...args].join(' '));
+        assert.equal(command, 'node');
+        return {
+          status: 0,
+          stdout: JSON.stringify({
+            status: 'passed',
+            source: 'docker-desktop-review-loop',
+            reason: 'Receipt was read, but freshness and coverage were not proven.',
+            receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            currentHeadSha: '1111111111111111111111111111111111111111',
+            receiptHeadSha: '1111111111111111111111111111111111111111',
+            receiptFreshForHead: null,
+            requestedCoverageSatisfied: null,
+            requestedCoverageReason: null,
+            requestedCoverageMissingChecks: [],
+            receipt: {
+              git: {
+                headSha: '1111111111111111111111111111111111111111',
+                dirtyTracked: false
+              },
+              overall: {
+                status: 'passed',
+                failedCheck: '',
+                message: '',
+                exitCode: 0
+              }
+            }
+          }),
+          stderr: ''
+        };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.status, 'completed');
+  assert.equal(brokerResult.outcome, 'waiting-review');
+  assert.equal(brokerResult.details.reviewPhase, 'draft-review');
+  assert.equal(helperCalls.length, 1);
+  assert.equal(brokerResult.details.helperCallsExecuted.length, 0);
+  assert.equal(brokerResult.details.localReviewLoop.receiptFreshForHead, null);
+  assert.equal(brokerResult.details.localReviewLoop.requestedCoverageSatisfied, null);
+  assert.equal(brokerResult.details.nextWakeCondition, 'local-review-loop-green');
+  assert.match(brokerResult.reason, /current-head, clean, and request-complete/i);
+});
+
 test('delivery broker returns a prematurely ready PR to draft when draft-phase review clearance is missing', async () => {
   const helperCalls = [];
   const brokerResult = await runDeliveryTurnBroker({

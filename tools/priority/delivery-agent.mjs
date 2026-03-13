@@ -234,7 +234,13 @@ function normalizeStringList(value) {
 
 function normalizeCopilotReviewStrategy(value) {
   const normalized = normalizeText(value);
-  return normalized === 'draft-only-explicit' ? 'draft-only-explicit' : DEFAULT_POLICY.copilotReviewStrategy;
+  if (!normalized) {
+    return DEFAULT_POLICY.copilotReviewStrategy;
+  }
+  if (normalized === 'draft-only-explicit') {
+    return normalized;
+  }
+  throw new Error(`Unsupported copilotReviewStrategy: ${normalized}`);
 }
 
 function normalizeLocalReviewLoopPolicy(value) {
@@ -1801,7 +1807,10 @@ function evaluateDraftPhaseCopilotClearance(pullRequest = {}) {
     workflowConclusion === 'SUCCESS' &&
     actionableCommentCount === 0 &&
     actionableThreadCount === 0;
-  const ok = !hasActionableItems && (hasCurrentHeadReview || reviewRunCompletedClean);
+  const ok =
+    actionableCommentCount === 0 &&
+    actionableThreadCount === 0 &&
+    (hasCurrentHeadReview || reviewRunCompletedClean);
   const reasons = [];
   if (hasActionableItems) {
     reasons.push('actionable-current-head-comments');
@@ -1851,8 +1860,8 @@ function localReviewLoopSatisfied(localReviewLoop) {
   const overall = normalizeOptionalObject(receipt?.overall);
   return (
     normalizeText(localReviewLoop.status).toLowerCase() === 'passed' &&
-    (localReviewLoop.receiptFreshForHead !== false) &&
-    (localReviewLoop.requestedCoverageSatisfied !== false) &&
+    localReviewLoop.receiptFreshForHead === true &&
+    localReviewLoop.requestedCoverageSatisfied === true &&
     normalizeText(overall?.status).toLowerCase() === 'passed' &&
     git?.dirtyTracked !== true
   );
