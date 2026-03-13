@@ -89,6 +89,10 @@ artifacts under `tests/results/_agent/`.
 - Treat the GitHub wiki as a curated portal only. Checked-in repo docs remain
   authoritative, and published wiki history lives in
   `LabVIEW-Community-CI-CD/compare-vi-cli-action.wiki.git`.
+- Repo-owned GitHub instructions live under
+  `.github/instructions/*.instructions.md`. Keep them aligned with the
+  draft-only Copilot review contract: draft is the only Copilot iteration
+  state, and `ready_for_review` means final validation / promotion intent only.
 
 ## Working Rules
 
