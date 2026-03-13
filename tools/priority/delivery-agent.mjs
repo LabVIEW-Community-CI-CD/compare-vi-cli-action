@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   buildLocalReviewLoopCliArgs,
+  DOCKER_PARITY_RESULTS_ROOT,
   DEFAULT_LOCAL_REVIEW_LOOP_COMMAND
 } from './docker-desktop-review-loop.mjs';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
@@ -1649,14 +1650,46 @@ async function runCommand(command, args, { cwd, env }, deps = {}) {
     stdio: ['ignore', 'pipe', 'pipe']
   });
   return {
-    status: result.status ?? 0,
+    status: Number.isInteger(result.status) ? result.status : 1,
     stdout: result.stdout ?? '',
-    stderr: result.stderr ?? ''
+    stderr: [
+      normalizeText(result.stderr),
+      normalizeText(result.error?.message),
+      normalizeText(result.signal ? `Process terminated by signal ${result.signal}.` : '')
+    ]
+      .filter(Boolean)
+      .join('\n')
   };
 }
 
 function uniqueStrings(values = []) {
   return [...new Set(values.map((entry) => normalizeText(entry)).filter(Boolean))];
+}
+
+function resolveRepoContainedPath(repoRoot, candidatePath, { label = 'path', requiredRoot = '' } = {}) {
+  const normalized = normalizeText(candidatePath);
+  if (!normalized) {
+    throw new Error(`${label} must be a non-empty repo-relative path.`);
+  }
+  if (path.isAbsolute(normalized)) {
+    throw new Error(`${label} must stay under the repository root: ${normalized}`);
+  }
+  const resolved = path.resolve(repoRoot, normalized);
+  const relativeToRepo = path.relative(repoRoot, resolved);
+  if (!relativeToRepo || relativeToRepo.startsWith('..') || path.isAbsolute(relativeToRepo)) {
+    throw new Error(`${label} escapes the repository root: ${normalized}`);
+  }
+  if (requiredRoot) {
+    const requiredRootPath = path.resolve(repoRoot, requiredRoot);
+    const relativeToRequiredRoot = path.relative(requiredRootPath, resolved);
+    if (!relativeToRequiredRoot || relativeToRequiredRoot.startsWith('..') || path.isAbsolute(relativeToRequiredRoot)) {
+      throw new Error(`${label} must stay under ${requiredRoot}: ${normalized}`);
+    }
+  }
+  return {
+    normalized,
+    resolved
+  };
 }
 
 async function maybeRunLocalReviewLoop({
@@ -1682,6 +1715,46 @@ async function maybeRunLocalReviewLoop({
   const wrapperArgs = buildLocalReviewLoopCliArgs({ repoRoot, request });
   const command = wrapperCommand[0];
   const args = [...wrapperCommand.slice(1), ...wrapperArgs];
+  const commandText = [command, ...args].join(' ');
+  let resolvedReceiptPathInfo;
+  try {
+    resolvedReceiptPathInfo = resolveRepoContainedPath(
+      repoRoot,
+      normalizeText(request.receiptPath) || localReviewLoopPolicy.receiptPath,
+      {
+        label: 'Local review loop receipt path',
+        requiredRoot: DOCKER_PARITY_RESULTS_ROOT
+      }
+    );
+  } catch (error) {
+    return {
+      status: 'blocked',
+      outcome: 'local-review-loop-failed',
+      reason: normalizeText(error?.message) || 'Invalid local review loop receipt path.',
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'local-review-loop',
+        laneLifecycle: 'blocked',
+        blockerClass: 'policy',
+        retryable: false,
+        nextWakeCondition: 'local-review-loop-policy-fixed',
+        helperCallsExecuted: uniqueStrings([
+          ...(Array.isArray(baseReceipt?.details?.helperCallsExecuted) ? baseReceipt.details.helperCallsExecuted : []),
+          commandText
+        ]),
+        filesTouched: uniqueStrings(Array.isArray(baseReceipt?.details?.filesTouched) ? baseReceipt.details.filesTouched : []),
+        localReviewLoop: {
+          status: 'failed',
+          source: 'docker-desktop-review-loop',
+          reason: normalizeText(error?.message) || 'Invalid local review loop receipt path.',
+          receiptPath: normalizeText(request.receiptPath) || localReviewLoopPolicy.receiptPath,
+          receipt: null
+        }
+      }
+    };
+  }
+  const receiptPath = resolvedReceiptPathInfo.normalized;
+  const resolvedReceiptPath = resolvedReceiptPathInfo.resolved;
   const result = await runCommand(command, args, { cwd: repoRoot, env: process.env }, deps);
   let reviewLoopResult = null;
   let stdoutParseError = '';
@@ -1691,10 +1764,6 @@ async function maybeRunLocalReviewLoop({
     stdoutParseError = normalizeText(error?.message);
     reviewLoopResult = null;
   }
-
-  const commandText = [command, ...args].join(' ');
-  const receiptPath = normalizeText(request.receiptPath) || localReviewLoopPolicy.receiptPath;
-  const resolvedReceiptPath = path.resolve(repoRoot, receiptPath);
   let receiptFromFile = null;
   let receiptReadError = '';
   try {

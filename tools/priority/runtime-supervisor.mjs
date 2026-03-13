@@ -515,10 +515,13 @@ async function resolveCompareviTaskPacketSnapshot({ repoRoot, schedulerDecision 
   return readJsonIfPresent(path.join(repoRoot, PRIORITY_ISSUE_DIR, `${issueNumber}.json`));
 }
 
-async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedWorker, workerReady, workerBranch }) {
+async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedWorker, workerReady, workerBranch, deps = {} }) {
   const activeLane = schedulerDecision?.activeLane ?? null;
   const artifacts = schedulerDecision?.artifacts ?? {};
-  const deliveryPolicy = await loadDeliveryAgentPolicy(repoRoot);
+  const deliveryPolicy = await loadDeliveryAgentPolicy(repoRoot, {
+    ...deps,
+    policyPath: deps.deliveryAgentPolicyPath || DELIVERY_AGENT_POLICY_RELATIVE_PATH
+  });
   const snapshot = await resolveCompareviTaskPacketSnapshot({ repoRoot, schedulerDecision });
   const issueNumber = activeLane?.issue;
   const issueTitle = normalizeText(snapshot?.title);

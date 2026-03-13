@@ -143,6 +143,13 @@ test('parseArgs reports unknown options as unknown even when they have a trailin
   );
 });
 
+test('parseArgs rejects unexpected positional arguments explicitly', () => {
+  assert.throws(
+    () => parseArgs(['node', 'docker-desktop-review-loop.mjs', 'unexpected']),
+    /Unknown argument: unexpected/
+  );
+});
+
 test('default docker desktop review-loop command pins an explicit spawn maxBuffer', () => {
   const source = readFileSync(new URL('../docker-desktop-review-loop.mjs', import.meta.url), 'utf8');
   assert.equal(DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES, 64 * 1024 * 1024);
@@ -243,6 +250,28 @@ test('runDockerDesktopReviewLoop fails closed with a deterministic reason when t
 
   assert.equal(result.status, 'failed');
   assert.match(result.reason, /corrupt receipt/i);
+  assert.equal(result.receipt, null);
+});
+
+test('runDockerDesktopReviewLoop rejects receipt paths outside docker parity results', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-path-'));
+
+  const result = await runDockerDesktopReviewLoop({
+    repoRoot,
+    request: {
+      requested: true,
+      receiptPath: '../outside.json',
+      markdownlint: true,
+      requirementsVerification: false,
+      niLinuxReviewSuite: false
+    },
+    runCommandFn: async () => {
+      throw new Error('runCommandFn should not be called when receiptPath is invalid');
+    }
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.match(result.reason, /must stay under tests\/results\/docker-tools-parity|escapes the repository root/i);
   assert.equal(result.receipt, null);
 });
 

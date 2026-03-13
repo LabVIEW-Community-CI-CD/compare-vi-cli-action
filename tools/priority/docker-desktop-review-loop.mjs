@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 export const DEFAULT_REVIEW_LOOP_RECEIPT_PATH = path.join('tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
 export const DEFAULT_LOCAL_REVIEW_LOOP_COMMAND = ['node', 'tools/priority/docker-desktop-review-loop.mjs'];
 export const DEFAULT_REVIEW_LOOP_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+export const DOCKER_PARITY_RESULTS_ROOT = path.join('tests', 'results', 'docker-tools-parity');
 
 function normalizeText(value) {
   if (value == null) {
@@ -54,6 +55,30 @@ function normalizeCommandResult(result = {}) {
     status: Number.isInteger(result.status) ? result.status : 1,
     stdout: normalizeText(result.stdout),
     stderr
+  };
+}
+
+function assertRepoContainedReceiptPath(repoRoot, receiptPath) {
+  const normalized = normalizeText(receiptPath);
+  if (!normalized) {
+    throw new Error('Receipt path must be a non-empty repo-relative path.');
+  }
+  if (path.isAbsolute(normalized)) {
+    throw new Error(`Receipt path must stay under the repository root: ${normalized}`);
+  }
+  const resolved = path.resolve(repoRoot, normalized);
+  const relativeToRepo = path.relative(repoRoot, resolved);
+  if (!relativeToRepo || relativeToRepo.startsWith('..') || path.isAbsolute(relativeToRepo)) {
+    throw new Error(`Receipt path escapes the repository root: ${normalized}`);
+  }
+  const parityRoot = path.resolve(repoRoot, DOCKER_PARITY_RESULTS_ROOT);
+  const relativeToParityRoot = path.relative(parityRoot, resolved);
+  if (!relativeToParityRoot || relativeToParityRoot.startsWith('..') || path.isAbsolute(relativeToParityRoot)) {
+    throw new Error(`Receipt path must stay under ${DOCKER_PARITY_RESULTS_ROOT}: ${normalized}`);
+  }
+  return {
+    normalized,
+    resolved
   };
 }
 
@@ -194,7 +219,19 @@ export async function runDockerDesktopReviewLoop({
   const command = 'pwsh';
   const args = buildDockerDesktopReviewLoopPowerShellArgs(normalized);
   const commandLine = [command, ...args].join(' ');
-  const receiptPath = path.resolve(repoRoot, normalized.receiptPath);
+  let receiptPath;
+  try {
+    receiptPath = assertRepoContainedReceiptPath(repoRoot, normalized.receiptPath).resolved;
+  } catch (error) {
+    return {
+      status: 'failed',
+      source: 'docker-desktop-review-loop',
+      reason: normalizeText(error?.message) || 'Invalid Docker/Desktop review loop receipt path.',
+      commandLine,
+      receiptPath: normalized.receiptPath,
+      receipt: null
+    };
+  }
 
   if (normalized.requested !== true) {
     return {
@@ -324,6 +361,9 @@ export function parseArgs(argv = process.argv) {
     if (token === '-h' || token === '--help') {
       options.help = true;
       continue;
+    }
+    if (!token.startsWith('-')) {
+      throw new Error(`Unknown argument: ${token}`);
     }
 
     if (token === '--skip-actionlint') {
