@@ -71,6 +71,7 @@ test('repo scripts and workflows do not inline-install ruamel', () => {
 
   const dockerfile = read('tools/docker/Dockerfile.tools');
   assert.match(dockerfile, /requirements\.txt/, 'tools image should install pinned workflow enclave requirements');
+  assert.match(dockerfile, /python3-venv/, 'tools image should install python3-venv for workflow enclave venv creation');
   assert.doesNotMatch(dockerfile, /pip install[^\n]*ruamel/i, 'tools image should not install ruamel inline');
 });
 
