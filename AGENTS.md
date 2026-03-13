@@ -112,7 +112,10 @@ artifacts under `tests/results/_agent/`.
   compaction; it now also mirrors the current requirements-verification state to
   `tests/results/_agent/verification/docker-review-loop-summary.json` and points to
   `tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-review-loop-receipt.json`
-  and the rest of the authoritative local review artifacts. When the daemon is
+  and the rest of the authoritative local review artifacts. The receipt now
+  includes `git.headSha`, `git.branch`, and `git.upstreamDevelopMergeBase`; use
+  those fields to confirm the local parity result belongs to the current branch
+  head before trusting it. When the daemon is
   active, the same summary is mirrored into
   `tests/results/_agent/runtime/delivery-agent-state.json` and
   `tests/results/_agent/runtime/delivery-agent-lanes/*.json` under the

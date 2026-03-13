@@ -58,6 +58,45 @@ function normalizeCommandResult(result = {}) {
   };
 }
 
+function readGitCommand(repoRoot, args) {
+  const result = spawnSync('git', ['-C', repoRoot, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  if (result.status !== 0) {
+    return '';
+  }
+  return normalizeText(result.stdout);
+}
+
+export function resolveRepoGitState(repoRoot) {
+  const headSha = readGitCommand(repoRoot, ['rev-parse', 'HEAD']);
+  if (!headSha) {
+    return null;
+  }
+  const branch = readGitCommand(repoRoot, ['branch', '--show-current']) || null;
+  const upstreamDevelopMergeBase = readGitCommand(repoRoot, ['merge-base', 'HEAD', 'upstream/develop']) || null;
+  return {
+    headSha,
+    branch,
+    upstreamDevelopMergeBase
+  };
+}
+
+function normalizeReceiptGitMetadata(receipt = {}) {
+  const git = receipt && typeof receipt === 'object' && receipt.git && typeof receipt.git === 'object' ? receipt.git : {};
+  const headSha = normalizeText(git.headSha);
+  const branch = normalizeText(git.branch) || null;
+  const upstreamDevelopMergeBase = normalizeText(git.upstreamDevelopMergeBase) || null;
+  const dirtyTracked = git.dirtyTracked === true;
+  return {
+    headSha,
+    branch,
+    upstreamDevelopMergeBase,
+    dirtyTracked
+  };
+}
+
 function assertRepoContainedReceiptPath(repoRoot, receiptPath) {
   const normalized = normalizeText(receiptPath);
   if (!normalized) {
@@ -213,7 +252,8 @@ function defaultRunCommand(command, args, { cwd, env }) {
 export async function runDockerDesktopReviewLoop({
   repoRoot,
   request,
-  runCommandFn = defaultRunCommand
+  runCommandFn = defaultRunCommand,
+  resolveRepoGitStateFn = resolveRepoGitState
 }) {
   const normalized = normalizeRequest(request);
   const command = 'pwsh';
@@ -265,6 +305,35 @@ export async function runDockerDesktopReviewLoop({
       receipt: null
     };
   }
+  const currentGitState =
+    typeof resolveRepoGitStateFn === 'function' ? normalizeReceiptGitMetadata({ git: resolveRepoGitStateFn(repoRoot) ?? {} }) : null;
+  const receiptGit = normalizeReceiptGitMetadata(receipt);
+  if (receipt && !receiptGit.headSha) {
+    return {
+      status: 'failed',
+      source: 'docker-desktop-review-loop',
+      reason: 'Docker/Desktop review loop receipt is missing git.headSha metadata.',
+      commandLine,
+      receiptPath,
+      currentHeadSha: currentGitState?.headSha || null,
+      receiptHeadSha: null,
+      receiptFreshForHead: false,
+      receipt
+    };
+  }
+  if (receipt && currentGitState?.headSha && receiptGit.headSha && currentGitState.headSha !== receiptGit.headSha) {
+    return {
+      status: 'failed',
+      source: 'docker-desktop-review-loop',
+      reason: `Docker/Desktop review loop receipt is stale for the current HEAD (${receiptGit.headSha} != ${currentGitState.headSha}).`,
+      commandLine,
+      receiptPath,
+      currentHeadSha: currentGitState.headSha,
+      receiptHeadSha: receiptGit.headSha,
+      receiptFreshForHead: false,
+      receipt
+    };
+  }
   const overallStatus = normalizeText(receipt?.overall?.status).toLowerCase();
   const failedCheck = normalizeText(receipt?.overall?.failedCheck);
   const failureReason =
@@ -281,6 +350,9 @@ export async function runDockerDesktopReviewLoop({
       reason: failureReason,
       commandLine,
       receiptPath,
+      currentHeadSha: currentGitState?.headSha || null,
+      receiptHeadSha: receiptGit.headSha || null,
+      receiptFreshForHead: currentGitState?.headSha ? currentGitState.headSha === receiptGit.headSha : null,
       receipt
     };
   }
@@ -291,6 +363,9 @@ export async function runDockerDesktopReviewLoop({
     reason: 'Docker/Desktop review loop passed.',
     commandLine,
     receiptPath,
+    currentHeadSha: currentGitState?.headSha || null,
+    receiptHeadSha: receiptGit.headSha || null,
+    receiptFreshForHead: currentGitState?.headSha ? currentGitState.headSha === receiptGit.headSha : null,
     receipt
   };
 }

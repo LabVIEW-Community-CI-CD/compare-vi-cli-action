@@ -9,6 +9,7 @@
     "generatedAt",
     "repoRoot",
     "resultsRoot",
+    "git",
     "overall",
     "checks",
     "artifacts",
@@ -30,6 +31,37 @@
     "resultsRoot": {
       "type": "string",
       "minLength": 1
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headSha",
+        "branch",
+        "upstreamDevelopMergeBase",
+        "dirtyTracked"
+      ],
+      "properties": {
+        "headSha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "upstreamDevelopMergeBase": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dirtyTracked": {
+          "type": "boolean"
+        }
+      }
     },
     "overall": {
       "type": "object",

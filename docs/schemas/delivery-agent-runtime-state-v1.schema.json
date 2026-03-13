@@ -55,6 +55,19 @@
         "receiptPath": { "type": ["string", "null"] },
         "receiptStatus": { "type": ["string", "null"] },
         "failedCheck": { "type": ["string", "null"] },
+        "currentHeadSha": { "type": ["string", "null"] },
+        "receiptHeadSha": { "type": ["string", "null"] },
+        "receiptFreshForHead": { "type": ["boolean", "null"] },
+        "git": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "properties": {
+            "headSha": { "type": ["string", "null"] },
+            "branch": { "type": ["string", "null"] },
+            "upstreamDevelopMergeBase": { "type": ["string", "null"] },
+            "dirtyTracked": { "type": "boolean" }
+          }
+        },
         "requirementsVerificationRequested": { "type": "boolean" },
         "markdownlintRequested": { "type": "boolean" },
         "niLinuxReviewSuiteRequested": { "type": "boolean" },
@@ -107,6 +120,19 @@
             "receiptPath": { "type": ["string", "null"] },
             "receiptStatus": { "type": ["string", "null"] },
             "failedCheck": { "type": ["string", "null"] },
+            "currentHeadSha": { "type": ["string", "null"] },
+            "receiptHeadSha": { "type": ["string", "null"] },
+            "receiptFreshForHead": { "type": ["boolean", "null"] },
+            "git": {
+              "type": ["object", "null"],
+              "additionalProperties": true,
+              "properties": {
+                "headSha": { "type": ["string", "null"] },
+                "branch": { "type": ["string", "null"] },
+                "upstreamDevelopMergeBase": { "type": ["string", "null"] },
+                "dirtyTracked": { "type": "boolean" }
+              }
+            },
             "requirementsVerificationRequested": { "type": "boolean" },
             "markdownlintRequested": { "type": "boolean" },
             "niLinuxReviewSuiteRequested": { "type": "boolean" },

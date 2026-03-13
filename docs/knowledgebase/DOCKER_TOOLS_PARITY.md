@@ -42,7 +42,9 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerific
   - `trace-matrix.html`
 - Every run now also emits the combined top-level receipt
   `tests/results/docker-tools-parity/review-loop-receipt.json`. Read that file first after compaction; it records
-  per-check status, links to the current NI Linux and requirements artifacts, and lists the recommended review order.
+  per-check status, links to the current NI Linux and requirements artifacts, lists the recommended review order, and
+  now stamps the local review with `git.headSha`, `git.branch`, and `git.upstreamDevelopMergeBase` so future agents can
+  reject stale green receipts after the branch head changes.
 - The same run also refreshes
   `tests/results/_agent/verification/docker-review-loop-summary.json`, a bounded `_agent`-facing bridge that points to
   the authoritative Docker/Desktop requirements verification artifacts. Future agents should prefer that file over stale
