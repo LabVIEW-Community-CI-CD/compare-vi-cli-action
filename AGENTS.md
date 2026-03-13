@@ -109,7 +109,8 @@ artifacts under `tests/results/_agent/`.
   `-NILinuxReviewSuiteHistoryBaselineRef`, and
   `-NILinuxReviewSuiteHistoryMaxCommitCount`. Read
   `tests/results/docker-tools-parity/review-loop-receipt.json` first after
-  compaction; it points to
+  compaction; it now also mirrors the current requirements-verification state to
+  `tests/results/_agent/verification/docker-review-loop-summary.json` and points to
   `tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-review-loop-receipt.json`
   and the rest of the authoritative local review artifacts. When the daemon is
   active, the same summary is mirrored into
