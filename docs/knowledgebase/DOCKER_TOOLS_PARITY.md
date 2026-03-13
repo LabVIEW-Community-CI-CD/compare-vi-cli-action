@@ -70,6 +70,7 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerific
 - A local receipt is reusable authority only when it is:
   - green,
   - current for the exact `git.headSha`, and
+  - tracked-clean in both the live worktree and the receipt metadata, and
   - complete for the requested review surfaces (for example markdown, requirements,
     NI Linux suite, and any requested single-VI history target).
   A current-head receipt that skipped one of the requested surfaces must be

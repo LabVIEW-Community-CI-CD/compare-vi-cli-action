@@ -424,6 +424,51 @@ test('assessDockerDesktopReviewLoopReceipt fails closed when a passed receipt do
   assert.match(result.reason, /does not cover the requested review surfaces/i);
 });
 
+test('assessDockerDesktopReviewLoopReceipt treats omitted request booleans as enabled-by-default coverage requirements', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-defaulted-request-'));
+  const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'docker-tools-parity-review-loop@v1',
+      git: {
+        headSha: 'current-head',
+        branch: 'issue/test',
+        upstreamDevelopMergeBase: 'base123',
+        dirtyTracked: false
+      },
+      overall: { status: 'passed', failedCheck: '', message: '', exitCode: 0 },
+      checks: {
+        markdownlint: { enabled: true, status: 'passed' },
+        requirementsVerification: { enabled: true, status: 'passed' }
+      }
+    })}\n`,
+    'utf8'
+  );
+
+  const result = await assessDockerDesktopReviewLoopReceipt({
+    repoRoot,
+    receiptPath: path.relative(repoRoot, receiptPath),
+    request: {
+      requested: true,
+      receiptPath: path.relative(repoRoot, receiptPath),
+      markdownlint: true,
+      requirementsVerification: true
+    },
+    resolveRepoGitStateFn: () => ({
+      headSha: 'current-head',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false
+    })
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.requestedCoverageSatisfied, false);
+  assert.deepEqual(result.requestedCoverageMissingChecks, ['actionlint', 'docsLinks', 'workflowDrift', 'dotnetCliBuild']);
+});
+
 test('assessDockerDesktopReviewLoopReceipt fails closed when single-VI coverage does not match the requested branch-history target', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'docker-desktop-review-loop-single-vi-mismatch-'));
   const receiptPath = path.join(repoRoot, 'tests', 'results', 'docker-tools-parity', 'review-loop-receipt.json');

@@ -180,26 +180,7 @@ function normalizeReceiptCheck(receipt = {}, key) {
 
 function assessRequestedCoverage(receipt = {}, request = {}) {
   const rawRequest = request && typeof request === 'object' ? request : {};
-  const rawSingleViHistory =
-    rawRequest.singleViHistory && typeof rawRequest.singleViHistory === 'object' ? rawRequest.singleViHistory : {};
-  const requestedSingleViTargetPath = normalizeText(rawSingleViHistory.targetPath);
-  const normalizedRequest = {
-    requested: rawRequest.requested === true,
-    actionlint: rawRequest.actionlint === true,
-    markdownlint: rawRequest.markdownlint === true,
-    docs: rawRequest.docs === true,
-    workflow: rawRequest.workflow === true,
-    dotnetCliBuild: rawRequest.dotnetCliBuild === true,
-    requirementsVerification: rawRequest.requirementsVerification === true,
-    niLinuxReviewSuite: rawRequest.niLinuxReviewSuite === true || rawSingleViHistory.enabled === true,
-    singleViHistory: {
-      enabled: rawSingleViHistory.enabled === true && Boolean(requestedSingleViTargetPath),
-      targetPath: requestedSingleViTargetPath,
-      branchRef: normalizeText(rawSingleViHistory.branchRef),
-      baselineRef: normalizeText(rawSingleViHistory.baselineRef),
-      maxCommitCount: coerceNonNegativeInteger(rawSingleViHistory.maxCommitCount)
-    }
-  };
+  const normalizedRequest = normalizeRequest(rawRequest);
   if (normalizedRequest.requested !== true) {
     return {
       satisfied: null,
