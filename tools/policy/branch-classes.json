@@ -2,6 +2,48 @@
   "schema": "branch-classes/v1",
   "schemaVersion": "1.0.0",
   "upstreamRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+  "repositoryPlanes": [
+    {
+      "id": "upstream",
+      "repositories": [
+        "LabVIEW-Community-CI-CD/compare-vi-cli-action"
+      ],
+      "developBranch": "develop",
+      "developClass": "upstream-integration",
+      "laneBranchPrefix": "issue/",
+      "purpose": "Canonical integration and promotion plane. Standing work lands here through queue-managed squash promotion.",
+      "personas": [
+        "daemon"
+      ]
+    },
+    {
+      "id": "origin",
+      "repositories": [
+        "LabVIEW-Community-CI-CD/compare-vi-cli-action-fork"
+      ],
+      "developBranch": "develop",
+      "developClass": "fork-mirror-develop",
+      "laneBranchPrefix": "issue/origin-",
+      "purpose": "Org-fork review plane. Develop mirrors upstream, while issue/origin-* lanes carry review-oriented collaboration before upstream promotion.",
+      "personas": [
+        "copilot-cli"
+      ]
+    },
+    {
+      "id": "personal",
+      "repositories": [
+        "svelderrainruiz/compare-vi-cli-action"
+      ],
+      "developBranch": "develop",
+      "developClass": "fork-mirror-develop",
+      "laneBranchPrefix": "issue/personal-",
+      "purpose": "Personal authoring plane. Develop mirrors upstream, while issue/personal-* lanes carry Codex-led implementation before upstream promotion.",
+      "personas": [
+        "codex",
+        "codex-cli"
+      ]
+    }
+  ],
   "classes": [
     {
       "id": "upstream-integration",
@@ -183,6 +225,46 @@
       "to": "lane",
       "via": "issue/*",
       "notes": "Fork lanes may branch from the mirror, but promotion still targets upstream integration."
+    }
+  ],
+  "planeTransitions": [
+    {
+      "from": "upstream",
+      "action": "sync",
+      "to": "origin",
+      "via": "priority:develop:sync",
+      "branchClass": "fork-mirror-develop"
+    },
+    {
+      "from": "upstream",
+      "action": "sync",
+      "to": "personal",
+      "via": "priority:develop:sync",
+      "branchClass": "fork-mirror-develop"
+    },
+    {
+      "from": "personal",
+      "action": "review",
+      "to": "origin",
+      "via": "pull-request",
+      "branchClass": "lane",
+      "notes": "Personal authoring lanes may flow through the org fork review plane before upstream promotion."
+    },
+    {
+      "from": "personal",
+      "action": "promote",
+      "to": "upstream",
+      "via": "pull-request",
+      "branchClass": "lane",
+      "notes": "Direct personal fork promotion remains allowed when the lane already carries the required local review evidence."
+    },
+    {
+      "from": "origin",
+      "action": "promote",
+      "to": "upstream",
+      "via": "pull-request",
+      "branchClass": "lane",
+      "notes": "Org-fork review lanes promote into upstream protected branches after ready-validation evidence is complete."
     }
   ]
 }
