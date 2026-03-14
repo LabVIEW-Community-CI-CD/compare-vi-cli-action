@@ -61,6 +61,75 @@ function Convert-PairSetToText {
   return (@($PairSet.pairs | ForEach-Object { '{0}{1}{2}' -f [string]$_.left, $Separator, [string]$_.right }) -join ', ')
 }
 
+function Test-ReadableTextFile {
+  param([AllowNull()][AllowEmptyString()][string]$Path)
+  if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+  try {
+    [void](Get-Content -LiteralPath $Path -Raw -ErrorAction Stop)
+    return $true
+  } catch {
+    return $false
+  }
+}
+
+function Get-HostPlaneSummaryAssessment {
+  param(
+    [AllowNull()]$Summary,
+    [AllowNull()]$HostPlane,
+    [AllowEmptyString()][string]$HostPlaneReportPath
+  )
+
+  $declaredPath = ''
+  if ($Summary -and $Summary.PSObject.Properties['hostPlaneSummaryPath']) {
+    $declaredPath = [string]$Summary.hostPlaneSummaryPath
+  }
+  if ([string]::IsNullOrWhiteSpace($declaredPath) -and $HostPlane -and $HostPlane.PSObject.Properties['summaryPath']) {
+    $declaredPath = [string]$HostPlane.summaryPath
+  }
+  if (-not [string]::IsNullOrWhiteSpace($declaredPath)) {
+    $declaredPath = Resolve-AbsolutePath -Path $declaredPath
+  }
+
+  $derivedPath = ''
+  if (-not [string]::IsNullOrWhiteSpace($HostPlaneReportPath)) {
+    $candidatePath = Join-Path (Split-Path -Parent $HostPlaneReportPath) 'labview-2026-host-plane-summary.md'
+    if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+      $derivedPath = Resolve-AbsolutePath -Path $candidatePath
+    }
+  }
+
+  $effectivePath = if (-not [string]::IsNullOrWhiteSpace($declaredPath)) { $declaredPath } else { $derivedPath }
+  $declared = -not [string]::IsNullOrWhiteSpace($declaredPath)
+  $status = 'not-present'
+  $reason = ''
+  $sha256 = ''
+  $readable = $false
+
+  if (-not [string]::IsNullOrWhiteSpace($effectivePath)) {
+    $readable = Test-ReadableTextFile -Path $effectivePath
+    if ($readable) {
+      $status = 'ok'
+      $sha256 = [string](Get-FileHash -LiteralPath $effectivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    } elseif ($declared) {
+      $status = 'missing'
+      $reason = 'declared-summary-unreadable'
+    } else {
+      $status = 'missing'
+      $reason = 'derived-summary-missing'
+    }
+  }
+
+  return [ordered]@{
+    status = $status
+    reason = $reason
+    path = $effectivePath
+    declared = $declared
+    readable = $readable
+    sha256 = $sha256
+  }
+}
+
 function Get-StepLane {
   param([Parameter(Mandatory)][string]$StepName)
   if ($StepName -like 'windows-*') { return 'windows' }
@@ -539,6 +608,7 @@ $hostPlaneReportPath = if ($summary.PSObject.Properties['hostPlaneReportPath']) 
 if ($null -eq $hostPlane -and -not [string]::IsNullOrWhiteSpace($hostPlaneReportPath)) {
   $hostPlane = Read-JsonOrNull -Path $hostPlaneReportPath
 }
+$hostPlaneSummary = Get-HostPlaneSummaryAssessment -Summary $summary -HostPlane $hostPlane -HostPlaneReportPath $hostPlaneReportPath
 $hostPlanes = if ($summary.PSObject.Properties['hostPlanes']) {
   $summary.hostPlanes
 } elseif ($hostPlane -and $hostPlane.PSObject.Properties['native'] -and $hostPlane.native -and $hostPlane.native.PSObject.Properties['planes']) {
@@ -554,6 +624,10 @@ $hostExecutionPolicy = if ($summary.PSObject.Properties['hostExecutionPolicy']) 
   $null
 }
 $dockerDesktopPlanes = Get-DockerFastLoopDockerDesktopPlaneProjection -ContextObject $summary -HostExecutionPolicy $hostExecutionPolicy
+if ($hostPlaneSummary.declared -and [string]$hostPlaneSummary.status -ne 'ok') {
+  $verdict = 'not-ready'
+  $statusRecommendation = 'do-not-push'
+}
 
 $readiness = [ordered]@{
   schema = 'vi-history/docker-fast-loop-readiness@v1'
@@ -577,6 +651,7 @@ $readiness = [ordered]@{
     statusPath = if (Test-Path -LiteralPath $statusResolved -PathType Leaf) { $statusResolved } else { '' }
     resultsRoot = $resultsRootResolved
     hostPlaneReportPath = $hostPlaneReportPath
+    hostPlaneSummaryPath = [string]$hostPlaneSummary.path
   }
   verdict = $verdict
   recommendation = $statusRecommendation
@@ -625,6 +700,7 @@ $readiness = [ordered]@{
   }
   history = $historical
   hostPlane = $hostPlane
+  hostPlaneSummary = $hostPlaneSummary
   hostPlanes = $hostPlanes
   hostExecutionPolicy = $hostExecutionPolicy
   dockerDesktopPlanes = $dockerDesktopPlanes
@@ -660,6 +736,18 @@ $mdLines.Add(('| Runtime Manager Daemon-Unavailable Count | `{0}` |' -f $readine
 $mdLines.Add(('| Runtime Manager Parse-Defect Count | `{0}` |' -f $readiness.runtimeManagerParseDefectCount)) | Out-Null
 if (-not [string]::IsNullOrWhiteSpace($hostPlaneReportPath)) {
   $mdLines.Add(('| Host Plane Report | `{0}` |' -f $hostPlaneReportPath)) | Out-Null
+}
+if (-not [string]::IsNullOrWhiteSpace([string]$hostPlaneSummary.path)) {
+  $mdLines.Add(('| Host Plane Summary | `{0}` |' -f [string]$hostPlaneSummary.path)) | Out-Null
+}
+if ([string]$hostPlaneSummary.status -ne 'not-present') {
+  $mdLines.Add(('| Host Plane Summary Status | `{0}` |' -f [string]$hostPlaneSummary.status)) | Out-Null
+}
+if (-not [string]::IsNullOrWhiteSpace([string]$hostPlaneSummary.sha256)) {
+  $mdLines.Add(('| Host Plane Summary SHA-256 | `{0}` |' -f [string]$hostPlaneSummary.sha256)) | Out-Null
+}
+if (-not [string]::IsNullOrWhiteSpace([string]$hostPlaneSummary.reason)) {
+  $mdLines.Add(('| Host Plane Summary Reason | `{0}` |' -f [string]$hostPlaneSummary.reason)) | Out-Null
 }
 if ($hostPlane -and $hostPlane.PSObject.Properties['host'] -and $hostPlane.host -and $hostPlane.host.PSObject.Properties['os']) {
   $mdLines.Add(('| Host OS | `{0}` |' -f [string]$hostPlane.host.os)) | Out-Null

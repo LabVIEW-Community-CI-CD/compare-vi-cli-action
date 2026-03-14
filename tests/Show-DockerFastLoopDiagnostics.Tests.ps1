@@ -18,6 +18,7 @@ Describe 'Show-DockerFastLoopDiagnostics.ps1' -Tag 'Unit' {
     New-Item -ItemType Directory -Path (Join-Path $historyRoot 'attribute\container-export') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $historyRoot 'sequential\block-diagram\container-export') -Force | Out-Null
     $hostPlaneReportPath = Join-Path $resultsRoot 'labview-2026-host-plane-report.json'
+    $hostPlaneSummaryPath = Join-Path $resultsRoot 'labview-2026-host-plane-summary.md'
     ([ordered]@{
         schema = 'labview-2026-host-plane-report@v1'
         host = [ordered]@{
@@ -65,6 +66,7 @@ Describe 'Show-DockerFastLoopDiagnostics.ps1' -Tag 'Unit' {
           }
         }
       } | ConvertTo-Json -Depth 12) | Set-Content -LiteralPath $hostPlaneReportPath -Encoding utf8
+    '# LabVIEW 2026 Host Plane Summary' | Set-Content -LiteralPath $hostPlaneSummaryPath -Encoding utf8
 
     $readinessPath = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
     $readiness = [ordered]@{
@@ -102,6 +104,11 @@ Describe 'Show-DockerFastLoopDiagnostics.ps1' -Tag 'Unit' {
       source = [ordered]@{
         resultsRoot = $resultsRoot
         hostPlaneReportPath = $hostPlaneReportPath
+        hostPlaneSummaryPath = $hostPlaneSummaryPath
+      }
+      hostPlaneSummary = [ordered]@{
+        status = 'ok'
+        path = $hostPlaneSummaryPath
       }
       steps = @(
         [ordered]@{
@@ -133,6 +140,7 @@ Describe 'Show-DockerFastLoopDiagnostics.ps1' -Tag 'Unit' {
 
     $outputText = $output -join "`n"
     $outputText | Should -Match '\[native-labview-2026-64\]\[host-plane\] status=ready'
+    $outputText | Should -Match '\[host-plane-split\]\[summary\] .*labview-2026-host-plane-summary.md'
     $outputText | Should -Match '\[host-plane-split\]\[runner\] hostIsRunner=True runnerName=GHOST githubActions=False'
     $outputText | Should -Match 'candidateParallelPairs=docker-desktop/windows-container-2026\+native-labview-2026-64,native-labview-2026-64\+native-labview-2026-32'
     $outputText | Should -Match '\[windows-docker-fast-loop\]\[docker-plane\] requested=docker-desktop/windows-container-2026 exclusiveRequired=False exclusiveSatisfied=True pairCount=1'
@@ -203,5 +211,34 @@ Describe 'Show-DockerFastLoopDiagnostics.ps1' -Tag 'Unit' {
     $output = & pwsh -NoLogo -NoProfile -File $script:ShowScript -ReadinessPath $readinessPath *>&1
     $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
     ($output -join "`n") | Should -Match '\[windows-docker-fast-loop\]\[diagnostics\] no differentiated history diagnostics detected'
+  }
+
+  It 'fails closed when a declared host-plane summary artifact is missing' {
+    $resultsRoot = Join-Path $TestDrive 'missing-summary'
+    New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+    $readinessPath = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
+    $missingSummaryPath = Join-Path $resultsRoot 'labview-2026-host-plane-summary.md'
+    ([ordered]@{
+        schema = 'vi-history/docker-fast-loop-readiness@v1'
+        source = [ordered]@{
+          resultsRoot = $resultsRoot
+          hostPlaneSummaryPath = $missingSummaryPath
+        }
+        hostPlaneSummary = [ordered]@{
+          status = 'missing'
+          path = $missingSummaryPath
+        }
+        steps = @(
+          [ordered]@{
+            name = 'windows-container-probe'
+            isDiff = $false
+            durationMs = 100
+          }
+        )
+      } | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $readinessPath -Encoding utf8
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:ShowScript -ReadinessPath $readinessPath *>&1
+    $LASTEXITCODE | Should -Not -Be 0
+    ($output -join "`n") | Should -Match 'Declared host-plane summary artifact not found'
   }
 }

@@ -65,8 +65,24 @@ if ($null -eq $hostPlane -and $readiness -and $readiness.PSObject.Properties['so
   }
 }
 
+$hostPlaneSummaryPath = ''
+if ($readiness -and $readiness.PSObject.Properties['hostPlaneSummary'] -and $readiness.hostPlaneSummary -and $readiness.hostPlaneSummary.PSObject.Properties['path']) {
+  $hostPlaneSummaryPath = [string]$readiness.hostPlaneSummary.path
+} elseif ($readiness -and $readiness.PSObject.Properties['source'] -and $readiness.source -and $readiness.source.PSObject.Properties['hostPlaneSummaryPath']) {
+  $hostPlaneSummaryPath = [string]$readiness.source.hostPlaneSummaryPath
+}
+if (-not [string]::IsNullOrWhiteSpace($hostPlaneSummaryPath)) {
+  if (-not (Test-Path -LiteralPath $hostPlaneSummaryPath -PathType Leaf)) {
+    throw ("Declared host-plane summary artifact not found: {0}" -f $hostPlaneSummaryPath)
+  }
+  [void](Get-Content -LiteralPath $hostPlaneSummaryPath -Raw -ErrorAction Stop)
+}
+
 if ($hostPlane) {
   Write-LabVIEW2026HostPlaneConsole -Report $hostPlane
+}
+if (-not [string]::IsNullOrWhiteSpace($hostPlaneSummaryPath)) {
+  Write-Host ("[host-plane-split][summary] {0}" -f $hostPlaneSummaryPath) -ForegroundColor DarkCyan
 }
 Write-DockerFastLoopDockerDesktopPlaneDiagnostics -ContextObject $readiness | Out-Null
 $diagnostics = @(Write-DockerFastLoopDifferentiatedDiagnostics -Readiness $readiness -ResultsRoot $effectiveResultsRoot)

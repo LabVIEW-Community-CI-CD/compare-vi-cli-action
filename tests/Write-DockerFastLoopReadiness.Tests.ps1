@@ -19,6 +19,8 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $statusPath = Join-Path $resultsRoot 'docker-runtime-fastloop-status.json'
     $jsonOut = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
     $mdOut = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.md'
+    $hostPlaneReportPath = Join-Path $resultsRoot 'labview-2026-host-plane-report.json'
+    $hostPlaneSummaryPath = Join-Path $resultsRoot 'labview-2026-host-plane-summary.md'
 
     $summary = [ordered]@{
       schema = 'docker-desktop-fast-loop@v1'
@@ -46,6 +48,8 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
           }
         }
       }
+      hostPlaneReportPath = $hostPlaneReportPath
+      hostPlaneSummaryPath = $hostPlaneSummaryPath
       hostPlane = [ordered]@{
         schema = 'labview-2026-host-plane-report@v1'
         host = [ordered]@{
@@ -124,6 +128,8 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
       )
     }
     $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+    ($summary.hostPlane | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $hostPlaneReportPath -Encoding utf8
+    '# LabVIEW 2026 Host Plane Summary' | Set-Content -LiteralPath $hostPlaneSummaryPath -Encoding utf8
     ([ordered]@{
         schema = 'docker-desktop-fast-loop-status@v1'
         generatedAt = (Get-Date).ToUniversalTime().ToString('o')
@@ -167,6 +173,10 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.dockerDesktopPlanes.planes.windows.context | Should -Be 'desktop-windows'
     $readiness.dockerDesktopPlanes.planes.linux.context | Should -Be 'desktop-linux'
     $readiness.hostPlane.runner.hostIsRunner | Should -BeTrue
+    $readiness.hostPlaneSummary.status | Should -Be 'ok'
+    $readiness.hostPlaneSummary.path | Should -Be $hostPlaneSummaryPath
+    $readiness.hostPlaneSummary.declared | Should -BeTrue
+    $readiness.hostPlaneSummary.sha256 | Should -Not -BeNullOrEmpty
     $readiness.hostPlane.runner.runnerName | Should -Be 'GHOST'
     $readiness.hostPlane.host.os | Should -Be 'windows'
     $readiness.hostExecutionPolicy.candidateParallelPairs.pairs.Count | Should -Be 2
@@ -179,6 +189,8 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.laneLifecycle.windows.endStep | Should -Be 'windows-history-attribute'
     $markdown = Get-Content -LiteralPath $mdOut -Raw
     $markdown | Should -Match '\| Host Is Runner \| `True` \|'
+    $markdown | Should -Match '\| Host Plane Summary \| `.*labview-2026-host-plane-summary.md` \|'
+    $markdown | Should -Match '\| Host Plane Summary Status \| `ok` \|'
     $markdown | Should -Match '\| Runner Name \| `GHOST` \|'
     $markdown | Should -Match '\| Mutually Exclusive Pairs \| `docker-desktop/linux-container-2026<->docker-desktop/windows-container-2026` \|'
     $markdown | Should -Match '\| Requested Docker Planes \| `docker-desktop/windows-container-2026, docker-desktop/linux-container-2026` \|'
@@ -246,6 +258,77 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.containerExportFailureCount | Should -Be 1
     $readiness.runtimeFailureCount | Should -Be 0
     $readiness.lanes.windows.failureClass | Should -Be 'cli/tool'
+  }
+
+  It 'fails closed when a declared host-plane summary artifact is missing' {
+    $resultsRoot = Join-Path $TestDrive 'missing-host-plane-summary'
+    New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+    $summaryPath = Join-Path $resultsRoot 'docker-runtime-fastloop-20260301021212.json'
+    $statusPath = Join-Path $resultsRoot 'docker-runtime-fastloop-status.json'
+    $jsonOut = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
+    $mdOut = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.md'
+    $hostPlaneReportPath = Join-Path $resultsRoot 'labview-2026-host-plane-report.json'
+    $hostPlaneSummaryPath = Join-Path $resultsRoot 'labview-2026-host-plane-summary.md'
+
+    $summary = [ordered]@{
+      schema = 'docker-desktop-fast-loop@v1'
+      generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+      status = 'success'
+      hostPlaneReportPath = $hostPlaneReportPath
+      hostPlaneSummaryPath = $hostPlaneSummaryPath
+      hostPlane = [ordered]@{
+        schema = 'labview-2026-host-plane-report@v1'
+        host = [ordered]@{ os = 'windows' }
+        runner = [ordered]@{ hostIsRunner = $true; runnerName = 'GHOST'; githubActions = $false }
+        native = [ordered]@{
+          parallelLabVIEWSupported = $false
+          planes = [ordered]@{
+            x64 = [ordered]@{ status = 'ready' }
+            x32 = [ordered]@{ status = 'missing' }
+          }
+        }
+        executionPolicy = [ordered]@{
+          candidateParallelPairs = [ordered]@{ pairs = @() }
+          mutuallyExclusivePairs = [ordered]@{ pairs = @() }
+        }
+      }
+      steps = @(
+        [ordered]@{
+          name = 'windows-container-probe'
+          status = 'success'
+          durationMs = 100
+          exitCode = 0
+          resultClass = 'success-no-diff'
+          gateOutcome = 'pass'
+          failureClass = 'none'
+          isDiff = $false
+        }
+      )
+    }
+    $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+    ($summary.hostPlane | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $hostPlaneReportPath -Encoding utf8
+    ([ordered]@{
+        schema = 'docker-desktop-fast-loop-status@v1'
+        generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+      } | ConvertTo-Json -Depth 4) | Set-Content -LiteralPath $statusPath -Encoding utf8
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:ReadinessScript `
+      -ResultsRoot $resultsRoot `
+      -SummaryPath $summaryPath `
+      -StatusPath $statusPath `
+      -OutputJsonPath $jsonOut `
+      -OutputMarkdownPath $mdOut `
+      -GitHubOutputPath '' `
+      -StepSummaryPath '' 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $readiness = Get-Content -LiteralPath $jsonOut -Raw | ConvertFrom-Json -Depth 16
+    $readiness.verdict | Should -Be 'not-ready'
+    $readiness.recommendation | Should -Be 'do-not-push'
+    $readiness.hostPlaneSummary.status | Should -Be 'missing'
+    $readiness.hostPlaneSummary.reason | Should -Be 'declared-summary-unreadable'
+    $readiness.hostPlaneSummary.declared | Should -BeTrue
+    $readiness.source.hostPlaneSummaryPath | Should -Be $hostPlaneSummaryPath
   }
 
   It 'records a single-lane linux Docker plane projection when only the linux lane is requested' {
