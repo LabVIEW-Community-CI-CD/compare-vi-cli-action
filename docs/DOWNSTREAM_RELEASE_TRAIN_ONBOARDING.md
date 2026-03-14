@@ -123,3 +123,8 @@ node tools/npm/run-script.mjs priority:onboard:feedback -- \
 
 The hosted workflow exports `GH_TOKEN`, attempts to leave behind a valid onboarding report even on infrastructure
 failures, validates all report schemas that were produced, and uploads the resulting JSON artifacts for auditability.
+It now follows the shared hosted-signal contract in [`HOSTED_SIGNAL_REPORT_FIRST_CONTRACT.md`](HOSTED_SIGNAL_REPORT_FIRST_CONTRACT.md):
+
+- exports both `GH_TOKEN` and `GITHUB_TOKEN`
+- appends a deterministic step summary from the feedback report when present
+- keeps schema validation and artifact upload existence-aware so missing-report cascades do not mask the primary failure
