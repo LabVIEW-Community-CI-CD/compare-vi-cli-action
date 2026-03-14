@@ -66,8 +66,16 @@ if ($null -eq $hostPlane -and $readiness -and $readiness.PSObject.Properties['so
 }
 
 $hostPlaneSummaryPath = ''
+$hostPlaneSummaryStatus = ''
+$hostPlaneSummarySha256 = ''
 if ($readiness -and $readiness.PSObject.Properties['hostPlaneSummary'] -and $readiness.hostPlaneSummary -and $readiness.hostPlaneSummary.PSObject.Properties['path']) {
   $hostPlaneSummaryPath = [string]$readiness.hostPlaneSummary.path
+  if ($readiness.hostPlaneSummary.PSObject.Properties['status']) {
+    $hostPlaneSummaryStatus = [string]$readiness.hostPlaneSummary.status
+  }
+  if ($readiness.hostPlaneSummary.PSObject.Properties['sha256']) {
+    $hostPlaneSummarySha256 = [string]$readiness.hostPlaneSummary.sha256
+  }
 } elseif ($readiness -and $readiness.PSObject.Properties['source'] -and $readiness.source -and $readiness.source.PSObject.Properties['hostPlaneSummaryPath']) {
   $hostPlaneSummaryPath = [string]$readiness.source.hostPlaneSummaryPath
 }
@@ -82,7 +90,15 @@ if ($hostPlane) {
   Write-LabVIEW2026HostPlaneConsole -Report $hostPlane
 }
 if (-not [string]::IsNullOrWhiteSpace($hostPlaneSummaryPath)) {
-  Write-Host ("[host-plane-split][summary] {0}" -f $hostPlaneSummaryPath) -ForegroundColor DarkCyan
+  $summaryParts = New-Object System.Collections.Generic.List[string]
+  [void]$summaryParts.Add($hostPlaneSummaryPath)
+  if (-not [string]::IsNullOrWhiteSpace($hostPlaneSummaryStatus)) {
+    [void]$summaryParts.Add(("status={0}" -f $hostPlaneSummaryStatus))
+  }
+  if (-not [string]::IsNullOrWhiteSpace($hostPlaneSummarySha256)) {
+    [void]$summaryParts.Add(("sha256={0}" -f $hostPlaneSummarySha256))
+  }
+  Write-Host ("[host-plane-split][summary] {0}" -f ([string]::Join(' ', @($summaryParts.ToArray())))) -ForegroundColor DarkCyan
 }
 Write-DockerFastLoopDockerDesktopPlaneDiagnostics -ContextObject $readiness | Out-Null
 $diagnostics = @(Write-DockerFastLoopDifferentiatedDiagnostics -Readiness $readiness -ResultsRoot $effectiveResultsRoot)
