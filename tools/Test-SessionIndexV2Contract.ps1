@@ -255,6 +255,32 @@ function Get-BurnInRecurrenceClassification {
   return 'recurring-or-persistent'
 }
 
+function Get-BurnInDisposition {
+  param(
+    [string[]]$Failures,
+    [bool]$Enforce,
+    [bool]$PromotionReady,
+    [string]$RecurrenceClassification
+  )
+
+  if (@($Failures).Count -eq 0) {
+    if ($PromotionReady) {
+      return 'promotion-ready'
+    }
+    return 'clean-burn-in'
+  }
+
+  if ($Enforce) {
+    return 'promotion-blocking'
+  }
+
+  if ([string]$RecurrenceClassification -eq 'recurring-or-persistent') {
+    return 'recurring-burn-in-mismatch'
+  }
+
+  return 'burn-in-mismatch'
+}
+
 if (-not (Test-Path -LiteralPath $ResultsDir -PathType Container)) {
   throw "ResultsDir does not exist: $ResultsDir"
 }
@@ -262,6 +288,7 @@ if (-not (Test-Path -LiteralPath $ResultsDir -PathType Container)) {
 $v1Path = Join-Path $ResultsDir 'session-index.json'
 $v2Path = Join-Path $ResultsDir 'session-index-v2.json'
 $reportPath = Join-Path $ResultsDir 'session-index-v2-contract.json'
+$dispositionPath = Join-Path $ResultsDir 'session-index-v2-disposition.json'
 $schemaPath = Join-Path (Get-Location) 'docs/schema/generated/session-index-v2.schema.json'
 $schemaLiteValidatorPath = Join-Path $PSScriptRoot 'Invoke-JsonSchemaLite.ps1'
 
@@ -344,6 +371,11 @@ $promotionReady = ($burnIn.status -eq 'ok' -and $burnIn.consecutiveSuccess -ge $
 $mismatchClass = Get-BurnInMismatchClass -Failures $failures
 $mismatchFingerprint = Get-BurnInMismatchFingerprint -MismatchClass $mismatchClass -Failures $failures
 $recurrenceClassification = Get-BurnInRecurrenceClassification -Failures $failures -BurnIn $burnIn
+$disposition = Get-BurnInDisposition `
+  -Failures $failures `
+  -Enforce ([bool]$Enforce) `
+  -PromotionReady $promotionReady `
+  -RecurrenceClassification $recurrenceClassification
 
 if ($burnIn.status -eq 'unavailable') {
   $notes += ("Burn-in status unavailable ({0})." -f $burnIn.reason)
@@ -395,6 +427,29 @@ $report = [ordered]@{
 $report | ConvertTo-Json -Depth 50 | Out-File -LiteralPath $reportPath -Encoding utf8
 Write-Host ("session-index-v2 contract report written: {0}" -f $reportPath)
 
+$summary = [ordered]@{
+  schema = 'session-index-v2-disposition-summary@v1'
+  generatedAtUtc = $report.generatedAtUtc
+  branch = $Branch
+  mode = $report.burnInReceipt.mode
+  disposition = $disposition
+  status = $report.status
+  promotionReady = $promotionReady
+  mismatchClass = $mismatchClass
+  recurrenceClassification = $recurrenceClassification
+  consecutiveSuccess = $burnIn.consecutiveSuccess
+  threshold = $BurnInThreshold
+  evidence = [ordered]@{
+    contractReportPath = $reportPath
+    sessionIndexV1Path = $v1Path
+    sessionIndexV2Path = $v2Path
+    policyPath = $PolicyPath
+  }
+}
+
+$summary | ConvertTo-Json -Depth 20 | Out-File -LiteralPath $dispositionPath -Encoding utf8
+Write-Host ("session-index-v2 disposition summary written: {0}" -f $dispositionPath)
+
 if ($env:GITHUB_STEP_SUMMARY) {
   $summary = @(
     '### Session Index v2 Contract',
@@ -402,7 +457,8 @@ if ($env:GITHUB_STEP_SUMMARY) {
     ("- Status: **{0}**" -f $report.status),
     ("- Enforced: **{0}**" -f ([bool]$Enforce)),
     ("- Burn-in: **{0}/{1}** consecutive successful runs" -f $burnIn.consecutiveSuccess, $BurnInThreshold),
-    ("- Promotion ready: **{0}**" -f $promotionReady)
+    ("- Promotion ready: **{0}**" -f $promotionReady),
+    ("- Disposition: **{0}**" -f $disposition)
   )
   if ($failures.Count -gt 0) {
     $summary += ''
