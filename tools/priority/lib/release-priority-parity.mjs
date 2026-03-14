@@ -47,6 +47,23 @@ function parsePriorityIssueNumber(cache) {
   return number;
 }
 
+function requirePlaneTransition(parity, { baseRef, headRef }) {
+  const planeTransition = parity?.planeTransition;
+  if (!planeTransition || !planeTransition.from || !planeTransition.to || !planeTransition.action || !planeTransition.via) {
+    throw new Error(
+      `Origin/upstream parity evidence is missing plane-transition metadata (${baseRef} vs ${headRef}).`
+    );
+  }
+  return {
+    from: planeTransition.from,
+    to: planeTransition.to,
+    action: planeTransition.action,
+    via: planeTransition.via,
+    baseRepository: planeTransition.baseRepository ?? null,
+    headRepository: planeTransition.headRepository ?? null
+  };
+}
+
 export async function collectStandingPrioritySyncEvidence(
   repoRoot,
   {
@@ -145,6 +162,8 @@ export function collectOriginUpstreamParityEvidence(
     throw new Error(`Unable to evaluate origin/upstream parity (${baseRef} vs ${headRef}).`);
   }
 
+  const planeTransition = requirePlaneTransition(parity, { baseRef, headRef });
+
   const observedCount = Number(parity?.tipDiff?.fileCount ?? NaN);
   if (!Number.isInteger(observedCount) || observedCount !== target) {
     throw new Error(
@@ -160,6 +179,7 @@ export function collectOriginUpstreamParityEvidence(
       fileCount: observedCount,
       target
     },
+    planeTransition,
     treeParity: {
       status: parity?.treeParity?.status ?? null,
       equal: Boolean(parity?.treeParity?.equal)

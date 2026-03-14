@@ -101,6 +101,7 @@ test('collectOriginUpstreamParityEvidence enforces tipDiff file count target', (
           baseRef: 'upstream/develop',
           headRef: 'origin/develop',
           tipDiff: { fileCount: 2 },
+          planeTransition: { from: 'upstream', to: 'origin', action: 'sync', via: 'priority:develop:sync' },
           treeParity: { status: 'different', equal: false },
           historyParity: { status: 'diverged', equal: false, baseOnly: 1, headOnly: 1 }
         })
@@ -123,6 +124,7 @@ test('collectStandingPriorityParityGate returns combined sync and parity evidenc
       baseRef: 'upstream/develop',
       headRef: 'origin/develop',
       tipDiff: { fileCount: 0 },
+      planeTransition: { from: 'upstream', to: 'origin', action: 'sync', via: 'priority:develop:sync' },
       treeParity: { status: 'equal', equal: true },
       historyParity: { status: 'diverged', equal: false, baseOnly: 3, headOnly: 4 },
       recommendation: { code: 'history-diverged-tree-equal', summary: 'Tree is aligned.' }
@@ -133,4 +135,24 @@ test('collectStandingPriorityParityGate returns combined sync and parity evidenc
   assert.equal(evidence.standingPriority.issue, 285);
   assert.equal(evidence.parity.tipDiff.fileCount, 0);
   assert.equal(evidence.parity.tipDiff.target, 0);
+  assert.equal(evidence.parity.planeTransition.from, 'upstream');
+  assert.equal(evidence.parity.planeTransition.to, 'origin');
+});
+
+test('collectOriginUpstreamParityEvidence fails closed when plane transition metadata is missing', () => {
+  assert.throws(
+    () =>
+      collectOriginUpstreamParityEvidence({
+        tipDiffTarget: 0,
+        collectParityFn: () => ({
+          status: 'ok',
+          baseRef: 'upstream/develop',
+          headRef: 'origin/develop',
+          tipDiff: { fileCount: 0 },
+          treeParity: { status: 'equal', equal: true },
+          historyParity: { status: 'equal', equal: true, baseOnly: 0, headOnly: 0 }
+        })
+      }),
+    /plane-transition metadata/i
+  );
 });
