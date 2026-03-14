@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/mission-control-profile-catalog-v1.schema.json",
+  "title": "Mission Control Profile Catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "profiles"],
+  "properties": {
+    "schema": {
+      "const": "priority/mission-control-profile-catalog@v1"
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/profile"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "autonomous-default"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "finish-live-lane"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "stabilize-current-head-failure"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "restore-intake"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "prepare-parked-lane"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "operatorPreset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intent", "focus", "overrides"],
+      "properties": {
+        "intent": {
+          "enum": [
+            "continue-driving-autonomously",
+            "finish-live-standing-lane",
+            "stabilize-current-head-failure",
+            "restore-intake",
+            "prepare-parked-lane"
+          ]
+        },
+        "focus": {
+          "enum": [
+            "standing-priority",
+            "current-head-failure",
+            "queue-health",
+            "handoff",
+            "policy-drift",
+            "docs-contract"
+          ]
+        },
+        "overrides": {
+          "type": "array",
+          "maxItems": 0
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "trigger", "aliases", "operatorPreset", "summary", "description"],
+      "properties": {
+        "id": {
+          "enum": [
+            "autonomous-default",
+            "finish-live-lane",
+            "stabilize-current-head-failure",
+            "restore-intake",
+            "prepare-parked-lane"
+          ]
+        },
+        "trigger": {
+          "type": "string",
+          "pattern": "^MC(?:-[A-Z0-9]+)*$"
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^MC(?:-[A-Z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "operatorPreset": {
+          "$ref": "#/$defs/operatorPreset"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 280
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "autonomous-default"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "trigger": {
+                "const": "MC"
+              },
+              "operatorPreset": {
+                "properties": {
+                  "intent": {
+                    "const": "continue-driving-autonomously"
+                  },
+                  "focus": {
+                    "const": "standing-priority"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "finish-live-lane"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "trigger": {
+                "const": "MC-LIVE"
+              },
+              "operatorPreset": {
+                "properties": {
+                  "intent": {
+                    "const": "finish-live-standing-lane"
+                  },
+                  "focus": {
+                    "const": "standing-priority"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "stabilize-current-head-failure"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "trigger": {
+                "const": "MC-RED"
+              },
+              "operatorPreset": {
+                "properties": {
+                  "intent": {
+                    "const": "stabilize-current-head-failure"
+                  },
+                  "focus": {
+                    "const": "current-head-failure"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "restore-intake"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "trigger": {
+                "const": "MC-INTAKE"
+              },
+              "operatorPreset": {
+                "properties": {
+                  "intent": {
+                    "const": "restore-intake"
+                  },
+                  "focus": {
+                    "const": "queue-health"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "prepare-parked-lane"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "trigger": {
+                "const": "MC-PARK"
+              },
+              "operatorPreset": {
+                "properties": {
+                  "intent": {
+                    "const": "prepare-parked-lane"
+                  },
+                  "focus": {
+                    "const": "queue-health"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
