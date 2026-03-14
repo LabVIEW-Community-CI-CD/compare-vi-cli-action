@@ -12,6 +12,8 @@ test('agent-review-policy validates existing draft-phase review state from pull_
 
   assert.match(workflow, /merge_group:/);
   assert.doesNotMatch(workflow, /workflow_run:/);
+  assert.doesNotMatch(workflow, /review_requested/);
+  assert.doesNotMatch(workflow, /review_request_removed/);
   assert.match(workflow, /pull_request_review:\s+types:\s+\[submitted\]/);
   assert.match(workflow, /permissions:\s+actions: read\s+pull-requests: read\s+contents: read/ms);
   assert.match(workflow, /uses: actions\/checkout@v5/);
