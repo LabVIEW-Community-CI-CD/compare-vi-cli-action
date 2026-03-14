@@ -20,6 +20,7 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
     $statusPath = Join-Path $work 'docker-runtime-fastloop-status.json'
     $readinessPath = Join-Path $work 'docker-runtime-fastloop-readiness.json'
     $proofPath = Join-Path $work 'docker-fast-loop-proof.json'
+    $hostPlaneReportPath = Join-Path $work 'labview-2026-host-plane-report.json'
 
     ([ordered]@{
       schema = 'docker-desktop-fast-loop@v1'
@@ -30,6 +31,36 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
       schema = 'docker-desktop-fast-loop-status@v1'
       generatedAt = (Get-Date).ToUniversalTime().ToString('o')
     } | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $statusPath -Encoding utf8
+
+    ([ordered]@{
+      schema = 'labview-2026-host-plane-report@v1'
+      host = [ordered]@{
+        os = 'windows'
+        computerName = 'GHOST'
+      }
+      runner = [ordered]@{
+        hostIsRunner = $true
+        runnerName = 'GHOST'
+        githubActions = $false
+      }
+      docker = [ordered]@{
+        operatorLabels = @('linux-docker-fast-loop', 'windows-docker-fast-loop', 'dual-docker-fast-loop')
+      }
+      native = [ordered]@{
+        planes = [ordered]@{
+          x64 = [ordered]@{ status = 'ready' }
+          x32 = [ordered]@{ status = 'ready' }
+        }
+      }
+      executionPolicy = [ordered]@{
+        candidateParallelPairs = [ordered]@{
+          pairs = @(
+            [ordered]@{ left = 'docker-desktop/windows-container-2026'; right = 'native-labview-2026-64' },
+            [ordered]@{ left = 'native-labview-2026-64'; right = 'native-labview-2026-32' }
+          )
+        }
+      }
+    } | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $hostPlaneReportPath -Encoding utf8
 
     ([ordered]@{
       schema = 'vi-history/docker-fast-loop-readiness@v1'
@@ -57,7 +88,7 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
       source = [ordered]@{
         summaryPath = $summaryPath
         statusPath = $statusPath
-        hostPlaneReportPath = (Join-Path $work 'labview-2026-host-plane-report.json')
+        hostPlaneReportPath = $hostPlaneReportPath
       }
       hostPlane = [ordered]@{
         schema = 'labview-2026-host-plane-report@v1'
@@ -134,6 +165,7 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
     $proof.runtimeManagerParseDefectCount | Should -Be 0
     $proof.runtimeManager.transitionCount | Should -Be 2
     $proof.hostPlaneReportPath | Should -Match 'labview-2026-host-plane-report\.json'
+    $proof.hostPlaneProvenance.status | Should -Be 'ok'
     $proof.hostPlane.runner.hostIsRunner | Should -BeTrue
     $proof.hostPlane.runner.runnerName | Should -Be 'GHOST'
     $proof.hostPlanes.x64.status | Should -Be 'ready'
@@ -141,6 +173,7 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
     $proof.hashes.readinessSha256 | Should -Not -BeNullOrEmpty
     $proof.hashes.summarySha256 | Should -Not -BeNullOrEmpty
     $proof.hashes.statusSha256 | Should -Not -BeNullOrEmpty
+    $proof.hashes.hostPlaneReportSha256 | Should -Not -BeNullOrEmpty
     $proof.lanes.windows.diffDetected | Should -BeTrue
     $proof.laneLifecycle.windows.stopClass | Should -Be 'completed'
     $proof.laneLifecycle.windows.startStep | Should -Be 'windows-runtime-preflight'
@@ -249,9 +282,47 @@ Describe 'Write-DockerFastLoopProof.ps1' -Tag 'Unit' {
     $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
 
     $proof = Get-Content -LiteralPath $proofPath -Raw | ConvertFrom-Json -Depth 16
+    $proof.verdict | Should -Be 'not-ready'
+    $proof.recommendation | Should -Be 'do-not-push'
     $proof.hashes.readinessSha256 | Should -Not -BeNullOrEmpty
     $proof.hashes.summarySha256 | Should -Be $null
     $proof.hashes.statusSha256 | Should -Be $null
+    $proof.hashes.hostPlaneReportSha256 | Should -Be $null
+    $proof.hostPlaneProvenance.status | Should -Be 'missing'
+    $proof.hostPlaneProvenance.reason | Should -Be 'host-plane-provenance-missing'
+  }
+
+  It 'fails closed when host-plane report provenance is declared but unreadable' {
+    $work = Join-Path $TestDrive 'proof-missing-host-plane-report'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+
+    $readinessPath = Join-Path $work 'docker-runtime-fastloop-readiness.json'
+    $proofPath = Join-Path $work 'docker-fast-loop-proof.json'
+    $missingHostPlaneReport = Join-Path $work 'missing-host-plane-report.json'
+
+    ([ordered]@{
+      schema = 'vi-history/docker-fast-loop-readiness@v1'
+      generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+      verdict = 'ready-to-push'
+      recommendation = 'push'
+      source = [ordered]@{
+        hostPlaneReportPath = $missingHostPlaneReport
+      }
+    } | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $readinessPath -Encoding utf8
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:ProofScript `
+      -ReadinessPath $readinessPath `
+      -OutputPath $proofPath `
+      -GitHubOutputPath '' 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $proof = Get-Content -LiteralPath $proofPath -Raw | ConvertFrom-Json -Depth 16
+    $proof.verdict | Should -Be 'not-ready'
+    $proof.recommendation | Should -Be 'do-not-push'
+    $proof.hostPlaneProvenance.status | Should -Be 'corrupt'
+    $proof.hostPlaneProvenance.reason | Should -Be 'host-plane-report-missing'
+    $proof.hostPlaneReportPath | Should -Match 'missing-host-plane-report\.json'
+    $proof.hashes.hostPlaneReportSha256 | Should -Be $null
   }
 
   It 'writes GitHub output path for proof artifact' {
