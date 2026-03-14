@@ -243,6 +243,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
     - `docker-fast-loop-host-plane-summary-status`
     - `docker-fast-loop-host-plane-summary-sha256`
     - `docker-fast-loop-host-plane-summary-reason`
+    - and, when `-StepSummaryPath` is supplied, appends a `Docker Fast Loop Summary` block carrying the same
+      summary/status/host-plane provenance plus the fail-closed reason surface
   - `tools/Write-DockerFastLoopReadiness.ps1` carries `hostPlaneSummary.path|status|sha256|reason`
   - `tools/Write-DockerFastLoopProof.ps1` emits:
     - `docker-fast-loop-proof-host-plane-summary-path`

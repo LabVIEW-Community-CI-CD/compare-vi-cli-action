@@ -40,6 +40,8 @@ test('single-host runbook points to the authoritative commands and artifacts', (
   assert.match(runbook, /docker-fast-loop-host-plane-summary-status/);
   assert.match(runbook, /docker-fast-loop-host-plane-summary-sha256/);
   assert.match(runbook, /docker-fast-loop-host-plane-summary-reason/);
+  assert.match(runbook, /### Docker Fast Loop Summary/);
+  assert.match(runbook, /Host Plane Summary Reason/);
   assert.match(runbook, /docker-fast-loop-proof-host-plane-summary-path/);
   assert.match(runbook, /\[host-plane-split\]\[summary\].*status=<status>.*sha256=<sha256>/);
 });
@@ -53,6 +55,7 @@ test('developer guide and documentation manifest point back to the single-host r
   assert.match(developerGuide, /labview-2026-host-plane-summary-path/);
   assert.match(developerGuide, /docker-fast-loop-summary-path/);
   assert.match(developerGuide, /docker-fast-loop-host-plane-summary-status/);
+  assert.match(developerGuide, /Docker Fast Loop Summary/);
   assert.match(developerGuide, /docker-fast-loop-proof-host-plane-summary-path/);
 
   assert.ok(Array.isArray(entries), 'documentation manifest should expose an entries array');
