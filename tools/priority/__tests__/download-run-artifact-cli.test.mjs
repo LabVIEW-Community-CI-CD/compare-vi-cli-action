@@ -17,6 +17,37 @@ async function loadModule() {
   return modulePromise;
 }
 
+test('parseArgs trims artifact names and rejects whitespace-only values', async () => {
+  const { parseArgs } = await loadModule();
+
+  const parsed = parseArgs([
+    'node',
+    modulePath,
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--run-id',
+    '22872590273',
+    '--artifact',
+    '  copilot-review-signal-975  ',
+  ]);
+
+  assert.deepEqual(parsed.artifactNames, ['copilot-review-signal-975']);
+  assert.throws(
+    () =>
+      parseArgs([
+        'node',
+        modulePath,
+        '--repo',
+        'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        '--run-id',
+        '22872590273',
+        '--artifact',
+        '   ',
+      ]),
+    /Artifact name is required/,
+  );
+});
+
 test('main writes GitHub outputs and step summary for a successful artifact download', async (t) => {
   const { main, parseArgs } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'download-run-artifact-cli-success-'));
@@ -170,6 +201,65 @@ test('main keeps successful downloads passing when GitHub output projections can
   assert.match(errors[1], /failed to append step summary/i);
 });
 
+test('main falls back to the discovery failure class when no download entries exist', async (t) => {
+  const { main } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'download-run-artifact-cli-discovery-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const outputPath = path.join(tmpDir, 'github-output.txt');
+  const summaryPath = path.join(tmpDir, 'step-summary.md');
+  const reportPath = path.join(tmpDir, 'report.json');
+
+  const exitCode = await main(
+    [
+      'node',
+      modulePath,
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--run-id',
+      '22872590273',
+      '--artifact',
+      'copilot-review-signal-965',
+      '--report',
+      reportPath,
+      '--step-summary',
+      summaryPath,
+    ],
+    {
+      env: {
+        ...process.env,
+        GITHUB_OUTPUT: outputPath,
+      },
+      logFn() {},
+      downloadNamedArtifactsFn() {
+        return {
+          reportPath,
+          report: {
+            status: 'fail',
+            discovery: {
+              status: 'fail',
+              failureClass: 'discovery-failed',
+            },
+            downloads: [],
+            summary: {
+              requestedArtifactCount: 1,
+              availableArtifactCount: 0,
+              downloadedCount: 0,
+              missingCount: 0,
+              failedCount: 0,
+            },
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(exitCode, 1);
+  const output = fs.readFileSync(outputPath, 'utf8');
+  assert.match(output, /run-artifact-download-discovery-failure-class=discovery-failed/);
+  assert.match(output, /run-artifact-download-first-failure-class=discovery-failed/);
+});
+
 test('main projects failure classes into GitHub outputs and step summary', async (t) => {
   const { main } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'download-run-artifact-cli-fail-'));
@@ -237,4 +327,12 @@ test('main projects failure classes into GitHub outputs and step summary', async
   const summary = fs.readFileSync(summaryPath, 'utf8');
   assert.match(summary, /discovery failure: `policy-wrapper-rejected`/);
   assert.match(summary, /Failures:/);
+});
+
+test('isDirectExecution accepts the documented relative script invocation', async () => {
+  const { isDirectExecution } = await loadModule();
+  const relativeModulePath = path.relative(process.cwd(), modulePath);
+
+  assert.equal(isDirectExecution(['node', relativeModulePath], pathToFileURL(modulePath).href), true);
+  assert.equal(isDirectExecution(['node', 'tools/priority/other-script.mjs'], pathToFileURL(modulePath).href), false);
 });

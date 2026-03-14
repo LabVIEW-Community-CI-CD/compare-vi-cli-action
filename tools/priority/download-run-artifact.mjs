@@ -108,6 +108,7 @@ export function parseArgs(argv = process.argv, env = process.env) {
 function firstDownloadFailureClass(report) {
   return (
     report?.downloads?.find((entry) => normalizeText(entry?.failureClass))?.failureClass ??
+    normalizeText(report?.discovery?.failureClass) ??
     null
   );
 }
