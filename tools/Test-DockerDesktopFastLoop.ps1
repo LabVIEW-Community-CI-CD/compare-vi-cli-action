@@ -20,6 +20,7 @@ param(
   [string]$StatusPath = '',
   [string]$ReadinessJsonPath = '',
   [string]$ReadinessMarkdownPath = '',
+  [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
   [ValidateSet('none', 'smoke', 'history-core')]
   [string]$HistoryScenarioSet = 'none',
   [ValidateSet('both', 'windows', 'linux')]
@@ -317,6 +318,20 @@ function Test-ReadableTextFile {
   } catch {
     return $false
   }
+}
+
+function Write-GitHubOutputValue {
+  param(
+    [Parameter(Mandatory)][string]$Key,
+    [AllowNull()][AllowEmptyString()][string]$Value,
+    [AllowNull()][AllowEmptyString()][string]$Path
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return
+  }
+
+  Add-Content -LiteralPath $Path -Value ("{0}={1}" -f $Key, ($Value ?? '')) -Encoding utf8
 }
 
 function Get-HostPlaneSummaryAssessment {
@@ -2575,6 +2590,13 @@ Write-SemiLiveStatus `
   -HostPlaneSummarySha256 ([string]$hostPlaneSummary.sha256) `
   -HostPlaneSummaryReason ([string]$hostPlaneSummary.reason) `
   -RuntimeManagerTelemetry $summary.runtimeManager
+
+Write-GitHubOutputValue -Key 'docker-fast-loop-summary-path' -Value $summaryPath -Path $GitHubOutputPath
+Write-GitHubOutputValue -Key 'docker-fast-loop-status-path' -Value $statusResolved -Path $GitHubOutputPath
+Write-GitHubOutputValue -Key 'docker-fast-loop-host-plane-summary-path' -Value ([string]$hostPlaneSummary.path) -Path $GitHubOutputPath
+Write-GitHubOutputValue -Key 'docker-fast-loop-host-plane-summary-status' -Value ([string]$hostPlaneSummary.status) -Path $GitHubOutputPath
+Write-GitHubOutputValue -Key 'docker-fast-loop-host-plane-summary-sha256' -Value ([string]$hostPlaneSummary.sha256) -Path $GitHubOutputPath
+Write-GitHubOutputValue -Key 'docker-fast-loop-host-plane-summary-reason' -Value ([string]$hostPlaneSummary.reason) -Path $GitHubOutputPath
 
 if ($hostPlaneSummary.declared -and [string]$hostPlaneSummary.status -ne 'ok') {
   throw ("Declared host-plane summary artifact not readable: {0}" -f [string]$hostPlaneSummary.path)

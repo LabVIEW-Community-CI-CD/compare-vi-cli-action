@@ -772,6 +772,26 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       if (-not $latest) { return $null }
       return $latest.FullName
     }
+
+    function Read-GitHubOutputs {
+      param([Parameter(Mandatory)][string]$Path)
+
+      $outputs = @{}
+      foreach ($line in Get-Content -LiteralPath $Path -ErrorAction Stop) {
+        if ([string]::IsNullOrWhiteSpace($line)) {
+          continue
+        }
+
+        $parts = $line -split '=', 2
+        if ($parts.Count -ne 2) {
+          continue
+        }
+
+        $outputs[$parts[0]] = $parts[1]
+      }
+
+      return $outputs
+    }
   }
 
   It 'writes successful summary and readiness when probes are skipped' {
@@ -872,6 +892,7 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     Push-Location $repoRoot
     try {
       $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $gitHubOutputPath = Join-Path $repoRoot 'tests/results/github-output.txt'
       $env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH = $native64
       $env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH = $native32
       $env:COMPAREVI_NATIVE_LABVIEWCLI_2026_64_PATH = $sharedCli
@@ -881,7 +902,8 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
         -ResultsRoot $resultsRoot `
         -SkipWindowsProbe `
-        -SkipLinuxProbe *>&1
+        -SkipLinuxProbe `
+        -GitHubOutputPath $gitHubOutputPath *>&1
       $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
       ($output -join "`n") | Should -Match '\[host-plane-split\]\[runner\] hostIsRunner=True'
 
@@ -906,6 +928,14 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $status.hostPlaneSummaryStatus | Should -Be 'ok'
       $status.hostPlaneSummarySha256 | Should -Be $summary.hostPlaneSummarySha256
       $status.hostPlaneSummaryReason | Should -Be ''
+
+      $gitHubOutputs = Read-GitHubOutputs -Path $gitHubOutputPath
+      $gitHubOutputs['docker-fast-loop-summary-path'] | Should -Be $summaryPath
+      $gitHubOutputs['docker-fast-loop-status-path'] | Should -Be $statusPath
+      $gitHubOutputs['docker-fast-loop-host-plane-summary-path'] | Should -Be $summary.hostPlaneSummaryPath
+      $gitHubOutputs['docker-fast-loop-host-plane-summary-status'] | Should -Be 'ok'
+      $gitHubOutputs['docker-fast-loop-host-plane-summary-sha256'] | Should -Be $summary.hostPlaneSummarySha256
+      $gitHubOutputs['docker-fast-loop-host-plane-summary-reason'] | Should -Be ''
 
       $readinessPath = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
       $readiness = Get-Content -LiteralPath $readinessPath -Raw | ConvertFrom-Json -Depth 16
@@ -947,6 +977,7 @@ Remove-Item -LiteralPath $summaryResolved -Force -ErrorAction Stop
     Push-Location $repoRoot
     try {
       $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $gitHubOutputPath = Join-Path $repoRoot 'tests/results/github-output.txt'
       $env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH = $native64
       $env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH = $native32
       $env:COMPAREVI_NATIVE_LABVIEWCLI_2026_64_PATH = $sharedCli
@@ -956,7 +987,8 @@ Remove-Item -LiteralPath $summaryResolved -Force -ErrorAction Stop
       $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
         -ResultsRoot $resultsRoot `
         -SkipWindowsProbe `
-        -SkipLinuxProbe 2>&1
+        -SkipLinuxProbe `
+        -GitHubOutputPath $gitHubOutputPath 2>&1
       $LASTEXITCODE | Should -Not -Be 0
       ($output -join "`n") | Should -Match 'Declared host-plane summary artifact not readable'
 
@@ -973,6 +1005,14 @@ Remove-Item -LiteralPath $summaryResolved -Force -ErrorAction Stop
       $status.hostPlaneSummaryStatus | Should -Be 'missing'
       $status.hostPlaneSummarySha256 | Should -Be ''
       $status.hostPlaneSummaryReason | Should -Be 'declared-summary-unreadable'
+
+      $gitHubOutputs = Read-GitHubOutputs -Path $gitHubOutputPath
+      $gitHubOutputs['docker-fast-loop-summary-path'] | Should -Be $summaryPath
+      $gitHubOutputs['docker-fast-loop-status-path'] | Should -Be $statusPath
+      $gitHubOutputs['docker-fast-loop-host-plane-summary-path'] | Should -Be $summary.hostPlaneSummaryPath
+      $gitHubOutputs['docker-fast-loop-host-plane-summary-status'] | Should -Be 'missing'
+      $gitHubOutputs['docker-fast-loop-host-plane-summary-sha256'] | Should -Be ''
+      $gitHubOutputs['docker-fast-loop-host-plane-summary-reason'] | Should -Be 'declared-summary-unreadable'
     } finally {
       Remove-Item Env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH -ErrorAction SilentlyContinue
       Remove-Item Env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH -ErrorAction SilentlyContinue
