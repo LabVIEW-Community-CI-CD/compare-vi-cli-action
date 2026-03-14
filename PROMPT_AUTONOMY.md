@@ -10,6 +10,8 @@ Canonical machine-readable companion contract:
 
 - schema: `docs/schemas/mission-control-envelope-v1.schema.json`
 - example: `tools/priority/__fixtures__/mission-control/mission-control-envelope.json`
+- operator-input schema: `docs/schemas/mission-control-operator-input-catalog-v1.schema.json`
+- operator-input example: `tools/priority/__fixtures__/mission-control/operator-input-catalog.json`
 
 Envelope model:
 

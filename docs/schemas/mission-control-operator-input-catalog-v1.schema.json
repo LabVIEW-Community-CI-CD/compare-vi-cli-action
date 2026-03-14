@@ -1,0 +1,518 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/mission-control-operator-input-catalog-v1.schema.json",
+  "title": "Mission Control Operator Input Catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "intents", "focuses", "overrides"],
+  "properties": {
+    "schema": {
+      "const": "priority/mission-control-operator-input-catalog@v1"
+    },
+    "intents": {
+      "type": "array",
+      "minItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/intent"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "continue-driving-autonomously"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "finish-live-standing-lane"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "stabilize-current-head-failure"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "restore-intake"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "prepare-parked-lane"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    },
+    "focuses": {
+      "type": "array",
+      "minItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/focus"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "standing-priority"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "current-head-failure"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "queue-health"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "handoff"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "policy-drift"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "docs-contract"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    },
+    "overrides": {
+      "type": "array",
+      "minItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/override"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "const": "allowAdminMerge"
+              }
+            },
+            "required": ["key"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "const": "allowForkBaseDispatch"
+              }
+            },
+            "required": ["key"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "const": "allowParkedLane"
+              }
+            },
+            "required": ["key"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "const": "copilotCliUsage"
+              }
+            },
+            "required": ["key"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "const": "requireProjectBoardApply"
+              }
+            },
+            "required": ["key"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "summary", "allowedFocuses", "description"],
+      "properties": {
+        "id": {
+          "enum": [
+            "continue-driving-autonomously",
+            "finish-live-standing-lane",
+            "stabilize-current-head-failure",
+            "restore-intake",
+            "prepare-parked-lane"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "allowedFocuses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "standing-priority",
+              "current-head-failure",
+              "queue-health",
+              "handoff",
+              "policy-drift",
+              "docs-contract"
+            ]
+          }
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 280
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "continue-driving-autonomously"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allowedFocuses": {
+                "const": ["standing-priority", "queue-health", "policy-drift", "docs-contract"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "finish-live-standing-lane"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allowedFocuses": {
+                "const": ["standing-priority", "current-head-failure", "queue-health"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "stabilize-current-head-failure"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allowedFocuses": {
+                "const": ["current-head-failure", "policy-drift"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "restore-intake"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allowedFocuses": {
+                "const": ["queue-health", "policy-drift", "handoff"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "prepare-parked-lane"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allowedFocuses": {
+                "const": ["docs-contract", "queue-health", "standing-priority"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "focus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "summary", "standingPriorityRequired", "description"],
+      "properties": {
+        "id": {
+          "enum": [
+            "standing-priority",
+            "current-head-failure",
+            "queue-health",
+            "handoff",
+            "policy-drift",
+            "docs-contract"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "standingPriorityRequired": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 280
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "enum": ["standing-priority", "current-head-failure"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "standingPriorityRequired": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "enum": ["queue-health", "handoff", "policy-drift", "docs-contract"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "standingPriorityRequired": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    "override": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "valueType", "wideningAllowed", "description"],
+      "properties": {
+        "key": {
+          "enum": [
+            "allowAdminMerge",
+            "allowForkBaseDispatch",
+            "allowParkedLane",
+            "copilotCliUsage",
+            "requireProjectBoardApply"
+          ]
+        },
+        "valueType": {
+          "enum": ["boolean", "enum"]
+        },
+        "allowedValues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "wideningAllowed": {
+          "const": false
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 280
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "key": {
+                "enum": [
+                  "allowAdminMerge",
+                  "allowForkBaseDispatch",
+                  "allowParkedLane",
+                  "requireProjectBoardApply"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "valueType": {
+                "const": "boolean"
+              },
+              "allowedValues": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "key": {
+                "const": "copilotCliUsage"
+              }
+            }
+          },
+          "then": {
+            "required": ["allowedValues"],
+            "properties": {
+              "valueType": {
+                "const": "enum"
+              },
+              "allowedValues": {
+                "const": ["optional", "required"]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

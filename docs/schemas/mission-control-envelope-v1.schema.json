@@ -343,7 +343,89 @@
             }
           ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "intent": {
+                "const": "continue-driving-autonomously"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "focus": {
+                "enum": ["standing-priority", "queue-health", "policy-drift", "docs-contract"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "intent": {
+                "const": "finish-live-standing-lane"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "focus": {
+                "enum": ["standing-priority", "current-head-failure", "queue-health"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "intent": {
+                "const": "stabilize-current-head-failure"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "focus": {
+                "enum": ["current-head-failure", "policy-drift"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "intent": {
+                "const": "restore-intake"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "focus": {
+                "enum": ["queue-health", "policy-drift", "handoff"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "intent": {
+                "const": "prepare-parked-lane"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "focus": {
+                "enum": ["docs-contract", "queue-health", "standing-priority"]
+              }
+            }
+          }
+        }
+      ]
     }
   },
   "$defs": {
