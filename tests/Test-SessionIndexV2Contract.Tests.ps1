@@ -113,6 +113,8 @@ Describe 'Test-SessionIndexV2Contract' {
       $psi.UseShellExecute = $false
       $psi.RedirectStandardOutput = $true
       $psi.RedirectStandardError = $true
+      [void]$psi.Environment.Remove('GITHUB_OUTPUT')
+      [void]$psi.Environment.Remove('GITHUB_STEP_SUMMARY')
       if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
         $psi.Environment['GITHUB_OUTPUT'] = $GitHubOutputPath
       }
