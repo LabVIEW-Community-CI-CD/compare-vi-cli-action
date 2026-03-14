@@ -124,11 +124,14 @@ test('mission-control docs advertise the profile catalog with the existing missi
 
   assert.match(prompt, /mission-control-profile-catalog-v1\.schema\.json/);
   assert.match(prompt, /profile-catalog\.json/);
+  assert.match(prompt, /authoritative profile catalog loader/i);
+  assert.match(prompt, /authoritative fail-closed validator/i);
   assert.match(prompt, /`MC`/);
   assert.match(prompt, /`MC-LIVE`/);
 
   const missionControlEntry = manifest.entries.find((entry) => entry.name === 'Mission Control Contracts');
   assert.ok(missionControlEntry, 'Mission Control Contracts entry is missing from docs manifest.');
+  assert.match(missionControlEntry.description, /authoritative runtime loader/i);
   assert.ok(missionControlEntry.files.includes('tools/priority/lib/mission-control-profile-catalog.mjs'));
   assert.ok(missionControlEntry.files.includes('docs/schemas/mission-control-profile-catalog-v1.schema.json'));
   assert.ok(missionControlEntry.files.includes('tools/priority/__fixtures__/mission-control/profile-catalog.json'));

@@ -148,7 +148,7 @@
       "name": "Mission Control Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Canonical prompt, machine-readable envelope contract, bounded operator-input catalog, mission-control profile/trigger catalog, and focused contract validation coverage for the repo-owned mission-control surface.",
+      "description": "Canonical prompt, machine-readable envelope contract, bounded operator-input catalog, mission-control profile/trigger catalog, and an authoritative runtime loader for fail-closed trigger-token validation across the repo-owned mission-control surface.",
       "files": [
         "PROMPT_AUTONOMY.md",
         "docs/schemas/mission-control-envelope-v1.schema.json",

@@ -12,9 +12,15 @@ Canonical machine-readable companion contract:
 - example: `tools/priority/__fixtures__/mission-control/mission-control-envelope.json`
 - operator-input schema: `docs/schemas/mission-control-operator-input-catalog-v1.schema.json`
 - operator-input example: `tools/priority/__fixtures__/mission-control/operator-input-catalog.json`
-- profile catalog schema: `docs/schemas/mission-control-profile-catalog-v1.schema.json`
+- profile catalog structural schema: `docs/schemas/mission-control-profile-catalog-v1.schema.json`
 - profile catalog example: `tools/priority/__fixtures__/mission-control/profile-catalog.json`
-- profile catalog loader: `tools/priority/lib/mission-control-profile-catalog.mjs`
+- authoritative profile catalog loader: `tools/priority/lib/mission-control-profile-catalog.mjs`
+
+Profile catalog validation model:
+
+- the JSON schema covers structural shape and canonical profile membership
+- the runtime loader is the authoritative fail-closed validator for cross-profile trigger-token uniqueness and
+  preset-to-intent/focus mapping invariants
 
 Envelope model:
 
