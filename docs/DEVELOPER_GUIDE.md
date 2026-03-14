@@ -176,7 +176,9 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   Downloads named workflow artifacts through the checked-in helper path instead of raw `gh run download`, writing a
   deterministic report at `tests/results/_agent/reviews/run-artifact-download.json` (or `--report <path>`). Use this
   during live triage when you need a machine-readable distinction between `policy-wrapper-rejected`,
-  `artifact-not-found`, `artifact-expired`, and `auth-failed`.
+  `artifact-not-found`, `artifact-expired`, and `auth-failed`. When `GITHUB_OUTPUT` or `GITHUB_STEP_SUMMARY` is
+  available, the CLI also projects the same status, count, and failure-class surface into workflow-friendly outputs and
+  step-summary lines.
 - `node tools/npm/run-script.mjs priority:github:metadata:apply -- --url <issue-or-pr-url> ...`  
   Applies canonical GitHub metadata directly on the issue or PR: issue type, milestone, assignees, requested
   reviewers, parent issue, and sub-issue linkage. The helper writes
