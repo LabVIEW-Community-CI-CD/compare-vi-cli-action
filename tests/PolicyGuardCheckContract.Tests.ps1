@@ -82,7 +82,7 @@ jobs:
         'release/*' = @{ required_status_checks = @('Policy Guard (Upstream) / policy-guard') }
       }
       rulesets = @{
-        '8811898' = @{ required_status_checks = @('Policy Guard (Upstream) / policy-guard') }
+        develop = @{ required_status_checks = @('Policy Guard (Upstream) / policy-guard') }
         '8614140' = @{ required_status_checks = @('Policy Guard (Upstream) / policy-guard') }
         '8614172' = @{ required_status_checks = @('Policy Guard (Upstream) / policy-guard') }
       }
@@ -93,4 +93,3 @@ jobs:
     ($run.StdOut + $run.StdErr) | Should -Match 'Workflow job name mismatch'
   }
 }
-

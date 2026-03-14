@@ -82,7 +82,7 @@
     }
   },
   "rulesets": {
-    "8811898": {
+    "develop": {
       "name": "develop",
       "branch_class_id": "upstream-integration",
       "includes": [
@@ -126,10 +126,6 @@
       },
       "code_quality": {
         "severity": "warnings"
-      },
-      "copilot_code_review": {
-        "review_on_push": true,
-        "review_draft_pull_requests": false
       }
     },
     "8614140": {

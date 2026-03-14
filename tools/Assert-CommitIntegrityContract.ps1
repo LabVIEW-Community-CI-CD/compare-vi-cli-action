@@ -11,7 +11,7 @@ param(
   [string]$JobName = 'commit-integrity',
   [string]$DevelopBranch = 'develop',
   [string]$MainBranch = 'main',
-  [string]$DevelopRulesetId = '8811898',
+  [string]$DevelopRulesetId = 'develop',
   [string]$MainRulesetId = '8614140',
   [string]$ExpectedObservedCheck = 'commit-integrity',
   [string]$ExpectedReportPath = 'tests/results/_agent/commit-integrity/commit-integrity-report.json'
@@ -33,6 +33,22 @@ function Read-JsonFile {
     throw "File not found: $Path"
   }
   return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -Depth 20)
+}
+
+function Resolve-RulesetObservedChecks {
+  param(
+    [Parameter(Mandatory)][object]$PriorityPolicy,
+    [Parameter(Mandatory)][string[]]$Candidates
+  )
+
+  foreach ($candidate in $Candidates) {
+    $node = $PriorityPolicy.rulesets.PSObject.Properties[$candidate]
+    if ($node) {
+      return @($node.Value.observed_status_checks)
+    }
+  }
+
+  return @()
 }
 
 if (-not (Test-Path -LiteralPath $WorkflowPath -PathType Leaf)) {
@@ -100,7 +116,8 @@ foreach ($branchName in @($DevelopBranch, $MainBranch)) {
 }
 
 foreach ($rulesetId in @($DevelopRulesetId, $MainRulesetId)) {
-  $checks = @($priorityPolicy.rulesets.$rulesetId.observed_status_checks)
+  $candidates = if ($rulesetId -eq 'develop') { @('develop', '8811898') } else { @($rulesetId) }
+  $checks = @(Resolve-RulesetObservedChecks -PriorityPolicy $priorityPolicy -Candidates $candidates)
   if ($checks.Count -eq 0) {
     Add-ContractError "Priority policy ruleset '$rulesetId' missing observed_status_checks."
     continue

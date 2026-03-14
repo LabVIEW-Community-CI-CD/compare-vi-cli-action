@@ -22,6 +22,11 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'VendorTools.psm1') -Force
 
+$localCollabPhase = [string]($env:LOCAL_COLLAB_PHASE ?? '')
+if ($env:LOCAL_COLLAB_ORCHESTRATED -match '^(1|true|yes|on)$') {
+  Write-Host ("[pre-push] local collaboration orchestrator active{0}" -f $(if ($localCollabPhase) { " phase=$localCollabPhase" } else { '' })) -ForegroundColor DarkGray
+}
+
 function Write-Info([string]$msg){ Write-Host $msg -ForegroundColor DarkGray }
 
 function Resolve-ContainerMountedHostPath {

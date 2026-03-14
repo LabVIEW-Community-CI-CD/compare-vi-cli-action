@@ -182,11 +182,7 @@ function createAlignedRulesets(ids = { develop: 8811898, main: 8614140, release:
       mergeQueue: EXPECTED_MERGE_QUEUE_PARAMS,
       requiredLinearHistory: true,
       pullRequestRule: createPullRequestRule(),
-      codeQuality: { severity: 'warnings' },
-      copilotCodeReview: {
-        review_on_push: true,
-        review_draft_pull_requests: false
-      }
+      codeQuality: { severity: 'warnings' }
     }),
     main: createRuleset({
       id: ids.main,
@@ -251,6 +247,7 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   ];
 
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const listUrl = `${repoUrl}/rulesets`;
   const rulesetDevelopUrl = `${repoUrl}/rulesets/8811898`;
   const rulesetMainUrl = `${repoUrl}/rulesets/8614140`;
   const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
@@ -301,13 +298,6 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           allowed_merge_methods: ['merge']
         }
       },
-      {
-        type: 'copilot_code_review',
-        parameters: {
-          review_on_push: false,
-          review_draft_pull_requests: true
-        }
-      }
     ]
   };
 
@@ -524,6 +514,14 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
       }
     }
 
+    if (method === 'GET' && url === listUrl) {
+      return createResponse([
+        toRulesetSummary(rulesetDevelop),
+        toRulesetSummary(rulesetMain),
+        toRulesetSummary(rulesetRelease)
+      ]);
+    }
+
     if (url === rulesetDevelopUrl) {
       if (method === 'GET') {
         return createResponse(rulesetDevelop);
@@ -601,10 +599,6 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   const developCodeQualityRule = rulesetDevelop.rules.find((rule) => rule.type === 'code_quality');
   assert.ok(developCodeQualityRule, 'code_quality rule expected on develop');
   assert.equal(developCodeQualityRule.parameters.severity, 'warnings');
-  const developCopilotRule = rulesetDevelop.rules.find((rule) => rule.type === 'copilot_code_review');
-  assert.ok(developCopilotRule, 'copilot_code_review rule expected on develop');
-  assert.equal(developCopilotRule.parameters.review_on_push, true);
-  assert.equal(developCopilotRule.parameters.review_draft_pull_requests, false);
 
   const mergeQueueRule = rulesetMain.rules.find((rule) => rule.type === 'merge_queue');
   assert.equal(mergeQueueRule.parameters.min_entries_to_merge_wait_minutes, 1);
@@ -650,15 +644,11 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
     .find((rule) => rule.type === 'required_status_checks')
     .parameters.required_status_checks.find((check) => check.context === 'commit-integrity');
   const developPayloadCodeQualityRule = developRulesetPayload.rules.find((rule) => rule.type === 'code_quality');
-  const developPayloadCopilotRule = developRulesetPayload.rules.find((rule) => rule.type === 'copilot_code_review');
   const mainCommitIntegrityCheck = mainRulesetPayload.rules
     .find((rule) => rule.type === 'required_status_checks')
     .parameters.required_status_checks.find((check) => check.context === 'commit-integrity');
   assert.ok(developPayloadCodeQualityRule, 'develop payload should include code_quality rule');
   assert.equal(developPayloadCodeQualityRule.parameters.severity, 'warnings');
-  assert.ok(developPayloadCopilotRule, 'develop payload should include copilot_code_review rule');
-  assert.equal(developPayloadCopilotRule.parameters.review_on_push, true);
-  assert.equal(developPayloadCopilotRule.parameters.review_draft_pull_requests, false);
   assert.ok(developCommitIntegrityCheck, 'develop ruleset should include commit-integrity required check');
   assert.ok(mainCommitIntegrityCheck, 'main ruleset should include commit-integrity required check');
   assert.equal(
@@ -707,7 +697,6 @@ test('priority:policy verifies fork-local rulesets by stable identity when manif
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const expectedRulesetUrls = {
-    develop: `${repoUrl}/rulesets/8811898`,
     main: `${repoUrl}/rulesets/8614140`,
     release: `${repoUrl}/rulesets/8614172`
   };
@@ -731,7 +720,7 @@ test('priority:policy verifies fork-local rulesets by stable identity when manif
     if (url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
     }
-    if (url === expectedRulesetUrls.develop || url === expectedRulesetUrls.main || url === expectedRulesetUrls.release) {
+    if (url === expectedRulesetUrls.main || url === expectedRulesetUrls.release) {
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (url === listUrl) {
@@ -773,10 +762,6 @@ test('priority:policy verifies fork-local rulesets by stable identity when manif
   assert.equal(code, 0, 'verify mode should pass with fork-local ruleset ids');
   assert.deepEqual(errorMessages, []);
   assert.ok(
-    logMessages.some((msg) => msg.includes('ruleset 8811898: resolved by stable identity to 99001')),
-    'develop ruleset should resolve by identity'
-  );
-  assert.ok(
     logMessages.some((msg) => msg.includes('ruleset 8614140: resolved by stable identity to 99002')),
     'main ruleset should resolve by identity'
   );
@@ -792,7 +777,6 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
   const branchMainUrl = `${repoUrl}/branches/main/protection`;
   const expectedRulesetUrls = {
-    develop: `${repoUrl}/rulesets/8811898`,
     main: `${repoUrl}/rulesets/8614140`,
     release: `${repoUrl}/rulesets/8614172`
   };
@@ -840,7 +824,7 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
     }
-    if (method === 'GET' && (url === expectedRulesetUrls.develop || url === expectedRulesetUrls.main || url === expectedRulesetUrls.release)) {
+    if (method === 'GET' && (url === expectedRulesetUrls.main || url === expectedRulesetUrls.release)) {
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
     if (method === 'GET' && url === listUrl) {
@@ -900,10 +884,6 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
     requests.some((entry) => entry.method === 'PUT' && entry.url === `${repoUrl}/rulesets/${rulesets.develop.id}`),
     'develop ruleset should be updated using the fork-local id'
   );
-  assert.ok(
-    !requests.some((entry) => entry.method === 'PUT' && entry.url === expectedRulesetUrls.develop),
-    'develop ruleset should not use the upstream manifest id once identity is resolved'
-  );
   assert.deepEqual(
     rulesets.develop.conditions.ref_name.include,
     ['refs/heads/develop'],
@@ -920,10 +900,6 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
   assert.ok(
     rulesets.develop.rules.some((rule) => rule.type === 'code_quality'),
     'develop ruleset should restore code_quality'
-  );
-  assert.ok(
-    rulesets.develop.rules.some((rule) => rule.type === 'copilot_code_review'),
-    'develop ruleset should restore copilot_code_review'
   );
   assert.deepEqual(
     rulesets.main.rules
@@ -1043,9 +1019,6 @@ test('priority:policy --apply creates missing fork-local rulesets when no identi
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
     }
-    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
-      return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
-    }
     if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
       return createResponse({ message: 'Not Found', status: '404' }, 404, 'Not Found');
     }
@@ -1101,10 +1074,6 @@ test('priority:policy --apply creates missing fork-local rulesets when no identi
   assert.ok(
     createdDevelopRuleset.rules.some((rule) => rule.type === 'merge_queue'),
     'created develop ruleset should include merge_queue'
-  );
-  assert.ok(
-    createdDevelopRuleset.rules.some((rule) => rule.type === 'copilot_code_review'),
-    'created develop ruleset should include copilot_code_review'
   );
 });
 
@@ -2114,7 +2083,7 @@ test('priority:policy emits machine-readable report when --report is provided', 
 
 test('priority:policy verify fails when queue-managed ruleset is missing merge_queue', async () => {
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
-  const rulesetDevelopUrl = `${repoUrl}/rulesets/8811898`;
+  const listUrl = `${repoUrl}/rulesets`;
   const rulesetMainUrl = `${repoUrl}/rulesets/8614140`;
   const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
@@ -2165,7 +2134,7 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
   };
 
   const rulesetDevelop = {
-    id: 8811898,
+    id: 99001,
     name: 'develop',
     target: 'branch',
     conditions: { ref_name: { include: ['refs/heads/develop'], exclude: [] } },
@@ -2194,13 +2163,6 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
           severity: 'warnings'
         }
       },
-      {
-        type: 'copilot_code_review',
-        parameters: {
-          review_on_push: true,
-          review_draft_pull_requests: false
-        }
-      }
     ]
   };
   const rulesetMain = {
@@ -2293,7 +2255,14 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
     if (url === branchMainUrl) {
       return createResponse(branchMainProtection);
     }
-    if (url === rulesetDevelopUrl) {
+    if (url === listUrl) {
+      return createResponse([
+        toRulesetSummary(rulesetDevelop),
+        toRulesetSummary(rulesetMain),
+        toRulesetSummary(rulesetRelease)
+      ]);
+    }
+    if (url === `${repoUrl}/rulesets/${rulesetDevelop.id}`) {
       return createResponse(rulesetDevelop);
     }
     if (url === rulesetMainUrl) {
@@ -2335,7 +2304,7 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
 
 test('priority:policy verify uses queue-managed rulesets as required-check source of truth', async () => {
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
-  const rulesetDevelopUrl = `${repoUrl}/rulesets/8811898`;
+  const listUrl = `${repoUrl}/rulesets`;
   const rulesetMainUrl = `${repoUrl}/rulesets/8614140`;
   const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
@@ -2420,7 +2389,7 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
   };
 
   const rulesetDevelop = {
-    id: 8811898,
+    id: 99001,
     name: 'develop',
     target: 'branch',
     conditions: { ref_name: { include: ['refs/heads/develop'], exclude: [] } },
@@ -2450,13 +2419,6 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
           severity: 'warnings'
         }
       },
-      {
-        type: 'copilot_code_review',
-        parameters: {
-          review_on_push: true,
-          review_draft_pull_requests: false
-        }
-      }
     ]
   };
 
@@ -2527,7 +2489,14 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     if (url === branchMainUrl) {
       return createResponse(branchMainProtection);
     }
-    if (url === rulesetDevelopUrl) {
+    if (url === listUrl) {
+      return createResponse([
+        toRulesetSummary(rulesetDevelop),
+        toRulesetSummary(rulesetMain),
+        toRulesetSummary(rulesetRelease)
+      ]);
+    }
+    if (url === `${repoUrl}/rulesets/${rulesetDevelop.id}`) {
       return createResponse(rulesetDevelop);
     }
     if (url === rulesetMainUrl) {

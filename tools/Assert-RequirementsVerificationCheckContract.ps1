@@ -4,7 +4,7 @@ param(
   [string]$BranchRequiredChecksPath = 'tools/policy/branch-required-checks.json',
   [string]$PriorityPolicyPath = 'tools/priority/policy.json',
   [string]$BranchName = 'develop',
-  [string]$RulesetId = '8811898',
+  [string]$RulesetId = 'develop',
   [string]$WorkflowName = 'Requirements Verification',
   [string]$JobId = 'verification',
   [string]$JobName = 'requirements-verification'
@@ -26,6 +26,22 @@ function Read-JsonFile {
     throw "File not found: $Path"
   }
   return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -Depth 20)
+}
+
+function Resolve-RulesetRequiredChecks {
+  param(
+    [Parameter(Mandatory)][object]$PriorityPolicy,
+    [Parameter(Mandatory)][string[]]$Candidates
+  )
+
+  foreach ($candidate in $Candidates) {
+    $node = $PriorityPolicy.rulesets.PSObject.Properties[$candidate]
+    if ($node) {
+      return @($node.Value.required_status_checks)
+    }
+  }
+
+  return @()
 }
 
 if (-not (Test-Path -LiteralPath $WorkflowPath -PathType Leaf)) {
@@ -69,7 +85,8 @@ if ($priorityBranchChecks.Count -eq 0) {
   Add-ContractError "Missing priority branch checks for '$BranchName' in $PriorityPolicyPath."
 }
 
-$rulesetChecks = @($priorityPolicy.rulesets.$RulesetId.required_status_checks)
+$rulesetCandidates = if ($RulesetId -eq 'develop') { @('develop', '8811898') } else { @($RulesetId) }
+$rulesetChecks = @(Resolve-RulesetRequiredChecks -PriorityPolicy $priorityPolicy -Candidates $rulesetCandidates)
 $rulesetHasExpectedCheck = $rulesetChecks -contains $expectedCheckName
 if ($rulesetChecks.Count -eq 0) {
   Add-ContractError "Missing ruleset '$RulesetId' required checks in $PriorityPolicyPath."

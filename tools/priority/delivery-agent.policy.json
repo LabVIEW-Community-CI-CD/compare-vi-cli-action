@@ -32,7 +32,9 @@
     "receiptPath": "tests/results/docker-tools-parity/review-loop-receipt.json",
     "command": [
       "node",
-      "tools/priority/docker-desktop-review-loop.mjs"
+      "tools/local-collab/orchestrator/run-phase.mjs",
+      "--phase",
+      "daemon"
     ],
     "actionlint": true,
     "markdownlint": true,

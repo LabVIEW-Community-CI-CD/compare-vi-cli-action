@@ -95,7 +95,7 @@ jobs:
         main = @{ observed_status_checks = @('wrong-check') }
       }
       rulesets = @{
-        '8811898' = @{ observed_status_checks = @('wrong-check') }
+        develop = @{ observed_status_checks = @('wrong-check') }
         '8614140' = @{ observed_status_checks = @('wrong-check') }
       }
     }
