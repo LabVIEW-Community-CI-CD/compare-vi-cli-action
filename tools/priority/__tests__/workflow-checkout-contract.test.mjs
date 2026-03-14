@@ -88,6 +88,8 @@ test('policy workflows keep explicit base-safe or mixed checkout expressions', (
     /ref:\s+\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.sha \|\| github\.event_name == 'pull_request_target' && github\.event\.pull_request\.head\.repo\.owner\.login == github\.repository_owner && github\.event\.pull_request\.head\.sha \|\| github\.event_name == 'pull_request_target' && github\.event\.pull_request\.base\.sha \|\| github\.sha\s*\}\}/
   );
   assert.match(policyGuard, /fetch-depth:\s*0/);
+  assert.match(policyGuard, /Overlay personal-fork policy surfaces/);
+  assert.match(policyGuard, /tools\/policy\/export-personal-fork-policy-shadow\.mjs/);
   assert.doesNotMatch(policyGuard, /checkout-workflow-context/);
 });
 
