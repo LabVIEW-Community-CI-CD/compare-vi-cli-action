@@ -219,13 +219,14 @@ export function downloadNamedArtifacts({
   repository,
   runId,
   artifactNames,
+  downloadAll = false,
   destinationRoot = DEFAULT_DESTINATION_ROOT,
   reportPath = DEFAULT_REPORT_PATH,
   now = new Date(),
   runGhJsonFn = runGhJson,
   runProcessFn = runProcess,
 }) {
-  const requestedArtifacts = uniqueStrings(artifactNames);
+  let requestedArtifacts = uniqueStrings(artifactNames);
   const normalizedRepository = normalizeText(repository);
   const normalizedRunId = normalizeText(runId);
   const report = {
@@ -262,7 +263,7 @@ export function downloadNamedArtifacts({
   if (!normalizedRunId) {
     invalidRequestErrors.push('Run id is required.');
   }
-  if (requestedArtifacts.length === 0) {
+  if (!downloadAll && requestedArtifacts.length === 0) {
     invalidRequestErrors.push('At least one non-empty artifact name is required.');
   }
 
@@ -288,6 +289,21 @@ export function downloadNamedArtifacts({
     report.discovery.command = discovery.command;
     report.discovery.availableArtifacts = discovery.artifacts;
     report.summary.availableArtifactCount = discovery.artifacts.length;
+    if (downloadAll) {
+      requestedArtifacts = uniqueStrings(discovery.artifacts.map((artifact) => artifact?.name));
+      report.requestedArtifacts = requestedArtifacts;
+      report.summary.requestedArtifactCount = requestedArtifacts.length;
+      if (requestedArtifacts.length === 0) {
+        const message = `No artifacts were available for run ${normalizedRunId}.`;
+        report.status = 'fail';
+        report.discovery.status = 'fail';
+        report.discovery.failureClass = 'artifact-not-found';
+        report.discovery.errorMessage = message;
+        report.errors.push(message);
+        const resolvedReportPath = writeJsonFile(reportPath, report);
+        return { report, reportPath: resolvedReportPath };
+      }
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     report.status = 'fail';

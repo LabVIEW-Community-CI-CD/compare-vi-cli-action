@@ -18,6 +18,7 @@ function printUsage() {
   console.log('  --repo <owner/repo>          Target repository (default: GITHUB_REPOSITORY).');
   console.log('  --run-id <id>               Workflow run id to download from.');
   console.log('  --artifact <name>           Artifact name to download (repeatable).');
+  console.log('  --all                       Download every non-expired artifact from the run.');
   console.log(`  --destination-root <path>   Destination root (default: ${DEFAULT_DESTINATION_ROOT}).`);
   console.log(`  --report <path>             Output report path (default: ${DEFAULT_REPORT_PATH}).`);
   console.log('  -h, --help                  Show help.');
@@ -38,6 +39,7 @@ export function parseArgs(argv = process.argv) {
     repo: normalizeText(process.env.GITHUB_REPOSITORY),
     runId: null,
     artifactNames: [],
+    downloadAll: false,
     destinationRoot: DEFAULT_DESTINATION_ROOT,
     reportPath: DEFAULT_REPORT_PATH,
   };
@@ -46,6 +48,10 @@ export function parseArgs(argv = process.argv) {
     const token = args[index];
     if (token === '-h' || token === '--help') {
       options.help = true;
+      continue;
+    }
+    if (token === '--all') {
+      options.downloadAll = true;
       continue;
     }
     const next = args[index + 1];
@@ -83,8 +89,11 @@ export function parseArgs(argv = process.argv) {
     if (!options.runId) {
       throw new Error('Run id is required. Pass --run-id <id>.');
     }
-    if (options.artifactNames.length === 0) {
-      throw new Error('At least one artifact is required. Pass --artifact <name>.');
+    if (options.downloadAll && options.artifactNames.length > 0) {
+      throw new Error('Use either --all or one or more --artifact values, not both.');
+    }
+    if (!options.downloadAll && options.artifactNames.length === 0) {
+      throw new Error('At least one artifact is required. Pass --artifact <name> or use --all.');
     }
   }
 
@@ -110,6 +119,7 @@ export async function main(argv = process.argv) {
     repository: options.repo,
     runId: options.runId,
     artifactNames: options.artifactNames,
+    downloadAll: options.downloadAll,
     destinationRoot: options.destinationRoot,
     reportPath: options.reportPath,
   });

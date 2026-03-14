@@ -136,6 +136,83 @@ test('downloadNamedArtifacts records missing artifact requests without invoking 
   assert.equal(processCallCount, 0);
 });
 
+test('downloadNamedArtifacts can download every discovered artifact when downloadAll is requested', async (t) => {
+  const { downloadNamedArtifacts } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-all-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const seenDownloads = [];
+  const result = downloadNamedArtifacts({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runId: '22872590273',
+    artifactNames: [],
+    downloadAll: true,
+    destinationRoot: path.join(tmpDir, 'artifacts'),
+    reportPath: path.join(tmpDir, 'report.json'),
+    runGhJsonFn() {
+      return {
+        artifacts: [
+          {
+            id: 1,
+            name: 'artifact-a',
+            size_in_bytes: 10,
+            expired: false,
+          },
+          {
+            id: 2,
+            name: 'artifact-b',
+            size_in_bytes: 20,
+            expired: false,
+          },
+        ],
+      };
+    },
+    runProcessFn(_command, args) {
+      const destinationIndex = args.indexOf('-D');
+      const artifactIndex = args.indexOf('-n');
+      const destination = args[destinationIndex + 1];
+      const artifactName = args[artifactIndex + 1];
+      seenDownloads.push(artifactName);
+      writeFile(path.join(destination, `${artifactName}.txt`), 'ok\n');
+      return { status: 0, stdout: '', stderr: '', error: null };
+    },
+  });
+
+  assert.equal(result.report.status, 'pass');
+  assert.deepEqual(result.report.requestedArtifacts, ['artifact-a', 'artifact-b']);
+  assert.equal(result.report.summary.requestedArtifactCount, 2);
+  assert.equal(result.report.summary.downloadedCount, 2);
+  assert.deepEqual(seenDownloads, ['artifact-a', 'artifact-b']);
+});
+
+test('downloadNamedArtifacts fails closed when downloadAll is requested but the run exposes no artifacts', async (t) => {
+  const { downloadNamedArtifacts } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-all-empty-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  let processCallCount = 0;
+  const result = downloadNamedArtifacts({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runId: '22872590273',
+    artifactNames: [],
+    downloadAll: true,
+    destinationRoot: path.join(tmpDir, 'artifacts'),
+    reportPath: path.join(tmpDir, 'report.json'),
+    runGhJsonFn() {
+      return { artifacts: [] };
+    },
+    runProcessFn() {
+      processCallCount += 1;
+      return { status: 0, stdout: '', stderr: '', error: null };
+    },
+  });
+
+  assert.equal(result.report.status, 'fail');
+  assert.equal(result.report.discovery.failureClass, 'artifact-not-found');
+  assert.equal(result.report.summary.requestedArtifactCount, 0);
+  assert.equal(processCallCount, 0);
+});
+
 test('downloadNamedArtifacts fails fast when all requested artifact names normalize to empty values', async (t) => {
   const { downloadNamedArtifacts } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-invalid-request-'));
