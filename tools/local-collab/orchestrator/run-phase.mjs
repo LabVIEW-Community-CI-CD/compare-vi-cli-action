@@ -337,7 +337,9 @@ function invokeHookAgentReviewStep({ runner, repoRoot, phase, env, providerSelec
     };
   });
 
-  if ((step.rawExitCode ?? step.exitCode) !== 0) {
+  // Respect the hook runner's post-enforcement exit code so warn/off modes do not
+  // get re-promoted to hard failures after the summary has already downgraded them.
+  if (step.exitCode !== 0) {
     hardFailHookStep(
       runner,
       step,
@@ -367,7 +369,7 @@ function invokePreCommitDelegate(
     invokeAgentReviewPolicyFn
   } = {}
 ) {
-  const runner = new HookRunner('pre-commit', { repoRoot });
+  const runner = new HookRunner('pre-commit', { repoRoot, env });
 
   info('[pre-commit] Collecting staged files');
   let stagedFiles = [];
@@ -437,7 +439,7 @@ function invokePrePushDelegate(
     invokeAgentReviewPolicyFn
   } = {}
 ) {
-  const runner = new HookRunner('pre-push', { repoRoot });
+  const runner = new HookRunner('pre-push', { repoRoot, env });
   info('[pre-push] Running local agent review providers');
   const agentReview = invokeHookAgentReviewStep({
     runner,
@@ -480,8 +482,8 @@ function invokeDaemonDelegate(repoRoot, delegateArgs) {
   return normalizeCommandResult(result);
 }
 
-function invokePostCommitDelegate(repoRoot) {
-  const runner = new HookRunner('post-commit', { repoRoot });
+function invokePostCommitDelegate(repoRoot, env = process.env) {
+  const runner = new HookRunner('post-commit', { repoRoot, env });
   info('[post-commit] Recording local collaboration authoring receipt');
   runner.runStep('record-authoring-receipt', () => ({
     status: 'ok',
@@ -532,7 +534,7 @@ export async function runLocalCollaborationPhase(options = {}) {
   } else if (phase === 'daemon') {
     result = invokeDaemonDelegate(repoRoot, options.delegateArgs ?? []);
   } else if (phase === 'post-commit') {
-    result = invokePostCommitDelegate(repoRoot);
+    result = invokePostCommitDelegate(repoRoot, env);
   } else {
     throw new Error(`Unsupported local collaboration phase: ${phase}`);
   }
