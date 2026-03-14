@@ -14,6 +14,10 @@ import {
   DEFAULT_LOCAL_COLLAB_LEDGER_ROOT,
   LOCAL_COLLAB_LEDGER_RECEIPT_SCHEMA
 } from '../ledger/local-review-ledger.mjs';
+import {
+  DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
+  loadBranchClassContract
+} from '../../priority/lib/branch-classification.mjs';
 
 export const LOCAL_COLLAB_KPI_SCHEMA = 'comparevi/local-collab-kpi-summary@v1';
 export const DEFAULT_LOCAL_COLLAB_KPI_ROOT = path.join('tests', 'results', '_agent', 'local-collab', 'kpi');
@@ -130,9 +134,64 @@ function finalizeMetrics(accumulator) {
   };
 }
 
-function createPlaneAccumulator(plane) {
+function normalizePlaneContractEntry(entry = {}) {
+  return {
+    plane: normalizeText(entry.id),
+    repositories: normalizeArray(entry.repositories),
+    developBranch: normalizeText(entry.developBranch),
+    developClass: normalizeText(entry.developClass),
+    laneBranchPrefix: normalizeText(entry.laneBranchPrefix),
+    purpose: normalizeText(entry.purpose),
+    personas: normalizeArray(entry.personas)
+  };
+}
+
+function normalizePlaneTransitionEntry(entry = {}) {
+  return {
+    from: normalizeText(entry.from),
+    action: normalizeText(entry.action),
+    to: normalizeText(entry.to),
+    via: normalizeText(entry.via),
+    branchClass: normalizeText(entry.branchClass),
+    notes: normalizeText(entry.notes)
+  };
+}
+
+function loadLocalCollaborationPlaneContract(
+  repoRoot,
+  {
+    loadBranchClassContractFn = loadBranchClassContract
+  } = {}
+) {
+  const contract = loadBranchClassContractFn(repoRoot);
+  const planes = Object.fromEntries(
+    SUPPORTED_LOCAL_COLLAB_PLANES.map((plane) => {
+      const entry = Array.isArray(contract.repositoryPlanes)
+        ? contract.repositoryPlanes.find((candidate) => normalizeText(candidate?.id) === plane)
+        : null;
+      if (!entry) {
+        throw new Error(`Branch class contract is missing required repository plane '${plane}'.`);
+      }
+      return [plane, normalizePlaneContractEntry(entry)];
+    })
+  );
+
+  return {
+    schema: normalizeText(contract.schema),
+    schemaVersion: normalizeText(contract.schemaVersion),
+    contractPath: DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH.replace(/\\/g, '/'),
+    upstreamRepository: normalizeText(contract.upstreamRepository),
+    planes,
+    planeTransitions: Array.isArray(contract.planeTransitions)
+      ? contract.planeTransitions.map((entry) => normalizePlaneTransitionEntry(entry))
+      : []
+  };
+}
+
+function createPlaneAccumulator(plane, branchModel = null) {
   return {
     plane,
+    branchModel,
     receiptEffort: createMetricsAccumulator(),
     providerEffort: createMetricsAccumulator(),
     personas: new Map()
@@ -167,6 +226,7 @@ function finalizePlaneAccumulator(planeAccumulator) {
 
   return {
     plane: planeAccumulator.plane,
+    branchModel: planeAccumulator.branchModel,
     receiptEffort: finalizeMetrics(planeAccumulator.receiptEffort),
     providerEffort: finalizeMetrics(planeAccumulator.providerEffort),
     personas
@@ -353,7 +413,8 @@ export async function loadLocalCollaborationLedgerReceipts({ repoRoot, ledgerRoo
 export async function rollupLocalCollaborationKpi({
   repoRoot = process.cwd(),
   ledgerRoot = DEFAULT_LOCAL_COLLAB_LEDGER_ROOT,
-  outputPath = DEFAULT_LOCAL_COLLAB_KPI_SUMMARY_PATH
+  outputPath = DEFAULT_LOCAL_COLLAB_KPI_SUMMARY_PATH,
+  loadBranchClassContractFn = loadBranchClassContract
 } = {}) {
   const resolvedRepoRoot = path.resolve(normalizeText(repoRoot) || process.cwd());
   const resolvedOutputPath = path.resolve(resolvedRepoRoot, normalizeText(outputPath) || DEFAULT_LOCAL_COLLAB_KPI_SUMMARY_PATH);
@@ -361,9 +422,17 @@ export async function rollupLocalCollaborationKpi({
     repoRoot: resolvedRepoRoot,
     ledgerRoot
   });
+  const branchPlaneContract = loadLocalCollaborationPlaneContract(resolvedRepoRoot, {
+    loadBranchClassContractFn
+  });
   const copilotPolicy = await loadCopilotCliReviewPolicy(resolvedRepoRoot);
   const providerAssignments = buildProviderAssignments(copilotPolicy.collaboration);
-  const planes = new Map(SUPPORTED_LOCAL_COLLAB_PLANES.map((plane) => [plane, createPlaneAccumulator(plane)]));
+  const planes = new Map(
+    SUPPORTED_LOCAL_COLLAB_PLANES.map((plane) => [
+      plane,
+      createPlaneAccumulator(plane, branchPlaneContract.planes[plane])
+    ])
+  );
   const combinedPlane = createPlaneAccumulator('local');
   const providerAccumulators = new Map(
     SUPPORTED_LOCAL_REVIEW_PROVIDERS.map((providerId) => [
@@ -446,6 +515,7 @@ export async function rollupLocalCollaborationKpi({
       providerFindingCount: 'even-split-per-phase-provider',
       providerModels: 'single-provider-receipts-only'
     },
+    branchPlaneContract,
     receiptInventory: {
       receiptCount: receipts.length,
       uniqueHeadCount: headShas.size,
@@ -469,6 +539,7 @@ export async function rollupLocalCollaborationKpi({
             executable: accumulator.executable,
             reserved: accumulator.reserved,
             plane: accumulator.plane,
+            branchModel: branchPlaneContract.planes[accumulator.plane] ?? null,
             persona: accumulator.persona,
             effortType: accumulator.effortType,
             executionPlane: accumulator.executionPlane,

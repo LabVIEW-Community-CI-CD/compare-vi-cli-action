@@ -16,6 +16,7 @@ async function createGitRepo() {
   spawnSync('git', ['init', '--initial-branch=develop'], { cwd: repoRoot, encoding: 'utf8' });
   await writeFile(path.join(repoRoot, 'README.md'), '# test\n', 'utf8');
   await mkdir(path.join(repoRoot, 'tools', 'priority'), { recursive: true });
+  await mkdir(path.join(repoRoot, 'tools', 'policy'), { recursive: true });
   await writeFile(
     path.join(repoRoot, 'tools', 'priority', 'delivery-agent.policy.json'),
     JSON.stringify({
@@ -25,11 +26,112 @@ async function createGitRepo() {
           enabled: true,
           model: 'gpt-5.4'
         }
+      },
+      collaboration: {
+        authoringRemote: 'personal',
+        authoringPersona: 'codex',
+        reviewRemote: 'origin',
+        reviewPersona: 'copilot-cli'
       }
     }, null, 2),
     'utf8'
   );
-  spawnSync('git', ['add', 'README.md', 'tools/priority/delivery-agent.policy.json'], { cwd: repoRoot, encoding: 'utf8' });
+  await writeFile(
+    path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'),
+    JSON.stringify({
+      schema: 'branch-classes/v1',
+      schemaVersion: '1.0.0',
+      upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      repositoryPlanes: [
+        {
+          id: 'upstream',
+          repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action'],
+          developBranch: 'develop',
+          developClass: 'upstream-integration',
+          laneBranchPrefix: 'issue/',
+          purpose: 'Canonical integration plane.',
+          personas: ['daemon']
+        },
+        {
+          id: 'origin',
+          repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'],
+          developBranch: 'develop',
+          developClass: 'fork-mirror-develop',
+          laneBranchPrefix: 'issue/origin-',
+          purpose: 'Org review plane.',
+          personas: ['copilot-cli']
+        },
+        {
+          id: 'personal',
+          repositories: ['svelderrainruiz/compare-vi-cli-action'],
+          developBranch: 'develop',
+          developClass: 'fork-mirror-develop',
+          laneBranchPrefix: 'issue/personal-',
+          purpose: 'Personal authoring plane.',
+          personas: ['codex', 'codex-cli']
+        }
+      ],
+      classes: [
+        {
+          id: 'upstream-integration',
+          repositoryRoles: ['upstream'],
+          branchPatterns: ['develop'],
+          purpose: 'Canonical integration branch.',
+          prSourceAllowed: false,
+          prTargetAllowed: true,
+          mergePolicy: 'merge-queue-squash'
+        },
+        {
+          id: 'fork-mirror-develop',
+          repositoryRoles: ['fork'],
+          branchPatterns: ['develop'],
+          purpose: 'Mirror copy of upstream develop.',
+          prSourceAllowed: false,
+          prTargetAllowed: false,
+          mergePolicy: 'mirror-only'
+        },
+        {
+          id: 'lane',
+          repositoryRoles: ['upstream', 'fork'],
+          branchPatterns: ['issue/*'],
+          purpose: 'Short-lived implementation branches.',
+          prSourceAllowed: true,
+          prTargetAllowed: false,
+          mergePolicy: 'n/a'
+        }
+      ],
+      allowedTransitions: [
+        {
+          from: 'lane',
+          action: 'promote',
+          to: 'upstream-integration',
+          via: 'pull-request'
+        }
+      ],
+      planeTransitions: [
+        {
+          from: 'upstream',
+          action: 'sync',
+          to: 'personal',
+          via: 'priority:develop:sync',
+          branchClass: 'fork-mirror-develop'
+        },
+        {
+          from: 'personal',
+          action: 'review',
+          to: 'origin',
+          via: 'pull-request',
+          branchClass: 'lane'
+        }
+      ]
+    }, null, 2),
+    'utf8'
+  );
+  spawnSync(
+    'git',
+    ['add', 'README.md', 'tools/priority/delivery-agent.policy.json', 'tools/policy/branch-classes.json'],
+    { cwd: repoRoot, encoding: 'utf8' }
+  );
   spawnSync(
     'git',
     ['-c', 'user.name=Test User', '-c', 'user.email=test@example.com', 'commit', '-m', 'initial'],
@@ -120,7 +222,11 @@ test('rollupLocalCollaborationKpi aggregates receipt and provider effort across 
   assert.equal(summary.schema, LOCAL_COLLAB_KPI_SCHEMA);
   assert.equal(summary.receiptInventory.receiptCount, 3);
   assert.equal(summary.receiptInventory.uniqueHeadCount, 1);
+  assert.equal(summary.branchPlaneContract.contractPath, 'tools/policy/branch-classes.json');
+  assert.equal(summary.branchPlaneContract.planes.personal.laneBranchPrefix, 'issue/personal-');
+  assert.equal(summary.branchPlaneContract.planes.origin.developClass, 'fork-mirror-develop');
   assert.equal(summary.planes.personal.receiptEffort.receiptCount, 2);
+  assert.equal(summary.planes.personal.branchModel.laneBranchPrefix, 'issue/personal-');
   assert.equal(summary.planes.personal.receiptEffort.durationMs, 1800);
   assert.equal(summary.planes.personal.receiptEffort.findingCount, 1);
   assert.equal(summary.planes.personal.receiptEffort.executionPlanes['windows-host'], 2);
@@ -143,6 +249,7 @@ test('rollupLocalCollaborationKpi aggregates receipt and provider effort across 
   assert.equal(summary.providers.simulation.totals.receiptCount, 1);
   assert.equal(summary.providers['codex-cli'].executionPlane, 'wsl2');
   assert.equal(summary.providers['codex-cli'].providerRuntime, 'codex-cli');
+  assert.equal(summary.providers['codex-cli'].branchModel.laneBranchPrefix, 'issue/personal-');
   assert.equal(summary.providers['codex-cli'].placeholderOnly, true);
   assert.equal(summary.providers.ollama.placeholderOnly, true);
 });
@@ -198,4 +305,62 @@ test('rollup-local-collab-kpi CLI writes the summary artifact and prints a compa
 
   const persisted = JSON.parse(await readFile(path.join(repoRoot, outputPath), 'utf8'));
   assert.equal(persisted.schema, LOCAL_COLLAB_KPI_SCHEMA);
+});
+
+test('rollupLocalCollaborationKpi fails closed when the branch plane contract is missing a required plane', async () => {
+  const repoRoot = await createGitRepo();
+  await writeFile(
+    path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'),
+    JSON.stringify({
+      schema: 'branch-classes/v1',
+      schemaVersion: '1.0.0',
+      upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      repositoryPlanes: [
+        {
+          id: 'upstream',
+          repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action'],
+          developBranch: 'develop',
+          developClass: 'upstream-integration',
+          laneBranchPrefix: 'issue/',
+          purpose: 'Canonical integration plane.',
+          personas: ['daemon']
+        },
+        {
+          id: 'origin',
+          repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'],
+          developBranch: 'develop',
+          developClass: 'fork-mirror-develop',
+          laneBranchPrefix: 'issue/origin-',
+          purpose: 'Org review plane.',
+          personas: ['copilot-cli']
+        }
+      ],
+      classes: [
+        {
+          id: 'upstream-integration',
+          repositoryRoles: ['upstream'],
+          branchPatterns: ['develop'],
+          purpose: 'Canonical integration branch.',
+          prSourceAllowed: false,
+          prTargetAllowed: true,
+          mergePolicy: 'merge-queue-squash'
+        }
+      ],
+      allowedTransitions: [
+        {
+          from: 'lane',
+          action: 'promote',
+          to: 'upstream-integration',
+          via: 'pull-request'
+        }
+      ],
+      planeTransitions: []
+    }, null, 2),
+    'utf8'
+  );
+
+  await assert.rejects(
+    () => rollupLocalCollaborationKpi({ repoRoot }),
+    /missing required repository plane 'personal'/
+  );
 });
