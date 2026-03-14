@@ -85,6 +85,7 @@
     "priority:contracts:bootstrap": "node tools/priority/bootstrap-contracts.mjs",
     "priority:deployment:assert": "node tools/priority/assert-validation-deployment-determinism.mjs",
     "priority:deployment:gate-policy": "node tools/priority/check-deployment-gates.mjs",
+    "priority:deployment:gate-sync": "node tools/priority/sync-deployment-environments.mjs",
     "priority:release:scorecard": "node tools/priority/release-scorecard.mjs",
     "priority:release:cadence": "node tools/priority/release-cadence-check.mjs",
     "priority:release:conductor": "node tools/priority/release-conductor.mjs",

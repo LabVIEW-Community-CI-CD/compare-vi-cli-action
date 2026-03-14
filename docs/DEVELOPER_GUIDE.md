@@ -296,6 +296,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Run `node tools/npm/run-script.mjs priority:deployment:gate-policy` to verify the protected promotion environments enforce
   required reviewers and admin-bypass policy; report path:
   `tests/results/_agent/deployments/environment-gate-policy.json`.
+- Run `node tools/npm/run-script.mjs priority:deployment:gate-sync -- --target origin --target personal` to dry-run fork
+  environment parity from the checked-in portability policy. Add `--apply` only when you intend to create or repair the
+  fork environments through the repo-native helper path.
 - `PR Auto-approve` and `PR Auto-approve Label` workflows were retired because branch policy requires `0` approvals.
 
 ### Release metadata

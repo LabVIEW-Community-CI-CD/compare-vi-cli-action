@@ -29,7 +29,7 @@ function printUsage() {
   console.log('  -h, --help             Show help and exit.');
 }
 
-function normalizeText(value) {
+export function normalizeText(value) {
   if (value == null) return null;
   const text = String(value).trim();
   return text ? text : null;
@@ -120,7 +120,7 @@ export function parseArgs(argv = process.argv) {
   return options;
 }
 
-async function resolveToken() {
+export async function resolveToken() {
   for (const candidate of [process.env.GH_TOKEN, process.env.GITHUB_TOKEN]) {
     const token = normalizeText(candidate);
     if (token) return token;
@@ -144,7 +144,7 @@ async function resolveToken() {
   return null;
 }
 
-async function requestGitHubJson(url, token) {
+export async function requestGitHubJson(url, token) {
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -165,7 +165,7 @@ async function requestGitHubJson(url, token) {
   return payload;
 }
 
-function normalizeReviewers(rule) {
+export function normalizeReviewers(rule) {
   const reviewers = Array.isArray(rule?.reviewers) ? rule.reviewers : [];
   return reviewers
     .map((entry) => {
@@ -215,7 +215,7 @@ export function evaluateEnvironmentGatePolicy(envPayload, options = {}) {
   };
 }
 
-async function writeJson(filePath, payload) {
+export async function writeJson(filePath, payload) {
   const resolved = path.resolve(filePath);
   await mkdir(path.dirname(resolved), { recursive: true });
   await writeFile(resolved, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
