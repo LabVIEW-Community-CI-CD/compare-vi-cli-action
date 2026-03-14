@@ -236,6 +236,8 @@ export class HookRunner {
       name,
       status: 'ok',
       exitCode: 0,
+      rawStatus: 'ok',
+      rawExitCode: 0,
       durationMs: 0,
       stdout: '',
       stderr: '',
@@ -246,6 +248,8 @@ export class HookRunner {
       const result = fn();
       step.status = result?.status ?? 'ok';
       step.exitCode = result?.exitCode ?? 0;
+      step.rawStatus = step.status;
+      step.rawExitCode = step.exitCode;
       step.stdout = truncate(result?.stdout ?? '');
       step.stderr = truncate(result?.stderr ?? '');
       if (result?.note) {
@@ -254,6 +258,8 @@ export class HookRunner {
     } catch (err) {
       step.status = 'failed';
       step.exitCode = err?.exitCode ?? 1;
+      step.rawStatus = step.status;
+      step.rawExitCode = step.exitCode;
       step.stderr = truncate(err?.stderr ?? '');
       step.error = err instanceof Error ? err.message : String(err);
       step.severity = 'error';
@@ -374,8 +380,8 @@ export class HookRunner {
   }
 }
 
-export function listStagedFiles() {
-  const { status, stdout } = runCommand('git', ['diff', '--cached', '--name-only', '--diff-filter=ACM']);
+export function listStagedFiles(repoRoot = process.cwd()) {
+  const { status, stdout } = runCommand('git', ['-C', repoRoot, 'diff', '--cached', '--name-only', '--diff-filter=ACM']);
   if (status !== 0) {
     throw new Error('git diff --cached failed while collecting staged files.');
   }

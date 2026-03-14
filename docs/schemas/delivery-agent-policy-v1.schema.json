@@ -55,6 +55,12 @@
       "additionalProperties": true,
       "properties": {
         "enabled": { "type": "boolean" },
+        "reviewProviders": {
+          "type": "array",
+          "items": {
+            "enum": ["copilot-cli", "codex-cli", "simulation", "ollama"]
+          }
+        },
         "bodyMarkers": {
           "type": "array",
           "items": { "type": "string" }

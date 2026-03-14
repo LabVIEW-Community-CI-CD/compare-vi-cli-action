@@ -135,3 +135,80 @@ test('runLocalCollaborationPhase records codex authoring receipts for post-commi
   assert.equal(ledgerReceipt.executionPlane, 'windows-host');
   assert.deepEqual(ledgerReceipt.filesTouched, ['README.md']);
 });
+
+test('runLocalCollaborationPhase gates pre-commit on local agent review and records receipt linkage', async () => {
+  const repoRoot = await createGitRepo();
+  await writeFile(path.join(repoRoot, 'notes.txt'), 'hello\n', 'utf8');
+  spawnSync('git', ['add', 'notes.txt'], { cwd: repoRoot, encoding: 'utf8' });
+
+  const result = await runLocalCollaborationPhase({
+    phase: 'pre-commit',
+    repoRoot,
+    providers: ['simulation'],
+    invokeAgentReviewPolicyFn: () => ({
+      exitCode: 0,
+      receipt: {
+        overall: {
+          status: 'passed',
+          actionableFindingCount: 0
+        },
+        providerSelection: {
+          selectionSource: 'explicit-request'
+        },
+        requestedProviders: ['simulation']
+      }
+    })
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.receipt.phase, 'pre-commit');
+  assert.equal(result.receipt.delegate.agentReview.receiptPath, 'tests/results/_hooks/pre-commit-agent-review-policy.json');
+  assert.equal(result.receipt.delegate.agentReview.receiptStatus, 'passed');
+  assert.deepEqual(result.receipt.delegate.agentReview.requestedProviders, ['simulation']);
+
+  const hookSummary = JSON.parse(await readFile(result.receipt.delegate.summaryPath, 'utf8'));
+  const reviewStep = hookSummary.steps.find((step) => step.name === 'agent-review-policy');
+  assert.ok(reviewStep);
+  assert.equal(reviewStep.status, 'ok');
+  assert.equal(reviewStep.rawExitCode, 0);
+  assert.match(reviewStep.note, /pre-commit-agent-review-policy\.json/);
+});
+
+test('runLocalCollaborationPhase blocks pre-push before heavy checks when local agent review fails', async () => {
+  const repoRoot = await createGitRepo();
+
+  const result = await runLocalCollaborationPhase({
+    phase: 'pre-push',
+    repoRoot,
+    providers: ['simulation'],
+    invokeAgentReviewPolicyFn: () => ({
+      exitCode: 1,
+      receipt: {
+        overall: {
+          status: 'failed',
+          actionableFindingCount: 1
+        },
+        providerSelection: {
+          selectionSource: 'explicit-request'
+        },
+        requestedProviders: ['simulation']
+      }
+    })
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.receipt.phase, 'pre-push');
+  assert.equal(result.receipt.delegate.agentReview.receiptStatus, 'failed');
+  assert.deepEqual(result.receipt.delegate.agentReview.requestedProviders, ['simulation']);
+
+  const hookSummary = JSON.parse(await readFile(result.receipt.delegate.summaryPath, 'utf8'));
+  const reviewStep = hookSummary.steps.find((step) => step.name === 'agent-review-policy');
+  assert.ok(reviewStep);
+  assert.equal(reviewStep.status, 'failed');
+  assert.equal(reviewStep.rawExitCode, 1);
+  assert.match(
+    hookSummary.notes.join('\n'),
+    /Skipped core pre-push checks because local agent review failed/
+  );
+  assert.equal(hookSummary.steps.some((step) => step.name === 'pre-push-checks'), false);
+});
