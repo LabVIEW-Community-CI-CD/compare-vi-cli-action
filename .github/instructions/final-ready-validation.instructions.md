@@ -1,5 +1,11 @@
 # Ready-for-Review Means Final Validation
 
+- Precedence:
+  - `AGENTS.md` remains the repo-wide policy authority.
+  - `.github/copilot-instructions.md` remains the Copilot CLI authority for the
+    local review plane.
+  - This file is a phase-specific overlay and must not widen review, queue, or
+    promotion authority beyond those sources.
 - Use `ready_for_review` only when the current head is locally reviewed and is
   ready for final hosted validation.
 - Before marking ready, require all of the following on the current head:

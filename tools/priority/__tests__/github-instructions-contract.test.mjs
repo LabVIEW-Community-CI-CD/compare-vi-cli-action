@@ -34,6 +34,8 @@ test('Copilot instructions capture the local-first CLI review boundary', () => {
   const copilotInstructions = normalizeWhitespace(fs.readFileSync(copilotInstructionsPath, 'utf8'));
 
   assert.match(copilotInstructions, /GitHub Copilot CLI only in the local `draft-review` loop/i);
+  assert.match(copilotInstructions, /`?AGENTS\.md`? is the repo-wide policy authority/i);
+  assert.match(copilotInstructions, /`?\.github\/instructions\/\*\.instructions\.md`? .* must not widen review, queue, or promotion authority/i);
   assert.match(copilotInstructions, /hosted required checks and final ready-validation remain authoritative/i);
   assert.match(copilotInstructions, /head SHA changes .* stale and rerun the local review/i);
 });
@@ -42,10 +44,16 @@ test('draft-only instruction content captures the required Copilot review contra
   const draftOnly = normalizeWhitespace(readInstruction('draft-only-copilot-review.instructions.md'));
   const readyValidation = normalizeWhitespace(readInstruction('final-ready-validation.instructions.md'));
 
+  assert.match(draftOnly, /`?AGENTS\.md`? remains the repo-wide policy authority/i);
+  assert.match(draftOnly, /`?\.github\/copilot-instructions\.md`? remains the Copilot CLI authority/i);
+  assert.match(draftOnly, /must not widen review, queue, or promotion authority/i);
   assert.match(draftOnly, /only while the pull request is draft/i);
   assert.match(draftOnly, /Do not use `ready_for_review` to solicit a second Copilot pass/i);
   assert.match(draftOnly, /Resolve current-head Copilot comments before leaving draft/i);
 
+  assert.match(readyValidation, /`?AGENTS\.md`? remains the repo-wide policy authority/i);
+  assert.match(readyValidation, /`?\.github\/copilot-instructions\.md`? remains the Copilot CLI authority/i);
+  assert.match(readyValidation, /must not widen review, queue, or promotion authority/i);
   assert.match(readyValidation, /Use `ready_for_review` only when the current head is locally reviewed/i);
   assert.match(readyValidation, /Do not request or wait for a second Copilot review after `ready_for_review`/i);
   assert.match(readyValidation, /return the pull request to draft and restart the local-plus-Copilot review loop/i);
@@ -57,4 +65,6 @@ test('AGENTS points future agents at the GitHub instructions surface', () => {
   assert.match(agents, /\.github\/copilot-instructions\.md/);
   assert.match(agents, /draft-only Copilot review contract/i);
   assert.match(agents, /local Copilot CLI review plane only for draft-review acceleration/i);
+  assert.match(agents, /`?AGENTS\.md`? is the repo-wide policy and standing-priority authority/i);
+  assert.match(agents, /must not widen review, queue, or promotion authority/i);
 });

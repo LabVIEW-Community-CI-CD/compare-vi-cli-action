@@ -2,6 +2,12 @@
 
 - Use GitHub Copilot CLI only in the local `draft-review` loop.
 - Run it through the repo-owned wrapper surfaces under `tools/local-collab/providers/`.
+- Precedence:
+  - `AGENTS.md` is the repo-wide policy authority.
+  - This file narrows GitHub Copilot CLI behavior for the local review plane.
+  - `.github/instructions/*.instructions.md` may add phase guidance but must not
+    widen review, queue, or promotion authority beyond this file and
+    `AGENTS.md`.
 - Keep review runs head-scoped and focused on the current staged diff or current branch delta only.
 - Preserve and honor:
   - `AGENTS.md`

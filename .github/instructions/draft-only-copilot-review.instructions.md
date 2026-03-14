@@ -1,5 +1,11 @@
 # Draft-Only Copilot Review for Agent PRs
 
+- Precedence:
+  - `AGENTS.md` remains the repo-wide policy authority.
+  - `.github/copilot-instructions.md` remains the Copilot CLI authority for the
+    local review plane.
+  - This file is a phase-specific overlay and must not widen review, queue, or
+    promotion authority beyond those sources.
 - Scope: agent-authored pull requests in `compare-vi-cli-action`.
 - Keep the pull request in draft while implementation, local parity, and comment
   resolution are still in progress.
