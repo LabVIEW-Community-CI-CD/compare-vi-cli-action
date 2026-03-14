@@ -66,6 +66,7 @@
     "priority:handoff-tests": "node tools/priority/run-handoff-tests.mjs",
     "priority:health-snapshot": "pwsh -NoLogo -NoProfile -File tools/priority/Write-HealthSnapshot.ps1",
     "priority:lease": "node tools/priority/agent-writer-lease.mjs",
+    "priority:human-go-no-go:latest": "node tools/priority/human-go-no-go-latest.mjs",
     "priority:queue:supervisor": "node tools/priority/queue-supervisor.mjs",
     "priority:queue:readiness": "node tools/priority/queue-readiness.mjs",
     "priority:review:signal": "tsc -p tsconfig.json && node dist/tools/priority/copilot-review-signal.js",

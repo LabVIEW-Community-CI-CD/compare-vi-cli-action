@@ -13,7 +13,11 @@ Live repository state belongs in the machine-generated artifacts under
    `tests/results/_agent/issue/router.json`.
 3. Run `pwsh -NoLogo -NoProfile -File tools/Print-AgentHandoff.ps1
    -ApplyToggles -AutoTrim` when you need the current watcher/handoff snapshot.
-4. If a standing-priority issue exists, branch from `develop` and execute
+4. When human disposition surfaces are in play, run
+   `node tools/npm/run-script.mjs priority:human-go-no-go:latest -- --fail-on-nogo`
+   before starting a fresh implementation pass. Treat exit code `2` and
+   `latestDecision.blocking = true` as a hard stop until a newer `go` exists.
+5. If a standing-priority issue exists, branch from `develop` and execute
    against that issue. If the queue is empty, confirm with the operator before
    creating new work.
 
@@ -35,6 +39,7 @@ Live repository state belongs in the machine-generated artifacts under
 - `tests/results/_agent/issue/no-standing-priority.json`
 - `tests/results/_agent/verification/docker-review-loop-summary.json`
 - `tests/results/_agent/handoff/entrypoint-status.json`
+- `tests/results/_agent/handoff/human-go-no-go-latest.json`
 - `tests/results/_agent/handoff/*.json`
 - `tests/results/_agent/sessions/*.json`
 
