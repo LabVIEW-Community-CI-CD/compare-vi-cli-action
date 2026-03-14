@@ -91,8 +91,12 @@ test('main writes GitHub outputs and step summary for a successful artifact down
       '--artifact',
       'copilot-review-signal-965',
     ],
-    { GITHUB_STEP_SUMMARY: summaryPath },
+    {
+      GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      GITHUB_STEP_SUMMARY: summaryPath,
+    },
   );
+  assert.equal(parsed.repo, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(parsed.stepSummaryPath, summaryPath);
 });
 

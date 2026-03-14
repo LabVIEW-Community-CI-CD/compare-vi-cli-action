@@ -38,7 +38,7 @@ export function parseArgs(argv = process.argv, env = process.env) {
   const args = argv.slice(2);
   const options = {
     help: false,
-    repo: normalizeText(process.env.GITHUB_REPOSITORY),
+    repo: normalizeText(env.GITHUB_REPOSITORY),
     runId: null,
     artifactNames: [],
     downloadAll: false,
@@ -205,7 +205,7 @@ export async function main(
     return 0;
   }
 
-  const result = downloadNamedArtifactsFn({
+  const result = await downloadNamedArtifactsFn({
     repository: options.repo,
     runId: options.runId,
     artifactNames: options.artifactNames,
