@@ -1,0 +1,122 @@
+name: Human Go/No-Go Feedback
+
+on:
+  workflow_dispatch:
+    inputs:
+      decision:
+        description: 'Human decision for the current target'
+        required: true
+        type: choice
+        options:
+          - go
+          - nogo
+      feedback:
+        description: 'Required human feedback captured verbatim in the decision receipt'
+        required: true
+        type: string
+      target_context:
+        description: 'Target context (branch, queue lane, or issue lane)'
+        required: true
+        type: string
+      target_run_id:
+        description: 'Related workflow run id when the decision applies to a specific run'
+        required: false
+        type: string
+      target_issue_url:
+        description: 'Linked issue URL'
+        required: false
+        type: string
+      target_pull_request_url:
+        description: 'Linked pull request URL'
+        required: false
+        type: string
+      evidence_url:
+        description: 'Optional evidence URL for the decision'
+        required: false
+        type: string
+      transcribed_for:
+        description: 'Optional login when the recorder transcribes someone else''s decision'
+        required: false
+        type: string
+      recommended_action:
+        description: 'Next iteration recommendation'
+        required: true
+        type: choice
+        default: revise
+        options:
+          - continue
+          - revise
+          - pause
+      next_iteration_seed:
+        description: 'Optional seed text for the next iteration'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  human-go-no-go-feedback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: node tools/npm/cli.mjs ci --ignore-scripts
+
+      - name: Write manual go/no-go decision
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(
+            "tools/priority/human-go-no-go-feedback.mjs"
+            "--repository" "${{ github.repository }}"
+            "--decision" "${{ inputs.decision }}"
+            "--feedback" "${{ inputs.feedback }}"
+            "--context" "${{ inputs.target_context }}"
+            "--recommended-action" "${{ inputs.recommended_action }}"
+            "--decision-out" "tests/results/_agent/handoff/human-go-no-go-decision.json"
+            "--events-out" "tests/results/_agent/handoff/human-go-no-go-events.ndjson"
+            "--step-summary" "$GITHUB_STEP_SUMMARY"
+          )
+
+          if [[ -n "${{ inputs.target_run_id }}" ]]; then
+            args+=("--run-id" "${{ inputs.target_run_id }}")
+          fi
+          if [[ -n "${{ inputs.target_issue_url }}" ]]; then
+            args+=("--issue-url" "${{ inputs.target_issue_url }}")
+          fi
+          if [[ -n "${{ inputs.target_pull_request_url }}" ]]; then
+            args+=("--pull-request-url" "${{ inputs.target_pull_request_url }}")
+          fi
+          if [[ -n "${{ inputs.evidence_url }}" ]]; then
+            args+=("--evidence-url" "${{ inputs.evidence_url }}")
+          fi
+          if [[ -n "${{ inputs.transcribed_for }}" ]]; then
+            args+=("--transcribed-for" "${{ inputs.transcribed_for }}")
+          fi
+          if [[ -n "${{ inputs.next_iteration_seed }}" ]]; then
+            args+=("--seed" "${{ inputs.next_iteration_seed }}")
+          fi
+
+          node "${args[@]}"
+
+      - name: Upload manual go/no-go artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: human-go-no-go-decision
+          path: |
+            tests/results/_agent/handoff/human-go-no-go-decision.json
+            tests/results/_agent/handoff/human-go-no-go-events.ndjson
+          if-no-files-found: error
