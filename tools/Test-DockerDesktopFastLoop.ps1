@@ -1210,6 +1210,8 @@ function Write-SemiLiveStatus {
     [AllowEmptyString()][string]$HardStopReason = '',
     [AllowEmptyString()][string]$LoopLabel = '',
     [AllowEmptyString()][string]$SummaryPath,
+    [AllowEmptyString()][string]$HostPlaneReportPath = '',
+    [AllowEmptyString()][string]$HostPlaneSummaryPath = '',
     [AllowNull()]$RuntimeManagerTelemetry = $null
   )
 
@@ -1255,6 +1257,8 @@ function Write-SemiLiveStatus {
     runtimeManager = $RuntimeManagerTelemetry
     steps = @($Steps)
     summaryPath = ($SummaryPath ?? '')
+    hostPlaneReportPath = ($HostPlaneReportPath ?? '')
+    hostPlaneSummaryPath = ($HostPlaneSummaryPath ?? '')
   }
   $payload | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding utf8
 }
@@ -1566,6 +1570,7 @@ $readinessMarkdownResolved = if ([string]::IsNullOrWhiteSpace($ReadinessMarkdown
   Resolve-AbsolutePath -Path $ReadinessMarkdownPath
 }
 $hostPlaneReportPath = Join-Path $root 'labview-2026-host-plane-report.json'
+$hostPlaneSummaryPath = Join-Path $root 'labview-2026-host-plane-summary.md'
 $windowsSnapshot = Join-Path $root 'windows-runtime-determinism.json'
 $linuxSnapshot = Join-Path $root 'linux-runtime-determinism.json'
 $linuxSmokeRoot = Join-Path $root 'linux-smoke'
@@ -1616,14 +1621,16 @@ $nativeHostCli32Path = Resolve-NativeHostPlaneCliPath `
   -Bitness 32
 $nativeHostComparePath = Resolve-NativeComparePath `
   -PreferredEnvNames @('COMPAREVI_NATIVE_LVCOMPARE_PATH', 'NI_HOST_LVCOMPARE_PATH')
-$hostPlaneReport = Get-LabVIEW2026HostPlaneReport `
+$hostPlaneReport = & (Join-Path $PSScriptRoot 'Write-LabVIEW2026HostPlaneDiagnostics.ps1') `
   -LabVIEW64Path $nativeHostLabVIEW64Path `
   -LabVIEW32Path $nativeHostLabVIEW32Path `
   -LabVIEWCli64Path $nativeHostCli64Path `
   -LabVIEWCli32Path $nativeHostCli32Path `
-  -LVComparePath $nativeHostComparePath
-$hostPlaneReport | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $hostPlaneReportPath -Encoding utf8
-Write-LabVIEW2026HostPlaneConsole -Report $hostPlaneReport
+  -LVComparePath $nativeHostComparePath `
+  -OutputPath $hostPlaneReportPath `
+  -SummaryPath $hostPlaneSummaryPath `
+  -GitHubOutputPath '' `
+  -PassThru
 $effectiveSkipWindowsProbe = [bool]$SkipWindowsProbe
 $effectiveSkipLinuxProbe = [bool]$SkipLinuxProbe
 switch ($laneScopeNormalized) {
@@ -2242,7 +2249,9 @@ Write-SemiLiveStatus `
   -HardStopTriggered:$hardStopTriggered `
   -HardStopReason $hardStopReason `
   -LoopLabel $loopLabel `
-  -SummaryPath ''
+  -SummaryPath '' `
+  -HostPlaneReportPath $hostPlaneReportPath `
+  -HostPlaneSummaryPath $hostPlaneSummaryPath
 
 foreach ($definition in $stepDefinitions.ToArray()) {
   $stepName = [string]$definition.name
@@ -2261,7 +2270,9 @@ foreach ($definition in $stepDefinitions.ToArray()) {
     -HardStopTriggered:$hardStopTriggered `
     -HardStopReason $hardStopReason `
     -LoopLabel $loopLabel `
-    -SummaryPath ''
+    -SummaryPath '' `
+    -HostPlaneReportPath $hostPlaneReportPath `
+    -HostPlaneSummaryPath $hostPlaneSummaryPath
 
   $allowedExitCodes = @(0)
   if ($definition.PSObject.Properties['allowedExitCodes'] -and $definition.allowedExitCodes) {
@@ -2333,7 +2344,9 @@ foreach ($definition in $stepDefinitions.ToArray()) {
     -HardStopTriggered:$hardStopTriggered `
     -HardStopReason $hardStopReason `
     -LoopLabel $loopLabel `
-    -SummaryPath ''
+    -SummaryPath '' `
+    -HostPlaneReportPath $hostPlaneReportPath `
+    -HostPlaneSummaryPath $hostPlaneSummaryPath
 
   if ($hardStopTriggered) {
     break
@@ -2412,6 +2425,7 @@ $summary = [ordered]@{
   }
   hostPlane = $hostPlaneReport
   hostPlaneReportPath = $hostPlaneReportPath
+  hostPlaneSummaryPath = $hostPlaneSummaryPath
   statusPath = $statusResolved
   readinessJsonPath = $readinessJsonResolved
   readinessMarkdownPath = $readinessMarkdownResolved
@@ -2472,6 +2486,8 @@ Write-SemiLiveStatus `
   -HardStopReason $hardStopReason `
   -LoopLabel $loopLabel `
   -SummaryPath $summaryPath `
+  -HostPlaneReportPath $hostPlaneReportPath `
+  -HostPlaneSummaryPath $hostPlaneSummaryPath `
   -RuntimeManagerTelemetry $summary.runtimeManager
 
 pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Write-DockerFastLoopReadiness.ps1') `
