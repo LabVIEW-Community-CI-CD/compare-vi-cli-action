@@ -6,6 +6,17 @@ This file defines the single canonical autonomy prompt for `compare-vi-cli-actio
 Use this prompt when you want unattended, repo-specific execution with explicit lane discipline, standing-priority
 rotation, and anti-idle behavior.
 
+Canonical machine-readable companion contract:
+
+- schema: `docs/schemas/mission-control-envelope-v1.schema.json`
+- example: `tools/priority/__fixtures__/mission-control/mission-control-envelope.json`
+
+Envelope model:
+
+- `missionControl`: repo-owned law and execution invariants
+- `operator.intent` and `operator.focus`: bounded operator input
+- `operator.overrides`: narrow, auditable exceptions
+
 ```text
 Act as the autonomous mission control plane for `compare-vi-cli-action` and keep work flowing continuously until
 blocked by a real safety boundary or a real current-head failure that cannot be resolved from local and repository
@@ -13,7 +24,9 @@ context. You are explicitly authorized to use the Copilot CLI for local iteratio
 bounded deterministic assistance.
 
 Primary objective:
-- The source of truth for what to do next is the single open issue carrying `standing-priority`.
+- The source of truth for what to do next is the single open issue carrying the repo-context standing label:
+  - upstream/canonical: `standing-priority`
+  - fork contexts: `fork-standing-priority` with `standing-priority` fallback
 - Keep that issue moving to merge, then immediately rotate the standing lane to the next concrete child issue so the
   queue never collapses back to epics only.
 
@@ -34,8 +47,8 @@ Mandatory session bootstrap:
 2. Read `.agent_priority_cache.json` and `tests/results/_agent/issue/`
 3. `node tools/npm/run-script.mjs priority:project:portfolio:check`
 4. `node tools/npm/run-script.mjs priority:develop:sync -- --fork-remote all`
-5. If bootstrap reports queue-empty, do not invent implementation work. Restore intake first by creating or labeling the
-   next tracked issue.
+5. If bootstrap reports queue-empty, do not invent implementation work. Treat the repository as intentionally idle until
+   intake is explicitly restored; do not create a branch or PR first.
 
 Lane topology:
 - Maintain exactly:
@@ -137,10 +150,11 @@ Preferred repo commands:
   - `node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> -IntervalSeconds 20`
 
 Stop conditions:
-- real destructive ambiguity
-- real safety boundary
-- missing source-of-truth data that cannot be discovered locally or from GitHub
-- user override
+- `current-head-failure`
+- `destructive-ambiguity`
+- `real-safety-boundary`
+- `missing-source-of-truth`
+- `user-override`
 
 Checkpoint format:
 - standing issue

@@ -1,0 +1,409 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/mission-control-envelope-v1.schema.json",
+  "title": "Mission Control Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "missionControl", "operator"],
+  "properties": {
+    "schema": {
+      "const": "priority/mission-control-envelope@v1"
+    },
+    "missionControl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "mode",
+        "standingPriority",
+        "lanePolicy",
+        "worktreePolicy",
+        "remoteSyncPolicy",
+        "packageManagerPolicy",
+        "repoHelpers",
+        "copilotCli",
+        "antiIdle",
+        "stopConditions"
+      ],
+      "properties": {
+        "profile": {
+          "const": "mission-control"
+        },
+        "mode": {
+          "const": "enforce"
+        },
+        "standingPriority": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "upstreamLabel",
+            "forkLabel",
+            "forkFallbackLabel",
+            "queueEmptyBehavior",
+            "branchCreationGate"
+          ],
+          "properties": {
+            "source": {
+              "enum": ["repo-label"]
+            },
+            "upstreamLabel": {
+              "const": "standing-priority"
+            },
+            "forkLabel": {
+              "const": "fork-standing-priority"
+            },
+            "forkFallbackLabel": {
+              "const": "standing-priority"
+            },
+            "queueEmptyBehavior": {
+              "enum": ["idle-repo"]
+            },
+            "branchCreationGate": {
+              "enum": ["restore-intake-before-branching"]
+            }
+          }
+        },
+        "lanePolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "liveLaneCount",
+            "maxActiveCodingLanes",
+            "maxParkedLaneCount",
+            "parkedLaneRequiresGithubWait",
+            "requireDisjointFileScopes",
+            "allowThirdLane",
+            "mergeAuthority"
+          ],
+          "properties": {
+            "liveLaneCount": {
+              "const": 1
+            },
+            "maxActiveCodingLanes": {
+              "const": 2
+            },
+            "maxParkedLaneCount": {
+              "const": 1
+            },
+            "parkedLaneRequiresGithubWait": {
+              "const": true
+            },
+            "requireDisjointFileScopes": {
+              "const": true
+            },
+            "allowThirdLane": {
+              "const": false
+            },
+            "mergeAuthority": {
+              "const": "live-lane-only"
+            }
+          }
+        },
+        "worktreePolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cleanWorktreesRequired", "dirtyRootQuarantined", "worktreeBaseRef"],
+          "properties": {
+            "cleanWorktreesRequired": {
+              "const": true
+            },
+            "dirtyRootQuarantined": {
+              "const": true
+            },
+            "worktreeBaseRef": {
+              "const": "upstream/develop"
+            }
+          }
+        },
+        "remoteSyncPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["syncBeforeAndAfterMerge", "developParityRemotes"],
+          "properties": {
+            "syncBeforeAndAfterMerge": {
+              "const": true
+            },
+            "developParityRemotes": {
+              "const": [
+                "upstream/develop",
+                "origin/develop",
+                "personal/develop"
+              ]
+            }
+          }
+        },
+        "packageManagerPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["allowRawNpm", "allowedWrappers"],
+          "properties": {
+            "allowRawNpm": {
+              "const": false
+            },
+            "allowedWrappers": {
+              "const": [
+                "node tools/npm/cli.mjs <command>",
+                "node tools/npm/run-script.mjs <script>"
+              ]
+            }
+          }
+        },
+        "repoHelpers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "bootstrap",
+            "projectPortfolioCheck",
+            "developSync",
+            "prCreate",
+            "standingHandoff",
+            "epicChildLink",
+            "safePrCheckPolling"
+          ],
+          "properties": {
+            "bootstrap": {
+              "const": "pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1"
+            },
+            "projectPortfolioCheck": {
+              "const": "node tools/npm/run-script.mjs priority:project:portfolio:check"
+            },
+            "developSync": {
+              "const": "node tools/npm/run-script.mjs priority:develop:sync -- --fork-remote all"
+            },
+            "prCreate": {
+              "const": "node tools/npm/run-script.mjs priority:pr -- --issue <issue> --head-remote personal|origin"
+            },
+            "standingHandoff": {
+              "const": "node tools/priority/standing-priority-handoff.mjs --repo LabVIEW-Community-CI-CD/compare-vi-cli-action <issue>"
+            },
+            "epicChildLink": {
+              "const": "node tools/npm/run-script.mjs priority:github:metadata:apply -- --url <epic-url> --sub-issue <issue-url>"
+            },
+            "safePrCheckPolling": {
+              "const": "node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> -IntervalSeconds 20"
+            }
+          }
+        },
+        "copilotCli": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["usageMode", "scope", "purposes", "hostedReplacementAllowed"],
+          "properties": {
+            "usageMode": {
+              "const": "optional"
+            },
+            "scope": {
+              "const": "local-only"
+            },
+            "purposes": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "uniqueItems": true,
+              "items": {
+                "enum": ["iteration", "review-acceleration"]
+              }
+            },
+            "hostedReplacementAllowed": {
+              "const": false
+            }
+          }
+        },
+        "antiIdle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mergeGreenPrImmediately",
+            "createNextConcreteChildWhenOnlyEpicsRemain",
+            "closeCompletedEpicWhenChildrenDone"
+          ],
+          "properties": {
+            "mergeGreenPrImmediately": {
+              "const": true
+            },
+            "createNextConcreteChildWhenOnlyEpicsRemain": {
+              "const": true
+            },
+            "closeCompletedEpicWhenChildrenDone": {
+              "const": true
+            }
+          }
+        },
+        "stopConditions": {
+          "const": [
+            "current-head-failure",
+            "destructive-ambiguity",
+            "real-safety-boundary",
+            "missing-source-of-truth",
+            "user-override"
+          ]
+        }
+      }
+    },
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intent", "focus", "overrides"],
+      "properties": {
+        "intent": {
+          "enum": [
+            "continue-driving-autonomously",
+            "finish-live-standing-lane",
+            "stabilize-current-head-failure",
+            "restore-intake",
+            "prepare-parked-lane"
+          ]
+        },
+        "focus": {
+          "enum": [
+            "standing-priority",
+            "current-head-failure",
+            "queue-health",
+            "handoff",
+            "policy-drift",
+            "docs-contract"
+          ]
+        },
+        "overrides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/override"
+          },
+          "allOf": [
+            {
+              "not": {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "const": "allowAdminMerge"
+                    }
+                  },
+                  "required": ["key"]
+                },
+                "minContains": 2
+              }
+            },
+            {
+              "not": {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "const": "allowForkBaseDispatch"
+                    }
+                  },
+                  "required": ["key"]
+                },
+                "minContains": 2
+              }
+            },
+            {
+              "not": {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "const": "allowParkedLane"
+                    }
+                  },
+                  "required": ["key"]
+                },
+                "minContains": 2
+              }
+            },
+            {
+              "not": {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "const": "copilotCliUsage"
+                    }
+                  },
+                  "required": ["key"]
+                },
+                "minContains": 2
+              }
+            },
+            {
+              "not": {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "const": "requireProjectBoardApply"
+                    }
+                  },
+                  "required": ["key"]
+                },
+                "minContains": 2
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "override": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "value", "reason"],
+      "properties": {
+        "key": {
+          "enum": [
+            "allowAdminMerge",
+            "allowForkBaseDispatch",
+            "allowParkedLane",
+            "copilotCliUsage",
+            "requireProjectBoardApply"
+          ]
+        },
+        "value": {
+          "type": ["boolean", "string"]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "key": {
+                "enum": ["allowAdminMerge", "allowForkBaseDispatch", "allowParkedLane", "requireProjectBoardApply"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "key": {
+                "const": "copilotCliUsage"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "enum": ["optional", "required"]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

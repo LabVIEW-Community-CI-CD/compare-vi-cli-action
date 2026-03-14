@@ -1,0 +1,76 @@
+{
+  "schema": "priority/mission-control-envelope@v1",
+  "missionControl": {
+    "profile": "mission-control",
+    "mode": "enforce",
+    "standingPriority": {
+      "source": "repo-label",
+      "upstreamLabel": "standing-priority",
+      "forkLabel": "fork-standing-priority",
+      "forkFallbackLabel": "standing-priority",
+      "queueEmptyBehavior": "idle-repo",
+      "branchCreationGate": "restore-intake-before-branching"
+    },
+    "lanePolicy": {
+      "liveLaneCount": 1,
+      "maxActiveCodingLanes": 2,
+      "maxParkedLaneCount": 1,
+      "parkedLaneRequiresGithubWait": true,
+      "requireDisjointFileScopes": true,
+      "allowThirdLane": false,
+      "mergeAuthority": "live-lane-only"
+    },
+    "worktreePolicy": {
+      "cleanWorktreesRequired": true,
+      "dirtyRootQuarantined": true,
+      "worktreeBaseRef": "upstream/develop"
+    },
+    "remoteSyncPolicy": {
+      "syncBeforeAndAfterMerge": true,
+      "developParityRemotes": [
+        "upstream/develop",
+        "origin/develop",
+        "personal/develop"
+      ]
+    },
+    "packageManagerPolicy": {
+      "allowRawNpm": false,
+      "allowedWrappers": [
+        "node tools/npm/cli.mjs <command>",
+        "node tools/npm/run-script.mjs <script>"
+      ]
+    },
+    "repoHelpers": {
+      "bootstrap": "pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1",
+      "projectPortfolioCheck": "node tools/npm/run-script.mjs priority:project:portfolio:check",
+      "developSync": "node tools/npm/run-script.mjs priority:develop:sync -- --fork-remote all",
+      "prCreate": "node tools/npm/run-script.mjs priority:pr -- --issue <issue> --head-remote personal|origin",
+      "standingHandoff": "node tools/priority/standing-priority-handoff.mjs --repo LabVIEW-Community-CI-CD/compare-vi-cli-action <issue>",
+      "epicChildLink": "node tools/npm/run-script.mjs priority:github:metadata:apply -- --url <epic-url> --sub-issue <issue-url>",
+      "safePrCheckPolling": "node tools/npm/run-script.mjs ci:watch:safe -- --PullRequest <pr-number> -IntervalSeconds 20"
+    },
+    "copilotCli": {
+      "usageMode": "optional",
+      "scope": "local-only",
+      "purposes": ["iteration", "review-acceleration"],
+      "hostedReplacementAllowed": false
+    },
+    "antiIdle": {
+      "mergeGreenPrImmediately": true,
+      "createNextConcreteChildWhenOnlyEpicsRemain": true,
+      "closeCompletedEpicWhenChildrenDone": true
+    },
+    "stopConditions": [
+      "current-head-failure",
+      "destructive-ambiguity",
+      "real-safety-boundary",
+      "missing-source-of-truth",
+      "user-override"
+    ]
+  },
+  "operator": {
+    "intent": "continue-driving-autonomously",
+    "focus": "standing-priority",
+    "overrides": []
+  }
+}
