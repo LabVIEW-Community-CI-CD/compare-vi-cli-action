@@ -35,6 +35,7 @@ jobs:
   onboarding-feedback:
     runs-on: ubuntu-latest
     env:
+      GITHUB_TOKEN: ${{ github.token }}
       GH_TOKEN: ${{ github.token }}
       DOWNSTREAM_REPO: ${{ inputs.downstream_repo }}
       DOWNSTREAM_STARTED_AT: ${{ inputs.started_at }}
@@ -105,6 +106,33 @@ jobs:
             --schema docs/schemas/downstream-onboarding-feedback-v1.schema.json \
             --data tests/results/_agent/onboarding/downstream-onboarding-feedback.json
 
+      - name: Append onboarding feedback summary
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-feedback.json') != '' }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const reportPath = 'tests/results/_agent/onboarding/downstream-onboarding-feedback.json';
+          if (!fs.existsSync(reportPath)) {
+            console.log('downstream onboarding feedback report missing');
+            process.exit(0);
+          }
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+          const lines = [
+            '## Downstream Onboarding Feedback',
+            `- execution status: \`${report.execution?.status ?? 'unknown'}\``,
+            `- downstream repository: \`${report.inputs?.downstreamRepository ?? 'unknown'}\``,
+            `- onboarding report present: \`${report.outputs?.onboardingReportExists ?? false}\``,
+            `- success report present: \`${report.outputs?.successReportExists ?? false}\``,
+            `- evaluate exit code: \`${report.execution?.evaluateExitCode ?? 'unknown'}\``,
+            `- success exit code: \`${report.execution?.successExitCode ?? 'unknown'}\``
+          ];
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\\n')}\\n`);
+          }
+          console.log(lines.join('\\n'));
+          NODE
+
       - name: Upload onboarding artifacts
         if: ${{ always() && hashFiles('tests/results/_agent/onboarding/*.json') != '' }}
         uses: actions/upload-artifact@v6
@@ -118,4 +146,3 @@ jobs:
         run: |
           echo "Downstream onboarding feedback reported a failure."
           exit 1
-

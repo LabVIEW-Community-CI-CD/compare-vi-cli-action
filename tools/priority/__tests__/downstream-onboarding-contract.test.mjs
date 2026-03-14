@@ -20,11 +20,14 @@ test('downstream onboarding policy defines required checklist seams', () => {
 
 test('workflow executes onboarding + success scripts with schema validation', () => {
   const workflow = read('.github/workflows/downstream-onboarding-feedback.yml');
+  assert.match(workflow, /GITHUB_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
   assert.match(workflow, /GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
   assert.match(workflow, /downstream-onboarding-feedback\.mjs/);
   assert.match(workflow, /downstream-onboarding-report-v1\.schema\.json/);
   assert.match(workflow, /downstream-onboarding-success-v1\.schema\.json/);
   assert.match(workflow, /downstream-onboarding-feedback-v1\.schema\.json/);
+  assert.match(workflow, /Append onboarding feedback summary/);
+  assert.match(workflow, /execution status/);
   assert.match(workflow, /hashFiles\('tests\/results\/_agent\/onboarding\/downstream-onboarding\.json'\)/);
   assert.match(workflow, /hashFiles\('tests\/results\/_agent\/onboarding\/\*\.json'\)/);
 });
@@ -39,4 +42,5 @@ test('runbook and package scripts expose downstream onboarding commands', () => 
   assert.match(runbook, /priority:onboard:downstream/);
   assert.match(runbook, /priority:onboard:feedback/);
   assert.match(runbook, /priority:onboard:success/);
+  assert.match(runbook, /HOSTED_SIGNAL_REPORT_FIRST_CONTRACT\.md/);
 });
