@@ -51,6 +51,53 @@ function Read-JsonOrNull {
   }
 }
 
+function Get-HostPlaneProvenanceAssessment {
+  param(
+    [AllowNull()][AllowEmptyString()][string]$ReportPath,
+    $HostPlane,
+    $HostPlanes,
+    $HostExecutionPolicy
+  )
+
+  $hasReportPath = -not [string]::IsNullOrWhiteSpace($ReportPath)
+  $reportExists = $hasReportPath -and (Test-Path -LiteralPath $ReportPath -PathType Leaf)
+  $hasInlineEvidence = ($null -ne $HostPlane) -or ($null -ne $HostPlanes) -or ($null -ne $HostExecutionPolicy)
+
+  if ($hasReportPath -and -not $reportExists) {
+    return [ordered]@{
+      status = 'corrupt'
+      reason = 'host-plane-report-missing'
+      reportExists = $false
+      inlineEvidencePresent = [bool]$hasInlineEvidence
+    }
+  }
+
+  if ($hasReportPath -and -not $hasInlineEvidence) {
+    return [ordered]@{
+      status = 'corrupt'
+      reason = 'host-plane-report-unreadable'
+      reportExists = [bool]$reportExists
+      inlineEvidencePresent = $false
+    }
+  }
+
+  if (-not $hasInlineEvidence) {
+    return [ordered]@{
+      status = 'missing'
+      reason = 'host-plane-provenance-missing'
+      reportExists = [bool]$reportExists
+      inlineEvidencePresent = $false
+    }
+  }
+
+  return [ordered]@{
+    status = 'ok'
+    reason = ''
+    reportExists = [bool]$reportExists
+    inlineEvidencePresent = $true
+  }
+}
+
 function Write-GitHubOutput {
   param(
     [Parameter(Mandatory = $true)][string]$Key,
@@ -200,7 +247,8 @@ $runtimeManagerParseDefectCount = if ($readiness.PSObject.Properties['runtimeMan
   0
 }
 $hostPlaneReportPath = if ($readiness.PSObject.Properties['source'] -and $readiness.source -and $readiness.source.PSObject.Properties['hostPlaneReportPath']) {
-  [string]$readiness.source.hostPlaneReportPath
+  $candidateHostPlaneReport = [string]$readiness.source.hostPlaneReportPath
+  if ([string]::IsNullOrWhiteSpace($candidateHostPlaneReport)) { '' } else { Resolve-AbsolutePath -Path $candidateHostPlaneReport }
 } else {
   ''
 }
@@ -225,13 +273,24 @@ $hostExecutionPolicy = if ($readiness.PSObject.Properties['hostExecutionPolicy']
 } else {
   $null
 }
+$hostPlaneProvenance = Get-HostPlaneProvenanceAssessment `
+  -ReportPath $hostPlaneReportPath `
+  -HostPlane $hostPlane `
+  -HostPlanes $hostPlanes `
+  -HostExecutionPolicy $hostExecutionPolicy
+$verdict = if ($readiness.PSObject.Properties['verdict']) { [string]$readiness.verdict } else { 'unknown' }
+$recommendation = if ($readiness.PSObject.Properties['recommendation']) { [string]$readiness.recommendation } else { 'unknown' }
+if ($hostPlaneProvenance.status -ne 'ok') {
+  $verdict = 'not-ready'
+  $recommendation = 'do-not-push'
+}
 
 $proof = [ordered]@{
   schema = 'vi-history/docker-fast-loop-proof@v1'
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
   loopLabel = Get-DockerFastLoopLabel -ContextObject $readiness
-  verdict = if ($readiness.PSObject.Properties['verdict']) { [string]$readiness.verdict } else { 'unknown' }
-  recommendation = if ($readiness.PSObject.Properties['recommendation']) { [string]$readiness.recommendation } else { 'unknown' }
+  verdict = $verdict
+  recommendation = $recommendation
   diffStepCount = [int]$diffStepCount
   diffEvidenceSteps = [int]$diffEvidenceSteps
   diffLaneCount = [int]$diffLaneCount
@@ -253,9 +312,11 @@ $proof = [ordered]@{
     readinessSha256 = Get-FileHashOrNull -Path $readinessResolved
     summarySha256 = Get-FileHashOrNull -Path $summaryResolved
     statusSha256 = Get-FileHashOrNull -Path $statusResolved
+    hostPlaneReportSha256 = Get-FileHashOrNull -Path $hostPlaneReportPath
   }
   laneLifecycle = if ($readiness.PSObject.Properties['laneLifecycle']) { $readiness.laneLifecycle } elseif ($summary -and $summary.PSObject.Properties['laneLifecycle']) { $summary.laneLifecycle } else { $null }
   lanes = if ($readiness.PSObject.Properties['lanes']) { $readiness.lanes } else { $null }
+  hostPlaneProvenance = $hostPlaneProvenance
   hostPlane = $hostPlane
   hostPlanes = $hostPlanes
   hostExecutionPolicy = $hostExecutionPolicy
