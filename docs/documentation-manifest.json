@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-14T16:58:00Z",
+  "updated": "2026-03-14T19:51:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -13,6 +13,7 @@
         "AGENTS.md",
         "CHANGELOG.md",
         "CONTRIBUTING.md",
+        "PROMPT_AUTONOMY.md",
         "README.md",
         "SECURITY.md"
       ]
@@ -141,6 +142,18 @@
         "tools/Write-GitHubIntakeAtlas.ps1",
         "tools/priority/create-pr.mjs",
         "tools/priority/github-intake-catalog.json"
+      ]
+    },
+    {
+      "name": "Mission Control Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Canonical prompt, machine-readable envelope contract, and focused contract validation coverage for the repo-owned mission-control surface.",
+      "files": [
+        "PROMPT_AUTONOMY.md",
+        "docs/schemas/mission-control-envelope-v1.schema.json",
+        "tools/priority/__fixtures__/mission-control/mission-control-envelope.json",
+        "tools/priority/__tests__/mission-control-envelope-schema.test.mjs"
       ]
     },
     {
