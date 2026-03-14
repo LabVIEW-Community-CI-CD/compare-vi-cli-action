@@ -872,6 +872,7 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     Push-Location $repoRoot
     try {
       $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $githubOutputPath = Join-Path $resultsRoot 'github-output.txt'
       $env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH = $native64
       $env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH = $native32
       $env:COMPAREVI_NATIVE_LABVIEWCLI_2026_64_PATH = $sharedCli
@@ -880,6 +881,7 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
 
       $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
         -ResultsRoot $resultsRoot `
+        -GitHubOutputPath $githubOutputPath `
         -SkipWindowsProbe `
         -SkipLinuxProbe *>&1
       $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
@@ -909,6 +911,13 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $readiness.hostExecutionPolicy.candidateParallelPairs.pairs.Count | Should -Be 2
       $readiness.hostPlanes.x64.status | Should -Be 'ready'
       $readiness.hostPlanes.x32.status | Should -Be 'ready'
+
+      $outputText = Get-Content -LiteralPath $githubOutputPath -Raw
+      $outputText | Should -Match ('labview-2026-host-plane-report-path={0}' -f [regex]::Escape($summary.hostPlaneReportPath))
+      $outputText | Should -Match ('labview-2026-host-plane-summary-path={0}' -f [regex]::Escape($summary.hostPlaneSummaryPath))
+      $outputText | Should -Match ('readiness-json-path={0}' -f [regex]::Escape($readinessPath))
+      $outputText | Should -Match ('docker-fast-loop-summary-path={0}' -f [regex]::Escape($summaryPath))
+      $outputText | Should -Match ('docker-fast-loop-status-path={0}' -f [regex]::Escape($statusPath))
     } finally {
       Remove-Item Env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH -ErrorAction SilentlyContinue
       Remove-Item Env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH -ErrorAction SilentlyContinue

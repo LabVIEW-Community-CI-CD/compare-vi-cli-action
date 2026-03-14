@@ -20,6 +20,7 @@ param(
   [string]$StatusPath = '',
   [string]$ReadinessJsonPath = '',
   [string]$ReadinessMarkdownPath = '',
+  [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
   [ValidateSet('none', 'smoke', 'history-core')]
   [string]$HistoryScenarioSet = 'none',
   [ValidateSet('both', 'windows', 'linux')]
@@ -172,6 +173,30 @@ function Resolve-AbsolutePath {
     return [System.IO.Path]::GetFullPath($Path)
   }
   return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
+}
+
+function Ensure-ParentDirectory {
+  param([Parameter(Mandatory)][string]$Path)
+
+  $directory = Split-Path -Parent $Path
+  if ($directory -and -not (Test-Path -LiteralPath $directory -PathType Container)) {
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+  }
+}
+
+function Write-GitHubOutput {
+  param(
+    [Parameter(Mandatory)][string]$Key,
+    [AllowNull()][AllowEmptyString()][string]$Value,
+    [string]$Path
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) { return }
+  Ensure-ParentDirectory -Path $Path
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    New-Item -ItemType File -Path $Path -Force | Out-Null
+  }
+  Add-Content -LiteralPath $Path -Value ("{0}={1}" -f $Key, ($Value ?? '')) -Encoding utf8
 }
 
 function Get-RepoRootFromToolsScript {
@@ -1629,7 +1654,7 @@ $hostPlaneReport = & (Join-Path $PSScriptRoot 'Write-LabVIEW2026HostPlaneDiagnos
   -LVComparePath $nativeHostComparePath `
   -OutputPath $hostPlaneReportPath `
   -SummaryPath $hostPlaneSummaryPath `
-  -GitHubOutputPath '' `
+  -GitHubOutputPath $GitHubOutputPath `
   -PassThru
 $effectiveSkipWindowsProbe = [bool]$SkipWindowsProbe
 $effectiveSkipLinuxProbe = [bool]$SkipLinuxProbe
@@ -2497,8 +2522,11 @@ pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Write-DockerFastLoopRead
   -OutputJsonPath $readinessJsonResolved `
   -OutputMarkdownPath $readinessMarkdownResolved `
   -PrintDifferentiatedDiagnostics:$false `
-  -GitHubOutputPath '' `
+  -GitHubOutputPath $GitHubOutputPath `
   -StepSummaryPath '' | Out-Null
+
+Write-GitHubOutput -Key 'docker-fast-loop-summary-path' -Value $summaryPath -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'docker-fast-loop-status-path' -Value $statusResolved -Path $GitHubOutputPath
 
 $readinessEnvelope = $null
 if (Test-Path -LiteralPath $readinessJsonResolved -PathType Leaf) {
