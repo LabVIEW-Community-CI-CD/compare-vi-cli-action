@@ -111,6 +111,13 @@ jobs:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         fetch-depth: 0
+    - name: Fetch pull request base commit for history diff
+      if: github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        set -euo pipefail
+        git fetch --no-tags --depth=1 "https://github.com/${{ github.event.pull_request.base.repo.full_name }}.git" "${{ github.event.pull_request.base.sha }}"
+        git rev-parse --verify "${{ github.event.pull_request.base.sha }}^{commit}"
     - name: Prepare fixture copies (base/head)
       id: prep
       shell: pwsh
@@ -165,4 +172,3 @@ jobs:
         name: fixture-drift-ni-linux-container
         path: results/fixture-drift/ni-linux-container/**
         if-no-files-found: warn
-
