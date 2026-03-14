@@ -28,11 +28,16 @@ function Resolve-GhPath {
 function Invoke-GhJson {
   param(
     [Parameter(Mandatory)][string]$GhPath,
-    [Parameter(Mandatory)][string[]]$Arguments
+    [Parameter(Mandatory)][string[]]$Arguments,
+    [Parameter()][switch]$AllowNoChecksReported
   )
 
   $output = & $GhPath @Arguments 2>&1
   if ($LASTEXITCODE -ne 0) {
+    $outputText = ($output -join "`n")
+    if ($AllowNoChecksReported -and $outputText -match 'no checks reported') {
+      return @()
+    }
     throw ("gh command failed (exit {0}): gh {1}`n{2}" -f $LASTEXITCODE, ($Arguments -join ' '), ($output -join "`n"))
   }
 
@@ -97,7 +102,7 @@ function Get-PrChecksSnapshot {
     $args += @('--repo', $Repository)
   }
 
-  $checks = Invoke-GhJson -GhPath $GhPath -Arguments $args
+  $checks = Invoke-GhJson -GhPath $GhPath -Arguments $args -AllowNoChecksReported
   return @($checks | ForEach-Object {
       [pscustomobject]@{
         Workflow = [string]$_.workflow
@@ -146,81 +151,167 @@ function Write-SummaryLine {
   Write-Host ("[{0}] poll={1} pass={2} fail={3} pending={4} skip={5} cancel={6}" -f $stamp, $Iteration, $pass, $fail, $pending, $skipping, $cancel)
 }
 
-if ($IntervalSeconds -lt 5) {
-  throw '-IntervalSeconds must be >= 5 to avoid excessive polling.'
-}
-if ($HeartbeatPolls -lt 1) {
-  throw '-HeartbeatPolls must be >= 1.'
-}
-if ($MaxPolls -lt 0) {
-  throw '-MaxPolls must be >= 0.'
-}
+function Write-NoChecksSummaryLine {
+  param(
+    [Parameter(Mandatory)][int]$Iteration,
+    [Parameter(Mandatory)][bool]$HasObservedChecks
+  )
 
-$ghPath = Resolve-GhPath
-$targetPr = Resolve-PullRequestNumber -GhPath $ghPath -ExplicitPullRequest $PullRequest -Repository $Repository
-
-Write-Host ("Monitoring PR #{0} with snapshot polling (interval={1}s, requiredOnly={2}, failFast={3})." -f $targetPr, $IntervalSeconds, [bool]$RequiredOnly, [bool]$FailFast)
-Write-Host 'Using gh pr checks --json snapshots (no --watch).'
-
-$previousMap = $null
-$poll = 0
-
-while ($true) {
-  $poll += 1
-  $checks = @(Get-PrChecksSnapshot -GhPath $ghPath -PullRequest $targetPr -Repository $Repository -RequiredOnly:$RequiredOnly)
-  $currentMap = Get-CheckMap -Checks $checks
-
-  if ($null -eq $previousMap) {
-    Write-SummaryLine -Iteration $poll -Checks $checks
+  $stamp = (Get-Date).ToString('u')
+  Write-Host ("[{0}] poll={1} pass=0 fail=0 pending=1 skip=0 cancel=0" -f $stamp, $Iteration)
+  if ($HasObservedChecks) {
+    Write-Host '  (checks temporarily unavailable; continuing to poll)'
   } else {
-    $changed = @()
-    foreach ($key in $currentMap.Keys) {
-      if (-not $previousMap.ContainsKey($key) -or $previousMap[$key] -ne $currentMap[$key]) {
-        $changed += [pscustomobject]@{ Key = $key; Bucket = $currentMap[$key] }
-      }
-    }
-    foreach ($key in $previousMap.Keys) {
-      if (-not $currentMap.ContainsKey($key)) {
-        $changed += [pscustomobject]@{ Key = $key; Bucket = 'removed' }
-      }
+    Write-Host '  (no checks reported yet; continuing to poll)'
+  }
+}
+
+function Invoke-SafePrChecksWatch {
+  param(
+    [Parameter()][string]$PullRequest,
+    [Parameter()][string]$Repository,
+    [Parameter()][int]$IntervalSeconds = 20,
+    [Parameter()][int]$HeartbeatPolls = 6,
+    [Parameter()][int]$MaxPolls = 0,
+    [Parameter()][switch]$RequiredOnly,
+    [Parameter()][switch]$FailFast
+  )
+
+  if ($IntervalSeconds -lt 5) {
+    throw '-IntervalSeconds must be >= 5 to avoid excessive polling.'
+  }
+  if ($HeartbeatPolls -lt 1) {
+    throw '-HeartbeatPolls must be >= 1.'
+  }
+  if ($MaxPolls -lt 0) {
+    throw '-MaxPolls must be >= 0.'
+  }
+
+  $ghPath = Resolve-GhPath
+  $targetPr = Resolve-PullRequestNumber -GhPath $ghPath -ExplicitPullRequest $PullRequest -Repository $Repository
+
+  Write-Host ("Monitoring PR #{0} with snapshot polling (interval={1}s, requiredOnly={2}, failFast={3})." -f $targetPr, $IntervalSeconds, [bool]$RequiredOnly, [bool]$FailFast)
+  Write-Host 'Using gh pr checks --json snapshots (no --watch).'
+
+  $previousMap = $null
+  $poll = 0
+  $hasObservedChecks = $false
+
+  while ($true) {
+    $poll += 1
+    $checks = @(Get-PrChecksSnapshot -GhPath $ghPath -PullRequest $targetPr -Repository $Repository -RequiredOnly:$RequiredOnly)
+
+    if ($checks.Count -gt 0) {
+      $hasObservedChecks = $true
     }
 
-    if ($changed.Count -gt 0) {
+    $currentMap = Get-CheckMap -Checks $checks
+
+    if ($checks.Count -eq 0) {
+      if ($null -eq $previousMap -or ($poll % $HeartbeatPolls) -eq 0) {
+        Write-NoChecksSummaryLine -Iteration $poll -HasObservedChecks $hasObservedChecks
+      }
+
+      if ($MaxPolls -gt 0 -and $poll -ge $MaxPolls) {
+        Write-Host ("Reached MaxPolls={0} before any checks materialized." -f $MaxPolls)
+        return [pscustomobject]@{
+          ExitCode = 8
+          Outcome = 'no-checks-timeout'
+          Polls = $poll
+          PullRequest = $targetPr
+          ObservedChecks = $hasObservedChecks
+        }
+      }
+
+      $previousMap = @{}
+      Start-Sleep -Seconds $IntervalSeconds
+      continue
+    }
+
+    if ($null -eq $previousMap) {
       Write-SummaryLine -Iteration $poll -Checks $checks
-      foreach ($entry in ($changed | Sort-Object Key | Select-Object -First 12)) {
-        Write-Host ("  - {0} => {1}" -f $entry.Key, $entry.Bucket)
+    } else {
+      $changed = @()
+      foreach ($key in $currentMap.Keys) {
+        if (-not $previousMap.ContainsKey($key) -or $previousMap[$key] -ne $currentMap[$key]) {
+          $changed += [pscustomobject]@{ Key = $key; Bucket = $currentMap[$key] }
+        }
       }
-      if ($changed.Count -gt 12) {
-        Write-Host ("  - ... {0} additional change(s)" -f ($changed.Count - 12))
+      foreach ($key in $previousMap.Keys) {
+        if (-not $currentMap.ContainsKey($key)) {
+          $changed += [pscustomobject]@{ Key = $key; Bucket = 'removed' }
+        }
       }
-    } elseif (($poll % $HeartbeatPolls) -eq 0) {
-      Write-SummaryLine -Iteration $poll -Checks $checks
-      Write-Host '  (no state changes since last poll)'
+
+      if ($changed.Count -gt 0) {
+        Write-SummaryLine -Iteration $poll -Checks $checks
+        foreach ($entry in ($changed | Sort-Object Key | Select-Object -First 12)) {
+          Write-Host ("  - {0} => {1}" -f $entry.Key, $entry.Bucket)
+        }
+        if ($changed.Count -gt 12) {
+          Write-Host ("  - ... {0} additional change(s)" -f ($changed.Count - 12))
+        }
+      } elseif (($poll % $HeartbeatPolls) -eq 0) {
+        Write-SummaryLine -Iteration $poll -Checks $checks
+        Write-Host '  (no state changes since last poll)'
+      }
     }
-  }
 
-  $failCount = Get-BucketCount -Checks $checks -Bucket 'fail'
-  $pendingCount = Get-BucketCount -Checks $checks -Bucket 'pending'
+    $failCount = Get-BucketCount -Checks $checks -Bucket 'fail'
+    $pendingCount = Get-BucketCount -Checks $checks -Bucket 'pending'
 
-  if ($FailFast -and $failCount -gt 0) {
-    Write-Host 'Fail-fast: at least one check failed.'
-    exit 1
-  }
-
-  if ($pendingCount -eq 0) {
-    if ($failCount -gt 0) {
-      Write-Host 'Completed with failures.'
-      exit 1
+    if ($FailFast -and $failCount -gt 0) {
+      Write-Host 'Fail-fast: at least one check failed.'
+      return [pscustomobject]@{
+        ExitCode = 1
+        Outcome = 'fail-fast'
+        Polls = $poll
+        PullRequest = $targetPr
+      }
     }
-    Write-Host 'All tracked checks completed successfully.'
-    exit 0
-  }
 
-  if ($MaxPolls -gt 0 -and $poll -ge $MaxPolls) {
-    Write-Host ("Reached MaxPolls={0} with pending checks still present." -f $MaxPolls)
-    exit 8
-  }
+    if ($pendingCount -eq 0) {
+      if ($failCount -gt 0) {
+        Write-Host 'Completed with failures.'
+        return [pscustomobject]@{
+          ExitCode = 1
+          Outcome = 'failed'
+          Polls = $poll
+          PullRequest = $targetPr
+        }
+      }
+      Write-Host 'All tracked checks completed successfully.'
+      return [pscustomobject]@{
+        ExitCode = 0
+        Outcome = 'passed'
+        Polls = $poll
+        PullRequest = $targetPr
+      }
+    }
 
-  $previousMap = $currentMap
-  Start-Sleep -Seconds $IntervalSeconds
+    if ($MaxPolls -gt 0 -and $poll -ge $MaxPolls) {
+      Write-Host ("Reached MaxPolls={0} with pending checks still present." -f $MaxPolls)
+      return [pscustomobject]@{
+        ExitCode = 8
+        Outcome = 'pending-timeout'
+        Polls = $poll
+        PullRequest = $targetPr
+      }
+    }
+
+    $previousMap = $currentMap
+    Start-Sleep -Seconds $IntervalSeconds
+  }
+}
+
+if ($MyInvocation.InvocationName -ne '.') {
+  $result = Invoke-SafePrChecksWatch `
+    -PullRequest $PullRequest `
+    -Repository $Repository `
+    -IntervalSeconds $IntervalSeconds `
+    -HeartbeatPolls $HeartbeatPolls `
+    -MaxPolls $MaxPolls `
+    -RequiredOnly:$RequiredOnly `
+    -FailFast:$FailFast
+  exit $result.ExitCode
 }
