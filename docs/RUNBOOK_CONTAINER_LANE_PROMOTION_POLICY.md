@@ -74,7 +74,7 @@ Rollback behavior was validated against the canary state for #662/#663:
 - Current develop required-check contract remains satisfiable with no runbook-container context required.
 - Expected branch-protection behavior after rollback: merges continue using canonical required contexts (`lint`,
   `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`,
-  `vi-history-scenarios-linux`, `agent-review-policy`, `commit-integrity`).
+  `vi-history-scenarios-linux`, `agent-review-policy`, `hook-parity`, `commit-integrity`).
 
 ## Decision for #663
 

@@ -49,11 +49,16 @@
             "type": "string",
             "enum": ["ok", "warn", "failed", "skipped"]
           },
+          "rawStatus": {
+            "type": "string",
+            "enum": ["ok", "warn", "failed", "skipped"]
+          },
           "severity": {
             "type": "string",
             "enum": ["info", "warn", "error"]
           },
           "exitCode": { "type": "integer" },
+          "rawExitCode": { "type": "integer" },
           "durationMs": { "type": "number" },
           "stdout": { "type": "string" },
           "stderr": { "type": "string" },

@@ -31,6 +31,7 @@ const EXPECTED_DEVELOP_CHECKS = [
   'Policy Guard (Upstream) / policy-guard',
   'vi-history-scenarios-linux',
   'agent-review-policy',
+  'hook-parity',
   'commit-integrity'
 ];
 
