@@ -14,6 +14,15 @@ function Get-GitHubIntakeCatalogPath {
   Join-Path (Get-GitHubIntakeRepoRoot) 'tools' 'priority' 'github-intake-catalog.json'
 }
 
+function Get-GitHubIntakeBranchClassContractPath {
+  $override = [Environment]::GetEnvironmentVariable('COMPAREVI_BRANCH_CLASS_CONTRACT_PATH')
+  if (-not [string]::IsNullOrWhiteSpace($override)) {
+    return $override
+  }
+
+  Join-Path (Get-GitHubIntakeRepoRoot) 'tools' 'policy' 'branch-classes.json'
+}
+
 function Read-GitHubIntakeJsonFile {
   param([string]$Path)
 
@@ -26,6 +35,121 @@ function Read-GitHubIntakeJsonFile {
   } catch {
     return $null
   }
+}
+
+function Get-GitHubIntakeBranchClassContract {
+  $contractPath = Get-GitHubIntakeBranchClassContractPath
+  if (-not (Test-Path -LiteralPath $contractPath -PathType Leaf)) {
+    throw "Branch class contract not found: $contractPath"
+  }
+
+  $contract = Get-Content -LiteralPath $contractPath -Raw | ConvertFrom-Json -ErrorAction Stop
+  if ([string]$contract.schema -ne 'branch-classes/v1') {
+    throw "Unsupported branch class contract schema '$($contract.schema)' in $contractPath"
+  }
+
+  return $contract
+}
+
+function Resolve-GitHubIntakeForkPlane {
+  param(
+    [string]$ForkRemote,
+    [pscustomobject]$Contract
+  )
+
+  $candidate = if ([string]::IsNullOrWhiteSpace($ForkRemote)) { '' } else { $ForkRemote.Trim().ToLowerInvariant() }
+  if (-not $candidate) {
+    return $null
+  }
+
+  if (-not $Contract) {
+    $Contract = Get-GitHubIntakeBranchClassContract
+  }
+
+  $plane = @($Contract.repositoryPlanes | Where-Object { [string]$_.id -eq $candidate } | Select-Object -First 1)
+  if ($plane.Count -gt 0) {
+    return $candidate
+  }
+
+  return $null
+}
+
+function Resolve-GitHubIntakeLaneBranchPrefix {
+  param(
+    [string]$ForkRemote,
+    [string]$BranchPrefix = 'issue',
+    [pscustomobject]$Contract
+  )
+
+  if (-not $Contract) {
+    $Contract = Get-GitHubIntakeBranchClassContract
+  }
+
+  $branchRoot = if ([string]::IsNullOrWhiteSpace($BranchPrefix)) { 'issue' } else { $BranchPrefix.Trim() }
+  $planeId = Resolve-GitHubIntakeForkPlane -ForkRemote $ForkRemote -Contract $Contract
+  if ($planeId) {
+    $plane = $Contract.repositoryPlanes | Where-Object { [string]$_.id -eq $planeId } | Select-Object -First 1
+    $laneBranchPrefix = if ($plane -and ($plane.PSObject.Properties.Name -contains 'laneBranchPrefix')) {
+      ([string]$plane.laneBranchPrefix).Trim()
+    } else {
+      ''
+    }
+    if ([string]::IsNullOrWhiteSpace($laneBranchPrefix)) {
+      throw "Branch class contract does not define a laneBranchPrefix for fork plane '$planeId'."
+    }
+    return $laneBranchPrefix
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($ForkRemote)) {
+    return ('{0}/{1}-' -f $branchRoot, $ForkRemote.Trim().ToLowerInvariant())
+  }
+
+  return ('{0}/' -f $branchRoot)
+}
+
+function Resolve-GitHubIntakeForkPlaneFromBranchName {
+  param(
+    [string]$BranchName,
+    [pscustomobject]$Contract
+  )
+
+  if ([string]::IsNullOrWhiteSpace($BranchName)) {
+    return $null
+  }
+
+  if (-not $Contract) {
+    $Contract = Get-GitHubIntakeBranchClassContract
+  }
+
+  $normalizedBranch = $BranchName.Trim().ToLowerInvariant()
+  $planes = @($Contract.repositoryPlanes | Sort-Object {
+      if ($_ -and ($_.PSObject.Properties.Name -contains 'laneBranchPrefix') -and -not [string]::IsNullOrWhiteSpace([string]$_.laneBranchPrefix)) {
+        -([string]$_.laneBranchPrefix).Trim().Length
+      } else {
+        0
+      }
+    })
+  foreach ($plane in $planes) {
+    $planeId = if ($plane -and ($plane.PSObject.Properties.Name -contains 'id')) { ([string]$plane.id).Trim().ToLowerInvariant() } else { '' }
+    if (-not $planeId) {
+      continue
+    }
+
+    $laneBranchPrefix = if ($plane -and ($plane.PSObject.Properties.Name -contains 'laneBranchPrefix')) {
+      ([string]$plane.laneBranchPrefix).Trim().ToLowerInvariant()
+    } else {
+      ''
+    }
+    if (-not $laneBranchPrefix) {
+      continue
+    }
+
+    if ($normalizedBranch.StartsWith($laneBranchPrefix)) {
+      return $planeId
+    }
+  }
+
+  return $null
 }
 
 function Get-GitHubIntakeRepositoryContext {
@@ -957,23 +1081,17 @@ function Resolve-IssueBranchName {
     [string]$ForkRemote
   )
 
+  $laneBranchPrefix = Resolve-GitHubIntakeLaneBranchPrefix -ForkRemote $ForkRemote -BranchPrefix $BranchPrefix
+
   if ($Number -gt 0 -and -not [string]::IsNullOrWhiteSpace($CurrentBranch)) {
-    $remotePattern = if ([string]::IsNullOrWhiteSpace($ForkRemote)) {
-      '(?:(?:[A-Za-z0-9._-]+)-)?'
-    } else {
-      '(?:{0}-)?' -f [regex]::Escape($ForkRemote)
-    }
-    $pattern = '^{0}/{1}{2}(?:-|$)' -f [regex]::Escape($BranchPrefix), $remotePattern, $Number
+    $pattern = '^{0}{1}(?:-|$)' -f [regex]::Escape($laneBranchPrefix), $Number
     if ($CurrentBranch -match $pattern) {
       return $CurrentBranch
     }
   }
 
   $slug = ConvertTo-IntakeSlug -Title $Title
-  if (-not [string]::IsNullOrWhiteSpace($ForkRemote)) {
-    return '{0}/{1}-{2}-{3}' -f $BranchPrefix, $ForkRemote.ToLowerInvariant(), $Number, $slug
-  }
-  return '{0}/{1}-{2}' -f $BranchPrefix, $Number, $slug
+  return '{0}{1}-{2}' -f $laneBranchPrefix, $Number, $slug
 }
 
 function Get-BranchHeadCommitSubject {
@@ -1028,6 +1146,8 @@ Export-ModuleMember -Function `
   ConvertTo-GitHubIntakeAtlasMarkdown, `
   Get-GitHubIntakeCatalog, `
   Get-GitHubIntakeCatalogPath, `
+  Get-GitHubIntakeBranchClassContract, `
+  Get-GitHubIntakeBranchClassContractPath, `
   Get-GitHubIntakeScenarios, `
   Get-SupportedGitHubIssueTemplates, `
   Get-SupportedGitHubPullRequestTemplates, `
@@ -1036,6 +1156,9 @@ Export-ModuleMember -Function `
   New-GitHubIntakeExecutionPlan, `
   Resolve-GitHubIntakeDraftContext, `
   Resolve-GitHubIntakeDraftOutputPath, `
+  Resolve-GitHubIntakeForkPlane, `
+  Resolve-GitHubIntakeForkPlaneFromBranchName, `
+  Resolve-GitHubIntakeLaneBranchPrefix, `
   Resolve-GitHubIssueSnapshot, `
   Resolve-GitHubIssueTemplate, `
   Resolve-GitHubPullRequestTemplate, `
