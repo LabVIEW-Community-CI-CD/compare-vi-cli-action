@@ -56,13 +56,21 @@ The deterministic review bundle must expose:
 - VI history summary JSON
 - VI history HTML report
 - an operator-facing summary path under `_agent`
+- a deterministic rendered review summary for operators
 
 The checked-in schema for this contract is:
 
 - `docs/schemas/public-linux-diagnostics-harness-contract-v1.schema.json`
+- `docs/schemas/public-linux-diagnostics-review-summary-v1.schema.json`
 
 The initial contract reuses the existing Docker/Desktop parity artifact layout so future harness entry points do not
 invent a second bundle structure before the first one is proven.
+
+The renderer surface for operator review is:
+
+- `tools/priority/public-linux-diagnostics-review-summary.mjs`
+- JSON: `tests/results/_agent/diagnostics/public-linux-diagnostics-review-summary.json`
+- Markdown: `tests/results/_agent/diagnostics/public-linux-diagnostics-review-summary.md`
 
 ## Human go/no-go checkpoint
 

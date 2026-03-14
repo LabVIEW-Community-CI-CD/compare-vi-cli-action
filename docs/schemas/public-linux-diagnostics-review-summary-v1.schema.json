@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/public-linux-diagnostics-review-summary-v1.schema.json",
+  "title": "public-linux-diagnostics-review-summary@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "target",
+    "dispatch",
+    "diagnostics",
+    "decision",
+    "review"
+  ],
+  "properties": {
+    "schema": {
+      "const": "public-linux-diagnostics-review-summary@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repositorySlug",
+        "reference",
+        "developRelationship"
+      ],
+      "properties": {
+        "repositorySlug": { "type": ["string", "null"] },
+        "reference": { "type": ["string", "null"] },
+        "developRelationship": { "type": ["string", "null"] }
+      }
+    },
+    "dispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receiptPath",
+        "workflowPath",
+        "workflowRunId",
+        "workflowRunUrl",
+        "status"
+      ],
+      "properties": {
+        "receiptPath": { "type": "string" },
+        "workflowPath": { "type": ["string", "null"] },
+        "workflowRunId": { "type": ["string", "null"] },
+        "workflowRunUrl": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] }
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewSummaryPath",
+        "reviewLoopReceiptPath",
+        "historySummaryPath",
+        "historyReportHtmlPath",
+        "operatorSummaryPath",
+        "overallStatus",
+        "failedCheck",
+        "message",
+        "recommendedReviewOrder"
+      ],
+      "properties": {
+        "reviewSummaryPath": { "type": "string" },
+        "reviewLoopReceiptPath": { "type": ["string", "null"] },
+        "historySummaryPath": { "type": ["string", "null"] },
+        "historyReportHtmlPath": { "type": ["string", "null"] },
+        "operatorSummaryPath": { "type": ["string", "null"] },
+        "overallStatus": { "type": ["string", "null"] },
+        "failedCheck": { "type": "string" },
+        "message": { "type": "string" },
+        "recommendedReviewOrder": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "value",
+        "recommendedAction",
+        "feedback",
+        "recordedBy",
+        "workflowPath",
+        "decisionPath"
+      ],
+      "properties": {
+        "state": {
+          "enum": ["pending", "recorded"]
+        },
+        "value": { "type": ["string", "null"] },
+        "recommendedAction": { "type": ["string", "null"] },
+        "feedback": { "type": ["string", "null"] },
+        "recordedBy": { "type": ["string", "null"] },
+        "workflowPath": { "type": ["string", "null"] },
+        "decisionPath": { "type": "string" }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readyForHumanDecision",
+        "humanDecisionRecorded",
+        "blocking",
+        "sessionComplete",
+        "outputJsonPath",
+        "outputMarkdownPath"
+      ],
+      "properties": {
+        "readyForHumanDecision": { "type": "boolean" },
+        "humanDecisionRecorded": { "type": "boolean" },
+        "blocking": { "type": "boolean" },
+        "sessionComplete": { "type": "boolean" },
+        "outputJsonPath": { "type": "string" },
+        "outputMarkdownPath": { "type": "string" }
+      }
+    }
+  }
+}

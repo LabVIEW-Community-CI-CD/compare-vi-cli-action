@@ -42,5 +42,7 @@ test('public Linux diagnostics harness contract doc points to the shared bundle 
   assert.match(doc, /human-go-no-go-feedback\.yml/);
   assert.match(doc, /human-go-no-go-decision-v1\.schema\.json/);
   assert.match(doc, /public-linux-diagnostics-harness-contract-v1\.schema\.json/);
+  assert.match(doc, /public-linux-diagnostics-review-summary-v1\.schema\.json/);
+  assert.match(doc, /public-linux-diagnostics-review-summary\.mjs/);
   assert.match(doc, /equal to or ahead of `develop`/i);
 });
