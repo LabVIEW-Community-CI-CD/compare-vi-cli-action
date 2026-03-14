@@ -49,20 +49,31 @@ function normalizeText(value) {
   return normalized.length > 0 ? normalized : null;
 }
 
-function readJsonFile(relativePath, repoRoot = DEFAULT_REPO_ROOT) {
-  const resolvedPath = path.resolve(repoRoot, relativePath);
-  return JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+function resolvePathFromBase(filePath, baseDir) {
+  return path.resolve(baseDir, filePath);
 }
 
-function writeFile(relativePath, content, repoRoot = DEFAULT_REPO_ROOT) {
-  const resolvedPath = path.resolve(repoRoot, relativePath);
-  fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
-  fs.writeFileSync(resolvedPath, content, 'utf8');
-  return resolvedPath;
+function resolveSchemaPath(repoRoot = DEFAULT_REPO_ROOT) {
+  return resolvePathFromBase(DEFAULT_MISSION_CONTROL_ENVELOPE_SCHEMA_PATH, repoRoot);
+}
+
+function resolveInputPath(filePath, { repoRoot = DEFAULT_REPO_ROOT, cwd = repoRoot, source = 'explicit' } = {}) {
+  const baseDir = source === 'default' ? repoRoot : cwd;
+  return resolvePathFromBase(filePath, baseDir);
+}
+
+function readJsonFile(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function writeFile(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, 'utf8');
+  return filePath;
 }
 
 function validateMissionControlEnvelope(envelope, repoRoot = DEFAULT_REPO_ROOT) {
-  const schema = readJsonFile(DEFAULT_MISSION_CONTROL_ENVELOPE_SCHEMA_PATH, repoRoot);
+  const schema = readJsonFile(resolveSchemaPath(repoRoot));
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   addFormats(ajv);
   const validate = ajv.compile(schema);
@@ -74,18 +85,6 @@ function validateMissionControlEnvelope(envelope, repoRoot = DEFAULT_REPO_ROOT) 
   if (envelope?.schema !== MISSION_CONTROL_ENVELOPE_SCHEMA) {
     throw new Error(`Mission-control envelope schema must be '${MISSION_CONTROL_ENVELOPE_SCHEMA}'.`);
   }
-}
-
-function normalizeOverrideReason(reason) {
-  const raw = reason === null || reason === undefined ? '' : String(reason);
-  if (/[\r\n]/.test(raw)) {
-    throw new Error('Mission-control override reason must not contain newlines.');
-  }
-  const normalized = normalizeText(raw);
-  if (!normalized) {
-    throw new Error('Mission-control override reason must be non-empty single-line text.');
-  }
-  return normalized;
 }
 
 function normalizePromptScalar(value, fieldName) {
@@ -107,7 +106,7 @@ function normalizePromptScalar(value, fieldName) {
 }
 
 function formatOverride(override) {
-  return `${normalizePromptScalar(override.key, 'operator.overrides[].key')}=${normalizePromptScalar(override.value, 'operator.overrides[].value')} (${normalizeOverrideReason(override.reason)})`;
+  return `${normalizePromptScalar(override.key, 'operator.overrides[].key')}=${normalizePromptScalar(override.value, 'operator.overrides[].value')}`;
 }
 
 export function renderMissionControlPrompt(envelope, { repoRoot = DEFAULT_REPO_ROOT, validate = true } = {}) {
@@ -179,8 +178,11 @@ export function parseArgs(argv = process.argv) {
   const options = {
     help: false,
     envelopePath: null,
+    envelopePathSource: null,
     promptPath: DEFAULT_MISSION_CONTROL_PROMPT_PATH,
+    promptPathSource: 'default',
     reportPath: DEFAULT_MISSION_CONTROL_PROMPT_REPORT_PATH,
+    reportPathSource: 'default',
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -195,9 +197,18 @@ export function parseArgs(argv = process.argv) {
         throw new Error(`Missing value for ${token}.`);
       }
       index += 1;
-      if (token === '--envelope') options.envelopePath = next;
-      if (token === '--prompt') options.promptPath = next;
-      if (token === '--report') options.reportPath = next;
+      if (token === '--envelope') {
+        options.envelopePath = next;
+        options.envelopePathSource = 'explicit';
+      }
+      if (token === '--prompt') {
+        options.promptPath = next;
+        options.promptPathSource = 'explicit';
+      }
+      if (token === '--report') {
+        options.reportPath = next;
+        options.reportPathSource = 'explicit';
+      }
       continue;
     }
     throw new Error(`Unknown option: ${token}`);
@@ -229,18 +240,21 @@ export function renderMissionControlPromptReport(
   },
   {
     repoRoot = DEFAULT_REPO_ROOT,
+    cwd = repoRoot,
+    envelopePathSource = 'explicit',
+    promptPathSource = 'default',
   } = {},
 ) {
   if (!normalizeText(envelopePath)) {
     throw new Error('Envelope path is required. Pass --envelope <path>.');
   }
-  const envelope = readJsonFile(envelopePath, repoRoot);
+  const resolvedEnvelopePath = resolveInputPath(envelopePath, { repoRoot, cwd, source: envelopePathSource });
+  const resolvedPromptPath = resolveInputPath(promptPath, { repoRoot, cwd, source: promptPathSource });
+  const envelope = readJsonFile(resolvedEnvelopePath);
   validateMissionControlEnvelope(envelope, repoRoot);
   const promptText = renderMissionControlPrompt(envelope, { repoRoot, validate: false });
   const promptSha256 = createHash('sha256').update(promptText, 'utf8').digest('hex');
   const envelopeSha256 = createHash('sha256').update(JSON.stringify(envelope), 'utf8').digest('hex');
-  const resolvedEnvelopePath = path.resolve(repoRoot, envelopePath);
-  const resolvedPromptPath = path.resolve(repoRoot, promptPath);
 
   return {
     schema: MISSION_CONTROL_PROMPT_RENDER_SCHEMA,
@@ -262,6 +276,7 @@ export function main(
   argv = process.argv,
   {
     repoRoot = DEFAULT_REPO_ROOT,
+    cwd = process.cwd(),
     logFn = console.log,
     errorFn = console.error,
   } = {},
@@ -288,10 +303,16 @@ export function main(
       },
       {
         repoRoot,
+        cwd,
+        envelopePathSource: options.envelopePathSource,
+        promptPathSource: options.promptPathSource,
       },
     );
-    const promptPath = writeFile(options.promptPath, report.promptText, repoRoot);
-    const reportPath = writeFile(options.reportPath, `${JSON.stringify(report, null, 2)}\n`, repoRoot);
+    const promptPath = writeFile(report.promptPath, report.promptText);
+    const reportPath = writeFile(
+      resolveInputPath(options.reportPath, { repoRoot, cwd, source: options.reportPathSource }),
+      `${JSON.stringify(report, null, 2)}\n`,
+    );
     logFn(`[mission-control:prompt] prompt: ${promptPath}`);
     logFn(`[mission-control:prompt] report: ${reportPath}`);
     logFn(
