@@ -40,6 +40,18 @@ function Get-FileHashOrNull {
   return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+function Test-ReadableTextFile {
+  param([AllowNull()][AllowEmptyString()][string]$Path)
+  if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+  try {
+    [void](Get-Content -LiteralPath $Path -Raw -ErrorAction Stop)
+    return $true
+  } catch {
+    return $false
+  }
+}
+
 function Read-JsonOrNull {
   param([AllowNull()][AllowEmptyString()][string]$Path)
   if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
@@ -95,6 +107,56 @@ function Get-HostPlaneProvenanceAssessment {
     reason = ''
     reportExists = [bool]$reportExists
     inlineEvidencePresent = $true
+  }
+}
+
+function Get-HostPlaneSummaryProvenanceAssessment {
+  param(
+    [AllowNull()][AllowEmptyString()][string]$DeclaredPath,
+    [AllowNull()][AllowEmptyString()][string]$HostPlaneReportPath
+  )
+
+  $effectiveDeclaredPath = if ([string]::IsNullOrWhiteSpace($DeclaredPath)) { '' } else { Resolve-AbsolutePath -Path $DeclaredPath }
+  $derivedPath = ''
+  if (-not [string]::IsNullOrWhiteSpace($HostPlaneReportPath)) {
+    $candidatePath = Join-Path (Split-Path -Parent $HostPlaneReportPath) 'labview-2026-host-plane-summary.md'
+    if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+      $derivedPath = Resolve-AbsolutePath -Path $candidatePath
+    }
+  }
+  $effectivePath = if (-not [string]::IsNullOrWhiteSpace($effectiveDeclaredPath)) { $effectiveDeclaredPath } else { $derivedPath }
+  $declared = -not [string]::IsNullOrWhiteSpace($effectiveDeclaredPath)
+  $readable = Test-ReadableTextFile -Path $effectivePath
+
+  if ($readable) {
+    return [ordered]@{
+      status = 'ok'
+      reason = ''
+      path = $effectivePath
+      declared = $declared
+      readable = $true
+      sha256 = [string](Get-FileHash -LiteralPath $effectivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+  }
+
+  if ($declared) {
+    return [ordered]@{
+      status = 'corrupt'
+      reason = 'host-plane-summary-missing'
+      path = $effectivePath
+      declared = $true
+      readable = $false
+      sha256 = $null
+    }
+  }
+
+  return [ordered]@{
+    status = 'not-present'
+    reason = ''
+    path = $effectivePath
+    declared = $false
+    readable = $false
+    sha256 = $null
   }
 }
 
@@ -252,6 +314,13 @@ $hostPlaneReportPath = if ($readiness.PSObject.Properties['source'] -and $readin
 } else {
   ''
 }
+$hostPlaneSummaryPath = if ($readiness.PSObject.Properties['hostPlaneSummary'] -and $readiness.hostPlaneSummary -and $readiness.hostPlaneSummary.PSObject.Properties['path']) {
+  [string]$readiness.hostPlaneSummary.path
+} elseif ($readiness.PSObject.Properties['source'] -and $readiness.source -and $readiness.source.PSObject.Properties['hostPlaneSummaryPath']) {
+  [string]$readiness.source.hostPlaneSummaryPath
+} else {
+  ''
+}
 $hostPlane = if ($readiness.PSObject.Properties['hostPlane']) {
   $readiness.hostPlane
 } elseif (-not [string]::IsNullOrWhiteSpace($hostPlaneReportPath)) {
@@ -278,9 +347,12 @@ $hostPlaneProvenance = Get-HostPlaneProvenanceAssessment `
   -HostPlane $hostPlane `
   -HostPlanes $hostPlanes `
   -HostExecutionPolicy $hostExecutionPolicy
+$hostPlaneSummaryProvenance = Get-HostPlaneSummaryProvenanceAssessment `
+  -DeclaredPath $hostPlaneSummaryPath `
+  -HostPlaneReportPath $hostPlaneReportPath
 $verdict = if ($readiness.PSObject.Properties['verdict']) { [string]$readiness.verdict } else { 'unknown' }
 $recommendation = if ($readiness.PSObject.Properties['recommendation']) { [string]$readiness.recommendation } else { 'unknown' }
-if ($hostPlaneProvenance.status -ne 'ok') {
+if ($hostPlaneProvenance.status -ne 'ok' -or ($hostPlaneSummaryProvenance.declared -and $hostPlaneSummaryProvenance.status -ne 'ok')) {
   $verdict = 'not-ready'
   $recommendation = 'do-not-push'
 }
@@ -308,15 +380,18 @@ $proof = [ordered]@{
   summaryPath = $summaryResolved
   statusPath = $statusResolved
   hostPlaneReportPath = $hostPlaneReportPath
+  hostPlaneSummaryPath = [string]$hostPlaneSummaryProvenance.path
   hashes = [ordered]@{
     readinessSha256 = Get-FileHashOrNull -Path $readinessResolved
     summarySha256 = Get-FileHashOrNull -Path $summaryResolved
     statusSha256 = Get-FileHashOrNull -Path $statusResolved
     hostPlaneReportSha256 = Get-FileHashOrNull -Path $hostPlaneReportPath
+    hostPlaneSummarySha256 = $hostPlaneSummaryProvenance.sha256
   }
   laneLifecycle = if ($readiness.PSObject.Properties['laneLifecycle']) { $readiness.laneLifecycle } elseif ($summary -and $summary.PSObject.Properties['laneLifecycle']) { $summary.laneLifecycle } else { $null }
   lanes = if ($readiness.PSObject.Properties['lanes']) { $readiness.lanes } else { $null }
   hostPlaneProvenance = $hostPlaneProvenance
+  hostPlaneSummaryProvenance = $hostPlaneSummaryProvenance
   hostPlane = $hostPlane
   hostPlanes = $hostPlanes
   hostExecutionPolicy = $hostExecutionPolicy
