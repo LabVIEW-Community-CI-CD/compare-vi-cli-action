@@ -1,0 +1,106 @@
+{
+  "schema": "priority/mission-control-operator-input-catalog@v1",
+  "intents": [
+    {
+      "id": "continue-driving-autonomously",
+      "summary": "Keep the standing lane moving without waiting for new operator prompts.",
+      "allowedFocuses": ["standing-priority", "queue-health", "policy-drift", "docs-contract"],
+      "description": "Default unattended operating mode. Finish the live standing lane, rotate to the next child issue, and keep one parked lane prepared when the live lane is waiting on GitHub."
+    },
+    {
+      "id": "finish-live-standing-lane",
+      "summary": "Bias execution toward the current standing lane only.",
+      "allowedFocuses": ["standing-priority", "current-head-failure", "queue-health"],
+      "description": "Use when the operator wants the current live PR merged before new parked-lane work expands."
+    },
+    {
+      "id": "stabilize-current-head-failure",
+      "summary": "Treat the current-head regression as the only immediate objective.",
+      "allowedFocuses": ["current-head-failure", "policy-drift"],
+      "description": "Use when a required check is red on the current head and the lane should not widen until the regression is fixed."
+    },
+    {
+      "id": "restore-intake",
+      "summary": "Rebuild queue intake before implementation work resumes.",
+      "allowedFocuses": ["queue-health", "policy-drift", "handoff"],
+      "description": "Use when the queue has collapsed to epics or the standing label is missing and the next concrete child issue must be restored first."
+    },
+    {
+      "id": "prepare-parked-lane",
+      "summary": "Use live-lane wait time to cut one disjoint follow-up slice.",
+      "allowedFocuses": ["docs-contract", "queue-health", "standing-priority"],
+      "description": "Use when the live lane is waiting on hosted checks or merge queue only and there is room for exactly one parked coding lane."
+    }
+  ],
+  "focuses": [
+    {
+      "id": "standing-priority",
+      "summary": "Drive the current standing issue to merge.",
+      "standingPriorityRequired": true,
+      "description": "Default focus for unattended execution. The standing label remains the source of truth for what to do next."
+    },
+    {
+      "id": "current-head-failure",
+      "summary": "Fix the current-head regression before widening scope.",
+      "standingPriorityRequired": true,
+      "description": "Use when a current-head required check is red and the live lane must be stabilized immediately."
+    },
+    {
+      "id": "queue-health",
+      "summary": "Keep the queue populated with concrete child issues and merge-ready PRs.",
+      "standingPriorityRequired": false,
+      "description": "Use for intake restoration, parked-lane preparation, and anti-idle queue hygiene."
+    },
+    {
+      "id": "handoff",
+      "summary": "Refresh machine-readable handoff state and standing-lane continuity.",
+      "standingPriorityRequired": false,
+      "description": "Use when agent transition quality is the main concern and current code changes are secondary."
+    },
+    {
+      "id": "policy-drift",
+      "summary": "Correct repo-law drift before feature work widens.",
+      "standingPriorityRequired": false,
+      "description": "Use for standing-label drift, policy/helper drift, or contradictions between checked-in law and runtime behavior."
+    },
+    {
+      "id": "docs-contract",
+      "summary": "Tighten the checked-in mission-control documentation and schema contract surfaces.",
+      "standingPriorityRequired": false,
+      "description": "Use for schema/docs/catalog slices that define how future agents consume mission control."
+    }
+  ],
+  "overrides": [
+    {
+      "key": "allowAdminMerge",
+      "valueType": "boolean",
+      "wideningAllowed": false,
+      "description": "Temporary override for repository-admin merge actions when queue/bootstrap edge cases block the normal path."
+    },
+    {
+      "key": "allowForkBaseDispatch",
+      "valueType": "boolean",
+      "wideningAllowed": false,
+      "description": "Temporary override to permit fork-base workflow dispatch when upstream-only dispatch guards would otherwise fail closed."
+    },
+    {
+      "key": "allowParkedLane",
+      "valueType": "boolean",
+      "wideningAllowed": false,
+      "description": "Temporary override that allows or suppresses the single parked coding lane without changing the hard max-active-lanes cap."
+    },
+    {
+      "key": "copilotCliUsage",
+      "valueType": "enum",
+      "allowedValues": ["optional", "required"],
+      "wideningAllowed": false,
+      "description": "Tightens local Copilot CLI use for a given operator turn without allowing GitHub-hosted Copilot review to replace required checks."
+    },
+    {
+      "key": "requireProjectBoardApply",
+      "valueType": "boolean",
+      "wideningAllowed": false,
+      "description": "Temporary override that requires project-board apply/reporting to run before the lane is considered complete."
+    }
+  ]
+}
