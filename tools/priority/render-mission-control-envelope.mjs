@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import {
@@ -107,7 +108,7 @@ function validateMissionControlEnvelopeBase(baseEnvelope, repoRoot = process.cwd
   if (!Array.isArray(baseEnvelope.operator.overrides)) {
     throw new Error(`Mission-control envelope field 'operator.overrides' must be an array.`);
   }
-  if (JSON.stringify(baseEnvelope.missionControl) !== JSON.stringify(contractEnvelope.missionControl)) {
+  if (!isDeepStrictEqual(baseEnvelope.missionControl, contractEnvelope.missionControl)) {
     throw new Error('Mission-control envelope base must keep the checked-in missionControl contract unchanged.');
   }
   return contractEnvelope;
@@ -178,19 +179,19 @@ export function parseArgs(argv = process.argv) {
   return options;
 }
 
-function printUsage() {
-  console.log('Usage: node tools/priority/render-mission-control-envelope.mjs [options]');
-  console.log('');
-  console.log('Render a machine-readable mission-control envelope from a validated preset trigger.');
-  console.log('');
-  console.log('Options:');
-  console.log('  --trigger <token>    Trigger token or alias to render (for example: MC, MC-LIVE, MC-PARKED).');
-  console.log(`  --catalog <path>     Profile catalog path (default: ${DEFAULT_MISSION_CONTROL_PROFILE_CATALOG_PATH}).`);
-  console.log(`  --envelope <path>    Base envelope path (default: ${DEFAULT_MISSION_CONTROL_ENVELOPE_PATH}).`);
-  console.log(
+function printUsage(logFn = console.log) {
+  logFn('Usage: node tools/priority/render-mission-control-envelope.mjs [options]');
+  logFn('');
+  logFn('Render a machine-readable mission-control envelope from a validated preset trigger.');
+  logFn('');
+  logFn('Options:');
+  logFn('  --trigger <token>    Trigger token or alias to render (for example: MC, MC-LIVE, MC-PARKED).');
+  logFn(`  --catalog <path>     Profile catalog path (default: ${DEFAULT_MISSION_CONTROL_PROFILE_CATALOG_PATH}).`);
+  logFn(`  --envelope <path>    Base envelope path (default: ${DEFAULT_MISSION_CONTROL_ENVELOPE_PATH}).`);
+  logFn(
     `  --report <path>      Output report path (default: ${DEFAULT_MISSION_CONTROL_ENVELOPE_RENDER_REPORT_PATH}).`,
   );
-  console.log('  -h, --help           Show help.');
+  logFn('  -h, --help           Show help.');
 }
 
 export function renderMissionControlEnvelopeReport(
@@ -260,12 +261,12 @@ export function main(
     options = parseArgs(argv);
   } catch (error) {
     errorFn(error instanceof Error ? error.message : String(error));
-    printUsage();
+    printUsage(errorFn);
     return 1;
   }
 
   if (options.help) {
-    printUsage();
+    printUsage(logFn);
     return 0;
   }
 

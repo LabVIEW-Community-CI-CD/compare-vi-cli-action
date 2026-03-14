@@ -83,6 +83,34 @@ test('renderMissionControlEnvelopeReport fails closed for drifted custom envelop
   );
 });
 
+test('renderMissionControlEnvelopeReport accepts semantically identical envelope files with reordered keys', async (t) => {
+  const { renderMissionControlEnvelopeReport } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-envelope-reordered-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const reorderedEnvelopePath = path.join(tmpDir, 'mission-control-envelope.json');
+  const fixture = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
+  const reorderedEnvelope = {
+    schema: fixture.schema,
+    missionControl: JSON.parse(JSON.stringify(fixture.missionControl, ['lanePolicy', 'profile', 'mode',
+      'standingPriority', 'worktreePolicy', 'remoteSyncPolicy', 'packageManagerPolicy', 'repoHelpers', 'copilotCli',
+      'antiIdle', 'stopConditions', 'liveLaneCount', 'maxActiveCodingLanes', 'maxParkedLaneCount',
+      'parkedLaneRequiresGithubWait', 'requireDisjointFileScopes', 'allowThirdLane', 'mergeAuthority',
+      'source', 'upstreamLabel', 'forkLabel', 'forkFallbackLabel', 'queueEmptyBehavior', 'branchCreationGate',
+      'cleanWorktreesRequired', 'dirtyRootQuarantined', 'worktreeBaseRef', 'syncBeforeAndAfterMerge',
+      'developParityRemotes', 'allowRawNpm', 'allowedWrappers', 'bootstrap', 'projectPortfolioCheck', 'developSync',
+      'prCreate', 'standingHandoff', 'epicChildLink', 'safePrCheckPolling', 'usageMode', 'scope', 'purposes',
+      'hostedReplacementAllowed', 'mergeGreenPrImmediately', 'createNextConcreteChildWhenOnlyEpicsRemain',
+      'closeCompletedEpicWhenChildrenDone'])),
+    operator: fixture.operator,
+  };
+  fs.writeFileSync(reorderedEnvelopePath, `${JSON.stringify(reorderedEnvelope, null, 2)}\n`, 'utf8');
+
+  const report = renderMissionControlEnvelopeReport({ trigger: 'MC', envelopePath: reorderedEnvelopePath }, { repoRoot });
+  assert.equal(report.profileId, 'autonomous-default');
+  assert.equal(report.envelope.operator.intent, 'continue-driving-autonomously');
+});
+
 test('render mission-control envelope CLI writes a machine-readable report and fails deterministically', async (t) => {
   const { main, parseArgs, MISSION_CONTROL_ENVELOPE_RENDER_SCHEMA } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-envelope-render-'));
@@ -154,4 +182,46 @@ test('render mission-control envelope CLI writes a machine-readable report and f
   assert.equal(failureExitCode, 1);
   assert.equal(failureMessages.length, 1);
   assert.match(failureMessages[0], /is not defined in the profile catalog/);
+
+  const parseFailureMessages = [];
+  const parseFailureExitCode = main(
+    [
+      'node',
+      modulePath,
+      '--trigger',
+    ],
+    {
+      repoRoot,
+      logFn() {},
+      errorFn(message) {
+        parseFailureMessages.push(message);
+      },
+    },
+  );
+  assert.equal(parseFailureExitCode, 1);
+  assert.ok(parseFailureMessages.length > 1);
+  assert.match(parseFailureMessages[0], /Missing value for --trigger/);
+  assert.ok(
+    parseFailureMessages.some((message) => /Usage: node tools\/priority\/render-mission-control-envelope\.mjs/.test(message)),
+  );
+
+  const helpOutput = [];
+  const helpExitCode = main(
+    [
+      'node',
+      modulePath,
+      '--help',
+    ],
+    {
+      repoRoot,
+      logFn(message) {
+        helpOutput.push(message);
+      },
+      errorFn(message) {
+        throw new Error(`help should not use errorFn: ${message}`);
+      },
+    },
+  );
+  assert.equal(helpExitCode, 0);
+  assert.match(helpOutput[0], /Usage: node tools\/priority\/render-mission-control-envelope\.mjs/);
 });
