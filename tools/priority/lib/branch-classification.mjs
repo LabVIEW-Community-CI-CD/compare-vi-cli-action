@@ -298,6 +298,35 @@ export function resolveLaneBranchPrefix({
     : `${normalizedFallback}/`;
 }
 
+export function resolveRepositoryPlaneFromBranchName(branch, contract) {
+  if (!contract || typeof contract !== 'object') {
+    throw new Error('Branch class contract is required.');
+  }
+
+  const normalizedBranch = normalizeBranchName(branch);
+  if (!normalizedBranch) {
+    return null;
+  }
+
+  const matches = (Array.isArray(contract.repositoryPlanes) ? contract.repositoryPlanes : [])
+    .map((entry) => ({
+      plane: normalizeRepositoryPlane(entry?.id),
+      prefix: normalizeBranchName(entry?.laneBranchPrefix)
+    }))
+    .filter((entry) => entry.prefix && normalizedBranch.startsWith(entry.prefix))
+    .sort((left, right) => right.prefix.length - left.prefix.length);
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  if (matches.length > 1 && matches[0].prefix.length === matches[1].prefix.length) {
+    throw new Error(`Ambiguous repository plane resolution for branch '${normalizedBranch}'.`);
+  }
+
+  return matches[0].plane;
+}
+
 export function resolveRepositoryRole(repository, contract) {
   return resolveRepositoryPlane(repository, contract) === 'upstream' ? 'upstream' : 'fork';
 }

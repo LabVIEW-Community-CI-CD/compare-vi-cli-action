@@ -13,6 +13,7 @@ import {
   loadBranchClassContract,
   matchBranchPattern,
   normalizeBranchName,
+  resolveRepositoryPlaneFromBranchName,
   resolveBranchPlaneTransition,
   resolveLaneBranchPrefix,
   resolveRepositoryPlane,
@@ -51,6 +52,13 @@ test('resolveLaneBranchPrefix follows repository plane metadata from the branch 
   assert.equal(resolveLaneBranchPrefix({ contract, plane: 'personal' }), 'issue/personal-');
   assert.equal(resolveLaneBranchPrefix({ contract, repository: 'svelderrainruiz/compare-vi-cli-action' }), 'issue/personal-');
   assert.equal(findRepositoryPlaneEntry(contract, 'origin')?.laneBranchPrefix, 'issue/origin-');
+});
+
+test('resolveRepositoryPlaneFromBranchName prefers the most specific lane prefix from the branch contract', () => {
+  assert.equal(resolveRepositoryPlaneFromBranchName('issue/1143-branch-intake-contract', contract), 'upstream');
+  assert.equal(resolveRepositoryPlaneFromBranchName('issue/origin-1084-review-plane', contract), 'origin');
+  assert.equal(resolveRepositoryPlaneFromBranchName('issue/personal-1084-authoring-plane', contract), 'personal');
+  assert.equal(resolveRepositoryPlaneFromBranchName('feature/experimental-branch', contract), null);
 });
 
 test('assertPlaneTransition accepts tracked fork-plane edges and rejects undefined ones', () => {

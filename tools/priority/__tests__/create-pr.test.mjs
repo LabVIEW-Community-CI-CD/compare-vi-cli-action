@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync as nodeReadFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   parseArgs,
   parseRouterIssueNumber,
@@ -20,6 +21,10 @@ import {
   createPriorityPr,
   writePriorityPrReport
 } from '../create-pr.mjs';
+import { loadBranchClassContract } from '../lib/branch-classification.mjs';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const TEST_BRANCH_CONTRACT = loadBranchClassContract(repoRoot);
 
 function readDefaultPrTemplate(filePath, encoding) {
   return nodeReadFileSync(filePath, encoding);
@@ -282,7 +287,8 @@ test('createPriorityPr refuses to open a priority PR when the standing queue is 
         runGhPrCreateFn: () => {
           throw new Error('should not create PR');
         },
-        resolveStandingIssueNumberFn: () => ({ issueNumber: null, source: 'router', noStandingReason: 'queue-empty' })
+        resolveStandingIssueNumberFn: () => ({ issueNumber: null, source: 'router', noStandingReason: 'queue-empty' }),
+        loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
       }),
     /Standing-priority queue is empty/i
   );
@@ -386,7 +392,8 @@ test('createPriorityPr builds PR metadata from resolved standing issue', () => {
       prPayload = payload;
       return { strategy: 'gh-pr-create' };
     },
-    resolveStandingIssueNumberFn: () => ({ issueNumber: 680, source: 'router' })
+    resolveStandingIssueNumberFn: () => ({ issueNumber: 680, source: 'router' }),
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
   });
 
   assert.equal(pushedBranch, 'origin:issue/680-sync-standing-priority');
@@ -398,6 +405,8 @@ test('createPriorityPr builds PR metadata from resolved standing issue', () => {
   assert.doesNotMatch(prPayload.body, /\(fill in summary\)/);
   assert.equal(result.issueNumber, 680);
   assert.equal(result.issueSource, 'router');
+  assert.equal(result.branchModel.branchPlane, 'upstream');
+  assert.equal(result.branchModel.selectedHeadRemote, 'origin');
   assert.equal(result.strategy, 'gh-pr-create');
 });
 
@@ -469,7 +478,8 @@ test('createPriorityPr honors explicit CLI overrides and body files', () => {
     },
     resolveStandingIssueNumberFn: () => {
       throw new Error('should not resolve standing priority when --issue is explicit');
-    }
+    },
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
   });
 
   assert.equal(prPayload.upstream.owner, 'example');
@@ -482,6 +492,7 @@ test('createPriorityPr honors explicit CLI overrides and body files', () => {
   assert.equal(result.strategy, 'graphql-same-owner-fork');
   assert.equal(result.issueNumber, 963);
   assert.equal(result.issueSource, 'cli');
+  assert.equal(result.branchModel.branchPlane, 'upstream');
 });
 
 test('createPriorityPr fails before PR creation when branch issue mismatches standing issue', () => {
@@ -518,7 +529,11 @@ test('createPriorityPr uses mirror metadata for PR closing references while matc
     getCurrentBranchFn: () => 'issue/personal-1-artifact-download-helper',
     ensureGhCliFn: () => {},
     resolveUpstreamFn: () => ({ owner: 'upstream-owner', repo: 'repo' }),
-    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => ({ owner: 'fork-owner', repo: 'repo', remoteName: remote }),
+    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => ({
+      owner: 'svelderrainruiz',
+      repo: 'compare-vi-cli-action',
+      remoteName: remote
+    }),
     pushBranchFn: () => {},
     runGhPrCreateFn: (payload) => {
       observedTitle = payload.title;
@@ -534,11 +549,63 @@ test('createPriorityPr uses mirror metadata for PR closing references while matc
         repository: 'upstream-owner/repo',
         url: 'https://github.com/upstream-owner/repo/issues/966'
       }
-    })
+    }),
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
   });
 
   assert.match(observedTitle, /#966/);
   assert.match(observedBody, /Closes #966/);
+});
+
+test('createPriorityPr selects the personal remote from the branch contract for personal lane branches', () => {
+  let observedRemote = null;
+  let observedBranchModel = null;
+  const result = createPriorityPr({
+    env: {},
+    options: {},
+    getRepoRootFn: () => '/tmp/repo',
+    getCurrentBranchFn: () => 'issue/personal-1145-pr-branch-contract',
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' }),
+    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => {
+      observedRemote = remote;
+      return { owner: 'svelderrainruiz', repo: 'compare-vi-cli-action', remoteName: remote };
+    },
+    pushBranchFn: () => ({}),
+    runGhPrCreateFn: () => ({ strategy: 'gh-pr-create' }),
+    resolveStandingIssueNumberFn: () => ({ issueNumber: 1145, source: 'router' }),
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
+  });
+
+  observedBranchModel = result.branchModel;
+  assert.equal(observedRemote, 'personal');
+  assert.equal(observedBranchModel.branchPlane, 'personal');
+  assert.equal(observedBranchModel.requiredHeadRemote, 'personal');
+  assert.equal(observedBranchModel.selectedHeadRemoteSource, 'branch-contract');
+});
+
+test('createPriorityPr fails closed when an explicit head remote conflicts with the branch contract', () => {
+  assert.throws(
+    () =>
+      createPriorityPr({
+        env: {},
+        options: {
+          headRemote: 'origin'
+        },
+        getRepoRootFn: () => '/tmp/repo',
+        getCurrentBranchFn: () => 'issue/personal-1145-pr-branch-contract',
+        ensureGhCliFn: () => {},
+        resolveUpstreamFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' }),
+        ensureForkRemoteFn: () => {
+          throw new Error('should not resolve the conflicting fork remote');
+        },
+        pushBranchFn: () => ({}),
+        runGhPrCreateFn: () => ({ strategy: 'gh-pr-create' }),
+        resolveStandingIssueNumberFn: () => ({ issueNumber: 1145, source: 'router' }),
+        loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
+      }),
+    /resolves to the personal fork plane/i
+  );
 });
 
 test('writePriorityPrReport persists personal fork lane metadata for future resume', () => {
@@ -565,6 +632,27 @@ test('writePriorityPrReport persists personal fork lane metadata for future resu
         owner: 'svelderrainruiz',
         repo: 'compare-vi-cli-action'
       },
+      branchModel: {
+        contractPath: 'tools/policy/branch-classes.json',
+        contractDigest: 'abc123',
+        branchPlane: 'personal',
+        repositoryPlane: 'personal',
+        classificationRepository: 'svelderrainruiz/compare-vi-cli-action',
+        laneBranchPrefix: 'issue/personal-',
+        selectedHeadRemote: 'personal',
+        selectedHeadRemoteSource: 'branch-contract',
+        requiredHeadRemote: 'personal',
+        classification: {
+          id: 'lane',
+          repositoryRole: 'fork',
+          repositoryPlane: 'personal',
+          matchedPattern: 'issue/*',
+          prSourceAllowed: true,
+          prTargetAllowed: false,
+          mergePolicy: 'n/a',
+          purpose: 'Short-lived implementation branches tied to issues.'
+        }
+      },
       pushStatus: 'pushed',
       strategy: 'gh-pr-create',
       reusedExistingPullRequest: false,
@@ -587,6 +675,9 @@ test('writePriorityPrReport persists personal fork lane metadata for future resu
   assert.equal(report.issue.mirrorOf.number, 969);
   assert.equal(report.head.remote, 'personal');
   assert.equal(report.head.repository, 'svelderrainruiz/compare-vi-cli-action');
+  assert.equal(report.branchModel.contractPath, 'tools/policy/branch-classes.json');
+  assert.equal(report.branchModel.branchPlane, 'personal');
+  assert.equal(report.branchModel.selectedHeadRemoteSource, 'branch-contract');
   assert.equal(report.pullRequest.number, 1139);
   assert.match(nodeReadFileSync(reportPath, 'utf8'), /priority\/pr-create@v1/);
 });
@@ -631,7 +722,8 @@ test('createPriorityPr preserves an already-published human-drafted PR so a late
     }),
     resolveStandingIssueNumberFn: () => {
       throw new Error('should not resolve standing priority when --issue is explicit');
-    }
+    },
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
   });
 
   assert.equal(result.pushStatus, 'already-published');
