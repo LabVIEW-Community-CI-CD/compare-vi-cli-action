@@ -51,6 +51,16 @@ Describe 'Promotion contract alignment' {
     ($run.StdOut + $run.StdErr) | Should -Match 'promotion-contract'
   }
 
+  It 'keeps backward-compatible required_status_checks in the repository promotion contract' {
+    $contractPath = Join-Path $repoRoot 'tools/policy/promotion-contract.json'
+    $contract = Get-Content -LiteralPath $contractPath -Raw | ConvertFrom-Json -Depth 20
+
+    $contract.required_status_checks.develop | Should -Not -BeNullOrEmpty
+    $contract.required_status_checks.'release/*' | Should -Not -BeNullOrEmpty
+    $contract.required_status_checks_ref.develop.branchName | Should -Be 'develop'
+    $contract.required_status_checks_ref.'release/*'.branchName | Should -Be 'release/*'
+  }
+
   It 'fails closed when projected priority policy checks drift from the branch-class source' {
     $tmpContract = Join-Path $TestDrive 'promotion-contract.json'
     $tmpBranchPolicy = Join-Path $TestDrive 'branch-required-checks.json'
