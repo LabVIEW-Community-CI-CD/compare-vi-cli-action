@@ -61,6 +61,17 @@ test('mission-control profile catalog fails closed on duplicate profile ids or t
   );
 });
 
+test('mission-control profile catalog loader rejects schema-invalid profile mappings', () => {
+  const fixture = loadJson('tools/priority/__fixtures__/mission-control/profile-catalog.json');
+  const contradictoryCatalog = structuredClone(fixture);
+  contradictoryCatalog.profiles[0].operatorPreset.focus = 'queue-health';
+
+  assert.throws(
+    () => normalizeMissionControlProfileCatalog(contradictoryCatalog),
+    /must map to focus 'standing-priority'/
+  );
+});
+
 test('mission-control profile catalog operator presets stay inside the bounded operator-input catalog', () => {
   const profileCatalog = loadJson('tools/priority/__fixtures__/mission-control/profile-catalog.json');
   const inputCatalog = loadJson('tools/priority/__fixtures__/mission-control/operator-input-catalog.json');
