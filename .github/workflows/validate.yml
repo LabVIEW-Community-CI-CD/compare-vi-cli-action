@@ -86,7 +86,7 @@ jobs:
       run: |
         set -euo pipefail
         mkdir -p ./bin
-        ver="${ACTIONLINT_VERSION:-1.7.7}"
+        ver="${ACTIONLINT_VERSION:-1.7.8}"
         for i in 1 2 3; do
           if curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- "$ver" ./bin; then
             break
@@ -123,7 +123,7 @@ jobs:
       with:
         enforce: ${{ github.ref_name == 'main' || github.base_ref == 'main' }}
         linkcheck: 'true'
-        actionlint-version: '1.7.7'
+        actionlint-version: '1.7.8'
         relaxed-path: 'docs/releases/**/*.md'
 
     - name: Guard tracked build artifacts (enforced)
@@ -384,7 +384,7 @@ jobs:
       run: |
         node tools/npm/run-script.mjs lint:md:changed
     env:
-      ACTIONLINT_VERSION: '${{ vars.ACTIONLINT_VERSION || ''1.7.7'' }}'
+      ACTIONLINT_VERSION: '${{ vars.ACTIONLINT_VERSION || ''1.7.8'' }}'
   validate-scope-plan:
     needs: smoke-gate
     if: needs.smoke-gate.outputs.skip != 'true'
@@ -1439,4 +1439,5 @@ jobs:
           tests/results/local-parity/linux/runtime-manager-preflight-linux.json
           tests/results/local-parity/linux/runtime-manager-compare-linux.json
         if-no-files-found: warn
+
 

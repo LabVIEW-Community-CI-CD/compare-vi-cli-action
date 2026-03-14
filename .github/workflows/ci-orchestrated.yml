@@ -110,7 +110,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RESULTS_DIR: tests/results/lint
-      ACTIONLINT_VERSION: '${{ vars.ACTIONLINT_VERSION || ''1.7.7'' }}'
+      ACTIONLINT_VERSION: '${{ vars.ACTIONLINT_VERSION || ''1.7.8'' }}'
       GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
       COMPAREVI_TOOLS_IMAGE: ghcr.io/labview-community-ci-cd/comparevi-tools:latest
     steps:
@@ -132,7 +132,7 @@ jobs:
       run: |
         set -euo pipefail
         mkdir -p ./bin
-        ver="${ACTIONLINT_VERSION:-1.7.7}"
+        ver="${ACTIONLINT_VERSION:-1.7.8}"
         for i in 1 2 3; do
           if curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- "$ver" ./bin; then
             break
@@ -1293,4 +1293,5 @@ jobs:
       if: ${{ always() }}
       shell: pwsh
       run: pwsh -File tools/Write-RerunHint.ps1 -Workflow 'ci-orchestrated.yml' -IncludeIntegration '${{ inputs.include_integration || 'true' }}' -SampleId '${{ inputs.sample_id || '' }}'
+
 

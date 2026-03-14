@@ -68,7 +68,7 @@ test('normalizeSummary removes volatile JSON timestamps and one-time bootstrap n
         durationMs: 31,
         status: 'ok',
         stdout: [
-          'Downloading actionlint 1.7.7 (actionlint_1.7.7_windows_amd64.zip)...',
+          'Downloading actionlint 1.7.8 (actionlint_1.7.8_windows_amd64.zip)...',
           '[pre-push] actionlint OK'
         ].join('\n')
       }
@@ -82,3 +82,4 @@ test('normalizeSummary removes volatile JSON timestamps and one-time bootstrap n
   assert.equal(normalized.steps[0].stdout.includes('"durationMs": 0'), true);
   assert.equal(normalized.steps[1].stdout, '[pre-push] actionlint OK');
 });
+

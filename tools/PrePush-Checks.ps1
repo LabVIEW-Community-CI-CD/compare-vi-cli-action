@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 <#
 .SYNOPSIS
   Local pre-push checks: run actionlint against workflows.
@@ -6,12 +6,12 @@
   Ensures a valid actionlint binary is used per-OS and runs it against .github/workflows.
   On Windows, explicitly prefers bin/actionlint.exe to avoid invoking the non-Windows binary.
 .PARAMETER ActionlintVersion
-  Optional version to install if missing (default: 1.7.7). Only used when auto-installing.
+  Optional version to install if missing (default: 1.7.8). Only used when auto-installing.
 .PARAMETER InstallIfMissing
   Attempt to install actionlint if not found (default: true).
 #>
 param(
-  [string]$ActionlintVersion = '1.7.7',
+  [string]$ActionlintVersion = '1.7.8',
   [bool]$InstallIfMissing = $true,
   [switch]$SkipNiImageFlagScenarios,
   [switch]$SkipLegacyFixtureChecks,
@@ -929,3 +929,4 @@ try {
   }
   throw
 }
+

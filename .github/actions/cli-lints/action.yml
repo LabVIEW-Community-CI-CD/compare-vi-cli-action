@@ -12,7 +12,7 @@ inputs:
   actionlint-version:
     description: 'Pinned actionlint version'
     required: false
-    default: '1.7.7'
+    default: '1.7.8'
   relaxed-path:
     description: 'Optional path glob for relaxed markdown lint (e.g., docs/releases/**/*.md)'
     required: false
@@ -86,4 +86,5 @@ runs:
           } else { $lines += '- docs links: skipped' }
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
+
 

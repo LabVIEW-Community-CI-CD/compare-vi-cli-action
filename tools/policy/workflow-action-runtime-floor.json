@@ -2,6 +2,14 @@
   "schema": "workflow-action-runtime-floor@v1",
   "generatedAt": "2026-03-13T00:00:00Z",
   "controlledNode24ValidationWorkflow": ".github/workflows/validate.yml",
+  "repoOwnedJavaScriptActions": {
+    ".github/actions/normalize-command": {
+      "expectedRuntime": "node24"
+    },
+    ".github/actions/parse-orchestrated": {
+      "expectedRuntime": "node24"
+    }
+  },
   "actions": {
     "actions/cache": {
       "minimumMajor": 5,

@@ -690,7 +690,7 @@ if ($UseToolsImage -and $ToolsImageTag) {
 } else {
   if ($checkStates.actionlint.enabled) {
     Invoke-DockerParityStep -StepRecord $checkStates.actionlint -Name 'actionlint' -RunRecord $runRecord -Action {
-      Invoke-Container -Image 'rhysd/actionlint:1.7.7' -Arguments @('-color') -Label 'actionlint'
+      Invoke-Container -Image 'rhysd/actionlint:1.7.8' -Arguments @('-color') -Label 'actionlint'
     }
   }
   if ($checkStates.markdownlint.enabled) {
@@ -925,3 +925,4 @@ Write-Host 'Non-LabVIEW container checks completed.' -ForegroundColor Green
     -NILinuxResultsRoot $NILinuxReviewSuiteResultsRoot `
     -RequirementsResultsRoot $RequirementsVerificationResultsRoot
 }
+
