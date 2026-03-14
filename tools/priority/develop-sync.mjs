@@ -11,6 +11,7 @@ import { resolveActiveForkRemoteName } from './lib/remote-utils.mjs';
 import {
   DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
   assertAllowedTransition,
+  assertPlaneTransition,
   classifyBranch,
   loadBranchClassContract
 } from './lib/branch-classification.mjs';
@@ -163,12 +164,27 @@ export function buildDevelopSyncBranchClassTrace(repoRoot) {
     action: 'sync',
     contract
   });
+  const planeTransitions = {
+    origin: assertPlaneTransition({
+      fromPlane: 'upstream',
+      toPlane: 'origin',
+      action: 'sync',
+      contract
+    }),
+    personal: assertPlaneTransition({
+      fromPlane: 'upstream',
+      toPlane: 'personal',
+      action: 'sync',
+      contract
+    })
+  };
 
   return {
     contractPath,
     source,
     target,
-    transition
+    transition,
+    planeTransitions
   };
 }
 
@@ -257,6 +273,7 @@ export function runDevelopSync({
       parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/'),
       adminPaths,
       branchClassTrace,
+      planeTransition: branchClassTrace.planeTransitions[remote] ?? null,
       syncMode: parityReport?.syncResult?.mode ?? 'direct-push',
       syncReason: parityReport?.syncResult?.reason ?? 'direct-push',
       parityConverged:
