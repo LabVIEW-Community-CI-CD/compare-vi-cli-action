@@ -7,8 +7,8 @@ import {
   DEFAULT_COPILOT_CLI_REVIEW_POLICY,
   normalizeCopilotCliReviewPolicy,
   resolveRepoGitState
-} from '../../priority/copilot-cli-review.mjs';
-import { DEFAULT_SIMULATION_REVIEW_POLICY, normalizeSimulationReviewPolicy, runSimulationReview } from '../../priority/simulation-review.mjs';
+} from './copilot-cli-review.mjs';
+import { DEFAULT_SIMULATION_REVIEW_POLICY, normalizeSimulationReviewPolicy, runSimulationReview } from './simulation-review.mjs';
 import {
   describeLocalReviewProvider,
   executeLocalReviewProvider,

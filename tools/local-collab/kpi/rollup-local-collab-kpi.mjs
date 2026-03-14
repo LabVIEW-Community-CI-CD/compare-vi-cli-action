@@ -5,7 +5,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { loadCopilotCliReviewPolicy } from '../../priority/copilot-cli-review.mjs';
+import { loadCopilotCliReviewPolicy } from '../providers/copilot-cli-review.mjs';
 import {
   describeLocalReviewProvider,
   SUPPORTED_LOCAL_REVIEW_PROVIDERS
