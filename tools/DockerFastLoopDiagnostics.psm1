@@ -299,6 +299,182 @@ function Get-DockerFastLoopLogPrefix {
   return ('[{0}]' -f (Get-DockerFastLoopLabel -ContextObject $ContextObject -Diagnostics $Diagnostics))
 }
 
+function Get-DockerDesktopPlaneId {
+  param([Parameter(Mandatory)][string]$Lane)
+
+  switch ($Lane.Trim().ToLowerInvariant()) {
+    'windows' { return 'docker-desktop/windows-container-2026' }
+    'linux' { return 'docker-desktop/linux-container-2026' }
+    default { return '' }
+  }
+}
+
+function Get-DockerFastLoopDockerDesktopPlaneProjection {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][AllowNull()]$ContextObject,
+    [AllowNull()]$HostExecutionPolicy = $null
+  )
+
+  $explicit = Get-PropertyValue -InputObject $ContextObject -Name 'dockerDesktopPlanes'
+  if ($explicit) {
+    return $explicit
+  }
+
+  $runtimeManager = Get-PropertyValue -InputObject $ContextObject -Name 'runtimeManager'
+  if (-not $runtimeManager) {
+    return $null
+  }
+
+  $laneScope = Convert-ToTrimmedString (Get-PropertyValue -InputObject $ContextObject -Name 'laneScope')
+  if ([string]::IsNullOrWhiteSpace($laneScope)) {
+    $runObject = Get-PropertyValue -InputObject $ContextObject -Name 'run'
+    $laneScope = Convert-ToTrimmedString (Get-PropertyValue -InputObject $runObject -Name 'laneScope')
+  }
+  if ([string]::IsNullOrWhiteSpace($laneScope)) {
+    $laneScope = 'both'
+  }
+
+  $runtimeProbes = Get-PropertyValue -InputObject $runtimeManager -Name 'probes'
+  $requestedPlanes = New-Object System.Collections.Generic.List[string]
+  $planeRecords = [ordered]@{}
+  foreach ($laneName in @('windows', 'linux')) {
+    $planeId = Get-DockerDesktopPlaneId -Lane $laneName
+    $expectedOsType = if ($laneName -eq 'windows') { 'windows' } else { 'linux' }
+    $probe = Get-PropertyValue -InputObject $runtimeProbes -Name $laneName
+    $enabled = Convert-ToBoolean (Get-PropertyValue -InputObject $probe -Name 'enabled')
+    if (-not $enabled) {
+      switch ($laneScope) {
+        'windows' { $enabled = ($laneName -eq 'windows') }
+        'linux' { $enabled = ($laneName -eq 'linux') }
+        'both' { $enabled = $true }
+      }
+    }
+
+    $status = Convert-ToTrimmedString (Get-PropertyValue -InputObject $probe -Name 'status')
+    if ([string]::IsNullOrWhiteSpace($status)) {
+      $status = if ($enabled) { 'pending' } else { 'skipped' }
+    }
+    $contextName = Convert-ToTrimmedString (Get-PropertyValue -InputObject $probe -Name 'context')
+    $observedOsType = Convert-ToTrimmedString (Get-PropertyValue -InputObject $probe -Name 'osType')
+    $osTypeMatches = [string]::Equals($observedOsType, $expectedOsType, [System.StringComparison]::OrdinalIgnoreCase)
+    $engineReady = ($status -eq 'success') -and $osTypeMatches
+
+    if ($enabled) {
+      $requestedPlanes.Add($planeId) | Out-Null
+    }
+
+    $planeRecords[$laneName] = [ordered]@{
+      plane = $planeId
+      lane = $laneName
+      enabled = [bool]$enabled
+      status = $status
+      context = $contextName
+      expectedOsType = $expectedOsType
+      observedOsType = $observedOsType
+      osTypeMatches = [bool]$osTypeMatches
+      engineReady = [bool]$engineReady
+    }
+  }
+
+  $exclusivePairs = @(
+    @(Get-PropertyValue -InputObject (Get-PropertyValue -InputObject $HostExecutionPolicy -Name 'mutuallyExclusivePairs') -Name 'pairs' -Default @()) |
+      ForEach-Object {
+        [ordered]@{
+          left = Convert-ToTrimmedString (Get-PropertyValue -InputObject $_ -Name 'left')
+          right = Convert-ToTrimmedString (Get-PropertyValue -InputObject $_ -Name 'right')
+        }
+      }
+  )
+  $exclusiveRequired = ($requestedPlanes.Count -gt 1)
+  $exclusiveSatisfied = $false
+  if (-not $exclusiveRequired) {
+    $requestedRecord = @($planeRecords.GetEnumerator() | ForEach-Object { $_.Value } | Where-Object { [bool]$_.enabled } | Select-Object -First 1)
+    if ($requestedRecord.Count -eq 0) {
+      $exclusiveSatisfied = $true
+    } else {
+      $exclusiveSatisfied = [bool]$requestedRecord[0].engineReady
+    }
+  } else {
+    $windowsRecord = $planeRecords.windows
+    $linuxRecord = $planeRecords.linux
+    $contextsDistinct = -not [string]::Equals([string]$windowsRecord.context, [string]$linuxRecord.context, [System.StringComparison]::OrdinalIgnoreCase)
+    $exclusiveSatisfied = [bool](
+      $windowsRecord.enabled -and
+      $linuxRecord.enabled -and
+      $windowsRecord.engineReady -and
+      $linuxRecord.engineReady -and
+      $contextsDistinct
+    )
+  }
+
+  return [pscustomobject][ordered]@{
+    schema = 'docker-fast-loop/docker-desktop-planes@v1'
+    laneScope = $laneScope
+    loopLabel = Get-DockerFastLoopLabel -ContextObject $ContextObject
+    requestedPlanes = @($requestedPlanes.ToArray())
+    exclusiveRequired = [bool]$exclusiveRequired
+    exclusiveSatisfied = [bool]$exclusiveSatisfied
+    mutuallyExclusivePairCount = [int]@($exclusivePairs).Count
+    mutuallyExclusivePairs = [ordered]@{
+      pairs = @($exclusivePairs)
+    }
+    planes = [ordered]@{
+      windows = $planeRecords.windows
+      linux = $planeRecords.linux
+    }
+  }
+}
+
+function Write-DockerFastLoopDockerDesktopPlaneDiagnostics {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][AllowNull()]$ContextObject
+  )
+
+  $hostExecutionPolicy = Get-PropertyValue -InputObject $ContextObject -Name 'hostExecutionPolicy'
+  $dockerDesktopPlanes = Get-DockerFastLoopDockerDesktopPlaneProjection -ContextObject $ContextObject -HostExecutionPolicy $hostExecutionPolicy
+  if ($null -eq $dockerDesktopPlanes) {
+    return $null
+  }
+
+  $prefix = Get-DockerFastLoopLogPrefix -ContextObject $ContextObject
+  $requestedPlanes = @($dockerDesktopPlanes.requestedPlanes | ForEach-Object { [string]$_ }) -join ','
+  if ([string]::IsNullOrWhiteSpace($requestedPlanes)) {
+    $requestedPlanes = '-'
+  }
+
+  Write-Host (
+    "{0}[docker-plane] requested={1} exclusiveRequired={2} exclusiveSatisfied={3} pairCount={4}" -f
+    $prefix,
+    $requestedPlanes,
+    [bool]$dockerDesktopPlanes.exclusiveRequired,
+    [bool]$dockerDesktopPlanes.exclusiveSatisfied,
+    [int]$dockerDesktopPlanes.mutuallyExclusivePairCount
+  ) -ForegroundColor DarkCyan
+
+  foreach ($laneName in @('windows', 'linux')) {
+    $planeRecord = Get-PropertyValue -InputObject (Get-PropertyValue -InputObject $dockerDesktopPlanes -Name 'planes') -Name $laneName
+    if ($null -eq $planeRecord) {
+      continue
+    }
+
+    Write-Host (
+      "{0}[docker-plane] lane={1} plane={2} enabled={3} status={4} context={5} expectedOs={6} observedOs={7}" -f
+      $prefix,
+      $laneName,
+      [string]$planeRecord.plane,
+      [bool]$planeRecord.enabled,
+      [string]$planeRecord.status,
+      $(if ([string]::IsNullOrWhiteSpace([string]$planeRecord.context)) { '-' } else { [string]$planeRecord.context }),
+      [string]$planeRecord.expectedOsType,
+      $(if ([string]::IsNullOrWhiteSpace([string]$planeRecord.observedOsType)) { '-' } else { [string]$planeRecord.observedOsType })
+    ) -ForegroundColor DarkGray
+  }
+
+  return $dockerDesktopPlanes
+}
+
 function Get-DockerFastLoopDifferentiatedDiagnostics {
   [CmdletBinding()]
   param(
@@ -395,4 +571,4 @@ function Write-DockerFastLoopDifferentiatedDiagnostics {
   return $diagnostics
 }
 
-Export-ModuleMember -Function Get-DockerFastLoopDifferentiatedDiagnostics, Get-DockerFastLoopLabel, Get-DockerFastLoopLogPrefix, Write-DockerFastLoopDifferentiatedDiagnostics
+Export-ModuleMember -Function Get-DockerFastLoopDifferentiatedDiagnostics, Get-DockerFastLoopDockerDesktopPlaneProjection, Get-DockerFastLoopLabel, Get-DockerFastLoopLogPrefix, Write-DockerFastLoopDifferentiatedDiagnostics, Write-DockerFastLoopDockerDesktopPlaneDiagnostics

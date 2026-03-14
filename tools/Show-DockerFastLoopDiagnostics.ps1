@@ -68,6 +68,7 @@ if ($null -eq $hostPlane -and $readiness -and $readiness.PSObject.Properties['so
 if ($hostPlane) {
   Write-LabVIEW2026HostPlaneConsole -Report $hostPlane
 }
+Write-DockerFastLoopDockerDesktopPlaneDiagnostics -ContextObject $readiness | Out-Null
 $diagnostics = @(Write-DockerFastLoopDifferentiatedDiagnostics -Readiness $readiness -ResultsRoot $effectiveResultsRoot)
 if ($PassThru) {
   Write-Output $diagnostics

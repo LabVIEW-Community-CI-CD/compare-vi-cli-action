@@ -553,6 +553,7 @@ $hostExecutionPolicy = if ($summary.PSObject.Properties['hostExecutionPolicy']) 
 } else {
   $null
 }
+$dockerDesktopPlanes = Get-DockerFastLoopDockerDesktopPlaneProjection -ContextObject $summary -HostExecutionPolicy $hostExecutionPolicy
 
 $readiness = [ordered]@{
   schema = 'vi-history/docker-fast-loop-readiness@v1'
@@ -626,6 +627,7 @@ $readiness = [ordered]@{
   hostPlane = $hostPlane
   hostPlanes = $hostPlanes
   hostExecutionPolicy = $hostExecutionPolicy
+  dockerDesktopPlanes = $dockerDesktopPlanes
   steps = @($steps)
 }
 
@@ -695,6 +697,26 @@ if ($hostExecutionPolicy -and $hostExecutionPolicy.PSObject.Properties['candidat
   $candidatePairs = Convert-PairSetToText -PairSet $hostExecutionPolicy.candidateParallelPairs
   if (-not [string]::IsNullOrWhiteSpace($candidatePairs)) {
     $mdLines.Add(('| Candidate Parallel Pairs | `{0}` |' -f $candidatePairs)) | Out-Null
+  }
+}
+if ($dockerDesktopPlanes) {
+  $requestedDockerPlanes = @($dockerDesktopPlanes.requestedPlanes | ForEach-Object { [string]$_ }) -join ', '
+  if (-not [string]::IsNullOrWhiteSpace($requestedDockerPlanes)) {
+    $mdLines.Add(('| Requested Docker Planes | `{0}` |' -f $requestedDockerPlanes)) | Out-Null
+  }
+  $mdLines.Add(('| Docker Exclusivity Required | `{0}` |' -f [bool]$dockerDesktopPlanes.exclusiveRequired)) | Out-Null
+  $mdLines.Add(('| Docker Exclusivity Satisfied | `{0}` |' -f [bool]$dockerDesktopPlanes.exclusiveSatisfied)) | Out-Null
+  foreach ($laneName in @('windows', 'linux')) {
+    $planeRecord = $dockerDesktopPlanes.planes.$laneName
+    if ($null -eq $planeRecord) {
+      continue
+    }
+    $mdLines.Add(('| Docker Plane ({0}) | `{1}` / `{2}` / `{3}` / `{4}` |' -f `
+        $laneName, `
+        [string]$planeRecord.status, `
+        $(if ([string]::IsNullOrWhiteSpace([string]$planeRecord.context)) { '-' } else { [string]$planeRecord.context }), `
+        [string]$planeRecord.expectedOsType, `
+        $(if ([string]::IsNullOrWhiteSpace([string]$planeRecord.observedOsType)) { '-' } else { [string]$planeRecord.observedOsType }))) | Out-Null
   }
 }
 $mdLines.Add(('| Timeout Failure Count | `{0}` |' -f $readiness.run.timeoutFailureCount)) | Out-Null
@@ -789,6 +811,9 @@ Write-Host ("{0}[readiness] markdown={1}" -f $loopPrefix, $mdOutResolved)
 if ($PrintDifferentiatedDiagnostics) {
   if ($hostPlane) {
     Write-LabVIEW2026HostPlaneConsole -Report $hostPlane
+  }
+  if ($dockerDesktopPlanes) {
+    Write-DockerFastLoopDockerDesktopPlaneDiagnostics -ContextObject $readiness | Out-Null
   }
   Write-DockerFastLoopDifferentiatedDiagnostics -Readiness $readiness -ResultsRoot $resultsRootResolved | Out-Null
 }
