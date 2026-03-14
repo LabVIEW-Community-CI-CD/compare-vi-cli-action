@@ -51,3 +51,9 @@ test('run-phase wires hook phases through agent-review-policy before commit and 
   assert.match(source, /github-actions-default/);
   assert.match(source, /simulation/);
 });
+
+test('hooks multi keeps wrapper parity fast by skipping heavy pre-push scenario matrices', () => {
+  const source = readRepoFile(path.join('tools', 'hooks', 'core', 'run-multi.mjs'));
+  assert.match(source, /PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS/);
+  assert.match(source, /PREPUSH_SKIP_NI_IMAGE_FLAG_SCENARIOS/);
+});

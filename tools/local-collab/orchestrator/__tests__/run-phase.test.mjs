@@ -192,8 +192,8 @@ test('runLocalCollaborationPhase gates pre-commit on local agent review and reco
 test('runLocalCollaborationPhase defaults hosted pre-commit reviews to simulation', async () => {
   const repoRoot = await createGitRepo();
   await mkdir(path.join(repoRoot, 'tmp', 'hooks'), { recursive: true });
-  await writeFile(path.join(repoRoot, 'tmp', 'hooks', 'sample.ps1'), "Write-Output 'hook parity sample'\n", 'utf8');
-  spawnSync('git', ['add', 'tmp/hooks/sample.ps1'], { cwd: repoRoot, encoding: 'utf8' });
+  await writeFile(path.join(repoRoot, 'tmp', 'hooks', 'sample.txt'), 'hook parity sample\n', 'utf8');
+  spawnSync('git', ['add', 'tmp/hooks/sample.txt'], { cwd: repoRoot, encoding: 'utf8' });
 
   let observedSelection = null;
   const result = await runLocalCollaborationPhase({
@@ -230,7 +230,7 @@ test('runLocalCollaborationPhase defaults hosted pre-commit reviews to simulatio
   assert.deepEqual(result.receipt.delegate.agentReview.requestedProviders, ['simulation']);
 });
 
-test('runLocalCollaborationPhase blocks pre-push before heavy checks when local agent review fails', async () => {
+test('runLocalCollaborationPhase keeps pre-push non-blocking in local warn mode when local agent review fails', async () => {
   const repoRoot = await createGitRepo();
 
   const result = await runLocalCollaborationPhase({
@@ -249,14 +249,54 @@ test('runLocalCollaborationPhase blocks pre-push before heavy checks when local 
         },
         requestedProviders: ['simulation']
       }
-    })
+    }),
+    env: {
+      ...process.env,
+      HOOKS_ENFORCE: 'warn'
+    }
   });
 
-  assert.equal(result.exitCode, 1);
+  assert.equal(result.exitCode, 0);
   assert.equal(result.receipt.phase, 'pre-push');
   assert.equal(result.receipt.delegate.agentReview.receiptStatus, 'failed');
   assert.deepEqual(result.receipt.delegate.agentReview.requestedProviders, ['simulation']);
 
+  const hookSummary = JSON.parse(await readFile(result.receipt.delegate.summaryPath, 'utf8'));
+  const reviewStep = hookSummary.steps.find((step) => step.name === 'agent-review-policy');
+  assert.ok(reviewStep);
+  assert.equal(reviewStep.status, 'warn');
+  assert.equal(reviewStep.rawExitCode, 1);
+  assert.match(reviewStep.note, /converted to warning by HOOKS_ENFORCE=warn/);
+  assert.equal(hookSummary.steps.some((step) => step.name === 'pre-push-checks'), true);
+});
+
+test('runLocalCollaborationPhase blocks pre-push before heavy checks in fail mode when local agent review fails', async () => {
+  const repoRoot = await createGitRepo();
+
+  const result = await runLocalCollaborationPhase({
+    phase: 'pre-push',
+    repoRoot,
+    providers: ['simulation'],
+    invokeAgentReviewPolicyFn: () => ({
+      exitCode: 1,
+      receipt: {
+        overall: {
+          status: 'failed',
+          actionableFindingCount: 1
+        },
+        providerSelection: {
+          selectionSource: 'explicit-request'
+        },
+        requestedProviders: ['simulation']
+      }
+    }),
+    env: {
+      ...process.env,
+      HOOKS_ENFORCE: 'fail'
+    }
+  });
+
+  assert.equal(result.exitCode, 1);
   const hookSummary = JSON.parse(await readFile(result.receipt.delegate.summaryPath, 'utf8'));
   const reviewStep = hookSummary.steps.find((step) => step.name === 'agent-review-policy');
   assert.ok(reviewStep);

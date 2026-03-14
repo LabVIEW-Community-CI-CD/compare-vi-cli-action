@@ -19,6 +19,10 @@ if (process.platform === 'win32') {
   }
 }
 const toPosix = (value) => value.replace(/\\/g, '/');
+const fastPrePushEnv = {
+  PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS: process.env.PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS || '1',
+  PREPUSH_SKIP_NI_IMAGE_FLAG_SCENARIOS: process.env.PREPUSH_SKIP_NI_IMAGE_FLAG_SCENARIOS || '1'
+};
 
 info('[hooks multi] base plane: ' + runner.environment.plane);
 info('[hooks multi] enforcement: ' + runner.enforcement);
@@ -71,6 +75,7 @@ function runWrapper(entry) {
       HOOKS_ENFORCE: runner.enforcement,
       DETERMINISTIC: '1',
       HOOKS_NODE: process.execPath,
+      ...fastPrePushEnv,
       ...(pwshPath ? { HOOKS_PWSH: pwshPath } : {}),
     },
   });
