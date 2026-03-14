@@ -2,6 +2,10 @@
 
 - Use GitHub Copilot CLI only in the local `draft-review` loop.
 - Run it through the repo-owned wrapper surfaces under `tools/local-collab/providers/`.
+- GitHub-native automatic Copilot review is disabled for this repository.
+- Do not request GitHub-side Copilot reviewers from repo workflows or from
+  `ready_for_review`; hosted policy should validate local review evidence, not
+  acquire new Copilot review.
 - Precedence:
   - `AGENTS.md` is the repo-wide policy authority.
   - This file narrows GitHub Copilot CLI behavior for the local review plane.

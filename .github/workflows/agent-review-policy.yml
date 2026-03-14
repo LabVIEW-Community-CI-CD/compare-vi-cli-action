@@ -2,9 +2,7 @@ name: Agent Review Policy
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled]
-  pull_request_review:
-    types: [submitted]
+    types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled, converted_to_draft]
   merge_group:
 
 permissions:
@@ -33,36 +31,10 @@ jobs:
       if: github.event_name == 'pull_request_target'
       run: node tools/npm/run-script.mjs build
 
-    - name: Collect Copilot review signal
-      if: github.event_name == 'pull_request_target'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        node dist/tools/priority/copilot-review-signal.js \
-          --repo "${{ github.repository }}" \
-          --pr "${{ github.event.pull_request.number }}" \
-          --head-sha "${{ github.event.pull_request.head.sha }}" \
-          --out tests/results/_agent/reviews/copilot-review-signal.json \
-          --step-summary "$GITHUB_STEP_SUMMARY"
-
-    - name: Validate Copilot review signal schema
-      if: github.event_name == 'pull_request_target'
-      run: node tools/npm/run-script.mjs schema:copilot-review-signal:validate
-
-    - name: Upload Copilot review signal artifact
-      if: always() && github.event_name == 'pull_request_target'
-      uses: actions/upload-artifact@v6
-      with:
-        name: copilot-review-signal-${{ github.event.pull_request.number }}
-        path: tests/results/_agent/reviews/copilot-review-signal.json
-        if-no-files-found: error
-
     - name: Evaluate Copilot queue gate
       if: >
         always() && (
           github.event_name == 'pull_request_target' ||
-          github.event_name == 'pull_request_review' ||
           github.event_name == 'merge_group'
         )
       env:
@@ -95,10 +67,6 @@ jobs:
             "--base-ref" "${{ github.event.pull_request.base.ref }}"
             "--draft" "${{ github.event.pull_request.draft }}"
           )
-        fi
-
-        if [[ "${{ github.event_name }}" == "pull_request_target" && -f tests/results/_agent/reviews/copilot-review-signal.json ]]; then
-          args+=("--signal" "tests/results/_agent/reviews/copilot-review-signal.json")
         fi
 
         node "${args[@]}"

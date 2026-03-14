@@ -96,6 +96,9 @@ artifacts under `tests/results/_agent/`.
 - Repo-owned Copilot CLI instructions live in `.github/copilot-instructions.md`.
   Use the local Copilot CLI review plane only for draft-review acceleration and
   keep hosted validation authoritative for final promotion.
+- GitHub-native automatic Copilot review is intentionally disabled here.
+  Hosted workflow policy must validate local review receipts and promotion
+  state, not request a second GitHub-side Copilot pass.
 - Instruction precedence for future agents:
   - `AGENTS.md` is the repo-wide policy and standing-priority authority.
   - `.github/copilot-instructions.md` narrows GitHub Copilot CLI behavior for

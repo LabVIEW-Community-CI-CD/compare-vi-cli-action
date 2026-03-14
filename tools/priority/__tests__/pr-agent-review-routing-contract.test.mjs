@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 
 const repoRoot = process.cwd();
 
-test('pr-agent-review-routing only requests Copilot while the PR is still draft', () => {
+test('pr-agent-review-routing keeps draft-phase routing local-only for agent-authored PRs', () => {
   const workflow = readFileSync(
     path.join(repoRoot, '.github', 'workflows', 'pr-agent-review-routing.yml'),
     'utf8'
@@ -19,8 +19,11 @@ test('pr-agent-review-routing only requests Copilot while the PR is still draft'
   );
   assert.doesNotMatch(workflow, /ready_for_review/);
   assert.match(workflow, /jobs:\s+request-reviewer:\s+if: github\.event\.pull_request\.draft == true/ms);
-  assert.match(workflow, /REQUIRED_AGENT_REVIEWER:\s+\$\{\{\s*vars\.REQUIRED_AGENT_REVIEWER \|\| 'Copilot'\s*\}\}/);
   assert.doesNotMatch(workflow, /github\.repository_owner/);
-  assert.match(workflow, /const requiredReviewer = \(process\.env\.REQUIRED_AGENT_REVIEWER \|\| 'Copilot'\)\.trim\(\);/);
-  assert.match(workflow, /reviewers:\s+\[requiredReviewer\]/);
+  assert.doesNotMatch(workflow, /REQUIRED_AGENT_REVIEWER/);
+  assert.doesNotMatch(workflow, /requestReviewers/);
+  assert.match(
+    workflow,
+    /GitHub-side Copilot reviewer routing is disabled for this repository;[\s\S]*draft-review acquisition remains local-only/
+  );
 });
