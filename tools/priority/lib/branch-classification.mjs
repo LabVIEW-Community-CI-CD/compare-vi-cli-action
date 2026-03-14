@@ -25,6 +25,17 @@ export function normalizeRepositoryRole(value) {
   return normalized;
 }
 
+export function normalizeRepositoryPlane(value) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+  if (!['upstream', 'origin', 'personal', 'fork'].includes(normalized)) {
+    throw new Error(`Unsupported repository plane '${value}'. Expected upstream, origin, personal, or fork.`);
+  }
+  return normalized;
+}
+
 function normalizeRepositorySlug(value) {
   return String(value ?? '').trim().toLowerCase();
 }
@@ -93,16 +104,38 @@ export function loadBranchClassContract(
       `Branch class contract in ${contractPath} has invalid upstreamRepository '${contract.upstreamRepository}'. Expected an owner/repo slug.`
     );
   }
+  if (!Array.isArray(contract.repositoryPlanes) || contract.repositoryPlanes.length === 0) {
+    throw new Error(`Branch class contract in ${contractPath} does not define any repositoryPlanes.`);
+  }
   return contract;
 }
 
-export function resolveRepositoryRole(repository, contract) {
-  const upstreamRepository = normalizeRepositorySlug(contract?.upstreamRepository);
+export function resolveRepositoryPlane(repository, contract) {
   const normalizedRepository = normalizeRepositorySlug(repository);
   if (!normalizedRepository) {
-    throw new Error('Repository slug is required to resolve branch role.');
+    throw new Error('Repository slug is required to resolve branch plane.');
   }
-  return normalizedRepository === upstreamRepository ? 'upstream' : 'fork';
+
+  const upstreamRepository = normalizeRepositorySlug(contract?.upstreamRepository);
+  if (normalizedRepository === upstreamRepository) {
+    return 'upstream';
+  }
+
+  for (const plane of Array.isArray(contract?.repositoryPlanes) ? contract.repositoryPlanes : []) {
+    const planeId = normalizeRepositoryPlane(plane?.id);
+    const repositories = Array.isArray(plane?.repositories)
+      ? plane.repositories.map((entry) => normalizeRepositorySlug(entry)).filter(Boolean)
+      : [];
+    if (repositories.includes(normalizedRepository)) {
+      return planeId;
+    }
+  }
+
+  return 'fork';
+}
+
+export function resolveRepositoryRole(repository, contract) {
+  return resolveRepositoryPlane(repository, contract) === 'upstream' ? 'upstream' : 'fork';
 }
 
 export function classifyBranch({
@@ -121,6 +154,7 @@ export function classifyBranch({
   const role = repositoryRole
     ? normalizeRepositoryRole(repositoryRole)
     : resolveRepositoryRole(repository, contract);
+  const repositoryPlane = repository ? resolveRepositoryPlane(repository, contract) : role;
 
   const matches = [];
   for (const entry of contract.classes) {
@@ -155,6 +189,7 @@ export function classifyBranch({
   return {
     id: selected.classEntry.id,
     repositoryRole: role,
+    repositoryPlane,
     branch: normalizedBranch,
     matchedPattern: selected.pattern,
     purpose: selected.classEntry.purpose,
