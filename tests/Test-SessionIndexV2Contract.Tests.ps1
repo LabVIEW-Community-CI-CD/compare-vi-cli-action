@@ -134,6 +134,13 @@ Describe 'Test-SessionIndexV2Contract' {
     $run.Report.status | Should -Be 'pass'
     ($run.Report.branchProtection.requiredContexts | Sort-Object) | Should -Be @('lint', 'session-index')
     $run.Report.branchProtection.missingContexts | Should -BeNullOrEmpty
+    $run.Report.burnInReceipt.schema | Should -Be 'session-index-v2-burn-in-receipt@v1'
+    $run.Report.burnInReceipt.mode | Should -Be 'burn-in'
+    $run.Report.burnInReceipt.status | Should -Be 'clean'
+    $run.Report.burnInReceipt.mismatchClass | Should -Be 'none'
+    $run.Report.burnInReceipt.recurrence.classification | Should -Be 'clean'
+    $run.Report.burnInReceipt.evidence.reportPath | Should -Match 'session-index-v2-contract\.json$'
+    $run.Report.burnInReceipt.evidence.policyPath | Should -Be $policyPath
   }
 
   It 'falls back to explicit branch lists when no branch-class binding exists' {
@@ -156,7 +163,7 @@ Describe 'Test-SessionIndexV2Contract' {
   }
 
   It 'fails closed in enforce mode when neither branch-class projection nor fallback data exist' {
-    $resultsDir = New-SessionIndexFixture -Name 'missing' -ExpectedContexts @()
+    $resultsDir = New-SessionIndexFixture -Name 'missing' -ExpectedContexts @('lint')
     $policyPath = Join-Path $TestDrive 'branch-policy.missing.json'
     Write-JsonFile -Path $policyPath -Data @{
       schema = 'branch-required-checks/v1'
@@ -174,5 +181,11 @@ Describe 'Test-SessionIndexV2Contract' {
     $run.ExitCode | Should -Be 1
     $run.Report.status | Should -Be 'fail'
     $run.Report.failures | Should -Contain "Unable to resolve required contexts from branch policy for branch 'develop'."
+    $run.Report.burnInReceipt.mode | Should -Be 'enforce'
+    $run.Report.burnInReceipt.status | Should -Be 'mismatch'
+    $run.Report.burnInReceipt.mismatchClass | Should -Be 'branch-policy-projection'
+    $run.Report.burnInReceipt.recurrence.classification | Should -Be 'unknown'
+    $run.Report.burnInReceipt.mismatchFingerprint.Length | Should -Be 64
+    $run.Report.burnInReceipt.evidence.sessionIndexV2Path | Should -Match 'session-index-v2\.json$'
   }
 }
