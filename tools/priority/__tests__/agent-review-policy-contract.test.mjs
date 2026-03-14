@@ -12,6 +12,8 @@ test('agent-review-policy validates existing draft-phase review state from pull_
 
   assert.match(workflow, /merge_group:/);
   assert.doesNotMatch(workflow, /workflow_run:/);
+  assert.doesNotMatch(workflow, /review_requested/);
+  assert.doesNotMatch(workflow, /review_request_removed/);
   assert.match(workflow, /pull_request_review:\s+types:\s+\[submitted\]/);
   assert.match(workflow, /permissions:\s+actions: read\s+pull-requests: read\s+contents: read/ms);
   assert.match(workflow, /uses: actions\/checkout@v5/);
@@ -37,6 +39,8 @@ test('agent-review-policy validates existing draft-phase review state from pull_
     workflow,
     /name: Evaluate Copilot queue gate\s+if: >[\s\S]*github\.event_name == 'pull_request_target'[\s\S]*github\.event_name == 'pull_request_review'[\s\S]*github\.event_name == 'merge_group'/,
   );
+  assert.match(workflow, /delivery-agent\.policy\.json/);
+  assert.match(workflow, /"--copilot-review-strategy" "\$review_strategy"/);
   assert.match(workflow, /"--poll-attempts" "60"/);
   assert.match(workflow, /"--poll-delay-ms" "10000"/);
   assert.match(workflow, /if \[\[ "\$\{\{ github\.event_name \}\}" == "merge_group" \]\]; then/);

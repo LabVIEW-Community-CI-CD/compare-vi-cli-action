@@ -248,9 +248,10 @@ to confirm each workflow includes both triggers.
 1. Ensure the PR targets a queue-managed branch (`develop` or `main`) and all required checks for that branch are green
    on the latest commit.
    For `develop`, keep the PR in **Draft** if you need the explicit escape hatch from Copilot review while iterating.
-   Ready PRs must wait for `agent-review-policy`, which now converges in one of two deterministic ways:
-   - the first Copilot review lands during the workflow's bounded polling window and reports no actionable current-head threads
+   Ready PRs must wait for `agent-review-policy`, which now converges in one of these deterministic ways:
+   - when the repo is using hosted GitHub review discovery, the first Copilot review lands during the workflow's bounded polling window and reports no actionable current-head threads
    - a follow-up push on an already reviewed PR leaves zero actionable current-head Copilot threads, allowing a stale-but-clean follow-up head
+   - when the repo is using the local-only `draft-only-explicit` strategy, the hosted gate records that no ready-phase GitHub Copilot review is required and does not poll for a missing hosted review run
 2. Click **Merge when ready** (queue-managed **squash**). No reviewer approval is required under the current policy.
 3. Monitor the corresponding queue page (`/queue/develop` or `/queue/main`). GitHub stages entries, reruns the required
    checks on the merge group tip, and waits up to your configured minimum group size wait time before merging smaller

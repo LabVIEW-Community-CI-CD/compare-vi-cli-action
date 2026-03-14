@@ -2,7 +2,7 @@ name: Agent Review Policy
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled, review_requested, review_request_removed]
+    types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled]
   pull_request_review:
     types: [submitted]
   merge_group:
@@ -70,10 +70,12 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       shell: bash
       run: |
+        review_strategy="$(node -p "require('./tools/priority/delivery-agent.policy.json').copilotReviewStrategy || 'github-review-required'")"
         args=(
           "tools/priority/copilot-review-gate.mjs"
           "--event-name" "${{ github.event_name }}"
           "--repo" "${{ github.repository }}"
+          "--copilot-review-strategy" "$review_strategy"
           "--poll-attempts" "60"
           "--poll-delay-ms" "10000"
           "--out" "tests/results/_agent/reviews/copilot-review-gate.json"
@@ -108,4 +110,3 @@ jobs:
         name: copilot-review-gate-${{ github.run_id }}-${{ github.run_attempt }}
         path: tests/results/_agent/reviews/copilot-review-gate.json
         if-no-files-found: error
-

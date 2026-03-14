@@ -16,6 +16,7 @@ export const DEFAULT_REPORT_PATH = path.join(
 const DEFAULT_GATED_BASE_REFS = ['develop'];
 const DEFAULT_POLL_ATTEMPTS = 1;
 const DEFAULT_POLL_DELAY_MS = 10000;
+const DEFAULT_COPILOT_REVIEW_STRATEGY = 'github-review-required';
 const GITHUB_API_URL = 'https://api.github.com';
 const CANONICAL_REPOSITORY = 'LabVIEW-Community-CI-CD/compare-vi-cli-action';
 const COPILOT_REVIEW_WORKFLOW_NAME = 'Copilot code review';
@@ -25,6 +26,10 @@ const COPILOT_LOGINS = new Set([
   'copilot',
   'copilot-pull-request-reviewer',
   'copilot-pull-request-reviewer[bot]',
+]);
+const COPILOT_REVIEW_STRATEGIES = new Set([
+  'github-review-required',
+  'draft-only-explicit',
 ]);
 
 const REVIEW_THREADS_QUERY = [
@@ -183,6 +188,16 @@ function normalizeBaseRefList(value) {
     .filter((item) => Boolean(item));
 }
 
+function normalizeCopilotReviewStrategy(value) {
+  const normalized = normalizeText(value)?.toLowerCase() ?? DEFAULT_COPILOT_REVIEW_STRATEGY;
+  if (!COPILOT_REVIEW_STRATEGIES.has(normalized)) {
+    throw new Error(
+      `Unsupported --copilot-review-strategy '${value}'. Expected one of: ${[...COPILOT_REVIEW_STRATEGIES].join(', ')}.`
+    );
+  }
+  return normalized;
+}
+
 export function parseMergeGroupHeadBranch(headBranch) {
   const normalized = normalizeText(headBranch);
   if (!normalized) {
@@ -254,6 +269,7 @@ function printUsage() {
     '  --review-run-conclusion <conclusion> Optional observed Copilot review workflow run conclusion.',
     '  --review-run-url <url>     Optional observed Copilot review workflow run URL.',
     '  --review-run-workflow-name <name> Optional observed Copilot review workflow name.',
+    `  --copilot-review-strategy <name> Queue gate strategy (default: ${DEFAULT_COPILOT_REVIEW_STRATEGY}).`,
     `  --poll-attempts <n>        Live poll attempts when the initial Copilot review is missing (default: ${DEFAULT_POLL_ATTEMPTS}).`,
     `  --poll-delay-ms <n>        Delay between live poll attempts in milliseconds (default: ${DEFAULT_POLL_DELAY_MS}).`,
     `  --out <path>               Output JSON path (default: ${DEFAULT_REPORT_PATH}).`,
@@ -284,6 +300,7 @@ export function parseCliArgs(argv = process.argv) {
     reviewRunConclusion: null,
     reviewRunUrl: null,
     reviewRunWorkflowName: null,
+    copilotReviewStrategy: DEFAULT_COPILOT_REVIEW_STRATEGY,
     pollAttempts: DEFAULT_POLL_ATTEMPTS,
     pollDelayMs: DEFAULT_POLL_DELAY_MS,
     outPath: DEFAULT_REPORT_PATH,
@@ -313,6 +330,7 @@ export function parseCliArgs(argv = process.argv) {
       token === '--review-run-conclusion' ||
       token === '--review-run-url' ||
       token === '--review-run-workflow-name' ||
+      token === '--copilot-review-strategy' ||
       token === '--poll-attempts' ||
       token === '--poll-delay-ms' ||
       token === '--out' ||
@@ -336,6 +354,9 @@ export function parseCliArgs(argv = process.argv) {
       if (token === '--review-run-conclusion') options.reviewRunConclusion = normalizeText(next)?.toUpperCase() ?? null;
       if (token === '--review-run-url') options.reviewRunUrl = normalizeText(next);
       if (token === '--review-run-workflow-name') options.reviewRunWorkflowName = normalizeText(next);
+      if (token === '--copilot-review-strategy') {
+        options.copilotReviewStrategy = normalizeCopilotReviewStrategy(next);
+      }
       if (token === '--poll-attempts') options.pollAttempts = parsePositiveInteger(next, { label: '--poll-attempts' });
       if (token === '--poll-delay-ms') options.pollDelayMs = parsePositiveInteger(next, { label: '--poll-delay-ms' });
       if (token === '--out') options.outPath = next;
@@ -763,6 +784,7 @@ function evaluateGateOutcome({
   eventName,
   repository,
   sourceMode,
+  copilotReviewStrategy,
   pullRequest,
   reviews,
   threads,
@@ -774,6 +796,7 @@ function evaluateGateOutcome({
   const reasons = [];
   const normalizedBaseRef = normalizeBaseRef(pullRequest.baseRef)?.toLowerCase() ?? null;
   const canonicalRepository = isCanonicalRepository(repository);
+  const localOnlyCliReviewMode = normalizeCopilotReviewStrategy(copilotReviewStrategy) === 'draft-only-explicit';
   const mergeGroupSource = pullRequest.mergeGroupSource ?? null;
   const mergeGroupSourceResolved = eventName !== 'merge_group' || mergeGroupSource !== null;
   const gateApplies =
@@ -852,17 +875,23 @@ function evaluateGateOutcome({
     status = 'fail';
     gateState = 'error';
     reasons.push('copilot-review-data-error');
-  } else if (reviewRunInProgress) {
+  } else if (summary.actionableThreadCount > 0 || summary.actionableCommentCount > 0) {
+    status = 'fail';
+    gateState = 'blocked';
+    reasons.push('actionable-comments-present');
+  } else if (reviewRunInProgress && !localOnlyCliReviewMode) {
     status = 'fail';
     gateState = 'blocked';
     reasons.push('copilot-review-run-active');
-  } else if (reviewRunCompletedFailure) {
+  } else if (reviewRunCompletedFailure && !localOnlyCliReviewMode) {
     status = 'fail';
     gateState = 'blocked';
     reasons.push('copilot-review-run-failed');
   } else if (!latestCopilotReview) {
     if (reviewRunCompletedClean && summary.actionableThreadCount === 0 && summary.actionableCommentCount === 0) {
       reasons.push('current-head-review-run-completed-clean');
+    } else if (localOnlyCliReviewMode) {
+      reasons.push('local-review-mode-no-github-review-required');
     } else if (!reviewRunObserved) {
       status = 'fail';
       gateState = 'blocked';
@@ -877,6 +906,8 @@ function evaluateGateOutcome({
       reasons.push('current-head-review-run-completed-clean');
     } else if (staleReviewCleanFollowup) {
       reasons.push('stale-review-clean-followup');
+    } else if (localOnlyCliReviewMode) {
+      reasons.push('local-review-mode-no-github-review-required');
     } else {
       status = 'fail';
       gateState = 'blocked';
@@ -885,10 +916,6 @@ function evaluateGateOutcome({
         reasons.push('latest-review-stale');
       }
     }
-  } else if (summary.actionableThreadCount > 0 || summary.actionableCommentCount > 0) {
-    status = 'fail';
-    gateState = 'blocked';
-    reasons.push('actionable-comments-present');
   } else {
     reasons.push('current-head-review-clean');
   }
@@ -903,6 +930,7 @@ function evaluateGateOutcome({
     source: {
       mode: sourceMode,
       eventName,
+      copilotReviewStrategy: normalizeCopilotReviewStrategy(copilotReviewStrategy),
       mergeGroup:
         mergeGroupSource !== null
           ? {
@@ -1038,6 +1066,7 @@ function buildReportFromSignal(options, signalReport, now) {
     eventName: options.eventName,
     repository: normalizeText(signalReport.repository) ?? normalizeText(options.repo),
     sourceMode: 'signal',
+    copilotReviewStrategy: options.copilotReviewStrategy,
     pullRequest,
     reviews,
     threads: actionableThreads,
@@ -1068,6 +1097,7 @@ function buildReportFromLiveData(
     eventName: options.eventName,
     repository: normalizeText(options.repo),
     sourceMode: options.eventName === 'merge_group' ? 'merge-group-live' : 'live',
+    copilotReviewStrategy: options.copilotReviewStrategy,
     pullRequest,
     reviews,
     threads,
@@ -1091,6 +1121,7 @@ function buildFailureReport(options, now, error) {
     source: {
       mode: options.eventName === 'merge_group' ? 'merge-group' : 'live',
       eventName: options.eventName,
+      copilotReviewStrategy: normalizeCopilotReviewStrategy(options.copilotReviewStrategy),
       mergeGroup:
         mergeGroupSource !== null
           ? {
@@ -1157,6 +1188,7 @@ function appendStepSummary(stepSummaryPath, report) {
     `- gate_state: \`${report.gateState}\``,
     `- source_mode: \`${report.source.mode}\``,
     `- event_name: \`${report.source.eventName}\``,
+    `- copilot_review_strategy: \`${report.source.copilotReviewStrategy ?? DEFAULT_COPILOT_REVIEW_STRATEGY}\``,
     `- repository: \`${report.repository ?? 'unknown'}\``,
     `- pull_request: \`#${report.pullRequest.number ?? 'unknown'}\``,
     `- base_ref: \`${report.pullRequest.baseRef ?? 'unknown'}\``,
@@ -1228,6 +1260,9 @@ function isWaitingForCurrentHeadCopilotReview(report) {
 }
 
 function shouldPollForInitialCopilotReview(report, options) {
+  if (normalizeCopilotReviewStrategy(options.copilotReviewStrategy) === 'draft-only-explicit') {
+    return false;
+  }
   return (
     options.eventName === 'pull_request_target' &&
     options.pollAttempts > 1 &&
