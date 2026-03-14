@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/public-linux-diagnostics-harness-local-v1.schema.json",
+  "title": "public-linux-diagnostics-harness-local@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "target",
+    "contract",
+    "execution",
+    "artifacts",
+    "humanGoNoGo",
+    "status"
+  ],
+  "properties": {
+    "schema": {
+      "const": "public-linux-diagnostics-harness-local@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repositorySlug",
+        "repositoryVisibility",
+        "repositoryUrl",
+        "reference",
+        "defaultBranch",
+        "developRelationship"
+      ],
+      "properties": {
+        "repositorySlug": {
+          "type": "string",
+          "pattern": "^[^/]+/[^/]+$"
+        },
+        "repositoryVisibility": {
+          "const": "public"
+        },
+        "repositoryUrl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaultBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "developRelationship": {
+          "type": "string",
+          "enum": [
+            "equal",
+            "ahead"
+          ]
+        }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaPath",
+        "docPath"
+      ],
+      "properties": {
+        "schemaPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "docPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "entryCommand",
+        "entryArgs",
+        "repoRoot"
+      ],
+      "properties": {
+        "mode": {
+          "const": "plan-only"
+        },
+        "entryCommand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entryArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "repoRoot": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receiptPath",
+        "reviewLoopReceiptPath",
+        "historySummaryPath",
+        "historyReportHtmlPath",
+        "operatorSummaryPath"
+      ],
+      "properties": {
+        "receiptPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewLoopReceiptPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "historySummaryPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "historyReportHtmlPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operatorSummaryPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "humanGoNoGo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "workflowPath",
+        "decisionPath"
+      ],
+      "properties": {
+        "required": {
+          "const": true
+        },
+        "workflowPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decisionPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "status": {
+      "const": "planned"
+    }
+  }
+}
