@@ -15,6 +15,91 @@ async function createGitRepo() {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'local-collab-orchestrator-'));
   spawnSync('git', ['init', '--initial-branch=develop'], { cwd: repoRoot, encoding: 'utf8' });
   await writeFile(path.join(repoRoot, 'README.md'), '# test\n', 'utf8');
+  await mkdir(path.join(repoRoot, 'tools', 'policy'), { recursive: true });
+  await writeFile(
+    path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'),
+    JSON.stringify({
+      schema: 'branch-classes/v1',
+      schemaVersion: '1.0.0',
+      upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      repositoryPlanes: [
+        {
+          id: 'upstream',
+          repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action'],
+          developBranch: 'develop',
+          developClass: 'upstream-integration',
+          laneBranchPrefix: 'issue/',
+          purpose: 'Canonical integration plane.',
+          personas: ['daemon']
+        },
+        {
+          id: 'origin',
+          repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'],
+          developBranch: 'develop',
+          developClass: 'fork-mirror-develop',
+          laneBranchPrefix: 'issue/origin-',
+          purpose: 'Org review plane.',
+          personas: ['copilot-cli']
+        },
+        {
+          id: 'personal',
+          repositories: ['svelderrainruiz/compare-vi-cli-action'],
+          developBranch: 'develop',
+          developClass: 'fork-mirror-develop',
+          laneBranchPrefix: 'issue/personal-',
+          purpose: 'Personal authoring plane.',
+          personas: ['codex', 'codex-cli']
+        }
+      ],
+      classes: [
+        {
+          id: 'upstream-integration',
+          repositoryRoles: ['upstream'],
+          branchPatterns: ['develop'],
+          purpose: 'Canonical integration branch.',
+          prSourceAllowed: false,
+          prTargetAllowed: true,
+          mergePolicy: 'merge-queue-squash'
+        },
+        {
+          id: 'fork-mirror-develop',
+          repositoryRoles: ['fork'],
+          branchPatterns: ['develop'],
+          purpose: 'Mirror copy of upstream develop.',
+          prSourceAllowed: false,
+          prTargetAllowed: false,
+          mergePolicy: 'mirror-only'
+        },
+        {
+          id: 'lane',
+          repositoryRoles: ['upstream', 'fork'],
+          branchPatterns: ['issue/*'],
+          purpose: 'Short-lived implementation branches.',
+          prSourceAllowed: true,
+          prTargetAllowed: false,
+          mergePolicy: 'n/a'
+        }
+      ],
+      allowedTransitions: [
+        {
+          from: 'lane',
+          action: 'promote',
+          to: 'upstream-integration',
+          via: 'pull-request'
+        }
+      ],
+      planeTransitions: [
+        {
+          from: 'personal',
+          action: 'review',
+          to: 'origin',
+          via: 'pull-request',
+          branchClass: 'lane'
+        }
+      ]
+    }, null, 2),
+    'utf8'
+  );
   spawnSync('git', ['add', 'README.md'], { cwd: repoRoot, encoding: 'utf8' });
   spawnSync(
     'git',
@@ -104,6 +189,8 @@ test('runLocalCollaborationPhase writes deterministic daemon orchestrator receip
   assert.equal(result.receipt.executionPlane, 'docker');
   assert.equal(result.receipt.selectionSource, 'default-empty');
   assert.deepEqual(result.receipt.providers, []);
+  assert.equal(result.receipt.branchModel.branchName, 'develop');
+  assert.equal(result.receipt.branchModel.plane, null);
   assert.match(result.receipt.delegate.command.join(' '), /tools\/priority\/docker-desktop-review-loop\.mjs/);
   assert.equal(result.receipt.ledger.receiptId, `daemon:${result.receipt.headSha}`);
 
@@ -232,6 +319,8 @@ test('runLocalCollaborationPhase records codex authoring receipts for post-commi
   assert.equal(result.receipt.forkPlane, 'personal');
   assert.equal(result.receipt.persona, 'codex');
   assert.equal(result.receipt.executionPlane, 'windows-host');
+  assert.equal(result.receipt.branchModel.branchName, 'develop');
+  assert.equal(result.receipt.branchModel.plane, null);
   assert.equal(result.receipt.commitCreated, true);
   assert.deepEqual(result.receipt.filesTouched, ['README.md']);
   assert.match(result.receipt.delegate.summaryPath, /tests[\\/]results[\\/]_hooks[\\/]post-commit\.json$/);
@@ -272,6 +361,8 @@ test('runLocalCollaborationPhase gates pre-commit on local agent review and reco
   assert.equal(result.receipt.delegate.agentReview.receiptPath, 'tests/results/_hooks/pre-commit-agent-review-policy.json');
   assert.equal(result.receipt.delegate.agentReview.receiptStatus, 'passed');
   assert.deepEqual(result.receipt.delegate.agentReview.requestedProviders, ['simulation']);
+  assert.equal(result.receipt.branchModel.branchName, 'develop');
+  assert.equal(result.receipt.branchModel.plane, null);
 
   const hookSummary = JSON.parse(await readFile(result.receipt.delegate.summaryPath, 'utf8'));
   const reviewStep = hookSummary.steps.find((step) => step.name === 'agent-review-policy');
@@ -320,6 +411,71 @@ test('runLocalCollaborationPhase defaults hosted pre-commit reviews to simulatio
   });
   assert.equal(result.receipt.delegate.agentReview.selectionSource, 'github-actions-default');
   assert.deepEqual(result.receipt.delegate.agentReview.requestedProviders, ['simulation']);
+});
+
+test('runLocalCollaborationPhase infers the origin hook plane from the lane branch prefix', async () => {
+  const repoRoot = await createGitRepo();
+  spawnSync('git', ['checkout', '-b', 'issue/origin-1084-review-lane'], { cwd: repoRoot, encoding: 'utf8' });
+  await writeFile(path.join(repoRoot, 'notes.txt'), 'lane\n', 'utf8');
+  spawnSync('git', ['add', 'notes.txt'], { cwd: repoRoot, encoding: 'utf8' });
+
+  const result = await runLocalCollaborationPhase({
+    phase: 'pre-commit',
+    repoRoot,
+    providers: ['simulation'],
+    invokeAgentReviewPolicyFn: () => ({
+      exitCode: 0,
+      receipt: {
+        overall: {
+          status: 'passed',
+          actionableFindingCount: 0
+        },
+        providerSelection: {
+          selectionSource: 'explicit-request'
+        },
+        requestedProviders: ['simulation']
+      }
+    })
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.receipt.forkPlane, 'origin');
+  assert.equal(result.receipt.branchModel.branchName, 'issue/origin-1084-review-lane');
+  assert.equal(result.receipt.branchModel.plane, 'origin');
+  assert.equal(result.receipt.branchModel.laneBranchPrefix, 'issue/origin-');
+
+  const ledgerReceipt = JSON.parse(await readFile(result.ledgerReceiptPath, 'utf8'));
+  assert.equal(ledgerReceipt.forkPlane, 'origin');
+  assert.equal(ledgerReceipt.metadata.branchModel.plane, 'origin');
+});
+
+test('runLocalCollaborationPhase fails closed when an explicit hook plane conflicts with the lane branch prefix', async () => {
+  const repoRoot = await createGitRepo();
+  spawnSync('git', ['checkout', '-b', 'issue/origin-1084-review-lane'], { cwd: repoRoot, encoding: 'utf8' });
+
+  await assert.rejects(
+    () =>
+      runLocalCollaborationPhase({
+        phase: 'pre-commit',
+        repoRoot,
+        forkPlane: 'personal',
+        providers: ['simulation'],
+        invokeAgentReviewPolicyFn: () => ({
+          exitCode: 0,
+          receipt: {
+            overall: {
+              status: 'passed',
+              actionableFindingCount: 0
+            },
+            providerSelection: {
+              selectionSource: 'explicit-request'
+            },
+            requestedProviders: ['simulation']
+          }
+        })
+      }),
+    /conflicts with branch plane 'origin'/
+  );
 });
 
 test('runLocalCollaborationPhase keeps pre-push non-blocking in local warn mode when local agent review fails', async () => {

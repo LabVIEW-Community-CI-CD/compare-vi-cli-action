@@ -8,6 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { HookRunner, info, listStagedFiles } from '../../hooks/core/runner.mjs';
 import { resolveGitContext, writeLocalCollaborationLedgerReceipt } from '../ledger/local-review-ledger.mjs';
 import { AGENT_REVIEW_POLICY_PROFILE_RECEIPT_PATHS } from '../providers/agent-review-policy.mjs';
+import {
+  DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
+  loadBranchClassContract
+} from '../../priority/lib/branch-classification.mjs';
 
 export const LOCAL_COLLAB_ORCHESTRATOR_SCHEMA = 'comparevi/local-collab-orchestrator@v1';
 export const LOCAL_COLLAB_PHASES = ['pre-commit', 'post-commit', 'pre-push', 'daemon'];
@@ -118,6 +122,44 @@ function collectFilesTouchedForPhase(repoRoot, phase, git = {}) {
   return [];
 }
 
+function resolveCurrentBranchName(repoRoot) {
+  return normalizeText(runGit(repoRoot, ['branch', '--show-current']));
+}
+
+function normalizeBranchPlaneEntry(entry = {}) {
+  return {
+    plane: normalizeText(entry.id),
+    repositories: normalizeStringList(entry.repositories),
+    developBranch: normalizeText(entry.developBranch),
+    developClass: normalizeText(entry.developClass),
+    laneBranchPrefix: normalizeText(entry.laneBranchPrefix),
+    purpose: normalizeText(entry.purpose),
+    personas: normalizeStringList(entry.personas)
+  };
+}
+
+function resolveBranchModel(repoRoot, loadBranchClassContractFn = loadBranchClassContract) {
+  const contract = loadBranchClassContractFn(repoRoot);
+  const branchName = resolveCurrentBranchName(repoRoot);
+  const planeEntries = Array.isArray(contract.repositoryPlanes)
+    ? contract.repositoryPlanes.map((entry) => normalizeBranchPlaneEntry(entry))
+    : [];
+  const lanePlane = [...planeEntries]
+    .sort((left, right) => right.laneBranchPrefix.length - left.laneBranchPrefix.length)
+    .find((entry) => entry.laneBranchPrefix && branchName.startsWith(entry.laneBranchPrefix)) ?? null;
+
+  return {
+    contractPath: DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH.replace(/\\/g, '/'),
+    branchName,
+    plane: lanePlane?.plane || null,
+    laneBranchPrefix: lanePlane?.laneBranchPrefix || null,
+    developBranch: lanePlane?.developBranch || null,
+    developClass: lanePlane?.developClass || null,
+    purpose: lanePlane?.purpose || null,
+    personas: lanePlane?.personas || []
+  };
+}
+
 export function parseArgs(argv = process.argv) {
   const args = Array.isArray(argv) ? argv.slice(2) : [];
   const parsed = {
@@ -215,9 +257,28 @@ export function resolvePhaseProviderSelection(phase, env = process.env, explicit
   };
 }
 
-function resolvePhaseIdentity(phase, env = process.env, overrides = {}) {
+function resolvePhaseIdentity(phase, repoRoot, env = process.env, overrides = {}, branchModel = null) {
+  const explicitForkPlane = normalizeText(overrides.forkPlane);
+  const envForkPlane = normalizeText(env.LOCAL_COLLAB_FORK_PLANE);
+  const defaultForkPlane = DEFAULT_PHASE_FORK_PLANES[phase];
+  const branchPlane = normalizeText(branchModel?.plane);
+
+  if (phase !== 'daemon' && branchPlane) {
+    if (explicitForkPlane && explicitForkPlane !== branchPlane) {
+      throw new Error(`Explicit fork plane '${explicitForkPlane}' conflicts with branch plane '${branchPlane}' for '${branchModel.branchName}'.`);
+    }
+    if (envForkPlane && envForkPlane !== branchPlane) {
+      throw new Error(`LOCAL_COLLAB_FORK_PLANE='${envForkPlane}' conflicts with branch plane '${branchPlane}' for '${branchModel.branchName}'.`);
+    }
+  }
+
+  const resolvedForkPlane =
+    explicitForkPlane ||
+    envForkPlane ||
+    (phase !== 'daemon' && branchPlane ? branchPlane : defaultForkPlane);
+
   return {
-    forkPlane: normalizeText(overrides.forkPlane) || normalizeText(env.LOCAL_COLLAB_FORK_PLANE) || DEFAULT_PHASE_FORK_PLANES[phase],
+    forkPlane: resolvedForkPlane,
     persona: normalizeText(overrides.persona) || normalizeText(env.LOCAL_COLLAB_PERSONA) || DEFAULT_PHASE_PERSONAS[phase],
     executionPlane:
       normalizeText(overrides.executionPlane) ||
@@ -616,7 +677,8 @@ export async function runLocalCollaborationPhase(options = {}) {
   const env = options.env ?? process.env;
   const delegateFns = options.delegateFns && typeof options.delegateFns === 'object' ? options.delegateFns : {};
   const providerSelection = resolvePhaseProviderSelection(phase, env, options.providers);
-  const identity = resolvePhaseIdentity(phase, env, options);
+  const branchModel = resolveBranchModel(repoRoot, options.loadBranchClassContractFn);
+  const identity = resolvePhaseIdentity(phase, repoRoot, env, options, branchModel);
   const git = resolveGitContext(repoRoot);
   const orchestratorReceiptPath = path.resolve(
     repoRoot,
@@ -683,6 +745,7 @@ export async function runLocalCollaborationPhase(options = {}) {
     executionPlane: identity.executionPlane,
     headSha: git.headSha,
     baseSha: git.baseSha,
+    branchModel,
     startedAt: new Date(started).toISOString(),
     finishedAt: new Date(finished).toISOString(),
     durationMs: finished - started,
@@ -740,7 +803,8 @@ export async function runLocalCollaborationPhase(options = {}) {
     metadata: {
       orchestratorReceiptPath: path.relative(repoRoot, orchestratorReceiptPath).replace(/\\/g, '/'),
       delegateSummaryPath: normalizeText(result.summaryPath) || null,
-      agentReviewReceiptPath: agentReviewReceiptPath || null
+      agentReviewReceiptPath: agentReviewReceiptPath || null,
+      branchModel
     }
   });
   receipt.ledger = {
