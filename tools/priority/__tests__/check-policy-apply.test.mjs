@@ -3003,8 +3003,12 @@ test('priority:policy build branch-protection payload honors explicit disabled s
 
 test('priority:policy --apply projects required checks from the branch-class contract when the manifest omits copied lists', async () => {
   const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
-  assert.equal(manifestOverride.branches.develop.required_status_checks, undefined);
-  assert.equal(manifestOverride.rulesets.develop.required_status_checks, undefined);
+  delete manifestOverride.branches.develop.required_status_checks;
+  delete manifestOverride.branches.main.required_status_checks;
+  delete manifestOverride.branches['release/*'].required_status_checks;
+  delete manifestOverride.rulesets.develop.required_status_checks;
+  delete manifestOverride.rulesets['8614140'].required_status_checks;
+  delete manifestOverride.rulesets['8614172'].required_status_checks;
 
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
   const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;

@@ -29,7 +29,19 @@
       "block_creations": false,
       "required_conversation_resolution": false,
       "lock_branch": false,
-      "allow_fork_syncing": false
+      "allow_fork_syncing": false,
+      "required_status_checks": [
+        "lint",
+        "fixtures",
+        "session-index",
+        "issue-snapshot",
+        "semver",
+        "Policy Guard (Upstream) / policy-guard",
+        "vi-history-scenarios-linux",
+        "agent-review-policy",
+        "hook-parity",
+        "commit-integrity"
+      ]
     },
     "main": {
       "branch_class_id": "upstream-release",
@@ -46,11 +58,28 @@
       "block_creations": false,
       "required_conversation_resolution": false,
       "lock_branch": false,
-      "allow_fork_syncing": false
+      "allow_fork_syncing": false,
+      "required_status_checks": [
+        "lint",
+        "pester",
+        "vi-binary-check",
+        "vi-compare",
+        "Policy Guard (Upstream) / policy-guard",
+        "commit-integrity"
+      ]
     },
     "release/*": {
       "branch_class_id": "upstream-release-prep",
-      "required_linear_history": true
+      "required_linear_history": true,
+      "required_status_checks": [
+        "lint",
+        "pester",
+        "publish",
+        "vi-binary-check",
+        "vi-compare",
+        "mock-cli",
+        "Policy Guard (Upstream) / policy-guard"
+      ]
     }
   },
   "rulesets": {
@@ -88,7 +117,19 @@
       "copilot_code_review": false,
       "code_quality": {
         "severity": "warnings"
-      }
+      },
+      "required_status_checks": [
+        "lint",
+        "fixtures",
+        "session-index",
+        "issue-snapshot",
+        "semver",
+        "Policy Guard (Upstream) / policy-guard",
+        "vi-history-scenarios-linux",
+        "agent-review-policy",
+        "hook-parity",
+        "commit-integrity"
+      ]
     },
     "8614140": {
       "name": "main",
@@ -119,7 +160,15 @@
           "rebase"
         ]
       },
-      "copilot_code_review": false
+      "copilot_code_review": false,
+      "required_status_checks": [
+        "lint",
+        "pester",
+        "vi-binary-check",
+        "vi-compare",
+        "Policy Guard (Upstream) / policy-guard",
+        "commit-integrity"
+      ]
     },
     "8614172": {
       "name": "release",
@@ -138,7 +187,16 @@
           "rebase"
         ]
       },
-      "copilot_code_review": false
+      "copilot_code_review": false,
+      "required_status_checks": [
+        "lint",
+        "pester",
+        "publish",
+        "vi-binary-check",
+        "vi-compare",
+        "mock-cli",
+        "Policy Guard (Upstream) / policy-guard"
+      ]
     }
   }
 }
