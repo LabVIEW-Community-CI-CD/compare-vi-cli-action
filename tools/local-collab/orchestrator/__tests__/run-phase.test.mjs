@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import {
   LOCAL_COLLAB_ORCHESTRATOR_SCHEMA,
@@ -63,6 +63,21 @@ test('resolvePhaseProviderSelection prefers explicit, then phase, then shared ov
   assert.deepEqual(
     resolvePhaseProviderSelection('daemon', { HOOKS_AGENT_REVIEW_PROVIDERS: 'copilot-cli,simulation' }),
     { selectionSource: 'HOOKS_AGENT_REVIEW_PROVIDERS', providers: ['copilot-cli', 'simulation'] }
+  );
+});
+
+test('resolvePhaseProviderSelection defaults hosted hook phases to simulation when no explicit override is present', () => {
+  assert.deepEqual(
+    resolvePhaseProviderSelection('pre-commit', { GITHUB_ACTIONS: 'true' }),
+    { selectionSource: 'github-actions-default', providers: ['simulation'] }
+  );
+  assert.deepEqual(
+    resolvePhaseProviderSelection('pre-push', { GITHUB_ACTIONS: 'true' }),
+    { selectionSource: 'github-actions-default', providers: ['simulation'] }
+  );
+  assert.deepEqual(
+    resolvePhaseProviderSelection('daemon', { GITHUB_ACTIONS: 'true' }),
+    { selectionSource: 'default-empty', providers: [] }
   );
 });
 
@@ -172,6 +187,47 @@ test('runLocalCollaborationPhase gates pre-commit on local agent review and reco
   assert.equal(reviewStep.status, 'ok');
   assert.equal(reviewStep.rawExitCode, 0);
   assert.match(reviewStep.note, /pre-commit-agent-review-policy\.json/);
+});
+
+test('runLocalCollaborationPhase defaults hosted pre-commit reviews to simulation', async () => {
+  const repoRoot = await createGitRepo();
+  await mkdir(path.join(repoRoot, 'tmp', 'hooks'), { recursive: true });
+  await writeFile(path.join(repoRoot, 'tmp', 'hooks', 'sample.ps1'), "Write-Output 'hook parity sample'\n", 'utf8');
+  spawnSync('git', ['add', 'tmp/hooks/sample.ps1'], { cwd: repoRoot, encoding: 'utf8' });
+
+  let observedSelection = null;
+  const result = await runLocalCollaborationPhase({
+    phase: 'pre-commit',
+    repoRoot,
+    env: {
+      ...process.env,
+      GITHUB_ACTIONS: 'true'
+    },
+    invokeAgentReviewPolicyFn: ({ providerSelection }) => {
+      observedSelection = providerSelection;
+      return {
+        exitCode: 0,
+        receipt: {
+          overall: {
+            status: 'passed',
+            actionableFindingCount: 0
+          },
+          providerSelection: {
+            selectionSource: 'github-actions-default'
+          },
+          requestedProviders: ['simulation']
+        }
+      };
+    }
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(observedSelection, {
+    selectionSource: 'github-actions-default',
+    providers: ['simulation']
+  });
+  assert.equal(result.receipt.delegate.agentReview.selectionSource, 'github-actions-default');
+  assert.deepEqual(result.receipt.delegate.agentReview.requestedProviders, ['simulation']);
 });
 
 test('runLocalCollaborationPhase blocks pre-push before heavy checks when local agent review fails', async () => {

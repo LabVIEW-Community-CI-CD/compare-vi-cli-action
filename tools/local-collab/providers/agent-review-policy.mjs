@@ -47,6 +47,15 @@ function normalizeText(value) {
   return String(value).trim();
 }
 
+function isNodeExecutableToken(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return false;
+  }
+  const basename = path.basename(normalized).toLowerCase();
+  return basename === 'node' || basename === 'node.exe';
+}
+
 function toIso(value = new Date()) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
@@ -96,7 +105,7 @@ export function parseArgs(argv = process.argv) {
 
   while (args.length > 0) {
     const token = args.shift();
-    if (token === 'node' || normalizeText(token).endsWith('agent-review-policy.mjs')) {
+    if (isNodeExecutableToken(token) || normalizeText(token).endsWith('agent-review-policy.mjs')) {
       continue;
     }
     switch (token) {

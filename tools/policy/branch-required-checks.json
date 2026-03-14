@@ -16,6 +16,7 @@
       "Policy Guard (Upstream) / policy-guard",
       "vi-history-scenarios-linux",
       "agent-review-policy",
+      "hook-parity",
       "commit-integrity"
     ],
     "upstream-release": [
@@ -46,6 +47,7 @@
       "Policy Guard (Upstream) / policy-guard",
       "vi-history-scenarios-linux",
       "agent-review-policy",
+      "hook-parity",
       "commit-integrity"
     ],
     "main": [

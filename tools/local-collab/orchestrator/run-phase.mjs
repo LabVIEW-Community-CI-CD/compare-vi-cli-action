@@ -34,6 +34,10 @@ export const PHASE_PROVIDER_ENV_OVERRIDES = {
   'pre-push': 'PREPUSH_AGENT_REVIEW_PROVIDERS',
   daemon: 'DAEMON_AGENT_REVIEW_PROVIDERS'
 };
+export const GITHUB_ACTIONS_PHASE_DEFAULT_PROVIDERS = {
+  'pre-commit': ['simulation'],
+  'pre-push': ['simulation']
+};
 export const DEFAULT_ORCHESTRATOR_RECEIPT_ROOT = path.join(
   'tests',
   'results',
@@ -193,6 +197,15 @@ export function resolvePhaseProviderSelection(phase, env = process.env, explicit
     return {
       selectionSource: 'HOOKS_AGENT_REVIEW_PROVIDERS',
       providers: hooksOverride
+    };
+  }
+
+  const githubActions = normalizeText(env.GITHUB_ACTIONS).toLowerCase() === 'true';
+  const hostedDefaults = githubActions ? normalizeStringList(GITHUB_ACTIONS_PHASE_DEFAULT_PROVIDERS[phase]) : [];
+  if (hostedDefaults.length > 0) {
+    return {
+      selectionSource: 'github-actions-default',
+      providers: hostedDefaults
     };
   }
 

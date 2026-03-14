@@ -71,7 +71,7 @@ promotion behavior, not the branch-class source of truth.
 ### GitHub rulesets
 | Ruleset ID | Scope                | Highlights                                                                                   |
 |------------|----------------------|----------------------------------------------------------------------------------------------|
-| `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `agent-review-policy`, `commit-integrity`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
+| `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `agent-review-policy`, `hook-parity`, `commit-integrity`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
 | `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
 | `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`. Required approving reviews: `0`. |
 
@@ -103,7 +103,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 - **Merge strategy**: queue-managed squash with linear history enforced; merge commits disabled.
 - **Required checks**: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`,
   `Policy Guard (Upstream) / policy-guard`,
-  `vi-history-scenarios-linux`, `agent-review-policy`, `commit-integrity`.
+  `vi-history-scenarios-linux`, `agent-review-policy`, `hook-parity`, `commit-integrity`.
 - **Admin bypass**: leave disabled; administrators should only intervene when `priority:policy` confirms parity.
 - **Reapply**: Use `node tools/npm/run-script.mjs priority:policy -- --apply` to push the manifest configuration when drift is detected.
 
