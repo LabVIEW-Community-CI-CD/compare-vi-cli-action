@@ -327,6 +327,9 @@ test('runValidationApprovalProof emits a passing report with conservative false-
   assert.equal(result.report?.samples[0].comparison, 'match-ready');
   assert.equal(result.report?.samples[1].comparison, 'false-blocked');
   assert.ok(result.report?.samples[1].reasons.includes('copilot-review-run-unobserved'));
+  const attestation = JSON.parse(fs.readFileSync(result.report?.samples[0].artifacts.attestationPath, 'utf8'));
+  assert.match(attestation.validationEvidence.commands[1].command, /priority:artifact:download/);
+  assert.doesNotMatch(attestation.validationEvidence.commands[1].command, /\bgh run download\b/);
   assert.ok(fs.existsSync(reportPath));
 });
 

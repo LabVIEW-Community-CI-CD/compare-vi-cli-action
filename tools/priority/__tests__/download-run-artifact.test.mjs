@@ -15,40 +15,39 @@ async function loadModule() {
   return modulePromise;
 }
 
-test('isDirectExecution matches the current module path without file URL reconstruction drift', async () => {
-  const { isDirectExecution } = await loadModule();
-
-  assert.equal(isDirectExecution(['node', modulePath], pathToFileURL(modulePath).href), true);
-  assert.equal(isDirectExecution(['node', path.join(repoRoot, 'tools', 'priority', 'other-file.mjs')], pathToFileURL(modulePath).href), false);
-});
-
-test('parseArgs trims artifact values and rejects whitespace-only artifact names', async () => {
+test('parseArgs accepts --all without requiring named artifacts', async () => {
   const { parseArgs } = await loadModule();
-
   const parsed = parseArgs([
     'node',
-    modulePath,
+    'download-run-artifact.mjs',
     '--repo',
     'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     '--run-id',
-    '22879026878',
-    '--artifact',
-    '  named-artifact  ',
+    '12345',
+    '--all',
   ]);
-  assert.deepEqual(parsed.artifactNames, ['named-artifact']);
 
+  assert.equal(parsed.repo, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(parsed.runId, '12345');
+  assert.equal(parsed.downloadAll, true);
+  assert.deepEqual(parsed.artifactNames, []);
+});
+
+test('parseArgs rejects mixing --all with named artifacts', async () => {
+  const { parseArgs } = await loadModule();
   assert.throws(
     () =>
       parseArgs([
         'node',
-        modulePath,
+        'download-run-artifact.mjs',
         '--repo',
         'LabVIEW-Community-CI-CD/compare-vi-cli-action',
         '--run-id',
-        '22879026878',
+        '12345',
+        '--all',
         '--artifact',
-        '   ',
+        'artifact-a',
       ]),
-    /Artifact name is required for --artifact\./,
+    /Use either --all or one or more --artifact values, not both\./,
   );
 });

@@ -127,7 +127,12 @@ function Download-RunArtifacts {
     [Parameter(Mandatory=$true)][string]$TargetDir
   )
   New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null
-  gh run download $RunId -R $Repo -D $TargetDir | Out-Null
+  $reportPath = Join-Path $TargetDir '_run-artifact-download.json'
+  $runnerPath = Join-Path $PSScriptRoot 'npm' 'run-script.mjs'
+  & node $runnerPath 'priority:artifact:download' '--' '--repo' $Repo '--run-id' $RunId '--all' '--destination-root' $TargetDir '--report' $reportPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "Artifact download helper failed for run $RunId."
+  }
 }
 
 function Write-LocalSummary {

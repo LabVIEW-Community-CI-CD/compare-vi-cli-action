@@ -664,7 +664,7 @@ function buildReplayAttestation({
           artifactPath: null,
         },
         {
-          command: `gh run download ${run.id ?? 'unknown'} -n ${DEPLOYMENT_DETERMINISM_ARTIFACT_NAME}`,
+          command: `node tools/npm/run-script.mjs priority:artifact:download -- --repo ${repository} --run-id ${run.id ?? 'unknown'} --artifact ${DEPLOYMENT_DETERMINISM_ARTIFACT_NAME}`,
           status: determinismPassed ? 'passed' : 'failed',
           exitCode: null,
           details: `Deployment determinism result=${normalizeText(deploymentDeterminism?.result) ?? 'unknown'}.`,
