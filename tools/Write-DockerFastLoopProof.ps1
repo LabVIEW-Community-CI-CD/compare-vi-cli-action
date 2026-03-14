@@ -9,7 +9,8 @@ param(
   [string]$SummaryPath = '',
   [string]$StatusPath = '',
   [string]$OutputPath = '',
-  [string]$GitHubOutputPath = $env:GITHUB_OUTPUT
+  [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
+  [string]$StepSummaryPath = $env:GITHUB_STEP_SUMMARY
 )
 
 Set-StrictMode -Version Latest
@@ -398,6 +399,32 @@ $proof = [ordered]@{
 }
 
 $proof | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $outputResolved -Encoding utf8
+
+if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
+  $stepSummaryLines = @(
+    '### Docker Fast Loop Proof',
+    '',
+    ('- Proof: `{0}`' -f $outputResolved),
+    ('- Verdict: `{0}`' -f $proof.verdict),
+    ('- Recommendation: `{0}`' -f $proof.recommendation)
+  )
+  if (-not [string]::IsNullOrWhiteSpace([string]$proof.hostPlaneSummaryPath)) {
+    $stepSummaryLines += ('- Host Plane Summary: `{0}`' -f [string]$proof.hostPlaneSummaryPath)
+  }
+  if (-not [string]::IsNullOrWhiteSpace([string]$proof.hostPlaneSummaryProvenance.status)) {
+    $stepSummaryLines += ('- Host Plane Summary Status: `{0}`' -f [string]$proof.hostPlaneSummaryProvenance.status)
+  }
+  if (-not [string]::IsNullOrWhiteSpace([string]$proof.hashes.hostPlaneSummarySha256)) {
+    $stepSummaryLines += ('- Host Plane Summary SHA-256: `{0}`' -f [string]$proof.hashes.hostPlaneSummarySha256)
+  }
+  if (-not [string]::IsNullOrWhiteSpace([string]$proof.hostPlaneSummaryProvenance.reason)) {
+    $stepSummaryLines += ('- Host Plane Summary Reason: `{0}`' -f [string]$proof.hostPlaneSummaryProvenance.reason)
+  }
+  $stepSummaryLines += ''
+  Ensure-ParentDirectory -Path $StepSummaryPath
+  $stepSummaryLines | Add-Content -LiteralPath $StepSummaryPath -Encoding utf8
+}
+
 $loopPrefix = Get-DockerFastLoopLogPrefix -ContextObject $proof
 Write-Host ("{0}[proof] {1}" -f $loopPrefix, $outputResolved)
 Write-GitHubOutput -Key 'docker-fast-loop-proof-path' -Value $outputResolved -Path $GitHubOutputPath
