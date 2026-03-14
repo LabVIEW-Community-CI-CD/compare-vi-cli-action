@@ -9,7 +9,7 @@
   },
   "execution": {
     "localEntryPoint": "tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -NILinuxReviewSuite",
-    "hostedWorkflowPath": ".github/workflows/human-go-no-go-feedback.yml",
+    "hostedWorkflowPath": ".github/workflows/public-linux-diagnostics-harness.yml",
     "containerLane": "docker-desktop-linux",
     "labviewRelease": "2026 Q1 Linux"
   },

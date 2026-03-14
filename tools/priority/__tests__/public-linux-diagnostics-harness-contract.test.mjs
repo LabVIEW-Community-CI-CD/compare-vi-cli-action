@@ -37,6 +37,7 @@ test('public Linux diagnostics harness contract doc points to the shared bundle 
   const doc = await readFile(path.join(repoRoot, 'docs', 'PUBLIC_LINUX_DIAGNOSTICS_HARNESS_CONTRACT.md'), 'utf8');
 
   assert.match(doc, /Run-NonLVChecksInDocker\.ps1 -UseToolsImage -NILinuxReviewSuite/);
+  assert.match(doc, /public-linux-diagnostics-harness\.yml/);
   assert.match(doc, /DOCKER_TOOLS_PARITY\.md/);
   assert.match(doc, /human-go-no-go-feedback\.yml/);
   assert.match(doc, /human-go-no-go-decision-v1\.schema\.json/);

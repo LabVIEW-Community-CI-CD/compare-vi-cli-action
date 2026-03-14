@@ -22,6 +22,8 @@ This contract is for a diagnostics harness that:
 
 - Local parity entry point:
   - `tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -NILinuxReviewSuite`
+- Hosted manual workflow:
+  - `.github/workflows/public-linux-diagnostics-harness.yml`
 - Existing Docker/Desktop parity guidance:
   - [`knowledgebase/DOCKER_TOOLS_PARITY.md`](knowledgebase/DOCKER_TOOLS_PARITY.md)
 - Human decision workflow:
@@ -29,8 +31,8 @@ This contract is for a diagnostics harness that:
 - Human decision schema:
   - `docs/schemas/human-go-no-go-decision-v1.schema.json`
 
-This slice does not add the new local harness or the new manual workflow yet. It only defines the shared contract those
-future entry points must satisfy.
+The shared contract now anchors both the local entry-point work and the hosted manual workflow surface. The human
+go/no-go workflow remains a separate completion surface and must not be conflated with the hosted diagnostics workflow.
 
 ## Target contract
 
