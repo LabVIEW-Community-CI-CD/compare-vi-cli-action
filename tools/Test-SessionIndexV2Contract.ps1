@@ -175,6 +175,86 @@ function Get-ConsecutiveSuccessCount {
   }
 }
 
+function Get-BurnInMismatchClass {
+  param([string[]]$Failures)
+
+  $normalizedFailures = @($Failures | ForEach-Object { [string]$_ })
+  if ($normalizedFailures.Count -eq 0) {
+    return 'none'
+  }
+
+  $classes = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::Ordinal)
+  foreach ($failure in $normalizedFailures) {
+    if ($failure -match '^Missing v[12] artifact:') {
+      [void]$classes.Add('missing-artifact')
+      continue
+    }
+    if ($failure -match '^Schema validation failed') {
+      [void]$classes.Add('schema-validation')
+      continue
+    }
+    if ($failure -match '^Unable to resolve required contexts from branch policy') {
+      [void]$classes.Add('branch-policy-projection')
+      continue
+    }
+    if ($failure -match '^branchProtection\.(expected|actual)') {
+      [void]$classes.Add('branch-protection-shape')
+      continue
+    }
+    if ($failure -match '^branchProtection\.expected missing required contexts:') {
+      [void]$classes.Add('missing-required-contexts')
+      continue
+    }
+    if ($failure -match '^artifacts block is empty') {
+      [void]$classes.Add('artifact-catalog')
+      continue
+    }
+    [void]$classes.Add('unknown')
+  }
+
+  $classList = @($classes)
+  if ($classList.Count -eq 1) {
+    return [string]$classList[0]
+  }
+  return 'multiple'
+}
+
+function Get-BurnInMismatchFingerprint {
+  param(
+    [string]$MismatchClass,
+    [string[]]$Failures
+  )
+
+  $hasher = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $payload = [string]::Join("`n", @([string]$MismatchClass) + @($Failures | Sort-Object))
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
+    $hash = $hasher.ComputeHash($bytes)
+  } finally {
+    $hasher.Dispose()
+  }
+
+  return (($hash | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+
+function Get-BurnInRecurrenceClassification {
+  param(
+    [string[]]$Failures,
+    [pscustomobject]$BurnIn
+  )
+
+  if (@($Failures).Count -eq 0) {
+    return 'clean'
+  }
+  if ($null -eq $BurnIn -or [string]$BurnIn.status -ne 'ok') {
+    return 'unknown'
+  }
+  if ([int]$BurnIn.consecutiveSuccess -gt 0) {
+    return 'new-after-success-streak'
+  }
+  return 'recurring-or-persistent'
+}
+
 if (-not (Test-Path -LiteralPath $ResultsDir -PathType Container)) {
   throw "ResultsDir does not exist: $ResultsDir"
 }
@@ -261,6 +341,9 @@ if ([string]::IsNullOrWhiteSpace($token)) {
 
 $burnIn = Get-ConsecutiveSuccessCount -Headers (Get-ApiHeaders -Token $token) -Owner $Owner -Repository $Repository -WorkflowFileName $WorkflowFileName -Branch $Branch -JobName 'session-index-v2-contract'
 $promotionReady = ($burnIn.status -eq 'ok' -and $burnIn.consecutiveSuccess -ge $BurnInThreshold)
+$mismatchClass = Get-BurnInMismatchClass -Failures $failures
+$mismatchFingerprint = Get-BurnInMismatchFingerprint -MismatchClass $mismatchClass -Failures $failures
+$recurrenceClassification = Get-BurnInRecurrenceClassification -Failures $failures -BurnIn $burnIn
 
 if ($burnIn.status -eq 'unavailable') {
   $notes += ("Burn-in status unavailable ({0})." -f $burnIn.reason)
@@ -286,6 +369,26 @@ $report = [ordered]@{
     consecutiveSuccess = $burnIn.consecutiveSuccess
     inspectedRuns = $burnIn.inspectedRuns
     promotionReady = $promotionReady
+  }
+  burnInReceipt = [ordered]@{
+    schema = 'session-index-v2-burn-in-receipt@v1'
+    mode = if ($Enforce) { 'enforce' } else { 'burn-in' }
+    status = if ($failures.Count -eq 0) { 'clean' } else { 'mismatch' }
+    mismatchClass = $mismatchClass
+    mismatchFingerprint = $mismatchFingerprint
+    mismatchSummary = @($failures)
+    recurrence = [ordered]@{
+      classification = $recurrenceClassification
+      burnInStatus = $burnIn.status
+      consecutiveSuccess = $burnIn.consecutiveSuccess
+    }
+    evidence = [ordered]@{
+      reportPath = $reportPath
+      resultsDir = $ResultsDir
+      sessionIndexV1Path = $v1Path
+      sessionIndexV2Path = $v2Path
+      policyPath = $PolicyPath
+    }
   }
 }
 

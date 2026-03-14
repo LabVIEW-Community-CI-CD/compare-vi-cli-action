@@ -18,7 +18,8 @@ The check validates:
 ## Burn-in policy
 
 - Threshold: **10 consecutive successful upstream runs**.
-- The check writes `session-index-v2-contract.json` with burn-in counters and promotion readiness.
+- The check writes `session-index-v2-contract.json` with burn-in counters, promotion readiness, and a
+  machine-readable `burnInReceipt` node.
 - While burn-in is active, failures are **non-blocking** but include warnings and triage details in the step summary.
 
 ## Enforce toggle
@@ -42,8 +43,9 @@ The workflow uses repository variable:
 When `session-index-v2-contract` reports failures:
 
 1. Open the artifact `validate-session-index-v2-contract/session-index-v2-contract.json`.
-2. Use the `failures[]` list to identify whether the issue is schema, parity, or artifact completeness.
-3. For schema failures, validate and inspect `session-index-v2.json` payload generation.
-4. For parity failures, compare `branchProtection.expected` against
+2. Inspect `burnInReceipt.mismatchClass`, `burnInReceipt.mismatchFingerprint`, and `burnInReceipt.evidence` first.
+3. Use the `failures[]` list to identify whether the issue is schema, parity, or artifact completeness.
+4. For schema failures, validate and inspect `session-index-v2.json` payload generation.
+5. For parity failures, compare `branchProtection.expected` against
    `tools/policy/branch-required-checks.json` and live branch protection output.
-5. Re-run Validate and confirm burn-in counter progression resumes.
+6. Re-run Validate and confirm burn-in counter progression resumes.
