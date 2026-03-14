@@ -69,6 +69,19 @@
         "docs": { "type": "boolean" },
         "workflow": { "type": "boolean" },
         "dotnetCliBuild": { "type": "boolean" },
+        "codexCliReview": { "type": "boolean" },
+        "codexCliReviewConfig": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "distro": { "type": "string" },
+            "executionPlane": { "enum": ["wsl2"] },
+            "sandbox": { "type": "string" },
+            "model": { "type": "string" },
+            "ephemeral": { "type": "boolean" }
+          }
+        },
         "requirementsVerification": { "type": "boolean" },
         "niLinuxReviewSuite": { "type": "boolean" },
         "singleViHistory": {

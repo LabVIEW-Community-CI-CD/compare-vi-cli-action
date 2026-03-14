@@ -87,6 +87,7 @@ test('runLocalCollaborationPhase writes deterministic daemon orchestrator receip
   assert.equal(result.receipt.phase, 'daemon');
   assert.equal(result.receipt.forkPlane, 'upstream');
   assert.equal(result.receipt.persona, 'daemon');
+  assert.equal(result.receipt.executionPlane, 'docker');
   assert.equal(result.receipt.selectionSource, 'explicit');
   assert.deepEqual(result.receipt.providers, ['copilot-cli']);
   assert.match(result.receipt.delegate.command.join(' '), /tools\/priority\/docker-desktop-review-loop\.mjs/);
@@ -100,6 +101,7 @@ test('runLocalCollaborationPhase writes deterministic daemon orchestrator receip
   const ledgerReceipt = JSON.parse(await readFile(result.ledgerReceiptPath, 'utf8'));
   assert.equal(ledgerReceipt.phase, 'daemon');
   assert.equal(ledgerReceipt.headSha, result.receipt.headSha);
+  assert.equal(ledgerReceipt.executionPlane, 'docker');
   assert.equal(ledgerReceipt.providerId, 'copilot-cli');
 });
 
@@ -122,6 +124,7 @@ test('runLocalCollaborationPhase records codex authoring receipts for post-commi
   assert.equal(result.receipt.phase, 'post-commit');
   assert.equal(result.receipt.forkPlane, 'personal');
   assert.equal(result.receipt.persona, 'codex');
+  assert.equal(result.receipt.executionPlane, 'windows-host');
   assert.equal(result.receipt.commitCreated, true);
   assert.deepEqual(result.receipt.filesTouched, ['README.md']);
   assert.match(result.receipt.delegate.summaryPath, /tests[\\/]results[\\/]_hooks[\\/]post-commit\.json$/);
@@ -129,5 +132,6 @@ test('runLocalCollaborationPhase records codex authoring receipts for post-commi
   const ledgerReceipt = JSON.parse(await readFile(result.ledgerReceiptPath, 'utf8'));
   assert.equal(ledgerReceipt.phase, 'post-commit');
   assert.equal(ledgerReceipt.commitCreated, true);
+  assert.equal(ledgerReceipt.executionPlane, 'windows-host');
   assert.deepEqual(ledgerReceipt.filesTouched, ['README.md']);
 });

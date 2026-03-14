@@ -260,7 +260,7 @@ test('runAgentReviewPolicy fails closed when an explicitly selected reserved pro
     repoRoot,
     request: {
       requested: true,
-      reviewProviders: ['codex-cli']
+      reviewProviders: ['ollama']
     },
     resolveRepoGitStateFn: () => ({
       headSha: 'abc123',
@@ -271,9 +271,62 @@ test('runAgentReviewPolicy fails closed when an explicitly selected reserved pro
   });
 
   assert.equal(result.status, 'failed');
-  assert.equal(result.receipt.overall.failedProvider, 'codex-cli');
-  assert.equal(result.receipt.providers['codex-cli'].status, 'failed');
-  assert.match(result.receipt.providers['codex-cli'].reason, /not implemented yet/i);
+  assert.equal(result.receipt.overall.failedProvider, 'ollama');
+  assert.equal(result.receipt.providers.ollama.status, 'failed');
+  assert.match(result.receipt.providers.ollama.reason, /not implemented yet/i);
+});
+
+test('runAgentReviewPolicy records WSL-backed Codex CLI effort metadata', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'agent-review-policy-codex-pass-'));
+  const result = await runAgentReviewPolicy({
+    repoRoot,
+    request: {
+      requested: true,
+      reviewProviders: ['codex-cli']
+    },
+    runCodexCliReviewFn: async () => ({
+      providerId: 'codex-cli',
+      status: 'passed',
+      reason: 'Codex CLI passed.',
+      executionPlane: 'wsl2',
+      providerRuntime: 'codex-cli',
+      requestedModel: 'gpt-5-codex',
+      effectiveModel: 'gpt-5-codex',
+      inputTokens: 210,
+      cachedInputTokens: 80,
+      outputTokens: 55,
+      receiptPath: 'tests/results/docker-tools-parity/codex-cli-review/receipt.json',
+      receipt: {
+        executionPlane: 'wsl2',
+        providerRuntime: 'codex-cli',
+        usage: {
+          inputTokens: 210,
+          cachedInputTokens: 80,
+          outputTokens: 55
+        },
+        overall: {
+          status: 'passed',
+          actionableFindingCount: 0,
+          message: 'Codex CLI passed.'
+        }
+      }
+    }),
+    resolveRepoGitStateFn: () => ({
+      headSha: 'abc123',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false
+    })
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(result.receipt.providers['codex-cli'].executionPlane, 'wsl2');
+  assert.equal(result.receipt.providers['codex-cli'].providerRuntime, 'codex-cli');
+  assert.equal(result.receipt.providers['codex-cli'].requestedModel, 'gpt-5-codex');
+  assert.equal(result.receipt.providers['codex-cli'].inputTokens, 210);
+  assert.equal(result.receipt.overall.inputTokens, 210);
+  assert.equal(result.receipt.overall.cachedInputTokens, 80);
+  assert.equal(result.receipt.overall.outputTokens, 55);
 });
 
 test('runAgentReviewPolicy records policy-default provider selection when no explicit providers are requested', async () => {

@@ -34,8 +34,13 @@ test('writeLocalCollaborationLedgerReceipt persists a per-phase per-head receipt
     git,
     forkPlane: 'personal',
     persona: 'codex',
+    executionPlane: 'windows-host',
+    providerRuntime: 'copilot-cli',
     providers: ['copilot-cli'],
     selectionSource: 'PRECOMMIT_AGENT_REVIEW_PROVIDERS',
+    inputTokens: 12,
+    cachedInputTokens: 3,
+    outputTokens: 7,
     startedAt: '2026-03-14T00:00:00.000Z',
     finishedAt: '2026-03-14T00:00:01.000Z',
     durationMs: 1000,
@@ -51,6 +56,8 @@ test('writeLocalCollaborationLedgerReceipt persists a per-phase per-head receipt
     git,
     forkPlane: 'personal',
     persona: 'codex',
+    executionPlane: 'windows-host',
+    providerRuntime: 'copilot-cli',
     providers: ['copilot-cli', 'simulation'],
     selectionSource: 'HOOKS_AGENT_REVIEW_PROVIDERS',
     startedAt: '2026-03-14T00:00:02.000Z',
@@ -68,6 +75,11 @@ test('writeLocalCollaborationLedgerReceipt persists a per-phase per-head receipt
   assert.equal(first.receipt.headSha, git.headSha);
   assert.equal(first.receipt.baseSha, git.baseSha);
   assert.equal(first.receipt.providerId, 'copilot-cli');
+  assert.equal(first.receipt.executionPlane, 'windows-host');
+  assert.equal(first.receipt.providerRuntime, 'copilot-cli');
+  assert.equal(first.receipt.inputTokens, 12);
+  assert.equal(first.receipt.cachedInputTokens, 3);
+  assert.equal(first.receipt.outputTokens, 7);
   assert.equal(second.receipt.providerId, 'multi');
   assert.deepEqual(first.receipt.filesTouched, ['tools/hooks/core/pre-commit.mjs']);
   assert.equal(second.receipt.commitCreated, true);

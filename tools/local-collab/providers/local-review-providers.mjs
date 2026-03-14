@@ -6,13 +6,18 @@ import {
   runCopilotCliReview
 } from './copilot-cli-review.mjs';
 import {
+  DEFAULT_CODEX_CLI_REVIEW_POLICY,
+  normalizeCodexCliReviewPolicy,
+  runCodexCliReview
+} from './codex-cli-review.mjs';
+import {
   DEFAULT_SIMULATION_REVIEW_POLICY,
   normalizeSimulationReviewPolicy,
   runSimulationReview
 } from './simulation-review.mjs';
 
 export const SUPPORTED_LOCAL_REVIEW_PROVIDERS = ['copilot-cli', 'codex-cli', 'simulation', 'ollama'];
-export const EXECUTABLE_LOCAL_REVIEW_PROVIDERS = ['copilot-cli', 'simulation'];
+export const EXECUTABLE_LOCAL_REVIEW_PROVIDERS = ['copilot-cli', 'codex-cli', 'simulation'];
 export const SUPPORTED_LOCAL_REVIEW_PROFILES = ['pre-commit', 'daemon', 'pre-push'];
 
 const EXECUTABLE_PROVIDER_SET = new Set(EXECUTABLE_LOCAL_REVIEW_PROVIDERS);
@@ -66,10 +71,12 @@ export function normalizeLocalReviewProviderPolicies(value = {}) {
     copilotCli: normalizeCopilotCliReviewPolicy(
       raw.copilotCli && typeof raw.copilotCli === 'object' ? raw.copilotCli : DEFAULT_COPILOT_CLI_REVIEW_POLICY
     ),
+    codexCli: normalizeCodexCliReviewPolicy(
+      raw.codexCli && typeof raw.codexCli === 'object' ? raw.codexCli : DEFAULT_CODEX_CLI_REVIEW_POLICY
+    ),
     simulation: normalizeSimulationReviewPolicy(
       raw.simulation && typeof raw.simulation === 'object' ? raw.simulation : DEFAULT_SIMULATION_REVIEW_POLICY
     ),
-    codexCli: raw.codexCli && typeof raw.codexCli === 'object' ? { ...raw.codexCli } : { enabled: false },
     ollama: raw.ollama && typeof raw.ollama === 'object' ? { ...raw.ollama } : { enabled: false }
   };
 }
@@ -110,6 +117,13 @@ export function summarizeLocalReviewProviderResult(result) {
     actionableFindingCount: Number.isInteger(overall.actionableFindingCount) ? overall.actionableFindingCount : 0,
     convergence: result?.receipt?.convergence ?? null,
     scenario: normalizeText(result?.receipt?.scenario) || null,
+    executionPlane: normalizeText(result?.executionPlane) || normalizeText(result?.receipt?.executionPlane) || null,
+    providerRuntime: normalizeText(result?.providerRuntime) || normalizeText(result?.receipt?.providerRuntime) || providerId || null,
+    requestedModel: normalizeText(result?.requestedModel) || normalizeText(result?.receipt?.requestedModel) || null,
+    effectiveModel: normalizeText(result?.effectiveModel) || normalizeText(result?.receipt?.effectiveModel) || null,
+    inputTokens: Number.isInteger(result?.inputTokens) ? result.inputTokens : Number.isInteger(result?.receipt?.usage?.inputTokens) ? result.receipt.usage.inputTokens : 0,
+    cachedInputTokens: Number.isInteger(result?.cachedInputTokens) ? result.cachedInputTokens : Number.isInteger(result?.receipt?.usage?.cachedInputTokens) ? result.receipt.usage.cachedInputTokens : 0,
+    outputTokens: Number.isInteger(result?.outputTokens) ? result.outputTokens : Number.isInteger(result?.receipt?.usage?.outputTokens) ? result.receipt.usage.outputTokens : 0,
     receipt
   };
 }
@@ -121,6 +135,7 @@ export async function executeLocalReviewProvider({
   repoGitState = {},
   policies = {},
   runCopilotCliReviewFn = runCopilotCliReview,
+  runCodexCliReviewFn = runCodexCliReview,
   runSimulationReviewFn = runSimulationReview,
   resolveRepoGitStateFn
 }) {
@@ -141,6 +156,18 @@ export async function executeLocalReviewProvider({
     return {
       ...result,
       providerId: 'copilot-cli'
+    };
+  }
+
+  if (normalizedProviderId === 'codex-cli') {
+    const result = await runCodexCliReviewFn({
+      repoRoot,
+      profile: normalizedProfile,
+      policy: normalizedPolicies.codexCli
+    });
+    return {
+      ...result,
+      providerId: 'codex-cli'
     };
   }
 

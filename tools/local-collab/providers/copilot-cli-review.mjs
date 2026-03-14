@@ -488,7 +488,7 @@ function parseOptionalJsonArgument(raw) {
   return normalizeStringList(parsed);
 }
 
-async function collectInstructionSources(repoRoot) {
+export async function collectInstructionSources(repoRoot) {
   const githubDir = path.join(repoRoot, '.github');
   const instructionsDir = path.join(githubDir, 'instructions');
   const present = [];
