@@ -72,6 +72,25 @@ jobs:
       shell: pwsh
       run: pwsh -NoLogo -NoProfile -File tools/Assert-NoAmbiguousRemoteRefs.ps1
 
+    - name: Overlay personal-fork policy surfaces
+      if: github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.owner.login != github.repository_owner
+      run: >
+        node tools/policy/export-personal-fork-policy-shadow.mjs
+        --repo "${{ github.event.pull_request.head.repo.full_name }}"
+        --ref "${{ github.event.pull_request.head.sha }}"
+        --workspace-root .
+        --report tests/results/_agent/policy/policy-shadow-export.json
+
+    - name: Assert policy guard contract
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NoProfile -File tools/Assert-PolicyGuardCheckContract.ps1
+
+    - name: Assert promotion contract alignment
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/_agent/policy/promotion-contract-alignment.json
+
     - name: Run policy guard
       shell: pwsh
       run: |
@@ -89,6 +108,8 @@ jobs:
         name: policy-drift-${{ github.run_id }}
         path: |
           tests/results/_agent/policy/policy-drift-report.json
+          tests/results/_agent/policy/policy-shadow-export.json
+          tests/results/_agent/policy/promotion-contract-alignment.json
           tests/results/_agent/health/policy-guard-workspace-health.json
           tests/results/_agent/deployments/environment-gate-policy.json
         if-no-files-found: error
