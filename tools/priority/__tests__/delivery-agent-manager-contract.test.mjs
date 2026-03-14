@@ -43,30 +43,33 @@ async function invokeManagerStatus(relativeRuntimeDir) {
 
 test('package scripts expose delivery-agent commands and keep unattended aliases intact', async () => {
   const packageJson = JSON.parse(await readText('package.json'));
-  assert.equal(packageJson.scripts['priority:delivery:memory'], 'tsc -p tsconfig.json && node dist/tools/priority/delivery-memory.js');
+  assert.equal(
+    packageJson.scripts['priority:delivery:memory'],
+    'node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/delivery-memory.ts --fallback-dist dist/tools/priority/delivery-memory.js'
+  );
   assert.equal(
     packageJson.scripts['priority:delivery:host:signal'],
-    'tsc -p tsconfig.json && node dist/tools/priority/delivery-host-signal.js'
+    'node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/delivery-host-signal.ts --fallback-dist dist/tools/priority/delivery-host-signal.js'
   );
   assert.equal(
     packageJson.scripts['priority:delivery:agent:ensure'],
-    'tsc -p tsconfig.json && node dist/tools/priority/delivery-agent.js ensure --sleep-mode'
+    'node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/delivery-agent.ts --fallback-dist dist/tools/priority/delivery-agent.js -- ensure --sleep-mode'
   );
   assert.equal(
     packageJson.scripts['priority:delivery:agent:status'],
-    'tsc -p tsconfig.json && node dist/tools/priority/delivery-agent.js status'
+    'node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/delivery-agent.ts --fallback-dist dist/tools/priority/delivery-agent.js -- status'
   );
   assert.equal(
     packageJson.scripts['priority:delivery:agent:stop'],
-    'tsc -p tsconfig.json && node dist/tools/priority/delivery-agent.js stop'
+    'node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/delivery-agent.ts --fallback-dist dist/tools/priority/delivery-agent.js -- stop'
   );
   assert.equal(
     packageJson.scripts['priority:unattended:sleep:ensure'],
-    'tsc -p tsconfig.json && node dist/tools/priority/delivery-agent.js ensure --sleep-mode'
+    'node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/delivery-agent.ts --fallback-dist dist/tools/priority/delivery-agent.js -- ensure --sleep-mode'
   );
   assert.equal(
     packageJson.scripts['priority:unattended:project-board:ensure'],
-    'tsc -p tsconfig.json && node dist/tools/priority/delivery-agent.js ensure --sleep-mode'
+    'node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/delivery-agent.ts --fallback-dist dist/tools/priority/delivery-agent.js -- ensure --sleep-mode'
   );
 });
 

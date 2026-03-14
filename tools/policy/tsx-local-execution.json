@@ -1,0 +1,111 @@
+{
+  "schema": "comparevi/tsx-local-execution-policy@v1",
+  "localRunner": "tsx",
+  "hostedRunner": "compiled-node",
+  "notes": [
+    "Local-only TypeScript entrypoints may use tsx for operator and daemon iteration speed.",
+    "Hosted workflows, published CLI entrypoints, and release/runtime contracts must remain compiled."
+  ],
+  "allowedScripts": {
+    "priority:runtime:daemon": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/runtime-daemon.ts",
+      "fallbackDist": "dist/tools/priority/runtime-daemon.js"
+    },
+    "priority:runtime:supervisor": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/runtime-supervisor.ts",
+      "fallbackDist": "dist/tools/priority/runtime-supervisor.js"
+    },
+    "priority:delivery:broker": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/runtime-turn-broker.ts",
+      "fallbackDist": "dist/tools/priority/runtime-turn-broker.js"
+    },
+    "priority:delivery:memory": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/delivery-memory.ts",
+      "fallbackDist": "dist/tools/priority/delivery-memory.js"
+    },
+    "priority:delivery:host:signal": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/delivery-host-signal.ts",
+      "fallbackDist": "dist/tools/priority/delivery-host-signal.js"
+    },
+    "priority:delivery:agent:ensure": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/delivery-agent.ts",
+      "fallbackDist": "dist/tools/priority/delivery-agent.js",
+      "args": [
+        "ensure",
+        "--sleep-mode"
+      ]
+    },
+    "priority:delivery:agent:status": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/delivery-agent.ts",
+      "fallbackDist": "dist/tools/priority/delivery-agent.js",
+      "args": [
+        "status"
+      ]
+    },
+    "priority:delivery:agent:stop": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/delivery-agent.ts",
+      "fallbackDist": "dist/tools/priority/delivery-agent.js",
+      "args": [
+        "stop"
+      ]
+    },
+    "priority:unattended:project-board:ensure": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/delivery-agent.ts",
+      "fallbackDist": "dist/tools/priority/delivery-agent.js",
+      "args": [
+        "ensure",
+        "--sleep-mode"
+      ]
+    },
+    "priority:unattended:project-board:status": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/delivery-agent.ts",
+      "fallbackDist": "dist/tools/priority/delivery-agent.js",
+      "args": [
+        "status"
+      ]
+    },
+    "priority:unattended:project-board:stop": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/delivery-agent.ts",
+      "fallbackDist": "dist/tools/priority/delivery-agent.js",
+      "args": [
+        "stop"
+      ]
+    },
+    "priority:unattended:sleep:ensure": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/delivery-agent.ts",
+      "fallbackDist": "dist/tools/priority/delivery-agent.js",
+      "args": [
+        "ensure",
+        "--sleep-mode"
+      ]
+    },
+    "priority:unattended:sleep:status": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/delivery-agent.ts",
+      "fallbackDist": "dist/tools/priority/delivery-agent.js",
+      "args": [
+        "status"
+      ]
+    },
+    "priority:unattended:sleep:stop": {
+      "project": "tsconfig.json",
+      "entry": "tools/priority/delivery-agent.ts",
+      "fallbackDist": "dist/tools/priority/delivery-agent.js",
+      "args": [
+        "stop"
+      ]
+    }
+  }
+}
