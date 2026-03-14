@@ -40,7 +40,9 @@ test('renderMissionControlPrompt renders the canonical fixture deterministically
   const report = renderMissionControlPromptReport({}, { repoRoot });
   assert.equal(report.schema, 'priority/mission-control-prompt-render@v1');
   assert.equal(report.operator.intent, 'continue-driving-autonomously');
+  assert.equal(report.envelopeSha256, createHash('sha256').update(JSON.stringify(envelope), 'utf8').digest('hex'));
   assert.equal(report.promptSha256, createHash('sha256').update(report.promptText, 'utf8').digest('hex'));
+  assert.deepEqual(report, renderMissionControlPromptReport({}, { repoRoot }));
 });
 
 test('renderMissionControlPrompt fails closed for invalid envelope files', async (t) => {
@@ -110,6 +112,9 @@ test('render mission-control prompt CLI writes deterministic prompt and report a
   assert.equal(report.promptPath, promptPath);
   assert.equal(report.promptText, promptText);
   assert.equal(report.promptSha256, createHash('sha256').update(promptText, 'utf8').digest('hex'));
+  assert.equal(report.envelopeSha256, createHash('sha256').update(JSON.stringify(
+    loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json'),
+  ), 'utf8').digest('hex'));
 
   const failureMessages = [];
   const failureExitCode = main(

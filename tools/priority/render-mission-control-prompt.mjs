@@ -76,8 +76,10 @@ function formatOverride(override) {
   return `${override.key}=${String(override.value)} (${override.reason})`;
 }
 
-export function renderMissionControlPrompt(envelope) {
-  validateMissionControlEnvelope(envelope);
+export function renderMissionControlPrompt(envelope, { repoRoot = process.cwd(), validate = true } = {}) {
+  if (validate) {
+    validateMissionControlEnvelope(envelope, repoRoot);
+  }
   const missionControl = envelope.missionControl;
   const operator = envelope.operator;
   const overrides = operator.overrides.length > 0
@@ -188,19 +190,19 @@ export function renderMissionControlPromptReport(
     promptPath = DEFAULT_MISSION_CONTROL_PROMPT_PATH,
   },
   {
-    now = new Date(),
     repoRoot = process.cwd(),
   } = {},
 ) {
   const envelope = readJsonFile(envelopePath, repoRoot);
   validateMissionControlEnvelope(envelope, repoRoot);
-  const promptText = renderMissionControlPrompt(envelope);
+  const promptText = renderMissionControlPrompt(envelope, { repoRoot, validate: false });
   const promptSha256 = createHash('sha256').update(promptText, 'utf8').digest('hex');
+  const envelopeSha256 = createHash('sha256').update(JSON.stringify(envelope), 'utf8').digest('hex');
 
   return {
     schema: MISSION_CONTROL_PROMPT_RENDER_SCHEMA,
-    generatedAt: new Date(now).toISOString(),
     envelopePath,
+    envelopeSha256,
     promptPath,
     promptSha256,
     promptLineCount: promptText.trimEnd().split('\n').length,
@@ -216,7 +218,6 @@ export function renderMissionControlPromptReport(
 export function main(
   argv = process.argv,
   {
-    now = new Date(),
     repoRoot = process.cwd(),
     logFn = console.log,
     errorFn = console.error,
@@ -243,7 +244,6 @@ export function main(
         promptPath: options.promptPath,
       },
       {
-        now,
         repoRoot,
       },
     );
