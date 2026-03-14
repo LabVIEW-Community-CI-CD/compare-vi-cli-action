@@ -79,8 +79,12 @@ test('buildReviewPrompt includes collaboration planes and instruction presence',
       diffText: 'diff --git a/docs/example.md b/docs/example.md'
     },
     instructionSources: {
-      present: ['AGENTS.md', '.github/instructions/draft-only-copilot-review.instructions.md'],
-      missing: ['.github/copilot-instructions.md']
+      present: [
+        'AGENTS.md',
+        '.github/copilot-instructions.md',
+        '.github/instructions/draft-only-copilot-review.instructions.md'
+      ],
+      missing: []
     },
     profileName: 'preCommit',
     repoRoot: '/tmp/repo'

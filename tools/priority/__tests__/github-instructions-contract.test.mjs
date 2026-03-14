@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const instructionsDir = path.join(repoRoot, '.github', 'instructions');
+const copilotInstructionsPath = path.join(repoRoot, '.github', 'copilot-instructions.md');
 const agentsPath = path.join(repoRoot, 'AGENTS.md');
 
 function readInstruction(name) {
@@ -18,6 +19,7 @@ function normalizeWhitespace(value) {
 
 test('draft-only GitHub instructions exist as a repo-owned surface', () => {
   assert.equal(fs.existsSync(instructionsDir), true, '.github/instructions must exist.');
+  assert.equal(fs.existsSync(copilotInstructionsPath), true, '.github/copilot-instructions.md must exist.');
   const instructionFiles = fs.readdirSync(instructionsDir)
     .filter((entry) => entry.endsWith('.instructions.md'))
     .sort();
@@ -26,6 +28,14 @@ test('draft-only GitHub instructions exist as a repo-owned surface', () => {
     'draft-only-copilot-review.instructions.md',
     'final-ready-validation.instructions.md',
   ]);
+});
+
+test('Copilot instructions capture the local-first CLI review boundary', () => {
+  const copilotInstructions = normalizeWhitespace(fs.readFileSync(copilotInstructionsPath, 'utf8'));
+
+  assert.match(copilotInstructions, /GitHub Copilot CLI only in the local `draft-review` loop/i);
+  assert.match(copilotInstructions, /hosted required checks and final ready-validation remain authoritative/i);
+  assert.match(copilotInstructions, /head SHA changes .* stale and rerun the local review/i);
 });
 
 test('draft-only instruction content captures the required Copilot review contract', () => {
@@ -44,5 +54,7 @@ test('draft-only instruction content captures the required Copilot review contra
 test('AGENTS points future agents at the GitHub instructions surface', () => {
   const agents = fs.readFileSync(agentsPath, 'utf8');
   assert.match(agents, /\.github\/instructions\/\*\.instructions\.md/);
+  assert.match(agents, /\.github\/copilot-instructions\.md/);
   assert.match(agents, /draft-only Copilot review contract/i);
+  assert.match(agents, /local Copilot CLI review plane only for draft-review acceleration/i);
 });

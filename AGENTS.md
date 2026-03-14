@@ -93,6 +93,9 @@ artifacts under `tests/results/_agent/`.
   `.github/instructions/*.instructions.md`. Keep them aligned with the
   draft-only Copilot review contract: draft is the only Copilot iteration
   state, and `ready_for_review` means final validation / promotion intent only.
+- Repo-owned Copilot CLI instructions live in `.github/copilot-instructions.md`.
+  Use the local Copilot CLI review plane only for draft-review acceleration and
+  keep hosted validation authoritative for final promotion.
 
 ## Working Rules
 
