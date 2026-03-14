@@ -55,6 +55,15 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
     docs: true,
     workflow: true,
     dotnetCliBuild: true,
+    codexCliReview: false,
+    codexCliReviewConfig: {
+      enabled: false,
+      distro: 'Ubuntu',
+      executionPlane: 'wsl2',
+      sandbox: 'read-only',
+      model: '',
+      ephemeral: true
+    },
     requirementsVerification: true,
     niLinuxReviewSuite: true,
     singleViHistory: {

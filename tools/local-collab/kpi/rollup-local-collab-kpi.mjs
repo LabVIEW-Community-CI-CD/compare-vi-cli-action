@@ -73,10 +73,15 @@ function createMetricsAccumulator() {
     receiptCount: 0,
     durationMs: 0,
     findingCount: 0,
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
     headShas: new Set(),
     phases: new Map(),
     statuses: new Map(),
     outcomes: new Map(),
+    executionPlanes: new Map(),
+    providerRuntimes: new Map(),
     requestedModels: new Map(),
     effectiveModels: new Map(),
     providerIds: new Map()
@@ -87,9 +92,14 @@ function addMetricsEvent(accumulator, event = {}) {
   accumulator.receiptCount += 1;
   accumulator.durationMs += normalizeInteger(event.durationMs);
   accumulator.findingCount += normalizeInteger(event.findingCount);
+  accumulator.inputTokens += normalizeInteger(event.inputTokens);
+  accumulator.cachedInputTokens += normalizeInteger(event.cachedInputTokens);
+  accumulator.outputTokens += normalizeInteger(event.outputTokens);
   addOptionalCount(accumulator.phases, event.phase);
   addOptionalCount(accumulator.statuses, event.status);
   addOptionalCount(accumulator.outcomes, event.outcome);
+  addOptionalCount(accumulator.executionPlanes, event.executionPlane);
+  addOptionalCount(accumulator.providerRuntimes, event.providerRuntime);
   addOptionalCount(accumulator.requestedModels, event.requestedModel);
   addOptionalCount(accumulator.effectiveModels, event.effectiveModel);
   addOptionalCount(accumulator.providerIds, event.providerId);
@@ -106,9 +116,14 @@ function finalizeMetrics(accumulator) {
     uniqueHeadCount: accumulator.headShas.size,
     durationMs: accumulator.durationMs,
     findingCount: accumulator.findingCount,
+    inputTokens: accumulator.inputTokens,
+    cachedInputTokens: accumulator.cachedInputTokens,
+    outputTokens: accumulator.outputTokens,
     phases: toSerializableCounts(accumulator.phases),
     statuses: toSerializableCounts(accumulator.statuses),
     outcomes: toSerializableCounts(accumulator.outcomes),
+    executionPlanes: toSerializableCounts(accumulator.executionPlanes),
+    providerRuntimes: toSerializableCounts(accumulator.providerRuntimes),
     requestedModels: toSerializableCounts(accumulator.requestedModels),
     effectiveModels: toSerializableCounts(accumulator.effectiveModels),
     providers: toSerializableCounts(accumulator.providerIds)
@@ -167,6 +182,8 @@ function createProviderAccumulator(providerId, assignment) {
     plane: assignment.plane,
     persona: assignment.persona,
     effortType: assignment.effortType,
+    executionPlane: assignment.executionPlane,
+    providerRuntime: assignment.providerRuntime,
     totals: createMetricsAccumulator()
   };
 }
@@ -181,22 +198,30 @@ function buildProviderAssignments(collaboration) {
     'copilot-cli': {
       plane: reviewPlane,
       persona: reviewPersona,
-      effortType: 'review'
+      effortType: 'review',
+      executionPlane: 'windows-host',
+      providerRuntime: 'copilot-cli'
     },
     simulation: {
       plane: reviewPlane,
       persona: 'simulation',
-      effortType: 'review'
+      effortType: 'review',
+      executionPlane: 'windows-host',
+      providerRuntime: 'simulation'
     },
     'codex-cli': {
       plane: authoringPlane,
       persona: authoringPersona,
-      effortType: 'authoring'
+      effortType: 'authoring',
+      executionPlane: 'wsl2',
+      providerRuntime: 'codex-cli'
     },
     ollama: {
       plane: reviewPlane,
       persona: 'ollama',
-      effortType: 'review'
+      effortType: 'review',
+      executionPlane: 'docker',
+      providerRuntime: 'ollama'
     }
   };
 }
@@ -234,12 +259,17 @@ function normalizeLedgerReceipt(value) {
     phase: normalizeText(receipt.phase),
     forkPlane: normalizeText(receipt.forkPlane) || 'unknown',
     persona: normalizeText(receipt.persona) || 'unknown',
+    executionPlane: normalizeText(receipt.executionPlane) || 'unknown',
+    providerRuntime: normalizeText(receipt.providerRuntime) || null,
     headSha: normalizeText(receipt.headSha),
     baseSha: normalizeText(receipt.baseSha),
     providerId: normalizeText(receipt.providerId) || (providers.length === 1 ? providers[0] : providers.length > 1 ? 'multi' : 'none'),
     providers,
     requestedModel: normalizeText(receipt.requestedModel) || null,
     effectiveModel: normalizeText(receipt.effectiveModel) || null,
+    inputTokens: normalizeInteger(receipt.inputTokens),
+    cachedInputTokens: normalizeInteger(receipt.cachedInputTokens),
+    outputTokens: normalizeInteger(receipt.outputTokens),
     startedAt: normalizeTimestamp(receipt.startedAt),
     finishedAt: normalizeTimestamp(receipt.finishedAt),
     durationMs: normalizeInteger(receipt.durationMs),
@@ -369,11 +399,19 @@ export async function rollupLocalCollaborationKpi({
     const findingAllocations = allocateEvenly(receipt.findingCount, uniqueProviders.length);
 
     uniqueProviders.forEach((providerId, index) => {
-      const assignment = providerAssignments[providerId] ?? { plane: 'origin', persona: providerId, effortType: 'review' };
+      const assignment = providerAssignments[providerId] ?? {
+        plane: 'origin',
+        persona: providerId,
+        effortType: 'review',
+        executionPlane: 'windows-host',
+        providerRuntime: providerId
+      };
       const providerEvent = {
         ...receipt,
         forkPlane: assignment.plane,
         persona: assignment.persona,
+        executionPlane: normalizeText(receipt.executionPlane) || normalizeText(assignment.executionPlane) || 'unknown',
+        providerRuntime: normalizeText(assignment.providerRuntime) || providerId,
         providerId,
         durationMs: durationAllocations[index] ?? 0,
         findingCount: findingAllocations[index] ?? 0,
@@ -433,6 +471,8 @@ export async function rollupLocalCollaborationKpi({
             plane: accumulator.plane,
             persona: accumulator.persona,
             effortType: accumulator.effortType,
+            executionPlane: accumulator.executionPlane,
+            providerRuntime: accumulator.providerRuntime,
             placeholderOnly: accumulator.totals.receiptCount === 0,
             totals: finalizeMetrics(accumulator.totals)
           }

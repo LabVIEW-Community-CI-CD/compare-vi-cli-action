@@ -113,10 +113,65 @@ test('executeLocalReviewProvider routes Simulation through the provider registry
   assert.equal(observedOptions.policy.scenario, 'provider-failure');
 });
 
+test('executeLocalReviewProvider routes Codex CLI through the provider registry', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'local-review-provider-codex-'));
+  let observedOptions = null;
+  const result = await executeLocalReviewProvider({
+    providerId: 'codex-cli',
+    repoRoot,
+    executionProfile: 'pre-push',
+    policies: {
+      reviewProviders: ['codex-cli'],
+      codexCli: {
+        enabled: true,
+        distro: 'Ubuntu',
+        model: 'gpt-5-codex'
+      }
+    },
+    runCodexCliReviewFn: async (options) => {
+      observedOptions = options;
+      return {
+        providerId: 'codex-cli',
+        status: 'passed',
+        reason: 'Codex CLI passed.',
+        executionPlane: 'wsl2',
+        providerRuntime: 'codex-cli',
+        requestedModel: 'gpt-5-codex',
+        effectiveModel: 'gpt-5-codex',
+        inputTokens: 120,
+        cachedInputTokens: 40,
+        outputTokens: 30,
+        receiptPath: 'tests/results/docker-tools-parity/codex-cli-review/receipt.json',
+        receipt: {
+          executionPlane: 'wsl2',
+          providerRuntime: 'codex-cli',
+          usage: {
+            inputTokens: 120,
+            cachedInputTokens: 40,
+            outputTokens: 30
+          },
+          overall: {
+            status: 'passed',
+            actionableFindingCount: 0,
+            message: 'Codex CLI passed.'
+          }
+        }
+      };
+    }
+  });
+
+  assert.equal(result.providerId, 'codex-cli');
+  assert.equal(result.status, 'passed');
+  assert.equal(result.executionPlane, 'wsl2');
+  assert.equal(result.requestedModel, 'gpt-5-codex');
+  assert.equal(result.inputTokens, 120);
+  assert.equal(observedOptions.profile, 'pre-push');
+});
+
 test('executeLocalReviewProvider fails closed for reserved providers', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'local-review-provider-reserved-'));
   const result = await executeLocalReviewProvider({
-    providerId: 'codex-cli',
+    providerId: 'ollama',
     repoRoot,
     repoGitState: {
       headSha: 'abc123',
@@ -126,7 +181,7 @@ test('executeLocalReviewProvider fails closed for reserved providers', async () 
     }
   });
 
-  assert.equal(result.providerId, 'codex-cli');
+  assert.equal(result.providerId, 'ollama');
   assert.equal(result.status, 'failed');
   assert.match(result.reason, /not implemented yet/i);
 });

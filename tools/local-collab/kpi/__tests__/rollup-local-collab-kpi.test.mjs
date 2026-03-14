@@ -51,10 +51,15 @@ test('rollupLocalCollaborationKpi aggregates receipt and provider effort across 
     git,
     forkPlane: 'personal',
     persona: 'codex',
+    executionPlane: 'windows-host',
+    providerRuntime: 'copilot-cli',
     providerId: 'copilot-cli',
     providers: ['copilot-cli'],
     requestedModel: 'gpt-5.4',
     effectiveModel: 'gpt-5.4',
+    inputTokens: 20,
+    cachedInputTokens: 5,
+    outputTokens: 6,
     selectionSource: 'PRECOMMIT_AGENT_REVIEW_PROVIDERS',
     startedAt: '2026-03-14T00:00:00.000Z',
     finishedAt: '2026-03-14T00:00:01.000Z',
@@ -70,10 +75,15 @@ test('rollupLocalCollaborationKpi aggregates receipt and provider effort across 
     git,
     forkPlane: 'personal',
     persona: 'codex',
+    executionPlane: 'windows-host',
+    providerRuntime: 'copilot-cli',
     providerId: 'copilot-cli',
     providers: ['copilot-cli'],
     requestedModel: 'gpt-5.4',
     effectiveModel: 'gpt-5.4',
+    inputTokens: 18,
+    cachedInputTokens: 4,
+    outputTokens: 5,
     selectionSource: 'PREPUSH_AGENT_REVIEW_PROVIDERS',
     startedAt: '2026-03-14T00:00:02.000Z',
     finishedAt: '2026-03-14T00:00:03.000Z',
@@ -89,8 +99,13 @@ test('rollupLocalCollaborationKpi aggregates receipt and provider effort across 
     git,
     forkPlane: 'upstream',
     persona: 'daemon',
+    executionPlane: 'docker',
+    providerRuntime: 'simulation',
     providerId: 'simulation',
     providers: ['simulation'],
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
     selectionSource: 'policy-default',
     startedAt: '2026-03-14T00:00:04.000Z',
     finishedAt: '2026-03-14T00:00:05.000Z',
@@ -108,18 +123,26 @@ test('rollupLocalCollaborationKpi aggregates receipt and provider effort across 
   assert.equal(summary.planes.personal.receiptEffort.receiptCount, 2);
   assert.equal(summary.planes.personal.receiptEffort.durationMs, 1800);
   assert.equal(summary.planes.personal.receiptEffort.findingCount, 1);
+  assert.equal(summary.planes.personal.receiptEffort.executionPlanes['windows-host'], 2);
   assert.equal(summary.planes.origin.providerEffort.receiptCount, 3);
   assert.equal(summary.planes.origin.providerEffort.durationMs, 2400);
   assert.equal(summary.planes.origin.providerEffort.findingCount, 3);
+  assert.equal(summary.planes.origin.providerEffort.inputTokens, 38);
+  assert.equal(summary.planes.origin.providerEffort.cachedInputTokens, 9);
+  assert.equal(summary.planes.origin.providerEffort.outputTokens, 11);
   assert.equal(summary.planes.origin.personas['copilot-cli'].providerEffort.receiptCount, 2);
   assert.equal(summary.planes.origin.personas.simulation.providerEffort.receiptCount, 1);
   assert.equal(summary.planes.upstream.receiptEffort.receiptCount, 1);
   assert.equal(summary.planes.upstream.receiptEffort.statuses.failed, 1);
+  assert.equal(summary.planes.upstream.receiptEffort.executionPlanes.docker, 1);
   assert.equal(summary.combinedLocalPlane.receiptEffort.receiptCount, 3);
   assert.equal(summary.combinedLocalPlane.providerEffort.receiptCount, 3);
   assert.equal(summary.providers['copilot-cli'].totals.receiptCount, 2);
   assert.equal(summary.providers['copilot-cli'].totals.requestedModels['gpt-5.4'], 2);
+  assert.equal(summary.providers['copilot-cli'].totals.inputTokens, 38);
   assert.equal(summary.providers.simulation.totals.receiptCount, 1);
+  assert.equal(summary.providers['codex-cli'].executionPlane, 'wsl2');
+  assert.equal(summary.providers['codex-cli'].providerRuntime, 'codex-cli');
   assert.equal(summary.providers['codex-cli'].placeholderOnly, true);
   assert.equal(summary.providers.ollama.placeholderOnly, true);
 });
@@ -152,7 +175,8 @@ test('rollupLocalCollaborationKpi keeps reserved provider placeholders even with
 
   assert.equal(summary.receiptInventory.receiptCount, 0);
   assert.equal(summary.providers['codex-cli'].placeholderOnly, true);
-  assert.equal(summary.providers['codex-cli'].reserved, true);
+  assert.equal(summary.providers['codex-cli'].reserved, false);
+  assert.equal(summary.providers['codex-cli'].executable, true);
   assert.equal(summary.providers['codex-cli'].plane, 'personal');
   assert.equal(summary.providers['copilot-cli'].placeholderOnly, true);
   assert.equal(summary.providers['copilot-cli'].plane, 'origin');

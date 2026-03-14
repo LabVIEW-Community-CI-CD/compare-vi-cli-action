@@ -8,6 +8,7 @@ import {
   normalizeCopilotCliReviewPolicy,
   resolveRepoGitState
 } from './copilot-cli-review.mjs';
+import { DEFAULT_CODEX_CLI_REVIEW_POLICY, normalizeCodexCliReviewPolicy, runCodexCliReview } from './codex-cli-review.mjs';
 import { DEFAULT_SIMULATION_REVIEW_POLICY, normalizeSimulationReviewPolicy, runSimulationReview } from './simulation-review.mjs';
 import {
   describeLocalReviewProvider,
@@ -126,6 +127,9 @@ export function parseArgs(argv = process.argv) {
       case '--copilot-cli-review':
         options.request.copilotCliReview = true;
         break;
+      case '--codex-cli-review':
+        options.request.codexCliReview = true;
+        break;
       case '--simulation-review':
         options.request.simulationReview = true;
         break;
@@ -158,6 +162,17 @@ export async function loadAgentReviewPolicy(repoRoot) {
           : {
               ...DEFAULT_COPILOT_CLI_REVIEW_POLICY,
               enabled: localReviewLoop.copilotCliReview !== false
+            },
+      codexCli:
+        localReviewLoop.codexCliReviewConfig && typeof localReviewLoop.codexCliReviewConfig === 'object'
+          ? {
+              ...localReviewLoop.codexCliReviewConfig,
+              enabled: localReviewLoop.codexCliReview === true &&
+                localReviewLoop.codexCliReviewConfig.enabled !== false
+            }
+          : {
+              ...DEFAULT_CODEX_CLI_REVIEW_POLICY,
+              enabled: localReviewLoop.codexCliReview === true
             },
       simulation:
         localReviewLoop.simulationReviewConfig && typeof localReviewLoop.simulationReviewConfig === 'object'
@@ -215,6 +230,9 @@ function resolveRequestedProviders(request = {}, policy = {}) {
   if (request.simulationReview === true) {
     providers.push('simulation');
   }
+  if (request.codexCliReview === true) {
+    providers.push('codex-cli');
+  }
   const impliedProviders = normalizeLocalReviewProviderList(providers);
   return {
     providers: impliedProviders,
@@ -230,6 +248,7 @@ export async function runAgentReviewPolicy({
   request = {},
   policy = null,
   runCopilotCliReviewFn,
+  runCodexCliReviewFn = runCodexCliReview,
   runSimulationReviewFn = runSimulationReview,
   resolveRepoGitStateFn = resolveRepoGitState
 }) {
@@ -280,6 +299,7 @@ export async function runAgentReviewPolicy({
       repoGitState,
       policies: normalizedPolicy,
       runCopilotCliReviewFn,
+      runCodexCliReviewFn,
       runSimulationReviewFn,
       resolveRepoGitStateFn
     });
@@ -294,6 +314,14 @@ export async function runAgentReviewPolicy({
     : overallStatus === 'passed'
       ? 'Local agent review providers passed.'
       : 'Local agent review providers were skipped.';
+  const usageTotals = providerResults.reduce(
+    (sum, provider) => ({
+      inputTokens: sum.inputTokens + (Number.isInteger(provider.inputTokens) ? provider.inputTokens : 0),
+      cachedInputTokens: sum.cachedInputTokens + (Number.isInteger(provider.cachedInputTokens) ? provider.cachedInputTokens : 0),
+      outputTokens: sum.outputTokens + (Number.isInteger(provider.outputTokens) ? provider.outputTokens : 0)
+    }),
+    { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 }
+  );
   const receipt = {
     schema: AGENT_REVIEW_POLICY_RECEIPT_SCHEMA,
     generatedAt: toIso(),
@@ -310,7 +338,10 @@ export async function runAgentReviewPolicy({
       ),
       message: overallMessage,
       exitCode: overallStatus === 'passed' || overallStatus === 'skipped' ? 0 : 1,
-      failedProvider: failedProvider?.providerId || null
+      failedProvider: failedProvider?.providerId || null,
+      inputTokens: usageTotals.inputTokens,
+      cachedInputTokens: usageTotals.cachedInputTokens,
+      outputTokens: usageTotals.outputTokens
     },
     providers: Object.fromEntries(
       providerResults.map((provider) => [
@@ -321,7 +352,14 @@ export async function runAgentReviewPolicy({
           receiptPath: provider.receiptPath,
           actionableFindingCount: provider.actionableFindingCount,
           convergence: provider.convergence,
-          scenario: provider.scenario
+          scenario: provider.scenario,
+          executionPlane: provider.executionPlane,
+          providerRuntime: provider.providerRuntime,
+          requestedModel: provider.requestedModel,
+          effectiveModel: provider.effectiveModel,
+          inputTokens: provider.inputTokens,
+          cachedInputTokens: provider.cachedInputTokens,
+          outputTokens: provider.outputTokens
         }
       ])
     ),

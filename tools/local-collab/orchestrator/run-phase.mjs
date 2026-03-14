@@ -22,6 +22,12 @@ export const DEFAULT_PHASE_FORK_PLANES = {
   'pre-push': 'personal',
   daemon: 'upstream'
 };
+export const DEFAULT_PHASE_EXECUTION_PLANES = {
+  'pre-commit': 'windows-host',
+  'post-commit': 'windows-host',
+  'pre-push': 'windows-host',
+  daemon: 'docker'
+};
 export const PHASE_PROVIDER_ENV_OVERRIDES = {
   'pre-commit': 'PRECOMMIT_AGENT_REVIEW_PROVIDERS',
   'pre-push': 'PREPUSH_AGENT_REVIEW_PROVIDERS',
@@ -114,6 +120,7 @@ export function parseArgs(argv = process.argv) {
     orchestratorReceiptPath: '',
     forkPlane: '',
     persona: '',
+    executionPlane: '',
     providers: [],
     delegateArgs: []
   };
@@ -139,6 +146,10 @@ export function parseArgs(argv = process.argv) {
         break;
       case '--persona':
         parsed.persona = normalizeText(args[index + 1]);
+        index += 1;
+        break;
+      case '--execution-plane':
+        parsed.executionPlane = normalizeText(args[index + 1]);
         index += 1;
         break;
       case '--providers':
@@ -192,7 +203,11 @@ export function resolvePhaseProviderSelection(phase, env = process.env, explicit
 function resolvePhaseIdentity(phase, env = process.env, overrides = {}) {
   return {
     forkPlane: normalizeText(overrides.forkPlane) || normalizeText(env.LOCAL_COLLAB_FORK_PLANE) || DEFAULT_PHASE_FORK_PLANES[phase],
-    persona: normalizeText(overrides.persona) || normalizeText(env.LOCAL_COLLAB_PERSONA) || DEFAULT_PHASE_PERSONAS[phase]
+    persona: normalizeText(overrides.persona) || normalizeText(env.LOCAL_COLLAB_PERSONA) || DEFAULT_PHASE_PERSONAS[phase],
+    executionPlane:
+      normalizeText(overrides.executionPlane) ||
+      normalizeText(env.LOCAL_COLLAB_EXECUTION_PLANE) ||
+      DEFAULT_PHASE_EXECUTION_PLANES[phase]
   };
 }
 
@@ -351,6 +366,7 @@ export async function runLocalCollaborationPhase(options = {}) {
     repoRoot,
     forkPlane: identity.forkPlane,
     persona: identity.persona,
+    executionPlane: identity.executionPlane,
     headSha: git.headSha,
     baseSha: git.baseSha,
     startedAt: new Date(started).toISOString(),
@@ -379,6 +395,8 @@ export async function runLocalCollaborationPhase(options = {}) {
     git,
     forkPlane: receipt.forkPlane,
     persona: receipt.persona,
+    executionPlane: receipt.executionPlane,
+    providerRuntime: 'local-collab-orchestrator',
     providers: providerSelection.providers,
     selectionSource: providerSelection.selectionSource,
     startedAt: receipt.startedAt,
