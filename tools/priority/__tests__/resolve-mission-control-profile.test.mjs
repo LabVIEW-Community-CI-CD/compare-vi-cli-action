@@ -131,6 +131,48 @@ test('resolve mission-control profile CLI fails deterministically for unknown tr
   assert.match(errors[0], /is not defined in the profile catalog/);
 });
 
+test('resolve mission-control profile CLI resolves relative report paths against the injected repo root', async (t) => {
+  const { main } = await loadModule();
+  const tempCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-profile-resolution-root-'));
+
+  const output = [];
+  const errors = [];
+  const originalCwd = process.cwd();
+  process.chdir(tempCwd);
+  t.after(() => {
+    process.chdir(originalCwd);
+    fs.rmSync(tempCwd, { recursive: true, force: true });
+  });
+
+  const exitCode = main(
+    [
+      'node',
+      modulePath,
+      '--trigger',
+      'MC',
+      '--report',
+      path.join('reports', 'mission-control-profile-resolution.json'),
+    ],
+    {
+      repoRoot: repoRoot,
+      logFn(message) {
+        output.push(message);
+      },
+      errorFn(message) {
+        errors.push(message);
+      },
+    },
+  );
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(errors, []);
+  assert.equal(output.length, 2);
+  const expectedPath = path.join(repoRoot, 'reports', 'mission-control-profile-resolution.json');
+  assert.match(output[0], new RegExp(expectedPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.equal(fs.existsSync(expectedPath), true);
+  fs.rmSync(path.join(repoRoot, 'reports'), { recursive: true, force: true });
+});
+
 test('mission-control docs and manifest advertise the runtime trigger resolver', () => {
   const prompt = loadText('PROMPT_AUTONOMY.md');
   const manifest = loadJson('docs/documentation-manifest.json');

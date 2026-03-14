@@ -78,8 +78,8 @@ export function parseArgs(argv = process.argv) {
   return options;
 }
 
-function writeJsonFile(filePath, payload) {
-  const resolvedPath = path.resolve(process.cwd(), filePath);
+function writeJsonFile(filePath, payload, repoRoot = process.cwd()) {
+  const resolvedPath = path.resolve(repoRoot, filePath);
   fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
   fs.writeFileSync(resolvedPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   return resolvedPath;
@@ -142,7 +142,7 @@ export function main(
         repoRoot,
       },
     );
-    const reportPath = writeJsonFile(options.reportPath, report);
+    const reportPath = writeJsonFile(options.reportPath, report, repoRoot);
     logFn(`[mission-control:resolve] report: ${reportPath}`);
     logFn(
       `[mission-control:resolve] trigger=${report.trigger} profile=${report.resolution.profileId} intent=${report.resolution.operatorPreset.intent} focus=${report.resolution.operatorPreset.focus}`,
