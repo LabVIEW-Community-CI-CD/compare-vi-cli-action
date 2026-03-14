@@ -126,11 +126,74 @@ function buildCommandResult(result = {}) {
   };
 }
 
-function runCommand(command, args, { cwd, env } = {}) {
+function readPathEntries(env = process.env) {
+  const pathValue = env.Path ?? env.PATH ?? '';
+  return pathValue
+    .split(path.delimiter)
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+}
+
+function resolveWindowsCopilotBundle(shimPath) {
+  const shimDirectory = path.dirname(shimPath);
+  const loaderPath = path.join(shimDirectory, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+  if (!existsSync(loaderPath)) {
+    return {
+      resolutionError: `Unable to resolve the Copilot CLI npm loader beside '${shimPath}'.`
+    };
+  }
+
+  const bundledNodePath = path.join(shimDirectory, 'node.exe');
+  return {
+    spawnCommand: existsSync(bundledNodePath) ? bundledNodePath : process.execPath,
+    spawnArgsPrefix: [loaderPath],
+    shell: false
+  };
+}
+
+export function resolveCopilotCliCommand(platform = process.platform, env = process.env) {
+  if (platform !== 'win32') {
+    return {
+      command: 'copilot',
+      spawnCommand: 'copilot',
+      spawnArgsPrefix: [],
+      shell: false
+    };
+  }
+
+  const resolutionErrors = [];
+  for (const directory of readPathEntries(env)) {
+    const shimPath = path.join(directory, 'copilot.cmd');
+    if (existsSync(shimPath)) {
+      const bundle = resolveWindowsCopilotBundle(shimPath);
+      if (!normalizeText(bundle?.resolutionError)) {
+        return {
+          command: 'copilot.cmd',
+          spawnCommand: bundle?.spawnCommand ?? null,
+          spawnArgsPrefix: bundle?.spawnArgsPrefix ?? [],
+          shell: bundle?.shell ?? false,
+          resolutionError: ''
+        };
+      }
+      resolutionErrors.push(bundle.resolutionError);
+    }
+  }
+
+  return {
+    command: 'copilot.cmd',
+    spawnCommand: null,
+    spawnArgsPrefix: [],
+    shell: false,
+    resolutionError: resolutionErrors[0] || 'Unable to resolve copilot.cmd on PATH without shell mediation.'
+  };
+}
+
+function runCommand(command, args, { cwd, env, shell = false } = {}) {
   return buildCommandResult(
     spawnSync(command, args, {
       cwd,
       env,
+      shell,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       maxBuffer: DEFAULT_COPILOT_CLI_MAX_BUFFER_BYTES
@@ -857,6 +920,27 @@ export async function runCopilotCliReview({
     args.push('--model', normalizedPolicy.model);
   }
   args.push('--prompt', prompt);
+  const copilotInvocation = resolveCopilotCliCommand(process.platform, process.env);
+  if (normalizeText(copilotInvocation.resolutionError)) {
+    receipt.copilot = {
+      ...receipt.copilot,
+      command: copilotInvocation.command,
+      shell: copilotInvocation.shell
+    };
+    receipt.overall = {
+      status: 'failed',
+      actionableFindingCount: 0,
+      message: copilotInvocation.resolutionError,
+      exitCode: 1
+    };
+    await writeFile(resolvedReceiptPathInfo.resolved, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
+    return {
+      status: 'failed',
+      reason: copilotInvocation.resolutionError,
+      receiptPath: resolvedReceiptPathInfo.normalized,
+      receipt
+    };
+  }
   const aggregatedFindings = [];
   const findingOccurrences = new Map();
   let noNovelFindingStreak = 0;
@@ -868,9 +952,10 @@ export async function runCopilotCliReview({
   for (let passIndex = 1; passIndex <= normalizedPolicy.convergence.maxPasses; passIndex += 1) {
     const startedAt = new Date();
     const commandResult = buildCommandResult(
-      await runCommandFn('copilot', args, {
+      await runCommandFn(copilotInvocation.spawnCommand, [...(copilotInvocation.spawnArgsPrefix ?? []), ...args], {
         cwd: repoRoot,
-        env: process.env
+        env: process.env,
+        shell: copilotInvocation.shell
       })
     );
     lastPassExitCode = commandResult.status;
@@ -979,6 +1064,8 @@ export async function runCopilotCliReview({
   receipt.copilot = {
     ...receipt.copilot,
     executed: receipt.passes.length > 0,
+    command: copilotInvocation.command,
+    shell: copilotInvocation.shell,
     exitCode: lastPassExitCode
   };
 

@@ -12,6 +12,7 @@ import {
   collectReviewContext,
   loadCopilotCliReviewPolicy,
   normalizeCopilotCliReviewPolicy,
+  resolveCopilotCliCommand,
   runCopilotCliReview
 } from '../copilot-cli-review.mjs';
 
@@ -111,6 +112,60 @@ test('buildReviewPrompt includes collaboration planes and instruction presence',
   assert.match(prompt, /\.github\/copilot-instructions\.md/);
 });
 
+test('resolveCopilotCliCommand prefers the Windows npm shim bundle and launches through Node without shell mediation', async () => {
+  const shimRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-shim-'));
+  const shimPath = path.join(shimRoot, 'copilot.cmd');
+  const bundledNodePath = path.join(shimRoot, 'node.exe');
+  const loaderPath = path.join(shimRoot, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+  await mkdir(path.dirname(loaderPath), { recursive: true });
+  await writeFile(shimPath, '@echo off\r\necho copilot\r\n', 'utf8');
+  await writeFile(bundledNodePath, '', 'utf8');
+  await writeFile(loaderPath, 'console.log("copilot")\n', 'utf8');
+
+  const invocation = resolveCopilotCliCommand('win32', {
+    Path: shimRoot
+  });
+
+  assert.equal(invocation.command, 'copilot.cmd');
+  assert.equal(invocation.spawnCommand, bundledNodePath);
+  assert.deepEqual(invocation.spawnArgsPrefix, [loaderPath]);
+  assert.equal(invocation.shell, false);
+});
+
+test('resolveCopilotCliCommand fails closed when no Windows shim can be resolved without shell mediation', () => {
+  const invocation = resolveCopilotCliCommand('win32', {
+    Path: ''
+  });
+
+  assert.equal(invocation.command, 'copilot.cmd');
+  assert.equal(invocation.spawnCommand, null);
+  assert.deepEqual(invocation.spawnArgsPrefix, []);
+  assert.equal(invocation.shell, false);
+  assert.match(invocation.resolutionError, /without shell mediation/i);
+});
+
+test('resolveCopilotCliCommand keeps scanning PATH after an unresolvable Windows shim', async () => {
+  const brokenShimRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-broken-shim-'));
+  const healthyShimRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-healthy-shim-'));
+  const healthyLoaderPath = path.join(healthyShimRoot, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+  const healthyNodePath = path.join(healthyShimRoot, 'node.exe');
+  await mkdir(path.dirname(healthyLoaderPath), { recursive: true });
+  await writeFile(path.join(brokenShimRoot, 'copilot.cmd'), '@echo off\r\necho broken\r\n', 'utf8');
+  await writeFile(path.join(healthyShimRoot, 'copilot.cmd'), '@echo off\r\necho healthy\r\n', 'utf8');
+  await writeFile(healthyNodePath, '', 'utf8');
+  await writeFile(healthyLoaderPath, 'console.log("copilot")\n', 'utf8');
+
+  const invocation = resolveCopilotCliCommand('win32', {
+    Path: [brokenShimRoot, healthyShimRoot].join(path.delimiter)
+  });
+
+  assert.equal(invocation.command, 'copilot.cmd');
+  assert.equal(invocation.spawnCommand, healthyNodePath);
+  assert.deepEqual(invocation.spawnArgsPrefix, [healthyLoaderPath]);
+  assert.equal(invocation.shell, false);
+  assert.equal(invocation.resolutionError, '');
+});
+
 test('runCopilotCliReview writes a deterministic passed receipt for staged review', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-review-'));
   runGit(repoRoot, ['init']);
@@ -161,6 +216,8 @@ test('runCopilotCliReview writes a deterministic passed receipt for staged revie
   assert.equal(result.receipt.overall.status, 'passed');
   assert.equal(result.receipt.copilot.model, 'gpt-5.4-mini');
   assert.equal(result.receipt.copilot.allowAllTools, false);
+  assert.equal(result.receipt.copilot.command, process.platform === 'win32' ? 'copilot.cmd' : 'copilot');
+  assert.equal(typeof result.receipt.copilot.shell, 'boolean');
   assert.deepEqual(result.receipt.permissionPolicy, {
     promptOnly: true,
     disableBuiltinMcps: true,
