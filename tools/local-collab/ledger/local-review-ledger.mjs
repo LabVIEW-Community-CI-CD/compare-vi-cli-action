@@ -197,6 +197,8 @@ export async function writeLocalCollaborationLedgerReceipt(options = {}) {
     findingCount: normalizeInteger(options.findingCount),
     status: normalizeText(options.status) || null,
     outcome: normalizeText(options.outcome) || null,
+    filesTouched: uniqueStrings(options.filesTouched),
+    commitCreated: options.commitCreated === true,
     selectionSource: normalizeText(options.selectionSource) || null,
     sourceReceiptIds: uniqueStrings([...(options.sourceReceiptIds ?? []), ...siblingReceiptIds]),
     sourcePaths: uniqueStrings(options.sourcePaths),

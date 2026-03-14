@@ -44,6 +44,7 @@
     "hooks:multi": "node tools/hooks/core/run-multi.mjs",
     "hooks:plane": "node tools/hooks/core/plane-info.mjs",
     "hooks:pre-commit": "node tools/hooks/core/pre-commit.mjs",
+    "hooks:post-commit": "node tools/hooks/core/post-commit.mjs",
     "hooks:pre-push": "node tools/hooks/core/pre-push.mjs",
     "hooks:preflight": "node tools/hooks/core/preflight.mjs",
     "hooks:schema": "node tools/hooks/core/validate-summaries.mjs",

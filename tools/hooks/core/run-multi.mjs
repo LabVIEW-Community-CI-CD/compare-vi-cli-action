@@ -30,8 +30,10 @@ const combos = [];
 
 if (bashPath && fs.existsSync(bashPath)) {
   const preCommitShellScript = toPosix(path.join('tools', 'hooks', 'pre-commit'));
+  const postCommitShellScript = toPosix(path.join('tools', 'hooks', 'post-commit'));
   const prePushShellScript = toPosix(path.join('tools', 'hooks', 'pre-push'));
   combos.push({ hook: 'pre-commit', label: 'shell', command: bashPath, args: [preCommitShellScript] });
+  combos.push({ hook: 'post-commit', label: 'shell', command: bashPath, args: [postCommitShellScript] });
   combos.push({ hook: 'pre-push', label: 'shell', command: bashPath, args: [prePushShellScript] });
 } else {
   info('[hooks multi] bash not available; skipping shell wrappers.');
@@ -39,6 +41,7 @@ if (bashPath && fs.existsSync(bashPath)) {
 
 if (pwshPath) {
   combos.push({ hook: 'pre-commit', label: 'pwsh', command: pwshPath, args: ['-NoLogo', '-NoProfile', '-File', path.join('tools', 'hooks', 'pre-commit.ps1')] });
+  combos.push({ hook: 'post-commit', label: 'pwsh', command: pwshPath, args: ['-NoLogo', '-NoProfile', '-File', path.join('tools', 'hooks', 'post-commit.ps1')] });
   combos.push({ hook: 'pre-push', label: 'pwsh', command: pwshPath, args: ['-NoLogo', '-NoProfile', '-File', path.join('tools', 'hooks', 'pre-push.ps1')] });
 } else {
   info('[hooks multi] PowerShell not available; skipping PowerShell wrappers.');

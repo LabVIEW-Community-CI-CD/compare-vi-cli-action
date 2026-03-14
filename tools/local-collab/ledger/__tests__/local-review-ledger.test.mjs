@@ -41,7 +41,8 @@ test('writeLocalCollaborationLedgerReceipt persists a per-phase per-head receipt
     durationMs: 1000,
     findingCount: 0,
     status: 'passed',
-    outcome: 'completed'
+    outcome: 'completed',
+    filesTouched: ['tools/hooks/core/pre-commit.mjs']
   });
 
   const second = await writeLocalCollaborationLedgerReceipt({
@@ -57,7 +58,9 @@ test('writeLocalCollaborationLedgerReceipt persists a per-phase per-head receipt
     durationMs: 1000,
     findingCount: 2,
     status: 'failed',
-    outcome: 'blocked'
+    outcome: 'blocked',
+    filesTouched: ['tools/hooks/core/pre-push.mjs'],
+    commitCreated: true
   });
 
   assert.equal(first.receipt.schema, LOCAL_COLLAB_LEDGER_RECEIPT_SCHEMA);
@@ -66,6 +69,8 @@ test('writeLocalCollaborationLedgerReceipt persists a per-phase per-head receipt
   assert.equal(first.receipt.baseSha, git.baseSha);
   assert.equal(first.receipt.providerId, 'copilot-cli');
   assert.equal(second.receipt.providerId, 'multi');
+  assert.deepEqual(first.receipt.filesTouched, ['tools/hooks/core/pre-commit.mjs']);
+  assert.equal(second.receipt.commitCreated, true);
   assert.ok(second.receipt.sourceReceiptIds.includes(first.receipt.receiptId));
 
   const persisted = JSON.parse(await readFile(second.receiptPath, 'utf8'));
