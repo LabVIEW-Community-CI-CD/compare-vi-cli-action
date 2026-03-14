@@ -10,4 +10,6 @@
 - Do not treat local Copilot CLI output as merge, queue, or promotion authority.
 - Hosted required checks and final ready-validation remain authoritative for promotion.
 - If the head SHA changes after a local review receipt is created, treat the receipt as stale and rerun the local review.
-- Prefer least-privilege CLI execution. Do not widen tools/permissions without an explicit tracked policy change.
+- Prefer least-privilege CLI execution. Keep `allowAllTools=false`, keep the explicit
+  tool allowlist empty unless a tracked policy change widens it, and do not
+  reuse prior CLI sessions across branch heads.

@@ -19,6 +19,11 @@ export const DEFAULT_COPILOT_CLI_REVIEW_POLICY = {
   disableBuiltinMcps: true,
   allowAllTools: false,
   availableTools: '',
+  sessionPolicy: {
+    reuse: 'fresh-per-head',
+    scope: 'current-head',
+    recordPromptArtifacts: true
+  },
   convergence: {
     minPasses: 2,
     maxPasses: 4,
@@ -294,6 +299,21 @@ function normalizeConvergencePolicy(value = {}) {
   };
 }
 
+function normalizeSessionPolicy(value = {}) {
+  const session = value && typeof value === 'object' ? value : {};
+  return {
+    reuse:
+      normalizeText(session.reuse).toLowerCase() === 'fresh-per-invocation'
+        ? 'fresh-per-invocation'
+        : 'fresh-per-head',
+    scope:
+      normalizeText(session.scope).toLowerCase() === 'current-diff'
+        ? 'current-diff'
+        : 'current-head',
+    recordPromptArtifacts: session.recordPromptArtifacts !== false
+  };
+}
+
 export function normalizeCopilotCliReviewPolicy(value = {}) {
   const policy = value && typeof value === 'object' ? value : {};
   const profiles = policy.profiles && typeof policy.profiles === 'object' ? policy.profiles : {};
@@ -309,6 +329,10 @@ export function normalizeCopilotCliReviewPolicy(value = {}) {
       policy.availableTools === ''
         ? ''
         : normalizeText(policy.availableTools) || DEFAULT_COPILOT_CLI_REVIEW_POLICY.availableTools,
+    sessionPolicy: normalizeSessionPolicy({
+      ...DEFAULT_COPILOT_CLI_REVIEW_POLICY.sessionPolicy,
+      ...(policy.sessionPolicy && typeof policy.sessionPolicy === 'object' ? policy.sessionPolicy : {})
+    }),
     convergence: normalizeConvergencePolicy({
       ...DEFAULT_COPILOT_CLI_REVIEW_POLICY.convergence,
       ...(policy.convergence && typeof policy.convergence === 'object' ? policy.convergence : {})
@@ -710,8 +734,20 @@ export async function runCopilotCliReview({
       command: 'copilot',
       promptOnly: normalizedPolicy.promptOnly === true,
       disableBuiltinMcps: normalizedPolicy.disableBuiltinMcps === true,
+      allowAllTools: normalizedPolicy.allowAllTools === true,
       availableTools: normalizedPolicy.availableTools,
       exitCode: null
+    },
+    permissionPolicy: {
+      promptOnly: normalizedPolicy.promptOnly === true,
+      disableBuiltinMcps: normalizedPolicy.disableBuiltinMcps === true,
+      allowAllTools: normalizedPolicy.allowAllTools === true,
+      availableTools: normalizedPolicy.availableTools
+    },
+    sessionPolicy: {
+      ...normalizedPolicy.sessionPolicy,
+      reusedPriorSession: false,
+      checkpointKey: null
     },
     convergence: {
       ...normalizedPolicy.convergence,
@@ -793,6 +829,10 @@ export async function runCopilotCliReview({
     profileName,
     repoRoot
   });
+  receipt.sessionPolicy = {
+    ...receipt.sessionPolicy,
+    checkpointKey: `${profileName}:${context.git.headSha || 'unknown'}:${context.baseRef || 'none'}`
+  };
   await writeFile(artifactPaths.promptPath, prompt, 'utf8');
 
   const args = [

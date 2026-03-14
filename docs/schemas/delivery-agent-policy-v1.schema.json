@@ -61,6 +61,28 @@
             "enum": ["copilot-cli", "codex-cli", "simulation", "ollama"]
           }
         },
+        "copilotCliReview": { "type": "boolean" },
+        "copilotCliReviewConfig": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "model": { "type": "string" },
+            "promptOnly": { "type": "boolean" },
+            "disableBuiltinMcps": { "type": "boolean" },
+            "allowAllTools": { "type": "boolean" },
+            "availableTools": { "type": "string" },
+            "sessionPolicy": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "reuse": { "enum": ["fresh-per-head", "fresh-per-invocation"] },
+                "scope": { "enum": ["current-head", "current-diff"] },
+                "recordPromptArtifacts": { "type": "boolean" }
+              }
+            }
+          }
+        },
         "bodyMarkers": {
           "type": "array",
           "items": { "type": "string" }
