@@ -6,34 +6,22 @@ import { handoffStandingPriority } from '../standing-priority-handoff.mjs';
 
 test('handoffStandingPriority normalizes fork standing labels and syncs cache', async () => {
   const calls = [];
+  const patchCalls = [];
+  const issues = new Map([
+    [315, { number: 315, title: 'Legacy-labelled target', labels: [{ name: 'standing-priority' }], url: 'https://github.com/example/repo/issues/315' }],
+    [317, { number: 317, title: 'Current fork standing issue', labels: [{ name: 'fork-standing-priority' }], url: 'https://github.com/example/repo/issues/317' }]
+  ]);
   let leaseReleaseCount = 0;
   const ghRunner = (args) => {
     calls.push(args);
     if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label') && args.includes('fork-standing-priority')) {
-      return JSON.stringify([
-        {
-          number: 317,
-          title: 'Current fork standing issue',
-          labels: [{ name: 'fork-standing-priority' }],
-          url: 'https://github.com/example/repo/issues/317'
-        }
-      ]);
+      return JSON.stringify([issues.get(317)]);
     }
     if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label') && args.includes('standing-priority')) {
-      return JSON.stringify([
-        {
-          number: 315,
-          title: 'Legacy-labelled target',
-          labels: [{ name: 'standing-priority' }],
-          url: 'https://github.com/example/repo/issues/315'
-        },
-        {
-          number: 317,
-          title: 'Current fork standing issue',
-          labels: [{ name: 'fork-standing-priority' }],
-          url: 'https://github.com/example/repo/issues/317'
-        }
-      ]);
+      return JSON.stringify([issues.get(315), issues.get(317)]);
+    }
+    if (args[0] === 'issue' && args[1] === 'view') {
+      return JSON.stringify(issues.get(Number(args[2])));
     }
     return '';
   };
@@ -45,9 +33,15 @@ test('handoffStandingPriority normalizes fork standing labels and syncs cache', 
     leaseReleaseCount += 1;
     return { status: 'released' };
   };
+  const patchIssueLabelsFn = (_repoRoot, _repoSlug, issueNumber, labels) => {
+    patchCalls.push({ issueNumber, labels });
+    const issue = issues.get(issueNumber);
+    issue.labels = labels.map((label) => ({ name: label }));
+  };
 
   await handoffStandingPriority(315, {
     ghRunner,
+    patchIssueLabelsFn,
     syncFn,
     leaseReleaseFn,
     logger: () => {},
@@ -86,8 +80,12 @@ test('handoffStandingPriority normalizes fork standing labels and syncs cache', 
       '--label',
       'standing-priority'
     ],
-    ['issue', 'edit', '317', '--remove-label', 'fork-standing-priority'],
-    ['issue', 'edit', '315', '--remove-label', 'standing-priority', '--add-label', 'fork-standing-priority']
+    ['issue', 'view', '317', '--repo', 'fork-owner/compare-vi-cli-action', '--json', 'number,title,body,labels,createdAt,updatedAt,url,state'],
+    ['issue', 'view', '315', '--repo', 'fork-owner/compare-vi-cli-action', '--json', 'number,title,body,labels,createdAt,updatedAt,url,state']
+  ]);
+  assert.deepEqual(patchCalls, [
+    { issueNumber: 317, labels: [] },
+    { issueNumber: 315, labels: ['fork-standing-priority'] }
   ]);
   assert.equal(syncCount, 1);
   assert.equal(leaseReleaseCount, 1);
@@ -95,15 +93,18 @@ test('handoffStandingPriority normalizes fork standing labels and syncs cache', 
 
 test('handoffStandingPriority auto-selects the next actionable issue and skips cadence alerts', async () => {
   const calls = [];
+  const patchCalls = [];
+  const issues = new Map([
+    [315, { number: 315, title: '[P1] Real development issue', labels: [] }],
+    [317, { number: 317, title: 'Current standing issue', labels: [{ name: 'fork-standing-priority' }] }]
+  ]);
   let syncCount = 0;
   const ghRunner = (args) => {
     calls.push(args);
     if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
       return JSON.stringify([
         {
-          number: 317,
-          title: 'Current standing issue',
-          labels: [{ name: 'fork-standing-priority' }],
+          ...issues.get(317),
           createdAt: '2026-03-10T00:00:00Z',
           updatedAt: '2026-03-10T00:00:00Z'
         }
@@ -128,21 +129,29 @@ test('handoffStandingPriority auto-selects the next actionable issue and skips c
           updatedAt: '2026-03-02T00:00:00Z'
         },
         {
-          number: 317,
+          ...issues.get(317),
           title: '[P0] Current standing issue',
           body: 'Already active',
-          labels: [{ name: 'fork-standing-priority' }],
           createdAt: '2026-03-03T00:00:00Z',
           updatedAt: '2026-03-03T00:00:00Z'
         }
       ]);
     }
+    if (args[0] === 'issue' && args[1] === 'view') {
+      return JSON.stringify(issues.get(Number(args[2])));
+    }
     return '';
+  };
+  const patchIssueLabelsFn = (_repoRoot, _repoSlug, issueNumber, labels) => {
+    patchCalls.push({ issueNumber, labels });
+    const issue = issues.get(issueNumber);
+    issue.labels = labels.map((label) => ({ name: label }));
   };
 
   await handoffStandingPriority(null, {
     auto: true,
     ghRunner,
+    patchIssueLabelsFn,
     syncFn: async () => {
       syncCount += 1;
     },
@@ -195,8 +204,12 @@ test('handoffStandingPriority auto-selects the next actionable issue and skips c
       '--json',
       'number,title,body,labels,createdAt,updatedAt,url'
     ],
-    ['issue', 'edit', '317', '--remove-label', 'fork-standing-priority'],
-    ['issue', 'edit', '315', '--add-label', 'fork-standing-priority']
+    ['issue', 'view', '317', '--repo', 'fork-owner/compare-vi-cli-action', '--json', 'number,title,body,labels,createdAt,updatedAt,url,state'],
+    ['issue', 'view', '315', '--repo', 'fork-owner/compare-vi-cli-action', '--json', 'number,title,body,labels,createdAt,updatedAt,url,state']
+  ]);
+  assert.deepEqual(patchCalls, [
+    { issueNumber: 317, labels: [] },
+    { issueNumber: 315, labels: ['fork-standing-priority'] }
   ]);
   assert.equal(syncCount, 1);
 });
@@ -270,5 +283,40 @@ test('handoffStandingPriority rejects non-positive explicit issue numbers', asyn
         }
       }),
     /positive integer/
+  );
+});
+
+test('handoffStandingPriority fails loudly when label verification remains stale after mutation', async () => {
+  await assert.rejects(
+    handoffStandingPriority(315, {
+      ghRunner: (args) => {
+        if (args[0] === 'issue' && args[1] === 'list') {
+          return JSON.stringify([
+            {
+              number: 317,
+              title: 'Current standing issue',
+              labels: [{ name: 'standing-priority' }]
+            }
+          ]);
+        }
+        if (args[0] === 'issue' && args[1] === 'view') {
+          return JSON.stringify({
+            number: 317,
+            title: 'Current standing issue',
+            labels: [{ name: 'standing-priority' }]
+          });
+        }
+        return '';
+      },
+      patchIssueLabelsFn: () => {},
+      syncFn: async () => {},
+      leaseReleaseFn: async () => ({ status: 'released' }),
+      logger: () => {},
+      env: {
+        GITHUB_REPOSITORY: 'owner/repo',
+        AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'owner/repo'
+      }
+    }),
+    /label verification failed/i
   );
 });

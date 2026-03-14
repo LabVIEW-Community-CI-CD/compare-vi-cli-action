@@ -133,6 +133,53 @@ function buildIssueEditArgs(issueNumber, { removeLabels = [], addLabels = [] } =
   return args;
 }
 
+function buildIssueViewArgs(repoSlug, issueNumber) {
+  return [
+    'issue',
+    'view',
+    String(issueNumber),
+    '--repo',
+    repoSlug,
+    '--json',
+    'number,title,body,labels,createdAt,updatedAt,url,state'
+  ];
+}
+
+function applyIssueLabelsViaApi(repoRoot, repoSlug, issueNumber, labels) {
+  const result = spawnSync(
+    'gh',
+    ['api', `repos/${repoSlug}/issues/${issueNumber}`, '-X', 'PATCH', '--input', '-'],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      input: JSON.stringify({ labels: Array.from(labels || []) }),
+      stdio: ['pipe', 'pipe', 'pipe']
+    }
+  );
+  if (result.status !== 0) {
+    const stderr = result.stderr?.trim() || result.stdout?.trim() || 'unknown error';
+    throw new Error(`gh api repos/${repoSlug}/issues/${issueNumber} failed (${result.status}): ${stderr}`);
+  }
+  return (result.stdout || '').trim();
+}
+
+function normalizeLabelSet(labels) {
+  return Array.from(new Set(normalizeIssueLabels(labels).map((label) => label.toLowerCase()))).sort();
+}
+
+function verifyIssueLabels(ghRunner, repoSlug, issueNumber, expectedLabels) {
+  const issue = parseIssueList(
+    `[${ghRunner(buildIssueViewArgs(repoSlug, issueNumber), { quiet: true })}]`
+  )[0] ?? null;
+  const actual = normalizeLabelSet(issue?.labels);
+  const expected = normalizeLabelSet(expectedLabels);
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      `Issue #${issueNumber} label verification failed. Expected [${expected.join(', ')}], observed [${actual.join(', ')}].`
+    );
+  }
+}
+
 function resolveTargetIssue(nextIssue, auto, openIssues, excludedIssueNumbers) {
   const target = String(nextIssue ?? '').trim();
   if (target) {
@@ -172,7 +219,7 @@ function resolveTargetIssue(nextIssue, auto, openIssues, excludedIssueNumbers) {
  * Rotate the standing-priority label to a new issue.
  *
  * @param {number|string|null} nextIssue
- * @param {{ dryRun?: boolean, auto?: boolean, repoSlug?: string|null, repoRoot?: string, env?: NodeJS.ProcessEnv, ghRunner?: Function, syncFn?: Function, logger?: Function, leaseReleaseFn?: Function, releaseLease?: boolean, leaseScope?: string }} [options]
+ * @param {{ dryRun?: boolean, auto?: boolean, repoSlug?: string|null, repoRoot?: string, env?: NodeJS.ProcessEnv, ghRunner?: Function, syncFn?: Function, logger?: Function, leaseReleaseFn?: Function, releaseLease?: boolean, leaseScope?: string, patchIssueLabelsFn?: Function }} [options]
  */
 export async function handoffStandingPriority(
   nextIssue,
@@ -186,6 +233,7 @@ export async function handoffStandingPriority(
     syncFn = syncStandingPriority,
     logger = console.log,
     leaseReleaseFn = releaseWriterLease,
+    patchIssueLabelsFn = applyIssueLabelsViaApi,
     releaseLease = true,
     leaseScope = 'workspace'
   } = {}
@@ -215,6 +263,7 @@ export async function handoffStandingPriority(
     ? standingPriorityLabels.filter((label) => label !== primaryLabel && targetIssue.labels.includes(label))
     : [];
   const targetNeedsPrimaryLabel = !targetIssue || !targetIssue.labels.includes(primaryLabel);
+  const currentIssueMap = new Map(currentIssues.map((issue) => [issue.number, issue]));
 
   if (dryRun) {
     logger(
@@ -251,17 +300,21 @@ export async function handoffStandingPriority(
     logger(
       `[standing-handoff] Removing ${issue.removeLabels.join(', ')} from issue #${issue.number}...`
     );
-    ghRunner(buildIssueEditArgs(issue.number, { removeLabels: issue.removeLabels }));
+    const currentLabels = normalizeIssueLabels(currentIssueMap.get(issue.number)?.labels);
+    const desiredLabels = currentLabels.filter((label) => !issue.removeLabels.includes(label));
+    patchIssueLabelsFn(workingRepoRoot, resolvedRepoSlug, issue.number, desiredLabels);
+    verifyIssueLabels(ghRunner, resolvedRepoSlug, issue.number, desiredLabels);
   }
 
   if (targetRemoveLabels.length > 0 || targetNeedsPrimaryLabel) {
     logger(`[standing-handoff] Normalizing standing labels on issue #${targetIssueNumber}...`);
-    ghRunner(
-      buildIssueEditArgs(targetIssueNumber, {
-        removeLabels: targetRemoveLabels,
-        addLabels: targetNeedsPrimaryLabel ? [primaryLabel] : []
-      })
-    );
+    const currentLabels = normalizeIssueLabels(targetIssue?.labels);
+    const desiredLabels = currentLabels
+      .filter((label) => !targetRemoveLabels.includes(label))
+      .concat(targetNeedsPrimaryLabel ? [primaryLabel] : [])
+      .filter(Boolean);
+    patchIssueLabelsFn(workingRepoRoot, resolvedRepoSlug, targetIssueNumber, desiredLabels);
+    verifyIssueLabels(ghRunner, resolvedRepoSlug, targetIssueNumber, desiredLabels);
   } else {
     logger(`[standing-handoff] Issue #${targetIssueNumber} already labelled – ensuring cache is updated.`);
   }
