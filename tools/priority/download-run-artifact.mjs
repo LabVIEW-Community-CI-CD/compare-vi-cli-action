@@ -45,6 +45,7 @@ export function parseArgs(argv = process.argv, env = process.env) {
     destinationRoot: DEFAULT_DESTINATION_ROOT,
     reportPath: DEFAULT_REPORT_PATH,
     stepSummaryPath: normalizeText(env.GITHUB_STEP_SUMMARY),
+    stepSummaryExplicit: false,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -81,7 +82,10 @@ export function parseArgs(argv = process.argv, env = process.env) {
       }
       if (token === '--destination-root') options.destinationRoot = next;
       if (token === '--report') options.reportPath = next;
-      if (token === '--step-summary') options.stepSummaryPath = next;
+      if (token === '--step-summary') {
+        options.stepSummaryPath = next;
+        options.stepSummaryExplicit = true;
+      }
       continue;
     }
     throw new Error(`Unknown option: ${token}`);
@@ -103,6 +107,10 @@ export function parseArgs(argv = process.argv, env = process.env) {
   }
 
   return options;
+}
+
+function isGitHubActionsEnvironment(env = process.env) {
+  return (normalizeText(env.GITHUB_ACTIONS) ?? '').toLowerCase() === 'true';
 }
 
 function firstDownloadFailureClass(report) {
@@ -238,24 +246,34 @@ export async function main(
     reportPath: options.reportPath,
   });
 
+  let projectionFailure = false;
   const githubOutputWrite = writeGitHubOutputs(env.GITHUB_OUTPUT, buildGitHubOutputPairs({ options, result }));
   if (githubOutputWrite.errorMessage) {
+    const githubOutputRequired = isGitHubActionsEnvironment(env) && normalizeText(env.GITHUB_OUTPUT);
+    const level = githubOutputRequired ? 'error' : 'warning';
     errorFn(
-      `[run-artifact-download] warning: failed to write GitHub outputs to ${githubOutputWrite.path}: ${githubOutputWrite.errorMessage}`,
+      `[run-artifact-download] ${level}: failed to write GitHub outputs to ${githubOutputWrite.path}: ${githubOutputWrite.errorMessage}`,
     );
+    projectionFailure ||= Boolean(githubOutputRequired);
   }
   const stepSummaryWrite = appendStepSummary(options.stepSummaryPath, buildStepSummaryLines({ options, result }));
   if (stepSummaryWrite.errorMessage) {
-    errorFn(
-      `[run-artifact-download] warning: failed to append step summary to ${stepSummaryWrite.path}: ${stepSummaryWrite.errorMessage}`,
+    const stepSummaryRequired = Boolean(
+      normalizeText(options.stepSummaryPath) &&
+      (options.stepSummaryExplicit || isGitHubActionsEnvironment(env))
     );
+    const level = stepSummaryRequired ? 'error' : 'warning';
+    errorFn(
+      `[run-artifact-download] ${level}: failed to append step summary to ${stepSummaryWrite.path}: ${stepSummaryWrite.errorMessage}`,
+    );
+    projectionFailure ||= stepSummaryRequired;
   }
 
   logFn(`[run-artifact-download] report: ${result.reportPath}`);
   logFn(
     `[run-artifact-download] status=${result.report.status} requested=${result.report.summary.requestedArtifactCount} downloaded=${result.report.summary.downloadedCount} missing=${result.report.summary.missingCount} failed=${result.report.summary.failedCount}`,
   );
-  return result.report.status === 'pass' ? 0 : 1;
+  return result.report.status === 'pass' && !projectionFailure ? 0 : 1;
 }
 
 export function isDirectExecution(argv = process.argv, metaUrl = import.meta.url) {

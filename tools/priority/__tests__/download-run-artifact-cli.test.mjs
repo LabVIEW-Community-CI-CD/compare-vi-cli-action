@@ -70,13 +70,13 @@ test('main writes GitHub outputs and step summary for a successful artifact down
       'copilot-review-signal-965',
       '--report',
       reportPath,
-      '--step-summary',
-      summaryPath,
     ],
     {
       env: {
         ...process.env,
+        GITHUB_ACTIONS: 'false',
         GITHUB_OUTPUT: outputPath,
+        GITHUB_STEP_SUMMARY: summaryPath,
       },
       logFn(message) {
         logged.push(message);
@@ -129,6 +129,7 @@ test('main writes GitHub outputs and step summary for a successful artifact down
   );
   assert.equal(parsed.repo, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(parsed.stepSummaryPath, summaryPath);
+  assert.equal(parsed.stepSummaryExplicit, false);
 });
 
 test('main keeps successful downloads passing when GitHub output projections cannot be written', async (t) => {
@@ -157,13 +158,13 @@ test('main keeps successful downloads passing when GitHub output projections can
       'copilot-review-signal-965',
       '--report',
       reportPath,
-      '--step-summary',
-      summaryPath,
     ],
     {
       env: {
         ...process.env,
+        GITHUB_ACTIONS: 'false',
         GITHUB_OUTPUT: outputPath,
+        GITHUB_STEP_SUMMARY: summaryPath,
       },
       logFn(message) {
         logged.push(message);
@@ -199,6 +200,77 @@ test('main keeps successful downloads passing when GitHub output projections can
   assert.equal(errors.length, 2);
   assert.match(errors[0], /failed to write GitHub outputs/i);
   assert.match(errors[1], /failed to append step summary/i);
+});
+
+test('main fails successful downloads when required GitHub projections cannot be written in GitHub Actions', async (t) => {
+  const { main } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'download-run-artifact-cli-actions-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const outputPath = path.join(tmpDir, 'github-output-dir');
+  const summaryPath = path.join(tmpDir, 'step-summary-dir');
+  fs.mkdirSync(outputPath, { recursive: true });
+  fs.mkdirSync(summaryPath, { recursive: true });
+
+  const reportPath = path.join(tmpDir, 'report.json');
+  const logged = [];
+  const errors = [];
+
+  const exitCode = await main(
+    [
+      'node',
+      modulePath,
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--run-id',
+      '22872590273',
+      '--artifact',
+      'copilot-review-signal-965',
+      '--report',
+      reportPath,
+      '--step-summary',
+      summaryPath,
+    ],
+    {
+      env: {
+        ...process.env,
+        GITHUB_ACTIONS: 'true',
+        GITHUB_OUTPUT: outputPath,
+      },
+      logFn(message) {
+        logged.push(message);
+      },
+      errorFn(message) {
+        errors.push(message);
+      },
+      downloadNamedArtifactsFn() {
+        return {
+          reportPath,
+          report: {
+            status: 'pass',
+            discovery: {
+              status: 'pass',
+              failureClass: null,
+            },
+            downloads: [],
+            summary: {
+              requestedArtifactCount: 1,
+              availableArtifactCount: 1,
+              downloadedCount: 1,
+              missingCount: 0,
+              failedCount: 0,
+            },
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(exitCode, 1);
+  assert.equal(logged.length, 2);
+  assert.equal(errors.length, 2);
+  assert.match(errors[0], /error: failed to write GitHub outputs/i);
+  assert.match(errors[1], /error: failed to append step summary/i);
 });
 
 test('main falls back to the discovery failure class when no download entries exist', async (t) => {
