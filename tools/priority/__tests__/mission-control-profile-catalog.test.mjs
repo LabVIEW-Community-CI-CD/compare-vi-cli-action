@@ -29,12 +29,29 @@ function sortStrings(values) {
   return [...values].sort((left, right) => left.localeCompare(right));
 }
 
+function assertUniqueTriggerTokens(profileCatalog) {
+  const seenTokens = new Map();
+  for (const profile of profileCatalog.profiles) {
+    const tokens = [profile.trigger, ...profile.aliases];
+    for (const token of tokens) {
+      const priorProfileId = seenTokens.get(token);
+      assert.equal(
+        priorProfileId,
+        undefined,
+        `Mission-control trigger token '${token}' is reused by '${profile.id}' and '${priorProfileId}'.`
+      );
+      seenTokens.set(token, profile.id);
+    }
+  }
+}
+
 test('mission-control profile catalog fixture matches schema', () => {
   const validate = compileValidator();
   const fixture = loadJson('tools/priority/__fixtures__/mission-control/profile-catalog.json');
   const valid = validate(fixture);
   assert.equal(valid, true, JSON.stringify(validate.errors, null, 2));
   assert.equal(fixture.profiles.length, 5);
+  assertUniqueTriggerTokens(fixture);
 });
 
 test('mission-control profile catalog fails closed on duplicate profile ids or trigger aliases', () => {
@@ -48,14 +65,12 @@ test('mission-control profile catalog fails closed on duplicate profile ids or t
   ];
   assert.equal(validateDuplicateId(duplicateIdCatalog), false, 'duplicate profile ids should fail schema validation');
 
-  const aliasSet = new Set();
-  for (const profile of fixture.profiles) {
-    aliasSet.add(profile.trigger);
-    for (const alias of profile.aliases) {
-      assert.equal(aliasSet.has(alias), false, `Duplicate mission-control trigger alias '${alias}' detected.`);
-      aliasSet.add(alias);
-    }
-  }
+  const duplicateTokenCatalog = structuredClone(fixture);
+  duplicateTokenCatalog.profiles[1].aliases = [...duplicateTokenCatalog.profiles[1].aliases, fixture.profiles[0].trigger];
+  assert.throws(
+    () => assertUniqueTriggerTokens(duplicateTokenCatalog),
+    /Mission-control trigger token 'MC' is reused/
+  );
 });
 
 test('mission-control profile catalog operator presets stay inside the bounded operator-input catalog', () => {
