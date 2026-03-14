@@ -19,6 +19,7 @@ import {
 export const DELIVERY_AGENT_POLICY_SCHEMA = 'priority/delivery-agent-policy@v1';
 export const DELIVERY_AGENT_RUNTIME_STATE_SCHEMA = 'priority/delivery-agent-runtime-state@v1';
 export const DELIVERY_AGENT_LANE_STATE_SCHEMA = 'priority/delivery-agent-lane-state@v1';
+export const READY_VALIDATION_CLEARANCE_SCHEMA = 'priority/ready-validation-clearance@v1';
 export const DELIVERY_AGENT_POLICY_RELATIVE_PATH = path.join('tools', 'priority', 'delivery-agent.policy.json');
 export const DELIVERY_AGENT_STATE_FILENAME = 'delivery-agent-state.json';
 export const DELIVERY_AGENT_LANES_DIRNAME = 'delivery-agent-lanes';
@@ -178,6 +179,20 @@ function resolveExecutionRoot(repoRoot, taskPacket) {
   return workerCheckoutPath ? resolvePath(repoRoot, workerCheckoutPath) : repoRoot;
 }
 
+function resolveReadyValidationClearancePath({ repoRoot, repository, pullRequestNumber }) {
+  const repositorySegment = sanitizeSegment(repository || 'repo');
+  const pullRequestSegment = sanitizeSegment(`pr-${pullRequestNumber || 'unknown'}`);
+  return path.join(
+    repoRoot,
+    'tests',
+    'results',
+    '_agent',
+    'runtime',
+    'ready-validation-clearance',
+    `${repositorySegment}-${pullRequestSegment}.json`
+  );
+}
+
 function isJsonParseError(error) {
   return error instanceof SyntaxError || error?.name === 'SyntaxError';
 }
@@ -210,6 +225,7 @@ function parseJsonObjectOutput(raw, source = 'command output') {
 
 async function writeJsonAtomically(filePath, payload) {
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(tempPath, payload, 'utf8');
   try {
     await rename(tempPath, filePath);
@@ -222,6 +238,89 @@ async function writeJsonAtomically(filePath, payload) {
   } finally {
     await rm(tempPath, { force: true });
   }
+}
+
+async function loadReadyValidationClearance({ repoRoot, repository, pullRequestNumber }) {
+  const clearancePath = resolveReadyValidationClearancePath({ repoRoot, repository, pullRequestNumber });
+  const payload = await readJsonIfPresent(clearancePath, { deleteCorrupt: true });
+  if (!payload || typeof payload !== 'object') {
+    return {
+      path: clearancePath,
+      receipt: null
+    };
+  }
+  return {
+    path: clearancePath,
+    receipt: payload
+  };
+}
+
+async function persistReadyValidationClearance({
+  repoRoot,
+  repository,
+  pullRequest,
+  localReviewLoop = null,
+  readyHeadShaOverride = null,
+  currentHeadShaOverride = null,
+  status = 'current',
+  reason = ''
+}) {
+  const pullRequestNumber = coercePositiveInteger(pullRequest?.number);
+  if (!pullRequestNumber) {
+    throw new Error('pullRequest.number is required to persist ready-validation clearance.');
+  }
+  const receiptPath = resolveReadyValidationClearancePath({ repoRoot, repository, pullRequestNumber });
+  const receipt = {
+    schema: READY_VALIDATION_CLEARANCE_SCHEMA,
+    generatedAt: toIso(),
+    repository: normalizeText(repository) || null,
+    pullRequestNumber,
+    pullRequestUrl: normalizeText(pullRequest?.url) || null,
+    readyHeadSha: normalizeText(readyHeadShaOverride) || normalizeText(pullRequest?.headRefOid) || null,
+    currentHeadSha: normalizeText(currentHeadShaOverride) || normalizeText(pullRequest?.headRefOid) || null,
+    status: normalizeText(status) || 'current',
+    reason: normalizeText(reason) || null,
+    localReviewLoop: localReviewLoop && typeof localReviewLoop === 'object'
+      ? {
+          receiptPath: normalizeText(localReviewLoop.receiptPath) || null,
+          receiptHeadSha: normalizeText(localReviewLoop.receiptHeadSha) || null,
+          currentHeadSha: normalizeText(localReviewLoop.currentHeadSha) || null,
+          receiptFreshForHead:
+            typeof localReviewLoop.receiptFreshForHead === 'boolean' ? localReviewLoop.receiptFreshForHead : null,
+          requestedCoverageSatisfied:
+            typeof localReviewLoop.requestedCoverageSatisfied === 'boolean'
+              ? localReviewLoop.requestedCoverageSatisfied
+              : null
+        }
+      : null
+  };
+  await writeJsonAtomically(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+  return {
+    receiptPath,
+    receipt
+  };
+}
+
+async function invalidateReadyValidationClearance({
+  repoRoot,
+  repository,
+  pullRequest,
+  localReviewLoop = null,
+  readyHeadShaOverride = null,
+  currentHeadShaOverride = null,
+  status = 'invalidated',
+  reason = ''
+}) {
+  return persistReadyValidationClearance({
+    repoRoot,
+    repository,
+    pullRequest,
+    localReviewLoop,
+    readyHeadShaOverride,
+    currentHeadShaOverride,
+    status,
+    reason
+  });
 }
 
 function normalizeCommandList(value) {
@@ -1566,6 +1665,26 @@ function buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt }) {
   };
 }
 
+function buildReadyValidationClearanceRuntimeState({ taskPacket, executionReceipt }) {
+  const details = normalizeOptionalObject(executionReceipt?.details?.readyValidationClearance);
+  const pullRequest = normalizeOptionalObject(taskPacket?.evidence?.delivery?.pullRequest);
+  if (!details && !pullRequest) {
+    return null;
+  }
+  return {
+    status: normalizeText(details?.status) || null,
+    receiptPath: normalizeText(details?.receiptPath) || null,
+    readyHeadSha: normalizeText(details?.readyHeadSha) || null,
+    currentHeadSha:
+      normalizeText(details?.currentHeadSha) ||
+      normalizeText(pullRequest?.headRefOid) ||
+      null,
+    staleForCurrentHead:
+      typeof details?.staleForCurrentHead === 'boolean' ? details.staleForCurrentHead : null,
+    reason: normalizeText(details?.reason) || null
+  };
+}
+
 export function buildDeliveryAgentRuntimeRecord({
   now = new Date(),
   repository,
@@ -1614,6 +1733,7 @@ export function buildDeliveryAgentRuntimeRecord({
     coercePositiveInteger(schedulerDecision?.artifacts?.pullRequest?.pollIntervalSecondsHint) ??
     null;
   const localReviewLoop = buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt });
+  const readyValidationClearance = buildReadyValidationClearanceRuntimeState({ taskPacket, executionReceipt });
   return {
     schema: DELIVERY_AGENT_RUNTIME_STATE_SCHEMA,
     generatedAt: toIso(now),
@@ -1660,7 +1780,8 @@ export function buildDeliveryAgentRuntimeRecord({
       reviewPhase: normalizeText(executionReceipt?.details?.reviewPhase) || null,
       pollIntervalSecondsHint,
       reviewMonitor,
-      localReviewLoop
+      localReviewLoop,
+      readyValidationClearance
     },
     artifacts: {
       statePath,
@@ -1888,6 +2009,13 @@ async function enforceDraftOnlyReviewContract({
   }
 
   const localReviewRequested = taskPacket?.evidence?.delivery?.localReviewLoop?.requested === true;
+  const repository = normalizeText(taskPacket?.repository);
+  const currentHeadSha = normalizeText(pullRequest?.headRefOid) || null;
+  const readyValidationClearance = await loadReadyValidationClearance({
+    repoRoot,
+    repository,
+    pullRequestNumber: pullRequest.number
+  });
   let localReviewLoopReceipt = null;
   let localReviewLoopHelperCalls = [];
   let localReviewLoopFilesTouched = [];
@@ -1978,6 +2106,13 @@ async function enforceDraftOnlyReviewContract({
 
   const reviewClearance = evaluateDraftPhaseCopilotClearance(pullRequest);
   const localReviewSatisfiedFlag = !localReviewRequested || localReviewLoopSatisfied(localReviewLoopReceipt);
+  const storedReadyHeadSha = normalizeText(readyValidationClearance.receipt?.readyHeadSha) || null;
+  const readyHeadMismatch = Boolean(
+    pullRequest.isDraft !== true &&
+      currentHeadSha &&
+      storedReadyHeadSha &&
+      currentHeadSha !== storedReadyHeadSha
+  );
 
   if (pullRequest.isDraft === true) {
     if (reviewClearance.ok && localReviewSatisfiedFlag) {
@@ -2010,6 +2145,14 @@ async function enforceDraftOnlyReviewContract({
           }
         };
       }
+      const persistedClearance = await persistReadyValidationClearance({
+        repoRoot,
+        repository,
+        pullRequest,
+        localReviewLoop: localReviewLoopReceipt,
+        status: 'current',
+        reason: 'PR entered ready-validation on the current head after clean draft-phase review clearance.'
+      });
       return {
         status: 'completed',
         outcome: 'waiting-ci',
@@ -2024,7 +2167,15 @@ async function enforceDraftOnlyReviewContract({
           reviewPhase: 'ready-validation',
           helperCallsExecuted: uniqueStrings([...localReviewLoopHelperCalls, toReady.helperCall]),
           filesTouched: localReviewLoopFilesTouched,
-          localReviewLoop: localReviewLoopReceipt
+          localReviewLoop: localReviewLoopReceipt,
+          readyValidationClearance: {
+            status: 'current',
+            receiptPath: persistedClearance.receiptPath,
+            readyHeadSha: normalizeText(persistedClearance.receipt?.readyHeadSha) || currentHeadSha,
+            currentHeadSha,
+            staleForCurrentHead: false,
+            reason: normalizeText(persistedClearance.receipt?.reason) || null
+          }
         }
       };
     }
@@ -2050,14 +2201,25 @@ async function enforceDraftOnlyReviewContract({
         reviewPhase: 'draft-review',
         helperCallsExecuted: localReviewLoopHelperCalls,
         filesTouched: localReviewLoopFilesTouched,
-        localReviewLoop: localReviewLoopReceipt
+        localReviewLoop: localReviewLoopReceipt,
+        readyValidationClearance:
+          readyValidationClearance.receipt && storedReadyHeadSha
+            ? {
+                status: normalizeText(readyValidationClearance.receipt.status) || null,
+                receiptPath: readyValidationClearance.path,
+                readyHeadSha: storedReadyHeadSha,
+                currentHeadSha,
+                staleForCurrentHead: currentHeadSha ? currentHeadSha !== storedReadyHeadSha : null,
+                reason: normalizeText(readyValidationClearance.receipt.reason) || null
+              }
+            : null
       }
     };
   }
 
-  if (!reviewClearance.ok || !localReviewSatisfiedFlag) {
+  if (readyHeadMismatch || !reviewClearance.ok || !localReviewSatisfiedFlag) {
     const toDraft = await setPullRequestReadyState({
-      repository: normalizeText(taskPacket?.repository),
+      repository,
       pullRequest,
       ready: false,
       repoRoot,
@@ -2081,15 +2243,42 @@ async function enforceDraftOnlyReviewContract({
           reviewPhase: 'draft-review',
           helperCallsExecuted: uniqueStrings([...localReviewLoopHelperCalls, toDraft.helperCall]),
           filesTouched: localReviewLoopFilesTouched,
-          localReviewLoop: localReviewLoopReceipt
+          localReviewLoop: localReviewLoopReceipt,
+          readyValidationClearance: {
+            status: normalizeText(readyValidationClearance.receipt?.status) || null,
+            receiptPath: readyValidationClearance.path,
+            readyHeadSha: storedReadyHeadSha,
+            currentHeadSha,
+            staleForCurrentHead: readyHeadMismatch,
+            reason:
+              readyHeadMismatch
+                ? `Ready-validation clearance head ${storedReadyHeadSha} does not match current head ${currentHeadSha}.`
+                : normalizeText(readyValidationClearance.receipt?.reason) || null
+          }
         }
       };
     }
+    const invalidatedClearance = await invalidateReadyValidationClearance({
+      repoRoot,
+      repository,
+      pullRequest,
+      localReviewLoop: localReviewLoopReceipt,
+      readyHeadShaOverride: storedReadyHeadSha,
+      currentHeadShaOverride: currentHeadSha,
+      status: readyHeadMismatch ? 'invalidated-head-mismatch' : 'invalidated',
+      reason: readyHeadMismatch
+        ? `Ready-validation clearance head ${storedReadyHeadSha} no longer matches current head ${currentHeadSha}.`
+        : localReviewRequested && !localReviewSatisfiedFlag
+          ? 'Ready-validation clearance invalidated because local Docker/Desktop review clearance no longer matches the current head.'
+          : 'Ready-validation clearance invalidated because current-head draft-phase Copilot review clearance is missing or unresolved.'
+    });
     return {
       status: 'completed',
       outcome: 'waiting-review',
       reason:
-        localReviewRequested && !localReviewSatisfiedFlag
+        readyHeadMismatch
+          ? 'PR was returned to draft because the current head changed after ready-validation clearance was recorded.'
+          : localReviewRequested && !localReviewSatisfiedFlag
           ? 'PR was returned to draft because local Docker/Desktop review clearance no longer matches the current head.'
           : 'PR was returned to draft because current-head draft-phase Copilot review clearance is missing or unresolved.',
       source: 'delivery-agent-broker',
@@ -2106,10 +2295,28 @@ async function enforceDraftOnlyReviewContract({
         reviewPhase: 'draft-review',
         helperCallsExecuted: uniqueStrings([...localReviewLoopHelperCalls, toDraft.helperCall]),
         filesTouched: localReviewLoopFilesTouched,
-        localReviewLoop: localReviewLoopReceipt
+        localReviewLoop: localReviewLoopReceipt,
+        readyValidationClearance: {
+          status: normalizeText(invalidatedClearance.receipt?.status) || null,
+          receiptPath: invalidatedClearance.receiptPath,
+          readyHeadSha: normalizeText(invalidatedClearance.receipt?.readyHeadSha) || storedReadyHeadSha,
+          currentHeadSha,
+          staleForCurrentHead: readyHeadMismatch,
+          reason: normalizeText(invalidatedClearance.receipt?.reason) || null
+        }
       }
     };
   }
+
+  const persistedReadyClearance = await persistReadyValidationClearance({
+    repoRoot,
+    repository,
+    pullRequest,
+    localReviewLoop: localReviewLoopReceipt,
+    status: 'current',
+    reason: 'PR remains in ready-validation on the same cleared head.'
+  });
+  void persistedReadyClearance;
 
   return null;
 }

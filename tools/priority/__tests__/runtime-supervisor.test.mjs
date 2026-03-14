@@ -3270,6 +3270,131 @@ test('delivery broker returns a prematurely ready PR to draft when draft-phase r
   assert.equal(brokerResult.details.reviewMonitor, null);
 });
 
+test('delivery broker returns a ready PR to draft when the current head no longer matches stored ready-validation clearance', async () => {
+  const tempRepo = await mkdtemp(path.join(os.tmpdir(), 'delivery-broker-redraft-head-mismatch-'));
+  runGit(tempRepo, ['init']);
+  runGit(tempRepo, ['config', 'user.name', 'Agent Runner']);
+  runGit(tempRepo, ['config', 'user.email', 'agent@example.com']);
+  await writeFile(path.join(tempRepo, 'README.md'), '# temp\n', 'utf8');
+  runGit(tempRepo, ['add', 'README.md']);
+  runGit(tempRepo, ['commit', '-m', 'init']);
+  const readyValidationDir = path.join(tempRepo, 'tests', 'results', '_agent', 'runtime', 'ready-validation-clearance');
+  await mkdir(readyValidationDir, { recursive: true });
+  const readyValidationPath = path.join(
+    readyValidationDir,
+    'LabVIEW-Community-CI-CD-compare-vi-cli-action-pr-1067.json'
+  );
+  await writeFile(
+    readyValidationPath,
+    `${JSON.stringify({
+      schema: 'priority/ready-validation-clearance@v1',
+      generatedAt: '2026-03-14T00:00:00.000Z',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pullRequestNumber: 1067,
+      pullRequestUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1067',
+      readyHeadSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      status: 'current',
+      reason: 'PR entered ready-validation on the current head after clean draft-phase review clearance.',
+      localReviewLoop: null
+    })}\n`,
+    'utf8'
+  );
+
+  const helperCalls = [];
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: tempRepo,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-ci',
+      objective: {
+        summary: 'Advance issue #1075'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-ci',
+          pullRequest: {
+            number: 1067,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1067',
+            isDraft: false,
+            headRefOid: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            copilotReviewSignal: {
+              hasCurrentHeadReview: true,
+              actionableCommentCount: 0,
+              actionableThreadCount: 0
+            },
+            copilotReviewWorkflow: {
+              status: 'COMPLETED',
+              conclusion: 'SUCCESS'
+            }
+          },
+          mutationEnvelope: {
+            copilotReviewStrategy: 'draft-only-explicit',
+            maxActiveCodingLanes: 1
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: ['node', 'mock-broker']
+      }),
+      runCommandFn: async (command, args) => {
+        helperCalls.push([command, ...args].join(' '));
+        assert.equal(command, 'gh');
+        assert.deepEqual(args, [
+          'pr',
+          'ready',
+          '1067',
+          '--repo',
+          'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          '--undo'
+        ]);
+        return {
+          status: 0,
+          stdout: 'converted to draft\n',
+          stderr: ''
+        };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.status, 'completed');
+  assert.equal(brokerResult.outcome, 'waiting-review');
+  assert.equal(brokerResult.details.reviewPhase, 'draft-review');
+  assert.equal(helperCalls.length, 1);
+  assert.equal(brokerResult.details.readyValidationClearance.status, 'invalidated-head-mismatch');
+  assert.equal(
+    brokerResult.details.readyValidationClearance.readyHeadSha,
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  );
+  assert.equal(
+    brokerResult.details.readyValidationClearance.currentHeadSha,
+    'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+  );
+  assert.equal(brokerResult.details.readyValidationClearance.staleForCurrentHead, true);
+  assert.match(brokerResult.reason, /current head changed after ready-validation clearance was recorded/i);
+
+  const persistedClearance = JSON.parse(await readFile(readyValidationPath, 'utf8'));
+  assert.equal(persistedClearance.status, 'invalidated-head-mismatch');
+  assert.equal(persistedClearance.readyHeadSha, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+  assert.equal(persistedClearance.currentHeadSha, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+  assert.match(persistedClearance.reason, /no longer matches current head/i);
+});
+
 test('delivery broker keeps ready PR waiting-review state in ready-validation when the PR is not draft', async () => {
   const brokerResult = await runDeliveryTurnBroker({
     repoRoot: '/tmp/repo',

@@ -294,6 +294,14 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
         blockerClass: 'none',
         retryable: false,
         nextWakeCondition: 'next-scheduler-cycle',
+        readyValidationClearance: {
+          status: 'current',
+          receiptPath: 'tests/results/_agent/runtime/ready-validation-clearance/LabVIEW-Community-CI-CD-compare-vi-cli-action-pr-88.json',
+          readyHeadSha: '433e8aa70326007be74c27ccf54c1ae91559b6f3',
+          currentHeadSha: '433e8aa70326007be74c27ccf54c1ae91559b6f3',
+          staleForCurrentHead: false,
+          reason: 'PR remains in ready-validation on the same cleared head.'
+        },
         localReviewLoop: {
           status: 'passed',
           source: 'docker-desktop-review-loop',
@@ -372,6 +380,15 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
     'tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-review-loop-receipt.json'
   );
   assert.equal(state.activeLane.localReviewLoop.receiptStatus, 'passed');
+  assert.equal(state.activeLane.readyValidationClearance.status, 'current');
+  assert.equal(
+    state.activeLane.readyValidationClearance.receiptPath,
+    'tests/results/_agent/runtime/ready-validation-clearance/LabVIEW-Community-CI-CD-compare-vi-cli-action-pr-88.json'
+  );
+  assert.equal(
+    state.activeLane.readyValidationClearance.readyHeadSha,
+    '433e8aa70326007be74c27ccf54c1ae91559b6f3'
+  );
   assert.equal(
     state.artifacts.localReviewLoopReceiptPath,
     'tests/results/docker-tools-parity/review-loop-receipt.json'

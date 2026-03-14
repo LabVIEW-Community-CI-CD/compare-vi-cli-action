@@ -117,6 +117,18 @@
         "retryable": { "type": "boolean" },
         "nextWakeCondition": { "type": ["string", "null"] },
         "reviewPhase": { "type": ["string", "null"] },
+        "readyValidationClearance": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "properties": {
+            "status": { "type": ["string", "null"] },
+            "receiptPath": { "type": ["string", "null"] },
+            "readyHeadSha": { "type": ["string", "null"] },
+            "currentHeadSha": { "type": ["string", "null"] },
+            "staleForCurrentHead": { "type": ["boolean", "null"] },
+            "reason": { "type": ["string", "null"] }
+          }
+        },
         "localReviewLoop": {
           "type": ["object", "null"],
           "additionalProperties": true,
