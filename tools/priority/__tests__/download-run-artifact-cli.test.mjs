@@ -48,6 +48,50 @@ test('parseArgs trims artifact names and rejects whitespace-only values', async 
   );
 });
 
+test('parseArgs uses the injected environment instead of leaking repository defaults from process.env', async (t) => {
+  const { parseArgs } = await loadModule();
+  const priorRepository = process.env.GITHUB_REPOSITORY;
+  t.after(() => {
+    if (priorRepository === undefined) {
+      delete process.env.GITHUB_REPOSITORY;
+      return;
+    }
+    process.env.GITHUB_REPOSITORY = priorRepository;
+  });
+  process.env.GITHUB_REPOSITORY = 'global-owner/global-repo';
+
+  assert.throws(
+    () =>
+      parseArgs(
+        [
+          'node',
+          modulePath,
+          '--run-id',
+          '22872590273',
+          '--artifact',
+          'copilot-review-signal-975',
+        ],
+        {},
+      ),
+    /Repository is required/,
+  );
+
+  const parsed = parseArgs(
+    [
+      'node',
+      modulePath,
+      '--run-id',
+      '22872590273',
+      '--artifact',
+      'copilot-review-signal-975',
+    ],
+    {
+      GITHUB_REPOSITORY: 'injected-owner/injected-repo',
+    },
+  );
+  assert.equal(parsed.repo, 'injected-owner/injected-repo');
+});
+
 test('main writes GitHub outputs and step summary for a successful artifact download', async (t) => {
   const { main, parseArgs } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'download-run-artifact-cli-success-'));

@@ -481,8 +481,8 @@ function defaultRunSignalCollector({ repository, prNumber, outPath }) {
   }
 }
 
-function defaultDownloadArtifact({ repository, runId, artifactName, destination }) {
-  const downloadResult = downloadNamedArtifacts({
+async function defaultDownloadArtifact({ repository, runId, artifactName, destination }) {
+  const downloadResult = await downloadNamedArtifacts({
     repository,
     runId: String(runId),
     artifactNames: [artifactName],
@@ -520,7 +520,7 @@ function findFirstJsonFile(directory) {
   return null;
 }
 
-function loadDeploymentDeterminismArtifact({
+async function loadDeploymentDeterminismArtifact({
   repository,
   runId,
   deploymentSummary,
@@ -531,7 +531,7 @@ function loadDeploymentDeterminismArtifact({
   const destination = path.join(sampleDir, 'deployment-determinism');
   fs.mkdirSync(destination, { recursive: true });
   try {
-    const downloaded = downloadArtifactFn({
+    const downloaded = await downloadArtifactFn({
       repository,
       runId,
       artifactName: DEPLOYMENT_DETERMINISM_ARTIFACT_NAME,
@@ -839,7 +839,7 @@ export async function runValidationApprovalProof({
 
     try {
       const signalPath = path.join(sampleDir, 'copilot-review-signal.json');
-      runSignalCollectorFn({
+      await runSignalCollectorFn({
         repository,
         prNumber: pullSummary.number,
         outPath: signalPath,
@@ -850,7 +850,7 @@ export async function runValidationApprovalProof({
         path.join(sampleDir, 'pull-context.json'),
         fetchPullContext(repository, pullSummary.number, runGhJsonFn),
       );
-      const deploymentArtifact = loadDeploymentDeterminismArtifact({
+      const deploymentArtifact = await loadDeploymentDeterminismArtifact({
         repository,
         runId: deploymentSummary.runId,
         deploymentSummary,

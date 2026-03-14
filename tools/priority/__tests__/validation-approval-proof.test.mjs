@@ -128,7 +128,7 @@ function createPullView({ prNumber, headSha }) {
   };
 }
 
-function createProofHarness(tmpDir) {
+function createProofHarness(tmpDir, { asyncArtifactDownload = false, asyncSignalCollector = false } = {}) {
   const deployments = [
     {
       id: 4101,
@@ -223,7 +223,7 @@ function createProofHarness(tmpDir) {
       }
       throw new Error(`Unexpected gh invocation: ${args.join(' ')}`);
     },
-    runSignalCollectorFn({ prNumber, outPath }) {
+    async runSignalCollectorFn({ prNumber, outPath }) {
       const payload =
         prNumber === 900
           ? createSignalFixture({ prNumber, headSha: deployments[0].sha, currentHeadReview: true })
@@ -233,19 +233,28 @@ function createProofHarness(tmpDir) {
               currentHeadReview: false,
               staleReviewCount: 1,
             });
+      if (asyncSignalCollector) {
+        await Promise.resolve();
+      }
       writeJson(outPath, payload);
     },
-    downloadArtifactFn({ runId, destination }) {
-      writeJson(path.join(destination, 'validation-deployment-determinism.json'), {
-        schema: 'priority/deployment-determinism@v1',
-        generatedAt: '2026-03-08T08:00:00.000Z',
-        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
-        environment: 'validation',
-        runId: String(runId),
-        result: 'pass',
-        issues: [],
-      });
-      return true;
+    async downloadArtifactFn({ runId, destination }) {
+      const writeArtifact = () => {
+        writeJson(path.join(destination, 'validation-deployment-determinism.json'), {
+          schema: 'priority/deployment-determinism@v1',
+          generatedAt: '2026-03-08T08:00:00.000Z',
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          environment: 'validation',
+          runId: String(runId),
+          result: 'pass',
+          issues: [],
+        });
+        return true;
+      };
+      if (asyncArtifactDownload) {
+        await Promise.resolve();
+      }
+      return writeArtifact();
     },
   };
 }
@@ -369,4 +378,85 @@ test('runValidationApprovalProof fails strict mode when the proof window is unde
   assert.equal(result.report?.status, 'fail');
   assert.ok(result.report?.verdict.reasons.includes('insufficient-samples'));
   assert.equal(result.report?.verdict.policyFlipRecommended, false);
+});
+
+test('runValidationApprovalProof awaits async artifact download helpers before reading staged determinism evidence', async (t) => {
+  const { runValidationApprovalProof } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-approval-proof-async-download-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const harness = createProofHarness(tmpDir, { asyncArtifactDownload: true });
+  const result = await runValidationApprovalProof({
+    argv: [
+      'node',
+      'validation-approval-proof.mjs',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--policy',
+      path.join(repoRoot, 'tools', 'policy', 'validation-approval-policy.json'),
+      '--max-deployments',
+      '1',
+      '--min-samples',
+      '1',
+      '--lookback-days',
+      '2',
+      '--artifacts-dir',
+      path.join(tmpDir, 'artifacts'),
+      '--report',
+      path.join(tmpDir, 'proof.json'),
+    ],
+    now: new Date('2026-03-08T08:30:00.000Z'),
+    repoRoot,
+    runGhJsonFn: harness.runGhJsonFn,
+    runSignalCollectorFn: harness.runSignalCollectorFn,
+    downloadArtifactFn: harness.downloadArtifactFn,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.samples[0]?.deploymentDeterminism.source, 'artifact');
+  assert.equal(result.report?.samples[0]?.deploymentDeterminism.result, 'pass');
+  const deploymentDeterminism = JSON.parse(
+    fs.readFileSync(result.report?.samples[0]?.deploymentDeterminism.artifactPath, 'utf8'),
+  );
+  assert.equal(deploymentDeterminism.result, 'pass');
+  assert.deepEqual(deploymentDeterminism.issues, []);
+});
+
+test('runValidationApprovalProof awaits async signal collectors before reading staged review signals', async (t) => {
+  const { runValidationApprovalProof } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-approval-proof-async-signal-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const harness = createProofHarness(tmpDir, { asyncSignalCollector: true });
+  const result = await runValidationApprovalProof({
+    argv: [
+      'node',
+      'validation-approval-proof.mjs',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--policy',
+      path.join(repoRoot, 'tools', 'policy', 'validation-approval-policy.json'),
+      '--max-deployments',
+      '1',
+      '--min-samples',
+      '1',
+      '--lookback-days',
+      '2',
+      '--artifacts-dir',
+      path.join(tmpDir, 'artifacts'),
+      '--report',
+      path.join(tmpDir, 'proof.json'),
+    ],
+    now: new Date('2026-03-08T08:30:00.000Z'),
+    repoRoot,
+    runGhJsonFn: harness.runGhJsonFn,
+    runSignalCollectorFn: harness.runSignalCollectorFn,
+    downloadArtifactFn: harness.downloadArtifactFn,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.samples[0]?.reviewSignal.status, 'pass');
+  assert.equal(result.report?.samples[0]?.reviewSignal.hasCurrentHeadReview, true);
 });
