@@ -893,6 +893,7 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
     try {
       $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
       $gitHubOutputPath = Join-Path $repoRoot 'tests/results/github-output.txt'
+      $stepSummaryPath = Join-Path $repoRoot 'tests/results/step-summary.md'
       $env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH = $native64
       $env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH = $native32
       $env:COMPAREVI_NATIVE_LABVIEWCLI_2026_64_PATH = $sharedCli
@@ -903,7 +904,8 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
         -ResultsRoot $resultsRoot `
         -SkipWindowsProbe `
         -SkipLinuxProbe `
-        -GitHubOutputPath $gitHubOutputPath *>&1
+        -GitHubOutputPath $gitHubOutputPath `
+        -StepSummaryPath $stepSummaryPath *>&1
       $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
       ($output -join "`n") | Should -Match '\[host-plane-split\]\[runner\] hostIsRunner=True'
 
@@ -936,6 +938,15 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $gitHubOutputs['docker-fast-loop-host-plane-summary-status'] | Should -Be 'ok'
       $gitHubOutputs['docker-fast-loop-host-plane-summary-sha256'] | Should -Be $summary.hostPlaneSummarySha256
       $gitHubOutputs['docker-fast-loop-host-plane-summary-reason'] | Should -Be ''
+
+      $stepSummary = Get-Content -LiteralPath $stepSummaryPath -Raw
+      $stepSummary | Should -Match '### Docker Fast Loop Summary'
+      $stepSummary | Should -Match ('- Summary Path: `'+ [regex]::Escape($summaryPath) + '`')
+      $stepSummary | Should -Match ('- Status Path: `'+ [regex]::Escape($statusPath) + '`')
+      $stepSummary | Should -Match ('- Host Plane Summary Path: `'+ [regex]::Escape($summary.hostPlaneSummaryPath) + '`')
+      $stepSummary | Should -Match '- Host Plane Summary Status: `ok`'
+      $stepSummary | Should -Match ('- Host Plane Summary SHA-256: `'+ [regex]::Escape($summary.hostPlaneSummarySha256) + '`')
+      $stepSummary | Should -Match '- Host Plane Summary Reason: ``'
 
       $readinessPath = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
       $readiness = Get-Content -LiteralPath $readinessPath -Raw | ConvertFrom-Json -Depth 16
@@ -978,6 +989,7 @@ Remove-Item -LiteralPath $summaryResolved -Force -ErrorAction Stop
     try {
       $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
       $gitHubOutputPath = Join-Path $repoRoot 'tests/results/github-output.txt'
+      $stepSummaryPath = Join-Path $repoRoot 'tests/results/step-summary.md'
       $env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH = $native64
       $env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH = $native32
       $env:COMPAREVI_NATIVE_LABVIEWCLI_2026_64_PATH = $sharedCli
@@ -988,7 +1000,8 @@ Remove-Item -LiteralPath $summaryResolved -Force -ErrorAction Stop
         -ResultsRoot $resultsRoot `
         -SkipWindowsProbe `
         -SkipLinuxProbe `
-        -GitHubOutputPath $gitHubOutputPath 2>&1
+        -GitHubOutputPath $gitHubOutputPath `
+        -StepSummaryPath $stepSummaryPath 2>&1
       $LASTEXITCODE | Should -Not -Be 0
       ($output -join "`n") | Should -Match 'Declared host-plane summary artifact not readable'
 
@@ -1013,6 +1026,15 @@ Remove-Item -LiteralPath $summaryResolved -Force -ErrorAction Stop
       $gitHubOutputs['docker-fast-loop-host-plane-summary-status'] | Should -Be 'missing'
       $gitHubOutputs['docker-fast-loop-host-plane-summary-sha256'] | Should -Be ''
       $gitHubOutputs['docker-fast-loop-host-plane-summary-reason'] | Should -Be 'declared-summary-unreadable'
+
+      $stepSummary = Get-Content -LiteralPath $stepSummaryPath -Raw
+      $stepSummary | Should -Match '### Docker Fast Loop Summary'
+      $stepSummary | Should -Match ('- Summary Path: `'+ [regex]::Escape($summaryPath) + '`')
+      $stepSummary | Should -Match ('- Status Path: `'+ [regex]::Escape($statusPath) + '`')
+      $stepSummary | Should -Match ('- Host Plane Summary Path: `'+ [regex]::Escape($summary.hostPlaneSummaryPath) + '`')
+      $stepSummary | Should -Match '- Host Plane Summary Status: `missing`'
+      $stepSummary | Should -Match '- Host Plane Summary SHA-256: ``'
+      $stepSummary | Should -Match '- Host Plane Summary Reason: `declared-summary-unreadable`'
     } finally {
       Remove-Item Env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH -ErrorAction SilentlyContinue
       Remove-Item Env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH -ErrorAction SilentlyContinue
