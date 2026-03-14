@@ -133,6 +133,13 @@ test('mission-control envelope rejects contradictory lane and Copilot settings',
 
   assert.equal(validate(duplicateOverrideEnvelope), false);
   assert.match(JSON.stringify(validate.errors), /operator\/overrides|must NOT be valid|allOf\/2\/not/);
+
+  const contradictoryIntentFocusEnvelope = structuredClone(fixture);
+  contradictoryIntentFocusEnvelope.operator.intent = 'restore-intake';
+  contradictoryIntentFocusEnvelope.operator.focus = 'standing-priority';
+
+  assert.equal(validate(contradictoryIntentFocusEnvelope), false);
+  assert.match(JSON.stringify(validate.errors), /operator\/focus|restore-intake|standing-priority/);
 });
 
 test('mission-control docs advertise the canonical prompt and envelope contract together', () => {
