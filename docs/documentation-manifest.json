@@ -148,15 +148,18 @@
       "name": "Mission Control Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Canonical prompt, machine-readable envelope contract, bounded operator-input catalog, and focused contract validation coverage for the repo-owned mission-control surface.",
+      "description": "Canonical prompt, machine-readable envelope contract, bounded operator-input catalog, mission-control profile/trigger catalog, and focused contract validation coverage for the repo-owned mission-control surface.",
       "files": [
         "PROMPT_AUTONOMY.md",
         "docs/schemas/mission-control-envelope-v1.schema.json",
         "docs/schemas/mission-control-operator-input-catalog-v1.schema.json",
+        "docs/schemas/mission-control-profile-catalog-v1.schema.json",
         "tools/priority/__fixtures__/mission-control/mission-control-envelope.json",
         "tools/priority/__fixtures__/mission-control/operator-input-catalog.json",
+        "tools/priority/__fixtures__/mission-control/profile-catalog.json",
         "tools/priority/__tests__/mission-control-envelope-schema.test.mjs",
-        "tools/priority/__tests__/mission-control-operator-input-catalog.test.mjs"
+        "tools/priority/__tests__/mission-control-operator-input-catalog.test.mjs",
+        "tools/priority/__tests__/mission-control-profile-catalog.test.mjs"
       ]
     },
     {

@@ -12,12 +12,22 @@ Canonical machine-readable companion contract:
 - example: `tools/priority/__fixtures__/mission-control/mission-control-envelope.json`
 - operator-input schema: `docs/schemas/mission-control-operator-input-catalog-v1.schema.json`
 - operator-input example: `tools/priority/__fixtures__/mission-control/operator-input-catalog.json`
+- profile catalog schema: `docs/schemas/mission-control-profile-catalog-v1.schema.json`
+- profile catalog example: `tools/priority/__fixtures__/mission-control/profile-catalog.json`
 
 Envelope model:
 
 - `missionControl`: repo-owned law and execution invariants
 - `operator.intent` and `operator.focus`: bounded operator input
 - `operator.overrides`: narrow, auditable exceptions
+
+Trigger presets:
+
+- `MC` -> canonical autonomous-default profile
+- `MC-LIVE` -> finish-live-lane profile
+- `MC-RED` -> stabilize-current-head-failure profile
+- `MC-INTAKE` -> restore-intake profile
+- `MC-PARK` -> prepare-parked-lane profile
 
 ```text
 Act as the autonomous mission control plane for `compare-vi-cli-action` and keep work flowing continuously until
