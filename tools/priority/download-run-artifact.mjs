@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +22,7 @@ function printUsage() {
   console.log('  --all                       Download every non-expired artifact from the run.');
   console.log(`  --destination-root <path>   Destination root (default: ${DEFAULT_DESTINATION_ROOT}).`);
   console.log(`  --report <path>             Output report path (default: ${DEFAULT_REPORT_PATH}).`);
+  console.log('  --step-summary <path>       Override the GitHub step summary output path.');
   console.log('  -h, --help                  Show help.');
 }
 
@@ -42,6 +44,7 @@ export function parseArgs(argv = process.argv) {
     downloadAll: false,
     destinationRoot: DEFAULT_DESTINATION_ROOT,
     reportPath: DEFAULT_REPORT_PATH,
+    stepSummaryPath: normalizeText(process.env.GITHUB_STEP_SUMMARY),
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -60,7 +63,8 @@ export function parseArgs(argv = process.argv) {
       token === '--run-id' ||
       token === '--artifact' ||
       token === '--destination-root' ||
-      token === '--report'
+      token === '--report' ||
+      token === '--step-summary'
     ) {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
@@ -77,6 +81,7 @@ export function parseArgs(argv = process.argv) {
       }
       if (token === '--destination-root') options.destinationRoot = next;
       if (token === '--report') options.reportPath = next;
+      if (token === '--step-summary') options.stepSummaryPath = next;
       continue;
     }
     throw new Error(`Unknown option: ${token}`);
@@ -100,12 +105,97 @@ export function parseArgs(argv = process.argv) {
   return options;
 }
 
-export async function main(argv = process.argv) {
+function firstDownloadFailureClass(report) {
+  return (
+    report?.downloads?.find((entry) => normalizeText(entry?.failureClass))?.failureClass ??
+    null
+  );
+}
+
+export function buildGitHubOutputPairs({ options, result }) {
+  const report = result.report;
+  return [
+    ['run-artifact-download-status', report.status],
+    ['run-artifact-download-report-path', result.reportPath],
+    ['run-artifact-download-repository', options.repo],
+    ['run-artifact-download-run-id', options.runId],
+    ['run-artifact-download-discovery-status', report.discovery.status],
+    ['run-artifact-download-discovery-failure-class', report.discovery.failureClass ?? ''],
+    ['run-artifact-download-first-failure-class', firstDownloadFailureClass(report) ?? ''],
+    ['run-artifact-download-requested-count', String(report.summary.requestedArtifactCount)],
+    ['run-artifact-download-available-count', String(report.summary.availableArtifactCount)],
+    ['run-artifact-download-downloaded-count', String(report.summary.downloadedCount)],
+    ['run-artifact-download-missing-count', String(report.summary.missingCount)],
+    ['run-artifact-download-failed-count', String(report.summary.failedCount)],
+  ];
+}
+
+export function writeGitHubOutputs(outputPath, pairs) {
+  const normalizedPath = normalizeText(outputPath);
+  if (!normalizedPath) {
+    return;
+  }
+  const resolvedPath = path.resolve(process.cwd(), normalizedPath);
+  for (const [name, value] of pairs) {
+    fs.appendFileSync(resolvedPath, `${name}=${value ?? ''}\n`, 'utf8');
+  }
+}
+
+export function buildStepSummaryLines({ options, result }) {
+  const report = result.report;
+  const lines = [
+    '### Run Artifact Download',
+    '',
+    `- status: \`${report.status}\``,
+    `- repository: \`${options.repo}\``,
+    `- run id: \`${options.runId}\``,
+    `- report: \`${result.reportPath}\``,
+    `- requested: \`${report.summary.requestedArtifactCount}\``,
+    `- available: \`${report.summary.availableArtifactCount}\``,
+    `- downloaded: \`${report.summary.downloadedCount}\``,
+    `- missing: \`${report.summary.missingCount}\``,
+    `- failed: \`${report.summary.failedCount}\``,
+  ];
+
+  if (normalizeText(report.discovery.failureClass)) {
+    lines.push(`- discovery failure: \`${report.discovery.failureClass}\``);
+  }
+  const failedDownloads = report.downloads.filter((entry) => entry.status !== 'downloaded');
+  if (failedDownloads.length > 0) {
+    lines.push('', 'Failures:');
+    for (const entry of failedDownloads) {
+      lines.push(
+        `- \`${entry.name}\`: status=\`${entry.status}\` failureClass=\`${entry.failureClass ?? 'none'}\``,
+      );
+    }
+  }
+
+  return lines;
+}
+
+export function appendStepSummary(stepSummaryPath, lines) {
+  const normalizedPath = normalizeText(stepSummaryPath);
+  if (!normalizedPath) {
+    return;
+  }
+  const resolvedPath = path.resolve(process.cwd(), normalizedPath);
+  fs.appendFileSync(resolvedPath, `${lines.join('\n')}\n`, 'utf8');
+}
+
+export async function main(
+  argv = process.argv,
+  {
+    downloadNamedArtifactsFn = downloadNamedArtifacts,
+    env = process.env,
+    logFn = console.log,
+    errorFn = console.error,
+  } = {},
+) {
   let options;
   try {
     options = parseArgs(argv);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    errorFn(error instanceof Error ? error.message : String(error));
     printUsage();
     return 1;
   }
@@ -115,7 +205,7 @@ export async function main(argv = process.argv) {
     return 0;
   }
 
-  const result = downloadNamedArtifacts({
+  const result = downloadNamedArtifactsFn({
     repository: options.repo,
     runId: options.runId,
     artifactNames: options.artifactNames,
@@ -124,8 +214,11 @@ export async function main(argv = process.argv) {
     reportPath: options.reportPath,
   });
 
-  console.log(`[run-artifact-download] report: ${result.reportPath}`);
-  console.log(
+  writeGitHubOutputs(env.GITHUB_OUTPUT, buildGitHubOutputPairs({ options, result }));
+  appendStepSummary(options.stepSummaryPath, buildStepSummaryLines({ options, result }));
+
+  logFn(`[run-artifact-download] report: ${result.reportPath}`);
+  logFn(
     `[run-artifact-download] status=${result.report.status} requested=${result.report.summary.requestedArtifactCount} downloaded=${result.report.summary.downloadedCount} missing=${result.report.summary.missingCount} failed=${result.report.summary.failedCount}`,
   );
   return result.report.status === 'pass' ? 0 : 1;
