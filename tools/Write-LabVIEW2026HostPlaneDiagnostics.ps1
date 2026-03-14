@@ -11,6 +11,7 @@ param(
   [string]$LabVIEWCli32Path = '',
   [string]$LVComparePath = '',
   [string]$OutputPath = 'tests/results/_agent/host-planes/labview-2026-host-plane-report.json',
+  [string]$SummaryPath = '',
   [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
   [switch]$PassThru
 )
@@ -56,6 +57,90 @@ function Write-GitHubOutput {
   Add-Content -LiteralPath $Path -Value ("{0}={1}" -f $Key, ($Value ?? '')) -Encoding utf8
 }
 
+function Format-PlanePairList {
+  param($Pairs)
+
+  if (-not $Pairs) {
+    return 'none'
+  }
+
+  $formattedPairs = @()
+  foreach ($pair in @($Pairs)) {
+    if ($null -eq $pair) { continue }
+    $left = if ($pair.PSObject.Properties['left']) { [string]$pair.left } else { '' }
+    $right = if ($pair.PSObject.Properties['right']) { [string]$pair.right } else { '' }
+    if ([string]::IsNullOrWhiteSpace($left) -or [string]::IsNullOrWhiteSpace($right)) { continue }
+    $formattedPairs += ("{0} + {1}" -f $left, $right)
+  }
+
+  if ($formattedPairs.Count -eq 0) {
+    return 'none'
+  }
+
+  return ($formattedPairs -join '; ')
+}
+
+function Get-ObjectValue {
+  param(
+    $Object,
+    [Parameter(Mandatory)][string]$Name
+  )
+
+  if ($null -eq $Object) {
+    return $null
+  }
+
+  if ($Object -is [System.Collections.IDictionary]) {
+    return $Object[$Name]
+  }
+
+  $property = $Object.PSObject.Properties[$Name]
+  if ($property) {
+    return $property.Value
+  }
+
+  return $null
+}
+
+function New-HostPlaneSummaryMarkdown {
+  param(
+    [Parameter(Mandatory)]$Report,
+    [Parameter(Mandatory)][string]$ReportPath
+  )
+
+  $runner = Get-ObjectValue -Object $Report -Name 'runner'
+  $native = Get-ObjectValue -Object $Report -Name 'native'
+  $executionPolicy = Get-ObjectValue -Object $Report -Name 'executionPolicy'
+  $nativePlanes = Get-ObjectValue -Object $native -Name 'planes'
+  $x64Plane = Get-ObjectValue -Object $nativePlanes -Name 'x64'
+  $x32Plane = Get-ObjectValue -Object $nativePlanes -Name 'x32'
+  $candidateParallelPairs = Get-ObjectValue -Object $executionPolicy -Name 'candidateParallelPairs'
+  $mutuallyExclusivePairSet = Get-ObjectValue -Object $executionPolicy -Name 'mutuallyExclusivePairs'
+
+  $candidatePairs = if ($candidateParallelPairs) {
+    Format-PlanePairList -Pairs (Get-ObjectValue -Object $candidateParallelPairs -Name 'pairs')
+  } else {
+    'none'
+  }
+  $mutuallyExclusivePairs = if ($mutuallyExclusivePairSet) {
+    Format-PlanePairList -Pairs (Get-ObjectValue -Object $mutuallyExclusivePairSet -Name 'pairs')
+  } else {
+    'none'
+  }
+
+  return @(
+    '# LabVIEW 2026 Host Plane Summary',
+    '',
+    ('- Report: `{0}`' -f $ReportPath),
+    ('- Runner: `{0}` (hostIsRunner={1})' -f ([string](Get-ObjectValue -Object $runner -Name 'runnerName')), ([string][bool](Get-ObjectValue -Object $runner -Name 'hostIsRunner'))),
+    ('- Native 64-bit: `{0}`' -f ([string](Get-ObjectValue -Object $x64Plane -Name 'status'))),
+    ('- Native 32-bit: `{0}`' -f ([string](Get-ObjectValue -Object $x32Plane -Name 'status'))),
+    ('- Parallel native support: `{0}`' -f ([string][bool](Get-ObjectValue -Object $native -Name 'parallelLabVIEWSupported'))),
+    ('- Candidate parallel pairs: {0}' -f $candidatePairs),
+    ('- Mutually exclusive pairs: {0}' -f $mutuallyExclusivePairs)
+  ) -join "`n"
+}
+
 $effectiveLabVIEW64Path = if ([string]::IsNullOrWhiteSpace($LabVIEW64Path)) {
   Find-LabVIEWVersionExePath -Version 2026 -Bitness 64
 } else {
@@ -83,6 +168,12 @@ $effectiveCli64Path = if ([string]::IsNullOrWhiteSpace($LabVIEWCli64Path)) { $sh
 $effectiveCli32Path = if ([string]::IsNullOrWhiteSpace($LabVIEWCli32Path)) { $sharedCliPath } else { $LabVIEWCli32Path }
 $effectiveComparePath = if ([string]::IsNullOrWhiteSpace($LVComparePath)) { Resolve-LVComparePath } else { $LVComparePath }
 $outputResolved = Resolve-AbsolutePath -Path $OutputPath
+$summaryResolved = if ([string]::IsNullOrWhiteSpace($SummaryPath)) {
+  $summaryDirectory = Split-Path -Parent $outputResolved
+  Resolve-AbsolutePath -Path (Join-Path $summaryDirectory 'labview-2026-host-plane-summary.md')
+} else {
+  Resolve-AbsolutePath -Path $SummaryPath
+}
 
 $report = Get-LabVIEW2026HostPlaneReport `
   -LabVIEW64Path $effectiveLabVIEW64Path `
@@ -93,11 +184,15 @@ $report = Get-LabVIEW2026HostPlaneReport `
 
 Ensure-ParentDirectory -Path $outputResolved
 $report | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $outputResolved -Encoding utf8
+Ensure-ParentDirectory -Path $summaryResolved
+New-HostPlaneSummaryMarkdown -Report $report -ReportPath $outputResolved | Set-Content -LiteralPath $summaryResolved -Encoding utf8
 
 Write-LabVIEW2026HostPlaneConsole -Report $report
 Write-Host ("[host-plane-split][report] {0}" -f $outputResolved) -ForegroundColor DarkCyan
+Write-Host ("[host-plane-split][summary] {0}" -f $summaryResolved) -ForegroundColor DarkCyan
 
 Write-GitHubOutput -Key 'labview-2026-host-plane-report-path' -Value $outputResolved -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'labview-2026-host-plane-summary-path' -Value $summaryResolved -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'labview-2026-native-64-status' -Value ([string]$report.native.planes.x64.status) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'labview-2026-native-32-status' -Value ([string]$report.native.planes.x32.status) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'labview-2026-native-parallel-supported' -Value ([string][bool]$report.native.parallelLabVIEWSupported) -Path $GitHubOutputPath

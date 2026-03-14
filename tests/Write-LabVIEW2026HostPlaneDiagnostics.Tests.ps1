@@ -19,6 +19,7 @@ Describe 'Write-LabVIEW2026HostPlaneDiagnostics.ps1' -Tag 'Unit' {
     $sharedCli = Join-Path $work 'Program Files (x86)\National Instruments\Shared\LabVIEW CLI\LabVIEWCLI.exe'
     $lvCompare = Join-Path $work 'Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
     $outputPath = Join-Path $work 'labview-2026-host-plane-report.json'
+    $summaryPath = Join-Path $work 'labview-2026-host-plane-summary.md'
 
     foreach ($path in @($x64LabVIEW, $x32LabVIEW, $sharedCli, $lvCompare)) {
       $dir = Split-Path -Parent $path
@@ -41,6 +42,7 @@ Describe 'Write-LabVIEW2026HostPlaneDiagnostics.ps1' -Tag 'Unit' {
     $outputText | Should -Match '\[native-labview-2026-32\]\[host-plane\] status=ready'
     $outputText | Should -Match '\[host-plane-split\]\[runner\] hostIsRunner=True'
     $outputText | Should -Match 'candidateParallelPairs=docker-desktop/windows-container-2026\+native-labview-2026-64,native-labview-2026-64\+native-labview-2026-32'
+    $outputText | Should -Match '\[host-plane-split\]\[summary\]'
 
     $report = Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json -Depth 12
     $report.schema | Should -Be 'labview-2026-host-plane-report@v1'
@@ -54,6 +56,13 @@ Describe 'Write-LabVIEW2026HostPlaneDiagnostics.ps1' -Tag 'Unit' {
     $report.executionPolicy.mutuallyExclusivePairs.pairs.Count | Should -Be 1
     $report.native.planes.x64.cliPath | Should -Be $sharedCli
     $report.native.planes.x32.cliPath | Should -Be $sharedCli
+
+    Test-Path -LiteralPath $summaryPath | Should -BeTrue
+    $summary = Get-Content -LiteralPath $summaryPath -Raw
+    $summary | Should -Match '# LabVIEW 2026 Host Plane Summary'
+    $summary | Should -Match '- Native 64-bit: `ready`'
+    $summary | Should -Match '- Native 32-bit: `ready`'
+    $summary | Should -Match 'docker-desktop/windows-container-2026 \+ native-labview-2026-64'
   }
 
   It 'reports the 32-bit host plane as missing when only native 64-bit is available' {
@@ -117,6 +126,7 @@ Describe 'Write-LabVIEW2026HostPlaneDiagnostics.ps1' -Tag 'Unit' {
 
     $outputText = Get-Content -LiteralPath $githubOutput -Raw
     $outputText | Should -Match 'labview-2026-host-plane-report-path='
+    $outputText | Should -Match 'labview-2026-host-plane-summary-path='
     $outputText | Should -Match 'labview-2026-native-64-status=ready'
     $outputText | Should -Match 'labview-2026-native-32-status=ready'
     $outputText | Should -Match 'labview-2026-native-parallel-supported=True'
