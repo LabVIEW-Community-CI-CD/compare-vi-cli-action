@@ -103,6 +103,34 @@ test('resolve mission-control profile CLI writes a machine-readable report', asy
   assert.equal(report.resolution.operatorPreset.intent, 'prepare-parked-lane');
 });
 
+test('resolve mission-control profile CLI fails deterministically for unknown triggers', async () => {
+  const { main } = await loadModule();
+  const output = [];
+  const errors = [];
+
+  const exitCode = main(
+    [
+      'node',
+      modulePath,
+      '--trigger',
+      'MC-UNKNOWN',
+    ],
+    {
+      logFn(message) {
+        output.push(message);
+      },
+      errorFn(message) {
+        errors.push(message);
+      },
+    },
+  );
+
+  assert.equal(exitCode, 1);
+  assert.deepEqual(output, []);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /is not defined in the profile catalog/);
+});
+
 test('mission-control docs and manifest advertise the runtime trigger resolver', () => {
   const prompt = loadText('PROMPT_AUTONOMY.md');
   const manifest = loadJson('docs/documentation-manifest.json');

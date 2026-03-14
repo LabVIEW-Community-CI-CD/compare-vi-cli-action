@@ -108,12 +108,20 @@ export function resolveMissionControlProfileReport(
   };
 }
 
-export function main(argv = process.argv) {
+export function main(
+  argv = process.argv,
+  {
+    now = new Date(),
+    repoRoot = process.cwd(),
+    logFn = console.log,
+    errorFn = console.error,
+  } = {},
+) {
   let options;
   try {
     options = parseArgs(argv);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    errorFn(error instanceof Error ? error.message : String(error));
     printUsage();
     return 1;
   }
@@ -123,16 +131,27 @@ export function main(argv = process.argv) {
     return 0;
   }
 
-  const report = resolveMissionControlProfileReport({
-    trigger: options.trigger,
-    catalogPath: options.catalogPath,
-  });
-  const reportPath = writeJsonFile(options.reportPath, report);
-  console.log(`[mission-control:resolve] report: ${reportPath}`);
-  console.log(
-    `[mission-control:resolve] trigger=${report.trigger} profile=${report.resolution.profileId} intent=${report.resolution.operatorPreset.intent} focus=${report.resolution.operatorPreset.focus}`,
-  );
-  return 0;
+  try {
+    const report = resolveMissionControlProfileReport(
+      {
+        trigger: options.trigger,
+        catalogPath: options.catalogPath,
+      },
+      {
+        now,
+        repoRoot,
+      },
+    );
+    const reportPath = writeJsonFile(options.reportPath, report);
+    logFn(`[mission-control:resolve] report: ${reportPath}`);
+    logFn(
+      `[mission-control:resolve] trigger=${report.trigger} profile=${report.resolution.profileId} intent=${report.resolution.operatorPreset.intent} focus=${report.resolution.operatorPreset.focus}`,
+    );
+    return 0;
+  } catch (error) {
+    errorFn(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
 }
 
 export function isDirectExecution(argv = process.argv, metaUrl = import.meta.url) {
