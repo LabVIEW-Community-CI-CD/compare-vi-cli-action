@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import process from 'node:process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -13,10 +14,20 @@ import {
   resolveUpstream,
   ensureForkRemote,
   resolveActiveForkRemoteName,
+  normalizeForkRemoteName,
   pushBranch,
   runGhPrCreate,
-  parseRepositorySlug
+  parseRepositorySlug,
+  buildRepositorySlug
 } from './lib/remote-utils.mjs';
+import {
+  DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
+  classifyBranch,
+  findRepositoryPlaneEntry,
+  loadBranchClassContract,
+  resolveRepositoryPlane,
+  resolveRepositoryPlaneFromBranchName
+} from './lib/branch-classification.mjs';
 
 const ROUTER_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'router.json');
 const CACHE_RELATIVE_PATH = '.agent_priority_cache.json';
@@ -155,6 +166,14 @@ function toPositiveInteger(value) {
     return null;
   }
   return number;
+}
+
+function normalizeText(value) {
+  return String(value ?? '').trim();
+}
+
+function digestText(value) {
+  return createHash('sha256').update(String(value ?? ''), 'utf8').digest('hex');
 }
 
 export function parseRouterIssueNumber(router) {
@@ -533,6 +552,124 @@ export function resolveBody({ options, issueNumber, env = process.env, readFileS
   );
 }
 
+function loadPriorityPrBranchContract(
+  repoRoot,
+  {
+    readFileSyncFn = readFileSync,
+    loadBranchClassContractFn = loadBranchClassContract
+  } = {}
+) {
+  const contractPath = path.join(repoRoot, DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH);
+  const contract = loadBranchClassContractFn(repoRoot, {
+    relativePath: DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
+    readFileSyncFn
+  });
+
+  let rawText = null;
+  try {
+    rawText = readFileSyncFn(contractPath, 'utf8');
+  } catch {
+    rawText = JSON.stringify(contract);
+  }
+
+  return {
+    contract,
+    contractPath: DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH.replace(/\\/g, '/'),
+    contractDigest: digestText(rawText)
+  };
+}
+
+export function resolvePriorityPrBranchModel({
+  repoRoot,
+  branch,
+  upstream,
+  headRemote = null,
+  headRemoteSource = null,
+  headRepository = null,
+  readFileSyncFn = readFileSync,
+  loadBranchClassContractFn = loadBranchClassContract
+}) {
+  const { contract, contractPath, contractDigest } = loadPriorityPrBranchContract(repoRoot, {
+    readFileSyncFn,
+    loadBranchClassContractFn
+  });
+  const branchPlane = resolveRepositoryPlaneFromBranchName(branch, contract);
+  const branchPlaneEntry = branchPlane ? findRepositoryPlaneEntry(contract, branchPlane) : null;
+  const requiredHeadRemote =
+    branchPlane === 'origin' || branchPlane === 'personal'
+      ? branchPlane
+      : null;
+
+  if (requiredHeadRemote && headRemote && normalizeText(headRemote).toLowerCase() !== requiredHeadRemote) {
+    throw new Error(
+      `Branch '${branch}' resolves to the ${requiredHeadRemote} fork plane via ${contractPath}, but head remote '${headRemote}' was selected from ${headRemoteSource ?? 'unknown-source'}.`
+    );
+  }
+
+  const headRepositorySlug = buildRepositorySlug(headRepository);
+  const upstreamRepositorySlug = buildRepositorySlug(upstream);
+  const classificationRepository =
+    branchPlane === 'upstream'
+      ? upstreamRepositorySlug
+      : headRepositorySlug || upstreamRepositorySlug;
+  const classification = classificationRepository
+    ? classifyBranch({
+        branch,
+        contract,
+        repository: classificationRepository
+      })
+    : null;
+
+  if (normalizeText(branch).toLowerCase().startsWith('issue/') && !classification) {
+    throw new Error(
+      `Branch '${branch}' is not classified by ${contractPath}; update the branch contract or rename the lane before opening a PR.`
+    );
+  }
+
+  if (classification && classification.prSourceAllowed !== true) {
+    throw new Error(
+      `Branch '${branch}' resolves to class '${classification.id}', which is not allowed as a PR source by ${contractPath}.`
+    );
+  }
+
+  const resolvedRepositoryPlane = classification?.repositoryPlane
+    ? normalizeText(classification.repositoryPlane).toLowerCase()
+    : branchPlane;
+
+  if (requiredHeadRemote && headRepositorySlug) {
+    const headRepositoryPlane = resolveRepositoryPlane(headRepositorySlug, contract);
+    if (headRepositoryPlane !== requiredHeadRemote) {
+      throw new Error(
+        `Head repository '${headRepositorySlug}' resolves to plane '${headRepositoryPlane}', but branch '${branch}' requires '${requiredHeadRemote}' according to ${contractPath}.`
+      );
+    }
+  }
+
+  return {
+    contractPath,
+    contractDigest,
+    branchPlane: branchPlane ?? null,
+    classificationRepository: classificationRepository ?? null,
+    classification: classification
+      ? {
+          id: classification.id,
+          repositoryRole: classification.repositoryRole,
+          repositoryPlane: classification.repositoryPlane,
+          matchedPattern: classification.matchedPattern,
+          prSourceAllowed: classification.prSourceAllowed,
+          prTargetAllowed: classification.prTargetAllowed,
+          mergePolicy: classification.mergePolicy,
+          purpose: classification.purpose
+        }
+      : null,
+    laneBranchPrefix: normalizeText(branchPlaneEntry?.laneBranchPrefix) || null,
+    selectedHeadRemote: headRemote ? normalizeText(headRemote).toLowerCase() : null,
+    selectedHeadRemoteSource: headRemoteSource ?? null,
+    requiredHeadRemote,
+    repositoryPlane: resolvedRepositoryPlane ?? null
+  };
+}
+
 export function createPriorityPr({
   env = process.env,
   options = {},
@@ -544,7 +681,8 @@ export function createPriorityPr({
   ensureForkRemoteFn = ensureForkRemote,
   pushBranchFn = pushBranch,
   runGhPrCreateFn = runGhPrCreate,
-  resolveStandingIssueNumberFn = resolveStandingIssueNumberForPr
+  resolveStandingIssueNumberFn = resolveStandingIssueNumberForPr,
+  loadBranchClassContractFn = loadBranchClassContract
 } = {}) {
   const repoRoot = getRepoRootFn();
   const branch = ensurePrSourceBranch(options.branch || getCurrentBranchFn(repoRoot));
@@ -568,8 +706,58 @@ export function createPriorityPr({
   }
   assertBranchMatchesIssue(branch, localIssueNumber);
   const upstream = options.repository ? parseRepositorySlug(options.repository) : resolveUpstreamFn(repoRoot);
-  const headRemote = options.headRemote || env.PR_HEAD_REMOTE || resolveActiveForkRemoteName(env);
+  const initialBranchModel = resolvePriorityPrBranchModel({
+    repoRoot,
+    branch,
+    upstream,
+    headRemote: null,
+    headRemoteSource: null,
+    headRepository: null,
+    readFileSyncFn,
+    loadBranchClassContractFn
+  });
+  const inferredBranchPlane = initialBranchModel.branchPlane;
+  const explicitHeadRemote = normalizeText(options.headRemote);
+  const envHeadRemote = normalizeText(env.PR_HEAD_REMOTE);
+  const activeForkRemote = normalizeText(env.AGENT_PRIORITY_ACTIVE_FORK_REMOTE);
+  let headRemoteSource = 'default';
+  let headRemote = null;
+  if (explicitHeadRemote) {
+    headRemote = normalizeForkRemoteName(explicitHeadRemote);
+    headRemoteSource = 'cli';
+  } else if (envHeadRemote) {
+    headRemote = normalizeForkRemoteName(envHeadRemote);
+    headRemoteSource = 'env:PR_HEAD_REMOTE';
+  } else if (inferredBranchPlane === 'origin' || inferredBranchPlane === 'personal') {
+    headRemote = inferredBranchPlane;
+    headRemoteSource = 'branch-contract';
+  } else if (activeForkRemote) {
+    headRemote = normalizeForkRemoteName(activeForkRemote);
+    headRemoteSource = 'env:AGENT_PRIORITY_ACTIVE_FORK_REMOTE';
+  } else {
+    headRemote = resolveActiveForkRemoteName(env);
+  }
+  resolvePriorityPrBranchModel({
+    repoRoot,
+    branch,
+    upstream,
+    headRemote,
+    headRemoteSource,
+    headRepository: null,
+    readFileSyncFn,
+    loadBranchClassContractFn
+  });
   const headRepository = ensureForkRemoteFn(repoRoot, upstream, headRemote);
+  const branchModel = resolvePriorityPrBranchModel({
+    repoRoot,
+    branch,
+    upstream,
+    headRemote,
+    headRemoteSource,
+    headRepository,
+    readFileSyncFn,
+    loadBranchClassContractFn
+  });
 
   const pushResult = pushBranchFn(repoRoot, branch, headRemote);
   const base = options.base || env.PR_BASE || 'develop';
@@ -612,6 +800,7 @@ export function createPriorityPr({
     upstream,
     headRemote,
     headRepository,
+    branchModel,
     strategy: prResult?.strategy ?? null,
     pullRequest: prResult?.pullRequest ?? null,
     reusedExistingPullRequest: prResult?.reusedExisting === true
@@ -640,6 +829,20 @@ export function buildPriorityPrReport(result, generatedAt = new Date().toISOStri
           : null,
       branch: result.branch ?? null
     },
+    branchModel: result.branchModel
+      ? {
+          contractPath: result.branchModel.contractPath ?? null,
+          contractDigest: result.branchModel.contractDigest ?? null,
+          branchPlane: result.branchModel.branchPlane ?? null,
+          repositoryPlane: result.branchModel.repositoryPlane ?? null,
+          classificationRepository: result.branchModel.classificationRepository ?? null,
+          laneBranchPrefix: result.branchModel.laneBranchPrefix ?? null,
+          selectedHeadRemote: result.branchModel.selectedHeadRemote ?? null,
+          selectedHeadRemoteSource: result.branchModel.selectedHeadRemoteSource ?? null,
+          requiredHeadRemote: result.branchModel.requiredHeadRemote ?? null,
+          classification: result.branchModel.classification
+        }
+      : null,
     base: result.base ?? null,
     pushStatus: result.pushStatus ?? null,
     strategy: result.strategy ?? null,
