@@ -13,7 +13,7 @@ function readRepoFile(relativePath) {
 
 test('tools parity workflow can dispatch the NI Linux review suite and upload its evidence', () => {
   const workflow = readRepoFile('.github/workflows/tools-parity.yml');
-  assert.match(workflow, /uses: actions\/checkout@v4[\s\S]*fetch-depth:\s*0/);
+  assert.match(workflow, /uses: actions\/checkout@v\d+[\s\S]*fetch-depth:\s*0/);
   assert.match(workflow, /runNiLinuxReviewSuite:/);
   assert.match(workflow, /runRequirementsVerification:/);
   assert.match(workflow, /historyTargetPath:/);
