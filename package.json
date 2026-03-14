@@ -97,6 +97,7 @@
     "priority:onboard:downstream": "node tools/priority/downstream-onboarding.mjs",
     "priority:onboard:feedback": "node tools/priority/downstream-onboarding-feedback.mjs",
     "priority:onboard:success": "node tools/priority/downstream-onboarding-success.mjs",
+    "priority:diagnostics:public-linux": "node tools/priority/public-linux-diagnostics-harness.mjs",
     "priority:develop:sync": "node tools/priority/develop-sync.mjs",
     "priority:github:metadata:apply": "tsc -p tsconfig.cli.json && node dist/tools/cli/github-metadata.js",
     "priority:policy": "node tools/priority/check-policy.mjs",
