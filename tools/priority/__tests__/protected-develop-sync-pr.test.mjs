@@ -14,6 +14,43 @@ import {
   runProtectedDevelopSync
 } from '../protected-develop-sync-pr.mjs';
 
+const branchClassContract = {
+  schema: 'branch-classes/v1',
+  upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+  repositoryPlanes: [
+    {
+      id: 'upstream',
+      repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action']
+    },
+    {
+      id: 'origin',
+      repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action-fork']
+    },
+    {
+      id: 'personal',
+      repositories: ['svelderrainruiz/compare-vi-cli-action']
+    }
+  ],
+  planeTransitions: [
+    {
+      from: 'upstream',
+      action: 'sync',
+      to: 'origin',
+      via: 'priority:develop:sync',
+      branchClass: 'fork-mirror-develop'
+    },
+    {
+      from: 'upstream',
+      action: 'sync',
+      to: 'personal',
+      via: 'priority:develop:sync',
+      branchClass: 'fork-mirror-develop'
+    }
+  ],
+  classes: [{ id: 'noop', repositoryRoles: ['upstream'], branchPatterns: ['develop'] }],
+  allowedTransitions: [{ from: 'noop', to: 'noop', action: 'sync' }]
+};
+
 test('parseArgs accepts protected sync options', () => {
   const options = parseArgs([
     'node',
@@ -99,6 +136,12 @@ test('buildProtectedSyncSummaryPayload captures PR and merge request details', (
     localHead: 'abc123',
     upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
     targetRepository: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+    planeTransition: {
+      from: 'upstream',
+      to: 'origin',
+      action: 'sync',
+      via: 'priority:develop:sync'
+    },
     pullRequest: { number: 42, url: 'https://example.test/pull/42' },
     readyState: { status: 'marked-ready' },
     mergeRequest: { status: 'requested' },
@@ -108,6 +151,8 @@ test('buildProtectedSyncSummaryPayload captures PR and merge request details', (
 
   assert.equal(payload.schema, 'priority/protected-develop-sync@v1');
   assert.equal(payload.targetRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork');
+  assert.equal(payload.planeTransition.from, 'upstream');
+  assert.equal(payload.planeTransition.to, 'origin');
   assert.equal(payload.syncMethod, 'protected-pr');
   assert.equal(payload.mergeUpstreamError, 'sync unavailable');
   assert.equal(payload.pullRequest.number, 42);
@@ -124,6 +169,12 @@ test('buildProtectedSyncSummaryPayload captures merge-upstream sync details', ()
     reason: 'protected-branch-gh013',
     upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
     targetRepository: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+    planeTransition: {
+      from: 'upstream',
+      to: 'origin',
+      action: 'sync',
+      via: 'priority:develop:sync'
+    },
     syncMethod: 'fork-sync',
     allowForkSyncing: true,
     mergeUpstream: { message: 'Branch synced', merge_type: 'fast-forward' }
@@ -187,6 +238,7 @@ test('runProtectedDevelopSync reuses an existing draft PR, marks it ready, and r
       reportPath
     },
     ensureGhCliFn: () => {},
+    loadBranchClassContractFn: () => branchClassContract,
     resolveUpstreamFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' }),
     ensureForkRemoteFn: () => ({
       owner: 'LabVIEW-Community-CI-CD',
@@ -226,6 +278,8 @@ test('runProtectedDevelopSync reuses an existing draft PR, marks it ready, and r
 
   assert.equal(updated.length, 1);
   assert.equal(report.pullRequest.number, 42);
+  assert.equal(report.planeTransition.from, 'upstream');
+  assert.equal(report.planeTransition.to, 'origin');
   assert.equal(report.pullRequest.reusedExisting, true);
   assert.match(report.mergeUpstreamError, /Unexpected gh json args/);
   assert.equal(report.readyState.status, 'marked-ready');
@@ -266,6 +320,7 @@ test('runProtectedDevelopSync creates a new PR when no existing sync PR is open'
       reportPath
     },
     ensureGhCliFn: () => {},
+    loadBranchClassContractFn: () => branchClassContract,
     resolveUpstreamFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' }),
     ensureForkRemoteFn: () => ({
       owner: 'svelderrainruiz',
@@ -310,6 +365,8 @@ test('runProtectedDevelopSync creates a new PR when no existing sync PR is open'
   assert.equal(created.length, 1);
   assert.equal(created[0].branch, 'sync/personal-develop');
   assert.equal(report.pullRequest.number, 77);
+  assert.equal(report.planeTransition.from, 'upstream');
+  assert.equal(report.planeTransition.to, 'personal');
   assert.equal(report.pullRequest.reusedExisting, false);
   assert.match(report.mergeUpstreamError, /Unexpected gh json args/);
 });
@@ -337,6 +394,7 @@ test('runProtectedDevelopSync prefers merge-upstream when the GitHub sync API is
       reportPath
     },
     ensureGhCliFn: () => {},
+    loadBranchClassContractFn: () => branchClassContract,
     resolveUpstreamFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' }),
     ensureForkRemoteFn: () => ({
       owner: 'LabVIEW-Community-CI-CD',
@@ -362,6 +420,7 @@ test('runProtectedDevelopSync prefers merge-upstream when the GitHub sync API is
   });
 
   assert.equal(created.length, 0);
+  assert.equal(report.planeTransition.to, 'origin');
   assert.equal(report.syncMethod, 'fork-sync');
   assert.equal(report.allowForkSyncing, false);
   assert.equal(report.mergeUpstream.merge_type, 'fast-forward');
@@ -392,6 +451,7 @@ test('runProtectedDevelopSync tolerates branch protection lookup failures', asyn
       reportPath
     },
     ensureGhCliFn: () => {},
+    loadBranchClassContractFn: () => branchClassContract,
     resolveUpstreamFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' }),
     ensureForkRemoteFn: () => ({
       owner: 'LabVIEW-Community-CI-CD',
@@ -412,5 +472,6 @@ test('runProtectedDevelopSync tolerates branch protection lookup failures', asyn
   });
 
   assert.equal(report.syncMethod, 'fork-sync');
+  assert.equal(report.planeTransition.to, 'origin');
   assert.equal(report.allowForkSyncing, false);
 });

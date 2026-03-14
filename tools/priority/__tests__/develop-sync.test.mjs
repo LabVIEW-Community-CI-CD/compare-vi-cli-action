@@ -234,11 +234,23 @@ test('runDevelopSync records protected sync mode details from the parity report'
       schema: 'origin-upstream-parity@v1',
       status: 'ok',
       tipDiff: { fileCount: 3 },
+      planeTransition: {
+        from: 'upstream',
+        to: 'origin',
+        action: 'sync',
+        via: 'priority:develop:sync'
+      },
       syncResult: {
         mode: 'protected-pr',
         reason: 'protected-branch-gh013',
         parityConverged: false,
         protectedSync: {
+          planeTransition: {
+            from: 'upstream',
+            to: 'origin',
+            action: 'sync',
+            via: 'priority:develop:sync'
+          },
           pullRequest: {
             number: 44,
             url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action-fork/pull/44'
@@ -299,11 +311,23 @@ test('runDevelopSync records fork-sync mode details from the parity report', asy
       schema: 'origin-upstream-parity@v1',
       status: 'ok',
       tipDiff: { fileCount: 0 },
+      planeTransition: {
+        from: 'upstream',
+        to: 'origin',
+        action: 'sync',
+        via: 'priority:develop:sync'
+      },
       syncResult: {
         mode: 'fork-sync',
         reason: 'protected-branch-gh013',
         parityConverged: true,
         protectedSync: {
+          planeTransition: {
+            from: 'upstream',
+            to: 'origin',
+            action: 'sync',
+            via: 'priority:develop:sync'
+          },
           syncMethod: 'fork-sync',
           mergeUpstream: {
             message: 'Branch synced',
@@ -344,6 +368,62 @@ test('runDevelopSync records fork-sync mode details from the parity report', asy
   assert.equal(report.actions[0].protectedSync.syncMethod, 'fork-sync');
   assert.equal(report.actions[0].protectedSync.mergeUpstream.merge_type, 'fast-forward');
   assert.equal(report.actions[0].planeTransition.to, 'origin');
+});
+
+test('runDevelopSync fails closed when the parity report omits plane transition evidence', async (t) => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-missing-plane-transition-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+  initTempGitRepo(tempRoot);
+
+  const parityReportPath = path.join(tempRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
+  await mkdir(path.dirname(parityReportPath), { recursive: true });
+  await writeFile(
+    parityReportPath,
+    JSON.stringify({
+      schema: 'origin-upstream-parity@v1',
+      status: 'ok',
+      tipDiff: { fileCount: 0 },
+      syncResult: {
+        mode: 'direct-push',
+        reason: 'direct-push',
+        parityConverged: true
+      }
+    }, null, 2),
+    'utf8'
+  );
+
+  const reportPath = path.join(tempRoot, 'develop-sync-report.json');
+  await assert.rejects(
+    async () =>
+      runDevelopSync({
+        repoRoot: tempRoot,
+        options: {
+          forkRemote: 'origin',
+          reportPath
+        },
+        spawnSyncFn: (command, args, options = {}) => {
+          if (command === 'git') {
+            return spawnSync(command, args, {
+              ...options,
+              cwd: tempRoot,
+              encoding: 'utf8',
+              stdio: ['ignore', 'pipe', 'pipe']
+            });
+          }
+          if (command === 'pwsh') {
+            return { status: 0, stdout: '', stderr: '' };
+          }
+          throw new Error(`Unexpected command ${command}`);
+        }
+      }),
+    /missing required planeTransition metadata/i
+  );
+
+  const report = readJson(reportPath);
+  assert.equal(report.status, 'failed');
+  assert.match(report.actions[0].error, /planeTransition metadata/i);
 });
 
 test('runDevelopSync fails closed when the parity report is unreadable', async (t) => {
@@ -423,6 +503,8 @@ test('Sync-OriginUpstreamDevelop succeeds from a linked worktree and writes admi
   run('git', ['checkout', '--detach'], { cwd: controlRepo });
 
   await mkdir(path.join(worktreeRepo, 'tools', 'priority'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority', 'lib'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'policy'), { recursive: true });
   await copyFile(
     path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'),
     path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1')
@@ -430,6 +512,14 @@ test('Sync-OriginUpstreamDevelop succeeds from a linked worktree and writes admi
   await copyFile(
     path.join(repoRoot, 'tools', 'priority', 'report-origin-upstream-parity.mjs'),
     path.join(worktreeRepo, 'tools', 'priority', 'report-origin-upstream-parity.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'lib', 'branch-classification.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'lib', 'branch-classification.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'),
+    path.join(worktreeRepo, 'tools', 'policy', 'branch-classes.json')
   );
 
   run('git', ['clone', upstreamBare, updaterRepo], { cwd: sandboxRoot });
@@ -511,6 +601,8 @@ test('Sync-OriginUpstreamDevelop refreshes the local tracking ref after SSH fall
   run('git', ['checkout', '--detach'], { cwd: controlRepo });
 
   await mkdir(path.join(worktreeRepo, 'tools', 'priority'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority', 'lib'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'policy'), { recursive: true });
   await copyFile(
     path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'),
     path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1')
@@ -518,6 +610,14 @@ test('Sync-OriginUpstreamDevelop refreshes the local tracking ref after SSH fall
   await copyFile(
     path.join(repoRoot, 'tools', 'priority', 'report-origin-upstream-parity.mjs'),
     path.join(worktreeRepo, 'tools', 'priority', 'report-origin-upstream-parity.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'lib', 'branch-classification.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'lib', 'branch-classification.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'),
+    path.join(worktreeRepo, 'tools', 'policy', 'branch-classes.json')
   );
 
   await writeFile(
@@ -604,6 +704,8 @@ test('Sync-OriginUpstreamDevelop targeted refresh detects a newer remote head in
   run('git', ['checkout', '--detach'], { cwd: controlRepo });
 
   await mkdir(path.join(worktreeRepo, 'tools', 'priority'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority', 'lib'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'policy'), { recursive: true });
   await copyFile(
     path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'),
     path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1')
@@ -611,6 +713,14 @@ test('Sync-OriginUpstreamDevelop targeted refresh detects a newer remote head in
   await copyFile(
     path.join(repoRoot, 'tools', 'priority', 'report-origin-upstream-parity.mjs'),
     path.join(worktreeRepo, 'tools', 'priority', 'report-origin-upstream-parity.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'lib', 'branch-classification.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'lib', 'branch-classification.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'),
+    path.join(worktreeRepo, 'tools', 'policy', 'branch-classes.json')
   );
 
   run('git', ['clone', upstreamBare, updaterRepo], { cwd: sandboxRoot });
@@ -709,6 +819,8 @@ test('Sync-OriginUpstreamDevelop treats GH013 as a protected sync PR handoff ins
   run('git', ['checkout', '--detach'], { cwd: controlRepo });
 
   await mkdir(path.join(worktreeRepo, 'tools', 'priority'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority', 'lib'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'policy'), { recursive: true });
   const source = readFileSyncImmediate(path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'), 'utf8');
   const protectedSource = source.replace(
     "$attemptPushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $Branch",
@@ -718,6 +830,14 @@ test('Sync-OriginUpstreamDevelop treats GH013 as a protected sync PR handoff ins
   await copyFile(
     path.join(repoRoot, 'tools', 'priority', 'report-origin-upstream-parity.mjs'),
     path.join(worktreeRepo, 'tools', 'priority', 'report-origin-upstream-parity.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'lib', 'branch-classification.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'lib', 'branch-classification.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'),
+    path.join(worktreeRepo, 'tools', 'policy', 'branch-classes.json')
   );
   await writeFile(
     path.join(worktreeRepo, 'tools', 'priority', 'protected-develop-sync-pr.mjs'),
@@ -738,6 +858,12 @@ writeFileSync(reportPath, JSON.stringify({
   branch: 'develop',
   syncBranch,
   reason: 'protected-branch-gh013',
+  planeTransition: {
+    from: 'upstream',
+    to: 'origin',
+    action: 'sync',
+    via: 'priority:develop:sync'
+  },
   pullRequest: {
     number: 55,
     url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action-fork/pull/55',
@@ -777,9 +903,12 @@ writeFileSync(reportPath, JSON.stringify({
   );
 
   const parityReport = JSON.parse(await readFile(parityReportPath, 'utf8'));
+  assert.equal(parityReport.planeTransition.from, 'upstream');
+  assert.equal(parityReport.planeTransition.to, 'origin');
   assert.equal(parityReport.syncResult.mode, 'protected-pr');
   assert.equal(parityReport.syncResult.reason, 'protected-branch-gh013');
   assert.equal(parityReport.syncResult.parityConverged, false);
+  assert.equal(parityReport.syncResult.planeTransition.to, 'origin');
   assert.equal(parityReport.syncResult.protectedSync.pullRequest.number, 55);
   assert.equal(parityReport.tipDiff.fileCount > 0, true);
 });

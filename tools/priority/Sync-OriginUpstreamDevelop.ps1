@@ -491,6 +491,15 @@ try {
   }
 
   $parityReport = Get-Content -LiteralPath $parityReportPath -Raw | ConvertFrom-Json -AsHashtable
+  $planeTransition = $parityReport['planeTransition']
+  if (-not $planeTransition) {
+    throw ("Parity report missing planeTransition metadata: {0}" -f $parityReportPath)
+  }
+  foreach ($requiredKey in @('from', 'to', 'action', 'via')) {
+    if ([string]::IsNullOrWhiteSpace([string]$planeTransition[$requiredKey])) {
+      throw ("Parity report planeTransition metadata is incomplete ({0} missing) in {1}" -f $requiredKey, $parityReportPath)
+    }
+  }
   $parityReport['adminPaths'] = $adminPaths
   if ($pushTransport) {
     $parityReport['pushTransport'] = $pushTransport
@@ -500,11 +509,15 @@ try {
     mode = $syncMode
     reason = $syncReason
     parityConverged = ($tipDiffCount -eq 0)
+    planeTransition = $planeTransition
   }
   if ($protectedSyncReportPath) {
     $syncResult['reportPath'] = $protectedSyncReportPath
   }
   if ($protectedSync) {
+    if (-not $protectedSync['planeTransition']) {
+      throw ("Protected sync report missing planeTransition metadata: {0}" -f $protectedSyncReportPath)
+    }
     $syncResult['protectedSync'] = $protectedSync
   }
   $parityReport['syncResult'] = $syncResult

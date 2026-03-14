@@ -210,6 +210,30 @@ function readJsonFile(filePath) {
   }
 }
 
+function requirePlaneTransitionEvidence({ remote, parityReport, branchClassTrace, parityReportPath }) {
+  const planeTransition = parityReport?.planeTransition;
+  if (!planeTransition || !planeTransition.from || !planeTransition.to || !planeTransition.action || !planeTransition.via) {
+    throw new Error(`Parity report '${parityReportPath}' is missing required planeTransition metadata for ${remote}.`);
+  }
+
+  const expected = branchClassTrace?.planeTransitions?.[remote] ?? null;
+  if (!expected) {
+    throw new Error(`No expected plane transition recorded for remote '${remote}'.`);
+  }
+  if (
+    planeTransition.from !== expected.from ||
+    planeTransition.to !== expected.to ||
+    planeTransition.action !== expected.action ||
+    planeTransition.via !== expected.via
+  ) {
+    throw new Error(
+      `Parity report '${parityReportPath}' recorded planeTransition ${planeTransition.from}->${planeTransition.to} (${planeTransition.via}) but expected ${expected.from}->${expected.to} (${expected.via}).`
+    );
+  }
+
+  return planeTransition;
+}
+
 export function runDevelopSync({
   repoRoot = getRepoRoot(),
   options = parseArgs(),
@@ -267,13 +291,39 @@ export function runDevelopSync({
       });
       throw error;
     }
+    let planeTransition;
+    try {
+      planeTransition = requirePlaneTransitionEvidence({
+        remote,
+        parityReport,
+        branchClassTrace,
+        parityReportPath
+      });
+    } catch (error) {
+      actions.push({
+        remote,
+        status: 'failed',
+        parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/'),
+        adminPaths,
+        branchClassTrace,
+        error: error.message
+      });
+      writeDevelopSyncReport({
+        repoRoot,
+        reportPath,
+        remotes,
+        actions,
+        status: 'failed'
+      });
+      throw error;
+    }
     actions.push({
       remote,
       status: 'ok',
       parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/'),
       adminPaths,
       branchClassTrace,
-      planeTransition: branchClassTrace.planeTransitions[remote] ?? null,
+      planeTransition,
       syncMode: parityReport?.syncResult?.mode ?? 'direct-push',
       syncReason: parityReport?.syncResult?.reason ?? 'direct-push',
       parityConverged:
