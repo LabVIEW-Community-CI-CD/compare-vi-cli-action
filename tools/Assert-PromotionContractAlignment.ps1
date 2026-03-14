@@ -14,6 +14,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'BranchRequiredCheckProjection.psm1') -Force -DisableNameChecking
+
 function Read-JsonFile {
   param([Parameter(Mandatory)][string]$Path)
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
@@ -29,22 +31,6 @@ function Normalize-CheckList {
     $list = @($Value | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
   }
   return @($list | Sort-Object -Unique)
-}
-
-function Resolve-RulesetRequiredChecks {
-  param(
-    [Parameter(Mandatory)][object]$PriorityPolicy,
-    [Parameter(Mandatory)][string[]]$Candidates
-  )
-
-  foreach ($candidate in $Candidates) {
-    $node = $PriorityPolicy.rulesets.PSObject.Properties[$candidate]
-    if ($node) {
-      return @($node.Value.required_status_checks)
-    }
-  }
-
-  return @()
 }
 
 function Compare-CheckSets {
@@ -68,20 +54,20 @@ $contract = Read-JsonFile -Path $ContractPath
 $branchPolicy = Read-JsonFile -Path $BranchRequiredChecksPath
 $priorityPolicy = Read-JsonFile -Path $PriorityPolicyPath
 
-$expectedDevelop = @($contract.required_status_checks.$DevelopBranchName)
-$expectedRelease = @($contract.required_status_checks.$ReleaseBranchName)
+$expectedDevelop = @(Resolve-PromotionContractRequiredChecks -Contract $contract -BranchPolicy $branchPolicy -BranchName $DevelopBranchName)
+$expectedRelease = @(Resolve-PromotionContractRequiredChecks -Contract $contract -BranchPolicy $branchPolicy -BranchName $ReleaseBranchName)
 $checkContext = [string]$contract.check_context
 $checkContextRequiredInBranchProtection = $true
 if ($contract.PSObject.Properties.Name -contains 'require_check_context_in_branch_protection') {
   $checkContextRequiredInBranchProtection = [bool]$contract.require_check_context_in_branch_protection
 }
 
-$developBranchChecks = @($branchPolicy.branches.$DevelopBranchName)
-$releaseBranchChecks = @($branchPolicy.branches.$ReleaseBranchName)
-$developPriorityChecks = @($priorityPolicy.branches.$DevelopBranchName.required_status_checks)
-$releasePriorityChecks = @($priorityPolicy.branches.$ReleaseBranchName.required_status_checks)
-$developRulesetChecks = @(Resolve-RulesetRequiredChecks -PriorityPolicy $priorityPolicy -Candidates @($DevelopRulesetId, '8811898'))
-$releaseRulesetChecks = @($priorityPolicy.rulesets.$ReleaseRulesetId.required_status_checks)
+$developBranchChecks = @((Resolve-BranchRequiredCheckProjection -BranchPolicy $branchPolicy -BranchName $DevelopBranchName -BranchClassId $null).requiredChecks)
+$releaseBranchChecks = @((Resolve-BranchRequiredCheckProjection -BranchPolicy $branchPolicy -BranchName $ReleaseBranchName -BranchClassId $null).requiredChecks)
+$developPriorityChecks = @(Resolve-PriorityPolicyBranchRequiredChecks -PriorityPolicy $priorityPolicy -BranchPolicy $branchPolicy -BranchName $DevelopBranchName)
+$releasePriorityChecks = @(Resolve-PriorityPolicyBranchRequiredChecks -PriorityPolicy $priorityPolicy -BranchPolicy $branchPolicy -BranchName $ReleaseBranchName)
+$developRulesetChecks = @(Resolve-PriorityPolicyRulesetRequiredChecks -PriorityPolicy $priorityPolicy -BranchPolicy $branchPolicy -Candidates @($DevelopRulesetId, '8811898') -FallbackBranchName $DevelopBranchName)
+$releaseRulesetChecks = @(Resolve-PriorityPolicyRulesetRequiredChecks -PriorityPolicy $priorityPolicy -BranchPolicy $branchPolicy -Candidates @($ReleaseRulesetId) -FallbackBranchName $ReleaseBranchName)
 
 $comparisons = [ordered]@{
   contract_vs_branch_develop = Compare-CheckSets -Expected $expectedDevelop -Actual $developBranchChecks

@@ -12,6 +12,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'BranchRequiredCheckProjection.psm1') -Force -DisableNameChecking
+
 $errors = New-Object System.Collections.Generic.List[string]
 
 function Add-ContractError {
@@ -25,22 +27,6 @@ function Read-JsonFile {
     throw "File not found: $Path"
   }
   return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -Depth 20)
-}
-
-function Resolve-RulesetChecks {
-  param(
-    [Parameter(Mandatory)][object]$PriorityPolicy,
-    [Parameter(Mandatory)][string[]]$Candidates
-  )
-
-  foreach ($candidate in $Candidates) {
-    $node = $PriorityPolicy.rulesets.PSObject.Properties[$candidate]
-    if ($node) {
-      return @($node.Value.required_status_checks)
-    }
-  }
-
-  return @()
 }
 
 if (-not (Test-Path -LiteralPath $WorkflowPath -PathType Leaf)) {
@@ -69,20 +55,20 @@ $priorityPolicy = Read-JsonFile -Path $PriorityPolicyPath
 
 $branchTargets = @('develop', 'main', 'release/*')
 $rulesetTargets = @(
-  @{ label = 'develop'; candidates = @('develop', '8811898') },
-  @{ label = 'main'; candidates = @('main', '8614140') },
-  @{ label = 'release'; candidates = @('release', '8614172') }
+  @{ label = 'develop'; branchName = 'develop'; candidates = @('develop', '8811898') },
+  @{ label = 'main'; branchName = 'main'; candidates = @('main', '8614140') },
+  @{ label = 'release'; branchName = 'release/*'; candidates = @('release', '8614172') }
 )
 
 foreach ($branchName in $branchTargets) {
-  $branchChecks = @($branchPolicy.branches.$branchName)
+  $branchChecks = @((Resolve-BranchRequiredCheckProjection -BranchPolicy $branchPolicy -BranchName $branchName -BranchClassId $null).requiredChecks)
   if ($branchChecks.Count -eq 0) {
     Add-ContractError "Missing required checks for branch '$branchName' in $BranchRequiredChecksPath."
   } elseif (-not ($branchChecks -contains $ExpectedCheckName)) {
     Add-ContractError "Branch '$branchName' required checks missing '$ExpectedCheckName' in $BranchRequiredChecksPath."
   }
 
-  $priorityBranchChecks = @($priorityPolicy.branches.$branchName.required_status_checks)
+  $priorityBranchChecks = @(Resolve-PriorityPolicyBranchRequiredChecks -PriorityPolicy $priorityPolicy -BranchPolicy $branchPolicy -BranchName $branchName)
   if ($priorityBranchChecks.Count -eq 0) {
     Add-ContractError "Missing priority required checks for branch '$branchName' in $PriorityPolicyPath."
   } elseif (-not ($priorityBranchChecks -contains $ExpectedCheckName)) {
@@ -91,7 +77,7 @@ foreach ($branchName in $branchTargets) {
 }
 
 foreach ($rulesetTarget in $rulesetTargets) {
-  $rulesetChecks = @(Resolve-RulesetChecks -PriorityPolicy $priorityPolicy -Candidates $rulesetTarget.candidates)
+  $rulesetChecks = @(Resolve-PriorityPolicyRulesetRequiredChecks -PriorityPolicy $priorityPolicy -BranchPolicy $branchPolicy -Candidates $rulesetTarget.candidates -FallbackBranchName $rulesetTarget.branchName)
   if ($rulesetChecks.Count -eq 0) {
     Add-ContractError "Missing required checks for ruleset '$($rulesetTarget.label)' in $PriorityPolicyPath."
   } elseif (-not ($rulesetChecks -contains $ExpectedCheckName)) {

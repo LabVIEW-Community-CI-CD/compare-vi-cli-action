@@ -16,18 +16,6 @@
     "develop": {
       "branch_class_id": "upstream-integration",
       "required_status_checks_strict": true,
-      "required_status_checks": [
-        "lint",
-        "fixtures",
-        "session-index",
-        "issue-snapshot",
-        "semver",
-        "Policy Guard (Upstream) / policy-guard",
-        "vi-history-scenarios-linux",
-        "agent-review-policy",
-        "hook-parity",
-        "commit-integrity"
-      ],
       "observed_status_checks": [
         "agent-review-policy",
         "commit-integrity"
@@ -46,14 +34,6 @@
     "main": {
       "branch_class_id": "upstream-release",
       "required_status_checks_strict": true,
-      "required_status_checks": [
-        "lint",
-        "pester",
-        "vi-binary-check",
-        "vi-compare",
-        "Policy Guard (Upstream) / policy-guard",
-        "commit-integrity"
-      ],
       "observed_status_checks": [
         "commit-integrity"
       ],
@@ -70,15 +50,6 @@
     },
     "release/*": {
       "branch_class_id": "upstream-release-prep",
-      "required_status_checks": [
-        "lint",
-        "pester",
-        "publish",
-        "vi-binary-check",
-        "vi-compare",
-        "mock-cli",
-        "Policy Guard (Upstream) / policy-guard"
-      ],
       "required_linear_history": true
     }
   },
@@ -90,18 +61,6 @@
         "refs/heads/develop"
       ],
       "required_linear_history": true,
-      "required_status_checks": [
-        "lint",
-        "fixtures",
-        "session-index",
-        "issue-snapshot",
-        "semver",
-        "Policy Guard (Upstream) / policy-guard",
-        "vi-history-scenarios-linux",
-        "agent-review-policy",
-        "hook-parity",
-        "commit-integrity"
-      ],
       "observed_status_checks": [
         "agent-review-policy",
         "commit-integrity"
@@ -137,14 +96,6 @@
       "includes": [
         "refs/heads/main"
       ],
-      "required_status_checks": [
-        "lint",
-        "pester",
-        "vi-binary-check",
-        "vi-compare",
-        "Policy Guard (Upstream) / policy-guard",
-        "commit-integrity"
-      ],
       "observed_status_checks": [
         "commit-integrity"
       ],
@@ -175,15 +126,6 @@
       "branch_class_id": "upstream-release-prep",
       "includes": [
         "refs/heads/release/*"
-      ],
-      "required_status_checks": [
-        "lint",
-        "pester",
-        "publish",
-        "vi-binary-check",
-        "vi-compare",
-        "mock-cli",
-        "Policy Guard (Upstream) / policy-guard"
       ],
       "merge_queue": null,
       "pull_request": {
