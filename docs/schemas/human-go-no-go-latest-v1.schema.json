@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/human-go-no-go-latest-v1.schema.json",
+  "title": "human-go-no-go-latest@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "status",
+    "repository",
+    "workflow",
+    "selection",
+    "sourceRun",
+    "artifact",
+    "latestDecision",
+    "decisionReceipt"
+  ],
+  "properties": {
+    "schema": {
+      "const": "human-go-no-go-latest@v1"
+    },
+    "schemaVersion": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pass"
+      ]
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "path"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "ref",
+        "failOnNogo"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "explicit-run",
+            "latest-successful-run"
+          ]
+        },
+        "ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failOnNogo": {
+          "type": "boolean"
+        }
+      }
+    },
+    "sourceRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "workflowName",
+        "displayTitle",
+        "url",
+        "headBranch",
+        "headSha",
+        "event",
+        "status",
+        "conclusion",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "workflowName": {
+          "type": "string"
+        },
+        "displayTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        },
+        "headBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "event": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "conclusion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "destinationRoot",
+        "decisionPath",
+        "downloadReportPath"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "destinationRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decisionPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "downloadReportPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "latestDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "feedback",
+        "recordedBy",
+        "transcribedFor",
+        "recommendedAction",
+        "seed",
+        "generatedAt",
+        "issueUrl",
+        "pullRequestUrl",
+        "runUrl",
+        "decisionPath",
+        "eventsPath",
+        "blocking"
+      ],
+      "properties": {
+        "value": {
+          "type": "string",
+          "enum": [
+            "go",
+            "nogo"
+          ]
+        },
+        "feedback": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recordedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "transcribedFor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recommendedAction": {
+          "type": "string",
+          "enum": [
+            "continue",
+            "revise",
+            "pause"
+          ]
+        },
+        "seed": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "issueUrl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        },
+        "pullRequestUrl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        },
+        "runUrl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        },
+        "decisionPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eventsPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blocking": {
+          "type": "boolean"
+        }
+      }
+    },
+    "decisionReceipt": {
+      "$ref": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/human-go-no-go-decision-v1.schema.json"
+    }
+  }
+}

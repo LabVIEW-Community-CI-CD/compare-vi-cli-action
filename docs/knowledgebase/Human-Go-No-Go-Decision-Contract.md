@@ -3,8 +3,11 @@
 Issue [#981](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/981)
 defines the contract slice for epic
 [#964](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/964).
-This page pins the future manual workflow inputs and the machine-readable output
-shape before the workflow itself is implemented.
+Issue [#982](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/982)
+implements the manual workflow, and issue
+[#980](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/980)
+adds the deterministic discovery helper that future agents use before starting
+new work.
 
 ## Intended Workflow Surface
 
@@ -18,31 +21,37 @@ Required inputs:
 
 - `target_context`
   Short identifier for the work area under review.
-- `target_ref`
-  Branch, ref, or comparable execution target.
 - `decision`
   Exact choice: `go` or `nogo`.
 - `feedback`
   Free-form human feedback that future agents can cite directly.
+- `recommended_action`
+  Exact choice: `continue`, `revise`, or `pause`.
 
 Optional inputs:
 
-- `related_issue_url`
+- `target_issue_url`
   Related issue URL when the decision is tied to a specific issue.
-- `related_pull_request_url`
+- `target_pull_request_url`
   Related pull request URL when the decision is tied to a specific PR head.
 - `target_run_id`
   Workflow run id when the decision is tied to a specific run.
 - `evidence_url`
   Supporting artifact, run, or comment URL.
-- `recorded_by`
-  Human or agent identity that triggered the workflow.
 - `transcribed_for`
   Human identity when an agent is transcribing another operator's decision.
+- `next_iteration_seed`
+  Optional seed text for the next iteration.
+
+Implementation note:
+
+- `recordedBy` is derived from `github.actor` so the workflow stays within
+  GitHub's `workflow_dispatch` 10-input limit.
+- `target.ref` defaults to `target_context` when no separate ref is supplied.
 
 ## Output Contract
 
-The workflow will later emit a machine-readable JSON payload that conforms to
+The workflow emits a machine-readable JSON payload that conforms to
 [../schemas/human-go-no-go-decision-v1.schema.json](../schemas/human-go-no-go-decision-v1.schema.json)
 with:
 
@@ -62,9 +71,15 @@ The payload must capture:
 - linked run/evidence URLs
 - next-iteration recommendation and seed text
 
-## Consumer Rule
+## Discovery Rule
 
-Future-agent discovery and startup wiring is tracked separately by issue
-[#980](https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/980).
-This contract only fixes the input/output shape and the durable report paths
-that later helpers must honor.
+Future agents should resolve the latest human disposition through:
+
+- `node tools/npm/run-script.mjs priority:human-go-no-go:latest`
+
+The helper writes:
+
+- `tests/results/_agent/handoff/human-go-no-go-latest.json`
+
+Invoke it with `--fail-on-nogo` at startup/handoff boundaries when a fresh
+human `go` is required before more implementation work can proceed.
