@@ -29,6 +29,20 @@ function sortStrings(values) {
   return [...values].sort((left, right) => left.localeCompare(right));
 }
 
+function readEnvelopeIntentFocusMatrix(envelopeSchema) {
+  const operatorAllOf = envelopeSchema.properties.operator.allOf ?? [];
+  const matrix = new Map();
+  for (const rule of operatorAllOf) {
+    const intentId = rule?.if?.properties?.intent?.const;
+    const allowedFocuses = rule?.then?.properties?.focus?.enum;
+    if (typeof intentId !== 'string' || !Array.isArray(allowedFocuses)) {
+      continue;
+    }
+    matrix.set(intentId, sortStrings(allowedFocuses));
+  }
+  return matrix;
+}
+
 test('mission-control operator input catalog fixture matches schema', () => {
   const validate = compileValidator();
   const fixture = loadJson('tools/priority/__fixtures__/mission-control/operator-input-catalog.json');
@@ -114,6 +128,7 @@ test('mission-control operator input catalog stays aligned with the envelope ope
   const envelopeSchema = loadJson('docs/schemas/mission-control-envelope-v1.schema.json');
   const operatorProperties = envelopeSchema.properties.operator.properties;
   const overrideSchema = envelopeSchema.$defs.override;
+  const intentFocusMatrix = readEnvelopeIntentFocusMatrix(envelopeSchema);
 
   assert.deepEqual(
     sortStrings(catalog.intents.map((entry) => entry.id)),
@@ -127,8 +142,16 @@ test('mission-control operator input catalog stays aligned with the envelope ope
     sortStrings(catalog.overrides.map((entry) => entry.key)),
     sortStrings(overrideSchema.properties.key.enum)
   );
+  assert.equal(intentFocusMatrix.size, catalog.intents.length);
 
   const booleanOverrideKeys = new Set(['allowAdminMerge', 'allowForkBaseDispatch', 'allowParkedLane', 'requireProjectBoardApply']);
+  for (const entry of catalog.intents) {
+    assert.deepEqual(
+      sortStrings(entry.allowedFocuses),
+      intentFocusMatrix.get(entry.id),
+      `Intent '${entry.id}' must keep the same allowed focus matrix as the envelope schema.`
+    );
+  }
   for (const entry of catalog.overrides) {
     if (booleanOverrideKeys.has(entry.key)) {
       assert.equal(entry.valueType, 'boolean', `Override '${entry.key}' must stay boolean-aligned with the envelope contract.`);
