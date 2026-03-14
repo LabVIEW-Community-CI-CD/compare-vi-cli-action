@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/public-linux-diagnostics-harness-contract-v1.schema.json",
+  "title": "public-linux-diagnostics-harness-contract@v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "target",
+    "execution",
+    "artifacts",
+    "humanGoNoGo"
+  ],
+  "properties": {
+    "schema": {
+      "const": "public-linux-diagnostics-harness-contract@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repositoryVisibility",
+        "repositorySlug",
+        "reference",
+        "developRelationship"
+      ],
+      "properties": {
+        "repositoryVisibility": {
+          "const": "public"
+        },
+        "repositorySlug": {
+          "type": "string",
+          "pattern": "^[^/]+/[^/]+$"
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "developRelationship": {
+          "type": "string",
+          "enum": [
+            "equal",
+            "ahead"
+          ]
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "localEntryPoint",
+        "hostedWorkflowPath",
+        "containerLane",
+        "labviewRelease"
+      ],
+      "properties": {
+        "localEntryPoint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hostedWorkflowPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "containerLane": {
+          "type": "string",
+          "minLength": 1
+        },
+        "labviewRelease": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundleRoot",
+        "reviewLoopReceiptPath",
+        "historySummaryPath",
+        "historyReportHtmlPath",
+        "operatorSummaryPath"
+      ],
+      "properties": {
+        "bundleRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewLoopReceiptPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "historySummaryPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "historyReportHtmlPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operatorSummaryPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "humanGoNoGo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "workflowPath",
+        "decisionSchemaPath",
+        "decisionArtifactName",
+        "decisionPath"
+      ],
+      "properties": {
+        "required": {
+          "const": true
+        },
+        "workflowPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decisionSchemaPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decisionArtifactName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decisionPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
