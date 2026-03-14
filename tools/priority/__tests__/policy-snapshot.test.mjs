@@ -5,7 +5,8 @@ import {
   parseArgs,
   parseRemoteUrl,
   resolveRepositorySlug,
-  collectPolicyState
+  collectPolicyState,
+  summarizeCopilotReviewState
 } from '../policy-snapshot.mjs';
 
 test('parseArgs applies defaults and accepts explicit repo/output', () => {
@@ -116,6 +117,38 @@ test('collectPolicyState records branch protection and stable-key ruleset detail
   assert.equal(state.branches['release/*'].skipped, true);
   assert.equal(state.rulesets.develop.id, 100);
   assert.equal(state.rulesets['100'].id, 100);
+  assert.equal(state.copilotReview.rulesetCopilotCodeReviewPresent, false);
+  assert.deepEqual(state.copilotReview.rulesetsWithCopilotCodeReview, []);
+  assert.equal(state.copilotReview.rulesets.develop.present, false);
+  assert.equal(state.copilotReview.automaticRequestSettingObservableViaApi, false);
   assert.ok(calls.some((entry) => entry.endsWith('/rulesets/100')));
   assert.ok(calls.some((entry) => entry.endsWith('/rulesets')));
+});
+
+test('summarizeCopilotReviewState flags observed copilot review rules and unresolved rulesets', () => {
+  const summary = summarizeCopilotReviewState({
+    develop: {
+      id: 100,
+      name: 'develop',
+      rules: [
+        {
+          type: 'copilot_code_review',
+          parameters: {
+            review_on_push: false,
+            review_draft_pull_requests: true
+          }
+        }
+      ]
+    },
+    release: {
+      error: 'ruleset-not-found'
+    }
+  });
+
+  assert.equal(summary.rulesetCopilotCodeReviewPresent, true);
+  assert.deepEqual(summary.rulesetsWithCopilotCodeReview, ['develop']);
+  assert.equal(summary.rulesets.develop.present, true);
+  assert.equal(summary.rulesets.develop.parameters.review_draft_pull_requests, true);
+  assert.equal(summary.rulesets.release.status, 'unresolved');
+  assert.equal(summary.expectedRepositoryAutomaticRequestSetting, 'disabled');
 });

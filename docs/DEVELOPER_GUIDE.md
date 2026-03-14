@@ -356,16 +356,18 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Machine-readable routing evidence is written to
   `tests/results/_agent/validate-scope-plan/validate-scope-plan.json` and summarized in the Validate step summary so
   reviewers can see why heavy lanes were bypassed.
-- On `develop`, Copilot review is expected on ready PRs. Use **Draft PR** state as the explicit escape hatch when you do
-  not want Copilot review to run yet. Ready `develop` PRs also need the `agent-review-policy` check to turn green after
-  either:
-  - the first Copilot review lands on the current head during the workflow's bounded polling window, or
-  - a follow-up push leaves zero actionable current-head Copilot threads after an earlier Copilot review on the PR.
+- GitHub-native automatic Copilot review is intentionally disabled for this repository. Draft review is acquired through
+  the local CLI/orchestrator path, and `ready_for_review` is reserved for final hosted validation on the current head.
+- `agent-review-policy` is the hosted concentrator for local review evidence and promotion validation. It should not be
+  used to acquire a second GitHub-side Copilot review after `ready_for_review`.
 - Run `node tools/npm/run-script.mjs priority:policy` (or `node tools/npm/run-script.mjs priority:policy:sync`) if you
   need to audit merge settings locally; the command also runs during `priority:handoff-tests` and fails when
   repo/branch policy drifts.
 - Capture live branch/ruleset evidence with `node tools/npm/run-script.mjs priority:policy:snapshot`; the snapshot is
   written to `tests/results/_agent/policy/policy-state-snapshot.json`.
+  Inspect `state.copilotReview` in that artifact to confirm rulesets do not contain `copilot_code_review` rules.
+  Repository-level "Automatic request Copilot review" remains a manual settings-page verification point because GitHub's
+  REST policy surfaces do not expose that toggle directly.
 - Run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` to preview queue ordering and
   candidate gates, or add `--apply` for guarded autonomous enqueue mode.
   Use `--governor-state <path>` (default `tests/results/_agent/slo/ops-governor-state.json`) to
