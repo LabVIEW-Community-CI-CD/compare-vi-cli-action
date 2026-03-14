@@ -45,3 +45,11 @@ test('monthly stability workflow derives CompareVi.Shared version from Directory
   assert.match(workflow, /publish_shared=true requires shared_version \(or Directory\.Build\.props CompareViSharedPackageVersion\/Version\)\./);
   assert.doesNotMatch(workflow, /fs\.readFileSync\('src\/CompareVi\.Shared\/CompareVi\.Shared\.csproj', 'utf8'\)/);
 });
+
+test('monthly stability workflow keeps monitor-only scorecards non-blocking', () => {
+  const workflow = read('.github/workflows/monthly-stability-release.yml');
+  assert.match(workflow, /scorecard_fail_mode='--no-fail-on-blockers'/);
+  assert.match(workflow, /needs\.evaluate-window\.outputs\.publish_requested/);
+  assert.match(workflow, /scorecard_fail_mode='--fail-on-blockers'/);
+  assert.match(workflow, /"\$scorecard_fail_mode"/);
+});

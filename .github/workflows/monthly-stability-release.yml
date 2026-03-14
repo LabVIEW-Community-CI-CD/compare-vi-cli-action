@@ -287,6 +287,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          scorecard_fail_mode='--no-fail-on-blockers'
+          if [ '${{ needs.evaluate-window.outputs.publish_requested }}' = 'true' ]; then
+            scorecard_fail_mode='--fail-on-blockers'
+          fi
           node tools/priority/release-scorecard.mjs \
             --repo "${{ github.repository }}" \
             --stream monthly-stability-release \
@@ -295,7 +299,8 @@ jobs:
             --ledger tests/results/promotion-contract/monthly-ledger.json \
             --slo tests/results/_agent/slo/monthly-slo-metrics.json \
             --rollback tests/results/_agent/release/monthly-rollback-drill-health.json \
-            --output tests/results/_agent/release/monthly-release-scorecard.json
+            --output tests/results/_agent/release/monthly-release-scorecard.json \
+            "$scorecard_fail_mode"
 
       - name: Validate release scorecard schema
         if: always()
@@ -315,4 +320,3 @@ jobs:
             tests/results/_agent/release/monthly-rollback-drill-health.json
             tests/results/_agent/release/monthly-release-scorecard.json
           if-no-files-found: error
-
