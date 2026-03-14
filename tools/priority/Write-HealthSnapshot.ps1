@@ -3,6 +3,7 @@
 param(
   [string]$ResultsRoot = 'tests/results',
   [string]$OutputDir = 'tests/results/_agent/health-snapshot',
+  [string]$BranchRequiredChecksPath = 'tools/policy/branch-required-checks.json',
   [string]$Owner,
   [string]$Repository,
   [string]$Branch = 'develop',
@@ -15,6 +16,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) '..' 'BranchExpectedContexts.psm1') -Force -DisableNameChecking
 
 function Get-Token {
   if (-not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)) { return $env:GH_TOKEN }
@@ -201,12 +204,16 @@ function Get-RequiredContextVerdict {
     }
   }
 
-  $policyPath = Join-Path (Join-Path (Get-Location).Path 'tools') 'policy/branch-required-checks.json'
   $expected = @()
+  $policyPath = if ([System.IO.Path]::IsPathRooted($BranchRequiredChecksPath)) {
+    $BranchRequiredChecksPath
+  } else {
+    Join-Path (Get-Location).Path $BranchRequiredChecksPath
+  }
+
   if (Test-Path -LiteralPath $policyPath -PathType Leaf) {
     try {
-      $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json -Depth 30
-      $expected = @($policy.branches.$Branch)
+      $expected = @(Resolve-BranchExpectedContextsFromPath -Path $policyPath -BranchName $Branch)
     } catch {
       $expected = @()
     }
