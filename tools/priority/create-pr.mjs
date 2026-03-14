@@ -2,7 +2,7 @@
 
 import path from 'node:path';
 import process from 'node:process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   run,
@@ -22,6 +22,7 @@ const ROUTER_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'r
 const CACHE_RELATIVE_PATH = '.agent_priority_cache.json';
 const NO_STANDING_REPORT_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'no-standing-priority.json');
 const DEFAULT_PR_TEMPLATE_RELATIVE_PATH = path.join('.github', 'pull_request_template.md');
+const DEFAULT_REPORT_DIR = path.join('tests', 'results', '_agent', 'issue');
 const STANDING_PRIORITY_LABELS = new Set(['standing-priority', 'fork-standing-priority']);
 const USAGE_LINES = [
   'Usage: node tools/npm/run-script.mjs priority:pr -- [options]',
@@ -36,6 +37,7 @@ const USAGE_LINES = [
   '  --title <text>          Explicit pull request title.',
   '  --body <text>           Explicit pull request body.',
   '  --body-file <path>      Read the pull request body from a file.',
+  `  --report-dir <path>     Directory for the machine-readable report (default: ${DEFAULT_REPORT_DIR}).`,
   '  --head-remote <name>    Fork remote to push/open from (default: AGENT_PRIORITY_ACTIVE_FORK_REMOTE or origin).',
   '  -h, --help              Show this message and exit.'
 ];
@@ -56,6 +58,7 @@ export function parseArgs(argv = process.argv) {
     title: null,
     body: null,
     bodyFile: null,
+    reportDir: DEFAULT_REPORT_DIR,
     headRemote: null,
     help: false
   };
@@ -68,6 +71,7 @@ export function parseArgs(argv = process.argv) {
     '--title',
     '--body',
     '--body-file',
+    '--report-dir',
     '--head-remote'
   ]);
 
@@ -100,6 +104,7 @@ export function parseArgs(argv = process.argv) {
       if (token === '--title') options.title = next;
       if (token === '--body') options.body = next;
       if (token === '--body-file') options.bodyFile = next;
+      if (token === '--report-dir') options.reportDir = next;
       if (token === '--head-remote') options.headRemote = next;
       continue;
     }
@@ -600,6 +605,7 @@ export function createPriorityPr({
     issueNumber,
     localIssueNumber,
     issueSource: resolvedIssue?.source ?? null,
+    mirrorOf: resolvedIssue?.mirrorOf ?? null,
     title,
     body,
     pushStatus: pushResult?.status ?? null,
@@ -612,6 +618,62 @@ export function createPriorityPr({
   };
 }
 
+export function buildPriorityPrReport(result, generatedAt = new Date().toISOString()) {
+  return {
+    schema: 'priority/pr-create@v1',
+    generatedAt,
+    issue: {
+      upstreamNumber: result.issueNumber ?? null,
+      localNumber: result.localIssueNumber ?? null,
+      source: result.issueSource ?? null,
+      mirrorOf: result.mirrorOf ?? null
+    },
+    upstream: {
+      repository:
+        result.upstream?.owner && result.upstream?.repo ? `${result.upstream.owner}/${result.upstream.repo}` : null
+    },
+    head: {
+      remote: result.headRemote ?? null,
+      repository:
+        result.headRepository?.owner && result.headRepository?.repo
+          ? `${result.headRepository.owner}/${result.headRepository.repo}`
+          : null,
+      branch: result.branch ?? null
+    },
+    base: result.base ?? null,
+    pushStatus: result.pushStatus ?? null,
+    strategy: result.strategy ?? null,
+    reusedExistingPullRequest: result.reusedExistingPullRequest === true,
+    pullRequest: result.pullRequest
+      ? {
+          number: result.pullRequest.number ?? null,
+          url: result.pullRequest.url ?? null,
+          isDraft: result.pullRequest.isDraft ?? null
+        }
+      : null
+  };
+}
+
+export function writePriorityPrReport(
+  result,
+  {
+    reportDir = DEFAULT_REPORT_DIR,
+    mkdirSyncFn = mkdirSync,
+    writeFileSyncFn = writeFileSync,
+    getNow = () => new Date().toISOString()
+  } = {}
+) {
+  const repoRoot = result?.repoRoot || process.cwd();
+  const resolvedReportDir = path.isAbsolute(reportDir) ? reportDir : path.join(repoRoot, reportDir);
+  const fileIssueNumber = result?.localIssueNumber ?? result?.issueNumber ?? 'branch';
+  const fileRemote = String(result?.headRemote || 'origin').replace(/[^a-z0-9._-]/gi, '-');
+  const reportPath = path.join(resolvedReportDir, `priority-pr-create-${fileRemote}-${fileIssueNumber}.json`);
+  const report = buildPriorityPrReport(result, getNow());
+  mkdirSyncFn(resolvedReportDir, { recursive: true });
+  writeFileSyncFn(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  return { report, reportPath };
+}
+
 export function main(argv = process.argv) {
   const options = parseArgs(argv);
   if (options.help) {
@@ -620,9 +682,11 @@ export function main(argv = process.argv) {
   }
 
   const result = createPriorityPr({ options });
+  const reportResult = writePriorityPrReport(result, { reportDir: options.reportDir });
   if (result?.strategy) {
     console.log(`[priority:create-pr] strategy=${result.strategy}`);
   }
+  console.log(`[priority:create-pr] report=${reportResult.reportPath}`);
   return 0;
 }
 

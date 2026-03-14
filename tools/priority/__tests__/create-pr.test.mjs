@@ -2,7 +2,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync as nodeReadFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync as nodeReadFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   parseArgs,
   parseRouterIssueNumber,
@@ -15,7 +17,8 @@ import {
   buildTitle,
   buildBody,
   resolveBody,
-  createPriorityPr
+  createPriorityPr,
+  writePriorityPrReport
 } from '../create-pr.mjs';
 
 function readDefaultPrTemplate(filePath, encoding) {
@@ -48,6 +51,7 @@ test('parseArgs accepts explicit PR helper overrides', () => {
     title: 'Explicit title',
     body: null,
     bodyFile: 'pr-body.md',
+    reportDir: path.join('tests', 'results', '_agent', 'issue'),
     headRemote: null,
     help: false
   });
@@ -89,6 +93,11 @@ test('parseArgs accepts body values that begin with a dash', () => {
 test('parseArgs accepts an explicit head remote override', () => {
   const options = parseArgs(['node', 'create-pr.mjs', '--head-remote', 'personal']);
   assert.equal(options.headRemote, 'personal');
+});
+
+test('parseArgs accepts an explicit report directory override', () => {
+  const options = parseArgs(['node', 'create-pr.mjs', '--report-dir', '.tmp/pr-reports']);
+  assert.equal(options.reportDir, '.tmp/pr-reports');
 });
 
 test('parseRouterIssueNumber returns positive integer issue values', () => {
@@ -530,6 +539,56 @@ test('createPriorityPr uses mirror metadata for PR closing references while matc
 
   assert.match(observedTitle, /#966/);
   assert.match(observedBody, /Closes #966/);
+});
+
+test('writePriorityPrReport persists personal fork lane metadata for future resume', () => {
+  const reportDir = mkdtempSync(path.join(os.tmpdir(), 'priority-pr-report-'));
+  const { report, reportPath } = writePriorityPrReport(
+    {
+      repoRoot: reportDir,
+      branch: 'issue/personal-969-fork-lane-dogfood',
+      base: 'develop',
+      issueNumber: 969,
+      localIssueNumber: 319,
+      issueSource: 'router',
+      mirrorOf: {
+        number: 969,
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/969'
+      },
+      headRemote: 'personal',
+      upstream: {
+        owner: 'LabVIEW-Community-CI-CD',
+        repo: 'compare-vi-cli-action'
+      },
+      headRepository: {
+        owner: 'svelderrainruiz',
+        repo: 'compare-vi-cli-action'
+      },
+      pushStatus: 'pushed',
+      strategy: 'gh-pr-create',
+      reusedExistingPullRequest: false,
+      pullRequest: {
+        number: 1139,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1139',
+        isDraft: false
+      }
+    },
+    {
+      reportDir,
+      getNow: () => '2026-03-14T10:45:00.000Z'
+    }
+  );
+
+  assert.equal(path.basename(reportPath), 'priority-pr-create-personal-319.json');
+  assert.equal(report.schema, 'priority/pr-create@v1');
+  assert.equal(report.issue.upstreamNumber, 969);
+  assert.equal(report.issue.localNumber, 319);
+  assert.equal(report.issue.mirrorOf.number, 969);
+  assert.equal(report.head.remote, 'personal');
+  assert.equal(report.head.repository, 'svelderrainruiz/compare-vi-cli-action');
+  assert.equal(report.pullRequest.number, 1139);
+  assert.match(nodeReadFileSync(reportPath, 'utf8'), /priority\/pr-create@v1/);
 });
 
 test('createPriorityPr preserves an already-published human-drafted PR so a later ready-for-review transition can trigger a fresh Copilot review', () => {
