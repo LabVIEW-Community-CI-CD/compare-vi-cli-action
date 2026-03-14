@@ -55,6 +55,7 @@
     "intake:route": "pwsh -NoLogo -NoProfile -File tools/Resolve-GitHubIntakeRoute.ps1",
     "lint:md": "node tools/lint-markdown.mjs --all",
     "lint:md:changed": "node tools/lint-markdown.mjs",
+    "local-collab:assist:vi-history": "node tools/local-collab/assist/vi-history/run-operator-assistance.mjs",
     "local-collab:kpi": "node tools/local-collab/kpi/rollup-local-collab-kpi.mjs",
     "workflow:drift:ensure": "node tools/workflows/run-workflow-enclave.mjs --ensure-only",
     "workflow:drift:check": "node tools/workflows/run-workflow-enclave.mjs --default-scope --check",
