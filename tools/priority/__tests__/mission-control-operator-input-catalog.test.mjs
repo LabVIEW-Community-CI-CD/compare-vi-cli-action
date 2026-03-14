@@ -25,6 +25,10 @@ function compileValidator() {
   return ajv.compile(loadJson('docs/schemas/mission-control-operator-input-catalog-v1.schema.json'));
 }
 
+function sortStrings(values) {
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
+
 test('mission-control operator input catalog fixture matches schema', () => {
   const validate = compileValidator();
   const fixture = loadJson('tools/priority/__fixtures__/mission-control/operator-input-catalog.json');
@@ -88,6 +92,39 @@ test('mission-control envelope operator fields stay inside the bounded-input cat
     } else {
       assert.ok(catalogEntry.allowedValues.includes(override.value));
     }
+  }
+});
+
+test('mission-control operator input catalog stays aligned with the envelope operator contract', () => {
+  const catalog = loadJson('tools/priority/__fixtures__/mission-control/operator-input-catalog.json');
+  const envelopeSchema = loadJson('docs/schemas/mission-control-envelope-v1.schema.json');
+  const operatorProperties = envelopeSchema.properties.operator.properties;
+  const overrideSchema = envelopeSchema.$defs.override;
+
+  assert.deepEqual(
+    sortStrings(catalog.intents.map((entry) => entry.id)),
+    sortStrings(operatorProperties.intent.enum)
+  );
+  assert.deepEqual(
+    sortStrings(catalog.focuses.map((entry) => entry.id)),
+    sortStrings(operatorProperties.focus.enum)
+  );
+  assert.deepEqual(
+    sortStrings(catalog.overrides.map((entry) => entry.key)),
+    sortStrings(overrideSchema.properties.key.enum)
+  );
+
+  const booleanOverrideKeys = new Set(['allowAdminMerge', 'allowForkBaseDispatch', 'allowParkedLane', 'requireProjectBoardApply']);
+  for (const entry of catalog.overrides) {
+    if (booleanOverrideKeys.has(entry.key)) {
+      assert.equal(entry.valueType, 'boolean', `Override '${entry.key}' must stay boolean-aligned with the envelope contract.`);
+      assert.equal('allowedValues' in entry, false, `Boolean override '${entry.key}' should not declare allowedValues.`);
+      continue;
+    }
+
+    assert.equal(entry.key, 'copilotCliUsage');
+    assert.equal(entry.valueType, 'enum');
+    assert.deepEqual(entry.allowedValues, ['optional', 'required']);
   }
 });
 
