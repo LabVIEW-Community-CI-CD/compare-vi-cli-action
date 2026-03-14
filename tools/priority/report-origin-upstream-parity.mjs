@@ -4,6 +4,12 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  assertPlaneTransition,
+  findRepositoryPlaneEntry,
+  loadBranchClassContract,
+  resolveRepositoryPlane
+} from './lib/branch-classification.mjs';
 
 function sh(cmd, args, opts = {}) {
   return spawnSync(cmd, args, { encoding: 'utf8', shell: false, ...opts });
@@ -156,6 +162,14 @@ function runGitOptional(args, runner = sh) {
   return trimText(result.stdout);
 }
 
+function tryGetRepoRoot(runner = sh) {
+  const result = ensureCommand(runner('git', ['rev-parse', '--show-toplevel']), 'git');
+  if (result.status !== 0) {
+    return null;
+  }
+  return trimText(result.stdout);
+}
+
 function collectRemoteDetails(remoteName, runner = sh) {
   if (!remoteName) {
     return {
@@ -173,6 +187,92 @@ function collectRemoteDetails(remoteName, runner = sh) {
     present: Boolean(fetchUrl || pushUrl),
     fetchUrl: fetchUrl || null,
     pushUrl: pushUrl || null
+  };
+}
+
+function parseRepositorySlug(url) {
+  if (!url) return null;
+  const sshMatch = String(url).match(/:(?<repoPath>[^/]+\/[^/]+?)(?:\.git)?$/);
+  const httpsMatch = String(url).match(/github\.com\/(?<repoPath>[^/]+\/[^/]+?)(?:\.git)?$/i);
+  const repoPath = sshMatch?.groups?.repoPath ?? httpsMatch?.groups?.repoPath;
+  if (!repoPath) {
+    return null;
+  }
+  const [owner, repo] = repoPath.split('/');
+  if (!owner || !repo) {
+    return null;
+  }
+  return `${owner}/${repo}`;
+}
+
+function resolvePlaneIdentity({ remoteName, remoteDetails, contract }) {
+  const normalizedRemote = trimText(remoteName).toLowerCase();
+  if (normalizedRemote === 'upstream') {
+    return {
+      remote: remoteName,
+      plane: 'upstream',
+      repository: contract.upstreamRepository
+    };
+  }
+
+  if (normalizedRemote === 'origin' || normalizedRemote === 'personal') {
+    const planeEntry = findRepositoryPlaneEntry(contract, normalizedRemote);
+    const repository = planeEntry?.repositories?.[0] ?? null;
+    if (!repository) {
+      throw new Error(`Branch class contract does not define a repository for remote '${remoteName}'.`);
+    }
+    return {
+      remote: remoteName,
+      plane: normalizedRemote,
+      repository
+    };
+  }
+
+  const repository =
+    parseRepositorySlug(remoteDetails?.fetchUrl) ??
+    parseRepositorySlug(remoteDetails?.pushUrl);
+  if (!repository) {
+    throw new Error(`Unable to resolve repository slug for remote '${remoteName}'.`);
+  }
+  const plane = resolveRepositoryPlane(repository, contract);
+  if (plane === 'fork') {
+    throw new Error(`Unable to resolve repository plane for remote '${remoteName}' (${repository}).`);
+  }
+  return {
+    remote: remoteName,
+    plane,
+    repository
+  };
+}
+
+function resolveParityPlaneTransition({ baseRef, headRef, contract, runner = sh }) {
+  const baseRemote = parseRemoteFromRef(baseRef);
+  const headRemote = parseRemoteFromRef(headRef);
+  if (!baseRemote || !headRemote) {
+    throw new Error(`Parity refs must point at named remotes. Received '${baseRef}' and '${headRef}'.`);
+  }
+
+  const baseRemoteDetails = collectRemoteDetails(baseRemote, runner);
+  const headRemoteDetails = collectRemoteDetails(headRemote, runner);
+  const base = resolvePlaneIdentity({ remoteName: baseRemote, remoteDetails: baseRemoteDetails, contract });
+  const head = resolvePlaneIdentity({ remoteName: headRemote, remoteDetails: headRemoteDetails, contract });
+  const transition = assertPlaneTransition({
+    fromPlane: base.plane,
+    toPlane: head.plane,
+    action: 'sync',
+    contract
+  });
+
+  return {
+    baseRemote,
+    headRemote,
+    baseRemoteDetails,
+    headRemoteDetails,
+    planeTransition: {
+      ...transition,
+      baseRepository: base.repository,
+      headRepository: head.repository
+    }
   };
 }
 
@@ -240,8 +340,10 @@ export function collectParity(options = {}, runner = sh) {
   const sampleLimit = toPositiveInt(options.sampleLimit, 20);
   const strict = Boolean(options.strict);
   const now = new Date().toISOString();
+  const repoRoot = options.repoRoot || tryGetRepoRoot(runner) || process.cwd();
 
   try {
+    const contract = options.branchClassContract || loadBranchClassContract(repoRoot);
     const baseCommit = trimText(runGit(['rev-parse', '--verify', baseRef], runner));
     const headCommit = trimText(runGit(['rev-parse', '--verify', headRef], runner));
     const baseTree = trimText(runGit(['rev-parse', `${baseRef}^{tree}`], runner));
@@ -253,8 +355,6 @@ export function collectParity(options = {}, runner = sh) {
     const sample = sampleLimit > 0 ? files.slice(0, sampleLimit) : [];
     const treeEqual = baseTree === headTree;
     const historyEqual = counts.baseOnly === 0 && counts.headOnly === 0;
-    const baseRemote = parseRemoteFromRef(baseRef);
-    const headRemote = parseRemoteFromRef(headRef);
     const recommendation = buildParityRecommendation({
       baseRef,
       headRef,
@@ -263,11 +363,33 @@ export function collectParity(options = {}, runner = sh) {
       headOnly: counts.headOnly,
       tipDiffCount: files.length
     });
-    const baseRemoteDetails = collectRemoteDetails(baseRemote, runner);
-    const headRemoteDetails = collectRemoteDetails(headRemote, runner);
+    const {
+      baseRemote,
+      headRemote,
+      baseRemoteDetails,
+      headRemoteDetails,
+      planeTransition
+    } = resolveParityPlaneTransition({
+      baseRef,
+      headRef,
+      contract,
+      runner
+    });
     const remotes = {};
-    if (baseRemoteDetails.name) remotes[baseRemoteDetails.name] = baseRemoteDetails;
-    if (headRemoteDetails.name) remotes[headRemoteDetails.name] = headRemoteDetails;
+    if (baseRemoteDetails.name) {
+      remotes[baseRemoteDetails.name] = {
+        ...baseRemoteDetails,
+        plane: planeTransition.from,
+        repository: planeTransition.baseRepository
+      };
+    }
+    if (headRemoteDetails.name) {
+      remotes[headRemoteDetails.name] = {
+        ...headRemoteDetails,
+        plane: planeTransition.to,
+        repository: planeTransition.headRepository
+      };
+    }
 
     return {
       schema: 'origin-upstream-parity@v1',
@@ -300,6 +422,7 @@ export function collectParity(options = {}, runner = sh) {
         headOnly: counts.headOnly
       },
       recommendation,
+      planeTransition,
       remoteManagement: {
         baseRemote,
         headRemote,
@@ -366,7 +489,8 @@ export function renderSummaryMarkdown(report) {
     `| History Parity | ${report.historyParity?.status || 'unknown'} |`,
     `| Tip Diff File Count | ${report.tipDiff.fileCount} |`,
     `| Commit Divergence (base-only/head-only) | ${report.commitDivergence.baseOnly}/${report.commitDivergence.headOnly} |`,
-    `| Recommendation | ${report.recommendation?.code || 'n/a'} |`
+    `| Recommendation | ${report.recommendation?.code || 'n/a'} |`,
+    `| Plane Transition | ${report.planeTransition ? `${report.planeTransition.from}->${report.planeTransition.to} (${report.planeTransition.via})` : 'n/a'} |`
   ];
 
   if (Array.isArray(report.tipDiff.sample) && report.tipDiff.sample.length > 0) {
@@ -449,6 +573,21 @@ async function main() {
     options.githubOutputPath,
     'parity_recommendation_code',
     report.status === 'ok' ? report.recommendation?.code : ''
+  );
+  appendGitHubOutput(
+    options.githubOutputPath,
+    'parity_transition_from',
+    report.status === 'ok' ? report.planeTransition?.from : ''
+  );
+  appendGitHubOutput(
+    options.githubOutputPath,
+    'parity_transition_to',
+    report.status === 'ok' ? report.planeTransition?.to : ''
+  );
+  appendGitHubOutput(
+    options.githubOutputPath,
+    'parity_transition_via',
+    report.status === 'ok' ? report.planeTransition?.via : ''
   );
   appendGitHubOutput(options.githubOutputPath, 'parity_report_path', outputPath);
 

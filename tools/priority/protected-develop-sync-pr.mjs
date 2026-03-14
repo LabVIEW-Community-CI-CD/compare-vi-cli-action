@@ -7,6 +7,11 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import {
+  assertPlaneTransition,
+  loadBranchClassContract,
+  resolveRepositoryPlane
+} from './lib/branch-classification.mjs';
+import {
   ensureForkRemote,
   ensureGhCli,
   resolveUpstream,
@@ -151,6 +156,7 @@ export function buildProtectedSyncSummaryPayload({
   localHead,
   upstream,
   targetRepository,
+  planeTransition,
   pullRequest,
   readyState,
   mergeRequest,
@@ -171,6 +177,7 @@ export function buildProtectedSyncSummaryPayload({
     localHead: localHead ?? null,
     upstreamRepository: upstream ? `${upstream.owner}/${upstream.repo}` : null,
     targetRepository: targetRepository ? `${targetRepository.owner}/${targetRepository.repo}` : null,
+    planeTransition: planeTransition ?? null,
     syncMethod,
     allowForkSyncing,
     mergeUpstream,
@@ -346,6 +353,31 @@ function writeReport(reportPath, payload) {
   writeFileSync(reportPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 
+function resolveProtectedSyncPlaneTransition({
+  repoRoot,
+  upstream,
+  targetRepository,
+  loadBranchClassContractFn = loadBranchClassContract
+}) {
+  const contract = loadBranchClassContractFn(repoRoot);
+  const upstreamRepository = upstream ? `${upstream.owner}/${upstream.repo}` : null;
+  const forkRepository = targetRepository ? `${targetRepository.owner}/${targetRepository.repo}` : null;
+  const fromPlane = resolveRepositoryPlane(upstreamRepository, contract);
+  const toPlane = resolveRepositoryPlane(forkRepository, contract);
+  const transition = assertPlaneTransition({
+    fromPlane,
+    toPlane,
+    action: 'sync',
+    contract
+  });
+
+  return {
+    ...transition,
+    baseRepository: upstreamRepository,
+    headRepository: forkRepository
+  };
+}
+
 export function runProtectedDevelopSync({
   repoRoot = getRepoRoot(),
   options = parseArgs(),
@@ -355,7 +387,8 @@ export function runProtectedDevelopSync({
   runGhPrCreateFn = runGhPrCreate,
   runGhJsonFn = runGhJson,
   updateExistingPullRequestFn = updateExistingPullRequest,
-  spawnSyncFn = spawnSync
+  spawnSyncFn = spawnSync,
+  loadBranchClassContractFn = loadBranchClassContract
 } = {}) {
   if (options.help) {
     printUsage();
@@ -374,6 +407,12 @@ export function runProtectedDevelopSync({
   const upstream = resolveUpstreamFn(repoRoot);
   const targetRepository = ensureForkRemoteFn(repoRoot, upstream, options.targetRemote, { spawnSyncFn });
   const targetRepoSlug = `${targetRepository.owner}/${targetRepository.repo}`;
+  const planeTransition = resolveProtectedSyncPlaneTransition({
+    repoRoot,
+    upstream,
+    targetRepository,
+    loadBranchClassContractFn
+  });
   let protection = null;
   try {
     protection = loadBranchProtection(repoRoot, targetRepoSlug, options.branch, {
@@ -400,6 +439,7 @@ export function runProtectedDevelopSync({
       localHead: options.localHead,
       upstream,
       targetRepository,
+      planeTransition,
       syncMethod: 'fork-sync',
       allowForkSyncing,
       mergeUpstream,
@@ -494,6 +534,7 @@ export function runProtectedDevelopSync({
     localHead: options.localHead,
     upstream,
     targetRepository,
+    planeTransition,
     syncMethod: 'protected-pr',
     allowForkSyncing,
     mergeUpstreamError,

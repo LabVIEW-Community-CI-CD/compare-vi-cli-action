@@ -83,6 +83,12 @@ test('collectParity returns ok payload when git commands succeed', () => {
   assert.equal(report.recommendation.code, 'history-diverged-tree-equal');
   assert.equal(report.remoteManagement.baseRemote, 'upstream');
   assert.equal(report.remoteManagement.headRemote, 'origin');
+  assert.equal(report.remoteManagement.remotes.upstream.plane, 'upstream');
+  assert.equal(report.remoteManagement.remotes.origin.plane, 'origin');
+  assert.equal(report.planeTransition.from, 'upstream');
+  assert.equal(report.planeTransition.to, 'origin');
+  assert.equal(report.planeTransition.action, 'sync');
+  assert.equal(report.planeTransition.via, 'priority:develop:sync');
   assert.equal(calls.length >= 6, true);
 });
 
@@ -117,6 +123,38 @@ test('collectParity returns unavailable payload when refs are missing (non-stric
   assert.match(report.reason, /git rev-parse --verify/);
 });
 
+test('collectParity fails closed when plane transition evidence cannot be resolved', () => {
+  const fakeRunner = (_cmd, args) => {
+    if (args[0] === 'rev-parse' && args[1] === '--verify') {
+      return { status: 0, stdout: `${args[2]}-commit\n`, stderr: '' };
+    }
+    if (args[0] === 'rev-parse' && String(args[1]).endsWith('^{tree}')) {
+      return { status: 0, stdout: 'tree-shared\n', stderr: '' };
+    }
+    if (args[0] === 'rev-list') {
+      return { status: 0, stdout: '0\t0\n', stderr: '' };
+    }
+    if (args[0] === 'diff') {
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    if (args[0] === 'remote' && args[1] === 'get-url') {
+      return { status: 0, stdout: 'C:/tmp/local-bare.git\n', stderr: '' };
+    }
+    return { status: 1, stdout: '', stderr: 'unexpected command' };
+  };
+
+  const report = collectParity(
+    {
+      baseRef: 'mirror/develop',
+      headRef: 'review/develop'
+    },
+    fakeRunner
+  );
+
+  assert.equal(report.status, 'unavailable');
+  assert.match(report.reason, /plane transition|repository slug|repository plane/i);
+});
+
 test('collectParity throws in strict mode when git fails', () => {
   const fakeRunner = () => ({ status: 1, stdout: '', stderr: 'boom' });
   assert.throws(
@@ -142,6 +180,7 @@ test('renderSummaryMarkdown includes parity metrics for ok status', () => {
     historyParity: { status: 'diverged', equal: false },
     tipDiff: { fileCount: 3, sample: ['a.txt'], sampleLimit: 20 },
     commitDivergence: { baseOnly: 1, headOnly: 4 },
+    planeTransition: { from: 'upstream', to: 'origin', via: 'priority:develop:sync' },
     recommendation: {
       code: 'history-diverged-tree-equal',
       summary: 'Tree is aligned but history diverges.',
@@ -153,5 +192,6 @@ test('renderSummaryMarkdown includes parity metrics for ok status', () => {
   assert.match(markdown, /Tip Diff File Count \| 3/);
   assert.match(markdown, /Commit Divergence \(base-only\/head-only\) \| 1\/4/);
   assert.match(markdown, /Recommendation \| history-diverged-tree-equal/);
+  assert.match(markdown, /Plane Transition \| upstream->origin \(priority:develop:sync\)/);
   assert.match(markdown, /`a.txt`/);
 });
