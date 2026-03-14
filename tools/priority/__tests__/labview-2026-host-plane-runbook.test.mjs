@@ -32,7 +32,10 @@ test('single-host runbook points to the authoritative commands and artifacts', (
   assert.match(runbook, /pwsh -NoLogo -NoProfile -File tools\/Test-DockerDesktopFastLoop\.ps1 -LaneScope both -StepTimeoutSeconds 600/);
   assert.match(runbook, /node tools\/npm\/run-script\.mjs history:diagnostics:show -- --ResultsRoot tests\/results\/local-parity\/windows/);
   assert.match(runbook, /labview-2026-host-plane-report\.json/);
+  assert.match(runbook, /labview-2026-host-plane-summary\.md/);
   assert.match(runbook, /docker-runtime-fastloop-readiness\.json/);
+  assert.match(runbook, /docker-fast-loop-proof-host-plane-summary-path/);
+  assert.match(runbook, /\[host-plane-split\]\[summary\].*status=<status>.*sha256=<sha256>/);
 });
 
 test('developer guide and documentation manifest point back to the single-host runbook', () => {
@@ -41,9 +44,15 @@ test('developer guide and documentation manifest point back to the single-host r
   const entries = Array.isArray(manifest) ? manifest : manifest.entries;
 
   assert.match(developerGuide, /docs\/SINGLE_HOST_LABVIEW_2026_PLANES\.md/);
+  assert.match(developerGuide, /labview-2026-host-plane-summary-path/);
+  assert.match(developerGuide, /docker-fast-loop-proof-host-plane-summary-path/);
 
   assert.ok(Array.isArray(entries), 'documentation manifest should expose an entries array');
   const entry = entries.find((item) => item.name === 'Host Plane Diagnostics Contracts');
   assert.ok(entry, 'documentation manifest should include the host-plane diagnostics entry');
   assert.ok(entry.files.includes('docs/SINGLE_HOST_LABVIEW_2026_PLANES.md'));
+  assert.ok(entry.files.includes('docs/DEVELOPER_GUIDE.md'));
+  assert.ok(entry.files.includes('tools/Write-DockerFastLoopReadiness.ps1'));
+  assert.ok(entry.files.includes('tools/Write-DockerFastLoopProof.ps1'));
+  assert.ok(entry.files.includes('tools/Show-DockerFastLoopDiagnostics.ps1'));
 });
