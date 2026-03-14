@@ -81,6 +81,115 @@ test('copilot-review-gate skips draft PRs before any live lookup', async () => {
   assert.equal(threadsCalled, false);
 });
 
+test('copilot-review-gate passes ready PRs in draft-only-explicit mode without polling for a GitHub review run', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  let reviewsCallCount = 0;
+  let threadsCallCount = 0;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '1094',
+      '--head-sha',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+      '--copilot-review-strategy',
+      'draft-only-explicit',
+      '--poll-attempts',
+      '3',
+      '--poll-delay-ms',
+      '1',
+    ]),
+    loadReviewsFn: async () => {
+      reviewsCallCount += 1;
+      return [];
+    },
+    loadThreadsFn: async () => {
+      threadsCallCount += 1;
+      return {
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: [],
+              },
+            },
+          },
+        },
+      };
+    },
+    loadReviewRunFn: async () => null,
+    writeReportFn: () => 'memory://copilot-review-gate-local-only.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.gateState, 'ready');
+  assert.deepEqual(result.report?.reasons, ['local-review-mode-no-github-review-required']);
+  assert.equal(result.report?.source.copilotReviewStrategy, 'draft-only-explicit');
+  assert.equal(result.report?.poll, undefined);
+  assert.equal(reviewsCallCount, 1);
+  assert.equal(threadsCallCount, 1);
+});
+
+test('copilot-review-gate keeps merge-group validation non-blocking in draft-only-explicit mode when GitHub review is intentionally absent', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  const liveHead = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'merge_group',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--head-sha',
+      '7c5a463fc1c90edff1bc7671a22cd2bb1308def5',
+      '--head-branch',
+      'gh-readonly-queue/develop/pr-1094-23324a081abaf177d24ea295e6da805ce541465a',
+      '--base-ref',
+      'refs/heads/develop',
+      '--copilot-review-strategy',
+      'draft-only-explicit',
+    ]),
+    loadPullRequestFn: async () => ({
+      number: 1094,
+      html_url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1094',
+      draft: false,
+      head: { sha: liveHead },
+      base: { ref: 'develop' },
+    }),
+    loadReviewsFn: async () => [],
+    loadThreadsFn: async () => ({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [],
+            },
+          },
+        },
+      },
+    }),
+    loadReviewRunFn: async () => null,
+    writeReportFn: () => 'memory://copilot-review-gate-merge-group-local-only.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report?.status, 'pass');
+  assert.equal(result.report?.gateState, 'ready');
+  assert.deepEqual(result.report?.reasons, ['local-review-mode-no-github-review-required']);
+  assert.equal(result.report?.pullRequest.headSha, liveHead);
+});
+
 test('parseMergeGroupHeadBranch resolves the queued PR number and queue token from the merge-group branch', async () => {
   const { parseMergeGroupHeadBranch } = await loadModule();
 
