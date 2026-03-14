@@ -4,7 +4,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { loadBranchClassContract, resolveBranchPlaneTransition, resolveLaneBranchPrefix } from './lib/branch-classification.mjs';
+import { loadBranchClassContract, resolveBranchPlaneTransition } from './lib/branch-classification.mjs';
+import { resolveRequiredLaneBranchPrefix } from './lib/runtime-lane-branch-contract.mjs';
 import {
   assessDockerDesktopReviewLoopReceipt,
   buildLocalReviewLoopCliArgs,
@@ -514,8 +515,7 @@ function resolveIssueBranchName({
   implementationRemote = 'origin',
   repoRoot = process.cwd(),
   branchClassContract = null,
-  loadBranchClassContractFn = loadBranchClassContract,
-  branchPrefix = 'issue'
+  loadBranchClassContractFn = loadBranchClassContract
 }) {
   const slug = normalizeText(title)
     .normalize('NFKD')
@@ -525,18 +525,13 @@ function resolveIssueBranchName({
     .replace(/-+/g, '-')
     .toLowerCase()
     .replace(/^-+|-+$/g, '') || 'work';
-  let lanePrefix = '';
-  try {
-    lanePrefix = resolveLaneBranchPrefix({
-      contract: branchClassContract ?? loadBranchClassContractFn(repoRoot),
-      plane: normalizeText(implementationRemote) || 'upstream',
-      fallbackPrefix: `${branchPrefix}/`
-    });
-  } catch {
-    const remotePrefix = normalizeText(implementationRemote) ? `${normalizeText(implementationRemote).toLowerCase()}-` : '';
-    lanePrefix = `${branchPrefix}/${remotePrefix}`;
-  }
-  return `${lanePrefix}${issueNumber}-${slug}`;
+  const { laneBranchPrefix } = resolveRequiredLaneBranchPrefix({
+    plane: normalizeText(implementationRemote) || 'upstream',
+    repoRoot,
+    branchClassContract,
+    loadBranchClassContractFn
+  });
+  return `${laneBranchPrefix}${issueNumber}-${slug}`;
 }
 
 function parseRepositorySlug(repository) {

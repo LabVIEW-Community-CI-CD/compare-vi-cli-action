@@ -4,6 +4,8 @@ import { access, mkdir, readFile, readdir, rm, unlink, writeFile } from 'node:fs
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { loadBranchClassContract } from './lib/branch-classification.mjs';
+import { assertLaneBranchMatchesPlane } from './lib/runtime-lane-branch-contract.mjs';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_WORKER_REF = 'upstream/develop';
@@ -653,6 +655,25 @@ export async function bootstrapCompareviWorkerCheckout({
   if (branch) {
     const forkRemote = normalizeText(schedulerDecision?.activeLane?.forkRemote) || 'upstream';
     try {
+      assertLaneBranchMatchesPlane({
+        branch,
+        plane: forkRemote,
+        repoRoot: preparedWorker.checkoutPath,
+        loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract
+      });
+    } catch (error) {
+      return {
+        laneId: schedulerDecision.activeLane.laneId,
+        checkoutPath: preparedWorker.checkoutPath,
+        status: 'blocked',
+        source: 'comparevi-bootstrap',
+        reason: normalizeText(error?.message) || String(error),
+        bootstrapCommand: [],
+        bootstrapExitCode: 1,
+        preparedAt: preparedWorker.generatedAt ?? null
+      };
+    }
+    try {
       const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: preparedWorker.checkoutPath }))
         .split(/\r?\n/)
         .map((entry) => normalizeText(entry))
@@ -757,6 +778,27 @@ export async function activateCompareviWorkerLane({
 
   const execFileFn = deps.execFileFn ?? execFileAsync;
   const forkRemote = normalizeText(activeLane?.forkRemote) || 'upstream';
+  try {
+    assertLaneBranchMatchesPlane({
+      branch,
+      plane: forkRemote,
+      repoRoot: checkoutPath,
+      loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract
+    });
+  } catch (error) {
+    return {
+      laneId,
+      checkoutPath,
+      branch,
+      forkRemote,
+      status: 'blocked',
+      source: 'comparevi-branch',
+      reason: normalizeText(error?.message) || String(error),
+      baseRef: DEFAULT_WORKER_REF,
+      trackingRef: `${forkRemote}/${branch}`,
+      fetchedRemotes: []
+    };
+  }
   const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: checkoutPath }))
     .split(/\r?\n/)
     .map((entry) => normalizeText(entry))

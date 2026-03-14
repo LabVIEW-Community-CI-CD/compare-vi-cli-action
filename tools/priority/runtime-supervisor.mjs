@@ -28,7 +28,8 @@ import {
   runRuntimeSupervisor as runCoreRuntimeSupervisor
 } from '../../packages/runtime-harness/index.mjs';
 import { acquireWriterLease, defaultOwner, releaseWriterLease } from './agent-writer-lease.mjs';
-import { loadBranchClassContract, resolveBranchPlaneTransition, resolveLaneBranchPrefix } from './lib/branch-classification.mjs';
+import { loadBranchClassContract, resolveBranchPlaneTransition } from './lib/branch-classification.mjs';
+import { resolveRequiredLaneBranchPrefix } from './lib/runtime-lane-branch-contract.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
 import {
@@ -216,22 +217,16 @@ function resolveCompareviIssueBranchName({
   forkRemote,
   repoRoot = process.cwd(),
   branchClassContract = null,
-  loadBranchClassContractFn = loadBranchClassContract,
-  branchPrefix = 'issue'
+  loadBranchClassContractFn = loadBranchClassContract
 }) {
   const slug = resolveCompareviIssueSlug(title);
-  let lanePrefix = '';
-  try {
-    lanePrefix = resolveLaneBranchPrefix({
-      contract: branchClassContract ?? loadBranchClassContractFn(repoRoot),
-      plane: normalizeText(forkRemote) || 'upstream',
-      fallbackPrefix: `${branchPrefix}/`
-    });
-  } catch {
-    const remotePrefix = normalizeText(forkRemote) ? `${normalizeText(forkRemote).toLowerCase()}-` : '';
-    lanePrefix = `${branchPrefix}/${remotePrefix}`;
-  }
-  return `${lanePrefix}${issueNumber}-${slug}`;
+  const { laneBranchPrefix } = resolveRequiredLaneBranchPrefix({
+    plane: normalizeText(forkRemote) || 'upstream',
+    repoRoot,
+    branchClassContract,
+    loadBranchClassContractFn
+  });
+  return `${laneBranchPrefix}${issueNumber}-${slug}`;
 }
 
 async function readJsonIfPresent(filePath) {
@@ -280,8 +275,11 @@ function resolveForkRemoteForRepository(repository, upstreamRepository, implemen
 
 function buildSchedulerDecisionFromSnapshot({
   snapshot,
+  repoRoot = process.cwd(),
   upstreamRepository,
   implementationRemote,
+  branchClassContract = null,
+  loadBranchClassContractFn = loadBranchClassContract,
   source,
   artifactPaths
 }) {
@@ -324,7 +322,9 @@ function buildSchedulerDecisionFromSnapshot({
     issueNumber: selectedIssue,
     title: snapshot.title,
     forkRemote,
-    repoRoot
+    repoRoot,
+    branchClassContract,
+    loadBranchClassContractFn
   });
   const reason =
     Number.isInteger(snapshot.mirrorOf?.number) && snapshot.mirrorOf.number !== snapshot.number
@@ -405,8 +405,11 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
     }
     return buildSchedulerDecisionFromSnapshot({
       snapshot: snapshotWithRepo,
+      repoRoot,
       upstreamRepository,
       implementationRemote: deliveryPolicy.implementationRemote,
+      branchClassContract: deps.branchClassContract ?? null,
+      loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract,
       source: 'comparevi-standing-priority-live',
       artifactPaths: {
         standingLabel: standingLookup.found.label || null,
@@ -476,8 +479,11 @@ async function planCompareviRuntimeStep({ repoRoot, env, explicitStepOptions, op
   if (cacheSnapshot) {
     return buildSchedulerDecisionFromSnapshot({
       snapshot: cacheSnapshot,
+      repoRoot,
       upstreamRepository,
       implementationRemote: deliveryPolicy.implementationRemote,
+      branchClassContract: deps.branchClassContract ?? null,
+      loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract,
       source: 'comparevi-standing-priority-cache',
       artifactPaths: {
         cachePath
@@ -502,8 +508,11 @@ async function planCompareviRuntimeStep({ repoRoot, env, explicitStepOptions, op
   const issueSnapshot = await readJsonIfPresent(issuePath);
   return buildSchedulerDecisionFromSnapshot({
     snapshot: issueSnapshot,
+    repoRoot,
     upstreamRepository,
     implementationRemote: deliveryPolicy.implementationRemote,
+    branchClassContract: deps.branchClassContract ?? null,
+    loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract,
     source: 'comparevi-standing-priority-router',
     artifactPaths: {
       routerPath,
@@ -893,6 +902,7 @@ async function executeCompareviTurn({
       },
       logger: deps.handoffLogger ?? (() => {}),
       ghRunner: deps.handoffGhRunner,
+      patchIssueLabelsFn: deps.patchIssueLabelsFn,
       syncFn: deps.handoffSyncFn,
       leaseReleaseFn: deps.handoffLeaseReleaseFn,
       releaseLease: false
