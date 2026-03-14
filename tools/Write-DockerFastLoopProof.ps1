@@ -401,4 +401,6 @@ $proof | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $outputResolved -En
 $loopPrefix = Get-DockerFastLoopLogPrefix -ContextObject $proof
 Write-Host ("{0}[proof] {1}" -f $loopPrefix, $outputResolved)
 Write-GitHubOutput -Key 'docker-fast-loop-proof-path' -Value $outputResolved -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'docker-fast-loop-proof-host-plane-summary-path' -Value ([string]$hostPlaneSummaryProvenance.path) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'docker-fast-loop-proof-host-plane-summary-sha256' -Value ([string]$hostPlaneSummaryProvenance.sha256) -Path $GitHubOutputPath
 Write-Output $outputResolved
