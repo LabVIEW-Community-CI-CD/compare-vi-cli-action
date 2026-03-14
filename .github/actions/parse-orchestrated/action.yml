@@ -12,5 +12,5 @@ outputs:
   sample_id:
     description: Sampling correlation id
 runs:
-  using: node20
+  using: node24
   main: index.cjs

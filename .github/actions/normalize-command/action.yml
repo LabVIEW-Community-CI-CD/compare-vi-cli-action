@@ -10,5 +10,5 @@ outputs:
   target:
     description: Detected target (unit|mock|smoke|pester-selfhosted|orchestrated)
 runs:
-  using: node20
+  using: node24
   main: index.cjs

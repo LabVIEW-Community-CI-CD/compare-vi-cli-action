@@ -14,6 +14,12 @@ const runtimeFloorPolicy = JSON.parse(
 const minimumMajors = new Map(
   Object.entries(runtimeFloorPolicy.actions).map(([action, policy]) => [action, policy.minimumMajor])
 );
+const repoOwnedActionRuntimes = new Map(
+  Object.entries(runtimeFloorPolicy.repoOwnedJavaScriptActions ?? {}).map(([actionPath, policy]) => [
+    `${actionPath}/action.yml`,
+    policy.expectedRuntime,
+  ])
+);
 
 function collectWorkflowFiles(startRelativePath) {
   const startPath = path.join(repoRoot, startRelativePath);
@@ -74,4 +80,33 @@ test('validate workflow opts into forced Node 24 JavaScript action execution', (
   );
 
   assert.match(validateWorkflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24:\s*(?:'true'|"true"|true)/);
+});
+
+test('repo-owned JavaScript actions meet the repo Node 24 runtime floor', () => {
+  const files = collectWorkflowFiles(path.join('.github', 'actions'));
+  const failures = [];
+
+  for (const relativePath of files) {
+    const content = readFileSync(path.join(repoRoot, relativePath), 'utf8');
+    const runtimeMatch = content.match(/runs:\s*\n\s+using:\s*(node\d+)/i);
+    if (!runtimeMatch) {
+      continue;
+    }
+    const normalizedRelativePath = relativePath.replaceAll('\\', '/');
+    const expectedRuntime = repoOwnedActionRuntimes.get(normalizedRelativePath);
+    if (!expectedRuntime) {
+      failures.push(`${relativePath}: repo-owned JavaScript action missing from workflow-action-runtime-floor policy`);
+      continue;
+    }
+    const actualRuntime = runtimeMatch[1].toLowerCase();
+    if (actualRuntime !== expectedRuntime) {
+      failures.push(`${relativePath}: ${actualRuntime} != required ${expectedRuntime}`);
+    }
+  }
+
+  assert.deepEqual(
+    failures,
+    [],
+    `Found repo-owned JavaScript actions below the repo Node 24 baseline:\n${failures.join('\n')}`
+  );
 });
