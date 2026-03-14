@@ -48,4 +48,6 @@ test('run-phase wires hook phases through agent-review-policy before commit and 
   assert.match(source, /agent-review-policy/);
   assert.match(source, /Blocking local collaboration hook failure in/);
   assert.match(source, /Skipped core pre-push checks because local agent review failed/);
+  assert.match(source, /github-actions-default/);
+  assert.match(source, /simulation/);
 });

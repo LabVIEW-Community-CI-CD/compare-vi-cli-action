@@ -39,6 +39,23 @@ test('parseArgs defaults hook profiles to profile-scoped receipt paths', () => {
   assert.match(options.request.agentReviewPolicyReceiptPath, /_hooks[\\/]pre-commit-agent-review-policy\.json$/);
 });
 
+test('parseArgs ignores absolute node executable argv tokens from real wrapper invocations', () => {
+  const options = parseArgs([
+    'C:\\Program Files\\nodejs\\node.exe',
+    'C:\\dev\\compare-vi-cli-action\\compare-vi-cli-action\\tools\\local-collab\\providers\\agent-review-policy.mjs',
+    '--repo-root',
+    'C:\\repo',
+    '--review-provider',
+    'simulation',
+    '--profile',
+    'pre-commit'
+  ]);
+
+  assert.equal(options.repoRoot, 'C:\\repo');
+  assert.equal(options.request.profile, 'pre-commit');
+  assert.deepEqual(options.request.reviewProviders, ['simulation']);
+});
+
 test('loadAgentReviewPolicy reads local review provider selection from delivery-agent policy', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'agent-review-policy-load-'));
   await mkdir(path.join(repoRoot, 'tools', 'priority'), { recursive: true });

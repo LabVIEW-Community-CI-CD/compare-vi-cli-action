@@ -38,3 +38,47 @@ test('normalizeSummary zeroes timestamp and duration and sorts steps', () => {
   assert.equal(input.timestamp, '2025-10-13T12:34:56Z');
   assert.equal(input.steps[0].durationMs, 42);
 });
+
+test('normalizeSummary removes volatile JSON timestamps and one-time bootstrap noise from step output', () => {
+  const input = {
+    schema: 'comparevi/hooks-summary@v1',
+    hook: 'pre-push',
+    timestamp: '2026-03-14T04:39:08.869Z',
+    steps: [
+      {
+        name: 'agent-review-policy',
+        durationMs: 27,
+        status: 'ok',
+        stdout: JSON.stringify({
+          generatedAt: '2026-03-14T04:39:08.869Z',
+          overall: {
+            status: 'passed'
+          },
+          providers: {
+            simulation: {
+              startedAt: '2026-03-14T04:39:08.100Z',
+              finishedAt: '2026-03-14T04:39:08.200Z',
+              durationMs: 100
+            }
+          }
+        }, null, 2)
+      },
+      {
+        name: 'pre-push-checks',
+        durationMs: 31,
+        status: 'ok',
+        stdout: [
+          'Downloading actionlint 1.7.7 (actionlint_1.7.7_windows_amd64.zip)...',
+          '[pre-push] actionlint OK'
+        ].join('\n')
+      }
+    ]
+  };
+
+  const normalized = normalizeSummary(input);
+  assert.equal(normalized.steps[0].stdout.includes('"generatedAt": "normalized"'), true);
+  assert.equal(normalized.steps[0].stdout.includes('"startedAt": "normalized"'), true);
+  assert.equal(normalized.steps[0].stdout.includes('"finishedAt": "normalized"'), true);
+  assert.equal(normalized.steps[0].stdout.includes('"durationMs": 0'), true);
+  assert.equal(normalized.steps[1].stdout, '[pre-push] actionlint OK');
+});
