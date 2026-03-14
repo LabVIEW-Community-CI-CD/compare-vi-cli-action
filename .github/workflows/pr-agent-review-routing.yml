@@ -5,7 +5,6 @@ on:
     types: [opened, synchronize, reopened, edited, labeled, unlabeled, converted_to_draft]
 
 permissions:
-  pull-requests: write
   contents: read
 
 jobs:
@@ -13,10 +12,8 @@ jobs:
     if: github.event.pull_request.draft == true
     runs-on: ubuntu-latest
     steps:
-      - name: Route reviewer for agent-authored PRs
+      - name: Acknowledge local-only review routing for agent-authored PRs
         uses: actions/github-script@v8
-        env:
-          REQUIRED_AGENT_REVIEWER: ${{ vars.REQUIRED_AGENT_REVIEWER || 'Copilot' }}
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -31,41 +28,7 @@ jobs:
               core.info('PR is not marked as agent-authored; skipping reviewer routing.');
               return;
             }
-
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const pull_number = pr.number;
-            const requiredReviewer = (process.env.REQUIRED_AGENT_REVIEWER || 'Copilot').trim();
-
-            // Skip if the required reviewer is the PR author (can't request review from yourself)
-            if (pr.user && pr.user.login === requiredReviewer) {
-              core.info(`PR author is @${requiredReviewer}; cannot request self-review. Skipping.`);
-              return;
-            }
-
-            const currentReviewRequests = await github.rest.pulls.listRequestedReviewers({
-              owner,
-              repo,
-              pull_number
-            });
-            const alreadyRequested = (currentReviewRequests.data.users || []).some((u) => u.login === requiredReviewer);
-            if (alreadyRequested) {
-              core.info(`Reviewer @${requiredReviewer} is already requested.`);
-              return;
-            }
-
-            try {
-              await github.rest.pulls.requestReviewers({
-                owner,
-                repo,
-                pull_number,
-                reviewers: [requiredReviewer]
-              });
-              core.info(`Requested reviewer @${requiredReviewer} for PR #${pull_number}.`);
-            } catch (error) {
-              if ((error.status || 0) === 422) {
-                core.info(`Reviewer @${requiredReviewer} could not be re-requested (likely already reviewed/requested).`);
-                return;
-              }
-              throw error;
-            }
+            core.info(
+              'GitHub-side Copilot reviewer routing is disabled for this repository; ' +
+              'draft-review acquisition remains local-only through the repo-owned CLI/orchestrator surfaces.'
+            );
