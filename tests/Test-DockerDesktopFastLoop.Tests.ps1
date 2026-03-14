@@ -889,6 +889,9 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 16
       $summary.hostPlaneReportPath | Should -Not -BeNullOrEmpty
       $summary.hostPlaneSummaryPath | Should -Not -BeNullOrEmpty
+      $summary.hostPlaneSummaryStatus | Should -Be 'ok'
+      $summary.hostPlaneSummarySha256 | Should -Not -BeNullOrEmpty
+      $summary.hostPlaneSummaryReason | Should -Be ''
       Test-Path -LiteralPath $summary.hostPlaneReportPath -PathType Leaf | Should -BeTrue
       Test-Path -LiteralPath $summary.hostPlaneSummaryPath -PathType Leaf | Should -BeTrue
       $summary.hostPlane.runner.hostIsRunner | Should -BeTrue
@@ -900,6 +903,9 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json -Depth 16
       $status.hostPlaneReportPath | Should -Be $summary.hostPlaneReportPath
       $status.hostPlaneSummaryPath | Should -Be $summary.hostPlaneSummaryPath
+      $status.hostPlaneSummaryStatus | Should -Be 'ok'
+      $status.hostPlaneSummarySha256 | Should -Be $summary.hostPlaneSummarySha256
+      $status.hostPlaneSummaryReason | Should -Be ''
 
       $readinessPath = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
       $readiness = Get-Content -LiteralPath $readinessPath -Raw | ConvertFrom-Json -Depth 16
@@ -909,6 +915,64 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $readiness.hostExecutionPolicy.candidateParallelPairs.pairs.Count | Should -Be 2
       $readiness.hostPlanes.x64.status | Should -Be 'ready'
       $readiness.hostPlanes.x32.status | Should -Be 'ready'
+    } finally {
+      Remove-Item Env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_NATIVE_LABVIEWCLI_2026_64_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_NATIVE_LABVIEWCLI_2026_32_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_NATIVE_LVCOMPARE_PATH -ErrorAction SilentlyContinue
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'fails closed and records missing host-plane summary provenance in top-level summary and status artifacts' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-missing-host-plane-summary'
+    New-HarnessRepo -RootPath $repoRoot
+
+    $native64 = Join-Path $repoRoot 'native64\LabVIEW.exe'
+    $native32 = Join-Path $repoRoot 'native32\LabVIEW.exe'
+    $sharedCli = Join-Path $repoRoot 'shared\LabVIEWCLI.exe'
+    $lvCompare = Join-Path $repoRoot 'shared\LVCompare.exe'
+    foreach ($path in @($native64, $native32, $sharedCli, $lvCompare)) {
+      $dir = Split-Path -Parent $path
+      New-Item -ItemType Directory -Path $dir -Force | Out-Null
+      Set-Content -LiteralPath $path -Encoding ascii -Value ''
+    }
+
+    $hostPlaneScriptPath = Join-Path $repoRoot 'tools' 'Write-LabVIEW2026HostPlaneDiagnostics.ps1'
+    Add-Content -LiteralPath $hostPlaneScriptPath -Encoding utf8 -Value @'
+Remove-Item -LiteralPath $summaryResolved -Force -ErrorAction Stop
+'@
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH = $native64
+      $env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH = $native32
+      $env:COMPAREVI_NATIVE_LABVIEWCLI_2026_64_PATH = $sharedCli
+      $env:COMPAREVI_NATIVE_LABVIEWCLI_2026_32_PATH = $sharedCli
+      $env:COMPAREVI_NATIVE_LVCOMPARE_PATH = $lvCompare
+
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -SkipWindowsProbe `
+        -SkipLinuxProbe 2>&1
+      $LASTEXITCODE | Should -Not -Be 0
+      ($output -join "`n") | Should -Match 'Declared host-plane summary artifact not readable'
+
+      $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+      $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 16
+      $summary.hostPlaneSummaryPath | Should -Match 'labview-2026-host-plane-summary\.md'
+      $summary.hostPlaneSummaryStatus | Should -Be 'missing'
+      $summary.hostPlaneSummarySha256 | Should -Be ''
+      $summary.hostPlaneSummaryReason | Should -Be 'declared-summary-unreadable'
+
+      $statusPath = Join-Path $resultsRoot 'docker-runtime-fastloop-status.json'
+      $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json -Depth 16
+      $status.hostPlaneSummaryPath | Should -Be $summary.hostPlaneSummaryPath
+      $status.hostPlaneSummaryStatus | Should -Be 'missing'
+      $status.hostPlaneSummarySha256 | Should -Be ''
+      $status.hostPlaneSummaryReason | Should -Be 'declared-summary-unreadable'
     } finally {
       Remove-Item Env:COMPAREVI_NATIVE_LABVIEW_2026_64_PATH -ErrorAction SilentlyContinue
       Remove-Item Env:COMPAREVI_NATIVE_LABVIEW_2026_32_PATH -ErrorAction SilentlyContinue
