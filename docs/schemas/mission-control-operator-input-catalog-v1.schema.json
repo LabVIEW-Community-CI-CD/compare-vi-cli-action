@@ -400,7 +400,41 @@
           "minLength": 1,
           "maxLength": 280
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "enum": ["standing-priority", "current-head-failure"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "standingPriorityRequired": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "enum": ["queue-health", "handoff", "policy-drift", "docs-contract"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "standingPriorityRequired": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
     },
     "override": {
       "type": "object",

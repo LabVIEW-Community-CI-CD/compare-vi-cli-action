@@ -98,6 +98,20 @@ test('mission-control operator input catalog fails closed when an intent adverti
   assert.equal(valid, false, 'intent-specific allowedFocuses drift should fail schema validation');
 });
 
+test('mission-control operator input catalog fails closed when focus standing-priority requirements drift', () => {
+  const validate = compileValidator();
+  const fixture = loadJson('tools/priority/__fixtures__/mission-control/operator-input-catalog.json');
+  const contradictoryCatalog = structuredClone(fixture);
+  contradictoryCatalog.focuses = fixture.focuses.map((entry) =>
+    entry.id === 'queue-health'
+      ? { ...structuredClone(entry), standingPriorityRequired: true }
+      : structuredClone(entry)
+  );
+
+  const valid = validate(contradictoryCatalog);
+  assert.equal(valid, false, 'focus standingPriorityRequired drift should fail schema validation');
+});
+
 test('mission-control envelope operator fields stay inside the bounded-input catalog', () => {
   const envelope = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
   const catalog = loadJson('tools/priority/__fixtures__/mission-control/operator-input-catalog.json');
