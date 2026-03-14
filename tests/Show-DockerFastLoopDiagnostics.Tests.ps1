@@ -109,6 +109,7 @@ Describe 'Show-DockerFastLoopDiagnostics.ps1' -Tag 'Unit' {
       hostPlaneSummary = [ordered]@{
         status = 'ok'
         path = $hostPlaneSummaryPath
+        sha256 = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
       }
       steps = @(
         [ordered]@{
@@ -140,7 +141,7 @@ Describe 'Show-DockerFastLoopDiagnostics.ps1' -Tag 'Unit' {
 
     $outputText = $output -join "`n"
     $outputText | Should -Match '\[native-labview-2026-64\]\[host-plane\] status=ready'
-    $outputText | Should -Match '\[host-plane-split\]\[summary\] .*labview-2026-host-plane-summary.md'
+    $outputText | Should -Match '\[host-plane-split\]\[summary\] .*labview-2026-host-plane-summary.md status=ok sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     $outputText | Should -Match '\[host-plane-split\]\[runner\] hostIsRunner=True runnerName=GHOST githubActions=False'
     $outputText | Should -Match 'candidateParallelPairs=docker-desktop/windows-container-2026\+native-labview-2026-64,native-labview-2026-64\+native-labview-2026-32'
     $outputText | Should -Match '\[windows-docker-fast-loop\]\[docker-plane\] requested=docker-desktop/windows-container-2026 exclusiveRequired=False exclusiveSatisfied=True pairCount=1'
