@@ -75,6 +75,13 @@ Use these artifacts as the machine-readable source of truth:
    - `docker-fast-loop-host-plane-summary-status`
    - `docker-fast-loop-host-plane-summary-sha256`
    - `docker-fast-loop-host-plane-summary-reason`
+5. Top-level fast-loop Step Summary when `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
+   - `Summary Path`
+   - `Status Path`
+   - `Host Plane Summary Path`
+   - `Host Plane Summary Status`
+   - `Host Plane Summary SHA-256`
+   - `Host Plane Summary Reason`
 
 When the local fast loop runs, prefer the readiness envelope for lane verdicts and the host-plane report for the native
 64-bit versus native 32-bit split. For Docker lane replay, use the readiness envelope together with
@@ -111,7 +118,12 @@ Use the artifacts in this order:
    - project `docker-fast-loop-host-plane-summary-sha256`
    - project `docker-fast-loop-host-plane-summary-reason`
    - keep success and fail-closed summary provenance available to downstream workflow consumers without reopening JSON
-6. `history:diagnostics:show`
+6. Top-level `tools/Test-DockerDesktopFastLoop.ps1` Step Summary
+   - appends `### Docker Fast Loop Summary`
+   - prints the same summary path and status path surfaced through GitHub outputs
+   - prints host-plane summary path, status, SHA-256, and fail-closed reason
+   - preserves the missing-summary reason before the script throws
+7. `history:diagnostics:show`
    - replays the same distinction in console form for the operator
    - prints `[host-plane-split][summary] <path> status=<status> sha256=<sha256>` when summary provenance exists
 
