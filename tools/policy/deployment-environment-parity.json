@@ -1,0 +1,24 @@
+{
+  "schema": "priority/deployment-environment-parity@v1",
+  "sourceRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+  "targets": {
+    "origin": {
+      "repository": "LabVIEW-Community-CI-CD/compare-vi-cli-action-fork",
+      "overrides": {}
+    },
+    "personal": {
+      "repository": "svelderrainruiz/compare-vi-cli-action",
+      "overrides": {
+        "monthly-stability-release": {
+          "preventSelfReview": false,
+          "reviewers": [
+            {
+              "type": "User",
+              "login": "svelderrainruiz"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
