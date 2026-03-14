@@ -56,6 +56,19 @@
             "issueGraph": { "type": ["object", "null"], "additionalProperties": true },
             "pullRequest": { "type": ["object", "null"], "additionalProperties": true },
             "backlog": { "type": ["object", "null"], "additionalProperties": true },
+            "planeTransition": {
+              "type": ["object", "null"],
+              "additionalProperties": true,
+              "properties": {
+                "from": { "type": ["string", "null"] },
+                "to": { "type": ["string", "null"] },
+                "action": { "type": ["string", "null"] },
+                "via": { "type": ["string", "null"] },
+                "branchClass": { "type": ["string", "null"] },
+                "sourceRepository": { "type": ["string", "null"] },
+                "targetRepository": { "type": ["string", "null"] }
+              }
+            },
             "localReviewLoop": { "type": ["object", "null"], "additionalProperties": true },
             "mutationEnvelope": { "type": "object", "additionalProperties": true },
             "turnBudget": { "type": "object", "additionalProperties": true },

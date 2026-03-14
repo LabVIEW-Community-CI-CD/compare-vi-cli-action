@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { loadBranchClassContract, resolveLaneBranchPrefix } from './lib/branch-classification.mjs';
+import { loadBranchClassContract, resolveBranchPlaneTransition, resolveLaneBranchPrefix } from './lib/branch-classification.mjs';
 import {
   assessDockerDesktopReviewLoopReceipt,
   buildLocalReviewLoopCliArgs,
@@ -1730,8 +1730,107 @@ function buildReadyValidationClearanceRuntimeState({ taskPacket, executionReceip
   };
 }
 
+function normalizePlaneTransitionRecord(value) {
+  const record = normalizeOptionalObject(value);
+  if (!record) {
+    return null;
+  }
+  return {
+    from: normalizeText(record.from) || null,
+    to: normalizeText(record.to) || null,
+    action: normalizeText(record.action) || null,
+    via: normalizeText(record.via) || null,
+    branchClass: normalizeText(record.branchClass) || null,
+    sourceRepository: normalizeText(record.sourceRepository) || null,
+    targetRepository: normalizeText(record.targetRepository) || null
+  };
+}
+
+function planeTransitionRecordsMatch(expected, actual) {
+  if (!expected && !actual) {
+    return true;
+  }
+  if (!expected || !actual) {
+    return false;
+  }
+  return (
+    expected.from === actual.from &&
+    expected.to === actual.to &&
+    expected.action === actual.action &&
+    expected.via === actual.via &&
+    expected.branchClass === actual.branchClass &&
+    expected.sourceRepository === actual.sourceRepository &&
+    expected.targetRepository === actual.targetRepository
+  );
+}
+
+function resolveDeliveryPlaneTransition({
+  repoRoot = null,
+  repository,
+  policy,
+  schedulerDecision,
+  taskPacket
+}) {
+  const explicit = normalizePlaneTransitionRecord(
+    taskPacket?.evidence?.delivery?.planeTransition ??
+    schedulerDecision?.artifacts?.planeTransition
+  );
+  const branch =
+    normalizeText(taskPacket?.branch?.name) ||
+    normalizeText(schedulerDecision?.activeLane?.branch) ||
+    null;
+  const sourcePlane =
+    normalizeText(taskPacket?.branch?.forkRemote) ||
+    normalizeText(schedulerDecision?.activeLane?.forkRemote) ||
+    normalizeText(policy?.implementationRemote) ||
+    null;
+  const targetRepository =
+    normalizeText(taskPacket?.repository) ||
+    normalizeText(schedulerDecision?.artifacts?.canonicalRepository) ||
+    normalizeText(repository) ||
+    null;
+
+  if (!branch || !sourcePlane || !targetRepository || !repoRoot) {
+    return explicit;
+  }
+
+  let contract;
+  try {
+    contract = loadBranchClassContract(repoRoot);
+  } catch (error) {
+    if (explicit) {
+      return explicit;
+    }
+    throw error;
+  }
+  const expected = resolveBranchPlaneTransition({
+    branch,
+    sourcePlane,
+    targetRepository,
+    contract
+  });
+  if (!expected) {
+    if (explicit) {
+      throw new Error(`Unexpected planeTransition evidence for ${sourcePlane} lane '${branch}'.`);
+    }
+    return null;
+  }
+  if (!explicit) {
+    throw new Error(
+      `Missing planeTransition evidence for ${sourcePlane} lane '${branch}' targeting '${targetRepository}'.`
+    );
+  }
+  if (!planeTransitionRecordsMatch(expected, explicit)) {
+    throw new Error(
+      `planeTransition evidence for ${sourcePlane} lane '${branch}' does not match the branch class contract.`
+    );
+  }
+  return explicit;
+}
+
 export function buildDeliveryAgentRuntimeRecord({
   now = new Date(),
+  repoRoot = null,
   repository,
   runtimeDir,
   policy,
@@ -1779,6 +1878,13 @@ export function buildDeliveryAgentRuntimeRecord({
     null;
   const localReviewLoop = buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt });
   const readyValidationClearance = buildReadyValidationClearanceRuntimeState({ taskPacket, executionReceipt });
+  const planeTransition = resolveDeliveryPlaneTransition({
+    repoRoot,
+    repository,
+    policy,
+    schedulerDecision,
+    taskPacket
+  });
   return {
     schema: DELIVERY_AGENT_RUNTIME_STATE_SCHEMA,
     generatedAt: toIso(now),
@@ -1825,18 +1931,21 @@ export function buildDeliveryAgentRuntimeRecord({
       reviewPhase: normalizeText(executionReceipt?.details?.reviewPhase) || null,
       pollIntervalSecondsHint,
       reviewMonitor,
+      planeTransition,
       localReviewLoop,
       readyValidationClearance
     },
     artifacts: {
       statePath,
       lanePath,
-      localReviewLoopReceiptPath: normalizeText(localReviewLoop?.receiptPath) || null
+      localReviewLoopReceiptPath: normalizeText(localReviewLoop?.receiptPath) || null,
+      planeTransition
     }
   };
 }
 
 export async function persistDeliveryAgentRuntimeState({
+  repoRoot = null,
   runtimeDir,
   repository,
   policy,
@@ -1857,6 +1966,7 @@ export async function persistDeliveryAgentRuntimeState({
   const lanePath = path.join(lanesDir, `${sanitizeSegment(laneId)}.json`);
   const payload = buildDeliveryAgentRuntimeRecord({
     now,
+    repoRoot,
     repository,
     runtimeDir,
     policy,

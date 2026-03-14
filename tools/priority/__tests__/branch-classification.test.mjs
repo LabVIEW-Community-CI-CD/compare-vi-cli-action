@@ -13,6 +13,7 @@ import {
   loadBranchClassContract,
   matchBranchPattern,
   normalizeBranchName,
+  resolveBranchPlaneTransition,
   resolveLaneBranchPrefix,
   resolveRepositoryPlane,
   resolveRepositoryRole
@@ -72,6 +73,33 @@ test('assertPlaneTransition accepts tracked fork-plane edges and rejects undefin
       }),
     /plane transition origin --review--> personal is not allowed/i
   );
+});
+
+test('resolveBranchPlaneTransition resolves allowed lane promotions and review hops', () => {
+  const promoteTransition = resolveBranchPlaneTransition({
+    branch: 'issue/origin-1129-runtime-plane-transition-receipts',
+    sourcePlane: 'origin',
+    targetRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    contract
+  });
+  assert.deepEqual(promoteTransition, {
+    from: 'origin',
+    to: 'upstream',
+    action: 'promote',
+    via: 'pull-request',
+    branchClass: 'lane',
+    sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+    targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+  });
+
+  const reviewTransition = resolveBranchPlaneTransition({
+    branch: 'issue/personal-1084-fork-plane-branching-model',
+    sourcePlane: 'personal',
+    targetRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+    contract
+  });
+  assert.equal(reviewTransition.action, 'review');
+  assert.equal(reviewTransition.to, 'origin');
 });
 
 test('loadBranchClassContract rejects missing or invalid upstreamRepository slugs', () => {
