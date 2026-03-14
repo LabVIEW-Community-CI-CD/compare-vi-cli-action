@@ -67,6 +67,16 @@
       "Policy Guard (Upstream) / policy-guard"
     ]
   },
+  "required_status_checks_ref": {
+    "develop": {
+      "branchName": "develop",
+      "branchClassId": "upstream-integration"
+    },
+    "release/*": {
+      "branchName": "release/*",
+      "branchClassId": "upstream-release-prep"
+    }
+  },
   "artifacts": {
     "ledger_schema": "docs/schemas/promotion-evidence-ledger-v1.schema.json",
     "default_output_dir": "tests/results/promotion-contract"

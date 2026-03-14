@@ -4,8 +4,15 @@ import { readFile, access, writeFile, mkdir } from 'node:fs/promises';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  loadBranchRequiredChecksPolicy,
+  projectManifestRequiredStatusChecks,
+  resolveProjectedRequiredStatusChecks,
+  resolveProjectedBranchClassId
+} from './lib/branch-required-check-projection.mjs';
 
 const manifestPath = new URL('./policy.json', import.meta.url);
+const branchRequiredChecksPath = new URL('../policy/branch-required-checks.json', import.meta.url);
 
 function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
@@ -61,9 +68,11 @@ async function writeReportIfRequested(reportPath, report, logFn = console.log) {
   logFn(`[policy] report written: ${resolvedPath}`);
 }
 
-async function loadManifest() {
+async function loadManifest(branchRequiredChecksOverride = null) {
   const raw = await readFile(manifestPath, 'utf8');
-  return JSON.parse(raw);
+  const manifest = JSON.parse(raw);
+  const branchRequiredChecks = branchRequiredChecksOverride ?? await loadBranchRequiredChecksPolicy(branchRequiredChecksPath);
+  return projectManifestRequiredStatusChecks(manifest, branchRequiredChecks);
 }
 
 function isNotFoundError(error) {
@@ -1342,7 +1351,8 @@ export async function run({
   execSyncFn = execSync,
   log = console.log,
   error = console.error,
-  manifestOverride = null
+  manifestOverride = null,
+  branchRequiredChecksOverride = null
 } = {}) {
   const options = parseArgs(argv);
   if (options.help) {
@@ -1425,7 +1435,10 @@ export async function run({
   try {
     const dbg = options.debug ? (...args) => log('[policy][debug]', ...args) : () => {};
 
-    const manifest = manifestOverride ?? await loadManifest();
+    const branchRequiredChecks = branchRequiredChecksOverride ?? await loadBranchRequiredChecksPolicy(branchRequiredChecksPath);
+    const manifest = manifestOverride
+      ? projectManifestRequiredStatusChecks(manifestOverride, branchRequiredChecks)
+      : await loadManifest(branchRequiredChecks);
     const forkRun = await detectForkRun(env);
     report.forkRun = forkRun;
     const tokenCandidates = await resolveTokenCandidates(env);
@@ -1728,7 +1741,10 @@ export const __test = Object.freeze({
   prefixRulesetDiffs,
   rulesetIncludesMatch,
   rulesetIdentityMatches,
-  selectRulesetIdentityCandidate
+  selectRulesetIdentityCandidate,
+  projectManifestRequiredStatusChecks,
+  resolveProjectedRequiredStatusChecks,
+  resolveProjectedBranchClassId
 });
 
 const modulePath = path.resolve(fileURLToPath(import.meta.url));

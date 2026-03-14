@@ -3001,6 +3001,94 @@ test('priority:policy build branch-protection payload honors explicit disabled s
   assert.equal(payload.allow_fork_syncing, false);
 });
 
+test('priority:policy --apply projects required checks from the branch-class contract when the manifest omits copied lists', async () => {
+  const manifestOverride = JSON.parse(await readFile(new URL('../policy.json', import.meta.url), 'utf8'));
+  delete manifestOverride.branches.develop.required_status_checks;
+  delete manifestOverride.branches.main.required_status_checks;
+  delete manifestOverride.branches['release/*'].required_status_checks;
+  delete manifestOverride.rulesets.develop.required_status_checks;
+  delete manifestOverride.rulesets['8614140'].required_status_checks;
+  delete manifestOverride.rulesets['8614172'].required_status_checks;
+
+  const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const listUrl = `${repoUrl}/rulesets`;
+  const rulesets = createAlignedRulesets();
+  const developRulesetUrl = `${repoUrl}/rulesets/8811898`;
+  rulesets.develop.rules.find((rule) => rule.type === 'required_status_checks').parameters.required_status_checks = [
+    { context: 'lint' }
+  ];
+  let developRulesetPutPayload = null;
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(createAlignedBranchProtection([]));
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'GET' && url === developRulesetUrl) {
+      return createResponse(rulesets.develop);
+    }
+    if (method === 'PUT' && url === developRulesetUrl) {
+      developRulesetPutPayload = JSON.parse(options.body);
+      rulesets.develop = {
+        ...developRulesetPutPayload,
+        id: 8811898,
+        name: 'develop',
+        target: 'branch',
+        enforcement: 'active',
+        bypass_actors: []
+      };
+      return createResponse(rulesets.develop);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse(rulesets.main);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
+      return createResponse(rulesets.release);
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse(Object.values(rulesets).map(toRulesetSummary));
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--apply'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'test-org/test-repo',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    manifestOverride,
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: () => {},
+    error: () => {}
+  });
+
+  assert.equal(code, 0);
+  assert.ok(developRulesetPutPayload, 'expected develop ruleset update');
+  assert.deepEqual(
+    developRulesetPutPayload.rules.find((rule) => rule.type === 'required_status_checks').parameters.required_status_checks
+      .map((check) => check.context)
+      .slice()
+      .sort(),
+    EXPECTED_DEVELOP_CHECKS.slice().sort()
+  );
+});
+
 test('priority:policy optional ruleset seam treats disabled expectation as explicit absence', () => {
   const normalized = __test.normalizeOptionalRuleExpectation({ enabled: false, severity: 'warnings' });
   assert.deepEqual(normalized, { mode: 'absent', parameters: null });

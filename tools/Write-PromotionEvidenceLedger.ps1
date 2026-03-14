@@ -2,6 +2,7 @@
 param(
   [string]$OutputPath = 'tests/results/promotion-contract/promotion-evidence-ledger.json',
   [string]$ContractPath = 'tools/policy/promotion-contract.json',
+  [string]$BranchRequiredChecksPath = 'tools/policy/branch-required-checks.json',
   [string]$WorkflowName = '',
   [string]$Stream = 'unknown',
   [string]$Channel = 'unknown',
@@ -16,6 +17,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'BranchRequiredCheckProjection.psm1') -Force -DisableNameChecking
 
 function Safe-ReadText {
   param([string]$Path)
@@ -44,6 +47,11 @@ if (-not $contractRaw) {
   throw "Promotion contract file not found: $ContractPath"
 }
 $contract = $contractRaw | ConvertFrom-Json -Depth 50
+$branchPolicyRaw = Safe-ReadText -Path $BranchRequiredChecksPath
+if (-not $branchPolicyRaw) {
+  throw "Branch required-check policy file not found: $BranchRequiredChecksPath"
+}
+$branchPolicy = $branchPolicyRaw | ConvertFrom-Json -Depth 50
 $contractHash = (Get-FileHash -LiteralPath $ContractPath -Algorithm SHA256).Hash.ToLowerInvariant()
 
 $refName = Normalize-String -Value $env:GITHUB_REF_NAME -Fallback (Normalize-String -Value $env:GITHUB_REF)
@@ -83,8 +91,8 @@ $ledger = [ordered]@{
     path = $ContractPath
     sha256 = $contractHash
     requiredStatusChecks = [ordered]@{
-      develop = @($contract.required_status_checks.develop)
-      release = @($contract.required_status_checks.'release/*')
+      develop = @(Resolve-PromotionContractRequiredChecks -Contract $contract -BranchPolicy $branchPolicy -BranchName 'develop')
+      release = @(Resolve-PromotionContractRequiredChecks -Contract $contract -BranchPolicy $branchPolicy -BranchName 'release/*')
     }
   }
   artifacts = [ordered]@{

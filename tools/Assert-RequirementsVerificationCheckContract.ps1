@@ -13,6 +13,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path (Split-Path -Parent $PSCommandPath) 'BranchRequiredCheckProjection.psm1') -Force -DisableNameChecking
+
 $errors = New-Object System.Collections.Generic.List[string]
 
 function Add-ContractError {
@@ -26,22 +28,6 @@ function Read-JsonFile {
     throw "File not found: $Path"
   }
   return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -Depth 20)
-}
-
-function Resolve-RulesetRequiredChecks {
-  param(
-    [Parameter(Mandatory)][object]$PriorityPolicy,
-    [Parameter(Mandatory)][string[]]$Candidates
-  )
-
-  foreach ($candidate in $Candidates) {
-    $node = $PriorityPolicy.rulesets.PSObject.Properties[$candidate]
-    if ($node) {
-      return @($node.Value.required_status_checks)
-    }
-  }
-
-  return @()
 }
 
 if (-not (Test-Path -LiteralPath $WorkflowPath -PathType Leaf)) {
@@ -71,7 +57,7 @@ $branchHasExpectedCheck = $false
 if (-not $branchPolicy.branches) {
   Add-ContractError "Missing branches node in $BranchRequiredChecksPath."
 } else {
-  $developChecks = @($branchPolicy.branches.$BranchName)
+  $developChecks = @((Resolve-BranchRequiredCheckProjection -BranchPolicy $branchPolicy -BranchName $BranchName -BranchClassId $null).requiredChecks)
   if ($developChecks.Count -eq 0) {
     Add-ContractError "Missing required checks for branch '$BranchName' in $BranchRequiredChecksPath."
   }
@@ -79,14 +65,14 @@ if (-not $branchPolicy.branches) {
 }
 
 $priorityPolicy = Read-JsonFile -Path $PriorityPolicyPath
-$priorityBranchChecks = @($priorityPolicy.branches.$BranchName.required_status_checks)
+$priorityBranchChecks = @(Resolve-PriorityPolicyBranchRequiredChecks -PriorityPolicy $priorityPolicy -BranchPolicy $branchPolicy -BranchName $BranchName)
 $priorityBranchHasExpectedCheck = $priorityBranchChecks -contains $expectedCheckName
 if ($priorityBranchChecks.Count -eq 0) {
   Add-ContractError "Missing priority branch checks for '$BranchName' in $PriorityPolicyPath."
 }
 
 $rulesetCandidates = if ($RulesetId -eq 'develop') { @('develop', '8811898') } else { @($RulesetId) }
-$rulesetChecks = @(Resolve-RulesetRequiredChecks -PriorityPolicy $priorityPolicy -Candidates $rulesetCandidates)
+$rulesetChecks = @(Resolve-PriorityPolicyRulesetRequiredChecks -PriorityPolicy $priorityPolicy -BranchPolicy $branchPolicy -Candidates $rulesetCandidates -FallbackBranchName $BranchName)
 $rulesetHasExpectedCheck = $rulesetChecks -contains $expectedCheckName
 if ($rulesetChecks.Count -eq 0) {
   Add-ContractError "Missing ruleset '$RulesetId' required checks in $PriorityPolicyPath."
