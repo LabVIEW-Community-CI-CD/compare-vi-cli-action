@@ -9,8 +9,11 @@ import { fileURLToPath } from 'node:url';
 import {
   buildCodexTurnPrompt,
   buildPrReadyArgs,
+  buildPullRequestTimelineArgs,
+  selectAuthoritativeDraftTransition,
   buildUnattendedCommandEnv,
-  planPullRequestReviewCycle
+  planPullRequestReviewCycle,
+  waitForAuthoritativeDraftTransition
 } from '../run-delivery-turn-with-codex.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -113,6 +116,126 @@ test('buildPrReadyArgs uses gh pr ready and --undo for broker-managed draft tran
   );
 });
 
+test('buildPullRequestTimelineArgs targets the REST issue timeline for PR transition evidence', () => {
+  assert.deepEqual(
+    buildPullRequestTimelineArgs({
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pullRequestNumber: 1131
+    }),
+    [
+      'api',
+      'repos/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1131/timeline',
+      '-H',
+      'Accept: application/vnd.github+json',
+      '-f',
+      'per_page=50'
+    ]
+  );
+});
+
+test('selectAuthoritativeDraftTransition ignores stale draft events and picks the new transition', () => {
+  const staleOnly = selectAuthoritativeDraftTransition({
+    ready: false,
+    previousEventId: 11,
+    timelineEvents: [
+      {
+        id: 11,
+        event: 'converted_to_draft',
+        created_at: '2026-03-14T09:00:00Z',
+        actor: { login: 'bot' }
+      }
+    ]
+  });
+  assert.equal(staleOnly, null);
+
+  const fresh = selectAuthoritativeDraftTransition({
+    ready: false,
+    previousEventId: 11,
+    timelineEvents: [
+      {
+        id: 11,
+        event: 'converted_to_draft',
+        created_at: '2026-03-14T09:00:00Z',
+        actor: { login: 'bot' }
+      },
+      {
+        id: 12,
+        event: 'converted_to_draft',
+        created_at: '2026-03-14T09:00:05Z',
+        actor: { login: 'bot' }
+      }
+    ]
+  });
+
+  assert.deepEqual(fresh, {
+    ok: true,
+    event: 'converted_to_draft',
+    eventId: 12,
+    createdAt: '2026-03-14T09:00:05Z',
+    actor: 'bot',
+    authoritativeIsDraft: true
+  });
+});
+
+test('waitForAuthoritativeDraftTransition polls until the ready event appears', async () => {
+  let reads = 0;
+  const result = await waitForAuthoritativeDraftTransition({
+    ready: true,
+    previousEventId: 20,
+    transitionStartedAt: '2026-03-14T09:00:00Z',
+    pollAttempts: 3,
+    pollDelayMs: 0,
+    sleepFn: async () => {},
+    readTimelineEventsFn: async () => {
+      reads += 1;
+      if (reads === 1) {
+        return [
+          {
+            id: 20,
+            event: 'ready_for_review',
+            created_at: '2026-03-14T08:59:55Z',
+            actor: { login: 'bot' }
+          }
+        ];
+      }
+      return [
+        {
+          id: 21,
+          event: 'ready_for_review',
+          created_at: '2026-03-14T09:00:02Z',
+          actor: { login: 'bot' }
+        }
+      ];
+    }
+  });
+
+  assert.deepEqual(result, {
+    ok: true,
+    event: 'ready_for_review',
+    eventId: 21,
+    createdAt: '2026-03-14T09:00:02Z',
+    actor: 'bot',
+    authoritativeIsDraft: false,
+    attemptsUsed: 2
+  });
+});
+
+test('waitForAuthoritativeDraftTransition fails loudly when no matching timeline evidence arrives', async () => {
+  const result = await waitForAuthoritativeDraftTransition({
+    ready: false,
+    transitionStartedAt: '2026-03-14T09:00:00Z',
+    pollAttempts: 2,
+    pollDelayMs: 0,
+    sleepFn: async () => {},
+    readTimelineEventsFn: async () => []
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.event, 'converted_to_draft');
+  assert.equal(result.attemptsUsed, 2);
+  assert.match(result.reason, /authoritative draft transition evidence/i);
+});
+
 test('planPullRequestReviewCycle leaves an existing ready PR in draft for outer-layer ready restoration under the draft-only strategy', () => {
   const plan = planPullRequestReviewCycle({
     initialPullRequest: {
@@ -205,6 +328,14 @@ test('runCodexDeliveryTurn records broker-managed PR ready-state helper calls ev
 
   assert.match(source, /if \(toDraft\.helperCall\) \{\s*brokerHelperCalls\.push\(toDraft\.helperCall\);/s);
   assert.match(source, /if \(toReady\.helperCall\) \{\s*brokerHelperCalls\.push\(toReady\.helperCall\);/s);
+});
+
+test('runCodexDeliveryTurn waits for authoritative timeline evidence instead of trusting immediate isDraft reads', () => {
+  const source = readFileSync(path.join(repoRoot, 'tools/priority/run-delivery-turn-with-codex.ts'), 'utf8');
+
+  assert.match(source, /await waitForAuthoritativeDraftTransition\(/);
+  assert.match(source, /authoritative converted_to_draft timeline event/);
+  assert.match(source, /could not verify the draft transition/i);
 });
 
 test('runCodexDeliveryTurn surfaces broker-managed draft transition failures and outer-layer ready deferral in receipt notes', () => {
