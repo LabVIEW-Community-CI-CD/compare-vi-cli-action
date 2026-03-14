@@ -139,9 +139,19 @@ test('resolve mission-control profile CLI resolves relative report paths against
   const errors = [];
   const originalCwd = process.cwd();
   process.chdir(tempCwd);
+  const relativeReportPath = path.join(
+    'tests',
+    'results',
+    '_agent',
+    'mission-control',
+    'resolve-root-test',
+    'mission-control-profile-resolution.json',
+  );
+  const expectedPath = path.join(repoRoot, relativeReportPath);
   t.after(() => {
     process.chdir(originalCwd);
     fs.rmSync(tempCwd, { recursive: true, force: true });
+    fs.rmSync(path.dirname(expectedPath), { recursive: true, force: true });
   });
 
   const exitCode = main(
@@ -151,7 +161,7 @@ test('resolve mission-control profile CLI resolves relative report paths against
       '--trigger',
       'MC',
       '--report',
-      path.join('reports', 'mission-control-profile-resolution.json'),
+      relativeReportPath,
     ],
     {
       repoRoot: repoRoot,
@@ -167,10 +177,8 @@ test('resolve mission-control profile CLI resolves relative report paths against
   assert.equal(exitCode, 0);
   assert.deepEqual(errors, []);
   assert.equal(output.length, 2);
-  const expectedPath = path.join(repoRoot, 'reports', 'mission-control-profile-resolution.json');
   assert.match(output[0], new RegExp(expectedPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.equal(fs.existsSync(expectedPath), true);
-  fs.rmSync(path.join(repoRoot, 'reports'), { recursive: true, force: true });
 });
 
 test('mission-control docs and manifest advertise the runtime trigger resolver', () => {
