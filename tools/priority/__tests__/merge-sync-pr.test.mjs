@@ -448,6 +448,47 @@ test('buildBranchClassTrace emits deterministic base-branch classification metad
   );
 });
 
+test('buildMergeSummaryPayload carries the resolved plane transition when promotion crosses planes', () => {
+  const payload = buildMergeSummaryPayload({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    pr: 912,
+    mergeMethod: 'squash',
+    selectedMode: 'auto',
+    selectedReason: 'merge-queue-branch-develop',
+    finalMode: 'auto',
+    finalReason: 'merge-queue-branch-develop',
+    dryRun: false,
+    mergeQueueBranches: new Set(['develop']),
+    attempts: [{ mode: 'auto', args: ['pr', 'merge', '--auto'], exitCode: 0 }],
+    prInfo: {
+      state: 'OPEN',
+      mergeStateStatus: 'BLOCKED',
+      mergeable: 'MERGEABLE',
+      baseRefName: 'develop',
+      isDraft: false,
+      headRepository: { name: 'compare-vi-cli-action' },
+      headRepositoryOwner: { login: 'svelderrainruiz' },
+      url: 'https://example.test/pr/912'
+    },
+    planeTransition: {
+      from: 'personal',
+      action: 'promote',
+      to: 'upstream',
+      via: 'pull-request',
+      branchClass: 'lane'
+    },
+    createdAt: '2026-03-14T00:00:00.000Z'
+  });
+
+  assert.deepEqual(payload.planeTransition, {
+    from: 'personal',
+    action: 'promote',
+    to: 'upstream',
+    via: 'pull-request',
+    branchClass: 'lane'
+  });
+});
+
 test('buildMergeSummaryPayload remains stable for direct mode contracts', () => {
   const payload = buildMergeSummaryPayload({
     repo: 'owner/repo',
@@ -999,7 +1040,7 @@ test('runMergeSync includes review clearance evidence when clean current-head ad
       '--pr',
       '127',
       '--repo',
-      'owner/repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       '--summary-path',
       path.join(tempDir, 'summary.json')
     ],
@@ -1007,14 +1048,20 @@ test('runMergeSync includes review clearance evidence when clean current-head ad
     ensureGhCliFn: () => {},
     readPrInfoFn: () => ({
       number: 127,
-      state: 'OPEN',
-      isDraft: false,
-      mergeStateStatus: 'BLOCKED',
-      mergeable: 'MERGEABLE',
-      baseRefName: 'develop',
-      headRefOid: '1234567890123456789012345678901234567890',
-      url: 'https://example.test/pr/127'
-    }),
+        state: 'OPEN',
+        isDraft: false,
+        mergeStateStatus: 'BLOCKED',
+        mergeable: 'MERGEABLE',
+        baseRefName: 'develop',
+        headRepository: {
+          name: 'compare-vi-cli-action'
+        },
+        headRepositoryOwner: {
+          login: 'svelderrainruiz'
+        },
+        headRefOid: '1234567890123456789012345678901234567890',
+        url: 'https://example.test/pr/127'
+      }),
     evaluatePromotionReviewClearanceFn: async () => ({
       ok: true,
       report: {
@@ -1055,10 +1102,59 @@ test('runMergeSync includes review clearance evidence when clean current-head ad
 
   assert.equal(payload.reviewClearance.status, 'pass');
   assert.deepEqual(payload.reviewClearance.reasons, ['current-head-review-run-completed-clean']);
+  assert.equal(payload.planeTransition.from, 'personal');
+  assert.equal(payload.planeTransition.to, 'upstream');
+  assert.equal(payload.planeTransition.action, 'promote');
 
   const written = JSON.parse(await readFile(path.join(tempDir, 'summary.json'), 'utf8'));
   assert.equal(written.reviewClearance.status, 'pass');
   assert.deepEqual(written.reviewClearance.reasons, ['current-head-review-run-completed-clean']);
+  assert.equal(written.planeTransition.from, 'personal');
+});
+
+test('runMergeSync fails closed when the head repository plane is outside the tracked branch model', async () => {
+  await assert.rejects(
+    () =>
+      runMergeSync({
+        argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '130', '--repo', 'LabVIEW-Community-CI-CD/compare-vi-cli-action'],
+        repoRoot,
+        ensureGhCliFn: () => {},
+        readPrInfoFn: () => ({
+          number: 130,
+          state: 'OPEN',
+          isDraft: false,
+          mergeStateStatus: 'BLOCKED',
+          mergeable: 'MERGEABLE',
+          baseRefName: 'develop',
+          headRepository: {
+            name: 'compare-vi-cli-action'
+          },
+          headRepositoryOwner: {
+            login: 'someone-else'
+          },
+          headRefOid: '1234567890123456789012345678901234567890',
+          url: 'https://example.test/pr/130'
+        }),
+        evaluatePromotionReviewClearanceFn: async () => ({
+          ok: true,
+          report: {
+            status: 'pass',
+            gateState: 'ready',
+            reasons: ['current-head-review-run-completed-clean']
+          }
+        }),
+        readPromotionStateFn: () => ({
+          state: 'OPEN',
+          mergeStateStatus: 'BLOCKED',
+          isInMergeQueue: false,
+          autoMergeRequest: null,
+          mergedAt: null
+        }),
+        runMergeAttemptFn: () => ({ status: 0, stdout: '', stderr: '' }),
+        sleepFn: async () => {}
+      }),
+    /plane transition fork --promote--> upstream is not allowed/i
+  );
 });
 
 test('runMergeSync does not query promotion state when the PR is already merged', async () => {

@@ -116,6 +116,9 @@ test('buildDevelopSyncBranchClassTrace classifies upstream develop to fork devel
   assert.equal(trace.target.id, 'fork-mirror-develop');
   assert.equal(trace.transition.action, 'sync');
   assert.equal(trace.transition.via, 'priority:develop:sync');
+  assert.equal(trace.planeTransitions.origin.to, 'origin');
+  assert.equal(trace.planeTransitions.personal.to, 'personal');
+  assert.equal(trace.planeTransitions.origin.via, 'priority:develop:sync');
 });
 
 test('Sync-OriginUpstreamDevelop forwards the requested parity report path to the parity reporter', () => {
@@ -276,6 +279,9 @@ test('runDevelopSync records protected sync mode details from the parity report'
   assert.equal(report.actions[0].protectedSync.pullRequest.number, 44);
   assert.equal(report.actions[0].branchClassTrace.source.id, 'upstream-integration');
   assert.equal(report.actions[0].branchClassTrace.target.id, 'fork-mirror-develop');
+  assert.equal(report.actions[0].planeTransition.from, 'upstream');
+  assert.equal(report.actions[0].planeTransition.to, 'origin');
+  assert.equal(report.actions[0].planeTransition.action, 'sync');
 });
 
 test('runDevelopSync records fork-sync mode details from the parity report', async (t) => {
@@ -337,6 +343,7 @@ test('runDevelopSync records fork-sync mode details from the parity report', asy
   assert.equal(report.actions[0].parityConverged, true);
   assert.equal(report.actions[0].protectedSync.syncMethod, 'fork-sync');
   assert.equal(report.actions[0].protectedSync.mergeUpstream.merge_type, 'fast-forward');
+  assert.equal(report.actions[0].planeTransition.to, 'origin');
 });
 
 test('runDevelopSync fails closed when the parity report is unreadable', async (t) => {

@@ -11,8 +11,10 @@ import { ensureGhCli, resolveUpstream } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import {
   DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
+  assertPlaneTransition,
   classifyBranch,
   loadBranchClassContract,
+  resolveRepositoryPlane,
   resolveRepositoryRole
 } from './lib/branch-classification.mjs';
 
@@ -248,6 +250,15 @@ export function buildBranchClassTrace({ targetRepositoryRole = null, baseBranchC
   };
 }
 
+function resolveHeadRepositorySlug(prInfo = {}, repo = '') {
+  const owner = resolveHeadRepositoryOwner(prInfo);
+  const repoName = normalizeText(prInfo?.headRepository?.name);
+  if (!owner || !repoName) {
+    return '';
+  }
+  return `${owner}/${repoName}`;
+}
+
 export function resolveHeadRepositoryOwner(prInfo = {}) {
   const owner = prInfo?.headRepositoryOwner;
   if (typeof owner === 'string') {
@@ -286,6 +297,7 @@ export function buildMergeSummaryPayload({
   branchClassTrace = null,
   reviewClearance = null,
   promotion = null,
+  planeTransition = null,
   createdAt = new Date().toISOString()
 }) {
   const normalizedBaseRefName = normalizeBaseRefName(prInfo?.baseRefName);
@@ -318,6 +330,7 @@ export function buildMergeSummaryPayload({
       upstreamHeadOwned: isUpstreamOwnedHead(prInfo, repo)
     },
     promotion,
+    planeTransition,
     prUrl: prInfo?.url ?? null
   };
 }
@@ -442,7 +455,7 @@ function readPrInfo({ repoRoot, repo, pr }) {
       '--repo',
       repo,
       '--json',
-      'number,state,isDraft,mergeStateStatus,mergeable,baseRefName,url,headRefName,headRefOid,headRepositoryOwner,isCrossRepository'
+      'number,state,isDraft,mergeStateStatus,mergeable,baseRefName,url,headRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository'
     ],
     {
       cwd: repoRoot,
@@ -741,11 +754,25 @@ export async function runMergeSync({
     pr: options.pr
   });
   const targetRepositoryRole = resolveRepositoryRole(resolvedRepo, branchClassContract);
+  const targetRepositoryPlane = resolveRepositoryPlane(resolvedRepo, branchClassContract);
+  const headRepositorySlug = resolveHeadRepositorySlug(prInfo, resolvedRepo);
+  const headRepositoryPlane = headRepositorySlug
+    ? resolveRepositoryPlane(headRepositorySlug, branchClassContract)
+    : null;
   const baseBranchClass = classifyBranch({
     branch: prInfo?.baseRefName,
     contract: branchClassContract,
     repositoryRole: targetRepositoryRole
   });
+  const planeTransition =
+    headRepositoryPlane && headRepositoryPlane !== targetRepositoryPlane
+      ? assertPlaneTransition({
+          fromPlane: headRepositoryPlane,
+          toPlane: targetRepositoryPlane,
+          action: 'promote',
+          contract: branchClassContract
+        })
+      : null;
   const selection = selectMergeMode(prInfo, {
     admin: options.admin,
     mergeQueueBranches,
@@ -899,7 +926,8 @@ export async function runMergeSync({
       baseBranchClass
     }),
     reviewClearance: reviewClearance?.report ?? null,
-    promotion
+    promotion,
+    planeTransition
   });
   await maybeWriteSummary(options.summaryPath, payload);
 

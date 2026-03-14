@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   assertAllowedTransition,
+  assertPlaneTransition,
   branchPatternToRegExp,
   classifyBranch,
   findRepositoryPlaneEntry,
@@ -49,6 +50,28 @@ test('resolveLaneBranchPrefix follows repository plane metadata from the branch 
   assert.equal(resolveLaneBranchPrefix({ contract, plane: 'personal' }), 'issue/personal-');
   assert.equal(resolveLaneBranchPrefix({ contract, repository: 'svelderrainruiz/compare-vi-cli-action' }), 'issue/personal-');
   assert.equal(findRepositoryPlaneEntry(contract, 'origin')?.laneBranchPrefix, 'issue/origin-');
+});
+
+test('assertPlaneTransition accepts tracked fork-plane edges and rejects undefined ones', () => {
+  const reviewTransition = assertPlaneTransition({
+    fromPlane: 'personal',
+    toPlane: 'origin',
+    action: 'review',
+    contract
+  });
+  assert.equal(reviewTransition.via, 'pull-request');
+  assert.equal(reviewTransition.branchClass, 'lane');
+
+  assert.throws(
+    () =>
+      assertPlaneTransition({
+        fromPlane: 'origin',
+        toPlane: 'personal',
+        action: 'review',
+        contract
+      }),
+    /plane transition origin --review--> personal is not allowed/i
+  );
 });
 
 test('loadBranchClassContract rejects missing or invalid upstreamRepository slugs', () => {

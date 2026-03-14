@@ -159,6 +159,49 @@ export function findRepositoryPlaneEntry(contract, planeOrRepository) {
   return null;
 }
 
+export function classifyPlaneTransition({
+  fromPlane,
+  toPlane,
+  action,
+  contract
+}) {
+  if (!contract || typeof contract !== 'object') {
+    throw new Error('Branch class contract is required.');
+  }
+  const normalizedFrom = normalizeRepositoryPlane(fromPlane);
+  const normalizedTo = normalizeRepositoryPlane(toPlane);
+  const normalizedAction = String(action ?? '').trim();
+  if (!normalizedAction) {
+    throw new Error('Plane transition action is required.');
+  }
+
+  return (contract.planeTransitions || []).find((entry) => (
+    normalizeRepositoryPlane(entry?.from) === normalizedFrom &&
+    normalizeRepositoryPlane(entry?.to) === normalizedTo &&
+    String(entry?.action ?? '').trim() === normalizedAction
+  )) ?? null;
+}
+
+export function assertPlaneTransition({
+  fromPlane,
+  toPlane,
+  action,
+  contract
+}) {
+  const transition = classifyPlaneTransition({
+    fromPlane,
+    toPlane,
+    action,
+    contract
+  });
+  if (!transition) {
+    throw new Error(
+      `Plane transition ${normalizeRepositoryPlane(fromPlane)} --${String(action ?? '').trim()}--> ${normalizeRepositoryPlane(toPlane)} is not allowed by the branch class contract.`
+    );
+  }
+  return transition;
+}
+
 export function resolveLaneBranchPrefix({
   contract,
   repository = null,
