@@ -158,6 +158,7 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(orchestrator, /'priority:pr'/);
   assert.match(orchestrator, /'--issue'/);
   assert.match(orchestrator, /Resolve-GitHubIssueSnapshot -Issue \$Issue/);
+  assert.match(orchestrator, /Resolve-GitHubIntakeForkPlaneFromBranchName/);
   assert.match(orchestrator, /'pr'\s+'view'\s+\$branchName\s+'--json'\s+'number'/);
   assert.match(orchestrator, /'pr'\s+'edit'\s+\$pr\.number\s+'--title'\s+\$prTitle\s+'--body-file'/);
   assert.match(orchestrator, /Standing-priority queue is empty/);
@@ -172,7 +173,10 @@ test('github intake docs and manifest reference the new helper layer', () => {
   assert.match(oneButtonValidate, /--issue 127/);
   assert.doesNotMatch(oneButtonValidate, /gh pr view --json number --head/);
   assert.match(intakeModule, /function Get-GitHubIntakeCatalog/);
+  assert.match(intakeModule, /function Get-GitHubIntakeBranchClassContract/);
   assert.match(intakeModule, /function Resolve-GitHubIntakeDraftContext/);
+  assert.match(intakeModule, /function Resolve-GitHubIntakeLaneBranchPrefix/);
+  assert.match(intakeModule, /function Resolve-GitHubIntakeForkPlaneFromBranchName/);
   assert.match(intakeModule, /function Resolve-GitHubIssueSnapshot/);
   assert.match(intakeModule, /function Resolve-GitHubIntakeRoute/);
   assert.match(intakeModule, /function New-GitHubIntakeExecutionPlan/);

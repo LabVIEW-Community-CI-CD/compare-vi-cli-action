@@ -26,10 +26,16 @@ function Get-GitDefaultBranch {
 function Resolve-SelectedForkRemote {
   param(
     [string]$RequestedForkRemote,
-    [string]$RequestedHeadRemote
+    [string]$RequestedHeadRemote,
+    [string]$CurrentBranch
   )
 
-  $selectedForkRemote = if ([string]::IsNullOrWhiteSpace($RequestedForkRemote)) { 'origin' } else { $RequestedForkRemote.Trim().ToLowerInvariant() }
+  $selectedForkRemote = if ([string]::IsNullOrWhiteSpace($RequestedForkRemote)) {
+    $inferredForkRemote = Resolve-GitHubIntakeForkPlaneFromBranchName -BranchName $CurrentBranch
+    if ([string]::IsNullOrWhiteSpace($inferredForkRemote)) { 'origin' } else { $inferredForkRemote }
+  } else {
+    $RequestedForkRemote.Trim().ToLowerInvariant()
+  }
   $selectedHeadRemote = if ([string]::IsNullOrWhiteSpace($RequestedHeadRemote)) { $selectedForkRemote } else { $RequestedHeadRemote.Trim().ToLowerInvariant() }
   return [pscustomobject]@{
     ForkRemote = $selectedForkRemote
@@ -163,11 +169,11 @@ $title = if ($snap -and ($snap.PSObject.Properties.Name -contains 'title') -and 
 $defaultBase = Get-GitDefaultBranch
 if (-not $Base) { $Base = $defaultBase }
 Write-Host ("[orchestrator] Base: {0}" -f $Base)
-$forkSelection = Resolve-SelectedForkRemote -RequestedForkRemote $ForkRemote -RequestedHeadRemote $HeadRemote
+$currentBranch = (& git rev-parse --abbrev-ref HEAD).Trim()
+$forkSelection = Resolve-SelectedForkRemote -RequestedForkRemote $ForkRemote -RequestedHeadRemote $HeadRemote -CurrentBranch $currentBranch
 Write-Host ("[orchestrator] Fork remote: {0}" -f $forkSelection.ForkRemote)
 Write-Host ("[orchestrator] Head remote: {0}" -f $forkSelection.HeadRemote)
 
-$currentBranch = (& git rev-parse --abbrev-ref HEAD).Trim()
 $branchName = Resolve-IssueBranchName `
   -Number $Issue `
   -Title $title `

@@ -57,6 +57,28 @@ Describe 'GitHubIntake.psm1' {
       Should -Be 'issue/origin-875-modernize-the-github-intake-layer-for-future-agents'
   }
 
+  It 'resolves lane branch prefixes from the checked-in branch contract' {
+    Resolve-GitHubIntakeLaneBranchPrefix -ForkRemote 'origin' |
+      Should -Be 'issue/origin-'
+
+    Resolve-GitHubIntakeLaneBranchPrefix -ForkRemote 'personal' |
+      Should -Be 'issue/personal-'
+
+    Resolve-GitHubIntakeLaneBranchPrefix |
+      Should -Be 'issue/'
+  }
+
+  It 'derives the fork plane from an existing contract-qualified lane branch' {
+    Resolve-GitHubIntakeForkPlaneFromBranchName -BranchName 'issue/personal-875-modernize-github-intake-layer' |
+      Should -Be 'personal'
+
+    Resolve-GitHubIntakeForkPlaneFromBranchName -BranchName 'issue/origin-875-modernize-github-intake-layer' |
+      Should -Be 'origin'
+
+    Resolve-GitHubIntakeForkPlaneFromBranchName -BranchName 'issue/875-modernize-github-intake-layer' |
+      Should -Be 'upstream'
+  }
+
   It 'loads the checked-in intake catalog with issue and PR templates' {
     $catalog = Get-GitHubIntakeCatalog
 
