@@ -38,4 +38,39 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
 
     Remove-Variable -Name DockerReviewLoopHandoffSummary -Scope Global -ErrorAction SilentlyContinue
   }
+
+  It 'surfaces plane transition evidence when present' {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $scriptPath = Join-Path $repoRoot 'tools' 'priority' 'Import-HandoffState.ps1'
+    $handoffDir = Join-Path $TestDrive 'handoff'
+    New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+
+    [ordered]@{
+      schema = 'agent-handoff/plane-transition-v1'
+      generatedAt = '2026-03-14T08:40:00Z'
+      status = 'ok'
+      reason = $null
+      transitionCount = 1
+      transitions = @(
+        [ordered]@{
+          from = 'upstream'
+          to = 'origin'
+          action = 'sync'
+          via = 'priority:develop:sync'
+          sourceType = 'develop-sync'
+          sourceLabel = 'develop-sync-report'
+        }
+      )
+      sources = @()
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $handoffDir 'plane-transition.json') -Encoding utf8
+
+    $output = & $scriptPath -HandoffDir $handoffDir *>&1 | Out-String
+
+    $output | Should -Match '\[handoff\] Plane transition evidence'
+    $output | Should -Match 'status\s+: ok'
+    $output | Should -Match 'upstream->origin'
+    $global:PlaneTransitionHandoffSummary.schema | Should -Be 'agent-handoff/plane-transition-v1'
+
+    Remove-Variable -Name PlaneTransitionHandoffSummary -Scope Global -ErrorAction SilentlyContinue
+  }
 }

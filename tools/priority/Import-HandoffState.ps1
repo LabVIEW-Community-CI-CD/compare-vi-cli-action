@@ -37,6 +37,7 @@ $issueSummary = Read-HandoffJson -Name 'issue-summary.json'
 $issueRouter  = Read-HandoffJson -Name 'issue-router.json'
 $hookSummary  = Read-HandoffJson -Name 'hook-summary.json'
 $watcherTelemetry = Read-HandoffJson -Name 'watcher-telemetry.json'
+$planeTransitionSummary = Read-HandoffJson -Name 'plane-transition.json'
 $releaseSummary = Read-HandoffJson -Name 'release-summary.json'
 $testSummary = Read-HandoffJson -Name 'test-summary.json'
 $dockerReviewLoopSummary = Read-HandoffJson -Name 'docker-review-loop-summary.json'
@@ -91,6 +92,21 @@ if ($watcherTelemetry) {
     }
   }
   Set-Variable -Name WatcherHandoffTelemetry -Scope Global -Value $watcherTelemetry -Force
+}
+
+if ($planeTransitionSummary) {
+  Write-Host '[handoff] Plane transition evidence' -ForegroundColor Cyan
+  Write-Host ("  status   : {0}" -f (Format-NullableValue $planeTransitionSummary.status))
+  Write-Host ("  count    : {0}" -f (Format-NullableValue $planeTransitionSummary.transitionCount))
+  if ($planeTransitionSummary.reason) {
+    Write-Host ("  reason   : {0}" -f (Format-NullableValue $planeTransitionSummary.reason))
+  }
+  foreach ($transition in @($planeTransitionSummary.transitions | Select-Object -First 5)) {
+    $remoteValue = if ($transition.PSObject.Properties['remote']) { $transition.remote } else { $null }
+    $remoteLabel = if ($remoteValue) { " remote=$remoteValue" } else { '' }
+    Write-Host ("  - {0}->{1} ({2}) via {3}{4}" -f (Format-NullableValue $transition.from), (Format-NullableValue $transition.to), (Format-NullableValue $transition.action), (Format-NullableValue $transition.via), $remoteLabel)
+  }
+  Set-Variable -Name PlaneTransitionHandoffSummary -Scope Global -Value $planeTransitionSummary -Force
 }
 
 if ($releaseSummary) {

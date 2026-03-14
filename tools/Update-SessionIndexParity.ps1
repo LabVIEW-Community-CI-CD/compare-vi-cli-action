@@ -55,6 +55,7 @@ function New-UnavailableParityPayload {
       baseOnly = $null
       headOnly = $null
     }
+    planeTransition = $null
   }
 }
 
@@ -129,6 +130,40 @@ function Convert-ToParityTelemetry {
     $headOnly = Get-ChildValue -Object $commitDivergence -Name 'headOnly'
   }
 
+  $planeTransition = $null
+  $planeTransitionNode = Get-ChildValue -Object $ParityReport -Name 'planeTransition'
+  if ($null -ne $planeTransitionNode) {
+    $fromPlane = [string](Get-ChildValue -Object $planeTransitionNode -Name 'from')
+    $toPlane = [string](Get-ChildValue -Object $planeTransitionNode -Name 'to')
+    $action = [string](Get-ChildValue -Object $planeTransitionNode -Name 'action')
+    $via = [string](Get-ChildValue -Object $planeTransitionNode -Name 'via')
+    if (
+      -not [string]::IsNullOrWhiteSpace($fromPlane) -and
+      -not [string]::IsNullOrWhiteSpace($toPlane) -and
+      -not [string]::IsNullOrWhiteSpace($action) -and
+      -not [string]::IsNullOrWhiteSpace($via)
+    ) {
+      $planeTransition = [ordered]@{
+        from = $fromPlane
+        to = $toPlane
+        action = $action
+        via = $via
+        baseRepository = if ($null -ne (Get-ChildValue -Object $planeTransitionNode -Name 'baseRepository')) { [string](Get-ChildValue -Object $planeTransitionNode -Name 'baseRepository') } else { $null }
+        headRepository = if ($null -ne (Get-ChildValue -Object $planeTransitionNode -Name 'headRepository')) { [string](Get-ChildValue -Object $planeTransitionNode -Name 'headRepository') } else { $null }
+      }
+    }
+  }
+
+  if ($status -eq 'ok' -and $null -eq $planeTransition) {
+    $status = 'fail'
+    $existingReason = if ($null -ne (Get-ChildValue -Object $ParityReport -Name 'reason')) { [string](Get-ChildValue -Object $ParityReport -Name 'reason') } else { '' }
+    $missingReason = 'missing-plane-transition'
+    if (-not [string]::IsNullOrWhiteSpace($existingReason)) {
+      $missingReason = '{0}; {1}' -f $existingReason, $missingReason
+    }
+    $ParityReport | Add-Member -NotePropertyName 'reason' -NotePropertyValue $missingReason -Force
+  }
+
   return [ordered]@{
     schema      = if ($null -ne (Get-ChildValue -Object $ParityReport -Name 'schema')) { [string](Get-ChildValue -Object $ParityReport -Name 'schema') } else { 'origin-upstream-parity@v1' }
     status      = $status
@@ -156,6 +191,7 @@ function Convert-ToParityTelemetry {
       baseOnly = $baseOnly
       headOnly = $headOnly
     }
+    planeTransition = $planeTransition
   }
 }
 
@@ -170,6 +206,22 @@ function Write-ParityStepSummary {
   $treeParityStatus = Get-ChildValue -Object (Get-ChildValue -Object $Parity -Name 'treeParity') -Name 'status'
   $historyParityStatus = Get-ChildValue -Object (Get-ChildValue -Object $Parity -Name 'historyParity') -Name 'status'
   $recommendationCode = Get-ChildValue -Object (Get-ChildValue -Object $Parity -Name 'recommendation') -Name 'code'
+  $planeTransition = Get-ChildValue -Object $Parity -Name 'planeTransition'
+  $planeTransitionLabel = 'n/a'
+  if ($null -ne $planeTransition) {
+    $fromPlane = Get-ChildValue -Object $planeTransition -Name 'from'
+    $toPlane = Get-ChildValue -Object $planeTransition -Name 'to'
+    $via = Get-ChildValue -Object $planeTransition -Name 'via'
+    if (
+      -not [string]::IsNullOrWhiteSpace([string]$fromPlane) -and
+      -not [string]::IsNullOrWhiteSpace([string]$toPlane)
+    ) {
+      $planeTransitionLabel = '{0}->{1}' -f $fromPlane, $toPlane
+      if (-not [string]::IsNullOrWhiteSpace([string]$via)) {
+        $planeTransitionLabel = '{0} ({1})' -f $planeTransitionLabel, $via
+      }
+    }
+  }
 
   $statusValue = if ($Parity.status) { [string]$Parity.status } else { 'unavailable' }
   $reasonValue = if ($Parity.reason) { [string]$Parity.reason } else { '' }
@@ -187,6 +239,7 @@ function Write-ParityStepSummary {
     ('| Status | {0} |' -f $statusValue),
     ('| Tree Parity | {0} |' -f $treeParityValue),
     ('| History Parity | {0} |' -f $historyParityValue),
+    ('| Plane Transition | {0} |' -f $planeTransitionLabel),
     ('| Tip Diff File Count | {0} |' -f $tipDiffValue),
     ('| Commit Divergence (base-only/head-only) | {0} |' -f $divergenceValue),
     ('| Recommendation | {0} |' -f $recommendationValue)
