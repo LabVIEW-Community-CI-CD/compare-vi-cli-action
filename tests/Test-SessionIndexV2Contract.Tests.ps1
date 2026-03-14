@@ -3,6 +3,36 @@ Describe 'Test-SessionIndexV2Contract' {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
     $scriptPath = Join-Path $repoRoot 'tools/Test-SessionIndexV2Contract.ps1'
 
+    function Get-ScriptFunctionDefinition {
+      param(
+        [Parameter(Mandatory)][string]$ScriptPath,
+        [Parameter(Mandatory)][string]$FunctionName
+      )
+
+      $tokens = $null
+      $parseErrors = $null
+      $ast = [System.Management.Automation.Language.Parser]::ParseFile($ScriptPath, [ref]$tokens, [ref]$parseErrors)
+      if ($parseErrors.Count -gt 0) {
+        throw ("Failed to parse {0}: {1}" -f $ScriptPath, ($parseErrors | ForEach-Object { $_.Message } | Join-String -Separator '; '))
+      }
+
+      $functionAst = $ast.Find(
+        {
+          param($node)
+          $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+          $node.Name -eq $FunctionName
+        },
+        $true
+      )
+      if ($null -eq $functionAst) {
+        throw ("Function {0} not found in {1}" -f $FunctionName, $ScriptPath)
+      }
+
+      return $functionAst.Extent.Text
+    }
+
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $scriptPath -FunctionName 'Get-BurnInDisposition')
+
     function Write-JsonFile {
       param(
         [Parameter(Mandatory)][string]$Path,
@@ -110,6 +140,7 @@ Describe 'Test-SessionIndexV2Contract' {
         StdOut = $stdout
         StdErr = $stderr
         Report = (Get-Content -LiteralPath (Join-Path $ResultsDir 'session-index-v2-contract.json') -Raw | ConvertFrom-Json -Depth 50)
+        Summary = (Get-Content -LiteralPath (Join-Path $ResultsDir 'session-index-v2-disposition.json') -Raw | ConvertFrom-Json -Depth 50)
       }
     }
   }
@@ -141,6 +172,11 @@ Describe 'Test-SessionIndexV2Contract' {
     $run.Report.burnInReceipt.recurrence.classification | Should -Be 'clean'
     $run.Report.burnInReceipt.evidence.reportPath | Should -Match 'session-index-v2-contract\.json$'
     $run.Report.burnInReceipt.evidence.policyPath | Should -Be $policyPath
+    $run.Summary.schema | Should -Be 'session-index-v2-disposition-summary@v1'
+    $run.Summary.mode | Should -Be 'burn-in'
+    $run.Summary.disposition | Should -Be 'clean-burn-in'
+    $run.Summary.promotionReady | Should -BeFalse
+    $run.Summary.evidence.contractReportPath | Should -Match 'session-index-v2-contract\.json$'
   }
 
   It 'falls back to explicit branch lists when no branch-class binding exists' {
@@ -187,5 +223,15 @@ Describe 'Test-SessionIndexV2Contract' {
     $run.Report.burnInReceipt.recurrence.classification | Should -Be 'unknown'
     $run.Report.burnInReceipt.mismatchFingerprint.Length | Should -Be 64
     $run.Report.burnInReceipt.evidence.sessionIndexV2Path | Should -Match 'session-index-v2\.json$'
+    $run.Summary.mode | Should -Be 'enforce'
+    $run.Summary.disposition | Should -Be 'promotion-blocking'
+    $run.Summary.mismatchClass | Should -Be 'branch-policy-projection'
+    $run.Summary.recurrenceClassification | Should -Be 'unknown'
+  }
+
+  It 'classifies recurring burn-in mismatches separately from clean and blocking states' {
+    (Get-BurnInDisposition -Failures @('mismatch') -Enforce:$false -PromotionReady:$false -RecurrenceClassification 'recurring-or-persistent') | Should -Be 'recurring-burn-in-mismatch'
+    (Get-BurnInDisposition -Failures @('mismatch') -Enforce:$false -PromotionReady:$false -RecurrenceClassification 'new-after-success-streak') | Should -Be 'burn-in-mismatch'
+    (Get-BurnInDisposition -Failures @() -Enforce:$false -PromotionReady:$true -RecurrenceClassification 'clean') | Should -Be 'promotion-ready'
   }
 }
