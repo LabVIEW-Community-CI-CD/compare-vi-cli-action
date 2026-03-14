@@ -72,6 +72,28 @@ test('mission-control profile catalog loader rejects schema-invalid profile mapp
   );
 });
 
+test('mission-control profile catalog loader canonicalizes accepted whitespace variants', () => {
+  const fixture = loadJson('tools/priority/__fixtures__/mission-control/profile-catalog.json');
+  const whitespaceCatalog = structuredClone(fixture);
+  whitespaceCatalog.profiles[0].id = ' autonomous-default ';
+  whitespaceCatalog.profiles[0].trigger = ' MC ';
+  whitespaceCatalog.profiles[0].aliases = [' MC-AUTO '];
+  whitespaceCatalog.profiles[0].operatorPreset.intent = ' continue-driving-autonomously ';
+  whitespaceCatalog.profiles[0].operatorPreset.focus = ' standing-priority ';
+  whitespaceCatalog.profiles[0].summary = ` ${whitespaceCatalog.profiles[0].summary} `;
+  whitespaceCatalog.profiles[0].description = ` ${whitespaceCatalog.profiles[0].description} `;
+
+  const normalized = normalizeMissionControlProfileCatalog(whitespaceCatalog);
+
+  assert.equal(normalized.profiles[0].id, 'autonomous-default');
+  assert.equal(normalized.profiles[0].trigger, 'MC');
+  assert.deepEqual(normalized.profiles[0].aliases, ['MC-AUTO']);
+  assert.equal(normalized.profiles[0].operatorPreset.intent, 'continue-driving-autonomously');
+  assert.equal(normalized.profiles[0].operatorPreset.focus, 'standing-priority');
+  assert.equal(normalized.profiles[0].summary, fixture.profiles[0].summary);
+  assert.equal(normalized.profiles[0].description, fixture.profiles[0].description);
+});
+
 test('mission-control profile catalog operator presets stay inside the bounded operator-input catalog', () => {
   const profileCatalog = loadJson('tools/priority/__fixtures__/mission-control/profile-catalog.json');
   const inputCatalog = loadJson('tools/priority/__fixtures__/mission-control/operator-input-catalog.json');
@@ -131,7 +153,7 @@ test('mission-control docs advertise the profile catalog with the existing missi
 
   const missionControlEntry = manifest.entries.find((entry) => entry.name === 'Mission Control Contracts');
   assert.ok(missionControlEntry, 'Mission Control Contracts entry is missing from docs manifest.');
-  assert.match(missionControlEntry.description, /authoritative runtime loader/i);
+  assert.match(missionControlEntry.description, /authoritative fail-closed loader/i);
   assert.ok(missionControlEntry.files.includes('tools/priority/lib/mission-control-profile-catalog.mjs'));
   assert.ok(missionControlEntry.files.includes('docs/schemas/mission-control-profile-catalog-v1.schema.json'));
   assert.ok(missionControlEntry.files.includes('tools/priority/__fixtures__/mission-control/profile-catalog.json'));

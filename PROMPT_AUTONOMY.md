@@ -19,8 +19,8 @@ Canonical machine-readable companion contract:
 Profile catalog validation model:
 
 - the JSON schema covers structural shape and canonical profile membership
-- the runtime loader is the authoritative fail-closed validator for cross-profile trigger-token uniqueness and
-  preset-to-intent/focus mapping invariants
+- the profile catalog loader is the authoritative fail-closed validator for this catalog's cross-profile
+  trigger-token uniqueness and preset-to-intent/focus mapping invariants
 
 Envelope model:
 

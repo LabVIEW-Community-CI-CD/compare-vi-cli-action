@@ -31,9 +31,11 @@ function cloneJson(value) {
 }
 
 function assertNonEmptyString(value, fieldName) {
-  if (!normalizeText(value)) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
     throw new Error(`Mission-control profile catalog field '${fieldName}' must be a non-empty string.`);
   }
+  return normalized;
 }
 
 export function normalizeMissionControlProfileCatalog(value) {
@@ -49,8 +51,9 @@ export function normalizeMissionControlProfileCatalog(value) {
 
   const seenProfileIds = new Set();
   const tokenOwners = new Map();
+  const normalizedProfiles = [];
   for (const profile of catalog.profiles) {
-    const profileId = normalizeText(profile?.id);
+    const profileId = assertNonEmptyString(profile?.id, 'profiles[].id');
     const profileSpec = PROFILE_SPECS.get(profileId);
     if (!profileSpec) {
       throw new Error(`Mission-control profile '${profileId}' is not a supported canonical profile id.`);
@@ -60,10 +63,10 @@ export function normalizeMissionControlProfileCatalog(value) {
     }
     seenProfileIds.add(profileId);
 
-    assertNonEmptyString(profile.summary, `${profileId}.summary`);
-    assertNonEmptyString(profile.description, `${profileId}.description`);
+    const summary = assertNonEmptyString(profile.summary, `${profileId}.summary`);
+    const description = assertNonEmptyString(profile.description, `${profileId}.description`);
 
-    if (normalizeText(profile.trigger) !== profileSpec.trigger) {
+    if (assertNonEmptyString(profile.trigger, `${profileId}.trigger`) !== profileSpec.trigger) {
       throw new Error(
         `Mission-control profile '${profileId}' must use trigger '${profileSpec.trigger}'.`
       );
@@ -72,19 +75,24 @@ export function normalizeMissionControlProfileCatalog(value) {
       throw new Error(`Mission-control profile '${profileId}' must declare aliases as an array.`);
     }
     const aliasSet = new Set();
-    const triggerTokens = [profile?.trigger, ...(Array.isArray(profile?.aliases) ? profile.aliases : [])]
-      .map((entry) => normalizeText(entry))
-      .filter(Boolean);
-    for (const token of triggerTokens) {
+    const normalizedAliases = [];
+    for (const alias of profile.aliases) {
+      const token = assertNonEmptyString(alias, `${profileId}.aliases[]`);
       if (!PROFILE_TRIGGER_PATTERN.test(token)) {
         throw new Error(`Mission-control trigger token '${token}' is not a valid MC preset token.`);
       }
-      if (token !== profile.trigger) {
-        if (aliasSet.has(token)) {
-          throw new Error(`Mission-control profile '${profileId}' repeats alias '${token}'.`);
-        }
-        aliasSet.add(token);
+      if (token === profileSpec.trigger) {
+        throw new Error(`Mission-control profile '${profileId}' must not repeat trigger '${token}' in aliases.`);
       }
+      if (aliasSet.has(token)) {
+        throw new Error(`Mission-control profile '${profileId}' repeats alias '${token}'.`);
+      }
+      aliasSet.add(token);
+      normalizedAliases.push(token);
+    }
+
+    const triggerTokens = [profileSpec.trigger, ...normalizedAliases];
+    for (const token of triggerTokens) {
       const priorOwner = tokenOwners.get(token);
       if (priorOwner) {
         throw new Error(
@@ -97,12 +105,12 @@ export function normalizeMissionControlProfileCatalog(value) {
     if (!profile.operatorPreset || typeof profile.operatorPreset !== 'object') {
       throw new Error(`Mission-control profile '${profileId}' must declare an operatorPreset object.`);
     }
-    if (normalizeText(profile.operatorPreset.intent) !== profileSpec.intent) {
+    if (assertNonEmptyString(profile.operatorPreset.intent, `${profileId}.operatorPreset.intent`) !== profileSpec.intent) {
       throw new Error(
         `Mission-control profile '${profileId}' must map to intent '${profileSpec.intent}'.`
       );
     }
-    if (normalizeText(profile.operatorPreset.focus) !== profileSpec.focus) {
+    if (assertNonEmptyString(profile.operatorPreset.focus, `${profileId}.operatorPreset.focus`) !== profileSpec.focus) {
       throw new Error(
         `Mission-control profile '${profileId}' must map to focus '${profileSpec.focus}'.`
       );
@@ -110,13 +118,32 @@ export function normalizeMissionControlProfileCatalog(value) {
     if (!Array.isArray(profile.operatorPreset.overrides) || profile.operatorPreset.overrides.length !== 0) {
       throw new Error(`Mission-control profile '${profileId}' must keep operatorPreset.overrides empty.`);
     }
+
+    normalizedProfiles.push({
+      ...profile,
+      id: profileId,
+      trigger: profileSpec.trigger,
+      aliases: normalizedAliases,
+      operatorPreset: {
+        ...profile.operatorPreset,
+        intent: profileSpec.intent,
+        focus: profileSpec.focus,
+        overrides: [],
+      },
+      summary,
+      description,
+    });
   }
 
   if (seenProfileIds.size !== PROFILE_SPECS.size) {
     throw new Error('Mission-control profile catalog must include every canonical mission-control profile exactly once.');
   }
 
-  return catalog;
+  return {
+    ...catalog,
+    schema: MISSION_CONTROL_PROFILE_CATALOG_SCHEMA,
+    profiles: normalizedProfiles,
+  };
 }
 
 export function loadMissionControlProfileCatalog(
