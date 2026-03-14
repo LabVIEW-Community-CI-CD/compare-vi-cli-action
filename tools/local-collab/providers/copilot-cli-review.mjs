@@ -138,7 +138,9 @@ function resolveWindowsCopilotBundle(shimPath) {
   const shimDirectory = path.dirname(shimPath);
   const loaderPath = path.join(shimDirectory, 'node_modules', '@github', 'copilot', 'npm-loader.js');
   if (!existsSync(loaderPath)) {
-    return null;
+    return {
+      resolutionError: `Unable to resolve the Copilot CLI npm loader beside '${shimPath}'.`
+    };
   }
 
   const bundledNodePath = path.join(shimDirectory, 'node.exe');
@@ -165,18 +167,20 @@ export function resolveCopilotCliCommand(platform = process.platform, env = proc
       const bundle = resolveWindowsCopilotBundle(shimPath);
       return {
         command: 'copilot.cmd',
-        spawnCommand: bundle?.spawnCommand ?? shimPath,
+        spawnCommand: bundle?.spawnCommand ?? null,
         spawnArgsPrefix: bundle?.spawnArgsPrefix ?? [],
-        shell: bundle?.shell ?? true
+        shell: bundle?.shell ?? false,
+        resolutionError: bundle?.resolutionError ?? ''
       };
     }
   }
 
   return {
     command: 'copilot.cmd',
-    spawnCommand: 'copilot.cmd',
+    spawnCommand: null,
     spawnArgsPrefix: [],
-    shell: true
+    shell: false,
+    resolutionError: 'Unable to resolve copilot.cmd on PATH without shell mediation.'
   };
 }
 
@@ -913,6 +917,26 @@ export async function runCopilotCliReview({
   }
   args.push('--prompt', prompt);
   const copilotInvocation = resolveCopilotCliCommand(process.platform, process.env);
+  if (normalizeText(copilotInvocation.resolutionError)) {
+    receipt.copilot = {
+      ...receipt.copilot,
+      command: copilotInvocation.command,
+      shell: copilotInvocation.shell
+    };
+    receipt.overall = {
+      status: 'failed',
+      actionableFindingCount: 0,
+      message: copilotInvocation.resolutionError,
+      exitCode: 1
+    };
+    await writeFile(resolvedReceiptPathInfo.resolved, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
+    return {
+      status: 'failed',
+      reason: copilotInvocation.resolutionError,
+      receiptPath: resolvedReceiptPathInfo.normalized,
+      receipt
+    };
+  }
   const aggregatedFindings = [];
   const findingOccurrences = new Map();
   let noNovelFindingStreak = 0;

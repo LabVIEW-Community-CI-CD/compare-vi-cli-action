@@ -132,14 +132,16 @@ test('resolveCopilotCliCommand prefers the Windows npm shim bundle and launches 
   assert.equal(invocation.shell, false);
 });
 
-test('resolveCopilotCliCommand falls back to the logical Windows shim name when PATH has no resolved shim', () => {
+test('resolveCopilotCliCommand fails closed when no Windows shim can be resolved without shell mediation', () => {
   const invocation = resolveCopilotCliCommand('win32', {
     Path: ''
   });
 
   assert.equal(invocation.command, 'copilot.cmd');
-  assert.equal(invocation.spawnCommand, 'copilot.cmd');
-  assert.equal(invocation.shell, true);
+  assert.equal(invocation.spawnCommand, null);
+  assert.deepEqual(invocation.spawnArgsPrefix, []);
+  assert.equal(invocation.shell, false);
+  assert.match(invocation.resolutionError, /without shell mediation/i);
 });
 
 test('runCopilotCliReview writes a deterministic passed receipt for staged review', async () => {
