@@ -90,6 +90,21 @@ function Add-Failure {
   Write-Host ("::warning::{0}" -f $Message)
 }
 
+function Write-GitHubOutputValue {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Name,
+    [AllowEmptyString()]
+    [string]$Value
+  )
+
+  if ([string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
+    return
+  }
+
+  ("{0}={1}" -f $Name, $Value) | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+}
+
 $repoContext = Resolve-RepositoryContext -Owner $Owner -Repository $Repository
 $Owner = $repoContext.Owner
 $Repository = $repoContext.Repository
@@ -450,6 +465,17 @@ $summary = [ordered]@{
 $summary | ConvertTo-Json -Depth 20 | Out-File -LiteralPath $dispositionPath -Encoding utf8
 Write-Host ("session-index-v2 disposition summary written: {0}" -f $dispositionPath)
 
+Write-GitHubOutputValue -Name 'session-index-v2-status' -Value ([string]$report.status)
+Write-GitHubOutputValue -Name 'session-index-v2-burn-in-status' -Value ([string]$report.burnInReceipt.status)
+Write-GitHubOutputValue -Name 'session-index-v2-burn-in-query-status' -Value ([string]$burnIn.status)
+Write-GitHubOutputValue -Name 'session-index-v2-disposition' -Value ([string]$disposition)
+Write-GitHubOutputValue -Name 'session-index-v2-mismatch-class' -Value ([string]$mismatchClass)
+Write-GitHubOutputValue -Name 'session-index-v2-mismatch-fingerprint' -Value ([string]$mismatchFingerprint)
+Write-GitHubOutputValue -Name 'session-index-v2-recurrence-classification' -Value ([string]$recurrenceClassification)
+Write-GitHubOutputValue -Name 'session-index-v2-promotion-ready' -Value (([string]$promotionReady).ToLowerInvariant())
+Write-GitHubOutputValue -Name 'session-index-v2-contract-report-path' -Value ([string]$reportPath)
+Write-GitHubOutputValue -Name 'session-index-v2-disposition-path' -Value ([string]$dispositionPath)
+
 if ($env:GITHUB_STEP_SUMMARY) {
   $summary = @(
     '### Session Index v2 Contract',
@@ -457,8 +483,15 @@ if ($env:GITHUB_STEP_SUMMARY) {
     ("- Status: **{0}**" -f $report.status),
     ("- Enforced: **{0}**" -f ([bool]$Enforce)),
     ("- Burn-in: **{0}/{1}** consecutive successful runs" -f $burnIn.consecutiveSuccess, $BurnInThreshold),
+    ('- Burn-in receipt status: `{0}`' -f $report.burnInReceipt.status),
+    ('- Burn-in query status: `{0}`' -f $burnIn.status),
     ("- Promotion ready: **{0}**" -f $promotionReady),
-    ("- Disposition: **{0}**" -f $disposition)
+    ("- Disposition: **{0}**" -f $disposition),
+    ('- Mismatch class: `{0}`' -f $mismatchClass),
+    ('- Mismatch fingerprint: `{0}`' -f $mismatchFingerprint),
+    ('- Recurrence: `{0}`' -f $recurrenceClassification),
+    ('- Contract report: `{0}`' -f $reportPath),
+    ('- Disposition report: `{0}`' -f $dispositionPath)
   )
   if ($failures.Count -gt 0) {
     $summary += ''

@@ -85,7 +85,9 @@ Describe 'Test-SessionIndexV2Contract' {
         [Parameter(Mandatory)][string]$ResultsDir,
         [Parameter(Mandatory)][string]$PolicyPath,
         [string]$Branch = 'develop',
-        [switch]$Enforce
+        [switch]$Enforce,
+        [string]$GitHubOutputPath,
+        [string]$GitHubStepSummaryPath
       )
 
       $psi = [System.Diagnostics.ProcessStartInfo]::new()
@@ -111,6 +113,14 @@ Describe 'Test-SessionIndexV2Contract' {
       $psi.UseShellExecute = $false
       $psi.RedirectStandardOutput = $true
       $psi.RedirectStandardError = $true
+      [void]$psi.Environment.Remove('GITHUB_OUTPUT')
+      [void]$psi.Environment.Remove('GITHUB_STEP_SUMMARY')
+      if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
+        $psi.Environment['GITHUB_OUTPUT'] = $GitHubOutputPath
+      }
+      if (-not [string]::IsNullOrWhiteSpace($GitHubStepSummaryPath)) {
+        $psi.Environment['GITHUB_STEP_SUMMARY'] = $GitHubStepSummaryPath
+      }
 
       $ghTokenPrevious = $env:GH_TOKEN
       $githubTokenPrevious = $env:GITHUB_TOKEN
@@ -141,6 +151,16 @@ Describe 'Test-SessionIndexV2Contract' {
         StdErr = $stderr
         Report = (Get-Content -LiteralPath (Join-Path $ResultsDir 'session-index-v2-contract.json') -Raw | ConvertFrom-Json -Depth 50)
         Summary = (Get-Content -LiteralPath (Join-Path $ResultsDir 'session-index-v2-disposition.json') -Raw | ConvertFrom-Json -Depth 50)
+        GitHubOutput = if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath) -and (Test-Path -LiteralPath $GitHubOutputPath -PathType Leaf)) {
+          Get-Content -LiteralPath $GitHubOutputPath -Raw
+        } else {
+          ''
+        }
+        GitHubStepSummary = if (-not [string]::IsNullOrWhiteSpace($GitHubStepSummaryPath) -and (Test-Path -LiteralPath $GitHubStepSummaryPath -PathType Leaf)) {
+          Get-Content -LiteralPath $GitHubStepSummaryPath -Raw
+        } else {
+          ''
+        }
       }
     }
   }
@@ -233,5 +253,48 @@ Describe 'Test-SessionIndexV2Contract' {
     (Get-BurnInDisposition -Failures @('mismatch') -Enforce:$false -PromotionReady:$false -RecurrenceClassification 'recurring-or-persistent') | Should -Be 'recurring-burn-in-mismatch'
     (Get-BurnInDisposition -Failures @('mismatch') -Enforce:$false -PromotionReady:$false -RecurrenceClassification 'new-after-success-streak') | Should -Be 'burn-in-mismatch'
     (Get-BurnInDisposition -Failures @() -Enforce:$false -PromotionReady:$true -RecurrenceClassification 'clean') | Should -Be 'promotion-ready'
+  }
+
+  It 'writes machine-readable GitHub outputs and summary evidence for non-blocking burn-in mismatches' {
+    $resultsDir = New-SessionIndexFixture -Name 'telemetry' -ExpectedContexts @('lint')
+    $policyPath = Join-Path $TestDrive 'branch-policy.telemetry.json'
+    Write-JsonFile -Path $policyPath -Data @{
+      schema = 'branch-required-checks/v1'
+      schemaVersion = '1.0.0'
+      branchClassBindings = @{
+        main = 'upstream-release'
+      }
+      branchClassRequiredChecks = @{
+        'upstream-release' = @('commit-integrity')
+      }
+    }
+    $githubOutputPath = Join-Path $TestDrive 'session-index-v2-output.txt'
+    $githubStepSummaryPath = Join-Path $TestDrive 'session-index-v2-step-summary.md'
+
+    $run = Invoke-ContractTool `
+      -ResultsDir $resultsDir `
+      -PolicyPath $policyPath `
+      -GitHubOutputPath $githubOutputPath `
+      -GitHubStepSummaryPath $githubStepSummaryPath
+
+    $run.ExitCode | Should -Be 0
+    $run.Report.status | Should -Be 'fail'
+    $run.Summary.disposition | Should -Be 'burn-in-mismatch'
+    $run.GitHubOutput | Should -Match 'session-index-v2-status=fail'
+    $run.GitHubOutput | Should -Match 'session-index-v2-burn-in-status=mismatch'
+    $run.GitHubOutput | Should -Match 'session-index-v2-burn-in-query-status=unavailable'
+    $run.GitHubOutput | Should -Match 'session-index-v2-disposition=burn-in-mismatch'
+    $run.GitHubOutput | Should -Match 'session-index-v2-mismatch-class=branch-policy-projection'
+    $run.GitHubOutput | Should -Match 'session-index-v2-mismatch-fingerprint=[0-9a-f]{64}'
+    $run.GitHubOutput | Should -Match 'session-index-v2-recurrence-classification=unknown'
+    $run.GitHubOutput | Should -Match 'session-index-v2-promotion-ready=false'
+    $run.GitHubOutput | Should -Match 'session-index-v2-contract-report-path=.*session-index-v2-contract\.json'
+    $run.GitHubOutput | Should -Match 'session-index-v2-disposition-path=.*session-index-v2-disposition\.json'
+    $run.GitHubStepSummary | Should -Match 'Burn-in receipt status: `mismatch`'
+    $run.GitHubStepSummary | Should -Match 'Burn-in query status: `unavailable`'
+    $run.GitHubStepSummary | Should -Match 'Mismatch class: `branch-policy-projection`'
+    $run.GitHubStepSummary | Should -Match 'Mismatch fingerprint: `[0-9a-f]{64}`'
+    $run.GitHubStepSummary | Should -Match 'Contract report: `.*session-index-v2-contract\.json`'
+    $run.GitHubStepSummary | Should -Match 'Disposition report: `.*session-index-v2-disposition\.json`'
   }
 }
