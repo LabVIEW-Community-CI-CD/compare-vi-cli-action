@@ -466,7 +466,8 @@ $summary | ConvertTo-Json -Depth 20 | Out-File -LiteralPath $dispositionPath -En
 Write-Host ("session-index-v2 disposition summary written: {0}" -f $dispositionPath)
 
 Write-GitHubOutputValue -Name 'session-index-v2-status' -Value ([string]$report.status)
-Write-GitHubOutputValue -Name 'session-index-v2-burn-in-status' -Value ([string]$burnIn.status)
+Write-GitHubOutputValue -Name 'session-index-v2-burn-in-status' -Value ([string]$report.burnInReceipt.status)
+Write-GitHubOutputValue -Name 'session-index-v2-burn-in-query-status' -Value ([string]$burnIn.status)
 Write-GitHubOutputValue -Name 'session-index-v2-disposition' -Value ([string]$disposition)
 Write-GitHubOutputValue -Name 'session-index-v2-mismatch-class' -Value ([string]$mismatchClass)
 Write-GitHubOutputValue -Name 'session-index-v2-mismatch-fingerprint' -Value ([string]$mismatchFingerprint)
@@ -482,6 +483,8 @@ if ($env:GITHUB_STEP_SUMMARY) {
     ("- Status: **{0}**" -f $report.status),
     ("- Enforced: **{0}**" -f ([bool]$Enforce)),
     ("- Burn-in: **{0}/{1}** consecutive successful runs" -f $burnIn.consecutiveSuccess, $BurnInThreshold),
+    ('- Burn-in receipt status: `{0}`' -f $report.burnInReceipt.status),
+    ('- Burn-in query status: `{0}`' -f $burnIn.status),
     ("- Promotion ready: **{0}**" -f $promotionReady),
     ("- Disposition: **{0}**" -f $disposition),
     ('- Mismatch class: `{0}`' -f $mismatchClass),
