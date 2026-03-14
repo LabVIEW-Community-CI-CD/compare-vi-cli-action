@@ -7,10 +7,12 @@ Use this prompt when you want unattended, repo-specific execution with explicit 
 rotation, and anti-idle behavior.
 
 Canonical machine-readable companion contract:
+
 - schema: `docs/schemas/mission-control-envelope-v1.schema.json`
 - example: `tools/priority/__fixtures__/mission-control/mission-control-envelope.json`
 
 Envelope model:
+
 - `missionControl`: repo-owned law and execution invariants
 - `operator.intent` and `operator.focus`: bounded operator input
 - `operator.overrides`: narrow, auditable exceptions
