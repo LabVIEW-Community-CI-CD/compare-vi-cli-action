@@ -215,6 +215,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Native LabVIEW 2026 host split diagnostics:
   - `node tools/npm/run-script.mjs env:labview:2026:host-planes`
   - The Windows host is treated as the execution runner; the generated report records `runner.hostIsRunner=true`.
+  - Use `docs/SINGLE_HOST_LABVIEW_2026_PLANES.md` when you need the explicit four-plane operating model and the
+    authoritative replay/diagnostics entry points in one place.
 - Differentiated history readback:
   - `node tools/npm/run-script.mjs history:diagnostics:show -- --ResultsRoot tests/results/local-parity/windows`
   - The replay prints the host/runner plane split before the differentiated mode diagnostics.
