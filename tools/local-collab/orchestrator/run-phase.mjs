@@ -482,6 +482,115 @@ function invokeDaemonDelegate(repoRoot, delegateArgs) {
   return normalizeCommandResult(result);
 }
 
+function invokeDaemonAgentReview(
+  repoRoot,
+  {
+    env = process.env,
+    providerSelection = { selectionSource: 'default-empty', providers: [] },
+    invokeAgentReviewPolicyFn
+  } = {}
+) {
+  const configuredReceiptPath = AGENT_REVIEW_POLICY_PROFILE_RECEIPT_PATHS.daemon;
+  const normalizedReceiptPath = configuredReceiptPath.replace(/\\/g, '/');
+  const args = [
+    ...AGENT_REVIEW_POLICY_COMMAND.slice(1),
+    '--repo-root',
+    repoRoot,
+    '--profile',
+    'daemon',
+    '--receipt-path',
+    configuredReceiptPath
+  ];
+  for (const providerId of providerSelection.providers) {
+    args.push('--review-provider', providerId);
+  }
+
+  let parsedReceipt = null;
+  const commandResult = typeof invokeAgentReviewPolicyFn === 'function'
+    ? (() => {
+        const injected = invokeAgentReviewPolicyFn({
+          repoRoot,
+          phase: 'daemon',
+          env,
+          providerSelection,
+          receiptPath: configuredReceiptPath
+        }) ?? {};
+        parsedReceipt = injected.receipt ?? null;
+        const status = Number.isInteger(injected.exitCode)
+          ? injected.exitCode
+          : normalizeText(parsedReceipt?.overall?.status) === 'failed'
+            ? 1
+            : 0;
+        return {
+          status,
+          stdout: normalizeText(injected.stdout) || (parsedReceipt ? JSON.stringify(parsedReceipt, null, 2) : ''),
+          stderr: normalizeText(injected.stderr)
+        };
+      })()
+    : normalizeCommandResult(
+        spawnSync(AGENT_REVIEW_POLICY_COMMAND[0], args, {
+          cwd: repoRoot,
+          encoding: 'utf8',
+          env: {
+            ...env
+          },
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
+      );
+  parsedReceipt ??= tryParseJson(commandResult.stdout);
+
+  return {
+    exitCode: commandResult.status,
+    receiptPath: normalizedReceiptPath,
+    receiptStatus: normalizeText(parsedReceipt?.overall?.status) || null,
+    selectionSource:
+      normalizeText(parsedReceipt?.providerSelection?.selectionSource) || providerSelection.selectionSource,
+    requestedProviders: Array.isArray(parsedReceipt?.requestedProviders)
+      ? parsedReceipt.requestedProviders.filter(Boolean)
+      : [],
+    actionableFindingCount: Number.isInteger(parsedReceipt?.overall?.actionableFindingCount)
+      ? parsedReceipt.overall.actionableFindingCount
+      : 0,
+    reason:
+      normalizeText(parsedReceipt?.overall?.message) ||
+      normalizeText(commandResult.stderr) ||
+      normalizeText(commandResult.stdout) ||
+      'Daemon local agent review providers did not return a machine-readable status.',
+    receipt: parsedReceipt
+  };
+}
+
+function buildDaemonCombinedStdout(delegateReport, agentReview) {
+  if (!delegateReport || typeof delegateReport !== 'object') {
+    return '';
+  }
+
+  const combined = {
+    ...delegateReport,
+    source: 'local-collab-daemon-review',
+    reason:
+      normalizeText(agentReview?.receiptStatus).toLowerCase() === 'failed'
+        ? normalizeText(agentReview.reason) || 'Daemon local agent review providers failed after Docker/Desktop review passed.'
+        : 'Docker/Desktop review loop passed and daemon local agent review providers passed.',
+    agentReview: agentReview
+      ? {
+          receiptPath: normalizeText(agentReview.receiptPath) || null,
+          receiptStatus: normalizeText(agentReview.receiptStatus) || null,
+          selectionSource: normalizeText(agentReview.selectionSource) || null,
+          requestedProviders: normalizeStringList(agentReview.requestedProviders),
+          actionableFindingCount: Number.isInteger(agentReview.actionableFindingCount)
+            ? agentReview.actionableFindingCount
+            : 0
+        }
+      : null
+  };
+
+  if (normalizeText(agentReview?.receiptStatus).toLowerCase() === 'failed') {
+    combined.status = 'failed';
+  }
+  return JSON.stringify(combined, null, 2);
+}
+
 function invokePostCommitDelegate(repoRoot, env = process.env) {
   const runner = new HookRunner('post-commit', { repoRoot, env });
   info('[post-commit] Recording local collaboration authoring receipt');
@@ -517,7 +626,29 @@ export async function runLocalCollaborationPhase(options = {}) {
 
   const started = Date.now();
   let result;
-  if (typeof delegateFns[phase] === 'function') {
+  if (phase === 'daemon') {
+    result = typeof delegateFns.daemon === 'function'
+      ? await delegateFns.daemon({ repoRoot, phase, env, delegateArgs: options.delegateArgs ?? [] })
+      : invokeDaemonDelegate(repoRoot, options.delegateArgs ?? []);
+    const delegateReport = tryParseJson(result.stdout);
+    const delegatePassed =
+      result.exitCode === 0 &&
+      delegateReport &&
+      typeof delegateReport === 'object' &&
+      normalizeText(delegateReport.status).toLowerCase() === 'passed';
+    if (delegatePassed && providerSelection.providers.length > 0) {
+      result.agentReview = invokeDaemonAgentReview(repoRoot, {
+        env,
+        providerSelection,
+        invokeAgentReviewPolicyFn: options.invokeAgentReviewPolicyFn
+      });
+      result.stdout = buildDaemonCombinedStdout(delegateReport, result.agentReview);
+      if (normalizeText(result.agentReview.receiptStatus).toLowerCase() === 'failed' || result.agentReview.exitCode !== 0) {
+        result.exitCode = 1;
+        result.stderr = normalizeText(result.agentReview.reason) || result.stderr;
+      }
+    }
+  } else if (typeof delegateFns[phase] === 'function') {
     result = await delegateFns[phase]({ repoRoot, phase, env, delegateArgs: options.delegateArgs ?? [] });
   } else if (phase === 'pre-commit') {
     result = invokePreCommitDelegate(repoRoot, {
@@ -531,8 +662,6 @@ export async function runLocalCollaborationPhase(options = {}) {
       providerSelection,
       invokeAgentReviewPolicyFn: options.invokeAgentReviewPolicyFn
     });
-  } else if (phase === 'daemon') {
-    result = invokeDaemonDelegate(repoRoot, options.delegateArgs ?? []);
   } else if (phase === 'post-commit') {
     result = invokePostCommitDelegate(repoRoot, env);
   } else {

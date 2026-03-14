@@ -3006,6 +3006,143 @@ test('delivery broker restores ready only after clean current-head draft review 
   assert.match(brokerResult.reason, /marked the pr ready for review/i);
 });
 
+test('delivery broker passes configured daemon review providers to the local collaboration wrapper on a fresh draft head', async () => {
+  const tempRepo = await mkdtemp(path.join(os.tmpdir(), 'delivery-broker-daemon-rereview-'));
+  runGit(tempRepo, ['init']);
+  runGit(tempRepo, ['config', 'user.name', 'Agent Runner']);
+  runGit(tempRepo, ['config', 'user.email', 'agent@example.com']);
+  await writeFile(path.join(tempRepo, 'README.md'), '# temp\n', 'utf8');
+  runGit(tempRepo, ['add', 'README.md']);
+  runGit(tempRepo, ['commit', '-m', 'init']);
+  const headSha = runGit(tempRepo, ['rev-parse', 'HEAD']);
+
+  const helperCalls = [];
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: tempRepo,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-review',
+      objective: {
+        summary: 'Advance issue #1074'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-review',
+          pullRequest: {
+            number: 1074,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1074',
+            isDraft: true,
+            copilotReviewSignal: {
+              hasCurrentHeadReview: true,
+              actionableCommentCount: 0,
+              actionableThreadCount: 0
+            },
+            copilotReviewWorkflow: {
+              status: 'COMPLETED',
+              conclusion: 'SUCCESS'
+            }
+          },
+          localReviewLoop: {
+            requested: true,
+            source: 'standing-issue-body',
+            receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+            markdownlint: true,
+            requirementsVerification: true,
+            niLinuxReviewSuite: false,
+            singleViHistory: null
+          },
+          mutationEnvelope: {
+            copilotReviewStrategy: 'draft-only-explicit',
+            maxActiveCodingLanes: 1
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        localReviewLoop: {
+          enabled: true,
+          reviewProviders: ['copilot-cli'],
+          receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+          command: ['node', 'tools/local-collab/orchestrator/run-phase.mjs', '--phase', 'daemon']
+        },
+        codingTurnCommand: ['node', 'mock-broker']
+      }),
+      runCommandFn: async (command, args) => {
+        helperCalls.push([command, ...args].join(' '));
+        if (command === 'node') {
+          return {
+            status: 0,
+            stdout: JSON.stringify({
+              status: 'passed',
+              source: 'local-collab-daemon-review',
+              reason: 'Docker/Desktop review loop passed and daemon local agent review providers passed.',
+              receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+              currentHeadSha: headSha,
+              receiptHeadSha: headSha,
+              receiptFreshForHead: true,
+              requestedCoverageSatisfied: true,
+              requestedCoverageReason: 'requested coverage satisfied',
+              requestedCoverageMissingChecks: [],
+              receipt: {
+                git: {
+                  headSha,
+                  dirtyTracked: false
+                },
+                overall: {
+                  status: 'passed',
+                  failedCheck: '',
+                  message: '',
+                  exitCode: 0
+                }
+              },
+              agentReview: {
+                receiptPath: 'tests/results/docker-tools-parity/agent-review-policy/receipt.json',
+                receiptStatus: 'passed',
+                selectionSource: 'explicit-request',
+                requestedProviders: ['copilot-cli'],
+                actionableFindingCount: 0
+              }
+            }),
+            stderr: ''
+          };
+        }
+        assert.equal(command, 'gh');
+        assert.deepEqual(args, ['pr', 'ready', '1074', '--repo', 'LabVIEW-Community-CI-CD/compare-vi-cli-action']);
+        return {
+          status: 0,
+          stdout: 'converted to ready\n',
+          stderr: ''
+        };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.status, 'completed');
+  assert.equal(brokerResult.outcome, 'waiting-ci');
+  assert.equal(helperCalls.length, 2);
+  assert.match(
+    helperCalls[0],
+    /^node tools\/local-collab\/orchestrator\/run-phase\.mjs --phase daemon --providers copilot-cli --repo-root /
+  );
+  assert.equal(brokerResult.details.localReviewLoop.status, 'passed');
+  assert.equal(brokerResult.details.localReviewLoop.currentHeadSha, headSha);
+});
+
 test('delivery broker keeps a draft PR waiting-review when local receipt freshness or coverage cannot be proven', async () => {
   const helperCalls = [];
   const brokerResult = await runDeliveryTurnBroker({

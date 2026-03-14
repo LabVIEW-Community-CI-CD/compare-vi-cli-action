@@ -86,7 +86,6 @@ test('runLocalCollaborationPhase writes deterministic daemon orchestrator receip
   const result = await runLocalCollaborationPhase({
     phase: 'daemon',
     repoRoot,
-    providers: ['copilot-cli'],
     delegateArgs: ['--receipt-path', 'tests/results/docker-tools-parity/review-loop-receipt.json'],
     delegateFns: {
       daemon: async () => ({
@@ -103,8 +102,8 @@ test('runLocalCollaborationPhase writes deterministic daemon orchestrator receip
   assert.equal(result.receipt.forkPlane, 'upstream');
   assert.equal(result.receipt.persona, 'daemon');
   assert.equal(result.receipt.executionPlane, 'docker');
-  assert.equal(result.receipt.selectionSource, 'explicit');
-  assert.deepEqual(result.receipt.providers, ['copilot-cli']);
+  assert.equal(result.receipt.selectionSource, 'default-empty');
+  assert.deepEqual(result.receipt.providers, []);
   assert.match(result.receipt.delegate.command.join(' '), /tools\/priority\/docker-desktop-review-loop\.mjs/);
   assert.equal(result.receipt.ledger.receiptId, `daemon:${result.receipt.headSha}`);
 
@@ -117,7 +116,100 @@ test('runLocalCollaborationPhase writes deterministic daemon orchestrator receip
   assert.equal(ledgerReceipt.phase, 'daemon');
   assert.equal(ledgerReceipt.headSha, result.receipt.headSha);
   assert.equal(ledgerReceipt.executionPlane, 'docker');
-  assert.equal(ledgerReceipt.providerId, 'copilot-cli');
+  assert.equal(ledgerReceipt.providerId, 'none');
+});
+
+test('runLocalCollaborationPhase runs daemon agent review after Docker parity passes', async () => {
+  const repoRoot = await createGitRepo();
+  const result = await runLocalCollaborationPhase({
+    phase: 'daemon',
+    repoRoot,
+    providers: ['simulation'],
+    delegateArgs: ['--receipt-path', 'tests/results/docker-tools-parity/review-loop-receipt.json'],
+    delegateFns: {
+      daemon: async () => ({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          status: 'passed',
+          source: 'docker-desktop-review-loop',
+          reason: 'Docker/Desktop review loop passed.',
+          receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+          currentHeadSha: 'head-sha',
+          receiptHeadSha: 'head-sha',
+          receiptFreshForHead: true,
+          requestedCoverageSatisfied: true,
+          requestedCoverageReason: 'coverage ok',
+          requestedCoverageMissingChecks: [],
+          receipt: {
+            overall: {
+              status: 'passed',
+              message: ''
+            }
+          }
+        }),
+        stderr: ''
+      })
+    },
+    invokeAgentReviewPolicyFn: () => ({
+      exitCode: 0,
+      receipt: {
+        overall: {
+          status: 'passed',
+          actionableFindingCount: 0,
+          message: 'Daemon local agent review providers passed.'
+        },
+        providerSelection: {
+          selectionSource: 'explicit-request'
+        },
+        requestedProviders: ['simulation']
+      }
+    })
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.receipt.delegate.agentReview.receiptStatus, 'passed');
+  assert.deepEqual(result.receipt.delegate.agentReview.requestedProviders, ['simulation']);
+  const daemonStdout = JSON.parse(result.stdout);
+  assert.equal(daemonStdout.source, 'local-collab-daemon-review');
+  assert.equal(daemonStdout.status, 'passed');
+  assert.equal(daemonStdout.agentReview.receiptStatus, 'passed');
+  assert.deepEqual(daemonStdout.agentReview.requestedProviders, ['simulation']);
+});
+
+test('runLocalCollaborationPhase skips daemon agent review when Docker parity fails', async () => {
+  const repoRoot = await createGitRepo();
+  let invokedAgentReview = false;
+  const result = await runLocalCollaborationPhase({
+    phase: 'daemon',
+    repoRoot,
+    providers: ['simulation'],
+    delegateFns: {
+      daemon: async () => ({
+        exitCode: 1,
+        stdout: JSON.stringify({
+          status: 'failed',
+          source: 'docker-desktop-review-loop',
+          reason: 'Docker/Desktop review loop failed.'
+        }),
+        stderr: 'docker failed'
+      })
+    },
+    invokeAgentReviewPolicyFn: () => {
+      invokedAgentReview = true;
+      return {
+        exitCode: 0,
+        receipt: {
+          overall: {
+            status: 'passed'
+          }
+        }
+      };
+    }
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(invokedAgentReview, false);
+  assert.equal(result.receipt.delegate.agentReview, null);
 });
 
 test('runLocalCollaborationPhase records codex authoring receipts for post-commit', async () => {
