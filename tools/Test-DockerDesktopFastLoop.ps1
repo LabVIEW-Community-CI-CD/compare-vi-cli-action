@@ -21,6 +21,7 @@ param(
   [string]$ReadinessJsonPath = '',
   [string]$ReadinessMarkdownPath = '',
   [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
+  [string]$StepSummaryPath = $env:GITHUB_STEP_SUMMARY,
   [ValidateSet('none', 'smoke', 'history-core')]
   [string]$HistoryScenarioSet = 'none',
   [ValidateSet('both', 'windows', 'linux')]
@@ -332,6 +333,24 @@ function Write-GitHubOutputValue {
   }
 
   Add-Content -LiteralPath $Path -Value ("{0}={1}" -f $Key, ($Value ?? '')) -Encoding utf8
+}
+
+function Write-StepSummarySection {
+  param(
+    [AllowNull()][AllowEmptyString()][string]$Path,
+    [Parameter(Mandatory)][string[]]$Lines
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return
+  }
+
+  $directory = Split-Path -Parent $Path
+  if (-not [string]::IsNullOrWhiteSpace($directory) -and -not (Test-Path -LiteralPath $directory -PathType Container)) {
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+  }
+
+  Add-Content -LiteralPath $Path -Value $Lines -Encoding utf8
 }
 
 function Get-HostPlaneSummaryAssessment {
@@ -2597,6 +2616,16 @@ Write-GitHubOutputValue -Key 'docker-fast-loop-host-plane-summary-path' -Value (
 Write-GitHubOutputValue -Key 'docker-fast-loop-host-plane-summary-status' -Value ([string]$hostPlaneSummary.status) -Path $GitHubOutputPath
 Write-GitHubOutputValue -Key 'docker-fast-loop-host-plane-summary-sha256' -Value ([string]$hostPlaneSummary.sha256) -Path $GitHubOutputPath
 Write-GitHubOutputValue -Key 'docker-fast-loop-host-plane-summary-reason' -Value ([string]$hostPlaneSummary.reason) -Path $GitHubOutputPath
+
+Write-StepSummarySection -Path $StepSummaryPath -Lines @(
+  '### Docker Fast Loop Summary'
+  ('- Summary Path: `{0}`' -f $summaryPath)
+  ('- Status Path: `{0}`' -f $statusResolved)
+  ('- Host Plane Summary Path: `{0}`' -f [string]$hostPlaneSummary.path)
+  ('- Host Plane Summary Status: `{0}`' -f [string]$hostPlaneSummary.status)
+  ('- Host Plane Summary SHA-256: `{0}`' -f [string]$hostPlaneSummary.sha256)
+  ('- Host Plane Summary Reason: `{0}`' -f [string]$hostPlaneSummary.reason)
+)
 
 if ($hostPlaneSummary.declared -and [string]$hostPlaneSummary.status -ne 'ok') {
   throw ("Declared host-plane summary artifact not readable: {0}" -f [string]$hostPlaneSummary.path)
