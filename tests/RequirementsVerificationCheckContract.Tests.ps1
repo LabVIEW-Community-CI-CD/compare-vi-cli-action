@@ -80,7 +80,7 @@ jobs:
         }
       }
       rulesets = @{
-        '8811898' = @{
+        develop = @{
           required_status_checks = @('Requirements Verification / requirements-verification')
         }
       }

@@ -5,7 +5,7 @@ param(
   [string]$PriorityPolicyPath = 'tools/priority/policy.json',
   [string]$DevelopBranchName = 'develop',
   [string]$ReleaseBranchName = 'release/*',
-  [string]$DevelopRulesetId = '8811898',
+  [string]$DevelopRulesetId = 'develop',
   [string]$ReleaseRulesetId = '8614172',
   [string]$OutputJsonPath = 'tests/results/promotion-contract/alignment.json',
   [string]$StepSummaryPath = $env:GITHUB_STEP_SUMMARY
@@ -29,6 +29,22 @@ function Normalize-CheckList {
     $list = @($Value | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
   }
   return @($list | Sort-Object -Unique)
+}
+
+function Resolve-RulesetRequiredChecks {
+  param(
+    [Parameter(Mandatory)][object]$PriorityPolicy,
+    [Parameter(Mandatory)][string[]]$Candidates
+  )
+
+  foreach ($candidate in $Candidates) {
+    $node = $PriorityPolicy.rulesets.PSObject.Properties[$candidate]
+    if ($node) {
+      return @($node.Value.required_status_checks)
+    }
+  }
+
+  return @()
 }
 
 function Compare-CheckSets {
@@ -64,7 +80,7 @@ $developBranchChecks = @($branchPolicy.branches.$DevelopBranchName)
 $releaseBranchChecks = @($branchPolicy.branches.$ReleaseBranchName)
 $developPriorityChecks = @($priorityPolicy.branches.$DevelopBranchName.required_status_checks)
 $releasePriorityChecks = @($priorityPolicy.branches.$ReleaseBranchName.required_status_checks)
-$developRulesetChecks = @($priorityPolicy.rulesets.$DevelopRulesetId.required_status_checks)
+$developRulesetChecks = @(Resolve-RulesetRequiredChecks -PriorityPolicy $priorityPolicy -Candidates @($DevelopRulesetId, '8811898'))
 $releaseRulesetChecks = @($priorityPolicy.rulesets.$ReleaseRulesetId.required_status_checks)
 
 $comparisons = [ordered]@{

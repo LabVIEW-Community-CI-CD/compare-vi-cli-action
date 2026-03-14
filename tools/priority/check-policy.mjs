@@ -1151,24 +1151,45 @@ async function collectState(manifest, repoUrl, token, fetchFn, logFn = console.l
     }
     return rulesetListPromise;
   };
-  for (const [rulesetId, expectations] of Object.entries(manifest.rulesets ?? {})) {
-    const numericId = Number(rulesetId);
+  for (const [rulesetKey, expectations] of Object.entries(manifest.rulesets ?? {})) {
+    const numericId = Number(rulesetKey);
     const state = {
-      id: numericId,
+      key: rulesetKey,
+      id: Number.isNaN(numericId) ? rulesetKey : numericId,
       expectations,
       ruleset: null,
       error: null,
       resolvedId: Number.isNaN(numericId) ? null : numericId,
-      resolvedBy: 'id'
+      resolvedBy: Number.isNaN(numericId) ? 'identity' : 'id'
     };
-    if (Number.isNaN(numericId)) {
-      state.error = new Error('invalid id');
-      rulesetStates.push(state);
-      continue;
-    }
     try {
-      const rulesetUrl = `${repoUrl}/rulesets/${numericId}`;
-      state.ruleset = await fetchJson(rulesetUrl, token, fetchFn);
+      if (Number.isNaN(numericId)) {
+        const rulesets = await loadRulesets();
+        const detailedMatches = [];
+        for (const candidate of rulesets) {
+          if (!rulesetSummaryMatches(expectations, candidate)) {
+            continue;
+          }
+          const detailedRuleset = candidate.id
+            ? await fetchJson(`${repoUrl}/rulesets/${candidate.id}`, token, fetchFn)
+            : candidate;
+          detailedMatches.push(detailedRuleset);
+        }
+        const selection = selectRulesetIdentityCandidate(expectations, detailedMatches);
+        const matchedRuleset = selection.match;
+        if (matchedRuleset) {
+          state.resolvedId = matchedRuleset.id ?? null;
+          state.resolvedBy = 'identity';
+          state.ruleset = matchedRuleset;
+        } else if (selection.error) {
+          state.error = selection.error;
+        } else {
+          state.error = new Error(`404 ruleset not found for stable key '${rulesetKey}'`);
+        }
+      } else {
+        const rulesetUrl = `${repoUrl}/rulesets/${numericId}`;
+        state.ruleset = await fetchJson(rulesetUrl, token, fetchFn);
+      }
     } catch (error) {
       if (isNotFoundError(error)) {
         try {
@@ -1493,11 +1514,11 @@ export async function run({
       }
       for (const entry of initialState.rulesetStates) {
         if (entry.error) {
-          dbg(`Ruleset ${entry.id} fetch error: ${entry.error.message}`);
+          dbg(`Ruleset ${entry.key ?? entry.id} fetch error: ${entry.error.message}`);
         } else {
           const rule = entry.ruleset ?? {};
           dbg(
-            `Ruleset ${entry.id} keys: ${Object.keys(rule).join(', ') || '(none)'} ` +
+            `Ruleset ${entry.key ?? entry.id} keys: ${Object.keys(rule).join(', ') || '(none)'} ` +
             `(resolvedId=${entry.resolvedId ?? 'n/a'}, via=${entry.resolvedBy})`
           );
         }
@@ -1614,7 +1635,7 @@ export async function run({
             portabilityProfile = buildRulesetPortabilityProfile(initialState.repoData, {
               queueManagedRulesetsPortable: false,
               detectedBy: 'api-rejection',
-              reason: `ruleset ${entry.id}: merge_queue unsupported`
+              reason: `ruleset ${entry.key ?? entry.id}: merge_queue unsupported`
             });
             report.portability = portabilityProfile;
             queueManagedBranches = deriveActiveQueueManagedBranches(manifest, portabilityProfile);

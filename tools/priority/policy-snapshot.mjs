@@ -137,6 +137,23 @@ function isBranchPattern(branch) {
   return /[*?[\]]/.test(branch);
 }
 
+function rulesetSummaryMatches(expectations, candidate) {
+  if (!expectations || !candidate) {
+    return false;
+  }
+  if (expectations.name && candidate.name && expectations.name !== candidate.name) {
+    return false;
+  }
+  if (expectations.target && candidate.target && expectations.target !== candidate.target) {
+    return false;
+  }
+  return true;
+}
+
+async function loadRulesets(apiBase, token, requestJsonFn) {
+  return requestJsonFn(`${apiBase}/rulesets`, token);
+}
+
 export async function collectPolicyState({
   repo,
   token,
@@ -163,16 +180,22 @@ export async function collectPolicyState({
   }
 
   const rulesets = {};
-  for (const id of Object.keys(manifest.rulesets ?? {})) {
+  for (const [id, expectations] of Object.entries(manifest.rulesets ?? {})) {
     const numeric = Number(id);
-    if (!Number.isInteger(numeric)) {
+    if (Number.isInteger(numeric)) {
+      const ruleset = await requestJsonFn(`${apiBase}/rulesets/${numeric}`, token);
+      rulesets[id] = ruleset;
+      continue;
+    }
+    const candidates = await loadRulesets(apiBase, token, requestJsonFn);
+    const matched = candidates.find((candidate) => rulesetSummaryMatches(expectations, candidate));
+    if (!matched?.id) {
       rulesets[id] = {
-        error: 'invalid-ruleset-id'
+        error: 'ruleset-not-found'
       };
       continue;
     }
-    const ruleset = await requestJsonFn(`${apiBase}/rulesets/${numeric}`, token);
-    rulesets[id] = ruleset;
+    rulesets[id] = await requestJsonFn(`${apiBase}/rulesets/${matched.id}`, token);
   }
 
   return {

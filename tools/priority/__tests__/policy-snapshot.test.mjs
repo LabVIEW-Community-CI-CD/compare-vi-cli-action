@@ -59,7 +59,7 @@ test('resolveRepositorySlug prefers explicit, then env, then remotes', () => {
   assert.ok(seenCommands.some((entry) => entry.includes('remote.upstream.url')));
 });
 
-test('collectPolicyState records branch protection and ruleset-by-id details', async () => {
+test('collectPolicyState records branch protection and stable-key ruleset details', async () => {
   const calls = [];
   const manifest = {
     branches: {
@@ -68,8 +68,11 @@ test('collectPolicyState records branch protection and ruleset-by-id details', a
       'release/*': {}
     },
     rulesets: {
-      100: {},
-      abc: {}
+      develop: {
+        name: 'develop queue',
+        target: 'branch'
+      },
+      100: {}
     }
   };
 
@@ -96,6 +99,9 @@ test('collectPolicyState records branch protection and ruleset-by-id details', a
       if (url.endsWith('/branches/main/protection')) {
         return { required_status_checks: { strict: true } };
       }
+      if (url.endsWith('/rulesets')) {
+        return [{ id: 100, name: 'develop queue', target: 'branch' }];
+      }
       if (url.endsWith('/rulesets/100')) {
         return { id: 100, name: 'develop queue', rules: [{ type: 'merge_queue' }] };
       }
@@ -108,8 +114,8 @@ test('collectPolicyState records branch protection and ruleset-by-id details', a
   assert.equal(state.branches.develop.skipped, false);
   assert.equal(state.branches.main.skipped, false);
   assert.equal(state.branches['release/*'].skipped, true);
+  assert.equal(state.rulesets.develop.id, 100);
   assert.equal(state.rulesets['100'].id, 100);
-  assert.equal(state.rulesets.abc.error, 'invalid-ruleset-id');
   assert.ok(calls.some((entry) => entry.endsWith('/rulesets/100')));
-  assert.ok(calls.every((entry) => !entry.endsWith('/rulesets')));
+  assert.ok(calls.some((entry) => entry.endsWith('/rulesets')));
 });

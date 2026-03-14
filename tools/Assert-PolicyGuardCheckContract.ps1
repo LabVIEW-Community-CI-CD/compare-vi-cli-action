@@ -27,6 +27,22 @@ function Read-JsonFile {
   return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -Depth 20)
 }
 
+function Resolve-RulesetChecks {
+  param(
+    [Parameter(Mandatory)][object]$PriorityPolicy,
+    [Parameter(Mandatory)][string[]]$Candidates
+  )
+
+  foreach ($candidate in $Candidates) {
+    $node = $PriorityPolicy.rulesets.PSObject.Properties[$candidate]
+    if ($node) {
+      return @($node.Value.required_status_checks)
+    }
+  }
+
+  return @()
+}
+
 if (-not (Test-Path -LiteralPath $WorkflowPath -PathType Leaf)) {
   throw "Workflow file not found: $WorkflowPath"
 }
@@ -52,7 +68,11 @@ $branchPolicy = Read-JsonFile -Path $BranchRequiredChecksPath
 $priorityPolicy = Read-JsonFile -Path $PriorityPolicyPath
 
 $branchTargets = @('develop', 'main', 'release/*')
-$rulesetTargets = @('8811898', '8614140', '8614172')
+$rulesetTargets = @(
+  @{ label = 'develop'; candidates = @('develop', '8811898') },
+  @{ label = 'main'; candidates = @('main', '8614140') },
+  @{ label = 'release'; candidates = @('release', '8614172') }
+)
 
 foreach ($branchName in $branchTargets) {
   $branchChecks = @($branchPolicy.branches.$branchName)
@@ -70,12 +90,12 @@ foreach ($branchName in $branchTargets) {
   }
 }
 
-foreach ($rulesetId in $rulesetTargets) {
-  $rulesetChecks = @($priorityPolicy.rulesets.$rulesetId.required_status_checks)
+foreach ($rulesetTarget in $rulesetTargets) {
+  $rulesetChecks = @(Resolve-RulesetChecks -PriorityPolicy $priorityPolicy -Candidates $rulesetTarget.candidates)
   if ($rulesetChecks.Count -eq 0) {
-    Add-ContractError "Missing required checks for ruleset '$rulesetId' in $PriorityPolicyPath."
+    Add-ContractError "Missing required checks for ruleset '$($rulesetTarget.label)' in $PriorityPolicyPath."
   } elseif (-not ($rulesetChecks -contains $ExpectedCheckName)) {
-    Add-ContractError "Ruleset '$rulesetId' required checks missing '$ExpectedCheckName' in $PriorityPolicyPath."
+    Add-ContractError "Ruleset '$($rulesetTarget.label)' required checks missing '$ExpectedCheckName' in $PriorityPolicyPath."
   }
 }
 
@@ -87,4 +107,3 @@ if ($errors.Count -gt 0) {
 }
 
 Write-Host "[policy-guard-check-contract] OK: $ExpectedCheckName" -ForegroundColor Green
-
