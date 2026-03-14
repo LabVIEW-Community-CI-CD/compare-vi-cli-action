@@ -77,6 +77,10 @@ promotion behavior, not the branch-class source of truth.
 
 `node tools/npm/run-script.mjs priority:policy` queries these rulesets and fails if the live configuration drifts from
 `tools/priority/policy.json`; run it whenever you adjust protections.
+`node tools/npm/run-script.mjs priority:policy:snapshot` now also emits `state.copilotReview`, which must show
+`rulesetCopilotCodeReviewPresent = false` for the local CLI review contract. The repository-level
+"Automatic request Copilot review" setting is still a manual settings-page verification point because GitHub's REST
+ruleset/branch-protection APIs do not expose that toggle directly.
 
 ## Prescriptive Protection Settings
 

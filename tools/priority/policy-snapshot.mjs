@@ -154,6 +154,59 @@ async function loadRulesets(apiBase, token, requestJsonFn) {
   return requestJsonFn(`${apiBase}/rulesets`, token);
 }
 
+function findRule(rules = [], type) {
+  if (!Array.isArray(rules)) {
+    return null;
+  }
+  return rules.find((rule) => rule?.type === type) ?? null;
+}
+
+export function summarizeCopilotReviewState(rulesets = {}) {
+  const perRuleset = {};
+  const rulesetsWithCopilotCodeReview = [];
+  for (const [key, ruleset] of Object.entries(rulesets)) {
+    if (!ruleset || typeof ruleset !== 'object') {
+      perRuleset[key] = {
+        present: false,
+        status: 'invalid'
+      };
+      continue;
+    }
+    if (typeof ruleset.error === 'string' && ruleset.error.trim()) {
+      perRuleset[key] = {
+        present: false,
+        status: 'unresolved',
+        error: ruleset.error
+      };
+      continue;
+    }
+    const copilotRule = findRule(ruleset.rules, 'copilot_code_review');
+    const present = Boolean(copilotRule);
+    if (present) {
+      rulesetsWithCopilotCodeReview.push(key);
+    }
+    perRuleset[key] = {
+      present,
+      status: 'observed',
+      id: ruleset.id ?? null,
+      name: ruleset.name ?? null,
+      parameters: copilotRule?.parameters ?? null
+    };
+  }
+  return {
+    expectedRepositoryAutomaticRequestSetting: 'disabled',
+    automaticRequestSettingObservableViaApi: false,
+    automaticRequestSettingEvidence: 'manual-settings-page',
+    notes: [
+      'Repository-level Automatic request Copilot review is not exposed by the REST endpoints used by policy-snapshot.',
+      'Ruleset state is observable and must not contain copilot_code_review rules for this contract.'
+    ],
+    rulesetCopilotCodeReviewPresent: rulesetsWithCopilotCodeReview.length > 0,
+    rulesetsWithCopilotCodeReview,
+    rulesets: perRuleset
+  };
+}
+
 export async function collectPolicyState({
   repo,
   token,
@@ -209,7 +262,8 @@ export async function collectPolicyState({
       updated_at: repoState.updated_at
     },
     branches,
-    rulesets
+    rulesets,
+    copilotReview: summarizeCopilotReviewState(rulesets)
   };
 }
 
