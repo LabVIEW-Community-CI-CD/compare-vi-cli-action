@@ -43,6 +43,13 @@ function normalizeText(value) {
   return String(value).trim();
 }
 
+function normalizeStringList(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return [...new Set(values.map((value) => normalizeText(value)).filter(Boolean))];
+}
+
 function parseProviderList(value) {
   const normalized = normalizeText(value);
   if (!normalized) {
@@ -60,6 +67,43 @@ function isPhase(value) {
 
 function defaultOrchestratorReceiptPath(repoRoot, phase) {
   return path.join(repoRoot, DEFAULT_ORCHESTRATOR_RECEIPT_ROOT, `${phase}.json`);
+}
+
+function runGit(repoRoot, args) {
+  const result = spawnSync('git', ['-C', repoRoot, ...args], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  const stdout = normalizeText(result.stdout);
+  const stderr = normalizeText(result.stderr);
+  if (result.status !== 0) {
+    throw new Error(stderr || stdout || `git ${args.join(' ')} failed`);
+  }
+  return stdout;
+}
+
+function collectFilesTouchedForPhase(repoRoot, phase, git = {}) {
+  if (phase === 'pre-commit') {
+    return normalizeStringList(listStagedFiles());
+  }
+
+  if (phase === 'post-commit') {
+    return normalizeStringList(runGit(repoRoot, ['show', '--pretty=format:', '--name-only', '--diff-filter=ACMRT', 'HEAD']).split(/\r?\n/));
+  }
+
+  if (phase === 'pre-push' || phase === 'daemon') {
+    const baseSha = normalizeText(git.baseSha);
+    const headSha = normalizeText(git.headSha);
+    if (!baseSha || !headSha) {
+      return [];
+    }
+    return normalizeStringList(
+      runGit(repoRoot, ['diff', '--name-only', '--diff-filter=ACMRT', `${baseSha}..${headSha}`]).split(/\r?\n/)
+    );
+  }
+
+  return [];
 }
 
 export function parseArgs(argv = process.argv) {
@@ -247,10 +291,22 @@ function invokeDaemonDelegate(repoRoot, delegateArgs) {
   return normalizeCommandResult(result);
 }
 
-function invokePostCommitDelegate() {
-  return {
+function invokePostCommitDelegate(repoRoot) {
+  const runner = new HookRunner('post-commit', { repoRoot });
+  info('[post-commit] Recording local collaboration authoring receipt');
+  runner.runStep('record-authoring-receipt', () => ({
+    status: 'ok',
     exitCode: 0,
-    note: 'post-commit orchestration is reserved for later slices'
+    stdout: '',
+    stderr: '',
+    note: 'Post-commit authoring receipt recorded.'
+  }));
+  runner.addNote('Codex/operator commits are governed by the same local collaboration contract as review hooks.');
+  runner.writeSummary();
+  info('[post-commit] OK');
+  return {
+    exitCode: runner.exitCode,
+    summaryPath: path.join(repoRoot, 'tests', 'results', '_hooks', 'post-commit.json')
   };
 }
 
@@ -279,12 +335,16 @@ export async function runLocalCollaborationPhase(options = {}) {
   } else if (phase === 'daemon') {
     result = invokeDaemonDelegate(repoRoot, options.delegateArgs ?? []);
   } else if (phase === 'post-commit') {
-    result = invokePostCommitDelegate();
+    result = invokePostCommitDelegate(repoRoot);
   } else {
     throw new Error(`Unsupported local collaboration phase: ${phase}`);
   }
 
   const finished = Date.now();
+  const explicitFilesTouched = normalizeStringList(options.filesTouched);
+  const filesTouched = explicitFilesTouched.length > 0
+    ? explicitFilesTouched
+    : collectFilesTouchedForPhase(repoRoot, phase, git);
   const receipt = {
     schema: LOCAL_COLLAB_ORCHESTRATOR_SCHEMA,
     phase,
@@ -298,6 +358,8 @@ export async function runLocalCollaborationPhase(options = {}) {
     durationMs: finished - started,
     status: result.exitCode === 0 ? 'passed' : 'failed',
     outcome: result.exitCode === 0 ? 'completed' : 'blocked',
+    filesTouched,
+    commitCreated: phase === 'post-commit',
     selectionSource: providerSelection.selectionSource,
     providers: providerSelection.providers,
     delegate: {
@@ -324,6 +386,8 @@ export async function runLocalCollaborationPhase(options = {}) {
     durationMs: receipt.durationMs,
     status: receipt.status,
     outcome: receipt.outcome,
+    filesTouched: receipt.filesTouched,
+    commitCreated: receipt.commitCreated,
     sourcePaths: [orchestratorReceiptPath, normalizeText(result.summaryPath)].filter(Boolean),
     metadata: {
       orchestratorReceiptPath: path.relative(repoRoot, orchestratorReceiptPath).replace(/\\/g, '/'),

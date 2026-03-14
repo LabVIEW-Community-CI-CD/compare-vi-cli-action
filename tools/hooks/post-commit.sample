@@ -1,0 +1,15 @@
+#!/usr/bin/env pwsh
+# Sample post-commit hook. Enable hooks with:
+#   git config core.hooksPath tools/hooks
+# Then copy/rename this file to 'post-commit'.
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Write-Host '[post-commit] Recording local collaboration authoring receipt'
+& (Join-Path $PSScriptRoot 'post-commit.ps1')
+if ($LASTEXITCODE -ne 0) {
+  Write-Error "post-commit failed (exit=$LASTEXITCODE)."
+  exit $LASTEXITCODE
+}
+Write-Host '[post-commit] OK'

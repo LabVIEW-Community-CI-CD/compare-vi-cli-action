@@ -102,3 +102,32 @@ test('runLocalCollaborationPhase writes deterministic daemon orchestrator receip
   assert.equal(ledgerReceipt.headSha, result.receipt.headSha);
   assert.equal(ledgerReceipt.providerId, 'copilot-cli');
 });
+
+test('runLocalCollaborationPhase records codex authoring receipts for post-commit', async () => {
+  const repoRoot = await createGitRepo();
+  await writeFile(path.join(repoRoot, 'README.md'), '# changed\n', 'utf8');
+  spawnSync('git', ['add', 'README.md'], { cwd: repoRoot, encoding: 'utf8' });
+  spawnSync(
+    'git',
+    ['-c', 'user.name=Test User', '-c', 'user.email=test@example.com', 'commit', '-m', 'second'],
+    { cwd: repoRoot, encoding: 'utf8' }
+  );
+
+  const result = await runLocalCollaborationPhase({
+    phase: 'post-commit',
+    repoRoot
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.receipt.phase, 'post-commit');
+  assert.equal(result.receipt.forkPlane, 'personal');
+  assert.equal(result.receipt.persona, 'codex');
+  assert.equal(result.receipt.commitCreated, true);
+  assert.deepEqual(result.receipt.filesTouched, ['README.md']);
+  assert.match(result.receipt.delegate.summaryPath, /tests[\\/]results[\\/]_hooks[\\/]post-commit\.json$/);
+
+  const ledgerReceipt = JSON.parse(await readFile(result.ledgerReceiptPath, 'utf8'));
+  assert.equal(ledgerReceipt.phase, 'post-commit');
+  assert.equal(ledgerReceipt.commitCreated, true);
+  assert.deepEqual(ledgerReceipt.filesTouched, ['README.md']);
+});

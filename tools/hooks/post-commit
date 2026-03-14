@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NODE_BIN="${HOOKS_NODE:-node}"
+CORE_SCRIPT="${SCRIPT_DIR}/core/post-commit.mjs"
+
+if [[ "$NODE_BIN" == *:* ]] || [[ "$NODE_BIN" == /* ]]; then
+  if [[ ! -x "$NODE_BIN" ]]; then
+    echo "[hooks] Node binary not executable at $NODE_BIN; skipping post-commit." >&2
+    exit 0
+  fi
+  if grep -qi microsoft /proc/version 2>/dev/null && [[ "$NODE_BIN" == *.exe ]]; then
+    echo "[hooks] Running under WSL with Windows node.exe; skipping post-commit." >&2
+    exit 0
+  fi
+else
+  if ! command -v "$NODE_BIN" >/dev/null 2>&1; then
+    echo "[hooks] Node binary '$NODE_BIN' not found on PATH; skipping post-commit." >&2
+    exit 0
+  fi
+fi
+
+exec "$NODE_BIN" "$CORE_SCRIPT"

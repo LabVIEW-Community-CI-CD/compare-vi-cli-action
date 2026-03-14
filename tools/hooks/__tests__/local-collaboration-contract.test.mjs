@@ -12,10 +12,14 @@ function readRepoFile(relativePath) {
 
 test('hook core entrypoints route through the local collaboration orchestrator', () => {
   const preCommit = readRepoFile(path.join('tools', 'hooks', 'core', 'pre-commit.mjs'));
+  const postCommit = readRepoFile(path.join('tools', 'hooks', 'core', 'post-commit.mjs'));
   const prePush = readRepoFile(path.join('tools', 'hooks', 'core', 'pre-push.mjs'));
 
   assert.match(preCommit, /local-collab\/orchestrator\/run-phase\.mjs/);
   assert.match(preCommit, /phase:\s*'pre-commit'/);
+
+  assert.match(postCommit, /local-collab\/orchestrator\/run-phase\.mjs/);
+  assert.match(postCommit, /phase:\s*'post-commit'/);
 
   assert.match(prePush, /local-collab\/orchestrator\/run-phase\.mjs/);
   assert.match(prePush, /phase:\s*'pre-push'/);
