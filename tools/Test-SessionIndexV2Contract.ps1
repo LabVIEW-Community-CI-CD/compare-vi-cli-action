@@ -14,6 +14,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'BranchExpectedContexts.psm1') -Force -DisableNameChecking
+
 function Convert-GitRemoteUrlToSlug {
   param([string]$RemoteUrl)
 
@@ -214,8 +216,10 @@ if (Test-Path -LiteralPath $v2Path -PathType Leaf) {
 $expectedContexts = @()
 if (Test-Path -LiteralPath $PolicyPath -PathType Leaf) {
   try {
-    $policy = Get-Content -Raw -LiteralPath $PolicyPath | ConvertFrom-Json -Depth 50
-    $expectedContexts = @($policy.branches.$Branch)
+    $expectedContexts = @(Resolve-BranchExpectedContextsFromPath -Path $PolicyPath -BranchName $Branch)
+    if ($expectedContexts.Count -eq 0) {
+      Add-Failure -Failures ([ref]$failures) -Message ("Unable to resolve required contexts from branch policy for branch '{0}'." -f $Branch)
+    }
   } catch {
     Add-Failure -Failures ([ref]$failures) -Message "Unable to read required-check policy: $($_.Exception.Message)"
   }
