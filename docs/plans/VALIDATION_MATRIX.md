@@ -48,7 +48,7 @@ Audience: anyone touching `.github/workflows/**`.
 
 - **What it does** – Locates (or installs) the platform-appropriate `actionlint` binary via `Resolve-ActionlintPath`
   and runs it against the repository workflows.
-- **Inputs** – Optional `-ActionlintVersion` and `-InstallIfMissing`. Defaults keep parity with CI (1.7.7 as of this
+- **Inputs** – Optional `-ActionlintVersion` and `-InstallIfMissing`. Defaults keep parity with CI (1.7.8 as of this
   document). No additional env vars required.
 - **Expected output** – Streams `actionlint` diagnostics to the console; no files are written. Successful runs finish
   quickly (<10 seconds on the tools image cache).
@@ -148,3 +148,4 @@ Audience: engineers running the full integration gate (auto-push + watcher + ses
   (`tests/results/_agent/watcher` tree), and refreshed session-index JSON.
 - **Action item** – Until the script exists, replicate the intended flow with `tools/Run-LocalBackbone.ps1` plus manual
   watcher dispatch; update this document once `tools/Start-IntegrationGated.ps1` is merged.
+

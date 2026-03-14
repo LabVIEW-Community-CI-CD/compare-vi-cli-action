@@ -46,7 +46,7 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
 fi
 
 # Default value is updated manually on release
-version="1.7.7"
+version="1.7.8"
 if [ -n "$1" ]; then
     if [[ "$1" != 'latest' && "$1" != 'LATEST' ]]; then
         if [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -149,3 +149,4 @@ if [ -n "$GITHUB_ACTION" ]; then
         echo "::set-output name=executable::${exe}"
     fi
 fi
+

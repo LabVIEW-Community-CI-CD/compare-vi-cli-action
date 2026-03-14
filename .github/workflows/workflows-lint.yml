@@ -7,7 +7,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     env:
-      ACTIONLINT_VERSION: ${{ vars.ACTIONLINT_VERSION || '1.7.7' }}
+      ACTIONLINT_VERSION: ${{ vars.ACTIONLINT_VERSION || '1.7.8' }}
     steps:
     - uses: actions/checkout@v5
       with:
@@ -18,7 +18,7 @@ jobs:
       run: |
         set -euo pipefail
         mkdir -p ./bin
-        ver="${ACTIONLINT_VERSION:-1.7.7}"
+        ver="${ACTIONLINT_VERSION:-1.7.8}"
         for i in 1 2 3; do
           if curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- "$ver" ./bin; then
             break
@@ -52,3 +52,4 @@ jobs:
       shell: pwsh
       run: |
         pwsh -NoLogo -NonInteractive -NoProfile -File tools/Assert-CommitIntegrityContract.ps1
+

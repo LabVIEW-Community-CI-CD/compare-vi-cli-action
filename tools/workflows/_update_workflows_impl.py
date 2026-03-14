@@ -760,7 +760,7 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
     # Ensure job-level env has ACTIONLINT_VERSION wired to repo vars with default
     changed = False
     job_env = job.setdefault('env', {})
-    desired = SQS("${{ vars.ACTIONLINT_VERSION || '1.7.7' }}")
+    desired = SQS("${{ vars.ACTIONLINT_VERSION || '1.7.8' }}")
     if job_env.get('ACTIONLINT_VERSION') != desired:
         job_env['ACTIONLINT_VERSION'] = desired
         job['env'] = job_env
@@ -781,7 +781,7 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
     install_body = (
         "set -euo pipefail\n"
         "mkdir -p ./bin\n"
-        "ver=\"${ACTIONLINT_VERSION:-1.7.7}\"\n"
+        "ver=\"${ACTIONLINT_VERSION:-1.7.8}\"\n"
         "for i in 1 2 3; do\n"
         "  if curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- \"$ver\" ./bin; then\n"
         "    break\n"
@@ -1443,3 +1443,4 @@ def main(argv: List[str]) -> int:
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv[1:]))
+
