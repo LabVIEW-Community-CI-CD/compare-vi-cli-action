@@ -8,6 +8,10 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 
+const SCRIPT_PATH = fileURLToPath(import.meta.url);
+const SCRIPT_DIR = path.dirname(SCRIPT_PATH);
+export const DEFAULT_REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..');
+
 export const MISSION_CONTROL_PROMPT_RENDER_SCHEMA = 'priority/mission-control-prompt-render@v1';
 export const MISSION_CONTROL_ENVELOPE_SCHEMA = 'priority/mission-control-envelope@v1';
 export const DEFAULT_MISSION_CONTROL_ENVELOPE_PATH = path.join(
@@ -45,19 +49,19 @@ function normalizeText(value) {
   return normalized.length > 0 ? normalized : null;
 }
 
-function readJsonFile(relativePath, repoRoot = process.cwd()) {
+function readJsonFile(relativePath, repoRoot = DEFAULT_REPO_ROOT) {
   const resolvedPath = path.resolve(repoRoot, relativePath);
   return JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
 }
 
-function writeFile(relativePath, content, repoRoot = process.cwd()) {
+function writeFile(relativePath, content, repoRoot = DEFAULT_REPO_ROOT) {
   const resolvedPath = path.resolve(repoRoot, relativePath);
   fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
   fs.writeFileSync(resolvedPath, content, 'utf8');
   return resolvedPath;
 }
 
-function validateMissionControlEnvelope(envelope, repoRoot = process.cwd()) {
+function validateMissionControlEnvelope(envelope, repoRoot = DEFAULT_REPO_ROOT) {
   const schema = readJsonFile(DEFAULT_MISSION_CONTROL_ENVELOPE_SCHEMA_PATH, repoRoot);
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   addFormats(ajv);
@@ -76,7 +80,7 @@ function formatOverride(override) {
   return `${override.key}=${String(override.value)} (${override.reason})`;
 }
 
-export function renderMissionControlPrompt(envelope, { repoRoot = process.cwd(), validate = true } = {}) {
+export function renderMissionControlPrompt(envelope, { repoRoot = DEFAULT_REPO_ROOT, validate = true } = {}) {
   if (validate) {
     validateMissionControlEnvelope(envelope, repoRoot);
   }
@@ -190,7 +194,7 @@ export function renderMissionControlPromptReport(
     promptPath = DEFAULT_MISSION_CONTROL_PROMPT_PATH,
   },
   {
-    repoRoot = process.cwd(),
+    repoRoot = DEFAULT_REPO_ROOT,
   } = {},
 ) {
   const envelope = readJsonFile(envelopePath, repoRoot);
@@ -218,7 +222,7 @@ export function renderMissionControlPromptReport(
 export function main(
   argv = process.argv,
   {
-    repoRoot = process.cwd(),
+    repoRoot = DEFAULT_REPO_ROOT,
     logFn = console.log,
     errorFn = console.error,
   } = {},

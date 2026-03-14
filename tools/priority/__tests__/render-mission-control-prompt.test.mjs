@@ -136,3 +136,40 @@ test('render mission-control prompt CLI writes deterministic prompt and report a
   assert.equal(failureMessages.length, 1);
   assert.match(failureMessages[0], /ENOENT|no such file/i);
 });
+
+test('render mission-control prompt CLI stays repo-root deterministic from a nested cwd', async (t) => {
+  const { main } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-nested-cwd-'));
+
+  const nestedCwd = path.join(tmpDir, 'nested', 'cwd');
+  fs.mkdirSync(nestedCwd, { recursive: true });
+  const promptPath = path.join(tmpDir, 'mission-control-prompt.txt');
+  const reportPath = path.join(tmpDir, 'mission-control-prompt-render.json');
+  const previousCwd = process.cwd();
+  process.chdir(nestedCwd);
+  t.after(() => {
+    process.chdir(previousCwd);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const exitCode = main(
+    [
+      'node',
+      modulePath,
+      '--prompt',
+      promptPath,
+      '--report',
+      reportPath,
+    ],
+    {
+      logFn() {},
+      errorFn(message) {
+        throw new Error(`nested cwd render should not fail: ${message}`);
+      },
+    },
+  );
+
+  assert.equal(exitCode, 0);
+  assert.match(fs.readFileSync(promptPath, 'utf8'), /Act as the autonomous mission control plane/);
+  assert.equal(JSON.parse(fs.readFileSync(reportPath, 'utf8')).promptPath, promptPath);
+});
