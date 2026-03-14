@@ -14,7 +14,7 @@ export const DEFAULT_REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..');
 
 export const MISSION_CONTROL_PROMPT_RENDER_SCHEMA = 'priority/mission-control-prompt-render@v1';
 export const MISSION_CONTROL_ENVELOPE_SCHEMA = 'priority/mission-control-envelope@v1';
-export const DEFAULT_MISSION_CONTROL_ENVELOPE_PATH = path.join(
+export const FIXTURE_MISSION_CONTROL_ENVELOPE_PATH = path.join(
   'tools',
   'priority',
   '__fixtures__',
@@ -148,7 +148,7 @@ export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
     help: false,
-    envelopePath: DEFAULT_MISSION_CONTROL_ENVELOPE_PATH,
+    envelopePath: null,
     promptPath: DEFAULT_MISSION_CONTROL_PROMPT_PATH,
     reportPath: DEFAULT_MISSION_CONTROL_PROMPT_REPORT_PATH,
   };
@@ -173,6 +173,10 @@ export function parseArgs(argv = process.argv) {
     throw new Error(`Unknown option: ${token}`);
   }
 
+  if (!options.help && !normalizeText(options.envelopePath)) {
+    throw new Error('Envelope path is required. Pass --envelope <path>.');
+  }
+
   return options;
 }
 
@@ -182,7 +186,7 @@ function printUsage(logFn = console.log) {
   logFn('Render a canonical operator prompt from a validated mission-control envelope.');
   logFn('');
   logFn('Options:');
-  logFn(`  --envelope <path>    Envelope path (default: ${DEFAULT_MISSION_CONTROL_ENVELOPE_PATH}).`);
+  logFn('  --envelope <path>    Envelope path (required).');
   logFn(`  --prompt <path>      Prompt output path (default: ${DEFAULT_MISSION_CONTROL_PROMPT_PATH}).`);
   logFn(`  --report <path>      Report output path (default: ${DEFAULT_MISSION_CONTROL_PROMPT_REPORT_PATH}).`);
   logFn('  -h, --help           Show help.');
@@ -190,13 +194,16 @@ function printUsage(logFn = console.log) {
 
 export function renderMissionControlPromptReport(
   {
-    envelopePath = DEFAULT_MISSION_CONTROL_ENVELOPE_PATH,
+    envelopePath,
     promptPath = DEFAULT_MISSION_CONTROL_PROMPT_PATH,
   },
   {
     repoRoot = DEFAULT_REPO_ROOT,
   } = {},
 ) {
+  if (!normalizeText(envelopePath)) {
+    throw new Error('Envelope path is required. Pass --envelope <path>.');
+  }
   const envelope = readJsonFile(envelopePath, repoRoot);
   validateMissionControlEnvelope(envelope, repoRoot);
   const promptText = renderMissionControlPrompt(envelope, { repoRoot, validate: false });

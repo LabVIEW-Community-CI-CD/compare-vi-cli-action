@@ -25,7 +25,7 @@ function loadJson(relativePath) {
 }
 
 test('renderMissionControlPrompt renders the canonical fixture deterministically', async () => {
-  const { renderMissionControlPrompt, renderMissionControlPromptReport } = await loadModule();
+  const { FIXTURE_MISSION_CONTROL_ENVELOPE_PATH, renderMissionControlPrompt, renderMissionControlPromptReport } = await loadModule();
   const envelope = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
 
   const first = renderMissionControlPrompt(envelope);
@@ -37,12 +37,15 @@ test('renderMissionControlPrompt renders the canonical fixture deterministically
   assert.match(first, /- third lane allowed: `false`/);
   assert.match(first, /- `current-head-failure`/);
 
-  const report = renderMissionControlPromptReport({}, { repoRoot });
+  const report = renderMissionControlPromptReport({ envelopePath: FIXTURE_MISSION_CONTROL_ENVELOPE_PATH }, { repoRoot });
   assert.equal(report.schema, 'priority/mission-control-prompt-render@v1');
   assert.equal(report.operator.intent, 'continue-driving-autonomously');
   assert.equal(report.envelopeSha256, createHash('sha256').update(JSON.stringify(envelope), 'utf8').digest('hex'));
   assert.equal(report.promptSha256, createHash('sha256').update(report.promptText, 'utf8').digest('hex'));
-  assert.deepEqual(report, renderMissionControlPromptReport({}, { repoRoot }));
+  assert.deepEqual(
+    report,
+    renderMissionControlPromptReport({ envelopePath: FIXTURE_MISSION_CONTROL_ENVELOPE_PATH }, { repoRoot }),
+  );
 });
 
 test('renderMissionControlPrompt fails closed for invalid envelope files', async (t) => {
@@ -62,7 +65,7 @@ test('renderMissionControlPrompt fails closed for invalid envelope files', async
 });
 
 test('render mission-control prompt CLI writes deterministic prompt and report artifacts', async (t) => {
-  const { main, parseArgs, MISSION_CONTROL_PROMPT_RENDER_SCHEMA } = await loadModule();
+  const { FIXTURE_MISSION_CONTROL_ENVELOPE_PATH, main, parseArgs, MISSION_CONTROL_PROMPT_RENDER_SCHEMA } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-render-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
@@ -74,6 +77,8 @@ test('render mission-control prompt CLI writes deterministic prompt and report a
   const parsed = parseArgs([
     'node',
     modulePath,
+    '--envelope',
+    FIXTURE_MISSION_CONTROL_ENVELOPE_PATH,
     '--prompt',
     promptPath,
     '--report',
@@ -86,6 +91,8 @@ test('render mission-control prompt CLI writes deterministic prompt and report a
     [
       'node',
       modulePath,
+      '--envelope',
+      FIXTURE_MISSION_CONTROL_ENVELOPE_PATH,
       '--prompt',
       promptPath,
       '--report',
@@ -121,8 +128,8 @@ test('render mission-control prompt CLI writes deterministic prompt and report a
     [
       'node',
       modulePath,
-      '--envelope',
-      path.join(tmpDir, 'missing-envelope.json'),
+      '--prompt',
+      promptPath,
     ],
     {
       repoRoot,
@@ -133,12 +140,15 @@ test('render mission-control prompt CLI writes deterministic prompt and report a
     },
   );
   assert.equal(failureExitCode, 1);
-  assert.equal(failureMessages.length, 1);
-  assert.match(failureMessages[0], /ENOENT|no such file/i);
+  assert.ok(failureMessages.length > 1);
+  assert.match(failureMessages[0], /Envelope path is required/);
+  assert.ok(
+    failureMessages.some((message) => /Usage: node tools\/priority\/render-mission-control-prompt\.mjs/.test(message)),
+  );
 });
 
 test('render mission-control prompt CLI stays repo-root deterministic from a nested cwd', async (t) => {
-  const { main } = await loadModule();
+  const { FIXTURE_MISSION_CONTROL_ENVELOPE_PATH, main } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-nested-cwd-'));
 
   const nestedCwd = path.join(tmpDir, 'nested', 'cwd');
@@ -156,6 +166,8 @@ test('render mission-control prompt CLI stays repo-root deterministic from a nes
     [
       'node',
       modulePath,
+      '--envelope',
+      FIXTURE_MISSION_CONTROL_ENVELOPE_PATH,
       '--prompt',
       promptPath,
       '--report',
