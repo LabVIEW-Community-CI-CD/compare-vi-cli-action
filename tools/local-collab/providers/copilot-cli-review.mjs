@@ -134,11 +134,27 @@ function readPathEntries(env = process.env) {
     .filter(Boolean);
 }
 
+function resolveWindowsCopilotBundle(shimPath) {
+  const shimDirectory = path.dirname(shimPath);
+  const loaderPath = path.join(shimDirectory, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+  if (!existsSync(loaderPath)) {
+    return null;
+  }
+
+  const bundledNodePath = path.join(shimDirectory, 'node.exe');
+  return {
+    spawnCommand: existsSync(bundledNodePath) ? bundledNodePath : process.execPath,
+    spawnArgsPrefix: [loaderPath],
+    shell: false
+  };
+}
+
 export function resolveCopilotCliCommand(platform = process.platform, env = process.env) {
   if (platform !== 'win32') {
     return {
       command: 'copilot',
       spawnCommand: 'copilot',
+      spawnArgsPrefix: [],
       shell: false
     };
   }
@@ -146,10 +162,12 @@ export function resolveCopilotCliCommand(platform = process.platform, env = proc
   for (const directory of readPathEntries(env)) {
     const shimPath = path.join(directory, 'copilot.cmd');
     if (existsSync(shimPath)) {
+      const bundle = resolveWindowsCopilotBundle(shimPath);
       return {
         command: 'copilot.cmd',
-        spawnCommand: shimPath,
-        shell: true
+        spawnCommand: bundle?.spawnCommand ?? shimPath,
+        spawnArgsPrefix: bundle?.spawnArgsPrefix ?? [],
+        shell: bundle?.shell ?? true
       };
     }
   }
@@ -157,6 +175,7 @@ export function resolveCopilotCliCommand(platform = process.platform, env = proc
   return {
     command: 'copilot.cmd',
     spawnCommand: 'copilot.cmd',
+    spawnArgsPrefix: [],
     shell: true
   };
 }
@@ -905,7 +924,7 @@ export async function runCopilotCliReview({
   for (let passIndex = 1; passIndex <= normalizedPolicy.convergence.maxPasses; passIndex += 1) {
     const startedAt = new Date();
     const commandResult = buildCommandResult(
-      await runCommandFn(copilotInvocation.spawnCommand, args, {
+      await runCommandFn(copilotInvocation.spawnCommand, [...(copilotInvocation.spawnArgsPrefix ?? []), ...args], {
         cwd: repoRoot,
         env: process.env,
         shell: copilotInvocation.shell

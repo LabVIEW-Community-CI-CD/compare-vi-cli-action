@@ -112,18 +112,24 @@ test('buildReviewPrompt includes collaboration planes and instruction presence',
   assert.match(prompt, /\.github\/copilot-instructions\.md/);
 });
 
-test('resolveCopilotCliCommand prefers the Windows npm shim and enables shell launch', async () => {
+test('resolveCopilotCliCommand prefers the Windows npm shim bundle and launches through Node without shell mediation', async () => {
   const shimRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-shim-'));
   const shimPath = path.join(shimRoot, 'copilot.cmd');
+  const bundledNodePath = path.join(shimRoot, 'node.exe');
+  const loaderPath = path.join(shimRoot, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+  await mkdir(path.dirname(loaderPath), { recursive: true });
   await writeFile(shimPath, '@echo off\r\necho copilot\r\n', 'utf8');
+  await writeFile(bundledNodePath, '', 'utf8');
+  await writeFile(loaderPath, 'console.log("copilot")\n', 'utf8');
 
   const invocation = resolveCopilotCliCommand('win32', {
     Path: shimRoot
   });
 
   assert.equal(invocation.command, 'copilot.cmd');
-  assert.equal(invocation.spawnCommand, shimPath);
-  assert.equal(invocation.shell, true);
+  assert.equal(invocation.spawnCommand, bundledNodePath);
+  assert.deepEqual(invocation.spawnArgsPrefix, [loaderPath]);
+  assert.equal(invocation.shell, false);
 });
 
 test('resolveCopilotCliCommand falls back to the logical Windows shim name when PATH has no resolved shim', () => {
@@ -187,7 +193,7 @@ test('runCopilotCliReview writes a deterministic passed receipt for staged revie
   assert.equal(result.receipt.copilot.model, 'gpt-5.4-mini');
   assert.equal(result.receipt.copilot.allowAllTools, false);
   assert.equal(result.receipt.copilot.command, process.platform === 'win32' ? 'copilot.cmd' : 'copilot');
-  assert.equal(result.receipt.copilot.shell, process.platform === 'win32');
+  assert.equal(typeof result.receipt.copilot.shell, 'boolean');
   assert.deepEqual(result.receipt.permissionPolicy, {
     promptOnly: true,
     disableBuiltinMcps: true,
