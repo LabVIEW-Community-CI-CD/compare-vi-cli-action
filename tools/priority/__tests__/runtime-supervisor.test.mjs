@@ -185,6 +185,10 @@ test('buildCompareviTaskPacket carries a daemon-requested Docker/Desktop review 
   assert.equal(packet.evidence.delivery.localReviewLoop.requirementsVerification, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.niLinuxReviewSuite, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory, null);
+  assert.equal(packet.evidence.delivery.planeTransition.from, 'origin');
+  assert.equal(packet.evidence.delivery.planeTransition.to, 'upstream');
+  assert.equal(packet.evidence.delivery.planeTransition.action, 'promote');
+  assert.equal(packet.evidence.delivery.planeTransition.branchClass, 'lane');
 });
 
 test('buildCompareviTaskPacket honors local review-loop directives from the selected issue when the standing issue body lacks them', async () => {
@@ -349,13 +353,120 @@ test('buildCompareviTaskPacket honors deps.deliveryAgentPolicyPath overrides', a
       checkoutPath: '/tmp/worker'
     },
     deps: {
-      deliveryAgentPolicyPath: policyPath
+      deliveryAgentPolicyPath: policyPath,
+      loadBranchClassContractFn: () => ({
+        schema: 'branch-classes/v1',
+        upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        repositoryPlanes: [
+          {
+            id: 'origin',
+            repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'],
+            laneBranchPrefix: 'issue/origin-'
+          }
+        ],
+        classes: [
+          {
+            id: 'lane',
+            repositoryRoles: ['fork'],
+            branchPatterns: ['issue/*'],
+            purpose: 'lane',
+            prSourceAllowed: true,
+            prTargetAllowed: false,
+            mergePolicy: 'n/a'
+          }
+        ],
+        allowedTransitions: [
+          {
+            from: 'lane',
+            action: 'promote',
+            to: 'upstream-integration',
+            via: 'pull-request'
+          }
+        ],
+        planeTransitions: [
+          {
+            from: 'origin',
+            action: 'promote',
+            to: 'upstream',
+            via: 'pull-request',
+            branchClass: 'lane'
+          }
+        ]
+      })
     }
   });
 
   assert.equal(packet.evidence.delivery.turnBudget.maxMinutes, 7);
   assert.equal(packet.evidence.delivery.turnBudget.maxToolCalls, 3);
   assert.equal(packet.evidence.delivery.localReviewLoop, null);
+  assert.equal(packet.evidence.delivery.planeTransition.from, 'origin');
+  assert.equal(packet.evidence.delivery.planeTransition.to, 'upstream');
+});
+
+test('buildCompareviTaskPacket fails closed when the branch class contract has no matching plane transition', async () => {
+  await assert.rejects(
+    compareviRuntimeTest.buildCompareviTaskPacket({
+      repoRoot,
+      schedulerDecision: {
+        activeLane: {
+          issue: 1129,
+          branch: 'issue/origin-1129-runtime-plane-transition-receipts',
+          forkRemote: 'origin'
+        },
+        artifacts: {
+          executionMode: 'canonical-delivery',
+          selectedActionType: 'advance-child-issue',
+          laneLifecycle: 'coding',
+          canonicalRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          selectedIssueSnapshot: {
+            number: 1129,
+            title: 'Record fork-plane transitions in daemon runtime receipts',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1129'
+          }
+        }
+      },
+      preparedWorker: { checkoutPath: '/tmp/worker' },
+      workerReady: { checkoutPath: '/tmp/worker' },
+      workerBranch: {
+        branch: 'issue/origin-1129-runtime-plane-transition-receipts',
+        checkoutPath: '/tmp/worker'
+      },
+      deps: {
+        loadBranchClassContractFn: () => ({
+          schema: 'branch-classes/v1',
+          upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          repositoryPlanes: [
+            {
+              id: 'origin',
+              repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'],
+              laneBranchPrefix: 'issue/origin-'
+            }
+          ],
+          classes: [
+            {
+              id: 'lane',
+              repositoryRoles: ['fork'],
+              branchPatterns: ['issue/*'],
+              purpose: 'lane',
+              prSourceAllowed: true,
+              prTargetAllowed: false,
+              mergePolicy: 'n/a'
+            }
+          ],
+          allowedTransitions: [
+            {
+              from: 'lane',
+              action: 'promote',
+              to: 'upstream-integration',
+              via: 'pull-request'
+            }
+          ],
+          planeTransitions: []
+        })
+      }
+    }),
+    /not allowed by the branch class contract/i
+  );
 });
 
 test('buildLocalReviewLoopRequest treats policy booleans as the full requested check set once the marker is present', () => {
@@ -1983,6 +2094,15 @@ test('comparevi canonical execution delegates to the delivery broker instead of 
         delivery: {
           laneLifecycle: 'coding',
           selectedActionType: 'advance-child-issue',
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+          },
           mutationEnvelope: {
             maxActiveCodingLanes: 1
           },
@@ -2015,6 +2135,45 @@ test('comparevi canonical execution delegates to the delivery broker instead of 
       runtimeDir: '/tmp/repo/tests/results/_agent/runtime'
     },
     deps: {
+      loadBranchClassContractFn: () => ({
+        schema: 'branch-classes/v1',
+        upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        repositoryPlanes: [
+          {
+            id: 'origin',
+            repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'],
+            laneBranchPrefix: 'issue/origin-'
+          }
+        ],
+        classes: [
+          {
+            id: 'lane',
+            repositoryRoles: ['fork'],
+            branchPatterns: ['issue/*'],
+            purpose: 'lane',
+            prSourceAllowed: true,
+            prTargetAllowed: false,
+            mergePolicy: 'n/a'
+          }
+        ],
+        allowedTransitions: [
+          {
+            from: 'lane',
+            action: 'promote',
+            to: 'upstream-integration',
+            via: 'pull-request'
+          }
+        ],
+        planeTransitions: [
+          {
+            from: 'origin',
+            action: 'promote',
+            to: 'upstream',
+            via: 'pull-request',
+            branchClass: 'lane'
+          }
+        ]
+      }),
       invokeDeliveryTurnBrokerFn: async () => ({
         status: 'completed',
         outcome: 'coding-command-finished',
@@ -2069,7 +2228,16 @@ test('comparevi canonical execution consumes the broker receipt file when stdout
       evidence: {
         delivery: {
           laneLifecycle: 'ready-merge',
-          selectedActionType: 'merge-pr'
+          selectedActionType: 'merge-pr',
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+          }
         }
       }
     },
@@ -2163,6 +2331,15 @@ test('comparevi canonical execution persists a broker-managed ready-for-review r
           },
           standingIssue: {
             number: 1010
+          },
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
           },
           pullRequest: {
             number: 1015,
@@ -2270,6 +2447,9 @@ test('comparevi canonical execution persists a broker-managed ready-for-review r
   assert.equal(persistedState.activeLane.reviewPhase, 'draft-review');
   assert.equal(persistedState.activeLane.pollIntervalSecondsHint, 10);
   assert.equal(persistedState.activeLane.reviewMonitor.workflowName, 'Copilot code review');
+  assert.equal(persistedState.activeLane.planeTransition.from, 'origin');
+  assert.equal(persistedState.activeLane.planeTransition.to, 'upstream');
+  assert.equal(persistedState.activeLane.planeTransition.action, 'promote');
   assert.equal(persistedState.localReviewLoop.status, 'passed');
   assert.equal(persistedState.localReviewLoop.receiptStatus, 'passed');
   assert.equal(persistedState.localReviewLoop.requirementsCoverage.requirementCovered, 9);

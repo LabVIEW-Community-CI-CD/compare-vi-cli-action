@@ -28,7 +28,7 @@ import {
   runRuntimeSupervisor as runCoreRuntimeSupervisor
 } from '../../packages/runtime-harness/index.mjs';
 import { acquireWriterLease, defaultOwner, releaseWriterLease } from './agent-writer-lease.mjs';
-import { loadBranchClassContract, resolveLaneBranchPrefix } from './lib/branch-classification.mjs';
+import { loadBranchClassContract, resolveBranchPlaneTransition, resolveLaneBranchPrefix } from './lib/branch-classification.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
 import {
@@ -548,6 +548,18 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
   const branchName = normalizeText(workerBranch?.branch) || normalizeText(activeLane?.branch);
   const selectedActionType = normalizeText(artifacts.selectedActionType);
   const laneLifecycle = normalizeText(artifacts.laneLifecycle) || (activeLane?.prUrl ? 'waiting-ci' : 'coding');
+  const loadBranchClassContractFn = deps.loadBranchClassContractFn ?? loadBranchClassContract;
+  const canonicalRepository =
+    normalizeText(artifacts.canonicalRepository) ||
+    normalizeText(snapshot?.repository) ||
+    normalizeText(artifacts.standingRepository) ||
+    COMPAREVI_UPSTREAM_REPOSITORY;
+  const planeTransition = resolveBranchPlaneTransition({
+    branch: branchName,
+    sourcePlane: normalizeText(activeLane?.forkRemote) || normalizeText(deliveryPolicy.implementationRemote) || 'origin',
+    targetRepository: canonicalRepository,
+    contract: loadBranchClassContractFn(repoRoot)
+  });
   const objectiveSummary =
     selectedActionType === 'reshape-backlog'
       ? `Reshape epic #${issueNumber}${issueTitle ? `: ${issueTitle}` : ''} into an executable child slice`
@@ -628,6 +640,7 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
         issueGraph: artifacts.issueGraph ?? null,
         pullRequest: pullRequestArtifact,
         backlog: artifacts.backlogRepair ?? null,
+        planeTransition,
         localReviewLoop,
         mutationEnvelope: {
           backlogAuthority: 'issues',
@@ -725,6 +738,7 @@ async function persistCompareviDeliveryRuntime({
     policyPath: deps.deliveryAgentPolicyPath || DELIVERY_AGENT_POLICY_RELATIVE_PATH
   });
   return persistDeliveryAgentRuntimeState({
+    repoRoot,
     runtimeDir: runtimeArtifactPaths.runtimeDir,
     repository,
     policy: deliveryPolicy,

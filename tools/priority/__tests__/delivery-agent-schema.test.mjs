@@ -146,6 +146,15 @@ test('runtime delivery task packet schema validates canonical delivery packets',
           title: 'Wire canonical delivery broker',
           url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1012'
         },
+        planeTransition: {
+          from: 'origin',
+          to: 'upstream',
+          action: 'promote',
+          via: 'pull-request',
+          branchClass: 'lane',
+          sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+          targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+        },
         localReviewLoop: {
           requested: true,
           source: 'standing-issue-body',
@@ -222,6 +231,7 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
   const schema = await loadSchema('docs/schemas/delivery-agent-runtime-state-v1.schema.json');
   const state = buildDeliveryAgentRuntimeRecord({
     now: new Date('2026-03-11T08:10:00.000Z'),
+    repoRoot,
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     runtimeDir: path.join(repoRoot, 'tests/results/_agent/runtime'),
     policy: {
@@ -249,10 +259,12 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
       },
       artifacts: {
         selectedActionType: 'existing-pr-unblock',
-        laneLifecycle: 'ready-merge'
+        laneLifecycle: 'ready-merge',
+        canonicalRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
       }
     },
     taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       laneId: 'origin-1012',
       branch: {
         name: 'issue/origin-1012-wire-canonical-delivery-broker',
@@ -267,6 +279,15 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
       evidence: {
         delivery: {
           laneLifecycle: 'ready-merge',
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+          },
           localReviewLoop: {
             requested: true,
             source: 'standing-issue-body',
@@ -393,6 +414,9 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
     state.artifacts.localReviewLoopReceiptPath,
     'tests/results/docker-tools-parity/review-loop-receipt.json'
   );
+  assert.equal(state.activeLane.planeTransition.from, 'origin');
+  assert.equal(state.activeLane.planeTransition.to, 'upstream');
+  assert.equal(state.artifacts.planeTransition.action, 'promote');
 });
 
 test('delivery memory schema validates suite-aware terminal PR history', async () => {
@@ -475,4 +499,55 @@ test('delivery agent runtime state schema accepts legacy policy payloads without
     }
   };
   assert.equal(validate(state), true, JSON.stringify(validate.errors, null, 2));
+});
+
+test('buildDeliveryAgentRuntimeRecord fails closed when a fork lane omits required planeTransition evidence', () => {
+  assert.throws(
+    () =>
+      buildDeliveryAgentRuntimeRecord({
+        now: new Date('2026-03-13T19:00:00.000Z'),
+        repoRoot,
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        runtimeDir: path.join(repoRoot, 'tests/results/_agent/runtime'),
+        policy: {
+          schema: 'priority/delivery-agent-policy@v1',
+          implementationRemote: 'origin',
+          maxActiveCodingLanes: 1
+        },
+        schedulerDecision: {
+          activeLane: {
+            laneId: 'origin-1129',
+            issue: 1129,
+            forkRemote: 'origin',
+            branch: 'issue/origin-1129-runtime-plane-transition-receipts'
+          }
+        },
+        taskPacket: {
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          laneId: 'origin-1129',
+          branch: {
+            name: 'issue/origin-1129-runtime-plane-transition-receipts',
+            forkRemote: 'origin'
+          },
+          evidence: {
+            delivery: {
+              laneLifecycle: 'coding',
+              mutationEnvelope: {
+                implementationRemote: 'origin'
+              }
+            }
+          }
+        },
+        executionReceipt: {
+          outcome: 'waiting-review',
+          details: {
+            laneLifecycle: 'waiting-review',
+            blockerClass: 'review'
+          }
+        },
+        statePath: path.join(repoRoot, 'tests/results/_agent/runtime/delivery-agent-state.json'),
+        lanePath: path.join(repoRoot, 'tests/results/_agent/runtime/delivery-agent-lanes/origin-1129.json')
+      }),
+    /missing planeTransition evidence/i
+  );
 });

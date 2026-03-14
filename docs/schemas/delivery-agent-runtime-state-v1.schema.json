@@ -117,6 +117,19 @@
         "retryable": { "type": "boolean" },
         "nextWakeCondition": { "type": ["string", "null"] },
         "reviewPhase": { "type": ["string", "null"] },
+        "planeTransition": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "properties": {
+            "from": { "type": ["string", "null"] },
+            "to": { "type": ["string", "null"] },
+            "action": { "type": ["string", "null"] },
+            "via": { "type": ["string", "null"] },
+            "branchClass": { "type": ["string", "null"] },
+            "sourceRepository": { "type": ["string", "null"] },
+            "targetRepository": { "type": ["string", "null"] }
+          }
+        },
         "readyValidationClearance": {
           "type": ["object", "null"],
           "additionalProperties": true,

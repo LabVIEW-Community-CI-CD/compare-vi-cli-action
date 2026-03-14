@@ -40,6 +40,10 @@ function normalizeRepositorySlug(value) {
   return String(value ?? '').trim().toLowerCase();
 }
 
+function normalizeText(value) {
+  return String(value ?? '').trim();
+}
+
 function escapeRegExp(value) {
   return String(value).replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
 }
@@ -200,6 +204,81 @@ export function assertPlaneTransition({
     );
   }
   return transition;
+}
+
+export function resolveBranchPlaneTransition({
+  branch,
+  sourcePlane,
+  targetRepository,
+  contract,
+  sourceRepository = null
+}) {
+  if (!contract || typeof contract !== 'object') {
+    throw new Error('Branch class contract is required.');
+  }
+
+  const normalizedSourcePlane = normalizeRepositoryPlane(sourcePlane);
+  const normalizedTargetRepository = normalizeRepositorySlug(targetRepository);
+  if (!normalizedTargetRepository) {
+    throw new Error('Target repository slug is required to resolve a branch plane transition.');
+  }
+
+  const targetPlane = resolveRepositoryPlane(normalizedTargetRepository, contract);
+  if (normalizedSourcePlane === targetPlane) {
+    return null;
+  }
+
+  const normalizedBranch = normalizeBranchName(branch);
+  if (!normalizedBranch) {
+    throw new Error(`Branch name is required to resolve plane transition ${normalizedSourcePlane}->${targetPlane}.`);
+  }
+
+  const resolvedSourceRepository =
+    normalizeRepositorySlug(sourceRepository) ||
+    normalizeRepositorySlug(
+      normalizedSourcePlane === 'upstream'
+        ? contract.upstreamRepository
+        : findRepositoryPlaneEntry(contract, normalizedSourcePlane)?.repositories?.[0]
+    ) ||
+    null;
+  const branchClassification = classifyBranch({
+    branch: normalizedBranch,
+    contract,
+    repositoryRole: normalizedSourcePlane === 'upstream' ? 'upstream' : 'fork',
+    repository: resolvedSourceRepository || normalizedTargetRepository
+  });
+  if (!branchClassification?.id) {
+    throw new Error(
+      `Unable to classify branch '${normalizedBranch}' for plane transition ${normalizedSourcePlane}->${targetPlane}.`
+    );
+  }
+
+  const matches = (contract.planeTransitions || []).filter((entry) => (
+    normalizeRepositoryPlane(entry?.from) === normalizedSourcePlane &&
+    normalizeRepositoryPlane(entry?.to) === targetPlane &&
+    normalizeText(entry?.branchClass) === branchClassification.id
+  ));
+  if (matches.length === 0) {
+    throw new Error(
+      `Plane transition ${normalizedSourcePlane}->${targetPlane} for branch class '${branchClassification.id}' is not allowed by the branch class contract.`
+    );
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `Ambiguous plane transition ${normalizedSourcePlane}->${targetPlane} for branch class '${branchClassification.id}'.`
+    );
+  }
+
+  const selected = matches[0];
+  return {
+    from: normalizedSourcePlane,
+    to: targetPlane,
+    action: normalizeText(selected.action),
+    via: normalizeText(selected.via),
+    branchClass: branchClassification.id,
+    sourceRepository: resolvedSourceRepository,
+    targetRepository: normalizedTargetRepository
+  };
 }
 
 export function resolveLaneBranchPrefix({
