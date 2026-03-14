@@ -31,6 +31,20 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
         transitionCount = 3
         daemonUnavailableCount = 1
         parseDefectCount = 0
+        probes = [ordered]@{
+          windows = [ordered]@{
+            enabled = $true
+            status = 'success'
+            context = 'desktop-windows'
+            osType = 'windows'
+          }
+          linux = [ordered]@{
+            enabled = $true
+            status = 'success'
+            context = 'desktop-linux'
+            osType = 'linux'
+          }
+        }
       }
       hostPlane = [ordered]@{
         schema = 'labview-2026-host-plane-report@v1'
@@ -125,6 +139,8 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
       -StepSummaryPath '' *>&1
     $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
     ($output -join "`n") | Should -Match '\[dual-docker-fast-loop\]\[diagnostics\] scenarioSet=none differentiatedSteps=1 evidenceSteps=1 reports=1'
+    ($output -join "`n") | Should -Match '\[dual-docker-fast-loop\]\[docker-plane\] requested=docker-desktop/windows-container-2026,docker-desktop/linux-container-2026 exclusiveRequired=True exclusiveSatisfied=True pairCount=1'
+    ($output -join "`n") | Should -Match 'lane=windows plane=docker-desktop/windows-container-2026 enabled=True status=success context=desktop-windows expectedOs=windows observedOs=windows'
     ($output -join "`n") | Should -Match 'lane=windows sequence=direct mode=attribute images=2'
 
     $readiness = Get-Content -LiteralPath $jsonOut -Raw | ConvertFrom-Json -Depth 16
@@ -142,6 +158,14 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.runtimeManagerDaemonUnavailableCount | Should -Be 1
     $readiness.runtimeManagerParseDefectCount | Should -Be 0
     $readiness.runtimeManager.transitionCount | Should -Be 3
+    $readiness.dockerDesktopPlanes.schema | Should -Be 'docker-fast-loop/docker-desktop-planes@v1'
+    $readiness.dockerDesktopPlanes.requestedPlanes.Count | Should -Be 2
+    @($readiness.dockerDesktopPlanes.requestedPlanes) | Should -Contain 'docker-desktop/windows-container-2026'
+    @($readiness.dockerDesktopPlanes.requestedPlanes) | Should -Contain 'docker-desktop/linux-container-2026'
+    $readiness.dockerDesktopPlanes.exclusiveRequired | Should -BeTrue
+    $readiness.dockerDesktopPlanes.exclusiveSatisfied | Should -BeTrue
+    $readiness.dockerDesktopPlanes.planes.windows.context | Should -Be 'desktop-windows'
+    $readiness.dockerDesktopPlanes.planes.linux.context | Should -Be 'desktop-linux'
     $readiness.hostPlane.runner.hostIsRunner | Should -BeTrue
     $readiness.hostPlane.runner.runnerName | Should -Be 'GHOST'
     $readiness.hostPlane.host.os | Should -Be 'windows'
@@ -157,6 +181,8 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $markdown | Should -Match '\| Host Is Runner \| `True` \|'
     $markdown | Should -Match '\| Runner Name \| `GHOST` \|'
     $markdown | Should -Match '\| Mutually Exclusive Pairs \| `docker-desktop/linux-container-2026<->docker-desktop/windows-container-2026` \|'
+    $markdown | Should -Match '\| Requested Docker Planes \| `docker-desktop/windows-container-2026, docker-desktop/linux-container-2026` \|'
+    $markdown | Should -Match '\| Docker Exclusivity Satisfied \| `True` \|'
   }
 
   It 'marks tool failure runs not-ready' {
@@ -220,6 +246,79 @@ Describe 'Write-DockerFastLoopReadiness.ps1' -Tag 'Unit' {
     $readiness.containerExportFailureCount | Should -Be 1
     $readiness.runtimeFailureCount | Should -Be 0
     $readiness.lanes.windows.failureClass | Should -Be 'cli/tool'
+  }
+
+  It 'records a single-lane linux Docker plane projection when only the linux lane is requested' {
+    $resultsRoot = Join-Path $TestDrive 'linux-plane'
+    New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+    $summaryPath = Join-Path $resultsRoot 'docker-runtime-fastloop-20260301030303.json'
+    $statusPath = Join-Path $resultsRoot 'docker-runtime-fastloop-status.json'
+    $jsonOut = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
+    $mdOut = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.md'
+
+    $summary = [ordered]@{
+      schema = 'docker-desktop-fast-loop@v1'
+      generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+      laneScope = 'linux'
+      status = 'success'
+      hardStopTriggered = $false
+      runtimeManager = [ordered]@{
+        schema = 'docker-fast-loop/runtime-manager@v1'
+        transitionCount = 1
+        daemonUnavailableCount = 0
+        parseDefectCount = 0
+        probes = [ordered]@{
+          windows = [ordered]@{
+            enabled = $false
+            status = 'skipped'
+            context = 'desktop-windows'
+            osType = ''
+          }
+          linux = [ordered]@{
+            enabled = $true
+            status = 'success'
+            context = 'desktop-linux'
+            osType = 'linux'
+          }
+        }
+      }
+      steps = @(
+        [ordered]@{
+          name = 'linux-runtime-preflight'
+          status = 'success'
+          durationMs = 900
+          exitCode = 0
+          resultClass = 'success-no-diff'
+          gateOutcome = 'pass'
+          failureClass = 'none'
+          isDiff = $false
+        }
+      )
+    }
+    $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+    ([ordered]@{
+        schema = 'docker-desktop-fast-loop-status@v1'
+        generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+      } | ConvertTo-Json -Depth 4) | Set-Content -LiteralPath $statusPath -Encoding utf8
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:ReadinessScript `
+      -ResultsRoot $resultsRoot `
+      -SummaryPath $summaryPath `
+      -StatusPath $statusPath `
+      -OutputJsonPath $jsonOut `
+      -OutputMarkdownPath $mdOut `
+      -GitHubOutputPath '' `
+      -StepSummaryPath '' *>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+    ($output -join "`n") | Should -Match '\[linux-docker-fast-loop\]\[docker-plane\] requested=docker-desktop/linux-container-2026 exclusiveRequired=False exclusiveSatisfied=True pairCount=0'
+
+    $readiness = Get-Content -LiteralPath $jsonOut -Raw | ConvertFrom-Json -Depth 16
+    $readiness.loopLabel | Should -Be 'linux-docker-fast-loop'
+    @($readiness.dockerDesktopPlanes.requestedPlanes) | Should -Be @('docker-desktop/linux-container-2026')
+    $readiness.dockerDesktopPlanes.exclusiveRequired | Should -BeFalse
+    $readiness.dockerDesktopPlanes.exclusiveSatisfied | Should -BeTrue
+    $readiness.dockerDesktopPlanes.planes.linux.context | Should -Be 'desktop-linux'
+    $readiness.dockerDesktopPlanes.planes.windows.enabled | Should -BeFalse
   }
 
   It 'marks runtime hard-stop runs not-ready with runtime failure counts' {

@@ -72,6 +72,33 @@ Describe 'Show-DockerFastLoopDiagnostics.ps1' -Tag 'Unit' {
       historyScenarioSet = 'smoke'
       diffEvidenceSteps = 2
       extractedReportCount = 2
+      dockerDesktopPlanes = [ordered]@{
+        schema = 'docker-fast-loop/docker-desktop-planes@v1'
+        laneScope = 'windows'
+        loopLabel = 'windows-docker-fast-loop'
+        requestedPlanes = @('docker-desktop/windows-container-2026')
+        exclusiveRequired = $false
+        exclusiveSatisfied = $true
+        mutuallyExclusivePairCount = 1
+        planes = [ordered]@{
+          windows = [ordered]@{
+            plane = 'docker-desktop/windows-container-2026'
+            enabled = $true
+            status = 'success'
+            context = 'desktop-windows'
+            expectedOsType = 'windows'
+            observedOsType = 'windows'
+          }
+          linux = [ordered]@{
+            plane = 'docker-desktop/linux-container-2026'
+            enabled = $false
+            status = 'skipped'
+            context = 'desktop-linux'
+            expectedOsType = 'linux'
+            observedOsType = ''
+          }
+        }
+      }
       source = [ordered]@{
         resultsRoot = $resultsRoot
         hostPlaneReportPath = $hostPlaneReportPath
@@ -108,6 +135,8 @@ Describe 'Show-DockerFastLoopDiagnostics.ps1' -Tag 'Unit' {
     $outputText | Should -Match '\[native-labview-2026-64\]\[host-plane\] status=ready'
     $outputText | Should -Match '\[host-plane-split\]\[runner\] hostIsRunner=True runnerName=GHOST githubActions=False'
     $outputText | Should -Match 'candidateParallelPairs=docker-desktop/windows-container-2026\+native-labview-2026-64,native-labview-2026-64\+native-labview-2026-32'
+    $outputText | Should -Match '\[windows-docker-fast-loop\]\[docker-plane\] requested=docker-desktop/windows-container-2026 exclusiveRequired=False exclusiveSatisfied=True pairCount=1'
+    $outputText | Should -Match 'lane=windows plane=docker-desktop/windows-container-2026 enabled=True status=success context=desktop-windows expectedOs=windows observedOs=windows'
     $outputText | Should -Match '\[windows-docker-fast-loop\]\[diagnostics\] scenarioSet=smoke differentiatedSteps=2 evidenceSteps=2 reports=2'
     $outputText | Should -Match 'lane=windows sequence=direct mode=attribute images=6'
     $outputText | Should -Match 'report=history-scenarios\\attribute\\container-export\\windows-compare-report.html'
