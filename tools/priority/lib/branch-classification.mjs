@@ -134,6 +134,48 @@ export function resolveRepositoryPlane(repository, contract) {
   return 'fork';
 }
 
+export function findRepositoryPlaneEntry(contract, planeOrRepository) {
+  if (!contract || typeof contract !== 'object') {
+    throw new Error('Branch class contract is required.');
+  }
+
+  const normalizedInput = String(planeOrRepository ?? '').trim().toLowerCase();
+  if (normalizedInput.includes('/')) {
+    const resolvedPlane = resolveRepositoryPlane(normalizedInput, contract);
+    if (!resolvedPlane || resolvedPlane === 'fork') {
+      return null;
+    }
+    return (Array.isArray(contract.repositoryPlanes) ? contract.repositoryPlanes : []).find(
+      (entry) => normalizeRepositoryPlane(entry?.id) === resolvedPlane
+    ) ?? null;
+  }
+
+  const normalizedPlane = normalizeRepositoryPlane(planeOrRepository);
+  if (normalizedPlane !== 'fork') {
+    return (Array.isArray(contract.repositoryPlanes) ? contract.repositoryPlanes : []).find(
+      (entry) => normalizeRepositoryPlane(entry?.id) === normalizedPlane
+    ) ?? null;
+  }
+  return null;
+}
+
+export function resolveLaneBranchPrefix({
+  contract,
+  repository = null,
+  plane = null,
+  fallbackPrefix = 'issue/'
+}) {
+  const planeEntry = findRepositoryPlaneEntry(contract, plane || repository);
+  const configured = String(planeEntry?.laneBranchPrefix ?? '').trim();
+  if (configured) {
+    return configured.endsWith('/') || configured.endsWith('-') ? configured : `${configured}/`;
+  }
+  const normalizedFallback = String(fallbackPrefix ?? '').trim() || 'issue/';
+  return normalizedFallback.endsWith('/') || normalizedFallback.endsWith('-')
+    ? normalizedFallback
+    : `${normalizedFallback}/`;
+}
+
 export function resolveRepositoryRole(repository, contract) {
   return resolveRepositoryPlane(repository, contract) === 'upstream' ? 'upstream' : 'fork';
 }

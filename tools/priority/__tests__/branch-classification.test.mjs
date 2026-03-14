@@ -8,9 +8,11 @@ import {
   assertAllowedTransition,
   branchPatternToRegExp,
   classifyBranch,
+  findRepositoryPlaneEntry,
   loadBranchClassContract,
   matchBranchPattern,
   normalizeBranchName,
+  resolveLaneBranchPrefix,
   resolveRepositoryPlane,
   resolveRepositoryRole
 } from '../lib/branch-classification.mjs';
@@ -39,6 +41,14 @@ test('resolveRepositoryPlane distinguishes upstream, origin, and personal planes
   assert.equal(resolveRepositoryPlane('LabVIEW-Community-CI-CD/compare-vi-cli-action-fork', contract), 'origin');
   assert.equal(resolveRepositoryPlane('svelderrainruiz/compare-vi-cli-action', contract), 'personal');
   assert.equal(resolveRepositoryPlane('someone-else/compare-vi-cli-action', contract), 'fork');
+});
+
+test('resolveLaneBranchPrefix follows repository plane metadata from the branch contract', () => {
+  assert.equal(resolveLaneBranchPrefix({ contract, plane: 'upstream' }), 'issue/');
+  assert.equal(resolveLaneBranchPrefix({ contract, plane: 'origin' }), 'issue/origin-');
+  assert.equal(resolveLaneBranchPrefix({ contract, plane: 'personal' }), 'issue/personal-');
+  assert.equal(resolveLaneBranchPrefix({ contract, repository: 'svelderrainruiz/compare-vi-cli-action' }), 'issue/personal-');
+  assert.equal(findRepositoryPlaneEntry(contract, 'origin')?.laneBranchPrefix, 'issue/origin-');
 });
 
 test('loadBranchClassContract rejects missing or invalid upstreamRepository slugs', () => {

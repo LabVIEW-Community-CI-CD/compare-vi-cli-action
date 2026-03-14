@@ -423,6 +423,87 @@ test('comparevi branch resolver matches the repo issue branch naming contract', 
   assert.equal(branch, 'issue/personal-998-attach-ready-worker-checkouts-onto-deterministic-lane-branches');
 });
 
+test('comparevi branch resolver uses lane prefixes from the branch contract when provided', () => {
+  const branch = compareviRuntimeTest.resolveCompareviIssueBranchName({
+    issueNumber: 998,
+    title: 'Attach ready worker checkouts onto deterministic lane branches',
+    forkRemote: 'personal',
+    branchClassContract: {
+      repositoryPlanes: [
+        {
+          id: 'personal',
+          laneBranchPrefix: 'lane/personal-'
+        }
+      ]
+    }
+  });
+
+  assert.equal(branch, 'lane/personal-998-attach-ready-worker-checkouts-onto-deterministic-lane-branches');
+});
+
+test('canonical delivery decision uses lane prefixes from the branch contract for the selected implementation plane', async () => {
+  const decision = await buildCanonicalDeliveryDecision({
+    repoRoot,
+    upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    targetRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    issueSnapshot: {
+      number: 1084,
+      title: 'Define a fork-plane branching model for personal/org/upstream collaboration',
+      state: 'OPEN',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pullRequests: []
+    },
+    issueGraph: {
+      standingIssue: {
+        number: 1084,
+        title: 'Define a fork-plane branching model for personal/org/upstream collaboration',
+        state: 'OPEN',
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        pullRequests: []
+      },
+      subIssues: [],
+      pullRequests: []
+    },
+    policy: {
+      implementationRemote: 'personal'
+    },
+    deps: {
+      loadBranchClassContractFn: () => ({
+        schema: 'branch-classes/v1',
+        upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        repositoryPlanes: [
+          {
+            id: 'personal',
+            repositories: ['svelderrainruiz/compare-vi-cli-action'],
+            laneBranchPrefix: 'lane/personal-'
+          }
+        ],
+        classes: [
+          {
+            id: 'lane',
+            repositoryRoles: ['fork'],
+            branchPatterns: ['issue/*'],
+            purpose: 'lane',
+            prSourceAllowed: true,
+            prTargetAllowed: false,
+            mergePolicy: 'n/a'
+          }
+        ],
+        allowedTransitions: [
+          {
+            from: 'lane',
+            action: 'promote',
+            to: 'upstream-integration',
+            via: 'pull-request'
+          }
+        ]
+      })
+    }
+  });
+
+  assert.equal(decision.stepOptions.branch, 'lane/personal-1084-define-a-fork-plane-branching-model-for-personal-org-upstream-collaboration');
+});
+
 test('runRuntimeSupervisor step writes runtime state, lane, turn, event, and blocker artifacts', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-supervisor-'));
   const runtimeDir = 'tests/results/_agent/runtime';

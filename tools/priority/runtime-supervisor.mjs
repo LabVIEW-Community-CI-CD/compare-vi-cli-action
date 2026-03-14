@@ -28,6 +28,7 @@ import {
   runRuntimeSupervisor as runCoreRuntimeSupervisor
 } from '../../packages/runtime-harness/index.mjs';
 import { acquireWriterLease, defaultOwner, releaseWriterLease } from './agent-writer-lease.mjs';
+import { loadBranchClassContract, resolveLaneBranchPrefix } from './lib/branch-classification.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
 import {
@@ -209,10 +210,28 @@ function resolveCompareviIssueSlug(title) {
   return normalized.replace(/^-+|-+$/g, '') || 'work';
 }
 
-function resolveCompareviIssueBranchName({ issueNumber, title, forkRemote, branchPrefix = 'issue' }) {
+function resolveCompareviIssueBranchName({
+  issueNumber,
+  title,
+  forkRemote,
+  repoRoot = process.cwd(),
+  branchClassContract = null,
+  loadBranchClassContractFn = loadBranchClassContract,
+  branchPrefix = 'issue'
+}) {
   const slug = resolveCompareviIssueSlug(title);
-  const remotePrefix = normalizeText(forkRemote) ? `${normalizeText(forkRemote).toLowerCase()}-` : '';
-  return `${branchPrefix}/${remotePrefix}${issueNumber}-${slug}`;
+  let lanePrefix = '';
+  try {
+    lanePrefix = resolveLaneBranchPrefix({
+      contract: branchClassContract ?? loadBranchClassContractFn(repoRoot),
+      plane: normalizeText(forkRemote) || 'upstream',
+      fallbackPrefix: `${branchPrefix}/`
+    });
+  } catch {
+    const remotePrefix = normalizeText(forkRemote) ? `${normalizeText(forkRemote).toLowerCase()}-` : '';
+    lanePrefix = `${branchPrefix}/${remotePrefix}`;
+  }
+  return `${lanePrefix}${issueNumber}-${slug}`;
 }
 
 async function readJsonIfPresent(filePath) {
@@ -304,7 +323,8 @@ function buildSchedulerDecisionFromSnapshot({
   const branch = resolveCompareviIssueBranchName({
     issueNumber: selectedIssue,
     title: snapshot.title,
-    forkRemote
+    forkRemote,
+    repoRoot
   });
   const reason =
     Number.isInteger(snapshot.mirrorOf?.number) && snapshot.mirrorOf.number !== snapshot.number

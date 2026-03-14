@@ -249,7 +249,11 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 
 - `develop` is the integration branch. All standing-priority work lands here via squash merges (linear history).
 - `main` reflects the latest release. Use release branches to promote changes from `develop` to `main`.
-- For standing-priority work, create `issue/<number>-<slug>` and merge back with squash once checks are green.
+- For standing-priority work, create the plane-appropriate lane branch and merge back with squash once checks are green:
+  - `issue/personal-<number>-<slug>` for the personal authoring plane
+  - `issue/origin-<number>-<slug>` for the org-fork review plane
+  - bare `issue/<number>-<slug>` only for upstream-native lanes
+  The canonical mapping lives in [BRANCH_ROLE_CONTRACT.md](BRANCH_ROLE_CONTRACT.md).
 - When the standing-priority issue changes mid-flight, realign the branch name and PR head with  
   `node tools/npm/run-script.mjs priority:branch:rename -- --issue <number>`. The helper derives the slug from the
   issue title, renames the local branch, pushes the new name to any remotes that carried the old branch, retargets the
