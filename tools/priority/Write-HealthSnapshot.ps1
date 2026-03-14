@@ -8,7 +8,9 @@ param(
   [string]$Branch = 'develop',
   [string]$BaseRef = 'upstream/develop',
   [string]$HeadRef = 'origin/develop',
-  [int]$IncidentLimit = 5
+  [int]$IncidentLimit = 5,
+  [string]$ParityReportPath,
+  [switch]$SkipParityRefresh
 )
 
 Set-StrictMode -Version Latest
@@ -139,6 +141,14 @@ function Convert-ParityVerdict {
   param($Parity)
   if (-not $Parity -or $Parity.status -ne 'ok') {
     return 'degraded'
+  }
+  $planeTransition = if ($Parity.PSObject.Properties.Name -contains 'planeTransition') { $Parity.planeTransition } else { $null }
+  if (-not $planeTransition -or
+      [string]::IsNullOrWhiteSpace([string]$planeTransition.from) -or
+      [string]::IsNullOrWhiteSpace([string]$planeTransition.to) -or
+      [string]::IsNullOrWhiteSpace([string]$planeTransition.action) -or
+      [string]::IsNullOrWhiteSpace([string]$planeTransition.via)) {
+    return 'fail'
   }
   if ($Parity.tipDiff -and $Parity.tipDiff.fileCount -eq 0 -and $Parity.treeParity -and $Parity.treeParity.equal) {
     return 'pass'
@@ -333,6 +343,11 @@ function Write-MarkdownSummary {
   $lines += "- Upstream develop SHA: $($Snapshot.shas.upstreamDevelop)"
   $lines += "- Fork develop SHA: $($Snapshot.shas.forkDevelop)"
   $lines += "- Parity verdict: **$($Snapshot.parity.verdict)** (source: $($Snapshot.parity.source))"
+  if ($Snapshot.parity.planeTransition) {
+    $lines += "- Plane transition: $($Snapshot.parity.planeTransition.from)->$($Snapshot.parity.planeTransition.to) via $($Snapshot.parity.planeTransition.via)"
+  } else {
+    $lines += "- Plane transition: unavailable"
+  }
   $lines += "- Required-context verdict: **$($Snapshot.requiredContexts.verdict)** (source: $($Snapshot.requiredContexts.source))"
   $lines += ''
   $lines += '## Latest Incidents'
@@ -385,9 +400,17 @@ $forkSha = Invoke-GitText -Arguments @('rev-parse', '--verify', $HeadRef)
 if (-not $upstreamSha) { $upstreamSha = 'unavailable'; $degradedNotes += "Unable to resolve $BaseRef." }
 if (-not $forkSha) { $forkSha = 'unavailable'; $degradedNotes += "Unable to resolve $HeadRef." }
 
-$parityOutputPath = Join-Path $OutputDir 'origin-upstream-parity.json'
+$parityOutputPath = if ([string]::IsNullOrWhiteSpace($ParityReportPath)) {
+  Join-Path $OutputDir 'origin-upstream-parity.json'
+} elseif ([System.IO.Path]::IsPathRooted($ParityReportPath)) {
+  $ParityReportPath
+} else {
+  Join-Path (Get-Location).Path $ParityReportPath
+}
 try {
-  & node tools/priority/report-origin-upstream-parity.mjs --base-ref $BaseRef --head-ref $HeadRef --output-path $parityOutputPath | Out-Null
+  if (-not $SkipParityRefresh) {
+    & node tools/priority/report-origin-upstream-parity.mjs --base-ref $BaseRef --head-ref $HeadRef --output-path $parityOutputPath | Out-Null
+  }
 } catch {
   $degradedNotes += 'Parity report command failed; using degraded verdict.'
 }
@@ -401,6 +424,30 @@ if (Test-Path -LiteralPath $parityOutputPath -PathType Leaf) {
   }
 } else {
   $degradedNotes += 'Parity report not produced.'
+}
+
+$parityPlaneTransition = $null
+if ($parity -and $parity.status -eq 'ok') {
+  $candidatePlaneTransition = if ($parity.PSObject.Properties.Name -contains 'planeTransition') { $parity.planeTransition } else { $null }
+  $isValidPlaneTransition = (
+    $candidatePlaneTransition -and
+    -not [string]::IsNullOrWhiteSpace([string]$candidatePlaneTransition.from) -and
+    -not [string]::IsNullOrWhiteSpace([string]$candidatePlaneTransition.to) -and
+    -not [string]::IsNullOrWhiteSpace([string]$candidatePlaneTransition.action) -and
+    -not [string]::IsNullOrWhiteSpace([string]$candidatePlaneTransition.via)
+  )
+  if ($isValidPlaneTransition) {
+    $parityPlaneTransition = [ordered]@{
+      from = [string]$candidatePlaneTransition.from
+      to = [string]$candidatePlaneTransition.to
+      action = [string]$candidatePlaneTransition.action
+      via = [string]$candidatePlaneTransition.via
+      baseRepository = if ($candidatePlaneTransition.PSObject.Properties.Name -contains 'baseRepository') { [string]$candidatePlaneTransition.baseRepository } else { $null }
+      headRepository = if ($candidatePlaneTransition.PSObject.Properties.Name -contains 'headRepository') { [string]$candidatePlaneTransition.headRepository } else { $null }
+    }
+  } else {
+    $degradedNotes += 'Parity report is missing required plane-transition metadata.'
+  }
 }
 
 $sessionPreferred = Get-PreferredSessionIndex -ResultsDir $ResultsRoot
@@ -443,6 +490,7 @@ $snapshot = [ordered]@{
     status = if ($parity) { $parity.status } else { 'unavailable' }
     tipDiffFileCount = if ($parity -and $parity.tipDiff) { $parity.tipDiff.fileCount } else { $null }
     recommendationCode = if ($parity -and $parity.recommendation) { $parity.recommendation.code } else { $null }
+    planeTransition = $parityPlaneTransition
   }
   requiredContexts = [ordered]@{
     verdict = $requiredContexts.verdict
