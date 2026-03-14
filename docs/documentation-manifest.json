@@ -147,8 +147,9 @@
       "name": "Host Plane Diagnostics Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Machine-readable report contract and helper entrypoints for the LabVIEW 2026 native host-plane split.",
+      "description": "Machine-readable report contract, helper entrypoints, and single-host runbook for the LabVIEW 2026 host-plane split.",
       "files": [
+        "docs/SINGLE_HOST_LABVIEW_2026_PLANES.md",
         "docs/schemas/labview-2026-host-plane-report-v1.schema.json",
         "tools/LabVIEW2026HostPlaneDiagnostics.psm1",
         "tools/Write-LabVIEW2026HostPlaneDiagnostics.ps1"
