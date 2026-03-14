@@ -1,0 +1,68 @@
+name: Public Linux Diagnostics Harness
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: 'Target public owner/repo'
+        required: true
+        type: string
+      reference:
+        description: 'Target branch/ref derived from develop'
+        required: true
+        type: string
+      develop_relationship:
+        description: 'Relationship to develop'
+        required: true
+        type: choice
+        default: ahead
+        options:
+          - equal
+          - ahead
+
+permissions:
+  contents: read
+
+jobs:
+  public-linux-diagnostics-harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: node tools/npm/cli.mjs ci --ignore-scripts
+
+      - name: Write public Linux diagnostics dispatch receipt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_STEP_SUMMARY: ${{ github.step_summary }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/priority/public-linux-diagnostics-workflow-dispatch.mjs \
+            --repository "${{ inputs.repository }}" \
+            --reference "${{ inputs.reference }}" \
+            --develop-relationship "${{ inputs.develop_relationship }}" \
+            --decision-workflow-path ".github/workflows/human-go-no-go-feedback.yml" \
+            --report "tests/results/_agent/diagnostics/public-linux-diagnostics-workflow-dispatch.json" \
+            --step-summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload public Linux diagnostics dispatch artifact
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: public-linux-diagnostics-harness-dispatch
+          path: |
+            tests/results/_agent/diagnostics/public-linux-diagnostics-workflow-dispatch.json
+          if-no-files-found: error
