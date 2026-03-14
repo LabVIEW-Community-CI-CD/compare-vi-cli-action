@@ -12,6 +12,7 @@ import {
   collectReviewContext,
   loadCopilotCliReviewPolicy,
   normalizeCopilotCliReviewPolicy,
+  resolveCopilotCliCommand,
   runCopilotCliReview
 } from '../copilot-cli-review.mjs';
 
@@ -111,6 +112,30 @@ test('buildReviewPrompt includes collaboration planes and instruction presence',
   assert.match(prompt, /\.github\/copilot-instructions\.md/);
 });
 
+test('resolveCopilotCliCommand prefers the Windows npm shim and enables shell launch', async () => {
+  const shimRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-shim-'));
+  const shimPath = path.join(shimRoot, 'copilot.cmd');
+  await writeFile(shimPath, '@echo off\r\necho copilot\r\n', 'utf8');
+
+  const invocation = resolveCopilotCliCommand('win32', {
+    Path: shimRoot
+  });
+
+  assert.equal(invocation.command, 'copilot.cmd');
+  assert.equal(invocation.spawnCommand, shimPath);
+  assert.equal(invocation.shell, true);
+});
+
+test('resolveCopilotCliCommand falls back to the logical Windows shim name when PATH has no resolved shim', () => {
+  const invocation = resolveCopilotCliCommand('win32', {
+    Path: ''
+  });
+
+  assert.equal(invocation.command, 'copilot.cmd');
+  assert.equal(invocation.spawnCommand, 'copilot.cmd');
+  assert.equal(invocation.shell, true);
+});
+
 test('runCopilotCliReview writes a deterministic passed receipt for staged review', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-review-'));
   runGit(repoRoot, ['init']);
@@ -161,6 +186,8 @@ test('runCopilotCliReview writes a deterministic passed receipt for staged revie
   assert.equal(result.receipt.overall.status, 'passed');
   assert.equal(result.receipt.copilot.model, 'gpt-5.4-mini');
   assert.equal(result.receipt.copilot.allowAllTools, false);
+  assert.equal(result.receipt.copilot.command, process.platform === 'win32' ? 'copilot.cmd' : 'copilot');
+  assert.equal(result.receipt.copilot.shell, process.platform === 'win32');
   assert.deepEqual(result.receipt.permissionPolicy, {
     promptOnly: true,
     disableBuiltinMcps: true,
