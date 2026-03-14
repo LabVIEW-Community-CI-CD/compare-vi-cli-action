@@ -144,6 +144,28 @@ test('resolveCopilotCliCommand fails closed when no Windows shim can be resolved
   assert.match(invocation.resolutionError, /without shell mediation/i);
 });
 
+test('resolveCopilotCliCommand keeps scanning PATH after an unresolvable Windows shim', async () => {
+  const brokenShimRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-broken-shim-'));
+  const healthyShimRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-healthy-shim-'));
+  const healthyLoaderPath = path.join(healthyShimRoot, 'node_modules', '@github', 'copilot', 'npm-loader.js');
+  const healthyNodePath = path.join(healthyShimRoot, 'node.exe');
+  await mkdir(path.dirname(healthyLoaderPath), { recursive: true });
+  await writeFile(path.join(brokenShimRoot, 'copilot.cmd'), '@echo off\r\necho broken\r\n', 'utf8');
+  await writeFile(path.join(healthyShimRoot, 'copilot.cmd'), '@echo off\r\necho healthy\r\n', 'utf8');
+  await writeFile(healthyNodePath, '', 'utf8');
+  await writeFile(healthyLoaderPath, 'console.log("copilot")\n', 'utf8');
+
+  const invocation = resolveCopilotCliCommand('win32', {
+    Path: [brokenShimRoot, healthyShimRoot].join(path.delimiter)
+  });
+
+  assert.equal(invocation.command, 'copilot.cmd');
+  assert.equal(invocation.spawnCommand, healthyNodePath);
+  assert.deepEqual(invocation.spawnArgsPrefix, [healthyLoaderPath]);
+  assert.equal(invocation.shell, false);
+  assert.equal(invocation.resolutionError, '');
+});
+
 test('runCopilotCliReview writes a deterministic passed receipt for staged review', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-review-'));
   runGit(repoRoot, ['init']);

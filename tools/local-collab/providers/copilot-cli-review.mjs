@@ -161,17 +161,21 @@ export function resolveCopilotCliCommand(platform = process.platform, env = proc
     };
   }
 
+  const resolutionErrors = [];
   for (const directory of readPathEntries(env)) {
     const shimPath = path.join(directory, 'copilot.cmd');
     if (existsSync(shimPath)) {
       const bundle = resolveWindowsCopilotBundle(shimPath);
-      return {
-        command: 'copilot.cmd',
-        spawnCommand: bundle?.spawnCommand ?? null,
-        spawnArgsPrefix: bundle?.spawnArgsPrefix ?? [],
-        shell: bundle?.shell ?? false,
-        resolutionError: bundle?.resolutionError ?? ''
-      };
+      if (!normalizeText(bundle?.resolutionError)) {
+        return {
+          command: 'copilot.cmd',
+          spawnCommand: bundle?.spawnCommand ?? null,
+          spawnArgsPrefix: bundle?.spawnArgsPrefix ?? [],
+          shell: bundle?.shell ?? false,
+          resolutionError: ''
+        };
+      }
+      resolutionErrors.push(bundle.resolutionError);
     }
   }
 
@@ -180,7 +184,7 @@ export function resolveCopilotCliCommand(platform = process.platform, env = proc
     spawnCommand: null,
     spawnArgsPrefix: [],
     shell: false,
-    resolutionError: 'Unable to resolve copilot.cmd on PATH without shell mediation.'
+    resolutionError: resolutionErrors[0] || 'Unable to resolve copilot.cmd on PATH without shell mediation.'
   };
 }
 
