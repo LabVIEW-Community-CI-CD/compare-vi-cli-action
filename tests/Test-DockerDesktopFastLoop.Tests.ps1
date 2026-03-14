@@ -8,13 +8,14 @@ Describe 'Test-DockerDesktopFastLoop.ps1' -Tag 'Unit' {
     $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
     $script:FastLoopScript = Join-Path $script:RepoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1'
     $script:ReadinessScript = Join-Path $script:RepoRoot 'tools' 'Write-DockerFastLoopReadiness.ps1'
+    $script:HostPlaneDiagnosticsScript = Join-Path $script:RepoRoot 'tools' 'Write-LabVIEW2026HostPlaneDiagnostics.ps1'
     $script:DiagnosticsModule = Join-Path $script:RepoRoot 'tools' 'DockerFastLoopDiagnostics.psm1'
     $script:HostPlaneModule = Join-Path $script:RepoRoot 'tools' 'LabVIEW2026HostPlaneDiagnostics.psm1'
     $script:VendorToolsModule = Join-Path $script:RepoRoot 'tools' 'VendorTools.psm1'
     $script:ClassifierScript = Join-Path $script:RepoRoot 'tools' 'Compare-ExitCodeClassifier.ps1'
     $script:LinuxBootstrapScript = Join-Path $script:RepoRoot 'tools' 'NILinux-VIHistorySuiteBootstrap.sh'
 
-    foreach ($path in @($script:FastLoopScript, $script:ReadinessScript, $script:DiagnosticsModule, $script:HostPlaneModule, $script:VendorToolsModule, $script:ClassifierScript, $script:LinuxBootstrapScript)) {
+    foreach ($path in @($script:FastLoopScript, $script:ReadinessScript, $script:HostPlaneDiagnosticsScript, $script:DiagnosticsModule, $script:HostPlaneModule, $script:VendorToolsModule, $script:ClassifierScript, $script:LinuxBootstrapScript)) {
       if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required script not found: $path"
       }
@@ -36,6 +37,7 @@ Describe 'Test-DockerDesktopFastLoop.ps1' -Tag 'Unit' {
 
       Copy-Item -LiteralPath $script:FastLoopScript -Destination (Join-Path $toolsDir 'Test-DockerDesktopFastLoop.ps1') -Force
       Copy-Item -LiteralPath $script:ReadinessScript -Destination (Join-Path $toolsDir 'Write-DockerFastLoopReadiness.ps1') -Force
+      Copy-Item -LiteralPath $script:HostPlaneDiagnosticsScript -Destination (Join-Path $toolsDir 'Write-LabVIEW2026HostPlaneDiagnostics.ps1') -Force
       Copy-Item -LiteralPath $script:DiagnosticsModule -Destination (Join-Path $toolsDir 'DockerFastLoopDiagnostics.psm1') -Force
       Copy-Item -LiteralPath $script:HostPlaneModule -Destination (Join-Path $toolsDir 'LabVIEW2026HostPlaneDiagnostics.psm1') -Force
       Copy-Item -LiteralPath $script:VendorToolsModule -Destination (Join-Path $toolsDir 'VendorTools.psm1') -Force
@@ -886,15 +888,23 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
       $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
       $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 16
       $summary.hostPlaneReportPath | Should -Not -BeNullOrEmpty
+      $summary.hostPlaneSummaryPath | Should -Not -BeNullOrEmpty
       Test-Path -LiteralPath $summary.hostPlaneReportPath -PathType Leaf | Should -BeTrue
+      Test-Path -LiteralPath $summary.hostPlaneSummaryPath -PathType Leaf | Should -BeTrue
       $summary.hostPlane.runner.hostIsRunner | Should -BeTrue
       $summary.hostPlane.runner.runnerName | Should -Not -BeNullOrEmpty
       $summary.hostExecutionPolicy.mutuallyExclusivePairs.pairs.Count | Should -Be 1
       $summary.hostExecutionPolicy.candidateParallelPairs.pairs.Count | Should -Be 2
 
+      $statusPath = Join-Path $resultsRoot 'docker-runtime-fastloop-status.json'
+      $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json -Depth 16
+      $status.hostPlaneReportPath | Should -Be $summary.hostPlaneReportPath
+      $status.hostPlaneSummaryPath | Should -Be $summary.hostPlaneSummaryPath
+
       $readinessPath = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
       $readiness = Get-Content -LiteralPath $readinessPath -Raw | ConvertFrom-Json -Depth 16
       $readiness.source.hostPlaneReportPath | Should -Be $summary.hostPlaneReportPath
+      $readiness.source.hostPlaneSummaryPath | Should -Be $summary.hostPlaneSummaryPath
       $readiness.hostPlane.runner.hostIsRunner | Should -BeTrue
       $readiness.hostExecutionPolicy.candidateParallelPairs.pairs.Count | Should -Be 2
       $readiness.hostPlanes.x64.status | Should -Be 'ready'
