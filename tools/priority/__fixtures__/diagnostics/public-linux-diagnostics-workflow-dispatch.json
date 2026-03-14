@@ -1,0 +1,36 @@
+{
+  "schema": "public-linux-diagnostics-harness-workflow-dispatch@v1",
+  "generatedAt": "2026-03-14T14:30:00.000Z",
+  "target": {
+    "repositorySlug": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+    "repositoryVisibility": "public",
+    "repositoryUrl": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action",
+    "reference": "issue/personal-1167-public-linux-harness-workflow",
+    "defaultBranch": "develop",
+    "developRelationship": "ahead"
+  },
+  "contract": {
+    "schemaPath": "docs/schemas/public-linux-diagnostics-harness-contract-v1.schema.json",
+    "docPath": "docs/PUBLIC_LINUX_DIAGNOSTICS_HARNESS_CONTRACT.md"
+  },
+  "execution": {
+    "mode": "plan-only",
+    "hostedWorkflowPath": ".github/workflows/public-linux-diagnostics-harness.yml",
+    "workflowRunId": "123456789",
+    "workflowRunUrl": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/123456789",
+    "localDelegateCommand": "pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -NILinuxReviewSuite"
+  },
+  "artifacts": {
+    "reviewLoopReceiptPath": "tests/results/docker-tools-parity/review-loop-receipt.json",
+    "historySummaryPath": "tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-report/results/history-summary.json",
+    "historyReportHtmlPath": "tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-report/results/history-report.html",
+    "operatorSummaryPath": "tests/results/_agent/verification/docker-review-loop-summary.json",
+    "dispatchReceiptPath": "tests/results/_agent/diagnostics/public-linux-diagnostics-workflow-dispatch.json"
+  },
+  "humanGoNoGo": {
+    "required": true,
+    "workflowPath": ".github/workflows/human-go-no-go-feedback.yml",
+    "decisionPath": "tests/results/_agent/handoff/human-go-no-go-decision.json"
+  },
+  "status": "planned"
+}
