@@ -1,0 +1,30 @@
+{
+  "schema": "public-linux-diagnostics-harness-contract@v1",
+  "generatedAt": "2026-03-14T14:20:00Z",
+  "target": {
+    "repositoryVisibility": "public",
+    "repositorySlug": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+    "reference": "issue/personal-1163-public-linux-harness-contract",
+    "developRelationship": "ahead"
+  },
+  "execution": {
+    "localEntryPoint": "tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -NILinuxReviewSuite",
+    "hostedWorkflowPath": ".github/workflows/human-go-no-go-feedback.yml",
+    "containerLane": "docker-desktop-linux",
+    "labviewRelease": "2026 Q1 Linux"
+  },
+  "artifacts": {
+    "bundleRoot": "tests/results/docker-tools-parity/ni-linux-review-suite/",
+    "reviewLoopReceiptPath": "tests/results/docker-tools-parity/review-loop-receipt.json",
+    "historySummaryPath": "tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-report/results/history-summary.json",
+    "historyReportHtmlPath": "tests/results/docker-tools-parity/ni-linux-review-suite/vi-history-report/results/history-report.html",
+    "operatorSummaryPath": "tests/results/_agent/verification/docker-review-loop-summary.json"
+  },
+  "humanGoNoGo": {
+    "required": true,
+    "workflowPath": ".github/workflows/human-go-no-go-feedback.yml",
+    "decisionSchemaPath": "docs/schemas/human-go-no-go-decision-v1.schema.json",
+    "decisionArtifactName": "human-go-no-go-decision",
+    "decisionPath": "tests/results/_agent/handoff/human-go-no-go-decision.json"
+  }
+}
