@@ -29,6 +29,11 @@ test('normalizeCopilotCliReviewPolicy keeps the prompt-only no-tool default', ()
   assert.equal(policy.allowAllTools, false);
   assert.equal(policy.availableTools, '');
   assert.equal(policy.promptOnly, true);
+  assert.deepEqual(policy.sessionPolicy, {
+    reuse: 'fresh-per-head',
+    scope: 'current-head',
+    recordPromptArtifacts: true
+  });
   assert.deepEqual(policy.convergence, {
     minPasses: 2,
     maxPasses: 4,
@@ -49,7 +54,12 @@ test('loadCopilotCliReviewPolicy reads copilotCliReviewConfig and honors the boo
         copilotCliReview: false,
         copilotCliReviewConfig: {
           model: 'gpt-5.5-mini',
-          availableTools: 'grep,cat'
+          availableTools: 'grep,cat',
+          sessionPolicy: {
+            reuse: 'fresh-per-invocation',
+            scope: 'current-diff',
+            recordPromptArtifacts: false
+          }
         }
       }
     }, null, 2),
@@ -60,6 +70,11 @@ test('loadCopilotCliReviewPolicy reads copilotCliReviewConfig and honors the boo
   assert.equal(policy.enabled, false);
   assert.equal(policy.model, 'gpt-5.5-mini');
   assert.equal(policy.availableTools, 'grep,cat');
+  assert.deepEqual(policy.sessionPolicy, {
+    reuse: 'fresh-per-invocation',
+    scope: 'current-diff',
+    recordPromptArtifacts: false
+  });
 });
 
 test('buildReviewPrompt includes collaboration planes and instruction presence', () => {
@@ -145,6 +160,17 @@ test('runCopilotCliReview writes a deterministic passed receipt for staged revie
   assert.equal(result.status, 'passed');
   assert.equal(result.receipt.overall.status, 'passed');
   assert.equal(result.receipt.copilot.model, 'gpt-5.4-mini');
+  assert.equal(result.receipt.copilot.allowAllTools, false);
+  assert.deepEqual(result.receipt.permissionPolicy, {
+    promptOnly: true,
+    disableBuiltinMcps: true,
+    allowAllTools: false,
+    availableTools: ''
+  });
+  assert.equal(result.receipt.sessionPolicy.reuse, 'fresh-per-head');
+  assert.equal(result.receipt.sessionPolicy.scope, 'current-head');
+  assert.equal(result.receipt.sessionPolicy.reusedPriorSession, false);
+  assert.match(result.receipt.sessionPolicy.checkpointKey, /^preCommit:/);
   assert.equal(result.receipt.context.selectedFiles[0], 'README.md');
   assert.equal(result.receipt.convergence.passCount, 2);
   assert.equal(result.receipt.convergence.stoppedReason, 'clean-pass');
