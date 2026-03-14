@@ -7,6 +7,10 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+const PR_DRAFT_TRANSITION_POLL_ATTEMPTS = 6;
+const PR_DRAFT_TRANSITION_POLL_DELAY_MS = 1000;
+const PR_DRAFT_TRANSITION_CLOCK_SKEW_MS = 5000;
+
 function normalizeText(value) {
   if (value == null) {
     return '';
@@ -51,6 +55,10 @@ function runCommand(command, args, { cwd, env, input } = {}) {
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? ''
   };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function buildUnattendedCommandEnv(baseEnv = process.env) {
@@ -302,6 +310,155 @@ function findPullRequest({ repository, branch, workDir, env = process.env }) {
   return Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : null;
 }
 
+export function buildPullRequestTimelineArgs({ repository, pullRequestNumber, perPage = 50 }) {
+  return [
+    'api',
+    `repos/${repository}/issues/${pullRequestNumber}/timeline`,
+    '-H',
+    'Accept: application/vnd.github+json',
+    '-f',
+    `per_page=${perPage}`
+  ];
+}
+
+function readPullRequestTimelineEvents({
+  repository,
+  pullRequestNumber,
+  workDir,
+  env = process.env,
+  runCommandFn = runCommand
+}) {
+  const result = runCommandFn(
+    'gh',
+    buildPullRequestTimelineArgs({ repository, pullRequestNumber }),
+    { cwd: workDir, env }
+  );
+  if (result.status !== 0) {
+    throw new Error(normalizeText(result.stderr) || normalizeText(result.stdout) || 'gh issue timeline lookup failed');
+  }
+  const parsed = parseJsonOrNull(result.stdout);
+  if (!Array.isArray(parsed)) {
+    throw new Error('gh issue timeline lookup returned invalid JSON.');
+  }
+  return parsed;
+}
+
+function normalizeTimestamp(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function expectedDraftTransitionEventName(ready) {
+  return ready ? 'ready_for_review' : 'converted_to_draft';
+}
+
+function authoritativeDraftStateForReadyFlag(ready) {
+  return ready !== true;
+}
+
+export function selectAuthoritativeDraftTransition({
+  timelineEvents,
+  ready,
+  transitionStartedAt = null,
+  previousEventId = null
+}) {
+  const expectedEvent = expectedDraftTransitionEventName(ready);
+  const startedAtMs = normalizeTimestamp(transitionStartedAt);
+  const lowerBoundMs =
+    startedAtMs == null
+      ? null
+      : Math.max(0, startedAtMs - PR_DRAFT_TRANSITION_CLOCK_SKEW_MS);
+  const matching = Array.isArray(timelineEvents)
+    ? timelineEvents
+        .filter((entry) => normalizeText(entry?.event).toLowerCase() === expectedEvent)
+        .map((entry) => ({
+          id: entry?.id ?? null,
+          createdAt: normalizeText(entry?.created_at) || null,
+          createdAtMs: normalizeTimestamp(entry?.created_at),
+          actor: normalizeText(entry?.actor?.login) || null,
+          event: expectedEvent
+        }))
+        .filter((entry) => entry.id != null || entry.createdAtMs != null)
+    : [];
+  if (matching.length === 0) {
+    return null;
+  }
+  matching.sort((left, right) => {
+    const leftTime = left.createdAtMs ?? -1;
+    const rightTime = right.createdAtMs ?? -1;
+    if (leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    const leftId = Number(left.id) || 0;
+    const rightId = Number(right.id) || 0;
+    return rightId - leftId;
+  });
+  const latest = matching[0];
+  if (previousEventId != null && String(latest.id) === String(previousEventId)) {
+    return null;
+  }
+  if (previousEventId == null && lowerBoundMs != null && latest.createdAtMs != null && latest.createdAtMs < lowerBoundMs) {
+    return null;
+  }
+  return {
+    ok: true,
+    event: latest.event,
+    eventId: latest.id,
+    createdAt: latest.createdAt,
+    actor: latest.actor,
+    authoritativeIsDraft: authoritativeDraftStateForReadyFlag(ready)
+  };
+}
+
+export async function waitForAuthoritativeDraftTransition({
+  ready,
+  transitionStartedAt,
+  previousEventId = null,
+  readTimelineEventsFn,
+  pollAttempts = PR_DRAFT_TRANSITION_POLL_ATTEMPTS,
+  pollDelayMs = PR_DRAFT_TRANSITION_POLL_DELAY_MS,
+  sleepFn = sleep
+}) {
+  let lastError = null;
+  const attempts = Math.max(1, Number(pollAttempts) || 1);
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const timelineEvents = await readTimelineEventsFn();
+      const match = selectAuthoritativeDraftTransition({
+        timelineEvents,
+        ready,
+        transitionStartedAt,
+        previousEventId
+      });
+      if (match) {
+        return {
+          ...match,
+          attemptsUsed: attempt
+        };
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < attempts) {
+      await sleepFn(pollDelayMs);
+    }
+  }
+  return {
+    ok: false,
+    event: expectedDraftTransitionEventName(ready),
+    eventId: null,
+    createdAt: null,
+    actor: null,
+    authoritativeIsDraft: null,
+    attemptsUsed: attempts,
+    reason: lastError?.message || 'authoritative draft transition evidence did not arrive before the poll window expired'
+  };
+}
+
 export function buildPrReadyArgs({ repository, pullRequestNumber, ready }) {
   const args = ['pr', 'ready', String(pullRequestNumber), '--repo', repository];
   if (!ready) {
@@ -310,7 +467,7 @@ export function buildPrReadyArgs({ repository, pullRequestNumber, ready }) {
   return args;
 }
 
-function setPullRequestReadyState({
+async function setPullRequestReadyState({
   repository,
   pullRequest,
   ready,
@@ -335,11 +492,43 @@ function setPullRequestReadyState({
     pullRequestNumber,
     ready
   });
+  let previousEventId = null;
+  try {
+    const timelineEvents = readPullRequestTimelineEvents({
+      repository,
+      pullRequestNumber,
+      workDir,
+      env
+    });
+    previousEventId = selectAuthoritativeDraftTransition({
+      timelineEvents,
+      ready
+    })?.eventId ?? null;
+  } catch {
+    previousEventId = null;
+  }
+  const transitionStartedAt = toIso();
   const result = runCommand('gh', args, { cwd: workDir, env });
+  const verification =
+    result.status === 0
+      ? await waitForAuthoritativeDraftTransition({
+          ready,
+          transitionStartedAt,
+          previousEventId,
+          readTimelineEventsFn: async () =>
+            readPullRequestTimelineEvents({
+              repository,
+              pullRequestNumber,
+              workDir,
+              env
+            })
+        })
+      : null;
   return {
-    ok: result.status === 0,
+    ok: result.status === 0 && (verification == null || verification.ok === true),
     helperCall: `gh ${args.join(' ')}`,
-    result
+    result,
+    verification
   };
 }
 
@@ -550,8 +739,9 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
   });
   const brokerHelperCalls = [];
   const brokerTransitionNotes = [];
+  let authoritativeDraftState = null;
   if (initialPullRequest?.isDraft === false) {
-    const toDraft = setPullRequestReadyState({
+    const toDraft = await setPullRequestReadyState({
       repository: normalizeText(packet.repository),
       pullRequest: initialPullRequest,
       ready: false,
@@ -564,6 +754,13 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
     if (!toDraft.ok && initialPullRequest.number) {
       brokerTransitionNotes.push(
         `Broker failed to mark PR #${initialPullRequest.number} as draft before mutation: ${normalizeText(toDraft.result?.stderr) || normalizeText(toDraft.result?.stdout) || 'unknown error'}.`
+      );
+    }
+    if (toDraft.verification?.ok === true) {
+      authoritativeDraftState = toDraft.verification.authoritativeIsDraft;
+    } else if (toDraft.result?.status === 0 && initialPullRequest.number) {
+      brokerTransitionNotes.push(
+        `Broker could not verify the draft transition for PR #${initialPullRequest.number} from authoritative timeline evidence: ${normalizeText(toDraft.verification?.reason) || 'missing converted_to_draft event'}.`
       );
     }
   }
@@ -592,12 +789,25 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
   const endHead = gitStdout(workDir, ['rev-parse', 'HEAD'], unattendedEnv);
   const filesTouched = collectFilesTouched(workDir, startHead, endHead, unattendedEnv);
   const parsedLastMessage = parseJsonOrNull(await readFile(lastMessagePath, 'utf8').catch(() => ''));
-  const pullRequest = findPullRequest({
+  let pullRequest = findPullRequest({
     repository: normalizeText(packet.repository),
     branch: branchName,
     workDir,
     env: unattendedEnv
   });
+  if (
+    authoritativeDraftState === true &&
+    pullRequest?.number === initialPullRequest?.number &&
+    pullRequest?.isDraft !== true
+  ) {
+    brokerTransitionNotes.push(
+      `Broker observed a lagging isDraft read after the authoritative converted_to_draft timeline event for PR #${pullRequest.number}; continuing with the timeline-confirmed draft state.`
+    );
+    pullRequest = {
+      ...pullRequest,
+      isDraft: true
+    };
+  }
   const reviewCycle = planPullRequestReviewCycle({
     initialPullRequest,
     finalPullRequest: pullRequest,
@@ -607,7 +817,7 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
     reviewStrategy: normalizeText(packet?.evidence?.delivery?.mutationEnvelope?.copilotReviewStrategy) || 'draft-only-explicit'
   });
   if (reviewCycle.readyAfterMutation || reviewCycle.restoreReadyWithoutMutation) {
-    const toReady = setPullRequestReadyState({
+    const toReady = await setPullRequestReadyState({
       repository: normalizeText(packet.repository),
       pullRequest,
       ready: true,
@@ -620,6 +830,11 @@ export async function runCodexDeliveryTurn({ taskPacketPath, receiptPath, repoRo
     if (!toReady.ok && pullRequest?.number) {
       brokerTransitionNotes.push(
         `Broker failed to mark PR #${pullRequest.number} ready for review after mutation: ${normalizeText(toReady.result?.stderr) || normalizeText(toReady.result?.stdout) || 'unknown error'}.`
+      );
+    }
+    if (toReady.result?.status === 0 && toReady.verification?.ok !== true && pullRequest?.number) {
+      brokerTransitionNotes.push(
+        `Broker could not verify the ready transition for PR #${pullRequest.number} from authoritative timeline evidence: ${normalizeText(toReady.verification?.reason) || 'missing ready_for_review event'}.`
       );
     }
   }
