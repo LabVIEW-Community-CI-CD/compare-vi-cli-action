@@ -54,15 +54,11 @@ if (-not [regex]::IsMatch($workflowContent, $jobNamePattern)) {
 
 $branchPolicy = Read-JsonFile -Path $BranchRequiredChecksPath
 $branchHasExpectedCheck = $false
-if (-not $branchPolicy.branches) {
-  Add-ContractError "Missing branches node in $BranchRequiredChecksPath."
-} else {
-  $developChecks = @((Resolve-BranchRequiredCheckProjection -BranchPolicy $branchPolicy -BranchName $BranchName -BranchClassId $null).requiredChecks)
-  if ($developChecks.Count -eq 0) {
-    Add-ContractError "Missing required checks for branch '$BranchName' in $BranchRequiredChecksPath."
-  }
-  $branchHasExpectedCheck = $developChecks -contains $expectedCheckName
+$developChecks = @((Resolve-BranchRequiredCheckProjection -BranchPolicy $branchPolicy -BranchName $BranchName -BranchClassId $null).requiredChecks)
+if ($developChecks.Count -eq 0) {
+  Add-ContractError "Missing required checks for branch '$BranchName' in $BranchRequiredChecksPath."
 }
+$branchHasExpectedCheck = $developChecks -contains $expectedCheckName
 
 $priorityPolicy = Read-JsonFile -Path $PriorityPolicyPath
 $priorityBranchChecks = @(Resolve-PriorityPolicyBranchRequiredChecks -PriorityPolicy $priorityPolicy -BranchPolicy $branchPolicy -BranchName $BranchName)
