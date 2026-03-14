@@ -1078,7 +1078,7 @@ try {
     -activeScenarioName $activeScenarioName `
     -activeCapturePath $capturePath `
     -activeReportPath $reportPath
-  Write-Host ("[pre-push] Known-flag scenario report: {0}" -f $scenarioContractReportPath) -ForegroundColor DarkGray
+  Write-Host ("[pre-push] Known-flag scenario report: {0}" -f $scenarioReportPath) -ForegroundColor DarkGray
   Write-Host ("[pre-push] Active known-flag scenario '{0}' OK" -f $knownFlagScenarioId) -ForegroundColor Green
 } catch {
   $failureMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { [string]$_ }
