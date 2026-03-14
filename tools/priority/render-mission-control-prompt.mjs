@@ -76,8 +76,19 @@ function validateMissionControlEnvelope(envelope, repoRoot = DEFAULT_REPO_ROOT) 
   }
 }
 
+function normalizeOverrideReason(reason) {
+  const normalized = normalizeText(reason);
+  if (!normalized) {
+    throw new Error('Mission-control override reason must be non-empty single-line text.');
+  }
+  if (/[\r\n]/.test(normalized)) {
+    throw new Error('Mission-control override reason must not contain newlines.');
+  }
+  return normalized;
+}
+
 function formatOverride(override) {
-  return `${override.key}=${String(override.value)} (${override.reason})`;
+  return `${override.key}=${String(override.value)} (${normalizeOverrideReason(override.reason)})`;
 }
 
 export function renderMissionControlPrompt(envelope, { repoRoot = DEFAULT_REPO_ROOT, validate = true } = {}) {
@@ -209,12 +220,14 @@ export function renderMissionControlPromptReport(
   const promptText = renderMissionControlPrompt(envelope, { repoRoot, validate: false });
   const promptSha256 = createHash('sha256').update(promptText, 'utf8').digest('hex');
   const envelopeSha256 = createHash('sha256').update(JSON.stringify(envelope), 'utf8').digest('hex');
+  const resolvedEnvelopePath = path.resolve(repoRoot, envelopePath);
+  const resolvedPromptPath = path.resolve(repoRoot, promptPath);
 
   return {
     schema: MISSION_CONTROL_PROMPT_RENDER_SCHEMA,
-    envelopePath,
+    envelopePath: resolvedEnvelopePath,
     envelopeSha256,
-    promptPath,
+    promptPath: resolvedPromptPath,
     promptSha256,
     promptLineCount: promptText.trimEnd().split('\n').length,
     operator: {

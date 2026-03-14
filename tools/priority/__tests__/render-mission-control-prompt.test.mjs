@@ -64,6 +64,19 @@ test('renderMissionControlPrompt fails closed for invalid envelope files', async
   );
 });
 
+test('renderMissionControlPrompt fails closed when override reasons contain newlines', async () => {
+  const { renderMissionControlPrompt } = await loadModule();
+  const envelope = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
+  envelope.operator.overrides = [
+    { key: 'allowParkedLane', value: true, reason: 'line one\nline two' },
+  ];
+
+  assert.throws(
+    () => renderMissionControlPrompt(envelope, { repoRoot }),
+    /must not contain newlines/i,
+  );
+});
+
 test('render mission-control prompt CLI writes deterministic prompt and report artifacts', async (t) => {
   const { FIXTURE_MISSION_CONTROL_ENVELOPE_PATH, main, parseArgs, MISSION_CONTROL_PROMPT_RENDER_SCHEMA } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-render-'));
@@ -116,6 +129,7 @@ test('render mission-control prompt CLI writes deterministic prompt and report a
   const promptText = fs.readFileSync(promptPath, 'utf8');
   const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
   assert.equal(report.schema, MISSION_CONTROL_PROMPT_RENDER_SCHEMA);
+  assert.equal(report.envelopePath, path.resolve(repoRoot, FIXTURE_MISSION_CONTROL_ENVELOPE_PATH));
   assert.equal(report.promptPath, promptPath);
   assert.equal(report.promptText, promptText);
   assert.equal(report.promptSha256, createHash('sha256').update(promptText, 'utf8').digest('hex'));
