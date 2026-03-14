@@ -70,6 +70,20 @@ test('mission-control operator input catalog fails closed when canonical identif
   assert.equal(duplicateOverrideValid, false, 'duplicate override keys should fail schema validation');
 });
 
+test('mission-control operator input catalog fails closed when an intent advertises the wrong focus matrix', () => {
+  const validate = compileValidator();
+  const fixture = loadJson('tools/priority/__fixtures__/mission-control/operator-input-catalog.json');
+  const contradictoryCatalog = structuredClone(fixture);
+  contradictoryCatalog.intents = fixture.intents.map((entry) =>
+    entry.id === 'restore-intake'
+      ? { ...structuredClone(entry), allowedFocuses: ['standing-priority', 'queue-health', 'policy-drift'] }
+      : structuredClone(entry)
+  );
+
+  const valid = validate(contradictoryCatalog);
+  assert.equal(valid, false, 'intent-specific allowedFocuses drift should fail schema validation');
+});
+
 test('mission-control envelope operator fields stay inside the bounded-input catalog', () => {
   const envelope = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
   const catalog = loadJson('tools/priority/__fixtures__/mission-control/operator-input-catalog.json');

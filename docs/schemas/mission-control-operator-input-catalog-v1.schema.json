@@ -288,7 +288,89 @@
           "minLength": 1,
           "maxLength": 280
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "continue-driving-autonomously"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allowedFocuses": {
+                "const": ["standing-priority", "queue-health", "policy-drift", "docs-contract"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "finish-live-standing-lane"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allowedFocuses": {
+                "const": ["standing-priority", "current-head-failure", "queue-health"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "stabilize-current-head-failure"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allowedFocuses": {
+                "const": ["current-head-failure", "policy-drift"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "restore-intake"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allowedFocuses": {
+                "const": ["queue-health", "policy-drift", "handoff"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "prepare-parked-lane"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "allowedFocuses": {
+                "const": ["docs-contract", "queue-health", "standing-priority"]
+              }
+            }
+          }
+        }
+      ]
     },
     "focus": {
       "type": "object",
