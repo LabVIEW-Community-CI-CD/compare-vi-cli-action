@@ -157,6 +157,7 @@
         "tools/priority/__fixtures__/mission-control/mission-control-envelope.json",
         "tools/priority/__fixtures__/mission-control/operator-input-catalog.json",
         "tools/priority/__fixtures__/mission-control/profile-catalog.json",
+        "tools/priority/lib/mission-control-profile-catalog.mjs",
         "tools/priority/__tests__/mission-control-envelope-schema.test.mjs",
         "tools/priority/__tests__/mission-control-operator-input-catalog.test.mjs",
         "tools/priority/__tests__/mission-control-profile-catalog.test.mjs"

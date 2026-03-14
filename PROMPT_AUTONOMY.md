@@ -14,6 +14,7 @@ Canonical machine-readable companion contract:
 - operator-input example: `tools/priority/__fixtures__/mission-control/operator-input-catalog.json`
 - profile catalog schema: `docs/schemas/mission-control-profile-catalog-v1.schema.json`
 - profile catalog example: `tools/priority/__fixtures__/mission-control/profile-catalog.json`
+- profile catalog loader: `tools/priority/lib/mission-control-profile-catalog.mjs`
 
 Envelope model:
 

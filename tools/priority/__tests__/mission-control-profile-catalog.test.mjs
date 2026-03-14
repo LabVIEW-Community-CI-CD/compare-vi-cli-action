@@ -6,6 +6,10 @@ import fs from 'node:fs';
 
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
+import {
+  loadMissionControlProfileCatalog,
+  normalizeMissionControlProfileCatalog
+} from '../lib/mission-control-profile-catalog.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,29 +33,13 @@ function sortStrings(values) {
   return [...values].sort((left, right) => left.localeCompare(right));
 }
 
-function assertUniqueTriggerTokens(profileCatalog) {
-  const seenTokens = new Map();
-  for (const profile of profileCatalog.profiles) {
-    const tokens = [profile.trigger, ...profile.aliases];
-    for (const token of tokens) {
-      const priorProfileId = seenTokens.get(token);
-      assert.equal(
-        priorProfileId,
-        undefined,
-        `Mission-control trigger token '${token}' is reused by '${profile.id}' and '${priorProfileId}'.`
-      );
-      seenTokens.set(token, profile.id);
-    }
-  }
-}
-
 test('mission-control profile catalog fixture matches schema', () => {
   const validate = compileValidator();
   const fixture = loadJson('tools/priority/__fixtures__/mission-control/profile-catalog.json');
   const valid = validate(fixture);
   assert.equal(valid, true, JSON.stringify(validate.errors, null, 2));
   assert.equal(fixture.profiles.length, 5);
-  assertUniqueTriggerTokens(fixture);
+  assert.deepEqual(loadMissionControlProfileCatalog(repoRoot), fixture);
 });
 
 test('mission-control profile catalog fails closed on duplicate profile ids or trigger aliases', () => {
@@ -68,7 +56,7 @@ test('mission-control profile catalog fails closed on duplicate profile ids or t
   const duplicateTokenCatalog = structuredClone(fixture);
   duplicateTokenCatalog.profiles[1].aliases = [...duplicateTokenCatalog.profiles[1].aliases, fixture.profiles[0].trigger];
   assert.throws(
-    () => assertUniqueTriggerTokens(duplicateTokenCatalog),
+    () => normalizeMissionControlProfileCatalog(duplicateTokenCatalog),
     /Mission-control trigger token 'MC' is reused/
   );
 });
@@ -130,6 +118,7 @@ test('mission-control docs advertise the profile catalog with the existing missi
 
   const missionControlEntry = manifest.entries.find((entry) => entry.name === 'Mission Control Contracts');
   assert.ok(missionControlEntry, 'Mission Control Contracts entry is missing from docs manifest.');
+  assert.ok(missionControlEntry.files.includes('tools/priority/lib/mission-control-profile-catalog.mjs'));
   assert.ok(missionControlEntry.files.includes('docs/schemas/mission-control-profile-catalog-v1.schema.json'));
   assert.ok(missionControlEntry.files.includes('tools/priority/__fixtures__/mission-control/profile-catalog.json'));
   assert.ok(missionControlEntry.files.includes('tools/priority/__tests__/mission-control-profile-catalog.test.mjs'));
