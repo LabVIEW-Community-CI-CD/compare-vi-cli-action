@@ -86,6 +86,65 @@ function makeExecDeps() {
   };
 }
 
+function makeRuntimeBranchContract() {
+  return {
+    schema: 'branch-classes/v1',
+    upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    repositoryPlanes: [
+      {
+        id: 'upstream',
+        repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action'],
+        laneBranchPrefix: 'issue/'
+      },
+      {
+        id: 'origin',
+        repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'],
+        laneBranchPrefix: 'issue/origin-'
+      },
+      {
+        id: 'personal',
+        repositories: ['svelderrainruiz/compare-vi-cli-action'],
+        laneBranchPrefix: 'issue/personal-'
+      }
+    ],
+    classes: [
+      {
+        id: 'lane',
+        repositoryRoles: ['upstream', 'fork'],
+        branchPatterns: ['issue/*'],
+        purpose: 'lane',
+        prSourceAllowed: true,
+        prTargetAllowed: false,
+        mergePolicy: 'n/a'
+      }
+    ],
+    allowedTransitions: [
+      {
+        from: 'lane',
+        action: 'promote',
+        to: 'upstream-integration',
+        via: 'pull-request'
+      }
+    ],
+    planeTransitions: [
+      {
+        from: 'origin',
+        action: 'promote',
+        to: 'upstream',
+        via: 'pull-request',
+        branchClass: 'lane'
+      },
+      {
+        from: 'personal',
+        action: 'promote',
+        to: 'upstream',
+        via: 'pull-request',
+        branchClass: 'lane'
+      }
+    ]
+  };
+}
+
 test('runtime-daemon wrapper defaults to the comparevi adapter', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-wrapper-root-'));
   const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-wrapper-'));
@@ -107,6 +166,7 @@ test('runtime-daemon wrapper defaults to the comparevi adapter', async () => {
     {
       platform: 'linux',
       resolveRepoRootFn: () => repoRoot,
+      loadBranchClassContractFn: () => makeRuntimeBranchContract(),
       nowFactory: () => new Date(Date.UTC(2026, 2, 10, 17, 0, tick++)),
       sleepFn: async () => {
         throw new Error('sleep should not run when maxCycles=1');
@@ -178,6 +238,7 @@ test('runtime-daemon wrapper schedules from the comparevi standing-priority cach
     {
       platform: 'linux',
       resolveRepoRootFn: () => repoRoot,
+      loadBranchClassContractFn: () => makeRuntimeBranchContract(),
       resolveStandingPriorityForRepoFn: async () => ({
         found: null
       }),
@@ -713,6 +774,7 @@ test('comparevi worker bootstrap activates the lane branch before invoking boots
       checkoutPath
     },
     deps: {
+      loadBranchClassContractFn: () => makeRuntimeBranchContract(),
       execFileFn: async (command, args, options) => {
         calls.push({ command, args, options });
         if (command !== 'git') {
@@ -778,6 +840,43 @@ test('comparevi worker bootstrap includes stderr in blocked bootstrap diagnostic
   assert.match(blocked.reason, /bootstrap stderr/);
 });
 
+test('comparevi worker bootstrap fails closed when the branch prefix conflicts with the fork plane contract', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-ready-branch-conflict-'));
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId: 'personal-997'
+  });
+  await mkdir(path.join(checkoutPath, 'tools', 'priority'), { recursive: true });
+  await writeFile(path.join(checkoutPath, 'tools', 'priority', 'bootstrap.ps1'), '# mocked bootstrap', 'utf8');
+
+  const blocked = await compareviRuntimeTest.bootstrapCompareviWorkerCheckout({
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'personal-997',
+        forkRemote: 'personal',
+        branch: 'issue/origin-997-branch-conflict'
+      },
+      stepOptions: {
+        branch: 'issue/origin-997-branch-conflict'
+      }
+    },
+    preparedWorker: {
+      generatedAt: '2026-03-10T18:00:00.000Z',
+      checkoutPath
+    },
+    deps: {
+      loadBranchClassContractFn: () => makeRuntimeBranchContract(),
+      execFileFn: async () => {
+        throw new Error('git should not run when the branch prefix conflicts with the plane contract');
+      }
+    }
+  });
+
+  assert.equal(blocked.status, 'blocked');
+  assert.match(blocked.reason, /does not match lane branch prefix 'issue\/personal-'/i);
+});
+
 test('comparevi worker activation attaches a ready checkout onto the deterministic lane branch', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-branch-'));
   const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
@@ -808,6 +907,7 @@ test('comparevi worker activation attaches a ready checkout onto the determinist
       checkoutPath
     },
     deps: {
+      loadBranchClassContractFn: () => makeRuntimeBranchContract(),
       execFileFn: async (command, args, options) => {
         calls.push({ command, args, options });
         if (command !== 'git') {
@@ -829,6 +929,46 @@ test('comparevi worker activation attaches a ready checkout onto the determinist
   assert.equal(attached.trackingRef, 'personal/issue/personal-998-runtime-worker-branch-activation');
   assert.deepEqual(attached.fetchedRemotes, ['upstream', 'origin', 'personal']);
   assert.ok(calls.some((entry) => entry.command === 'git' && entry.args[0] === 'checkout' && entry.args.includes('--force')));
+});
+
+test('comparevi worker activation fails closed when the branch prefix conflicts with the fork plane contract', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-branch-conflict-'));
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId: 'origin-998'
+  });
+  await mkdir(checkoutPath, { recursive: true });
+  await writeFile(path.join(checkoutPath, '.git'), 'gitdir: mocked\n', 'utf8');
+
+  const blocked = await compareviRuntimeTest.activateCompareviWorkerLane({
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-998',
+        forkRemote: 'origin',
+        branch: 'issue/personal-998-runtime-worker-branch-activation'
+      },
+      stepOptions: {
+        branch: 'issue/personal-998-runtime-worker-branch-activation'
+      }
+    },
+    preparedWorker: {
+      checkoutPath
+    },
+    workerReady: {
+      readyAt: '2026-03-10T18:30:00.000Z',
+      checkoutPath
+    },
+    deps: {
+      loadBranchClassContractFn: () => makeRuntimeBranchContract(),
+      execFileFn: async () => {
+        throw new Error('git should not run when the branch prefix conflicts with the plane contract');
+      }
+    }
+  });
+
+  assert.equal(blocked.status, 'blocked');
+  assert.match(blocked.reason, /does not match lane branch prefix 'issue\/origin-'/i);
 });
 
 test('comparevi worker activation blocks when the scheduler does not resolve a branch name', async () => {
@@ -868,6 +1008,7 @@ test('comparevi planner prefers live standing issue data for the target reposito
     },
     explicitStepOptions: {},
     deps: {
+      loadBranchClassContractFn: () => makeRuntimeBranchContract(),
       resolveStandingPriorityForRepoFn: async () => ({
         found: {
           number: 315,
@@ -904,6 +1045,10 @@ test('comparevi planner prefers live standing issue data for the target reposito
 test('comparevi execution closes the fork mirror and advances to the next development issue', async () => {
   const handoffCalls = [];
   const closeCalls = [];
+  const issueLabels = new Map([
+    [315, ['fork-standing-priority']],
+    [313, []]
+  ]);
   const execution = await compareviRuntimeTest.executeCompareviTurn({
     options: {
       repo: 'svelderrainruiz/compare-vi-cli-action'
@@ -954,6 +1099,27 @@ test('comparevi execution closes the fork mirror and advances to the next develo
       ],
       handoffGhRunner: (args) => {
         handoffCalls.push(args);
+        if (args[0] === 'issue' && args[1] === 'edit') {
+          const issueNumber = Number(args[2]);
+          const labels = new Set(issueLabels.get(issueNumber) ?? []);
+          const addIndex = args.indexOf('--add-label');
+          if (addIndex >= 0) {
+            labels.add(args[addIndex + 1]);
+          }
+          const removeIndex = args.indexOf('--remove-label');
+          if (removeIndex >= 0) {
+            labels.delete(args[removeIndex + 1]);
+          }
+          issueLabels.set(issueNumber, Array.from(labels));
+          return '';
+        }
+        if (args[0] === 'issue' && args[1] === 'view') {
+          const issueNumber = Number(args[2]);
+          return JSON.stringify({
+            number: issueNumber,
+            labels: (issueLabels.get(issueNumber) ?? []).map((name) => ({ name }))
+          });
+        }
         if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
           if (args.includes('fork-standing-priority')) {
             return JSON.stringify([{ number: 315, labels: [{ name: 'fork-standing-priority' }] }]);
@@ -963,6 +1129,9 @@ test('comparevi execution closes the fork mirror and advances to the next develo
         return '';
       },
       handoffSyncFn: async () => {},
+      patchIssueLabelsFn: (_repoRoot, _repoSlug, issueNumber, labels) => {
+        issueLabels.set(Number(issueNumber), Array.from(labels));
+      },
       closeIssueFn: async (payload) => {
         closeCalls.push(payload);
       }
@@ -972,10 +1141,10 @@ test('comparevi execution closes the fork mirror and advances to the next develo
   assert.equal(execution.outcome, 'mirror-closed-advanced');
   assert.equal(execution.stopLoop, false);
   assert.equal(execution.details.nextStandingIssueNumber, 313);
-  assert.deepEqual(handoffCalls.slice(-2), [
-    ['issue', 'edit', '315', '--remove-label', 'fork-standing-priority'],
-    ['issue', 'edit', '313', '--add-label', 'fork-standing-priority']
-  ]);
+  assert.deepEqual(issueLabels.get(315), []);
+  assert.deepEqual(issueLabels.get(313), ['fork-standing-priority']);
+  assert.ok(handoffCalls.some((args) => args[0] === 'issue' && args[1] === 'view' && args[2] === '315'));
+  assert.ok(handoffCalls.some((args) => args[0] === 'issue' && args[1] === 'view' && args[2] === '313'));
   assert.equal(closeCalls[0].repository, 'svelderrainruiz/compare-vi-cli-action');
   assert.equal(closeCalls[0].issueNumber, 315);
 });
@@ -1012,6 +1181,10 @@ test('comparevi execution derives standing context from explicit lane metadata w
   const handoffCalls = [];
   const closeCalls = [];
   const fetchCalls = [];
+  const issueLabels = new Map([
+    [315, ['fork-standing-priority']],
+    [313, []]
+  ]);
   const execution = await compareviRuntimeTest.executeCompareviTurn({
     options: {
       repo: 'svelderrainruiz/compare-vi-cli-action',
@@ -1066,6 +1239,27 @@ test('comparevi execution derives standing context from explicit lane metadata w
       ],
       handoffGhRunner: (args) => {
         handoffCalls.push(args);
+        if (args[0] === 'issue' && args[1] === 'edit') {
+          const issueNumber = Number(args[2]);
+          const labels = new Set(issueLabels.get(issueNumber) ?? []);
+          const addIndex = args.indexOf('--add-label');
+          if (addIndex >= 0) {
+            labels.add(args[addIndex + 1]);
+          }
+          const removeIndex = args.indexOf('--remove-label');
+          if (removeIndex >= 0) {
+            labels.delete(args[removeIndex + 1]);
+          }
+          issueLabels.set(issueNumber, Array.from(labels));
+          return '';
+        }
+        if (args[0] === 'issue' && args[1] === 'view') {
+          const issueNumber = Number(args[2]);
+          return JSON.stringify({
+            number: issueNumber,
+            labels: (issueLabels.get(issueNumber) ?? []).map((name) => ({ name }))
+          });
+        }
         if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
           if (args.includes('fork-standing-priority')) {
             return JSON.stringify([{ number: 315, labels: [{ name: 'fork-standing-priority' }] }]);
@@ -1075,6 +1269,9 @@ test('comparevi execution derives standing context from explicit lane metadata w
         return '';
       },
       handoffSyncFn: async () => {},
+      patchIssueLabelsFn: (_repoRoot, _repoSlug, issueNumber, labels) => {
+        issueLabels.set(Number(issueNumber), Array.from(labels));
+      },
       closeIssueFn: async (payload) => {
         closeCalls.push(payload);
       }
@@ -1084,10 +1281,10 @@ test('comparevi execution derives standing context from explicit lane metadata w
   assert.equal(execution.outcome, 'mirror-closed-advanced');
   assert.equal(execution.details.standingIssueNumber, 315);
   assert.ok(fetchCalls.length >= 1);
-  assert.deepEqual(handoffCalls.slice(-2), [
-    ['issue', 'edit', '315', '--remove-label', 'fork-standing-priority'],
-    ['issue', 'edit', '313', '--add-label', 'fork-standing-priority']
-  ]);
+  assert.deepEqual(issueLabels.get(315), []);
+  assert.deepEqual(issueLabels.get(313), ['fork-standing-priority']);
+  assert.ok(handoffCalls.some((args) => args[0] === 'issue' && args[1] === 'view' && args[2] === '315'));
+  assert.ok(handoffCalls.some((args) => args[0] === 'issue' && args[1] === 'view' && args[2] === '313'));
   assert.equal(closeCalls[0].issueNumber, 315);
 });
 
