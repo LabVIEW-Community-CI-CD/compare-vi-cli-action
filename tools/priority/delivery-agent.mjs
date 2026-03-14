@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { loadBranchClassContract, resolveLaneBranchPrefix } from './lib/branch-classification.mjs';
 import {
   assessDockerDesktopReviewLoopReceipt,
   buildLocalReviewLoopCliArgs,
@@ -507,7 +508,15 @@ function selectBestIssueCandidate(candidates = []) {
   return normalized[0] ?? null;
 }
 
-function resolveIssueBranchName({ issueNumber, title, implementationRemote = 'origin', branchPrefix = 'issue' }) {
+function resolveIssueBranchName({
+  issueNumber,
+  title,
+  implementationRemote = 'origin',
+  repoRoot = process.cwd(),
+  branchClassContract = null,
+  loadBranchClassContractFn = loadBranchClassContract,
+  branchPrefix = 'issue'
+}) {
   const slug = normalizeText(title)
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -516,8 +525,18 @@ function resolveIssueBranchName({ issueNumber, title, implementationRemote = 'or
     .replace(/-+/g, '-')
     .toLowerCase()
     .replace(/^-+|-+$/g, '') || 'work';
-  const remotePrefix = normalizeText(implementationRemote) ? `${normalizeText(implementationRemote).toLowerCase()}-` : '';
-  return `${branchPrefix}/${remotePrefix}${issueNumber}-${slug}`;
+  let lanePrefix = '';
+  try {
+    lanePrefix = resolveLaneBranchPrefix({
+      contract: branchClassContract ?? loadBranchClassContractFn(repoRoot),
+      plane: normalizeText(implementationRemote) || 'upstream',
+      fallbackPrefix: `${branchPrefix}/`
+    });
+  } catch {
+    const remotePrefix = normalizeText(implementationRemote) ? `${normalizeText(implementationRemote).toLowerCase()}-` : '';
+    lanePrefix = `${branchPrefix}/${remotePrefix}`;
+  }
+  return `${lanePrefix}${issueNumber}-${slug}`;
 }
 
 function parseRepositorySlug(repository) {
@@ -803,7 +822,13 @@ function buildIssueGraphSummary(issueGraph) {
       : 0
   };
 }
-function selectCanonicalCandidate({ issueGraph, implementationRemote }) {
+function selectCanonicalCandidate({
+  issueGraph,
+  implementationRemote,
+  repoRoot = process.cwd(),
+  branchClassContract = null,
+  loadBranchClassContractFn = loadBranchClassContract
+}) {
   const standingIssue = issueGraph?.standingIssue ?? null;
   if (!standingIssue) {
     return null;
@@ -841,7 +866,10 @@ function selectCanonicalCandidate({ issueGraph, implementationRemote }) {
         resolveIssueBranchName({
           issueNumber: selected.issue.number,
           title: selected.issue.title,
-          implementationRemote
+          implementationRemote,
+          repoRoot,
+          branchClassContract,
+          loadBranchClassContractFn
         })
     };
   }
@@ -858,7 +886,10 @@ function selectCanonicalCandidate({ issueGraph, implementationRemote }) {
       branch: resolveIssueBranchName({
         issueNumber: selectedChild.number,
         title: selectedChild.title,
-        implementationRemote
+        implementationRemote,
+        repoRoot,
+        branchClassContract,
+        loadBranchClassContractFn
       })
     };
   }
@@ -880,7 +911,10 @@ function selectCanonicalCandidate({ issueGraph, implementationRemote }) {
       branch: resolveIssueBranchName({
         issueNumber: standingIssue.number,
         title: standingIssue.title,
-        implementationRemote
+        implementationRemote,
+        repoRoot,
+        branchClassContract,
+        loadBranchClassContractFn
       })
     };
   }
@@ -895,7 +929,10 @@ function selectCanonicalCandidate({ issueGraph, implementationRemote }) {
     branch: resolveIssueBranchName({
       issueNumber: standingIssue.number,
       title: standingIssue.title,
-      implementationRemote
+      implementationRemote,
+      repoRoot,
+      branchClassContract,
+      loadBranchClassContractFn
     })
   };
 }
@@ -1314,7 +1351,9 @@ export async function buildCanonicalDeliveryDecision({
   };
   const selected = selectCanonicalCandidate({
     issueGraph: graph,
-    implementationRemote
+    implementationRemote,
+    repoRoot,
+    loadBranchClassContractFn: deps.loadBranchClassContractFn
   });
   if (!selected?.selectedIssue) {
     return null;

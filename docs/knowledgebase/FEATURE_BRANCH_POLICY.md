@@ -14,11 +14,13 @@ promotion behavior, not the branch-class source of truth.
 
 ## Branch Expectations
 
-| Branch pattern            | Purpose                               | Creation helper                                                 | Merge target |
-|---------------------------|---------------------------------------|-----------------------------------------------------------------|--------------|
-| `issue/<number>-<slug>`   | Standing-priority implementation work | `git checkout -b issue/<...>` (router creates/syncs automatically) | `develop` (squash) |
-| `feature/<slug>`          | Parallel experiments / rehearsals     | `node tools/npm/run-script.mjs feature:branch:dry -- <slug>` (live helper coming soon) | `develop` (squash) |
-| `release/<version>`       | Release preparation                   | `node tools/npm/run-script.mjs release:branch -- <version>`                            | PR to `main` |
+| Branch pattern | Purpose | Creation helper | Merge target |
+|----------------|---------|-----------------|--------------|
+| `issue/personal-<number>-<slug>` | Standing work on the personal authoring plane | `git checkout -b issue/personal-<...>` | `develop` (squash) |
+| `issue/origin-<number>-<slug>` | Standing work on the org-fork review plane | `git checkout -b issue/origin-<...>` | `develop` (squash) |
+| `issue/<number>-<slug>` | Upstream-native standing lanes only | `git checkout -b issue/<...>` | `develop` (squash) |
+| `feature/<slug>` | Parallel experiments / rehearsals | `node tools/npm/run-script.mjs feature:branch:dry -- <slug>` (live helper coming soon) | `develop` (squash) |
+| `release/<version>` | Release preparation | `node tools/npm/run-script.mjs release:branch -- <version>` | PR to `main` |
 
 - Keep branches short-lived and delete them after merge (repository default).
 - Rebase feature and issue branches on `develop` until the queue is green; avoid merge commits entirely.
