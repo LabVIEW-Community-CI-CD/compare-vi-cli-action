@@ -4,12 +4,12 @@ import {
   DEFAULT_COPILOT_CLI_REVIEW_POLICY,
   normalizeCopilotCliReviewPolicy,
   runCopilotCliReview
-} from '../../priority/copilot-cli-review.mjs';
+} from './copilot-cli-review.mjs';
 import {
   DEFAULT_SIMULATION_REVIEW_POLICY,
   normalizeSimulationReviewPolicy,
   runSimulationReview
-} from '../../priority/simulation-review.mjs';
+} from './simulation-review.mjs';
 
 export const SUPPORTED_LOCAL_REVIEW_PROVIDERS = ['copilot-cli', 'codex-cli', 'simulation', 'ollama'];
 export const EXECUTABLE_LOCAL_REVIEW_PROVIDERS = ['copilot-cli', 'simulation'];
