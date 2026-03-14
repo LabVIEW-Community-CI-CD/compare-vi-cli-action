@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import {
   assertUpstreamOwnedHead,
@@ -12,6 +12,7 @@ import {
   buildPolicyTrace,
   classifyPromotionState,
   evaluatePromotionReviewClearance,
+  resolveReadyValidationClearancePath,
   isUpstreamOwnedHead,
   normalizeBaseRefName,
   runMergeSync,
@@ -819,7 +820,128 @@ test('evaluatePromotionReviewClearance summarizes a passing current-head no-comm
     actionableThreadCount: 0,
     hasCurrentHeadReview: false,
     latestReviewIsCurrentHead: false,
-    reviewRunCompletedClean: true
+    reviewRunCompletedClean: true,
+    source: 'copilot-review-gate',
+    receiptPath: null,
+    readyHeadSha: null,
+    currentHeadSha: '1234567890123456789012345678901234567890',
+    staleForCurrentHead: null
+  });
+});
+
+test('evaluatePromotionReviewClearance passes from stored ready-validation clearance on the current head without invoking the GitHub gate', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'merge-sync-pr-stored-clearance-'));
+  const receiptPath = resolveReadyValidationClearancePath({
+    repoRoot: tempDir,
+    repo: 'owner/repo',
+    pr: 126
+  });
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'priority/ready-validation-clearance@v1',
+      generatedAt: '2026-03-14T00:00:00.000Z',
+      repository: 'owner/repo',
+      pullRequestNumber: 126,
+      readyHeadSha: '1234567890123456789012345678901234567890',
+      currentHeadSha: '1234567890123456789012345678901234567890',
+      status: 'current',
+      reason: 'PR remains in ready-validation on the same cleared head.'
+    })}\n`,
+    'utf8'
+  );
+
+  let gateCalls = 0;
+  const result = await evaluatePromotionReviewClearance({
+    repoRoot: tempDir,
+    repo: 'owner/repo',
+    pr: 126,
+    prInfo: {
+      isDraft: false,
+      baseRefName: 'develop',
+      headRefOid: '1234567890123456789012345678901234567890'
+    },
+    runCopilotReviewGateFn: async () => {
+      gateCalls += 1;
+      throw new Error('gate should not be called when stored clearance is current');
+    }
+  });
+
+  assert.equal(gateCalls, 0);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.report, {
+    status: 'pass',
+    gateState: 'ready',
+    reasons: ['stored-ready-validation-clearance-current-head'],
+    actionableCommentCount: 0,
+    actionableThreadCount: 0,
+    hasCurrentHeadReview: false,
+    latestReviewIsCurrentHead: false,
+    reviewRunCompletedClean: false,
+    source: 'stored-ready-validation-clearance',
+    receiptPath,
+    readyHeadSha: '1234567890123456789012345678901234567890',
+    currentHeadSha: '1234567890123456789012345678901234567890',
+    staleForCurrentHead: false
+  });
+});
+
+test('evaluatePromotionReviewClearance fails closed when stored ready-validation clearance is stale for the current head', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'merge-sync-pr-stale-clearance-'));
+  const receiptPath = resolveReadyValidationClearancePath({
+    repoRoot: tempDir,
+    repo: 'owner/repo',
+    pr: 127
+  });
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify({
+      schema: 'priority/ready-validation-clearance@v1',
+      generatedAt: '2026-03-14T00:00:00.000Z',
+      repository: 'owner/repo',
+      pullRequestNumber: 127,
+      readyHeadSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      currentHeadSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      status: 'current',
+      reason: 'PR remains in ready-validation on the same cleared head.'
+    })}\n`,
+    'utf8'
+  );
+
+  let gateCalls = 0;
+  const result = await evaluatePromotionReviewClearance({
+    repoRoot: tempDir,
+    repo: 'owner/repo',
+    pr: 127,
+    prInfo: {
+      isDraft: false,
+      baseRefName: 'develop',
+      headRefOid: 'cccccccccccccccccccccccccccccccccccccccc'
+    },
+    runCopilotReviewGateFn: async () => {
+      gateCalls += 1;
+      throw new Error('gate should not be called when stored clearance is stale');
+    }
+  });
+
+  assert.equal(gateCalls, 0);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.report, {
+    status: 'fail',
+    gateState: 'blocked',
+    reasons: ['stored-ready-validation-clearance-stale-head'],
+    actionableCommentCount: 0,
+    actionableThreadCount: 0,
+    hasCurrentHeadReview: false,
+    latestReviewIsCurrentHead: false,
+    reviewRunCompletedClean: false,
+    source: 'stored-ready-validation-clearance',
+    receiptPath,
+    readyHeadSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    currentHeadSha: 'cccccccccccccccccccccccccccccccccccccccc',
+    staleForCurrentHead: true
   });
 });
 

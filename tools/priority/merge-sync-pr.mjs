@@ -47,6 +47,13 @@ const POLICY_BLOCK_PATTERNS = [
   /cannot be merged automatically/i
 ];
 
+function sanitizeSegment(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'runtime';
+}
+
 function printUsage() {
   for (const line of USAGE_LINES) {
     console.log(line);
@@ -158,6 +165,44 @@ export function normalizeBaseRefName(value) {
     return lowered.substring(refsPrefix.length);
   }
   return lowered;
+}
+
+export function resolveReadyValidationClearancePath({ repoRoot, repo, pr }) {
+  const repositorySegment = sanitizeSegment(repo || 'repo');
+  const pullRequestSegment = sanitizeSegment(`pr-${pr || 'unknown'}`);
+  return path.join(
+    repoRoot,
+    'tests',
+    'results',
+    '_agent',
+    'runtime',
+    'ready-validation-clearance',
+    `${repositorySegment}-${pullRequestSegment}.json`
+  );
+}
+
+export async function loadReadyValidationClearance({
+  repoRoot,
+  repo,
+  pr,
+  readFileFn = readFile
+}) {
+  const receiptPath = resolveReadyValidationClearancePath({ repoRoot, repo, pr });
+  try {
+    const payload = JSON.parse(await readFileFn(receiptPath, 'utf8'));
+    return {
+      receiptPath,
+      receipt: payload && typeof payload === 'object' ? payload : null
+    };
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return {
+        receiptPath,
+        receipt: null
+      };
+    }
+    throw new Error(`Unable to read ready-validation clearance at ${receiptPath}: ${error.message}`);
+  }
 }
 
 export function getMergeQueueBranches(policy) {
@@ -447,13 +492,90 @@ function readPromotionState({ repoRoot, repo, pr }) {
 }
 
 export async function evaluatePromotionReviewClearance({
+  repoRoot = getRepoRoot(),
   repo,
   pr,
   prInfo,
   runCopilotReviewGateFn = runCopilotReviewGate,
+  readReadyValidationClearanceFn = loadReadyValidationClearance,
   pollAttempts = PROMOTION_REVIEW_GATE_POLL_ATTEMPTS,
   pollDelayMs = PROMOTION_REVIEW_GATE_POLL_DELAY_MS
 }) {
+  const currentHeadSha = normalizeText(prInfo?.headRefOid);
+  const readyValidationClearance = await readReadyValidationClearanceFn({
+    repoRoot,
+    repo,
+    pr
+  });
+  const stored = readyValidationClearance?.receipt ?? null;
+  const storedStatus = normalizeLower(stored?.status);
+  const storedReadyHeadSha = normalizeText(stored?.readyHeadSha);
+  const storedCurrentHeadSha = normalizeText(stored?.currentHeadSha);
+
+  if (stored && storedReadyHeadSha && storedStatus === 'current' && currentHeadSha && storedReadyHeadSha === currentHeadSha) {
+    return {
+      ok: true,
+      report: {
+        status: 'pass',
+        gateState: 'ready',
+        reasons: ['stored-ready-validation-clearance-current-head'],
+        actionableCommentCount: 0,
+        actionableThreadCount: 0,
+        hasCurrentHeadReview: false,
+        latestReviewIsCurrentHead: false,
+        reviewRunCompletedClean: false,
+        source: 'stored-ready-validation-clearance',
+        receiptPath: readyValidationClearance.receiptPath,
+        readyHeadSha: storedReadyHeadSha,
+        currentHeadSha,
+        staleForCurrentHead: false
+      }
+    };
+  }
+
+  if (stored && storedReadyHeadSha && currentHeadSha && storedReadyHeadSha !== currentHeadSha) {
+    return {
+      ok: false,
+      report: {
+        status: 'fail',
+        gateState: 'blocked',
+        reasons: ['stored-ready-validation-clearance-stale-head'],
+        actionableCommentCount: 0,
+        actionableThreadCount: 0,
+        hasCurrentHeadReview: false,
+        latestReviewIsCurrentHead: false,
+        reviewRunCompletedClean: false,
+        source: 'stored-ready-validation-clearance',
+        receiptPath: readyValidationClearance.receiptPath,
+        readyHeadSha: storedReadyHeadSha,
+        currentHeadSha,
+        staleForCurrentHead: true
+      }
+    };
+  }
+
+  if (stored && storedStatus && storedStatus !== 'current') {
+    return {
+      ok: false,
+      report: {
+        status: 'fail',
+        gateState: 'blocked',
+        reasons: ['stored-ready-validation-clearance-invalidated'],
+        actionableCommentCount: 0,
+        actionableThreadCount: 0,
+        hasCurrentHeadReview: false,
+        latestReviewIsCurrentHead: false,
+        reviewRunCompletedClean: false,
+        source: 'stored-ready-validation-clearance',
+        receiptPath: readyValidationClearance.receiptPath,
+        readyHeadSha: storedReadyHeadSha || null,
+        currentHeadSha: currentHeadSha || storedCurrentHeadSha || null,
+        staleForCurrentHead:
+          storedReadyHeadSha && currentHeadSha ? storedReadyHeadSha !== currentHeadSha : null
+      }
+    };
+  }
+
   const result = await runCopilotReviewGateFn({
     argv: [
       'node',
@@ -465,7 +587,7 @@ export async function evaluatePromotionReviewClearance({
       '--pr',
       String(pr),
       '--head-sha',
-      normalizeText(prInfo?.headRefOid),
+      currentHeadSha,
       '--base-ref',
       normalizeBaseRefName(prInfo?.baseRefName),
       '--draft',
@@ -488,13 +610,18 @@ export async function evaluatePromotionReviewClearance({
       ? {
           status: report.status ?? null,
           gateState: report.gateState ?? null,
-          reasons: Array.isArray(report.reasons) ? [...report.reasons] : [],
-          actionableCommentCount: report.summary?.actionableCommentCount ?? 0,
-          actionableThreadCount: report.summary?.actionableThreadCount ?? 0,
-          hasCurrentHeadReview: report.signals?.hasCurrentHeadReview ?? false,
-          latestReviewIsCurrentHead: report.signals?.latestReviewIsCurrentHead ?? false,
-          reviewRunCompletedClean: report.signals?.reviewRunCompletedClean ?? false
-        }
+        reasons: Array.isArray(report.reasons) ? [...report.reasons] : [],
+        actionableCommentCount: report.summary?.actionableCommentCount ?? 0,
+        actionableThreadCount: report.summary?.actionableThreadCount ?? 0,
+        hasCurrentHeadReview: report.signals?.hasCurrentHeadReview ?? false,
+        latestReviewIsCurrentHead: report.signals?.latestReviewIsCurrentHead ?? false,
+        reviewRunCompletedClean: report.signals?.reviewRunCompletedClean ?? false,
+        source: 'copilot-review-gate',
+        receiptPath: null,
+        readyHeadSha: null,
+        currentHeadSha: currentHeadSha || null,
+        staleForCurrentHead: null
+      }
       : null
   };
 }
@@ -640,6 +767,7 @@ export async function runMergeSync({
           }
         }
       : await evaluatePromotionReviewClearanceFn({
+          repoRoot,
           repo: resolvedRepo,
           pr: options.pr,
           prInfo
