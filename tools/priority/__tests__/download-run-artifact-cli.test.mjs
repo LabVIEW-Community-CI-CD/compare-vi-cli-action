@@ -22,8 +22,8 @@ test('main writes GitHub outputs and step summary for a successful artifact down
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'download-run-artifact-cli-success-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
-  const outputPath = path.join(tmpDir, 'github-output.txt');
-  const summaryPath = path.join(tmpDir, 'step-summary.md');
+  const outputPath = path.join(tmpDir, 'outputs', 'github', 'github-output.txt');
+  const summaryPath = path.join(tmpDir, 'summaries', 'step', 'step-summary.md');
   const reportPath = path.join(tmpDir, 'report.json');
   const logged = [];
 
@@ -98,6 +98,76 @@ test('main writes GitHub outputs and step summary for a successful artifact down
   );
   assert.equal(parsed.repo, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(parsed.stepSummaryPath, summaryPath);
+});
+
+test('main keeps successful downloads passing when GitHub output projections cannot be written', async (t) => {
+  const { main } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'download-run-artifact-cli-projection-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const outputPath = path.join(tmpDir, 'github-output-dir');
+  const summaryPath = path.join(tmpDir, 'step-summary-dir');
+  fs.mkdirSync(outputPath, { recursive: true });
+  fs.mkdirSync(summaryPath, { recursive: true });
+
+  const reportPath = path.join(tmpDir, 'report.json');
+  const logged = [];
+  const errors = [];
+
+  const exitCode = await main(
+    [
+      'node',
+      modulePath,
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--run-id',
+      '22872590273',
+      '--artifact',
+      'copilot-review-signal-965',
+      '--report',
+      reportPath,
+      '--step-summary',
+      summaryPath,
+    ],
+    {
+      env: {
+        ...process.env,
+        GITHUB_OUTPUT: outputPath,
+      },
+      logFn(message) {
+        logged.push(message);
+      },
+      errorFn(message) {
+        errors.push(message);
+      },
+      downloadNamedArtifactsFn() {
+        return {
+          reportPath,
+          report: {
+            status: 'pass',
+            discovery: {
+              status: 'pass',
+              failureClass: null,
+            },
+            downloads: [],
+            summary: {
+              requestedArtifactCount: 1,
+              availableArtifactCount: 1,
+              downloadedCount: 1,
+              missingCount: 0,
+              failedCount: 0,
+            },
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(exitCode, 0);
+  assert.equal(logged.length, 2);
+  assert.equal(errors.length, 2);
+  assert.match(errors[0], /failed to write GitHub outputs/i);
+  assert.match(errors[1], /failed to append step summary/i);
 });
 
 test('main projects failure classes into GitHub outputs and step summary', async (t) => {

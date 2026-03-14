@@ -130,15 +130,43 @@ export function buildGitHubOutputPairs({ options, result }) {
   ];
 }
 
+function appendOptionalProjection(filePath, content) {
+  const normalizedPath = normalizeText(filePath);
+  if (!normalizedPath) {
+    return {
+      attempted: false,
+      written: false,
+      path: null,
+      errorMessage: null,
+    };
+  }
+  const resolvedPath = path.resolve(process.cwd(), normalizedPath);
+  try {
+    fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+    fs.appendFileSync(resolvedPath, content, 'utf8');
+    return {
+      attempted: true,
+      written: true,
+      path: resolvedPath,
+      errorMessage: null,
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      written: false,
+      path: resolvedPath,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 export function writeGitHubOutputs(outputPath, pairs) {
   const normalizedPath = normalizeText(outputPath);
   if (!normalizedPath) {
-    return;
+    return appendOptionalProjection(null, '');
   }
-  const resolvedPath = path.resolve(process.cwd(), normalizedPath);
-  for (const [name, value] of pairs) {
-    fs.appendFileSync(resolvedPath, `${name}=${value ?? ''}\n`, 'utf8');
-  }
+  const content = pairs.map(([name, value]) => `${name}=${value ?? ''}`).join('\n');
+  return appendOptionalProjection(normalizedPath, `${content}\n`);
 }
 
 export function buildStepSummaryLines({ options, result }) {
@@ -174,12 +202,7 @@ export function buildStepSummaryLines({ options, result }) {
 }
 
 export function appendStepSummary(stepSummaryPath, lines) {
-  const normalizedPath = normalizeText(stepSummaryPath);
-  if (!normalizedPath) {
-    return;
-  }
-  const resolvedPath = path.resolve(process.cwd(), normalizedPath);
-  fs.appendFileSync(resolvedPath, `${lines.join('\n')}\n`, 'utf8');
+  return appendOptionalProjection(stepSummaryPath, `${lines.join('\n')}\n`);
 }
 
 export async function main(
@@ -214,8 +237,18 @@ export async function main(
     reportPath: options.reportPath,
   });
 
-  writeGitHubOutputs(env.GITHUB_OUTPUT, buildGitHubOutputPairs({ options, result }));
-  appendStepSummary(options.stepSummaryPath, buildStepSummaryLines({ options, result }));
+  const githubOutputWrite = writeGitHubOutputs(env.GITHUB_OUTPUT, buildGitHubOutputPairs({ options, result }));
+  if (githubOutputWrite.errorMessage) {
+    errorFn(
+      `[run-artifact-download] warning: failed to write GitHub outputs to ${githubOutputWrite.path}: ${githubOutputWrite.errorMessage}`,
+    );
+  }
+  const stepSummaryWrite = appendStepSummary(options.stepSummaryPath, buildStepSummaryLines({ options, result }));
+  if (stepSummaryWrite.errorMessage) {
+    errorFn(
+      `[run-artifact-download] warning: failed to append step summary to ${stepSummaryWrite.path}: ${stepSummaryWrite.errorMessage}`,
+    );
+  }
 
   logFn(`[run-artifact-download] report: ${result.reportPath}`);
   logFn(
