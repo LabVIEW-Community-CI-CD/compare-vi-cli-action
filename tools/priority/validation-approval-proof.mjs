@@ -839,7 +839,7 @@ export async function runValidationApprovalProof({
 
     try {
       const signalPath = path.join(sampleDir, 'copilot-review-signal.json');
-      runSignalCollectorFn({
+      await runSignalCollectorFn({
         repository,
         prNumber: pullSummary.number,
         outPath: signalPath,
