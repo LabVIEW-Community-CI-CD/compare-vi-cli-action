@@ -77,12 +77,13 @@ function validateMissionControlEnvelope(envelope, repoRoot = DEFAULT_REPO_ROOT) 
 }
 
 function normalizeOverrideReason(reason) {
-  const normalized = normalizeText(reason);
+  const raw = reason === null || reason === undefined ? '' : String(reason);
+  if (/[\r\n]/.test(raw)) {
+    throw new Error('Mission-control override reason must not contain newlines.');
+  }
+  const normalized = normalizeText(raw);
   if (!normalized) {
     throw new Error('Mission-control override reason must be non-empty single-line text.');
-  }
-  if (/[\r\n]/.test(normalized)) {
-    throw new Error('Mission-control override reason must not contain newlines.');
   }
   return normalized;
 }

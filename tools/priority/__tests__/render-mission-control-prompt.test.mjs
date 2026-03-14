@@ -68,7 +68,7 @@ test('renderMissionControlPrompt fails closed when override reasons contain newl
   const { renderMissionControlPrompt } = await loadModule();
   const envelope = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
   envelope.operator.overrides = [
-    { key: 'allowParkedLane', value: true, reason: 'line one\nline two' },
+    { key: 'allowParkedLane', value: true, reason: '\nline one' },
   ];
 
   assert.throws(
