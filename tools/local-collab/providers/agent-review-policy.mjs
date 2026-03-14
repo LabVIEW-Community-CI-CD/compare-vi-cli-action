@@ -32,13 +32,13 @@ export const DEFAULT_AGENT_REVIEW_POLICY_RECEIPT_PATH = path.join(
   'agent-review-policy',
   'receipt.json'
 );
-export const SUPPORTED_AGENT_REVIEW_PROVIDERS = SUPPORTED_LOCAL_REVIEW_PROVIDERS;
-export const SUPPORTED_AGENT_REVIEW_PROFILES = SUPPORTED_LOCAL_REVIEW_PROFILES;
-const PROFILE_RECEIPT_PATHS = {
+export const AGENT_REVIEW_POLICY_PROFILE_RECEIPT_PATHS = {
   'pre-commit': path.join('tests', 'results', '_hooks', 'pre-commit-agent-review-policy.json'),
   daemon: DEFAULT_AGENT_REVIEW_POLICY_RECEIPT_PATH,
   'pre-push': path.join('tests', 'results', '_hooks', 'pre-push-agent-review-policy.json')
 };
+export const SUPPORTED_AGENT_REVIEW_PROVIDERS = SUPPORTED_LOCAL_REVIEW_PROVIDERS;
+export const SUPPORTED_AGENT_REVIEW_PROFILES = SUPPORTED_LOCAL_REVIEW_PROFILES;
 
 function normalizeText(value) {
   if (value == null) {
@@ -140,7 +140,7 @@ export function parseArgs(argv = process.argv) {
 
   options.request.reviewProviders = normalizeLocalReviewProviderList(options.request.reviewProviders);
   if (!normalizeText(options.request.agentReviewPolicyReceiptPath)) {
-    options.request.agentReviewPolicyReceiptPath = PROFILE_RECEIPT_PATHS[options.request.profile];
+    options.request.agentReviewPolicyReceiptPath = AGENT_REVIEW_POLICY_PROFILE_RECEIPT_PATHS[options.request.profile];
   }
   return options;
 }
@@ -185,10 +185,6 @@ export async function loadAgentReviewPolicy(repoRoot) {
               ...DEFAULT_SIMULATION_REVIEW_POLICY,
               enabled: localReviewLoop.simulationReview === true
             },
-      codexCli:
-        localReviewLoop.codexCliReviewConfig && typeof localReviewLoop.codexCliReviewConfig === 'object'
-          ? localReviewLoop.codexCliReviewConfig
-          : { enabled: false },
       ollama:
         localReviewLoop.ollamaReviewConfig && typeof localReviewLoop.ollamaReviewConfig === 'object'
           ? localReviewLoop.ollamaReviewConfig
@@ -258,7 +254,9 @@ export async function runAgentReviewPolicy({
   const requestedProviders = providerSelection.providers;
   const receiptPathInfo = resolveRepoPath(
     repoRoot,
-    normalizeText(request.agentReviewPolicyReceiptPath) || PROFILE_RECEIPT_PATHS[executionProfile] || normalizedPolicy.receiptPath
+    normalizeText(request.agentReviewPolicyReceiptPath) ||
+      AGENT_REVIEW_POLICY_PROFILE_RECEIPT_PATHS[executionProfile] ||
+      normalizedPolicy.receiptPath
   );
   const repoGitState = resolveRepoGitStateFn(repoRoot) ?? {};
 

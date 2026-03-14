@@ -26,6 +26,9 @@
   },
   "localReviewLoop": {
     "enabled": true,
+    "reviewProviders": [
+      "copilot-cli"
+    ],
     "bodyMarkers": [
       "Daemon-first local iteration extension"
     ],

@@ -33,6 +33,7 @@ test('delivery agent policy routes daemon local review through the orchestrator 
     '--phase',
     'daemon'
   ]);
+  assert.deepEqual(policy.localReviewLoop.reviewProviders, ['copilot-cli']);
 });
 
 test('PrePush-Checks emits orchestration context when invoked through the local collaboration front door', () => {
@@ -40,4 +41,11 @@ test('PrePush-Checks emits orchestration context when invoked through the local 
   assert.match(source, /LOCAL_COLLAB_ORCHESTRATED/);
   assert.match(source, /LOCAL_COLLAB_PHASE/);
   assert.match(source, /local collaboration orchestrator active/);
+});
+
+test('run-phase wires hook phases through agent-review-policy before commit and push finalization', () => {
+  const source = readRepoFile(path.join('tools', 'local-collab', 'orchestrator', 'run-phase.mjs'));
+  assert.match(source, /agent-review-policy/);
+  assert.match(source, /Blocking local collaboration hook failure in/);
+  assert.match(source, /Skipped core pre-push checks because local agent review failed/);
 });

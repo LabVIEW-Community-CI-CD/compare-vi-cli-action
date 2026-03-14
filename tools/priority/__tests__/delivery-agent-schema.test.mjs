@@ -47,6 +47,7 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
   });
   assert.deepEqual(data.localReviewLoop, {
     enabled: true,
+    reviewProviders: ['copilot-cli'],
     bodyMarkers: ['Daemon-first local iteration extension'],
     receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
     command: ['node', 'tools/local-collab/orchestrator/run-phase.mjs', '--phase', 'daemon'],

@@ -7,6 +7,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { HookRunner, info, listStagedFiles } from '../../hooks/core/runner.mjs';
 import { resolveGitContext, writeLocalCollaborationLedgerReceipt } from '../ledger/local-review-ledger.mjs';
+import { AGENT_REVIEW_POLICY_PROFILE_RECEIPT_PATHS } from '../providers/agent-review-policy.mjs';
 
 export const LOCAL_COLLAB_ORCHESTRATOR_SCHEMA = 'comparevi/local-collab-orchestrator@v1';
 export const LOCAL_COLLAB_PHASES = ['pre-commit', 'post-commit', 'pre-push', 'daemon'];
@@ -41,6 +42,7 @@ export const DEFAULT_ORCHESTRATOR_RECEIPT_ROOT = path.join(
   'orchestrator'
 );
 export const DEFAULT_DAEMON_DELEGATE_COMMAND = ['node', 'tools/priority/docker-desktop-review-loop.mjs'];
+export const AGENT_REVIEW_POLICY_COMMAND = ['node', 'tools/local-collab/providers/agent-review-policy.mjs'];
 
 function normalizeText(value) {
   if (value == null) {
@@ -91,7 +93,7 @@ function runGit(repoRoot, args) {
 
 function collectFilesTouchedForPhase(repoRoot, phase, git = {}) {
   if (phase === 'pre-commit') {
-    return normalizeStringList(listStagedFiles());
+    return normalizeStringList(listStagedFiles(repoRoot));
   }
 
   if (phase === 'post-commit') {
@@ -219,13 +221,145 @@ function normalizeCommandResult(result = {}) {
   };
 }
 
-function invokePreCommitDelegate(repoRoot) {
+function tryParseJson(raw) {
+  const normalized = normalizeText(raw);
+  if (!normalized) {
+    return null;
+  }
+  try {
+    return JSON.parse(normalized);
+  } catch {
+    return null;
+  }
+}
+
+function hardFailHookStep(runner, step, reason) {
+  const rawExitCode = Number.isInteger(step?.rawExitCode) ? step.rawExitCode : step?.exitCode;
+  if (!rawExitCode) {
+    return;
+  }
+  step.status = 'failed';
+  step.exitCode = rawExitCode;
+  step.severity = 'error';
+  runner.status = 'failed';
+  runner.exitCode = rawExitCode;
+  if (reason) {
+    runner.addNote(reason);
+  }
+}
+
+function invokeHookAgentReviewStep({ runner, repoRoot, phase, env, providerSelection, invokeAgentReviewPolicyFn }) {
+  const configuredReceiptPath = AGENT_REVIEW_POLICY_PROFILE_RECEIPT_PATHS[phase];
+  const normalizedReceiptPath = configuredReceiptPath.replace(/\\/g, '/');
+  const args = [
+    ...AGENT_REVIEW_POLICY_COMMAND.slice(1),
+    '--repo-root',
+    repoRoot,
+    '--profile',
+    phase,
+    '--receipt-path',
+    configuredReceiptPath
+  ];
+  for (const providerId of providerSelection.providers) {
+    args.push('--review-provider', providerId);
+  }
+
+  let parsedReceipt = null;
+  const step = runner.runStep('agent-review-policy', () => {
+    const commandResult = typeof invokeAgentReviewPolicyFn === 'function'
+      ? (() => {
+          const injected = invokeAgentReviewPolicyFn({
+            repoRoot,
+            phase,
+            env,
+            providerSelection,
+            receiptPath: configuredReceiptPath
+          }) ?? {};
+          parsedReceipt = injected.receipt ?? null;
+          const status = Number.isInteger(injected.exitCode)
+            ? injected.exitCode
+            : normalizeText(parsedReceipt?.overall?.status) === 'failed'
+              ? 1
+              : 0;
+          return {
+            status,
+            stdout: normalizeText(injected.stdout) || (parsedReceipt ? JSON.stringify(parsedReceipt, null, 2) : ''),
+            stderr: normalizeText(injected.stderr)
+          };
+        })()
+      : normalizeCommandResult(
+          spawnSync(AGENT_REVIEW_POLICY_COMMAND[0], args, {
+            cwd: repoRoot,
+            encoding: 'utf8',
+            env: {
+              ...env
+            },
+            stdio: ['ignore', 'pipe', 'pipe']
+          })
+        );
+    parsedReceipt ??= tryParseJson(commandResult.stdout);
+    const requestedProviders = Array.isArray(parsedReceipt?.requestedProviders)
+      ? parsedReceipt.requestedProviders.filter(Boolean)
+      : [];
+    const noteParts = [
+      `receipt=${normalizedReceiptPath}`,
+      `selectionSource=${normalizeText(parsedReceipt?.providerSelection?.selectionSource) || providerSelection.selectionSource}`
+    ];
+    if (requestedProviders.length > 0) {
+      noteParts.push(`providers=${requestedProviders.join(',')}`);
+    } else {
+      noteParts.push('providers=(none)');
+    }
+    return {
+      status:
+        commandResult.status === 0
+          ? normalizeText(parsedReceipt?.overall?.status) === 'skipped'
+            ? 'skipped'
+            : 'ok'
+          : 'failed',
+      exitCode: commandResult.status,
+      stdout: commandResult.stdout,
+      stderr: commandResult.stderr,
+      note: noteParts.join(' ')
+    };
+  });
+
+  if ((step.rawExitCode ?? step.exitCode) !== 0) {
+    hardFailHookStep(
+      runner,
+      step,
+      `Blocking local collaboration hook failure in ${phase}: agent-review-policy reported actionable findings or provider failure.`
+    );
+  }
+
+  return {
+    receiptPath: normalizedReceiptPath,
+    receiptStatus: normalizeText(parsedReceipt?.overall?.status) || null,
+    selectionSource:
+      normalizeText(parsedReceipt?.providerSelection?.selectionSource) || providerSelection.selectionSource,
+    requestedProviders: Array.isArray(parsedReceipt?.requestedProviders)
+      ? parsedReceipt.requestedProviders.filter(Boolean)
+      : [],
+    actionableFindingCount: Number.isInteger(parsedReceipt?.overall?.actionableFindingCount)
+      ? parsedReceipt.overall.actionableFindingCount
+      : 0
+  };
+}
+
+function invokePreCommitDelegate(
+  repoRoot,
+  {
+    env = process.env,
+    providerSelection = { selectionSource: 'default-empty', providers: [] },
+    invokeAgentReviewPolicyFn
+  } = {}
+) {
   const runner = new HookRunner('pre-commit', { repoRoot });
 
   info('[pre-commit] Collecting staged files');
   let stagedFiles = [];
   runner.runStep('collect-staged', () => {
-    stagedFiles = listStagedFiles();
+    stagedFiles = listStagedFiles(repoRoot);
     return {
       status: 'ok',
       exitCode: 0,
@@ -245,22 +379,27 @@ function invokePreCommitDelegate(repoRoot) {
   }
 
   const psFiles = stagedFiles.filter((file) => file.match(/\.(ps1|psm1|psd1)$/i));
-  if (psFiles.length === 0) {
+  if (psFiles.length > 0) {
+    const scriptPath = path.join('tools', 'hooks', 'scripts', 'pre-commit.ps1');
+    info('[pre-commit] Running PowerShell validation script');
+    runner.runPwshStep('powershell-validation', scriptPath, [], {
+      env: {
+        HOOKS_STAGED_FILES_JSON: JSON.stringify(psFiles)
+      }
+    });
+  } else {
     info('[pre-commit] No staged PowerShell files detected; skipping PowerShell lint.');
     runner.addNote('No staged PowerShell files detected; PowerShell lint skipped.');
-    runner.writeSummary();
-    return {
-      exitCode: 0,
-      summaryPath: path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit.json')
-    };
   }
 
-  const scriptPath = path.join('tools', 'hooks', 'scripts', 'pre-commit.ps1');
-  info('[pre-commit] Running PowerShell validation script');
-  runner.runPwshStep('powershell-validation', scriptPath, [], {
-    env: {
-      HOOKS_STAGED_FILES_JSON: JSON.stringify(psFiles)
-    }
+  info('[pre-commit] Running local agent review providers');
+  const agentReview = invokeHookAgentReviewStep({
+    runner,
+    repoRoot,
+    phase: 'pre-commit',
+    env,
+    providerSelection,
+    invokeAgentReviewPolicyFn
   });
   runner.writeSummary();
 
@@ -272,19 +411,40 @@ function invokePreCommitDelegate(repoRoot) {
 
   return {
     exitCode: runner.exitCode,
-    summaryPath: path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit.json')
+    summaryPath: path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit.json'),
+    agentReview
   };
 }
 
-function invokePrePushDelegate(repoRoot) {
+function invokePrePushDelegate(
+  repoRoot,
+  {
+    env = process.env,
+    providerSelection = { selectionSource: 'default-empty', providers: [] },
+    invokeAgentReviewPolicyFn
+  } = {}
+) {
   const runner = new HookRunner('pre-push', { repoRoot });
-  info('[pre-push] Running core pre-push checks');
-  runner.runPwshStep('pre-push-checks', path.join('tools', 'PrePush-Checks.ps1'), [], {
-    env: {
-      LOCAL_COLLAB_ORCHESTRATED: '1',
-      LOCAL_COLLAB_PHASE: 'pre-push'
-    }
+  info('[pre-push] Running local agent review providers');
+  const agentReview = invokeHookAgentReviewStep({
+    runner,
+    repoRoot,
+    phase: 'pre-push',
+    env,
+    providerSelection,
+    invokeAgentReviewPolicyFn
   });
+  if (runner.exitCode === 0) {
+    info('[pre-push] Running core pre-push checks');
+    runner.runPwshStep('pre-push-checks', path.join('tools', 'PrePush-Checks.ps1'), [], {
+      env: {
+        LOCAL_COLLAB_ORCHESTRATED: '1',
+        LOCAL_COLLAB_PHASE: 'pre-push'
+      }
+    });
+  } else {
+    runner.addNote('Skipped core pre-push checks because local agent review failed.');
+  }
   runner.writeSummary();
   if (runner.exitCode !== 0) {
     info('[pre-push] Hook failed; inspect tests/results/_hooks/pre-push.json for details.');
@@ -293,7 +453,8 @@ function invokePrePushDelegate(repoRoot) {
   }
   return {
     exitCode: runner.exitCode,
-    summaryPath: path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-push.json')
+    summaryPath: path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-push.json'),
+    agentReview
   };
 }
 
@@ -344,9 +505,17 @@ export async function runLocalCollaborationPhase(options = {}) {
   if (typeof delegateFns[phase] === 'function') {
     result = await delegateFns[phase]({ repoRoot, phase, env, delegateArgs: options.delegateArgs ?? [] });
   } else if (phase === 'pre-commit') {
-    result = invokePreCommitDelegate(repoRoot);
+    result = invokePreCommitDelegate(repoRoot, {
+      env,
+      providerSelection,
+      invokeAgentReviewPolicyFn: options.invokeAgentReviewPolicyFn
+    });
   } else if (phase === 'pre-push') {
-    result = invokePrePushDelegate(repoRoot);
+    result = invokePrePushDelegate(repoRoot, {
+      env,
+      providerSelection,
+      invokeAgentReviewPolicyFn: options.invokeAgentReviewPolicyFn
+    });
   } else if (phase === 'daemon') {
     result = invokeDaemonDelegate(repoRoot, options.delegateArgs ?? []);
   } else if (phase === 'post-commit') {
@@ -360,6 +529,7 @@ export async function runLocalCollaborationPhase(options = {}) {
   const filesTouched = explicitFilesTouched.length > 0
     ? explicitFilesTouched
     : collectFilesTouchedForPhase(repoRoot, phase, git);
+  const agentReviewReceiptPath = normalizeText(result.agentReview?.receiptPath);
   const receipt = {
     schema: LOCAL_COLLAB_ORCHESTRATOR_SCHEMA,
     phase,
@@ -384,7 +554,19 @@ export async function runLocalCollaborationPhase(options = {}) {
           ? [...DEFAULT_DAEMON_DELEGATE_COMMAND, '--repo-root', repoRoot, ...(options.delegateArgs ?? [])]
           : null,
       summaryPath: normalizeText(result.summaryPath) || null,
-      note: normalizeText(result.note) || null
+      note: normalizeText(result.note) || null,
+      agentReview:
+        result.agentReview && typeof result.agentReview === 'object'
+          ? {
+              receiptPath: normalizeText(result.agentReview.receiptPath) || null,
+              receiptStatus: normalizeText(result.agentReview.receiptStatus) || null,
+              selectionSource: normalizeText(result.agentReview.selectionSource) || null,
+              requestedProviders: normalizeStringList(result.agentReview.requestedProviders),
+              actionableFindingCount: Number.isInteger(result.agentReview.actionableFindingCount)
+                ? result.agentReview.actionableFindingCount
+                : 0
+            }
+          : null
     }
   };
   await writeFile(orchestratorReceiptPath, JSON.stringify(receipt, null, 2), 'utf8');
@@ -406,10 +588,15 @@ export async function runLocalCollaborationPhase(options = {}) {
     outcome: receipt.outcome,
     filesTouched: receipt.filesTouched,
     commitCreated: receipt.commitCreated,
-    sourcePaths: [orchestratorReceiptPath, normalizeText(result.summaryPath)].filter(Boolean),
+    sourcePaths: [
+      orchestratorReceiptPath,
+      normalizeText(result.summaryPath),
+      agentReviewReceiptPath ? path.resolve(repoRoot, agentReviewReceiptPath) : ''
+    ].filter(Boolean),
     metadata: {
       orchestratorReceiptPath: path.relative(repoRoot, orchestratorReceiptPath).replace(/\\/g, '/'),
-      delegateSummaryPath: normalizeText(result.summaryPath) || null
+      delegateSummaryPath: normalizeText(result.summaryPath) || null,
+      agentReviewReceiptPath: agentReviewReceiptPath || null
     }
   });
   receipt.ledger = {
