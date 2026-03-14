@@ -38,6 +38,14 @@ function assertNonEmptyString(value, fieldName) {
   return normalized;
 }
 
+export function normalizeMissionControlTriggerToken(value, fieldName = 'trigger') {
+  const normalized = assertNonEmptyString(value, fieldName);
+  if (!PROFILE_TRIGGER_PATTERN.test(normalized)) {
+    throw new Error(`Mission-control trigger token '${normalized}' is not a valid MC preset token.`);
+  }
+  return normalized;
+}
+
 export function normalizeMissionControlProfileCatalog(value) {
   const catalog = cloneJson(value);
   if (catalog?.schema !== MISSION_CONTROL_PROFILE_CATALOG_SCHEMA) {
@@ -153,4 +161,48 @@ export function loadMissionControlProfileCatalog(
   const resolvedPath = path.resolve(repoRoot, relativePath);
   const payload = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
   return normalizeMissionControlProfileCatalog(payload);
+}
+
+export function resolveMissionControlProfileTrigger(
+  triggerToken,
+  {
+    catalog = null,
+    repoRoot = process.cwd(),
+    relativePath = DEFAULT_MISSION_CONTROL_PROFILE_CATALOG_PATH,
+  } = {},
+) {
+  const normalizedTrigger = normalizeMissionControlTriggerToken(triggerToken);
+  const resolvedCatalog = catalog
+    ? normalizeMissionControlProfileCatalog(catalog)
+    : loadMissionControlProfileCatalog(repoRoot, relativePath);
+
+  for (const profile of resolvedCatalog.profiles) {
+    if (profile.trigger === normalizedTrigger) {
+      return {
+        token: normalizedTrigger,
+        matchedToken: profile.trigger,
+        profileId: profile.id,
+        canonicalTrigger: profile.trigger,
+        aliases: [...profile.aliases],
+        operatorPreset: cloneJson(profile.operatorPreset),
+        summary: profile.summary,
+        description: profile.description,
+      };
+    }
+    const matchedAlias = profile.aliases.find((alias) => alias === normalizedTrigger) ?? null;
+    if (matchedAlias) {
+      return {
+        token: normalizedTrigger,
+        matchedToken: matchedAlias,
+        profileId: profile.id,
+        canonicalTrigger: profile.trigger,
+        aliases: [...profile.aliases],
+        operatorPreset: cloneJson(profile.operatorPreset),
+        summary: profile.summary,
+        description: profile.description,
+      };
+    }
+  }
+
+  throw new Error(`Mission-control trigger token '${normalizedTrigger}' is not defined in the profile catalog.`);
 }

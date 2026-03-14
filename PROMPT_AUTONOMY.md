@@ -15,6 +15,7 @@ Canonical machine-readable companion contract:
 - profile catalog structural schema: `docs/schemas/mission-control-profile-catalog-v1.schema.json`
 - profile catalog example: `tools/priority/__fixtures__/mission-control/profile-catalog.json`
 - authoritative profile catalog loader: `tools/priority/lib/mission-control-profile-catalog.mjs`
+- runtime trigger resolver: `tools/priority/resolve-mission-control-profile.mjs`
 
 Profile catalog validation model:
 
@@ -35,6 +36,11 @@ Trigger presets:
 - `MC-RED` -> stabilize-current-head-failure profile
 - `MC-INTAKE` -> restore-intake profile
 - `MC-PARK` -> prepare-parked-lane profile
+
+Trigger resolution:
+
+- resolve a trigger token or alias through the checked-in catalog with:
+  - `node tools/priority/resolve-mission-control-profile.mjs --trigger MC`
 
 ```text
 Act as the autonomous mission control plane for `compare-vi-cli-action` and keep work flowing continuously until

@@ -148,7 +148,7 @@
       "name": "Mission Control Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Canonical prompt, machine-readable envelope contract, bounded operator-input catalog, mission-control profile/trigger catalog, and an authoritative fail-closed loader for profile-catalog trigger-token and preset-mapping validation.",
+      "description": "Canonical prompt, machine-readable envelope contract, bounded operator-input catalog, mission-control profile/trigger catalog, an authoritative fail-closed loader for the profile catalog, and a runtime trigger resolver for machine-readable preset expansion.",
       "files": [
         "PROMPT_AUTONOMY.md",
         "docs/schemas/mission-control-envelope-v1.schema.json",
@@ -158,9 +158,11 @@
         "tools/priority/__fixtures__/mission-control/operator-input-catalog.json",
         "tools/priority/__fixtures__/mission-control/profile-catalog.json",
         "tools/priority/lib/mission-control-profile-catalog.mjs",
+        "tools/priority/resolve-mission-control-profile.mjs",
         "tools/priority/__tests__/mission-control-envelope-schema.test.mjs",
         "tools/priority/__tests__/mission-control-operator-input-catalog.test.mjs",
-        "tools/priority/__tests__/mission-control-profile-catalog.test.mjs"
+        "tools/priority/__tests__/mission-control-profile-catalog.test.mjs",
+        "tools/priority/__tests__/resolve-mission-control-profile.test.mjs"
       ]
     },
     {
