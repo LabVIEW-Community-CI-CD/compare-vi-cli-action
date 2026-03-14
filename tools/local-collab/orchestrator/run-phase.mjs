@@ -6,6 +6,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { HookRunner, info, listStagedFiles } from '../../hooks/core/runner.mjs';
+import { resolveGitContext, writeLocalCollaborationLedgerReceipt } from '../ledger/local-review-ledger.mjs';
 
 export const LOCAL_COLLAB_ORCHESTRATOR_SCHEMA = 'comparevi/local-collab-orchestrator@v1';
 export const LOCAL_COLLAB_PHASES = ['pre-commit', 'post-commit', 'pre-push', 'daemon'];
@@ -260,6 +261,7 @@ export async function runLocalCollaborationPhase(options = {}) {
   const delegateFns = options.delegateFns && typeof options.delegateFns === 'object' ? options.delegateFns : {};
   const providerSelection = resolvePhaseProviderSelection(phase, env, options.providers);
   const identity = resolvePhaseIdentity(phase, env, options);
+  const git = resolveGitContext(repoRoot);
   const orchestratorReceiptPath = path.resolve(
     repoRoot,
     normalizeText(options.orchestratorReceiptPath) || defaultOrchestratorReceiptPath(repoRoot, phase)
@@ -289,6 +291,8 @@ export async function runLocalCollaborationPhase(options = {}) {
     repoRoot,
     forkPlane: identity.forkPlane,
     persona: identity.persona,
+    headSha: git.headSha,
+    baseSha: git.baseSha,
     startedAt: new Date(started).toISOString(),
     finishedAt: new Date(finished).toISOString(),
     durationMs: finished - started,
@@ -307,10 +311,39 @@ export async function runLocalCollaborationPhase(options = {}) {
   };
   await writeFile(orchestratorReceiptPath, JSON.stringify(receipt, null, 2), 'utf8');
 
+  const ledger = await writeLocalCollaborationLedgerReceipt({
+    repoRoot,
+    phase,
+    git,
+    forkPlane: receipt.forkPlane,
+    persona: receipt.persona,
+    providers: providerSelection.providers,
+    selectionSource: providerSelection.selectionSource,
+    startedAt: receipt.startedAt,
+    finishedAt: receipt.finishedAt,
+    durationMs: receipt.durationMs,
+    status: receipt.status,
+    outcome: receipt.outcome,
+    sourcePaths: [orchestratorReceiptPath, normalizeText(result.summaryPath)].filter(Boolean),
+    metadata: {
+      orchestratorReceiptPath: path.relative(repoRoot, orchestratorReceiptPath).replace(/\\/g, '/'),
+      delegateSummaryPath: normalizeText(result.summaryPath) || null
+    }
+  });
+  receipt.ledger = {
+    receiptId: ledger.receipt.receiptId,
+    receiptPath: path.relative(repoRoot, ledger.receiptPath).replace(/\\/g, '/'),
+    latestIndexPath: path.relative(repoRoot, ledger.latestIndexPath).replace(/\\/g, '/')
+  };
+  await writeFile(orchestratorReceiptPath, JSON.stringify(receipt, null, 2), 'utf8');
+
   return {
     exitCode: result.exitCode ?? 1,
     receipt,
     receiptPath: orchestratorReceiptPath,
+    ledgerReceipt: ledger.receipt,
+    ledgerReceiptPath: ledger.receiptPath,
+    ledgerLatestIndexPath: ledger.latestIndexPath,
     stdout: normalizeText(result.stdout),
     stderr: normalizeText(result.stderr)
   };

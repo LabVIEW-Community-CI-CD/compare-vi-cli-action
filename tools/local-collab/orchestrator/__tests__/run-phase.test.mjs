@@ -2,13 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import {
   LOCAL_COLLAB_ORCHESTRATOR_SCHEMA,
   parseArgs,
   resolvePhaseProviderSelection,
   runLocalCollaborationPhase
 } from '../run-phase.mjs';
+
+async function createGitRepo() {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'local-collab-orchestrator-'));
+  spawnSync('git', ['init', '--initial-branch=develop'], { cwd: repoRoot, encoding: 'utf8' });
+  await writeFile(path.join(repoRoot, 'README.md'), '# test\n', 'utf8');
+  spawnSync('git', ['add', 'README.md'], { cwd: repoRoot, encoding: 'utf8' });
+  spawnSync(
+    'git',
+    ['-c', 'user.name=Test User', '-c', 'user.email=test@example.com', 'commit', '-m', 'initial'],
+    { cwd: repoRoot, encoding: 'utf8' }
+  );
+  return repoRoot;
+}
 
 test('parseArgs preserves delegate args for daemon phase', () => {
   const parsed = parseArgs([
@@ -53,7 +67,7 @@ test('resolvePhaseProviderSelection prefers explicit, then phase, then shared ov
 });
 
 test('runLocalCollaborationPhase writes deterministic daemon orchestrator receipts', async () => {
-  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'local-collab-orchestrator-'));
+  const repoRoot = await createGitRepo();
   const result = await runLocalCollaborationPhase({
     phase: 'daemon',
     repoRoot,
@@ -76,9 +90,15 @@ test('runLocalCollaborationPhase writes deterministic daemon orchestrator receip
   assert.equal(result.receipt.selectionSource, 'explicit');
   assert.deepEqual(result.receipt.providers, ['copilot-cli']);
   assert.match(result.receipt.delegate.command.join(' '), /tools\/priority\/docker-desktop-review-loop\.mjs/);
+  assert.equal(result.receipt.ledger.receiptId, `daemon:${result.receipt.headSha}`);
 
   const persisted = JSON.parse(await readFile(result.receiptPath, 'utf8'));
   assert.equal(persisted.schema, LOCAL_COLLAB_ORCHESTRATOR_SCHEMA);
   assert.equal(persisted.phase, 'daemon');
   assert.equal(persisted.status, 'passed');
+
+  const ledgerReceipt = JSON.parse(await readFile(result.ledgerReceiptPath, 'utf8'));
+  assert.equal(ledgerReceipt.phase, 'daemon');
+  assert.equal(ledgerReceipt.headSha, result.receipt.headSha);
+  assert.equal(ledgerReceipt.providerId, 'copilot-cli');
 });
