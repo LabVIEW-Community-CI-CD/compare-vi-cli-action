@@ -331,6 +331,12 @@ function normalizeStringList(value) {
   return Array.isArray(value) ? value.map((entry) => normalizeText(entry)).filter(Boolean) : [];
 }
 
+function commandUsesLocalCollabOrchestrator(command = []) {
+  return Array.isArray(command)
+    ? command.some((entry) => normalizeText(entry).replace(/\\/g, '/').includes('tools/local-collab/orchestrator/run-phase.mjs'))
+    : false;
+}
+
 function normalizeCopilotReviewStrategy(value) {
   const normalized = normalizeText(value);
   if (!normalized) {
@@ -2368,8 +2374,13 @@ async function maybeRunLocalReviewLoop({
       ? normalizeCommandList(localReviewLoopPolicy.command)
       : [...DEFAULT_LOCAL_REVIEW_LOOP_COMMAND];
   const wrapperArgs = buildLocalReviewLoopCliArgs({ repoRoot, request });
+  const daemonReviewProviders = normalizeStringList(localReviewLoopPolicy.reviewProviders);
   const command = wrapperCommand[0];
-  const args = [...wrapperCommand.slice(1), ...wrapperArgs];
+  const args = [...wrapperCommand.slice(1)];
+  if (commandUsesLocalCollabOrchestrator(wrapperCommand) && daemonReviewProviders.length > 0) {
+    args.push('--providers', daemonReviewProviders.join(','));
+  }
+  args.push(...wrapperArgs);
   const commandText = [command, ...args].join(' ');
   let resolvedReceiptPathInfo;
   try {
