@@ -307,6 +307,75 @@ function Read-JsonFileOrNull {
   }
 }
 
+function Test-ReadableTextFile {
+  param([AllowNull()][AllowEmptyString()][string]$Path)
+  if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+  try {
+    [void](Get-Content -LiteralPath $Path -Raw -ErrorAction Stop)
+    return $true
+  } catch {
+    return $false
+  }
+}
+
+function Get-HostPlaneSummaryAssessment {
+  param(
+    [AllowNull()]$Summary,
+    [AllowNull()]$HostPlane,
+    [AllowEmptyString()][string]$HostPlaneReportPath
+  )
+
+  $declaredPath = ''
+  if ($Summary -and $Summary.PSObject.Properties['hostPlaneSummaryPath']) {
+    $declaredPath = [string]$Summary.hostPlaneSummaryPath
+  }
+  if ([string]::IsNullOrWhiteSpace($declaredPath) -and $HostPlane -and $HostPlane.PSObject.Properties['summaryPath']) {
+    $declaredPath = [string]$HostPlane.summaryPath
+  }
+  if (-not [string]::IsNullOrWhiteSpace($declaredPath)) {
+    $declaredPath = Resolve-AbsolutePath -Path $declaredPath
+  }
+
+  $derivedPath = ''
+  if (-not [string]::IsNullOrWhiteSpace($HostPlaneReportPath)) {
+    $candidatePath = Join-Path (Split-Path -Parent $HostPlaneReportPath) 'labview-2026-host-plane-summary.md'
+    if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+      $derivedPath = Resolve-AbsolutePath -Path $candidatePath
+    }
+  }
+
+  $effectivePath = if (-not [string]::IsNullOrWhiteSpace($declaredPath)) { $declaredPath } else { $derivedPath }
+  $declared = -not [string]::IsNullOrWhiteSpace($declaredPath)
+  $status = 'not-present'
+  $reason = ''
+  $sha256 = ''
+  $readable = $false
+
+  if (-not [string]::IsNullOrWhiteSpace($effectivePath)) {
+    $readable = Test-ReadableTextFile -Path $effectivePath
+    if ($readable) {
+      $status = 'ok'
+      $sha256 = [string](Get-FileHash -LiteralPath $effectivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    } elseif ($declared) {
+      $status = 'missing'
+      $reason = 'declared-summary-unreadable'
+    } else {
+      $status = 'missing'
+      $reason = 'derived-summary-missing'
+    }
+  }
+
+  return [ordered]@{
+    status = $status
+    reason = $reason
+    path = $effectivePath
+    declared = $declared
+    readable = $readable
+    sha256 = $sha256
+  }
+}
+
 function Get-RuntimeManagerLaneTelemetry {
   param(
     [Parameter(Mandatory)][ValidateSet('windows', 'linux')][string]$Lane,
@@ -1212,6 +1281,9 @@ function Write-SemiLiveStatus {
     [AllowEmptyString()][string]$SummaryPath,
     [AllowEmptyString()][string]$HostPlaneReportPath = '',
     [AllowEmptyString()][string]$HostPlaneSummaryPath = '',
+    [AllowEmptyString()][string]$HostPlaneSummaryStatus = '',
+    [AllowEmptyString()][string]$HostPlaneSummarySha256 = '',
+    [AllowEmptyString()][string]$HostPlaneSummaryReason = '',
     [AllowNull()]$RuntimeManagerTelemetry = $null
   )
 
@@ -1259,6 +1331,9 @@ function Write-SemiLiveStatus {
     summaryPath = ($SummaryPath ?? '')
     hostPlaneReportPath = ($HostPlaneReportPath ?? '')
     hostPlaneSummaryPath = ($HostPlaneSummaryPath ?? '')
+    hostPlaneSummaryStatus = ($HostPlaneSummaryStatus ?? '')
+    hostPlaneSummarySha256 = ($HostPlaneSummarySha256 ?? '')
+    hostPlaneSummaryReason = ($HostPlaneSummaryReason ?? '')
   }
   $payload | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding utf8
 }
@@ -2426,6 +2501,9 @@ $summary = [ordered]@{
   hostPlane = $hostPlaneReport
   hostPlaneReportPath = $hostPlaneReportPath
   hostPlaneSummaryPath = $hostPlaneSummaryPath
+  hostPlaneSummaryStatus = ''
+  hostPlaneSummarySha256 = ''
+  hostPlaneSummaryReason = ''
   statusPath = $statusResolved
   readinessJsonPath = $readinessJsonResolved
   readinessMarkdownPath = $readinessMarkdownResolved
@@ -2468,6 +2546,11 @@ $summary = [ordered]@{
   steps = $results.ToArray()
   status = if ($failed.Count -eq 0) { 'success' } else { 'failure' }
 }
+$hostPlaneSummary = Get-HostPlaneSummaryAssessment -Summary ([pscustomobject]$summary) -HostPlane $hostPlaneReport -HostPlaneReportPath $hostPlaneReportPath
+$summary.hostPlaneSummaryPath = [string]$hostPlaneSummary.path
+$summary.hostPlaneSummaryStatus = [string]$hostPlaneSummary.status
+$summary.hostPlaneSummarySha256 = [string]$hostPlaneSummary.sha256
+$summary.hostPlaneSummaryReason = [string]$hostPlaneSummary.reason
 $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
 Write-Host ("{0} summary: {1}" -f $loopPrefix, $summaryPath)
 
@@ -2487,8 +2570,15 @@ Write-SemiLiveStatus `
   -LoopLabel $loopLabel `
   -SummaryPath $summaryPath `
   -HostPlaneReportPath $hostPlaneReportPath `
-  -HostPlaneSummaryPath $hostPlaneSummaryPath `
+  -HostPlaneSummaryPath ([string]$hostPlaneSummary.path) `
+  -HostPlaneSummaryStatus ([string]$hostPlaneSummary.status) `
+  -HostPlaneSummarySha256 ([string]$hostPlaneSummary.sha256) `
+  -HostPlaneSummaryReason ([string]$hostPlaneSummary.reason) `
   -RuntimeManagerTelemetry $summary.runtimeManager
+
+if ($hostPlaneSummary.declared -and [string]$hostPlaneSummary.status -ne 'ok') {
+  throw ("Declared host-plane summary artifact not readable: {0}" -f [string]$hostPlaneSummary.path)
+}
 
 pwsh -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Write-DockerFastLoopReadiness.ps1') `
   -ResultsRoot $root `
