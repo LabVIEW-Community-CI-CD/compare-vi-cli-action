@@ -34,7 +34,7 @@ function normalizeText(value) {
   return normalized.length > 0 ? normalized : null;
 }
 
-export function parseArgs(argv = process.argv) {
+export function parseArgs(argv = process.argv, env = process.env) {
   const args = argv.slice(2);
   const options = {
     help: false,
@@ -44,7 +44,7 @@ export function parseArgs(argv = process.argv) {
     downloadAll: false,
     destinationRoot: DEFAULT_DESTINATION_ROOT,
     reportPath: DEFAULT_REPORT_PATH,
-    stepSummaryPath: normalizeText(process.env.GITHUB_STEP_SUMMARY),
+    stepSummaryPath: normalizeText(env.GITHUB_STEP_SUMMARY),
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -193,7 +193,7 @@ export async function main(
 ) {
   let options;
   try {
-    options = parseArgs(argv);
+    options = parseArgs(argv, env);
   } catch (error) {
     errorFn(error instanceof Error ? error.message : String(error));
     printUsage();

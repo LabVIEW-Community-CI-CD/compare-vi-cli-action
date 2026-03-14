@@ -18,7 +18,7 @@ async function loadModule() {
 }
 
 test('main writes GitHub outputs and step summary for a successful artifact download', async (t) => {
-  const { main } = await loadModule();
+  const { main, parseArgs } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'download-run-artifact-cli-success-'));
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
@@ -79,6 +79,21 @@ test('main writes GitHub outputs and step summary for a successful artifact down
   assert.match(fs.readFileSync(summaryPath, 'utf8'), /### Run Artifact Download/);
   assert.match(fs.readFileSync(summaryPath, 'utf8'), /- report: `.*report\.json`/);
   assert.equal(logged.length, 2);
+
+  const parsed = parseArgs(
+    [
+      'node',
+      modulePath,
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--run-id',
+      '22872590273',
+      '--artifact',
+      'copilot-review-signal-965',
+    ],
+    { GITHUB_STEP_SUMMARY: summaryPath },
+  );
+  assert.equal(parsed.stepSummaryPath, summaryPath);
 });
 
 test('main projects failure classes into GitHub outputs and step summary', async (t) => {
