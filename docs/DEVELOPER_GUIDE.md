@@ -215,16 +215,32 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 - Native LabVIEW 2026 host split diagnostics:
   - `node tools/npm/run-script.mjs env:labview:2026:host-planes`
   - The Windows host is treated as the execution runner; the generated report records `runner.hostIsRunner=true`.
+  - The helper writes both:
+    - `labview-2026-host-plane-report.json`
+    - `labview-2026-host-plane-summary.md`
+  - GitHub output keys include:
+    - `labview-2026-host-plane-report-path`
+    - `labview-2026-host-plane-summary-path`
   - Use `docs/SINGLE_HOST_LABVIEW_2026_PLANES.md` when you need the explicit four-plane operating model and the
     authoritative replay/diagnostics entry points in one place.
 - Differentiated history readback:
   - `node tools/npm/run-script.mjs history:diagnostics:show -- --ResultsRoot tests/results/local-parity/windows`
   - The replay prints the host/runner plane split before the differentiated mode diagnostics.
+  - When readiness provenance is present, the replay also prints:
+    - host-plane summary path
+    - summary status
+    - summary SHA-256
 - Stable operator-facing loop labels:
   - `linux-docker-fast-loop`
   - `windows-docker-fast-loop`
   - `dual-docker-fast-loop`
 - `-ManageDockerEngine` is permitted only when `-LaneScope both`.
+- Fast-loop provenance surfaces:
+  - `tools/Write-DockerFastLoopReadiness.ps1` carries `hostPlaneSummary.path|status|sha256|reason`
+  - `tools/Write-DockerFastLoopProof.ps1` emits:
+    - `docker-fast-loop-proof-host-plane-summary-path`
+    - `docker-fast-loop-proof-host-plane-summary-sha256`
+  - treat missing declared host-plane summary artifacts as fail-closed contract violations
 
 ## Runtime daemon
 

@@ -49,12 +49,20 @@ Use these commands as the checked-in operator surfaces:
 The replay helper is the fastest operator readback. It prints the host-plane report first and then the differentiated
 Docker fast-loop diagnostics for the selected results root.
 
+The host-plane diagnostics helper also writes a companion markdown summary:
+
+- `tests/results/_agent/host-planes/labview-2026-host-plane-summary.md`
+
+Treat that summary as the operator-facing shorthand for the full report. The fast-loop readiness, proof, and replay
+surfaces all project provenance back to this file.
+
 ## Authoritative artifacts
 
 Use these artifacts as the machine-readable source of truth:
 
 1. Host-plane report:
    - `tests/results/_agent/host-planes/labview-2026-host-plane-report.json`
+   - `tests/results/_agent/host-planes/labview-2026-host-plane-summary.md`
 2. Fast-loop readiness envelope:
    - `docker-runtime-fastloop-readiness.json`
    - `docker-runtime-fastloop-readiness.md`
@@ -73,12 +81,25 @@ Use the artifacts in this order:
    - confirms the native `x64` and `x32` plane readiness
    - shows the host/runner identity
    - records the mutually exclusive Docker pair and the candidate parallel pairs
-2. `docker-runtime-fastloop-readiness.json`
+2. `labview-2026-host-plane-summary.md`
+   - records the operator-facing summary paired with the report
+   - is projected into the fast-loop readiness/proof/replay surfaces as provenance
+   - should remain hash-stable for a given report payload
+3. `docker-runtime-fastloop-readiness.json`
    - records the fast-loop verdict and lane outcomes
    - carries the differentiated Docker Desktop plane projection
+   - records `hostPlaneSummary.path`, `hostPlaneSummary.status`, and `hostPlaneSummary.sha256`
    - records whether Docker exclusivity was required and whether it was satisfied
-3. `history:diagnostics:show`
+4. `docker-fast-loop-proof-*.json`
+   - records `hostPlaneSummaryPath`
+   - records `hostPlaneSummaryProvenance`
+   - records `hashes.hostPlaneSummarySha256`
+   - projects GitHub outputs:
+     - `docker-fast-loop-proof-host-plane-summary-path`
+     - `docker-fast-loop-proof-host-plane-summary-sha256`
+5. `history:diagnostics:show`
    - replays the same distinction in console form for the operator
+   - prints `[host-plane-split][summary] <path> status=<status> sha256=<sha256>` when summary provenance exists
 
 If any of those surfaces disagree on the selected plane or exclusivity state, stop and treat the run as not yet
 trustworthy.
