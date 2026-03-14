@@ -35,15 +35,51 @@ test('mission-control operator input catalog fixture matches schema', () => {
   assert.equal(fixture.overrides.length, 5);
 });
 
+test('mission-control operator input catalog fails closed when canonical identifiers are missing or duplicated', () => {
+  const validate = compileValidator();
+  const fixture = loadJson('tools/priority/__fixtures__/mission-control/operator-input-catalog.json');
+  const duplicateIntentCatalog = structuredClone(fixture);
+  duplicateIntentCatalog.intents = [
+    structuredClone(fixture.intents[0]),
+    { ...structuredClone(fixture.intents[1]), id: fixture.intents[0].id },
+    ...fixture.intents.slice(2).map((entry) => structuredClone(entry))
+  ];
+  const duplicateIntentValid = validate(duplicateIntentCatalog);
+  assert.equal(duplicateIntentValid, false, 'duplicate intent ids should fail schema validation');
+
+  const validateMissingFocus = compileValidator();
+  const missingFocusCatalog = structuredClone(fixture);
+  missingFocusCatalog.focuses = fixture.focuses
+    .filter((entry) => entry.id !== 'queue-health')
+    .map((entry) => structuredClone(entry));
+  const missingFocusValid = validateMissingFocus(missingFocusCatalog);
+  assert.equal(missingFocusValid, false, 'missing canonical focuses should fail schema validation');
+
+  const validateDuplicateOverride = compileValidator();
+  const duplicateOverrideCatalog = structuredClone(fixture);
+  duplicateOverrideCatalog.overrides = [
+    structuredClone(fixture.overrides[0]),
+    { ...structuredClone(fixture.overrides[1]), key: fixture.overrides[0].key },
+    ...fixture.overrides.slice(2).map((entry) => structuredClone(entry))
+  ];
+  const duplicateOverrideValid = validateDuplicateOverride(duplicateOverrideCatalog);
+  assert.equal(duplicateOverrideValid, false, 'duplicate override keys should fail schema validation');
+});
+
 test('mission-control envelope operator fields stay inside the bounded-input catalog', () => {
   const envelope = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
   const catalog = loadJson('tools/priority/__fixtures__/mission-control/operator-input-catalog.json');
   const allowedIntentIds = new Set(catalog.intents.map((entry) => entry.id));
   const allowedFocusIds = new Set(catalog.focuses.map((entry) => entry.id));
+  const intentCatalog = new Map(catalog.intents.map((entry) => [entry.id, entry]));
   const overrideCatalog = new Map(catalog.overrides.map((entry) => [entry.key, entry]));
 
   assert.ok(allowedIntentIds.has(envelope.operator.intent));
   assert.ok(allowedFocusIds.has(envelope.operator.focus));
+  assert.ok(
+    intentCatalog.get(envelope.operator.intent).allowedFocuses.includes(envelope.operator.focus),
+    `Focus '${envelope.operator.focus}' is not allowed for intent '${envelope.operator.intent}'.`
+  );
   for (const override of envelope.operator.overrides) {
     assert.ok(overrideCatalog.has(override.key), `Unexpected override key '${override.key}'.`);
     const catalogEntry = overrideCatalog.get(override.key);

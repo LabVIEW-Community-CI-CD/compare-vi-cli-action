@@ -15,7 +15,74 @@
       "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/intent"
-      }
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "continue-driving-autonomously"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "finish-live-standing-lane"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "stabilize-current-head-failure"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "restore-intake"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "prepare-parked-lane"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
     },
     "focuses": {
       "type": "array",
@@ -23,7 +90,87 @@
       "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/focus"
-      }
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "standing-priority"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "current-head-failure"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "queue-health"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "handoff"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "policy-drift"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "const": "docs-contract"
+              }
+            },
+            "required": ["id"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
     },
     "overrides": {
       "type": "array",
@@ -31,7 +178,74 @@
       "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/override"
-      }
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "const": "allowAdminMerge"
+              }
+            },
+            "required": ["key"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "const": "allowForkBaseDispatch"
+              }
+            },
+            "required": ["key"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "const": "allowParkedLane"
+              }
+            },
+            "required": ["key"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "const": "copilotCliUsage"
+              }
+            },
+            "required": ["key"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "const": "requireProjectBoardApply"
+              }
+            },
+            "required": ["key"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
     }
   },
   "$defs": {
