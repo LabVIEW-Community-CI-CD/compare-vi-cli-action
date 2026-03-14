@@ -236,6 +236,13 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   - `dual-docker-fast-loop`
 - `-ManageDockerEngine` is permitted only when `-LaneScope both`.
 - Fast-loop provenance surfaces:
+  - `tools/Test-DockerDesktopFastLoop.ps1` emits:
+    - `docker-fast-loop-summary-path`
+    - `docker-fast-loop-status-path`
+    - `docker-fast-loop-host-plane-summary-path`
+    - `docker-fast-loop-host-plane-summary-status`
+    - `docker-fast-loop-host-plane-summary-sha256`
+    - `docker-fast-loop-host-plane-summary-reason`
   - `tools/Write-DockerFastLoopReadiness.ps1` carries `hostPlaneSummary.path|status|sha256|reason`
   - `tools/Write-DockerFastLoopProof.ps1` emits:
     - `docker-fast-loop-proof-host-plane-summary-path`
