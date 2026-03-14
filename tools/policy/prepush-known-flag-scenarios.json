@@ -1,0 +1,27 @@
+{
+  "schema": "prepush-known-flag-scenarios/v1",
+  "schemaVersion": "1.0.0",
+  "activeScenarioId": "ni-linux-known-flag-bundle-v1",
+  "scenarios": [
+    {
+      "id": "ni-linux-known-flag-bundle-v1",
+      "isActive": true,
+      "description": "Canonical NI Linux pre-push known-flag scenario for deterministic local gate coverage.",
+      "image": "nationalinstruments/labview:2026q1-linux",
+      "labviewPathEnv": "NI_LINUX_LABVIEW_PATH",
+      "defaultLabviewPath": "/usr/local/natinst/LabVIEW-2026-64/labview",
+      "flags": [
+        "-noattr",
+        "-nofppos",
+        "-nobdcosm"
+      ],
+      "expectedGateOutcome": "pass",
+      "evidence": {
+        "resultsRoot": "tests/results/_agent/pre-push-ni-image",
+        "reportPath": "tests/results/_agent/pre-push-ni-image/known-flag-scenario-report.json",
+        "incidentInputPath": "tests/results/_agent/canary/pre-push-ni-known-flag-incident-input.json",
+        "incidentEventPath": "tests/results/_agent/canary/pre-push-ni-known-flag-incident-event.json"
+      }
+    }
+  ]
+}

@@ -28,15 +28,14 @@ test('PrePush-Checks invokes workspace health gate in optional lease mode', () =
   assert.match(content, /if \(\$null -eq \$mount\) \{\s*continue\s*\}/);
 });
 
-test('PrePush NI image known-flag scenario uses the Linux runner with explicit LabVIEWPath', () => {
+test('PrePush NI image known-flag scenario consumes the checked-in active scenario contract', () => {
   const content = readRepoFile('tools/PrePush-Checks.ps1');
   assert.match(content, /Run-NILinuxContainerCompare\.ps1/);
-  assert.match(content, /nationalinstruments\/labview:2026q1-linux/);
-  assert.match(content, /NI_LINUX_LABVIEW_PATH/);
+  assert.match(content, /Resolve-PrePushKnownFlagScenario/);
+  assert.match(content, /prepush-known-flag-scenarios\.json/);
+  assert.match(content, /Active known-flag scenario/);
+  assert.match(content, /\$knownFlagScenarioContract\.flags/);
   assert.match(content, /name = if \(\$scenarioLabels\.Count -eq 0\) \{ 'baseline' \}/);
-  assert.match(content, /label = 'noattr'; flag = '-noattr'/);
-  assert.match(content, /label = 'nofppos'; flag = '-nofppos'/);
-  assert.match(content, /label = 'nobdcosm'; flag = '-nobdcosm'/);
   assert.match(content, /& \$niCompareScript/);
   assert.match(content, /-LabVIEWPath \$containerLabVIEWPath/);
   assert.match(content, /-ContainerNameLabel \$activeScenarioName/);
@@ -44,9 +43,13 @@ test('PrePush NI image known-flag scenario uses the Linux runner with explicit L
   assert.match(content, /logPath = if \(\$parts.Count -gt 7\)/);
   assert.match(content, /\$failureMarkers = @\(/);
   assert.match(content, /Select-String -Path \$resolvedEntryLogPath -SimpleMatch -Quiet -Pattern \$failureMarkers/);
-  assert.match(content, /VI Comparison Report flag combination scenarios OK/);
+  assert.match(content, /Write-PrePushKnownFlagScenarioReport/);
+  assert.match(content, /Active known-flag scenario '\{0\}' OK/);
   assert.doesNotMatch(content, /pwsh\s+-NoLogo\s+-NoProfile\s+-File\s+\$niCompareScript/);
   assert.doesNotMatch(content, /Render-VIHistoryReport\.ps1/);
+  assert.doesNotMatch(content, /label = 'noattr'; flag = '-noattr'/);
+  assert.doesNotMatch(content, /label = 'nofppos'; flag = '-nofppos'/);
+  assert.doesNotMatch(content, /label = 'nobdcosm'; flag = '-nobdcosm'/);
 });
 
 test('single-container flag matrix bootstrap clears stale reports and writes per-scenario CLI logs', () => {

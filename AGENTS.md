@@ -159,6 +159,16 @@ artifacts under `tests/results/_agent/`.
   - `tests/results/_agent/handoff/entrypoint-status.json`
   - `tests/results/_agent/runtime/`
 
+## Local gates
+
+- `tools/PrePush-Checks.ps1` consumes
+  `tools/policy/prepush-known-flag-scenarios.json` for the NI image known-flag
+  contract.
+- Exactly one active known-flag scenario is allowed in that checked-in contract
+  at a time.
+- The deterministic top-level receipt for that gate is
+  `tests/results/_agent/pre-push-ni-image/known-flag-scenario-report.json`.
+
 ## References
 
 - `docs/DEVELOPER_GUIDE.md`
