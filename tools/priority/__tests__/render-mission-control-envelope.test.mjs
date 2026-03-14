@@ -67,6 +67,22 @@ test('renderMissionControlEnvelopeReport fails closed for unknown trigger tokens
   );
 });
 
+test('renderMissionControlEnvelopeReport fails closed for drifted custom envelope files', async (t) => {
+  const { renderMissionControlEnvelopeReport } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-envelope-drift-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const driftedEnvelopePath = path.join(tmpDir, 'mission-control-envelope.json');
+  const driftedEnvelope = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
+  driftedEnvelope.missionControl.lanePolicy.allowThirdLane = true;
+  fs.writeFileSync(driftedEnvelopePath, `${JSON.stringify(driftedEnvelope, null, 2)}\n`, 'utf8');
+
+  assert.throws(
+    () => renderMissionControlEnvelopeReport({ trigger: 'MC', envelopePath: driftedEnvelopePath }, { repoRoot }),
+    /failed schema validation/i,
+  );
+});
+
 test('render mission-control envelope CLI writes a machine-readable report and fails deterministically', async (t) => {
   const { main, parseArgs, MISSION_CONTROL_ENVELOPE_RENDER_SCHEMA } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-envelope-render-'));

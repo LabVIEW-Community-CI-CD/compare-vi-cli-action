@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
 import {
   DEFAULT_MISSION_CONTROL_PROFILE_CATALOG_PATH,
   loadMissionControlProfileCatalog,
@@ -17,6 +19,11 @@ export const DEFAULT_MISSION_CONTROL_ENVELOPE_PATH = path.join(
   '__fixtures__',
   'mission-control',
   'mission-control-envelope.json',
+);
+export const DEFAULT_MISSION_CONTROL_ENVELOPE_SCHEMA_PATH = path.join(
+  'docs',
+  'schemas',
+  'mission-control-envelope-v1.schema.json',
 );
 export const DEFAULT_MISSION_CONTROL_ENVELOPE_RENDER_REPORT_PATH = path.join(
   'tests',
@@ -48,6 +55,62 @@ function writeJsonFile(relativePath, payload, repoRoot = process.cwd()) {
   fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
   fs.writeFileSync(resolvedPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   return resolvedPath;
+}
+
+function validateJsonAgainstSchema(payload, schemaPath, description, repoRoot = process.cwd()) {
+  const schema = readJsonFile(schemaPath, repoRoot);
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const validate = ajv.compile(schema);
+  if (!validate(payload)) {
+    throw new Error(
+      `${description} failed schema validation against ${schemaPath}: ${JSON.stringify(validate.errors, null, 2)}`,
+    );
+  }
+}
+
+function assertExactObjectKeys(value, requiredKeys, fieldName) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Mission-control envelope field '${fieldName}' must be an object.`);
+  }
+  const actualKeys = Object.keys(value).sort();
+  const expectedKeys = [...requiredKeys].sort();
+  if (JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys)) {
+    throw new Error(
+      `Mission-control envelope field '${fieldName}' must contain exactly: ${expectedKeys.join(', ')}.`,
+    );
+  }
+}
+
+function validateMissionControlEnvelopeBase(baseEnvelope, repoRoot = process.cwd()) {
+  const contractEnvelope = readJsonFile(DEFAULT_MISSION_CONTROL_ENVELOPE_PATH, repoRoot);
+  validateJsonAgainstSchema(
+    contractEnvelope,
+    DEFAULT_MISSION_CONTROL_ENVELOPE_SCHEMA_PATH,
+    'Checked-in mission-control envelope',
+    repoRoot,
+  );
+  validateJsonAgainstSchema(
+    baseEnvelope,
+    DEFAULT_MISSION_CONTROL_ENVELOPE_SCHEMA_PATH,
+    'Mission-control envelope',
+    repoRoot,
+  );
+  if (contractEnvelope?.schema !== MISSION_CONTROL_ENVELOPE_SCHEMA) {
+    throw new Error(`Checked-in mission-control envelope schema must be '${MISSION_CONTROL_ENVELOPE_SCHEMA}'.`);
+  }
+  if (baseEnvelope?.schema !== MISSION_CONTROL_ENVELOPE_SCHEMA) {
+    throw new Error(`Mission-control envelope schema must be '${MISSION_CONTROL_ENVELOPE_SCHEMA}'.`);
+  }
+  assertExactObjectKeys(baseEnvelope, ['schema', 'missionControl', 'operator'], 'root');
+  assertExactObjectKeys(baseEnvelope.operator, ['intent', 'focus', 'overrides'], 'operator');
+  if (!Array.isArray(baseEnvelope.operator.overrides)) {
+    throw new Error(`Mission-control envelope field 'operator.overrides' must be an array.`);
+  }
+  if (JSON.stringify(baseEnvelope.missionControl) !== JSON.stringify(contractEnvelope.missionControl)) {
+    throw new Error('Mission-control envelope base must keep the checked-in missionControl contract unchanged.');
+  }
+  return contractEnvelope;
 }
 
 function resolveTriggerProfile(catalog, triggerToken) {
@@ -143,15 +206,24 @@ export function renderMissionControlEnvelopeReport(
 ) {
   const catalog = loadMissionControlProfileCatalog(repoRoot, catalogPath);
   const baseEnvelope = readJsonFile(envelopePath, repoRoot);
-  if (baseEnvelope?.schema !== MISSION_CONTROL_ENVELOPE_SCHEMA) {
-    throw new Error(`Mission-control envelope schema must be '${MISSION_CONTROL_ENVELOPE_SCHEMA}'.`);
-  }
+  const contractEnvelope = validateMissionControlEnvelopeBase(baseEnvelope, repoRoot);
 
   const { matchedToken, profile } = resolveTriggerProfile(catalog, trigger);
-  const renderedEnvelope = cloneJson(baseEnvelope);
-  renderedEnvelope.operator.intent = profile.operatorPreset.intent;
-  renderedEnvelope.operator.focus = profile.operatorPreset.focus;
-  renderedEnvelope.operator.overrides = cloneJson(profile.operatorPreset.overrides);
+  const renderedEnvelope = {
+    schema: contractEnvelope.schema,
+    missionControl: cloneJson(contractEnvelope.missionControl),
+    operator: {
+      intent: profile.operatorPreset.intent,
+      focus: profile.operatorPreset.focus,
+      overrides: cloneJson(profile.operatorPreset.overrides),
+    },
+  };
+  validateJsonAgainstSchema(
+    renderedEnvelope,
+    DEFAULT_MISSION_CONTROL_ENVELOPE_SCHEMA_PATH,
+    'Rendered mission-control envelope',
+    repoRoot,
+  );
 
   return {
     schema: MISSION_CONTROL_ENVELOPE_RENDER_SCHEMA,
