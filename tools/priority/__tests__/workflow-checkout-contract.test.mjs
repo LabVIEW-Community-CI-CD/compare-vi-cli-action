@@ -79,10 +79,13 @@ test('policy workflows keep explicit base-safe or mixed checkout expressions', (
 
   const policyGuard = readText('.github/workflows/policy-guard-upstream.yml');
   assert.match(policyGuard, /uses:\s+actions\/checkout@v5/);
-  assert.match(policyGuard, prHeadRepositoryPattern);
   assert.match(
     policyGuard,
-    /ref:\s+\$\{\{\s*github\.event_name == 'pull_request_target' && github\.event\.pull_request\.base\.sha \|\| github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.sha \|\| github\.sha\s*\}\}/
+    /repository:\s+\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.repo\.full_name \|\| github\.event_name == 'pull_request_target' && github\.event\.pull_request\.head\.repo\.owner\.login == github\.repository_owner && github\.event\.pull_request\.head\.repo\.full_name \|\| github\.repository\s*\}\}/
+  );
+  assert.match(
+    policyGuard,
+    /ref:\s+\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.sha \|\| github\.event_name == 'pull_request_target' && github\.event\.pull_request\.head\.repo\.owner\.login == github\.repository_owner && github\.event\.pull_request\.head\.sha \|\| github\.event_name == 'pull_request_target' && github\.event\.pull_request\.base\.sha \|\| github\.sha\s*\}\}/
   );
   assert.match(policyGuard, /fetch-depth:\s*0/);
   assert.doesNotMatch(policyGuard, /checkout-workflow-context/);
