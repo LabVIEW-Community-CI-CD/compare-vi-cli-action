@@ -23,5 +23,10 @@ Describe 'Local Agent Handoff' -Tag 'Unit' {
     Test-Path -LiteralPath (Join-Path $resultsRoot '_agent/handoff/entrypoint-status.json') | Should -BeTrue
     Test-Path -LiteralPath (Join-Path $resultsRoot '_agent/handoff/issue-summary.json') | Should -BeTrue
     Test-Path -LiteralPath (Join-Path $resultsRoot '_agent/handoff/issue-router.json') | Should -BeTrue
+    Test-Path -LiteralPath (Join-Path $resultsRoot '_agent/handoff/plane-transition.json') | Should -BeTrue
+
+    $planeTransition = Get-Content -LiteralPath (Join-Path $resultsRoot '_agent/handoff/plane-transition.json') -Raw | ConvertFrom-Json -ErrorAction Stop
+    $planeTransition.schema | Should -Be 'agent-handoff/plane-transition-v1'
+    $planeTransition.status | Should -Not -BeNullOrEmpty
   }
 }

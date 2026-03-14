@@ -21,6 +21,9 @@ Describe 'Watcher Telemetry - Handoff Snapshot' {
     $json.heartbeatFresh | Should -BeOfType ([bool])
     $json.needsTrim | Should -BeOfType ([bool])
     $json.events | Should -Not -BeNullOrEmpty
+    $json.planeTransitions | Should -Not -BeNullOrEmpty
+    $json.planeTransitions.schema | Should -Be 'agent-handoff/plane-transition-v1'
+    $json.planeTransitions.status | Should -Not -BeNullOrEmpty
     $json.events.schema | Should -Be 'comparevi/runtime-event/v1'
     $json.events.path | Should -Not -BeNullOrEmpty
     $json.events.present | Should -BeOfType ([bool])

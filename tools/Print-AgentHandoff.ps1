@@ -478,9 +478,224 @@ function Get-NonEmptyStringValues {
   return $values
 }
 
+function Test-PlaneTransitionRecord {
+  param([object]$Transition)
+
+  if ($null -eq $Transition) { return $false }
+  foreach ($requiredKey in @('from', 'to', 'action', 'via')) {
+    $value = if ($Transition -is [System.Collections.IDictionary]) {
+      if ($Transition.Contains($requiredKey)) { $Transition[$requiredKey] } else { $null }
+    } elseif ($Transition.PSObject.Properties[$requiredKey]) {
+      $Transition.$requiredKey
+    } else {
+      $null
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$value)) {
+      return $false
+    }
+  }
+  return $true
+}
+
+function Get-HandoffPlaneTransitionSummary {
+  param(
+    [string]$RepoRoot,
+    [string]$ResultsRoot
+  )
+
+  $summary = [ordered]@{
+    schema = 'agent-handoff/plane-transition-v1'
+    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    repoRoot = $RepoRoot
+    resultsRoot = $ResultsRoot
+    status = 'unavailable'
+    reason = 'no-source-receipts'
+    transitionCount = 0
+    transitions = @()
+    sources = @()
+  }
+
+  $candidateRoots = [System.Collections.Generic.List[string]]::new()
+  foreach ($root in @($ResultsRoot, (Join-Path $RepoRoot 'tests/results'))) {
+    if ([string]::IsNullOrWhiteSpace($root)) { continue }
+    $resolved = [System.IO.Path]::GetFullPath($root)
+    if (-not $candidateRoots.Contains($resolved)) {
+      $candidateRoots.Add($resolved) | Out-Null
+    }
+  }
+
+  $candidateSpecs = [System.Collections.Generic.List[hashtable]]::new()
+  foreach ($root in $candidateRoots) {
+    $candidateSpecs.Add(@{ path = Join-Path $root 'origin-upstream-parity.json'; sourceType = 'parity'; label = 'results-root-parity' }) | Out-Null
+    $candidateSpecs.Add(@{ path = Join-Path $root '_agent/issue/develop-sync-report.json'; sourceType = 'develop-sync'; label = 'develop-sync-report' }) | Out-Null
+    $candidateSpecs.Add(@{ path = Join-Path $root '_agent/issue/origin-upstream-parity.json'; sourceType = 'parity'; label = 'origin-upstream-parity' }) | Out-Null
+    $candidateSpecs.Add(@{ path = Join-Path $root '_agent/issue/personal-upstream-parity.json'; sourceType = 'parity'; label = 'personal-upstream-parity' }) | Out-Null
+    $candidateSpecs.Add(@{ path = Join-Path $root '_agent/issue/origin-protected-develop-sync.json'; sourceType = 'protected-sync'; label = 'origin-protected-sync' }) | Out-Null
+    $candidateSpecs.Add(@{ path = Join-Path $root '_agent/issue/personal-protected-develop-sync.json'; sourceType = 'protected-sync'; label = 'personal-protected-sync' }) | Out-Null
+  }
+
+  $seenPaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  $hadFailure = $false
+
+  foreach ($spec in $candidateSpecs) {
+    $candidatePath = [System.IO.Path]::GetFullPath([string]$spec.path)
+    if (-not $seenPaths.Add($candidatePath)) {
+      continue
+    }
+    if (-not (Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
+      continue
+    }
+
+    $sourceRecord = [ordered]@{
+      path = $candidatePath
+      sourceType = $spec.sourceType
+      label = $spec.label
+      schema = $null
+      status = 'ok'
+      transitionCount = 0
+      error = $null
+    }
+
+    try {
+      $payload = Get-Content -LiteralPath $candidatePath -Raw | ConvertFrom-Json -Depth 40 -ErrorAction Stop
+    } catch {
+      $sourceRecord.status = 'invalid-json'
+      $sourceRecord.error = $_.Exception.Message
+      $summary.sources += $sourceRecord
+      $hadFailure = $true
+      continue
+    }
+
+    if ($payload.PSObject.Properties['schema']) {
+      $sourceRecord.schema = [string]$payload.schema
+    }
+
+    $transitionsForSource = @()
+    if ($spec.sourceType -eq 'develop-sync') {
+      $actions = if ($payload.PSObject.Properties['actions']) { @($payload.actions) } else { @() }
+      foreach ($entry in $actions) {
+        $transition = if ($entry.PSObject.Properties['planeTransition']) { $entry.planeTransition } else { $null }
+        if (-not (Test-PlaneTransitionRecord -Transition $transition)) {
+          continue
+        }
+        $transitionsForSource += [ordered]@{
+          from = [string]$transition.from
+          to = [string]$transition.to
+          action = [string]$transition.action
+          via = [string]$transition.via
+          baseRepository = if ($transition.PSObject.Properties['baseRepository']) { [string]$transition.baseRepository } else { $null }
+          headRepository = if ($transition.PSObject.Properties['headRepository']) { [string]$transition.headRepository } else { $null }
+          sourcePath = $candidatePath
+          sourceSchema = $sourceRecord.schema
+          sourceType = $spec.sourceType
+          sourceLabel = $spec.label
+          remote = if ($entry.PSObject.Properties['remote']) { [string]$entry.remote } else { $null }
+        }
+      }
+      if ($actions.Count -gt 0 -and $transitionsForSource.Count -eq 0) {
+        $sourceRecord.status = 'missing-plane-transition'
+        $sourceRecord.error = 'No valid planeTransition entries were found in develop-sync actions.'
+        $hadFailure = $true
+      }
+    } else {
+      $transition = if ($payload.PSObject.Properties['planeTransition']) { $payload.planeTransition } else { $null }
+      if (Test-PlaneTransitionRecord -Transition $transition) {
+        $transitionsForSource += [ordered]@{
+          from = [string]$transition.from
+          to = [string]$transition.to
+          action = [string]$transition.action
+          via = [string]$transition.via
+          baseRepository = if ($transition.PSObject.Properties['baseRepository']) { [string]$transition.baseRepository } else { $null }
+          headRepository = if ($transition.PSObject.Properties['headRepository']) { [string]$transition.headRepository } else { $null }
+          sourcePath = $candidatePath
+          sourceSchema = $sourceRecord.schema
+          sourceType = $spec.sourceType
+          sourceLabel = $spec.label
+          remote = $null
+        }
+      } else {
+        $sourceRecord.status = 'missing-plane-transition'
+        $sourceRecord.error = 'Source report exists but does not contain a complete planeTransition payload.'
+        $hadFailure = $true
+      }
+    }
+
+    $sourceRecord.transitionCount = $transitionsForSource.Count
+    if ($transitionsForSource.Count -gt 0) {
+      $summary.transitions += $transitionsForSource
+    }
+    $summary.sources += $sourceRecord
+  }
+
+  $summary.transitionCount = @($summary.transitions).Count
+  if (@($summary.sources).Count -eq 0) {
+    $summary.status = 'unavailable'
+    $summary.reason = 'no-source-receipts'
+  } elseif ($hadFailure) {
+    $summary.status = 'fail'
+    $summary.reason = 'invalid-plane-transition-evidence'
+  } elseif ($summary.transitionCount -gt 0) {
+    $summary.status = 'ok'
+    $summary.reason = $null
+  } else {
+    $summary.status = 'unavailable'
+    $summary.reason = 'no-valid-plane-transitions'
+  }
+
+  return $summary
+}
+
+function Write-HandoffPlaneTransitionSummary {
+  param(
+    [string]$RepoRoot,
+    [string]$ResultsRoot
+  )
+
+  $summary = Get-HandoffPlaneTransitionSummary -RepoRoot $RepoRoot -ResultsRoot $ResultsRoot
+  $handoffDir = Join-Path $ResultsRoot '_agent/handoff'
+  New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+  $summaryPath = Join-Path $handoffDir 'plane-transition.json'
+  ($summary | ConvertTo-Json -Depth 8) | Out-File -FilePath $summaryPath -Encoding utf8
+
+  Write-Host ''
+  Write-Host '[Plane Transition Evidence]' -ForegroundColor Cyan
+  Write-Host ("  status   : {0}" -f (Format-NullableValue $summary.status))
+  Write-Host ("  count    : {0}" -f (Format-NullableValue $summary.transitionCount))
+  if ($summary.reason) {
+    Write-Host ("  reason   : {0}" -f (Format-NullableValue $summary.reason))
+  }
+  foreach ($transition in @($summary.transitions | Select-Object -First 5)) {
+    $remoteLabel = if ($transition.remote) { " remote=$($transition.remote)" } else { '' }
+    Write-Host ("  - {0}->{1} ({2}) via {3}{4}" -f $transition.from, $transition.to, $transition.action, $transition.via, $remoteLabel)
+  }
+
+  if ($env:GITHUB_STEP_SUMMARY) {
+    $lines = @(
+      '### Plane Transition Evidence',
+      '',
+      ('- Status: {0}' -f (Format-NullableValue $summary.status)),
+      ('- Count: {0}' -f (Format-NullableValue $summary.transitionCount))
+    )
+    if ($summary.reason) {
+      $lines += ('- Reason: {0}' -f (Format-NullableValue $summary.reason))
+    }
+    foreach ($transition in @($summary.transitions | Select-Object -First 5)) {
+      $transitionLabel = '{0}->{1} ({2}) via {3}' -f $transition.from, $transition.to, $transition.action, $transition.via
+      if ($transition.remote) {
+        $transitionLabel = '{0} [remote={1}]' -f $transitionLabel, $transition.remote
+      }
+      $lines += ('- {0}' -f $transitionLabel)
+    }
+    ($lines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+  }
+
+  return $summary
+}
+
 function Write-AgentSessionCapsule {
   param(
-    [string]$ResultsRoot
+    [string]$ResultsRoot,
+    [psobject]$PlaneTransitionSummary = $null
   )
 
   $repoRoot = (Resolve-Path '.').Path
@@ -541,6 +756,7 @@ function Write-AgentSessionCapsule {
     @{ name = 'handoff.releaseSummary'; path = Join-Path $handoffDir 'release-summary.json' },
     @{ name = 'handoff.issueSummary'; path = Join-Path $handoffDir 'issue-summary.json' },
     @{ name = 'handoff.dockerReviewLoopSummary'; path = Join-Path $handoffDir 'docker-review-loop-summary.json' },
+    @{ name = 'handoff.planeTransition'; path = Join-Path $handoffDir 'plane-transition.json' },
     @{ name = 'handoff.router'; path = Join-Path $handoffDir 'issue-router.json' },
     @{ name = 'handoff.localStatus'; path = Join-Path $handoffDir 'local-status.txt' },
     @{ name = 'handoff.localDiff'; path = Join-Path $handoffDir 'local-diff.txt' },
@@ -605,6 +821,7 @@ function Write-AgentSessionCapsule {
   }
 
   if ($gitInfo) { $capsule.git = $gitInfo }
+  if ($PlaneTransitionSummary) { $capsule.planeTransitions = $PlaneTransitionSummary }
 
   if ($priorityContext) {
     $topActions = $null
@@ -751,7 +968,8 @@ function Write-HookSummaries {
 function Write-WatcherStatusSummary {
   param(
     [string]$ResultsRoot,
-    [switch]$RequestAutoTrim
+    [switch]$RequestAutoTrim,
+    [psobject]$PlaneTransitionSummary = $null
   )
 
   $repoRoot = (Resolve-Path '.').Path
@@ -935,6 +1153,7 @@ function Write-WatcherStatusSummary {
     outPath = if ($status.files -and $status.files.out) { $status.files.out.path } else { $null }
     errPath = if ($status.files -and $status.files.err) { $status.files.err.path } else { $null }
     events = if ($watcherEvents) { $watcherEvents } else { $null }
+    planeTransitions = if ($PlaneTransitionSummary) { $PlaneTransitionSummary } else { $null }
     autoTrim = if ($autoTrim) {
       [ordered]@{
         eligible = $autoTrim.eligible
@@ -988,6 +1207,12 @@ function Write-WatcherStatusSummary {
           }
         }
         $summaryLines += "- Events Last: $eventSummary"
+      }
+    }
+    if ($PlaneTransitionSummary) {
+      $summaryLines += "- Plane Transitions: $(Format-NullableValue $PlaneTransitionSummary.status) ($((Format-NullableValue $PlaneTransitionSummary.transitionCount)))"
+      if ($PlaneTransitionSummary.reason) {
+        $summaryLines += "- Plane Transition Reason: $(Format-NullableValue $PlaneTransitionSummary.reason)"
       }
     }
     if ($autoTrim) {
@@ -1303,7 +1528,8 @@ try {
   Write-Warning ("Failed to read test summary: {0}" -f $_.Exception.Message)
 }
 
-Write-WatcherStatusSummary -ResultsRoot $ResultsRoot -RequestAutoTrim:$AutoTrim
+$planeTransitionSummary = Write-HandoffPlaneTransitionSummary -RepoRoot $repoRoot -ResultsRoot $ResultsRoot
+Write-WatcherStatusSummary -ResultsRoot $ResultsRoot -RequestAutoTrim:$AutoTrim -PlaneTransitionSummary $planeTransitionSummary
 
 try {
   Write-RogueLVSummary -RepoRoot $repoRoot -ResultsRoot $ResultsRoot | Out-Null
@@ -1326,7 +1552,7 @@ if ($hookSummaries -and $hookSummaries.Count -gt 0) {
   ($hookSummaries | ConvertTo-Json -Depth 4) | Out-File -FilePath (Join-Path $handoffDir 'hook-summary.json') -Encoding utf8
 }
 
-Write-AgentSessionCapsule -ResultsRoot $ResultsRoot
+Write-AgentSessionCapsule -ResultsRoot $ResultsRoot -PlaneTransitionSummary $planeTransitionSummary
 
 if ($OpenDashboard) {
   $cli = Join-Path (Resolve-Path '.').Path 'tools/Dev-Dashboard.ps1'
