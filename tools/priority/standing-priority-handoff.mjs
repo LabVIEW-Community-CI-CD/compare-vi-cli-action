@@ -5,10 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import {
+  fetchIssue,
   main as syncStandingPriority,
   resolveRepositorySlug,
   resolveStandingPriorityLabels,
-  selectAutoStandingPriorityCandidate
+  selectAutoStandingPriorityCandidateForRepo
 } from './sync-standing-priority.mjs';
 import { releaseWriterLease } from './agent-writer-lease.mjs';
 import { assertPresent } from './lib/github-text.mjs';
@@ -30,6 +31,20 @@ function normalizeIssueLabels(labels) {
         return label.name.trim();
       }
       return '';
+    })
+    .filter(Boolean);
+}
+
+function normalizeIssueCommentBodies(comments) {
+  if (!Array.isArray(comments)) {
+    return [];
+  }
+  return comments
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        return entry.trim();
+      }
+      return typeof entry?.body === 'string' ? entry.body.trim() : '';
     })
     .filter(Boolean);
 }
@@ -63,6 +78,7 @@ function parseIssueList(input) {
           number,
           title: typeof entry.title === 'string' ? entry.title : '',
           body: typeof entry.body === 'string' ? entry.body : '',
+          commentBodies: normalizeIssueCommentBodies(entry.commentBodies ?? entry.comments),
           createdAt: entry.createdAt || null,
           updatedAt: entry.updatedAt || null,
           url: entry.url || null,
@@ -133,7 +149,11 @@ function buildIssueEditArgs(issueNumber, { removeLabels = [], addLabels = [] } =
   return args;
 }
 
-function buildIssueViewArgs(repoSlug, issueNumber) {
+function buildIssueViewArgs(repoSlug, issueNumber, { includeComments = false } = {}) {
+  const fields = ['number', 'title', 'body', 'labels', 'createdAt', 'updatedAt', 'url', 'state'];
+  if (includeComments) {
+    fields.push('comments');
+  }
   return [
     'issue',
     'view',
@@ -141,7 +161,7 @@ function buildIssueViewArgs(repoSlug, issueNumber) {
     '--repo',
     repoSlug,
     '--json',
-    'number,title,body,labels,createdAt,updatedAt,url,state'
+    fields.join(',')
   ];
 }
 
@@ -180,7 +200,38 @@ function verifyIssueLabels(ghRunner, repoSlug, issueNumber, expectedLabels) {
   }
 }
 
-function resolveTargetIssue(nextIssue, auto, openIssues, excludedIssueNumbers) {
+function buildGhIssueFetcherFromRunner(ghRunner) {
+  return ({ args }) => {
+    const raw = ghRunner(args, { quiet: true });
+    const trimmed = (raw || '').trim();
+    if (!trimmed) {
+      return null;
+    }
+    try {
+      return JSON.parse(trimmed);
+    } catch (error) {
+      throw new Error(`Unable to parse gh ${args.join(' ')} output: ${error.message}`);
+    }
+  };
+}
+
+function fetchIssueDetailsForAutoSelection(ghRunner, repoSlug, issueNumber, workingRepoRoot, restIssueFetcher) {
+  return fetchIssue(issueNumber, workingRepoRoot, repoSlug, {
+    ghIssueFetcher: buildGhIssueFetcherFromRunner(ghRunner),
+    restIssueFetcher
+  });
+}
+
+async function resolveTargetIssue(
+  nextIssue,
+  auto,
+  openIssues,
+  excludedIssueNumbers,
+  repoSlug,
+  workingRepoRoot,
+  ghRunner,
+  restIssueFetcher
+) {
   const target = String(nextIssue ?? '').trim();
   if (target) {
     assertPresent(target, 'Next standing priority issue number is required.');
@@ -201,8 +252,10 @@ function resolveTargetIssue(nextIssue, auto, openIssues, excludedIssueNumbers) {
     throw new Error('Next standing priority issue number is required unless --auto is specified.');
   }
 
-  const selected = selectAutoStandingPriorityCandidate(openIssues, {
-    excludeIssueNumbers: excludedIssueNumbers
+  const selected = await selectAutoStandingPriorityCandidateForRepo(workingRepoRoot, repoSlug, openIssues, {
+    excludeIssueNumbers: excludedIssueNumbers,
+    fetchIssueDetailsFn: async (issueNumber) =>
+      fetchIssueDetailsForAutoSelection(ghRunner, repoSlug, issueNumber, workingRepoRoot, restIssueFetcher)
   });
   if (!selected?.number) {
     if (Array.isArray(openIssues) && openIssues.length > 0) {
@@ -224,7 +277,7 @@ function resolveTargetIssue(nextIssue, auto, openIssues, excludedIssueNumbers) {
  * Rotate the standing-priority label to a new issue.
  *
  * @param {number|string|null} nextIssue
- * @param {{ dryRun?: boolean, auto?: boolean, repoSlug?: string|null, repoRoot?: string, env?: NodeJS.ProcessEnv, ghRunner?: Function, syncFn?: Function, logger?: Function, leaseReleaseFn?: Function, releaseLease?: boolean, leaseScope?: string, patchIssueLabelsFn?: Function }} [options]
+ * @param {{ dryRun?: boolean, auto?: boolean, repoSlug?: string|null, repoRoot?: string, env?: NodeJS.ProcessEnv, ghRunner?: Function, syncFn?: Function, logger?: Function, leaseReleaseFn?: Function, releaseLease?: boolean, leaseScope?: string, patchIssueLabelsFn?: Function, restIssueFetcher?: Function }} [options]
  */
 export async function handoffStandingPriority(
   nextIssue,
@@ -239,6 +292,7 @@ export async function handoffStandingPriority(
     logger = console.log,
     leaseReleaseFn = releaseWriterLease,
     patchIssueLabelsFn = applyIssueLabelsViaApi,
+    restIssueFetcher,
     releaseLease = true,
     leaseScope = 'workspace'
   } = {}
@@ -254,7 +308,16 @@ export async function handoffStandingPriority(
   const currentIssues = collectStandingIssues(ghRunner, resolvedRepoSlug, standingPriorityLabels);
   const currentIssueNumbers = currentIssues.map((issue) => issue.number);
   const openIssues = auto ? listOpenIssues(ghRunner, resolvedRepoSlug) : [];
-  const targetSelection = resolveTargetIssue(nextIssue, auto, openIssues, currentIssueNumbers);
+  const targetSelection = await resolveTargetIssue(
+    nextIssue,
+    auto,
+    openIssues,
+    currentIssueNumbers,
+    resolvedRepoSlug,
+    workingRepoRoot,
+    ghRunner,
+    restIssueFetcher
+  );
   const targetIssueNumber = targetSelection.issueNumber;
   const removeTargets = currentIssues
     .filter((issue) => issue.number !== targetIssueNumber)
