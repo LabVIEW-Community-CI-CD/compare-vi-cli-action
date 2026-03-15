@@ -130,22 +130,36 @@ function readCanonicalPromptText(repoRoot = DEFAULT_REPO_ROOT) {
   return extractCanonicalPromptText(readTextFile(resolvePromptAutonomyPath(repoRoot)));
 }
 
-function canonicalizeOverrides(overrides) {
+function compareCanonicalOverrideEntries(left, right) {
+  return (
+    left.key.localeCompare(right.key)
+    || String(left.value).localeCompare(String(right.value))
+    || String(left.reason).localeCompare(String(right.reason))
+  );
+}
+
+function canonicalizeOverridesForPrompt(overrides) {
   return [...overrides]
     .map((override) => ({
       key: normalizePromptScalar(override.key, 'operator.overrides[].key'),
       value: normalizePromptScalar(override.value, 'operator.overrides[].value'),
       reason: normalizeText(override.reason) ?? '',
     }))
-    .sort((left, right) => (
-      left.key.localeCompare(right.key)
-      || left.value.localeCompare(right.value)
-      || left.reason.localeCompare(right.reason)
-    ));
+    .sort(compareCanonicalOverrideEntries);
+}
+
+function canonicalizeOverridesForEnvelope(overrides) {
+  return [...overrides]
+    .map((override) => ({
+      key: override.key,
+      value: override.value,
+      reason: override.reason,
+    }))
+    .sort(compareCanonicalOverrideEntries);
 }
 
 function renderOperatorDirective(operator) {
-  const overrides = canonicalizeOverrides(operator.overrides);
+  const overrides = canonicalizeOverridesForPrompt(operator.overrides);
   const overrideLines = overrides.length > 0
     ? overrides.map((override) => `- override: \`${override.key}=${override.value}\``)
     : ['- overrides: `none`'];
@@ -156,6 +170,72 @@ function renderOperatorDirective(operator) {
     `- focus: \`${normalizePromptScalar(operator.focus, 'operator.focus')}\``,
     ...overrideLines,
   ].join('\n');
+}
+
+function canonicalizeMissionControlEnvelope(envelope) {
+  return {
+    schema: envelope.schema,
+    missionControl: {
+      profile: envelope.missionControl.profile,
+      mode: envelope.missionControl.mode,
+      standingPriority: {
+        source: envelope.missionControl.standingPriority.source,
+        upstreamLabel: envelope.missionControl.standingPriority.upstreamLabel,
+        forkLabel: envelope.missionControl.standingPriority.forkLabel,
+        forkFallbackLabel: envelope.missionControl.standingPriority.forkFallbackLabel,
+        queueEmptyBehavior: envelope.missionControl.standingPriority.queueEmptyBehavior,
+        branchCreationGate: envelope.missionControl.standingPriority.branchCreationGate,
+      },
+      lanePolicy: {
+        liveLaneCount: envelope.missionControl.lanePolicy.liveLaneCount,
+        maxActiveCodingLanes: envelope.missionControl.lanePolicy.maxActiveCodingLanes,
+        maxParkedLaneCount: envelope.missionControl.lanePolicy.maxParkedLaneCount,
+        parkedLaneRequiresGithubWait: envelope.missionControl.lanePolicy.parkedLaneRequiresGithubWait,
+        requireDisjointFileScopes: envelope.missionControl.lanePolicy.requireDisjointFileScopes,
+        allowThirdLane: envelope.missionControl.lanePolicy.allowThirdLane,
+        mergeAuthority: envelope.missionControl.lanePolicy.mergeAuthority,
+      },
+      worktreePolicy: {
+        cleanWorktreesRequired: envelope.missionControl.worktreePolicy.cleanWorktreesRequired,
+        dirtyRootQuarantined: envelope.missionControl.worktreePolicy.dirtyRootQuarantined,
+        worktreeBaseRef: envelope.missionControl.worktreePolicy.worktreeBaseRef,
+      },
+      remoteSyncPolicy: {
+        syncBeforeAndAfterMerge: envelope.missionControl.remoteSyncPolicy.syncBeforeAndAfterMerge,
+        developParityRemotes: [...envelope.missionControl.remoteSyncPolicy.developParityRemotes],
+      },
+      packageManagerPolicy: {
+        allowRawNpm: envelope.missionControl.packageManagerPolicy.allowRawNpm,
+        allowedWrappers: [...envelope.missionControl.packageManagerPolicy.allowedWrappers],
+      },
+      repoHelpers: {
+        bootstrap: envelope.missionControl.repoHelpers.bootstrap,
+        projectPortfolioCheck: envelope.missionControl.repoHelpers.projectPortfolioCheck,
+        developSync: envelope.missionControl.repoHelpers.developSync,
+        prCreate: envelope.missionControl.repoHelpers.prCreate,
+        standingHandoff: envelope.missionControl.repoHelpers.standingHandoff,
+        epicChildLink: envelope.missionControl.repoHelpers.epicChildLink,
+        safePrCheckPolling: envelope.missionControl.repoHelpers.safePrCheckPolling,
+      },
+      copilotCli: {
+        usageMode: envelope.missionControl.copilotCli.usageMode,
+        scope: envelope.missionControl.copilotCli.scope,
+        purposes: [...envelope.missionControl.copilotCli.purposes].sort((left, right) => left.localeCompare(right)),
+        hostedReplacementAllowed: envelope.missionControl.copilotCli.hostedReplacementAllowed,
+      },
+      antiIdle: {
+        mergeGreenPrImmediately: envelope.missionControl.antiIdle.mergeGreenPrImmediately,
+        createNextConcreteChildWhenOnlyEpicsRemain: envelope.missionControl.antiIdle.createNextConcreteChildWhenOnlyEpicsRemain,
+        closeCompletedEpicWhenChildrenDone: envelope.missionControl.antiIdle.closeCompletedEpicWhenChildrenDone,
+      },
+      stopConditions: [...envelope.missionControl.stopConditions],
+    },
+    operator: {
+      intent: envelope.operator.intent,
+      focus: envelope.operator.focus,
+      overrides: canonicalizeOverridesForEnvelope(envelope.operator.overrides),
+    },
+  };
 }
 
 export function renderMissionControlPrompt(envelope, { repoRoot = DEFAULT_REPO_ROOT, validate = true } = {}) {
@@ -247,9 +327,10 @@ export function renderMissionControlPromptReport(
   const resolvedPromptPath = resolveInputPath(promptPath, { repoRoot, cwd, source: promptPathSource });
   const envelope = readJsonFile(resolvedEnvelopePath);
   validateMissionControlEnvelope(envelope, repoRoot);
-  const promptText = renderMissionControlPrompt(envelope, { repoRoot, validate: false });
+  const canonicalEnvelope = canonicalizeMissionControlEnvelope(envelope);
+  const promptText = renderMissionControlPrompt(canonicalEnvelope, { repoRoot, validate: false });
   const promptSha256 = createHash('sha256').update(promptText, 'utf8').digest('hex');
-  const envelopeSha256 = createHash('sha256').update(JSON.stringify(envelope), 'utf8').digest('hex');
+  const envelopeSha256 = createHash('sha256').update(JSON.stringify(canonicalEnvelope), 'utf8').digest('hex');
 
   return {
     schema: MISSION_CONTROL_PROMPT_RENDER_SCHEMA,
@@ -259,9 +340,9 @@ export function renderMissionControlPromptReport(
     promptSha256,
     promptLineCount: promptText.trimEnd().split('\n').length,
     operator: {
-      intent: envelope.operator.intent,
-      focus: envelope.operator.focus,
-      overrides: envelope.operator.overrides,
+      intent: canonicalEnvelope.operator.intent,
+      focus: canonicalEnvelope.operator.focus,
+      overrides: canonicalEnvelope.operator.overrides,
     },
     promptText,
   };

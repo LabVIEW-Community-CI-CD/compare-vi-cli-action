@@ -135,6 +135,8 @@ test('renderMissionControlPrompt canonicalizes equivalent valid envelope orderin
   const secondReport = renderMissionControlPromptReport({ envelopePath: secondEnvelopePath }, { repoRoot });
   assert.equal(firstReport.promptText, secondReport.promptText);
   assert.equal(firstReport.promptSha256, secondReport.promptSha256);
+  assert.equal(firstReport.envelopeSha256, secondReport.envelopeSha256);
+  assert.deepEqual(firstReport.operator.overrides, secondReport.operator.overrides);
 });
 
 test('render mission-control prompt CLI writes deterministic prompt and report artifacts', async (t) => {
