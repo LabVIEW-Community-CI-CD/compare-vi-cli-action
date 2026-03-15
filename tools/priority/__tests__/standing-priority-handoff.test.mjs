@@ -516,6 +516,122 @@ test('handoffStandingPriority reports ineligible out-of-scope queues truthfully 
   );
 });
 
+test('handoffStandingPriority idles when only blocked concrete children remain behind an umbrella fallback', async () => {
+  const calls = [];
+  const patchCalls = [];
+  const logs = [];
+  const issues = new Map([
+    [317, { number: 317, title: 'Current standing issue', labels: [{ name: 'standing-priority' }] }],
+    [930, { number: 930, title: 'Epic: route released comparevi workflows through downstream rollout gates', labels: [{ name: 'program' }] }],
+    [946, { number: 946, title: '[P1] upstream rollout child', labels: [] }],
+    [947, { number: 947, title: '[P1] downstream rollout child', labels: [] }]
+  ]);
+  let syncCount = 0;
+
+  const ghRunner = (args) => {
+    calls.push(args);
+    if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
+      return JSON.stringify([
+        {
+          ...issues.get(317),
+          body: 'Currently active.',
+          createdAt: '2026-03-01T00:00:00Z',
+          updatedAt: '2026-03-01T00:00:00Z'
+        }
+      ]);
+    }
+    if (args[0] === 'issue' && args[1] === 'list') {
+      return JSON.stringify([
+        {
+          ...issues.get(317),
+          body: 'Currently active.',
+          createdAt: '2026-03-01T00:00:00Z',
+          updatedAt: '2026-03-01T00:00:00Z'
+        },
+        {
+          ...issues.get(930),
+          body: ['## Child tracks', '- #946', '- #947'].join('\n'),
+          createdAt: '2026-03-02T00:00:00Z',
+          updatedAt: '2026-03-02T00:00:00Z'
+        },
+        {
+          ...issues.get(946),
+          body: ['Parent epic: #930', 'Track comparevi-history#23 as the remaining renderer dependency.'].join('\n'),
+          createdAt: '2026-03-03T00:00:00Z',
+          updatedAt: '2026-03-03T00:00:00Z'
+        },
+        {
+          ...issues.get(947),
+          body: ['Parent epic: #930', 'Track comparevi-history#23 as the remaining renderer dependency.'].join('\n'),
+          createdAt: '2026-03-04T00:00:00Z',
+          updatedAt: '2026-03-04T00:00:00Z'
+        }
+      ]);
+    }
+    if (args[0] === 'api' && String(args[1]).includes('/issues/946')) {
+      return JSON.stringify({
+        number: 946,
+        title: '[P1] upstream rollout child',
+        body: ['Parent epic: #930', 'Track comparevi-history#23 as the remaining renderer dependency.'].join('\n'),
+        labels: [],
+        comments: [
+          {
+            body: 'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+          }
+        ],
+        updated_at: '2026-03-03T00:00:00Z',
+        html_url: 'https://github.com/owner/repo/issues/946'
+      });
+    }
+    if (args[0] === 'api' && String(args[1]).includes('/issues/947')) {
+      return JSON.stringify({
+        number: 947,
+        title: '[P1] downstream rollout child',
+        body: ['Parent epic: #930', 'Track comparevi-history#23 as the remaining renderer dependency.'].join('\n'),
+        labels: [],
+        comments: [
+          {
+            body: 'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+          }
+        ],
+        updated_at: '2026-03-04T00:00:00Z',
+        html_url: 'https://github.com/owner/repo/issues/947'
+      });
+    }
+    if (args[0] === 'issue' && args[1] === 'view') {
+      return JSON.stringify(issues.get(Number(args[2])));
+    }
+    return '';
+  };
+
+  const patchIssueLabelsFn = (_repoRoot, _repoSlug, issueNumber, labels) => {
+    patchCalls.push({ issueNumber, labels });
+    const issue = issues.get(issueNumber);
+    issue.labels = labels.map((label) => ({ name: label }));
+  };
+
+  await handoffStandingPriority(null, {
+    auto: true,
+    ghRunner,
+    patchIssueLabelsFn,
+    syncFn: async () => {
+      syncCount += 1;
+    },
+    leaseReleaseFn: async () => ({ status: 'released' }),
+    logger: (message) => logs.push(message),
+    env: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'owner/repo'
+    }
+  });
+
+  assert.deepEqual(patchCalls, [{ issueNumber: 317, labels: [] }]);
+  assert.equal(syncCount, 1);
+  assert.ok(calls.some((args) => args[0] === 'api' && String(args[1]).includes('/issues/946')));
+  assert.ok(calls.some((args) => args[0] === 'api' && String(args[1]).includes('/issues/947')));
+  assert.ok(logs.some((message) => /queue will become idle after sync/i.test(message)));
+});
+
 test('handoffStandingPriority fails loudly when label verification remains stale after mutation', async () => {
   await assert.rejects(
     handoffStandingPriority(315, {

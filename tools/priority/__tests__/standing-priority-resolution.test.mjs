@@ -25,6 +25,7 @@ import {
   resolveStandingPriorityForRepo,
   parseUpstreamIssuePointerFromBody,
   fetchIssue,
+  hasOnlyBlockedConcreteIssuesBehindFallbackParent,
   computeNextPriorityCacheState,
   shouldPersistCacheUpdate,
   gitRoot
@@ -525,9 +526,9 @@ test('selectAutoStandingPriorityCandidate skips explicitly blocked rollout track
     },
     {
       number: 951,
-      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      title: '[P1] actionable follow-up',
       body: 'Remaining in-repo work.',
-      labels: ['program'],
+      labels: [],
       createdAt: '2026-03-02T00:00:00Z'
     }
   ]);
@@ -598,9 +599,9 @@ test('selectAutoStandingPriorityCandidate honors hydrated comment bodies even wh
     },
     {
       number: 951,
-      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      title: '[P1] actionable follow-up',
       body: 'Remaining in-repo work.',
-      labels: ['program'],
+      labels: [],
       createdAt: '2026-03-02T00:00:00Z'
     }
   ]);
@@ -730,6 +731,123 @@ test('selectAutoStandingPriorityCandidateForRepo hydrates comment-only blocked d
   });
 
   assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidate idles instead of promoting an umbrella fallback when only blocked concrete children remain', () => {
+  const entries = [
+    {
+      number: 930,
+      title: 'Epic: route released comparevi workflows through downstream rollout gates',
+      body: ['## Child tracks', '- #946', '- #947'].join('\n'),
+      labels: ['program'],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 946,
+      title: '[P1] upstream rollout child',
+      body: ['Parent epic: #930', 'The remaining work is externally blocked on comparevi-history#23.'].join('\n'),
+      labels: [],
+      createdAt: '2026-03-02T00:00:00Z'
+    },
+    {
+      number: 947,
+      title: '[P1] downstream rollout child',
+      body: ['Parent epic: #930', 'The remaining work is externally blocked on comparevi-history#23.'].join('\n'),
+      labels: [],
+      createdAt: '2026-03-03T00:00:00Z'
+    }
+  ];
+
+  assert.equal(hasOnlyBlockedConcreteIssuesBehindFallbackParent(entries), true);
+  assert.equal(selectAutoStandingPriorityCandidate(entries), null);
+});
+
+test('selectAutoStandingPriorityCandidate still falls back to the umbrella epic when it is the only remaining in-scope issue', () => {
+  const entries = [
+    {
+      number: 930,
+      title: 'Epic: route released comparevi workflows through downstream rollout gates',
+      body: 'Umbrella tracking for comparevi rollout.',
+      labels: ['program'],
+      createdAt: '2026-03-01T00:00:00Z'
+    }
+  ];
+
+  assert.equal(hasOnlyBlockedConcreteIssuesBehindFallbackParent(entries), false);
+  assert.equal(selectAutoStandingPriorityCandidate(entries)?.number, 930);
+});
+
+test('selectAutoStandingPriorityCandidate keeps an unrelated umbrella issue eligible when blocked concrete children are not linked to it', () => {
+  const entries = [
+    {
+      number: 930,
+      title: 'Epic: unrelated rollout coordination',
+      body: 'Umbrella tracking for a different stream.',
+      labels: ['program'],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 946,
+      title: '[P1] upstream rollout child',
+      body: 'The remaining work is externally blocked on comparevi-history#23.',
+      labels: [],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ];
+
+  assert.equal(hasOnlyBlockedConcreteIssuesBehindFallbackParent(entries), false);
+  assert.equal(selectAutoStandingPriorityCandidate(entries)?.number, 930);
+});
+
+test('selectAutoStandingPriorityCandidate keeps an earlier unrelated umbrella eligible when a later umbrella owns the blocked children', () => {
+  const entries = [
+    {
+      number: 930,
+      title: 'Epic: unrelated rollout coordination',
+      body: 'Umbrella tracking for a different stream.',
+      labels: ['program'],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 931,
+      title: 'Epic: linked rollout coordination',
+      body: ['## Child tracks', '- #946'].join('\n'),
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    },
+    {
+      number: 946,
+      title: '[P1] upstream rollout child',
+      body: ['Parent epic: #931', 'The remaining work is externally blocked on comparevi-history#23.'].join('\n'),
+      labels: [],
+      createdAt: '2026-03-03T00:00:00Z'
+    }
+  ];
+
+  assert.equal(hasOnlyBlockedConcreteIssuesBehindFallbackParent(entries), false);
+  assert.equal(selectAutoStandingPriorityCandidate(entries)?.number, 930);
+});
+
+test('selectAutoStandingPriorityCandidate still idles when linked blocked concrete children also carry the program label', () => {
+  const entries = [
+    {
+      number: 930,
+      title: 'Epic: route released comparevi workflows through downstream rollout gates',
+      body: ['## Child tracks', '- #946'].join('\n'),
+      labels: ['program'],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 946,
+      title: '[P1] upstream rollout child',
+      body: ['Parent epic: #930', 'The remaining work is externally blocked on comparevi-history#23.'].join('\n'),
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ];
+
+  assert.equal(hasOnlyBlockedConcreteIssuesBehindFallbackParent(entries), true);
+  assert.equal(selectAutoStandingPriorityCandidate(entries), null);
 });
 
 test('shouldPersistCacheUpdate skips cache materialization by default on fresh clones', () => {
@@ -1158,6 +1276,51 @@ test('classifyNoStandingPriorityCondition keeps rollout trackers in scope when d
   assert.equal(result.openIssueCount, 1);
 });
 
+test('classifyNoStandingPriorityCondition treats umbrella fallback queues with only blocked concrete children as queue-empty', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 930,
+          title: 'Epic: route released comparevi workflows through downstream rollout gates',
+          body: ['## Child tracks', '- #946', '- #947'].join('\n'),
+          labels: ['program']
+        },
+        {
+          number: 946,
+          title: '[P1] upstream rollout child',
+          body: ['Parent epic: #930', 'The remaining work is externally blocked on comparevi-history#23.'].join('\n'),
+          labels: []
+        },
+        {
+          number: 947,
+          title: '[P1] downstream rollout child',
+          body: ['Parent epic: #930', 'The remaining work is externally blocked on comparevi-history#23.'].join('\n'),
+          labels: []
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) => ({
+      number: issueNumber,
+      title: issueNumber === 946 ? '[P1] upstream rollout child' : '[P1] downstream rollout child',
+      body: ['Parent epic: #930', 'The remaining work is externally blocked on comparevi-history#23.'].join('\n'),
+      commentBodies: []
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 3,
+    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+});
+
 test('classifyNoStandingPriorityCondition fails closed when rollout detail cannot hydrate comments', async () => {
   const rolloutBody = [
     'Land the released comparevi-history diagnostics workflow files in the upstream demo repo.',
@@ -1246,6 +1409,60 @@ test('autoSelectStandingPriorityIssue skips blocked rollout trackers when issue 
   assert.deepEqual(calls, [951]);
 });
 
+test('autoSelectStandingPriorityIssue reports empty when only blocked concrete children remain behind an umbrella fallback', async () => {
+  const calls = [];
+  const result = await autoSelectStandingPriorityIssue('/tmp/repo', 'owner/repo', {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 930,
+          title: 'Epic: route released comparevi workflows through downstream rollout gates',
+          body: ['## Child tracks', '- #946', '- #947'].join('\n'),
+          labels: ['program'],
+          createdAt: '2026-03-01T00:00:00Z'
+        },
+        {
+          number: 946,
+          title: '[P1] upstream rollout child',
+          body: ['Parent epic: #930', 'The remaining work is externally blocked on comparevi-history#23.'].join('\n'),
+          labels: [],
+          createdAt: '2026-03-02T00:00:00Z'
+        },
+        {
+          number: 947,
+          title: '[P1] downstream rollout child',
+          body: ['Parent epic: #930', 'The remaining work is externally blocked on comparevi-history#23.'].join('\n'),
+          labels: [],
+          createdAt: '2026-03-03T00:00:00Z'
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) => ({
+      number: issueNumber,
+      title: issueNumber === 946 ? '[P1] upstream rollout child' : '[P1] downstream rollout child',
+      body: ['Parent epic: #930', 'The remaining work is externally blocked on comparevi-history#23.'].join('\n'),
+      commentBodies: []
+    }),
+    runGhAddLabel: ({ issueNumber }) => {
+      calls.push(issueNumber);
+      return { status: 0, stdout: '' };
+    },
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    runRestAddLabel: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'empty',
+    source: 'gh',
+    repoSlug: 'owner/repo',
+    openIssueCount: 3
+  });
+  assert.deepEqual(calls, []);
+});
+
 test('classifyNoStandingPriorityCondition keeps excluded-label queues as label-missing', async () => {
   const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
     targetSlug: 'owner/repo',
@@ -1301,7 +1518,7 @@ test('classifyNoStandingPriorityCondition keeps excluded blocked rollout queues 
   assert.equal(result.repository, 'owner/repo');
   assert.equal(result.openIssueCount, 1);
 });
-test('classifyNoStandingPriorityCondition still treats out-of-scope demo queues as idle when labels are excluded', async () => {
+test('classifyNoStandingPriorityCondition treats out-of-scope demo queues with excluded labels as label-missing', async () => {
   const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
     targetSlug: 'owner/repo',
     runGhList: () => ({
@@ -1320,10 +1537,10 @@ test('classifyNoStandingPriorityCondition still treats out-of-scope demo queues 
 
   assert.deepEqual(result, {
     status: 'classified',
-    reason: 'queue-empty',
+    reason: 'label-missing',
     repository: 'owner/repo',
     openIssueCount: 1,
-    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+    message: 'owner/repo has 1 open issue, but none carry the checked standing-priority labels (`standing-priority`).'
   });
 });
 
