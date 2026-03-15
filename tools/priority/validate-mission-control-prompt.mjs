@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_MISSION_CONTROL_PROMPT_REPORT_PATH,
   MISSION_CONTROL_PROMPT_RENDER_SCHEMA,
+  resolveRepoContainedPath,
+  resolveRepoOwnedArtifactPath,
   renderMissionControlPromptReport,
 } from './render-mission-control-prompt.mjs';
 
@@ -159,68 +161,107 @@ export function assessMissionControlPromptReport(
   } = {},
 ) {
   const normalizedReport = normalizePromptRenderReport(report);
+  let trustedEnvelopePath = normalizedReport.envelopePath;
+  let trustedPromptPath = normalizedReport.promptPath;
+  let envelopePathError = null;
+  let promptPathError = null;
+  try {
+    trustedEnvelopePath = resolveRepoContainedPath(normalizedReport.envelopePath, {
+      repoRoot,
+      source: 'explicit',
+      label: 'Embedded envelope',
+    });
+  } catch (error) {
+    envelopePathError = error instanceof Error ? error.message : String(error);
+  }
+  try {
+    trustedPromptPath = resolveRepoOwnedArtifactPath(normalizedReport.promptPath, {
+      repoRoot,
+      source: 'explicit',
+      label: 'Embedded prompt',
+    });
+  } catch (error) {
+    promptPathError = error instanceof Error ? error.message : String(error);
+  }
   const expectedPromptSha256 = sha256Text(normalizedReport.promptText);
   const canonicalPromptSha256 = sha256Text(readCanonicalPromptText(repoRoot));
-  const envelopeFileExists = fs.existsSync(normalizedReport.envelopePath);
+  const envelopeFileExists = !envelopePathError && fs.existsSync(trustedEnvelopePath);
   let renderedEnvelopeReport = null;
   let renderedEnvelopeError = null;
-  if (envelopeFileExists) {
+  if (envelopeFileExists && !promptPathError) {
     try {
       renderedEnvelopeReport = renderMissionControlPromptReport(
         {
-          envelopePath: normalizedReport.envelopePath,
-          promptPath: normalizedReport.promptPath,
+          envelopePath: trustedEnvelopePath,
+          promptPath: trustedPromptPath,
         },
         {
           repoRoot,
           envelopePathSource: 'explicit',
           promptPathSource: 'explicit',
+          enforcePromptArtifactPath: true,
         },
       );
     } catch (error) {
       renderedEnvelopeError = error instanceof Error ? error.message : String(error);
     }
   }
-  const promptFileExists = fs.existsSync(normalizedReport.promptPath);
-  const promptFileText = promptFileExists ? normalizePromptArtifactText(readTextFile(normalizedReport.promptPath)) : null;
+  const promptFileExists = !promptPathError && fs.existsSync(trustedPromptPath);
+  const promptFileText = promptFileExists ? normalizePromptArtifactText(readTextFile(trustedPromptPath)) : null;
   const promptFileSha256 = promptFileText ? sha256Text(promptFileText) : null;
   const issues = [];
 
   const checks = {
+    envelopePathTrusted: envelopePathError ? 'failed' : 'passed',
+    promptPathTrusted: promptPathError ? 'failed' : 'passed',
     promptSha256MatchesText: normalizedReport.promptSha256 === expectedPromptSha256 ? 'passed' : 'failed',
-    envelopeFileExists: envelopeFileExists ? 'passed' : 'failed',
-    envelopeSha256MatchesReport: !envelopeFileExists || !renderedEnvelopeReport
+    envelopeFileExists: envelopePathError
+      ? 'skipped'
+      : envelopeFileExists
+        ? 'passed'
+        : 'failed',
+    envelopeSha256MatchesReport: envelopePathError || !envelopeFileExists || !renderedEnvelopeReport
       ? 'skipped'
       : normalizedReport.envelopeSha256 === renderedEnvelopeReport.envelopeSha256
         ? 'passed'
         : 'failed',
-    operatorMatchesEnvelope: !envelopeFileExists || !renderedEnvelopeReport
+    operatorMatchesEnvelope: envelopePathError || !envelopeFileExists || !renderedEnvelopeReport
       ? 'skipped'
       : JSON.stringify(normalizedReport.operator) === JSON.stringify(renderedEnvelopeReport.operator)
         ? 'passed'
         : 'failed',
-    promptTextMatchesCanonicalContract: !envelopeFileExists || !renderedEnvelopeReport
+    promptTextMatchesCanonicalContract: envelopePathError || promptPathError || !envelopeFileExists || !renderedEnvelopeReport
       ? 'skipped'
       : normalizedReport.promptText === renderedEnvelopeReport.promptText
         ? 'passed'
         : 'failed',
-    promptFileExists: promptFileExists ? 'passed' : 'failed',
-    promptFileMatchesReport: !promptFileExists
+    promptFileExists: promptPathError
+      ? 'skipped'
+      : promptFileExists
+        ? 'passed'
+        : 'failed',
+    promptFileMatchesReport: promptPathError || !promptFileExists
       ? 'skipped'
       : promptFileText === normalizedReport.promptText
         ? 'passed'
         : 'failed',
-    promptFileSha256MatchesReport: !promptFileExists
+    promptFileSha256MatchesReport: promptPathError || !promptFileExists
       ? 'skipped'
       : promptFileSha256 === normalizedReport.promptSha256
         ? 'passed'
         : 'failed',
   };
 
+  if (checks.envelopePathTrusted !== 'passed') {
+    issues.push('envelope-path-untrusted');
+  }
+  if (checks.promptPathTrusted !== 'passed') {
+    issues.push('prompt-path-untrusted');
+  }
   if (checks.promptSha256MatchesText !== 'passed') {
     issues.push('prompt-sha256-mismatch');
   }
-  if (checks.envelopeFileExists !== 'passed') {
+  if (checks.envelopeFileExists === 'failed') {
     issues.push('envelope-file-missing');
   }
   if (renderedEnvelopeError) {
@@ -235,7 +276,7 @@ export function assessMissionControlPromptReport(
   if (checks.promptTextMatchesCanonicalContract === 'failed') {
     issues.push('prompt-canonical-contract-drift');
   }
-  if (checks.promptFileExists !== 'passed') {
+  if (checks.promptFileExists === 'failed') {
     issues.push('prompt-file-missing');
   }
   if (checks.promptFileMatchesReport === 'failed') {
@@ -255,7 +296,8 @@ export function assessMissionControlPromptReport(
     canonicalPromptSha256,
     operator: normalizedReport.operator,
     checks,
-    envelopeError: renderedEnvelopeError,
+    envelopeError: envelopePathError || renderedEnvelopeError,
+    promptError: promptPathError,
     issueCount: issues.length,
     issues,
     status: issues.length > 0 ? 'failed' : 'passed',
@@ -270,7 +312,12 @@ export function validateMissionControlPromptReportFile(
     source = 'explicit',
   } = {},
 ) {
-  const resolvedReportPath = resolvePathFromBase(reportPath, source === 'default' ? repoRoot : cwd);
+  const resolvedReportPath = resolveRepoOwnedArtifactPath(reportPath, {
+    repoRoot,
+    cwd,
+    source,
+    label: 'Prompt render report',
+  });
   const report = readJsonFile(resolvedReportPath);
   const validation = assessMissionControlPromptReport(report, { repoRoot });
   return {
@@ -359,7 +406,12 @@ export function main(
         source: options.reportPathSource,
       },
     );
-    const outputPath = resolvePathFromBase(options.outputPath, options.outputPathSource === 'default' ? repoRoot : cwd);
+    const outputPath = resolveRepoOwnedArtifactPath(options.outputPath, {
+      repoRoot,
+      cwd,
+      source: options.outputPathSource,
+      label: 'Prompt validation report',
+    });
     writeJsonFile(outputPath, validation);
     logFn(`[mission-control:validate] report: ${outputPath}`);
     logFn(

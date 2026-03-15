@@ -41,6 +41,12 @@ export const DEFAULT_MISSION_CONTROL_PROMPT_REPORT_PATH = path.join(
   'mission-control-prompt-render.json',
 );
 export const DEFAULT_PROMPT_AUTONOMY_PATH = 'PROMPT_AUTONOMY.md';
+export const DEFAULT_MISSION_CONTROL_ARTIFACT_ROOT = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'mission-control',
+);
 
 function normalizeText(value) {
   if (value === null || value === undefined) {
@@ -54,6 +60,31 @@ function resolvePathFromBase(filePath, baseDir) {
   return path.resolve(baseDir, filePath);
 }
 
+function realpathSyncPortable(filePath) {
+  return typeof fs.realpathSync.native === 'function'
+    ? fs.realpathSync.native(filePath)
+    : fs.realpathSync(filePath);
+}
+
+function normalizeComparablePath(filePath) {
+  const normalized = path.normalize(filePath);
+  return process.platform === 'win32'
+    ? normalized.toLowerCase()
+    : normalized;
+}
+
+function resolveNearestExistingRealPath(filePath) {
+  let candidatePath = path.resolve(filePath);
+  while (!fs.existsSync(candidatePath)) {
+    const parentPath = path.dirname(candidatePath);
+    if (parentPath === candidatePath) {
+      throw new Error(`Unable to resolve an existing parent for path: ${filePath}`);
+    }
+    candidatePath = parentPath;
+  }
+  return realpathSyncPortable(candidatePath);
+}
+
 function resolveSchemaPath(repoRoot = DEFAULT_REPO_ROOT) {
   return resolvePathFromBase(DEFAULT_MISSION_CONTROL_ENVELOPE_SCHEMA_PATH, repoRoot);
 }
@@ -65,6 +96,97 @@ function resolvePromptAutonomyPath(repoRoot = DEFAULT_REPO_ROOT) {
 function resolveInputPath(filePath, { repoRoot = DEFAULT_REPO_ROOT, cwd = repoRoot, source = 'explicit' } = {}) {
   const baseDir = source === 'default' ? repoRoot : cwd;
   return resolvePathFromBase(filePath, baseDir);
+}
+
+export function resolveRepoOwnedArtifactPath(
+  filePath,
+  {
+    repoRoot = DEFAULT_REPO_ROOT,
+    cwd = repoRoot,
+    source = 'explicit',
+    label = 'Artifact',
+  } = {},
+) {
+  const resolvedPath = resolveRepoContainedPath(filePath, { repoRoot, cwd, source, label });
+
+  const artifactRoot = resolvePathFromBase(DEFAULT_MISSION_CONTROL_ARTIFACT_ROOT, repoRoot);
+  const relativeToArtifactRoot = path.relative(artifactRoot, resolvedPath);
+  if (!relativeToArtifactRoot || relativeToArtifactRoot.startsWith('..') || path.isAbsolute(relativeToArtifactRoot)) {
+    throw new Error(
+      `${label} path must stay under ${DEFAULT_MISSION_CONTROL_ARTIFACT_ROOT}: ${filePath}`,
+    );
+  }
+
+  const canonicalRepoRoot = realpathSyncPortable(repoRoot);
+  const canonicalExistingParent = resolveNearestExistingRealPath(path.dirname(resolvedPath));
+
+  if (fs.existsSync(artifactRoot)) {
+    const resolvedArtifactRootPath = path.resolve(artifactRoot);
+    const canonicalArtifactRoot = realpathSyncPortable(artifactRoot);
+    if (normalizeComparablePath(canonicalArtifactRoot) !== normalizeComparablePath(resolvedArtifactRootPath)) {
+      throw new Error(
+        `${label} path cannot use a linked ${DEFAULT_MISSION_CONTROL_ARTIFACT_ROOT} root: ${filePath}`,
+      );
+    }
+    const relativeParentToArtifactRoot = path.relative(canonicalArtifactRoot, canonicalExistingParent);
+    if (
+      relativeParentToArtifactRoot.startsWith('..')
+      || path.isAbsolute(relativeParentToArtifactRoot)
+    ) {
+      throw new Error(
+        `${label} path resolves outside ${DEFAULT_MISSION_CONTROL_ARTIFACT_ROOT} via an existing link: ${filePath}`,
+      );
+    }
+
+    if (fs.existsSync(resolvedPath)) {
+      const canonicalResolvedPath = realpathSyncPortable(resolvedPath);
+      const relativeResolvedToArtifactRoot = path.relative(canonicalArtifactRoot, canonicalResolvedPath);
+      if (
+        !relativeResolvedToArtifactRoot
+        || relativeResolvedToArtifactRoot.startsWith('..')
+        || path.isAbsolute(relativeResolvedToArtifactRoot)
+      ) {
+        throw new Error(
+          `${label} path resolves outside ${DEFAULT_MISSION_CONTROL_ARTIFACT_ROOT} via an existing link: ${filePath}`,
+        );
+      }
+    }
+  }
+
+  return resolvedPath;
+}
+
+export function resolveRepoContainedPath(
+  filePath,
+  {
+    repoRoot = DEFAULT_REPO_ROOT,
+    cwd = repoRoot,
+    source = 'explicit',
+    label = 'Path',
+  } = {},
+) {
+  const resolvedPath = resolveInputPath(filePath, { repoRoot, cwd, source });
+  const relativeToRepo = path.relative(repoRoot, resolvedPath);
+  if (!relativeToRepo || relativeToRepo.startsWith('..') || path.isAbsolute(relativeToRepo)) {
+    throw new Error(`${label} path must stay inside the repository root: ${filePath}`);
+  }
+
+  const canonicalRepoRoot = realpathSyncPortable(repoRoot);
+  const canonicalExistingParent = resolveNearestExistingRealPath(path.dirname(resolvedPath));
+  const relativeParentToRepo = path.relative(canonicalRepoRoot, canonicalExistingParent);
+  if (relativeParentToRepo.startsWith('..') || path.isAbsolute(relativeParentToRepo)) {
+    throw new Error(`${label} path resolves outside the repository root via an existing link: ${filePath}`);
+  }
+
+  if (fs.existsSync(resolvedPath)) {
+    const canonicalResolvedPath = realpathSyncPortable(resolvedPath);
+    const relativeResolvedToRepo = path.relative(canonicalRepoRoot, canonicalResolvedPath);
+    if (relativeResolvedToRepo.startsWith('..') || path.isAbsolute(relativeResolvedToRepo)) {
+      throw new Error(`${label} path resolves outside the repository root via an existing link: ${filePath}`);
+    }
+  }
+
+  return resolvedPath;
 }
 
 function readJsonFile(filePath) {
@@ -318,13 +440,26 @@ export function renderMissionControlPromptReport(
     cwd = repoRoot,
     envelopePathSource = 'explicit',
     promptPathSource = 'default',
+    enforcePromptArtifactPath = true,
   } = {},
 ) {
   if (!normalizeText(envelopePath)) {
     throw new Error('Envelope path is required. Pass --envelope <path>.');
   }
-  const resolvedEnvelopePath = resolveInputPath(envelopePath, { repoRoot, cwd, source: envelopePathSource });
-  const resolvedPromptPath = resolveInputPath(promptPath, { repoRoot, cwd, source: promptPathSource });
+  const resolvedEnvelopePath = resolveRepoContainedPath(envelopePath, {
+    repoRoot,
+    cwd,
+    source: envelopePathSource,
+    label: 'Envelope',
+  });
+  const resolvedPromptPath = enforcePromptArtifactPath
+    ? resolveRepoOwnedArtifactPath(promptPath, {
+      repoRoot,
+      cwd,
+      source: promptPathSource,
+      label: 'Prompt output',
+    })
+    : resolveInputPath(promptPath, { repoRoot, cwd, source: promptPathSource });
   const envelope = readJsonFile(resolvedEnvelopePath);
   validateMissionControlEnvelope(envelope, repoRoot);
   const canonicalEnvelope = canonicalizeMissionControlEnvelope(envelope);
@@ -372,21 +507,33 @@ export function main(
   }
 
   try {
+    const resolvedPromptPath = resolveRepoOwnedArtifactPath(options.promptPath, {
+      repoRoot,
+      cwd,
+      source: options.promptPathSource,
+      label: 'Prompt output',
+    });
+    const resolvedReportPath = resolveRepoOwnedArtifactPath(options.reportPath, {
+      repoRoot,
+      cwd,
+      source: options.reportPathSource,
+      label: 'Prompt render report',
+    });
     const report = renderMissionControlPromptReport(
       {
         envelopePath: options.envelopePath,
-        promptPath: options.promptPath,
+        promptPath: resolvedPromptPath,
       },
       {
         repoRoot,
         cwd,
         envelopePathSource: options.envelopePathSource,
-        promptPathSource: options.promptPathSource,
+        promptPathSource: 'explicit',
       },
     );
     const promptPath = writeFile(report.promptPath, report.promptText);
     const reportPath = writeFile(
-      resolveInputPath(options.reportPath, { repoRoot, cwd, source: options.reportPathSource }),
+      resolvedReportPath,
       `${JSON.stringify(report, null, 2)}\n`,
     );
     logFn(`[mission-control:prompt] prompt: ${promptPath}`);
