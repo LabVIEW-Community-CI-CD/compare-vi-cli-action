@@ -56,7 +56,12 @@ test('validateMissionControlOperatorInputReport passes canonical bounded operato
   assert.equal(report.issueCount, 0);
   assert.equal(report.catalogPath, 'tools/priority/__fixtures__/mission-control/operator-input-catalog.json');
   assert.deepEqual(report.issues, []);
-  assert.deepEqual(report.operator.overrides, [{ key: 'copilotCliUsage', value: 'required' }]);
+  assert.deepEqual(report.operator, {
+    intent: 'continue-driving-autonomously',
+    focus: 'standing-priority',
+    overrides: [{ key: 'copilotCliUsage', value: 'required' }],
+    duplicateOverrideKeys: [],
+  });
   assert.deepEqual(report.checks, {
     intentDefined: 'passed',
     focusDefined: 'passed',
@@ -173,6 +178,7 @@ test('validateMissionControlOperatorInputReport fails closed for unknown overrid
     'override-value-invalid',
     'duplicate-override-key',
   ]);
+  assert.deepEqual(report.operator.duplicateOverrideKeys, ['allowAdminMerge']);
   assert.equal(report.checks.overrideSyntaxValid, 'passed');
   assert.equal(report.checks.overridesKnown, 'failed');
   assert.equal(report.checks.overrideValuesValid, 'failed');
@@ -195,10 +201,30 @@ test('validateMissionControlOperatorInputReport emits structured failures for ma
 
   assert.equal(report.status, 'failed');
   assert.deepEqual(report.issues, ['malformed-override', 'malformed-standing-issue', 'standing-priority-missing']);
+  assert.deepEqual(report.operator.duplicateOverrideKeys, []);
   assert.equal(report.checks.overrideSyntaxValid, 'failed');
   assert.equal(report.checks.standingIssueArgumentProvided, 'passed');
   assert.equal(report.checks.standingIssueValueValid, 'failed');
   assert.equal(report.checks.standingPrioritySatisfied, 'downgraded');
+});
+
+test('validateMissionControlOperatorInputReport clears standing issue numbers for focuses that do not require standing priority', async () => {
+  const { validateMissionControlOperatorInputReport } = await loadModule();
+  const report = validateMissionControlOperatorInputReport(
+    {
+      intent: 'prepare-parked-lane',
+      focus: 'queue-health',
+      standingIssue: '1243',
+    },
+    {
+      repoRoot,
+    },
+  );
+
+  assert.equal(report.status, 'passed');
+  assert.equal(report.standingIssue.required, false);
+  assert.equal(report.standingIssue.number, null);
+  assert.equal(report.standingIssue.status, 'not-required');
 });
 
 test('validateMissionControlOperatorInputReport canonicalizes equivalent catalog path spellings', async () => {
