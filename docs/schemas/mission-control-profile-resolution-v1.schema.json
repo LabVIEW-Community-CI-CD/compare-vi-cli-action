@@ -386,6 +386,34 @@
         "properties": {
           "issues": {
             "contains": {
+              "const": "unknown-profile"
+            }
+          },
+          "checks": {
+            "properties": {
+              "triggerDefined": {
+                "const": "passed"
+              },
+              "expectedProfileDefined": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resolution": {
+            "$ref": "#/$defs/resolution"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
               "const": "profile-trigger-mismatch"
             }
           }
