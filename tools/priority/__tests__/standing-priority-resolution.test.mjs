@@ -513,6 +513,87 @@ test('classifyNoStandingPriorityCondition distinguishes label-missing from queue
   assert.match(result.message, /none carry the checked standing-priority labels/i);
 });
 
+test('classifyNoStandingPriorityCondition treats out-of-scope-only open issues as queue-empty', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 930,
+          title: 'Epic: route released compare-vi-cli-action through comparevi-history into labview-icon-editor-demo',
+          labels: ['program']
+        },
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          labels: []
+        }
+      ])
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 2,
+    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+});
+
+test('classifyNoStandingPriorityCondition keeps excluded-label queues as label-missing', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 980,
+          title: '[P1] duplicate backlog item',
+          labels: ['duplicate']
+        }
+      ])
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'classified');
+  assert.equal(result.reason, 'label-missing');
+  assert.equal(result.repository, 'owner/repo');
+  assert.equal(result.openIssueCount, 1);
+  assert.match(result.message, /none carry the checked standing-priority labels/i);
+});
+
+test('classifyNoStandingPriorityCondition still treats out-of-scope demo queues as idle when labels are excluded', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          labels: ['duplicate']
+        }
+      ])
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 1,
+    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+});
+
 test('buildMultipleStandingPriorityReport emits deterministic schema payload', () => {
   const report = buildMultipleStandingPriorityReport({
     message: 'Multiple open standing-priority issues found',
