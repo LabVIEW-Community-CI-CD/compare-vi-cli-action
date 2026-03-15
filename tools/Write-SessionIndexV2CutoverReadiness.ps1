@@ -11,6 +11,45 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+
+function Resolve-ReadablePath {
+  param([Parameter(Mandatory)][string]$Path)
+
+  if ([System.IO.Path]::IsPathRooted($Path)) {
+    return $Path
+  }
+
+  return Join-Path $repoRoot $Path
+}
+
+function Resolve-RepoOutputPath {
+  param([Parameter(Mandatory)][string]$Path)
+
+  # Explicit absolute output paths are caller-owned and intentionally preserved.
+  # Only repo-relative outputs are confined to the repo root.
+  if ([System.IO.Path]::IsPathRooted($Path)) {
+    return [System.IO.Path]::GetFullPath($Path)
+  }
+
+  $resolvedPath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $Path))
+
+  $resolvedRepoRoot = [System.IO.Path]::GetFullPath($repoRoot)
+  $repoRootPrefix = if ($resolvedRepoRoot.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+    $resolvedRepoRoot
+  } else {
+    $resolvedRepoRoot + [System.IO.Path]::DirectorySeparatorChar
+  }
+
+  $insideRepoRoot =
+    $resolvedPath.Equals($resolvedRepoRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+    $resolvedPath.StartsWith($repoRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+  if (-not $insideRepoRoot) {
+    throw "OutputPath escapes repo root: $Path"
+  }
+
+  return $resolvedPath
+}
 
 function Read-JsonFile {
   param([Parameter(Mandatory)][string]$Path)
@@ -34,7 +73,7 @@ function Get-ChecklistSummary {
   $inChecklist = $false
 
   foreach ($line in Get-Content -LiteralPath $Path) {
-    if ($line -match '^## Removal checklist') {
+    if ($line -match '^## Removal checklist\b') {
       $inChecklist = $true
       continue
     }
@@ -148,10 +187,32 @@ function Write-GitHubOutputValue {
   Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value ("{0}={1}" -f $Name, $Value)
 }
 
-$contract = Read-JsonFile -Path $ContractReportPath
-$disposition = Read-JsonFile -Path $DispositionReportPath
-$checklist = Get-ChecklistSummary -Path $DeprecationPolicyPath
-$consumerMatrixSummary = Get-ConsumerMatrixSummary -Path $ConsumerMatrixPath
+function Write-StepSummaryBlock {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][AllowEmptyString()][string[]]$Lines
+  )
+
+  $summaryDir = Split-Path -Parent $Path
+  if ($summaryDir -and -not (Test-Path -LiteralPath $summaryDir -PathType Container)) {
+    New-Item -ItemType Directory -Path $summaryDir -Force | Out-Null
+  }
+
+  $prefix = ''
+  if (Test-Path -LiteralPath $Path -PathType Leaf) {
+    $existingSummary = Get-Content -LiteralPath $Path -Raw
+    if (-not [string]::IsNullOrEmpty($existingSummary) -and -not $existingSummary.EndsWith([Environment]::NewLine)) {
+      $prefix = [Environment]::NewLine
+    }
+  }
+
+  ($prefix + ($Lines -join "`n")) | Out-File -FilePath $Path -Append -Encoding utf8
+}
+
+$contract = Read-JsonFile -Path (Resolve-ReadablePath -Path $ContractReportPath)
+$disposition = Read-JsonFile -Path (Resolve-ReadablePath -Path $DispositionReportPath)
+$checklist = Get-ChecklistSummary -Path (Resolve-ReadablePath -Path $DeprecationPolicyPath)
+$consumerMatrixSummary = Get-ConsumerMatrixSummary -Path (Resolve-ReadablePath -Path $ConsumerMatrixPath)
 
 $promotionReady = [bool]$contract.burnIn.promotionReady
 $consecutiveSuccess = [int]$contract.burnIn.consecutiveSuccess
@@ -238,19 +299,20 @@ $report = [ordered]@{
   reasons = @($reasons)
 }
 
-$outputDir = Split-Path -Parent $OutputPath
+$resolvedOutputPath = Resolve-RepoOutputPath -Path $OutputPath
+$outputDir = Split-Path -Parent $resolvedOutputPath
 if ($outputDir -and -not (Test-Path -LiteralPath $outputDir -PathType Container)) {
   New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 }
 
-$report | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $OutputPath -Encoding utf8
-Write-Host ("session-index-v2 cutover readiness report written: {0}" -f $OutputPath)
+$report | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $resolvedOutputPath -Encoding utf8
+Write-Host ("session-index-v2 cutover readiness report written: {0}" -f $resolvedOutputPath)
 
 Write-GitHubOutputValue -Name 'session-index-v2-cutover-status' -Value ([string]$report.status)
 Write-GitHubOutputValue -Name 'session-index-v2-cutover-ready' -Value (([string]$report.cutoverReady).ToLowerInvariant())
 Write-GitHubOutputValue -Name 'session-index-v2-cutover-regression-guard-status' -Value ([string]$report.consumerRegressionGuard.status)
 Write-GitHubOutputValue -Name 'session-index-v2-cutover-remaining-checklist-count' -Value ([string]$report.deprecationChecklist.remainingCount)
-Write-GitHubOutputValue -Name 'session-index-v2-cutover-report-path' -Value ([string]$OutputPath)
+Write-GitHubOutputValue -Name 'session-index-v2-cutover-report-path' -Value ([string]$resolvedOutputPath)
 
 if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
   $summary = @(
@@ -263,7 +325,7 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ("- Remaining deprecation checklist items: **{0}**" -f $report.deprecationChecklist.remainingCount),
     ('- Contract report: `{0}`' -f $ContractReportPath),
     ('- Disposition report: `{0}`' -f $DispositionReportPath),
-    ('- Cutover report: `{0}`' -f $OutputPath)
+    ('- Cutover report: `{0}`' -f $resolvedOutputPath)
   )
 
   if ($report.reasons.Count -gt 0) {
@@ -274,5 +336,5 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     }
   }
 
-  $summary -join "`n" | Set-Content -LiteralPath $StepSummaryPath -Encoding utf8
+  Write-StepSummaryBlock -Path $StepSummaryPath -Lines $summary
 }

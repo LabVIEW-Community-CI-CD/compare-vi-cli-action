@@ -28,6 +28,7 @@ Describe 'Write-SessionIndexV2CutoverReadiness' {
         [Parameter(Mandatory)][int]$ConsecutiveSuccess,
         [Parameter(Mandatory)][string]$ContractStatus,
         [Parameter(Mandatory)][string]$Disposition,
+        [string]$ChecklistHeading = '## Removal checklist (v1 cutover)',
         [string[]]$RemainingChecklistItems = @('Remove v1 generation from producer paths/workflows.'),
         [object[]]$ConsumerRows = @(
           @{
@@ -145,7 +146,7 @@ $($consumerMatrixLines -join "`n")
       Write-TextFile -Path $deprecationPath -Content (@"
 # Session Index v1 Deprecation Policy
 
-## Removal checklist
+$ChecklistHeading
 $($checklistLines -join "`n")
 
 ## Evidence package required for cutover
@@ -165,7 +166,9 @@ $($checklistLines -join "`n")
       param(
         [Parameter(Mandatory)][hashtable]$Fixture,
         [string]$GitHubOutputPath,
-        [string]$GitHubStepSummaryPath
+        [string]$GitHubStepSummaryPath,
+        [string]$OutputPath = $Fixture.OutputPath,
+        [string]$WorkingDirectory = $repoRoot
       )
 
       $psi = [System.Diagnostics.ProcessStartInfo]::new()
@@ -179,12 +182,12 @@ $($checklistLines -join "`n")
         '-DispositionReportPath', $Fixture.DispositionPath,
         '-ConsumerMatrixPath', $Fixture.ConsumerMatrixPath,
         '-DeprecationPolicyPath', $Fixture.DeprecationPath,
-        '-OutputPath', $Fixture.OutputPath
+        '-OutputPath', $OutputPath
       )
       foreach ($arg in $args) {
         [void]$psi.ArgumentList.Add([string]$arg)
       }
-      $psi.WorkingDirectory = $repoRoot
+      $psi.WorkingDirectory = $WorkingDirectory
       $psi.UseShellExecute = $false
       $psi.RedirectStandardOutput = $true
       $psi.RedirectStandardError = $true
@@ -201,12 +204,21 @@ $($checklistLines -join "`n")
       $stdout = $proc.StandardOutput.ReadToEnd()
       $stderr = $proc.StandardError.ReadToEnd()
       $proc.WaitForExit()
+      $resolvedOutputPath = if ([System.IO.Path]::IsPathRooted($OutputPath)) {
+        $OutputPath
+      } else {
+        Join-Path $repoRoot $OutputPath
+      }
 
       return @{
         ExitCode = $proc.ExitCode
         StdOut = $stdout
         StdErr = $stderr
-        Report = (Get-Content -LiteralPath $Fixture.OutputPath -Raw | ConvertFrom-Json -Depth 20)
+        Report = if (Test-Path -LiteralPath $resolvedOutputPath -PathType Leaf) {
+          Get-Content -LiteralPath $resolvedOutputPath -Raw | ConvertFrom-Json -Depth 20
+        } else {
+          $null
+        }
         GitHubOutput = if ($GitHubOutputPath -and (Test-Path -LiteralPath $GitHubOutputPath -PathType Leaf)) {
           Get-Content -LiteralPath $GitHubOutputPath -Raw
         } else {
@@ -240,6 +252,25 @@ $($checklistLines -join "`n")
     $run.GitHubStepSummary | Should -Match 'Session Index v2 Cutover Readiness'
   }
 
+  It 'appends the cutover section instead of overwriting an existing step summary' {
+    $fixture = New-CutoverFixture -Name 'summary-append' -PromotionReady:$false -ConsecutiveSuccess 4 -ContractStatus 'pass' -Disposition 'clean-burn-in'
+    $summaryPath = Join-Path $fixture.Root 'step-summary.md'
+    $existingSummary = @(
+      '### Existing Summary',
+      '',
+      '- Preserve this section'
+    ) -join "`n"
+    Set-Content -LiteralPath $summaryPath -Value $existingSummary -Encoding utf8
+
+    $run = Invoke-CutoverTool -Fixture $fixture -GitHubStepSummaryPath $summaryPath
+
+    $run.ExitCode | Should -Be 0
+    $run.GitHubStepSummary | Should -Match ([regex]::Escape('### Existing Summary'))
+    $run.GitHubStepSummary | Should -Match ([regex]::Escape('- Preserve this section'))
+    $run.GitHubStepSummary | Should -Match '### Session Index v2 Cutover Readiness'
+    $run.GitHubStepSummary.IndexOf('### Existing Summary') | Should -BeLessThan $run.GitHubStepSummary.IndexOf('### Session Index v2 Cutover Readiness')
+  }
+
   It 'reports ready when promotion, regression guard, and checklist are all satisfied' {
     $fixture = New-CutoverFixture -Name 'ready' -PromotionReady:$true -ConsecutiveSuccess 10 -ContractStatus 'pass' -Disposition 'promotion-ready' -RemainingChecklistItems @()
 
@@ -255,6 +286,69 @@ $($checklistLines -join "`n")
     $run.Report.consumerMatrix.allV2FirstReady | Should -BeTrue
     $run.Report.consumerMatrix.notReadyConsumers | Should -BeNullOrEmpty
     $run.Report.reasons | Should -BeNullOrEmpty
+  }
+
+  It 'accepts a removal checklist heading that carries the v1 cutover suffix' {
+    $fixture = New-CutoverFixture -Name 'heading-suffix' -PromotionReady:$false -ConsecutiveSuccess 4 -ContractStatus 'pass' -Disposition 'clean-burn-in' -ChecklistHeading '## Removal checklist (v1 cutover)'
+
+    $run = Invoke-CutoverTool -Fixture $fixture
+
+    $run.ExitCode | Should -Be 0
+    $run.Report.deprecationChecklist.remainingCount | Should -Be 1
+    $run.Report.status | Should -Be 'not-ready'
+  }
+
+  It 'writes a relative output path under the repo root even when invoked from outside the repo root' {
+    $fixture = New-CutoverFixture -Name 'relative-output' -PromotionReady:$false -ConsecutiveSuccess 4 -ContractStatus 'pass' -Disposition 'clean-burn-in'
+    $outsideDir = Join-Path $TestDrive 'outside-workdir'
+    $relativeOutputPath = 'tests/results/_agent/cutover-helper/off-root-cutover.json'
+    $expectedOutputPath = Join-Path $repoRoot $relativeOutputPath
+    New-Item -ItemType Directory -Path $outsideDir -Force | Out-Null
+    Remove-Item -LiteralPath $expectedOutputPath -Force -ErrorAction SilentlyContinue
+
+    try {
+      $run = Invoke-CutoverTool -Fixture $fixture -OutputPath $relativeOutputPath -WorkingDirectory $outsideDir
+
+      $run.ExitCode | Should -Be 0
+      Test-Path -LiteralPath $expectedOutputPath -PathType Leaf | Should -BeTrue
+      $run.Report.status | Should -Be 'not-ready'
+    } finally {
+      Remove-Item -LiteralPath $expectedOutputPath -Force -ErrorAction SilentlyContinue
+      $expectedOutputDir = Split-Path -Parent $expectedOutputPath
+      if (Test-Path -LiteralPath $expectedOutputDir -PathType Container) {
+        Remove-Item -LiteralPath $expectedOutputDir -Force -ErrorAction SilentlyContinue
+      }
+    }
+  }
+
+  It 'preserves an explicit absolute output path outside the repo root' {
+    $fixture = New-CutoverFixture -Name 'absolute-output' -PromotionReady:$false -ConsecutiveSuccess 4 -ContractStatus 'pass' -Disposition 'clean-burn-in'
+    $outsideDir = Join-Path $TestDrive 'outside-absolute-workdir'
+    $absoluteOutputPath = Join-Path $TestDrive 'absolute-output\cutover-readiness.json'
+    New-Item -ItemType Directory -Path $outsideDir -Force | Out-Null
+    Remove-Item -LiteralPath $absoluteOutputPath -Force -ErrorAction SilentlyContinue
+
+    $run = Invoke-CutoverTool -Fixture $fixture -OutputPath $absoluteOutputPath -WorkingDirectory $outsideDir
+
+    $run.ExitCode | Should -Be 0
+    Test-Path -LiteralPath $absoluteOutputPath -PathType Leaf | Should -BeTrue
+    $run.Report.status | Should -Be 'not-ready'
+  }
+
+  It 'rejects a relative output path that escapes the repo root' {
+    $fixture = New-CutoverFixture -Name 'escaped-output' -PromotionReady:$false -ConsecutiveSuccess 4 -ContractStatus 'pass' -Disposition 'clean-burn-in'
+    $outsideDir = Join-Path $TestDrive 'outside-escape-workdir'
+    $escapingOutputPath = '..\..\escaped-cutover.json'
+    $escapedOutputPath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $escapingOutputPath))
+    New-Item -ItemType Directory -Path $outsideDir -Force | Out-Null
+    Remove-Item -LiteralPath $escapedOutputPath -Force -ErrorAction SilentlyContinue
+
+    $run = Invoke-CutoverTool -Fixture $fixture -OutputPath $escapingOutputPath -WorkingDirectory $outsideDir
+
+    $run.ExitCode | Should -Be 1
+    $run.StdErr | Should -Match 'OutputPath escapes repo root'
+    $run.Report | Should -Be $null
+    Test-Path -LiteralPath $escapedOutputPath -PathType Leaf | Should -BeFalse
   }
 
   It 'blocks the regression guard when the current contract report is failing' {

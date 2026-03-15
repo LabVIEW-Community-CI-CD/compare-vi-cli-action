@@ -1086,7 +1086,10 @@ jobs:
       uses: actions/upload-artifact@v6
       with:
         name: validate-session-index-v2-contract
-        path: ${{ runner.temp }}/sessionindex-v2-contract/session-index-v2-contract.json
+        path: |
+          ${{ runner.temp }}/sessionindex-v2-contract/session-index-v2-contract.json
+          ${{ runner.temp }}/sessionindex-v2-contract/session-index-v2-disposition.json
+          ${{ runner.temp }}/sessionindex-v2-contract/session-index-v2-cutover-readiness.json
         if-no-files-found: warn
 
   comparevi-history-bundle-certification:
@@ -1439,5 +1442,4 @@ jobs:
           tests/results/local-parity/linux/runtime-manager-preflight-linux.json
           tests/results/local-parity/linux/runtime-manager-compare-linux.json
         if-no-files-found: warn
-
 

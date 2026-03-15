@@ -87,7 +87,8 @@ Describe 'Test-SessionIndexV2Contract' {
         [string]$Branch = 'develop',
         [switch]$Enforce,
         [string]$GitHubOutputPath,
-        [string]$GitHubStepSummaryPath
+        [string]$GitHubStepSummaryPath,
+        [string]$WorkingDirectory = $repoRoot
       )
 
       $psi = [System.Diagnostics.ProcessStartInfo]::new()
@@ -109,7 +110,7 @@ Describe 'Test-SessionIndexV2Contract' {
       foreach ($arg in $args) {
         $psi.ArgumentList.Add([string]$arg) | Out-Null
       }
-      $psi.WorkingDirectory = $repoRoot
+      $psi.WorkingDirectory = $WorkingDirectory
       $psi.UseShellExecute = $false
       $psi.RedirectStandardOutput = $true
       $psi.RedirectStandardError = $true
@@ -151,6 +152,11 @@ Describe 'Test-SessionIndexV2Contract' {
         StdErr = $stderr
         Report = (Get-Content -LiteralPath (Join-Path $ResultsDir 'session-index-v2-contract.json') -Raw | ConvertFrom-Json -Depth 50)
         Summary = (Get-Content -LiteralPath (Join-Path $ResultsDir 'session-index-v2-disposition.json') -Raw | ConvertFrom-Json -Depth 50)
+        Cutover = if (Test-Path -LiteralPath (Join-Path $ResultsDir 'session-index-v2-cutover-readiness.json') -PathType Leaf) {
+          Get-Content -LiteralPath (Join-Path $ResultsDir 'session-index-v2-cutover-readiness.json') -Raw | ConvertFrom-Json -Depth 50
+        } else {
+          $null
+        }
         GitHubOutput = if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath) -and (Test-Path -LiteralPath $GitHubOutputPath -PathType Leaf)) {
           Get-Content -LiteralPath $GitHubOutputPath -Raw
         } else {
@@ -197,6 +203,9 @@ Describe 'Test-SessionIndexV2Contract' {
     $run.Summary.disposition | Should -Be 'clean-burn-in'
     $run.Summary.promotionReady | Should -BeFalse
     $run.Summary.evidence.contractReportPath | Should -Match 'session-index-v2-contract\.json$'
+    $run.Cutover.schema | Should -Be 'session-index-v2-cutover-readiness@v1'
+    $run.Cutover.evidence.contractReportPath | Should -Match 'session-index-v2-contract\.json$'
+    $run.Cutover.evidence.dispositionReportPath | Should -Match 'session-index-v2-disposition\.json$'
   }
 
   It 'falls back to explicit branch lists when no branch-class binding exists' {
@@ -341,11 +350,49 @@ Describe 'Test-SessionIndexV2Contract' {
     $run.GitHubOutput | Should -Match 'session-index-v2-promotion-ready=false'
     $run.GitHubOutput | Should -Match 'session-index-v2-contract-report-path=.*session-index-v2-contract\.json'
     $run.GitHubOutput | Should -Match 'session-index-v2-disposition-path=.*session-index-v2-disposition\.json'
+    $run.GitHubOutput | Should -Match 'session-index-v2-cutover-status=not-ready'
+    $run.GitHubOutput | Should -Match 'session-index-v2-cutover-ready=false'
+    $run.GitHubOutput | Should -Match 'session-index-v2-cutover-report-path=.*session-index-v2-cutover-readiness\.json'
     $run.GitHubStepSummary | Should -Match 'Burn-in receipt status: `mismatch`'
     $run.GitHubStepSummary | Should -Match 'Burn-in query status: `unavailable`'
     $run.GitHubStepSummary | Should -Match 'Mismatch class: `branch-policy-projection`'
     $run.GitHubStepSummary | Should -Match 'Mismatch fingerprint: `[0-9a-f]{64}`'
     $run.GitHubStepSummary | Should -Match 'Contract report: `.*session-index-v2-contract\.json`'
     $run.GitHubStepSummary | Should -Match 'Disposition report: `.*session-index-v2-disposition\.json`'
+    $run.GitHubStepSummary | Should -Match 'Cutover readiness report: `.*session-index-v2-cutover-readiness\.json`'
+    $run.Cutover.schema | Should -Be 'session-index-v2-cutover-readiness@v1'
+    $run.Cutover.status | Should -Be 'not-ready'
+  }
+
+  It 'regenerates cutover readiness artifacts successfully even when invoked from outside the repo root' {
+    $resultsDir = New-SessionIndexFixture -Name 'stale-cutover' -ExpectedContexts @('lint', 'session-index')
+    $policyPath = Join-Path $TestDrive 'branch-policy.stale-cutover.json'
+    $outsideDir = Join-Path $TestDrive 'outside-workdir'
+    New-Item -ItemType Directory -Path $outsideDir -Force | Out-Null
+    Write-JsonFile -Path $policyPath -Data @{
+      schema = 'branch-required-checks/v1'
+      schemaVersion = '1.0.0'
+      branches = @{
+        develop = @('lint', 'session-index')
+      }
+    }
+
+    $staleCutoverPath = Join-Path $resultsDir 'session-index-v2-cutover-readiness.json'
+    Write-JsonFile -Path $staleCutoverPath -Data @{
+      schema = 'session-index-v2-cutover-readiness@v1'
+      generatedAtUtc = '2026-03-15T00:00:00.000Z'
+      status = 'ready'
+      cutoverReady = $true
+    }
+
+    $run = Invoke-ContractTool -ResultsDir $resultsDir -PolicyPath $policyPath -WorkingDirectory $outsideDir
+
+    $run.ExitCode | Should -Be 0
+    $run.Report.status | Should -Be 'pass'
+    $run.Report.failures | Should -BeNullOrEmpty
+    Test-Path -LiteralPath $staleCutoverPath -PathType Leaf | Should -BeTrue
+    $run.Cutover.schema | Should -Be 'session-index-v2-cutover-readiness@v1'
+    $run.Cutover.status | Should -Be 'not-ready'
+    $run.Cutover.cutoverReady | Should -BeFalse
   }
 }
