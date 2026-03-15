@@ -377,6 +377,22 @@ function normalizeSessionPolicy(value = {}) {
   };
 }
 
+function resolveEffectiveConvergencePolicy(convergence, profileName) {
+  const normalizedProfileName = normalizeProfileName(profileName);
+  if (normalizedProfileName !== 'preCommit') {
+    return { ...convergence };
+  }
+
+  // Pre-commit is the interactive hot path. Keep the wrapper inside the caller timeout budget.
+  const maxPasses = 1;
+  const minPasses = 1;
+  return {
+    ...convergence,
+    minPasses,
+    maxPasses
+  };
+}
+
 export function normalizeCopilotCliReviewPolicy(value = {}) {
   const policy = value && typeof value === 'object' ? value : {};
   const profiles = policy.profiles && typeof policy.profiles === 'object' ? policy.profiles : {};
@@ -764,6 +780,7 @@ export async function runCopilotCliReview({
   const normalizedPolicy = normalizeCopilotCliReviewPolicy(policy ?? await loadCopilotCliReviewPolicy(repoRoot));
   const profileName = normalizeProfileName(profile);
   const profilePolicy = normalizedPolicy.profiles[profileName];
+  const effectiveConvergence = resolveEffectiveConvergencePolicy(normalizedPolicy.convergence, profileName);
   const resolvedReceiptPathInfo = resolveRepoPath(
     repoRoot,
     normalizeText(receiptPath) || profilePolicy.receiptPath
@@ -813,7 +830,7 @@ export async function runCopilotCliReview({
       checkpointKey: null
     },
     convergence: {
-      ...normalizedPolicy.convergence,
+      ...effectiveConvergence,
       passCount: 0,
       stoppedReason: 'not-started',
       noNovelFindingStreak: 0,
@@ -949,7 +966,7 @@ export async function runCopilotCliReview({
   let failureReason = '';
   let lastPassExitCode = 0;
 
-  for (let passIndex = 1; passIndex <= normalizedPolicy.convergence.maxPasses; passIndex += 1) {
+  for (let passIndex = 1; passIndex <= effectiveConvergence.maxPasses; passIndex += 1) {
     const startedAt = new Date();
     const commandResult = buildCommandResult(
       await runCommandFn(copilotInvocation.spawnCommand, [...(copilotInvocation.spawnArgsPrefix ?? []), ...args], {
@@ -1044,8 +1061,8 @@ export async function runCopilotCliReview({
     const currentUnionActionableCount = aggregatedFindings.length;
     if (
       currentUnionActionableCount === 0 &&
-      normalizedPolicy.convergence.stopOnCleanPass === true &&
-      passIndex >= normalizedPolicy.convergence.minPasses
+      effectiveConvergence.stopOnCleanPass === true &&
+      passIndex >= effectiveConvergence.minPasses
     ) {
       stoppedReason = 'clean-pass';
       break;
@@ -1053,8 +1070,8 @@ export async function runCopilotCliReview({
 
     if (
       currentUnionActionableCount > 0 &&
-      normalizedPolicy.convergence.stopOnNoNovelFindingsCount > 0 &&
-      noNovelFindingStreak >= normalizedPolicy.convergence.stopOnNoNovelFindingsCount
+      effectiveConvergence.stopOnNoNovelFindingsCount > 0 &&
+      noNovelFindingStreak >= effectiveConvergence.stopOnNoNovelFindingsCount
     ) {
       stoppedReason = 'no-novel-findings';
       break;
@@ -1070,7 +1087,7 @@ export async function runCopilotCliReview({
   };
 
   const repeatedFindingFingerprints = [...findingOccurrences.entries()]
-    .filter(([, count]) => count >= normalizedPolicy.convergence.promoteInstructionGapAfterRepeatedFindings)
+    .filter(([, count]) => count >= effectiveConvergence.promoteInstructionGapAfterRepeatedFindings)
     .map(([fingerprint]) => fingerprint)
     .sort();
   const instructionGapCandidate =

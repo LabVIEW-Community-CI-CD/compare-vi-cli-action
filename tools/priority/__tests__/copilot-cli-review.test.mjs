@@ -229,13 +229,12 @@ test('runCopilotCliReview writes a deterministic passed receipt for staged revie
   assert.equal(result.receipt.sessionPolicy.reusedPriorSession, false);
   assert.match(result.receipt.sessionPolicy.checkpointKey, /^preCommit:/);
   assert.equal(result.receipt.context.selectedFiles[0], 'README.md');
-  assert.equal(result.receipt.convergence.passCount, 2);
+  assert.equal(result.receipt.convergence.passCount, 1);
   assert.equal(result.receipt.convergence.stoppedReason, 'clean-pass');
-  assert.equal(result.receipt.passes.length, 2);
+  assert.equal(result.receipt.passes.length, 1);
   await access(path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit-copilot-cli-review.prompt.txt'));
   await access(path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit-copilot-cli-review.jsonl'));
   await access(path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit-copilot-cli-review.pass-1.jsonl'));
-  await access(path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit-copilot-cli-review.pass-2.jsonl'));
 });
 
 test('runCopilotCliReview forwards non-empty availableTools allowlists to the CLI invocation', async () => {
@@ -323,10 +322,10 @@ test('runCopilotCliReview fails closed on actionable findings', async () => {
   assert.equal(result.status, 'failed');
   assert.equal(result.receipt.overall.actionableFindingCount, 1);
   assert.equal(result.receipt.findings[0].path, 'README.md');
-  assert.equal(result.receipt.convergence.passCount, 3);
-  assert.equal(result.receipt.convergence.stoppedReason, 'no-novel-findings');
-  assert.equal(result.receipt.convergence.instructionGapCandidate, true);
-  assert.equal(result.receipt.convergence.repeatedFindingFingerprints.length, 1);
+  assert.equal(result.receipt.convergence.passCount, 1);
+  assert.equal(result.receipt.convergence.stoppedReason, 'max-passes');
+  assert.equal(result.receipt.convergence.instructionGapCandidate, false);
+  assert.equal(result.receipt.convergence.repeatedFindingFingerprints.length, 0);
 });
 
 test('runCopilotCliReview supports report-only profiles when failOnFindings is disabled', async () => {
@@ -392,8 +391,12 @@ test('runCopilotCliReview accumulates novel findings across bounded passes', asy
   await writeFile(path.join(repoRoot, 'README.md'), '# repo\n', 'utf8');
   runGit(repoRoot, ['add', 'README.md']);
   runGit(repoRoot, ['commit', '-m', 'init']);
+  runGit(repoRoot, ['branch', '-M', 'develop']);
+  const baseSha = runGit(repoRoot, ['rev-parse', 'HEAD']);
+  runGit(repoRoot, ['switch', '-c', 'issue/test']);
   await writeFile(path.join(repoRoot, 'README.md'), '# repo\n\nupdated\n', 'utf8');
   runGit(repoRoot, ['add', 'README.md']);
+  runGit(repoRoot, ['commit', '-m', 'update']);
 
   let invocation = 0;
   const payloads = [
@@ -479,37 +482,54 @@ test('runCopilotCliReview accumulates novel findings across bounded passes', asy
     }
   ];
 
-  const result = await runCopilotCliReview({
-    repoRoot,
-    profile: 'pre-commit',
-    stagedFiles: ['README.md'],
-    runCommandFn: async () => {
-      const payload = payloads[Math.min(invocation, payloads.length - 1)];
-      invocation += 1;
-      return {
-        status: 0,
-        stdout: [
-          JSON.stringify({ type: 'session.tools_updated', data: { model: 'gpt-5.4' } }),
-          JSON.stringify({
-            type: 'assistant.message',
-            data: {
-              content: JSON.stringify(payload)
-            }
-          })
-        ].join('\n'),
-        stderr: ''
-      };
-    }
-  });
+  const previousValidateBaseSha = process.env.VALIDATE_BASE_SHA;
+  const previousValidateBaseRef = process.env.VALIDATE_BASE_REF;
+  try {
+    process.env.VALIDATE_BASE_SHA = baseSha;
+    process.env.VALIDATE_BASE_REF = 'develop';
 
-  assert.equal(result.status, 'failed');
-  assert.equal(result.receipt.overall.actionableFindingCount, 2);
-  assert.equal(result.receipt.convergence.passCount, 4);
-  assert.equal(result.receipt.convergence.stoppedReason, 'no-novel-findings');
-  assert.equal(result.receipt.passes[0].novelActionableFindingCount, 1);
-  assert.equal(result.receipt.passes[1].novelActionableFindingCount, 1);
-  assert.equal(result.receipt.passes[2].novelActionableFindingCount, 0);
-  assert.equal(result.receipt.passes[3].noNovelFindingStreak, 2);
+    const result = await runCopilotCliReview({
+      repoRoot,
+      profile: 'daemon',
+      runCommandFn: async () => {
+        const payload = payloads[Math.min(invocation, payloads.length - 1)];
+        invocation += 1;
+        return {
+          status: 0,
+          stdout: [
+            JSON.stringify({ type: 'session.tools_updated', data: { model: 'gpt-5.4' } }),
+            JSON.stringify({
+              type: 'assistant.message',
+              data: {
+                content: JSON.stringify(payload)
+              }
+            })
+          ].join('\n'),
+          stderr: ''
+        };
+      }
+    });
+
+    assert.equal(result.status, 'failed');
+    assert.equal(result.receipt.overall.actionableFindingCount, 2);
+    assert.equal(result.receipt.convergence.passCount, 4);
+    assert.equal(result.receipt.convergence.stoppedReason, 'no-novel-findings');
+    assert.equal(result.receipt.passes[0].novelActionableFindingCount, 1);
+    assert.equal(result.receipt.passes[1].novelActionableFindingCount, 1);
+    assert.equal(result.receipt.passes[2].novelActionableFindingCount, 0);
+    assert.equal(result.receipt.passes[3].noNovelFindingStreak, 2);
+  } finally {
+    if (previousValidateBaseSha == null) {
+      delete process.env.VALIDATE_BASE_SHA;
+    } else {
+      process.env.VALIDATE_BASE_SHA = previousValidateBaseSha;
+    }
+    if (previousValidateBaseRef == null) {
+      delete process.env.VALIDATE_BASE_REF;
+    } else {
+      process.env.VALIDATE_BASE_REF = previousValidateBaseRef;
+    }
+  }
 });
 
 test('runCopilotCliReview resolves head-mode merge base from the validate base sha env when upstream refs are absent', async () => {
