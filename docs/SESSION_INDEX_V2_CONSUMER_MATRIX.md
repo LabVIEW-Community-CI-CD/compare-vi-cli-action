@@ -16,6 +16,7 @@ operator dashboards, or developer feedback loops.
 | `tools/Dev-Dashboard.ps1` | Dashboard terminal/HTML rendering | `v2-first-ready` | ✅ | Displays index source and requirement coverage when available. |
 | `tools/vscode/comparevi-extension/src/extension.ts` | VS Code status updates | `v2-first-ready` | ✅ | Resolves preferred index path (v2→v1) before status refresh. |
 | `.github/workflows/validate.yml` `session-index-v2-contract` | CI contract gate | `v2-first-ready` | ✅ | Burn-in + enforce toggle validates artifact parity and contract shape. |
+| `tools/priority/bootstrap.ps1` + `tools/priority/project-session-index-v2-promotion-decision.mjs` | Standing issue bundle | `v2-first-ready` | ✅ | Projects the latest promotion decision into `tests/results/_agent/issue/` for future-agent intake. |
 
 Use `v2-first-ready` in the `v2-first status` column when the critical consumer has been verified on the v2-first path.
 
@@ -26,6 +27,7 @@ Use `v2-first-ready` in the `v2-first status` column when the critical consumer 
 - Promotion evidence source: `validate-session-index-v2-contract/session-index-v2-contract.json`.
 - Burn-in triage front door: `validate-session-index-v2-contract/session-index-v2-disposition.json`.
 - Cutover readiness front door: `validate-session-index-v2-contract/session-index-v2-cutover-readiness.json`.
+- Standing issue reporting surface: `tests/results/_agent/issue/session-index-v2-promotion-decision.json`.
 - Deprecation policy and v1 cutover checklist: `docs/SESSION_INDEX_V1_DEPRECATION.md`.
 
 ## Remaining non-critical consumers
