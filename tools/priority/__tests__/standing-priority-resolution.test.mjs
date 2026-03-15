@@ -31,6 +31,23 @@ import {
   gitRoot
 } from '../sync-standing-priority.mjs';
 
+function buildExternalIssueStateFetcher(issueStates = {}) {
+  const overrides = new Map(
+    Object.entries(issueStates).map(([issueNumber, state]) => [Number.parseInt(issueNumber, 10), state])
+  );
+
+  return async (issueNumber) => {
+    const state = overrides.get(issueNumber) ?? 'open';
+    if (state instanceof Error) {
+      throw state;
+    }
+    return {
+      number: issueNumber,
+      state
+    };
+  };
+}
+
 test('isStandingPriorityCacheCandidate requires OPEN state and matching standing label', () => {
   assert.equal(
     isStandingPriorityCacheCandidate({
@@ -727,10 +744,51 @@ test('selectAutoStandingPriorityCandidateForRepo hydrates comment-only blocked d
             body: 'Remaining in-repo work.',
             commentBodies: []
           },
+    externalIssueStateFetcher: buildExternalIssueStateFetcher(),
     warn: () => {}
   });
 
   assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidateForRepo clears blocked rollout demotions when the external blocker is already closed', async () => {
+  const selected = await selectAutoStandingPriorityCandidateForRepo('/tmp/repo', 'owner/repo', [
+    {
+      number: 946,
+      title: '[P0] Wire comparevi-history renderer integration',
+      body: 'Track comparevi-history#23 while the renderer dependency is still external.',
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: '[P1] actionable follow-up',
+      body: 'Remaining in-repo work.',
+      labels: [],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ], {
+    fetchIssueDetailsFn: async (issueNumber) =>
+      issueNumber === 946
+        ? {
+            number: 946,
+            title: '[P0] Wire comparevi-history renderer integration',
+            body: 'Track comparevi-history#23 while the renderer dependency is still external.',
+            commentBodies: [
+              'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+            ]
+          }
+        : {
+            number: 951,
+            title: '[P1] actionable follow-up',
+            body: 'Remaining in-repo work.',
+            commentBodies: []
+          },
+    externalIssueStateFetcher: buildExternalIssueStateFetcher({ 23: 'closed' }),
+    warn: () => {}
+  });
+
+  assert.equal(selected?.number, 946);
 });
 
 test('selectAutoStandingPriorityCandidate idles instead of promoting an umbrella fallback when only blocked concrete children remain', () => {
@@ -1233,6 +1291,7 @@ test('classifyNoStandingPriorityCondition treats blocked rollout trackers as que
         'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
       ]
     }),
+    externalIssueStateFetcher: buildExternalIssueStateFetcher(),
     runRestList: async () => ({ status: 'error', error: 'not-used' }),
     warn: () => {}
   });
@@ -1244,6 +1303,39 @@ test('classifyNoStandingPriorityCondition treats blocked rollout trackers as que
     openIssueCount: 1,
     message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
   });
+});
+
+test('classifyNoStandingPriorityCondition keeps rollout trackers actionable when the external blocker is already closed', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          labels: []
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) => ({
+      number: issueNumber,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+      commentBodies: [
+        'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+      ]
+    }),
+    externalIssueStateFetcher: buildExternalIssueStateFetcher({ 23: 'closed' }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'classified');
+  assert.equal(result.reason, 'label-missing');
+  assert.equal(result.repository, 'owner/repo');
+  assert.equal(result.openIssueCount, 1);
 });
 
 test('classifyNoStandingPriorityCondition keeps rollout trackers in scope when detail only reports a non-external blocker', async () => {
@@ -1308,6 +1400,7 @@ test('classifyNoStandingPriorityCondition treats umbrella fallback queues with o
       body: ['Parent epic: #930', 'The remaining work is externally blocked on comparevi-history#23.'].join('\n'),
       commentBodies: []
     }),
+    externalIssueStateFetcher: buildExternalIssueStateFetcher(),
     runRestList: async () => ({ status: 'error', error: 'not-used' }),
     warn: () => {}
   });
@@ -1365,7 +1458,7 @@ test('autoSelectStandingPriorityIssue skips blocked rollout trackers when issue 
       stdout: JSON.stringify([
         {
           number: 946,
-          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          title: '[P0] Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
           body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
           labels: [],
           createdAt: '2026-03-01T00:00:00Z'
@@ -1383,7 +1476,7 @@ test('autoSelectStandingPriorityIssue skips blocked rollout trackers when issue 
       issueNumber === 946
         ? {
             number: 946,
-            title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+            title: '[P0] Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
             body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
             commentBodies: [
               'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
@@ -1395,6 +1488,7 @@ test('autoSelectStandingPriorityIssue skips blocked rollout trackers when issue 
             body: 'Remaining in-repo work.',
             commentBodies: []
           },
+    externalIssueStateFetcher: buildExternalIssueStateFetcher(),
     runGhAddLabel: ({ issueNumber }) => {
       calls.push(issueNumber);
       return { status: 0, stdout: '' };
@@ -1407,6 +1501,60 @@ test('autoSelectStandingPriorityIssue skips blocked rollout trackers when issue 
   assert.equal(result.status, 'selected');
   assert.equal(result.issue?.number, 951);
   assert.deepEqual(calls, [951]);
+});
+
+test('autoSelectStandingPriorityIssue promotes rollout trackers once the external blocker is closed', async () => {
+  const calls = [];
+  const result = await autoSelectStandingPriorityIssue('/tmp/repo', 'owner/repo', {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: '[P0] Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          labels: [],
+          createdAt: '2026-03-01T00:00:00Z'
+        },
+        {
+          number: 951,
+          title: '[P1] actionable follow-up',
+          body: 'Remaining in-repo work.',
+          labels: [],
+          createdAt: '2026-03-02T00:00:00Z'
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) =>
+      issueNumber === 946
+        ? {
+            number: 946,
+            title: '[P0] Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+            body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+            commentBodies: [
+              'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+            ]
+          }
+        : {
+            number: 951,
+            title: '[P1] actionable follow-up',
+            body: 'Remaining in-repo work.',
+            commentBodies: []
+          },
+    externalIssueStateFetcher: buildExternalIssueStateFetcher({ 23: 'closed' }),
+    runGhAddLabel: ({ issueNumber }) => {
+      calls.push(issueNumber);
+      return { status: 0, stdout: '' };
+    },
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    runRestAddLabel: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'selected');
+  assert.equal(result.issue?.number, 946);
+  assert.deepEqual(calls, [946]);
 });
 
 test('autoSelectStandingPriorityIssue reports empty when only blocked concrete children remain behind an umbrella fallback', async () => {
@@ -1445,6 +1593,7 @@ test('autoSelectStandingPriorityIssue reports empty when only blocked concrete c
       body: ['Parent epic: #930', 'The remaining work is externally blocked on comparevi-history#23.'].join('\n'),
       commentBodies: []
     }),
+    externalIssueStateFetcher: buildExternalIssueStateFetcher(),
     runGhAddLabel: ({ issueNumber }) => {
       calls.push(issueNumber);
       return { status: 0, stdout: '' };
@@ -1461,6 +1610,47 @@ test('autoSelectStandingPriorityIssue reports empty when only blocked concrete c
     openIssueCount: 3
   });
   assert.deepEqual(calls, []);
+});
+
+test('classifyNoStandingPriorityCondition fails closed when external blocker hydration fails', async () => {
+  const warnings = [];
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          labels: []
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) => ({
+      number: issueNumber,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+      commentBodies: [
+        'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+      ]
+    }),
+    externalIssueStateFetcher: buildExternalIssueStateFetcher({
+      23: new Error('comparevi-history lookup failed')
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: (message) => warnings.push(message)
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 1,
+    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+  assert.match(warnings.join('\n'), /external blocker state hydration failed/i);
+  assert.match(warnings.join('\n'), /comparevi-history lookup failed/i);
 });
 
 test('classifyNoStandingPriorityCondition keeps excluded-label queues as label-missing', async () => {
