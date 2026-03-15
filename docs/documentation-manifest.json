@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-15T00:35:00Z",
+  "updated": "2026-03-15T01:00:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -68,6 +68,7 @@
         "docs/LABVIEW_GATING.md",
         "docs/LINT_BACKLOG_PLAN.md",
         "docs/MISSION_CONTROL_CONSUMPTION.md",
+        "docs/MISSION_CONTROL_TRIGGER_PROFILES.md",
         "docs/OPERATOR_REMEDIATION_PLAYBOOKS.md",
         "docs/plans/TRACEABILITY_MATRIX_PLAN.md",
         "docs/plans/VALIDATION_MATRIX.md",
@@ -153,6 +154,7 @@
       "files": [
         "PROMPT_AUTONOMY.md",
         "docs/MISSION_CONTROL_CONSUMPTION.md",
+        "docs/MISSION_CONTROL_TRIGGER_PROFILES.md",
         "docs/schemas/mission-control-envelope-v1.schema.json",
         "docs/schemas/mission-control-operator-input-catalog-v1.schema.json",
         "docs/schemas/mission-control-profile-catalog-v1.schema.json",
@@ -161,6 +163,7 @@
         "tools/priority/__fixtures__/mission-control/profile-catalog.json",
         "tools/priority/lib/mission-control-profile-catalog.mjs",
         "tools/priority/render-mission-control-envelope.mjs",
+        "tools/priority/render-mission-control-prompt.mjs",
         "tools/priority/resolve-mission-control-profile.mjs",
         "tools/priority/__tests__/mission-control-consumption-contract.test.mjs",
         "tools/priority/__tests__/mission-control-envelope-schema.test.mjs",
