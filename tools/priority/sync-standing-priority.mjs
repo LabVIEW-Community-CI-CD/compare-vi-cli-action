@@ -198,9 +198,30 @@ function splitStandingClauses(value) {
     .filter(Boolean);
 }
 
+const COMPAREVI_HISTORY_REPO_SLUG = 'LabVIEW-Community-CI-CD/comparevi-history';
+
+function extractCompareviHistoryIssueNumbers(values = []) {
+  const issueNumbers = new Set();
+  const pattern =
+    /\b(?:LabVIEW-Community-CI-CD\/)?comparevi-history#(\d+)\b|https:\/\/github\.com\/LabVIEW-Community-CI-CD\/comparevi-history\/issues\/(\d+)\b/gi;
+  const inputs = Array.isArray(values) ? values : [values];
+
+  for (const value of inputs) {
+    const text = String(value || '');
+    for (const match of text.matchAll(pattern)) {
+      const issueNumber = Number.parseInt(match[1] || match[2], 10);
+      if (Number.isInteger(issueNumber) && issueNumber > 0) {
+        issueNumbers.add(issueNumber);
+      }
+    }
+  }
+
+  return Array.from(issueNumbers).sort((left, right) => left - right);
+}
+
 function hasAffirmativeExternalBlockClause(value) {
   return splitStandingClauses(value).some((clause) => {
-    if (!/\bcomparevi-history#23\b/i.test(clause)) {
+    if (extractCompareviHistoryIssueNumbers(clause).length === 0) {
       return false;
     }
     const hasAffirmativeBlockSignal =
@@ -220,14 +241,15 @@ function hasAffirmativeExternalBlockClause(value) {
 }
 
 function mayNeedBlockedStandingHydration(title, body) {
-  return /\bcomparevi-history#23\b/i.test(`${String(title || '')}\n${String(body || '')}`);
+  return extractCompareviHistoryIssueNumbers(`${String(title || '')}\n${String(body || '')}`).length > 0;
 }
 
 function isBlockedStandingCandidate(title, body, comments = []) {
   const bodyText = `${String(title || '')}\n${String(body || '')}`;
   const commentBodies = normalizeCommentBodies(comments);
   const commentText = commentBodies.join('\n');
-  const hasExternalDependency = /comparevi-history#23/i.test(`${bodyText}\n${commentText}`);
+  const hasExternalDependency =
+    extractCompareviHistoryIssueNumbers(`${bodyText}\n${commentText}`).length > 0;
   if (!hasExternalDependency) {
     return false;
   }
@@ -235,7 +257,7 @@ function isBlockedStandingCandidate(title, body, comments = []) {
   const hasBodyLevelExternalBlock = hasAffirmativeExternalBlockClause(bodyText);
   const hasCommentLevelStandingDemotion = commentBodies.some(
     (comment) =>
-      /\bcomparevi-history#23\b/i.test(comment) &&
+      extractCompareviHistoryIssueNumbers(comment).length > 0 &&
       (/\bstanding-priority moved away\b/i.test(comment) || /\bno longer the top actionable coding lane\b/i.test(comment))
   );
 
@@ -267,6 +289,10 @@ function normalizeOpenIssueCandidate(entry) {
   const commentBodies = normalizeCommentBodies(
     Array.isArray(entry.commentBodies) ? entry.commentBodies : entry.comments
   );
+  const blocked =
+    typeof entry.blocked === 'boolean'
+      ? entry.blocked
+      : isBlockedStandingCandidate(title, body, commentBodies);
   return {
     number,
     title,
@@ -282,7 +308,7 @@ function normalizeOpenIssueCandidate(entry) {
     umbrella: hasChildTracksSection(body),
     cadence: isCadenceAlertIssue(title, body),
     outOfScope: isOutOfScopeStandingCandidate(title, body),
-    blocked: isBlockedStandingCandidate(title, body, commentBodies)
+    blocked
   };
 }
 
@@ -1418,6 +1444,69 @@ async function fetchIssueViaRest(repoRoot, number, slug) {
   }
 }
 
+function normalizeExternalIssueState(state) {
+  const normalized = String(state || '').trim().toLowerCase();
+  if (normalized === 'open' || normalized === 'closed') {
+    return normalized;
+  }
+  throw new Error(`External blocker state is missing or invalid (received: ${state ?? 'undefined'}).`);
+}
+
+async function defaultExternalIssueStateFetcher(
+  issueNumber,
+  { repoSlug = COMPAREVI_HISTORY_REPO_SLUG } = {}
+) {
+  if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+    throw new Error(`External blocker issue number must be a positive integer (received: ${issueNumber}).`);
+  }
+
+  const token = resolveGitHubToken();
+  if (!token) {
+    warnNoGitHubTokenForRestOnce();
+  }
+
+  return requestGitHubJson(`https://api.github.com/repos/${repoSlug}/issues/${issueNumber}`, token);
+}
+
+async function hydrateExternalBlockedStandingState(repoRoot, entry, options = {}) {
+  const normalized = normalizeOpenIssueCandidate(entry);
+  if (!normalized || normalized.excluded || normalized.outOfScope || !normalized.blocked) {
+    return entry;
+  }
+
+  const blockerIssueNumbers = extractCompareviHistoryIssueNumbers([
+    normalized.title,
+    normalized.body,
+    ...normalized.commentBodies
+  ]);
+  if (blockerIssueNumbers.length === 0) {
+    return entry;
+  }
+
+  const externalIssueStateFetcher = options.externalIssueStateFetcher ?? defaultExternalIssueStateFetcher;
+  const externalIssueRepoSlug = options.externalIssueRepoSlug ?? COMPAREVI_HISTORY_REPO_SLUG;
+  const blockerStates = await Promise.all(
+    blockerIssueNumbers.map(async (issueNumber) => {
+      const externalIssue = await externalIssueStateFetcher(issueNumber, {
+        repoRoot,
+        repoSlug: externalIssueRepoSlug
+      });
+      if (!externalIssue) {
+        throw new Error(`External blocker hydration returned no issue for ${externalIssueRepoSlug}#${issueNumber}.`);
+      }
+      return {
+        issueNumber,
+        state: normalizeExternalIssueState(externalIssue.state)
+      };
+    })
+  );
+
+  return {
+    ...entry,
+    blocked: blockerStates.some((blocker) => blocker.state === 'open')
+  };
+}
+
 function didReportNoStandingPriority(result) {
   return isNoStandingOutcome(result?.ghOutcome) || isNoStandingOutcome(result?.restOutcome);
 }
@@ -1595,56 +1684,62 @@ export async function enrichOpenIssuesForStandingSelection(repoRoot, slug, issue
 
   return Promise.all(
     issues.map(async (entry) => {
-      const normalized = normalizeOpenIssueCandidate(entry);
-      if (
-        !normalized ||
-        normalized.excluded ||
-        normalized.outOfScope ||
-        normalized.blocked ||
-        normalized.commentBodies.length > 0 ||
-        (!hasCompareviWorkflowScopeSignal(normalized.title, normalized.body) &&
-          !mayNeedBlockedStandingHydration(normalized.title, normalized.body))
-      ) {
-        return entry;
-      }
-
       const issueNumber = Number(entry?.number);
-      if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
-        return entry;
+      const normalized = normalizeOpenIssueCandidate(entry);
+      let enrichedEntry = entry;
+      const needsDetailHydration =
+        normalized &&
+        !normalized.excluded &&
+        !normalized.outOfScope &&
+        !normalized.blocked &&
+        normalized.commentBodies.length === 0 &&
+        (hasCompareviWorkflowScopeSignal(normalized.title, normalized.body) ||
+          mayNeedBlockedStandingHydration(normalized.title, normalized.body));
+      if (needsDetailHydration) {
+        if (Number.isInteger(issueNumber) && issueNumber > 0) {
+          try {
+            const detail = await fetchIssueDetailsFn(issueNumber, detailOptions);
+            if (!detail) {
+              throw new Error(`Standing candidate detail fetch returned no result for #${issueNumber}.`);
+            }
+            const mergedTitle = detail.title ?? entry.title;
+            const mergedBody = detail.body ?? entry.body;
+            const detailCommentBodies = normalizeCommentBodies(detail.commentBodies ?? detail.comments);
+            const detailCommentCount = Math.max(
+              Array.isArray(detail.comments) ? detail.comments.length : 0,
+              Array.isArray(detail.commentBodies) ? detail.commentBodies.length : 0,
+              Number.isFinite(Number(detail.commentCount)) ? Number(detail.commentCount) : 0,
+              typeof detail.comments === 'number' ? Number(detail.comments) : 0
+            );
+            if (
+              hasCompareviWorkflowScopeSignal(mergedTitle, mergedBody) &&
+              Number.isFinite(detailCommentCount) &&
+              detailCommentCount > 0 &&
+              detailCommentBodies.length === 0
+            ) {
+              throw new Error(`Standing candidate detail fetch did not hydrate comment bodies for #${issueNumber}.`);
+            }
+            enrichedEntry = {
+              ...entry,
+              title: mergedTitle,
+              body: mergedBody,
+              comments: detailCommentBodies,
+              commentBodies: detailCommentBodies
+            };
+          } catch (error) {
+            warn(`[priority] standing candidate detail fetch failed for #${issueNumber}: ${error?.message || error}`);
+            throw error;
+          }
+        }
       }
 
       try {
-        const detail = await fetchIssueDetailsFn(issueNumber, detailOptions);
-        if (!detail) {
-          throw new Error(`Standing candidate detail fetch returned no result for #${issueNumber}.`);
-        }
-        const mergedTitle = detail.title ?? entry.title;
-        const mergedBody = detail.body ?? entry.body;
-        const detailCommentBodies = normalizeCommentBodies(detail.commentBodies ?? detail.comments);
-        const detailCommentCount = Math.max(
-          Array.isArray(detail.comments) ? detail.comments.length : 0,
-          Array.isArray(detail.commentBodies) ? detail.commentBodies.length : 0,
-          Number.isFinite(Number(detail.commentCount)) ? Number(detail.commentCount) : 0,
-          typeof detail.comments === 'number' ? Number(detail.comments) : 0
-        );
-        if (
-          hasCompareviWorkflowScopeSignal(mergedTitle, mergedBody) &&
-          Number.isFinite(detailCommentCount) &&
-          detailCommentCount > 0 &&
-          detailCommentBodies.length === 0
-        ) {
-          throw new Error(`Standing candidate detail fetch did not hydrate comment bodies for #${issueNumber}.`);
-        }
-        return {
-          ...entry,
-          title: mergedTitle,
-          body: mergedBody,
-          comments: detailCommentBodies,
-          commentBodies: detailCommentBodies
-        };
+        return await hydrateExternalBlockedStandingState(repoRoot, enrichedEntry, options);
       } catch (error) {
-        warn(`[priority] standing candidate detail fetch failed for #${issueNumber}: ${error?.message || error}`);
-        throw error;
+        if (Number.isInteger(issueNumber) && issueNumber > 0) {
+          warn(`[priority] external blocker state hydration failed for #${issueNumber}: ${error?.message || error}`);
+        }
+        return enrichedEntry;
       }
     })
   );

@@ -4,6 +4,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handoffStandingPriority } from '../standing-priority-handoff.mjs';
 
+function buildExternalIssueStateFetcher(issueStates = {}) {
+  const overrides = new Map(
+    Object.entries(issueStates).map(([issueNumber, state]) => [Number.parseInt(issueNumber, 10), state])
+  );
+
+  return async (issueNumber) => {
+    const state = overrides.get(issueNumber) ?? 'open';
+    if (state instanceof Error) {
+      throw state;
+    }
+    return {
+      number: issueNumber,
+      state
+    };
+  };
+}
+
 test('handoffStandingPriority normalizes fork standing labels and syncs cache', async () => {
   const calls = [];
   const patchCalls = [];
@@ -291,6 +308,7 @@ test('handoffStandingPriority uses the caller gh transport to hydrate blocked ro
     patchIssueLabelsFn,
     syncFn: async () => {},
     leaseReleaseFn: async () => ({ status: 'released' }),
+    externalIssueStateFetcher: buildExternalIssueStateFetcher(),
     logger: () => {},
     env: {
       GITHUB_REPOSITORY: 'fork-owner/compare-vi-cli-action',
@@ -394,6 +412,7 @@ test('handoffStandingPriority falls back to shared REST hydration when caller gh
     restIssueFetcher,
     syncFn: async () => {},
     leaseReleaseFn: async () => ({ status: 'released' }),
+    externalIssueStateFetcher: buildExternalIssueStateFetcher(),
     logger: () => {},
     env: {
       GITHUB_REPOSITORY: 'fork-owner/compare-vi-cli-action',
@@ -618,6 +637,7 @@ test('handoffStandingPriority idles when only blocked concrete children remain b
       syncCount += 1;
     },
     leaseReleaseFn: async () => ({ status: 'released' }),
+    externalIssueStateFetcher: buildExternalIssueStateFetcher(),
     logger: (message) => logs.push(message),
     env: {
       GITHUB_REPOSITORY: 'owner/repo',
@@ -630,6 +650,101 @@ test('handoffStandingPriority idles when only blocked concrete children remain b
   assert.ok(calls.some((args) => args[0] === 'api' && String(args[1]).includes('/issues/946')));
   assert.ok(calls.some((args) => args[0] === 'api' && String(args[1]).includes('/issues/947')));
   assert.ok(logs.some((message) => /queue will become idle after sync/i.test(message)));
+});
+
+test('handoffStandingPriority promotes a rollout child when the external blocker has already closed', async () => {
+  const patchCalls = [];
+  const issues = new Map([
+    [317, { number: 317, title: 'Current standing issue', labels: [{ name: 'standing-priority' }] }],
+    [930, { number: 930, title: 'Epic: route released comparevi workflows through downstream rollout gates', labels: [{ name: 'program' }] }],
+    [946, { number: 946, title: '[P1] upstream rollout child', labels: [] }],
+    [951, { number: 951, title: '[P2] local follow-up', labels: [] }]
+  ]);
+
+  const ghRunner = (args) => {
+    if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
+      return JSON.stringify([
+        {
+          ...issues.get(317),
+          body: 'Currently active.',
+          createdAt: '2026-03-01T00:00:00Z',
+          updatedAt: '2026-03-01T00:00:00Z'
+        }
+      ]);
+    }
+    if (args[0] === 'issue' && args[1] === 'list') {
+      return JSON.stringify([
+        {
+          ...issues.get(317),
+          body: 'Currently active.',
+          createdAt: '2026-03-01T00:00:00Z',
+          updatedAt: '2026-03-01T00:00:00Z'
+        },
+        {
+          ...issues.get(930),
+          body: ['## Child tracks', '- #946'].join('\n'),
+          createdAt: '2026-03-02T00:00:00Z',
+          updatedAt: '2026-03-02T00:00:00Z'
+        },
+        {
+          ...issues.get(946),
+          body: ['Parent epic: #930', 'Track comparevi-history#23 as the remaining renderer dependency.'].join('\n'),
+          createdAt: '2026-03-03T00:00:00Z',
+          updatedAt: '2026-03-03T00:00:00Z'
+        },
+        {
+          ...issues.get(951),
+          body: 'Remaining in-repo work.',
+          createdAt: '2026-03-04T00:00:00Z',
+          updatedAt: '2026-03-04T00:00:00Z'
+        }
+      ]);
+    }
+    if (args[0] === 'api' && String(args[1]).includes('/issues/946')) {
+      return JSON.stringify({
+        number: 946,
+        title: '[P1] upstream rollout child',
+        body: ['Parent epic: #930', 'Track comparevi-history#23 as the remaining renderer dependency.'].join('\n'),
+        labels: [],
+        comments: [
+          {
+            body: 'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+          }
+        ],
+        updated_at: '2026-03-03T00:00:00Z',
+        html_url: 'https://github.com/owner/repo/issues/946'
+      });
+    }
+    if (args[0] === 'issue' && args[1] === 'view') {
+      return JSON.stringify(issues.get(Number(args[2])));
+    }
+    return '';
+  };
+
+  const patchIssueLabelsFn = (_repoRoot, _repoSlug, issueNumber, labels) => {
+    patchCalls.push({ issueNumber, labels });
+    const issue = issues.get(issueNumber);
+    issue.labels = labels.map((label) => ({ name: label }));
+  };
+
+  await handoffStandingPriority(null, {
+    auto: true,
+    ghRunner,
+    patchIssueLabelsFn,
+    syncFn: async () => {},
+    leaseReleaseFn: async () => ({ status: 'released' }),
+    externalIssueStateFetcher: buildExternalIssueStateFetcher({ 23: 'closed' }),
+    logger: () => {},
+    env: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'owner/repo'
+    }
+  });
+
+  assert.deepEqual(patchCalls, [
+    { issueNumber: 317, labels: [] },
+    { issueNumber: 946, labels: ['standing-priority'] }
+  ]);
 });
 
 test('handoffStandingPriority fails loudly when label verification remains stale after mutation', async () => {

@@ -232,7 +232,8 @@ async function resolveTargetIssue(
   repoSlug,
   workingRepoRoot,
   ghRunner,
-  restIssueFetcher
+  restIssueFetcher,
+  externalIssueStateFetcher
 ) {
   const target = String(nextIssue ?? '').trim();
   if (target) {
@@ -256,7 +257,8 @@ async function resolveTargetIssue(
 
   const enrichedOpenIssues = await enrichOpenIssuesForStandingSelection(workingRepoRoot, repoSlug, openIssues, {
     fetchIssueDetailsFn: async (issueNumber) =>
-      fetchIssueDetailsForAutoSelection(ghRunner, repoSlug, issueNumber, workingRepoRoot, restIssueFetcher)
+      fetchIssueDetailsForAutoSelection(ghRunner, repoSlug, issueNumber, workingRepoRoot, restIssueFetcher),
+    externalIssueStateFetcher
   });
   const selected = selectAutoStandingPriorityCandidate(enrichedOpenIssues, {
     excludeIssueNumbers: excludedIssueNumbers
@@ -291,7 +293,7 @@ async function resolveTargetIssue(
  * Rotate the standing-priority label to a new issue.
  *
  * @param {number|string|null} nextIssue
- * @param {{ dryRun?: boolean, auto?: boolean, repoSlug?: string|null, repoRoot?: string, env?: NodeJS.ProcessEnv, ghRunner?: Function, syncFn?: Function, logger?: Function, leaseReleaseFn?: Function, releaseLease?: boolean, leaseScope?: string, patchIssueLabelsFn?: Function, restIssueFetcher?: Function }} [options]
+ * @param {{ dryRun?: boolean, auto?: boolean, repoSlug?: string|null, repoRoot?: string, env?: NodeJS.ProcessEnv, ghRunner?: Function, syncFn?: Function, logger?: Function, leaseReleaseFn?: Function, releaseLease?: boolean, leaseScope?: string, patchIssueLabelsFn?: Function, restIssueFetcher?: Function, externalIssueStateFetcher?: Function }} [options]
  */
 export async function handoffStandingPriority(
   nextIssue,
@@ -307,6 +309,7 @@ export async function handoffStandingPriority(
     leaseReleaseFn = releaseWriterLease,
     patchIssueLabelsFn = applyIssueLabelsViaApi,
     restIssueFetcher,
+    externalIssueStateFetcher,
     releaseLease = true,
     leaseScope = 'workspace'
   } = {}
@@ -330,7 +333,8 @@ export async function handoffStandingPriority(
     resolvedRepoSlug,
     workingRepoRoot,
     ghRunner,
-    restIssueFetcher
+    restIssueFetcher,
+    externalIssueStateFetcher
   );
   const targetIssueNumber = Number.isInteger(targetSelection.issueNumber) ? targetSelection.issueNumber : null;
   const removeTargets = currentIssues
