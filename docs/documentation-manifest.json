@@ -150,7 +150,7 @@
       "name": "Mission Control Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Canonical prompt, mission-control consumption contract, machine-readable envelope contract, bounded operator-input catalog, mission-control profile/trigger catalog, an authoritative fail-closed loader for the profile catalog, a runtime trigger resolver, and the checked-in preset envelope renderer.",
+      "description": "Canonical prompt, mission-control consumption contract, machine-readable envelope contract, bounded operator-input catalog, mission-control profile/trigger catalog, an authoritative fail-closed loader for the profile catalog, a runtime trigger resolver, the checked-in preset envelope renderer, the checked-in prompt renderer, and their contract tests.",
       "files": [
         "PROMPT_AUTONOMY.md",
         "docs/MISSION_CONTROL_CONSUMPTION.md",
@@ -170,6 +170,7 @@
         "tools/priority/__tests__/mission-control-operator-input-catalog.test.mjs",
         "tools/priority/__tests__/mission-control-profile-catalog.test.mjs",
         "tools/priority/__tests__/render-mission-control-envelope.test.mjs",
+        "tools/priority/__tests__/render-mission-control-prompt.test.mjs",
         "tools/priority/__tests__/resolve-mission-control-profile.test.mjs"
       ]
     },

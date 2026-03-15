@@ -8,6 +8,7 @@ Authoritative sources:
 - canonical autonomy prompt: `PROMPT_AUTONOMY.md`
 - profile catalog example: `tools/priority/__fixtures__/mission-control/profile-catalog.json`
 - operator input catalog example: `tools/priority/__fixtures__/mission-control/operator-input-catalog.json`
+- authoritative profile loader: `tools/priority/lib/mission-control-profile-catalog.mjs`
 - preset envelope renderer: `tools/priority/render-mission-control-envelope.mjs`
 - prompt renderer: `tools/priority/render-mission-control-prompt.mjs`
 - runtime trigger resolver: `tools/priority/resolve-mission-control-profile.mjs`
@@ -17,7 +18,8 @@ Authoritative sources:
 Use the mission-control surfaces in this order:
 
 1. Resolve the trigger token through `tools/priority/resolve-mission-control-profile.mjs`.
-2. Read the matched profile from `profile-catalog.json`.
+2. Treat the resolver output and `tools/priority/lib/mission-control-profile-catalog.mjs` as the authoritative
+   profile-mapping path instead of reading raw fixture data directly.
 3. Render the machine-readable preset envelope through `tools/priority/render-mission-control-envelope.mjs`.
 4. Verify the resolved operator preset remains legal against `operator-input-catalog.json`.
 5. When an operator-facing prompt artifact is needed, render it through
