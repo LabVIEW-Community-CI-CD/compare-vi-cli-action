@@ -34,6 +34,7 @@ This document defines how future agents and operator tooling should discover, re
    of that policy.
 5. Preserve the broader instruction-precedence contract:
    - `AGENTS.md` remains authoritative for repository-wide automation law.
+   - `.github/copilot-instructions.md` remains authoritative for the local Copilot review plane.
    - phase overlays under `.github/instructions/` still control draft-review vs ready-validation behavior.
 6. Keep downstream automation fail-closed when operator input conflicts with the envelope contract, the operator input
    catalog, the profile catalog, or the repository-wide instruction surfaces above.
