@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/session-index-v2-promotion-decision-v1.schema.json",
+  "title": "Session Index v2 Promotion Decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "status",
+    "repository",
+    "workflow",
+    "selection",
+    "sourceRun",
+    "artifact",
+    "evidence",
+    "policy",
+    "decision"
+  ],
+  "properties": {
+    "schema": { "const": "session-index-v2-promotion-decision@v1" },
+    "schemaVersion": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["pass", "warn", "fail"] },
+    "repository": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "branch"],
+      "properties": {
+        "id": { "type": "string" },
+        "branch": { "type": "string" }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "runId", "status", "failureClass", "errorMessage"],
+      "properties": {
+        "mode": { "enum": ["explicit-run", "latest-completed-run"] },
+        "runId": { "type": ["string", "null"] },
+        "status": { "enum": ["pass", "fail"] },
+        "failureClass": { "type": ["string", "null"] },
+        "errorMessage": { "type": ["string", "null"] }
+      }
+    },
+    "sourceRun": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "workflowName", "displayTitle", "url", "headBranch", "headSha", "event", "status", "conclusion", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "type": ["integer", "null"] },
+        "workflowName": { "type": ["string", "null"] },
+        "displayTitle": { "type": ["string", "null"] },
+        "url": { "type": ["string", "null"] },
+        "headBranch": { "type": ["string", "null"] },
+        "headSha": { "type": ["string", "null"] },
+        "event": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] },
+        "conclusion": { "type": ["string", "null"] },
+        "createdAt": { "type": ["string", "null"], "format": "date-time" },
+        "updatedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "destinationRoot", "downloadReportPath", "bundleRoot", "files"],
+      "properties": {
+        "name": { "type": "string" },
+        "destinationRoot": { "type": "string" },
+        "downloadReportPath": { "type": "string" },
+        "bundleRoot": { "type": ["string", "null"] },
+        "files": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contract", "disposition", "cutover", "errors"],
+      "properties": {
+        "status": { "enum": ["complete", "missing", "invalid"] },
+        "contract": { "$ref": "#/$defs/evidenceNode" },
+        "disposition": { "$ref": "#/$defs/evidenceNode" },
+        "cutover": { "$ref": "#/$defs/evidenceNode" },
+        "errors": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variable", "requiredCheckPolicy", "branchProtection"],
+      "properties": {
+        "variable": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "status", "value", "enabled", "errorMessage"],
+          "properties": {
+            "name": { "type": "string" },
+            "status": { "enum": ["set", "unset", "error"] },
+            "value": { "type": ["string", "null"] },
+            "enabled": { "type": "boolean" },
+            "errorMessage": { "type": ["string", "null"] }
+          }
+        },
+        "requiredCheckPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "branch", "checkName", "contexts", "hasCheck"],
+          "properties": {
+            "path": { "type": "string" },
+            "branch": { "type": "string" },
+            "checkName": { "type": "string" },
+            "contexts": { "type": "array", "items": { "type": "string" } },
+            "hasCheck": { "type": "boolean" }
+          }
+        },
+        "branchProtection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "contexts", "hasCheck", "notes"],
+          "properties": {
+            "status": { "enum": ["available", "unavailable", "error"] },
+            "contexts": { "type": "array", "items": { "type": "string" } },
+            "hasCheck": { "type": "boolean" },
+            "notes": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "status", "summary", "reasons"],
+      "properties": {
+        "state": {
+          "enum": [
+            "missing-evidence",
+            "invalid-evidence",
+            "hold-burn-in",
+            "ready-to-promote",
+            "promotion-config-drift",
+            "already-enforced"
+          ]
+        },
+        "status": { "enum": ["pass", "warn", "fail"] },
+        "summary": { "type": "string" },
+        "reasons": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "$defs": {
+    "evidenceNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "status", "payload"],
+      "properties": {
+        "path": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] },
+        "payload": { "type": ["object", "null"] },
+        "promotionReady": { "type": ["boolean", "null"] },
+        "consecutiveSuccess": { "type": ["integer", "null"] },
+        "threshold": { "type": ["integer", "null"] },
+        "disposition": { "type": ["string", "null"] },
+        "cutoverReady": { "type": ["boolean", "null"] },
+        "remainingChecklistCount": { "type": ["integer", "null"] }
+      }
+    }
+  }
+}
