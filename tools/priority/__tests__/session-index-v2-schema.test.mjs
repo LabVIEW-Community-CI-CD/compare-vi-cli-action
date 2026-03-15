@@ -12,6 +12,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const contractScriptPath = path.join(repoRoot, 'tools', 'Test-SessionIndexV2Contract.ps1');
 const contractSchemaPath = path.join(repoRoot, 'docs', 'schemas', 'session-index-v2-contract-v1.schema.json');
 const dispositionSchemaPath = path.join(repoRoot, 'docs', 'schemas', 'session-index-v2-disposition-summary-v1.schema.json');
+const cutoverSchemaPath = path.join(repoRoot, 'docs', 'schemas', 'session-index-v2-cutover-readiness-v1.schema.json');
 
 function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -23,7 +24,7 @@ function loadJson(filePath) {
 }
 
 function createAjv() {
-  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  const ajv = new Ajv2020({ allErrors: true, strict: false, $data: true });
   addFormats(ajv);
   return ajv;
 }
@@ -109,7 +110,8 @@ function invokeContractTool(resultsDir, policyPath) {
 
   return {
     contract: loadJson(path.join(resultsDir, 'session-index-v2-contract.json')),
-    disposition: loadJson(path.join(resultsDir, 'session-index-v2-disposition.json'))
+    disposition: loadJson(path.join(resultsDir, 'session-index-v2-disposition.json')),
+    cutover: loadJson(path.join(resultsDir, 'session-index-v2-cutover-readiness.json'))
   };
 }
 
@@ -119,9 +121,11 @@ test('session-index-v2 burn-in schemas validate generated clean and mismatch art
 
   const contractSchema = loadJson(contractSchemaPath);
   const dispositionSchema = loadJson(dispositionSchemaPath);
+  const cutoverSchema = loadJson(cutoverSchemaPath);
   const ajv = createAjv();
   const validateContract = ajv.compile(contractSchema);
   const validateDisposition = ajv.compile(dispositionSchema);
+  const validateCutover = ajv.compile(cutoverSchema);
 
   const cleanResultsDir = createSessionIndexFixture(tmpDir, 'clean', {
     expectedContexts: ['lint', 'session-index']
@@ -131,9 +135,11 @@ test('session-index-v2 burn-in schemas validate generated clean and mismatch art
 
   assert.equal(validateContract(clean.contract), true, JSON.stringify(validateContract.errors, null, 2));
   assert.equal(validateDisposition(clean.disposition), true, JSON.stringify(validateDisposition.errors, null, 2));
+  assert.equal(validateCutover(clean.cutover), true, JSON.stringify(validateCutover.errors, null, 2));
   assert.equal(clean.contract.status, 'pass');
   assert.equal(clean.contract.burnInReceipt.mismatchClass, 'none');
   assert.equal(clean.disposition.disposition, 'clean-burn-in');
+  assert.equal(clean.cutover.schema, 'session-index-v2-cutover-readiness@v1');
 
   const mismatchResultsDir = createSessionIndexFixture(tmpDir, 'mismatch', {
     expectedContexts: ['lint'],
@@ -144,9 +150,11 @@ test('session-index-v2 burn-in schemas validate generated clean and mismatch art
 
   assert.equal(validateContract(mismatch.contract), true, JSON.stringify(validateContract.errors, null, 2));
   assert.equal(validateDisposition(mismatch.disposition), true, JSON.stringify(validateDisposition.errors, null, 2));
+  assert.equal(validateCutover(mismatch.cutover), true, JSON.stringify(validateCutover.errors, null, 2));
   assert.equal(mismatch.contract.status, 'fail');
   assert.equal(mismatch.contract.burnInReceipt.mismatchClass, 'missing-required-contexts');
   assert.equal(mismatch.disposition.disposition, 'burn-in-mismatch');
+  assert.equal(mismatch.cutover.status, 'not-ready');
 });
 
 test('session-index-v2 burn-in schemas reject contradictory status projections', async () => {

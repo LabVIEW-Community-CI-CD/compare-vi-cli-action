@@ -108,6 +108,8 @@ function Write-GitHubOutputValue {
 $repoContext = Resolve-RepositoryContext -Owner $Owner -Repository $Repository
 $Owner = $repoContext.Owner
 $Repository = $repoContext.Repository
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$resolvedPolicyPath = if ([System.IO.Path]::IsPathRooted($PolicyPath)) { $PolicyPath } else { Join-Path $repoRoot $PolicyPath }
 
 function Get-ApiHeaders {
   param([string]$Token)
@@ -296,6 +298,105 @@ function Get-BurnInDisposition {
   return 'burn-in-mismatch'
 }
 
+function New-ContractArtifacts {
+  param(
+    [string[]]$Failures,
+    [string[]]$Notes,
+    [string]$MismatchClass,
+    [string]$MismatchFingerprint,
+    [string]$RecurrenceClassification,
+    [pscustomobject]$BurnIn,
+    [bool]$PromotionReady,
+    [string]$Disposition,
+    [string]$ReportPath,
+    [string]$DispositionPath,
+    [string]$V1Path,
+    [string]$V2Path,
+    [string[]]$ExpectedContexts,
+    [string[]]$MissingExpected
+  )
+
+  $report = [ordered]@{
+    schema = 'session-index-v2-contract/v1'
+    generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+    branch = $Branch
+    status = if ($Failures.Count -eq 0) { 'pass' } else { 'fail' }
+    enforce = [bool]$Enforce
+    failures = @($Failures)
+    notes = @($Notes)
+    branchProtection = [ordered]@{
+      policyPath = $PolicyPath
+      requiredContexts = @($ExpectedContexts)
+      missingContexts = @($MissingExpected)
+    }
+    burnIn = [ordered]@{
+      threshold = $BurnInThreshold
+      status = $BurnIn.status
+      reason = $BurnIn.reason
+      consecutiveSuccess = $BurnIn.consecutiveSuccess
+      inspectedRuns = $BurnIn.inspectedRuns
+      promotionReady = $PromotionReady
+    }
+    burnInReceipt = [ordered]@{
+      schema = 'session-index-v2-burn-in-receipt@v1'
+      mode = if ($Enforce) { 'enforce' } else { 'burn-in' }
+      status = if ($Failures.Count -eq 0) { 'clean' } else { 'mismatch' }
+      mismatchClass = $MismatchClass
+      mismatchFingerprint = $MismatchFingerprint
+      mismatchSummary = @($Failures)
+      recurrence = [ordered]@{
+        classification = $RecurrenceClassification
+        burnInStatus = $BurnIn.status
+        consecutiveSuccess = $BurnIn.consecutiveSuccess
+      }
+      evidence = [ordered]@{
+        reportPath = $ReportPath
+        resultsDir = $ResultsDir
+        sessionIndexV1Path = $V1Path
+        sessionIndexV2Path = $V2Path
+        policyPath = $PolicyPath
+      }
+    }
+  }
+
+  $summary = [ordered]@{
+    schema = 'session-index-v2-disposition-summary@v1'
+    generatedAtUtc = $report.generatedAtUtc
+    branch = $Branch
+    mode = $report.burnInReceipt.mode
+    disposition = $Disposition
+    status = $report.status
+    promotionReady = $PromotionReady
+    mismatchClass = $MismatchClass
+    recurrenceClassification = $RecurrenceClassification
+    consecutiveSuccess = $BurnIn.consecutiveSuccess
+    threshold = $BurnInThreshold
+    evidence = [ordered]@{
+      contractReportPath = $ReportPath
+      sessionIndexV1Path = $V1Path
+      sessionIndexV2Path = $V2Path
+      policyPath = $PolicyPath
+    }
+  }
+
+  return [pscustomobject]@{
+    Report = $report
+    Summary = $summary
+  }
+}
+
+function Write-JsonArtifact {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [object]$Data,
+    [int]$Depth = 50
+  )
+
+  $Data | ConvertTo-Json -Depth $Depth | Out-File -LiteralPath $Path -Encoding utf8
+}
+
 if (-not (Test-Path -LiteralPath $ResultsDir -PathType Container)) {
   throw "ResultsDir does not exist: $ResultsDir"
 }
@@ -304,8 +405,13 @@ $v1Path = Join-Path $ResultsDir 'session-index.json'
 $v2Path = Join-Path $ResultsDir 'session-index-v2.json'
 $reportPath = Join-Path $ResultsDir 'session-index-v2-contract.json'
 $dispositionPath = Join-Path $ResultsDir 'session-index-v2-disposition.json'
-$schemaPath = Join-Path (Get-Location) 'docs/schema/generated/session-index-v2.schema.json'
+$cutoverReadinessPath = Join-Path $ResultsDir 'session-index-v2-cutover-readiness.json'
+$schemaPath = 'docs/schema/generated/session-index-v2.schema.json'
+$resolvedSchemaPath = Join-Path $repoRoot $schemaPath
 $schemaLiteValidatorPath = Join-Path $PSScriptRoot 'Invoke-JsonSchemaLite.ps1'
+$cutoverHelperPath = Join-Path $PSScriptRoot 'Write-SessionIndexV2CutoverReadiness.ps1'
+$consumerMatrixPath = 'docs/SESSION_INDEX_V2_CONSUMER_MATRIX.md'
+$deprecationPolicyPath = 'docs/SESSION_INDEX_V1_DEPRECATION.md'
 
 $failures = @()
 $notes = @()
@@ -320,7 +426,7 @@ if (-not (Test-Path -LiteralPath $v2Path -PathType Leaf)) {
 $v2 = $null
 if (Test-Path -LiteralPath $v2Path -PathType Leaf) {
   try {
-    & $schemaLiteValidatorPath -JsonPath $v2Path -SchemaPath $schemaPath
+    & $schemaLiteValidatorPath -JsonPath $v2Path -SchemaPath $resolvedSchemaPath
     if ($LASTEXITCODE -ne 0) {
       Add-Failure -Failures ([ref]$failures) -Message "Schema validation failed for session-index-v2.json (exit $LASTEXITCODE)."
     }
@@ -336,9 +442,9 @@ if (Test-Path -LiteralPath $v2Path -PathType Leaf) {
 }
 
 $expectedContexts = @()
-if (Test-Path -LiteralPath $PolicyPath -PathType Leaf) {
+if (Test-Path -LiteralPath $resolvedPolicyPath -PathType Leaf) {
   try {
-    $expectedContexts = @(Resolve-BranchExpectedContextsFromPath -Path $PolicyPath -BranchName $Branch)
+    $expectedContexts = @(Resolve-BranchExpectedContextsFromPath -Path $resolvedPolicyPath -BranchName $Branch)
     if ($expectedContexts.Count -eq 0) {
       Add-Failure -Failures ([ref]$failures) -Message ("Unable to resolve required contexts from branch policy for branch '{0}'." -f $Branch)
     }
@@ -396,74 +502,79 @@ if ($burnIn.status -eq 'unavailable') {
   $notes += ("Burn-in status unavailable ({0})." -f $burnIn.reason)
 }
 
-$report = [ordered]@{
-  schema = 'session-index-v2-contract/v1'
-  generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
-  branch = $Branch
-  status = if ($failures.Count -eq 0) { 'pass' } else { 'fail' }
-  enforce = [bool]$Enforce
-  failures = @($failures)
-  notes = @($notes)
-  branchProtection = [ordered]@{
-    policyPath = $PolicyPath
-    requiredContexts = @($expectedContexts)
-    missingContexts = @($missingExpected)
-  }
-  burnIn = [ordered]@{
-    threshold = $BurnInThreshold
-    status = $burnIn.status
-    reason = $burnIn.reason
-    consecutiveSuccess = $burnIn.consecutiveSuccess
-    inspectedRuns = $burnIn.inspectedRuns
-    promotionReady = $promotionReady
-  }
-  burnInReceipt = [ordered]@{
-    schema = 'session-index-v2-burn-in-receipt@v1'
-    mode = if ($Enforce) { 'enforce' } else { 'burn-in' }
-    status = if ($failures.Count -eq 0) { 'clean' } else { 'mismatch' }
-    mismatchClass = $mismatchClass
-    mismatchFingerprint = $mismatchFingerprint
-    mismatchSummary = @($failures)
-    recurrence = [ordered]@{
-      classification = $recurrenceClassification
-      burnInStatus = $burnIn.status
-      consecutiveSuccess = $burnIn.consecutiveSuccess
-    }
-    evidence = [ordered]@{
-      reportPath = $reportPath
-      resultsDir = $ResultsDir
-      sessionIndexV1Path = $v1Path
-      sessionIndexV2Path = $v2Path
-      policyPath = $PolicyPath
-    }
-  }
-}
+$artifacts = New-ContractArtifacts `
+  -Failures $failures `
+  -Notes $notes `
+  -MismatchClass $mismatchClass `
+  -MismatchFingerprint $mismatchFingerprint `
+  -RecurrenceClassification $recurrenceClassification `
+  -BurnIn $burnIn `
+  -PromotionReady $promotionReady `
+  -Disposition $disposition `
+  -ReportPath $reportPath `
+  -DispositionPath $dispositionPath `
+  -V1Path $v1Path `
+  -V2Path $v2Path `
+  -ExpectedContexts $expectedContexts `
+  -MissingExpected $missingExpected
+$report = $artifacts.Report
+$summary = $artifacts.Summary
 
-$report | ConvertTo-Json -Depth 50 | Out-File -LiteralPath $reportPath -Encoding utf8
+Write-JsonArtifact -Path $reportPath -Data $report -Depth 50
 Write-Host ("session-index-v2 contract report written: {0}" -f $reportPath)
-
-$summary = [ordered]@{
-  schema = 'session-index-v2-disposition-summary@v1'
-  generatedAtUtc = $report.generatedAtUtc
-  branch = $Branch
-  mode = $report.burnInReceipt.mode
-  disposition = $disposition
-  status = $report.status
-  promotionReady = $promotionReady
-  mismatchClass = $mismatchClass
-  recurrenceClassification = $recurrenceClassification
-  consecutiveSuccess = $burnIn.consecutiveSuccess
-  threshold = $BurnInThreshold
-  evidence = [ordered]@{
-    contractReportPath = $reportPath
-    sessionIndexV1Path = $v1Path
-    sessionIndexV2Path = $v2Path
-    policyPath = $PolicyPath
-  }
-}
-
-$summary | ConvertTo-Json -Depth 20 | Out-File -LiteralPath $dispositionPath -Encoding utf8
+Write-JsonArtifact -Path $dispositionPath -Data $summary -Depth 20
 Write-Host ("session-index-v2 disposition summary written: {0}" -f $dispositionPath)
+
+$cutoverReport = $null
+try {
+  Remove-Item -LiteralPath $cutoverReadinessPath -Force -ErrorAction SilentlyContinue
+
+  & $cutoverHelperPath `
+    -ContractReportPath $reportPath `
+    -DispositionReportPath $dispositionPath `
+    -ConsumerMatrixPath $consumerMatrixPath `
+    -DeprecationPolicyPath $deprecationPolicyPath `
+    -OutputPath $cutoverReadinessPath `
+    -StepSummaryPath ''
+
+  if (-not (Test-Path -LiteralPath $cutoverReadinessPath -PathType Leaf)) {
+    throw "Cutover readiness report was not written: $cutoverReadinessPath"
+  }
+
+  $cutoverReport = Get-Content -Raw -LiteralPath $cutoverReadinessPath | ConvertFrom-Json -Depth 50
+} catch {
+  Remove-Item -LiteralPath $cutoverReadinessPath -Force -ErrorAction SilentlyContinue
+  Add-Failure -Failures ([ref]$failures) -Message "Cutover readiness report failed: $($_.Exception.Message)"
+  $mismatchClass = Get-BurnInMismatchClass -Failures $failures
+  $mismatchFingerprint = Get-BurnInMismatchFingerprint -MismatchClass $mismatchClass -Failures $failures
+  $recurrenceClassification = Get-BurnInRecurrenceClassification -Failures $failures -BurnIn $burnIn
+  $disposition = Get-BurnInDisposition `
+    -Failures $failures `
+    -Enforce ([bool]$Enforce) `
+    -PromotionReady $promotionReady `
+    -RecurrenceClassification $recurrenceClassification
+
+  $artifacts = New-ContractArtifacts `
+    -Failures $failures `
+    -Notes $notes `
+    -MismatchClass $mismatchClass `
+    -MismatchFingerprint $mismatchFingerprint `
+    -RecurrenceClassification $recurrenceClassification `
+    -BurnIn $burnIn `
+    -PromotionReady $promotionReady `
+    -Disposition $disposition `
+    -ReportPath $reportPath `
+    -DispositionPath $dispositionPath `
+    -V1Path $v1Path `
+    -V2Path $v2Path `
+    -ExpectedContexts $expectedContexts `
+    -MissingExpected $missingExpected
+  $report = $artifacts.Report
+  $summary = $artifacts.Summary
+
+  Write-JsonArtifact -Path $reportPath -Data $report -Depth 50
+  Write-JsonArtifact -Path $dispositionPath -Data $summary -Depth 20
+}
 
 Write-GitHubOutputValue -Name 'session-index-v2-status' -Value ([string]$report.status)
 Write-GitHubOutputValue -Name 'session-index-v2-burn-in-status' -Value ([string]$report.burnInReceipt.status)
@@ -493,6 +604,11 @@ if ($env:GITHUB_STEP_SUMMARY) {
     ('- Contract report: `{0}`' -f $reportPath),
     ('- Disposition report: `{0}`' -f $dispositionPath)
   )
+  if ($cutoverReport) {
+    $summary += ('- Cutover readiness report: `{0}`' -f $cutoverReadinessPath)
+    $summary += ('- Cutover status: `{0}`' -f $cutoverReport.status)
+    $summary += ('- Cutover ready: `{0}`' -f $cutoverReport.cutoverReady)
+  }
   if ($failures.Count -gt 0) {
     $summary += ''
     $summary += '#### Failures'
