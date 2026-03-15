@@ -38,6 +38,7 @@ The window remains open until all of the following are true:
 
 - Final consumer readiness matrix snapshot.
 - `session-index-v2-contract` artifact evidence (`consecutiveSuccess`, `promotionReady`).
+- `session-index-v2-cutover-readiness.json` machine-readable cutover report.
 - 5-run no-regression evidence for critical consumers.
 - CI evidence showing no required path depends on `session-index.json`.
 

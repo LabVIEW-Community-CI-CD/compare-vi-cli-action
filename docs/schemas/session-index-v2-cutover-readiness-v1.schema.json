@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/session-index-v2-cutover-readiness-v1.schema.json",
+  "title": "Session Index v2 Cutover Readiness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "status",
+    "cutoverReady",
+    "promotionGate",
+    "consumerRegressionGuard",
+    "consumerMatrix",
+    "deprecationChecklist",
+    "evidence",
+    "reasons"
+  ],
+  "properties": {
+    "schema": {
+      "const": "session-index-v2-cutover-readiness@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": ["ready", "not-ready"]
+    },
+    "cutoverReady": {
+      "type": "boolean"
+    },
+    "promotionGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promotionReady",
+        "threshold",
+        "consecutiveSuccess",
+        "burnInStatus",
+        "contractStatus",
+        "disposition"
+      ],
+      "properties": {
+        "promotionReady": { "type": "boolean" },
+        "threshold": { "type": "integer", "minimum": 1 },
+        "consecutiveSuccess": { "type": "integer", "minimum": 0 },
+        "burnInStatus": { "type": "string", "minLength": 1 },
+        "contractStatus": { "enum": ["pass", "fail"] },
+        "disposition": { "type": "string", "minLength": 1 }
+      }
+    },
+    "consumerRegressionGuard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "threshold",
+        "consecutiveSuccess",
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "threshold": { "type": "integer", "minimum": 1 },
+        "consecutiveSuccess": { "type": "integer", "minimum": 0 },
+        "status": { "enum": ["pending", "satisfied", "blocked"] },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "consumerMatrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "criticalConsumerCount",
+        "readyConsumerCount",
+        "allV2FirstReady",
+        "notReadyConsumers"
+      ],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "criticalConsumerCount": { "type": "integer", "minimum": 1 },
+        "readyConsumerCount": { "type": "integer", "minimum": 0 },
+        "allV2FirstReady": { "type": "boolean" },
+        "notReadyConsumers": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "deprecationChecklist": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "remainingCount", "remainingItems", "completedItems"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "remainingCount": { "type": "integer", "minimum": 0 },
+        "remainingItems": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "completedItems": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractReportPath",
+        "dispositionReportPath",
+        "consumerMatrixPath",
+        "deprecationPolicyPath"
+      ],
+      "properties": {
+        "contractReportPath": { "type": "string", "minLength": 1 },
+        "dispositionReportPath": { "type": "string", "minLength": 1 },
+        "consumerMatrixPath": { "type": "string", "minLength": 1 },
+        "deprecationPolicyPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "ready" }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "cutoverReady": { "const": true },
+          "consumerRegressionGuard": {
+            "properties": {
+              "status": { "const": "satisfied" }
+            },
+            "required": ["status"]
+          },
+          "consumerMatrix": {
+            "properties": {
+              "allV2FirstReady": { "const": true },
+              "readyConsumerCount": {
+                "const": {
+                  "$data": "1/criticalConsumerCount"
+                }
+              },
+              "notReadyConsumers": {
+                "maxItems": 0
+              }
+            },
+            "required": ["allV2FirstReady", "readyConsumerCount", "notReadyConsumers", "criticalConsumerCount"]
+          },
+          "deprecationChecklist": {
+            "properties": {
+              "remainingCount": { "const": 0 }
+            },
+            "required": ["remainingCount"]
+          },
+          "promotionGate": {
+            "properties": {
+              "promotionReady": { "const": true },
+              "contractStatus": { "const": "pass" }
+            },
+            "required": ["promotionReady", "contractStatus"]
+          },
+          "reasons": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "cutoverReady": { "const": true }
+        },
+        "required": ["cutoverReady"]
+      },
+      "then": {
+        "properties": {
+          "status": { "const": "ready" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "consumerMatrix": {
+            "properties": {
+              "allV2FirstReady": { "const": true }
+            },
+            "required": ["allV2FirstReady"]
+          }
+        },
+        "required": ["consumerMatrix"]
+      },
+      "then": {
+        "properties": {
+          "consumerMatrix": {
+            "properties": {
+              "readyConsumerCount": {
+                "const": {
+                  "$data": "1/criticalConsumerCount"
+                }
+              },
+              "notReadyConsumers": {
+                "maxItems": 0
+              }
+            },
+            "required": ["readyConsumerCount", "notReadyConsumers", "criticalConsumerCount"]
+          }
+        }
+      }
+    }
+  ]
+}
