@@ -22,6 +22,9 @@ The check validates:
   machine-readable `burnInReceipt` node.
 - The check also writes `session-index-v2-disposition.json`, a compact summary that projects the latest burn-in
   disposition without requiring a reader to inspect the full failure list first.
+- Schemas for both artifacts live in:
+  - `docs/schemas/session-index-v2-contract-v1.schema.json`
+  - `docs/schemas/session-index-v2-disposition-summary-v1.schema.json`
 - While burn-in is active, failures are **non-blocking** but include warnings and triage details in the step summary.
 
 ## Enforce toggle
