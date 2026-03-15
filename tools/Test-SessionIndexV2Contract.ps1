@@ -212,12 +212,12 @@ function Get-BurnInMismatchClass {
       [void]$classes.Add('branch-policy-projection')
       continue
     }
-    if ($failure -match '^branchProtection\.(expected|actual)') {
-      [void]$classes.Add('branch-protection-shape')
-      continue
-    }
     if ($failure -match '^branchProtection\.expected missing required contexts:') {
       [void]$classes.Add('missing-required-contexts')
+      continue
+    }
+    if ($failure -match '^branchProtection\.(expected|actual)') {
+      [void]$classes.Add('branch-protection-shape')
       continue
     }
     if ($failure -match '^artifacts block is empty') {
