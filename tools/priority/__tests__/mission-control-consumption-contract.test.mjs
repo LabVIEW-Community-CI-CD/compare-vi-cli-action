@@ -47,5 +47,6 @@ test('docs manifest advertises the mission-control consumption contract', () => 
   assert.match(missionControlEntry.description, /preset envelope renderer/i);
   assert.ok(missionControlEntry.files.includes('docs/MISSION_CONTROL_CONSUMPTION.md'));
   assert.ok(missionControlEntry.files.includes('tools/priority/render-mission-control-envelope.mjs'));
+  assert.ok(missionControlEntry.files.includes('tools/priority/__tests__/render-mission-control-envelope.test.mjs'));
   assert.ok(missionControlEntry.files.includes('tools/priority/__tests__/mission-control-consumption-contract.test.mjs'));
 });

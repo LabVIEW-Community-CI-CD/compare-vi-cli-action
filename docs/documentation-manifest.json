@@ -166,6 +166,7 @@
         "tools/priority/__tests__/mission-control-envelope-schema.test.mjs",
         "tools/priority/__tests__/mission-control-operator-input-catalog.test.mjs",
         "tools/priority/__tests__/mission-control-profile-catalog.test.mjs",
+        "tools/priority/__tests__/render-mission-control-envelope.test.mjs",
         "tools/priority/__tests__/resolve-mission-control-profile.test.mjs"
       ]
     },
