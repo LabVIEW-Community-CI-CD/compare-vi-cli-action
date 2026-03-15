@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-14T20:35:00Z",
+  "updated": "2026-03-15T00:35:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -67,6 +67,7 @@
         "docs/knowledgebase/DOCKER_TOOLS_PARITY.md",
         "docs/LABVIEW_GATING.md",
         "docs/LINT_BACKLOG_PLAN.md",
+        "docs/MISSION_CONTROL_CONSUMPTION.md",
         "docs/OPERATOR_REMEDIATION_PLAYBOOKS.md",
         "docs/plans/TRACEABILITY_MATRIX_PLAN.md",
         "docs/plans/VALIDATION_MATRIX.md",
@@ -148,9 +149,10 @@
       "name": "Mission Control Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Canonical prompt, machine-readable envelope contract, bounded operator-input catalog, mission-control profile/trigger catalog, an authoritative fail-closed loader for the profile catalog, and a runtime trigger resolver for machine-readable preset expansion.",
+      "description": "Canonical prompt, mission-control consumption contract, machine-readable envelope contract, bounded operator-input catalog, mission-control profile/trigger catalog, an authoritative fail-closed loader for the profile catalog, a runtime trigger resolver, and the checked-in preset envelope renderer.",
       "files": [
         "PROMPT_AUTONOMY.md",
+        "docs/MISSION_CONTROL_CONSUMPTION.md",
         "docs/schemas/mission-control-envelope-v1.schema.json",
         "docs/schemas/mission-control-operator-input-catalog-v1.schema.json",
         "docs/schemas/mission-control-profile-catalog-v1.schema.json",
@@ -158,7 +160,9 @@
         "tools/priority/__fixtures__/mission-control/operator-input-catalog.json",
         "tools/priority/__fixtures__/mission-control/profile-catalog.json",
         "tools/priority/lib/mission-control-profile-catalog.mjs",
+        "tools/priority/render-mission-control-envelope.mjs",
         "tools/priority/resolve-mission-control-profile.mjs",
+        "tools/priority/__tests__/mission-control-consumption-contract.test.mjs",
         "tools/priority/__tests__/mission-control-envelope-schema.test.mjs",
         "tools/priority/__tests__/mission-control-operator-input-catalog.test.mjs",
         "tools/priority/__tests__/mission-control-profile-catalog.test.mjs",
