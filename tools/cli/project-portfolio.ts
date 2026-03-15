@@ -1116,10 +1116,11 @@ function loadProjectContext(args: Args, config: PortfolioConfig): ProjectContext
     fieldsSchema,
     ['project', 'field-list', String(number), '--owner', owner, '--format', 'json'],
   );
+  const itemListLimit = String(Math.max(view.items.totalCount, 100));
   const itemList = loadJsonInput(
     args.item_file,
     itemListSchema,
-    ['project', 'item-list', String(number), '--owner', owner, '--limit', '100', '--format', 'json'],
+    ['project', 'item-list', String(number), '--owner', owner, '--limit', itemListLimit, '--format', 'json'],
   );
 
   const fieldNames = buildFieldNameMap(config);

@@ -10,7 +10,9 @@
   "repositories": [
     "LabVIEW-Community-CI-CD/compare-vi-cli-action",
     "LabVIEW-Community-CI-CD/compare-vi-cli-action-fork",
-    "LabVIEW-Community-CI-CD/comparevi-history"
+    "LabVIEW-Community-CI-CD/comparevi-history",
+    "LabVIEW-Community-CI-CD/labview-icon-editor-demo",
+    "svelderrainruiz/labview-icon-editor-demo"
   ],
   "fieldCatalog": {
     "status": {
@@ -605,6 +607,66 @@
       "status": "Done",
       "program": "Multi-Mode Diagnostics",
       "phase": "Sustain",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "None",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/23",
+      "status": "In Progress",
+      "program": "Shared Infra",
+      "phase": "Helper Workflow",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/24",
+      "status": "In Progress",
+      "program": "Shared Infra",
+      "phase": "Helper Workflow",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "Partial",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/25",
+      "status": "Todo",
+      "program": "Shared Infra",
+      "phase": "Sustain",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "None",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/26",
+      "status": "Todo",
+      "program": "Shared Infra",
+      "phase": "Apply Mode",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "None",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/issues/4",
+      "status": "Todo",
+      "program": "Shared Infra",
+      "phase": "Apply Mode",
+      "environmentClass": "Cross-Repo",
+      "blockingSignal": "Scope",
+      "evidenceState": "None",
+      "portfolioTrack": "Corpus & Facade"
+    },
+    {
+      "url": "https://github.com/svelderrainruiz/labview-icon-editor-demo/issues/5",
+      "status": "Todo",
+      "program": "Shared Infra",
+      "phase": "Apply Mode",
       "environmentClass": "Cross-Repo",
       "blockingSignal": "Scope",
       "evidenceState": "None",

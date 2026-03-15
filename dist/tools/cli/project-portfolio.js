@@ -806,7 +806,8 @@ function loadProjectContext(args, config) {
     const number = args.number ?? config.number;
     const view = loadJsonInput(args.view_file, viewSchema, ['project', 'view', String(number), '--owner', owner, '--format', 'json']);
     const fields = loadJsonInput(args.fields_file, fieldsSchema, ['project', 'field-list', String(number), '--owner', owner, '--format', 'json']);
-    const itemList = loadJsonInput(args.item_file, itemListSchema, ['project', 'item-list', String(number), '--owner', owner, '--limit', '100', '--format', 'json']);
+    const itemListLimit = String(Math.max(view.items.totalCount, 100));
+    const itemList = loadJsonInput(args.item_file, itemListSchema, ['project', 'item-list', String(number), '--owner', owner, '--limit', itemListLimit, '--format', 'json']);
     const fieldNames = buildFieldNameMap(config);
     const normalizedItems = itemList.items
         .map((item) => normalizeItem(item, fieldNames))

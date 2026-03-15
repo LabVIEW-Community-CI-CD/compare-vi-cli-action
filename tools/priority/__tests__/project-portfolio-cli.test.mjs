@@ -63,7 +63,7 @@ function buildConfig({
   };
 }
 
-function buildView() {
+function buildView({ itemCount = 1 } = {}) {
   return {
     id: 'PVT_example',
     number: 7,
@@ -72,7 +72,7 @@ function buildView() {
     readme: 'Example readme',
     public: false,
     url: 'https://github.com/orgs/example/projects/7',
-    items: { totalCount: 1 },
+    items: { totalCount: itemCount },
     fields: { totalCount: 7 },
     owner: { login: 'example-owner', type: 'Organization' },
   };
@@ -204,6 +204,18 @@ function parseGraphqlArgs(argv) {
 }
 
 if (args[0] !== 'api' || args[1] !== 'graphql') {
+  if (args[0] === 'project' && args[1] === 'view') {
+    saveAndPrint(state.projectView ?? {});
+    process.exit(0);
+  }
+  if (args[0] === 'project' && args[1] === 'field-list') {
+    saveAndPrint(state.projectFields ?? {});
+    process.exit(0);
+  }
+  if (args[0] === 'project' && args[1] === 'item-list') {
+    saveAndPrint(state.projectItems ?? {});
+    process.exit(0);
+  }
   console.error('Unsupported fake gh invocation:', args.join(' '));
   process.exit(1);
 }
@@ -332,6 +344,63 @@ test('project portfolio CLI emits v2 report schema for the expanded payload', as
   assert.deepEqual(report.items[0].linkedPullRequests, ['https://github.com/example/repo/pull/1']);
   assert.deepEqual(report.items[0].reviewers, ['copilot-reviewer']);
   assert.deepEqual(report.drift.fieldCatalogMismatches, []);
+});
+
+test('project portfolio CLI sizes gh item-list fetches to the live project item count', async (t) => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'project-portfolio-live-load-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  const configPath = path.join(tempRoot, 'config.json');
+  const outPath = path.join(tempRoot, 'report.json');
+  const itemUrl = 'https://github.com/example/repo/issues/1';
+  const config = buildConfig({ itemUrl });
+  const fields = buildFields();
+  const state = buildFakeGhState({
+    targetUrl: itemUrl,
+    resourceId: 'resource-1',
+    title: 'Example issue',
+    fields,
+    nextAddedItemId: 'item-1',
+  });
+  state.projectView = buildView({ itemCount: 138 });
+  state.projectFields = fields;
+  state.projectItems = {
+    totalCount: 138,
+    items: [
+      {
+        id: 'item-1',
+        Status: 'Todo',
+        Program: 'Shared Infra',
+        Phase: 'Policy',
+        'Environment Class': 'Infra',
+        'Blocking Signal': 'Scope',
+        'Evidence State': 'Ready',
+        'Portfolio Track': 'Agent UX',
+        content: {
+          url: itemUrl,
+          title: 'Example issue',
+          repository: 'example/repo',
+          type: 'Issue',
+        },
+      },
+    ],
+  };
+
+  await writeJson(configPath, config);
+  const harness = await writeFakeGhHarness(tempRoot, state);
+  const result = runCli(['snapshot', '--config', configPath, '--out', outPath], { env: harness.env });
+
+  assert.equal(result.status, 0, result.stderr);
+  const finalState = JSON.parse(await readFile(harness.statePath, 'utf8'));
+  const itemListCall = finalState.calls.find(
+    (args) => args[0] === 'project' && args[1] === 'item-list',
+  );
+  assert.ok(itemListCall, 'expected project item-list call');
+  const limitIndex = itemListCall.indexOf('--limit');
+  assert.notEqual(limitIndex, -1, 'expected --limit in project item-list call');
+  assert.equal(itemListCall[limitIndex + 1], '138');
 });
 
 test('project portfolio CLI normalizes item values using fieldCatalog display names', async (t) => {
