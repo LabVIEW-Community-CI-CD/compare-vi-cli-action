@@ -198,7 +198,8 @@ test('session index v2 validation uses schema-lite call sites available on clean
   assert.doesNotMatch(validateWorkflow, /tools\/schemas\/validate-json\.js/);
 
   const sessionIndexContract = readRepoFile('tools/Test-SessionIndexV2Contract.ps1');
+  assert.match(sessionIndexContract, /\$resolvedSchemaPath = Join-Path \$repoRoot \$schemaPath/);
   assert.match(sessionIndexContract, /\$schemaLiteValidatorPath = Join-Path \$PSScriptRoot 'Invoke-JsonSchemaLite\.ps1'/);
-  assert.match(sessionIndexContract, /& \$schemaLiteValidatorPath -JsonPath \$v2Path -SchemaPath \$schemaPath/);
+  assert.match(sessionIndexContract, /& \$schemaLiteValidatorPath -JsonPath \$v2Path -SchemaPath \$resolvedSchemaPath/);
   assert.doesNotMatch(sessionIndexContract, /tools\/schemas\/validate-json\.js/);
 });
