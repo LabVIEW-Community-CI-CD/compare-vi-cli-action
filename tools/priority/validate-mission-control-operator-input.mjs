@@ -296,6 +296,7 @@ function normalizeOverrideValue(overrideDefinition, valueToken) {
 function normalizeOverrides(overrideTokens, catalog) {
   const seenKeys = new Set();
   const normalizedOverrides = [];
+  const duplicateKeys = new Set();
   const issues = [];
 
   for (const token of overrideTokens) {
@@ -311,6 +312,7 @@ function normalizeOverrides(overrideTokens, catalog) {
     }
     if (seenKeys.has(parsed.key)) {
       issues.push('duplicate-override-key');
+      duplicateKeys.add(parsed.key);
       continue;
     }
     seenKeys.add(parsed.key);
@@ -346,6 +348,7 @@ function normalizeOverrides(overrideTokens, catalog) {
   normalizedOverrides.sort((left, right) => left.key.localeCompare(right.key));
   return {
     overrides: normalizedOverrides,
+    duplicateKeys: [...duplicateKeys].sort((left, right) => left.localeCompare(right)),
     issues,
   };
 }
@@ -378,6 +381,7 @@ export function assessMissionControlOperatorInput(
   const standingPriorityRequired = focusDefinition?.standingPriorityRequired === true;
   const standingIssueArgumentProvided = standingPriorityRequired ? parsedStandingIssue.provided === true : true;
   const standingPrioritySatisfied = standingPriorityRequired ? normalizedStandingIssue !== null : true;
+  const reportedStandingIssueNumber = standingPriorityRequired ? normalizedStandingIssue : null;
 
   const checks = {
     intentDefined: intentDefinition ? 'passed' : 'failed',
@@ -454,10 +458,11 @@ export function assessMissionControlOperatorInput(
         key: entry.key,
         value: entry.value,
       })),
+      duplicateOverrideKeys: normalizedOverrideResult.duplicateKeys,
     },
     standingIssue: {
       required: standingPriorityRequired,
-      number: normalizedStandingIssue,
+      number: reportedStandingIssueNumber,
       status: standingIssueStatus,
     },
     checks,

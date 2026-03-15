@@ -1,0 +1,1658 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/mission-control-operator-input-validation-v1.schema.json",
+  "title": "Mission Control Operator Input Validation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "catalogPath",
+    "operator",
+    "standingIssue",
+    "checks",
+    "issueCount",
+    "issues",
+    "status"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/mission-control-operator-input-validation@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "catalogPath": {
+      "const": "tools/priority/__fixtures__/mission-control/operator-input-catalog.json"
+    },
+    "operator": {
+      "$ref": "#/$defs/operator"
+    },
+    "standingIssue": {
+      "$ref": "#/$defs/standingIssue"
+    },
+    "checks": {
+      "$ref": "#/$defs/checks"
+    },
+    "issueCount": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "issues": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "enum": [
+          "unknown-intent",
+          "unknown-focus",
+          "illegal-intent-focus-combination",
+          "malformed-override",
+          "unknown-override-key",
+          "override-value-invalid",
+          "duplicate-override-key",
+          "standing-issue-omitted",
+          "malformed-standing-issue",
+          "standing-priority-missing"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "downgraded",
+        "failed"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "passed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issueCount": {
+            "const": 0
+          },
+          "issues": {
+            "maxItems": 0
+          },
+          "standingIssue": {
+            "oneOf": [
+              {
+                "properties": {
+                  "required": { "const": true },
+                  "number": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "status": { "const": "present" }
+                }
+              },
+              {
+                "properties": {
+                  "required": { "const": false },
+                  "number": { "const": null },
+                  "status": { "const": "not-required" }
+                }
+              }
+            ]
+          },
+          "checks": {
+            "properties": {
+              "intentDefined": { "const": "passed" },
+              "focusDefined": { "const": "passed" },
+              "focusAllowedForIntent": { "const": "passed" },
+              "overrideSyntaxValid": { "const": "passed" },
+              "overridesKnown": { "const": "passed" },
+              "overrideValuesValid": { "const": "passed" },
+              "overrideKeysUnique": { "const": "passed" },
+              "standingIssueArgumentProvided": { "const": "passed" },
+              "standingIssueValueValid": { "const": "passed" },
+              "standingPrioritySatisfied": { "const": "passed" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "focus": {
+                "$ref": "#/$defs/standingPriorityRequiredFocusId"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "standingIssue": {
+            "properties": {
+              "required": { "const": true },
+              "status": {
+                "not": { "const": "not-required" }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "standingIssue": {
+            "properties": {
+              "required": { "const": false },
+              "status": { "const": "not-required" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "downgraded"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issueCount": {
+            "const": 1
+          },
+          "issues": {
+            "const": [
+              "standing-priority-missing"
+            ]
+          },
+          "standingIssue": {
+            "properties": {
+              "required": { "const": true },
+              "number": { "const": null },
+              "status": { "const": "missing" }
+            }
+          },
+          "checks": {
+            "properties": {
+              "intentDefined": { "const": "passed" },
+              "focusDefined": { "const": "passed" },
+              "focusAllowedForIntent": { "const": "passed" },
+              "overrideSyntaxValid": { "const": "passed" },
+              "overridesKnown": { "const": "passed" },
+              "overrideValuesValid": { "const": "passed" },
+              "overrideKeysUnique": { "const": "passed" },
+              "standingIssueArgumentProvided": { "const": "passed" },
+              "standingIssueValueValid": { "const": "passed" },
+              "standingPrioritySatisfied": { "const": "downgraded" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issueCount": {
+            "minimum": 1
+          }
+        },
+        "not": {
+          "properties": {
+            "issues": {
+              "const": [
+                "standing-priority-missing"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "unknown-intent"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "intentDefined": { "const": "failed" },
+              "focusAllowedForIntent": { "const": "skipped" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "intentDefined": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "unknown-intent"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "illegal-intent-focus-combination"
+            }
+          }
+        }
+      },
+      "then": {
+        "allOf": [
+          {
+            "not": {
+              "$ref": "#/$defs/allowedIntentFocusPair"
+            }
+          },
+          {
+            "properties": {
+              "checks": {
+                "properties": {
+                  "intentDefined": { "const": "passed" },
+                  "focusDefined": { "const": "passed" },
+                  "focusAllowedForIntent": { "const": "failed" }
+                }
+              },
+              "issues": {
+                "not": {
+                  "contains": {
+                    "enum": [
+                      "unknown-intent",
+                      "unknown-focus"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "not": {
+          "properties": {
+            "issues": {
+              "contains": {
+                "enum": [
+                  "unknown-intent",
+                  "unknown-focus",
+                  "illegal-intent-focus-combination"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/allowedIntentFocusPair"
+          },
+          {
+            "properties": {
+              "checks": {
+                "properties": {
+                  "focusAllowedForIntent": { "const": "passed" }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "not": {
+          "properties": {
+            "issues": {
+              "contains": {
+                "const": "unknown-focus"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "standingIssueArgumentProvided": {
+                "not": { "const": "skipped" }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "not": {
+          "properties": {
+            "issues": {
+              "contains": {
+                "enum": [
+                  "unknown-focus",
+                  "standing-issue-omitted"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "standingPrioritySatisfied": {
+                "not": { "const": "skipped" }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "unknown-intent"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "intent": {
+                "not": {
+                  "$ref": "#/$defs/knownIntentId"
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "intent": {
+                "$ref": "#/$defs/knownIntentId"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "focusDefined": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "unknown-focus"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "unknown-focus"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "focus": {
+                "not": {
+                  "$ref": "#/$defs/knownFocusId"
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "focus": {
+                "$ref": "#/$defs/knownFocusId"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "focusAllowedForIntent": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "illegal-intent-focus-combination"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "unknown-focus"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "focusDefined": { "const": "failed" },
+              "focusAllowedForIntent": { "const": "skipped" },
+              "standingIssueArgumentProvided": { "const": "skipped" },
+              "standingPrioritySatisfied": { "const": "skipped" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "overrideSyntaxValid": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "malformed-override"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "illegal-intent-focus-combination"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "focusAllowedForIntent": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "overridesKnown": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "unknown-override-key"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "malformed-override"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "overrideSyntaxValid": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "overrideValuesValid": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "override-value-invalid"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "unknown-override-key"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "overridesKnown": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "overrideKeysUnique": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "duplicate-override-key"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "override-value-invalid"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "overrideValuesValid": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "standingIssueArgumentProvided": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "standing-issue-omitted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "duplicate-override-key"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "duplicateOverrideKeys": {
+                "minItems": 1
+              }
+            }
+          },
+          "checks": {
+            "properties": {
+              "overrideKeysUnique": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "duplicateOverrideKeys": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "standingIssueValueValid": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "malformed-standing-issue"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "standing-issue-omitted"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "standingIssue": {
+            "properties": {
+              "required": { "const": true },
+              "number": { "const": null },
+              "status": { "const": "omitted" }
+            }
+          },
+          "checks": {
+            "properties": {
+              "standingIssueArgumentProvided": {
+                "const": "failed"
+              },
+              "standingIssueValueValid": {
+                "const": "passed"
+              },
+              "standingPrioritySatisfied": {
+                "const": "skipped"
+              }
+            }
+          },
+          "issues": {
+            "not": {
+              "contains": {
+                "const": "malformed-standing-issue"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "malformed-standing-issue"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "standingIssueValueValid": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "standing-priority-missing"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "standingIssue": {
+            "properties": {
+              "required": { "const": true },
+              "number": { "const": null },
+              "status": { "const": "missing" }
+            }
+          },
+          "checks": {
+            "properties": {
+              "standingIssueArgumentProvided": {
+                "const": "passed"
+              },
+              "standingPrioritySatisfied": {
+                "const": "downgraded"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "unknown-override-key"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "overrides": {
+                "contains": {
+                  "type": "object",
+                  "required": ["key"],
+                  "properties": {
+                    "key": {
+                      "not": {
+                        "$ref": "#/$defs/knownOverrideKey"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "overrides": {
+                "items": {
+                  "not": {
+                    "$ref": "#/$defs/unknownOverrideItem"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "malformed-override"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "overrides": {
+                "contains": {
+                  "type": "object",
+                  "required": ["value"],
+                  "properties": {
+                    "value": {
+                      "const": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "overrides": {
+                "items": {
+                  "properties": {
+                    "value": {
+                      "not": {
+                        "const": null
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "override-value-invalid"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "overrides": {
+                "contains": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": ["key"],
+                      "properties": {
+                        "key": {
+                          "$ref": "#/$defs/knownOverrideKey"
+                        }
+                      }
+                    },
+                    {
+                      "not": {
+                        "$ref": "#/$defs/validKnownOverride"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "overrides": {
+                "items": {
+                  "not": {
+                    "$ref": "#/$defs/invalidKnownOverrideItem"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "not": {
+          "properties": {
+            "issues": {
+              "contains": {
+                "enum": [
+                  "unknown-override-key",
+                  "override-value-invalid",
+                  "malformed-override"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operator": {
+            "properties": {
+              "overrides": {
+                "items": {
+                  "$ref": "#/$defs/validKnownOverride"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "standingPrioritySatisfied": {
+                "const": "downgraded"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "standing-priority-missing"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issueCount": {
+            "const": 0
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "minItems": 0,
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "issueCount": { "const": 1 } } },
+      "then": { "properties": { "issues": { "minItems": 1, "maxItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "issueCount": { "const": 2 } } },
+      "then": { "properties": { "issues": { "minItems": 2, "maxItems": 2 } } }
+    },
+    {
+      "if": { "properties": { "issueCount": { "const": 3 } } },
+      "then": { "properties": { "issues": { "minItems": 3, "maxItems": 3 } } }
+    },
+    {
+      "if": { "properties": { "issueCount": { "const": 4 } } },
+      "then": { "properties": { "issues": { "minItems": 4, "maxItems": 4 } } }
+    },
+    {
+      "if": { "properties": { "issueCount": { "const": 5 } } },
+      "then": { "properties": { "issues": { "minItems": 5, "maxItems": 5 } } }
+    },
+    {
+      "if": { "properties": { "issueCount": { "const": 6 } } },
+      "then": { "properties": { "issues": { "minItems": 6, "maxItems": 6 } } }
+    },
+    {
+      "if": { "properties": { "issueCount": { "const": 7 } } },
+      "then": { "properties": { "issues": { "minItems": 7, "maxItems": 7 } } }
+    },
+    {
+      "if": { "properties": { "issueCount": { "const": 8 } } },
+      "then": { "properties": { "issues": { "minItems": 8, "maxItems": 8 } } }
+    },
+    {
+      "if": { "properties": { "issueCount": { "const": 9 } } },
+      "then": { "properties": { "issues": { "minItems": 9, "maxItems": 9 } } }
+    },
+    {
+      "if": { "properties": { "issueCount": { "const": 10 } } },
+      "then": { "properties": { "issues": { "minItems": 10, "maxItems": 10 } } }
+    }
+  ],
+  "$defs": {
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent",
+        "focus",
+        "overrides",
+        "duplicateOverrideKeys"
+      ],
+      "properties": {
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "focus": {
+          "type": "string",
+          "minLength": 1
+        },
+        "overrides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/recognizedOverrideItem"
+          }
+        },
+        "duplicateOverrideKeys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "override": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "value"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "unknownOverrideItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "value"
+      ],
+      "properties": {
+        "key": {
+          "allOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "not": {
+                "$ref": "#/$defs/knownOverrideKey"
+              }
+            }
+          ]
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "invalidKnownOverrideItem": {
+      "allOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "key",
+            "value"
+          ],
+          "properties": {
+            "key": {
+              "$ref": "#/$defs/knownOverrideKey"
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "not": {
+            "$ref": "#/$defs/validKnownOverride"
+          }
+        }
+      ]
+    },
+    "malformedOverrideItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "value"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "const": null
+        }
+      }
+    },
+    "recognizedOverrideItem": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/validKnownOverride"
+        },
+        {
+          "$ref": "#/$defs/unknownOverrideItem"
+        },
+        {
+          "$ref": "#/$defs/invalidKnownOverrideItem"
+        },
+        {
+          "$ref": "#/$defs/malformedOverrideItem"
+        }
+      ]
+    },
+    "knownIntentId": {
+      "enum": [
+        "continue-driving-autonomously",
+        "finish-live-standing-lane",
+        "stabilize-current-head-failure",
+        "restore-intake",
+        "prepare-parked-lane"
+      ]
+    },
+    "knownFocusId": {
+      "enum": [
+        "standing-priority",
+        "current-head-failure",
+        "queue-health",
+        "handoff",
+        "policy-drift",
+        "docs-contract"
+      ]
+    },
+    "standingPriorityRequiredFocusId": {
+      "enum": [
+        "standing-priority",
+        "current-head-failure"
+      ]
+    },
+    "knownOverrideKey": {
+      "enum": [
+        "allowAdminMerge",
+        "allowForkBaseDispatch",
+        "allowParkedLane",
+        "copilotCliUsage",
+        "requireProjectBoardApply"
+      ]
+    },
+    "validKnownOverride": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key", "value"],
+          "properties": {
+            "key": { "const": "allowAdminMerge" },
+            "value": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key", "value"],
+          "properties": {
+            "key": { "const": "allowForkBaseDispatch" },
+            "value": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key", "value"],
+          "properties": {
+            "key": { "const": "allowParkedLane" },
+            "value": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key", "value"],
+          "properties": {
+            "key": { "const": "copilotCliUsage" },
+            "value": {
+              "enum": ["optional", "required"]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key", "value"],
+          "properties": {
+            "key": { "const": "requireProjectBoardApply" },
+            "value": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "allowedIntentFocusPair": {
+      "anyOf": [
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "continue-driving-autonomously" },
+                "focus": { "const": "standing-priority" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "continue-driving-autonomously" },
+                "focus": { "const": "queue-health" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "continue-driving-autonomously" },
+                "focus": { "const": "policy-drift" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "continue-driving-autonomously" },
+                "focus": { "const": "docs-contract" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "finish-live-standing-lane" },
+                "focus": { "const": "standing-priority" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "finish-live-standing-lane" },
+                "focus": { "const": "current-head-failure" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "finish-live-standing-lane" },
+                "focus": { "const": "queue-health" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "stabilize-current-head-failure" },
+                "focus": { "const": "current-head-failure" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "stabilize-current-head-failure" },
+                "focus": { "const": "policy-drift" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "restore-intake" },
+                "focus": { "const": "queue-health" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "restore-intake" },
+                "focus": { "const": "policy-drift" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "restore-intake" },
+                "focus": { "const": "handoff" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "prepare-parked-lane" },
+                "focus": { "const": "docs-contract" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "prepare-parked-lane" },
+                "focus": { "const": "queue-health" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "operator": {
+              "properties": {
+                "intent": { "const": "prepare-parked-lane" },
+                "focus": { "const": "standing-priority" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "standingIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "number",
+        "status"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "number": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "present",
+            "missing",
+            "omitted",
+            "not-required"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": { "const": "present" }
+            }
+          },
+          "then": {
+            "properties": {
+              "required": { "const": true },
+              "number": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": { "enum": ["missing", "omitted"] }
+            }
+          },
+          "then": {
+            "properties": {
+              "required": { "const": true },
+              "number": { "const": null }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": { "const": "not-required" }
+            }
+          },
+          "then": {
+            "properties": {
+              "required": { "const": false },
+              "number": { "const": null }
+            }
+          }
+        }
+      ]
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intentDefined",
+        "focusDefined",
+        "focusAllowedForIntent",
+        "overrideSyntaxValid",
+        "overridesKnown",
+        "overrideValuesValid",
+        "overrideKeysUnique",
+        "standingIssueArgumentProvided",
+        "standingIssueValueValid",
+        "standingPrioritySatisfied"
+      ],
+      "properties": {
+        "intentDefined": {
+          "enum": ["passed", "failed"]
+        },
+        "focusDefined": {
+          "enum": ["passed", "failed"]
+        },
+        "focusAllowedForIntent": {
+          "enum": ["passed", "failed", "skipped"]
+        },
+        "overrideSyntaxValid": {
+          "enum": ["passed", "failed"]
+        },
+        "overridesKnown": {
+          "enum": ["passed", "failed"]
+        },
+        "overrideValuesValid": {
+          "enum": ["passed", "failed"]
+        },
+        "overrideKeysUnique": {
+          "enum": ["passed", "failed"]
+        },
+        "standingIssueArgumentProvided": {
+          "enum": ["passed", "failed", "skipped"]
+        },
+        "standingIssueValueValid": {
+          "enum": ["passed", "failed"]
+        },
+        "standingPrioritySatisfied": {
+          "enum": ["passed", "downgraded", "skipped"]
+        }
+      }
+    }
+  }
+}

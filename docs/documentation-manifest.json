@@ -150,13 +150,14 @@
       "name": "Mission Control Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Canonical prompt, mission-control consumption contract, machine-readable envelope contract, bounded operator-input catalog, mission-control profile/trigger catalog, an authoritative fail-closed loader for the profile catalog, a runtime trigger resolver, the checked-in preset envelope renderer, the checked-in prompt renderer, and their contract tests.",
+      "description": "Canonical prompt, mission-control consumption contract, machine-readable envelope contract, bounded operator-input catalog and validation contracts, mission-control profile/trigger catalog, authoritative fail-closed validators/loaders, the checked-in preset envelope/prompt renderers, and their contract tests.",
       "files": [
         "PROMPT_AUTONOMY.md",
         "docs/MISSION_CONTROL_CONSUMPTION.md",
         "docs/MISSION_CONTROL_TRIGGER_PROFILES.md",
         "docs/schemas/mission-control-envelope-v1.schema.json",
         "docs/schemas/mission-control-operator-input-catalog-v1.schema.json",
+        "docs/schemas/mission-control-operator-input-validation-v1.schema.json",
         "docs/schemas/mission-control-profile-catalog-v1.schema.json",
         "tools/priority/__fixtures__/mission-control/mission-control-envelope.json",
         "tools/priority/__fixtures__/mission-control/operator-input-catalog.json",
@@ -165,13 +166,16 @@
         "tools/priority/render-mission-control-envelope.mjs",
         "tools/priority/render-mission-control-prompt.mjs",
         "tools/priority/resolve-mission-control-profile.mjs",
+        "tools/priority/validate-mission-control-operator-input.mjs",
         "tools/priority/__tests__/mission-control-consumption-contract.test.mjs",
         "tools/priority/__tests__/mission-control-envelope-schema.test.mjs",
         "tools/priority/__tests__/mission-control-operator-input-catalog.test.mjs",
+        "tools/priority/__tests__/mission-control-operator-input-validation-schema.test.mjs",
         "tools/priority/__tests__/mission-control-profile-catalog.test.mjs",
         "tools/priority/__tests__/render-mission-control-envelope.test.mjs",
         "tools/priority/__tests__/render-mission-control-prompt.test.mjs",
-        "tools/priority/__tests__/resolve-mission-control-profile.test.mjs"
+        "tools/priority/__tests__/resolve-mission-control-profile.test.mjs",
+        "tools/priority/__tests__/validate-mission-control-operator-input.test.mjs"
       ]
     },
     {
