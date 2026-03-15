@@ -8,7 +8,7 @@ This document defines how future agents and operator tooling should discover, re
 1. Start with [PROMPT_AUTONOMY.md](../PROMPT_AUTONOMY.md) for the canonical operator-facing mission-control charter.
 2. Treat [mission-control-envelope-v1.schema.json](schemas/mission-control-envelope-v1.schema.json) and the checked-in
    [mission-control envelope fixture](../tools/priority/__fixtures__/mission-control/mission-control-envelope.json) as
-   the machine-readable source of repo-owned law.
+   the machine-readable source of mission-control-specific policy.
 3. Use [mission-control-operator-input-catalog-v1.schema.json](schemas/mission-control-operator-input-catalog-v1.schema.json)
    and the checked-in
    [operator-input catalog fixture](../tools/priority/__fixtures__/mission-control/operator-input-catalog.json) to bound
@@ -30,9 +30,13 @@ This document defines how future agents and operator tooling should discover, re
    conditions.
 2. Resolve the requested trigger or alias through the checked-in profile catalog.
 3. Render the mission-control envelope from the resolved preset.
-4. Treat `missionControl` as repo-owned law and `operator` as bounded operator input layered on top of that law.
-5. Keep all downstream automation fail-closed when operator input conflicts with the envelope contract, the operator
-   input catalog, or the profile catalog.
+4. Treat `missionControl` as mission-control-specific repo policy and `operator` as bounded operator input layered on top
+   of that policy.
+5. Preserve the broader instruction-precedence contract:
+   - `AGENTS.md` remains authoritative for repository-wide automation law.
+   - phase overlays under `.github/instructions/` still control draft-review vs ready-validation behavior.
+6. Keep downstream automation fail-closed when operator input conflicts with the envelope contract, the operator input
+   catalog, the profile catalog, or the repository-wide instruction surfaces above.
 
 ## Guardrails
 

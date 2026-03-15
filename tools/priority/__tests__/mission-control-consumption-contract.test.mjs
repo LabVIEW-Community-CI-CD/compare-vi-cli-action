@@ -29,6 +29,8 @@ test('mission-control consumption doc points to the authoritative discovery surf
   assert.match(doc, /mission-control-profile-catalog\.mjs/);
   assert.match(doc, /resolve-mission-control-profile\.mjs/);
   assert.match(doc, /render-mission-control-envelope\.mjs/);
+  assert.match(doc, /`AGENTS\.md` remains authoritative/i);
+  assert.match(doc, /\.github\/instructions\//);
   assert.match(doc, /Do not treat free-form operator text as a policy surface\./);
 });
 
