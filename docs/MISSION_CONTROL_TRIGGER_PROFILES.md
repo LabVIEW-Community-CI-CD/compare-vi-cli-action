@@ -7,8 +7,10 @@ Authoritative sources:
 
 - canonical autonomy prompt: `PROMPT_AUTONOMY.md`
 - profile catalog example: `tools/priority/__fixtures__/mission-control/profile-catalog.json`
+- profile resolution example: `tools/priority/__fixtures__/mission-control/profile-resolution.json`
 - operator input catalog example: `tools/priority/__fixtures__/mission-control/operator-input-catalog.json`
 - authoritative profile loader: `tools/priority/lib/mission-control-profile-catalog.mjs`
+- profile resolution report schema: `docs/schemas/mission-control-profile-resolution-v1.schema.json`
 - preset envelope renderer: `tools/priority/render-mission-control-envelope.mjs`
 - prompt renderer: `tools/priority/render-mission-control-prompt.mjs`
 - runtime trigger resolver: `tools/priority/resolve-mission-control-profile.mjs`
@@ -18,6 +20,8 @@ Authoritative sources:
 Use the mission-control surfaces in this order:
 
 1. Resolve the trigger token through `tools/priority/resolve-mission-control-profile.mjs`.
+   - when current-head automation expects a specific canonical profile id, pass `--profile <id>` so contradictory
+     trigger/profile selections fail closed in the report instead of surfacing only as console text
 2. Treat the resolver output and `tools/priority/lib/mission-control-profile-catalog.mjs` as the authoritative
    profile-mapping path instead of reading raw fixture data directly.
 3. Render the machine-readable preset envelope through `tools/priority/render-mission-control-envelope.mjs`.
@@ -135,6 +139,10 @@ Overrides are narrow, auditable exceptions. They do not widen the repo law.
   - resolves through the `restore-intake` alias set
   - applies `restore-intake` + `queue-health`
   - keeps overrides empty unless the operator explicitly supplies an allowed override
+- `node tools/priority/resolve-mission-control-profile.mjs --trigger MC-PARKED --profile prepare-parked-lane`
+  - resolves through the `prepare-parked-lane` alias set
+  - writes a machine-readable report under `tests/results/_agent/mission-control/`
+  - fails closed if the canonical profile id does not match the trigger
 - `MC-STRICT`
   - does not resolve
   - must fail closed instead of guessing at a stricter form of `MC`

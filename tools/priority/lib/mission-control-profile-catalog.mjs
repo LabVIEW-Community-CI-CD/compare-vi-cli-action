@@ -18,6 +18,7 @@ const PROFILE_SPECS = new Map([
   ['restore-intake', { trigger: 'MC-INTAKE', intent: 'restore-intake', focus: 'queue-health' }],
   ['prepare-parked-lane', { trigger: 'MC-PARK', intent: 'prepare-parked-lane', focus: 'queue-health' }]
 ]);
+export const MISSION_CONTROL_PROFILE_IDS = Object.freeze([...PROFILE_SPECS.keys()]);
 
 function normalizeText(value) {
   if (value == null) {
@@ -46,6 +47,14 @@ export function normalizeMissionControlTriggerToken(value, fieldName = 'trigger'
   return normalized;
 }
 
+export function normalizeMissionControlProfileId(value, fieldName = 'profile') {
+  const normalized = assertNonEmptyString(value, fieldName);
+  if (!PROFILE_SPECS.has(normalized)) {
+    throw new Error(`Mission-control profile '${normalized}' is not a supported canonical profile id.`);
+  }
+  return normalized;
+}
+
 export function normalizeMissionControlProfileCatalog(value) {
   const catalog = cloneJson(value);
   if (catalog?.schema !== MISSION_CONTROL_PROFILE_CATALOG_SCHEMA) {
@@ -61,11 +70,8 @@ export function normalizeMissionControlProfileCatalog(value) {
   const tokenOwners = new Map();
   const normalizedProfiles = [];
   for (const profile of catalog.profiles) {
-    const profileId = assertNonEmptyString(profile?.id, 'profiles[].id');
+    const profileId = normalizeMissionControlProfileId(profile?.id, 'profiles[].id');
     const profileSpec = PROFILE_SPECS.get(profileId);
-    if (!profileSpec) {
-      throw new Error(`Mission-control profile '${profileId}' is not a supported canonical profile id.`);
-    }
     if (seenProfileIds.has(profileId)) {
       throw new Error(`Mission-control profile '${profileId}' is duplicated.`);
     }
@@ -163,7 +169,7 @@ export function loadMissionControlProfileCatalog(
   return normalizeMissionControlProfileCatalog(payload);
 }
 
-export function resolveMissionControlProfileTrigger(
+export function findMissionControlProfileTrigger(
   triggerToken,
   {
     catalog = null,
@@ -204,5 +210,26 @@ export function resolveMissionControlProfileTrigger(
     }
   }
 
+  return null;
+}
+
+export function resolveMissionControlProfileTrigger(
+  triggerToken,
+  {
+    catalog = null,
+    repoRoot = process.cwd(),
+    relativePath = DEFAULT_MISSION_CONTROL_PROFILE_CATALOG_PATH,
+  } = {},
+) {
+  const resolution = findMissionControlProfileTrigger(triggerToken, {
+    catalog,
+    repoRoot,
+    relativePath,
+  });
+  if (resolution) {
+    return resolution;
+  }
+
+  const normalizedTrigger = normalizeMissionControlTriggerToken(triggerToken);
   throw new Error(`Mission-control trigger token '${normalizedTrigger}' is not defined in the profile catalog.`);
 }

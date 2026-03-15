@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-15T01:00:00Z",
+  "updated": "2026-03-15T03:55:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -150,7 +150,7 @@
       "name": "Mission Control Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Canonical prompt, mission-control consumption contract, machine-readable envelope contract, bounded operator-input catalog and validation contracts, mission-control profile/trigger catalog, authoritative fail-closed validators/loaders, the checked-in preset envelope/prompt renderers, and their contract tests.",
+      "description": "Canonical prompt, mission-control consumption contract, machine-readable envelope contract, bounded operator-input catalog and validation contracts, mission-control profile/trigger catalog, a checked-in profile-resolution receipt contract, authoritative fail-closed loader/validator surfaces, the checked-in preset envelope/prompt renderers, and their contract tests.",
       "files": [
         "PROMPT_AUTONOMY.md",
         "docs/MISSION_CONTROL_CONSUMPTION.md",
@@ -159,9 +159,11 @@
         "docs/schemas/mission-control-operator-input-catalog-v1.schema.json",
         "docs/schemas/mission-control-operator-input-validation-v1.schema.json",
         "docs/schemas/mission-control-profile-catalog-v1.schema.json",
+        "docs/schemas/mission-control-profile-resolution-v1.schema.json",
         "tools/priority/__fixtures__/mission-control/mission-control-envelope.json",
         "tools/priority/__fixtures__/mission-control/operator-input-catalog.json",
         "tools/priority/__fixtures__/mission-control/profile-catalog.json",
+        "tools/priority/__fixtures__/mission-control/profile-resolution.json",
         "tools/priority/lib/mission-control-profile-catalog.mjs",
         "tools/priority/render-mission-control-envelope.mjs",
         "tools/priority/render-mission-control-prompt.mjs",

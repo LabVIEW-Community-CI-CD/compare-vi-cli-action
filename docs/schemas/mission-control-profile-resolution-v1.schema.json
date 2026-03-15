@@ -1,0 +1,441 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/mission-control-profile-resolution-v1.schema.json",
+  "title": "Mission Control Profile Resolution v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "catalogPath",
+    "request",
+    "checks",
+    "issueCount",
+    "issues",
+    "status",
+    "resolution"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/mission-control-profile-resolution@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "catalogPath": {
+      "const": "tools/priority/__fixtures__/mission-control/profile-catalog.json"
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trigger", "expectedProfileId"],
+      "properties": {
+        "trigger": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "expectedProfileId": {
+          "type": ["string", "null"],
+          "minLength": 1
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "triggerDefined",
+        "expectedProfileDefined",
+        "expectedProfileMatchesResolvedProfile"
+      ],
+      "properties": {
+        "triggerDefined": {
+          "enum": ["passed", "failed"]
+        },
+        "expectedProfileDefined": {
+          "enum": ["passed", "failed", "skipped"]
+        },
+        "expectedProfileMatchesResolvedProfile": {
+          "enum": ["passed", "failed", "skipped"]
+        }
+      }
+    },
+    "issueCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "issues": {
+      "type": "array",
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "invalid-trigger-token",
+          "unknown-trigger",
+          "unknown-profile",
+          "profile-trigger-mismatch"
+        ]
+      }
+    },
+    "status": {
+      "enum": ["passed", "failed"]
+    },
+    "resolution": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/resolution"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "operatorPreset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intent", "focus", "overrides"],
+      "properties": {
+        "intent": {
+          "enum": [
+            "continue-driving-autonomously",
+            "finish-live-standing-lane",
+            "stabilize-current-head-failure",
+            "restore-intake",
+            "prepare-parked-lane"
+          ]
+        },
+        "focus": {
+          "enum": [
+            "standing-priority",
+            "current-head-failure",
+            "queue-health",
+            "handoff",
+            "policy-drift",
+            "docs-contract"
+          ]
+        },
+        "overrides": {
+          "type": "array",
+          "maxItems": 0
+        }
+      }
+    },
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "token",
+        "matchedToken",
+        "selectionSource",
+        "profileId",
+        "canonicalTrigger",
+        "aliases",
+        "operatorPreset",
+        "summary",
+        "description"
+      ],
+      "properties": {
+        "token": {
+          "type": "string",
+          "pattern": "^MC(?:-[A-Z0-9]+)*$"
+        },
+        "matchedToken": {
+          "type": "string",
+          "pattern": "^MC(?:-[A-Z0-9]+)*$"
+        },
+        "selectionSource": {
+          "enum": ["canonical-trigger", "alias-trigger"]
+        },
+        "profileId": {
+          "enum": [
+            "autonomous-default",
+            "finish-live-lane",
+            "stabilize-current-head-failure",
+            "restore-intake",
+            "prepare-parked-lane"
+          ]
+        },
+        "canonicalTrigger": {
+          "enum": ["MC", "MC-LIVE", "MC-RED", "MC-INTAKE", "MC-PARK"]
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^MC(?:-[A-Z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "operatorPreset": {
+          "$ref": "#/$defs/operatorPreset"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 280
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "passed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issueCount": {
+            "const": 0
+          },
+          "issues": {
+            "maxItems": 0
+          },
+          "checks": {
+            "properties": {
+              "triggerDefined": {
+                "const": "passed"
+              }
+            }
+          },
+          "resolution": {
+            "$ref": "#/$defs/resolution"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issueCount": {
+            "minimum": 1
+          },
+          "issues": {
+            "minItems": 1,
+            "maxItems": 2
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          },
+          "issues": {
+            "maxItems": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issueCount": {
+            "const": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          },
+          "issues": {
+            "minItems": 2
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issueCount": {
+            "const": 2
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "request": {
+            "properties": {
+              "expectedProfileId": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "expectedProfileDefined": {
+                "const": "skipped"
+              },
+              "expectedProfileMatchesResolvedProfile": {
+                "const": "skipped"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "invalid-trigger-token"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "triggerDefined": {
+                "const": "failed"
+              },
+              "expectedProfileMatchesResolvedProfile": {
+                "const": "skipped"
+              }
+            }
+          },
+          "resolution": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "unknown-trigger"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "triggerDefined": {
+                "const": "failed"
+              },
+              "expectedProfileMatchesResolvedProfile": {
+                "const": "skipped"
+              }
+            }
+          },
+          "resolution": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "unknown-profile"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "expectedProfileDefined": {
+                "const": "failed"
+              },
+              "expectedProfileMatchesResolvedProfile": {
+                "const": "skipped"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "unknown-profile"
+            }
+          },
+          "checks": {
+            "properties": {
+              "triggerDefined": {
+                "const": "passed"
+              },
+              "expectedProfileDefined": {
+                "const": "failed"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resolution": {
+            "$ref": "#/$defs/resolution"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "issues": {
+            "contains": {
+              "const": "profile-trigger-mismatch"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checks": {
+            "properties": {
+              "expectedProfileDefined": {
+                "const": "passed"
+              },
+              "expectedProfileMatchesResolvedProfile": {
+                "const": "failed"
+              }
+            }
+          },
+          "resolution": {
+            "$ref": "#/$defs/resolution"
+          }
+        }
+      }
+    }
+  ]
+}
