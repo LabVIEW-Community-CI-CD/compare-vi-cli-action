@@ -240,6 +240,61 @@ function hasAffirmativeExternalBlockClause(value) {
   });
 }
 
+function hasExplicitExternalOnlyTrackingSignal(value) {
+  const lines = String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const getPreviousLines = (index, count = 2) =>
+    lines.slice(Math.max(0, index - count), index);
+  const getNextLine = (index) => lines[index + 1] || '';
+
+  return lines.some((line, index) => {
+    const previousLines = getPreviousLines(index);
+    const nextLine = getNextLine(index);
+    const previousText = previousLines.join('\n');
+    const hasCurrentStateSignal =
+      /\bremains open only as local blocked tracking\b/i.test(line) ||
+      /\bis blocked tracking,\s*not an active local standing lane\b/i.test(line) ||
+      (/\bnot an active local standing lane\b/i.test(line) &&
+        /\bdo not open a new in-repo coding lane here unless\b/i.test(nextLine)) ||
+      (/\bdo not open a new in-repo coding lane here unless\b/i.test(line) &&
+        /\bnot an active local standing lane\b/i.test(previousText));
+    if (!hasCurrentStateSignal) {
+      return false;
+    }
+
+    const hasHistoricalOrNegatedSignal =
+      /\bhistorical note\b/i.test(line) ||
+      /\bhistorical note\b/i.test(previousText) ||
+      /\b(?:no longer|never|previously|formerly)\s+remains open only as local blocked tracking\b/i.test(line) ||
+      /\b(?:was|were)\b[^]{0,60}\bopen only as local blocked tracking\b/i.test(line) ||
+      /\b(?:was|were)\s+blocked tracking\b/i.test(line) ||
+      /\b(?:no longer|never|previously|formerly)\s+blocked tracking\b/i.test(line) ||
+      /\bnot blocked tracking\b/i.test(line) ||
+      /\b(?:was|were)\b[^]{0,60}\bnot an active local standing lane\b/i.test(line) ||
+      /\b(?:no longer|never|previously|formerly)\b[^]{0,60}\bnot an active local standing lane\b/i.test(line);
+
+    return !hasHistoricalOrNegatedSignal;
+  });
+}
+
+function hasExplicitExternalOnlyTrackingReactivationSignal(value) {
+  const lines = String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.some(
+    (line) =>
+      /\b(?:no longer|never|previously|formerly)\s+remains open only as local blocked tracking\b/i.test(line) ||
+      /\brollout lane is active again\b/i.test(line) ||
+      /\bactive local standing lane again\b/i.test(line) ||
+      /\breactivat(?:ed|ion)\b/i.test(line)
+  );
+}
+
 function mayNeedBlockedStandingHydration(title, body) {
   return extractCompareviHistoryIssueNumbers(`${String(title || '')}\n${String(body || '')}`).length > 0;
 }
@@ -248,6 +303,14 @@ function isBlockedStandingCandidate(title, body, comments = []) {
   const bodyText = `${String(title || '')}\n${String(body || '')}`;
   const commentBodies = normalizeCommentBodies(comments);
   const commentText = commentBodies.join('\n');
+  const hasBodyLevelExplicitExternalOnlyTracking = hasExplicitExternalOnlyTrackingSignal(bodyText);
+  const hasBodyLevelReactivation = hasExplicitExternalOnlyTrackingReactivationSignal(bodyText);
+  const hasCommentLevelExplicitExternalOnlyTracking = commentBodies.some((comment) =>
+    hasExplicitExternalOnlyTrackingSignal(comment)
+  );
+  if (hasBodyLevelExplicitExternalOnlyTracking || (!hasBodyLevelReactivation && hasCommentLevelExplicitExternalOnlyTracking)) {
+    return true;
+  }
   const hasExternalDependency =
     extractCompareviHistoryIssueNumbers(`${bodyText}\n${commentText}`).length > 0;
   if (!hasExternalDependency) {
@@ -289,6 +352,12 @@ function normalizeOpenIssueCandidate(entry) {
   const commentBodies = normalizeCommentBodies(
     Array.isArray(entry.commentBodies) ? entry.commentBodies : entry.comments
   );
+  const bodyText = `${title}\n${body}`;
+  const bodyLevelExplicitExternalOnlyTracking = hasExplicitExternalOnlyTrackingSignal(bodyText);
+  const bodyLevelReactivation = hasExplicitExternalOnlyTrackingReactivationSignal(bodyText);
+  const explicitExternalOnlyTracking =
+    bodyLevelExplicitExternalOnlyTracking ||
+    (!bodyLevelReactivation && commentBodies.some((comment) => hasExplicitExternalOnlyTrackingSignal(comment)));
   const blocked =
     typeof entry.blocked === 'boolean'
       ? entry.blocked
@@ -308,6 +377,7 @@ function normalizeOpenIssueCandidate(entry) {
     umbrella: hasChildTracksSection(body),
     cadence: isCadenceAlertIssue(title, body),
     outOfScope: isOutOfScopeStandingCandidate(title, body),
+    explicitExternalOnlyTracking,
     blocked
   };
 }
@@ -1473,6 +1543,13 @@ async function hydrateExternalBlockedStandingState(repoRoot, entry, options = {}
   if (!normalized || normalized.excluded || normalized.outOfScope || !normalized.blocked) {
     return entry;
   }
+  if (normalized.explicitExternalOnlyTracking) {
+    return {
+      ...entry,
+      blocked: true,
+      explicitExternalOnlyTracking: true
+    };
+  }
 
   const blockerIssueNumbers = extractCompareviHistoryIssueNumbers([
     normalized.title,
@@ -1503,6 +1580,7 @@ async function hydrateExternalBlockedStandingState(repoRoot, entry, options = {}
 
   return {
     ...entry,
+    explicitExternalOnlyTracking: normalized.explicitExternalOnlyTracking,
     blocked: blockerStates.some((blocker) => blocker.state === 'open')
   };
 }

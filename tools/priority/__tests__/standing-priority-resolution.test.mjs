@@ -577,6 +577,132 @@ test('selectAutoStandingPriorityCandidate keeps rollout trackers eligible when b
   assert.equal(selected?.number, 946);
 });
 
+test('selectAutoStandingPriorityCandidate skips explicit external-only tracking rollout issues after shared blockers close', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'The remaining post-merge public-surface work is now tracked outside this repository.',
+        'This issue remains open only as local blocked tracking under epic #930.',
+        'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.',
+        'Do not open a new in-repo coding lane here unless a real compare-vi-cli-action defect is discovered.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidate skips explicit external-only tracking when the demotion is expressed across two sentences', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'The remaining post-merge public-surface work is now tracked outside this repository.',
+        'This issue is not an active local standing lane.',
+        'Do not open a new in-repo coding lane here unless a real compare-vi-cli-action defect is discovered.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidate keeps rollout trackers eligible when external-only tracking wording is historical', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'Historical note: this issue was blocked tracking, not an active local standing lane during the comparevi-history#23 phase.',
+        'Use released comparevi-history refs only.',
+        'Keep the workflow shape fork-safe for downstream forks.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 946);
+});
+
+test('selectAutoStandingPriorityCandidate keeps rollout trackers eligible when multiline historical notes precede external-only wording', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'Historical note:',
+        'This issue remains open only as local blocked tracking under epic #930.',
+        'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 946);
+});
+
+test('selectAutoStandingPriorityCandidate keeps rollout trackers eligible when blocked-tracking wording is explicitly negated', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: '[P0] Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'Current status: the rollout lane is active again.',
+        'This issue no longer remains open only as local blocked tracking under epic #930.',
+        'Keep the workflow shape fork-safe for downstream forks.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 946);
+});
+
 test('selectAutoStandingPriorityCandidate keeps rollout trackers eligible when comparevi-history was only a historical downstream blocker', () => {
   const selected = selectAutoStandingPriorityCandidate([
     {
@@ -785,6 +911,100 @@ test('selectAutoStandingPriorityCandidateForRepo clears blocked rollout demotion
             commentBodies: []
           },
     externalIssueStateFetcher: buildExternalIssueStateFetcher({ 23: 'closed' }),
+    warn: () => {}
+  });
+
+  assert.equal(selected?.number, 946);
+});
+
+test('selectAutoStandingPriorityCandidateForRepo honors hydrated comment-only explicit external-tracking demotions', async () => {
+  const selected = await selectAutoStandingPriorityCandidateForRepo('/tmp/repo', 'owner/repo', [
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'The canonical upstream demo rollout already landed in LabVIEW-Community-CI-CD/labview-icon-editor-demo.',
+        'Keep the workflow shape fork-safe for downstream forks.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: '[P1] actionable follow-up',
+      body: 'Remaining in-repo work.',
+      labels: [],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ], {
+    fetchIssueDetailsFn: async (issueNumber) =>
+      issueNumber === 946
+        ? {
+            number: 946,
+            title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+            body: [
+              'The canonical upstream demo rollout already landed in LabVIEW-Community-CI-CD/labview-icon-editor-demo.',
+              'Keep the workflow shape fork-safe for downstream forks.'
+            ].join('\n'),
+            commentBodies: [
+              'This issue remains open only as local blocked tracking under epic #930.',
+              'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.'
+            ]
+          }
+        : {
+            number: 951,
+            title: '[P1] actionable follow-up',
+            body: 'Remaining in-repo work.',
+            commentBodies: []
+          },
+    warn: () => {}
+  });
+
+  assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidateForRepo keeps rollout issues eligible when current body reactivation overrides stale comment demotions', async () => {
+  const selected = await selectAutoStandingPriorityCandidateForRepo('/tmp/repo', 'owner/repo', [
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'Current status: the rollout lane is active again.',
+        'This issue no longer remains open only as local blocked tracking under epic #930.',
+        'Keep the workflow shape fork-safe for downstream forks.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: '[P1] actionable follow-up',
+      body: 'Remaining in-repo work.',
+      labels: [],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ], {
+    fetchIssueDetailsFn: async (issueNumber) =>
+      issueNumber === 946
+        ? {
+            number: 946,
+            title: '[P0] Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+            body: [
+              'Current status: the rollout lane is active again.',
+              'This issue no longer remains open only as local blocked tracking under epic #930.',
+              'Keep the workflow shape fork-safe for downstream forks.'
+            ].join('\n'),
+            commentBodies: [
+              'This issue remains open only as local blocked tracking under epic #930.',
+              'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.'
+            ]
+          }
+        : {
+            number: 951,
+            title: '[P1] actionable follow-up',
+            body: 'Remaining in-repo work.',
+            commentBodies: []
+          },
     warn: () => {}
   });
 
@@ -1328,6 +1548,254 @@ test('classifyNoStandingPriorityCondition keeps rollout trackers actionable when
       ]
     }),
     externalIssueStateFetcher: buildExternalIssueStateFetcher({ 23: 'closed' }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'classified');
+  assert.equal(result.reason, 'label-missing');
+  assert.equal(result.repository, 'owner/repo');
+  assert.equal(result.openIssueCount, 1);
+});
+
+test('classifyNoStandingPriorityCondition treats explicit external-only tracking rollout issues as queue-empty after shared blockers close', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 930,
+          title: 'Epic: route released comparevi workflows through downstream rollout gates',
+          body: ['## Child tracks', '- #946', '- #947'].join('\n'),
+          labels: ['program']
+        },
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: [
+            'The canonical upstream demo rollout already landed in LabVIEW-Community-CI-CD/labview-icon-editor-demo.',
+            'This issue remains open only as local blocked tracking under epic #930.',
+            'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.'
+          ].join('\n'),
+          labels: []
+        },
+        {
+          number: 947,
+          title: 'Downstream fork: validate upstream-aligned comparevi-history diagnostics in svelderrainruiz/labview-icon-editor-demo',
+          body: [
+            'The remaining downstream fork-validation work is now tracked explicitly in the downstream demo repo.',
+            'This issue remains open only as local blocked tracking under epic #930.',
+            'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.'
+          ].join('\n'),
+          labels: []
+        }
+      ])
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 3,
+    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+});
+
+test('classifyNoStandingPriorityCondition keeps explicit external-only tracking issues blocked when shared comparevi-history blockers are already closed', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 930,
+          title: 'Epic: route released comparevi workflows through downstream rollout gates',
+          body: ['## Child tracks', '- #946'].join('\n'),
+          labels: ['program']
+        },
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: [
+            'This issue remains open only as local blocked tracking under epic #930.',
+            'Blocked by LabVIEW-Community-CI-CD/comparevi-history#23.',
+            'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.'
+          ].join('\n'),
+          labels: []
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) => ({
+      number: issueNumber,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'This issue remains open only as local blocked tracking under epic #930.',
+        'Blocked by LabVIEW-Community-CI-CD/comparevi-history#23.',
+        'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.'
+      ].join('\n'),
+      commentBodies: []
+    }),
+    externalIssueStateFetcher: buildExternalIssueStateFetcher({ 23: 'closed' }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 2,
+    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+});
+
+test('classifyNoStandingPriorityCondition does not treat historical comment-only external-tracking notes as a live block', async () => {
+  const rolloutBody = [
+    'Land diagnostics workflows in LabVIEW-Community-CI-CD/labview-icon-editor-demo.',
+    'Use released comparevi-history refs only.',
+    'Keep the workflow shape fork-safe for downstream forks.',
+    'Document how downstream forks should stay aligned to the canonical upstream surface.'
+  ].join('\n');
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: rolloutBody,
+          labels: []
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) => ({
+      number: issueNumber,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: rolloutBody,
+      commentBodies: [
+        'Historical note: this issue was blocked tracking, not an active local standing lane during the comparevi-history#23 phase.'
+      ]
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'classified');
+  assert.equal(result.reason, 'label-missing');
+  assert.equal(result.repository, 'owner/repo');
+  assert.equal(result.openIssueCount, 1);
+});
+
+test('classifyNoStandingPriorityCondition treats current comment-only external-tracking notes as blocked', async () => {
+  const rolloutBody = [
+    'Land diagnostics workflows in LabVIEW-Community-CI-CD/labview-icon-editor-demo.',
+    'Use released comparevi-history refs only.',
+    'Keep the workflow shape fork-safe for downstream forks.',
+    'Document how downstream forks should stay aligned to the canonical upstream surface.'
+  ].join('\n');
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: rolloutBody,
+          labels: []
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) => ({
+      number: issueNumber,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: rolloutBody,
+      commentBodies: [
+        'This issue remains open only as local blocked tracking under epic #930.',
+        'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.'
+      ]
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 1,
+    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+});
+
+test('classifyNoStandingPriorityCondition keeps rollout issues in scope when the current body reactivates the lane despite stale comment demotions', async () => {
+  const rolloutBody = [
+    'Current status: the rollout lane is active again.',
+    'This issue no longer remains open only as local blocked tracking under epic #930.',
+    'Keep the workflow shape fork-safe for downstream forks.'
+  ].join('\n');
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: rolloutBody,
+          labels: []
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) => ({
+      number: issueNumber,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: rolloutBody,
+      commentBodies: [
+        'This issue remains open only as local blocked tracking under epic #930.',
+        'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.'
+      ]
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'classified');
+  assert.equal(result.reason, 'label-missing');
+  assert.equal(result.repository, 'owner/repo');
+  assert.equal(result.openIssueCount, 1);
+});
+
+test('classifyNoStandingPriorityCondition keeps explicitly reactivated rollout issues in scope after negating blocked-tracking wording', async () => {
+  const rolloutBody = [
+    'Current status: the rollout lane is active again.',
+    'This issue no longer remains open only as local blocked tracking under epic #930.',
+    'Keep the workflow shape fork-safe for downstream forks.'
+  ].join('\n');
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: rolloutBody,
+          labels: []
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) => ({
+      number: issueNumber,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: rolloutBody,
+      commentBodies: []
+    }),
     runRestList: async () => ({ status: 'error', error: 'not-used' }),
     warn: () => {}
   });
