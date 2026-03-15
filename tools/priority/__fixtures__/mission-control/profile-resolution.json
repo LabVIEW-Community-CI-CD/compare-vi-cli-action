@@ -1,0 +1,35 @@
+{
+  "schema": "priority/mission-control-profile-resolution@v1",
+  "generatedAt": "2026-03-15T03:55:00.000Z",
+  "catalogPath": "tools/priority/__fixtures__/mission-control/profile-catalog.json",
+  "request": {
+    "trigger": "MC-PARKED",
+    "expectedProfileId": "prepare-parked-lane"
+  },
+  "checks": {
+    "triggerDefined": "passed",
+    "expectedProfileDefined": "passed",
+    "expectedProfileMatchesResolvedProfile": "passed"
+  },
+  "issueCount": 0,
+  "issues": [],
+  "status": "passed",
+  "resolution": {
+    "token": "MC-PARKED",
+    "matchedToken": "MC-PARKED",
+    "selectionSource": "alias-trigger",
+    "profileId": "prepare-parked-lane",
+    "canonicalTrigger": "MC-PARK",
+    "aliases": [
+      "MC-NEXT",
+      "MC-PARKED"
+    ],
+    "operatorPreset": {
+      "intent": "prepare-parked-lane",
+      "focus": "queue-health",
+      "overrides": []
+    },
+    "summary": "Use GitHub wait time to prepare one disjoint parked slice.",
+    "description": "Use when the live lane is waiting on hosted checks or merge queue only and exactly one parked lane should be prepared."
+  }
+}

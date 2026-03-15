@@ -14,6 +14,8 @@ Canonical machine-readable companion contract:
 - operator-input example: `tools/priority/__fixtures__/mission-control/operator-input-catalog.json`
 - profile catalog structural schema: `docs/schemas/mission-control-profile-catalog-v1.schema.json`
 - profile catalog example: `tools/priority/__fixtures__/mission-control/profile-catalog.json`
+- profile resolution report schema: `docs/schemas/mission-control-profile-resolution-v1.schema.json`
+- profile resolution example: `tools/priority/__fixtures__/mission-control/profile-resolution.json`
 - authoritative profile catalog loader: `tools/priority/lib/mission-control-profile-catalog.mjs`
 - runtime trigger resolver: `tools/priority/resolve-mission-control-profile.mjs`
 
@@ -41,6 +43,8 @@ Trigger resolution:
 
 - resolve a trigger token or alias through the checked-in catalog with:
   - `node tools/priority/resolve-mission-control-profile.mjs --trigger MC`
+- assert a trigger/profile pair deterministically with:
+  - `node tools/priority/resolve-mission-control-profile.mjs --trigger MC-PARKED --profile prepare-parked-lane`
 
 ```text
 Act as the autonomous mission control plane for `compare-vi-cli-action` and keep work flowing continuously until
