@@ -1,0 +1,307 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/session-index-v2-contract-v1.schema.json",
+  "title": "Session Index v2 Contract Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "branch",
+    "status",
+    "enforce",
+    "failures",
+    "notes",
+    "branchProtection",
+    "burnIn",
+    "burnInReceipt"
+  ],
+  "properties": {
+    "schema": {
+      "const": "session-index-v2-contract/v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": ["pass", "fail"]
+    },
+    "enforce": {
+      "type": "boolean"
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "branchProtection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyPath", "requiredContexts", "missingContexts"],
+      "properties": {
+        "policyPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredContexts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "missingContexts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "burnIn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "threshold",
+        "status",
+        "reason",
+        "consecutiveSuccess",
+        "inspectedRuns",
+        "promotionReady"
+      ],
+      "properties": {
+        "threshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": ["ok", "unavailable"]
+        },
+        "reason": {
+          "enum": ["queried", "missing_token", "api_error"]
+        },
+        "consecutiveSuccess": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inspectedRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "promotionReady": {
+          "type": "boolean"
+        }
+      }
+    },
+    "burnInReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "mode",
+        "status",
+        "mismatchClass",
+        "mismatchFingerprint",
+        "mismatchSummary",
+        "recurrence",
+        "evidence"
+      ],
+      "properties": {
+        "schema": {
+          "const": "session-index-v2-burn-in-receipt@v1"
+        },
+        "mode": {
+          "enum": ["burn-in", "enforce"]
+        },
+        "status": {
+          "enum": ["clean", "mismatch"]
+        },
+        "mismatchClass": {
+          "enum": [
+            "none",
+            "missing-artifact",
+            "schema-validation",
+            "branch-policy-projection",
+            "branch-protection-shape",
+            "missing-required-contexts",
+            "artifact-catalog",
+            "unknown",
+            "multiple"
+          ]
+        },
+        "mismatchFingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "mismatchSummary": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "recurrence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["classification", "burnInStatus", "consecutiveSuccess"],
+          "properties": {
+            "classification": {
+              "enum": [
+                "clean",
+                "unknown",
+                "new-after-success-streak",
+                "recurring-or-persistent"
+              ]
+            },
+            "burnInStatus": {
+              "enum": ["ok", "unavailable"]
+            },
+            "consecutiveSuccess": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reportPath",
+            "resultsDir",
+            "sessionIndexV1Path",
+            "sessionIndexV2Path",
+            "policyPath"
+          ],
+          "properties": {
+            "reportPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "resultsDir": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sessionIndexV1Path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sessionIndexV2Path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "policyPath": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enforce": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "burnInReceipt": {
+            "properties": {
+              "mode": {
+                "const": "enforce"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "burnInReceipt": {
+            "properties": {
+              "mode": {
+                "const": "burn-in"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "pass"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "failures": {
+            "maxItems": 0
+          },
+          "branchProtection": {
+            "properties": {
+              "missingContexts": {
+                "maxItems": 0
+              }
+            }
+          },
+          "burnInReceipt": {
+            "properties": {
+              "status": {
+                "const": "clean"
+              },
+              "mismatchClass": {
+                "const": "none"
+              },
+              "mismatchSummary": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "failures": {
+            "minItems": 1
+          },
+          "burnInReceipt": {
+            "properties": {
+              "status": {
+                "const": "mismatch"
+              },
+              "mismatchClass": {
+                "not": {
+                  "const": "none"
+                }
+              },
+              "mismatchSummary": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/session-index-v2-disposition-summary-v1.schema.json",
+  "title": "Session Index v2 Disposition Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "branch",
+    "mode",
+    "disposition",
+    "status",
+    "promotionReady",
+    "mismatchClass",
+    "recurrenceClassification",
+    "consecutiveSuccess",
+    "threshold",
+    "evidence"
+  ],
+  "properties": {
+    "schema": {
+      "const": "session-index-v2-disposition-summary@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "enum": ["burn-in", "enforce"]
+    },
+    "disposition": {
+      "enum": [
+        "clean-burn-in",
+        "promotion-ready",
+        "burn-in-mismatch",
+        "recurring-burn-in-mismatch",
+        "promotion-blocking"
+      ]
+    },
+    "status": {
+      "enum": ["pass", "fail"]
+    },
+    "promotionReady": {
+      "type": "boolean"
+    },
+    "mismatchClass": {
+      "enum": [
+        "none",
+        "missing-artifact",
+        "schema-validation",
+        "branch-policy-projection",
+        "branch-protection-shape",
+        "missing-required-contexts",
+        "artifact-catalog",
+        "unknown",
+        "multiple"
+      ]
+    },
+    "recurrenceClassification": {
+      "enum": [
+        "clean",
+        "unknown",
+        "new-after-success-streak",
+        "recurring-or-persistent"
+      ]
+    },
+    "consecutiveSuccess": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "threshold": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractReportPath",
+        "sessionIndexV1Path",
+        "sessionIndexV2Path",
+        "policyPath"
+      ],
+      "properties": {
+        "contractReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionIndexV1Path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionIndexV2Path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policyPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "pass"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mismatchClass": {
+            "const": "none"
+          },
+          "recurrenceClassification": {
+            "const": "clean"
+          },
+          "disposition": {
+            "enum": ["clean-burn-in", "promotion-ready"]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "mismatchClass": {
+            "not": {
+              "const": "none"
+            }
+          },
+          "disposition": {
+            "enum": [
+              "burn-in-mismatch",
+              "recurring-burn-in-mismatch",
+              "promotion-blocking"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "pass"
+          },
+          "promotionReady": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "disposition": {
+            "const": "promotion-ready"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "pass"
+          },
+          "promotionReady": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "disposition": {
+            "const": "clean-burn-in"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "enforce"
+          },
+          "status": {
+            "const": "fail"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "disposition": {
+            "const": "promotion-blocking"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "burn-in"
+          },
+          "status": {
+            "const": "fail"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "disposition": {
+            "enum": ["burn-in-mismatch", "recurring-burn-in-mismatch"]
+          }
+        }
+      }
+    }
+  ]
+}
