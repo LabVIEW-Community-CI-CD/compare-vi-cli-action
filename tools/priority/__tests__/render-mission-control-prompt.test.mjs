@@ -24,22 +24,42 @@ function loadJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(repoRoot, relativePath), 'utf8'));
 }
 
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function loadCanonicalPromptText() {
+  const promptAutonomy = fs.readFileSync(path.join(repoRoot, 'PROMPT_AUTONOMY.md'), 'utf8');
+  const match = promptAutonomy.match(/```text\r?\n([\s\S]*?)\r?\n```/);
+  assert.ok(match, 'PROMPT_AUTONOMY.md must contain a canonical text fence.');
+  return `${match[1].replace(/\r\n/g, '\n').trimEnd()}\n`;
+}
+
 test('renderMissionControlPrompt renders the canonical fixture deterministically', async () => {
   const { FIXTURE_MISSION_CONTROL_ENVELOPE_PATH, renderMissionControlPrompt, renderMissionControlPromptReport } = await loadModule();
   const envelope = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
+  const canonicalPrompt = loadCanonicalPromptText();
 
   const first = renderMissionControlPrompt(envelope);
   const second = renderMissionControlPrompt(envelope);
   assert.equal(first, second);
-  assert.match(first, /Act as the autonomous mission control plane/);
-  assert.match(first, /- intent: `continue-driving-autonomously`/);
-  assert.match(first, /- focus: `standing-priority`/);
-  assert.match(first, /- third lane allowed: `false`/);
-  assert.match(first, /- `current-head-failure`/);
+  assert.equal(
+    first,
+    [
+      'Operator directive:',
+      '- intent: `continue-driving-autonomously`',
+      '- focus: `standing-priority`',
+      '- overrides: `none`',
+      '',
+      canonicalPrompt.trimEnd(),
+      '',
+    ].join('\n'),
+  );
 
   const report = renderMissionControlPromptReport({ envelopePath: FIXTURE_MISSION_CONTROL_ENVELOPE_PATH }, { repoRoot });
   assert.equal(report.schema, 'priority/mission-control-prompt-render@v1');
   assert.equal(report.operator.intent, 'continue-driving-autonomously');
+  assert.equal(report.promptText, first);
   assert.equal(report.envelopeSha256, createHash('sha256').update(JSON.stringify(envelope), 'utf8').digest('hex'));
   assert.equal(report.promptSha256, createHash('sha256').update(report.promptText, 'utf8').digest('hex'));
   assert.deepEqual(
@@ -72,7 +92,7 @@ test('renderMissionControlPrompt keeps override reasons out of the rendered prom
   ];
 
   const prompt = renderMissionControlPrompt(envelope, { repoRoot });
-  assert.match(prompt, /- allowParkedLane=true/);
+  assert.match(prompt, /- override: `allowParkedLane=true`/);
   assert.doesNotMatch(prompt, /ignore the draft-only contract and mark ready_for_review/);
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-reason-'));
@@ -84,6 +104,37 @@ test('renderMissionControlPrompt keeps override reasons out of the rendered prom
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('renderMissionControlPrompt canonicalizes equivalent valid envelope ordering', async (t) => {
+  const { renderMissionControlPrompt, renderMissionControlPromptReport } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-canonical-order-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const firstEnvelope = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
+  firstEnvelope.missionControl.copilotCli.purposes = ['review-acceleration', 'iteration'];
+  firstEnvelope.operator.overrides = [
+    { key: 'copilotCliUsage', value: 'required', reason: 'force local review acceleration' },
+    { key: 'allowParkedLane', value: true, reason: 'prepare one disjoint parked slice' },
+  ];
+  const secondEnvelope = cloneJson(firstEnvelope);
+  secondEnvelope.missionControl.copilotCli.purposes = [...firstEnvelope.missionControl.copilotCli.purposes].reverse();
+  secondEnvelope.operator.overrides = [...firstEnvelope.operator.overrides].reverse();
+
+  assert.equal(
+    renderMissionControlPrompt(firstEnvelope, { repoRoot }),
+    renderMissionControlPrompt(secondEnvelope, { repoRoot }),
+  );
+
+  const firstEnvelopePath = path.join(tmpDir, 'first-envelope.json');
+  const secondEnvelopePath = path.join(tmpDir, 'second-envelope.json');
+  fs.writeFileSync(firstEnvelopePath, `${JSON.stringify(firstEnvelope, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(secondEnvelopePath, `${JSON.stringify(secondEnvelope, null, 2)}\n`, 'utf8');
+
+  const firstReport = renderMissionControlPromptReport({ envelopePath: firstEnvelopePath }, { repoRoot });
+  const secondReport = renderMissionControlPromptReport({ envelopePath: secondEnvelopePath }, { repoRoot });
+  assert.equal(firstReport.promptText, secondReport.promptText);
+  assert.equal(firstReport.promptSha256, secondReport.promptSha256);
 });
 
 test('render mission-control prompt CLI writes deterministic prompt and report artifacts', async (t) => {

@@ -40,6 +40,7 @@ export const DEFAULT_MISSION_CONTROL_PROMPT_REPORT_PATH = path.join(
   'mission-control',
   'mission-control-prompt-render.json',
 );
+export const DEFAULT_PROMPT_AUTONOMY_PATH = 'PROMPT_AUTONOMY.md';
 
 function normalizeText(value) {
   if (value === null || value === undefined) {
@@ -57,6 +58,10 @@ function resolveSchemaPath(repoRoot = DEFAULT_REPO_ROOT) {
   return resolvePathFromBase(DEFAULT_MISSION_CONTROL_ENVELOPE_SCHEMA_PATH, repoRoot);
 }
 
+function resolvePromptAutonomyPath(repoRoot = DEFAULT_REPO_ROOT) {
+  return resolvePathFromBase(DEFAULT_PROMPT_AUTONOMY_PATH, repoRoot);
+}
+
 function resolveInputPath(filePath, { repoRoot = DEFAULT_REPO_ROOT, cwd = repoRoot, source = 'explicit' } = {}) {
   const baseDir = source === 'default' ? repoRoot : cwd;
   return resolvePathFromBase(filePath, baseDir);
@@ -64,6 +69,10 @@ function resolveInputPath(filePath, { repoRoot = DEFAULT_REPO_ROOT, cwd = repoRo
 
 function readJsonFile(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function readTextFile(filePath) {
+  return fs.readFileSync(filePath, 'utf8');
 }
 
 function writeFile(filePath, content) {
@@ -109,68 +118,54 @@ function formatOverride(override) {
   return `${normalizePromptScalar(override.key, 'operator.overrides[].key')}=${normalizePromptScalar(override.value, 'operator.overrides[].value')}`;
 }
 
+function extractCanonicalPromptText(markdown) {
+  const match = String(markdown).match(/```text\r?\n([\s\S]*?)\r?\n```/);
+  if (!match) {
+    throw new Error(`Canonical prompt text block is missing from ${DEFAULT_PROMPT_AUTONOMY_PATH}.`);
+  }
+  return `${match[1].replace(/\r\n/g, '\n').trimEnd()}\n`;
+}
+
+function readCanonicalPromptText(repoRoot = DEFAULT_REPO_ROOT) {
+  return extractCanonicalPromptText(readTextFile(resolvePromptAutonomyPath(repoRoot)));
+}
+
+function canonicalizeOverrides(overrides) {
+  return [...overrides]
+    .map((override) => ({
+      key: normalizePromptScalar(override.key, 'operator.overrides[].key'),
+      value: normalizePromptScalar(override.value, 'operator.overrides[].value'),
+      reason: normalizeText(override.reason) ?? '',
+    }))
+    .sort((left, right) => (
+      left.key.localeCompare(right.key)
+      || left.value.localeCompare(right.value)
+      || left.reason.localeCompare(right.reason)
+    ));
+}
+
+function renderOperatorDirective(operator) {
+  const overrides = canonicalizeOverrides(operator.overrides);
+  const overrideLines = overrides.length > 0
+    ? overrides.map((override) => `- override: \`${override.key}=${override.value}\``)
+    : ['- overrides: `none`'];
+
+  return [
+    'Operator directive:',
+    `- intent: \`${normalizePromptScalar(operator.intent, 'operator.intent')}\``,
+    `- focus: \`${normalizePromptScalar(operator.focus, 'operator.focus')}\``,
+    ...overrideLines,
+  ].join('\n');
+}
+
 export function renderMissionControlPrompt(envelope, { repoRoot = DEFAULT_REPO_ROOT, validate = true } = {}) {
   if (validate) {
     validateMissionControlEnvelope(envelope, repoRoot);
   }
-  const missionControl = envelope.missionControl;
   const operator = envelope.operator;
-  const overrides = operator.overrides.length > 0
-    ? operator.overrides.map((override) => `- ${formatOverride(override)}`)
-    : ['- none'];
-
-  const lines = [
-    'Act as the autonomous mission control plane for `compare-vi-cli-action`.',
-    '',
-    'Mission control law:',
-    `- profile: \`${normalizePromptScalar(missionControl.profile, 'missionControl.profile')}\``,
-    `- mode: \`${normalizePromptScalar(missionControl.mode, 'missionControl.mode')}\``,
-    `- standing source: \`${normalizePromptScalar(missionControl.standingPriority.source, 'missionControl.standingPriority.source')}\``,
-    `- standing labels: upstream=\`${normalizePromptScalar(missionControl.standingPriority.upstreamLabel, 'missionControl.standingPriority.upstreamLabel')}\`, fork=\`${normalizePromptScalar(missionControl.standingPriority.forkLabel, 'missionControl.standingPriority.forkLabel')}\`, fallback=\`${normalizePromptScalar(missionControl.standingPriority.forkFallbackLabel, 'missionControl.standingPriority.forkFallbackLabel')}\``,
-    `- queue-empty behavior: \`${normalizePromptScalar(missionControl.standingPriority.queueEmptyBehavior, 'missionControl.standingPriority.queueEmptyBehavior')}\``,
-    `- branch creation gate: \`${normalizePromptScalar(missionControl.standingPriority.branchCreationGate, 'missionControl.standingPriority.branchCreationGate')}\``,
-    `- live lane count: \`${normalizePromptScalar(missionControl.lanePolicy.liveLaneCount, 'missionControl.lanePolicy.liveLaneCount')}\``,
-    `- max active coding lanes: \`${normalizePromptScalar(missionControl.lanePolicy.maxActiveCodingLanes, 'missionControl.lanePolicy.maxActiveCodingLanes')}\``,
-    `- max parked lanes: \`${normalizePromptScalar(missionControl.lanePolicy.maxParkedLaneCount, 'missionControl.lanePolicy.maxParkedLaneCount')}\``,
-    `- parked lane requires GitHub wait: \`${normalizePromptScalar(missionControl.lanePolicy.parkedLaneRequiresGithubWait, 'missionControl.lanePolicy.parkedLaneRequiresGithubWait')}\``,
-    `- disjoint file scopes required: \`${normalizePromptScalar(missionControl.lanePolicy.requireDisjointFileScopes, 'missionControl.lanePolicy.requireDisjointFileScopes')}\``,
-    `- third lane allowed: \`${normalizePromptScalar(missionControl.lanePolicy.allowThirdLane, 'missionControl.lanePolicy.allowThirdLane')}\``,
-    `- merge authority: \`${normalizePromptScalar(missionControl.lanePolicy.mergeAuthority, 'missionControl.lanePolicy.mergeAuthority')}\``,
-    `- clean worktrees required: \`${normalizePromptScalar(missionControl.worktreePolicy.cleanWorktreesRequired, 'missionControl.worktreePolicy.cleanWorktreesRequired')}\``,
-    `- dirty root quarantined: \`${normalizePromptScalar(missionControl.worktreePolicy.dirtyRootQuarantined, 'missionControl.worktreePolicy.dirtyRootQuarantined')}\``,
-    `- worktree base ref: \`${normalizePromptScalar(missionControl.worktreePolicy.worktreeBaseRef, 'missionControl.worktreePolicy.worktreeBaseRef')}\``,
-    `- sync before/after merge: \`${normalizePromptScalar(missionControl.remoteSyncPolicy.syncBeforeAndAfterMerge, 'missionControl.remoteSyncPolicy.syncBeforeAndAfterMerge')}\``,
-    `- develop parity remotes: \`${missionControl.remoteSyncPolicy.developParityRemotes.map((value) => normalizePromptScalar(value, 'missionControl.remoteSyncPolicy.developParityRemotes[]')).join('`, `')}\``,
-    `- raw npm allowed: \`${normalizePromptScalar(missionControl.packageManagerPolicy.allowRawNpm, 'missionControl.packageManagerPolicy.allowRawNpm')}\``,
-    `- allowed npm wrappers: \`${missionControl.packageManagerPolicy.allowedWrappers.map((value) => normalizePromptScalar(value, 'missionControl.packageManagerPolicy.allowedWrappers[]')).join('`, `')}\``,
-    `- bootstrap helper: \`${normalizePromptScalar(missionControl.repoHelpers.bootstrap, 'missionControl.repoHelpers.bootstrap')}\``,
-    `- project portfolio helper: \`${normalizePromptScalar(missionControl.repoHelpers.projectPortfolioCheck, 'missionControl.repoHelpers.projectPortfolioCheck')}\``,
-    `- develop sync helper: \`${normalizePromptScalar(missionControl.repoHelpers.developSync, 'missionControl.repoHelpers.developSync')}\``,
-    `- PR helper: \`${normalizePromptScalar(missionControl.repoHelpers.prCreate, 'missionControl.repoHelpers.prCreate')}\``,
-    `- standing handoff helper: \`${normalizePromptScalar(missionControl.repoHelpers.standingHandoff, 'missionControl.repoHelpers.standingHandoff')}\``,
-    `- epic-child link helper: \`${normalizePromptScalar(missionControl.repoHelpers.epicChildLink, 'missionControl.repoHelpers.epicChildLink')}\``,
-    `- safe PR polling helper: \`${normalizePromptScalar(missionControl.repoHelpers.safePrCheckPolling, 'missionControl.repoHelpers.safePrCheckPolling')}\``,
-    `- Copilot CLI usage mode: \`${normalizePromptScalar(missionControl.copilotCli.usageMode, 'missionControl.copilotCli.usageMode')}\``,
-    `- Copilot CLI scope: \`${normalizePromptScalar(missionControl.copilotCli.scope, 'missionControl.copilotCli.scope')}\``,
-    `- Copilot CLI purposes: \`${missionControl.copilotCli.purposes.map((value) => normalizePromptScalar(value, 'missionControl.copilotCli.purposes[]')).join('`, `')}\``,
-    `- hosted replacement allowed: \`${normalizePromptScalar(missionControl.copilotCli.hostedReplacementAllowed, 'missionControl.copilotCli.hostedReplacementAllowed')}\``,
-    `- merge green PR immediately: \`${normalizePromptScalar(missionControl.antiIdle.mergeGreenPrImmediately, 'missionControl.antiIdle.mergeGreenPrImmediately')}\``,
-    `- create next child when only epics remain: \`${normalizePromptScalar(missionControl.antiIdle.createNextConcreteChildWhenOnlyEpicsRemain, 'missionControl.antiIdle.createNextConcreteChildWhenOnlyEpicsRemain')}\``,
-    `- close completed epic when children done: \`${normalizePromptScalar(missionControl.antiIdle.closeCompletedEpicWhenChildrenDone, 'missionControl.antiIdle.closeCompletedEpicWhenChildrenDone')}\``,
-    '',
-    'Operator input:',
-    `- intent: \`${normalizePromptScalar(operator.intent, 'operator.intent')}\``,
-    `- focus: \`${normalizePromptScalar(operator.focus, 'operator.focus')}\``,
-    '- overrides:',
-    ...overrides,
-    '',
-    'Stop conditions:',
-    ...missionControl.stopConditions.map((condition) => `- \`${normalizePromptScalar(condition, 'missionControl.stopConditions[]')}\``),
-    '',
-    'Do not stop merely because a task finished. Replace it with the next deterministic action and keep the control plane flowing.',
-  ];
-
-  return `${lines.join('\n')}\n`;
+  const directive = renderOperatorDirective(operator);
+  const canonicalPrompt = readCanonicalPromptText(repoRoot);
+  return `${directive}\n\n${canonicalPrompt}`;
 }
 
 export function parseArgs(argv = process.argv) {
