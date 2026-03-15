@@ -129,10 +129,52 @@ function isCadenceAlertIssue(title, body) {
   );
 }
 
-function isOutOfScopeStandingCandidate(title, body) {
-  return /labview-icon-editor-demo|labview icon editor demo|icon[- ]editor demo/i.test(
-    `${String(title || '')}\n${String(body || '')}`
+function hasCompareviWorkflowScopeSignal(title, body) {
+  const titleText = String(title || '');
+  const bodyText = String(body || '');
+  const combinedText = `${titleText}\n${bodyText}`;
+
+  const hasCompareviSignal = /comparevi-history|compare-vi-cli-action/i.test(combinedText);
+  const hasRolloutActionSignal = /\b(land|add|route|wire|enable|validate|prove|dispatch|capture|confirm|reconcile|rebase|review)\b/i.test(
+    combinedText
   );
+  const hasDiagnosticsSignal = /\bdiagnostics\b|diagnostics workflows?|workflow shape|workflow files|reviewer-facing diagnostics/i.test(
+    combinedText
+  );
+  const hasReleaseSignal = /released refs?|released comparevi-history|released compare-vi-cli-action/i.test(combinedText);
+  const hasTopologySignal = /fork-ready|fork-safe|downstream forks?|upstream-aligned|canonical upstream|pr head repo\/ref dynamically|fork-authored pr/i.test(
+    combinedText
+  );
+  const hasTrackerSignal = /(?:Parent epic:|epic)\s*#930|comparevi-history#23/i.test(combinedText);
+  const hasDemoMaintenanceSignal =
+    /\b(readme|release notes|icon editor assets?|asset work|asset refresh|editor development|screenshot context)\b/i.test(
+      combinedText
+    ) ||
+    /\b(?:refresh|update|maint(?:ain|enance)|cleanup)\b.*\b(?:docs|documentation)\b|\b(?:docs|documentation)\b.*\b(?:refresh|update|maint(?:ain|enance)|cleanup)\b/i.test(
+      combinedText
+    );
+
+  if (hasDemoMaintenanceSignal) {
+    return false;
+  }
+
+  const rolloutSignalCount = [hasRolloutActionSignal, hasDiagnosticsSignal, hasReleaseSignal, hasTopologySignal, hasTrackerSignal]
+    .filter(Boolean)
+    .length;
+  return hasCompareviSignal && rolloutSignalCount >= 3 && (hasTopologySignal || hasTrackerSignal);
+}
+
+function isOutOfScopeStandingCandidate(title, body) {
+  const text = `${String(title || '')}\n${String(body || '')}`;
+  if (!/labview-icon-editor-demo|labview icon editor demo|icon[- ]editor demo/i.test(text)) {
+    return false;
+  }
+
+  if (hasCompareviWorkflowScopeSignal(title, body)) {
+    return false;
+  }
+
+  return true;
 }
 
 function parseDateMs(value) {
