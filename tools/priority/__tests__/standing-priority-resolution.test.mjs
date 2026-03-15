@@ -350,12 +350,151 @@ test('selectAutoStandingPriorityCandidate skips excluded standing issues and dep
   assert.equal(selected?.cadence, false);
 });
 
-test('selectAutoStandingPriorityCandidate excludes out-of-scope icon-editor demo issues', () => {
+test('selectAutoStandingPriorityCandidate keeps comparevi demo rollout issues in scope', () => {
   const selected = selectAutoStandingPriorityCandidate([
     {
       number: 946,
       title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
-      body: 'Out-of-scope downstream demo work.',
+      body: [
+        'Land diagnostics workflows in LabVIEW-Community-CI-CD/labview-icon-editor-demo.',
+        'Use released comparevi-history refs only.',
+        'Keep the workflow shape fork-safe for downstream forks.',
+        'Document how downstream forks should stay aligned to the canonical upstream surface.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 946);
+});
+
+test('selectAutoStandingPriorityCandidate keeps title-driven comparevi rollout issues in scope', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: land upstream-aligned released comparevi-history diagnostics for fork-safe workflow files in labview-icon-editor-demo',
+      body: 'See epic for the full rollout plan.',
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 946);
+});
+
+test('selectAutoStandingPriorityCandidate still excludes true icon-editor demo development issues', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: update icon editor assets in labview-icon-editor-demo',
+      body: 'Out-of-scope icon editor development work.',
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidate still excludes demo issues with incidental comparevi mentions', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: update icon editor assets in labview-icon-editor-demo',
+      body: 'Icon editor asset work that references comparevi-history for screenshot context only.',
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidate still excludes demo issues that only mention released comparevi refs', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: update icon editor assets in labview-icon-editor-demo',
+      body: 'Use released comparevi-history refs only while refreshing icon editor screenshots.',
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidate still excludes non-rollout demo maintenance that mentions workflow plumbing', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: refresh labview-icon-editor-demo README',
+      body: [
+        'Document released comparevi-history refs.',
+        'Mention workflow files and downstream forks for operator context.',
+        'This is still demo maintenance, not a rollout lane.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidate still excludes docs maintenance with rollout-shaped wording', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: refresh labview-icon-editor-demo docs',
+      body: [
+        'Update docs for released comparevi-history workflow files.',
+        'Mention downstream forks for operator context.',
+        'This is docs maintenance, not a rollout lane.'
+      ].join('\n'),
       labels: [],
       createdAt: '2026-03-01T00:00:00Z'
     },
@@ -434,8 +573,8 @@ test('autoSelectStandingPriorityIssue reports empty when only out-of-scope demo 
       stdout: JSON.stringify([
         {
           number: 946,
-          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
-          body: 'Out-of-scope downstream demo work.',
+          title: 'Upstream demo: update icon editor assets in labview-icon-editor-demo',
+          body: 'Out-of-scope icon editor development work.',
           labels: [],
           createdAt: '2026-03-01T00:00:00Z'
         }
@@ -521,12 +660,12 @@ test('classifyNoStandingPriorityCondition treats out-of-scope-only open issues a
       stdout: JSON.stringify([
         {
           number: 930,
-          title: 'Epic: route released compare-vi-cli-action through comparevi-history into labview-icon-editor-demo',
+          title: 'Epic: refresh icon editor assets in labview-icon-editor-demo',
           labels: ['program']
         },
         {
           number: 946,
-          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          title: 'Upstream demo: update icon editor assets in labview-icon-editor-demo',
           labels: []
         }
       ])
@@ -540,6 +679,188 @@ test('classifyNoStandingPriorityCondition treats out-of-scope-only open issues a
     reason: 'queue-empty',
     repository: 'owner/repo',
     openIssueCount: 2,
+    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+});
+
+test('classifyNoStandingPriorityCondition keeps comparevi demo rollout queues in scope', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 930,
+          title: 'Epic: route released compare-vi-cli-action through comparevi-history into labview-icon-editor-demo',
+          body: [
+            'Use released compare-vi-cli-action artifacts through comparevi-history.',
+            'Add fork-ready diagnostics workflows.',
+            'Keep downstream forks aligned to the canonical upstream surface.',
+            'Document the upstream and downstream alignment contract.'
+          ].join('\n'),
+          labels: ['program']
+        },
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: [
+            'Land diagnostics workflows in the upstream demo repo.',
+            'Use released comparevi-history refs only.',
+            'Resolve the workflow shape dynamically for downstream forks.',
+            'Document how upstream canon should stay aligned into downstream forks.'
+          ].join('\n'),
+          labels: []
+        }
+      ])
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'classified');
+  assert.equal(result.reason, 'label-missing');
+  assert.equal(result.repository, 'owner/repo');
+  assert.equal(result.openIssueCount, 2);
+  assert.match(result.message, /none carry the checked standing-priority labels/i);
+});
+
+test('classifyNoStandingPriorityCondition keeps title-driven rollout queues in scope', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: land upstream-aligned released comparevi-history diagnostics for fork-safe workflow files in labview-icon-editor-demo',
+          body: 'See epic for the full rollout plan.',
+          labels: []
+        }
+      ])
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'classified');
+  assert.equal(result.reason, 'label-missing');
+  assert.equal(result.repository, 'owner/repo');
+  assert.equal(result.openIssueCount, 1);
+  assert.match(result.message, /none carry the checked standing-priority labels/i);
+});
+
+test('classifyNoStandingPriorityCondition still treats generic comparevi references in demo queues as out of scope', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: update icon editor assets in labview-icon-editor-demo',
+          body: 'Refresh icon editor assets while noting compare-vi-cli-action in release notes.',
+          labels: []
+        }
+      ])
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 1,
+    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+});
+
+test('classifyNoStandingPriorityCondition still treats released-ref-only demo queues as out of scope', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: update icon editor assets in labview-icon-editor-demo',
+          body: 'Use released comparevi-history refs only while refreshing icon editor screenshots.',
+          labels: []
+        }
+      ])
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 1,
+    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+});
+
+test('classifyNoStandingPriorityCondition still excludes non-rollout demo maintenance with workflow wording', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: refresh labview-icon-editor-demo README',
+          body: [
+            'Document released comparevi-history refs.',
+            'Mention workflow files and downstream forks for operator context.',
+            'This is still demo maintenance, not a rollout lane.'
+          ].join('\n'),
+          labels: []
+        }
+      ])
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 1,
+    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+});
+
+test('classifyNoStandingPriorityCondition still excludes docs maintenance with rollout-shaped wording', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: refresh labview-icon-editor-demo docs',
+          body: [
+            'Update docs for released comparevi-history workflow files.',
+            'Mention downstream forks for operator context.',
+            'This is docs maintenance, not a rollout lane.'
+          ].join('\n'),
+          labels: []
+        }
+      ])
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 1,
     message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
   });
 });
@@ -576,7 +897,7 @@ test('classifyNoStandingPriorityCondition still treats out-of-scope demo queues 
       stdout: JSON.stringify([
         {
           number: 946,
-          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          title: 'Upstream demo: update icon editor assets in labview-icon-editor-demo',
           labels: ['duplicate']
         }
       ])
