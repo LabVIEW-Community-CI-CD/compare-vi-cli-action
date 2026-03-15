@@ -21,7 +21,15 @@ if (!existsSync(distPath)) {
 }
 
 const imported = await import(pathToFileURL(distPath).href);
-export * from '../../dist/tools/priority/run-delivery-turn-with-codex.js';
+export const buildCodexTurnPrompt = imported.buildCodexTurnPrompt;
+export const buildPrReadyArgs = imported.buildPrReadyArgs;
+export const buildPullRequestTimelineArgs = imported.buildPullRequestTimelineArgs;
+export const buildUnattendedCommandEnv = imported.buildUnattendedCommandEnv;
+export const planPullRequestReviewCycle = imported.planPullRequestReviewCycle;
+export const runCli = imported.runCli;
+export const runCodexDeliveryTurn = imported.runCodexDeliveryTurn;
+export const selectAuthoritativeDraftTransition = imported.selectAuthoritativeDraftTransition;
+export const waitForAuthoritativeDraftTransition = imported.waitForAuthoritativeDraftTransition;
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
 if (invokedPath && invokedPath === modulePath && typeof imported.runCli === 'function') {

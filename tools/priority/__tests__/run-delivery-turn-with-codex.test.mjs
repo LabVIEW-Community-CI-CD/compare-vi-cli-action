@@ -323,6 +323,14 @@ test('runCodexDeliveryTurn plans review restoration from the original PR state, 
   );
 });
 
+test('run-delivery-turn shim avoids static dist re-exports so clean runners can build before import resolution', () => {
+  const source = readFileSync(path.join(repoRoot, 'tools/priority/run-delivery-turn-with-codex.mjs'), 'utf8');
+
+  assert.doesNotMatch(source, /export \* from '\.\.\/\.\.\/dist\/tools\/priority\/run-delivery-turn-with-codex\.js'/);
+  assert.match(source, /const imported = await import\(pathToFileURL\(distPath\)\.href\);/);
+  assert.match(source, /export const buildPullRequestTimelineArgs = imported\.buildPullRequestTimelineArgs;/);
+});
+
 test('runCodexDeliveryTurn records broker-managed PR ready-state helper calls even when the gh command fails', () => {
   const source = readFileSync(path.join(repoRoot, 'tools/priority/run-delivery-turn-with-codex.ts'), 'utf8');
 
