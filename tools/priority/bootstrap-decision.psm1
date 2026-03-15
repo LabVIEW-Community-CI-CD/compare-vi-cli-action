@@ -81,4 +81,73 @@ function Get-DevelopCheckoutDecision {
   }
 }
 
-Export-ModuleMember -Function Get-DevelopCheckoutDecision
+function Normalize-BootstrapDecisionPath {
+  param([AllowNull()][string]$Path)
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return $null
+  }
+
+  try {
+    return [System.IO.Path]::GetFullPath($Path).TrimEnd('\','/')
+  } catch {
+    return $null
+  }
+}
+
+function Get-BootstrapHelperRootDecision {
+  [CmdletBinding()]
+  param(
+    [AllowNull()][string]$CurrentBranch,
+    [AllowNull()][string]$CurrentRepoRoot,
+    [AllowNull()][string[]]$DevelopWorktreeRoots
+  )
+
+  $normalizedCurrentRepoRoot = Normalize-BootstrapDecisionPath -Path $CurrentRepoRoot
+  $normalizedDevelopRoots = @(
+    foreach ($root in @($DevelopWorktreeRoots)) {
+      $normalizedRoot = Normalize-BootstrapDecisionPath -Path $root
+      if (-not [string]::IsNullOrWhiteSpace($normalizedRoot)) {
+        $normalizedRoot
+      }
+    }
+  ) | Select-Object -Unique
+
+  if ([string]::IsNullOrWhiteSpace($normalizedCurrentRepoRoot)) {
+    return [pscustomobject]@{
+      Action = 'use-current-root'
+      HelperRoot = $null
+      Message = '[bootstrap] Unable to resolve the current repo root; using the caller checkout for priority helpers.'
+    }
+  }
+
+  if (
+    $CurrentBranch -eq 'develop' -or
+    $normalizedDevelopRoots -contains $normalizedCurrentRepoRoot
+  ) {
+    return [pscustomobject]@{
+      Action = 'use-current-root'
+      HelperRoot = $normalizedCurrentRepoRoot
+      Message = $null
+    }
+  }
+
+  if ($CurrentBranch -match '^(issue/|feature/|release/|hotfix/|bugfix/)') {
+    $delegateRoot = @($normalizedDevelopRoots | Where-Object { $_ -ne $normalizedCurrentRepoRoot } | Select-Object -First 1)
+    if ($delegateRoot.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($delegateRoot[0])) {
+      return [pscustomobject]@{
+        Action = 'delegate-develop-worktree'
+        HelperRoot = $delegateRoot[0]
+        Message = "[bootstrap] Current branch '$CurrentBranch' is a work branch; using develop helper checkout '$($delegateRoot[0])' for standing-priority refresh."
+      }
+    }
+  }
+
+  return [pscustomobject]@{
+    Action = 'use-current-root'
+    HelperRoot = $normalizedCurrentRepoRoot
+    Message = $null
+  }
+}
+
+Export-ModuleMember -Function Get-DevelopCheckoutDecision, Get-BootstrapHelperRootDecision
