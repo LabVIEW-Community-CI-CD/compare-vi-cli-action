@@ -255,6 +255,57 @@ Describe 'Test-SessionIndexV2Contract' {
     (Get-BurnInDisposition -Failures @() -Enforce:$false -PromotionReady:$true -RecurrenceClassification 'clean') | Should -Be 'promotion-ready'
   }
 
+  It 'classifies missing artifact failures deterministically in the machine-readable report' {
+    $resultsDir = New-SessionIndexFixture -Name 'missing-artifact' -ExpectedContexts @('lint', 'session-index')
+    Remove-Item -LiteralPath (Join-Path $resultsDir 'session-index-v2.json') -Force
+    $policyPath = Join-Path $TestDrive 'branch-policy.missing-artifact.json'
+    Write-JsonFile -Path $policyPath -Data @{
+      schema = 'branch-required-checks/v1'
+      schemaVersion = '1.0.0'
+      branches = @{
+        develop = @('lint', 'session-index')
+      }
+    }
+
+    $run = Invoke-ContractTool -ResultsDir $resultsDir -PolicyPath $policyPath
+
+    $run.ExitCode | Should -Be 0
+    $run.Report.status | Should -Be 'fail'
+    ($run.Report.failures -join "`n") | Should -Match '^Missing v2 artifact:'
+    $run.Report.burnInReceipt.status | Should -Be 'mismatch'
+    $run.Report.burnInReceipt.mismatchClass | Should -Be 'missing-artifact'
+    $run.Report.burnInReceipt.mismatchFingerprint.Length | Should -Be 64
+    $run.Report.burnInReceipt.evidence.sessionIndexV1Path | Should -Match 'session-index\.json$'
+    $run.Report.burnInReceipt.evidence.sessionIndexV2Path | Should -Match 'session-index-v2\.json$'
+    $run.Summary.disposition | Should -Be 'burn-in-mismatch'
+    $run.Summary.mismatchClass | Should -Be 'missing-artifact'
+  }
+
+  It 'classifies branch-protection parity mismatches when required contexts are missing from expected contexts' {
+    $resultsDir = New-SessionIndexFixture -Name 'missing-required-contexts' -ExpectedContexts @('lint') -ActualContexts @('lint')
+    $policyPath = Join-Path $TestDrive 'branch-policy.missing-required-contexts.json'
+    Write-JsonFile -Path $policyPath -Data @{
+      schema = 'branch-required-checks/v1'
+      schemaVersion = '1.0.0'
+      branches = @{
+        develop = @('lint', 'session-index')
+      }
+    }
+
+    $run = Invoke-ContractTool -ResultsDir $resultsDir -PolicyPath $policyPath
+
+    $run.ExitCode | Should -Be 0
+    $run.Report.status | Should -Be 'fail'
+    $run.Report.failures | Should -Contain 'branchProtection.expected missing required contexts: session-index'
+    $run.Report.branchProtection.requiredContexts | Should -Be @('lint', 'session-index')
+    $run.Report.branchProtection.missingContexts | Should -Be @('session-index')
+    $run.Report.burnInReceipt.status | Should -Be 'mismatch'
+    $run.Report.burnInReceipt.mismatchClass | Should -Be 'missing-required-contexts'
+    $run.Report.burnInReceipt.mismatchSummary | Should -Contain 'branchProtection.expected missing required contexts: session-index'
+    $run.Summary.disposition | Should -Be 'burn-in-mismatch'
+    $run.Summary.mismatchClass | Should -Be 'missing-required-contexts'
+  }
+
   It 'writes machine-readable GitHub outputs and summary evidence for non-blocking burn-in mismatches' {
     $resultsDir = New-SessionIndexFixture -Name 'telemetry' -ExpectedContexts @('lint')
     $policyPath = Join-Path $TestDrive 'branch-policy.telemetry.json'
