@@ -286,25 +286,7 @@ function normalizeOpenIssueCandidate(entry) {
   };
 }
 
-function hasOnlyIneligibleOpenIssues(entries = []) {
-  if (!Array.isArray(entries) || entries.length === 0) {
-    return false;
-  }
-
-  let sawCandidate = false;
-  const onlyIneligibleCandidates = entries.every((entry) => {
-    const normalized = normalizeOpenIssueCandidate(entry);
-    if (!normalized) {
-      return false;
-    }
-    sawCandidate = true;
-    return normalized.outOfScope || (!normalized.excluded && normalized.blocked);
-  });
-
-  return sawCandidate && onlyIneligibleCandidates;
-}
-
-export function selectAutoStandingPriorityCandidate(entries = [], options = {}) {
+function normalizeSelectableStandingCandidates(entries = [], options = {}) {
   const excludedIssueNumbers = new Set(
     Array.isArray(options.excludeIssueNumbers)
       ? options.excludeIssueNumbers
@@ -312,9 +294,99 @@ export function selectAutoStandingPriorityCandidate(entries = [], options = {}) 
           .filter((value) => Number.isInteger(value) && value > 0)
       : []
   );
-  const normalized = entries
-    .map((entry) => normalizeOpenIssueCandidate(entry))
-    .filter((entry) => entry && !entry.excluded && !excludedIssueNumbers.has(entry.number) && !entry.outOfScope && !entry.blocked);
+
+  return Array.isArray(entries)
+    ? entries
+        .map((entry) => normalizeOpenIssueCandidate(entry))
+        .filter((entry) => entry && !entry.excluded && !excludedIssueNumbers.has(entry.number))
+    : [];
+}
+
+function hasIssueNumberReference(value, issueNumber) {
+  if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+    return false;
+  }
+  return new RegExp(`(?:#${issueNumber}\\b|/issues/${issueNumber}\\b)`, 'i').test(String(value || ''));
+}
+
+function areStandingIssuesLinked(parentEntry, childEntry) {
+  if (!parentEntry || !childEntry) {
+    return false;
+  }
+
+  const parentText = `${String(parentEntry.title || '')}\n${String(parentEntry.body || '')}`;
+  const childCommentBodies = normalizeCommentBodies(childEntry.commentBodies ?? childEntry.comments);
+  const childText = `${String(childEntry.title || '')}\n${String(childEntry.body || '')}\n${childCommentBodies.join('\n')}`;
+
+  return (
+    hasIssueNumberReference(parentText, childEntry.number) ||
+    hasIssueNumberReference(childText, parentEntry.number)
+  );
+}
+
+export function hasOnlyBlockedConcreteIssuesBehindFallbackParent(entries = [], options = {}) {
+  const normalized = normalizeSelectableStandingCandidates(entries, options).filter((entry) => !entry.outOfScope);
+  if (normalized.length === 0) {
+    return false;
+  }
+
+  const concreteBlocked = normalized.filter(
+    (entry) =>
+      entry.blocked &&
+      !entry.cadence &&
+      !entry.epic &&
+      !entry.umbrella
+  );
+  if (concreteBlocked.length === 0) {
+    return false;
+  }
+
+  const concreteActionable = normalized.filter(
+    (entry) =>
+      !entry.blocked &&
+      !entry.cadence &&
+      !entry.epic &&
+      !entry.umbrella
+  );
+  if (concreteActionable.length > 0) {
+    return false;
+  }
+
+  const fallbackParents = normalized.filter(
+    (entry) =>
+      !entry.blocked &&
+      !entry.cadence &&
+      (entry.epic || entry.umbrella || entry.labels.includes('program'))
+  );
+  if (fallbackParents.length === 0) {
+    return false;
+  }
+
+  return (
+    concreteBlocked.every((entry) =>
+      fallbackParents.some((parentEntry) => areStandingIssuesLinked(parentEntry, entry))
+    ) &&
+    fallbackParents.every((parentEntry) =>
+      concreteBlocked.some((entry) => areStandingIssuesLinked(parentEntry, entry))
+    )
+  );
+}
+
+function hasOnlyIneligibleOpenIssues(entries = [], options = {}) {
+  const normalized = normalizeSelectableStandingCandidates(entries, options);
+  if (normalized.length === 0) {
+    return false;
+  }
+
+  if (hasOnlyBlockedConcreteIssuesBehindFallbackParent(entries, options)) {
+    return true;
+  }
+
+  return normalized.every((entry) => entry.outOfScope || entry.blocked);
+}
+
+export function selectAutoStandingPriorityCandidate(entries = [], options = {}) {
+  const normalized = normalizeSelectableStandingCandidates(entries, options).filter((entry) => !entry.outOfScope && !entry.blocked);
   if (normalized.length === 0) {
     return null;
   }
@@ -350,7 +422,16 @@ export function selectAutoStandingPriorityCandidate(entries = [], options = {}) 
     return left.number - right.number;
   });
 
-  return pool[0];
+  const selected = pool[0] ?? null;
+  if (
+    selected &&
+    (selected.epic || selected.umbrella || selected.labels.includes('program')) &&
+    hasOnlyBlockedConcreteIssuesBehindFallbackParent(entries, options)
+  ) {
+    return null;
+  }
+
+  return selected;
 }
 
 export async function selectAutoStandingPriorityCandidateForRepo(
@@ -1497,7 +1578,7 @@ async function listOpenIssuesForRepo(
   return runRestList({ repoRoot, slug });
 }
 
-async function enrichOpenIssuesForStandingSelection(repoRoot, slug, issues = [], options = {}) {
+export async function enrichOpenIssuesForStandingSelection(repoRoot, slug, issues = [], options = {}) {
   const hasExplicitFetchIssueDetailsFn = typeof options.fetchIssueDetailsFn === 'function';
   const fetchIssueDetailsFn =
     options.fetchIssueDetailsFn ??

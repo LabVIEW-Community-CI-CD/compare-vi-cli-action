@@ -5,11 +5,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import {
+  enrichOpenIssuesForStandingSelection,
   fetchIssue,
+  hasOnlyBlockedConcreteIssuesBehindFallbackParent,
   main as syncStandingPriority,
   resolveRepositorySlug,
   resolveStandingPriorityLabels,
-  selectAutoStandingPriorityCandidateForRepo
+  selectAutoStandingPriorityCandidate
 } from './sync-standing-priority.mjs';
 import { releaseWriterLease } from './agent-writer-lease.mjs';
 import { assertPresent } from './lib/github-text.mjs';
@@ -252,12 +254,24 @@ async function resolveTargetIssue(
     throw new Error('Next standing priority issue number is required unless --auto is specified.');
   }
 
-  const selected = await selectAutoStandingPriorityCandidateForRepo(workingRepoRoot, repoSlug, openIssues, {
-    excludeIssueNumbers: excludedIssueNumbers,
+  const enrichedOpenIssues = await enrichOpenIssuesForStandingSelection(workingRepoRoot, repoSlug, openIssues, {
     fetchIssueDetailsFn: async (issueNumber) =>
       fetchIssueDetailsForAutoSelection(ghRunner, repoSlug, issueNumber, workingRepoRoot, restIssueFetcher)
   });
+  const selected = selectAutoStandingPriorityCandidate(enrichedOpenIssues, {
+    excludeIssueNumbers: excludedIssueNumbers
+  });
   if (!selected?.number) {
+    if (
+      hasOnlyBlockedConcreteIssuesBehindFallbackParent(enrichedOpenIssues, {
+        excludeIssueNumbers: excludedIssueNumbers
+      })
+    ) {
+      return {
+        issueNumber: null,
+        source: 'auto-empty'
+      };
+    }
     if (Array.isArray(openIssues) && openIssues.length > 0) {
       throw new Error(
         'Open issues remain, but none are eligible in-scope candidates for standing-priority in this repository.'
@@ -318,7 +332,7 @@ export async function handoffStandingPriority(
     ghRunner,
     restIssueFetcher
   );
-  const targetIssueNumber = targetSelection.issueNumber;
+  const targetIssueNumber = Number.isInteger(targetSelection.issueNumber) ? targetSelection.issueNumber : null;
   const removeTargets = currentIssues
     .filter((issue) => issue.number !== targetIssueNumber)
     .map((issue) => ({
@@ -330,7 +344,7 @@ export async function handoffStandingPriority(
   const targetRemoveLabels = targetIssue
     ? standingPriorityLabels.filter((label) => label !== primaryLabel && targetIssue.labels.includes(label))
     : [];
-  const targetNeedsPrimaryLabel = !targetIssue || !targetIssue.labels.includes(primaryLabel);
+  const targetNeedsPrimaryLabel = Number.isInteger(targetIssueNumber) && (!targetIssue || !targetIssue.labels.includes(primaryLabel));
   const currentIssueMap = new Map(currentIssues.map((issue) => [issue.number, issue]));
 
   if (dryRun) {
@@ -339,6 +353,8 @@ export async function handoffStandingPriority(
     );
     if (targetSelection.source === 'auto') {
       logger(`[standing-handoff] Auto-selected issue #${targetIssueNumber} in ${resolvedRepoSlug}.`);
+    } else if (targetSelection.source === 'auto-empty') {
+      logger('[standing-handoff] Auto-select found no eligible next issue; the standing queue would become idle.');
     }
     if (removeTargets.length > 0) {
       for (const issue of removeTargets) {
@@ -347,14 +363,14 @@ export async function handoffStandingPriority(
         );
       }
     }
-    if (targetRemoveLabels.length > 0) {
+    if (targetIssueNumber && targetRemoveLabels.length > 0) {
       logger(
         `[standing-handoff] Would remove legacy standing labels from issue #${targetIssueNumber}: ${targetRemoveLabels.join(', ')}`
       );
     }
     if (targetNeedsPrimaryLabel) {
       logger(`[standing-handoff] Would add '${primaryLabel}' label to issue #${targetIssueNumber}`);
-    } else {
+    } else if (targetIssueNumber) {
       logger(`[standing-handoff] Issue #${targetIssueNumber} already carries '${primaryLabel}'.`);
     }
     if (releaseLease) {
@@ -374,7 +390,7 @@ export async function handoffStandingPriority(
     verifyIssueLabels(ghRunner, resolvedRepoSlug, issue.number, desiredLabels);
   }
 
-  if (targetRemoveLabels.length > 0 || targetNeedsPrimaryLabel) {
+  if (targetIssueNumber && (targetRemoveLabels.length > 0 || targetNeedsPrimaryLabel)) {
     logger(`[standing-handoff] Normalizing standing labels on issue #${targetIssueNumber}...`);
     const currentLabels = normalizeIssueLabels(targetIssue?.labels);
     const desiredLabels = currentLabels
@@ -383,8 +399,10 @@ export async function handoffStandingPriority(
       .filter(Boolean);
     patchIssueLabelsFn(workingRepoRoot, resolvedRepoSlug, targetIssueNumber, desiredLabels);
     verifyIssueLabels(ghRunner, resolvedRepoSlug, targetIssueNumber, desiredLabels);
-  } else {
+  } else if (targetIssueNumber) {
     logger(`[standing-handoff] Issue #${targetIssueNumber} already labelled – ensuring cache is updated.`);
+  } else {
+    logger('[standing-handoff] No eligible next issue remains; queue will become idle after sync.');
   }
 
   logger('[standing-handoff] Synchronising priority cache...');
