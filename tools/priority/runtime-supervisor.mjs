@@ -46,7 +46,7 @@ import {
   parseUpstreamIssuePointerFromBody,
   resolveStandingPriorityForRepo,
   resolveStandingPriorityLabels,
-  selectAutoStandingPriorityCandidate
+  selectAutoStandingPriorityCandidateForRepo
 } from './sync-standing-priority.mjs';
 import {
   buildLocalReviewLoopRequest,
@@ -886,27 +886,114 @@ async function executeCompareviTurn({
     return receipt;
   }
 
-  const openIssues = await listOpenIssuesForTargetRepository(standingRepository, deps);
-  const nextCandidate = selectAutoStandingPriorityCandidate(openIssues, {
-    excludeIssueNumbers: [standingIssueNumber]
-  });
-  const hasNextDevelopmentIssue = Boolean(nextCandidate?.number) && nextCandidate?.cadence !== true;
+  let nextCandidate = null;
+  let hasNextDevelopmentIssue = false;
+  let nextStandingSelectionWarning = '';
+  try {
+    const openIssues = await listOpenIssuesForTargetRepository(standingRepository, deps);
+    nextCandidate = await selectAutoStandingPriorityCandidateForRepo(repoRoot, standingRepository, openIssues, {
+      excludeIssueNumbers: [standingIssueNumber],
+      fetchIssueDetailsFn: async (issueNumber) =>
+        fetchIssue(issueNumber, repoRoot, standingRepository, {
+          ghIssueFetcher: deps.ghIssueFetcher,
+          restIssueFetcher: deps.restIssueFetcher
+        })
+    });
+    hasNextDevelopmentIssue = Boolean(nextCandidate?.number) && nextCandidate?.cadence !== true;
+  } catch (error) {
+    nextStandingSelectionWarning = normalizeText(error?.message) || 'unknown error';
+  }
+
+  const handoffPending = Boolean(nextStandingSelectionWarning);
+  if (handoffPending) {
+    const receipt = {
+      schema: EXECUTION_RECEIPT_SCHEMA,
+      status: 'blocked',
+      outcome: 'mirror-handoff-blocked',
+      reason:
+        `Unable to evaluate the next standing issue for ${standingRepository}: ` +
+        `${nextStandingSelectionWarning}. The fork mirror remains open for deterministic retry.`,
+      stopLoop: false,
+      details: {
+        laneLifecycle: 'blocked',
+        blockerClass: 'helper',
+        actionType: 'fork-mirror-auto-drain',
+        retryable: true,
+        nextWakeCondition: 'next-standing-selection-succeeds',
+        standingRepository,
+        standingIssueNumber,
+        canonicalIssueNumber: mirrorOf.number,
+        canonicalIssueUrl: mirrorOf.url,
+        nextStandingIssueNumber: null,
+        standingSelectionWarning: nextStandingSelectionWarning,
+        helperCallsExecuted: ['node tools/priority/standing-priority-handoff.mjs --auto']
+      }
+    };
+    await persistCompareviDeliveryRuntime({
+      repository: repository || standingRepository,
+      runtimeArtifactPaths,
+      schedulerDecision,
+      taskPacket,
+      executionReceipt: receipt,
+      repoRoot,
+      deps,
+      now
+    });
+    return receipt;
+  }
 
   if (hasNextDevelopmentIssue) {
-    await handoffStandingPriority(nextCandidate.number, {
-      repoSlug: standingRepository,
-      env: {
-        ...env,
-        GITHUB_REPOSITORY: standingRepository,
-        AGENT_PRIORITY_UPSTREAM_REPOSITORY: upstreamRepository
-      },
-      logger: deps.handoffLogger ?? (() => {}),
-      ghRunner: deps.handoffGhRunner,
-      patchIssueLabelsFn: deps.patchIssueLabelsFn,
-      syncFn: deps.handoffSyncFn,
-      leaseReleaseFn: deps.handoffLeaseReleaseFn,
-      releaseLease: false
-    });
+    try {
+      await handoffStandingPriority(nextCandidate.number, {
+        repoSlug: standingRepository,
+        env: {
+          ...env,
+          GITHUB_REPOSITORY: standingRepository,
+          AGENT_PRIORITY_UPSTREAM_REPOSITORY: upstreamRepository
+        },
+        logger: deps.handoffLogger ?? (() => {}),
+        ghRunner: deps.handoffGhRunner,
+        patchIssueLabelsFn: deps.patchIssueLabelsFn,
+        syncFn: deps.handoffSyncFn,
+        leaseReleaseFn: deps.handoffLeaseReleaseFn,
+        releaseLease: false
+      });
+    } catch (error) {
+      const receipt = {
+        schema: EXECUTION_RECEIPT_SCHEMA,
+        status: 'blocked',
+        outcome: 'mirror-handoff-apply-blocked',
+        reason:
+          `Unable to advance standing-priority to #${nextCandidate.number} in ${standingRepository}: ` +
+          `${normalizeText(error?.message) || 'unknown error'}. The fork mirror remains open for recovery.`,
+        stopLoop: false,
+        details: {
+          laneLifecycle: 'blocked',
+          blockerClass: 'helperbug',
+          actionType: 'fork-mirror-auto-drain',
+          retryable: true,
+          nextWakeCondition: 'handoff-apply-recovery',
+          standingRepository,
+          standingIssueNumber,
+          canonicalIssueNumber: mirrorOf.number,
+          canonicalIssueUrl: mirrorOf.url,
+          nextStandingIssueNumber: nextCandidate.number,
+          standingSelectionWarning: '',
+          helperCallsExecuted: [`node tools/priority/standing-priority-handoff.mjs ${nextCandidate.number}`]
+        }
+      };
+      await persistCompareviDeliveryRuntime({
+        repository: repository || standingRepository,
+        runtimeArtifactPaths,
+        schedulerDecision,
+        taskPacket,
+        executionReceipt: receipt,
+        repoRoot,
+        deps,
+        now
+      });
+      return receipt;
+    }
   }
 
   await closeIssueWithComment(
@@ -938,7 +1025,8 @@ async function executeCompareviTurn({
       standingIssueNumber,
       canonicalIssueNumber: mirrorOf.number,
       canonicalIssueUrl: mirrorOf.url,
-      nextStandingIssueNumber: hasNextDevelopmentIssue ? nextCandidate.number : null
+      nextStandingIssueNumber: hasNextDevelopmentIssue ? nextCandidate.number : null,
+      standingSelectionWarning: ''
     }
   };
   await persistCompareviDeliveryRuntime({

@@ -177,6 +177,71 @@ function isOutOfScopeStandingCandidate(title, body) {
   return true;
 }
 
+function normalizeCommentBodies(comments) {
+  if (!Array.isArray(comments)) {
+    return [];
+  }
+  return comments
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        return entry.trim();
+      }
+      return typeof entry?.body === 'string' ? entry.body.trim() : '';
+    })
+    .filter(Boolean);
+}
+
+function splitStandingClauses(value) {
+  return String(value || '')
+    .split(/[\n.;]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function hasAffirmativeExternalBlockClause(value) {
+  return splitStandingClauses(value).some((clause) => {
+    if (!/\bcomparevi-history#23\b/i.test(clause)) {
+      return false;
+    }
+    const hasAffirmativeBlockSignal =
+      /\bexternally blocked on\b/i.test(clause) ||
+      /\bblocked by\b/i.test(clause) ||
+      /\bprimary downstream blocker\b/i.test(clause);
+    if (!hasAffirmativeBlockSignal) {
+      return false;
+    }
+    const hasNegatedOrHistoricalSignal =
+      /\b(?:no longer|not|never|previously|formerly)\s+(?:externally blocked on|blocked by)\b/i.test(clause) ||
+      /\b(?:was|were)\s+(?:externally blocked on|blocked by)\b/i.test(clause) ||
+      /\b(?:no longer|not|never|previously|formerly)\b[^]{0,40}\bprimary downstream blocker\b/i.test(clause) ||
+      /\b(?:was|were)\b[^]{0,40}\bprimary downstream blocker\b/i.test(clause);
+    return !hasNegatedOrHistoricalSignal;
+  });
+}
+
+function mayNeedBlockedStandingHydration(title, body) {
+  return /\bcomparevi-history#23\b/i.test(`${String(title || '')}\n${String(body || '')}`);
+}
+
+function isBlockedStandingCandidate(title, body, comments = []) {
+  const bodyText = `${String(title || '')}\n${String(body || '')}`;
+  const commentBodies = normalizeCommentBodies(comments);
+  const commentText = commentBodies.join('\n');
+  const hasExternalDependency = /comparevi-history#23/i.test(`${bodyText}\n${commentText}`);
+  if (!hasExternalDependency) {
+    return false;
+  }
+
+  const hasBodyLevelExternalBlock = hasAffirmativeExternalBlockClause(bodyText);
+  const hasCommentLevelStandingDemotion = commentBodies.some(
+    (comment) =>
+      /\bcomparevi-history#23\b/i.test(comment) &&
+      (/\bstanding-priority moved away\b/i.test(comment) || /\bno longer the top actionable coding lane\b/i.test(comment))
+  );
+
+  return hasBodyLevelExternalBlock || hasCommentLevelStandingDemotion;
+}
+
 function parseDateMs(value) {
   if (!value) {
     return Number.POSITIVE_INFINITY;
@@ -195,34 +260,48 @@ function normalizeOpenIssueCandidate(entry) {
   }
 
   const labels = normalizeList((entry.labels || []).map((label) => label?.name || label));
-  if (labels.some((label) => AUTO_SELECT_EXCLUDED_LABELS.has(String(label).toLowerCase()))) {
-    return null;
-  }
+  const excluded = labels.some((label) => AUTO_SELECT_EXCLUDED_LABELS.has(String(label).toLowerCase()));
 
   const title = typeof entry.title === 'string' ? entry.title.trim() : '';
   const body = typeof entry.body === 'string' ? entry.body : '';
+  const commentBodies = normalizeCommentBodies(
+    Array.isArray(entry.commentBodies) ? entry.commentBodies : entry.comments
+  );
   return {
     number,
     title,
     labels,
     body,
+    commentBodies,
     createdAt: entry.createdAt || entry.created_at || null,
     updatedAt: entry.updatedAt || entry.updated_at || null,
     url: entry.html_url || entry.url || null,
     priority: parsePriorityOrdinal(title),
+    excluded,
     epic: isEpicTitle(title),
     umbrella: hasChildTracksSection(body),
     cadence: isCadenceAlertIssue(title, body),
-    outOfScope: isOutOfScopeStandingCandidate(title, body)
+    outOfScope: isOutOfScopeStandingCandidate(title, body),
+    blocked: isBlockedStandingCandidate(title, body, commentBodies)
   };
 }
 
-function hasOnlyOutOfScopeOpenIssues(entries = []) {
+function hasOnlyIneligibleOpenIssues(entries = []) {
   if (!Array.isArray(entries) || entries.length === 0) {
     return false;
   }
 
-  return entries.every((entry) => isOutOfScopeStandingCandidate(entry?.title, entry?.body));
+  let sawCandidate = false;
+  const onlyIneligibleCandidates = entries.every((entry) => {
+    const normalized = normalizeOpenIssueCandidate(entry);
+    if (!normalized) {
+      return false;
+    }
+    sawCandidate = true;
+    return normalized.outOfScope || (!normalized.excluded && normalized.blocked);
+  });
+
+  return sawCandidate && onlyIneligibleCandidates;
 }
 
 export function selectAutoStandingPriorityCandidate(entries = [], options = {}) {
@@ -235,7 +314,7 @@ export function selectAutoStandingPriorityCandidate(entries = [], options = {}) 
   );
   const normalized = entries
     .map((entry) => normalizeOpenIssueCandidate(entry))
-    .filter((entry) => entry && !excludedIssueNumbers.has(entry.number) && !entry.outOfScope);
+    .filter((entry) => entry && !entry.excluded && !excludedIssueNumbers.has(entry.number) && !entry.outOfScope && !entry.blocked);
   if (normalized.length === 0) {
     return null;
   }
@@ -272,6 +351,26 @@ export function selectAutoStandingPriorityCandidate(entries = [], options = {}) 
   });
 
   return pool[0];
+}
+
+export async function selectAutoStandingPriorityCandidateForRepo(
+  repoRoot,
+  slug,
+  entries = [],
+  options = {}
+) {
+  const excludedIssueNumbers = new Set(
+    Array.isArray(options.excludeIssueNumbers)
+      ? options.excludeIssueNumbers
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0)
+      : []
+  );
+  const candidateEntries = Array.isArray(entries)
+    ? entries.filter((entry) => !excludedIssueNumbers.has(Number(entry?.number)))
+    : [];
+  const enrichedIssues = await enrichOpenIssuesForStandingSelection(repoRoot, slug, candidateEntries, options);
+  return selectAutoStandingPriorityCandidate(enrichedIssues, options);
 }
 
 function toUrl(input) {
@@ -1066,6 +1165,24 @@ async function requestGitHubJson(url, token, options = {}) {
   return JSON.parse(text);
 }
 
+async function requestGitHubJsonPages(url, token, { perPage = 100, maxPages = 100 } = {}) {
+  const rows = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const pageUrl = new URL(url);
+    pageUrl.searchParams.set('per_page', String(perPage));
+    pageUrl.searchParams.set('page', String(page));
+    const data = await requestGitHubJson(pageUrl.toString(), token);
+    if (!Array.isArray(data) || data.length === 0) {
+      break;
+    }
+    rows.push(...data);
+    if (data.length < perPage) {
+      break;
+    }
+  }
+  return rows;
+}
+
 async function fetchStandingPriorityNumberViaRest(repoRoot, slug, standingPriorityLabels = [DEFAULT_STANDING_PRIORITY_LABEL]) {
   const resolvedSlug = slug ?? resolveRepositorySlug(repoRoot);
   if (!resolvedSlug) {
@@ -1200,6 +1317,19 @@ async function fetchIssueViaRest(repoRoot, number, slug) {
 
   try {
     const data = await requestGitHubJson(`https://api.github.com/repos/${resolvedSlug}/issues/${number}`, token);
+    if (Number(data?.comments) > 0 && typeof data?.comments_url === 'string' && data.comments_url.trim()) {
+      try {
+        const comments = await requestGitHubJsonPages(data.comments_url, token, { perPage: 100 });
+        if (Array.isArray(comments)) {
+          return {
+            ...data,
+            comments
+          };
+        }
+      } catch (err) {
+        console.warn(`[priority] REST comment hydration failed: ${err.message}`);
+      }
+    }
     return data;
   } catch (err) {
     console.warn(`[priority] REST fallback failed: ${err.message}`);
@@ -1367,6 +1497,78 @@ async function listOpenIssuesForRepo(
   return runRestList({ repoRoot, slug });
 }
 
+async function enrichOpenIssuesForStandingSelection(repoRoot, slug, issues = [], options = {}) {
+  const hasExplicitFetchIssueDetailsFn = typeof options.fetchIssueDetailsFn === 'function';
+  const fetchIssueDetailsFn =
+    options.fetchIssueDetailsFn ??
+    ((issueNumber, detailOptions = {}) => fetchIssue(issueNumber, repoRoot, slug, detailOptions));
+  const warn = options.warn ?? ((message) => console.warn(message));
+  if (!Array.isArray(issues) || issues.length === 0) {
+    return [];
+  }
+
+  const detailOptions = {
+    ghIssueFetcher: options.ghIssueFetcher,
+    restIssueFetcher: options.restIssueFetcher
+  };
+
+  return Promise.all(
+    issues.map(async (entry) => {
+      const normalized = normalizeOpenIssueCandidate(entry);
+      if (
+        !normalized ||
+        normalized.excluded ||
+        normalized.outOfScope ||
+        normalized.blocked ||
+        normalized.commentBodies.length > 0 ||
+        (!hasCompareviWorkflowScopeSignal(normalized.title, normalized.body) &&
+          !mayNeedBlockedStandingHydration(normalized.title, normalized.body))
+      ) {
+        return entry;
+      }
+
+      const issueNumber = Number(entry?.number);
+      if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+        return entry;
+      }
+
+      try {
+        const detail = await fetchIssueDetailsFn(issueNumber, detailOptions);
+        if (!detail) {
+          throw new Error(`Standing candidate detail fetch returned no result for #${issueNumber}.`);
+        }
+        const mergedTitle = detail.title ?? entry.title;
+        const mergedBody = detail.body ?? entry.body;
+        const detailCommentBodies = normalizeCommentBodies(detail.commentBodies ?? detail.comments);
+        const detailCommentCount = Math.max(
+          Array.isArray(detail.comments) ? detail.comments.length : 0,
+          Array.isArray(detail.commentBodies) ? detail.commentBodies.length : 0,
+          Number.isFinite(Number(detail.commentCount)) ? Number(detail.commentCount) : 0,
+          typeof detail.comments === 'number' ? Number(detail.comments) : 0
+        );
+        if (
+          hasCompareviWorkflowScopeSignal(mergedTitle, mergedBody) &&
+          Number.isFinite(detailCommentCount) &&
+          detailCommentCount > 0 &&
+          detailCommentBodies.length === 0
+        ) {
+          throw new Error(`Standing candidate detail fetch did not hydrate comment bodies for #${issueNumber}.`);
+        }
+        return {
+          ...entry,
+          title: mergedTitle,
+          body: mergedBody,
+          comments: detailCommentBodies,
+          commentBodies: detailCommentBodies
+        };
+      } catch (error) {
+        warn(`[priority] standing candidate detail fetch failed for #${issueNumber}: ${error?.message || error}`);
+        throw error;
+      }
+    })
+  );
+}
+
 export async function classifyNoStandingPriorityCondition(
   repoRoot,
   slug,
@@ -1407,7 +1609,8 @@ export async function classifyNoStandingPriorityCondition(
     };
   }
 
-  if (hasOnlyOutOfScopeOpenIssues(openIssues.issues || [])) {
+  const enrichedIssues = await enrichOpenIssuesForStandingSelection(repoRoot, targetSlug, openIssues.issues || [], options);
+  if (hasOnlyIneligibleOpenIssues(enrichedIssues)) {
     return {
       status: 'classified',
       reason: 'queue-empty',
@@ -1491,7 +1694,12 @@ export async function autoSelectStandingPriorityIssue(
     };
   }
 
-  const selected = selectAutoStandingPriorityCandidate(openIssues.issues || []);
+  const selected = await selectAutoStandingPriorityCandidateForRepo(
+    repoRoot,
+    targetSlug,
+    openIssues.issues || [],
+    options
+  );
   if (!selected) {
     return {
       status: 'empty',
@@ -1782,8 +1990,11 @@ function normalizeIssueResult(result) {
   const labels = normalizeList((result.labels || []).map((l) => l.name || l));
   const assignees = normalizeList((result.assignees || []).map((a) => a.login || a));
   const milestone = result.milestone ? (result.milestone.title || result.milestone) : null;
+  const commentBodies = normalizeCommentBodies(result.commentBodies ?? result.comments);
   const comments = Array.isArray(result.comments)
     ? result.comments.length
+    : Array.isArray(result.commentBodies)
+      ? result.commentBodies.length
     : typeof result.comments === 'number'
       ? result.comments
       : null;
@@ -1798,6 +2009,7 @@ function normalizeIssueResult(result) {
     assignees,
     milestone,
     commentCount: comments,
+    commentBodies,
     body: result.body || null
   };
 }
@@ -1849,23 +2061,43 @@ export async function fetchIssue(number, repoRoot, slug, options = {}) {
     (typeof process.env.GITHUB_REPOSITORY === 'string' && process.env.GITHUB_REPOSITORY.trim()
       ? process.env.GITHUB_REPOSITORY.trim()
       : null);
+  const viewArgs = ['issue', 'view', String(number), '--json', 'number,title,state,updatedAt,url,labels,assignees,milestone,comments,body'];
+  if (targetSlug) {
+    viewArgs.push('--repo', targetSlug);
+  }
 
   if (targetSlug) {
     const fetchArgs = [
       'api',
       `repos/${targetSlug}/issues/${number}`,
       '--jq',
-      `. | {number,title,state,updatedAt,html_url:.html_url,url:.url,labels,assignees,milestone,comments,body}`
+      `. | {number,title,state,updatedAt:.updated_at,html_url:.html_url,url:.url,labels,assignees,milestone,comments,body}`
     ];
     result = await attemptGh(fetchArgs);
   }
 
-  if (!result) {
-    const fields = ['number', 'title', 'state', 'updatedAt', 'url', 'labels', 'assignees', 'milestone', 'comments', 'body'];
-    const viewArgs = ['issue', 'view', String(number), '--json', fields.join(',')];
-    if (targetSlug) {
-      viewArgs.push('--repo', targetSlug);
+  if (
+    result &&
+    !Array.isArray(result.comments) &&
+    !Array.isArray(result.commentBodies) &&
+    Number(result.comments) > 0
+  ) {
+    const commentDetail = await attemptGh(viewArgs);
+    if (commentDetail) {
+      result = {
+        ...result,
+        ...commentDetail,
+        comments: commentDetail.comments ?? result.comments
+      };
+    } else {
+      const restHydratedResult = await restIssueFetcher({ repoRoot, number, slug: targetSlug || slug || null });
+      if (restHydratedResult) {
+        result = restHydratedResult;
+      }
     }
+  }
+
+  if (!result) {
     result = await attemptGh(viewArgs);
   }
 

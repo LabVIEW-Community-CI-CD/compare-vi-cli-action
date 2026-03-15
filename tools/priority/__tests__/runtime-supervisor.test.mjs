@@ -2614,6 +2614,7 @@ test('delivery broker auto-slices epics by creating and linking a child issue', 
 test('delivery broker finalizes merged standing issues by handing off priority and closing the issue', async () => {
   const handoffCalls = [];
   const closeCalls = [];
+  const ghFetchCalls = [];
   const brokerResult = await runDeliveryTurnBroker({
     repoRoot: '/tmp/repo',
     taskPacket: {
@@ -2683,6 +2684,16 @@ test('delivery broker finalizes merged standing issues by handing off priority a
           url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
         },
         {
+          number: 958,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          state: 'OPEN',
+          labels: [],
+          createdAt: '2026-03-09T00:00:00Z',
+          updatedAt: '2026-03-09T00:00:00Z',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/958'
+        },
+        {
           number: 959,
           title: 'Downstream onboarding feedback: export GH_TOKEN and avoid missing-artifact cascade failures',
           state: 'OPEN',
@@ -2694,6 +2705,25 @@ test('delivery broker finalizes merged standing issues by handing off priority a
       ],
       handoffStandingPriorityFn: async (issueNumber, options) => {
         handoffCalls.push({ issueNumber, options });
+      },
+      ghIssueFetcher: async ({ args }) => {
+        ghFetchCalls.push(args);
+        return {
+          number: 958,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          updated_at: '2026-03-09T00:00:00Z',
+          html_url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/958',
+          url: 'https://api.github.com/repos/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/958',
+          labels: [],
+          assignees: [],
+          milestone: null,
+          comments: [
+            {
+              body: 'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+            }
+          ]
+        };
       },
       closeIssueWithCommentFn: async ({ repository, issueNumber, comment }) => {
         closeCalls.push({ repository, issueNumber, comment });
@@ -2710,12 +2740,13 @@ test('delivery broker finalizes merged standing issues by handing off priority a
     brokerResult.details.helperCallsExecuted,
     [
       'node tools/priority/merge-sync-pr.mjs',
-      'node tools/priority/standing-priority-handoff.mjs --auto',
+      'node tools/priority/standing-priority-handoff.mjs 959',
       'gh issue close 1010 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --comment <omitted>'
     ]
   );
   assert.equal(handoffCalls.length, 1);
   assert.equal(handoffCalls[0].issueNumber, 959);
+  assert.ok(ghFetchCalls.some((args) => args[0] === 'api'));
   assert.equal(closeCalls.length, 1);
   assert.equal(closeCalls[0].issueNumber, 1010);
   assert.match(closeCalls[0].comment, /standing priority has advanced from #1010 to #959/i);
@@ -2827,6 +2858,186 @@ test('delivery broker clears standing-priority immediately when a merged standin
   assert.equal(syncCalls[0].repoRoot, repoRoot);
   assert.equal(closeCalls.length, 1);
   assert.match(closeCalls[0].comment, /queue is now idle/i);
+});
+
+test('delivery broker still closes a merged standing issue when next-issue selection fails', async () => {
+  const closeCalls = [];
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: '/tmp/repo',
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'ready-merge',
+      objective: {
+        summary: 'Advance issue #1010'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'ready-merge',
+          standingIssue: {
+            number: 1010,
+            title: 'Containerize NILinuxCompare tests via tools image Docker contract',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
+          },
+          selectedIssue: {
+            number: 1010,
+            title: 'Containerize NILinuxCompare tests via tools image Docker contract',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
+          },
+          pullRequest: {
+            number: 1014,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1014',
+            readyToMerge: true
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        readyForReviewPurpose: 'final-validation',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: []
+      }),
+      mergePullRequestFn: async () => ({
+        status: 'completed',
+        outcome: 'merged',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'merge-pr',
+          laneLifecycle: 'complete',
+          blockerClass: 'none',
+          retryable: false,
+          nextWakeCondition: 'next-scheduler-cycle',
+          helperCallsExecuted: ['node tools/priority/merge-sync-pr.mjs'],
+          filesTouched: []
+        }
+      }),
+      listOpenIssuesFn: async () => {
+        throw new Error('detail hydration failed');
+      },
+      closeIssueWithCommentFn: async ({ repository, issueNumber, comment }) => {
+        closeCalls.push({ repository, issueNumber, comment });
+        return { status: 0 };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.status, 'blocked');
+  assert.equal(brokerResult.outcome, 'merged-finalization-blocked');
+  assert.match(brokerResult.reason, /automatic standing-priority handoff is still pending/i);
+  assert.equal(brokerResult.details.finalizedIssueNumber, null);
+  assert.equal(brokerResult.details.pendingIssueNumber, 1010);
+  assert.equal(brokerResult.details.nextStandingIssueNumber, null);
+  assert.match(brokerResult.details.standingSelectionWarning, /detail hydration failed/i);
+  assert.deepEqual(brokerResult.details.helperCallsExecuted, [
+    'node tools/priority/merge-sync-pr.mjs'
+  ]);
+  assert.equal(closeCalls.length, 0);
+});
+
+test('delivery broker propagates handoff apply failures after selection instead of downgrading them to selection warnings', async () => {
+  const issueLabels = new Map([
+    [1010, ['standing-priority']],
+    [959, []]
+  ]);
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: '/tmp/repo',
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'ready-merge',
+      objective: {
+        summary: 'Advance issue #1010'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'ready-merge',
+          standingIssue: {
+            number: 1010,
+            title: 'Containerize NILinuxCompare tests via tools image Docker contract',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
+          },
+          selectedIssue: {
+            number: 1010,
+            title: 'Containerize NILinuxCompare tests via tools image Docker contract',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
+          },
+          pullRequest: {
+            number: 1014,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1014',
+            readyToMerge: true
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        readyForReviewPurpose: 'final-validation',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: []
+      }),
+      mergePullRequestFn: async () => ({
+        status: 'completed',
+        outcome: 'merged',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'merge-pr',
+          laneLifecycle: 'complete',
+          blockerClass: 'none',
+          retryable: false,
+          nextWakeCondition: 'next-scheduler-cycle',
+          helperCallsExecuted: ['node tools/priority/merge-sync-pr.mjs'],
+          filesTouched: []
+        }
+      }),
+      listOpenIssuesFn: async () => [
+        {
+          number: 1010,
+          title: 'Containerize NILinuxCompare tests via tools image Docker contract',
+          state: 'OPEN',
+          labels: ['standing-priority'],
+          createdAt: '2026-03-11T00:00:00Z',
+          updatedAt: '2026-03-11T00:00:00Z',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
+        },
+        {
+          number: 959,
+          title: 'Downstream onboarding feedback: export GH_TOKEN and avoid missing-artifact cascade failures',
+          state: 'OPEN',
+          labels: ['bug', 'ci'],
+          createdAt: '2026-03-10T00:00:00Z',
+          updatedAt: '2026-03-10T00:00:00Z',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/959'
+        }
+      ],
+      handoffStandingPriorityFn: async (issueNumber) => {
+        issueLabels.set(issueNumber, ['standing-priority']);
+        throw new Error('sync failed after label mutation');
+      }
+    }
+  });
+
+  assert.equal(brokerResult.status, 'blocked');
+  assert.equal(brokerResult.outcome, 'merged-finalization-blocked');
+  assert.match(brokerResult.reason, /Finalization failed: sync failed after label mutation/i);
+  assert.deepEqual(brokerResult.details.helperCallsExecuted, ['node tools/priority/merge-sync-pr.mjs']);
+  assert.deepEqual(issueLabels.get(959), ['standing-priority']);
 });
 
 test('delivery broker formats merged issue close comments without PR #null when only a PR URL is available', async () => {

@@ -14,8 +14,9 @@ import {
 } from './docker-desktop-review-loop.mjs';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
 import {
+  fetchIssue,
   resolveStandingPriorityLabels,
-  selectAutoStandingPriorityCandidate
+  selectAutoStandingPriorityCandidateForRepo
 } from './sync-standing-priority.mjs';
 
 export const DELIVERY_AGENT_POLICY_SCHEMA = 'priority/delivery-agent-policy@v1';
@@ -2839,7 +2840,13 @@ async function syncStandingPriorityForRepo({ repository, repoRoot, deps = {} }) 
   return syncResult;
 }
 
-function buildMergedIssueCloseComment({ issueNumber, pullRequestNumber, pullRequestUrl, nextStandingIssueNumber }) {
+function buildMergedIssueCloseComment({
+  issueNumber,
+  pullRequestNumber,
+  pullRequestUrl,
+  nextStandingIssueNumber,
+  standingSelectionWarning = ''
+}) {
   const parsedPullRequestNumber = Number.isInteger(pullRequestNumber)
     ? pullRequestNumber
     : Number.parseInt(String(pullRequestNumber ?? ''), 10);
@@ -2853,6 +2860,9 @@ function buildMergedIssueCloseComment({ issueNumber, pullRequestNumber, pullRequ
   }
   if (nextStandingIssueNumber) {
     return `Completed by ${prReference}. Standing priority has advanced from #${issueNumber} to #${nextStandingIssueNumber}.`;
+  }
+  if (normalizeText(standingSelectionWarning)) {
+    return `Completed by ${prReference}. Automatic standing-priority handoff is still pending because the next eligible issue could not be resolved cleanly.`;
   }
   return `Completed by ${prReference}. No next standing-priority issue is currently labeled, so the queue is now idle until a new issue is promoted.`;
 }
@@ -2882,40 +2892,65 @@ async function finalizeMergedPullRequest({ taskPacket, repoRoot, deps = {} }) {
 
   const helperCallsExecuted = [];
   let nextStandingIssueNumber = null;
+  let standingSelectionWarning = '';
+  let nextCandidate = null;
   if (standingIssueNumber && standingIssueNumber === selectedIssueNumber) {
-    const openIssues = await listOpenIssues({ repository, repoRoot, deps });
-    const nextCandidate = selectAutoStandingPriorityCandidate(openIssues, {
-      excludeIssueNumbers: [standingIssueNumber]
-    });
-    if (nextCandidate?.number) {
-      const handoffFn = deps.handoffStandingPriorityFn ?? handoffStandingPriority;
-      await handoffFn(nextCandidate.number, {
-        repoSlug: repository,
-        repoRoot,
-        env: {
-          ...process.env,
-          GITHUB_REPOSITORY: repository
-        },
-        logger: deps.handoffLogger ?? (() => {}),
-        releaseLease: false
+    try {
+      const openIssues = await listOpenIssues({ repository, repoRoot, deps });
+      nextCandidate = await selectAutoStandingPriorityCandidateForRepo(repoRoot, repository, openIssues, {
+        excludeIssueNumbers: [standingIssueNumber],
+        fetchIssueDetailsFn: async (issueNumber) =>
+          fetchIssue(issueNumber, repoRoot, repository, {
+            ghIssueFetcher: deps.ghIssueFetcher,
+            restIssueFetcher: deps.restIssueFetcher
+          })
       });
-      nextStandingIssueNumber = nextCandidate.number;
-      helperCallsExecuted.push('node tools/priority/standing-priority-handoff.mjs --auto');
-    } else {
-      const standingLabels = resolveStandingPriorityLabels(repoRoot, repository, process.env);
-      if (standingLabels.length > 0) {
-        await editIssueLabels({
-          repository,
-          issueNumber: standingIssueNumber,
-          repoRoot,
-          removeLabels: standingLabels,
-          deps
-        });
-        helperCallsExecuted.push(buildRemoveLabelHelperCall(standingIssueNumber, repository, standingLabels));
-      }
-      await syncStandingPriorityForRepo({ repository, repoRoot, deps });
-      helperCallsExecuted.push('node tools/priority/sync-standing-priority.mjs');
+    } catch (error) {
+      standingSelectionWarning = normalizeText(error?.message) || 'unknown error';
     }
+
+    if (!normalizeText(standingSelectionWarning)) {
+      if (nextCandidate?.number) {
+        const handoffFn = deps.handoffStandingPriorityFn ?? handoffStandingPriority;
+        await handoffFn(nextCandidate.number, {
+          repoSlug: repository,
+          repoRoot,
+          env: {
+            ...process.env,
+            GITHUB_REPOSITORY: repository
+          },
+          logger: deps.handoffLogger ?? (() => {}),
+          releaseLease: false
+        });
+        nextStandingIssueNumber = nextCandidate.number;
+        helperCallsExecuted.push(`node tools/priority/standing-priority-handoff.mjs ${nextCandidate.number}`);
+      } else {
+        const standingLabels = resolveStandingPriorityLabels(repoRoot, repository, process.env);
+        if (standingLabels.length > 0) {
+          await editIssueLabels({
+            repository,
+            issueNumber: standingIssueNumber,
+            repoRoot,
+            removeLabels: standingLabels,
+            deps
+          });
+          helperCallsExecuted.push(buildRemoveLabelHelperCall(standingIssueNumber, repository, standingLabels));
+        }
+        await syncStandingPriorityForRepo({ repository, repoRoot, deps });
+        helperCallsExecuted.push('node tools/priority/sync-standing-priority.mjs');
+      }
+    }
+  }
+
+  if (normalizeText(standingSelectionWarning)) {
+    return {
+      selectedIssueNumber,
+      standingIssueNumber,
+      nextStandingIssueNumber: null,
+      standingSelectionWarning,
+      issueClosed: false,
+      helperCallsExecuted
+    };
   }
 
   await closeIssueWithComment({
@@ -2926,7 +2961,8 @@ async function finalizeMergedPullRequest({ taskPacket, repoRoot, deps = {} }) {
       issueNumber: selectedIssueNumber,
       pullRequestNumber,
       pullRequestUrl: normalizeText(pullRequest?.url) || null,
-      nextStandingIssueNumber
+      nextStandingIssueNumber,
+      standingSelectionWarning
     }),
     deps
   });
@@ -2936,6 +2972,8 @@ async function finalizeMergedPullRequest({ taskPacket, repoRoot, deps = {} }) {
     selectedIssueNumber,
     standingIssueNumber,
     nextStandingIssueNumber,
+    standingSelectionWarning,
+    issueClosed: true,
     helperCallsExecuted
   };
 }
@@ -3621,11 +3659,38 @@ export async function runDeliveryTurnBroker({
         repoRoot,
         deps
       });
+      if (normalizeText(finalization.standingSelectionWarning)) {
+        return {
+          status: 'blocked',
+          outcome: 'merged-finalization-blocked',
+          reason: `Merged PR for issue #${finalization.selectedIssueNumber}, but automatic standing-priority handoff is still pending: ${finalization.standingSelectionWarning}. The standing issue remains open for deterministic retry.`,
+          source: 'delivery-agent-broker',
+          details: {
+            actionType: 'merge-pr',
+            laneLifecycle: 'blocked',
+            blockerClass: 'helper',
+            retryable: true,
+            nextWakeCondition: 'merged-lane-finalization-retry',
+            helperCallsExecuted: [
+              ...(Array.isArray(mergeResult.details?.helperCallsExecuted) ? mergeResult.details.helperCallsExecuted : []),
+              ...(Array.isArray(finalization.helperCallsExecuted) ? finalization.helperCallsExecuted : [])
+            ],
+            filesTouched: [],
+            finalizedIssueNumber: null,
+            pendingIssueNumber: finalization.selectedIssueNumber,
+            standingIssueNumber: finalization.standingIssueNumber,
+            nextStandingIssueNumber: finalization.nextStandingIssueNumber ?? null,
+            standingSelectionWarning: normalizeText(finalization.standingSelectionWarning) || ''
+          }
+        };
+      }
       return {
         ...mergeResult,
         reason:
           finalization.selectedIssueNumber && finalization.nextStandingIssueNumber
             ? `Merged PR and closed issue #${finalization.selectedIssueNumber}; standing priority advanced to #${finalization.nextStandingIssueNumber}.`
+            : finalization.selectedIssueNumber && normalizeText(finalization.standingSelectionWarning)
+              ? `Merged PR and closed issue #${finalization.selectedIssueNumber}; automatic standing-priority handoff is pending.`
             : finalization.selectedIssueNumber
               ? `Merged PR and closed issue #${finalization.selectedIssueNumber}.`
               : mergeResult.reason,
@@ -3637,7 +3702,8 @@ export async function runDeliveryTurnBroker({
           ],
           finalizedIssueNumber: finalization.selectedIssueNumber,
           standingIssueNumber: finalization.standingIssueNumber,
-          nextStandingIssueNumber: finalization.nextStandingIssueNumber ?? null
+          nextStandingIssueNumber: finalization.nextStandingIssueNumber ?? null,
+          standingSelectionWarning: normalizeText(finalization.standingSelectionWarning) || ''
         }
       };
     } catch (error) {

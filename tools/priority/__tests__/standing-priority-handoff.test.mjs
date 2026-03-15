@@ -214,6 +214,201 @@ test('handoffStandingPriority auto-selects the next actionable issue and skips c
   assert.equal(syncCount, 1);
 });
 
+test('handoffStandingPriority uses the caller gh transport to hydrate blocked rollout candidates before auto-selecting', async () => {
+  const calls = [];
+  const patchCalls = [];
+  const issues = new Map([
+    [315, { number: 315, title: '[P1] Real development issue', labels: [] }],
+    [317, { number: 317, title: 'Current standing issue', labels: [{ name: 'fork-standing-priority' }] }]
+  ]);
+  const ghRunner = (args) => {
+    calls.push(args);
+    if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
+      return JSON.stringify([
+        {
+          ...issues.get(317),
+          createdAt: '2026-03-10T00:00:00Z',
+          updatedAt: '2026-03-10T00:00:00Z'
+        }
+      ]);
+    }
+    if (args[0] === 'issue' && args[1] === 'list' && !args.includes('--label')) {
+      return JSON.stringify([
+        {
+          number: 314,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          labels: [],
+          createdAt: '2026-03-01T00:00:00Z',
+          updatedAt: '2026-03-01T00:00:00Z'
+        },
+        {
+          number: 315,
+          title: '[P1] Real development issue',
+          body: 'Implement follow-up',
+          labels: [{ name: 'ci' }],
+          createdAt: '2026-03-02T00:00:00Z',
+          updatedAt: '2026-03-02T00:00:00Z'
+        },
+        {
+          ...issues.get(317),
+          title: '[P0] Current standing issue',
+          body: 'Already active',
+          createdAt: '2026-03-03T00:00:00Z',
+          updatedAt: '2026-03-03T00:00:00Z'
+        }
+      ]);
+    }
+    if (args[0] === 'issue' && args[1] === 'view' && args[2] === '314') {
+      return JSON.stringify({
+        number: 314,
+        title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+        body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+        labels: [],
+        createdAt: '2026-03-01T00:00:00Z',
+        updatedAt: '2026-03-01T00:00:00Z',
+        comments: [
+          {
+            body: 'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+          }
+        ]
+      });
+    }
+    if (args[0] === 'issue' && args[1] === 'view') {
+      return JSON.stringify(issues.get(Number(args[2])));
+    }
+    return '';
+  };
+  const patchIssueLabelsFn = (_repoRoot, _repoSlug, issueNumber, labels) => {
+    patchCalls.push({ issueNumber, labels });
+    const issue = issues.get(issueNumber);
+    issue.labels = labels.map((label) => ({ name: label }));
+  };
+
+  await handoffStandingPriority(null, {
+    auto: true,
+    ghRunner,
+    patchIssueLabelsFn,
+    syncFn: async () => {},
+    leaseReleaseFn: async () => ({ status: 'released' }),
+    logger: () => {},
+    env: {
+      GITHUB_REPOSITORY: 'fork-owner/compare-vi-cli-action',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'upstream-owner/compare-vi-cli-action'
+    }
+  });
+
+  assert.deepEqual(patchCalls, [
+    { issueNumber: 317, labels: [] },
+    { issueNumber: 315, labels: ['fork-standing-priority'] }
+  ]);
+  assert.ok(
+    calls.some(
+      (args) =>
+        args[0] === 'api' &&
+        String(args[1]).includes('/issues/314')
+    )
+  );
+});
+
+test('handoffStandingPriority falls back to shared REST hydration when caller gh transport cannot hydrate a blocked candidate', async () => {
+  const calls = [];
+  const restCalls = [];
+  const patchCalls = [];
+  const issues = new Map([
+    [315, { number: 315, title: '[P1] Real development issue', labels: [] }],
+    [317, { number: 317, title: 'Current standing issue', labels: [{ name: 'fork-standing-priority' }] }]
+  ]);
+  const ghRunner = (args) => {
+    calls.push(args);
+    if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
+      return JSON.stringify([
+        {
+          ...issues.get(317),
+          createdAt: '2026-03-10T00:00:00Z',
+          updatedAt: '2026-03-10T00:00:00Z'
+        }
+      ]);
+    }
+    if (args[0] === 'issue' && args[1] === 'list' && !args.includes('--label')) {
+      return JSON.stringify([
+        {
+          number: 314,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          labels: [],
+          createdAt: '2026-03-01T00:00:00Z',
+          updatedAt: '2026-03-01T00:00:00Z'
+        },
+        {
+          number: 315,
+          title: '[P1] Real development issue',
+          body: 'Implement follow-up',
+          labels: [{ name: 'ci' }],
+          createdAt: '2026-03-02T00:00:00Z',
+          updatedAt: '2026-03-02T00:00:00Z'
+        },
+        {
+          ...issues.get(317),
+          title: '[P0] Current standing issue',
+          body: 'Already active',
+          createdAt: '2026-03-03T00:00:00Z',
+          updatedAt: '2026-03-03T00:00:00Z'
+        }
+      ]);
+    }
+    if (args[0] === 'issue' && args[1] === 'view') {
+      return JSON.stringify(issues.get(Number(args[2])));
+    }
+    return '';
+  };
+  const patchIssueLabelsFn = (_repoRoot, _repoSlug, issueNumber, labels) => {
+    patchCalls.push({ issueNumber, labels });
+    const issue = issues.get(issueNumber);
+    issue.labels = labels.map((label) => ({ name: label }));
+  };
+  const restIssueFetcher = async ({ number, slug }) => {
+    restCalls.push({ number, slug });
+    if (number !== 314) {
+      return null;
+    }
+    return {
+      number: 314,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+      updatedAt: '2026-03-01T00:00:00Z',
+      url: 'https://github.com/fork-owner/compare-vi-cli-action/issues/314',
+      labels: [],
+      comments: [
+        {
+          body: 'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+        }
+      ]
+    };
+  };
+
+  await handoffStandingPriority(null, {
+    auto: true,
+    ghRunner,
+    patchIssueLabelsFn,
+    restIssueFetcher,
+    syncFn: async () => {},
+    leaseReleaseFn: async () => ({ status: 'released' }),
+    logger: () => {},
+    env: {
+      GITHUB_REPOSITORY: 'fork-owner/compare-vi-cli-action',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'upstream-owner/compare-vi-cli-action'
+    }
+  });
+
+  assert.deepEqual(patchCalls, [
+    { issueNumber: 317, labels: [] },
+    { issueNumber: 315, labels: ['fork-standing-priority'] }
+  ]);
+  assert.ok(calls.some((args) => args[0] === 'api' && String(args[1]).includes('/issues/314')));
+  assert.deepEqual(restCalls, [{ number: 314, slug: 'fork-owner/compare-vi-cli-action' }]);
+});
+
 test('handoffStandingPriority dry-run only inspects current issues and candidate pool', async () => {
   const calls = [];
   const ghRunner = (args) => {

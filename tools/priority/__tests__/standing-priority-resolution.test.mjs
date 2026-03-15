@@ -8,6 +8,7 @@ import path from 'node:path';
 import {
   parseCliArgs,
   selectAutoStandingPriorityCandidate,
+  selectAutoStandingPriorityCandidateForRepo,
   autoSelectStandingPriorityIssue,
   classifyNoStandingPriorityCondition,
   buildNoStandingPriorityReport,
@@ -510,6 +511,149 @@ test('selectAutoStandingPriorityCandidate still excludes docs maintenance with r
   assert.equal(selected?.number, 951);
 });
 
+test('selectAutoStandingPriorityCandidate skips explicitly blocked rollout trackers', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'Land diagnostics workflows in the upstream demo repo.',
+        'Blocked by comparevi-history#23.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidate keeps rollout trackers eligible when blocker wording is historical or negated', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'Land diagnostics workflows in the upstream demo repo.',
+        'No longer blocked by comparevi-history#23 after the explicit-mode renderer landed.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 946);
+});
+
+test('selectAutoStandingPriorityCandidate keeps rollout trackers eligible when comparevi-history was only a historical downstream blocker', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'Land diagnostics workflows in the upstream demo repo.',
+        'comparevi-history#23 was the primary downstream blocker before the renderer landed.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 946);
+});
+
+test('selectAutoStandingPriorityCandidate honors hydrated comment bodies even when numeric comment counts are also present', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+      comments: 2,
+      commentBodies: [
+        'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+      ],
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidate keeps rollout trackers eligible when blocker text is not the external comparevi-history gate', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+      comments: ['Blocked by fixture drift cleanup before landing.'],
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 946);
+});
+
+test('selectAutoStandingPriorityCandidate keeps rollout trackers eligible when generic blocker text and comparevi-history tracker notes are separate body clauses', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'Blocked by fixture drift cleanup before landing.',
+        'Track comparevi-history#23 as the remaining explicit-mode renderer dependency.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 946);
+});
+
 test('selectAutoStandingPriorityCandidate keeps non-demo labview-icon-editor references eligible', () => {
   const selected = selectAutoStandingPriorityCandidate([
     {
@@ -522,6 +666,70 @@ test('selectAutoStandingPriorityCandidate keeps non-demo labview-icon-editor ref
   ]);
 
   assert.equal(selected?.number, 960);
+});
+
+test('selectAutoStandingPriorityCandidateForRepo skips excluded issue numbers before comment hydration', async () => {
+  const selected = await selectAutoStandingPriorityCandidateForRepo('/tmp/repo', 'owner/repo', [
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+      labels: []
+    },
+    {
+      number: 951,
+      title: '[P1] actionable follow-up',
+      body: 'Remaining in-repo work.',
+      labels: []
+    }
+  ], {
+    excludeIssueNumbers: [946],
+    fetchIssueDetailsFn: async (issueNumber) => {
+      throw new Error(`should not hydrate excluded issue #${issueNumber}`);
+    },
+    warn: () => {}
+  });
+
+  assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidateForRepo hydrates comment-only blocked demotions even when rollout scope is otherwise narrow', async () => {
+  const selected = await selectAutoStandingPriorityCandidateForRepo('/tmp/repo', 'owner/repo', [
+    {
+      number: 946,
+      title: '[P0] Wire comparevi-history renderer integration',
+      body: 'Track comparevi-history#23 while the renderer dependency is still external.',
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: '[P1] actionable follow-up',
+      body: 'Remaining in-repo work.',
+      labels: [],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ], {
+    fetchIssueDetailsFn: async (issueNumber) =>
+      issueNumber === 946
+        ? {
+            number: 946,
+            title: '[P0] Wire comparevi-history renderer integration',
+            body: 'Track comparevi-history#23 while the renderer dependency is still external.',
+            commentBodies: [
+              'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+            ]
+          }
+        : {
+            number: 951,
+            title: '[P1] actionable follow-up',
+            body: 'Remaining in-repo work.',
+            commentBodies: []
+          },
+    warn: () => {}
+  });
+
+  assert.equal(selected?.number, 951);
 });
 
 test('shouldPersistCacheUpdate skips cache materialization by default on fresh clones', () => {
@@ -713,6 +921,16 @@ test('classifyNoStandingPriorityCondition keeps comparevi demo rollout queues in
         }
       ])
     }),
+    fetchIssueDetailsFn: async () => ({
+      title: 'Downstream fork: validate upstream-aligned comparevi-history diagnostics in svelderrainruiz/labview-icon-editor-demo',
+      body: [
+        'Validate that downstream forks stay aligned with the upstream comparevi-history diagnostics shape.',
+        'Route the reviewer-facing diagnostics workflow files through the canonical upstream repo/ref contract.',
+        'Keep the downstream fork ready to mirror the released compare-vi-cli-action rollout.'
+      ].join('\n'),
+      commentCount: 0,
+      commentBodies: []
+    }),
     runRestList: async () => ({ status: 'error', error: 'not-used' }),
     warn: () => {}
   });
@@ -737,6 +955,16 @@ test('classifyNoStandingPriorityCondition keeps title-driven rollout queues in s
           labels: []
         }
       ])
+    }),
+    fetchIssueDetailsFn: async () => ({
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: [
+        'Land the released comparevi-history diagnostics workflow files in the upstream demo repo.',
+        'Keep PR head repo/ref routing fork-safe for downstream mirrors.',
+        'Track comparevi-history#23 as the remaining explicit-mode renderer dependency.'
+      ].join('\n'),
+      commentCount: 0,
+      commentBodies: []
     }),
     runRestList: async () => ({ status: 'error', error: 'not-used' }),
     warn: () => {}
@@ -865,6 +1093,159 @@ test('classifyNoStandingPriorityCondition still excludes docs maintenance with r
   });
 });
 
+test('classifyNoStandingPriorityCondition treats blocked rollout trackers as queue-empty when issue detail confirms the block', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          labels: []
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) => ({
+      number: issueNumber,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+      commentBodies: [
+        'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+      ]
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.deepEqual(result, {
+    status: 'classified',
+    reason: 'queue-empty',
+    repository: 'owner/repo',
+    openIssueCount: 1,
+    message: 'No eligible in-scope open issues remain in owner/repo; the standing-priority queue is empty.'
+  });
+});
+
+test('classifyNoStandingPriorityCondition keeps rollout trackers in scope when detail only reports a non-external blocker', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          labels: []
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) => ({
+      number: issueNumber,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+      commentBodies: ['Blocked by fixture drift cleanup before landing.']
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'classified');
+  assert.equal(result.reason, 'label-missing');
+  assert.equal(result.repository, 'owner/repo');
+  assert.equal(result.openIssueCount, 1);
+});
+
+test('classifyNoStandingPriorityCondition fails closed when rollout detail cannot hydrate comments', async () => {
+  const rolloutBody = [
+    'Land the released comparevi-history diagnostics workflow files in the upstream demo repo.',
+    'Keep PR head repo/ref routing fork-safe for downstream mirrors.',
+    'Track comparevi-history#23 as the remaining explicit-mode renderer dependency.'
+  ].join('\n');
+  await assert.rejects(
+    () =>
+      classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+        targetSlug: 'owner/repo',
+        runGhList: () => ({
+          status: 0,
+          stdout: JSON.stringify([
+            {
+              number: 946,
+              title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+              body: rolloutBody,
+              labels: []
+            }
+          ])
+        }),
+        fetchIssueDetailsFn: async (issueNumber) => ({
+          number: issueNumber,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: rolloutBody,
+          commentCount: 2,
+          commentBodies: []
+        }),
+        runRestList: async () => ({ status: 'error', error: 'not-used' }),
+        warn: () => {}
+      }),
+    /did not hydrate comment bodies/i
+  );
+});
+
+test('autoSelectStandingPriorityIssue skips blocked rollout trackers when issue detail confirms the block', async () => {
+  const calls = [];
+  const result = await autoSelectStandingPriorityIssue('/tmp/repo', 'owner/repo', {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          labels: [],
+          createdAt: '2026-03-01T00:00:00Z'
+        },
+        {
+          number: 951,
+          title: '[P1] actionable follow-up',
+          body: 'Remaining in-repo work.',
+          labels: [],
+          createdAt: '2026-03-02T00:00:00Z'
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) =>
+      issueNumber === 946
+        ? {
+            number: 946,
+            title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+            body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+            commentBodies: [
+              'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+            ]
+          }
+        : {
+            number: 951,
+            title: '[P1] actionable follow-up',
+            body: 'Remaining in-repo work.',
+            commentBodies: []
+          },
+    runGhAddLabel: ({ issueNumber }) => {
+      calls.push(issueNumber);
+      return { status: 0, stdout: '' };
+    },
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    runRestAddLabel: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'selected');
+  assert.equal(result.issue?.number, 951);
+  assert.deepEqual(calls, [951]);
+});
+
 test('classifyNoStandingPriorityCondition keeps excluded-label queues as label-missing', async () => {
   const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
     targetSlug: 'owner/repo',
@@ -889,6 +1270,37 @@ test('classifyNoStandingPriorityCondition keeps excluded-label queues as label-m
   assert.match(result.message, /none carry the checked standing-priority labels/i);
 });
 
+test('classifyNoStandingPriorityCondition keeps excluded blocked rollout queues as label-missing', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 980,
+          title: 'Land released comparevi-history diagnostics workflow files in upstream demo intake',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          labels: ['duplicate']
+        }
+      ])
+    }),
+    fetchIssueDetailsFn: async (issueNumber) => ({
+      number: issueNumber,
+      title: 'Land released comparevi-history diagnostics workflow files in upstream demo intake',
+      body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+      commentBodies: [
+        'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+      ]
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'classified');
+  assert.equal(result.reason, 'label-missing');
+  assert.equal(result.repository, 'owner/repo');
+  assert.equal(result.openIssueCount, 1);
+});
 test('classifyNoStandingPriorityCondition still treats out-of-scope demo queues as idle when labels are excluded', async () => {
   const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
     targetSlug: 'owner/repo',
@@ -1089,7 +1501,7 @@ test('fetchIssue uses injected ghIssueFetcher before restIssueFetcher', async ()
         labels: [{ name: 'standing-priority' }],
         assignees: [{ login: 'agent' }],
         milestone: { title: 'M1' },
-        comments: 4,
+        comments: [{ body: 'first' }, { body: 'second' }],
         body: 'body'
       };
     },
@@ -1102,7 +1514,125 @@ test('fetchIssue uses injected ghIssueFetcher before restIssueFetcher', async ()
   assert.equal(issue.number, 41);
   assert.deepEqual(issue.labels, ['standing-priority']);
   assert.deepEqual(issue.assignees, ['agent']);
+  assert.deepEqual(issue.commentBodies, ['first', 'second']);
   assert.equal(calls.some((entry) => entry[0] === 'rest'), false);
+});
+
+test('fetchIssue enriches numeric gh comment counts with issue-view comment bodies before REST fallback', async () => {
+  const calls = [];
+  const issue = await fetchIssue(43, '/tmp/repo', 'fork-owner/compare-vi-cli-action', {
+    ghIssueFetcher: async ({ args }) => {
+      calls.push(args[0]);
+      if (args[0] === 'api') {
+        return {
+          number: 43,
+          title: 'API-first issue',
+          state: 'open',
+          updatedAt: '2026-03-03T00:00:00Z',
+          url: 'https://github.com/fork-owner/compare-vi-cli-action/issues/43',
+          labels: [{ name: 'standing-priority' }],
+          assignees: [{ login: 'agent' }],
+          milestone: { title: 'M3' },
+          comments: 2,
+          body: 'body'
+        };
+      }
+      return {
+        number: 43,
+        title: 'API-first issue',
+        state: 'open',
+        updatedAt: '2026-03-03T00:00:00Z',
+        url: 'https://github.com/fork-owner/compare-vi-cli-action/issues/43',
+        labels: [{ name: 'standing-priority' }],
+        assignees: [{ login: 'agent' }],
+        milestone: { title: 'M3' },
+        comments: [{ body: 'blocked comment' }, { body: 'follow-up comment' }],
+        body: 'body'
+      };
+    },
+    restIssueFetcher: async () => {
+      throw new Error('rest should not be used');
+    }
+  });
+
+  assert.equal(issue.number, 43);
+  assert.deepEqual(issue.commentBodies, ['blocked comment', 'follow-up comment']);
+  assert.deepEqual(calls, ['api', 'issue']);
+});
+
+test('fetchIssue falls back to REST hydration when issue-view comment enrichment fails after gh api success', async () => {
+  const calls = [];
+  const issue = await fetchIssue(44, '/tmp/repo', 'fork-owner/compare-vi-cli-action', {
+    ghIssueFetcher: async ({ args }) => {
+      calls.push(args[0]);
+      if (args[0] === 'api') {
+        return {
+          number: 44,
+          title: 'API-first issue',
+          state: 'open',
+          updatedAt: '2026-03-04T00:00:00Z',
+          url: 'https://github.com/fork-owner/compare-vi-cli-action/issues/44',
+          labels: [{ name: 'standing-priority' }],
+          assignees: [{ login: 'agent' }],
+          milestone: { title: 'M4' },
+          comments: 2,
+          body: 'body'
+        };
+      }
+      return null;
+    },
+    restIssueFetcher: async () => {
+      calls.push('rest');
+      return {
+        number: 44,
+        title: 'REST-hydrated issue',
+        state: 'open',
+        updated_at: '2026-03-04T00:00:00Z',
+        html_url: 'https://github.com/fork-owner/compare-vi-cli-action/issues/44',
+        labels: [{ name: 'standing-priority' }],
+        assignees: [{ login: 'agent' }],
+        milestone: { title: 'M4' },
+        comments: [{ body: 'hydrated by rest' }, { body: 'rest follow-up' }],
+        body: 'body'
+      };
+    }
+  });
+
+  assert.equal(issue.number, 44);
+  assert.deepEqual(issue.commentBodies, ['hydrated by rest', 'rest follow-up']);
+  assert.deepEqual(calls, ['api', 'issue', 'rest']);
+});
+
+test('fetchIssue preserves updatedAt from the gh api fast path when no comment hydration is needed', async () => {
+  const calls = [];
+  const issue = await fetchIssue(45, '/tmp/repo', 'fork-owner/compare-vi-cli-action', {
+    ghIssueFetcher: async ({ args }) => {
+      calls.push(args[0]);
+      if (args[0] !== 'api') {
+        throw new Error('issue view should not be used');
+      }
+      return {
+        number: 45,
+        title: 'API-fast-path issue',
+        state: 'open',
+        updated_at: '2026-03-05T00:00:00Z',
+        url: 'https://github.com/fork-owner/compare-vi-cli-action/issues/45',
+        html_url: 'https://github.com/fork-owner/compare-vi-cli-action/issues/45',
+        labels: [{ name: 'standing-priority' }],
+        assignees: [{ login: 'agent' }],
+        milestone: { title: 'M5' },
+        comments: 0,
+        body: 'body'
+      };
+    },
+    restIssueFetcher: async () => {
+      throw new Error('rest should not be used');
+    }
+  });
+
+  assert.equal(issue.number, 45);
+  assert.equal(issue.updatedAt, '2026-03-05T00:00:00Z');
+  assert.deepEqual(calls, ['api']);
 });
 
 test('fetchIssue falls back to injected restIssueFetcher when GH fetcher returns null', async () => {

@@ -1045,6 +1045,7 @@ test('comparevi planner prefers live standing issue data for the target reposito
 test('comparevi execution closes the fork mirror and advances to the next development issue', async () => {
   const handoffCalls = [];
   const closeCalls = [];
+  const ghFetchCalls = [];
   const issueLabels = new Map([
     [315, ['fork-standing-priority']],
     [313, []]
@@ -1081,6 +1082,13 @@ test('comparevi execution closes the fork mirror and advances to the next develo
           body: 'body',
           labels: [{ name: 'fork-standing-priority' }],
           createdAt: '2026-03-10T00:00:00Z'
+        },
+        {
+          number: 314,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          labels: [],
+          createdAt: '2026-03-08T00:00:00Z'
         },
         {
           number: 313,
@@ -1132,6 +1140,25 @@ test('comparevi execution closes the fork mirror and advances to the next develo
       patchIssueLabelsFn: (_repoRoot, _repoSlug, issueNumber, labels) => {
         issueLabels.set(Number(issueNumber), Array.from(labels));
       },
+      ghIssueFetcher: async ({ args }) => {
+        ghFetchCalls.push(args);
+        return {
+          number: 314,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          updated_at: '2026-03-08T00:00:00Z',
+          html_url: 'https://github.com/svelderrainruiz/compare-vi-cli-action/issues/314',
+          url: 'https://api.github.com/repos/svelderrainruiz/compare-vi-cli-action/issues/314',
+          labels: [],
+          assignees: [],
+          milestone: null,
+          comments: [
+            {
+              body: 'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
+            }
+          ]
+        };
+      },
       closeIssueFn: async (payload) => {
         closeCalls.push(payload);
       }
@@ -1145,8 +1172,135 @@ test('comparevi execution closes the fork mirror and advances to the next develo
   assert.deepEqual(issueLabels.get(313), ['fork-standing-priority']);
   assert.ok(handoffCalls.some((args) => args[0] === 'issue' && args[1] === 'view' && args[2] === '315'));
   assert.ok(handoffCalls.some((args) => args[0] === 'issue' && args[1] === 'view' && args[2] === '313'));
+  assert.ok(ghFetchCalls.some((args) => args[0] === 'api'));
   assert.equal(closeCalls[0].repository, 'svelderrainruiz/compare-vi-cli-action');
   assert.equal(closeCalls[0].issueNumber, 315);
+});
+
+test('comparevi execution still closes the fork mirror when next-issue selection fails', async () => {
+  const closeCalls = [];
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'svelderrainruiz/compare-vi-cli-action'
+    },
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'personal-1004',
+        issue: 1004
+      },
+      artifacts: {
+        standingRepository: 'svelderrainruiz/compare-vi-cli-action',
+        standingIssueNumber: 315,
+        mirrorOf: {
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          number: 1004,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1004'
+        },
+        cadence: false
+      }
+    },
+    deps: {
+      listRepoOpenIssuesFn: async () => {
+        throw new Error('detail hydration failed');
+      },
+      closeIssueFn: async (payload) => {
+        closeCalls.push(payload);
+      }
+    }
+  });
+
+  assert.equal(execution.status, 'blocked');
+  assert.equal(execution.outcome, 'mirror-handoff-blocked');
+  assert.equal(execution.stopLoop, false);
+  assert.equal(execution.details.blockerClass, 'helper');
+  assert.equal(execution.details.nextWakeCondition, 'next-standing-selection-succeeds');
+  assert.match(execution.details.standingSelectionWarning, /detail hydration failed/i);
+  assert.equal(closeCalls.length, 0);
+});
+
+test('comparevi execution reports handoff apply failures separately from selection failures', async () => {
+  const issueLabels = new Map([
+    [315, ['fork-standing-priority']],
+    [313, []]
+  ]);
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'svelderrainruiz/compare-vi-cli-action'
+    },
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'personal-1004',
+        issue: 1004
+      },
+      artifacts: {
+        standingRepository: 'svelderrainruiz/compare-vi-cli-action',
+        standingIssueNumber: 315,
+        mirrorOf: {
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          number: 1004,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1004'
+        },
+        cadence: false
+      }
+    },
+    deps: {
+      listRepoOpenIssuesFn: async () => [
+        {
+          number: 315,
+          title: '[P1] Current mirror',
+          body: 'body',
+          labels: [{ name: 'fork-standing-priority' }],
+          createdAt: '2026-03-10T00:00:00Z'
+        },
+        {
+          number: 313,
+          title: '[P1] Next development issue',
+          body: 'body',
+          labels: [],
+          createdAt: '2026-03-09T00:00:00Z'
+        }
+      ],
+      handoffGhRunner: (args) => {
+        if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
+          if (args.includes('fork-standing-priority')) {
+            return JSON.stringify([{ number: 315, labels: [{ name: 'fork-standing-priority' }] }]);
+          }
+          return '[]';
+        }
+        if (args[0] === 'issue' && args[1] === 'view') {
+          const issueNumber = Number(args[2]);
+          return JSON.stringify({
+            number: issueNumber,
+            labels: (issueLabels.get(issueNumber) ?? []).map((name) => ({ name }))
+          });
+        }
+        return '';
+      },
+      patchIssueLabelsFn: (_repoRoot, _repoSlug, issueNumber, labels) => {
+        issueLabels.set(Number(issueNumber), Array.from(labels));
+      },
+      handoffSyncFn: async () => {
+        throw new Error('sync failed after label mutation');
+      }
+    }
+  });
+
+  assert.equal(execution.status, 'blocked');
+  assert.equal(execution.outcome, 'mirror-handoff-apply-blocked');
+  assert.equal(execution.stopLoop, false);
+  assert.equal(execution.details.blockerClass, 'helperbug');
+  assert.equal(execution.details.nextWakeCondition, 'handoff-apply-recovery');
+  assert.equal(execution.details.nextStandingIssueNumber, 313);
+  assert.match(execution.reason, /sync failed after label mutation/i);
+  assert.deepEqual(issueLabels.get(313), ['fork-standing-priority']);
 });
 
 test('comparevi execution stops when the standing issue is cadence-only work', async () => {
