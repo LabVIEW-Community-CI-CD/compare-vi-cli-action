@@ -12,6 +12,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const renderModulePath = path.join(repoRoot, 'tools', 'priority', 'render-mission-control-prompt.mjs');
 const validatorModulePath = path.join(repoRoot, 'tools', 'priority', 'validate-mission-control-prompt.mjs');
+const artifactRoot = path.join(repoRoot, 'tests', 'results', '_agent', 'mission-control');
 
 let renderModulePromise = null;
 let validatorModulePromise = null;
@@ -46,6 +47,11 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+function createRepoArtifactSandbox(prefix) {
+  fs.mkdirSync(artifactRoot, { recursive: true });
+  return fs.mkdtempSync(path.join(artifactRoot, prefix));
+}
+
 async function writeCanonicalRenderArtifacts(tmpDir) {
   const renderModule = await loadRenderModule();
   const envelopePath = path.join(tmpDir, 'mission-control-envelope.json');
@@ -61,6 +67,7 @@ async function writeCanonicalRenderArtifacts(tmpDir) {
       repoRoot,
       envelopePathSource: 'explicit',
       promptPathSource: 'explicit',
+      enforcePromptArtifactPath: false,
     },
   );
   fs.writeFileSync(promptPath, report.promptText, 'utf8');
@@ -74,7 +81,7 @@ async function writeCanonicalRenderArtifacts(tmpDir) {
 
 test('validateMissionControlPromptReportFile passes a canonical rendered report', async (t) => {
   const { validateMissionControlPromptReportFile, MISSION_CONTROL_PROMPT_VALIDATION_SCHEMA } = await loadValidatorModule();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-validate-pass-'));
+  const tmpDir = createRepoArtifactSandbox('validate-pass-');
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
   const { reportPath, report } = await writeCanonicalRenderArtifacts(tmpDir);
@@ -89,6 +96,8 @@ test('validateMissionControlPromptReportFile passes a canonical rendered report'
   assert.equal(validation.issueCount, 0);
   assert.deepEqual(validation.issues, []);
   assert.deepEqual(validation.checks, {
+    envelopePathTrusted: 'passed',
+    promptPathTrusted: 'passed',
     promptSha256MatchesText: 'passed',
     envelopeFileExists: 'passed',
     envelopeSha256MatchesReport: 'passed',
@@ -100,9 +109,61 @@ test('validateMissionControlPromptReportFile passes a canonical rendered report'
   });
 });
 
+test('validateMissionControlPromptReportFile fails closed on an embedded envelope path outside the repo root', async (t) => {
+  const { validateMissionControlPromptReportFile } = await loadValidatorModule();
+  const tmpDir = createRepoArtifactSandbox('validate-envelope-path-untrusted-');
+  const externalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-envelope-untrusted-'));
+  t.after(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(externalDir, { recursive: true, force: true });
+  });
+
+  const { reportPath, report } = await writeCanonicalRenderArtifacts(tmpDir);
+  const externalEnvelopePath = path.join(externalDir, 'mission-control-envelope.json');
+  fs.copyFileSync(report.envelopePath, externalEnvelopePath);
+  report.envelopePath = externalEnvelopePath;
+  writeJson(reportPath, report);
+
+  const validation = validateMissionControlPromptReportFile(reportPath, { repoRoot, cwd: tmpDir, source: 'explicit' });
+  assert.equal(validation.status, 'failed');
+  assert.deepEqual(validation.issues, ['envelope-path-untrusted']);
+  assert.equal(validation.checks.envelopePathTrusted, 'failed');
+  assert.equal(validation.checks.envelopeFileExists, 'skipped');
+  assert.equal(validation.checks.envelopeSha256MatchesReport, 'skipped');
+  assert.equal(validation.checks.operatorMatchesEnvelope, 'skipped');
+  assert.equal(validation.checks.promptTextMatchesCanonicalContract, 'skipped');
+  assert.match(validation.envelopeError ?? '', /Embedded envelope/);
+});
+
+test('validateMissionControlPromptReportFile fails closed on an embedded prompt path outside the artifact root', async (t) => {
+  const { validateMissionControlPromptReportFile } = await loadValidatorModule();
+  const tmpDir = createRepoArtifactSandbox('validate-prompt-path-untrusted-');
+  const externalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-untrusted-'));
+  t.after(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(externalDir, { recursive: true, force: true });
+  });
+
+  const { reportPath, report } = await writeCanonicalRenderArtifacts(tmpDir);
+  const externalPromptPath = path.join(externalDir, 'mission-control-prompt.txt');
+  fs.writeFileSync(externalPromptPath, report.promptText, 'utf8');
+  report.promptPath = externalPromptPath;
+  writeJson(reportPath, report);
+
+  const validation = validateMissionControlPromptReportFile(reportPath, { repoRoot, cwd: tmpDir, source: 'explicit' });
+  assert.equal(validation.status, 'failed');
+  assert.deepEqual(validation.issues, ['prompt-path-untrusted']);
+  assert.equal(validation.checks.promptPathTrusted, 'failed');
+  assert.equal(validation.checks.promptTextMatchesCanonicalContract, 'skipped');
+  assert.equal(validation.checks.promptFileExists, 'skipped');
+  assert.equal(validation.checks.promptFileMatchesReport, 'skipped');
+  assert.equal(validation.checks.promptFileSha256MatchesReport, 'skipped');
+  assert.match(validation.promptError ?? '', /Embedded prompt/);
+});
+
 test('validateMissionControlPromptReportFile fails closed on operator directive drift', async (t) => {
   const { validateMissionControlPromptReportFile } = await loadValidatorModule();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-validate-operator-drift-'));
+  const tmpDir = createRepoArtifactSandbox('validate-operator-drift-');
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
   const { reportPath, report } = await writeCanonicalRenderArtifacts(tmpDir);
@@ -121,7 +182,7 @@ test('validateMissionControlPromptReportFile fails closed on operator directive 
 
 test('validateMissionControlPromptReportFile fails closed on prompt report EOF whitespace drift', async (t) => {
   const { validateMissionControlPromptReportFile } = await loadValidatorModule();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-validate-body-drift-'));
+  const tmpDir = createRepoArtifactSandbox('validate-body-drift-');
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
   const { reportPath, report, promptPath } = await writeCanonicalRenderArtifacts(tmpDir);
@@ -144,7 +205,7 @@ test('validateMissionControlPromptReportFile fails closed on prompt report EOF w
 
 test('validateMissionControlPromptReportFile fails closed when the source envelope changed after render', async (t) => {
   const { validateMissionControlPromptReportFile } = await loadValidatorModule();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-validate-envelope-drift-'));
+  const tmpDir = createRepoArtifactSandbox('validate-envelope-drift-');
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
   const { reportPath, report } = await writeCanonicalRenderArtifacts(tmpDir);
@@ -167,7 +228,7 @@ test('validateMissionControlPromptReportFile fails closed when the source envelo
 
 test('validateMissionControlPromptReportFile fails closed on a missing envelope artifact without downstream noise', async (t) => {
   const { validateMissionControlPromptReportFile } = await loadValidatorModule();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-validate-missing-envelope-'));
+  const tmpDir = createRepoArtifactSandbox('validate-missing-envelope-');
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
   const { reportPath, report } = await writeCanonicalRenderArtifacts(tmpDir);
@@ -184,7 +245,7 @@ test('validateMissionControlPromptReportFile fails closed on a missing envelope 
 
 test('validateMissionControlPromptReportFile fails closed on prompt-file evidence mismatch', async (t) => {
   const { validateMissionControlPromptReportFile } = await loadValidatorModule();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-validate-file-drift-'));
+  const tmpDir = createRepoArtifactSandbox('validate-file-drift-');
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
   const { reportPath, report, promptPath } = await writeCanonicalRenderArtifacts(tmpDir);
@@ -204,7 +265,7 @@ test('validateMissionControlPromptReportFile fails closed on prompt-file evidenc
 
 test('validateMissionControlPromptReportFile fails closed on a missing prompt artifact without downstream noise', async (t) => {
   const { validateMissionControlPromptReportFile } = await loadValidatorModule();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-validate-missing-prompt-'));
+  const tmpDir = createRepoArtifactSandbox('validate-missing-prompt-');
   t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 
   const { reportPath, report, promptPath } = await writeCanonicalRenderArtifacts(tmpDir);
@@ -224,15 +285,25 @@ test('validate mission-control prompt CLI writes a deterministic validation repo
   const validatorModule = await loadValidatorModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-validate-cli-'));
   const nestedCwd = path.join(tmpDir, 'nested', 'cwd');
+  const artifactRoot = path.join(
+    repoRoot,
+    'tests',
+    'results',
+    '_agent',
+    'mission-control',
+  );
+  fs.mkdirSync(artifactRoot, { recursive: true });
+  const renderOutputDir = fs.mkdtempSync(path.join(artifactRoot, 'validate-cli-render-'));
+  const validationOutputDir = fs.mkdtempSync(path.join(artifactRoot, 'validate-cli-output-'));
   fs.mkdirSync(nestedCwd, { recursive: true });
   const previousCwd = process.cwd();
   t.after(() => {
     process.chdir(previousCwd);
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(renderOutputDir, { recursive: true, force: true });
+    fs.rmSync(validationOutputDir, { recursive: true, force: true });
   });
 
-  const renderOutputDir = path.join(tmpDir, 'render');
-  const validationOutputDir = path.join(nestedCwd, 'validation');
   fs.mkdirSync(renderOutputDir, { recursive: true });
   const promptPath = path.join(renderOutputDir, 'mission-control-prompt.txt');
   const reportPath = path.join(renderOutputDir, 'mission-control-prompt-render.json');
@@ -261,7 +332,8 @@ test('validate mission-control prompt CLI writes a deterministic validation repo
 
   const output = [];
   const errors = [];
-  const relativeOutputPath = path.join('validation', 'mission-control-prompt-validation.json');
+  const validationPath = path.join(validationOutputDir, 'mission-control-prompt-validation.json');
+  const relativeOutputPath = path.relative(nestedCwd, validationPath);
   const exitCode = validatorModule.main(
     [
       'node',
@@ -287,10 +359,76 @@ test('validate mission-control prompt CLI writes a deterministic validation repo
   assert.deepEqual(errors, []);
   assert.equal(output.length, 2);
 
-  const validationPath = path.join(validationOutputDir, 'mission-control-prompt-validation.json');
   const validation = JSON.parse(fs.readFileSync(validationPath, 'utf8'));
   assert.equal(validation.schema, validatorModule.MISSION_CONTROL_PROMPT_VALIDATION_SCHEMA);
   assert.equal(validation.promptReportPath, reportPath);
   assert.equal(validation.promptPath, promptPath);
   assert.equal(validation.status, 'passed');
+});
+
+test('validate mission-control prompt CLI rejects output paths outside the mission-control artifact root', async (t) => {
+  const renderModule = await loadRenderModule();
+  const validatorModule = await loadValidatorModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mission-control-prompt-validate-outside-root-'));
+  const artifactRoot = path.join(
+    repoRoot,
+    'tests',
+    'results',
+    '_agent',
+    'mission-control',
+  );
+  fs.mkdirSync(artifactRoot, { recursive: true });
+  const renderOutputDir = fs.mkdtempSync(path.join(artifactRoot, 'validate-cli-outside-root-'));
+  t.after(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(renderOutputDir, { recursive: true, force: true });
+  });
+
+  const promptPath = path.join(renderOutputDir, 'mission-control-prompt.txt');
+  const reportPath = path.join(renderOutputDir, 'mission-control-prompt-render.json');
+  const renderExitCode = renderModule.main(
+    [
+      'node',
+      renderModulePath,
+      '--envelope',
+      renderModule.FIXTURE_MISSION_CONTROL_ENVELOPE_PATH,
+      '--prompt',
+      promptPath,
+      '--report',
+      reportPath,
+    ],
+    {
+      repoRoot,
+      logFn() {},
+      errorFn(message) {
+        throw new Error(`render should not fail: ${message}`);
+      },
+    },
+  );
+  assert.equal(renderExitCode, 0);
+
+  const outputPath = path.join(tmpDir, 'mission-control-prompt-validation.json');
+  const errors = [];
+  const exitCode = validatorModule.main(
+    [
+      'node',
+      validatorModulePath,
+      '--report',
+      reportPath,
+      '--output',
+      outputPath,
+    ],
+    {
+      repoRoot,
+      cwd: repoRoot,
+      logFn() {},
+      errorFn(message) {
+        errors.push(message);
+      },
+    },
+  );
+
+  assert.equal(exitCode, 1);
+  assert.match(errors[0], /Prompt validation report path must stay inside the repository root|Prompt validation report path must stay under/);
+  assert.equal(fs.existsSync(outputPath), false);
 });
