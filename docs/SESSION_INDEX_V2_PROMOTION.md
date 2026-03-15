@@ -24,10 +24,14 @@ The check validates:
   disposition without requiring a reader to inspect the full failure list first.
 - The cutover helper writes `session-index-v2-cutover-readiness.json`, a machine-readable readiness report that projects
   promotion evidence together with the v1 deprecation checklist state.
+- The promotion-decision helper writes `session-index-v2-promotion-decision.json`, a machine-readable front door that
+  combines the latest upstream Validate artifact bundle with repo policy/config state and classifies the next action as
+  `hold-burn-in`, `ready-to-promote`, `promotion-config-drift`, `already-enforced`, or an evidence failure.
 - Schemas for both artifacts live in:
   - `docs/schemas/session-index-v2-contract-v1.schema.json`
   - `docs/schemas/session-index-v2-disposition-summary-v1.schema.json`
   - `docs/schemas/session-index-v2-cutover-readiness-v1.schema.json`
+  - `docs/schemas/session-index-v2-promotion-decision-v1.schema.json`
 - While burn-in is active, failures are **non-blocking** but include warnings and triage details in the step summary.
 
 ## Enforce toggle
@@ -45,6 +49,19 @@ The workflow uses repository variable:
 3. Add `session-index-v2-contract` to `develop` required checks in
    `tools/policy/branch-required-checks.json` and branch protection settings.
 4. Verify `session-index-v2-contract` appears in branch protection parity output and remains green.
+
+## Promotion-decision front door
+
+Use the helper when you need a single deterministic answer about the current promotion state:
+
+```text
+node tools/priority/session-index-v2-promotion-decision.mjs --repo LabVIEW-Community-CI-CD/compare-vi-cli-action
+```
+
+The report consumes the latest completed upstream `validate.yml` run for `develop`, downloads the
+`validate-session-index-v2-contract` artifact bundle through the checked-in artifact helper, validates the contract
+payloads, inspects `SESSION_INDEX_V2_CONTRACT_ENFORCE`, checks `tools/policy/branch-required-checks.json`, and projects
+live branch-protection parity when that query is available.
 
 ## Triage runbook
 
