@@ -175,6 +175,14 @@ function normalizeOpenIssueCandidate(entry) {
   };
 }
 
+function hasOnlyOutOfScopeOpenIssues(entries = []) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return false;
+  }
+
+  return entries.every((entry) => isOutOfScopeStandingCandidate(entry?.title, entry?.body));
+}
+
 export function selectAutoStandingPriorityCandidate(entries = [], options = {}) {
   const excludedIssueNumbers = new Set(
     Array.isArray(options.excludeIssueNumbers)
@@ -1354,6 +1362,18 @@ export async function classifyNoStandingPriorityCondition(
       repository: targetSlug,
       openIssueCount,
       message: `No open issues remain in ${targetSlug}; the standing-priority queue is empty.`
+    };
+  }
+
+  if (hasOnlyOutOfScopeOpenIssues(openIssues.issues || [])) {
+    return {
+      status: 'classified',
+      reason: 'queue-empty',
+      repository: targetSlug,
+      openIssueCount,
+      message:
+        `No eligible in-scope open issues remain in ${targetSlug}; ` +
+        'the standing-priority queue is empty.'
     };
   }
 
