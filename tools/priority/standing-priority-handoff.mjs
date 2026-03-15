@@ -205,6 +205,11 @@ function resolveTargetIssue(nextIssue, auto, openIssues, excludedIssueNumbers) {
     excludeIssueNumbers: excludedIssueNumbers
   });
   if (!selected?.number) {
+    if (Array.isArray(openIssues) && openIssues.length > 0) {
+      throw new Error(
+        'Open issues remain, but none are eligible in-scope candidates for standing-priority in this repository.'
+      );
+    }
     throw new Error('No open issues remain that can receive standing-priority in this repository.');
   }
 

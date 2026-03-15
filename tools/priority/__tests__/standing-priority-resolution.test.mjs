@@ -350,6 +350,41 @@ test('selectAutoStandingPriorityCandidate skips excluded standing issues and dep
   assert.equal(selected?.cadence, false);
 });
 
+test('selectAutoStandingPriorityCandidate excludes out-of-scope icon-editor demo issues', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 946,
+      title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+      body: 'Out-of-scope downstream demo work.',
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 951,
+      title: 'Epic: harden Copilot remediation by drafting PRs before fix pushes',
+      body: 'Remaining in-repo work.',
+      labels: ['program'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 951);
+});
+
+test('selectAutoStandingPriorityCandidate keeps non-demo labview-icon-editor references eligible', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 960,
+      title: '[P1] align compare-vi docs with labview-icon-editor release notes',
+      body: 'In-scope compare-vi documentation work.',
+      labels: ['ci'],
+      createdAt: '2026-03-01T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 960);
+});
+
 test('shouldPersistCacheUpdate skips cache materialization by default on fresh clones', () => {
   const nextCache = {
     number: 805,
@@ -389,6 +424,33 @@ test('autoSelectStandingPriorityIssue selects and labels next issue via injected
   assert.equal(result.status, 'selected');
   assert.equal(result.issue?.number, 911);
   assert.deepEqual(calls, [911]);
+});
+
+test('autoSelectStandingPriorityIssue reports empty when only out-of-scope demo issues remain', async () => {
+  const result = await autoSelectStandingPriorityIssue('/tmp/repo', 'owner/repo', {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 946,
+          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+          body: 'Out-of-scope downstream demo work.',
+          labels: [],
+          createdAt: '2026-03-01T00:00:00Z'
+        }
+      ])
+    }),
+    runGhAddLabel: () => {
+      throw new Error('should not label an out-of-scope issue');
+    },
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    runRestAddLabel: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'empty');
+  assert.equal(result.openIssueCount, 1);
 });
 
 test('buildNoStandingPriorityReport emits deterministic schema payload', () => {

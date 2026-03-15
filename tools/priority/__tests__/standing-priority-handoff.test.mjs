@@ -286,6 +286,41 @@ test('handoffStandingPriority rejects non-positive explicit issue numbers', asyn
   );
 });
 
+test('handoffStandingPriority reports ineligible out-of-scope queues truthfully during auto-select', async () => {
+  await assert.rejects(
+    handoffStandingPriority(null, {
+      auto: true,
+      ghRunner: (args) => {
+        if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
+          return '[]';
+        }
+        if (args[0] === 'issue' && args[1] === 'list') {
+          return JSON.stringify([
+            {
+              number: 946,
+              title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
+              body: 'Out-of-scope downstream demo work.',
+              labels: [],
+              createdAt: '2026-03-01T00:00:00Z',
+              updatedAt: '2026-03-01T00:00:00Z'
+            }
+          ]);
+        }
+        return '';
+      },
+      patchIssueLabelsFn: () => {},
+      syncFn: async () => {},
+      leaseReleaseFn: async () => ({ status: 'released' }),
+      logger: () => {},
+      env: {
+        GITHUB_REPOSITORY: 'owner/repo',
+        AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'owner/repo'
+      }
+    }),
+    /none are eligible in-scope candidates/i
+  );
+});
+
 test('handoffStandingPriority fails loudly when label verification remains stale after mutation', async () => {
   await assert.rejects(
     handoffStandingPriority(315, {
