@@ -202,7 +202,7 @@ test('resolve mission-control profile CLI writes a machine-readable report', asy
   assert.equal(report.resolution.operatorPreset.intent, 'prepare-parked-lane');
 });
 
-test('resolve mission-control profile CLI writes a deterministic failure report for contradictory selections', async (t) => {
+test('resolve mission-control profile CLI writes a failure report for contradictory selections', async (t) => {
   const { main } = await loadModule();
   const output = [];
   const errors = [];

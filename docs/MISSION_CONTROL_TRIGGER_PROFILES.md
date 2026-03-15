@@ -141,7 +141,7 @@ Overrides are narrow, auditable exceptions. They do not widen the repo law.
   - keeps overrides empty unless the operator explicitly supplies an allowed override
 - `node tools/priority/resolve-mission-control-profile.mjs --trigger MC-PARKED --profile prepare-parked-lane`
   - resolves through the `prepare-parked-lane` alias set
-  - writes a deterministic report under `tests/results/_agent/mission-control/`
+  - writes a machine-readable report under `tests/results/_agent/mission-control/`
   - fails closed if the canonical profile id does not match the trigger
 - `MC-STRICT`
   - does not resolve
