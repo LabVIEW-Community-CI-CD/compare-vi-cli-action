@@ -22,9 +22,12 @@ The check validates:
   machine-readable `burnInReceipt` node.
 - The check also writes `session-index-v2-disposition.json`, a compact summary that projects the latest burn-in
   disposition without requiring a reader to inspect the full failure list first.
+- The cutover helper writes `session-index-v2-cutover-readiness.json`, a machine-readable readiness report that projects
+  promotion evidence together with the v1 deprecation checklist state.
 - Schemas for both artifacts live in:
   - `docs/schemas/session-index-v2-contract-v1.schema.json`
   - `docs/schemas/session-index-v2-disposition-summary-v1.schema.json`
+  - `docs/schemas/session-index-v2-cutover-readiness-v1.schema.json`
 - While burn-in is active, failures are **non-blocking** but include warnings and triage details in the step summary.
 
 ## Enforce toggle
@@ -54,4 +57,6 @@ When `session-index-v2-contract` reports failures:
 4. For schema failures, validate and inspect `session-index-v2.json` payload generation.
 5. For parity failures, compare `branchProtection.expected` against
    `tools/policy/branch-required-checks.json` and live branch protection output.
-6. Re-run Validate and confirm burn-in counter progression resumes.
+6. Use `session-index-v2-cutover-readiness.json` to confirm the regression guard and deprecation checklist state before
+   planning v1 removal.
+7. Re-run Validate and confirm burn-in counter progression resumes.

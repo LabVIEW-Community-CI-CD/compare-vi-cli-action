@@ -10,12 +10,14 @@ operator dashboards, or developer feedback loops.
 
 | Consumer | Area | v2-first status | v1 fallback | Notes |
 | --- | --- | --- | --- | --- |
-| `.github/actions/session-index-post/action.yml` | CI post-processing summary | ✅ | ✅ | Reads `session-index-v2.json` first, then `session-index.json`. |
-| `tools/Write-SessionIndexSummary.ps1` | Step summary reporting | ✅ | ✅ | Uses shared reader module; emits source and requirement-tagged case counts. |
-| `tools/Dev-Dashboard.psm1` | Dashboard telemetry model | ✅ | ✅ | Loads preferred index (v2→v1), surfaces source + requirement coverage fields. |
-| `tools/Dev-Dashboard.ps1` | Dashboard terminal/HTML rendering | ✅ | ✅ | Displays index source and requirement coverage when available. |
-| `tools/vscode/comparevi-extension/src/extension.ts` | VS Code status updates | ✅ | ✅ | Resolves preferred index path (v2→v1) before status refresh. |
-| `.github/workflows/validate.yml` `session-index-v2-contract` | CI contract gate | ✅ | ✅ | Burn-in + enforce toggle validates artifact parity and contract shape. |
+| `.github/actions/session-index-post/action.yml` | CI post-processing summary | `v2-first-ready` | ✅ | Reads `session-index-v2.json` first, then `session-index.json`. |
+| `tools/Write-SessionIndexSummary.ps1` | Step summary reporting | `v2-first-ready` | ✅ | Uses shared reader module; emits source and requirement-tagged case counts. |
+| `tools/Dev-Dashboard.psm1` | Dashboard telemetry model | `v2-first-ready` | ✅ | Loads preferred index (v2→v1), surfaces source + requirement coverage fields. |
+| `tools/Dev-Dashboard.ps1` | Dashboard terminal/HTML rendering | `v2-first-ready` | ✅ | Displays index source and requirement coverage when available. |
+| `tools/vscode/comparevi-extension/src/extension.ts` | VS Code status updates | `v2-first-ready` | ✅ | Resolves preferred index path (v2→v1) before status refresh. |
+| `.github/workflows/validate.yml` `session-index-v2-contract` | CI contract gate | `v2-first-ready` | ✅ | Burn-in + enforce toggle validates artifact parity and contract shape. |
+
+Use `v2-first-ready` in the `v2-first status` column when the critical consumer has been verified on the v2-first path.
 
 ## Burn-in tracking
 
@@ -23,6 +25,7 @@ operator dashboards, or developer feedback loops.
 - Regression guard target: **5 consecutive upstream runs without consumer regressions**.
 - Promotion evidence source: `validate-session-index-v2-contract/session-index-v2-contract.json`.
 - Burn-in triage front door: `validate-session-index-v2-contract/session-index-v2-disposition.json`.
+- Cutover readiness front door: `validate-session-index-v2-contract/session-index-v2-cutover-readiness.json`.
 - Deprecation policy and v1 cutover checklist: `docs/SESSION_INDEX_V1_DEPRECATION.md`.
 
 ## Remaining non-critical consumers

@@ -60,8 +60,8 @@ function main(): void {
   const schemaMeta = typeof schemaObj.$schema === 'string' ? schemaObj.$schema : '';
 
   const ajv = schemaMeta.includes('2020-12')
-    ? new Ajv2020({ allErrors: true, strict: false, allowUnionTypes: true })
-    : new Ajv({ allErrors: true, strict: false, allowUnionTypes: true });
+    ? new Ajv2020({ allErrors: true, strict: false, allowUnionTypes: true, $data: true })
+    : new Ajv({ allErrors: true, strict: false, allowUnionTypes: true, $data: true });
   addFormats(ajv);
 
   const validate: ValidateFunction = ajv.compile(schema as Record<string, unknown>);
