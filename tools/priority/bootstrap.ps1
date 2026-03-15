@@ -492,6 +492,8 @@ if (-not $PreflightOnly) {
 
   Write-Host '[bootstrap] Syncing standing priority snapshot…'
   Invoke-Npm -Script 'priority:sync:lane'
+  Write-Host '[bootstrap] Projecting session-index-v2 promotion decision into issue reporting…'
+  Invoke-Npm -Script 'priority:session-index-v2:promotion:project' -AllowFailure:$true
   Write-Host '[bootstrap] Showing router plan…'
   Invoke-Npm -Script 'priority:show' -AllowFailure:$true
 

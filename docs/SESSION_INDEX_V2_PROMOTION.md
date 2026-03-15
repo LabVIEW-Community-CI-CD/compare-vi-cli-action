@@ -63,6 +63,14 @@ The report consumes the latest completed upstream `validate.yml` run for `develo
 payloads, inspects `SESSION_INDEX_V2_CONTRACT_ENFORCE`, checks `tools/policy/branch-required-checks.json`, and projects
 live branch-protection parity when that query is available.
 
+Bootstrap also projects the latest promotion decision into the standing issue bundle:
+
+- `tests/results/_agent/issue/session-index-v2-promotion-decision.json`
+- `tests/results/_agent/issue/session-index-v2-promotion-decision-download.json`
+
+That keeps the promotion state in the same repo-owned reporting surface future agents already review during first
+actions, instead of requiring a bespoke one-off helper invocation every time.
+
 ## Triage runbook
 
 When `session-index-v2-contract` reports failures:

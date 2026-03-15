@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-15T09:35:00Z",
+  "updated": "2026-03-15T12:20:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -151,7 +151,7 @@
       "name": "Session Index v2 Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Session-index-v2 burn-in, disposition, cutover-readiness, and promotion-decision contract surfaces, including schemas, generators, and focused tests.",
+      "description": "Session-index-v2 burn-in, disposition, cutover-readiness, promotion-decision, and issue-bundle projection surfaces, including schemas, generators, and focused tests.",
       "files": [
         "docs/schemas/session-index-v2-contract-v1.schema.json",
         "docs/schemas/session-index-v2-disposition-summary-v1.schema.json",
@@ -164,7 +164,9 @@
         "tests/Write-SessionIndexV2CutoverReadiness.Tests.ps1",
         "docs/schemas/session-index-v2-promotion-decision-v1.schema.json",
         "tools/priority/session-index-v2-promotion-decision.mjs",
-        "tools/priority/__tests__/session-index-v2-promotion-decision.test.mjs"
+        "tools/priority/project-session-index-v2-promotion-decision.mjs",
+        "tools/priority/__tests__/session-index-v2-promotion-decision.test.mjs",
+        "tools/priority/__tests__/project-session-index-v2-promotion-decision.test.mjs"
       ]
     },
     {
