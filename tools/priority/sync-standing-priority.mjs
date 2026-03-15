@@ -129,6 +129,12 @@ function isCadenceAlertIssue(title, body) {
   );
 }
 
+function isOutOfScopeStandingCandidate(title, body) {
+  return /labview-icon-editor-demo|labview icon editor demo|icon[- ]editor demo/i.test(
+    `${String(title || '')}\n${String(body || '')}`
+  );
+}
+
 function parseDateMs(value) {
   if (!value) {
     return Number.POSITIVE_INFINITY;
@@ -164,7 +170,8 @@ function normalizeOpenIssueCandidate(entry) {
     priority: parsePriorityOrdinal(title),
     epic: isEpicTitle(title),
     umbrella: hasChildTracksSection(body),
-    cadence: isCadenceAlertIssue(title, body)
+    cadence: isCadenceAlertIssue(title, body),
+    outOfScope: isOutOfScopeStandingCandidate(title, body)
   };
 }
 
@@ -178,7 +185,7 @@ export function selectAutoStandingPriorityCandidate(entries = [], options = {}) 
   );
   const normalized = entries
     .map((entry) => normalizeOpenIssueCandidate(entry))
-    .filter((entry) => entry && !excludedIssueNumbers.has(entry.number));
+    .filter((entry) => entry && !excludedIssueNumbers.has(entry.number) && !entry.outOfScope);
   if (normalized.length === 0) {
     return null;
   }
@@ -1424,7 +1431,12 @@ export async function autoSelectStandingPriorityIssue(
 
   const selected = selectAutoStandingPriorityCandidate(openIssues.issues || []);
   if (!selected) {
-    return { status: 'empty', source: openIssues.source || null, repoSlug: targetSlug };
+    return {
+      status: 'empty',
+      source: openIssues.source || null,
+      repoSlug: targetSlug,
+      openIssueCount: Array.isArray(openIssues.issues) ? openIssues.issues.length : 0
+    };
   }
 
   const labelResult = await addStandingPriorityLabelToIssue(repoRoot, targetSlug, selected.number, options);
@@ -2008,9 +2020,18 @@ export async function main(options = {}) {
               source: 'auto-select'
             };
           } else if (autoSelect.status === 'empty') {
-            noStandingReason = 'queue-empty';
-            noStandingOpenIssueCount = 0;
-            noStandingMessage = `No open issues remain in ${autoSelect.repoSlug || slug || 'current repository'}; the standing-priority queue is empty.`;
+            const autoSelectOpenIssueCount =
+              Number.isInteger(autoSelect.openIssueCount) && autoSelect.openIssueCount >= 0
+                ? autoSelect.openIssueCount
+                : null;
+            if (autoSelectOpenIssueCount === 0) {
+              noStandingReason = 'queue-empty';
+              noStandingOpenIssueCount = 0;
+              noStandingMessage = `No open issues remain in ${autoSelect.repoSlug || slug || 'current repository'}; the standing-priority queue is empty.`;
+            } else {
+              noStandingOpenIssueCount = autoSelectOpenIssueCount;
+              noStandingMessage = `${noStandingMessage} Auto-select found no eligible in-scope issue.`;
+            }
           } else if (autoSelect.status === 'error' && autoSelect.error) {
             noStandingMessage = `${noStandingMessage} Auto-select failed: ${autoSelect.error}`;
           }
