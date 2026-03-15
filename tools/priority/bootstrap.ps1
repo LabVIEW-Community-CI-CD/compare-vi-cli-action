@@ -14,6 +14,8 @@ Import-Module $bootstrapDecisionModule -Force
 function Invoke-Npm {
   param(
     [Parameter(Mandatory=$true)][string]$Script,
+    [string]$WrapperRepoRoot = (Resolve-Path '.').Path,
+    [string]$WorkingDirectory = (Resolve-Path '.').Path,
     [switch]$AllowFailure
   )
 
@@ -21,7 +23,9 @@ function Invoke-Npm {
   if (-not $nodeCmd) {
     throw 'node not found; cannot launch npm wrapper.'
   }
-  $wrapperPath = Join-Path (Resolve-Path '.').Path 'tools/npm/run-script.mjs'
+  $resolvedWrapperRepoRoot = (Resolve-Path -LiteralPath $WrapperRepoRoot).Path
+  $resolvedWorkingDirectory = (Resolve-Path -LiteralPath $WorkingDirectory).Path
+  $wrapperPath = Join-Path $resolvedWrapperRepoRoot 'tools/npm/run-script.mjs'
   if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
     throw "npm wrapper not found at $wrapperPath"
   }
@@ -30,7 +34,7 @@ function Invoke-Npm {
   $psi.FileName = $nodeCmd.Source
   $psi.ArgumentList.Add($wrapperPath)
   $psi.ArgumentList.Add($Script)
-  $psi.WorkingDirectory = (Resolve-Path '.').Path
+  $psi.WorkingDirectory = $resolvedWorkingDirectory
   $psi.UseShellExecute = $false
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
@@ -45,6 +49,114 @@ function Invoke-Npm {
 
   if ($proc.ExitCode -ne 0 -and -not $AllowFailure) {
     throw "node tools/npm/run-script.mjs $Script exited with code $($proc.ExitCode)"
+  }
+}
+
+function Ensure-RepoNodeDependencies {
+  param(
+    [string]$RepoRoot = (Resolve-Path '.').Path,
+    [string[]]$RequiredPackages = @()
+  )
+
+  if (-not @($RequiredPackages).Count) {
+    return
+  }
+
+  $resolvedRepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+  $missingPackages = New-Object System.Collections.Generic.List[string]
+  foreach ($packageName in @($RequiredPackages | Select-Object -Unique)) {
+    $segments = [string]$packageName -split '/'
+    $packagePath = Join-Path $resolvedRepoRoot 'node_modules'
+    foreach ($segment in $segments) {
+      $packagePath = Join-Path $packagePath $segment
+    }
+    if (-not (Test-Path -LiteralPath $packagePath)) {
+      $missingPackages.Add([string]$packageName)
+    }
+  }
+
+  if ($missingPackages.Count -eq 0) {
+    return
+  }
+
+  $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+  if (-not $nodeCmd) {
+    throw 'node not found; cannot install npm dependencies.'
+  }
+
+  $installerPath = Join-Path $resolvedRepoRoot 'tools/npm/cli.mjs'
+  if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
+    throw "npm cli wrapper not found at $installerPath"
+  }
+
+  Write-Host ("[bootstrap] Installing missing npm dependencies in helper checkout '{0}': {1}" -f $resolvedRepoRoot, ($missingPackages -join ', '))
+
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $nodeCmd.Source
+  $psi.ArgumentList.Add($installerPath)
+  $psi.ArgumentList.Add('install')
+  $psi.WorkingDirectory = $resolvedRepoRoot
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+
+  $proc = [System.Diagnostics.Process]::Start($psi)
+  $stdout = $proc.StandardOutput.ReadToEnd()
+  $stderr = $proc.StandardError.ReadToEnd()
+  $proc.WaitForExit()
+
+  if ($stdout) { Write-Host $stdout.TrimEnd() }
+  if ($stderr) { Write-Warning $stderr.TrimEnd() }
+
+  if ($proc.ExitCode -ne 0) {
+    throw "node tools/npm/cli.mjs install exited with code $($proc.ExitCode)"
+  }
+}
+
+function Invoke-NodeScriptFromRepoRoot {
+  param(
+    [Parameter(Mandatory=$true)][string]$ScriptRelativePath,
+    [string[]]$Arguments = @(),
+    [string[]]$RequiredPackages = @(),
+    [string]$RepoRoot = (Resolve-Path '.').Path,
+    [string]$WorkingDirectory = (Resolve-Path '.').Path,
+    [switch]$AllowFailure
+  )
+
+  $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+  if (-not $nodeCmd) {
+    throw 'node not found; cannot launch node script.'
+  }
+
+  $resolvedRepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+  $resolvedWorkingDirectory = (Resolve-Path -LiteralPath $WorkingDirectory).Path
+  Ensure-RepoNodeDependencies -RepoRoot $resolvedRepoRoot -RequiredPackages $RequiredPackages
+  $scriptPath = Join-Path $resolvedRepoRoot $ScriptRelativePath
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+    throw "node script not found at $scriptPath"
+  }
+
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $nodeCmd.Source
+  $psi.ArgumentList.Add($scriptPath)
+  foreach ($arg in @($Arguments)) {
+    $psi.ArgumentList.Add([string]$arg)
+  }
+  $psi.WorkingDirectory = $resolvedWorkingDirectory
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+
+  $proc = [System.Diagnostics.Process]::Start($psi)
+  $stdout = $proc.StandardOutput.ReadToEnd()
+  $stderr = $proc.StandardError.ReadToEnd()
+  $proc.WaitForExit()
+
+  if ($stdout) { Write-Host $stdout.TrimEnd() }
+  if ($stderr) { Write-Warning $stderr.TrimEnd() }
+
+  if ($proc.ExitCode -ne 0 -and -not $AllowFailure) {
+    throw "node $ScriptRelativePath $($Arguments -join ' ') exited with code $($proc.ExitCode)"
   }
 }
 
@@ -328,6 +440,58 @@ function Resolve-RemoteDevelopRef {
   return $null
 }
 
+function Get-DevelopWorktreeRoots {
+  $result = Invoke-GitCommand -Arguments @('worktree', 'list', '--porcelain') -AllowFailure
+  if ($result.ExitCode -ne 0) {
+    return @()
+  }
+
+  $roots = New-Object System.Collections.Generic.List[string]
+  $currentWorktreePath = $null
+
+  foreach ($line in @($result.Output)) {
+    $text = [string]$line
+    if ($text.StartsWith('worktree ')) {
+      $currentWorktreePath = $text.Substring(9).Trim()
+      continue
+    }
+
+    if ($text -eq 'branch refs/heads/develop' -and -not [string]::IsNullOrWhiteSpace($currentWorktreePath)) {
+      $roots.Add($currentWorktreePath)
+      continue
+    }
+
+    if ([string]::IsNullOrWhiteSpace($text)) {
+      $currentWorktreePath = $null
+    }
+  }
+
+  return @($roots | Select-Object -Unique)
+}
+
+function Resolve-PriorityHelperRepoRoot {
+  $repoRoot = (Resolve-Path '.').Path
+  $currentBranch = Get-GitCurrentBranch
+  $decision = Get-BootstrapHelperRootDecision `
+    -CurrentBranch $currentBranch `
+    -CurrentRepoRoot $repoRoot `
+    -DevelopWorktreeRoots @(Get-DevelopWorktreeRoots)
+
+  if (-not $decision) {
+    return $repoRoot
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($decision.Message)) {
+    Write-Host $decision.Message
+  }
+
+  if ([string]::IsNullOrWhiteSpace($decision.HelperRoot)) {
+    return $repoRoot
+  }
+
+  return [string]$decision.HelperRoot
+}
+
 function Ensure-DevelopBranch {
   $current = Get-GitCurrentBranch
 
@@ -478,6 +642,9 @@ if ($VerboseHooks) {
 }
 
 if (-not $PreflightOnly) {
+  $priorityHelperRepoRoot = Resolve-PriorityHelperRepoRoot
+  $priorityWorkingDirectory = (Resolve-Path '.').Path
+
   Write-Host '[bootstrap] Acquiring agent writer lease…'
   $leaseResult = Invoke-AgentWriterLeaseAcquire
 
@@ -491,11 +658,26 @@ if (-not $PreflightOnly) {
   Invoke-WorkspaceHealthGate -LeaseMode $postLeaseMode -ReportName 'bootstrap-postlease-workspace-health.json'
 
   Write-Host '[bootstrap] Syncing standing priority snapshot…'
-  Invoke-Npm -Script 'priority:sync:lane'
+  Invoke-NodeScriptFromRepoRoot `
+    -RepoRoot $priorityHelperRepoRoot `
+    -WorkingDirectory $priorityWorkingDirectory `
+    -ScriptRelativePath 'tools/priority/sync-standing-priority.mjs' `
+    -RequiredPackages @('undici') `
+    -Arguments @('--fail-on-missing', '--fail-on-multiple', '--auto-select-next')
   Write-Host '[bootstrap] Projecting session-index-v2 promotion decision into issue reporting…'
-  Invoke-Npm -Script 'priority:session-index-v2:promotion:project' -AllowFailure:$true
+  Invoke-NodeScriptFromRepoRoot `
+    -RepoRoot $priorityHelperRepoRoot `
+    -WorkingDirectory $priorityWorkingDirectory `
+    -ScriptRelativePath 'tools/priority/project-session-index-v2-promotion-decision.mjs' `
+    -RequiredPackages @('ajv', 'ajv-formats') `
+    -AllowFailure:$true
   Write-Host '[bootstrap] Showing router plan…'
-  Invoke-Npm -Script 'priority:show' -AllowFailure:$true
+  $routerPath = Join-Path $priorityWorkingDirectory 'tests/results/_agent/issue/router.json'
+  if (Test-Path -LiteralPath $routerPath -PathType Leaf) {
+    Write-Host (Get-Content -LiteralPath $routerPath -Raw).TrimEnd()
+  } else {
+    Write-Warning "[bootstrap] Router plan not found at $routerPath"
+  }
 
   Write-Host '[bootstrap] Validating SemVer version…'
   $semverOutcome = Invoke-SemVerCheck
