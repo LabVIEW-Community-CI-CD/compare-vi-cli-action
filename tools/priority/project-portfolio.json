@@ -452,7 +452,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/951",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Helper Workflow",
       "environmentClass": "Infra",
@@ -462,7 +462,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/953",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Sustain",
       "environmentClass": "Infra",
@@ -472,7 +472,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/954",
-      "status": "Todo",
+      "status": "Done",
       "program": "Approval Control Plane",
       "phase": "Policy",
       "environmentClass": "Infra",
@@ -482,7 +482,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/956",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Signals",
       "environmentClass": "Infra",
@@ -492,7 +492,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/958",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Helper Workflow",
       "environmentClass": "Cross-Repo",
@@ -512,7 +512,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/960",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Signals",
       "environmentClass": "Infra",
@@ -522,7 +522,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/963",
-      "status": "In Progress",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Helper Workflow",
       "environmentClass": "Infra",
@@ -532,7 +532,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/964",
-      "status": "Todo",
+      "status": "Done",
       "program": "Approval Control Plane",
       "phase": "Helper Workflow",
       "environmentClass": "Infra",
@@ -542,7 +542,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/966",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Helper Workflow",
       "environmentClass": "Infra",
@@ -552,7 +552,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/967",
-      "status": "Todo",
+      "status": "Done",
       "program": "Approval Control Plane",
       "phase": "Helper Workflow",
       "environmentClass": "Infra",
@@ -562,7 +562,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/969",
-      "status": "Todo",
+      "status": "Done",
       "program": "Approval Control Plane",
       "phase": "Helper Workflow",
       "environmentClass": "Infra",
@@ -572,7 +572,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/970",
-      "status": "Todo",
+      "status": "Done",
       "program": "Approval Control Plane",
       "phase": "Policy",
       "environmentClass": "Infra",
