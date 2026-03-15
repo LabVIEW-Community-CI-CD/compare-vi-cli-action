@@ -111,6 +111,31 @@ test('mission-control profile resolution fixture matches schema', () => {
   assert.equal(fixture.resolution.selectionSource, 'alias-trigger');
 });
 
+test('mission-control profile resolution schema rejects failed receipts whose issueCount diverges from issues', () => {
+  const validate = compileValidator();
+  const invalidFailureReceipt = {
+    schema: 'priority/mission-control-profile-resolution@v1',
+    generatedAt: '2026-03-15T00:00:00.000Z',
+    catalogPath: 'tools/priority/__fixtures__/mission-control/profile-catalog.json',
+    request: {
+      trigger: 'MC-UNKNOWN',
+      expectedProfileId: null,
+    },
+    checks: {
+      triggerDefined: 'failed',
+      expectedProfileDefined: 'skipped',
+      expectedProfileMatchesResolvedProfile: 'skipped',
+    },
+    issueCount: 2,
+    issues: ['unknown-trigger'],
+    status: 'failed',
+    resolution: null,
+  };
+
+  assert.equal(validate(invalidFailureReceipt), false);
+  assert.match(JSON.stringify(validate.errors), /issueCount|const/);
+});
+
 test('resolve mission-control profile CLI writes a machine-readable report', async (t) => {
   const { main, parseArgs, MISSION_CONTROL_PROFILE_RESOLUTION_SCHEMA } = await loadModule();
   const reportPath = path.join(

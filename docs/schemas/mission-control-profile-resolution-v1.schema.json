@@ -67,6 +67,7 @@
     },
     "issues": {
       "type": "array",
+      "maxItems": 2,
       "uniqueItems": true,
       "items": {
         "enum": [
@@ -210,6 +211,64 @@
           },
           "resolution": {
             "$ref": "#/$defs/resolution"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issueCount": {
+            "minimum": 1
+          },
+          "issues": {
+            "minItems": 1,
+            "maxItems": 2
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          },
+          "issues": {
+            "maxItems": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issueCount": {
+            "const": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          },
+          "issues": {
+            "minItems": 2
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "issueCount": {
+            "const": 2
           }
         }
       }
