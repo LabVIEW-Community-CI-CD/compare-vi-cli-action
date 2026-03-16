@@ -522,6 +522,42 @@ function Write-PrePushKnownFlagScenarioReport {
   return $reportPath
 }
 
+function ConvertTo-PrePushKnownFlagScenarioResultArray {
+  param(
+    [AllowNull()]
+    [object]$scenarioResults
+  )
+
+  $normalizedResults = New-Object System.Collections.Generic.List[object]
+  foreach ($scenarioResult in $scenarioResults) {
+    if ($null -eq $scenarioResult) {
+      continue
+    }
+
+    $requestedFlags = @()
+    if ($scenarioResult.PSObject.Properties['requestedFlags'] -and $scenarioResult.requestedFlags) {
+      $requestedFlags = @($scenarioResult.requestedFlags | ForEach-Object { [string]$_ })
+    }
+
+    $flags = @()
+    if ($scenarioResult.PSObject.Properties['flags'] -and $scenarioResult.flags) {
+      $flags = @($scenarioResult.flags | ForEach-Object { [string]$_ })
+    }
+
+    $normalizedResults.Add([pscustomobject]@{
+      name = [string]$scenarioResult.name
+      requestedFlags = $requestedFlags
+      flags = $flags
+      resultClass = [string]$scenarioResult.resultClass
+      gateOutcome = [string]$scenarioResult.gateOutcome
+      capturePath = [string]$scenarioResult.capturePath
+      reportPath = [string]$scenarioResult.reportPath
+    }) | Out-Null
+  }
+
+  return @($normalizedResults.ToArray())
+}
+
 $root = (Get-RepoRoot).Path
 Invoke-WorkspaceHealthGate -repoRoot $root
 $guardScript = Join-Path (Split-Path -Parent $PSCommandPath) 'Assert-NoAmbiguousRemoteRefs.ps1'
@@ -687,6 +723,8 @@ $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
 $capturePath = Join-Path $scenarioDir 'ni-linux-container-capture.json'
 $scenarioResults = New-Object System.Collections.Generic.List[object]
 $scenarioReportPath = $null
+$observedCapturePath = [string]$capturePath
+$observedReportPath = [string]$reportPath
 
 try {
   Write-Host ("[pre-push] Running active known-flag scenario '{0}' (real container compare)" -f $knownFlagScenarioId) -ForegroundColor Cyan
@@ -698,6 +736,8 @@ try {
     $reportPath = Join-Path $scenarioDir 'compare-report.html'
     $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
     $capturePath = Join-Path $scenarioDir 'ni-linux-container-capture.json'
+    $observedCapturePath = [string]$capturePath
+    $observedReportPath = [string]$reportPath
 
     Write-Host ("[pre-push] Running NI image flag scenario '{0}' requestedFlags={1}" -f $activeScenarioName, [string]$scenario.requestedFlagsLabel) -ForegroundColor Cyan
     Push-Location $root
@@ -764,6 +804,8 @@ try {
       capturePath = $capturePath
       reportPath = $reportPath
     }) | Out-Null
+    $observedCapturePath = [string]$capturePath
+    $observedReportPath = [string]$reportPath
   }
 
   $activeScenarioName = 'single-container-matrix'
@@ -774,6 +816,8 @@ try {
   $reportPath = Join-Path $scenarioDir 'compare-report.html'
   $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
   $capturePath = Join-Path $scenarioDir 'ni-linux-container-capture.json'
+  $observedCapturePath = [string]$capturePath
+  $observedReportPath = [string]$reportPath
   $singleContainerContractPath = Join-Path $scenarioDir 'runtime-bootstrap.json'
   $singleContainerLedgerPath = Join-Path $singleContainerResultsDir 'flag-matrix-ledger.tsv'
   $singleContainerMarkerPath = Join-Path $singleContainerResultsDir 'flag-matrix-ran.txt'
@@ -912,6 +956,8 @@ try {
     capturePath = $capturePath
     reportPath = $reportPath
   }) | Out-Null
+  $observedCapturePath = [string]$capturePath
+  $observedReportPath = [string]$reportPath
 
   $activeScenarioName = 'vi-history-report'
   $activeScenarioFlags = @('vi-history-suite')
@@ -930,6 +976,8 @@ try {
   $viHistorySummaryJsonPath = Join-Path $viHistoryResultsDir 'history-summary.json'
   $viHistoryInspectionJsonPath = Join-Path $viHistoryResultsDir 'history-suite-inspection.json'
   $viHistoryInspectionHtmlPath = Join-Path $viHistoryResultsDir 'history-suite-inspection.html'
+  $observedCapturePath = [string]$capturePath
+  $observedReportPath = [string]$reportPath
   $viHistoryContract = [ordered]@{
     schema = 'ni-linux-runtime-bootstrap/v1'
     mode = 'vi-history-suite-smoke'
@@ -1054,6 +1102,8 @@ try {
     capturePath = $capturePath
     reportPath = $viHistoryHtmlPath
   }) | Out-Null
+  $observedCapturePath = [string]$capturePath
+  $observedReportPath = [string]$viHistoryHtmlPath
 
   if ($env:GITHUB_STEP_SUMMARY) {
     $lines = @(
@@ -1073,11 +1123,11 @@ try {
     -repoRoot $root `
     -contract $knownFlagScenarioContract `
     -observedOutcome 'pass' `
-    -scenarioResults @($scenarioResults) `
+    -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $scenarioResults) `
     -failureMessage '' `
-    -activeScenarioName $activeScenarioName `
-    -activeCapturePath $capturePath `
-    -activeReportPath $reportPath
+    -activeScenarioName ([string]$activeScenarioName) `
+    -activeCapturePath $observedCapturePath `
+    -activeReportPath $observedReportPath
   Write-Host ("[pre-push] Known-flag scenario report: {0}" -f $scenarioReportPath) -ForegroundColor DarkGray
   Write-Host ("[pre-push] Active known-flag scenario '{0}' OK" -f $knownFlagScenarioId) -ForegroundColor Green
 } catch {
@@ -1086,11 +1136,11 @@ try {
     -repoRoot $root `
     -contract $knownFlagScenarioContract `
     -observedOutcome 'fail' `
-    -scenarioResults @($scenarioResults) `
+    -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $scenarioResults) `
     -failureMessage $failureMessage `
-    -activeScenarioName $activeScenarioName `
-    -activeCapturePath $capturePath `
-    -activeReportPath $reportPath
+    -activeScenarioName ([string]$activeScenarioName) `
+    -activeCapturePath $observedCapturePath `
+    -activeReportPath $observedReportPath
   if (-not [string]::IsNullOrWhiteSpace($scenarioReportPath)) {
     Write-Host ("[pre-push] Known-flag scenario report: {0}" -f $scenarioReportPath) -ForegroundColor Yellow
   }
