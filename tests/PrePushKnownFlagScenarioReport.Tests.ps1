@@ -45,6 +45,7 @@ Describe 'Pre-push known-flag scenario report' -Tag 'Unit' {
     }
 
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Write-PrePushKnownFlagScenarioReport')
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'ConvertTo-PrePushKnownFlagScenarioResultArray')
     $script:KnownFlagContract = Get-Content -LiteralPath $script:KnownFlagContractPath -Raw | ConvertFrom-Json -Depth 12
     $script:ActiveScenario = @($script:KnownFlagContract.scenarios | Where-Object { $_.isActive -eq $true }) | Select-Object -First 1
     if ($null -eq $script:ActiveScenario) {
@@ -137,5 +138,36 @@ Describe 'Pre-push known-flag scenario report' -Tag 'Unit' {
     $report.observed.outcome | Should -Be 'fail'
     $report.observed.failureMessage | Should -Be 'known-flag scenario failed'
     $report.results.Count | Should -Be 0
+  }
+
+  It 'normalizes live scenario result collections into plain report records' {
+    $scenarioResults = [System.Collections.Generic.List[object]]::new()
+    $scenarioResults.Add([pscustomobject]@{
+      name = 'baseline'
+      requestedFlags = @()
+      flags = @('-Headless')
+      resultClass = 'diff'
+      gateOutcome = 'pass'
+      capturePath = 'tests/results/_agent/pre-push-ni-image/baseline/ni-linux-container-capture.json'
+      reportPath = 'tests/results/_agent/pre-push-ni-image/baseline/compare-report.html'
+    }) | Out-Null
+    $scenarioResults.Add([pscustomobject]@{
+      name = 'vi-history-report'
+      requestedFlags = @('vi-history-suite')
+      flags = @('suite-manifest', 'history-report', 'history-summary')
+      resultClass = 'diff'
+      gateOutcome = 'pass'
+      capturePath = 'tests/results/_agent/pre-push-ni-image/vi-history-report/results/ni-linux-container-capture.json'
+      reportPath = 'tests/results/_agent/pre-push-ni-image/vi-history-report/results/history-report.html'
+    }) | Out-Null
+
+    $normalized = ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $scenarioResults
+
+    $normalized.Count | Should -Be 2
+    $normalized[0].name | Should -Be 'baseline'
+    $normalized[0].flags | Should -Be @('-Headless')
+    $normalized[1].name | Should -Be 'vi-history-report'
+    $normalized[1].requestedFlags | Should -Be @('vi-history-suite')
+    $normalized[1].reportPath | Should -Be 'tests/results/_agent/pre-push-ni-image/vi-history-report/results/history-report.html'
   }
 }

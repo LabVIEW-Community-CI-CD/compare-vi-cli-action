@@ -44,6 +44,8 @@ test('PrePush NI image known-flag scenario consumes the checked-in active scenar
   assert.match(content, /\$failureMarkers = @\(/);
   assert.match(content, /Select-String -Path \$resolvedEntryLogPath -SimpleMatch -Quiet -Pattern \$failureMarkers/);
   assert.match(content, /Write-PrePushKnownFlagScenarioReport/);
+  assert.match(content, /\$observedCapturePath = \[string\]\$capturePath/);
+  assert.match(content, /\$observedReportPath = \[string\]\$viHistoryHtmlPath/);
   assert.match(content, /Active known-flag scenario '\{0\}' OK/);
   assert.doesNotMatch(content, /pwsh\s+-NoLogo\s+-NoProfile\s+-File\s+\$niCompareScript/);
   assert.doesNotMatch(content, /Render-VIHistoryReport\.ps1/);
