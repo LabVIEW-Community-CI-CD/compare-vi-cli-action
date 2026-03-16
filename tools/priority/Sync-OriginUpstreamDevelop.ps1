@@ -203,6 +203,8 @@ function Test-NonRetryableSyncFailure {
   if ($Message -match '(?i)refusing to merge unrelated histories') { return $true }
   if ($Message -match '(?i)CONFLICT') { return $true }
   if ($Message -match '(?i)diverged-fork-plane') { return $true }
+  if ($Message -match '(?i)diverged-fork-plane-remediation') { return $true }
+  if ($Message -match '(?i)pull-request-draft-remediation') { return $true }
   return $false
 }
 
@@ -349,6 +351,51 @@ function Get-ProtectedSyncBranchName {
   return "sync/$sanitizedRemote-$sanitizedBranch"
 }
 
+function Get-DivergedDevelopRemediationBranchName {
+  param(
+    [Parameter(Mandatory)][string]$Remote,
+    [Parameter(Mandatory)][string]$BranchName
+  )
+
+  $sanitizedRemote = $Remote.ToLowerInvariant() -replace '[^a-z0-9._-]', '-'
+  $sanitizedBranch = $BranchName.ToLowerInvariant() -replace '[^a-z0-9._/-]', '-'
+  $sanitizedBranch = $sanitizedBranch -replace '/', '-'
+  return "sync/$sanitizedRemote-$sanitizedBranch-parity"
+}
+
+function Test-DraftSafeParityRemediation {
+  param(
+    [hashtable]$ParityRemediation,
+    [string]$ExpectedHeadRefName,
+    [string]$ExpectedBaseRefName
+  )
+
+  if (-not $ParityRemediation) {
+    return $false
+  }
+
+  $parityPullRequest = $ParityRemediation['pullRequest']
+  $parityDraftState = $ParityRemediation['draftState']
+  $parityAutoMerge = $ParityRemediation['autoMerge']
+  $draftSafeStatus = $parityDraftState -and @('already-draft', 'marked-draft') -contains $parityDraftState['status']
+  $autoMergeSafeStatus = $parityAutoMerge -and @('already-disabled', 'disabled') -contains $parityAutoMerge['status']
+  $expectedHeadRef = [string]$ExpectedHeadRefName
+  $expectedBaseRef = [string]$ExpectedBaseRefName
+  $headMatches = [string]$parityPullRequest['headRefName'] -eq $expectedHeadRef
+  $baseMatches = [string]$parityPullRequest['baseRefName'] -eq $expectedBaseRef
+
+  return [bool](
+    $parityPullRequest -and
+    $parityPullRequest['number'] -and
+    [string]$parityPullRequest['state'] -eq 'OPEN' -and
+    $parityPullRequest['isDraft'] -eq $true -and
+    $headMatches -and
+    $baseMatches -and
+    $draftSafeStatus -and
+    $autoMergeSafeStatus
+  )
+}
+
 function Write-SyncParityReport {
   param(
     [Parameter(Mandatory)][string]$RepoRoot,
@@ -361,6 +408,8 @@ function Write-SyncParityReport {
     [hashtable]$PushTransport,
     [hashtable]$ProtectedSync,
     [string]$ProtectedSyncReportPath,
+    [hashtable]$ParityRemediation,
+    [string]$ParityRemediationReportPath,
     [string]$FailureMessage
   )
 
@@ -410,12 +459,20 @@ function Write-SyncParityReport {
   }
   if ($ProtectedSyncReportPath) {
     $syncResult['reportPath'] = $ProtectedSyncReportPath
+  } elseif ($ParityRemediation -and $ParityRemediationReportPath) {
+    $syncResult['reportPath'] = $ParityRemediationReportPath
   }
   if ($ProtectedSync) {
     if (-not $ProtectedSync['planeTransition']) {
       throw ("Protected sync report missing planeTransition metadata: {0}" -f $ProtectedSyncReportPath)
     }
     $syncResult['protectedSync'] = $ProtectedSync
+  }
+  if ($ParityRemediation) {
+    if (-not $ParityRemediation['planeTransition']) {
+      throw ("Parity remediation report missing planeTransition metadata: {0}" -f $ParityRemediationReportPath)
+    }
+    $syncResult['parityRemediation'] = $ParityRemediation
   }
 
   $parityReport['syncResult'] = $syncResult
@@ -454,6 +511,8 @@ $syncMode = 'direct-push'
 $syncReason = 'direct-push'
 $protectedSync = $null
 $protectedSyncReportPath = ''
+$parityRemediation = $null
+$parityRemediationReportPath = ''
 
 Push-Location -LiteralPath $repoRoot
 $pushedLocation = $true
@@ -492,6 +551,8 @@ try {
     $attemptSyncReason = 'direct-push'
     $attemptProtectedSync = $null
     $attemptProtectedSyncReportPath = ''
+    $attemptParityRemediation = $null
+    $attemptParityRemediationReportPath = ''
     try {
       Write-Host ("[sync] Attempt {0}/{1}: pull+push {2}" -f $attempt, $MaxAttempts, $Branch)
 
@@ -518,6 +579,76 @@ try {
           if ($attemptTipDiffCount -eq 0) {
             $attemptSyncReason = 'remote-already-converged'
             Write-Host ("[sync] Remote already converged for {0}/{1} after non-fast-forward rejection" -f $HeadRemote, $Branch)
+          } elseif ($HeadRemote -eq 'origin') {
+            $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
+            $syncBranch = Get-DivergedDevelopRemediationBranchName -Remote $HeadRemote -BranchName $Branch
+            Write-Warning ("[sync] Diverged fork plane detected for {0}/{1}; staging deterministic parity remediation (sync branch {2})" -f $HeadRemote, $Branch, $syncBranch)
+            $attemptParityRemediationReportPath = Join-Path $repoRoot ("tests/results/_agent/issue/{0}-diverged-develop-remediation.json" -f $HeadRemote)
+            if (Test-Path -LiteralPath $attemptParityRemediationReportPath -PathType Leaf) {
+              Remove-Item -LiteralPath $attemptParityRemediationReportPath -Force
+            }
+            try {
+              Invoke-Node -Arguments @(
+                'tools/priority/diverged-develop-remediation-pr.mjs',
+                '--target-remote',
+                $HeadRemote,
+                '--base-remote',
+                $BaseRemote,
+                '--branch',
+                $Branch,
+                '--sync-branch',
+                $syncBranch,
+                '--reason',
+                $attemptSyncReason,
+                '--local-head',
+                $localHead,
+                '--report-path',
+                $attemptParityRemediationReportPath
+              )
+            }
+            catch {
+              $helperMessage = $_.Exception.Message
+              if (Test-Path -LiteralPath $attemptParityRemediationReportPath -PathType Leaf) {
+                try {
+                  $attemptParityRemediation = Get-Content -LiteralPath $attemptParityRemediationReportPath -Raw | ConvertFrom-Json -AsHashtable
+                } catch {
+                  $attemptParityRemediation = $null
+                }
+              }
+              if (Test-DraftSafeParityRemediation -ParityRemediation $attemptParityRemediation -ExpectedHeadRefName $syncBranch -ExpectedBaseRefName $Branch) {
+                $attemptSyncMode = [string]($attemptParityRemediation['syncMethod'] ?? 'pull-request-draft')
+                Write-Warning ("[sync] Remediation PR already staged for {0}/{1}; reusing persisted report after helper finalization failure: {2}" -f $HeadRemote, $Branch, $helperMessage)
+              } else {
+                $raceParityReport = Write-SyncParityReport `
+                  -RepoRoot $repoRoot `
+                  -ParityReportPath $parityReportPath `
+                  -BaseRef $baseRef `
+                  -HeadRef $headRef `
+                  -AdminPaths $adminPaths `
+                  -SyncMode $attemptSyncMode `
+                  -SyncReason $attemptSyncReason `
+                  -FailureMessage $helperMessage
+                $raceTipDiffCount = [int]((($raceParityReport['tipDiff']))['fileCount'])
+                if ($raceTipDiffCount -eq 0) {
+                  $attemptSyncReason = 'remote-already-converged'
+                  Write-Host ("[sync] Remote already converged for {0}/{1} before remediation staging completed" -f $HeadRemote, $Branch)
+                } else {
+                  throw ("diverged-fork-plane-remediation: unable to stage remediation for {0}/{1}. {2}" -f $HeadRemote, $Branch, $helperMessage)
+                }
+              }
+            }
+            if ($attemptSyncReason -ne 'remote-already-converged') {
+              if (-not $attemptParityRemediation) {
+                if (-not (Test-Path -LiteralPath $attemptParityRemediationReportPath -PathType Leaf)) {
+                  throw ("diverged-fork-plane-remediation: remediation report not found: {0}" -f $attemptParityRemediationReportPath)
+                }
+                $attemptParityRemediation = Get-Content -LiteralPath $attemptParityRemediationReportPath -Raw | ConvertFrom-Json -AsHashtable
+              }
+              if (-not (Test-DraftSafeParityRemediation -ParityRemediation $attemptParityRemediation -ExpectedHeadRefName $syncBranch -ExpectedBaseRefName $Branch)) {
+                throw ("diverged-fork-plane-remediation: remediation report is not draft-safe for {0}/{1}. See {2}" -f $HeadRemote, $Branch, $attemptParityRemediationReportPath)
+              }
+              $attemptSyncMode = [string]($attemptParityRemediation['syncMethod'] ?? 'pull-request-draft')
+            }
           } else {
             throw ("diverged-fork-plane: direct push to {0}/{1} cannot fast-forward (tipDiff.fileCount={2}). See {3}" -f $HeadRemote, $Branch, $attemptTipDiffCount, $parityReportPath)
           }
@@ -577,6 +708,8 @@ try {
       $syncReason = $attemptSyncReason
       $protectedSync = $attemptProtectedSync
       $protectedSyncReportPath = $attemptProtectedSyncReportPath
+      $parityRemediation = $attemptParityRemediation
+      $parityRemediationReportPath = $attemptParityRemediationReportPath
       $syncSucceeded = $true
       break
     }
@@ -607,13 +740,18 @@ try {
     -SyncReason $syncReason `
     -PushTransport $pushTransport `
     -ProtectedSync $protectedSync `
-    -ProtectedSyncReportPath $protectedSyncReportPath
+    -ProtectedSyncReportPath $protectedSyncReportPath `
+    -ParityRemediation $parityRemediation `
+    -ParityRemediationReportPath $parityRemediationReportPath
   $tipDiffCount = [int]((($parityReport['tipDiff']))['fileCount'])
-  if ($tipDiffCount -ne 0 -and $syncMode -ne 'protected-pr') {
+  if ($tipDiffCount -ne 0 -and @('protected-pr', 'pull-request-draft') -notcontains $syncMode) {
     throw ("Origin/upstream parity failed: tipDiff.fileCount={0} (expected 0)." -f $tipDiffCount)
   }
+  if ($tipDiffCount -ne 0 -and $syncMode -eq 'pull-request-draft') {
+    throw ("pull-request-draft-remediation: draft parity remediation staged for {0}/{1}; parity remains pending with tipDiff.fileCount={2}. See {3}" -f $HeadRemote, $Branch, $tipDiffCount, $parityReportPath)
+  }
   if ($tipDiffCount -ne 0 -and $syncMode -eq 'protected-pr') {
-    Write-Host ("[sync] Protected sync staged via PR path; parity remains pending with tipDiff.fileCount={0}" -f $tipDiffCount)
+    Write-Host ("[sync] Sync staged via PR-based path; parity remains pending with tipDiff.fileCount={0}" -f $tipDiffCount)
   } else {
     Write-Host ("[sync] Parity OK for {0} vs {1}" -f $baseRef, $headRef)
   }
