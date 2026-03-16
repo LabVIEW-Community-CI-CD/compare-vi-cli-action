@@ -1055,7 +1055,7 @@ jobs:
         phase: J2
         results-dir: tests/results
     - name: Download session index artifact
-      uses: actions/download-artifact@v6
+      uses: actions/download-artifact@v8
       with:
         name: validate-session-index
         path: ${{ runner.temp }}/sessionindex-v2-contract
