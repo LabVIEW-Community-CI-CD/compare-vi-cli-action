@@ -178,12 +178,40 @@ function Refresh-RemoteTrackingRef {
   Write-Host ("[sync] Refreshed local tracking ref {0} -> {1}" -f $trackingRef, $ExpectedSha)
 }
 
+function Refresh-ObservedRemoteTrackingRef {
+  param(
+    [Parameter(Mandatory)][string]$Remote,
+    [Parameter(Mandatory)][string]$BranchName
+  )
+
+  $trackingRef = 'refs/remotes/{0}/{1}' -f $Remote, $BranchName
+  $refSpec = '+refs/heads/{0}:{1}' -f $BranchName, $trackingRef
+  Invoke-Git -Arguments @('fetch', '--no-tags', $Remote, $refSpec) | Out-Null
+  $resolvedSha = Get-GitValue -Arguments @('rev-parse', '--verify', $trackingRef)
+  if ([string]::IsNullOrWhiteSpace($resolvedSha)) {
+    throw ("Remote tracking ref {0} is unavailable after refresh." -f $trackingRef)
+  }
+
+  Write-Host ("[sync] Refreshed observed tracking ref {0} -> {1}" -f $trackingRef, $resolvedSha)
+  return $resolvedSha
+}
+
 function Test-NonRetryableSyncFailure {
   param([Parameter(Mandatory)][string]$Message)
 
   if ($Message -match '(?i)not possible to fast-forward') { return $true }
   if ($Message -match '(?i)refusing to merge unrelated histories') { return $true }
   if ($Message -match '(?i)CONFLICT') { return $true }
+  if ($Message -match '(?i)diverged-fork-plane') { return $true }
+  return $false
+}
+
+function Test-GitPushNonFastForwardFailure {
+  param([Parameter(Mandatory)][string]$Message)
+
+  if ($Message -match '(?i)non-fast-forward') { return $true }
+  if ($Message -match '(?i)tip of your current branch is behind') { return $true }
+  if ($Message -match '(?i)fetch first') { return $true }
   return $false
 }
 
@@ -321,6 +349,80 @@ function Get-ProtectedSyncBranchName {
   return "sync/$sanitizedRemote-$sanitizedBranch"
 }
 
+function Write-SyncParityReport {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)][string]$ParityReportPath,
+    [Parameter(Mandatory)][string]$BaseRef,
+    [Parameter(Mandatory)][string]$HeadRef,
+    [Parameter(Mandatory)][hashtable]$AdminPaths,
+    [string]$SyncMode = 'direct-push',
+    [string]$SyncReason = 'direct-push',
+    [hashtable]$PushTransport,
+    [hashtable]$ProtectedSync,
+    [string]$ProtectedSyncReportPath,
+    [string]$FailureMessage
+  )
+
+  Invoke-Node -Arguments @(
+    'tools/priority/report-origin-upstream-parity.mjs',
+    '--base-ref',
+    $BaseRef,
+    '--head-ref',
+    $HeadRef,
+    '--output-path',
+    $ParityReportPath
+  ) | Out-Null
+
+  if (-not (Test-Path -LiteralPath $ParityReportPath -PathType Leaf)) {
+    throw ("Parity report not found: {0}" -f $ParityReportPath)
+  }
+
+  $parityReport = Get-Content -LiteralPath $ParityReportPath -Raw | ConvertFrom-Json -AsHashtable
+  $planeTransition = $parityReport['planeTransition']
+  if (-not $planeTransition) {
+    throw ("Parity report missing planeTransition metadata: {0}" -f $ParityReportPath)
+  }
+  foreach ($requiredKey in @('from', 'to', 'action', 'via')) {
+    if ([string]::IsNullOrWhiteSpace([string]$planeTransition[$requiredKey])) {
+      throw ("Parity report planeTransition metadata is incomplete ({0} missing) in {1}" -f $requiredKey, $ParityReportPath)
+    }
+  }
+
+  $parityReport['adminPaths'] = $AdminPaths
+  if ($PushTransport) {
+    $parityReport['pushTransport'] = $PushTransport
+  }
+
+  $tipDiff = $parityReport['tipDiff']
+  if (-not $tipDiff) {
+    throw ("Parity report missing tipDiff metadata: {0}" -f $ParityReportPath)
+  }
+  $tipDiffCount = [int](($tipDiff)['fileCount'])
+  $syncResult = [ordered]@{
+    mode = $SyncMode
+    reason = $SyncReason
+    parityConverged = ($tipDiffCount -eq 0)
+    planeTransition = $planeTransition
+  }
+  if (-not [string]::IsNullOrWhiteSpace($FailureMessage)) {
+    $syncResult['failureMessage'] = $FailureMessage
+  }
+  if ($ProtectedSyncReportPath) {
+    $syncResult['reportPath'] = $ProtectedSyncReportPath
+  }
+  if ($ProtectedSync) {
+    if (-not $ProtectedSync['planeTransition']) {
+      throw ("Protected sync report missing planeTransition metadata: {0}" -f $ProtectedSyncReportPath)
+    }
+    $syncResult['protectedSync'] = $ProtectedSync
+  }
+
+  $parityReport['syncResult'] = $syncResult
+  ($parityReport | ConvertTo-Json -Depth 20) + "`n" | Set-Content -LiteralPath $ParityReportPath -Encoding utf8
+  return $parityReport
+}
+
 $repoRoot = Get-GitValue -Arguments @('rev-parse', '--show-toplevel')
 if ([string]::IsNullOrWhiteSpace($repoRoot)) {
   throw 'Unable to resolve git repository root.'
@@ -400,41 +502,60 @@ try {
       }
       catch {
         $message = $_.Exception.Message
-        if (-not (Test-GitHubProtectedBranchFailure -Message $message)) {
+        if (Test-GitPushNonFastForwardFailure -Message $message) {
+          $attemptSyncReason = 'diverged-fork-plane'
+          Refresh-ObservedRemoteTrackingRef -Remote $HeadRemote -BranchName $Branch | Out-Null
+          $attemptParityReport = Write-SyncParityReport `
+            -RepoRoot $repoRoot `
+            -ParityReportPath $parityReportPath `
+            -BaseRef $baseRef `
+            -HeadRef $headRef `
+            -AdminPaths $adminPaths `
+            -SyncMode $attemptSyncMode `
+            -SyncReason $attemptSyncReason `
+            -FailureMessage $message
+          $attemptTipDiffCount = [int]((($attemptParityReport['tipDiff']))['fileCount'])
+          if ($attemptTipDiffCount -eq 0) {
+            $attemptSyncReason = 'remote-already-converged'
+            Write-Host ("[sync] Remote already converged for {0}/{1} after non-fast-forward rejection" -f $HeadRemote, $Branch)
+          } else {
+            throw ("diverged-fork-plane: direct push to {0}/{1} cannot fast-forward (tipDiff.fileCount={2}). See {3}" -f $HeadRemote, $Branch, $attemptTipDiffCount, $parityReportPath)
+          }
+        } elseif (-not (Test-GitHubProtectedBranchFailure -Message $message)) {
           throw
-        }
-
-        $attemptSyncReason = Get-ProtectedBranchSyncReason -Message $message
-        $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
-        $syncBranch = Get-ProtectedSyncBranchName -Remote $HeadRemote -BranchName $Branch
-        Write-Warning ("[sync] Protected branch rejected direct push to {0}/{1}; routing through protected sync helper (sync branch {2})" -f $HeadRemote, $Branch, $syncBranch)
-        $attemptPushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch -SourceRef 'HEAD' -TargetBranch $syncBranch
-        $attemptProtectedSyncReportPath = Join-Path $repoRoot ("tests/results/_agent/issue/{0}-protected-develop-sync.json" -f $HeadRemote)
-        Invoke-Node -Arguments @(
-          'tools/priority/protected-develop-sync-pr.mjs',
-          '--target-remote',
-          $HeadRemote,
-          '--base-remote',
-          $BaseRemote,
-          '--branch',
-          $Branch,
-          '--sync-branch',
-          $syncBranch,
-          '--reason',
-          $attemptSyncReason,
-          '--local-head',
-          $localHead,
-          '--report-path',
-          $attemptProtectedSyncReportPath
-        )
-        if (-not (Test-Path -LiteralPath $attemptProtectedSyncReportPath -PathType Leaf)) {
-          throw ("Protected sync report not found: {0}" -f $attemptProtectedSyncReportPath)
-        }
-        $attemptProtectedSync = Get-Content -LiteralPath $attemptProtectedSyncReportPath -Raw | ConvertFrom-Json -AsHashtable
-        $attemptSyncMode = [string]($attemptProtectedSync['syncMethod'] ?? 'protected-pr')
-        if ($attemptSyncMode -eq 'fork-sync') {
-          Remove-RemoteBranchWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch
-          $attemptPushTransport = $null
+        } else {
+          $attemptSyncReason = Get-ProtectedBranchSyncReason -Message $message
+          $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
+          $syncBranch = Get-ProtectedSyncBranchName -Remote $HeadRemote -BranchName $Branch
+          Write-Warning ("[sync] Protected branch rejected direct push to {0}/{1}; routing through protected sync helper (sync branch {2})" -f $HeadRemote, $Branch, $syncBranch)
+          $attemptPushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch -SourceRef 'HEAD' -TargetBranch $syncBranch
+          $attemptProtectedSyncReportPath = Join-Path $repoRoot ("tests/results/_agent/issue/{0}-protected-develop-sync.json" -f $HeadRemote)
+          Invoke-Node -Arguments @(
+            'tools/priority/protected-develop-sync-pr.mjs',
+            '--target-remote',
+            $HeadRemote,
+            '--base-remote',
+            $BaseRemote,
+            '--branch',
+            $Branch,
+            '--sync-branch',
+            $syncBranch,
+            '--reason',
+            $attemptSyncReason,
+            '--local-head',
+            $localHead,
+            '--report-path',
+            $attemptProtectedSyncReportPath
+          )
+          if (-not (Test-Path -LiteralPath $attemptProtectedSyncReportPath -PathType Leaf)) {
+            throw ("Protected sync report not found: {0}" -f $attemptProtectedSyncReportPath)
+          }
+          $attemptProtectedSync = Get-Content -LiteralPath $attemptProtectedSyncReportPath -Raw | ConvertFrom-Json -AsHashtable
+          $attemptSyncMode = [string]($attemptProtectedSync['syncMethod'] ?? 'protected-pr')
+          if ($attemptSyncMode -eq 'fork-sync') {
+            Remove-RemoteBranchWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch
+            $attemptPushTransport = $null
+          }
         }
       }
 
@@ -443,7 +564,7 @@ try {
         throw 'Unable to resolve local HEAD after push.'
       }
 
-      if ($attemptSyncMode -eq 'direct-push' -or $attemptSyncMode -eq 'fork-sync') {
+      if (($attemptSyncMode -eq 'direct-push' -and $attemptPushTransport) -or $attemptSyncMode -eq 'fork-sync') {
         $converged = Wait-ForRemoteHead -Remote $HeadRemote -BranchName $Branch -ExpectedSha $localHead -Attempts $RemoteHeadPollAttempts -DelaySeconds $RemoteHeadPollDelaySeconds
         if (-not $converged) {
           throw ("Push completed but remote head did not converge to local HEAD ({0}) within {1} poll(s)." -f $localHead, $RemoteHeadPollAttempts)
@@ -476,52 +597,18 @@ try {
     throw ("Sync failed after {0} attempt(s)." -f $MaxAttempts)
   }
 
-  Invoke-Node -Arguments @(
-    'tools/priority/report-origin-upstream-parity.mjs',
-    '--base-ref',
-    $baseRef,
-    '--head-ref',
-    $headRef,
-    '--output-path',
-    $parityReportPath
-  )
-
-  if (-not (Test-Path -LiteralPath $parityReportPath -PathType Leaf)) {
-    throw ("Parity report not found: {0}" -f $parityReportPath)
-  }
-
-  $parityReport = Get-Content -LiteralPath $parityReportPath -Raw | ConvertFrom-Json -AsHashtable
-  $planeTransition = $parityReport['planeTransition']
-  if (-not $planeTransition) {
-    throw ("Parity report missing planeTransition metadata: {0}" -f $parityReportPath)
-  }
-  foreach ($requiredKey in @('from', 'to', 'action', 'via')) {
-    if ([string]::IsNullOrWhiteSpace([string]$planeTransition[$requiredKey])) {
-      throw ("Parity report planeTransition metadata is incomplete ({0} missing) in {1}" -f $requiredKey, $parityReportPath)
-    }
-  }
-  $parityReport['adminPaths'] = $adminPaths
-  if ($pushTransport) {
-    $parityReport['pushTransport'] = $pushTransport
-  }
-  $tipDiffCount = [int]($parityReport['tipDiff']['fileCount'])
-  $syncResult = [ordered]@{
-    mode = $syncMode
-    reason = $syncReason
-    parityConverged = ($tipDiffCount -eq 0)
-    planeTransition = $planeTransition
-  }
-  if ($protectedSyncReportPath) {
-    $syncResult['reportPath'] = $protectedSyncReportPath
-  }
-  if ($protectedSync) {
-    if (-not $protectedSync['planeTransition']) {
-      throw ("Protected sync report missing planeTransition metadata: {0}" -f $protectedSyncReportPath)
-    }
-    $syncResult['protectedSync'] = $protectedSync
-  }
-  $parityReport['syncResult'] = $syncResult
-  ($parityReport | ConvertTo-Json -Depth 20) + "`n" | Set-Content -LiteralPath $parityReportPath -Encoding utf8
+  $parityReport = Write-SyncParityReport `
+    -RepoRoot $repoRoot `
+    -ParityReportPath $parityReportPath `
+    -BaseRef $baseRef `
+    -HeadRef $headRef `
+    -AdminPaths $adminPaths `
+    -SyncMode $syncMode `
+    -SyncReason $syncReason `
+    -PushTransport $pushTransport `
+    -ProtectedSync $protectedSync `
+    -ProtectedSyncReportPath $protectedSyncReportPath
+  $tipDiffCount = [int]((($parityReport['tipDiff']))['fileCount'])
   if ($tipDiffCount -ne 0 -and $syncMode -ne 'protected-pr') {
     throw ("Origin/upstream parity failed: tipDiff.fileCount={0} (expected 0)." -f $tipDiffCount)
   }
