@@ -150,6 +150,21 @@ test('Sync-OriginUpstreamDevelop routes GH013 through protected sync helper path
   const scriptPath = path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1');
   const source = readFileSyncImmediate(scriptPath, 'utf8');
 
+  assert.match(source, /function Resolve-RemoteRepositorySlug/);
+  assert.match(source, /function Get-ActiveBranchRules/);
+  assert.match(source, /function Get-ActiveBranchRuleTypes/);
+  assert.match(source, /function Get-ActiveBranchRulesetIds/);
+  assert.match(source, /function Get-RulesetCurrentUserBypassMode/);
+  assert.match(source, /function Get-ActiveProtectedSyncProbe/);
+  assert.match(source, /function Test-ActiveBranchRulesRequireProtectedSync/);
+  assert.match(source, /function Invoke-ProtectedBranchSync/);
+  assert.match(source, /rules\/branches\/\{1\}/);
+  assert.match(source, /rulesets\/\{1\}/);
+  assert.match(source, /EscapeDataString\(\$BranchName\)/);
+  assert.match(source, /return 'unknown'/);
+  assert.match(source, /Active branch rules require protected sync for \{0\}\/\{1\}; routing through protected sync helper/);
+  assert.match(source, /current actor can bypass them/);
+  assert.match(source, /protected-branch-rules/);
   assert.match(source, /function Test-GitHubProtectedBranchFailure/);
   assert.match(source, /function Get-ProtectedBranchSyncReason/);
   assert.match(source, /GH013/);
@@ -161,8 +176,8 @@ test('Sync-OriginUpstreamDevelop routes GH013 through protected sync helper path
   assert.match(source, /Protected sync staged via PR path/);
   assert.match(source, /\$attemptSyncReason = Get-ProtectedBranchSyncReason -Message \$message/);
   assert.match(source, /\$attemptSyncMode = 'direct-push'/);
-  assert.match(source, /\$attemptSyncMode = \[string\]\(\$attemptProtectedSync\['syncMethod'\] \?\? 'protected-pr'\)/);
-  assert.match(source, /if \(\$attemptSyncMode -eq 'fork-sync'\)/);
+  assert.match(source, /\$attemptSyncMode = \$protectedSyncResult\.syncMethod/);
+  assert.match(source, /if \(\$syncMethod -eq 'fork-sync'\)/);
   assert.match(source, /Remove-RemoteBranchWithTransportFallback -Remote \$HeadRemote -BranchName \$syncBranch/);
   assert.match(source, /\$syncMode = \$attemptSyncMode/);
   assert.match(source, /if \(\$tipDiffCount -ne 0 -and \$syncMode -eq 'protected-pr'\)/);
@@ -182,10 +197,7 @@ test('buildSyncAdminPaths uses git-common-dir for repo-wide lock serialization i
 
   assert.equal(adminPaths.gitCommonDir, expectedGitCommonDir);
   assert.equal(adminPaths.lockPath, expectedLockPath);
-  assert.notEqual(
-    adminPaths.lockPath,
-    path.join(repoRoot, '.git', buildSyncLockName({ baseRemote: 'upstream', headRemote: 'origin', branch: 'develop' }))
-  );
+  assert.equal(adminPaths.lockPath.startsWith(adminPaths.gitCommonDir), true);
 });
 
 test('runDevelopSync writes admin-path diagnostics when the underlying sync command fails', async (t) => {
@@ -784,6 +796,332 @@ test('Sync-OriginUpstreamDevelop targeted refresh detects a newer remote head in
 
   assert.notEqual(result.status, 0);
   assert.match(`${result.stdout}\n${result.stderr}`, /Remote tracking ref .* expected/);
+});
+
+test('Sync-OriginUpstreamDevelop treats active branch rules as a protected sync PR handoff before direct push', async (t) => {
+  const sandboxRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-protected-rules-'));
+  const upstreamBare = path.join(sandboxRoot, 'upstream.git');
+  const originBare = path.join(sandboxRoot, 'origin.git');
+  const seedRepo = path.join(sandboxRoot, 'seed');
+  const controlRepo = path.join(sandboxRoot, 'control');
+  const worktreeRepo = path.join(sandboxRoot, 'worktree');
+  const updaterRepo = path.join(sandboxRoot, 'updater');
+  t.after(async () => {
+    await rm(sandboxRoot, { recursive: true, force: true });
+  });
+
+  initBareRepo(upstreamBare);
+  initBareRepo(originBare);
+
+  initRepo(seedRepo);
+  await writeFile(path.join(seedRepo, 'README.md'), 'seed\n', 'utf8');
+  run('git', ['add', 'README.md'], { cwd: seedRepo });
+  run('git', ['commit', '-m', 'seed'], { cwd: seedRepo });
+  run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: seedRepo });
+  run('git', ['remote', 'add', 'origin', originBare], { cwd: seedRepo });
+  run('git', ['push', 'upstream', 'develop'], { cwd: seedRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: seedRepo });
+
+  run('git', ['clone', originBare, controlRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: controlRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: controlRepo });
+  run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: controlRepo });
+  run('git', ['fetch', 'upstream'], { cwd: controlRepo });
+  run('git', ['worktree', 'add', '-b', 'issue/test-sync-protected-rules', worktreeRepo, 'develop'], { cwd: controlRepo });
+  run('git', ['checkout', '--detach'], { cwd: controlRepo });
+
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority', 'lib'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'policy'), { recursive: true });
+  const source = readFileSyncImmediate(path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'), 'utf8');
+  const protectedSource = source
+    .replace(
+      "$targetRepository = Resolve-RemoteRepositorySlug -Remote $HeadRemote",
+      "$targetRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'"
+    )
+    .replace(
+      "$protectedSyncProbe = Get-ActiveProtectedSyncProbe -Repository $targetRepository -BranchName $Branch",
+      "$protectedSyncProbe = [ordered]@{ required = $true; ruleTypes = @('pull_request', 'merge_queue'); rulesetIds = @('13700055'); bypassModes = @('never'); bypassAllowsDirectPush = $false }"
+    );
+  await writeFile(path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'), protectedSource, 'utf8');
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'report-origin-upstream-parity.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'report-origin-upstream-parity.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'lib', 'branch-classification.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'lib', 'branch-classification.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'),
+    path.join(worktreeRepo, 'tools', 'policy', 'branch-classes.json')
+  );
+  await writeFile(
+    path.join(worktreeRepo, 'tools', 'priority', 'protected-develop-sync-pr.mjs'),
+    `#!/usr/bin/env node
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+const args = process.argv.slice(2);
+const reportIndex = args.indexOf('--report-path');
+const reportPath = reportIndex >= 0 ? args[reportIndex + 1] : path.join(process.cwd(), 'tests/results/_agent/issue/protected-report.json');
+const syncIndex = args.indexOf('--sync-branch');
+const syncBranch = syncIndex >= 0 ? args[syncIndex + 1] : 'sync/origin-develop';
+mkdirSync(path.dirname(reportPath), { recursive: true });
+writeFileSync(reportPath, JSON.stringify({
+  schema: 'priority/protected-develop-sync@v1',
+  generatedAt: '2026-03-12T00:00:00.000Z',
+  targetRemote: 'origin',
+  baseRemote: 'upstream',
+  branch: 'develop',
+  syncBranch,
+  reason: 'protected-branch-rules',
+  planeTransition: {
+    from: 'upstream',
+    to: 'origin',
+    action: 'sync',
+    via: 'priority:develop:sync'
+  },
+  pullRequest: {
+    number: 56,
+    url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action-fork/pull/56',
+    isDraft: false,
+    mergeStateStatus: 'BLOCKED',
+    reusedExisting: false
+  },
+  readyState: { status: 'marked-ready' },
+  mergeRequest: { status: 'requested' }
+}, null, 2) + '\\n', 'utf8');
+`,
+    'utf8'
+  );
+
+  run('git', ['clone', upstreamBare, updaterRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: updaterRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: updaterRepo });
+  await writeFile(path.join(updaterRepo, 'CHANGE.txt'), 'upstream advance\n', 'utf8');
+  run('git', ['add', 'CHANGE.txt'], { cwd: updaterRepo });
+  run('git', ['commit', '-m', 'advance upstream'], { cwd: updaterRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: updaterRepo });
+
+  const parityReportPath = path.join(worktreeRepo, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
+  run(
+    'pwsh',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-File',
+      path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'),
+      '-HeadRemote',
+      'origin',
+      '-ParityReportPath',
+      parityReportPath
+    ],
+    { cwd: worktreeRepo, timeout: 180000 }
+  );
+
+  const upstreamHead = run('git', ['--git-dir', upstreamBare, 'rev-parse', 'develop'], { cwd: sandboxRoot });
+  const originDevelopHead = run('git', ['--git-dir', originBare, 'rev-parse', 'develop'], { cwd: sandboxRoot });
+  const syncBranchHead = run('git', ['--git-dir', originBare, 'rev-parse', 'refs/heads/sync/origin-develop'], { cwd: sandboxRoot });
+  assert.notEqual(originDevelopHead, upstreamHead);
+  assert.equal(syncBranchHead, upstreamHead);
+
+  const parityReport = JSON.parse(await readFile(parityReportPath, 'utf8'));
+  assert.equal(parityReport.planeTransition.from, 'upstream');
+  assert.equal(parityReport.planeTransition.to, 'origin');
+  assert.equal(parityReport.syncResult.mode, 'protected-pr');
+  assert.equal(parityReport.syncResult.reason, 'protected-branch-rules');
+  assert.equal(parityReport.syncResult.parityConverged, false);
+  assert.equal(parityReport.syncResult.planeTransition.to, 'origin');
+  assert.equal(parityReport.syncResult.protectedSync.pullRequest.number, 56);
+  assert.equal(parityReport.tipDiff.fileCount > 0, true);
+});
+
+test('Sync-OriginUpstreamDevelop keeps direct-push mode when active rules are bypassable by the current actor', async (t) => {
+  const sandboxRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-protected-bypass-'));
+  const upstreamBare = path.join(sandboxRoot, 'upstream.git');
+  const originBare = path.join(sandboxRoot, 'origin.git');
+  const seedRepo = path.join(sandboxRoot, 'seed');
+  const controlRepo = path.join(sandboxRoot, 'control');
+  const worktreeRepo = path.join(sandboxRoot, 'worktree');
+  const updaterRepo = path.join(sandboxRoot, 'updater');
+  t.after(async () => {
+    await rm(sandboxRoot, { recursive: true, force: true });
+  });
+
+  initBareRepo(upstreamBare);
+  initBareRepo(originBare);
+
+  initRepo(seedRepo);
+  await writeFile(path.join(seedRepo, 'README.md'), 'seed\n', 'utf8');
+  run('git', ['add', 'README.md'], { cwd: seedRepo });
+  run('git', ['commit', '-m', 'seed'], { cwd: seedRepo });
+  run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: seedRepo });
+  run('git', ['remote', 'add', 'origin', originBare], { cwd: seedRepo });
+  run('git', ['push', 'upstream', 'develop'], { cwd: seedRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: seedRepo });
+
+  run('git', ['clone', originBare, controlRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: controlRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: controlRepo });
+  run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: controlRepo });
+  run('git', ['fetch', 'upstream'], { cwd: controlRepo });
+  run('git', ['worktree', 'add', '-b', 'issue/test-sync-protected-bypass', worktreeRepo, 'develop'], { cwd: controlRepo });
+  run('git', ['checkout', '--detach'], { cwd: controlRepo });
+
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority', 'lib'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'policy'), { recursive: true });
+  const source = readFileSyncImmediate(path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'), 'utf8');
+  const bypassSource = source
+    .replace(
+      "$targetRepository = Resolve-RemoteRepositorySlug -Remote $HeadRemote",
+      "$targetRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'"
+    )
+    .replace(
+      "$protectedSyncProbe = Get-ActiveProtectedSyncProbe -Repository $targetRepository -BranchName $Branch",
+      "$protectedSyncProbe = [ordered]@{ required = $false; ruleTypes = @('pull_request', 'merge_queue'); rulesetIds = @('13700055'); bypassModes = @('always'); bypassAllowsDirectPush = $true }"
+    );
+  await writeFile(path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'), bypassSource, 'utf8');
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'report-origin-upstream-parity.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'report-origin-upstream-parity.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'lib', 'branch-classification.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'lib', 'branch-classification.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'),
+    path.join(worktreeRepo, 'tools', 'policy', 'branch-classes.json')
+  );
+
+  run('git', ['clone', upstreamBare, updaterRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: updaterRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: updaterRepo });
+  await writeFile(path.join(updaterRepo, 'CHANGE.txt'), 'upstream advance\n', 'utf8');
+  run('git', ['add', 'CHANGE.txt'], { cwd: updaterRepo });
+  run('git', ['commit', '-m', 'advance upstream'], { cwd: updaterRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: updaterRepo });
+
+  const parityReportPath = path.join(worktreeRepo, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
+  run(
+    'pwsh',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-File',
+      path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'),
+      '-HeadRemote',
+      'origin',
+      '-ParityReportPath',
+      parityReportPath
+    ],
+    { cwd: worktreeRepo, timeout: 180000 }
+  );
+
+  const upstreamHead = run('git', ['--git-dir', upstreamBare, 'rev-parse', 'develop'], { cwd: sandboxRoot });
+  const originDevelopHead = run('git', ['--git-dir', originBare, 'rev-parse', 'develop'], { cwd: sandboxRoot });
+  assert.equal(originDevelopHead, upstreamHead);
+
+  const parityReport = JSON.parse(await readFile(parityReportPath, 'utf8'));
+  assert.equal(parityReport.syncResult.mode, 'direct-push');
+  assert.equal(parityReport.syncResult.reason, 'direct-push');
+  assert.equal(parityReport.syncResult.parityConverged, true);
+  assert.equal(parityReport.tipDiff.fileCount, 0);
+});
+
+test('Sync-OriginUpstreamDevelop keeps direct-push mode when bypass authority is unknown', async (t) => {
+  const sandboxRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-protected-unknown-'));
+  const upstreamBare = path.join(sandboxRoot, 'upstream.git');
+  const originBare = path.join(sandboxRoot, 'origin.git');
+  const seedRepo = path.join(sandboxRoot, 'seed');
+  const controlRepo = path.join(sandboxRoot, 'control');
+  const worktreeRepo = path.join(sandboxRoot, 'worktree');
+  const updaterRepo = path.join(sandboxRoot, 'updater');
+  t.after(async () => {
+    await rm(sandboxRoot, { recursive: true, force: true });
+  });
+
+  initBareRepo(upstreamBare);
+  initBareRepo(originBare);
+
+  initRepo(seedRepo);
+  await writeFile(path.join(seedRepo, 'README.md'), 'seed\n', 'utf8');
+  run('git', ['add', 'README.md'], { cwd: seedRepo });
+  run('git', ['commit', '-m', 'seed'], { cwd: seedRepo });
+  run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: seedRepo });
+  run('git', ['remote', 'add', 'origin', originBare], { cwd: seedRepo });
+  run('git', ['push', 'upstream', 'develop'], { cwd: seedRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: seedRepo });
+
+  run('git', ['clone', originBare, controlRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: controlRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: controlRepo });
+  run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: controlRepo });
+  run('git', ['fetch', 'upstream'], { cwd: controlRepo });
+  run('git', ['worktree', 'add', '-b', 'issue/test-sync-protected-unknown', worktreeRepo, 'develop'], { cwd: controlRepo });
+  run('git', ['checkout', '--detach'], { cwd: controlRepo });
+
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority', 'lib'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'policy'), { recursive: true });
+  const source = readFileSyncImmediate(path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'), 'utf8');
+  const unknownSource = source
+    .replace(
+      "$targetRepository = Resolve-RemoteRepositorySlug -Remote $HeadRemote",
+      "$targetRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'"
+    )
+    .replace(
+      "$protectedSyncProbe = Get-ActiveProtectedSyncProbe -Repository $targetRepository -BranchName $Branch",
+      "$protectedSyncProbe = [ordered]@{ required = $false; ruleTypes = @('pull_request', 'merge_queue'); rulesetIds = @('13700055'); bypassModes = @('unknown'); bypassAllowsDirectPush = $false }"
+    );
+  await writeFile(path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'), unknownSource, 'utf8');
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'report-origin-upstream-parity.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'report-origin-upstream-parity.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'lib', 'branch-classification.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'lib', 'branch-classification.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'),
+    path.join(worktreeRepo, 'tools', 'policy', 'branch-classes.json')
+  );
+
+  run('git', ['clone', upstreamBare, updaterRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: updaterRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: updaterRepo });
+  await writeFile(path.join(updaterRepo, 'CHANGE.txt'), 'upstream advance\n', 'utf8');
+  run('git', ['add', 'CHANGE.txt'], { cwd: updaterRepo });
+  run('git', ['commit', '-m', 'advance upstream'], { cwd: updaterRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: updaterRepo });
+
+  const parityReportPath = path.join(worktreeRepo, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
+  run(
+    'pwsh',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-File',
+      path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'),
+      '-HeadRemote',
+      'origin',
+      '-ParityReportPath',
+      parityReportPath
+    ],
+    { cwd: worktreeRepo, timeout: 180000 }
+  );
+
+  const upstreamHead = run('git', ['--git-dir', upstreamBare, 'rev-parse', 'develop'], { cwd: sandboxRoot });
+  const originDevelopHead = run('git', ['--git-dir', originBare, 'rev-parse', 'develop'], { cwd: sandboxRoot });
+  assert.equal(originDevelopHead, upstreamHead);
+
+  const parityReport = JSON.parse(await readFile(parityReportPath, 'utf8'));
+  assert.equal(parityReport.syncResult.mode, 'direct-push');
+  assert.equal(parityReport.syncResult.reason, 'direct-push');
+  assert.equal(parityReport.syncResult.parityConverged, true);
+  assert.equal(parityReport.tipDiff.fileCount, 0);
 });
 
 test('Sync-OriginUpstreamDevelop treats GH013 as a protected sync PR handoff instead of failing', async (t) => {
