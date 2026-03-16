@@ -37,6 +37,6 @@ test('issue milestone hygiene workflow has deterministic trigger and artifact co
   assert.match(workflow, /--default-milestone-due-on/);
   assert.match(workflow, /tests\/results\/_agent\/issue\/milestone-hygiene-report\.json/);
   assert.match(workflow, /execution status/);
-  assert.match(workflow, /uses:\s+actions\/upload-artifact@v6/);
+  assert.match(workflow, /uses:\s+actions\/upload-artifact@v7/);
   assert.match(workflow, /if-no-files-found:\s+error/);
 });

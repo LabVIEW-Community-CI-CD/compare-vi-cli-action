@@ -50,6 +50,6 @@ test('agent-review-policy validates local-only review promotion state from pull_
   assert.match(workflow, /else\s+args\+=\(\s+"--pr" "\$\{\{ github\.event\.pull_request\.number \}\}"/s);
   assert.match(workflow, /node "\$\{args\[@\]\}"/);
   assert.doesNotMatch(workflow, /name: Evaluate Copilot queue gate \(merge_group\)/);
-  assert.match(workflow, /name: Upload Copilot queue gate artifact\s+if: always\(\)\s+uses: actions\/upload-artifact@v6/);
+  assert.match(workflow, /name: Upload Copilot queue gate artifact\s+if: always\(\)\s+uses: actions\/upload-artifact@v7/);
   assert.doesNotMatch(workflow, /Enforce required reviewer for agent-authored PRs/);
 });

@@ -26,7 +26,7 @@ test('public Linux diagnostics harness workflow writes and uploads deterministic
 
   assert.match(workflow, /tools\/priority\/public-linux-diagnostics-workflow-dispatch\.mjs/);
   assert.match(workflow, /tests\/results\/_agent\/diagnostics\/public-linux-diagnostics-workflow-dispatch\.json/);
-  assert.match(workflow, /name: Upload public Linux diagnostics dispatch artifact\s+if: always\(\)\s+uses: actions\/upload-artifact@v6/ms);
+  assert.match(workflow, /name: Upload public Linux diagnostics dispatch artifact\s+if: always\(\)\s+uses: actions\/upload-artifact@v7/ms);
   assert.match(workflow, /name: public-linux-diagnostics-harness-dispatch/);
   assert.match(workflow, /human-go-no-go-feedback\.yml/);
 });

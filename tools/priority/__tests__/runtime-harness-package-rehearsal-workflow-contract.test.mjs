@@ -46,6 +46,6 @@ test('runtime-harness package rehearsal stays hosted-only and uses checked-in he
   assert.match(verifyStep.run, /--consumer-dir tests\/results\/_agent\/release\/runtime-harness-package\/consumer/);
 
   assert.ok(uploadStep, 'workflow should upload machine-readable evidence');
-  assert.equal(uploadStep.uses, 'actions/upload-artifact@v6');
+  assert.equal(uploadStep.uses, 'actions/upload-artifact@v7');
   assert.doesNotMatch(raw, /self-hosted/i);
 });

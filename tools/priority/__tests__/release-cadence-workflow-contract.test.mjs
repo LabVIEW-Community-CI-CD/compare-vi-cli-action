@@ -27,7 +27,7 @@ test('release-cadence-check workflow uses the checked-in helper and uploads a ma
   assert.match(evaluateStep.run, /--out tests\/results\/_agent\/release\/release-cadence-check-report\.json/);
   assert.equal(evaluateStep.env?.GH_TOKEN, '${{ github.token }}');
   assert.ok(uploadStep, 'workflow should upload the cadence report artifact');
-  assert.equal(uploadStep.uses, 'actions/upload-artifact@v6');
+  assert.equal(uploadStep.uses, 'actions/upload-artifact@v7');
   assert.match(raw, /name: release-cadence-check-report-\$\{\{\s*github\.run_id\s*\}\}/);
   assert.doesNotMatch(raw, /GET \/orgs\/\{org\}\/packages\/\{package_type\}\/\{package_name\}\/versions/);
 });

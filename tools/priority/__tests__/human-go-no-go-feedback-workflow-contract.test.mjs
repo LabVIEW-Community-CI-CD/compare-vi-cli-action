@@ -29,7 +29,7 @@ test('human go/no-go workflow writes and uploads deterministic handoff artifacts
   assert.match(workflow, /--decision-out" "tests\/results\/_agent\/handoff\/human-go-no-go-decision\.json"/);
   assert.match(workflow, /--events-out" "tests\/results\/_agent\/handoff\/human-go-no-go-events\.ndjson"/);
   assert.match(workflow, /--step-summary" "\$GITHUB_STEP_SUMMARY"/);
-  assert.match(workflow, /name: Upload manual go\/no-go artifacts\s+if: always\(\)\s+uses: actions\/upload-artifact@v6/);
+  assert.match(workflow, /name: Upload manual go\/no-go artifacts\s+if: always\(\)\s+uses: actions\/upload-artifact@v7/);
   assert.match(workflow, /name: human-go-no-go-decision/);
 });
 
