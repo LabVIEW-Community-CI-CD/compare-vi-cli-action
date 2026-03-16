@@ -23,6 +23,9 @@
 .PARAMETER Provider
   Explicit provider name to use (defaults to 'auto').
 
+.PARAMETER TimeoutSeconds
+  Maximum time to wait for the selected provider to complete the close operation. Defaults to 300 seconds.
+
 .PARAMETER Preview
   When set, shows the resolved provider and command without executing it.
 #>
@@ -34,6 +37,7 @@ param(
   [string]$SupportedBitness,
   [string]$LabVIEWCliPath,
   [string]$Provider = 'auto',
+  [int]$TimeoutSeconds = 300,
   [switch]$Preview
 )
 
@@ -56,7 +60,7 @@ if ($PSBoundParameters.ContainsKey('LabVIEWCliPath') -and $LabVIEWCliPath) {
 }
 
 try {
-  $result = Invoke-LVOperation -Operation 'CloseLabVIEW' -Params $params -Provider $Provider -Preview:$Preview
+  $result = Invoke-LVOperation -Operation 'CloseLabVIEW' -Params $params -Provider $Provider -Preview:$Preview -TimeoutSeconds $TimeoutSeconds
   if ($Preview) {
     return $result
   }
