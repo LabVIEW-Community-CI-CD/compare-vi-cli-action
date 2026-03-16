@@ -120,3 +120,15 @@ test('project portfolio config declares the fields future agents need to reason 
     assert.ok(config.fieldCatalog.portfolioTrack.options.includes(item.portfolioTrack));
   }
 });
+
+test('project portfolio config marks the completed rollout items as done', () => {
+  const statusByUrl = new Map(config.items.map((item) => [item.url, item.status]));
+
+  assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/930'), 'Done');
+  assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/946'), 'Done');
+  assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/947'), 'Done');
+  assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/24'), 'Done');
+  assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/26'), 'Done');
+  assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/issues/4'), 'Done');
+  assert.equal(statusByUrl.get('https://github.com/svelderrainruiz/labview-icon-editor-demo/issues/5'), 'Done');
+});

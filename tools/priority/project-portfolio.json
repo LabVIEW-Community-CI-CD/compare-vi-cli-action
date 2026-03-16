@@ -374,7 +374,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/930",
-      "status": "In Progress",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Helper Workflow",
       "environmentClass": "Cross-Repo",
@@ -414,7 +414,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/946",
-      "status": "In Progress",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Helper Workflow",
       "environmentClass": "Cross-Repo",
@@ -424,7 +424,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/947",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Helper Workflow",
       "environmentClass": "Cross-Repo",
@@ -624,7 +624,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/24",
-      "status": "In Progress",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Helper Workflow",
       "environmentClass": "Cross-Repo",
@@ -644,7 +644,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/26",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Apply Mode",
       "environmentClass": "Cross-Repo",
@@ -654,7 +654,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/issues/4",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Apply Mode",
       "environmentClass": "Cross-Repo",
@@ -664,7 +664,7 @@
     },
     {
       "url": "https://github.com/svelderrainruiz/labview-icon-editor-demo/issues/5",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Apply Mode",
       "environmentClass": "Cross-Repo",
