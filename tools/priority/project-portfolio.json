@@ -614,7 +614,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/23",
-      "status": "In Progress",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Helper Workflow",
       "environmentClass": "Cross-Repo",
@@ -634,7 +634,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/25",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Sustain",
       "environmentClass": "Cross-Repo",
