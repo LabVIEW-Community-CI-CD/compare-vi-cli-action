@@ -77,6 +77,43 @@ test('executeLocalReviewProvider routes Copilot CLI through the provider registr
   assert.equal(observedOptions.policy.model, 'gpt-5.5-mini');
 });
 
+test('executeLocalReviewProvider routes Codex CLI through the provider registry', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'local-review-provider-codex-'));
+  let observedOptions = null;
+  const result = await executeLocalReviewProvider({
+    providerId: 'codex-cli',
+    repoRoot,
+    executionProfile: 'pre-push',
+    policies: {
+      reviewProviders: ['codex-cli'],
+      codexCli: {
+        enabled: true,
+        model: 'gpt-5-codex'
+      }
+    },
+    runCodexCliReviewFn: async (options) => {
+      observedOptions = options;
+      return {
+        status: 'passed',
+        reason: 'Codex CLI passed.',
+        receiptPath: 'tests/results/docker-tools-parity/codex-cli-review/receipt.json',
+        receipt: {
+          overall: {
+            status: 'passed',
+            actionableFindingCount: 0,
+            message: 'Codex CLI passed.'
+          }
+        }
+      };
+    }
+  });
+
+  assert.equal(result.providerId, 'codex-cli');
+  assert.equal(result.status, 'passed');
+  assert.equal(observedOptions.profile, 'pre-push');
+  assert.equal(observedOptions.policy.model, 'gpt-5-codex');
+});
+
 test('executeLocalReviewProvider routes Simulation through the provider registry', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'local-review-provider-simulation-'));
   let observedOptions = null;
@@ -116,7 +153,7 @@ test('executeLocalReviewProvider routes Simulation through the provider registry
 test('executeLocalReviewProvider fails closed for reserved providers', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'local-review-provider-reserved-'));
   const result = await executeLocalReviewProvider({
-    providerId: 'codex-cli',
+    providerId: 'ollama',
     repoRoot,
     repoGitState: {
       headSha: 'abc123',
@@ -126,7 +163,7 @@ test('executeLocalReviewProvider fails closed for reserved providers', async () 
     }
   });
 
-  assert.equal(result.providerId, 'codex-cli');
+  assert.equal(result.providerId, 'ollama');
   assert.equal(result.status, 'failed');
   assert.match(result.reason, /not implemented yet/i);
 });
