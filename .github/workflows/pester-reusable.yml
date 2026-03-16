@@ -48,7 +48,7 @@ on:
         value: ${{ jobs.pester.outputs.duration_s }}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.sample_id || github.ref }}
+  group: ${{ github.workflow }}-pester-reusable-${{ github.repository }}-${{ inputs.sample_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -346,6 +346,7 @@ jobs:
 
       - name: Run Pester tests via local dispatcher
         id: dispatcher
+        continue-on-error: true
         shell: pwsh
         run: |
           $logPath = 'tests/results/pester-dispatcher.log'
@@ -716,7 +717,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Propagate dispatcher failure
-        if: ${{ steps.dispatcher.outputs.exit_code != '0' && inputs.continue_on_error != 'true' }}
+        if: ${{ (steps.dispatcher.outcome == 'failure' || steps.dispatcher.outputs.exit_code != '0') && inputs.continue_on_error != 'true' }}
         run: exit 1
 
       - name: Runner Unblock Guard
