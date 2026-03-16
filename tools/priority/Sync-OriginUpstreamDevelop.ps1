@@ -225,6 +225,200 @@ function Get-SafeRemoteLocation {
   return ($Location -replace '^(https?://)([^/@]+@)', '$1')
 }
 
+function Resolve-RemoteRepositorySlug {
+  param(
+    [Parameter(Mandatory)][string]$Remote
+  )
+
+  foreach ($candidate in @(
+      (Get-GitOptionalValue -Arguments @('remote', 'get-url', '--push', $Remote)),
+      (Get-GitOptionalValue -Arguments @('remote', 'get-url', $Remote))
+    )) {
+    if ([string]::IsNullOrWhiteSpace($candidate)) {
+      continue
+    }
+
+    if ($candidate -match ':(?<repoPath>[^/]+/[^/]+?)(?:\.git)?$') {
+      return $Matches['repoPath']
+    }
+    if ($candidate -match 'github\.com/(?<repoPath>[^/]+/[^/]+?)(?:\.git)?$') {
+      return $Matches['repoPath']
+    }
+  }
+
+  return ''
+}
+
+function Get-ActiveBranchRules {
+  param(
+    [Parameter(Mandatory)][string]$Repository,
+    [Parameter(Mandatory)][string]$BranchName
+  )
+
+  $encodedBranchName = [System.Uri]::EscapeDataString($BranchName)
+  $result = & gh api ("repos/{0}/rules/branches/{1}" -f $Repository, $encodedBranchName) 2>&1
+  $exitCode = $LASTEXITCODE
+  $text = (($result | ForEach-Object { [string]$_ }) -join "`n").Trim()
+  if ($exitCode -ne 0) {
+    if ($text) {
+      Write-Warning ("[sync] Unable to query active rules for {0}:{1}; continuing with direct sync detection. {2}" -f $Repository, $BranchName, $text)
+    } else {
+      Write-Warning ("[sync] Unable to query active rules for {0}:{1}; continuing with direct sync detection." -f $Repository, $BranchName)
+    }
+    return @()
+  }
+
+  if ([string]::IsNullOrWhiteSpace($text)) {
+    return @()
+  }
+
+  try {
+    $parsed = $text | ConvertFrom-Json -AsHashtable
+  } catch {
+    Write-Warning ("[sync] Active-rules query for {0}:{1} returned invalid JSON; continuing with direct sync detection. {2}" -f $Repository, $BranchName, $_.Exception.Message)
+    return @()
+  }
+
+  if ($parsed -is [System.Collections.IEnumerable] -and -not ($parsed -is [string]) -and -not ($parsed -is [System.Collections.IDictionary])) {
+    return @($parsed)
+  }
+
+  return @($parsed)
+}
+
+function Get-ActiveBranchRuleTypes {
+  param([object[]]$Rules = @())
+
+  if (-not $Rules -or $Rules.Count -eq 0) {
+    return @()
+  }
+
+  return @(
+    $Rules |
+      ForEach-Object {
+        if ($_ -is [System.Collections.IDictionary]) {
+          [string]$_['type']
+        } else {
+          [string]$_.type
+        }
+      } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+}
+
+function Test-ActiveBranchRulesRequireProtectedSync {
+  param([string[]]$RuleTypes = @())
+
+  if (-not $RuleTypes -or $RuleTypes.Count -eq 0) {
+    return $false
+  }
+
+  return ($RuleTypes -contains 'pull_request' -or $RuleTypes -contains 'merge_queue')
+}
+
+function Get-ActiveBranchRulesetIds {
+  param([object[]]$Rules = @())
+
+  if (-not $Rules -or $Rules.Count -eq 0) {
+    return @()
+  }
+
+  return @(
+    $Rules |
+      ForEach-Object {
+        if ($_ -is [System.Collections.IDictionary]) {
+          $_['ruleset_id']
+        } else {
+          $_.ruleset_id
+        }
+      } |
+      Where-Object { $_ -ne $null -and -not [string]::IsNullOrWhiteSpace([string]$_) } |
+      ForEach-Object { [string]$_ } |
+      Select-Object -Unique
+  )
+}
+
+function Get-RulesetCurrentUserBypassMode {
+  param(
+    [Parameter(Mandatory)][string]$Repository,
+    [Parameter(Mandatory)][string]$RulesetId
+  )
+
+  $result = & gh api ("repos/{0}/rulesets/{1}" -f $Repository, $RulesetId) 2>&1
+  $exitCode = $LASTEXITCODE
+  $text = (($result | ForEach-Object { [string]$_ }) -join "`n").Trim()
+  if ($exitCode -ne 0) {
+    if ($text) {
+      Write-Warning ("[sync] Unable to query ruleset {0} for {1}; continuing with direct sync detection. {2}" -f $RulesetId, $Repository, $text)
+    } else {
+      Write-Warning ("[sync] Unable to query ruleset {0} for {1}; continuing with direct sync detection." -f $RulesetId, $Repository)
+    }
+    return 'unknown'
+  }
+
+  if ([string]::IsNullOrWhiteSpace($text)) {
+    return 'unknown'
+  }
+
+  try {
+    $parsed = $text | ConvertFrom-Json -AsHashtable
+  } catch {
+    Write-Warning ("[sync] Ruleset query for {0}/{1} returned invalid JSON; continuing with direct sync detection. {2}" -f $Repository, $RulesetId, $_.Exception.Message)
+    return 'unknown'
+  }
+
+  $mode = [string]($parsed['current_user_can_bypass'] ?? '')
+  if ([string]::IsNullOrWhiteSpace($mode)) {
+    return 'unknown'
+  }
+  return $mode
+}
+
+function Get-ActiveProtectedSyncProbe {
+  param(
+    [Parameter(Mandatory)][string]$Repository,
+    [Parameter(Mandatory)][string]$BranchName
+  )
+
+  $rules = @(Get-ActiveBranchRules -Repository $Repository -BranchName $BranchName)
+  $ruleTypes = @(Get-ActiveBranchRuleTypes -Rules $rules)
+  $requiresProtectedRules = Test-ActiveBranchRulesRequireProtectedSync -RuleTypes $ruleTypes
+  if (-not $requiresProtectedRules) {
+    return [ordered]@{
+      required = $false
+      ruleTypes = $ruleTypes
+      rulesetIds = @()
+      bypassModes = @()
+      bypassAllowsDirectPush = $false
+    }
+  }
+
+  $rulesetIds = @(Get-ActiveBranchRulesetIds -Rules $rules)
+  $resolvedBypassModes = @(
+    $rulesetIds |
+      ForEach-Object { Get-RulesetCurrentUserBypassMode -Repository $Repository -RulesetId $_ } |
+      ForEach-Object { $_.ToLowerInvariant() }
+  )
+  $hasCompleteBypassData = (
+    $rulesetIds.Count -gt 0 -and
+    $resolvedBypassModes.Count -eq $rulesetIds.Count -and
+    -not ($resolvedBypassModes | Where-Object { $_ -eq 'unknown' })
+  )
+  $bypassModes = @($resolvedBypassModes | Select-Object -Unique)
+  $bypassAllowsDirectPush = (
+    $hasCompleteBypassData -and
+    -not ($resolvedBypassModes | Where-Object { $_ -ne 'always' })
+  )
+
+  return [ordered]@{
+    required = ($hasCompleteBypassData -and -not $bypassAllowsDirectPush)
+    ruleTypes = $ruleTypes
+    rulesetIds = $rulesetIds
+    bypassModes = $bypassModes
+    bypassAllowsDirectPush = $bypassAllowsDirectPush
+  }
+}
+
 function Invoke-PushWithTransportFallback {
   param(
     [Parameter(Mandatory)][string]$Remote,
@@ -321,6 +515,61 @@ function Get-ProtectedSyncBranchName {
   return "sync/$sanitizedRemote-$sanitizedBranch"
 }
 
+function Invoke-ProtectedBranchSync {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)][string]$BaseRemote,
+    [Parameter(Mandatory)][string]$HeadRemote,
+    [Parameter(Mandatory)][string]$BranchName,
+    [Parameter(Mandatory)][string]$Reason,
+    [Parameter(Mandatory)][string]$LocalHead,
+    [string[]]$RuleTypes = @()
+  )
+
+  $syncBranch = Get-ProtectedSyncBranchName -Remote $HeadRemote -BranchName $BranchName
+  if ($RuleTypes.Count -gt 0) {
+    Write-Warning ("[sync] Active branch rules require protected sync for {0}/{1}; routing through protected sync helper (sync branch {2}; rules: {3})" -f $HeadRemote, $BranchName, $syncBranch, ($RuleTypes -join ', '))
+  } else {
+    Write-Warning ("[sync] Protected branch rejected direct push to {0}/{1}; routing through protected sync helper (sync branch {2})" -f $HeadRemote, $BranchName, $syncBranch)
+  }
+  $pushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch -SourceRef 'HEAD' -TargetBranch $syncBranch
+  $protectedSyncReportPath = Join-Path $RepoRoot ("tests/results/_agent/issue/{0}-protected-develop-sync.json" -f $HeadRemote)
+  Invoke-Node -Arguments @(
+    'tools/priority/protected-develop-sync-pr.mjs',
+    '--target-remote',
+    $HeadRemote,
+    '--base-remote',
+    $BaseRemote,
+    '--branch',
+    $BranchName,
+    '--sync-branch',
+    $syncBranch,
+    '--reason',
+    $Reason,
+    '--local-head',
+    $LocalHead,
+    '--report-path',
+    $protectedSyncReportPath
+  )
+  if (-not (Test-Path -LiteralPath $protectedSyncReportPath -PathType Leaf)) {
+    throw ("Protected sync report not found: {0}" -f $protectedSyncReportPath)
+  }
+  $protectedSync = Get-Content -LiteralPath $protectedSyncReportPath -Raw | ConvertFrom-Json -AsHashtable
+  $syncMethod = [string]($protectedSync['syncMethod'] ?? 'protected-pr')
+  if ($syncMethod -eq 'fork-sync') {
+    Remove-RemoteBranchWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch
+    $pushTransport = $null
+  }
+
+  return [ordered]@{
+    syncBranch = $syncBranch
+    syncMethod = $syncMethod
+    pushTransport = $pushTransport
+    protectedSyncReportPath = $protectedSyncReportPath
+    protectedSync = $protectedSync
+  }
+}
+
 $repoRoot = Get-GitValue -Arguments @('rev-parse', '--show-toplevel')
 if ([string]::IsNullOrWhiteSpace($repoRoot)) {
   throw 'Unable to resolve git repository root.'
@@ -395,50 +644,49 @@ try {
 
       # Sequential by design: pull must complete before push starts.
       Invoke-Git -Arguments @('pull', '--ff-only', $BaseRemote, $Branch) | Out-Null
-      try {
-        $attemptPushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $Branch
-      }
-      catch {
-        $message = $_.Exception.Message
-        if (-not (Test-GitHubProtectedBranchFailure -Message $message)) {
-          throw
-        }
-
-        $attemptSyncReason = Get-ProtectedBranchSyncReason -Message $message
-        $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
-        $syncBranch = Get-ProtectedSyncBranchName -Remote $HeadRemote -BranchName $Branch
-        Write-Warning ("[sync] Protected branch rejected direct push to {0}/{1}; routing through protected sync helper (sync branch {2})" -f $HeadRemote, $Branch, $syncBranch)
-        $attemptPushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch -SourceRef 'HEAD' -TargetBranch $syncBranch
-        $attemptProtectedSyncReportPath = Join-Path $repoRoot ("tests/results/_agent/issue/{0}-protected-develop-sync.json" -f $HeadRemote)
-        Invoke-Node -Arguments @(
-          'tools/priority/protected-develop-sync-pr.mjs',
-          '--target-remote',
-          $HeadRemote,
-          '--base-remote',
-          $BaseRemote,
-          '--branch',
-          $Branch,
-          '--sync-branch',
-          $syncBranch,
-          '--reason',
-          $attemptSyncReason,
-          '--local-head',
-          $localHead,
-          '--report-path',
-          $attemptProtectedSyncReportPath
-        )
-        if (-not (Test-Path -LiteralPath $attemptProtectedSyncReportPath -PathType Leaf)) {
-          throw ("Protected sync report not found: {0}" -f $attemptProtectedSyncReportPath)
-        }
-        $attemptProtectedSync = Get-Content -LiteralPath $attemptProtectedSyncReportPath -Raw | ConvertFrom-Json -AsHashtable
-        $attemptSyncMode = [string]($attemptProtectedSync['syncMethod'] ?? 'protected-pr')
-        if ($attemptSyncMode -eq 'fork-sync') {
-          Remove-RemoteBranchWithTransportFallback -Remote $HeadRemote -BranchName $syncBranch
-          $attemptPushTransport = $null
-        }
-      }
-
       $localHead = Get-GitValue -Arguments @('rev-parse', 'HEAD')
+      $targetRepository = Resolve-RemoteRepositorySlug -Remote $HeadRemote
+      $activeRuleTypes = @()
+      $protectedSyncProbe = [ordered]@{
+        required = $false
+        ruleTypes = @()
+        rulesetIds = @()
+        bypassModes = @()
+        bypassAllowsDirectPush = $false
+      }
+      if (-not [string]::IsNullOrWhiteSpace($targetRepository)) {
+        $protectedSyncProbe = Get-ActiveProtectedSyncProbe -Repository $targetRepository -BranchName $Branch
+        $activeRuleTypes = @($protectedSyncProbe.ruleTypes)
+      }
+      if ($protectedSyncProbe.required) {
+        $attemptSyncReason = 'protected-branch-rules'
+        $protectedSyncResult = Invoke-ProtectedBranchSync -RepoRoot $repoRoot -BaseRemote $BaseRemote -HeadRemote $HeadRemote -BranchName $Branch -Reason $attemptSyncReason -LocalHead $localHead -RuleTypes $activeRuleTypes
+        $attemptPushTransport = $protectedSyncResult.pushTransport
+        $attemptProtectedSyncReportPath = $protectedSyncResult.protectedSyncReportPath
+        $attemptProtectedSync = $protectedSyncResult.protectedSync
+        $attemptSyncMode = $protectedSyncResult.syncMethod
+      } else {
+        if ($protectedSyncProbe.bypassAllowsDirectPush -and $activeRuleTypes.Count -gt 0) {
+          Write-Host ("[sync] Active branch rules exist for {0}/{1}, but the current actor can bypass them ({2}); continuing with direct push detection." -f $HeadRemote, $Branch, ($protectedSyncProbe.bypassModes -join ', '))
+        }
+        try {
+          $attemptPushTransport = Invoke-PushWithTransportFallback -Remote $HeadRemote -BranchName $Branch
+        }
+        catch {
+          $message = $_.Exception.Message
+          if (-not (Test-GitHubProtectedBranchFailure -Message $message)) {
+            throw
+          }
+
+          $attemptSyncReason = Get-ProtectedBranchSyncReason -Message $message
+          $protectedSyncResult = Invoke-ProtectedBranchSync -RepoRoot $repoRoot -BaseRemote $BaseRemote -HeadRemote $HeadRemote -BranchName $Branch -Reason $attemptSyncReason -LocalHead $localHead
+          $attemptPushTransport = $protectedSyncResult.pushTransport
+          $attemptProtectedSyncReportPath = $protectedSyncResult.protectedSyncReportPath
+          $attemptProtectedSync = $protectedSyncResult.protectedSync
+          $attemptSyncMode = $protectedSyncResult.syncMethod
+        }
+      }
+
       if ([string]::IsNullOrWhiteSpace($localHead)) {
         throw 'Unable to resolve local HEAD after push.'
       }
