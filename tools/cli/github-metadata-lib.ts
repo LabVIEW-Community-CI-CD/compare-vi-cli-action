@@ -1586,24 +1586,6 @@ export function runMetadataApply({
     }
   }
 
-  if (dryRun) {
-    verification = {
-      ok: true,
-      attempts: 0,
-      delayMs: 0,
-      maxAttempts: 0,
-      fields: operations
-        .filter((operation) => operation.requested && operation.applicable)
-        .map((operation) => ({
-          surface: operation.surface,
-          ok: true,
-          expected: operation.after,
-          actual: null,
-        })),
-      skipped: true,
-    };
-  }
-
   for (const operation of operations) {
     const snapshot = observedAfter ?? projectedAfter;
     operation.after = (() => {
@@ -1624,6 +1606,24 @@ export function runMetadataApply({
           return operation.before;
       }
     })();
+  }
+
+  if (dryRun) {
+    verification = {
+      ok: true,
+      attempts: 0,
+      delayMs: 0,
+      maxAttempts: 0,
+      fields: operations
+        .filter((operation) => operation.requested && operation.applicable)
+        .map((operation) => ({
+          surface: operation.surface,
+          ok: true,
+          expected: operation.after,
+          actual: null,
+        })),
+      skipped: true,
+    };
   }
 
   const executionStatus = executionStatusFor(dryRun, operations, verification.ok, hadExecutionError);
