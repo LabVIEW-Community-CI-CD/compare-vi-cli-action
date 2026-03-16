@@ -352,7 +352,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Download CLI artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: cli-artifacts
           path: cli-dl
@@ -537,25 +537,25 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Download certification matrix artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: certification-matrix-${{ github.run_id }}
           path: tests/results/_agent/certification
 
       - name: Download supply-chain trust artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: release-supply-chain-trust-${{ github.run_id }}
           path: tests/results/_agent/supply-chain
 
       - name: Download shared-source resolution artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: release-shared-source-resolution-${{ github.run_id }}
           path: tests/results/_agent/release
 
       - name: Download rollback drill health artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: release-rollback-drill-health-${{ github.run_id }}
           path: tests/results/_agent/release
@@ -566,7 +566,7 @@ jobs:
           pwsh -NoLogo -NoProfile -File tools/Assert-PromotionContractAlignment.ps1 -OutputJsonPath tests/results/promotion-contract/release-alignment.json -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Download CLI artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: cli-artifacts
           path: cli-dl
