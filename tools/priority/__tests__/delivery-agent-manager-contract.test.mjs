@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile as execFileCb } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -19,6 +19,42 @@ async function readText(relativePath) {
 async function writeJson(filePath, payload) {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
+async function copyRepoFile(relativePath, tempRoot) {
+  const destinationPath = path.join(tempRoot, relativePath);
+  await mkdir(path.dirname(destinationPath), { recursive: true });
+  await copyFile(path.join(repoRoot, relativePath), destinationPath);
+  return destinationPath;
+}
+
+async function writeFakeDeliveryAgentBuildScript(tempRoot) {
+  const scriptPath = path.join(tempRoot, 'tools', 'npm', 'run-script.mjs');
+  await mkdir(path.dirname(scriptPath), { recursive: true });
+  await writeFile(
+    scriptPath,
+    `#!/usr/bin/env node
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+process.stdout.write('added 66 packages in 2s\\n');
+process.stdout.write('> compare-vi-cli-action@0.6.3 build\\n');
+const distDir = path.join(repoRoot, 'dist', 'tools', 'priority');
+mkdirSync(distDir, { recursive: true });
+writeFileSync(
+  path.join(distDir, 'delivery-agent.js'),
+  "#!/usr/bin/env node\\n" +
+    "const command = process.argv[2] || '';\\n" +
+    "const reportPathIndex = process.argv.indexOf('--report-path');\\n" +
+    "const reportPath = reportPathIndex >= 0 ? process.argv[reportPathIndex + 1] : null;\\n" +
+    "process.stdout.write(JSON.stringify({ schema: 'test/delivery-agent@v1', command, reportPath }, null, 2) + '\\\\n');\\n",
+  'utf8',
+);
+`,
+    'utf8',
+  );
 }
 
 async function invokeManagerStatus(relativeRuntimeDir) {
@@ -88,10 +124,19 @@ test('delivery-agent wrappers delegate to the compiled node CLI', async () => {
   assert.match(manager, /'ensure'|\"ensure\"/);
   assert.match(manager, /'status'|\"status\"/);
   assert.match(manager, /'stop'|\"stop\"/);
+  assert.match(manager, /DeliveryAgentWrapper\.Build\.psm1/);
+  assert.match(manager, /Initialize-DeliveryAgentDistScript/);
   assert.match(runner, /delivery-agent\.js/);
   assert.match(runner, /'run'|\"run\"/);
+  assert.match(runner, /DeliveryAgentWrapper\.Build\.psm1/);
+  assert.match(runner, /Initialize-DeliveryAgentDistScript/);
   assert.match(ensurePrereqs, /delivery-agent\.js/);
   assert.match(ensurePrereqs, /prereqs/);
+  assert.match(ensurePrereqs, /DeliveryAgentWrapper\.Build\.psm1/);
+  assert.match(ensurePrereqs, /Initialize-DeliveryAgentDistScript/);
+  assert.doesNotMatch(manager, /run-script\.mjs'\) build/);
+  assert.doesNotMatch(runner, /run-script\.mjs'\) build/);
+  assert.doesNotMatch(ensurePrereqs, /run-script\.mjs'\) build/);
   assert.doesNotMatch(manager, /Start-Process -FilePath 'pwsh'/);
   assert.doesNotMatch(runner, /Start-Process -FilePath 'pwsh'/);
   assert.match(cli, /ensureManagerCommand/);
@@ -176,6 +221,81 @@ test('delivery-agent manager status ignores stale heartbeat state from before th
   assert.equal(status.heartbeatDiagnostics.reason, 'stale-before-current-manager');
   assert.deepEqual(status.logTail.daemon, []);
   assert.match(traceText, /"eventType":"status"/);
+});
+
+test('Manage-UnattendedDeliveryAgent suppresses fallback build chatter before JSON status output', async (t) => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-wrapper-status-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  await copyRepoFile('tools/priority/Manage-UnattendedDeliveryAgent.ps1', tempRoot);
+  await copyRepoFile('tools/priority/DeliveryAgentWrapper.Build.psm1', tempRoot);
+  await writeFakeDeliveryAgentBuildScript(tempRoot);
+
+  const { stdout, stderr } = await execFile(
+    'pwsh',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-File',
+      path.join(tempRoot, 'tools', 'priority', 'Manage-UnattendedDeliveryAgent.ps1'),
+      '-Status',
+      '-RuntimeDir',
+      'tests/results/_agent/runtime'
+    ],
+    {
+      cwd: tempRoot,
+      windowsHide: true
+    }
+  );
+
+  assert.equal(stderr, '');
+  assert.doesNotMatch(stdout, /added 66 packages|compare-vi-cli-action@0\.6\.3 build/i);
+  assert.deepEqual(JSON.parse(stdout), {
+    schema: 'test/delivery-agent@v1',
+    command: 'status',
+    reportPath: null
+  });
+});
+
+test('Ensure-WSLDeliveryPrereqs suppresses fallback build chatter before JSON prereq output', async (t) => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-wrapper-prereqs-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  await copyRepoFile('tools/priority/Ensure-WSLDeliveryPrereqs.ps1', tempRoot);
+  await copyRepoFile('tools/priority/DeliveryAgentWrapper.Build.psm1', tempRoot);
+  await writeFakeDeliveryAgentBuildScript(tempRoot);
+
+  const { stdout, stderr } = await execFile(
+    'pwsh',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-File',
+      path.join(tempRoot, 'tools', 'priority', 'Ensure-WSLDeliveryPrereqs.ps1'),
+      '-Distro',
+      'Ubuntu',
+      '-NodeVersion',
+      'v24.13.1',
+      '-ReportPath',
+      'tests/results/_agent/runtime/wsl-delivery-prereqs.json'
+    ],
+    {
+      cwd: tempRoot,
+      windowsHide: true
+    }
+  );
+
+  assert.equal(stderr, '');
+  assert.doesNotMatch(stdout, /added 66 packages|compare-vi-cli-action@0\.6\.3 build/i);
+  assert.deepEqual(JSON.parse(stdout), {
+    schema: 'test/delivery-agent@v1',
+    command: 'prereqs',
+    reportPath: 'tests/results/_agent/runtime/wsl-delivery-prereqs.json'
+  });
 });
 
 test('delivery-agent manager status derives from a fresh heartbeat when no delivery state exists', async (t) => {
