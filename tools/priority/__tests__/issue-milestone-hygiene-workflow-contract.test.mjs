@@ -24,7 +24,12 @@ test('issue milestone hygiene workflow has deterministic trigger and artifact co
   assert.match(workflow, /cancel-in-progress:\s+true/);
 
   assert.match(workflow, /apply_default_milestone:/);
+  assert.match(workflow, /apply_default_milestone:\s*\n\s*description:\s+'How to handle default milestone assignment'/);
+  assert.match(workflow, /default:\s+inherit/);
+  assert.match(workflow, /type:\s+choice/);
+  assert.match(workflow, /-\s+disable/);
   assert.match(workflow, /create_default_milestone:/);
+  assert.match(workflow, /create_default_milestone:\s*\n\s*description:\s+'How to handle default milestone creation'/);
   assert.match(workflow, /default_milestone:/);
   assert.match(workflow, /default_milestone_due_on:/);
   assert.match(workflow, /warn_only:/);
@@ -34,7 +39,11 @@ test('issue milestone hygiene workflow has deterministic trigger and artifact co
   assert.match(workflow, /GH_TOKEN:\s+\$\{\{\s*secrets\.GH_TOKEN \|\| secrets\.GITHUB_TOKEN \|\| github\.token\s*\}\}/);
   assert.match(workflow, /priority:milestone:hygiene/);
   assert.match(workflow, /--create-default-milestone/);
+  assert.match(workflow, /--no-create-default-milestone/);
   assert.match(workflow, /--default-milestone-due-on/);
+  assert.match(workflow, /--no-apply-default-milestone/);
+  assert.match(workflow, /APPLY_VAR:\s+\$\{\{\s*vars\.MILESTONE_HYGIENE_APPLY_DEFAULT \|\| ''\s*\}\}/);
+  assert.match(workflow, /CREATE_VAR:\s+\$\{\{\s*vars\.MILESTONE_HYGIENE_CREATE_DEFAULT \|\| ''\s*\}\}/);
   assert.match(workflow, /tests\/results\/_agent\/issue\/milestone-hygiene-report\.json/);
   assert.match(workflow, /execution status/);
   assert.match(workflow, /uses:\s+actions\/upload-artifact@v7/);

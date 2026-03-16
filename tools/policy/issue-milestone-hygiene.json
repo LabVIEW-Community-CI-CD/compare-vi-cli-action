@@ -8,8 +8,9 @@
     "titlePriorityPattern": "\\[(P0|P1)\\]",
     "requireOpenMilestone": true
   },
-  "defaultMilestone": null,
-  "defaultMilestoneDueOn": null,
+  "defaultMilestone": "LabVIEW CI Platform v1 (2026Q2)",
+  "defaultMilestoneDueOn": "2026-06-30T00:00:00Z",
+  "applyDefaultMilestone": true,
   "warnOnly": false,
-  "createDefaultMilestone": false
+  "createDefaultMilestone": true
 }
