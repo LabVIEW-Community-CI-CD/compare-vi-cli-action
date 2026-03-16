@@ -21,12 +21,18 @@ if (!existsSync(distPath)) {
 }
 
 const imported = await import(pathToFileURL(distPath).href);
-export * from '../../dist/tools/priority/delivery-memory.js';
+export const DELIVERY_MEMORY_REPORT_SCHEMA = imported.DELIVERY_MEMORY_REPORT_SCHEMA;
+export const DEFAULT_RUNTIME_DIR = imported.DEFAULT_RUNTIME_DIR;
+export const DEFAULT_REPORT_FILENAME = imported.DEFAULT_REPORT_FILENAME;
+export const buildDeliveryMemoryReport = imported.buildDeliveryMemoryReport;
+export const refreshDeliveryMemory = imported.refreshDeliveryMemory;
+export const parseArgs = imported.parseArgs;
+export const main = imported.main;
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
-if (invokedPath && invokedPath === modulePath && typeof imported.main === 'function') {
+if (invokedPath && invokedPath === modulePath && typeof main === 'function') {
   try {
-    const exitCode = await imported.main(process.argv);
+    const exitCode = await main(process.argv);
     if (Number.isInteger(exitCode)) {
       process.exit(exitCode);
     }
