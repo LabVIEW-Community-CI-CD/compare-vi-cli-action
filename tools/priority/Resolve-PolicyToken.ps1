@@ -6,6 +6,7 @@ param(
   [string]$TertiaryToken = $env:INPUT_TOKEN_TERTIARY,
   [string]$TokenFileName = 'policy-gh-token.txt',
   [bool]$RequireAdmin = $true,
+  [string]$Actor = $env:GITHUB_ACTOR,
   [string]$StepSummaryPath = $env:GITHUB_STEP_SUMMARY
 )
 
@@ -108,6 +109,21 @@ function Invoke-RepositoryProbe {
   }
 }
 
+function Test-IsDependabotActor {
+  param(
+    [string]$Value
+  )
+
+  $normalized = if ($Value) { $Value.Trim().ToLowerInvariant() } else { '' }
+  if ([string]::IsNullOrWhiteSpace($normalized)) {
+    return $false
+  }
+
+  return $normalized -eq 'dependabot[bot]' -or
+    $normalized -eq 'app/dependabot' -or
+    $normalized.Contains('dependabot')
+}
+
 $candidateList = [System.Collections.Generic.List[object]]::new()
 $candidateByToken = @{}
 
@@ -158,6 +174,9 @@ if (-not $selected) {
     'No admin-capable token resolved. Rotate/update secrets.GH_TOKEN (preferred) or secrets.GITHUB_TOKEN with repository administration access.'
   } else {
     'No authenticated token resolved.'
+  }
+  if ($RequireAdmin -and (Test-IsDependabotActor -Value $Actor)) {
+    $guidance += " Dependabot-triggered runs use a separate secret scope; seed GH_TOKEN there with: gh secret set GH_TOKEN --repo $Repository --app dependabot"
   }
   throw "$guidance Candidates: $resultText"
 }
