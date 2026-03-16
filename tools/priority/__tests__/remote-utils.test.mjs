@@ -137,28 +137,60 @@ test('ensureForkRemote rejects a non-origin fork remote when it is missing', () 
   );
 });
 
-test('pushBranch treats an already-published remote branch as success when the push transport fails', () => {
+test('pushBranch treats a no-op successful push as already published', () => {
   const calls = [];
   const result = pushBranch('/tmp/repo', 'issue/963-org-owned-fork-pr-helper', 'origin', {
     runFn: (_command, args) => {
       calls.push(args);
-      if (args[0] === 'push') {
-        throw new Error('Permission denied (publickey)');
+      if (args[0] === 'rev-parse') {
+        return '5fe002b6';
       }
       if (args[0] === 'ls-remote') {
         return '5fe002b6\trefs/heads/issue/963-org-owned-fork-pr-helper';
       }
-      if (args[0] === 'rev-parse') {
-        return '5fe002b6';
+      if (args[0] === 'push') {
+        return '';
       }
       throw new Error(`Unexpected git args: ${args.join(' ')}`);
     }
   });
 
   assert.deepEqual(calls, [
-    ['push', '--set-upstream', 'origin', 'issue/963-org-owned-fork-pr-helper'],
+    ['rev-parse', 'issue/963-org-owned-fork-pr-helper'],
     ['ls-remote', '--heads', 'origin', 'issue/963-org-owned-fork-pr-helper'],
-    ['rev-parse', 'issue/963-org-owned-fork-pr-helper']
+    ['push', '--set-upstream', 'origin', 'issue/963-org-owned-fork-pr-helper']
+  ]);
+  assert.deepEqual(result, {
+    status: 'already-published',
+    remote: 'origin',
+    branch: 'issue/963-org-owned-fork-pr-helper',
+    recoveredFromPushFailure: false
+  });
+});
+
+test('pushBranch treats an already-published remote branch as success when the push transport fails', () => {
+  const calls = [];
+  const result = pushBranch('/tmp/repo', 'issue/963-org-owned-fork-pr-helper', 'origin', {
+    runFn: (_command, args) => {
+      calls.push(args);
+      if (args[0] === 'rev-parse') {
+        return '5fe002b6';
+      }
+      if (args[0] === 'ls-remote') {
+        return '5fe002b6\trefs/heads/issue/963-org-owned-fork-pr-helper';
+      }
+      if (args[0] === 'push') {
+        throw new Error('Permission denied (publickey)');
+      }
+      throw new Error(`Unexpected git args: ${args.join(' ')}`);
+    }
+  });
+
+  assert.deepEqual(calls, [
+    ['rev-parse', 'issue/963-org-owned-fork-pr-helper'],
+    ['ls-remote', '--heads', 'origin', 'issue/963-org-owned-fork-pr-helper'],
+    ['push', '--set-upstream', 'origin', 'issue/963-org-owned-fork-pr-helper'],
+    ['ls-remote', '--heads', 'origin', 'issue/963-org-owned-fork-pr-helper']
   ]);
   assert.deepEqual(result, {
     status: 'already-published',
@@ -173,11 +205,14 @@ test('pushBranch still fails when the remote branch is not published', () => {
     () =>
       pushBranch('/tmp/repo', 'issue/963-org-owned-fork-pr-helper', 'origin', {
         runFn: (_command, args) => {
-          if (args[0] === 'push') {
-            throw new Error('Permission denied (publickey)');
+          if (args[0] === 'rev-parse') {
+            return '5fe002b6';
           }
           if (args[0] === 'ls-remote') {
             return '';
+          }
+          if (args[0] === 'push') {
+            throw new Error('Permission denied (publickey)');
           }
           throw new Error(`Unexpected git args: ${args.join(' ')}`);
         }
@@ -191,13 +226,16 @@ test('pushBranch preserves the original push failure context when recovery is no
     () =>
       pushBranch('/tmp/repo', 'issue/963-org-owned-fork-pr-helper', 'origin', {
         runFn: (_command, args) => {
+          if (args[0] === 'rev-parse') {
+            return '5fe002b6';
+          }
+          if (args[0] === 'ls-remote') {
+            return '';
+          }
           if (args[0] === 'push') {
             const error = new Error('Permission denied (publickey)');
             error.stderr = 'fatal: Permission denied (publickey)';
             throw error;
-          }
-          if (args[0] === 'ls-remote') {
-            return '';
           }
           throw new Error(`Unexpected git args: ${args.join(' ')}`);
         }
@@ -211,14 +249,14 @@ test('pushBranch still fails when the remote branch exists but does not match th
     () =>
       pushBranch('/tmp/repo', 'issue/963-org-owned-fork-pr-helper', 'origin', {
         runFn: (_command, args) => {
-          if (args[0] === 'push') {
-            throw new Error('Permission denied (publickey)');
+          if (args[0] === 'rev-parse') {
+            return '8ad91377';
           }
           if (args[0] === 'ls-remote') {
             return '5fe002b6\trefs/heads/issue/963-org-owned-fork-pr-helper';
           }
-          if (args[0] === 'rev-parse') {
-            return '8ad91377';
+          if (args[0] === 'push') {
+            throw new Error('Permission denied (publickey)');
           }
           throw new Error(`Unexpected git args: ${args.join(' ')}`);
         }

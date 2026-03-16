@@ -363,10 +363,20 @@ export function pushBranch(
   } = {}
 ) {
   const selectedRemote = normalizeForkRemoteName(remote);
+  const localHead = getLocalBranchHeadFn(repoRoot, branch, { runFn });
+  const remoteHeadBeforePush = getRemoteBranchHeadFn(repoRoot, selectedRemote, branch, { runFn });
   try {
     runFn('git', ['push', '--set-upstream', selectedRemote, branch], {
       cwd: repoRoot
     });
+    if (localHead && remoteHeadBeforePush && remoteHeadBeforePush === localHead) {
+      return {
+        status: 'already-published',
+        remote: selectedRemote,
+        branch,
+        recoveredFromPushFailure: false
+      };
+    }
     return {
       status: 'pushed',
       remote: selectedRemote,
@@ -374,7 +384,6 @@ export function pushBranch(
     };
   } catch (error) {
     const remoteHead = getRemoteBranchHeadFn(repoRoot, selectedRemote, branch, { runFn });
-    const localHead = getLocalBranchHeadFn(repoRoot, branch, { runFn });
     if (remoteHead && localHead && remoteHead === localHead) {
       return {
         status: 'already-published',
