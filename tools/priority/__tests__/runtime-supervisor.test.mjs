@@ -2686,7 +2686,11 @@ test('delivery broker finalizes merged standing issues by handing off priority a
         {
           number: 958,
           title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
-          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          body: [
+            'This issue remains open only as local blocked tracking under epic #930.',
+            'Blocked by LabVIEW-Community-CI-CD/comparevi-history#23.',
+            'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.'
+          ].join('\n'),
           state: 'OPEN',
           labels: [],
           createdAt: '2026-03-09T00:00:00Z',
@@ -2711,7 +2715,11 @@ test('delivery broker finalizes merged standing issues by handing off priority a
         return {
           number: 958,
           title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
-          body: 'Track comparevi-history#23 as the blocker for the final public explicit-mode reviewer surface.',
+          body: [
+            'This issue remains open only as local blocked tracking under epic #930.',
+            'Blocked by LabVIEW-Community-CI-CD/comparevi-history#23.',
+            'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.'
+          ].join('\n'),
           updated_at: '2026-03-09T00:00:00Z',
           html_url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/958',
           url: 'https://api.github.com/repos/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/958',
@@ -2746,7 +2754,7 @@ test('delivery broker finalizes merged standing issues by handing off priority a
   );
   assert.equal(handoffCalls.length, 1);
   assert.equal(handoffCalls[0].issueNumber, 959);
-  assert.ok(ghFetchCalls.some((args) => args[0] === 'api'));
+  assert.equal(ghFetchCalls.length, 0);
   assert.equal(closeCalls.length, 1);
   assert.equal(closeCalls[0].issueNumber, 1010);
   assert.match(closeCalls[0].comment, /standing priority has advanced from #1010 to #959/i);
