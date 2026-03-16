@@ -282,6 +282,24 @@
         "staleReviewCount": {
           "type": "integer"
         },
+        "reviewRunState": {
+          "type": "string"
+        },
+        "reviewRunId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "reviewRunCompletedClean": {
+          "type": "boolean"
+        },
+        "reviewRunInProgress": {
+          "type": "boolean"
+        },
+        "reviewRunCompletedFailure": {
+          "type": "boolean"
+        },
         "errorCount": {
           "type": "integer"
         },

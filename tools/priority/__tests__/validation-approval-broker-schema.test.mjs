@@ -157,4 +157,31 @@ test('validation approval decision schema validates a generated ready artifact',
   assert.equal(validate(payload), true, JSON.stringify(validate.errors, null, 2));
   assert.equal(payload.schema, 'validation-approval-decision@v1');
   assert.equal(payload.decision.state, 'ready');
+  assert.deepEqual(payload.providers.reviewSignal, {
+    path: signalPath,
+    available: true,
+    status: 'pass',
+    reviewState: 'clean',
+    headSha,
+    pullRequestNumber: prNumber,
+    hasCurrentHeadReview: true,
+    actionableCommentCount: 0,
+    unresolvedThreadCount: 0,
+    staleReviewCount: 0,
+    reviewRunState: 'unobserved',
+    reviewRunId: null,
+    reviewRunCompletedClean: false,
+    reviewRunInProgress: false,
+    reviewRunCompletedFailure: false,
+    errorCount: 0,
+  });
+
+  const legacyPayload = structuredClone(payload);
+  delete legacyPayload.providers.reviewSignal.reviewRunState;
+  delete legacyPayload.providers.reviewSignal.reviewRunId;
+  delete legacyPayload.providers.reviewSignal.reviewRunCompletedClean;
+  delete legacyPayload.providers.reviewSignal.reviewRunInProgress;
+  delete legacyPayload.providers.reviewSignal.reviewRunCompletedFailure;
+
+  assert.equal(validate(legacyPayload), true, JSON.stringify(validate.errors, null, 2));
 });
