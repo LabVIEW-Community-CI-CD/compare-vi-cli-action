@@ -308,7 +308,10 @@ to confirm each workflow includes both triggers.
   gh api "repos/$repo" -H "Authorization: Bearer $token" --jq '.permissions.admin'
   $token | gh secret set GH_TOKEN --repo $repo
   $token | gh secret set GITHUB_TOKEN --repo $repo
+  $token | gh secret set GH_TOKEN --repo $repo --app dependabot
   ```
+  Dependabot-triggered workflow runs do not inherit the Actions secret scope automatically; keep the Dependabot
+  `GH_TOKEN` secret aligned with the upstream Actions secret when policy guard must run on Dependabot PRs.
 - **Release artifacts stale** – For release branches, rerun `priority:release` helpers or the finalize workflow to
   regenerate `tests/results/_agent/release/*` snapshots before broadcasting status updates.
 
