@@ -36,7 +36,7 @@ jobs:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         fetch-depth: 0
-    - uses: actions/setup-node@v5
+    - uses: actions/setup-node@v6
       with:
         node-version: '20'
 
@@ -100,4 +100,3 @@ jobs:
           tests/results/_agent/commit-integrity/commit-integrity-report.json
           tests/results/_agent/commit-integrity/commit-integrity-bypass-ledger.json
         if-no-files-found: error
-

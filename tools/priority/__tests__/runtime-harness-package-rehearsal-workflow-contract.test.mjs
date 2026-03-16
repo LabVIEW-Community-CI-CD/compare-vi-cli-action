@@ -19,7 +19,7 @@ test('runtime-harness package rehearsal stays hosted-only and uses checked-in he
   assert.equal(job?.['runs-on'], 'ubuntu-latest');
   assert.ok(workflow?.on?.workflow_dispatch, 'workflow should be dispatchable');
   assert.ok(steps.some((step) => step?.uses === 'actions/checkout@v5'));
-  assert.ok(steps.some((step) => step?.uses === 'actions/setup-node@v5'));
+  assert.ok(steps.some((step) => step?.uses === 'actions/setup-node@v6'));
 
   const resolveStep = steps.find((step) => step?.name === 'Resolve runtime-harness publish context');
   const stageStep = steps.find((step) => step?.name === 'Stage runtime-harness package candidate');

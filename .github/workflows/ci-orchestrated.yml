@@ -219,7 +219,7 @@ jobs:
         name: comparevi-cli-${{ runner.os }}
         path: dist/comparevi-cli/**/*
     - name: Setup Node with cache
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v6
       with:
         node-version: "20"
         cache: "npm"
@@ -819,7 +819,7 @@ jobs:
 
     - name: Setup Node.js (derive env)
       if: always()
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v6
       with:
         node-version: '20'
 
@@ -1293,5 +1293,3 @@ jobs:
       if: ${{ always() }}
       shell: pwsh
       run: pwsh -File tools/Write-RerunHint.ps1 -Workflow 'ci-orchestrated.yml' -IncludeIntegration '${{ inputs.include_integration || 'true' }}' -SampleId '${{ inputs.sample_id || '' }}'
-
-

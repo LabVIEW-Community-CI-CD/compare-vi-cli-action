@@ -18,7 +18,7 @@ jobs:
       with:
         repository: ${{ github.repository }}
         ref: ${{ github.event.pull_request.base.sha || github.sha }}
-    - uses: actions/setup-node@v5
+    - uses: actions/setup-node@v6
       with:
         node-version: '20'
         cache: 'npm'

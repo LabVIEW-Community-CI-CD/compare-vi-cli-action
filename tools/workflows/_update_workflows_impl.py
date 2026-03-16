@@ -826,7 +826,7 @@ def ensure_lint_resiliency(doc, job_name: str, include_node: bool = True, markdo
     if include_node:
         node_step = {
             'name': 'Setup Node with cache',
-            'uses': 'actions/setup-node@v5',
+            'uses': 'actions/setup-node@v6',
             'with': {
                 'node-version': DQS('20'),
                 'cache': DQS('npm'),
@@ -1443,4 +1443,3 @@ def main(argv: List[str]) -> int:
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv[1:]))
-
