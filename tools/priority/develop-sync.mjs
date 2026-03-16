@@ -266,6 +266,7 @@ function buildActionFromParityReport({
         ? parityReport.syncResult.parityConverged
         : parityReport?.tipDiff?.fileCount === 0,
     protectedSync: parityReport?.syncResult?.protectedSync ?? null,
+    parityRemediation: parityReport?.syncResult?.parityRemediation ?? null,
     recommendation: parityReport?.recommendation ?? null,
     commitDivergence: parityReport?.commitDivergence ?? null,
     exitCode,
