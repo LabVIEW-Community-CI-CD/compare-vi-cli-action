@@ -344,6 +344,11 @@ test('runMetadataApply plans deterministic issue metadata changes in dry-run mod
   assert.equal(result.report.observed.projectedAfter.milestone.title, 'LabVIEW CI Platform v1 (2026Q2)');
   assert.equal(result.report.observed.projectedAfter.parentIssue.url, parent.url);
   assert.equal(result.report.observed.projectedAfter.subIssues[0].url, child.url);
+  const verificationBySurface = new Map(result.report.verification.fields.map((entry) => [entry.surface, entry]));
+  assert.equal(verificationBySurface.get('issueType')?.expected?.name, 'Feature');
+  assert.equal(verificationBySurface.get('milestone')?.expected?.title, 'LabVIEW CI Platform v1 (2026Q2)');
+  assert.equal(verificationBySurface.get('parentIssue')?.expected?.url, parent.url);
+  assert.equal(verificationBySurface.get('subIssues')?.expected?.[0]?.url, child.url);
   assert.equal(result.report.operations.filter((entry) => entry.status === 'planned').length, 4);
   assert.equal(calls.some((args) => args[1] === 'repos/example/repo/pulls/949/requested_reviewers'), false);
 });
