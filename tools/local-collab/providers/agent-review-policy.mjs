@@ -355,9 +355,11 @@ export async function runAgentReviewPolicy({
         provider.providerId,
         {
           status: provider.status,
+          disposition: provider.disposition,
           reason: provider.reason,
           receiptPath: provider.receiptPath,
           actionableFindingCount: provider.actionableFindingCount,
+          failureClass: provider.failureClass,
           convergence: provider.convergence,
           scenario: provider.scenario,
           executionPlane: provider.executionPlane,
