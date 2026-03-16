@@ -212,22 +212,58 @@ function Invoke-WorkspaceHealthGate {
 }
 
 function Invoke-SemVerCheck {
+  param(
+    [string]$RepoRoot = (Resolve-Path '.').Path,
+    [string]$WorkingDirectory = (Resolve-Path '.').Path
+  )
+
   $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
   if (-not $nodeCmd) {
     Write-Warning 'node not found; skipping semver check.'
     return $null
   }
 
-  $scriptPath = Join-Path (Resolve-Path '.').Path 'tools/priority/validate-semver.mjs'
-  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
-    Write-Warning "SemVer script not found at $scriptPath"
+  $resolvedRepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+  $resolvedWorkingDirectory = (Resolve-Path -LiteralPath $WorkingDirectory).Path
+  $scriptPath = Join-Path $resolvedRepoRoot 'tools/priority/validate-semver.mjs'
+  $fallbackScriptPath = Join-Path $resolvedWorkingDirectory 'tools/priority/validate-semver.mjs'
+  $selectedScriptPath = $null
+  if (Test-Path -LiteralPath $scriptPath -PathType Leaf) {
+    $selectedScriptPath = $scriptPath
+  } elseif (Test-Path -LiteralPath $fallbackScriptPath -PathType Leaf) {
+    $selectedScriptPath = $fallbackScriptPath
+    Write-Host '[bootstrap] SemVer helper checkout script is unavailable; using caller checkout script.'
+  } else {
+    Write-Warning "SemVer script not found at $scriptPath or $fallbackScriptPath"
     return $null
+  }
+
+  $selectedScriptSupportsRepoRoot = Test-SemVerRepoRootOverrideSupport `
+    -ScriptPath $selectedScriptPath `
+    -WorkingDirectory $resolvedWorkingDirectory `
+    -NodeCommand $nodeCmd.Source
+  if (
+    $selectedScriptPath -eq $scriptPath `
+    -and -not $selectedScriptSupportsRepoRoot `
+    -and $fallbackScriptPath -ne $scriptPath `
+    -and (Test-Path -LiteralPath $fallbackScriptPath -PathType Leaf)
+  ) {
+    $selectedScriptPath = $fallbackScriptPath
+    $selectedScriptSupportsRepoRoot = Test-SemVerRepoRootOverrideSupport `
+      -ScriptPath $selectedScriptPath `
+      -WorkingDirectory $resolvedWorkingDirectory `
+      -NodeCommand $nodeCmd.Source
+    Write-Host '[bootstrap] SemVer helper checkout lacks explicit repo-root support; using caller checkout script until develop helper catches up.'
   }
 
   $psi = New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName = $nodeCmd.Source
-  $psi.ArgumentList.Add($scriptPath)
-  $psi.WorkingDirectory = (Resolve-Path '.').Path
+  $psi.ArgumentList.Add($selectedScriptPath)
+  if ($selectedScriptSupportsRepoRoot) {
+    $psi.ArgumentList.Add('--repo-root')
+    $psi.ArgumentList.Add($resolvedWorkingDirectory)
+  }
+  $psi.WorkingDirectory = $resolvedWorkingDirectory
   $psi.UseShellExecute = $false
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
@@ -254,21 +290,83 @@ function Invoke-SemVerCheck {
   }
 }
 
+function Test-SemVerRepoRootOverrideSupport {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ScriptPath,
+    [string]$WorkingDirectory = (Resolve-Path '.').Path,
+    [string]$NodeCommand = (Get-Command node -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue)
+  )
+
+  if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf) -or -not $NodeCommand) {
+    return $false
+  }
+
+  try {
+    $resolvedScriptPath = (Resolve-Path -LiteralPath $ScriptPath).Path
+    $resolvedWorkingDirectory = (Resolve-Path -LiteralPath $WorkingDirectory).Path
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $NodeCommand
+    foreach ($arg in @($resolvedScriptPath, '--version', '0.0.0', '--repo-root', $resolvedWorkingDirectory)) {
+      $psi.ArgumentList.Add([string]$arg)
+    }
+    $psi.WorkingDirectory = $resolvedWorkingDirectory
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $stdout = $proc.StandardOutput.ReadToEnd()
+    $null = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    if (-not $stdout) {
+      return $false
+    }
+
+    $probe = $stdout | ConvertFrom-Json -ErrorAction Stop
+    return (
+      $null -ne $probe.repoRoot `
+      -and ((Resolve-Path -LiteralPath $probe.repoRoot).Path -eq $resolvedWorkingDirectory)
+    )
+  } catch {
+    return $false
+  }
+}
+
 function Invoke-SafeGitReliabilitySummary {
+  param(
+    [string]$RepoRoot = (Resolve-Path '.').Path,
+    [string]$WorkingDirectory = (Resolve-Path '.').Path
+  )
+
   $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
   if (-not $nodeCmd) {
     Write-Warning 'node not found; skipping safe-git reliability summary.'
     return
   }
 
-  $scriptPath = Join-Path (Resolve-Path '.').Path 'tools/priority/summarize-safe-git-telemetry.mjs'
+  $resolvedRepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+  $resolvedWorkingDirectory = (Resolve-Path -LiteralPath $WorkingDirectory).Path
+  $scriptPath = Join-Path $resolvedRepoRoot 'tools/priority/summarize-safe-git-telemetry.mjs'
+  $fallbackScriptPath = Join-Path $resolvedWorkingDirectory 'tools/priority/summarize-safe-git-telemetry.mjs'
+  if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+    if (Test-Path -LiteralPath $fallbackScriptPath -PathType Leaf) {
+      $scriptPath = $fallbackScriptPath
+      Write-Host '[bootstrap] Safe-git helper checkout script is unavailable; using caller checkout script.'
+    } else {
+      Write-Warning "safe-git reliability summary script not found at $scriptPath or $fallbackScriptPath"
+      return
+    }
+  }
+
   if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
     Write-Warning "safe-git reliability summary script not found at $scriptPath"
     return
   }
 
-  $inputPath = Join-Path (Resolve-Path '.').Path 'tests/results/_agent/reliability/safe-git-events.jsonl'
-  $outputPath = Join-Path (Resolve-Path '.').Path 'tests/results/_agent/reliability/safe-git-trend-summary.json'
+  $inputPath = Join-Path $resolvedWorkingDirectory 'tests/results/_agent/reliability/safe-git-events.jsonl'
+  $outputPath = Join-Path $resolvedWorkingDirectory 'tests/results/_agent/reliability/safe-git-trend-summary.json'
   $arguments = @(
     $scriptPath,
     '--input', $inputPath,
@@ -281,7 +379,7 @@ function Invoke-SafeGitReliabilitySummary {
   $psi = New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName = $nodeCmd.Source
   foreach ($arg in $arguments) { $psi.ArgumentList.Add([string]$arg) }
-  $psi.WorkingDirectory = (Resolve-Path '.').Path
+  $psi.WorkingDirectory = $resolvedWorkingDirectory
   $psi.UseShellExecute = $false
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
@@ -645,6 +743,8 @@ if (-not $PreflightOnly) {
   $priorityHelperRepoRoot = Resolve-PriorityHelperRepoRoot
   $priorityWorkingDirectory = (Resolve-Path '.').Path
 
+  # Helper-root mode keeps artifacts in the caller checkout while treating the delegated develop checkout as the
+  # authoritative control-plane code surface.
   Write-Host '[bootstrap] Acquiring agent writer lease…'
   $leaseResult = Invoke-AgentWriterLeaseAcquire
 
@@ -680,7 +780,7 @@ if (-not $PreflightOnly) {
   }
 
   Write-Host '[bootstrap] Validating SemVer version…'
-  $semverOutcome = Invoke-SemVerCheck
+  $semverOutcome = Invoke-SemVerCheck -RepoRoot $priorityHelperRepoRoot -WorkingDirectory $priorityWorkingDirectory
   if ($semverOutcome -and $semverOutcome.Result) {
     Write-Host ('[bootstrap] Version: {0} (valid: {1})' -f $semverOutcome.Result.version, $semverOutcome.Result.valid)
     $summary = Write-ReleaseSummary -SemVerResult $semverOutcome
@@ -701,7 +801,7 @@ if (-not $PreflightOnly) {
   }
 
   Write-Host '[bootstrap] Summarizing safe-git reliability telemetry…'
-  Invoke-SafeGitReliabilitySummary
+  Invoke-SafeGitReliabilitySummary -RepoRoot $priorityHelperRepoRoot -WorkingDirectory $priorityWorkingDirectory
 }
 
 Write-Host '[bootstrap] Bootstrapping complete.'
