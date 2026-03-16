@@ -504,7 +504,7 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/959",
-      "status": "In Progress",
+      "status": "Done",
       "program": "Shared Infra",
       "phase": "Signals",
       "environmentClass": "Cross-Repo",
@@ -584,12 +584,12 @@
     },
     {
       "url": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action-fork/issues/1",
-      "status": "Todo",
+      "status": "Done",
       "program": "Shared Infra",
-      "phase": "Helper Workflow",
-      "environmentClass": "Infra",
-      "blockingSignal": "Scope",
-      "evidenceState": "Ready",
+      "phase": "Sustain",
+      "environmentClass": "Diagnostics",
+      "blockingSignal": "None",
+      "evidenceState": "Proven",
       "portfolioTrack": "Agent UX"
     },
     {

@@ -127,8 +127,23 @@ test('project portfolio config marks the completed rollout items as done', () =>
   assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/930'), 'Done');
   assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/946'), 'Done');
   assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/947'), 'Done');
+  assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/959'), 'Done');
   assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/24'), 'Done');
   assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/26'), 'Done');
   assert.equal(statusByUrl.get('https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/issues/4'), 'Done');
   assert.equal(statusByUrl.get('https://github.com/svelderrainruiz/labview-icon-editor-demo/issues/5'), 'Done');
+});
+
+test('project portfolio config reflects the current board truth for the fork artifact epic', () => {
+  const item = config.items.find(
+    (candidate) =>
+      candidate.url === 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action-fork/issues/1',
+  );
+
+  assert.ok(item);
+  assert.equal(item.status, 'Done');
+  assert.equal(item.phase, 'Sustain');
+  assert.equal(item.environmentClass, 'Diagnostics');
+  assert.equal(item.blockingSignal, 'None');
+  assert.equal(item.evidenceState, 'Proven');
 });
