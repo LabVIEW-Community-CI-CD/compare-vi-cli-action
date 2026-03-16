@@ -16,6 +16,6 @@ test('Validate uploads the contract, disposition, and cutover readiness artifact
 
   assert.match(
     workflow,
-    /name: Upload v2 contract report\s+if: always\(\)\s+uses: actions\/upload-artifact@v6\s+with:\s+name: validate-session-index-v2-contract\s+path: \|\s+\$\{\{ runner\.temp \}\}\/sessionindex-v2-contract\/session-index-v2-contract\.json\s+\$\{\{ runner\.temp \}\}\/sessionindex-v2-contract\/session-index-v2-disposition\.json\s+\$\{\{ runner\.temp \}\}\/sessionindex-v2-contract\/session-index-v2-cutover-readiness\.json/ms
+    /name: Upload v2 contract report\s+if: always\(\)\s+uses: actions\/upload-artifact@v7\s+with:\s+name: validate-session-index-v2-contract\s+path: \|\s+\$\{\{ runner\.temp \}\}\/sessionindex-v2-contract\/session-index-v2-contract\.json\s+\$\{\{ runner\.temp \}\}\/sessionindex-v2-contract\/session-index-v2-disposition\.json\s+\$\{\{ runner\.temp \}\}\/sessionindex-v2-contract\/session-index-v2-cutover-readiness\.json/ms
   );
 });
