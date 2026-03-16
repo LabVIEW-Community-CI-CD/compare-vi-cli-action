@@ -31,10 +31,11 @@ test('pester reusable honors continue_on_error at the job boundary', () => {
   const workflow = readRepoFile('.github/workflows/pester-reusable.yml');
 
   assert.match(workflow, /continue_on_error:/);
-  assert.doesNotMatch(workflow, /pester:\s*\n(?:[^\n]*\n){0,6}\s{4}continue-on-error:/);
   assert.match(workflow, /concurrency:\s*\n\s*group:\s+\$\{\{\s*github\.workflow\s*\}\}-pester-reusable-\$\{\{\s*github\.repository\s*\}\}-\$\{\{\s*inputs\.sample_id \|\| github\.ref\s*\}\}/);
+  assert.match(workflow, /-\s+name:\s+Run Pester tests via local dispatcher\s*\n\s+id:\s+dispatcher\s*\n\s+continue-on-error:\s+true/);
   assert.match(workflow, /"exit_code=\$exitCode"/);
   assert.match(workflow, /\$global:LASTEXITCODE = 0/);
   assert.match(workflow, /Propagate dispatcher failure/);
+  assert.match(workflow, /steps\.dispatcher\.outcome == 'failure'/);
   assert.match(workflow, /inputs\.continue_on_error != 'true'/);
 });
