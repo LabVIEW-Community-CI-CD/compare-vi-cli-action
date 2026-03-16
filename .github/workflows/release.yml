@@ -50,7 +50,7 @@ jobs:
 
       - name: Upload certification matrix artifact
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: certification-matrix-${{ github.run_id }}
           path: tests/results/_agent/certification/release-certification-matrix.json
@@ -182,7 +182,7 @@ jobs:
 
       - name: Upload shared-source resolution artifact
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-shared-source-resolution-${{ github.run_id }}
           path: tests/results/_agent/release/shared-source-resolution.json
@@ -197,7 +197,7 @@ jobs:
         run: pwsh -NoLogo -NoProfile -File tools/Generate-ReleaseProvenance.ps1 -ArtifactsRoot artifacts/cli -OutputPath provenance.json
 
       - name: Upload workflow artifact (CLI)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: cli-artifacts
           path: |
@@ -247,7 +247,7 @@ jobs:
 
       - name: Upload supply-chain trust artifact
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-supply-chain-trust-${{ github.run_id }}
           path: tests/results/_agent/supply-chain/release-trust-gate.json
@@ -274,7 +274,7 @@ jobs:
 
       - name: Upload rollback drill health artifact
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-rollback-drill-health-${{ github.run_id }}
           path: tests/results/_agent/release/rollback-drill-health.json
@@ -746,7 +746,7 @@ jobs:
 
       - name: Upload release contract artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-contract-${{ github.run_id }}
           path: |

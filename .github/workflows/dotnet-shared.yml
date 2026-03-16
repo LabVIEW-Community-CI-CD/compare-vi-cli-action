@@ -125,7 +125,7 @@ jobs:
         run_cli procs >/dev/null
 
     - name: Upload shared package artifacts
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: comparevi-shared-nuget-${{ matrix.shared_source }}
         path: |

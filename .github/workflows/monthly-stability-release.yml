@@ -92,7 +92,7 @@ jobs:
 
       - name: Upload rollback drill health artifact
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: monthly-rollback-drill-health-${{ github.run_id }}
           path: tests/results/_agent/release/monthly-rollback-drill-health.json
@@ -311,7 +311,7 @@ jobs:
             -SchemaPath docs/schemas/release-scorecard-v1.schema.json
 
       - name: Upload promotion evidence artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: promotion-evidence-monthly-${{ github.run_id }}
           path: |

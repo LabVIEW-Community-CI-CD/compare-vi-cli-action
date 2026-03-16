@@ -178,7 +178,7 @@ jobs:
 
       - name: Upload rehearsal artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-harness-package-rehearsal-${{ github.run_id }}
           path: |
