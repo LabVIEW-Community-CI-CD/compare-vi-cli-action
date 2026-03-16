@@ -436,6 +436,7 @@ jobs:
           if ($exitCode -ne 0) {
             Write-Host "::error::Pester dispatcher exited with code $exitCode"
           }
+          $global:LASTEXITCODE = 0
 
       - name: Summarize dispatcher log (failure)
         if: ${{ steps.dispatcher.outputs.exit_code != '0' }}
@@ -761,4 +762,3 @@ jobs:
         if: always()
         shell: pwsh
         run: pwsh -File tools/Print-AgentHandoff.ps1 -AutoTrim
-
