@@ -2,7 +2,22 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildDeliveryMemoryReport } from '../delivery-memory.mjs';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+
+test('delivery-memory shim exports named bindings after fallback build instead of static dist re-exports', async () => {
+  const content = await readFile(path.join(repoRoot, 'tools/priority/delivery-memory.mjs'), 'utf8');
+
+  assert.doesNotMatch(content, /export \* from '\.\.\/\.\.\/dist\/tools\/priority\/delivery-memory\.js';/);
+  assert.match(content, /export const buildDeliveryMemoryReport = imported\.buildDeliveryMemoryReport;/);
+  assert.match(content, /export const refreshDeliveryMemory = imported\.refreshDeliveryMemory;/);
+  assert.match(content, /export const parseArgs = imported\.parseArgs;/);
+  assert.match(content, /export const main = imported\.main;/);
+});
 
 test('delivery memory summarizes merged and poisoned-branch PR outcomes with effort and VI History classification', () => {
   const taskPackets = [
