@@ -7,14 +7,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'DeliveryAgentWrapper.Build.psm1') -Force
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $distScript = Join-Path $repoRoot 'dist\tools\priority\delivery-agent.js'
-if (-not (Test-Path -LiteralPath $distScript -PathType Leaf)) {
-  & node (Join-Path $repoRoot 'tools\npm\run-script.mjs') build
-  if ($LASTEXITCODE -ne 0) {
-    throw 'TypeScript build failed for delivery-agent prereq wrapper.'
-  }
-}
+Initialize-DeliveryAgentDistScript -RepoRoot $repoRoot -DistScript $distScript -WrapperLabel 'delivery-agent prereq wrapper'
 
 & node $distScript prereqs --wsl-distro $Distro --node-version $NodeVersion --report-path $ReportPath
 exit $LASTEXITCODE
