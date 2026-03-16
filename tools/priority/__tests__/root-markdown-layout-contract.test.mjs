@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const repoRoot = path.resolve(process.cwd());
 
-test('repo root markdown surface stays minimal', () => {
+test('repo root markdown surface stays minimal while keeping the canonical autonomy prompt at root', () => {
   const rootMarkdown = readdirSync(repoRoot)
     .filter((entry) => entry.endsWith('.md'))
     .sort();
@@ -14,6 +14,7 @@ test('repo root markdown surface stays minimal', () => {
     'AGENTS.md',
     'CHANGELOG.md',
     'CONTRIBUTING.md',
+    'PROMPT_AUTONOMY.md',
     'README.md',
     'SECURITY.md',
   ]);
