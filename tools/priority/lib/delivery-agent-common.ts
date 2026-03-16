@@ -320,6 +320,91 @@ export function resolveGitDirPath(repoRoot) {
   return path.resolve(gitDirPath);
 }
 
+export function resolveControlRootBranch(repoRoot) {
+  const result = runCommand('git', ['-C', repoRoot, 'symbolic-ref', '--quiet', '--short', 'refs/remotes/upstream/HEAD']);
+  if (result.status === 0) {
+    const shortRef = normalizeText(result.stdout);
+    const branchName = normalizeText(shortRef.split('/').pop());
+    if (branchName) {
+      return branchName;
+    }
+  }
+  const branchClassPolicy = readJsonFile(path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'));
+  const upstreamPlane = Array.isArray(branchClassPolicy?.repositoryPlanes)
+    ? branchClassPolicy.repositoryPlanes.find((plane) => normalizeText(plane?.id) === 'upstream')
+    : null;
+  const fallbackBranchName = normalizeText(upstreamPlane?.developBranch);
+  if (fallbackBranchName) {
+    return fallbackBranchName;
+  }
+  return null;
+}
+
+export function resolveWorkspaceQuarantine(repoRoot) {
+  const result = runCommand('git', ['-C', repoRoot, 'status', '--porcelain=v1', '--branch', '--untracked-files=normal']);
+  if (result.status !== 0) {
+    return {
+      status: 'blocked',
+      reason: 'git-status-failed',
+      repoRoot,
+      branchName: null,
+      isControlRoot: null,
+      trackedEntryCount: 0,
+      untrackedEntryCount: 0,
+      trackedEntries: [],
+      untrackedEntries: [],
+      errorMessage: normalizeText(result.stderr || result.stdout) || `git status exited with ${result.status}`,
+    };
+  }
+
+  const trackedEntries = [];
+  const untrackedEntries = [];
+  const lines = result.stdout.split(/\r?\n/).map((line) => line.trimEnd()).filter(Boolean);
+  let branchName = null;
+  for (const line of lines) {
+    if (line.startsWith('## ')) {
+      const parsedBranchName = normalizeText(line.slice(3).split('...')[0]);
+      branchName = parsedBranchName.startsWith('HEAD ') ? null : parsedBranchName;
+      continue;
+    }
+    const entry = {
+      raw: line,
+      code: line.slice(0, 2),
+      path: normalizeText(line.slice(3)),
+    };
+    if (line.startsWith('?? ')) {
+      untrackedEntries.push(entry);
+      continue;
+    }
+    trackedEntries.push(entry);
+  }
+  const controlRootBranch = resolveControlRootBranch(repoRoot);
+  const identityKnown = Boolean(branchName) && Boolean(controlRootBranch);
+  const isControlRoot = identityKnown ? branchName === controlRootBranch : null;
+  const hasTrackedControlRootDirt = isControlRoot === true && trackedEntries.length > 0;
+  const hasTrackedUnknownIdentityDirt = trackedEntries.length > 0 && isControlRoot == null;
+
+  return {
+    status: hasTrackedControlRootDirt || hasTrackedUnknownIdentityDirt ? 'blocked' : 'clear',
+    reason: hasTrackedControlRootDirt
+      ? 'tracked-dirt'
+      : isControlRoot === false
+        ? 'non-control-root'
+        : isControlRoot === true
+          ? 'clean'
+          : 'control-root-identity-unknown',
+    repoRoot,
+    branchName,
+    controlRootBranch,
+    isControlRoot,
+    trackedEntryCount: trackedEntries.length,
+    untrackedEntryCount: untrackedEntries.length,
+    trackedEntries,
+    untrackedEntries,
+    errorMessage: null,
+  };
+}
+
 export function getStableLeaseOwner(repoRoot) {
   const leasePath = path.join(resolveGitDirPath(repoRoot), 'agent-writer-leases', 'workspace.json');
   const lease = readJsonFile(leasePath);

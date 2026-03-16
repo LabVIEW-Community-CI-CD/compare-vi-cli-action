@@ -162,9 +162,11 @@ export async function runCli(argv = process.argv) {
   }
 
   switch (options.command) {
-    case 'ensure':
-      process.stdout.write(`${JSON.stringify(await ensureManagerCommand(options), null, 2)}\n`);
-      return 0;
+    case 'ensure': {
+      const report = await ensureManagerCommand(options);
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      return report.workspaceQuarantine?.status === 'blocked' ? 1 : 0;
+    }
     case 'status':
       process.stdout.write(`${JSON.stringify(emitStatus({ ...options, outcome: 'status' }), null, 2)}\n`);
       return 0;

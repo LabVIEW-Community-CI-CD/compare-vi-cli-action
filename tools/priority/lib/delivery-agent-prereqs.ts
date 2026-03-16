@@ -1,5 +1,6 @@
 // @ts-nocheck
 
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { runDeliveryHostSignal } from '../delivery-host-signal.js';
@@ -11,6 +12,7 @@ import {
   normalizeText,
   readJsonFile,
   resolveCommandPath,
+  resolveGitDirPath,
   resolveRepoRoot,
   runCommand,
   toIso,
@@ -33,13 +35,26 @@ export function invokeDeliveryHostSignal({ mode, repoRoot, distro, paths, previo
 }
 
 export function repairRepoGitWorktreeConfig(repoRoot) {
-  const gitDirPath = path.join(repoRoot, '.git');
   if (!repoRoot) {
     return { repaired: false, previousWorktree: null, reason: 'gitdir-not-directory' };
   }
   const currentWorktree = normalizeText(runCommand('git', ['-C', repoRoot, 'config', '--local', '--get', 'core.worktree']).stdout);
   if (!currentWorktree) {
     return { repaired: false, previousWorktree: null, reason: 'already-unset' };
+  }
+  const normalizedRepoRoot = path.resolve(repoRoot);
+  const gitDirPath = resolveGitDirPath(repoRoot);
+  const candidatePaths = new Set();
+  if (path.isAbsolute(currentWorktree)) {
+    candidatePaths.add(path.resolve(currentWorktree));
+  } else {
+    candidatePaths.add(path.resolve(repoRoot, currentWorktree));
+    candidatePaths.add(path.resolve(gitDirPath, currentWorktree));
+  }
+  for (const candidatePath of candidatePaths) {
+    if (candidatePath === normalizedRepoRoot && existsSync(candidatePath)) {
+      return { repaired: false, previousWorktree: currentWorktree, reason: 'already-valid' };
+    }
   }
   const unsetResult = runCommand('git', ['-C', repoRoot, 'config', '--local', '--unset-all', 'core.worktree']);
   if (unsetResult.status !== 0) {
@@ -207,14 +222,9 @@ export function updateHostIsolationState({ path: isolationPath, repo, runtimeDir
   return state;
 }
 
-export async function runPrereqsCommand(options) {
-  const repoRoot = resolveRepoRoot();
-  const reportPath = path.isAbsolute(options.reportPath) ? options.reportPath : path.join(repoRoot, options.reportPath || DEFAULTS.reportPath);
+export function runRepoHygiene(options) {
+  const repoRoot = options.repoRoot || resolveRepoRoot();
   const paths = getArtifactPaths(repoRoot, options.runtimeDir || DEFAULTS.runtimeDir);
-  const ghPath = resolveCommandPath('gh');
-  const gitUserName = getGlobalGitConfig('user.name');
-  const gitUserEmail = getGlobalGitConfig('user.email');
-  const codexVersion = getCodexRequestedVersion();
   const repoGitWorktreeRepair = repairRepoGitWorktreeConfig(repoRoot);
   const crossPlaneWorktreeRepair = runNodeJsonScript(
     path.join(repoRoot, 'tools', 'priority', 'repair-runtime-worktrees.mjs'),
@@ -226,6 +236,22 @@ export async function runPrereqsCommand(options) {
     ['--repo-root', repoRoot, '--apply', '--report', paths.codexStateHygienePath],
     { status: 'skipped', reason: 'script-missing', reportPath: paths.codexStateHygienePath },
   );
+  return {
+    repoGitWorktreeRepair,
+    crossPlaneWorktreeRepair,
+    codexStateHygiene,
+  };
+}
+
+export async function runPrereqsCommand(options) {
+  const repoRoot = options.repoRoot || resolveRepoRoot();
+  const reportPath = path.isAbsolute(options.reportPath) ? options.reportPath : path.join(repoRoot, options.reportPath || DEFAULTS.reportPath);
+  const paths = getArtifactPaths(repoRoot, options.runtimeDir || DEFAULTS.runtimeDir);
+  const ghPath = resolveCommandPath('gh');
+  const gitUserName = getGlobalGitConfig('user.name');
+  const gitUserEmail = getGlobalGitConfig('user.email');
+  const codexVersion = getCodexRequestedVersion();
+  const repoHygiene = runRepoHygiene({ ...options, repoRoot });
   const wslDefaultUser = getWslDefaultUser(options.wslDistro);
   const wslNativeDocker = ensureNativeWslDocker({ repoRoot, distro: options.wslDistro, targetUser: wslDefaultUser, paths });
   const hostSignal = invokeDeliveryHostSignal({
@@ -254,9 +280,7 @@ export async function runPrereqsCommand(options) {
     nodeRequested: options.nodeVersion,
     pwshRequested: options.pwshVersion,
     codexRequested: codexVersion,
-    repoGitWorktreeRepair,
-    crossPlaneWorktreeRepair,
-    codexStateHygiene,
+    ...repoHygiene,
     wslDefaultUser,
     wslNativeDocker,
     hostSignal: hostSignal.report,
