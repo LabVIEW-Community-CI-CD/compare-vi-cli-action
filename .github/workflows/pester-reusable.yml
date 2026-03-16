@@ -48,7 +48,7 @@ on:
         value: ${{ jobs.pester.outputs.duration_s }}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.sample_id || github.ref }}
+  group: ${{ github.workflow }}-pester-reusable-${{ github.repository }}-${{ inputs.sample_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
