@@ -632,6 +632,74 @@ EOF
   printf '%s\t%s\t%s\n' "${markdown_path}" "${html_path}" "${summary_path}"
 }
 
+comparevi_vi_history_write_slice_manifest() {
+  local slice_path="${1:?slice path is required}"
+  local generated_at="${2:?generatedAt is required}"
+  local requested_start_ref="${3:?requested start ref is required}"
+  local start_ref="${4:?start ref is required}"
+  local end_ref="${5:-}"
+  local max_pairs="${6:?max pairs is required}"
+  local candidate_pairs="${7:?candidate pair count is required}"
+  local selected_pairs="${8:?selected pair count is required}"
+  local stop_reason="${9:?stop reason is required}"
+  local pair_plan_path="${10:-}"
+  local result_ledger_path="${11:-}"
+  local pairs_json="${12:-}"
+  local results_dir_escaped
+  local repo_path_escaped
+  local target_path_escaped
+  local source_branch_escaped
+  local requested_start_ref_escaped
+  local start_ref_escaped
+  local baseline_json="null"
+  local end_ref_json="null"
+  local pair_plan_json="null"
+  local result_ledger_json="null"
+
+  results_dir_escaped="$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_RESULTS_DIR}")"
+  repo_path_escaped="$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_REPO_PATH:-${COMPAREVI_VI_HISTORY_GIT_WORK_TREE:-}}")"
+  target_path_escaped="$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_TARGET_PATH}")"
+  source_branch_escaped="$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_SOURCE_BRANCH:-HEAD}")"
+  requested_start_ref_escaped="$(comparevi_vi_history_json_escape "${requested_start_ref}")"
+  start_ref_escaped="$(comparevi_vi_history_json_escape "${start_ref}")"
+
+  if [ -n "${COMPAREVI_VI_HISTORY_BASELINE_REF:-}" ]; then
+    baseline_json="\"$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_BASELINE_REF}")\""
+  fi
+  if [ -n "${end_ref}" ]; then
+    end_ref_json="\"$(comparevi_vi_history_json_escape "${end_ref}")\""
+  fi
+  if [ -n "${pair_plan_path}" ]; then
+    pair_plan_json="\"$(comparevi_vi_history_json_escape "${pair_plan_path}")\""
+  fi
+  if [ -n "${result_ledger_path}" ]; then
+    result_ledger_json="\"$(comparevi_vi_history_json_escape "${result_ledger_path}")\""
+  fi
+
+  cat > "${slice_path}" <<EOF
+{
+  "schema": "vi-history-slice@v1",
+  "generatedAt": "${generated_at}",
+  "repoPath": "${repo_path_escaped}",
+  "resultsDir": "${results_dir_escaped}",
+  "targetPath": "${target_path_escaped}",
+  "sourceBranchRef": "${source_branch_escaped}",
+  "baselineRef": ${baseline_json},
+  "requestedStartRef": "${requested_start_ref_escaped}",
+  "startRef": "${start_ref_escaped}",
+  "endRef": ${end_ref_json},
+  "maxPairs": ${max_pairs},
+  "candidatePairs": ${candidate_pairs},
+  "selectedPairs": ${selected_pairs},
+  "stopReason": "$(comparevi_vi_history_json_escape "${stop_reason}")",
+  "pairPlanPath": ${pair_plan_json},
+  "resultLedgerPath": ${result_ledger_json},
+  "pairs": [${pairs_json}
+  ]
+}
+EOF
+}
+
 comparevi_vi_history_prepare_pair_plan() {
   local results_dir="${COMPAREVI_VI_HISTORY_RESULTS_DIR}"
   local work_root="${results_dir}/bootstrap-work"
@@ -769,6 +837,7 @@ comparevi_vi_history_emit_suite_bundle() {
   local suite_manifest="${COMPAREVI_VI_HISTORY_SUITE_MANIFEST}"
   local history_context="${COMPAREVI_VI_HISTORY_CONTEXT}"
   local receipt_path="${COMPAREVI_VI_HISTORY_BOOTSTRAP_RECEIPT:-${results_dir}/vi-history-bootstrap-receipt.json}"
+  local slice_manifest="${results_dir}/vi-history-slice.json"
   local mode_dir="${results_dir}/default"
   local mode_manifest="${mode_dir}/manifest.json"
   local plan_path="${COMPAREVI_VI_HISTORY_PAIR_PLAN:-}"
@@ -810,6 +879,8 @@ comparevi_vi_history_emit_suite_bundle() {
     local markdown_path=""
     local html_path=""
     local summary_path=""
+    local slice_pairs_json=""
+    local slice_separator=""
 
     if [ -n "${COMPAREVI_VI_HISTORY_MAX_PAIRS:-}" ]; then
       max_pairs_json="${COMPAREVI_VI_HISTORY_MAX_PAIRS}"
@@ -851,6 +922,31 @@ comparevi_vi_history_emit_suite_bundle() {
 EOF
         )
     fi
+
+    while IFS="$(printf '\t')" read -r plan_index base_ref head_ref base_vi_path head_vi_path pair_report_path out_name; do
+      local base_vi_json="null"
+      local head_vi_json="null"
+
+      [ -z "${plan_index}" ] && continue
+      if [ -n "${base_vi_path}" ]; then
+        base_vi_json="\"$(comparevi_vi_history_json_escape "${base_vi_path}")\""
+      fi
+      if [ -n "${head_vi_path}" ]; then
+        head_vi_json="\"$(comparevi_vi_history_json_escape "${head_vi_path}")\""
+      fi
+
+      slice_pairs_json="${slice_pairs_json}${slice_separator}
+    {
+      \"index\": ${plan_index},
+      \"label\": \"$(comparevi_vi_history_json_escape "${out_name}")\",
+      \"baseRef\": \"$(comparevi_vi_history_json_escape "${base_ref}")\",
+      \"headRef\": \"$(comparevi_vi_history_json_escape "${head_ref}")\",
+      \"baseViPath\": ${base_vi_json},
+      \"headViPath\": ${head_vi_json},
+      \"reportPath\": \"$(comparevi_vi_history_json_escape "${pair_report_path}")\"
+    }"
+      slice_separator=","
+    done < "${plan_path}"
 
     : > "${row_table_path}" || return 2
 
@@ -1159,12 +1255,26 @@ EOF
 ${report_bundle_paths}
 EOF
 
+    comparevi_vi_history_write_slice_manifest \
+      "${slice_manifest}" \
+      "${generated_at}" \
+      "${requested_start_ref}" \
+      "${start_ref}" \
+      "${end_ref}" \
+      "${COMPAREVI_VI_HISTORY_MAX_PAIRS:-1}" \
+      "${COMPAREVI_VI_HISTORY_TOTAL_PAIR_COUNT:-${selected_pair_total}}" \
+      "${selected_pair_total}" \
+      "${stop_reason}" \
+      "${plan_path}" \
+      "${ledger_path}" \
+      "${slice_pairs_json}" || return 2
+
     cat > "${receipt_path}" <<EOF
 {
   "schema": "ni-linux-runtime-bootstrap-receipt@v1",
   "generatedAt": "${generated_at}",
   "mode": "$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_BOOTSTRAP_MODE:-vi-history-suite-smoke}")",
-  "repoPath": "$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_REPO_PATH}")",
+  "repoPath": "$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_REPO_PATH:-${COMPAREVI_VI_HISTORY_GIT_WORK_TREE:-}}")",
   "targetPath": "${target_path_escaped}",
   "sourceBranchRef": "${branch_ref_escaped}",
   "baselineRef": "$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_BASELINE_REF:-}")",
@@ -1175,6 +1285,7 @@ EOF
   "resultsDir": "${results_dir_escaped}",
   "suiteManifestPath": "$(comparevi_vi_history_json_escape "${suite_manifest}")",
   "historyContextPath": "$(comparevi_vi_history_json_escape "${history_context}")",
+  "historySlicePath": "$(comparevi_vi_history_json_escape "${slice_manifest}")",
   "historyReportMarkdownPath": "$(comparevi_vi_history_json_escape "${markdown_path}")",
   "historyReportHtmlPath": "$(comparevi_vi_history_json_escape "${html_path}")",
   "historySummaryPath": "$(comparevi_vi_history_json_escape "${summary_path}")",
@@ -1261,6 +1372,7 @@ EOF
   local markdown_path=""
   local html_path=""
   local summary_path=""
+  local slice_manifest="${results_dir}/vi-history-slice.json"
 
   if [ -n "${COMPAREVI_VI_HISTORY_MAX_BRANCH_COMMITS:-}" ]; then
     local baseline_json="null"
@@ -1518,12 +1630,35 @@ EOF
 ${report_bundle_paths}
 EOF
 
+  comparevi_vi_history_write_slice_manifest \
+    "${slice_manifest}" \
+    "${generated_at}" \
+    "${COMPAREVI_VI_HISTORY_HEAD_REF}" \
+    "${COMPAREVI_VI_HISTORY_HEAD_REF}" \
+    "${COMPAREVI_VI_HISTORY_BASE_REF}" \
+    "1" \
+    "1" \
+    "1" \
+    "${stop_reason}" \
+    "" \
+    "" \
+    "
+    {
+      \"index\": 1,
+      \"label\": \"pair-001\",
+      \"baseRef\": \"${base_ref_escaped}\",
+      \"headRef\": \"${head_ref_escaped}\",
+      \"baseViPath\": null,
+      \"headViPath\": null,
+      \"reportPath\": \"${report_path_escaped}\"
+    }" || return 2
+
   cat > "${receipt_path}" <<EOF
 {
   "schema": "ni-linux-runtime-bootstrap-receipt@v1",
   "generatedAt": "${generated_at}",
   "mode": "$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_BOOTSTRAP_MODE:-vi-history-suite-smoke}")",
-  "repoPath": "$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_REPO_PATH}")",
+  "repoPath": "$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_REPO_PATH:-${COMPAREVI_VI_HISTORY_GIT_WORK_TREE:-}}")",
   "targetPath": "${target_path_escaped}",
   "sourceBranchRef": "${branch_ref_escaped}",
   "baselineRef": "$(comparevi_vi_history_json_escape "${COMPAREVI_VI_HISTORY_BASELINE_REF:-}")",
@@ -1533,6 +1668,7 @@ EOF
   "resultsDir": "${results_dir_escaped}",
   "suiteManifestPath": "$(comparevi_vi_history_json_escape "${suite_manifest}")",
   "historyContextPath": "$(comparevi_vi_history_json_escape "${history_context}")",
+  "historySlicePath": "$(comparevi_vi_history_json_escape "${slice_manifest}")",
   "historyReportMarkdownPath": "$(comparevi_vi_history_json_escape "${markdown_path}")",
   "historyReportHtmlPath": "$(comparevi_vi_history_json_escape "${html_path}")",
   "historySummaryPath": "$(comparevi_vi_history_json_escape "${summary_path}")",

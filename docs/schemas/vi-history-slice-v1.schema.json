@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/vi-history-slice-v1.schema.json",
+  "title": "VI History Slice v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repoPath",
+    "resultsDir",
+    "targetPath",
+    "sourceBranchRef",
+    "baselineRef",
+    "requestedStartRef",
+    "startRef",
+    "endRef",
+    "maxPairs",
+    "candidatePairs",
+    "selectedPairs",
+    "stopReason",
+    "pairPlanPath",
+    "resultLedgerPath",
+    "pairs"
+  ],
+  "properties": {
+    "schema": {
+      "const": "vi-history-slice@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repoPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resultsDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targetPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceBranchRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "baselineRef": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "requestedStartRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "startRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "endRef": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "maxPairs": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "candidatePairs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "selectedPairs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stopReason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pairPlanPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "resultLedgerPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "pairs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "index",
+          "label",
+          "baseRef",
+          "headRef",
+          "baseViPath",
+          "headViPath",
+          "reportPath"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "baseRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "headRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "baseViPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "headViPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reportPath": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

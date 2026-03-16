@@ -379,6 +379,7 @@ if (-not [string]::IsNullOrWhiteSpace($RuntimeBootstrapContractPath) -and (Test-
       resultsContainerPath = '/opt/comparevi/vi-history/results'
       suiteManifestContainerPath = '/opt/comparevi/vi-history/results/suite-manifest.json'
       historyContextContainerPath = '/opt/comparevi/vi-history/results/history-context.json'
+      historySliceContainerPath = '/opt/comparevi/vi-history/results/vi-history-slice.json'
       bootstrapReceiptContainerPath = '/opt/comparevi/vi-history/results/vi-history-bootstrap-receipt.json'
       bootstrapMarkerContainerPath = '/opt/comparevi/vi-history/results/vi-history-bootstrap-ran.txt'
       maxPairs = if ($contract.viHistory.PSObject.Properties['maxPairs']) { [int]$contract.viHistory.maxPairs } else { 1 }
@@ -511,6 +512,7 @@ if (-not [string]::IsNullOrWhiteSpace($RuntimeBootstrapContractPath) -and (Test-
     foreach ($artifact in @(
         'suite-manifest.json',
         'history-context.json',
+        'vi-history-slice.json',
         'vi-history-bootstrap-receipt.json',
         'vi-history-bootstrap-ran.txt',
         'linux-compare-report.html'
@@ -604,6 +606,38 @@ if (-not [string]::IsNullOrWhiteSpace($RuntimeBootstrapContractPath) -and (Test-
           executedModes = @('default')
           comparisons = $comparisons
         } | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $artifactPath -Encoding utf8
+      } elseif ($artifact -eq 'vi-history-slice.json') {
+        ([ordered]@{
+          schema = 'vi-history-slice@v1'
+          generatedAt = (Get-Date).ToString('o')
+          repoPath = $repoPath
+          resultsDir = $resultsPath
+          targetPath = [string]$contract.viHistory.targetPath
+          sourceBranchRef = $runtimeInjection.branchRef
+          baselineRef = [string]$runtimeInjection.viHistory.baselineRef
+          requestedStartRef = 'head-1'
+          startRef = 'head-1'
+          endRef = 'base-1'
+          maxPairs = $pairCount
+          candidatePairs = $pairCount
+          selectedPairs = $pairCount
+          stopReason = 'complete'
+          pairPlanPath = Join-Path $resultsPath 'pair-plan.tsv'
+          resultLedgerPath = Join-Path $resultsPath 'pair-results.tsv'
+          pairs = @(
+            foreach ($i in 1..$pairCount) {
+              [ordered]@{
+                index = $i
+                label = ('pair-{0:d3}' -f $i)
+                baseRef = ('base-{0}' -f $i)
+                headRef = ('head-{0}' -f $i)
+                baseViPath = Join-Path $resultsPath ('pair-{0:d3}-base.vi' -f $i)
+                headViPath = Join-Path $resultsPath ('pair-{0:d3}-head.vi' -f $i)
+                reportPath = Join-Path $resultsPath ('pair-{0:d3}-report.html' -f $i)
+              }
+            }
+          )
+        } | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $artifactPath -Encoding utf8
       } elseif ($artifact -eq 'vi-history-bootstrap-receipt.json') {
         ([ordered]@{
           schema = 'ni-linux-runtime-bootstrap-receipt@v1'
@@ -612,6 +646,7 @@ if (-not [string]::IsNullOrWhiteSpace($RuntimeBootstrapContractPath) -and (Test-
           sourceBranchRef = $runtimeInjection.branchRef
           targetPath = [string]$contract.viHistory.targetPath
           resultsDir = $resultsPath
+          historySlicePath = Join-Path $resultsPath 'vi-history-slice.json'
           processedPairs = $pairCount
           selectedPairs = $pairCount
           compareExitCode = 1
@@ -1487,17 +1522,23 @@ Remove-Item -LiteralPath $summaryResolved -Force -ErrorAction Stop
       (Get-Content -LiteralPath $markerPath -Raw) | Should -Match ("branch={0}" -f [regex]::Escape($sourceBranch))
       $suiteManifestPath = Join-Path (Split-Path -Parent $markerPath) 'suite-manifest.json'
       $historyContextPath = Join-Path (Split-Path -Parent $markerPath) 'history-context.json'
+      $historySlicePath = Join-Path (Split-Path -Parent $markerPath) 'vi-history-slice.json'
       $receiptPath = Join-Path (Split-Path -Parent $markerPath) 'vi-history-bootstrap-receipt.json'
       Test-Path -LiteralPath $suiteManifestPath -PathType Leaf | Should -BeTrue
       Test-Path -LiteralPath $historyContextPath -PathType Leaf | Should -BeTrue
+      Test-Path -LiteralPath $historySlicePath -PathType Leaf | Should -BeTrue
       Test-Path -LiteralPath $receiptPath -PathType Leaf | Should -BeTrue
       $suiteManifest = Get-Content -LiteralPath $suiteManifestPath -Raw | ConvertFrom-Json -Depth 12
       $suiteManifest.maxPairs | Should -Be 2
       $suiteManifest.stats.processed | Should -Be 2
       $historyContext = Get-Content -LiteralPath $historyContextPath -Raw | ConvertFrom-Json -Depth 12
       @($historyContext.comparisons).Count | Should -Be 2
+      $historySlice = Get-Content -LiteralPath $historySlicePath -Raw | ConvertFrom-Json -Depth 12
+      $historySlice.selectedPairs | Should -Be 2
+      @($historySlice.pairs).Count | Should -Be 2
       $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -Depth 12
       $receipt.processedPairs | Should -Be 2
+      $receipt.historySlicePath | Should -Match 'vi-history-slice\.json$'
 
       $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
       Test-Path -LiteralPath $summaryPath -PathType Leaf | Should -BeTrue
