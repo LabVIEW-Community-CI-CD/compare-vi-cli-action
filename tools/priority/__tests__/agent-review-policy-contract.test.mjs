@@ -25,7 +25,7 @@ test('agent-review-policy validates local-only review promotion state from pull_
   assert.doesNotMatch(workflow, /checkout-workflow-context/);
   assert.doesNotMatch(workflow, /repository:\s+\$\{\{\s*github\.event\.pull_request\.head\.repo\.full_name\s*\}\}/);
   assert.doesNotMatch(workflow, /ref:\s+\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/);
-  assert.match(workflow, /actions\/setup-node@v5/);
+  assert.match(workflow, /actions\/setup-node@v6/);
   assert.match(workflow, /name: Install Node dependencies\s+if: github\.event_name == 'pull_request_target'\s+run: npm ci --ignore-scripts/);
   assert.match(workflow, /name: Build TypeScript utilities\s+if: github\.event_name == 'pull_request_target'\s+run: node tools\/npm\/run-script\.mjs build/);
   assert.doesNotMatch(workflow, /Collect Copilot review signal/);

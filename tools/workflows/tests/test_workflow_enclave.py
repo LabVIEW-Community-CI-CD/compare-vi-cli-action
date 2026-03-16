@@ -212,7 +212,7 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
         self.assertFalse(any(step.get('name') == 'Run markdownlint' for step in lint_steps if isinstance(step, dict)))
         setup_node_steps = [step for step in lint_steps if step.get('name') == 'Setup Node with cache']
         self.assertEqual(len(setup_node_steps), 1)
-        self.assertEqual(setup_node_steps[0].get('uses'), 'actions/setup-node@v5')
+        self.assertEqual(setup_node_steps[0].get('uses'), 'actions/setup-node@v6')
 
     def test_lint_resiliency_normalizes_existing_setup_node_major(self) -> None:
         doc = {
@@ -241,7 +241,7 @@ class WorkflowUpdaterRoundTripTests(unittest.TestCase):
 
         self.assertTrue(changed)
         setup_node_step = next(step for step in doc['jobs']['lint']['steps'] if step.get('name') == 'Setup Node with cache')
-        self.assertEqual(setup_node_step.get('uses'), 'actions/setup-node@v5')
+        self.assertEqual(setup_node_step.get('uses'), 'actions/setup-node@v6')
 
     def test_force_run_output_uses_standard_false_literal(self) -> None:
         doc = {

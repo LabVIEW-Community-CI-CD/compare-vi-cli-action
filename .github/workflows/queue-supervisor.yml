@@ -56,7 +56,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
 
@@ -153,4 +153,3 @@ jobs:
             tests/results/_agent/slo/ops-governor-state.json
             tests/results/_agent/slo/remediation-slo-report.json
           if-no-files-found: error
-

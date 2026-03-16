@@ -120,7 +120,7 @@ test('workflow updater normalizes checkout insertion and docs-only expressions c
   assert.match(updater, /True in doc/);
   assert.match(updater, /def _find_step_uses_index/);
   assert.doesNotMatch(updater, /_find_step_index\(steps, 'actions\/checkout@v5'\)/);
-  assert.match(updater, /actions\/setup-node@v5/);
+  assert.match(updater, /actions\/setup-node@v6/);
   assert.doesNotMatch(updater, /actions\/setup-node@v4/);
   assert.match(updater, /::error::Failed to process/);
   assert.match(updater, /if failed_files:\s+return 4/);
