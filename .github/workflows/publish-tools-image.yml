@@ -123,7 +123,7 @@ jobs:
           cat tests/results/_agent/release/tools-image-release-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload release summary artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: comparevi-tools-release-summary-${{ github.run_id }}
           path: tests/results/_agent/release/tools-image-release-summary.md
@@ -154,7 +154,7 @@ jobs:
 
       - name: Upload promotion evidence artifact
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: promotion-evidence-tools-${{ github.run_id }}
           path: |

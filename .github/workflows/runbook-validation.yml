@@ -37,7 +37,7 @@ jobs:
           Get-Content runbook-ci.json
 
       - name: Upload Runbook Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: integration-runbook-result
           path: runbook-ci.json

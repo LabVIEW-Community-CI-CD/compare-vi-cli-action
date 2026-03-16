@@ -37,7 +37,7 @@ jobs:
 
       - name: Upload commit-integrity drift artifact
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: commit-integrity-drift-${{ github.run_id }}-${{ github.run_attempt }}
           path: tests/results/_agent/commit-integrity/commit-integrity-drift-report.json

@@ -278,7 +278,7 @@ jobs:
 
       - name: Upload VI compare artifacts
         if: always() && steps.compare.outputs.compare_dir != ''
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: vi-compare-${{ github.run_id }}
           path: |

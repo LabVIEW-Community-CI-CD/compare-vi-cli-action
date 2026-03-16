@@ -73,7 +73,7 @@ jobs:
 
     - name: Upload Copilot queue gate artifact
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: copilot-review-gate-${{ github.run_id }}-${{ github.run_attempt }}
         path: tests/results/_agent/reviews/copilot-review-gate.json

@@ -199,7 +199,7 @@ jobs:
 
     - name: Upload policy drift artifact
       if: ${{ always() && github.event.repository.fork == false }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: policy-drift-validate-${{ github.run_id }}-${{ github.run_attempt }}
         path: tests/results/_agent/policy/policy-drift-report.json
@@ -450,7 +450,7 @@ jobs:
 
     - name: Upload Validate scope plan artifact
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: validate-scope-plan
         path: tests/results/_agent/validate-scope-plan/validate-scope-plan.json
@@ -550,13 +550,13 @@ jobs:
         pwsh -File tools/Invoke-JsonSchemaLite.ps1 -JsonPath fixture-validation-delta.json -SchemaPath docs/schemas/fixture-validation-delta-v1.schema.json
     - name: Upload fixture validation delta JSON
       if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && steps.restore_prev_fixture_validation.outputs.cache-hit == 'true' && hashFiles('fixture-validation-delta.json') != ''
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: validate-fixture-validation-delta-json
         path: fixture-validation-delta.json
     - name: Upload fixture validation JSON
       if: env.VALIDATE_SCOPE_RUN_FIXTURES == 'true'
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: validate-fixture-validation-json
         path: fixture-validation.json
@@ -579,7 +579,7 @@ jobs:
       run: pwsh -File tools/Write-FixtureValidationSummary.ps1 -ValidationJson fixture-validation.json -DeltaJson fixture-validation-delta.json -SummaryPath fixture-summary.md
     - name: Upload fixture summary artifact
       if: always() && env.VALIDATE_SCOPE_RUN_FIXTURES == 'true' && hashFiles('fixture-summary.md') != ''
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: fixture-validation-summary
         path: fixture-summary.md
@@ -669,7 +669,7 @@ jobs:
 
     - name: Upload hook parity summaries
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: hook-parity-ubuntu-latest
         path: tests/results/_hooks/*.json
@@ -817,7 +817,7 @@ jobs:
         node tools/npm/run-script.mjs priority:schema
     - name: Upload issue snapshot artifacts
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: standing-priority-snapshot
         path: |
@@ -1023,7 +1023,7 @@ jobs:
 
     - name: Upload session index artifact
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: validate-session-index
         path: |
@@ -1083,7 +1083,7 @@ jobs:
 
     - name: Upload v2 contract report
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: validate-session-index-v2-contract
         path: |
@@ -1179,7 +1179,7 @@ jobs:
 
     - name: Upload bundle certification artifacts
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: validate-comparevi-history-bundle-certification
         path: |
@@ -1251,7 +1251,7 @@ jobs:
 
     - name: Upload VI history dispatch plan artifact
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: validate-vi-history-dispatch-plan
         path: tests/results/_agent/vi-history-dispatch/validate-vi-history-dispatch-plan.json
@@ -1429,7 +1429,7 @@ jobs:
 
     - name: Upload VI history scenario artifacts (Linux lane)
       if: always() && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: validate-vi-history-scenarios-linux
         path: |

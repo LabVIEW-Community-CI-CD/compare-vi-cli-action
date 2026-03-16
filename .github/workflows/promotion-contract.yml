@@ -71,7 +71,7 @@ jobs:
 
     - name: Upload promotion contract artifacts
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: promotion-contract-${{ github.run_id }}
         path: |

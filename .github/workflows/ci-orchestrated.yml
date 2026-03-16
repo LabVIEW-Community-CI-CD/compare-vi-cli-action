@@ -102,7 +102,7 @@ jobs:
         pwsh -NoLogo -NoProfile -File tools/Write-RunProvenance.ps1 -ResultsDir '${{ env.RESULTS_DIR }}' -AppendStepSummary
     - name: Upload run provenance
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: orchestrated-provenance
         path: ${{ env.RESULTS_DIR }}/provenance.json
@@ -214,7 +214,7 @@ jobs:
         }
     - name: Upload comparevi-cli artifact
       if: ${{ hashFiles('dist/comparevi-cli/**') != '' }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: comparevi-cli-${{ runner.os }}
         path: dist/comparevi-cli/**/*
@@ -509,7 +509,7 @@ jobs:
 
     - name: Upload Pester artifacts
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: orchestrated-pester-results-${{ matrix.category }}
         path: |
@@ -521,7 +521,7 @@ jobs:
 
     - name: Upload invoker boot log (category)
       if: always() && hashFiles(format('{0}/_invoker/boot.log', env.RESULTS_DIR)) != ''
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: invoker-boot-${{ matrix.category }}
         path: ${{ env.RESULTS_DIR }}/_invoker/boot.log
@@ -592,7 +592,7 @@ jobs:
 
     - name: Upload dev dashboard (matrix)
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: dev-dashboard-${{ matrix.category }}
         path: |
@@ -713,7 +713,7 @@ jobs:
 
     - name: Upload dev dashboard (drift)
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: dev-dashboard-drift
         path: |
@@ -745,7 +745,7 @@ jobs:
 
     - name: Upload compare outcome (drift)
       if: always() && hashFiles(format('{0}/compare-outcome.json', env.RESULTS_DIR)) != ''
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: compare-outcome-drift
         path: ${{ env.RESULTS_DIR }}/compare-outcome.json
@@ -1191,7 +1191,7 @@ jobs:
 
     - name: Upload invoker boot log (single)
       if: always() && hashFiles(format('{0}/_invoker/boot.log', env.RESULTS_DIR)) != ''
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: invoker-boot-single
         path: ${{ env.RESULTS_DIR }}/_invoker/boot.log
@@ -1212,7 +1212,7 @@ jobs:
 
     - name: Upload dev dashboard (single)
       if: always()
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: dev-dashboard-single
         path: |
@@ -1222,7 +1222,7 @@ jobs:
 
     - name: Upload traceability matrix (single)
       if: always() && hashFiles('tests/results/_trace/trace-matrix.json') != ''
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: traceability-matrix-single
         path: |
