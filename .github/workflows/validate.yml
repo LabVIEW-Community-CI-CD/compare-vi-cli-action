@@ -113,7 +113,7 @@ jobs:
       run: |
         pwsh -NoLogo -NoProfile -File tools/Check-WorkflowDrift.ps1 -FailOnDrift
     - name: Setup Node with cache
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v6
       with:
         node-version: '20'
         cache: 'npm'
@@ -624,7 +624,7 @@ jobs:
       with:
         phase: J2
         results-dir: tests/results
-    - uses: actions/setup-node@v5
+    - uses: actions/setup-node@v6
       with:
         node-version: '20'
 
@@ -701,7 +701,7 @@ jobs:
       with:
         phase: J2
         results-dir: tests/results
-    - uses: actions/setup-node@v5
+    - uses: actions/setup-node@v6
       with:
         node-version: '20'
     - name: Install dependencies (no scripts)
@@ -731,7 +731,7 @@ jobs:
       with:
         phase: J2
         results-dir: tests/results
-    - uses: actions/setup-node@v5
+    - uses: actions/setup-node@v6
       with:
         node-version: '20'
     - name: Install dependencies (no scripts)
@@ -764,7 +764,7 @@ jobs:
       with:
         phase: J2
         results-dir: tests/results
-    - uses: actions/setup-node@v5
+    - uses: actions/setup-node@v6
       with:
         node-version: '20'
     - name: Install dependencies (no scripts)
@@ -796,7 +796,7 @@ jobs:
       with:
         phase: J2
         results-dir: tests/results
-    - uses: actions/setup-node@v5
+    - uses: actions/setup-node@v6
       with:
         node-version: '20'
     - name: Sync standing-priority snapshot
@@ -1122,7 +1122,7 @@ jobs:
         phase: J2
         results-dir: tests/results
     - name: Setup Node 20
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v6
       with:
         node-version: '20'
 
