@@ -10,11 +10,11 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '..', '..');
+const defaultRepoRoot = path.resolve(__dirname, '..', '..');
 
 const semverRegex = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
-function readPackageVersion() {
+function readPackageVersion(repoRoot) {
   const pkgPath = path.join(repoRoot, 'package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
   if (!pkg.version) {
@@ -26,6 +26,7 @@ function readPackageVersion() {
 export function parseArgs(args = process.argv.slice(2), env = process.env) {
   let versionArg = null;
   let branchArg = null;
+  let repoRootArg = null;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -36,6 +37,11 @@ export function parseArgs(args = process.argv.slice(2), env = process.env) {
     }
     if (arg === '--branch' && args[i + 1]) {
       branchArg = args[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === '--repo-root' && args[i + 1]) {
+      repoRootArg = args[i + 1];
       i += 1;
       continue;
     }
@@ -52,7 +58,8 @@ export function parseArgs(args = process.argv.slice(2), env = process.env) {
 
   return {
     versionArg,
-    branch
+    branch,
+    repoRoot: path.resolve(repoRootArg ?? env.COMPAREVI_SEMVER_REPO_ROOT ?? defaultRepoRoot)
   };
 }
 
@@ -85,8 +92,8 @@ export function run({ args = process.argv.slice(2), env = process.env } = {}) {
   let surfaceVersions = null;
 
   try {
-    version = parsed.versionArg ?? readPackageVersion();
-    surfaceVersions = readReleaseSurfaceVersionsSync(repoRoot);
+    version = parsed.versionArg ?? readPackageVersion(parsed.repoRoot);
+    surfaceVersions = readReleaseSurfaceVersionsSync(parsed.repoRoot);
   } catch (err) {
     return {
       code: 1,
@@ -94,6 +101,7 @@ export function run({ args = process.argv.slice(2), env = process.env } = {}) {
         schema: 'priority/semver-check@v1',
         version: null,
         branch: parsed.branch,
+        repoRoot: parsed.repoRoot,
         surfaceVersions: null,
         valid: false,
         issues: [err.message],
@@ -112,6 +120,7 @@ export function run({ args = process.argv.slice(2), env = process.env } = {}) {
       schema: 'priority/semver-check@v1',
       version,
       branch: parsed.branch,
+      repoRoot: parsed.repoRoot,
       surfaceVersions,
       expectedSurfaces,
       valid,
