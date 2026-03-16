@@ -34,10 +34,22 @@ test('parseArgs uses repo from env and applies defaults', () => {
   assert.equal(parsed.policyPath, DEFAULT_POLICY_PATH);
   assert.equal(parsed.state, 'open');
   assert.equal(parsed.limit, 200);
-  assert.equal(parsed.applyDefaultMilestone, false);
-  assert.equal(parsed.createDefaultMilestone, false);
+  assert.equal(parsed.applyDefaultMilestone, null);
+  assert.equal(parsed.createDefaultMilestone, null);
   assert.equal(parsed.requireOpenMilestone, null);
   assert.equal(parsed.warnOnly, null);
+});
+
+test('parseArgs accepts explicit no-apply override', () => {
+  const parsed = parseArgs(['--repo', 'example/repo', '--no-apply-default-milestone']);
+  assert.equal(parsed.repo, 'example/repo');
+  assert.equal(parsed.applyDefaultMilestone, false);
+});
+
+test('parseArgs accepts explicit no-create override', () => {
+  const parsed = parseArgs(['--repo', 'example/repo', '--no-create-default-milestone']);
+  assert.equal(parsed.repo, 'example/repo');
+  assert.equal(parsed.createDefaultMilestone, false);
 });
 
 test('normalizePolicy applies defaults and validates required settings', () => {
@@ -47,6 +59,7 @@ test('normalizePolicy applies defaults and validates required settings', () => {
   assert.equal(policy.required.requireOpenMilestone, true);
   assert.equal(policy.defaultMilestone, null);
   assert.equal(policy.defaultMilestoneDueOn, null);
+  assert.equal(policy.applyDefaultMilestone, false);
   assert.equal(policy.warnOnly, false);
   assert.equal(policy.createDefaultMilestone, false);
 });
@@ -102,6 +115,7 @@ test('runMilestoneHygiene fails when required issues have no milestone and emits
       },
       defaultMilestone: null,
       defaultMilestoneDueOn: null,
+      applyDefaultMilestone: false,
       warnOnly: false,
       createDefaultMilestone: false
     }),
@@ -153,6 +167,7 @@ test('runMilestoneHygiene assigns default milestone in apply mode', async () => 
       },
       defaultMilestone: null,
       defaultMilestoneDueOn: null,
+      applyDefaultMilestone: false,
       warnOnly: false,
       createDefaultMilestone: false
     }),
@@ -216,6 +231,7 @@ test('runMilestoneHygiene creates missing default milestone when requested', asy
       },
       defaultMilestone: null,
       defaultMilestoneDueOn: null,
+      applyDefaultMilestone: false,
       warnOnly: false,
       createDefaultMilestone: false
     }),
@@ -273,11 +289,20 @@ test('runMilestoneHygiene rejects closed default milestone in strict mode', asyn
         },
         defaultMilestone: null,
         defaultMilestoneDueOn: null,
+        applyDefaultMilestone: false,
         warnOnly: false,
         createDefaultMilestone: false
       }),
       runGhJsonFn: makeRunGhJson({
-        issues: [],
+        issues: [
+          {
+            number: 202,
+            title: 'Standing issue',
+            milestone: null,
+            labels: [{ name: 'standing-priority' }],
+            url: 'https://example.test/issues/202'
+          }
+        ],
         milestones: [{ number: 44, title: 'Program Closed', state: 'closed', dueOn: null }]
       })
     }),
@@ -298,6 +323,7 @@ test('runMilestoneHygieneWithFailureReport emits an error report when gh evaluat
       },
       defaultMilestone: null,
       defaultMilestoneDueOn: null,
+      applyDefaultMilestone: false,
       warnOnly: false,
       createDefaultMilestone: false
     }),
@@ -340,6 +366,7 @@ test('runMilestoneHygieneWithFailureReport normalizes invalid fallback state and
       },
       defaultMilestone: null,
       defaultMilestoneDueOn: null,
+      applyDefaultMilestone: false,
       warnOnly: false,
       createDefaultMilestone: false
     }),
@@ -353,4 +380,203 @@ test('runMilestoneHygieneWithFailureReport normalizes invalid fallback state and
   assert.equal(result.report.state, 'all');
   assert.equal(result.report.policy.defaultMilestoneDueOn, null);
   assert.ok(result.report.execution.errors.some((entry) => /default milestone due date/i.test(entry)));
+});
+
+test('runMilestoneHygieneWithFailureReport preserves policy-driven apply mode when CLI flags are omitted', async () => {
+  const result = await runMilestoneHygieneWithFailureReport({
+    argv: ['--repo', 'example/repo', '--report', 'tests/results/_agent/issue/milestone-hygiene-report.json'],
+    loadPolicyFn: async () => ({
+      path: path.join(process.cwd(), 'tools', 'policy', 'issue-milestone-hygiene.json'),
+      required: {
+        labels: ['standing-priority', 'program'],
+        titlePriorityPattern: String.raw`\[(P0|P1)\]`,
+        requireOpenMilestone: true
+      },
+      defaultMilestone: 'LabVIEW CI Platform v1 (2026Q2)',
+      defaultMilestoneDueOn: null,
+      applyDefaultMilestone: true,
+      warnOnly: false,
+      createDefaultMilestone: false
+    }),
+    runGhJsonFn: () => {
+      throw new Error('simulated gh auth failure');
+    },
+    writeJsonReportFn: async (reportPath, payload) => ({ reportPath, payload })
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report.flags.applyDefaultMilestone, true);
+});
+
+test('runMilestoneHygiene honors checked-in policy defaults when CLI apply flags are omitted', async () => {
+  const edits = [];
+  const result = await runMilestoneHygiene({
+    argv: ['--repo', 'example/repo'],
+    loadPolicyFn: async () => ({
+      path: path.join(process.cwd(), 'tools', 'policy', 'issue-milestone-hygiene.json'),
+      required: {
+        labels: ['standing-priority', 'program'],
+        titlePriorityPattern: String.raw`\[(P0|P1)\]`,
+        requireOpenMilestone: true
+      },
+      defaultMilestone: 'LabVIEW CI Platform v1 (2026Q2)',
+      defaultMilestoneDueOn: null,
+      applyDefaultMilestone: true,
+      warnOnly: false,
+      createDefaultMilestone: false
+    }),
+    runGhJsonFn: makeRunGhJson({
+      issues: [
+        {
+          number: 301,
+          title: 'Standing issue',
+          milestone: null,
+          labels: [{ name: 'standing-priority' }],
+          url: 'https://example.test/issues/301'
+        }
+      ],
+      milestones: [{ number: 2, title: 'LabVIEW CI Platform v1 (2026Q2)', state: 'open', dueOn: null }]
+    }),
+    runGhFn: (args) => {
+      edits.push(args);
+      return { status: 0, stdout: '', stderr: '' };
+    },
+    writeJsonReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.flags.applyDefaultMilestone, true);
+  assert.equal(result.report.policy.defaultMilestone, 'LabVIEW CI Platform v1 (2026Q2)');
+  assert.equal(result.report.summary.assignedDefaultMilestoneCount, 1);
+  assert.deepEqual(edits[0], [
+    'issue',
+    'edit',
+    '301',
+    '--repo',
+    'example/repo',
+    '--milestone',
+    'LabVIEW CI Platform v1 (2026Q2)'
+  ]);
+});
+
+test('runMilestoneHygiene explicit no-apply override suppresses policy-driven assignment', async () => {
+  const edits = [];
+  const result = await runMilestoneHygiene({
+    argv: ['--repo', 'example/repo', '--no-apply-default-milestone'],
+    loadPolicyFn: async () => ({
+      path: path.join(process.cwd(), 'tools', 'policy', 'issue-milestone-hygiene.json'),
+      required: {
+        labels: ['standing-priority', 'program'],
+        titlePriorityPattern: String.raw`\[(P0|P1)\]`,
+        requireOpenMilestone: true
+      },
+      defaultMilestone: 'LabVIEW CI Platform v1 (2026Q2)',
+      defaultMilestoneDueOn: null,
+      applyDefaultMilestone: true,
+      warnOnly: false,
+      createDefaultMilestone: false
+    }),
+    runGhJsonFn: makeRunGhJson({
+      issues: [
+        {
+          number: 302,
+          title: 'Standing issue',
+          milestone: null,
+          labels: [{ name: 'standing-priority' }],
+          url: 'https://example.test/issues/302'
+        }
+      ],
+      milestones: [{ number: 2, title: 'LabVIEW CI Platform v1 (2026Q2)', state: 'open', dueOn: null }]
+    }),
+    runGhFn: (args) => {
+      edits.push(args);
+      return { status: 0, stdout: '', stderr: '' };
+    },
+    writeJsonReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report.flags.applyDefaultMilestone, false);
+  assert.equal(result.report.summary.remainingViolationCount, 1);
+  assert.equal(edits.length, 0);
+});
+
+test('runMilestoneHygiene does not resolve the default milestone when there are no violations to reconcile', async () => {
+  const ghCalls = [];
+  const result = await runMilestoneHygiene({
+    argv: ['--repo', 'example/repo'],
+    loadPolicyFn: async () => ({
+      path: path.join(process.cwd(), 'tools', 'policy', 'issue-milestone-hygiene.json'),
+      required: {
+        labels: ['standing-priority', 'program'],
+        titlePriorityPattern: String.raw`\[(P0|P1)\]`,
+        requireOpenMilestone: true
+      },
+      defaultMilestone: 'LabVIEW CI Platform v1 (2026Q2)',
+      defaultMilestoneDueOn: null,
+      applyDefaultMilestone: true,
+      warnOnly: false,
+      createDefaultMilestone: false
+    }),
+    runGhJsonFn: makeRunGhJson({
+      issues: [
+        {
+          number: 303,
+          title: 'Standing issue',
+          milestone: { number: 2, title: 'Existing Milestone' },
+          labels: [{ name: 'standing-priority' }],
+          url: 'https://example.test/issues/303'
+        }
+      ],
+      milestones: [],
+      calls: ghCalls
+    }),
+    writeJsonReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.summary.remainingViolationCount, 0);
+  assert.equal(result.report.milestones.defaultMilestone, null);
+  assert.equal(
+    ghCalls.some((args) => args[0] === 'api' && String(args[1]).includes('/milestones')),
+    true,
+  );
+  assert.equal(
+    ghCalls.some((args) => args.includes('--method') && args.includes('POST')),
+    false,
+  );
+});
+
+test('runMilestoneHygiene explicit no-create override suppresses policy-driven milestone creation', async () => {
+  await assert.rejects(
+    runMilestoneHygiene({
+      argv: ['--repo', 'example/repo', '--no-create-default-milestone'],
+      loadPolicyFn: async () => ({
+        path: path.join(process.cwd(), 'tools', 'policy', 'issue-milestone-hygiene.json'),
+        required: {
+          labels: ['standing-priority', 'program'],
+          titlePriorityPattern: String.raw`\[(P0|P1)\]`,
+          requireOpenMilestone: true
+        },
+        defaultMilestone: 'LabVIEW CI Platform v1 (2026Q2)',
+        defaultMilestoneDueOn: '2026-06-30T00:00:00Z',
+        applyDefaultMilestone: true,
+        warnOnly: false,
+        createDefaultMilestone: true
+      }),
+      runGhJsonFn: makeRunGhJson({
+        issues: [
+          {
+            number: 304,
+            title: 'Standing issue',
+            milestone: null,
+            labels: [{ name: 'standing-priority' }],
+            url: 'https://example.test/issues/304'
+          }
+        ],
+        milestones: []
+      })
+    }),
+    /Default milestone 'LabVIEW CI Platform v1 \(2026Q2\)' was not found/
+  );
 });

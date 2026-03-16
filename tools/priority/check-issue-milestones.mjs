@@ -109,8 +109,8 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
     reportPath: DEFAULT_REPORT_PATH,
     defaultMilestone: null,
     defaultMilestoneDueOn: null,
-    applyDefaultMilestone: false,
-    createDefaultMilestone: false,
+    applyDefaultMilestone: null,
+    createDefaultMilestone: null,
     warnOnly: null,
     help: false
   };
@@ -125,8 +125,16 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
       options.applyDefaultMilestone = true;
       continue;
     }
+    if (token === '--no-apply-default-milestone') {
+      options.applyDefaultMilestone = false;
+      continue;
+    }
     if (token === '--create-default-milestone') {
       options.createDefaultMilestone = true;
+      continue;
+    }
+    if (token === '--no-create-default-milestone') {
+      options.createDefaultMilestone = false;
       continue;
     }
     if (token === '--allow-closed-milestone') {
@@ -223,6 +231,7 @@ export function normalizePolicy(rawPolicy) {
     },
     defaultMilestone: normalizeText(raw.defaultMilestone),
     defaultMilestoneDueOn,
+    applyDefaultMilestone: parseBooleanLike(raw.applyDefaultMilestone),
     warnOnly: parseBooleanLike(raw.warnOnly),
     createDefaultMilestone: parseBooleanLike(raw.createDefaultMilestone)
   };
@@ -354,6 +363,28 @@ function findOptionValue(argv, optionName) {
   return null;
 }
 
+function resolveApplyDefaultMilestoneFallback(argv) {
+  const args = Array.isArray(argv) ? argv : [];
+  if (args.includes('--apply-default-milestone')) {
+    return true;
+  }
+  if (args.includes('--no-apply-default-milestone')) {
+    return false;
+  }
+  return null;
+}
+
+function resolveCreateDefaultMilestoneFallback(argv) {
+  const args = Array.isArray(argv) ? argv : [];
+  if (args.includes('--create-default-milestone')) {
+    return true;
+  }
+  if (args.includes('--no-create-default-milestone')) {
+    return false;
+  }
+  return null;
+}
+
 function buildExecutionState(status, errors = []) {
   return {
     status,
@@ -380,7 +411,14 @@ function buildFallbackFailureReport({
   const warnOnly = options.warnOnly == null ? Boolean(policy?.warnOnly) : Boolean(options.warnOnly);
   const defaultMilestoneTitle = options.defaultMilestone ?? policy?.defaultMilestone ?? null;
   const defaultMilestoneDueOn = options.defaultMilestoneDueOn ?? policy?.defaultMilestoneDueOn ?? null;
-  const createDefaultMilestone = Boolean(options.createDefaultMilestone || policy?.createDefaultMilestone);
+  const applyDefaultMilestone =
+    options.applyDefaultMilestone == null
+      ? Boolean(policy?.applyDefaultMilestone)
+      : Boolean(options.applyDefaultMilestone);
+  const createDefaultMilestone =
+    options.createDefaultMilestone == null
+      ? Boolean(policy?.createDefaultMilestone)
+      : Boolean(options.createDefaultMilestone);
 
   return {
     schema: REPORT_SCHEMA,
@@ -390,7 +428,7 @@ function buildFallbackFailureReport({
     state: options.state ?? 'open',
     execution: buildExecutionState('error', executionErrors),
     flags: {
-      applyDefaultMilestone: Boolean(options.applyDefaultMilestone),
+      applyDefaultMilestone,
       warnOnly,
       requireOpenMilestone,
       createDefaultMilestone
@@ -541,12 +579,19 @@ export async function runMilestoneHygiene({
   const warnOnly = options.warnOnly === null ? policy.warnOnly : Boolean(options.warnOnly);
   const defaultMilestoneTitle = options.defaultMilestone ?? policy.defaultMilestone;
   const defaultMilestoneDueOn = options.defaultMilestoneDueOn ?? policy.defaultMilestoneDueOn;
-  const createDefaultMilestone = options.createDefaultMilestone || policy.createDefaultMilestone;
+  const applyDefaultMilestone =
+    options.applyDefaultMilestone == null
+      ? Boolean(policy.applyDefaultMilestone)
+      : Boolean(options.applyDefaultMilestone);
+  const createDefaultMilestone =
+    options.createDefaultMilestone == null
+      ? Boolean(policy.createDefaultMilestone)
+      : Boolean(options.createDefaultMilestone);
 
   if (!isValidDateTime(defaultMilestoneDueOn)) {
     throw new Error(`Invalid default milestone due date '${defaultMilestoneDueOn}'. Use ISO-8601 date/time.`);
   }
-  if (options.applyDefaultMilestone && !defaultMilestoneTitle) {
+  if (applyDefaultMilestone && !defaultMilestoneTitle) {
     throw new Error('Default milestone is required when --apply-default-milestone is set.');
   }
 
@@ -570,9 +615,19 @@ export async function runMilestoneHygiene({
   const milestones = milestoneCatalogFromApi(milestoneRows);
   const milestoneMaps = buildMilestoneMaps(milestones);
 
+  const evaluations = issues.map((issue) => evaluateIssue(issue, {
+    requiredLabels,
+    titlePriorityTokens,
+    requireOpenMilestone,
+    milestonesByNumber: milestoneMaps.byNumber
+  }));
+  const requiredIssues = evaluations.filter((entry) => entry.requiresMilestone);
+  const violations = evaluations.filter((entry) => entry.isViolation);
+  const triggerCounts = buildTriggerCounts(requiredIssues);
+
   let defaultMilestone = null;
   let createdDefaultMilestone = null;
-  if (options.applyDefaultMilestone) {
+  if (applyDefaultMilestone && violations.length > 0) {
     const resolved = await resolveDefaultMilestone({
       repo: options.repo,
       defaultMilestoneTitle,
@@ -591,20 +646,10 @@ export async function runMilestoneHygiene({
     }
   }
 
-  const evaluations = issues.map((issue) => evaluateIssue(issue, {
-    requiredLabels,
-    titlePriorityTokens,
-    requireOpenMilestone,
-    milestonesByNumber: milestoneMaps.byNumber
-  }));
-  const requiredIssues = evaluations.filter((entry) => entry.requiresMilestone);
-  const violations = evaluations.filter((entry) => entry.isViolation);
-  const triggerCounts = buildTriggerCounts(requiredIssues);
-
   const reconciliations = [];
   const remainingViolations = [];
   for (const violation of violations) {
-    if (!options.applyDefaultMilestone) {
+    if (!applyDefaultMilestone) {
       remainingViolations.push(violation);
       continue;
     }
@@ -664,7 +709,7 @@ export async function runMilestoneHygiene({
     state: options.state,
     execution: buildExecutionState(status),
     flags: {
-      applyDefaultMilestone: options.applyDefaultMilestone,
+      applyDefaultMilestone,
       warnOnly,
       requireOpenMilestone,
       createDefaultMilestone
@@ -793,8 +838,8 @@ export async function runMilestoneHygieneWithFailureReport({
       titlePriorityPattern: normalizeText(findOptionValue(rawArgs, '--title-priority-pattern')),
       defaultMilestone: normalizeText(findOptionValue(rawArgs, '--default-milestone')),
       defaultMilestoneDueOn,
-      applyDefaultMilestone: rawArgs.includes('--apply-default-milestone'),
-      createDefaultMilestone: rawArgs.includes('--create-default-milestone'),
+      applyDefaultMilestone: resolveApplyDefaultMilestoneFallback(rawArgs),
+      createDefaultMilestone: resolveCreateDefaultMilestoneFallback(rawArgs),
       warnOnly: rawArgs.includes('--warn-only') ? true : null,
       requireOpenMilestone: rawArgs.includes('--allow-closed-milestone') ? false : null
     };
@@ -832,7 +877,9 @@ Options:
   --default-milestone <title>      Default milestone title for reconciliation mode
   --default-milestone-due-on <iso> Due date used when creating a missing default milestone
   --apply-default-milestone        Assign default milestone to violating issues
+  --no-apply-default-milestone     Explicitly disable default milestone assignment
   --create-default-milestone       Create missing default milestone in apply mode
+  --no-create-default-milestone    Explicitly disable default milestone creation
   --report <path>                  Report path (default: ${DEFAULT_REPORT_PATH})
   --warn-only                      Emit warnings but do not fail
   -h, --help                       Show this help`);

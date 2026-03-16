@@ -58,6 +58,7 @@ test('issue milestone hygiene schema validates generated report and asserts labe
       },
       defaultMilestone: null,
       defaultMilestoneDueOn: null,
+      applyDefaultMilestone: false,
       warnOnly: false,
       createDefaultMilestone: false
     }),
@@ -118,6 +119,7 @@ test('issue milestone hygiene schema validates generated error report when evalu
       },
       defaultMilestone: null,
       defaultMilestoneDueOn: null,
+      applyDefaultMilestone: false,
       warnOnly: false,
       createDefaultMilestone: false
     }),

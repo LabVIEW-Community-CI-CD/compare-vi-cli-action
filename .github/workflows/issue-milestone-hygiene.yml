@@ -15,15 +15,23 @@ on:
   workflow_dispatch:
     inputs:
       apply_default_milestone:
-        description: 'Assign default milestone to violating issues'
+        description: 'How to handle default milestone assignment'
         required: false
-        default: false
-        type: boolean
+        default: inherit
+        type: choice
+        options:
+          - inherit
+          - apply
+          - disable
       create_default_milestone:
-        description: 'Create default milestone if missing during apply mode'
+        description: 'How to handle default milestone creation'
         required: false
-        default: false
-        type: boolean
+        default: inherit
+        type: choice
+        options:
+          - inherit
+          - apply
+          - disable
       default_milestone:
         description: 'Default milestone title override'
         required: false
@@ -64,8 +72,8 @@ jobs:
           DEFAULT_INPUT: ${{ inputs.default_milestone }}
           DUE_INPUT: ${{ inputs.default_milestone_due_on }}
           WARN_INPUT: ${{ inputs.warn_only }}
-          APPLY_VAR: ${{ vars.MILESTONE_HYGIENE_APPLY_DEFAULT || '0' }}
-          CREATE_VAR: ${{ vars.MILESTONE_HYGIENE_CREATE_DEFAULT || '0' }}
+          APPLY_VAR: ${{ vars.MILESTONE_HYGIENE_APPLY_DEFAULT || '' }}
+          CREATE_VAR: ${{ vars.MILESTONE_HYGIENE_CREATE_DEFAULT || '' }}
           DEFAULT_VAR: ${{ vars.MILESTONE_HYGIENE_DEFAULT_MILESTONE || '' }}
           DUE_VAR: ${{ vars.MILESTONE_HYGIENE_DEFAULT_MILESTONE_DUE_ON || '' }}
           WARN_VAR: ${{ vars.MILESTONE_HYGIENE_WARN_ONLY || '0' }}
@@ -104,22 +112,28 @@ jobs:
             args+=("--default-milestone-due-on" "$due_effective")
           fi
 
-          apply_effective="${APPLY_INPUT:-}"
-          if [[ -z "$apply_effective" || "$apply_effective" == "false" ]]; then
-            apply_effective="${APPLY_VAR:-0}"
-          fi
-          apply_effective="$(echo "$apply_effective" | tr '[:upper:]' '[:lower:]')"
-          if [[ "$apply_effective" == "1" || "$apply_effective" == "true" || "$apply_effective" == "yes" || "$apply_effective" == "on" ]]; then
+          apply_input_effective="$(echo "${APPLY_INPUT:-}" | tr '[:upper:]' '[:lower:]')"
+          apply_var_effective="$(echo "${APPLY_VAR:-}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$apply_input_effective" == "apply" || "$apply_input_effective" == "1" || "$apply_input_effective" == "true" || "$apply_input_effective" == "yes" || "$apply_input_effective" == "on" ]]; then
             args+=("--apply-default-milestone")
+          elif [[ "$apply_input_effective" == "disable" || "$apply_input_effective" == "0" || "$apply_input_effective" == "false" || "$apply_input_effective" == "no" || "$apply_input_effective" == "off" ]]; then
+            args+=("--no-apply-default-milestone")
+          elif [[ "$apply_var_effective" == "1" || "$apply_var_effective" == "true" || "$apply_var_effective" == "yes" || "$apply_var_effective" == "on" ]]; then
+            args+=("--apply-default-milestone")
+          elif [[ "$apply_var_effective" == "0" || "$apply_var_effective" == "false" || "$apply_var_effective" == "no" || "$apply_var_effective" == "off" ]]; then
+            args+=("--no-apply-default-milestone")
           fi
 
-          create_effective="${CREATE_INPUT:-}"
-          if [[ -z "$create_effective" || "$create_effective" == "false" ]]; then
-            create_effective="${CREATE_VAR:-0}"
-          fi
-          create_effective="$(echo "$create_effective" | tr '[:upper:]' '[:lower:]')"
-          if [[ "$create_effective" == "1" || "$create_effective" == "true" || "$create_effective" == "yes" || "$create_effective" == "on" ]]; then
+          create_input_effective="$(echo "${CREATE_INPUT:-}" | tr '[:upper:]' '[:lower:]')"
+          create_var_effective="$(echo "${CREATE_VAR:-}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$create_input_effective" == "apply" || "$create_input_effective" == "1" || "$create_input_effective" == "true" || "$create_input_effective" == "yes" || "$create_input_effective" == "on" ]]; then
             args+=("--create-default-milestone")
+          elif [[ "$create_input_effective" == "disable" || "$create_input_effective" == "0" || "$create_input_effective" == "false" || "$create_input_effective" == "no" || "$create_input_effective" == "off" ]]; then
+            args+=("--no-create-default-milestone")
+          elif [[ "$create_var_effective" == "1" || "$create_var_effective" == "true" || "$create_var_effective" == "yes" || "$create_var_effective" == "on" ]]; then
+            args+=("--create-default-milestone")
+          elif [[ "$create_var_effective" == "0" || "$create_var_effective" == "false" || "$create_var_effective" == "no" || "$create_var_effective" == "off" ]]; then
+            args+=("--no-create-default-milestone")
           fi
 
           node "${args[@]}"
@@ -163,4 +177,3 @@ jobs:
           name: issue-milestone-hygiene-report
           path: tests/results/_agent/issue/milestone-hygiene-report.json
           if-no-files-found: error
-
