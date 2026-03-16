@@ -1,5 +1,6 @@
 param(
   [string[]]$ProcessName = @('LabVIEW','LVCompare'),
+  [int[]]$ProcessId,
   [switch]$DryRun,
   [int]$WaitSeconds = 5,
   [switch]$Quiet
@@ -18,6 +19,47 @@ function Write-Warn {
   Write-Warning $Message
 }
 
+function Get-ProcessExecutableBaseName {
+  param([Parameter(Mandatory)][object]$Process)
+
+  if ($Process.Path) {
+    try {
+      return [System.IO.Path]::GetFileNameWithoutExtension($Process.Path)
+    } catch {}
+  }
+
+  try {
+    $cim = Get-CimInstance Win32_Process -Filter ("ProcessId={0}" -f $Process.Id) -ErrorAction SilentlyContinue
+    if ($cim -and $cim.ExecutablePath) {
+      return [System.IO.Path]::GetFileNameWithoutExtension($cim.ExecutablePath)
+    }
+  } catch {}
+
+  return $null
+}
+
+function Test-MatchingProcessSurface {
+  param(
+    [Parameter(Mandatory)][object]$Process,
+    [string[]]$AllowedNames
+  )
+
+  if (-not $AllowedNames -or $AllowedNames.Count -eq 0) {
+    return $true
+  }
+
+  foreach ($name in $AllowedNames) {
+    if ([string]::IsNullOrWhiteSpace($name)) { continue }
+    if ($Process.ProcessName -ieq $name) { return $true }
+    $baseName = Get-ProcessExecutableBaseName -Process $Process
+    if ($baseName -and $baseName -ieq $name) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
 $names = @()
 foreach ($name in $ProcessName) {
   if (-not [string]::IsNullOrWhiteSpace($name)) {
@@ -29,15 +71,38 @@ if ($names.Count -eq 0) {
   exit 0
 }
 
+$targetIds = @()
+foreach ($id in @($ProcessId)) {
+  if ($null -ne $id -and [int]$id -gt 0) {
+    $targetIds += [int]$id
+  }
+}
+$targetIds = @($targetIds | Sort-Object -Unique)
+
 $initial = @()
-foreach ($name in $names) {
-  try {
-    $initial += @(Get-Process -Name $name -ErrorAction SilentlyContinue)
-  } catch {}
+if ($targetIds.Count -gt 0) {
+  foreach ($id in $targetIds) {
+    try {
+      $proc = Get-Process -Id $id -ErrorAction SilentlyContinue
+      if ($proc -and (Test-MatchingProcessSurface -Process $proc -AllowedNames $names)) {
+        $initial += @($proc)
+      }
+    } catch {}
+  }
+} else {
+  foreach ($name in $names) {
+    try {
+      $initial += @(Get-Process -Name $name -ErrorAction SilentlyContinue)
+    } catch {}
+  }
 }
 
 if ($initial.Count -eq 0) {
-  Write-Info ("Force-CloseLabVIEW: no matching processes found for {0}." -f ($names -join ','))
+  if ($targetIds.Count -gt 0) {
+    Write-Info ("Force-CloseLabVIEW: no matching processes found for PID(s) {0}." -f ($targetIds -join ','))
+  } else {
+    Write-Info ("Force-CloseLabVIEW: no matching processes found for {0}." -f ($names -join ','))
+  }
   exit 0
 }
 
@@ -71,10 +136,21 @@ foreach ($proc in $initial) {
 $deadline = (Get-Date).AddSeconds([Math]::Max(0,$WaitSeconds))
 do {
   $remaining = @()
-  foreach ($name in $names) {
-    try {
-      $remaining += @(Get-Process -Name $name -ErrorAction SilentlyContinue)
-    } catch {}
+  if ($targetIds.Count -gt 0) {
+    foreach ($id in $targetIds) {
+      try {
+        $proc = Get-Process -Id $id -ErrorAction SilentlyContinue
+        if ($proc -and (Test-MatchingProcessSurface -Process $proc -AllowedNames $names)) {
+          $remaining += @($proc)
+        }
+      } catch {}
+    }
+  } else {
+    foreach ($name in $names) {
+      try {
+        $remaining += @(Get-Process -Name $name -ErrorAction SilentlyContinue)
+      } catch {}
+    }
   }
   if ($remaining.Count -eq 0) { break }
   Start-Sleep -Milliseconds 250
@@ -92,7 +168,8 @@ if ($remaining.Count -eq 0 -and $errors.Count -eq 0) {
 }
 
 if ($remaining.Count -gt 0) {
-  Write-Warn ("Force-CloseLabVIEW: processes still running: {0}" -f ($remaining | ForEach-Object { "{0}(PID {1})" -f $_.ProcessName,$_.Id } | Sort-Object | -join ', '))
+  $remainingDetails = (($remaining | ForEach-Object { "{0}(PID {1})" -f $_.ProcessName,$_.Id } | Sort-Object) -join ', ')
+  Write-Warn ("Force-CloseLabVIEW: processes still running: {0}" -f $remainingDetails)
 }
 
 $summary['result'] = 'failed'

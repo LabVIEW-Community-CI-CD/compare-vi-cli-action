@@ -76,9 +76,294 @@ function Remove-RequestFiles {
   }
 }
 
+function Resolve-LabVIEWCloseTimeoutSeconds {
+  $defaultTimeoutSeconds = 30
+  $override = [System.Environment]::GetEnvironmentVariable('POST_RUN_CLOSE_LABVIEW_TIMEOUT_SECONDS')
+  if ([string]::IsNullOrWhiteSpace($override)) {
+    return $defaultTimeoutSeconds
+  }
+  try {
+    $parsed = [int]$override
+    if ($parsed -gt 0) {
+      return $parsed
+    }
+  } catch {}
+  Write-Warning (
+    "POST_RUN_CLOSE_LABVIEW_TIMEOUT_SECONDS value '{0}' is invalid; using default {1}." -f
+    $override,
+    $defaultTimeoutSeconds
+  )
+  return $defaultTimeoutSeconds
+}
+
+function Get-LabVIEWProcessIdsFromTrackerPayload {
+  param([object]$Payload)
+
+  $ids = New-Object System.Collections.Generic.List[int]
+  if ($null -eq $Payload) { return @() }
+
+  $candidates = New-Object System.Collections.Generic.List[object]
+  $candidates.Add($Payload)
+
+  foreach ($propertyName in @('initial','final')) {
+    if ($Payload.PSObject.Properties.Name -contains $propertyName) {
+      $value = $Payload.$propertyName
+      if ($null -ne $value) { $candidates.Add($value) }
+    }
+  }
+
+  if ($Payload.PSObject.Properties.Name -contains 'observations' -and $Payload.observations) {
+    foreach ($entry in @($Payload.observations)) {
+      if ($null -ne $entry) { $candidates.Add($entry) }
+    }
+  }
+
+  foreach ($candidate in $candidates) {
+    if ($null -eq $candidate) { continue }
+    if ($candidate.PSObject.Properties.Name -notcontains 'pid') { continue }
+    if ($candidate.PSObject.Properties.Name -contains 'running') {
+      try {
+        if (-not [bool]$candidate.running) { continue }
+      } catch {}
+    } elseif ($candidate.PSObject.Properties.Name -contains 'note') {
+      $note = [string]$candidate.note
+      if ($note -and $note -notin @('selected-from-scan','still-running')) {
+        continue
+      }
+    }
+    $pidValue = $candidate.pid
+    if ($null -eq $pidValue) { continue }
+    try {
+      $pid = [int]$pidValue
+      if ($pid -gt 0 -and -not $ids.Contains($pid)) {
+        $ids.Add($pid)
+      }
+    } catch {}
+  }
+
+  return @($ids)
+}
+
+function Resolve-LabVIEWTargetProcessIds {
+  param([hashtable]$Metadata)
+
+  $ids = New-Object System.Collections.Generic.List[int]
+  $explicitPid = $false
+  foreach ($key in @('pid','processId','labviewPid','trackedPid')) {
+    if ($Metadata -and $Metadata.ContainsKey($key) -and $Metadata[$key]) {
+      try {
+        $pid = [int]$Metadata[$key]
+        if ($pid -gt 0 -and -not $ids.Contains($pid)) {
+          $ids.Add($pid)
+          $explicitPid = $true
+        }
+      } catch {}
+    }
+  }
+
+  $explicitTrackerPaths = New-Object System.Collections.Generic.List[string]
+  foreach ($key in @('trackerPath','labviewPidTrackerPath')) {
+    if ($Metadata -and $Metadata.ContainsKey($key) -and $Metadata[$key]) {
+      $candidate = [string]$Metadata[$key]
+      if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+        if (-not [System.IO.Path]::IsPathRooted($candidate)) {
+          $candidate = Join-Path $repoRoot $candidate
+        }
+        $explicitTrackerPaths.Add($candidate)
+      }
+    }
+  }
+
+  $foundExplicitTrackerFile = $false
+  foreach ($trackerPath in @($explicitTrackerPaths | Select-Object -Unique)) {
+    if (-not (Test-Path -LiteralPath $trackerPath -PathType Leaf)) { continue }
+    $foundExplicitTrackerFile = $true
+    try {
+      $payload = Get-Content -LiteralPath $trackerPath -Raw | ConvertFrom-Json -Depth 8
+      foreach ($pid in @(Get-LabVIEWProcessIdsFromTrackerPayload -Payload $payload)) {
+        if ($pid -gt 0 -and -not $ids.Contains($pid)) {
+          $ids.Add($pid)
+        }
+      }
+    } catch {
+      Write-Log ("Failed to parse LabVIEW PID tracker {0}: {1}" -f $trackerPath, $_.Exception.Message)
+    }
+  }
+
+  if (-not $explicitPid -and (($explicitTrackerPaths.Count -eq 0) -or (-not $foundExplicitTrackerFile))) {
+    foreach ($trackerPath in @(
+      (Join-Path $repoRoot 'tests/results/_cli/_agent/labview-pid.json'),
+      (Join-Path $repoRoot 'tests/results/_warmup/_agent/labview-pid.json'),
+      (Join-Path $repoRoot 'tests/results/_invoker/labview-pid.json')
+    )) {
+      if (-not (Test-Path -LiteralPath $trackerPath -PathType Leaf)) { continue }
+      try {
+        $payload = Get-Content -LiteralPath $trackerPath -Raw | ConvertFrom-Json -Depth 8
+        foreach ($pid in @(Get-LabVIEWProcessIdsFromTrackerPayload -Payload $payload)) {
+          if ($pid -gt 0 -and -not $ids.Contains($pid)) {
+            $ids.Add($pid)
+          }
+        }
+      } catch {
+        Write-Log ("Failed to parse LabVIEW PID tracker {0}: {1}" -f $trackerPath, $_.Exception.Message)
+      }
+    }
+  }
+
+  return @($ids)
+}
+
+function Normalize-LabVIEWProcessPath {
+  param([string]$Path)
+  if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
+  try {
+    return [System.IO.Path]::GetFullPath($Path).Trim().ToLowerInvariant()
+  } catch {
+    return $Path.Trim().ToLowerInvariant()
+  }
+}
+
+function Resolve-LabVIEWExpectedPath {
+  param([hashtable]$Metadata)
+
+  foreach ($key in @('labviewExe','labviewPath','path')) {
+    if ($Metadata -and $Metadata.ContainsKey($key) -and $Metadata[$key]) {
+      return (Normalize-LabVIEWProcessPath -Path ([string]$Metadata[$key]))
+    }
+  }
+
+  $version = $null
+  foreach ($key in @('version','labviewVersion')) {
+    if ($Metadata -and $Metadata.ContainsKey($key) -and $Metadata[$key]) {
+      $version = [string]$Metadata[$key]
+      break
+    }
+  }
+
+  if ([string]::IsNullOrWhiteSpace($version)) {
+    return $null
+  }
+
+  $bitness = '64'
+  foreach ($key in @('bitness','labviewBitness')) {
+    if ($Metadata -and $Metadata.ContainsKey($key) -and $Metadata[$key]) {
+      $bitness = [string]$Metadata[$key]
+      break
+    }
+  }
+
+  $candidate = $null
+  if ($bitness -eq '32') {
+    $root = ${env:ProgramFiles(x86)}
+    if (-not $root) { $root = $env:ProgramFiles }
+    if ($root) {
+      $candidate = Join-Path $root ("National Instruments\LabVIEW {0}\LabVIEW.exe" -f $version)
+    }
+  } else {
+    if ($env:ProgramFiles) {
+      $candidate = Join-Path $env:ProgramFiles ("National Instruments\LabVIEW {0}\LabVIEW.exe" -f $version)
+    }
+  }
+
+  return (Normalize-LabVIEWProcessPath -Path $candidate)
+}
+
+function Get-ProcessExecutableBaseName {
+  param([Parameter(Mandatory)][object]$Process)
+
+  if ($Process.Path) {
+    try {
+      return [System.IO.Path]::GetFileNameWithoutExtension($Process.Path)
+    } catch {}
+  }
+
+  try {
+    $cim = Get-CimInstance Win32_Process -Filter ("ProcessId={0}" -f $Process.Id) -ErrorAction SilentlyContinue
+    if ($cim -and $cim.ExecutablePath) {
+      return [System.IO.Path]::GetFileNameWithoutExtension($cim.ExecutablePath)
+    }
+  } catch {}
+
+  return $null
+}
+
+function Test-LabVIEWProcessIdentity {
+  param([Parameter(Mandatory)][object]$Process)
+
+  if ($Process.ProcessName -ieq 'LabVIEW') {
+    return $true
+  }
+
+  $baseName = Get-ProcessExecutableBaseName -Process $Process
+  if ($baseName) {
+    return ($baseName -ieq 'LabVIEW')
+  }
+
+  return $false
+}
+
+function Get-LabVIEWProcessesByScope {
+  param(
+    [int[]]$ProcessIds,
+    [switch]$UseNameFallback,
+    [string]$ExpectedPath
+  )
+
+  $processes = @()
+  $expectedNormalized = if ([string]::IsNullOrWhiteSpace($ExpectedPath)) { $null } else { Normalize-LabVIEWProcessPath -Path $ExpectedPath }
+  if ($ProcessIds -and $ProcessIds.Count -gt 0) {
+    foreach ($id in @($ProcessIds | Sort-Object -Unique)) {
+      try {
+        $proc = Get-Process -Id $id -ErrorAction SilentlyContinue
+        if (-not $proc) { continue }
+        $matchesIdentity = Test-LabVIEWProcessIdentity -Process $proc
+        if (-not $matchesIdentity -and $expectedNormalized) {
+          try {
+            if ($proc.Path) {
+              $matchesIdentity = ((Normalize-LabVIEWProcessPath -Path $proc.Path) -eq $expectedNormalized)
+            } else {
+              $cim = Get-CimInstance Win32_Process -Filter ("ProcessId={0}" -f $proc.Id) -ErrorAction SilentlyContinue
+              if ($cim -and $cim.ExecutablePath) {
+                $matchesIdentity = ((Normalize-LabVIEWProcessPath -Path $cim.ExecutablePath) -eq $expectedNormalized)
+              }
+            }
+          } catch {}
+        }
+        if ($matchesIdentity) { $processes += @($proc) }
+      } catch {}
+    }
+    return @($processes)
+  }
+
+  if (-not $UseNameFallback) {
+    return @()
+  }
+
+  try {
+    $all = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue)
+    if ([string]::IsNullOrWhiteSpace($ExpectedPath)) {
+      return $all
+    }
+    return @(
+      $all | Where-Object {
+        if (-not (Test-LabVIEWProcessIdentity -Process $_)) {
+          $false
+        } elseif ($_.Path) {
+          (Normalize-LabVIEWProcessPath -Path $_.Path) -eq $expectedNormalized
+        } else {
+          $false
+        }
+      }
+    )
+  } catch {
+    return @()
+  }
+}
+
 function Invoke-ForceCloseProcesses {
   param(
     [string[]]$ProcessNames,
+    [int[]]$ProcessIds,
     [string]$Label
   )
 
@@ -89,7 +374,9 @@ function Invoke-ForceCloseProcesses {
   }
 
   $processArgs = @()
-  if ($ProcessNames -and $ProcessNames.Count -gt 0) {
+  if ($ProcessIds -and $ProcessIds.Count -gt 0) {
+    $processArgs = @('-ProcessId', @($ProcessIds | Sort-Object -Unique))
+  } elseif ($ProcessNames -and $ProcessNames.Count -gt 0) {
     $processArgs = @('-ProcessName', $ProcessNames)
   }
 
@@ -101,8 +388,17 @@ function Invoke-ForceCloseProcesses {
 
   Start-Sleep -Milliseconds 300
   $remaining = @()
-  foreach ($name in $ProcessNames) {
-    try { $remaining += @(Get-Process -Name $name -ErrorAction SilentlyContinue) } catch {}
+  if ($ProcessIds -and $ProcessIds.Count -gt 0) {
+    foreach ($id in @($ProcessIds | Sort-Object -Unique)) {
+      try {
+        $proc = Get-Process -Id $id -ErrorAction SilentlyContinue
+        if ($proc) { $remaining += @($proc) }
+      } catch {}
+    }
+  } else {
+    foreach ($name in $ProcessNames) {
+      try { $remaining += @(Get-Process -Name $name -ErrorAction SilentlyContinue) } catch {}
+    }
   }
   if ($exitCode -eq 0 -and $remaining.Count -eq 0) {
     Write-Log ("Force close succeeded for {0}." -f ($ProcessNames -join ','))
@@ -141,7 +437,16 @@ function Invoke-CloseLabVIEW {
   if ($Metadata) {
     if ($Metadata.ContainsKey('version') -and $Metadata.version) { $params.MinimumSupportedLVVersion = $Metadata.version }
     if ($Metadata.ContainsKey('bitness') -and $Metadata.bitness) { $params.SupportedBitness = $Metadata.bitness }
+    foreach ($key in @('labviewExe','labviewPath')) {
+      if ($Metadata.ContainsKey($key) -and $Metadata[$key]) {
+        $params.LabVIEWExePath = $Metadata[$key]
+        break
+      }
+    }
   }
+  $params.TimeoutSeconds = Resolve-LabVIEWCloseTimeoutSeconds
+  $targetProcessIds = @(Resolve-LabVIEWTargetProcessIds -Metadata $Metadata)
+  $expectedLabVIEWPath = Resolve-LabVIEWExpectedPath -Metadata $Metadata
   $markerPath = Join-Path $logDir 'once-close-labview.marker'
   if (Test-Path -LiteralPath $markerPath) {
     Write-Log 'Close-LabVIEW already executed; skipping duplicate.'
@@ -162,23 +467,24 @@ function Invoke-CloseLabVIEW {
       Write-Warning ("Close-LabVIEW.ps1 exited with code {0} (attempt {1}/{2})." -f $exitCode,$attempt,$maxAttempts)
     }
     Start-Sleep -Milliseconds 300
-    $stillRunning = @()
-    try { $stillRunning = @(Get-Process -Name 'LabVIEW' -ErrorAction SilentlyContinue) } catch {}
-    if ($exitCode -eq 0 -and $stillRunning.Count -eq 0) {
+    $probeByName = ($targetProcessIds.Count -eq 0)
+    $stillRunning = @(Get-LabVIEWProcessesByScope -ProcessIds $targetProcessIds -UseNameFallback:$probeByName -ExpectedPath $expectedLabVIEWPath)
+    if ($stillRunning.Count -eq 0) {
+      if ($exitCode -ne 0) {
+        Write-Log ("Close-LabVIEW returned non-zero but no targeted LabVIEW process remained (attempt {0}/{1})." -f $attempt, $maxAttempts)
+      }
       $executed = Invoke-Once -Key 'close-labview' -Action { } -ScopeDirectory $logDir
       if ($executed) { Write-Log "Close-LabVIEW executed successfully." }
       return
     }
-    if ($stillRunning.Count -gt 0) {
-      Write-Warning ("Close-LabVIEW.ps1 completed but LabVIEW.exe still running (PID(s): {0})" -f ($stillRunning.Id -join ','))
+    Write-Warning ("Close-LabVIEW.ps1 completed but targeted LabVIEW.exe still running (PID(s): {0})" -f ($stillRunning.Id -join ','))
+    if ($attempt -lt $maxAttempts) {
+      Write-Log ("Close-LabVIEW retry scheduled ({0}/{1})." -f ($attempt + 1), $maxAttempts)
+      Start-Sleep -Seconds 1
     }
-  if ($attempt -lt $maxAttempts) {
-    Write-Log ("Close-LabVIEW retry scheduled ({0}/{1})." -f ($attempt + 1), $maxAttempts)
-    Start-Sleep -Seconds 1
   }
-}
   Write-Log "Close-LabVIEW helper retries exhausted; invoking force-close fallback."
-  if (Invoke-ForceCloseProcesses -ProcessNames @('LabVIEW') -Label 'LabVIEW') {
+  if (Invoke-ForceCloseProcesses -ProcessNames @('LabVIEW') -ProcessIds @($stillRunning | Select-Object -ExpandProperty Id) -Label 'LabVIEW') {
     $executed = Invoke-Once -Key 'close-labview' -Action { } -ScopeDirectory $logDir
     if ($executed) { Write-Log "Close-LabVIEW force-close executed successfully." }
     return
@@ -299,4 +605,3 @@ if ($postSnapshot -and $postSnapshot.groups) {
 }
 
 Write-Host 'Post-Run-Cleanup completed.' -ForegroundColor DarkGray
-
