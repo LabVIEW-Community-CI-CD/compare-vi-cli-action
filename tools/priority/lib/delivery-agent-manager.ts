@@ -28,6 +28,7 @@ import {
   resolveGitDirPath,
   resolveObserverTelemetry,
   resolveRepoRoot,
+  resolveWorkspaceQuarantine,
   runCommand,
   shellQuote,
   sleep,
@@ -40,6 +41,7 @@ import {
 } from './delivery-agent-common.js';
 import {
   invokeDeliveryHostSignal,
+  runRepoHygiene,
   runPrereqsCommand,
   updateHostIsolationState,
 } from './delivery-agent-prereqs.js';
@@ -120,7 +122,7 @@ export function stopWslRuntimeDaemon({ distro, unitName, processId }) {
 }
 
 export function emitStatus(options) {
-  const repoRoot = resolveRepoRoot();
+  const repoRoot = options.repoRoot || resolveRepoRoot();
   const paths = getArtifactPaths(repoRoot, options.runtimeDir);
   const pidState = readJsonFile(paths.managerPidPath);
   const managerAlive = testProcessAlive(getOptionalIntProperty(pidState, 'pid'));
@@ -147,6 +149,7 @@ export function emitStatus(options) {
   const deliveryMemory = readJsonFile(paths.deliveryMemoryPath);
   const codexStateHygiene = readJsonFile(paths.codexStateHygienePath);
   const observer = resolveObserverTelemetry(codexStateHygiene, paths.codexStateHygienePath);
+  const workspaceQuarantine = getOptionalProperty(options, 'workspaceQuarantine') || resolveWorkspaceQuarantine(repoRoot);
   const hostSignal = readJsonFile(paths.hostSignalPath);
   const hostIsolation = readJsonFile(paths.hostIsolationPath);
   const wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
@@ -184,6 +187,7 @@ export function emitStatus(options) {
     heartbeatDiagnostics: resolvedDelivery.diagnostics,
     deliveryMemory,
     observer,
+    workspaceQuarantine,
     codexStateHygiene,
     hostSignal,
     hostIsolation,
@@ -230,6 +234,7 @@ export function emitStatus(options) {
       heartbeatUsed: Boolean(resolvedDelivery.diagnostics.usedHeartbeat),
       heartbeatGeneratedAt: resolvedDelivery.diagnostics.heartbeatGeneratedAt,
       observerStatus: getOptionalStringProperty(observer, 'status'),
+      workspaceQuarantineStatus: getOptionalStringProperty(workspaceQuarantine, 'status'),
       daemonLogLineCount: daemonLogTail.length,
       managerStdoutLineCount: managerLogTail.length,
       managerStderrLineCount: managerErrorLogTail.length,
@@ -238,19 +243,42 @@ export function emitStatus(options) {
   return report;
 }
 
-export async function ensureManagerCommand(options) {
-  const repoRoot = resolveRepoRoot();
+export async function ensureManagerCommand(options, dependencies = {}) {
+  const repoRoot = options.repoRoot || resolveRepoRoot();
   const paths = getArtifactPaths(repoRoot, options.runtimeDir);
-  await runPrereqsCommand(options);
+  const runPrereqs = dependencies.runPrereqsCommandFn ?? runPrereqsCommand;
+  const runHygiene = dependencies.runRepoHygieneFn ?? runRepoHygiene;
+  const invokeHostSignal = dependencies.invokeDeliveryHostSignalFn ?? invokeDeliveryHostSignal;
+  const spawnProcess = dependencies.spawnFn ?? spawn;
+  const sleepFn = dependencies.sleepFn ?? sleep;
+  await runHygiene({ ...options, repoRoot });
+  const workspaceQuarantine = resolveWorkspaceQuarantine(repoRoot);
+  if (workspaceQuarantine.status === 'blocked') {
+    writeManagerTrace({
+      repo: options.repo,
+      runtimeDir: options.runtimeDir,
+      distro: options.wslDistro,
+      tracePath: paths.managerTracePath,
+      eventType: 'workspace-quarantine-blocked',
+      detail: {
+        reason: workspaceQuarantine.reason,
+        trackedEntryCount: workspaceQuarantine.trackedEntryCount,
+        untrackedEntryCount: workspaceQuarantine.untrackedEntryCount,
+      },
+    });
+    return emitStatus({ ...options, repoRoot, outcome: 'workspace-quarantined', workspaceQuarantine });
+  }
+
+  await runPrereqs({ ...options, repoRoot });
 
   const existingPidState = readJsonFile(paths.managerPidPath);
   const existingPid = getOptionalIntProperty(existingPidState, 'pid');
   if (testProcessAlive(existingPid)) {
-    return emitStatus({ ...options, outcome: 'already-running' });
+    return emitStatus({ ...options, repoRoot, outcome: 'already-running', workspaceQuarantine });
   }
 
   rmSync(paths.stopRequestPath, { force: true });
-  invokeDeliveryHostSignal({ mode: 'isolate', repoRoot, distro: options.wslDistro, paths, previousFingerprint: null, allowRunnerServices: false });
+  invokeHostSignal({ mode: 'isolate', repoRoot, distro: options.wslDistro, paths, previousFingerprint: null, allowRunnerServices: false });
 
   mkdirSync(path.dirname(paths.runnerLogPath), { recursive: true });
   const stdoutFd = openSync(paths.runnerLogPath, 'a');
@@ -278,7 +306,7 @@ export async function ensureManagerCommand(options) {
   if (options.sleepMode) {
     childArgs.push('--sleep-mode');
   }
-  const child = spawn(process.execPath, childArgs, {
+  const child = spawnProcess(process.execPath, childArgs, {
     cwd: repoRoot,
     detached: true,
     windowsHide: true,
@@ -299,12 +327,12 @@ export async function ensureManagerCommand(options) {
     command: [process.execPath, ...childArgs],
   });
 
-  await sleep(2000);
-  return emitStatus({ ...options, outcome: 'started' });
+  await sleepFn(2000);
+  return emitStatus({ ...options, repoRoot, outcome: 'started', workspaceQuarantine });
 }
 
 export async function stopManagerCommand(options) {
-  const repoRoot = resolveRepoRoot();
+  const repoRoot = options.repoRoot || resolveRepoRoot();
   const paths = getArtifactPaths(repoRoot, options.runtimeDir);
   writeJsonFile(paths.stopRequestPath, {
     schema: STOP_REQUEST_SCHEMA,
@@ -348,11 +376,11 @@ export async function stopManagerCommand(options) {
 
   rmSync(paths.managerPidPath, { force: true });
   rmSync(paths.wslDaemonPidPath, { force: true });
-  return emitStatus({ ...options, outcome: 'stopped' });
+  return emitStatus({ ...options, repoRoot, outcome: 'stopped' });
 }
 
 export async function runManagerLoop(options) {
-  const repoRoot = resolveRepoRoot();
+  const repoRoot = options.repoRoot || resolveRepoRoot();
   const paths = getArtifactPaths(repoRoot, options.runtimeDir);
   mkdirSync(paths.runtimeDirPath, { recursive: true });
 
@@ -378,7 +406,7 @@ export async function runManagerLoop(options) {
   let wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
 
   try {
-    await runPrereqsCommand(options);
+    await runPrereqsCommand({ ...options, repoRoot });
     writeManagerTrace({
       repo: options.repo,
       runtimeDir: options.runtimeDir,
