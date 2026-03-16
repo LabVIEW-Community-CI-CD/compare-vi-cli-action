@@ -271,6 +271,93 @@ test('runAgentReviewPolicy fails closed when the Simulation provider surfaces a 
   assert.equal(result.receipt.overall.failedProvider, 'simulation');
 });
 
+test('runAgentReviewPolicy preserves machine-readable Copilot wrapper failure classification', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'agent-review-policy-copilot-disposition-'));
+  const result = await runAgentReviewPolicy({
+    repoRoot,
+    request: {
+      requested: true,
+      reviewProviders: ['copilot-cli']
+    },
+    runCopilotCliReviewFn: async () => ({
+      providerId: 'copilot-cli',
+      status: 'failed',
+      disposition: 'transport-timeout',
+      reason: 'Copilot transport timed out.',
+      receiptPath: 'tests/results/_hooks/pre-commit-copilot-cli-review.json',
+      receipt: {
+        copilot: {
+          transport: {
+            timedOut: true,
+            failureClass: 'transport-timeout'
+          }
+        },
+        overall: {
+          status: 'failed',
+          disposition: 'transport-timeout',
+          actionableFindingCount: 0,
+          message: 'Copilot transport timed out.'
+        }
+      }
+    }),
+    resolveRepoGitStateFn: () => ({
+      headSha: 'abc123',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false
+    })
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.receipt.overall.failedProvider, 'copilot-cli');
+  assert.equal(result.receipt.providers['copilot-cli'].status, 'failed');
+  assert.equal(result.receipt.providers['copilot-cli'].disposition, 'transport-timeout');
+  assert.equal(result.receipt.providers['copilot-cli'].failureClass, 'transport-timeout');
+});
+
+test('runAgentReviewPolicy preserves invalid-review-output classification from the Copilot receipt', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'agent-review-policy-copilot-invalid-output-'));
+  const result = await runAgentReviewPolicy({
+    repoRoot,
+    request: {
+      requested: true,
+      reviewProviders: ['copilot-cli']
+    },
+    runCopilotCliReviewFn: async () => ({
+      providerId: 'copilot-cli',
+      status: 'failed',
+      disposition: 'invalid-review-output',
+      reason: 'Copilot returned malformed JSONL.',
+      receiptPath: 'tests/results/_hooks/pre-commit-copilot-cli-review.json',
+      receipt: {
+        copilot: {
+          transport: {
+            timedOut: false,
+            failureClass: null
+          }
+        },
+        overall: {
+          status: 'failed',
+          disposition: 'invalid-review-output',
+          actionableFindingCount: 0,
+          message: 'Copilot returned malformed JSONL.'
+        }
+      }
+    }),
+    resolveRepoGitStateFn: () => ({
+      headSha: 'abc123',
+      branch: 'issue/test',
+      upstreamDevelopMergeBase: 'base123',
+      dirtyTracked: false
+    })
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.receipt.overall.failedProvider, 'copilot-cli');
+  assert.equal(result.receipt.providers['copilot-cli'].disposition, 'invalid-review-output');
+  assert.equal(result.receipt.providers['copilot-cli'].failureClass, 'invalid-review-output');
+});
+
 test('runAgentReviewPolicy fails closed when an explicitly selected reserved provider is not implemented', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'agent-review-policy-reserved-provider-'));
   const result = await runAgentReviewPolicy({

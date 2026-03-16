@@ -33,6 +33,17 @@ function toIso(value = new Date()) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
+function normalizeFailureClass(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return [
+    'transport-timeout',
+    'runtime-wrapper-failure',
+    'invalid-review-output'
+  ].includes(normalized)
+    ? normalized
+    : '';
+}
+
 export function normalizeLocalReviewProviderId(value) {
   const normalized = normalizeText(value).toLowerCase();
   if (!normalized) {
@@ -109,12 +120,18 @@ export function summarizeLocalReviewProviderResult(result) {
   const overall = receipt && typeof receipt === 'object' && receipt.overall && typeof receipt.overall === 'object'
     ? receipt.overall
     : {};
+  const normalizedFailureClass =
+    normalizeFailureClass(result?.failureClass) ||
+    normalizeFailureClass(result?.receipt?.copilot?.transport?.failureClass) ||
+    normalizeFailureClass(overall.disposition);
   return {
     providerId,
     status: normalizeText(result?.status) || normalizeText(overall.status) || 'failed',
+    disposition: normalizeText(result?.disposition) || normalizeText(overall.disposition) || null,
     reason: normalizeText(result?.reason) || normalizeText(overall.message) || null,
     receiptPath: normalizeText(result?.receiptPath) || null,
     actionableFindingCount: Number.isInteger(overall.actionableFindingCount) ? overall.actionableFindingCount : 0,
+    failureClass: normalizedFailureClass || null,
     convergence: result?.receipt?.convergence ?? null,
     scenario: normalizeText(result?.receipt?.scenario) || null,
     executionPlane: normalizeText(result?.executionPlane) || normalizeText(result?.receipt?.executionPlane) || null,

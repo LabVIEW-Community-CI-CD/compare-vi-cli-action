@@ -213,7 +213,9 @@ test('runCopilotCliReview writes a deterministic passed receipt for staged revie
   });
 
   assert.equal(result.status, 'passed');
+  assert.equal(result.disposition, 'passed');
   assert.equal(result.receipt.overall.status, 'passed');
+  assert.equal(result.receipt.overall.disposition, 'passed');
   assert.equal(result.receipt.copilot.model, 'gpt-5.4-mini');
   assert.equal(result.receipt.copilot.allowAllTools, false);
   assert.equal(result.receipt.copilot.command, process.platform === 'win32' ? 'copilot.cmd' : 'copilot');
@@ -232,6 +234,7 @@ test('runCopilotCliReview writes a deterministic passed receipt for staged revie
   assert.equal(result.receipt.convergence.passCount, 1);
   assert.equal(result.receipt.convergence.stoppedReason, 'clean-pass');
   assert.equal(result.receipt.passes.length, 1);
+  assert.equal(result.receipt.passes[0].disposition, 'passed');
   await access(path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit-copilot-cli-review.prompt.txt'));
   await access(path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit-copilot-cli-review.jsonl'));
   await access(path.join(repoRoot, 'tests', 'results', '_hooks', 'pre-commit-copilot-cli-review.pass-1.jsonl'));
@@ -320,7 +323,9 @@ test('runCopilotCliReview fails closed on actionable findings', async () => {
   });
 
   assert.equal(result.status, 'failed');
+  assert.equal(result.disposition, 'actionable-findings');
   assert.equal(result.receipt.overall.actionableFindingCount, 1);
+  assert.equal(result.receipt.overall.disposition, 'actionable-findings');
   assert.equal(result.receipt.findings[0].path, 'README.md');
   assert.equal(result.receipt.convergence.passCount, 1);
   assert.equal(result.receipt.convergence.stoppedReason, 'max-passes');
@@ -379,8 +384,113 @@ test('runCopilotCliReview supports report-only profiles when failOnFindings is d
 
   assert.equal(result.status, 'passed');
   assert.equal(result.receipt.overall.status, 'passed');
+  assert.equal(result.disposition, 'actionable-findings');
+  assert.equal(result.receipt.overall.disposition, 'actionable-findings');
   assert.match(result.receipt.overall.message, /report-only mode/i);
   assert.equal(result.receipt.overall.actionableFindingCount, 1);
+});
+
+test('runCopilotCliReview classifies transport timeouts without parsing stderr text', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-review-timeout-'));
+  runGit(repoRoot, ['init']);
+  runGit(repoRoot, ['config', 'user.name', 'Agent Runner']);
+  runGit(repoRoot, ['config', 'user.email', 'agent@example.com']);
+  await writeFile(path.join(repoRoot, 'README.md'), '# repo\n', 'utf8');
+  runGit(repoRoot, ['add', 'README.md']);
+  runGit(repoRoot, ['commit', '-m', 'init']);
+  await writeFile(path.join(repoRoot, 'README.md'), '# repo\n\nupdated\n', 'utf8');
+  runGit(repoRoot, ['add', 'README.md']);
+
+  const result = await runCopilotCliReview({
+    repoRoot,
+    profile: 'pre-commit',
+    stagedFiles: ['README.md'],
+    runCommandFn: async () => ({
+      status: 1,
+      stdout: '',
+      stderr: 'Copilot transport timed out.',
+      timedOut: true,
+      error: {
+        code: 'ETIMEDOUT',
+        message: 'Copilot transport timed out.'
+      }
+    })
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.disposition, 'transport-timeout');
+  assert.equal(result.receipt.overall.status, 'failed');
+  assert.equal(result.receipt.overall.disposition, 'transport-timeout');
+  assert.equal(result.receipt.copilot.transport.timedOut, true);
+  assert.equal(result.receipt.copilot.transport.failureClass, 'transport-timeout');
+  assert.equal(result.receipt.passes[0].disposition, 'transport-timeout');
+  assert.equal(result.receipt.passes[0].failureClass, 'transport-timeout');
+});
+
+test('runCopilotCliReview classifies runtime wrapper failures separately from actionable findings', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-review-runtime-failure-'));
+  runGit(repoRoot, ['init']);
+  runGit(repoRoot, ['config', 'user.name', 'Agent Runner']);
+  runGit(repoRoot, ['config', 'user.email', 'agent@example.com']);
+  await writeFile(path.join(repoRoot, 'README.md'), '# repo\n', 'utf8');
+  runGit(repoRoot, ['add', 'README.md']);
+  runGit(repoRoot, ['commit', '-m', 'init']);
+  await writeFile(path.join(repoRoot, 'README.md'), '# repo\n\nupdated\n', 'utf8');
+  runGit(repoRoot, ['add', 'README.md']);
+
+  const result = await runCopilotCliReview({
+    repoRoot,
+    profile: 'pre-commit',
+    stagedFiles: ['README.md'],
+    runCommandFn: async () => ({
+      status: 1,
+      stdout: '',
+      stderr: 'Wrapper transport failed.',
+      error: {
+        code: 'EPIPE',
+        message: 'Wrapper transport failed.'
+      }
+    })
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.disposition, 'runtime-wrapper-failure');
+  assert.equal(result.receipt.overall.status, 'failed');
+  assert.equal(result.receipt.overall.disposition, 'runtime-wrapper-failure');
+  assert.equal(result.receipt.copilot.transport.timedOut, false);
+  assert.equal(result.receipt.copilot.transport.failureClass, 'runtime-wrapper-failure');
+  assert.equal(result.receipt.passes[0].disposition, 'runtime-wrapper-failure');
+  assert.equal(result.receipt.passes[0].failureClass, 'runtime-wrapper-failure');
+});
+
+test('runCopilotCliReview classifies malformed Copilot output separately from transport/runtime failures', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'copilot-cli-review-invalid-output-'));
+  runGit(repoRoot, ['init']);
+  runGit(repoRoot, ['config', 'user.name', 'Agent Runner']);
+  runGit(repoRoot, ['config', 'user.email', 'agent@example.com']);
+  await writeFile(path.join(repoRoot, 'README.md'), '# repo\n', 'utf8');
+  runGit(repoRoot, ['add', 'README.md']);
+  runGit(repoRoot, ['commit', '-m', 'init']);
+  await writeFile(path.join(repoRoot, 'README.md'), '# repo\n\nupdated\n', 'utf8');
+  runGit(repoRoot, ['add', 'README.md']);
+
+  const result = await runCopilotCliReview({
+    repoRoot,
+    profile: 'pre-commit',
+    stagedFiles: ['README.md'],
+    runCommandFn: async () => ({
+      status: 0,
+      stdout: 'not-jsonl',
+      stderr: ''
+    })
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.disposition, 'invalid-review-output');
+  assert.equal(result.receipt.overall.disposition, 'invalid-review-output');
+  assert.equal(result.receipt.copilot.transport.failureClass, null);
+  assert.equal(result.receipt.passes[0].disposition, 'invalid-review-output');
+  assert.equal(result.receipt.passes[0].failureClass, 'invalid-review-output');
 });
 
 test('runCopilotCliReview accumulates novel findings across bounded passes', async () => {

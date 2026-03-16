@@ -11,6 +11,14 @@ export const COPILOT_CLI_REVIEW_SCHEMA = 'priority/copilot-cli-review@v1';
 export const DELIVERY_AGENT_POLICY_PATH = path.join('tools', 'priority', 'delivery-agent.policy.json');
 export const DEFAULT_COPILOT_CLI_MODEL = 'gpt-5.4';
 export const DEFAULT_COPILOT_CLI_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
+export const COPILOT_CLI_REVIEW_DISPOSITIONS = Object.freeze({
+  SKIPPED: 'skipped',
+  PASSED: 'passed',
+  ACTIONABLE_FINDINGS: 'actionable-findings',
+  TRANSPORT_TIMEOUT: 'transport-timeout',
+  RUNTIME_WRAPPER_FAILURE: 'runtime-wrapper-failure',
+  INVALID_REVIEW_OUTPUT: 'invalid-review-output'
+});
 
 export const DEFAULT_COPILOT_CLI_REVIEW_POLICY = {
   enabled: true,
@@ -112,7 +120,23 @@ function normalizeProfileName(value) {
   return normalized;
 }
 
+function normalizeCopilotDisposition(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return Object.values(COPILOT_CLI_REVIEW_DISPOSITIONS).includes(normalized) ? normalized : '';
+}
+
 function buildCommandResult(result = {}) {
+  const errorCode = normalizeText(result.errorCode ?? result.error?.code).toUpperCase() || null;
+  const errorName = normalizeText(result.errorName ?? result.error?.name) || null;
+  const signal = normalizeText(result.signal) || null;
+  const timedOut = result.timedOut === true || errorCode === 'ETIMEDOUT';
+  const failureClass =
+    normalizeCopilotDisposition(result.failureClass) ||
+    (timedOut
+      ? COPILOT_CLI_REVIEW_DISPOSITIONS.TRANSPORT_TIMEOUT
+      : errorCode || errorName || signal || result.error || (Number.isInteger(result.status) && result.status !== 0)
+        ? COPILOT_CLI_REVIEW_DISPOSITIONS.RUNTIME_WRAPPER_FAILURE
+        : '');
   return {
     status: Number.isInteger(result.status) ? result.status : 1,
     stdout: normalizeText(result.stdout),
@@ -122,8 +146,27 @@ function buildCommandResult(result = {}) {
       normalizeText(result.signal ? `Process terminated by signal ${result.signal}.` : '')
     ]
       .filter(Boolean)
-      .join('\n')
+      .join('\n'),
+    signal: signal || null,
+    timedOut,
+    errorCode,
+    errorName,
+    failureClass: failureClass || null
   };
+}
+
+function classifyCopilotDisposition({ failureClass = '', actionableFindingCount = 0, skipped = false } = {}) {
+  if (skipped === true) {
+    return COPILOT_CLI_REVIEW_DISPOSITIONS.SKIPPED;
+  }
+  const normalizedFailureClass = normalizeCopilotDisposition(failureClass);
+  if (normalizedFailureClass) {
+    return normalizedFailureClass;
+  }
+  if (Number.isInteger(actionableFindingCount) && actionableFindingCount > 0) {
+    return COPILOT_CLI_REVIEW_DISPOSITIONS.ACTIONABLE_FINDINGS;
+  }
+  return COPILOT_CLI_REVIEW_DISPOSITIONS.PASSED;
 }
 
 function readPathEntries(env = process.env) {
@@ -816,7 +859,14 @@ export async function runCopilotCliReview({
       disableBuiltinMcps: normalizedPolicy.disableBuiltinMcps === true,
       allowAllTools: normalizedPolicy.allowAllTools === true,
       availableTools: normalizedPolicy.availableTools,
-      exitCode: null
+      exitCode: null,
+      transport: {
+        timedOut: false,
+        signal: null,
+        errorCode: null,
+        errorName: null,
+        failureClass: null
+      }
     },
     permissionPolicy: {
       promptOnly: normalizedPolicy.promptOnly === true,
@@ -841,6 +891,7 @@ export async function runCopilotCliReview({
     },
     overall: {
       status: 'skipped',
+      disposition: COPILOT_CLI_REVIEW_DISPOSITIONS.SKIPPED,
       actionableFindingCount: 0,
       message: 'Copilot CLI review skipped.',
       exitCode: 0
@@ -858,6 +909,7 @@ export async function runCopilotCliReview({
     await writeFile(resolvedReceiptPathInfo.resolved, `${JSON.stringify(baseReceipt, null, 2)}\n`, 'utf8');
     return {
       status: 'skipped',
+      disposition: COPILOT_CLI_REVIEW_DISPOSITIONS.SKIPPED,
       reason: 'Copilot CLI review is disabled by policy.',
       receiptPath: resolvedReceiptPathInfo.normalized,
       receipt: baseReceipt
@@ -889,6 +941,7 @@ export async function runCopilotCliReview({
   if (context.selectedFiles.length === 0) {
     receipt.overall = {
       status: 'skipped',
+      disposition: COPILOT_CLI_REVIEW_DISPOSITIONS.SKIPPED,
       actionableFindingCount: 0,
       message: profilePolicy.mode === 'staged' ? 'No staged files selected for Copilot CLI review.' : 'No changed files selected for Copilot CLI review.',
       exitCode: 0
@@ -896,6 +949,7 @@ export async function runCopilotCliReview({
     await writeFile(resolvedReceiptPathInfo.resolved, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
     return {
       status: 'skipped',
+      disposition: COPILOT_CLI_REVIEW_DISPOSITIONS.SKIPPED,
       reason: receipt.overall.message,
       receiptPath: resolvedReceiptPathInfo.normalized,
       receipt
@@ -942,10 +996,15 @@ export async function runCopilotCliReview({
     receipt.copilot = {
       ...receipt.copilot,
       command: copilotInvocation.command,
-      shell: copilotInvocation.shell
+      shell: copilotInvocation.shell,
+      transport: {
+        ...receipt.copilot.transport,
+        failureClass: COPILOT_CLI_REVIEW_DISPOSITIONS.RUNTIME_WRAPPER_FAILURE
+      }
     };
     receipt.overall = {
       status: 'failed',
+      disposition: COPILOT_CLI_REVIEW_DISPOSITIONS.RUNTIME_WRAPPER_FAILURE,
       actionableFindingCount: 0,
       message: copilotInvocation.resolutionError,
       exitCode: 1
@@ -953,6 +1012,7 @@ export async function runCopilotCliReview({
     await writeFile(resolvedReceiptPathInfo.resolved, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
     return {
       status: 'failed',
+      disposition: COPILOT_CLI_REVIEW_DISPOSITIONS.RUNTIME_WRAPPER_FAILURE,
       reason: copilotInvocation.resolutionError,
       receiptPath: resolvedReceiptPathInfo.normalized,
       receipt
@@ -964,7 +1024,9 @@ export async function runCopilotCliReview({
   let cleanPassCount = 0;
   let stoppedReason = 'max-passes';
   let failureReason = '';
+  let failureClass = '';
   let lastPassExitCode = 0;
+  let lastTransport = { timedOut: false, signal: null, errorCode: null, errorName: null, failureClass: null };
 
   for (let passIndex = 1; passIndex <= effectiveConvergence.maxPasses; passIndex += 1) {
     const startedAt = new Date();
@@ -976,6 +1038,13 @@ export async function runCopilotCliReview({
       })
     );
     lastPassExitCode = commandResult.status;
+    lastTransport = {
+      timedOut: commandResult.timedOut === true,
+      signal: commandResult.signal,
+      errorCode: commandResult.errorCode,
+      errorName: commandResult.errorName,
+      failureClass: commandResult.failureClass
+    };
     const passResponsePath = artifactPaths.responsePathForPass(passIndex);
     await writeFile(passResponsePath, `${commandResult.stdout}\n`, 'utf8');
     if (passIndex === 1) {
@@ -1026,6 +1095,14 @@ export async function runCopilotCliReview({
       noNovelFindingStreak = 0;
     }
 
+    const passFailureClass = passFailureReason
+      ? commandResult.failureClass || COPILOT_CLI_REVIEW_DISPOSITIONS.INVALID_REVIEW_OUTPUT
+      : '';
+    const passDisposition = classifyCopilotDisposition({
+      failureClass: passFailureClass,
+      actionableFindingCount: passActionableFindings.length
+    });
+
     receipt.passes.push({
       passNumber: passIndex,
       startedAt: toIso(startedAt),
@@ -1037,12 +1114,19 @@ export async function runCopilotCliReview({
           : structured?.status === 'approved' && passActionableFindings.length === 0
             ? 'approved'
             : 'changes-requested',
+      disposition: passDisposition,
+      failureClass: passFailureClass || null,
       summary:
         passFailureReason ||
         structured?.summary ||
         (passActionableFindings.length === 0
           ? 'Copilot CLI review reported no actionable findings.'
           : 'Copilot CLI review reported actionable findings.'),
+      exitCode: commandResult.status,
+      timedOut: commandResult.timedOut === true,
+      signal: commandResult.signal,
+      errorCode: commandResult.errorCode,
+      errorName: commandResult.errorName,
       actionableFindingCount: passActionableFindings.length,
       novelActionableFindingCount: novelActionableFindings.length,
       noNovelFindingStreak,
@@ -1054,6 +1138,7 @@ export async function runCopilotCliReview({
 
     if (passFailureReason) {
       failureReason = passFailureReason;
+      failureClass = passFailureClass;
       stoppedReason = 'command-failed';
       break;
     }
@@ -1083,7 +1168,8 @@ export async function runCopilotCliReview({
     executed: receipt.passes.length > 0,
     command: copilotInvocation.command,
     shell: copilotInvocation.shell,
-    exitCode: lastPassExitCode
+    exitCode: lastPassExitCode,
+    transport: lastTransport
   };
 
   const repeatedFindingFingerprints = [...findingOccurrences.entries()]
@@ -1099,6 +1185,10 @@ export async function runCopilotCliReview({
     : '';
 
   const findingsShouldFail = profilePolicy.failOnFindings !== false;
+  const overallDisposition = classifyCopilotDisposition({
+    failureClass,
+    actionableFindingCount: aggregatedFindings.length
+  });
   const overallStatus =
     failureReason || (aggregatedFindings.length > 0 && findingsShouldFail)
       ? 'failed'
@@ -1124,6 +1214,7 @@ export async function runCopilotCliReview({
   };
   receipt.overall = {
     status: overallStatus,
+    disposition: overallDisposition,
     actionableFindingCount: aggregatedFindings.length,
     message: overallMessage,
     exitCode: lastPassExitCode
@@ -1131,6 +1222,7 @@ export async function runCopilotCliReview({
   await writeFile(resolvedReceiptPathInfo.resolved, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
   return {
     status: overallStatus,
+    disposition: overallDisposition,
     reason: overallMessage,
     receiptPath: resolvedReceiptPathInfo.normalized,
     receipt
