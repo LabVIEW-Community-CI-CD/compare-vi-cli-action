@@ -1394,160 +1394,114 @@ async function updatePullRequestBranch({ taskPacket, repoRoot, executionRoot = r
           deps
         );
         helperCallsExecuted.push(`git fetch upstream ${baseRefName}`);
-        if (upstreamFetchResult.status !== 0) {
-          const upstreamFetchMessage =
-            normalizeText(upstreamFetchResult.stderr) ||
-            normalizeText(upstreamFetchResult.stdout) ||
-            `git fetch upstream failed (${upstreamFetchResult.status})`;
-          return {
-            status: 'blocked',
-            outcome: isRateLimitMessage(upstreamFetchMessage) ? 'rate-limit' : 'branch-sync-failed',
-            reason: upstreamFetchMessage,
-            source: 'delivery-agent-broker',
-            details: {
-              actionType: 'sync-pr-branch',
-              laneLifecycle: 'waiting-ci',
-              blockerClass: isRateLimitMessage(upstreamFetchMessage) ? 'rate-limit' : 'ci',
-              retryable: true,
-              nextWakeCondition: isRateLimitMessage(upstreamFetchMessage) ? 'github-rate-limit-reset' : 'branch-sync-retry',
-              helperCallsExecuted,
-              filesTouched: []
-            }
-          };
-        }
-        const originFetchResult = await runCommand(
-          'git',
-          ['fetch', 'origin', branchName],
-          { cwd: executionRoot, env: process.env },
-          deps
-        );
-        helperCallsExecuted.push(`git fetch origin ${branchName}`);
-        if (originFetchResult.status !== 0) {
-          const originFetchMessage =
-            normalizeText(originFetchResult.stderr) ||
-            normalizeText(originFetchResult.stdout) ||
-            `git fetch origin failed (${originFetchResult.status})`;
-          return {
-            status: 'blocked',
-            outcome: isRateLimitMessage(originFetchMessage) ? 'rate-limit' : 'branch-sync-failed',
-            reason: originFetchMessage,
-            source: 'delivery-agent-broker',
-            details: {
-              actionType: 'sync-pr-branch',
-              laneLifecycle: 'waiting-ci',
-              blockerClass: isRateLimitMessage(originFetchMessage) ? 'rate-limit' : 'ci',
-              retryable: true,
-              nextWakeCondition: isRateLimitMessage(originFetchMessage) ? 'github-rate-limit-reset' : 'branch-sync-retry',
-              helperCallsExecuted,
-              filesTouched: []
-            }
-          };
-        }
-        const checkoutResult = await runCommand('git', ['checkout', branchName], { cwd: executionRoot, env: process.env }, deps);
-        helperCallsExecuted.push(`git checkout ${branchName}`);
-        if (checkoutResult.status !== 0) {
-          const checkoutMessage =
-            normalizeText(checkoutResult.stderr) ||
-            normalizeText(checkoutResult.stdout) ||
-            `git checkout failed (${checkoutResult.status})`;
-          return {
-            status: 'blocked',
-            outcome: isRateLimitMessage(checkoutMessage) ? 'rate-limit' : 'branch-sync-failed',
-            reason: checkoutMessage,
-            source: 'delivery-agent-broker',
-            details: {
-              actionType: 'sync-pr-branch',
-              laneLifecycle: 'waiting-ci',
-              blockerClass: isRateLimitMessage(checkoutMessage) ? 'rate-limit' : 'ci',
-              retryable: true,
-              nextWakeCondition: isRateLimitMessage(checkoutMessage) ? 'github-rate-limit-reset' : 'branch-sync-retry',
-              helperCallsExecuted,
-              filesTouched: []
-            }
-          };
-        }
-        const rebaseResult = await runCommand(
-          'git',
-          ['rebase', `upstream/${baseRefName}`],
-          { cwd: executionRoot, env: process.env },
-          deps
-        );
-        helperCallsExecuted.push(`git rebase upstream/${baseRefName}`);
-        if (rebaseResult.status === 0) {
-          const pushResult = await runCommand(
+        if (upstreamFetchResult.status === 0) {
+          const originFetchResult = await runCommand(
             'git',
-            ['push', '--force-with-lease', 'origin', `HEAD:${branchName}`],
+            ['fetch', 'origin', branchName],
             { cwd: executionRoot, env: process.env },
             deps
           );
-          helperCallsExecuted.push(`git push --force-with-lease origin HEAD:${branchName}`);
-          if (pushResult.status === 0) {
+          helperCallsExecuted.push(`git fetch origin ${branchName}`);
+          if (originFetchResult.status !== 0) {
+            const originFetchMessage =
+              normalizeText(originFetchResult.stderr) ||
+              normalizeText(originFetchResult.stdout) ||
+              `git fetch origin failed (${originFetchResult.status})`;
             return {
-              status: 'completed',
-              outcome: 'branch-updated',
-              reason: `Updated PR #${prNumber} with the latest base branch.`,
+              status: 'blocked',
+              outcome: isRateLimitMessage(originFetchMessage) ? 'rate-limit' : 'branch-sync-failed',
+              reason: originFetchMessage,
               source: 'delivery-agent-broker',
               details: {
                 actionType: 'sync-pr-branch',
                 laneLifecycle: 'waiting-ci',
-                blockerClass: 'ci',
+                blockerClass: isRateLimitMessage(originFetchMessage) ? 'rate-limit' : 'ci',
                 retryable: true,
-                nextWakeCondition: 'checks-green',
+                nextWakeCondition: isRateLimitMessage(originFetchMessage) ? 'github-rate-limit-reset' : 'branch-sync-retry',
                 helperCallsExecuted,
                 filesTouched: []
               }
             };
           }
-          const pushMessage =
-            normalizeText(pushResult.stderr) || normalizeText(pushResult.stdout) || `git push failed (${pushResult.status})`;
-          return {
-            status: 'blocked',
-            outcome: isRateLimitMessage(pushMessage) ? 'rate-limit' : 'branch-sync-failed',
-            reason: pushMessage,
-            source: 'delivery-agent-broker',
-            details: {
-              actionType: 'sync-pr-branch',
-              laneLifecycle: 'waiting-ci',
-              blockerClass: isRateLimitMessage(pushMessage) ? 'rate-limit' : 'ci',
-              retryable: true,
-              nextWakeCondition: isRateLimitMessage(pushMessage) ? 'github-rate-limit-reset' : 'branch-sync-retry',
-              helperCallsExecuted,
-              filesTouched: []
-            }
-          };
-        }
-        const rebaseMessage =
-          normalizeText(rebaseResult.stderr) || normalizeText(rebaseResult.stdout) || `git rebase failed (${rebaseResult.status})`;
-        if (/conflict|could not apply|resolve all conflicts/i.test(rebaseMessage)) {
-          const abortResult = await runCommand(
+          const checkoutResult = await runCommand(
             'git',
-            ['rebase', '--abort'],
+            ['checkout', branchName],
             { cwd: executionRoot, env: process.env },
             deps
           );
-          if (abortResult.status === 0) {
-            helperCallsExecuted.push('git rebase --abort');
+          helperCallsExecuted.push(`git checkout ${branchName}`);
+          if (checkoutResult.status === 0) {
+            const mergeResult = await runCommand(
+              'git',
+              ['merge', '--no-edit', `upstream/${baseRefName}`],
+              { cwd: executionRoot, env: process.env },
+              deps
+            );
+            helperCallsExecuted.push(`git merge --no-edit upstream/${baseRefName}`);
+            if (mergeResult.status === 0) {
+              const pushResult = await runCommand(
+                'git',
+                ['push', 'origin', `HEAD:${branchName}`],
+                { cwd: executionRoot, env: process.env },
+                deps
+              );
+              helperCallsExecuted.push(`git push origin HEAD:${branchName}`);
+              if (pushResult.status === 0) {
+                return {
+                  status: 'completed',
+                  outcome: 'branch-updated',
+                  reason: `Updated PR #${prNumber} with the latest base branch.`,
+                  source: 'delivery-agent-broker',
+                  details: {
+                    actionType: 'sync-pr-branch',
+                    laneLifecycle: 'waiting-ci',
+                    blockerClass: 'ci',
+                    retryable: true,
+                    nextWakeCondition: 'checks-green',
+                    helperCallsExecuted,
+                    filesTouched: []
+                  }
+                };
+              }
+              const pushMessage =
+                normalizeText(pushResult.stderr) || normalizeText(pushResult.stdout) || `git push failed (${pushResult.status})`;
+              return {
+                status: 'blocked',
+                outcome: isRateLimitMessage(pushMessage) ? 'rate-limit' : 'branch-sync-failed',
+                reason: pushMessage,
+                source: 'delivery-agent-broker',
+                details: {
+                  actionType: 'sync-pr-branch',
+                  laneLifecycle: 'waiting-ci',
+                  blockerClass: isRateLimitMessage(pushMessage) ? 'rate-limit' : 'ci',
+                  retryable: true,
+                  nextWakeCondition: isRateLimitMessage(pushMessage) ? 'github-rate-limit-reset' : 'branch-sync-retry',
+                  helperCallsExecuted,
+                  filesTouched: []
+                }
+              };
+            }
+            const mergeMessage =
+              normalizeText(mergeResult.stderr) || normalizeText(mergeResult.stdout) || `git merge failed (${mergeResult.status})`;
+            return {
+              status: 'blocked',
+              outcome: /conflict|automatic merge failed/i.test(mergeMessage) ? 'branch-sync-blocked' : 'branch-sync-failed',
+              reason: mergeMessage,
+              source: 'delivery-agent-broker',
+              details: {
+                actionType: 'sync-pr-branch',
+                laneLifecycle: /conflict|automatic merge failed/i.test(mergeMessage) ? 'blocked' : 'waiting-ci',
+                blockerClass: /conflict|automatic merge failed/i.test(mergeMessage) ? 'merge' : 'ci',
+                retryable: /conflict|automatic merge failed/i.test(mergeMessage) ? false : true,
+                nextWakeCondition: /conflict|automatic merge failed/i.test(mergeMessage)
+                  ? 'manual-conflict-resolution'
+                  : 'branch-sync-retry',
+                helperCallsExecuted,
+                filesTouched: []
+              }
+            };
           }
         }
-        return {
-          status: 'blocked',
-          outcome: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage)
-            ? 'branch-sync-blocked'
-            : 'branch-sync-failed',
-          reason: rebaseMessage,
-          source: 'delivery-agent-broker',
-          details: {
-            actionType: 'sync-pr-branch',
-            laneLifecycle: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage) ? 'blocked' : 'waiting-ci',
-            blockerClass: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage) ? 'merge' : 'ci',
-            retryable: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage) ? false : true,
-            nextWakeCondition: /conflict|could not apply|resolve all conflicts/i.test(rebaseMessage)
-              ? 'manual-conflict-resolution'
-              : 'branch-sync-retry',
-            helperCallsExecuted,
-            filesTouched: []
-          }
-        };
       }
     }
     return {

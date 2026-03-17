@@ -358,7 +358,7 @@ export function createPriorityPr({
   const headRemote = options.headRemote || env.PR_HEAD_REMOTE || resolveActiveForkRemoteName(env);
   const headRepository = ensureForkRemoteFn(repoRoot, upstream, headRemote);
 
-  pushBranchFn(repoRoot, branch, headRemote);
+  const pushResult = pushBranchFn(repoRoot, branch, headRemote);
   const base = options.base || env.PR_BASE || 'develop';
   const title = options.title || buildTitle(branch, issueNumber, env);
   const body = resolveBody({ options, issueNumber, env, readFileSyncFn });
@@ -382,11 +382,13 @@ export function createPriorityPr({
     issueSource: resolvedIssue?.source ?? null,
     title,
     body,
+    pushStatus: pushResult?.status ?? null,
     upstream,
     headRemote,
     headRepository,
     strategy: prResult?.strategy ?? null,
-    pullRequest: prResult?.pullRequest ?? null
+    pullRequest: prResult?.pullRequest ?? null,
+    reusedExistingPullRequest: prResult?.reusedExisting === true
   };
 }
 
