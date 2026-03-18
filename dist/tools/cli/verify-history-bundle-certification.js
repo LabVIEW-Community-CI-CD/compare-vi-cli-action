@@ -58,6 +58,12 @@ function verifySummary(summary, requiredModes) {
     if (!summary.certification.warningHasExplicitCategories) {
         throw new Error('Certification warning did not report explicit category labels.');
     }
+    if (!summary.certification.historyScriptSupportsSourceBranchRef || !summary.execution?.historyScriptSupportsSourceBranchRef) {
+        throw new Error('Certification history script does not support SourceBranchRef.');
+    }
+    if (!summary.certification.historyFacadeSourceBranchRefMatches) {
+        throw new Error('Certification history facade sourceBranchRef does not match the requested source branch.');
+    }
     const actualModes = [...new Set(summary.certification.actualModes ?? [])].sort();
     const expectedModes = [...requiredModes].sort();
     if (actualModes.length !== expectedModes.length || actualModes.some((mode, index) => mode !== expectedModes[index])) {
@@ -94,6 +100,7 @@ function buildMarkdown(summary, requiredModes) {
         '## CompareVI History Bundle Certification',
         '',
         `- Execution: \`${summary.execution?.mode ?? 'unknown'}\``,
+        `- Source branch: \`${summary.sourceBranchRef ?? summary.historyFacade?.sourceBranchRef ?? 'unknown'}\``,
         `- Certified modes: \`${requiredModes.join(', ')}\``,
         `- Warning: \`${escapeMarkdown(summary.warningText)}\``,
         `- Aggregate categories: ${formatCountMap(summary.aggregate?.categoryCounts)}`,

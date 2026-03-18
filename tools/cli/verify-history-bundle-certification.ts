@@ -27,10 +27,15 @@ interface ModeSummary {
 
 interface CertificationSummary {
   schema: string;
+  sourceBranchRef?: string;
   warningText: string;
   execution?: {
     mode?: string;
     bundleArchivePath?: string | null;
+    historyScriptSupportsSourceBranchRef?: boolean;
+  };
+  historyFacade?: {
+    sourceBranchRef?: string;
   };
   aggregate?: {
     categoryCounts?: CountMap | null;
@@ -42,6 +47,8 @@ interface CertificationSummary {
     warningHasUnspecified?: boolean;
     warningHasExplicitCategories?: boolean;
     actualModes?: string[];
+    historyScriptSupportsSourceBranchRef?: boolean;
+    historyFacadeSourceBranchRefMatches?: boolean;
   };
 }
 
@@ -111,6 +118,12 @@ function verifySummary(summary: CertificationSummary, requiredModes: string[]): 
   if (!summary.certification.warningHasExplicitCategories) {
     throw new Error('Certification warning did not report explicit category labels.');
   }
+  if (!summary.certification.historyScriptSupportsSourceBranchRef || !summary.execution?.historyScriptSupportsSourceBranchRef) {
+    throw new Error('Certification history script does not support SourceBranchRef.');
+  }
+  if (!summary.certification.historyFacadeSourceBranchRefMatches) {
+    throw new Error('Certification history facade sourceBranchRef does not match the requested source branch.');
+  }
 
   const actualModes = [...new Set(summary.certification.actualModes ?? [])].sort();
   const expectedModes = [...requiredModes].sort();
@@ -154,6 +167,7 @@ function buildMarkdown(summary: CertificationSummary, requiredModes: string[]): 
     '## CompareVI History Bundle Certification',
     '',
     `- Execution: \`${summary.execution?.mode ?? 'unknown'}\``,
+    `- Source branch: \`${summary.sourceBranchRef ?? summary.historyFacade?.sourceBranchRef ?? 'unknown'}\``,
     `- Certified modes: \`${requiredModes.join(', ')}\``,
     `- Warning: \`${escapeMarkdown(summary.warningText)}\``,
     `- Aggregate categories: ${formatCountMap(summary.aggregate?.categoryCounts)}`,
