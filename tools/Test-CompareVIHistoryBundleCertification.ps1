@@ -135,6 +135,43 @@ function Read-GitHubOutputFile {
     return $values
 }
 
+function Test-GitRefExists {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)][string]$RefName
+    )
+
+    $probe = Invoke-CapturedProcess -FilePath 'git' -Arguments @('rev-parse', '--verify', '--quiet', $RefName) -WorkingDirectory $RepoRoot
+    return ($probe.ExitCode -eq 0)
+}
+
+function Resolve-SourceBranchRefForCertification {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)][string]$PreferredRef
+    )
+
+    $candidates = New-Object System.Collections.Generic.List[string]
+    $trimmedPreferredRef = $PreferredRef.Trim()
+    if (-not [string]::IsNullOrWhiteSpace($trimmedPreferredRef)) {
+        $candidates.Add($trimmedPreferredRef) | Out-Null
+        if ($trimmedPreferredRef -notmatch '[/\\]') {
+            $candidates.Add(("origin/{0}" -f $trimmedPreferredRef)) | Out-Null
+            $candidates.Add(("refs/remotes/origin/{0}" -f $trimmedPreferredRef)) | Out-Null
+            $candidates.Add(("upstream/{0}" -f $trimmedPreferredRef)) | Out-Null
+            $candidates.Add(("refs/remotes/upstream/{0}" -f $trimmedPreferredRef)) | Out-Null
+        }
+    }
+
+    foreach ($candidate in $candidates) {
+        if (Test-GitRefExists -RepoRoot $RepoRoot -RefName $candidate) {
+            return $candidate
+        }
+    }
+
+    throw "Unable to resolve a branch-like source ref for certification from '$PreferredRef'."
+}
+
 function Resolve-BundleRoot {
     param(
         [AllowNull()][AllowEmptyString()][string]$BundleArchivePath,
@@ -266,6 +303,7 @@ $historyScriptSupportsSourceBranchRef = $historyScriptCommand.Parameters.Contain
 if (-not $historyScriptSupportsSourceBranchRef) {
     throw "Compare-VIHistory bundle contract is missing -SourceBranchRef support: $historyScriptPath"
 }
+$effectiveSourceBranchRef = Resolve-SourceBranchRefForCertification -RepoRoot $repoRoot -PreferredRef $SourceBranchRef
 
 $previousModeFixtureMap = [System.Environment]::GetEnvironmentVariable('STUB_COMPARE_MODE_FIXTURE_MAP_JSON', 'Process')
 $previousExplicitFixture = [System.Environment]::GetEnvironmentVariable('STUB_COMPARE_REPORT_FIXTURE', 'Process')
@@ -283,7 +321,7 @@ try {
         '-File', $historyScriptPath,
         '-TargetPath', $TargetPath,
         '-StartRef', $StartRef,
-        '-SourceBranchRef', $SourceBranchRef,
+        '-SourceBranchRef', $effectiveSourceBranchRef,
         '-MaxBranchCommits', [string]$sourceBranchMaxCommitCount,
         '-MaxPairs', [string]$MaxPairs,
         '-NoisePolicy', 'collapse',
@@ -398,7 +436,7 @@ $summaryExecutedMatches = (($summaryExecutedModes.Count -eq $expectedModes.Count
 $summaryModeListMatches = (($summaryModeSlugs.Count -eq $expectedModes.Count) -and (@($summaryModeSlugs | Where-Object { $expectedModes -notcontains $_ }).Count -eq 0))
 $summaryCoverageAligned = $summaryCoverageClass -eq 'catalog-aligned'
 $summarySourceBranchRef = [string]$historySummary.target.sourceBranchRef
-$summarySourceBranchRefMatches = [string]::Equals($summarySourceBranchRef, $SourceBranchRef, [System.StringComparison]::Ordinal)
+$summarySourceBranchRefMatches = [string]::Equals($summarySourceBranchRef, $effectiveSourceBranchRef, [System.StringComparison]::Ordinal)
 $passed = ($missingModes.Count -eq 0) -and ($unexpectedModes.Count -eq 0) -and ($unspecifiedHits.Count -eq 0) -and (-not $warningHasUnspecified) -and $warningHasExplicitCategories -and $summarySchemaMatches -and $summaryRequestedMatches -and $summaryExecutedMatches -and $summaryModeListMatches -and $summaryCoverageAligned -and $historyScriptSupportsSourceBranchRef -and $summarySourceBranchRefMatches
 
 if (-not $warningLine) {
@@ -441,7 +479,7 @@ if (-not $passed) {
         $failureReasons.Add('history script missing SourceBranchRef parameter') | Out-Null
     }
     if (-not $summarySourceBranchRefMatches) {
-        $failureReasons.Add(("history facade sourceBranchRef mismatch: expected {0} actual {1}" -f $SourceBranchRef, $summarySourceBranchRef)) | Out-Null
+        $failureReasons.Add(("history facade sourceBranchRef mismatch: expected {0} actual {1}" -f $effectiveSourceBranchRef, $summarySourceBranchRef)) | Out-Null
     }
     throw ("Multi-mode history bundle certification failed: {0}" -f ($failureReasons -join '; '))
 }
@@ -451,7 +489,7 @@ $summaryObject = [ordered]@{
     generatedAt = (Get-Date).ToUniversalTime().ToString('o')
     targetPath = $TargetPath
     startRef = $StartRef
-    sourceBranchRef = $SourceBranchRef
+    sourceBranchRef = $effectiveSourceBranchRef
     maxPairs = [int]$MaxPairs
     requestedMode = $Mode
     resultsDir = $historyResultsDir
@@ -518,7 +556,7 @@ $summaryLines += '## CompareVI History Bundle Certification'
 $summaryLines += ''
 $summaryLines += ('- Execution: `{0}`' -f $executionMode)
 $summaryLines += ('- History script: `{0}`' -f $historyScriptPath)
-$summaryLines += ('- Source branch: `{0}`' -f $SourceBranchRef)
+$summaryLines += ('- Source branch: `{0}`' -f $effectiveSourceBranchRef)
 $summaryLines += ('- History script supports `-SourceBranchRef`: `{0}`' -f $historyScriptSupportsSourceBranchRef.ToString().ToLowerInvariant())
 $summaryLines += ('- Modes: `{0}`' -f ($actualModes -join ', '))
 $summaryLines += ('- Warning: `{0}`' -f $warningLine)
@@ -544,6 +582,6 @@ Write-GitHubOutputValue -Name 'summary-json-path' -Value $summaryPath -Destinati
 Write-GitHubOutputValue -Name 'results-dir' -Value $historyResultsDir -DestinationPath $GitHubOutputPath
 Write-GitHubOutputValue -Name 'warning-text' -Value $warningLine -DestinationPath $GitHubOutputPath
 Write-GitHubOutputValue -Name 'mode-list' -Value ($actualModes -join ',') -DestinationPath $GitHubOutputPath
-Write-GitHubOutputValue -Name 'source-branch-ref' -Value $SourceBranchRef -DestinationPath $GitHubOutputPath
+Write-GitHubOutputValue -Name 'source-branch-ref' -Value $effectiveSourceBranchRef -DestinationPath $GitHubOutputPath
 
 Write-Output $summaryPath
