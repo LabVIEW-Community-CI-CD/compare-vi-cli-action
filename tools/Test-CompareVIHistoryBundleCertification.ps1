@@ -2,6 +2,7 @@
 param(
     [string]$TargetPath = 'VI1.vi',
     [string]$StartRef = 'HEAD',
+    [string]$SourceBranchRef = 'develop',
     [ValidateRange(1, 1000)]
     [int]$MaxPairs = 1,
     [string]$Mode = 'attributes,front-panel,block-diagram',
@@ -260,6 +261,12 @@ if (-not (Test-Path -LiteralPath $stubPath -PathType Leaf)) {
     throw "Shared history smoke stub not found: $stubPath"
 }
 
+$historyScriptCommand = Get-Command $historyScriptPath -ErrorAction Stop
+$historyScriptSupportsSourceBranchRef = $historyScriptCommand.Parameters.ContainsKey('SourceBranchRef')
+if (-not $historyScriptSupportsSourceBranchRef) {
+    throw "Compare-VIHistory bundle contract is missing -SourceBranchRef support: $historyScriptPath"
+}
+
 $previousModeFixtureMap = [System.Environment]::GetEnvironmentVariable('STUB_COMPARE_MODE_FIXTURE_MAP_JSON', 'Process')
 $previousExplicitFixture = [System.Environment]::GetEnvironmentVariable('STUB_COMPARE_REPORT_FIXTURE', 'Process')
 $previousStubRepoRoot = [System.Environment]::GetEnvironmentVariable('STUB_COMPARE_REPO_ROOT', 'Process')
@@ -269,12 +276,15 @@ try {
     [System.Environment]::SetEnvironmentVariable('STUB_COMPARE_REPORT_FIXTURE', $null, 'Process')
     [System.Environment]::SetEnvironmentVariable('STUB_COMPARE_REPO_ROOT', $repoRoot, 'Process')
 
+    $sourceBranchMaxCommitCount = 1000
     $historyResult = Invoke-CapturedProcess -FilePath 'pwsh' -Arguments @(
         '-NoLogo',
         '-NoProfile',
         '-File', $historyScriptPath,
         '-TargetPath', $TargetPath,
         '-StartRef', $StartRef,
+        '-SourceBranchRef', $SourceBranchRef,
+        '-MaxBranchCommits', [string]$sourceBranchMaxCommitCount,
         '-MaxPairs', [string]$MaxPairs,
         '-NoisePolicy', 'collapse',
         '-Mode', $Mode,
@@ -387,7 +397,9 @@ $summaryRequestedMatches = (($summaryRequestedModes.Count -eq $expectedModes.Cou
 $summaryExecutedMatches = (($summaryExecutedModes.Count -eq $expectedModes.Count) -and (@($summaryExecutedModes | Where-Object { $expectedModes -notcontains $_ }).Count -eq 0))
 $summaryModeListMatches = (($summaryModeSlugs.Count -eq $expectedModes.Count) -and (@($summaryModeSlugs | Where-Object { $expectedModes -notcontains $_ }).Count -eq 0))
 $summaryCoverageAligned = $summaryCoverageClass -eq 'catalog-aligned'
-$passed = ($missingModes.Count -eq 0) -and ($unexpectedModes.Count -eq 0) -and ($unspecifiedHits.Count -eq 0) -and (-not $warningHasUnspecified) -and $warningHasExplicitCategories -and $summarySchemaMatches -and $summaryRequestedMatches -and $summaryExecutedMatches -and $summaryModeListMatches -and $summaryCoverageAligned
+$summarySourceBranchRef = [string]$historySummary.target.sourceBranchRef
+$summarySourceBranchRefMatches = [string]::Equals($summarySourceBranchRef, $SourceBranchRef, [System.StringComparison]::Ordinal)
+$passed = ($missingModes.Count -eq 0) -and ($unexpectedModes.Count -eq 0) -and ($unspecifiedHits.Count -eq 0) -and (-not $warningHasUnspecified) -and $warningHasExplicitCategories -and $summarySchemaMatches -and $summaryRequestedMatches -and $summaryExecutedMatches -and $summaryModeListMatches -and $summaryCoverageAligned -and $historyScriptSupportsSourceBranchRef -and $summarySourceBranchRefMatches
 
 if (-not $warningLine) {
     throw 'Certification run did not emit an LVCompare detected differences warning line.'
@@ -425,6 +437,12 @@ if (-not $passed) {
     if (-not $summaryCoverageAligned) {
         $failureReasons.Add(("history facade coverage class mismatch: {0}" -f $summaryCoverageClass)) | Out-Null
     }
+    if (-not $historyScriptSupportsSourceBranchRef) {
+        $failureReasons.Add('history script missing SourceBranchRef parameter') | Out-Null
+    }
+    if (-not $summarySourceBranchRefMatches) {
+        $failureReasons.Add(("history facade sourceBranchRef mismatch: expected {0} actual {1}" -f $SourceBranchRef, $summarySourceBranchRef)) | Out-Null
+    }
     throw ("Multi-mode history bundle certification failed: {0}" -f ($failureReasons -join '; '))
 }
 
@@ -433,6 +451,7 @@ $summaryObject = [ordered]@{
     generatedAt = (Get-Date).ToUniversalTime().ToString('o')
     targetPath = $TargetPath
     startRef = $StartRef
+    sourceBranchRef = $SourceBranchRef
     maxPairs = [int]$MaxPairs
     requestedMode = $Mode
     resultsDir = $historyResultsDir
@@ -442,6 +461,7 @@ $summaryObject = [ordered]@{
         bundleRoot = $executionRoot
         bundleArchivePath = $bundleResolution.BundleArchivePath
         historyScriptPath = $historyScriptPath
+        historyScriptSupportsSourceBranchRef = $historyScriptSupportsSourceBranchRef
         invokeScriptPath = $stubPath
     }
     outputs = [ordered]@{
@@ -466,6 +486,7 @@ $summaryObject = [ordered]@{
         schema = [string]$historySummary.schema
         requestedModes = $summaryRequestedModes
         executedModes = $summaryExecutedModes
+        sourceBranchRef = $summarySourceBranchRef
         coverageClass = $summaryCoverageClass
         outcomeLabels = @($historySummary.observedInterpretation.outcomeLabels)
     }
@@ -484,6 +505,8 @@ $summaryObject = [ordered]@{
         historyFacadeExecutedModesMatch = $summaryExecutedMatches
         historyFacadeModeListMatch = $summaryModeListMatches
         historyFacadeCoverageAligned = $summaryCoverageAligned
+        historyScriptSupportsSourceBranchRef = $historyScriptSupportsSourceBranchRef
+        historyFacadeSourceBranchRefMatches = $summarySourceBranchRefMatches
         passed = $true
     }
 }
@@ -495,6 +518,8 @@ $summaryLines += '## CompareVI History Bundle Certification'
 $summaryLines += ''
 $summaryLines += ('- Execution: `{0}`' -f $executionMode)
 $summaryLines += ('- History script: `{0}`' -f $historyScriptPath)
+$summaryLines += ('- Source branch: `{0}`' -f $SourceBranchRef)
+$summaryLines += ('- History script supports `-SourceBranchRef`: `{0}`' -f $historyScriptSupportsSourceBranchRef.ToString().ToLowerInvariant())
 $summaryLines += ('- Modes: `{0}`' -f ($actualModes -join ', '))
 $summaryLines += ('- Warning: `{0}`' -f $warningLine)
 $summaryLines += ('- Summary JSON: `{0}`' -f $summaryPath)
@@ -519,5 +544,6 @@ Write-GitHubOutputValue -Name 'summary-json-path' -Value $summaryPath -Destinati
 Write-GitHubOutputValue -Name 'results-dir' -Value $historyResultsDir -DestinationPath $GitHubOutputPath
 Write-GitHubOutputValue -Name 'warning-text' -Value $warningLine -DestinationPath $GitHubOutputPath
 Write-GitHubOutputValue -Name 'mode-list' -Value ($actualModes -join ',') -DestinationPath $GitHubOutputPath
+Write-GitHubOutputValue -Name 'source-branch-ref' -Value $SourceBranchRef -DestinationPath $GitHubOutputPath
 
 Write-Output $summaryPath

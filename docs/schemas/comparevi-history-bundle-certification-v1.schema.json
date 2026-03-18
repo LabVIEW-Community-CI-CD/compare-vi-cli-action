@@ -8,6 +8,7 @@
     "generatedAt",
     "targetPath",
     "startRef",
+    "sourceBranchRef",
     "maxPairs",
     "requestedMode",
     "resultsDir",
@@ -32,6 +33,9 @@
     "startRef": {
       "type": "string"
     },
+    "sourceBranchRef": {
+      "type": "string"
+    },
     "maxPairs": {
       "type": "integer",
       "minimum": 1
@@ -49,6 +53,7 @@
         "repoRoot",
         "bundleRoot",
         "historyScriptPath",
+        "historyScriptSupportsSourceBranchRef",
         "invokeScriptPath"
       ],
       "properties": {
@@ -72,6 +77,9 @@
         },
         "historyScriptPath": {
           "type": "string"
+        },
+        "historyScriptSupportsSourceBranchRef": {
+          "type": "boolean"
         },
         "invokeScriptPath": {
           "type": "string"
@@ -149,6 +157,8 @@
         "historyFacadeExecutedModesMatch",
         "historyFacadeModeListMatch",
         "historyFacadeCoverageAligned",
+        "historyScriptSupportsSourceBranchRef",
+        "historyFacadeSourceBranchRefMatches",
         "passed"
       ],
       "properties": {
@@ -186,6 +196,12 @@
           "type": "boolean"
         },
         "historyFacadeCoverageAligned": {
+          "type": "boolean"
+        },
+        "historyScriptSupportsSourceBranchRef": {
+          "type": "boolean"
+        },
+        "historyFacadeSourceBranchRefMatches": {
           "type": "boolean"
         },
         "passed": {
@@ -254,6 +270,7 @@
         "schema",
         "requestedModes",
         "executedModes",
+        "sourceBranchRef",
         "coverageClass",
         "outcomeLabels"
       ],
@@ -266,6 +283,9 @@
         },
         "executedModes": {
           "$ref": "#/$defs/stringArray"
+        },
+        "sourceBranchRef": {
+          "type": "string"
         },
         "coverageClass": {
           "type": "string"
