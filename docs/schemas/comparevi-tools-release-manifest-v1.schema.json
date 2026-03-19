@@ -114,7 +114,8 @@
       "type": "object",
       "required": [
         "historyFacade",
-        "localRuntimeProfiles"
+        "localRuntimeProfiles",
+        "localOperatorSession"
       ],
       "properties": {
         "historyFacade": {
@@ -182,6 +183,55 @@
               "type": "string"
             },
             "benchmarkRelativePath": {
+              "type": "string"
+            },
+            "runtimeProfiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "defaultProfile": {
+              "type": "string"
+            },
+            "stableFields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "localOperatorSession": {
+          "type": "object",
+          "required": [
+            "schema",
+            "schemaUrl",
+            "exportedFunction",
+            "resultsRelativePath",
+            "runtimeProfiles",
+            "defaultProfile",
+            "stableFields",
+            "notes"
+          ],
+          "properties": {
+            "schema": {
+              "type": "string"
+            },
+            "schemaUrl": {
+              "type": "string"
+            },
+            "exportedFunction": {
+              "type": "string"
+            },
+            "resultsRelativePath": {
               "type": "string"
             },
             "runtimeProfiles": {

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-tools-local-operator-session-facade-v1.schema.json",
+  "title": "CompareVI.Tools Local Operator Session Facade v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "backendReceiptSchema",
+    "runtimeProfile",
+    "repoRoot",
+    "resultsRoot",
+    "localRefinement",
+    "review",
+    "artifacts",
+    "finalStatus"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-tools/local-operator-session-facade@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "backendReceiptSchema": {
+      "const": "comparevi/local-operator-session@v1"
+    },
+    "runtimeProfile": {
+      "enum": ["proof", "dev-fast", "warm-dev"]
+    },
+    "repoRoot": {
+      "type": "string"
+    },
+    "resultsRoot": {
+      "type": "string"
+    },
+    "localRefinement": {
+      "type": ["object", "null"]
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "commandPath",
+        "arguments",
+        "workingDirectory",
+        "timings",
+        "outputs"
+      ],
+      "properties": {
+        "status": {
+          "enum": ["not-requested", "succeeded", "failed"]
+        },
+        "commandPath": {
+          "type": ["string", "null"]
+        },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "workingDirectory": {
+          "type": ["string", "null"]
+        },
+        "timings": {
+          "type": ["object", "null"]
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "receiptPath",
+            "reviewBundlePath",
+            "workspaceHtmlPath",
+            "workspaceMarkdownPath",
+            "previewManifestPath",
+            "runPath"
+          ],
+          "properties": {
+            "receiptPath": {
+              "type": ["string", "null"]
+            },
+            "reviewBundlePath": {
+              "type": ["string", "null"]
+            },
+            "workspaceHtmlPath": {
+              "type": ["string", "null"]
+            },
+            "workspaceMarkdownPath": {
+              "type": ["string", "null"]
+            },
+            "previewManifestPath": {
+              "type": ["string", "null"]
+            },
+            "runPath": {
+              "type": ["string", "null"]
+            }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object"
+    },
+    "finalStatus": {
+      "enum": ["succeeded", "failed"]
+    },
+    "failure": {
+      "type": ["object", "null"]
+    }
+  }
+}

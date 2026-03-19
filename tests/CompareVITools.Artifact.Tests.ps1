@@ -81,6 +81,7 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $metadata.module.releaseVersion | Should -Be $moduleReleaseVersion
     @($metadata.module.exportedFunctions) | Should -Contain 'Invoke-CompareVIHistoryFacade'
     @($metadata.module.exportedFunctions) | Should -Contain 'Invoke-CompareVIHistoryLocalRefinementFacade'
+    @($metadata.module.exportedFunctions) | Should -Contain 'Invoke-CompareVIHistoryLocalOperatorSessionFacade'
     $metadata.source.repository | Should -Be 'owner/repo'
     $metadata.source.ref | Should -Be 'refs/tags/v9.9.9'
     $metadata.source.sha | Should -Be '0123456789abcdef0123456789abcdef01234567'
@@ -105,6 +106,17 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'warmRuntime'
     ((@($metadata.consumerContract.localRuntimeProfiles.notes) -join [Environment]::NewLine)) | Should -Match 'labview-icon-editor-demo'
     ((@($metadata.consumerContract.localRuntimeProfiles.notes) -join [Environment]::NewLine)) | Should -Match 'comparevi-history'
+    $metadata.consumerContract.localOperatorSession.schema | Should -Be 'comparevi-tools/local-operator-session-facade@v1'
+    $metadata.consumerContract.localOperatorSession.exportedFunction | Should -Be 'Invoke-CompareVIHistoryLocalOperatorSessionFacade'
+    $metadata.consumerContract.localOperatorSession.resultsRelativePath | Should -Be 'local-operator-session.json'
+    @($metadata.consumerContract.localOperatorSession.runtimeProfiles) | Should -Be @(
+      'proof',
+      'dev-fast',
+      'warm-dev'
+    )
+    $metadata.consumerContract.localOperatorSession.defaultProfile | Should -Be 'dev-fast'
+    @($metadata.consumerContract.localOperatorSession.stableFields) | Should -Contain 'review.outputs'
+    ((@($metadata.consumerContract.localOperatorSession.notes) -join [Environment]::NewLine)) | Should -Match 'comparevi-history'
     $metadata.consumerContract.diagnosticsCommentRenderer.entryScriptPath | Should -Be 'tools/New-CompareVIHistoryDiagnosticsBody.ps1'
     @($metadata.consumerContract.diagnosticsCommentRenderer.variants) | Should -Be @(
       'comment-gated',
@@ -143,6 +155,7 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
       'tools/Compare-RefsToTemp.ps1',
       'tools/Invoke-LVCompare.ps1',
       'tools/Invoke-NILinuxReviewSuite.ps1',
+      'tools/Invoke-VIHistoryLocalOperatorSession.ps1',
       'tools/Invoke-VIHistoryLocalRefinement.ps1',
       'tools/Manage-VIHistoryRuntimeInDocker.ps1',
       'tools/New-CompareVIHistoryDiagnosticsBody.ps1',
@@ -165,6 +178,7 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $archiveMetadata.bundle.metadataPath | Should -Be 'comparevi-tools-release.json'
     $archiveMetadata.bundle.files.Count | Should -BeGreaterThan 5
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Build-VIHistoryDevImage.ps1'
+    @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Invoke-VIHistoryLocalOperatorSession.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Invoke-VIHistoryLocalRefinement.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Manage-VIHistoryRuntimeInDocker.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Run-NILinuxContainerCompare.ps1'
@@ -477,6 +491,140 @@ if ($PassThru) {
     $result.warmRuntime.container.name | Should -Be 'warm-stub'
     $result.artifacts.localRefinementPath | Should -Be (Join-Path $downstreamRepoRoot 'tests/results/local-vi-history/warm-dev/local-refinement.json')
     $result.artifacts.benchmarkPath | Should -Be (Join-Path $downstreamRepoRoot 'tests/results/local-vi-history/warm-dev/local-refinement-benchmark.json')
+
+    $result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $schemaReportPath -Encoding utf8
+    & $schemaScript -JsonPath $schemaReportPath -SchemaPath $schemaPath
+    $LASTEXITCODE | Should -Be 0
+
+    Test-Path -LiteralPath $capturePath | Should -BeTrue
+    $capturedRoot = (Get-Content -LiteralPath $capturePath -Raw).Trim()
+    $capturedRoot | Should -Be $bundleRoot
+  }
+
+  It 'returns the stabilized local operator session facade when invoking the module wrapper' {
+    $bundleRoot = Join-Path $TestDrive 'bundle-local-operator-session-facade'
+    $moduleRoot = Join-Path $bundleRoot 'tools' 'CompareVI.Tools'
+    $toolsRoot = Join-Path $bundleRoot 'tools'
+    $downstreamRepoRoot = Join-Path $TestDrive 'downstream-operator-repo'
+    New-Item -ItemType Directory -Path $moduleRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $downstreamRepoRoot -Force | Out-Null
+
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'tools' 'CompareVI.Tools' 'CompareVI.Tools.psd1') -Destination (Join-Path $moduleRoot 'CompareVI.Tools.psd1')
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'tools' 'CompareVI.Tools' 'CompareVI.Tools.psm1') -Destination (Join-Path $moduleRoot 'CompareVI.Tools.psm1')
+
+    $capturePath = Join-Path $TestDrive 'local-operator-session-scripts-root.txt'
+    @'
+param(
+  [string]$Profile = 'dev-fast',
+  [string]$RepoRoot = '',
+  [string]$ResultsRoot = '',
+  [switch]$PassThru
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+Set-Content -LiteralPath $env:COMPAREVI_CAPTURE_PATH -Value $env:COMPAREVI_SCRIPTS_ROOT -Encoding utf8
+$resolvedRepoRoot = if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+  (Get-Location).Path
+} elseif ([System.IO.Path]::IsPathRooted($RepoRoot)) {
+  [System.IO.Path]::GetFullPath($RepoRoot)
+} else {
+  [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $RepoRoot))
+}
+$resolvedResultsRoot = if ([string]::IsNullOrWhiteSpace($ResultsRoot)) {
+  Join-Path $resolvedRepoRoot 'tests/results/local-vi-history/dev-fast'
+} elseif ([System.IO.Path]::IsPathRooted($ResultsRoot)) {
+  [System.IO.Path]::GetFullPath($ResultsRoot)
+} else {
+  [System.IO.Path]::GetFullPath((Join-Path $resolvedRepoRoot $ResultsRoot))
+}
+New-Item -ItemType Directory -Path $resolvedResultsRoot -Force | Out-Null
+$sessionPath = Join-Path $resolvedResultsRoot 'local-operator-session.json'
+$receipt = [ordered]@{
+  schema = 'comparevi/local-operator-session@v1'
+  generatedAt = '2026-03-19T00:00:00Z'
+  runtimeProfile = $Profile
+  repoRoot = $resolvedRepoRoot
+  resultsRoot = $resolvedResultsRoot
+  localRefinement = [ordered]@{
+    schema = 'comparevi/local-refinement@v1'
+    receiptPath = (Join-Path $resolvedResultsRoot 'local-refinement.json')
+    benchmarkPath = (Join-Path $resolvedResultsRoot 'local-refinement-benchmark.json')
+    image = 'comparevi-vi-history-dev:local'
+    toolSource = 'local-dev-image'
+    cacheReuseState = 'existing-local-image'
+    coldWarmClass = 'warm'
+    benchmarkSampleKind = 'dev-fast-repeat'
+    timings = [ordered]@{
+      elapsedMilliseconds = 1000
+      elapsedSeconds = 1.0
+    }
+    finalStatus = 'succeeded'
+  }
+  review = [ordered]@{
+    status = 'succeeded'
+    commandPath = (Join-Path $resolvedRepoRoot 'scripts/local-review.ps1')
+    arguments = @('--profile', 'dev-fast')
+    workingDirectory = $resolvedRepoRoot
+    timings = [ordered]@{
+      elapsedMilliseconds = 200
+      elapsedSeconds = 0.2
+    }
+    outputs = [ordered]@{
+      receiptPath = (Join-Path $resolvedResultsRoot 'local-review.json')
+      reviewBundlePath = (Join-Path $resolvedResultsRoot 'review-bundle.json')
+      workspaceHtmlPath = (Join-Path $resolvedResultsRoot 'index.html')
+      workspaceMarkdownPath = (Join-Path $resolvedResultsRoot 'index.md')
+      previewManifestPath = (Join-Path $resolvedResultsRoot 'pr-preview-manifest.json')
+      runPath = (Join-Path $resolvedResultsRoot 'pr-run.json')
+    }
+  }
+  artifacts = [ordered]@{
+    sessionPath = $sessionPath
+    localRefinementPath = (Join-Path $resolvedResultsRoot 'local-refinement.json')
+    benchmarkPath = (Join-Path $resolvedResultsRoot 'local-refinement-benchmark.json')
+    warmRuntimeStatePath = $null
+    warmRuntimeHealthPath = $null
+    warmRuntimeLeasePath = $null
+    reviewReceiptPath = (Join-Path $resolvedResultsRoot 'local-review.json')
+    reviewBundlePath = (Join-Path $resolvedResultsRoot 'review-bundle.json')
+    workspaceHtmlPath = (Join-Path $resolvedResultsRoot 'index.html')
+    workspaceMarkdownPath = (Join-Path $resolvedResultsRoot 'index.md')
+    previewManifestPath = (Join-Path $resolvedResultsRoot 'pr-preview-manifest.json')
+    runPath = (Join-Path $resolvedResultsRoot 'pr-run.json')
+  }
+  finalStatus = 'succeeded'
+  failure = $null
+}
+$receipt | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $sessionPath -Encoding utf8
+if ($PassThru) {
+  [pscustomobject]$receipt
+}
+'@ | Set-Content -LiteralPath (Join-Path $toolsRoot 'Invoke-VIHistoryLocalOperatorSession.ps1') -Encoding utf8
+
+    $schemaPath = Join-Path $repoRoot 'docs' 'schemas' 'comparevi-tools-local-operator-session-facade-v1.schema.json'
+    $schemaReportPath = Join-Path $TestDrive 'local-operator-session-facade.json'
+    $env:COMPAREVI_CAPTURE_PATH = $capturePath
+    try {
+      Import-Module (Join-Path $moduleRoot 'CompareVI.Tools.psd1') -Force
+      Push-Location $downstreamRepoRoot
+      try {
+        $result = Invoke-CompareVIHistoryLocalOperatorSessionFacade -Profile 'dev-fast'
+      } finally {
+        Pop-Location | Out-Null
+      }
+    } finally {
+      Remove-Module CompareVI.Tools -Force -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_CAPTURE_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_SCRIPTS_ROOT -ErrorAction SilentlyContinue
+    }
+
+    $result | Should -Not -BeNullOrEmpty
+    $result.schema | Should -Be 'comparevi-tools/local-operator-session-facade@v1'
+    $result.backendReceiptSchema | Should -Be 'comparevi/local-operator-session@v1'
+    $result.runtimeProfile | Should -Be 'dev-fast'
+    $result.review.status | Should -Be 'succeeded'
+    $result.review.outputs.reviewBundlePath | Should -Be (Join-Path $downstreamRepoRoot 'tests/results/local-vi-history/dev-fast/review-bundle.json')
+    $result.artifacts.sessionPath | Should -Be (Join-Path $downstreamRepoRoot 'tests/results/local-vi-history/dev-fast/local-operator-session.json')
 
     $result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $schemaReportPath -Encoding utf8
     & $schemaScript -JsonPath $schemaReportPath -SchemaPath $schemaPath

@@ -287,6 +287,7 @@ Direct PowerShell entrypoints are:
 
 - `tools/Build-VIHistoryDevImage.ps1`
 - `tools/Invoke-VIHistoryLocalRefinement.ps1`
+- `tools/Invoke-VIHistoryLocalOperatorSession.ps1`
 - `tools/Manage-VIHistoryRuntimeInDocker.ps1`
 
 The local receipts are:
@@ -295,17 +296,43 @@ The local receipts are:
 - `comparevi/local-runtime-state@v1`
 - `comparevi/local-runtime-health@v1`
 - `comparevi/local-refinement-benchmark@v1`
+- `comparevi/local-operator-session@v1`
 
 Those receipts are the contract `comparevi-history` should consume when it adds
 profile-aware `local-review` and `local-proof` surfaces on top of the backend
 runtime planes.
 
+Use the operator-session contract when one local command needs to compose the
+runtime plane with a downstream review hook. The session manifest records:
+
+- the underlying local-refinement receipt
+- benchmark selection and warm-runtime artifacts
+- optional downstream review output paths such as a review bundle, workspace,
+  preview manifest, or review receipt
+- the final composed session status
+
+The session wrapper sets stable environment variables for downstream review
+hooks, including:
+
+- `COMPAREVI_LOCAL_REFINEMENT_RECEIPT_PATH`
+- `COMPAREVI_LOCAL_REFINEMENT_BENCHMARK_PATH`
+- `COMPAREVI_LOCAL_REFINEMENT_RESULTS_ROOT`
+- `COMPAREVI_LOCAL_OPERATOR_SESSION_PATH`
+- `COMPAREVI_REVIEW_RECEIPT_PATH`
+- `COMPAREVI_REVIEW_BUNDLE_PATH`
+- `COMPAREVI_REVIEW_WORKSPACE_HTML_PATH`
+- `COMPAREVI_REVIEW_WORKSPACE_MARKDOWN_PATH`
+- `COMPAREVI_REVIEW_PREVIEW_MANIFEST_PATH`
+- `COMPAREVI_REVIEW_RUN_PATH`
+
 For extracted tooling bundles, prefer the module-level stable surface instead
 of hard-coding backend script paths:
 
 - `Invoke-CompareVIHistoryLocalRefinementFacade`
+- `Invoke-CompareVIHistoryLocalOperatorSessionFacade`
 - consumer contract:
   `comparevi-tools/local-refinement-facade@v1`
+  and `comparevi-tools/local-operator-session-facade@v1`
 
 ### Recommended downstream workflow
 

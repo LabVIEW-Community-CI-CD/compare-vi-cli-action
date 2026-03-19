@@ -328,6 +328,26 @@ The local refinement facade writes:
 - `local-refinement-benchmark.json`
   (`schema: comparevi/local-refinement-benchmark@v1`)
 
+The unified local operator shell writes:
+
+- `local-operator-session.json`
+  (`schema: comparevi/local-operator-session@v1`)
+
+Use it when one local command needs to compose the runtime plane with an
+optional downstream review hook while keeping review-compiler ownership outside
+this repository:
+
+```powershell
+node tools/npm/run-script.mjs history:local:operator:review -- `
+  -RepoRoot . `
+  -HistoryTargetPath fixtures/vi-attr/Head.vi `
+  -ReviewCommandPath C:\dev\comparevi-history\scripts\Invoke-CompareVIHistoryLocalReview.ps1
+```
+
+The operator session records the local-refinement receipt, benchmark receipt,
+optional warm-runtime artifacts, and any downstream review output paths that
+the review hook publishes.
+
 The warm runtime manager writes:
 
 - `local-runtime-lease.json` (`schema: comparevi/local-runtime-lease@v1`)
@@ -354,7 +374,8 @@ maintainers should run before opening a PR to `develop`.
 When those consumers resolve the backend through an extracted `CompareVI.Tools`
 bundle, prefer the exported module facade
 `Invoke-CompareVIHistoryLocalRefinementFacade` over hard-coded script-path
-invocation.
+invocation. When they need one composed local command surface, prefer
+`Invoke-CompareVIHistoryLocalOperatorSessionFacade`.
 
 For a quicker end-to-end loop:
 

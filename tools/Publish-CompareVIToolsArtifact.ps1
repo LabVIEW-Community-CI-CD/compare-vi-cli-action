@@ -126,6 +126,7 @@ $requiredRelativePaths = @(
   'tools/Invoke-LVCompare.ps1',
   'tools/Invoke-NILinuxReviewSuite.ps1',
   'tools/Invoke-VIHistoryLocalRefinement.ps1',
+  'tools/Invoke-VIHistoryLocalOperatorSession.ps1',
   'tools/Manage-VIHistoryRuntimeInDocker.ps1',
   'tools/New-CompareVIHistoryDiagnosticsBody.ps1',
   'tools/Render-VIHistoryReport.ps1',
@@ -233,6 +234,7 @@ try {
     '- Prefer `Invoke-CompareVIHistoryFacade` when downstream tooling needs a stable summary object plus the generated report paths.'
     '- For comparevi-history comment/summary rendering, resolve `tools/New-CompareVIHistoryDiagnosticsBody.ps1` from this bundle or from the workflow `tooling-path` output instead of copying inline PowerShell helpers.'
     '- For local-first VI history refinement, use `tools/Build-VIHistoryDevImage.ps1`, `tools/Invoke-VIHistoryLocalRefinement.ps1`, and `tools/Manage-VIHistoryRuntimeInDocker.ps1` from this bundle root.'
+    '- For a unified local operator shell, use `tools/Invoke-VIHistoryLocalOperatorSession.ps1` or the exported `Invoke-CompareVIHistoryLocalOperatorSessionFacade` wrapper from this bundle.'
     '- The first documented downstream local-first consumer is `LabVIEW-Community-CI-CD/labview-icon-editor-demo` via comparevi-history local-review/local-proof targeting `develop`.'
     '- The runtime facade JSON is written to `history-summary.json` under the selected results directory.'
     '- Real compare execution still requires the same LVCompare/LabVIEW prerequisites as the source repository.'
@@ -269,6 +271,7 @@ try {
       'cross-repo-vi-history-via-facade',
       'cross-repo-vi-history-via-hosted-ni-linux-runner',
       'local-vi-history-refinement-via-runtime-profiles',
+      'local-vi-history-operator-session-via-runtime-and-review-hooks',
       'comparevi-history-comment-rendering-via-tooling-path'
     )
     requires = @(
@@ -345,6 +348,35 @@ try {
         'The first documented downstream adoption proof is LabVIEW-Community-CI-CD/labview-icon-editor-demo via comparevi-history local-review/local-proof targeting develop.'
       )
     }
+    localOperatorSession = [ordered]@{
+      schema = 'comparevi-tools/local-operator-session-facade@v1'
+      schemaUrl = 'https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-tools-local-operator-session-facade-v1.schema.json'
+      exportedFunction = 'Invoke-CompareVIHistoryLocalOperatorSessionFacade'
+      resultsRelativePath = 'local-operator-session.json'
+      runtimeProfiles = @(
+        'proof',
+        'dev-fast',
+        'warm-dev'
+      )
+      defaultProfile = 'dev-fast'
+      stableFields = @(
+        'runtimeProfile',
+        'repoRoot',
+        'resultsRoot',
+        'localRefinement',
+        'review.status',
+        'review.commandPath',
+        'review.outputs',
+        'artifacts',
+        'finalStatus',
+        'failure'
+      )
+      notes = @(
+        'Use the operator-session facade when a downstream wants one local command surface that composes runtime execution with an optional review hook.',
+        'The session contract records the existing local-refinement receipt plus downstream review output paths without moving review-compiler ownership into this repository.',
+        'comparevi-history should consume this seam rather than recreating runtime orchestration.'
+      )
+    }
     diagnosticsCommentRenderer = [ordered]@{
       entryScriptPath = 'tools/New-CompareVIHistoryDiagnosticsBody.ps1'
       variants = @(
@@ -367,7 +399,7 @@ try {
       notes = @(
         'Hosted Linux consumers can resolve the runner from COMPAREVI_SCRIPTS_ROOT without a full backend checkout.',
         'Keep the entry script and support scripts adjacent inside the extracted bundle so runtime guard and exit-code classification remain available.',
-        'The same extracted bundle also carries the local-only VI history acceleration surfaces (`Build-VIHistoryDevImage.ps1`, `Invoke-VIHistoryLocalRefinement.ps1`, and `Manage-VIHistoryRuntimeInDocker.ps1`) for downstream local refinement loops.'
+        'The same extracted bundle also carries the local-only VI history acceleration surfaces (`Build-VIHistoryDevImage.ps1`, `Invoke-VIHistoryLocalRefinement.ps1`, `Invoke-VIHistoryLocalOperatorSession.ps1`, and `Manage-VIHistoryRuntimeInDocker.ps1`) for downstream local refinement loops.'
       )
     }
   }
