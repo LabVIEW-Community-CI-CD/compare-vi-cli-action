@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
-  [ValidateSet('proof', 'dev-fast', 'warm-dev')]
+  [ValidateSet('proof', 'dev-fast', 'warm-dev', 'windows-mirror-proof')]
   [string]$Profile = 'dev-fast',
   [string]$BaseVi = 'fixtures/vi-attr/Base.vi',
   [string]$HeadVi = 'fixtures/vi-attr/Head.vi',
@@ -18,7 +18,9 @@ param(
   [string]$WarmRuntimeDir = '',
   [string]$ProofImage = 'nationalinstruments/labview:2026q1-linux',
   [string]$DevImage = 'comparevi-vi-history-dev:local',
+  [string]$WindowsMirrorImage = 'nationalinstruments/labview:2026q1-windows',
   [string]$LabVIEWPath = '/usr/local/natinst/LabVIEW-2026-64/labview',
+  [string]$WindowsMirrorLabVIEWPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe',
   [switch]$SkipDevImageBuild,
   [string]$ReviewCommandPath = '',
   [string[]]$ReviewCommandArguments = @(),
@@ -31,7 +33,9 @@ param(
   [string]$ReviewRunPath = '',
   [string]$SessionManifestPath = '',
   [switch]$PassThru,
-  [string]$LocalRefinementScriptPath = ''
+  [string]$LocalRefinementScriptPath = '',
+  [string]$WindowsHostPreflightScriptPath = '',
+  [string]$WindowsCompareScriptPath = ''
 )
 
 Set-StrictMode -Version Latest
@@ -232,7 +236,11 @@ $refinementParameters = [ordered]@{
   WarmRuntimeDir = $WarmRuntimeDir
   ProofImage = $ProofImage
   DevImage = $DevImage
+  WindowsMirrorImage = $WindowsMirrorImage
   LabVIEWPath = $LabVIEWPath
+  WindowsMirrorLabVIEWPath = $WindowsMirrorLabVIEWPath
+  WindowsHostPreflightScriptPath = $WindowsHostPreflightScriptPath
+  WindowsCompareScriptPath = $WindowsCompareScriptPath
 }
 if ($SkipDevImageBuild) {
   $refinementParameters.SkipDevImageBuild = $true
@@ -363,6 +371,7 @@ $sessionReceipt = [ordered]@{
   schema = 'comparevi/local-operator-session@v1'
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
   runtimeProfile = if ($localRefinementReceipt) { [string]$localRefinementReceipt.runtimeProfile } else { $Profile }
+  runtimePlane = if ($localRefinementReceipt -and $localRefinementReceipt.PSObject.Properties['runtimePlane']) { [string]$localRefinementReceipt.runtimePlane } else { 'linux' }
   repoRoot = if ($localRefinementReceipt) { [string]$localRefinementReceipt.repoRoot } else { $repoRootResolved }
   resultsRoot = $resultsRootResolved
   localRefinement = if ($localRefinementReceipt) {
@@ -370,12 +379,14 @@ $sessionReceipt = [ordered]@{
       schema = [string]$localRefinementReceipt.schema
       receiptPath = $localRefinementReceiptPath
       benchmarkPath = $benchmarkPath
+      runtimePlane = if ($localRefinementReceipt.PSObject.Properties['runtimePlane']) { [string]$localRefinementReceipt.runtimePlane } else { 'linux' }
       image = [string]$localRefinementReceipt.image
       toolSource = [string]$localRefinementReceipt.toolSource
       cacheReuseState = [string]$localRefinementReceipt.cacheReuseState
       coldWarmClass = [string]$localRefinementReceipt.coldWarmClass
       benchmarkSampleKind = [string]$localRefinementReceipt.benchmarkSampleKind
       timings = $localRefinementReceipt.timings
+      windowsMirror = if ($localRefinementReceipt.PSObject.Properties['windowsMirror']) { $localRefinementReceipt.windowsMirror } else { $null }
       finalStatus = [string]$localRefinementReceipt.finalStatus
     }
   } else {
@@ -396,6 +407,10 @@ $sessionReceipt = [ordered]@{
     warmRuntimeStatePath = if ($warmRuntimeArtifacts) { [string]$warmRuntimeArtifacts.statePath } else { $null }
     warmRuntimeHealthPath = if ($warmRuntimeArtifacts) { [string]$warmRuntimeArtifacts.healthPath } else { $null }
     warmRuntimeLeasePath = if ($warmRuntimeArtifacts) { [string]$warmRuntimeArtifacts.leasePath } else { $null }
+    windowsMirrorHostPreflightPath = if ($localRefinementReceipt -and $localRefinementReceipt.PSObject.Properties['windowsMirror']) { [string]$localRefinementReceipt.windowsMirror.hostPreflight.path } else { $null }
+    windowsMirrorReportPath = if ($localRefinementReceipt -and $localRefinementReceipt.PSObject.Properties['windowsMirror']) { [string]$localRefinementReceipt.windowsMirror.compare.reportPath } else { $null }
+    windowsMirrorCapturePath = if ($localRefinementReceipt -and $localRefinementReceipt.PSObject.Properties['windowsMirror']) { [string]$localRefinementReceipt.windowsMirror.compare.capturePath } else { $null }
+    windowsMirrorRuntimeSnapshotPath = if ($localRefinementReceipt -and $localRefinementReceipt.PSObject.Properties['windowsMirror']) { [string]$localRefinementReceipt.windowsMirror.compare.runtimeSnapshotPath } else { $null }
     reviewReceiptPath = [string]$reviewOutputsPayload.receiptPath
     reviewBundlePath = [string]$reviewOutputsPayload.reviewBundlePath
     workspaceHtmlPath = [string]$reviewOutputsPayload.workspaceHtmlPath

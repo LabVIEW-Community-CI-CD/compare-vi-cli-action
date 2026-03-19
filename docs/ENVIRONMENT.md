@@ -86,6 +86,8 @@ Notes:
 - Output defaults to `tests/results/ni-windows-container/compare-report.html` with deterministic capture logs.
 - Capture JSON (`ni-windows-container-capture.json`) records machine-readable classification fields
   (`classification`, `labviewCliErrorCode`, `recommendation`, `reportExists`) for deterministic triage.
+- The `windows-mirror-proof` local VI-history profile is pinned to this same image and is proof-only in the first
+  slice; it is not a warm or accelerated lane.
 
 ### NI 2026 q1 host bootstrap preflight
 
@@ -129,4 +131,3 @@ Common remediation:
 
 Use workflow inputs for most toggles; fall back to env variables for local runs and CI
 experiments. Unknown variables are ignored.
-

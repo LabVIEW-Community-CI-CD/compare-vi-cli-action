@@ -32,7 +32,10 @@
       "const": "comparevi/local-refinement@v1"
     },
     "runtimeProfile": {
-      "enum": ["proof", "dev-fast", "warm-dev"]
+      "enum": ["proof", "dev-fast", "warm-dev", "windows-mirror-proof"]
+    },
+    "runtimePlane": {
+      "enum": ["linux", "windows-mirror"]
     },
     "image": {
       "type": "string"
@@ -65,6 +68,9 @@
       "type": ["object", "null"]
     },
     "reviewLoop": {
+      "type": ["object", "null"]
+    },
+    "windowsMirror": {
       "type": ["object", "null"]
     },
     "warmRuntime": {

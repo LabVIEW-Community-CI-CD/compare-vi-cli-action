@@ -254,8 +254,8 @@ schema as the workflow outputs.
 
 ## Local-first VI history acceleration
 
-For repeated Linux VI-history turns on a developer workstation, this repository
-now exposes three explicit local runtime profiles:
+For repeated local VI-history turns on a developer workstation, this repository
+now exposes four explicit runtime profiles:
 
 - `proof` keeps the canonical runtime truth:
   `nationalinstruments/labview:2026q1-linux`
@@ -263,11 +263,17 @@ now exposes three explicit local runtime profiles:
   `comparevi-vi-history-dev:local`
 - `warm-dev` reuses a long-lived local Docker runtime on top of that same
   dev image to remove repeated container bootstrap cost
+- `windows-mirror-proof` is the first Windows mirror plane:
+  `nationalinstruments/labview:2026q1-windows`
 
 The operating rule is strict:
 
 - local acceleration is for refinement speed only
 - release and CI still prove the canonical `proof` plane
+- `windows-mirror-proof` is proof-only in this first slice; it is not a warm or
+  accelerated lane
+- `windows-mirror-proof` stays pinned to the canonical NI Windows image instead
+  of allowing arbitrary image overrides
 - `comparevi-tools` remains the non-LV/tools image and is not reused for the
   VI-history runtime
 
@@ -294,6 +300,20 @@ node tools/npm/run-script.mjs history:local:proof -- `
   -HeadVi fixtures/vi-attr/Head.vi `
   -HistoryTargetPath fixtures/vi-attr/Head.vi
 ```
+
+Run the Windows mirror proof lane on a Windows host running Windows
+containers:
+
+```powershell
+node tools/npm/run-script.mjs history:local:windows-mirror:proof -- `
+  -BaseVi fixtures/vi-attr/Base.vi `
+  -HeadVi fixtures/vi-attr/Head.vi `
+  -HistoryTargetPath fixtures/vi-attr/Head.vi
+```
+
+This plane exists for early Windows-headless defect detection before any
+host-native LabVIEW 2026 32-bit promotion work. It is intentionally not a
+replacement for the canonical Linux `proof` plane.
 
 Start and reuse the warm local runtime:
 
@@ -360,6 +380,7 @@ Benchmark receipts now select the intended sample classes:
 - `proof-cold`
 - `dev-fast-cold`
 - `warm-dev-repeat`
+- `windows-mirror-proof-cold`
 
 These receipts are intentionally local-first. They allow `comparevi-history`
 and downstream consumers to reuse the same runtime planes without changing the

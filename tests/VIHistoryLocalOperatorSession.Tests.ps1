@@ -368,4 +368,107 @@ if ($PassThru) {
     & $schemaScript -JsonPath $result.artifacts.sessionPath -SchemaPath $schemaPath
     $LASTEXITCODE | Should -Be 0
   }
+
+  It 'projects windows mirror proof artifacts through the session manifest' {
+    $repoUnderTest = Join-Path $TestDrive 'repo-windows-mirror'
+    $resultsRoot = Join-Path $repoUnderTest 'tests/results/local-vi-history/windows-mirror-proof'
+    $refinementScript = Join-Path $TestDrive 'Invoke-VIHistoryLocalRefinement.windows-mirror.stub.ps1'
+    New-Item -ItemType Directory -Path (Join-Path $repoUnderTest 'fixtures/vi-attr') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $repoUnderTest 'fixtures/vi-attr/Base.vi') -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoUnderTest 'fixtures/vi-attr/Head.vi') -Value 'head' -Encoding utf8
+
+    @'
+param(
+  [string]$Profile = 'windows-mirror-proof',
+  [string]$RepoRoot = '',
+  [string]$ResultsRoot = '',
+  [switch]$PassThru
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$resolvedRepoRoot = if ([string]::IsNullOrWhiteSpace($RepoRoot)) { (Get-Location).Path } else { $RepoRoot }
+$resolvedResultsRoot = if ([string]::IsNullOrWhiteSpace($ResultsRoot)) {
+  Join-Path $resolvedRepoRoot 'tests/results/local-vi-history/windows-mirror-proof'
+} else {
+  $ResultsRoot
+}
+New-Item -ItemType Directory -Path $resolvedResultsRoot -Force | Out-Null
+$receipt = [ordered]@{
+  schema = 'comparevi/local-refinement@v1'
+  generatedAt = '2026-03-19T00:00:00Z'
+  runtimeProfile = $Profile
+  runtimePlane = 'windows-mirror'
+  image = 'nationalinstruments/labview:2026q1-windows'
+  toolSource = 'windows-mirror-proof-image'
+  cacheReuseState = 'canonical-windows-proof-image'
+  coldWarmClass = 'cold'
+  benchmarkSampleKind = 'windows-mirror-proof-cold'
+  repoRoot = $resolvedRepoRoot
+  resultsRoot = $resolvedResultsRoot
+  timings = [ordered]@{
+    elapsedMilliseconds = 2100
+    elapsedSeconds = 2.1
+  }
+  windowsMirror = [ordered]@{
+    hostPreflight = [ordered]@{
+      path = (Join-Path $resolvedResultsRoot 'windows-ni-2026q1-host-preflight.json')
+    }
+    compare = [ordered]@{
+      reportPath = (Join-Path $resolvedResultsRoot 'windows-mirror-report.html')
+      capturePath = (Join-Path $resolvedResultsRoot 'ni-windows-container-capture.json')
+      runtimeSnapshotPath = (Join-Path $resolvedResultsRoot 'windows-mirror-runtime-snapshot.json')
+      status = 'diff'
+      classification = 'diff'
+      resultClass = 'diff'
+      gateOutcome = 'pass'
+      failureClass = 'none'
+    }
+    headlessContract = [ordered]@{
+      required = $true
+      labviewCliMode = 'headless'
+    }
+    labviewPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
+  }
+  finalStatus = 'succeeded'
+}
+$receipt | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $resolvedResultsRoot 'local-refinement.json') -Encoding utf8
+[ordered]@{
+  schema = 'comparevi/local-refinement-benchmark@v1'
+  generatedAt = '2026-03-19T00:00:01Z'
+  latest = [ordered]@{}
+  selectedSamples = [ordered]@{}
+  comparisons = [ordered]@{}
+} | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $resolvedResultsRoot 'local-refinement-benchmark.json') -Encoding utf8
+foreach ($path in @(
+    (Join-Path $resolvedResultsRoot 'windows-ni-2026q1-host-preflight.json'),
+    (Join-Path $resolvedResultsRoot 'windows-mirror-report.html'),
+    (Join-Path $resolvedResultsRoot 'ni-windows-container-capture.json'),
+    (Join-Path $resolvedResultsRoot 'windows-mirror-runtime-snapshot.json')
+  )) {
+  Set-Content -LiteralPath $path -Value 'stub' -Encoding utf8
+}
+if ($PassThru) {
+  [pscustomobject]$receipt
+}
+'@ | Set-Content -LiteralPath $refinementScript -Encoding utf8
+
+    $result = & $sessionScript `
+      -Profile 'windows-mirror-proof' `
+      -RepoRoot $repoUnderTest `
+      -ResultsRoot $resultsRoot `
+      -LocalRefinementScriptPath $refinementScript `
+      -PassThru
+
+    $result.runtimeProfile | Should -Be 'windows-mirror-proof'
+    $result.runtimePlane | Should -Be 'windows-mirror'
+    $result.localRefinement.runtimePlane | Should -Be 'windows-mirror'
+    $result.localRefinement.windowsMirror.compare.reportPath | Should -Be (Join-Path $resultsRoot 'windows-mirror-report.html')
+    $result.artifacts.windowsMirrorHostPreflightPath | Should -Be (Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json')
+    $result.artifacts.windowsMirrorCapturePath | Should -Be (Join-Path $resultsRoot 'ni-windows-container-capture.json')
+    $result.artifacts.windowsMirrorRuntimeSnapshotPath | Should -Be (Join-Path $resultsRoot 'windows-mirror-runtime-snapshot.json')
+    $result.finalStatus | Should -Be 'succeeded'
+
+    & $schemaScript -JsonPath $result.artifacts.sessionPath -SchemaPath $schemaPath
+    $LASTEXITCODE | Should -Be 0
+  }
 }

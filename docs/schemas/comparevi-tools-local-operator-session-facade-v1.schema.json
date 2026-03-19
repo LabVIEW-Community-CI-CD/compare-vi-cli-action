@@ -28,7 +28,10 @@
       "const": "comparevi/local-operator-session@v1"
     },
     "runtimeProfile": {
-      "enum": ["proof", "dev-fast", "warm-dev"]
+      "enum": ["proof", "dev-fast", "warm-dev", "windows-mirror-proof"]
+    },
+    "runtimePlane": {
+      "enum": ["linux", "windows-mirror"]
     },
     "repoRoot": {
       "type": "string"
