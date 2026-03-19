@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-tools-local-refinement-facade-v1.schema.json",
+  "title": "CompareVI.Tools Local Refinement Facade v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "backendReceiptSchema",
+    "runtimeProfile",
+    "image",
+    "toolSource",
+    "cacheReuseState",
+    "coldWarmClass",
+    "benchmarkSampleKind",
+    "repoRoot",
+    "resultsRoot",
+    "timings",
+    "history",
+    "artifacts",
+    "finalStatus"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-tools/local-refinement-facade@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "backendReceiptSchema": {
+      "const": "comparevi/local-refinement@v1"
+    },
+    "runtimeProfile": {
+      "enum": ["proof", "dev-fast", "warm-dev"]
+    },
+    "image": {
+      "type": "string"
+    },
+    "toolSource": {
+      "type": "string"
+    },
+    "cacheReuseState": {
+      "type": "string"
+    },
+    "coldWarmClass": {
+      "enum": ["cold", "warm"]
+    },
+    "benchmarkSampleKind": {
+      "type": "string"
+    },
+    "repoRoot": {
+      "type": "string"
+    },
+    "resultsRoot": {
+      "type": "string"
+    },
+    "timings": {
+      "type": "object"
+    },
+    "history": {
+      "type": "object"
+    },
+    "reviewSuite": {
+      "type": ["object", "null"]
+    },
+    "reviewLoop": {
+      "type": ["object", "null"]
+    },
+    "warmRuntime": {
+      "type": ["object", "null"]
+    },
+    "artifacts": {
+      "type": "object",
+      "required": [
+        "localRefinementPath",
+        "benchmarkPath"
+      ],
+      "properties": {
+        "localRefinementPath": {
+          "type": ["string", "null"]
+        },
+        "benchmarkPath": {
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "finalStatus": {
+      "enum": ["succeeded", "failed"]
+    }
+  },
+  "additionalProperties": false
+}

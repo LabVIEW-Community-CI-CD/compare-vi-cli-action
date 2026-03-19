@@ -343,6 +343,11 @@ These receipts are intentionally local-first. They allow `comparevi-history`
 and downstream consumers to reuse the same runtime planes without changing the
 review-bundle semantics or the canonical CI proof surface.
 
+When those consumers resolve the backend through an extracted `CompareVI.Tools`
+bundle, prefer the exported module facade
+`Invoke-CompareVIHistoryLocalRefinementFacade` over hard-coded script-path
+invocation.
+
 For a quicker end-to-end loop:
 
 - `scripts/Run-VIHistory.ps1` regenerates the history results, prints the

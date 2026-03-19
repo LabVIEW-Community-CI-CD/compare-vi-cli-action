@@ -215,6 +215,7 @@
         "docs/SINGLE_HOST_LABVIEW_2026_PLANES.md",
         "docs/schemas/comparevi-local-refinement-v1.schema.json",
         "docs/schemas/comparevi-local-refinement-benchmark-v1.schema.json",
+        "docs/schemas/comparevi-tools-local-refinement-facade-v1.schema.json",
         "docs/schemas/comparevi-local-runtime-health-v1.schema.json",
         "docs/schemas/comparevi-local-runtime-lease-v1.schema.json",
         "docs/schemas/comparevi-local-runtime-state-v1.schema.json",

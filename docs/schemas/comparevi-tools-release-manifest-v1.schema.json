@@ -113,7 +113,8 @@
     "consumerContract": {
       "type": "object",
       "required": [
-        "historyFacade"
+        "historyFacade",
+        "localRuntimeProfiles"
       ],
       "properties": {
         "historyFacade": {
@@ -137,6 +138,59 @@
               "type": "string"
             },
             "resultsRelativePath": {
+              "type": "string"
+            },
+            "stableFields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "localRuntimeProfiles": {
+          "type": "object",
+          "required": [
+            "schema",
+            "schemaUrl",
+            "exportedFunction",
+            "resultsRelativePath",
+            "benchmarkRelativePath",
+            "runtimeProfiles",
+            "defaultProfile",
+            "stableFields",
+            "notes"
+          ],
+          "properties": {
+            "schema": {
+              "type": "string"
+            },
+            "schemaUrl": {
+              "type": "string"
+            },
+            "exportedFunction": {
+              "type": "string"
+            },
+            "resultsRelativePath": {
+              "type": "string"
+            },
+            "benchmarkRelativePath": {
+              "type": "string"
+            },
+            "runtimeProfiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "defaultProfile": {
               "type": "string"
             },
             "stableFields": {

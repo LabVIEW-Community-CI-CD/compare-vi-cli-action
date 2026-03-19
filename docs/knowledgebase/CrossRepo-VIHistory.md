@@ -240,6 +240,13 @@ Those receipts are the contract `comparevi-history` should consume when it adds
 profile-aware `local-review` and `local-proof` surfaces on top of the backend
 runtime planes.
 
+For extracted tooling bundles, prefer the module-level stable surface instead
+of hard-coding backend script paths:
+
+- `Invoke-CompareVIHistoryLocalRefinementFacade`
+- consumer contract:
+  `comparevi-tools/local-refinement-facade@v1`
+
 ### Recommended downstream workflow
 
 For a downstream maintainer, the intended loop is now:
