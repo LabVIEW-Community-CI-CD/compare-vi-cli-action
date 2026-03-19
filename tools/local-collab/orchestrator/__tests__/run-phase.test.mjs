@@ -10,6 +10,7 @@ import {
   resolvePhaseProviderSelection,
   runLocalCollaborationPhase
 } from '../run-phase.mjs';
+import { HookRunner } from '../../../hooks/core/runner.mjs';
 
 async function createGitRepo() {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'local-collab-orchestrator-'));
@@ -480,42 +481,59 @@ test('runLocalCollaborationPhase fails closed when an explicit hook plane confli
 
 test('runLocalCollaborationPhase keeps pre-push non-blocking in local warn mode when local agent review fails', async () => {
   const repoRoot = await createGitRepo();
-
-  const result = await runLocalCollaborationPhase({
-    phase: 'pre-push',
-    repoRoot,
-    providers: ['simulation'],
-    invokeAgentReviewPolicyFn: () => ({
-      exitCode: 1,
-      receipt: {
-        overall: {
-          status: 'failed',
-          actionableFindingCount: 1
-        },
-        providerSelection: {
-          selectionSource: 'explicit-request'
-        },
-        requestedProviders: ['simulation']
-      }
-    }),
-    env: {
-      ...process.env,
-      HOOKS_ENFORCE: 'warn'
+  const originalRunPwshStep = HookRunner.prototype.runPwshStep;
+  HookRunner.prototype.runPwshStep = function runPwshStepOverride(name, scriptPath, args = [], options = {}) {
+    if (name === 'pre-push-checks') {
+      return this.runStep(name, () => ({
+        status: 'ok',
+        exitCode: 0,
+        stdout: '[pre-push] actionlint OK',
+        stderr: '',
+      }));
     }
-  });
 
-  assert.equal(result.exitCode, 0);
-  assert.equal(result.receipt.phase, 'pre-push');
-  assert.equal(result.receipt.delegate.agentReview.receiptStatus, 'failed');
-  assert.deepEqual(result.receipt.delegate.agentReview.requestedProviders, ['simulation']);
+    return originalRunPwshStep.call(this, name, scriptPath, args, options);
+  };
 
-  const hookSummary = JSON.parse(await readFile(result.receipt.delegate.summaryPath, 'utf8'));
-  const reviewStep = hookSummary.steps.find((step) => step.name === 'agent-review-policy');
-  assert.ok(reviewStep);
-  assert.equal(reviewStep.status, 'warn');
-  assert.equal(reviewStep.rawExitCode, 1);
-  assert.match(reviewStep.note, /converted to warning by HOOKS_ENFORCE=warn/);
-  assert.equal(hookSummary.steps.some((step) => step.name === 'pre-push-checks'), true);
+  try {
+    const result = await runLocalCollaborationPhase({
+      phase: 'pre-push',
+      repoRoot,
+      providers: ['simulation'],
+      invokeAgentReviewPolicyFn: () => ({
+        exitCode: 1,
+        receipt: {
+          overall: {
+            status: 'failed',
+            actionableFindingCount: 1
+          },
+          providerSelection: {
+            selectionSource: 'explicit-request'
+          },
+          requestedProviders: ['simulation']
+        }
+      }),
+      env: {
+        ...process.env,
+        HOOKS_ENFORCE: 'warn'
+      }
+    });
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.receipt.phase, 'pre-push');
+    assert.equal(result.receipt.delegate.agentReview.receiptStatus, 'failed');
+    assert.deepEqual(result.receipt.delegate.agentReview.requestedProviders, ['simulation']);
+
+    const hookSummary = JSON.parse(await readFile(result.receipt.delegate.summaryPath, 'utf8'));
+    const reviewStep = hookSummary.steps.find((step) => step.name === 'agent-review-policy');
+    assert.ok(reviewStep);
+    assert.equal(reviewStep.status, 'warn');
+    assert.equal(reviewStep.rawExitCode, 1);
+    assert.match(reviewStep.note, /converted to warning by HOOKS_ENFORCE=warn/);
+    assert.equal(hookSummary.steps.some((step) => step.name === 'pre-push-checks'), true);
+  } finally {
+    HookRunner.prototype.runPwshStep = originalRunPwshStep;
+  }
 });
 
 test('runLocalCollaborationPhase blocks pre-push before heavy checks in fail mode when local agent review fails', async () => {
@@ -555,4 +573,95 @@ test('runLocalCollaborationPhase blocks pre-push before heavy checks in fail mod
     /Skipped core pre-push checks because local agent review failed/
   );
   assert.equal(hookSummary.steps.some((step) => step.name === 'pre-push-checks'), false);
+});
+
+test('runLocalCollaborationPhase blocks pre-push when core pre-push checks fail even in local warn mode', async () => {
+  const repoRoot = await createGitRepo();
+  const originalRunPwshStep = HookRunner.prototype.runPwshStep;
+  HookRunner.prototype.runPwshStep = function runPwshStepOverride(name, scriptPath, args = [], options = {}) {
+    if (name === 'pre-push-checks') {
+      return this.runStep(name, () => ({
+        status: 'failed',
+        exitCode: 1,
+        stdout: '',
+        stderr: 'PSScriptAnalyzer not installed; install the module or rerun with -SkipPSScriptAnalyzer.',
+      }));
+    }
+
+    return originalRunPwshStep.call(this, name, scriptPath, args, options);
+  };
+
+  try {
+    const result = await runLocalCollaborationPhase({
+      phase: 'pre-push',
+      repoRoot,
+      providers: ['simulation'],
+      invokeAgentReviewPolicyFn: () => ({
+        exitCode: 0,
+        receipt: {
+          overall: {
+            status: 'passed',
+            actionableFindingCount: 0
+          },
+          providerSelection: {
+            selectionSource: 'explicit-request'
+          },
+          requestedProviders: ['simulation']
+        }
+      }),
+      env: {
+        ...process.env,
+        HOOKS_ENFORCE: 'warn'
+      }
+    });
+
+    assert.equal(result.exitCode, 1);
+    const hookSummary = JSON.parse(await readFile(result.receipt.delegate.summaryPath, 'utf8'));
+    const prePushChecksStep = hookSummary.steps.find((step) => step.name === 'pre-push-checks');
+    assert.ok(prePushChecksStep);
+    assert.equal(prePushChecksStep.status, 'failed');
+    assert.equal(prePushChecksStep.rawExitCode, 1);
+    assert.equal(prePushChecksStep.exitCode, 1);
+    assert.match(hookSummary.notes.join('\n'), /core pre-push checks failed/);
+  } finally {
+    HookRunner.prototype.runPwshStep = originalRunPwshStep;
+  }
+});
+
+test('runLocalCollaborationPhase blocks pre-commit when PSScriptAnalyzer is unavailable for staged PowerShell files', async () => {
+  const repoRoot = await createGitRepo();
+  await mkdir(path.join(repoRoot, 'tools', 'sample'), { recursive: true });
+  await writeFile(path.join(repoRoot, 'tools', 'sample', 'hook-test.ps1'), "Write-Host 'hello'\n", 'utf8');
+  spawnSync('git', ['add', 'tools/sample/hook-test.ps1'], { cwd: repoRoot, encoding: 'utf8' });
+
+  const originalRunPwshStep = HookRunner.prototype.runPwshStep;
+  HookRunner.prototype.runPwshStep = function runPwshStepOverride(name, scriptPath, args = [], options = {}) {
+    if (name === 'powershell-validation') {
+      return this.runStep(name, () => ({
+        status: 'failed',
+        exitCode: 1,
+        stdout: '',
+        stderr: 'PSScriptAnalyzer not installed; install the module or rerun with -SkipPSScriptAnalyzer (or PRECOMMIT_SKIP_PSSCRIPTANALYZER=1).',
+      }));
+    }
+
+    return originalRunPwshStep.call(this, name, scriptPath, args, options);
+  };
+
+  try {
+    const result = await runLocalCollaborationPhase({
+      phase: 'pre-commit',
+      repoRoot,
+    });
+
+    assert.equal(result.exitCode, 1);
+    const hookSummary = JSON.parse(await readFile(result.receipt.delegate.summaryPath, 'utf8'));
+    const validationStep = hookSummary.steps.find((step) => step.name === 'powershell-validation');
+    assert.ok(validationStep);
+    assert.equal(validationStep.status, 'failed');
+    assert.equal(validationStep.rawExitCode, 1);
+    assert.match(`${validationStep.stderr ?? ''}\n${validationStep.stdout ?? ''}`, /PSScriptAnalyzer not installed/);
+  } finally {
+    HookRunner.prototype.runPwshStep = originalRunPwshStep;
+  }
 });
