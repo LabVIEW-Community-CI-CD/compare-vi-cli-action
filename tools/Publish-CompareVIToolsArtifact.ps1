@@ -233,6 +233,7 @@ try {
     '- Prefer `Invoke-CompareVIHistoryFacade` when downstream tooling needs a stable summary object plus the generated report paths.'
     '- For comparevi-history comment/summary rendering, resolve `tools/New-CompareVIHistoryDiagnosticsBody.ps1` from this bundle or from the workflow `tooling-path` output instead of copying inline PowerShell helpers.'
     '- For local-first VI history refinement, use `tools/Build-VIHistoryDevImage.ps1`, `tools/Invoke-VIHistoryLocalRefinement.ps1`, and `tools/Manage-VIHistoryRuntimeInDocker.ps1` from this bundle root.'
+    '- The first documented downstream local-first consumer is `LabVIEW-Community-CI-CD/labview-icon-editor-demo` via comparevi-history local-review/local-proof targeting `develop`.'
     '- The runtime facade JSON is written to `history-summary.json` under the selected results directory.'
     '- Real compare execution still requires the same LVCompare/LabVIEW prerequisites as the source repository.'
   ) | Set-Content -LiteralPath $bundleReadmePath -Encoding utf8
@@ -340,7 +341,8 @@ try {
       notes = @(
         'Use the module facade when comparevi-history or another downstream needs profile-aware local refinement without hard-coding backend script paths.',
         'The facade defaults RepoRoot to the caller working directory so extracted tooling bundles can target downstream repositories cleanly.',
-        'Proof stays the canonical runtime truth; dev-fast and warm-dev are local acceleration planes only.'
+        'Proof stays the canonical runtime truth; dev-fast and warm-dev are local acceleration planes only.',
+        'The first documented downstream adoption proof is LabVIEW-Community-CI-CD/labview-icon-editor-demo via comparevi-history local-review/local-proof targeting develop.'
       )
     }
     diagnosticsCommentRenderer = [ordered]@{

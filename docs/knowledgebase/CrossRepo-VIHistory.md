@@ -2,7 +2,9 @@
 # Cross-Repo VI History Capture
 
 This note records the supported steps for exercising the Compare-VIHistory
-tooling against an external repository. The pinned sample below uses
+tooling against an external repository. The canonical local-first downstream
+adoption proof uses `LabVIEW-Community-CI-CD/labview-icon-editor-demo` on
+`develop`, while the legacy one-off module sample below still uses
 `svelderrainruiz/labview-icon-editor`, which is the active downstream icon
 editor repository.
 
@@ -160,7 +162,65 @@ pwsh -NoLogo -NoProfile -File tools/Run-NILinuxContainerCompare.ps1 `
 }
 ```
 
-## Pinned sample flow
+## Canonical downstream demo adoption
+
+Treat `LabVIEW-Community-CI-CD/labview-icon-editor-demo` as the first
+documented downstream consumer for the local-first VI history loop.
+
+- Backend pin: reviewed `compare-vi-cli-action` release tag plus
+  `comparevi-tools-release.json`
+- Facade pin: immutable `comparevi-history` release used by the consumer
+  workflows and local-review scripts
+- Downstream repo: `LabVIEW-Community-CI-CD/labview-icon-editor-demo`
+- PR workflow target branch: `develop`
+- Downstream maintainer doc:
+  `docs/comparevi-history-diagnostics.md`
+- Representative VI:
+  `Tooling/deployment/VIP_Post-Install Custom Action.vi`
+
+For that repo, the supported local maintainer loop is:
+
+1. refine locally with `dev-fast`
+2. repeat locally with `warm-dev` when iteration is high-frequency
+3. run `proof` before opening the PR
+4. use GitHub CI only for publication and trust-boundary proof
+
+Example local review from a `comparevi-history` checkout:
+
+```powershell
+pwsh -NoLogo -NoProfile -File <comparevi-history-root>\scripts\Invoke-CompareVIHistoryLocalReview.ps1 `
+  -ConsumerRepositoryRoot <labview-icon-editor-demo-root> `
+  -ViPath 'Tooling/deployment/VIP_Post-Install Custom Action.vi'
+```
+
+Example repeated-turn warm runtime:
+
+```powershell
+pwsh -NoLogo -NoProfile -File <comparevi-history-root>\scripts\Invoke-CompareVIHistoryLocalReview.ps1 `
+  -ConsumerRepositoryRoot <labview-icon-editor-demo-root> `
+  -ViPath 'Tooling/deployment/VIP_Post-Install Custom Action.vi' `
+  -Profile warm-dev `
+  -WarmRuntimeDir tests/results/local-review/runtime `
+  -BaseRef develop `
+  -HeadRef HEAD
+```
+
+Example local proof before opening the PR:
+
+```powershell
+pwsh -NoLogo -NoProfile -File <comparevi-history-root>\scripts\Invoke-CompareVIHistoryLocalReview.ps1 `
+  -ConsumerRepositoryRoot <labview-icon-editor-demo-root> `
+  -ViPath 'Tooling/deployment/VIP_Post-Install Custom Action.vi' `
+  -Profile proof `
+  -BaseRef develop `
+  -HeadRef HEAD
+```
+
+Keep the checked-in GitHub workflows in the downstream repo as the publication
+surface. The local-first loop is for reviewer/runtime refinement before the PR
+exists, not a replacement for the published PR diagnostics.
+
+## Legacy module sample flow
 
 Use this exact sample when you need a documented cross-repo consumer reference:
 

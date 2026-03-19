@@ -9,6 +9,8 @@ target VI at each commit-parent pair, and invokes LVCompare in headless mode.
 
 Scope boundary: icon editor development is out of scope for this repository. The
 active icon editor project lives at `svelderrainruiz/labview-icon-editor`.
+The canonical downstream local-first adoption proof surface for VI history is
+`LabVIEW-Community-CI-CD/labview-icon-editor-demo` on `develop`.
 
 The latest rev streamlines the workflow inputs so SMEs only need to provide:
 
@@ -342,6 +344,12 @@ Benchmark receipts now select the intended sample classes:
 These receipts are intentionally local-first. They allow `comparevi-history`
 and downstream consumers to reuse the same runtime planes without changing the
 review-bundle semantics or the canonical CI proof surface.
+
+The first documented downstream consumer of that split is
+`LabVIEW-Community-CI-CD/labview-icon-editor-demo`. Use
+[docs/knowledgebase/CrossRepo-VIHistory.md](docs/knowledgebase/CrossRepo-VIHistory.md)
+for the supported `comparevi-history` local-review/local-proof loop that
+maintainers should run before opening a PR to `develop`.
 
 When those consumers resolve the backend through an extracted `CompareVI.Tools`
 bundle, prefer the exported module facade
