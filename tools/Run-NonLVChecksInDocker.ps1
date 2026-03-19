@@ -335,6 +335,143 @@ function Read-JsonHashtable {
   return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable)
 }
 
+function Get-ActionlintVersionFloor {
+  param([Parameter(Mandatory)][string]$RepoRoot)
+
+  $dockerfilePath = Join-Path $RepoRoot 'tools' 'docker' 'Dockerfile.tools'
+  if (-not (Test-Path -LiteralPath $dockerfilePath -PathType Leaf)) {
+    throw ("Tools Dockerfile not found while resolving actionlint floor: {0}" -f $dockerfilePath)
+  }
+
+  $dockerfileContent = Get-Content -LiteralPath $dockerfilePath -Raw
+  $match = [regex]::Match($dockerfileContent, '(?m)^ARG ACTIONLINT_VERSION=(\d+\.\d+\.\d+)\s*$')
+  if (-not $match.Success) {
+    throw ("Unable to resolve ACTIONLINT_VERSION from {0}" -f $dockerfilePath)
+  }
+
+  return [string]$match.Groups[1].Value
+}
+
+function Test-ActionlintVersionAtLeast {
+  param(
+    [AllowEmptyString()][string]$Version,
+    [Parameter(Mandatory)][string]$MinimumVersion
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Version)) {
+    return $false
+  }
+
+  try {
+    return ([version]$Version) -ge ([version]$MinimumVersion)
+  } catch {
+    return $false
+  }
+}
+
+function Invoke-ContainerCapture {
+  param(
+    [Parameter(Mandatory)][string]$Image,
+    [Parameter(Mandatory)][string[]]$Arguments,
+    [string[]]$DockerRunArguments = @()
+  )
+
+  $psi = [System.Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = 'docker'
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  foreach ($arg in @('run') + $commonArgs + @($DockerRunArguments) + @($Image) + @($Arguments)) {
+    [void]$psi.ArgumentList.Add([string]$arg)
+  }
+
+  $proc = [System.Diagnostics.Process]::new()
+  $proc.StartInfo = $psi
+  try {
+    [void]$proc.Start()
+    $stdout = $proc.StandardOutput.ReadToEnd()
+    $stderr = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    $global:LASTEXITCODE = [int]$proc.ExitCode
+    return [pscustomobject]@{
+      exitCode = [int]$proc.ExitCode
+      stdout = $stdout
+      stderr = $stderr
+    }
+  } finally {
+    $proc.Dispose()
+  }
+}
+
+function Get-ContainerActionlintVersion {
+  param(
+    [Parameter(Mandatory)][string]$Image,
+    [Parameter(Mandatory)][string[]]$Arguments
+  )
+
+  $probe = Invoke-ContainerCapture -Image $Image -Arguments $Arguments
+  if ($probe.exitCode -ne 0) {
+    return ''
+  }
+
+  $combinedOutput = (($probe.stdout ?? '') + "`n" + ($probe.stderr ?? ''))
+  $match = [regex]::Match($combinedOutput, '(?m)^(?<version>\d+\.\d+\.\d+)\s*$')
+  if (-not $match.Success) {
+    return ''
+  }
+
+  return [string]$match.Groups['version'].Value
+}
+
+function Resolve-ActionlintContainerInvocation {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [switch]$UseToolsImage,
+    [AllowEmptyString()][string]$ToolsImageTag
+  )
+
+  $requiredVersion = Get-ActionlintVersionFloor -RepoRoot $RepoRoot
+  $officialImage = "rhysd/actionlint:$requiredVersion"
+  if (-not $UseToolsImage -or [string]::IsNullOrWhiteSpace($ToolsImageTag)) {
+    return [ordered]@{
+      image = $officialImage
+      arguments = @('-color')
+      label = 'actionlint'
+      surface = 'container-official'
+      source = 'official-image'
+      requiredVersion = $requiredVersion
+      detectedVersion = $requiredVersion
+      fallbackReason = ''
+    }
+  }
+
+  $detectedToolsVersion = Get-ContainerActionlintVersion -Image $ToolsImageTag -Arguments @('actionlint', '-version')
+  if (-not (Test-ActionlintVersionAtLeast -Version $detectedToolsVersion -MinimumVersion $requiredVersion)) {
+    Write-Host ("[docker] Tools image actionlint version '{0}' is below required '{1}'; using official fallback image '{2}'." -f $(if ([string]::IsNullOrWhiteSpace($detectedToolsVersion)) { '(unknown)' } else { $detectedToolsVersion }), $requiredVersion, $officialImage) -ForegroundColor Yellow
+    return [ordered]@{
+      image = $officialImage
+      arguments = @('-color')
+      label = 'actionlint (fallback)'
+      surface = 'container-official-fallback'
+      source = 'official-image-fallback'
+      requiredVersion = $requiredVersion
+      detectedVersion = $detectedToolsVersion
+      fallbackReason = 'tools-image-stale'
+    }
+  }
+
+  return [ordered]@{
+    image = $ToolsImageTag
+    arguments = @('actionlint', '-color')
+    label = 'actionlint (tools)'
+    surface = 'container-tools-image'
+    source = 'tools-image'
+    requiredVersion = $requiredVersion
+    detectedVersion = $detectedToolsVersion
+    fallbackReason = ''
+  }
+}
+
 function Invoke-GitReviewLoopCommand {
   param(
     [Parameter(Mandatory)][string]$RepoRoot,
@@ -673,6 +810,14 @@ if ($UseToolsImage -and -not $ToolsImageTag) {
   $ToolsImageTag = 'ghcr.io/labview-community-ci-cd/comparevi-tools:latest'
 }
 
+$actionlintInvocation = $null
+if (-not $SkipActionlint) {
+  $actionlintInvocation = Resolve-ActionlintContainerInvocation `
+    -RepoRoot $repoRootResolved `
+    -UseToolsImage:$UseToolsImage `
+    -ToolsImageTag $ToolsImageTag
+}
+
 $requiresDockerSocketPassthrough = $false
 if ($UseToolsImage -and $pesterRequested) {
   $requiresDockerSocketPassthrough = $DockerSocketPassthrough -or (Test-TargetsNILinuxContainerCompareSuite -Paths $PesterPath)
@@ -715,8 +860,14 @@ if ($checkStates.dotnetCliBuild.enabled) {
 
 if ($UseToolsImage -and $ToolsImageTag) {
   if ($checkStates.actionlint.enabled) {
+    $checkStates.actionlint.surface = [string]$actionlintInvocation.surface
+    $checkStates.actionlint.artifacts.image = [string]$actionlintInvocation.image
+    $checkStates.actionlint.artifacts.source = [string]$actionlintInvocation.source
+    $checkStates.actionlint.artifacts.requiredVersion = [string]$actionlintInvocation.requiredVersion
+    $checkStates.actionlint.artifacts.detectedVersion = [string]$actionlintInvocation.detectedVersion
+    $checkStates.actionlint.artifacts.fallbackReason = [string]$actionlintInvocation.fallbackReason
     Invoke-DockerParityStep -StepRecord $checkStates.actionlint -Name 'actionlint' -RunRecord $runRecord -Action {
-      Invoke-Container -Image $ToolsImageTag -Arguments @('actionlint','-color') -Label 'actionlint (tools)'
+      Invoke-Container -Image ([string]$actionlintInvocation.image) -Arguments @($actionlintInvocation.arguments) -Label ([string]$actionlintInvocation.label)
     }
   }
   if ($checkStates.markdownlint.enabled) {
@@ -745,8 +896,14 @@ if ($UseToolsImage -and $ToolsImageTag) {
   }
 } else {
   if ($checkStates.actionlint.enabled) {
+    $checkStates.actionlint.surface = [string]$actionlintInvocation.surface
+    $checkStates.actionlint.artifacts.image = [string]$actionlintInvocation.image
+    $checkStates.actionlint.artifacts.source = [string]$actionlintInvocation.source
+    $checkStates.actionlint.artifacts.requiredVersion = [string]$actionlintInvocation.requiredVersion
+    $checkStates.actionlint.artifacts.detectedVersion = [string]$actionlintInvocation.detectedVersion
+    $checkStates.actionlint.artifacts.fallbackReason = [string]$actionlintInvocation.fallbackReason
     Invoke-DockerParityStep -StepRecord $checkStates.actionlint -Name 'actionlint' -RunRecord $runRecord -Action {
-      Invoke-Container -Image 'rhysd/actionlint:1.7.8' -Arguments @('-color') -Label 'actionlint'
+      Invoke-Container -Image ([string]$actionlintInvocation.image) -Arguments @($actionlintInvocation.arguments) -Label ([string]$actionlintInvocation.label)
     }
   }
   if ($checkStates.markdownlint.enabled) {

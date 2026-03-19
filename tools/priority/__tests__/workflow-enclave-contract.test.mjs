@@ -174,3 +174,24 @@ test('workflow and composite lint surfaces use repo-owned markdown commands', ()
   assert.match(cliLintsAction, /node tools\/npm\/run-script\.mjs lint:md:changed/);
   assert.match(cliLintsAction, /markdownlint-cli2 --config docs\/relaxed\.markdownlint-cli2\.jsonc/);
 });
+
+test('actionlint version policy stays aligned across tools image and local/container lint helpers', () => {
+  const dockerfile = read('tools/docker/Dockerfile.tools');
+  assert.match(dockerfile, /ARG ACTIONLINT_VERSION=1\.7\.8/);
+
+  const dockerChecks = read('tools/Run-NonLVChecksInDocker.ps1');
+  assert.match(dockerChecks, /function Get-ActionlintVersionFloor/);
+  assert.match(dockerChecks, /Join-Path \$RepoRoot 'tools' 'docker' 'Dockerfile\.tools'/);
+  assert.match(dockerChecks, /rhysd\/actionlint:\$requiredVersion/);
+  assert.match(dockerChecks, /official-image-fallback/);
+  assert.match(dockerChecks, /container-tools-image/);
+
+  const prePush = read('tools/PrePush-Checks.ps1');
+  assert.match(prePush, /\[string\]\$ActionlintVersion = '1\.7\.8'/);
+
+  const validateWorkflow = read('.github/workflows/validate.yml');
+  assert.match(validateWorkflow, /ACTIONLINT_VERSION:\s*'\$\{\{\s*vars\.ACTIONLINT_VERSION \|\| ''1\.7\.8''\s*\}\}'/);
+
+  const workflowsLintWorkflow = read('.github/workflows/workflows-lint.yml');
+  assert.match(workflowsLintWorkflow, /ACTIONLINT_VERSION:\s*\$\{\{\s*vars\.ACTIONLINT_VERSION \|\| '1\.7\.8'\s*\}\}/);
+});
