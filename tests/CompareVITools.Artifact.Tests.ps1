@@ -103,6 +103,8 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $metadata.consumerContract.localRuntimeProfiles.defaultProfile | Should -Be 'dev-fast'
     @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'benchmarkSampleKind'
     @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'warmRuntime'
+    ((@($metadata.consumerContract.localRuntimeProfiles.notes) -join [Environment]::NewLine)) | Should -Match 'labview-icon-editor-demo'
+    ((@($metadata.consumerContract.localRuntimeProfiles.notes) -join [Environment]::NewLine)) | Should -Match 'comparevi-history'
     $metadata.consumerContract.diagnosticsCommentRenderer.entryScriptPath | Should -Be 'tools/New-CompareVIHistoryDiagnosticsBody.ps1'
     @($metadata.consumerContract.diagnosticsCommentRenderer.variants) | Should -Be @(
       'comment-gated',
@@ -124,6 +126,10 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
 
     $bundleRoot = Join-Path $extractRoot $metadata.bundle.folder
     Test-Path -LiteralPath $bundleRoot | Should -BeTrue
+
+    $bundleReadme = Get-Content -LiteralPath (Join-Path $bundleRoot 'README.md') -Raw
+    $bundleReadme | Should -Match 'labview-icon-editor-demo'
+    $bundleReadme | Should -Match 'comparevi-history'
 
     $expectedFiles = @(
       'comparevi-tools-release.json',
