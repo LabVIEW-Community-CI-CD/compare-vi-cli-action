@@ -704,6 +704,193 @@ function Write-PrePushSupportLaneReport {
   return $reportPath
 }
 
+function Get-PrePushKnownFlagScenarioSemanticEvidence {
+  param(
+    [Parameter(Mandatory)]
+    [string]$ReportPath
+  )
+
+  if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) {
+    throw ("Pre-push semantic evidence report not found: {0}" -f $ReportPath)
+  }
+
+  $html = Get-Content -LiteralPath $ReportPath -Raw
+  if ([string]::IsNullOrWhiteSpace($html)) {
+    throw ("Pre-push semantic evidence report is empty: {0}" -f $ReportPath)
+  }
+
+  $inclusionStates = [ordered]@{}
+  $inclusionPattern = '<li\s+class="(?<class>checked|unchecked)">(?<label>[^<]+)</li>'
+  foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($html, $inclusionPattern, 'IgnoreCase')) {
+    $label = [System.Net.WebUtility]::HtmlDecode($match.Groups['label'].Value.Trim())
+    if ([string]::IsNullOrWhiteSpace($label)) {
+      continue
+    }
+    $inclusionStates[$label] = ($match.Groups['class'].Value.Trim().ToLowerInvariant() -eq 'checked')
+  }
+
+  $headingTexts = New-Object System.Collections.Generic.List[string]
+  $headingPattern = '<summary\s+class="(?<class>[^"]*difference(?:-cosmetic)?-heading[^"]*)">\s*(?<text>.*?)\s*</summary>'
+  foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($html, $headingPattern, 'IgnoreCase')) {
+    $rawHeading = $match.Groups['text'].Value
+    if ([string]::IsNullOrWhiteSpace($rawHeading)) {
+      continue
+    }
+    $decodedHeading = [System.Net.WebUtility]::HtmlDecode($rawHeading.Trim())
+    $decodedHeading = ($decodedHeading -replace '^\s*\d+\.\s*', '')
+    if ([string]::IsNullOrWhiteSpace($decodedHeading)) {
+      continue
+    }
+    $headingTexts.Add($decodedHeading) | Out-Null
+  }
+
+  $trackedCategories = [ordered]@{
+    'Front Panel' = $null
+    'Front Panel Position/Size' = $null
+    'Block Diagram Functional' = $null
+    'Block Diagram Cosmetic' = $null
+    'VI Attribute' = $null
+  }
+  foreach ($categoryName in @($trackedCategories.Keys)) {
+    if ($inclusionStates.Contains($categoryName)) {
+      $trackedCategories[$categoryName] = [bool]$inclusionStates[$categoryName]
+    }
+  }
+
+  return [pscustomobject]@{
+    reportPath = $ReportPath
+    inclusionStates = [pscustomobject]$inclusionStates
+    trackedCategories = [pscustomobject]$trackedCategories
+    headingTexts = @($headingTexts.ToArray())
+    inclusionCount = $inclusionStates.Count
+    headingCount = $headingTexts.Count
+  }
+}
+
+function Test-PrePushKnownFlagReviewerAssertion {
+  param(
+    [Parameter(Mandatory)]
+    [object]$Assertion,
+
+    [Parameter(Mandatory)]
+    [AllowEmptyCollection()]
+    [string[]]$RequestedFlags,
+
+    [Parameter(Mandatory)]
+    [AllowEmptyCollection()]
+    [string[]]$ObservedFlags,
+
+    [Parameter(Mandatory)]
+    [object]$SemanticEvidence
+  )
+
+  $requirement = [string]$Assertion.requirement
+  $surface = [string]$Assertion.surface
+  $passed = $false
+  $details = ''
+
+  switch ($requirement) {
+    'rendered' {
+      $passed = ($SemanticEvidence.inclusionCount -gt 0 -and $SemanticEvidence.headingCount -gt 0)
+      $details = ("inclusionCount={0}; headingCount={1}" -f $SemanticEvidence.inclusionCount, $SemanticEvidence.headingCount)
+    }
+    'requested-flags-observed' {
+      $missingFlags = New-Object System.Collections.Generic.List[string]
+      foreach ($requestedFlag in @($RequestedFlags)) {
+        if ($ObservedFlags -notcontains $requestedFlag) {
+          $missingFlags.Add([string]$requestedFlag) | Out-Null
+        }
+      }
+      if ($ObservedFlags -notcontains '-Headless') {
+        $missingFlags.Add('-Headless') | Out-Null
+      }
+      $passed = ($missingFlags.Count -eq 0)
+      $details = if ($passed) {
+        ("observedFlags={0}" -f ([string]::Join(', ', @($ObservedFlags))))
+      } else {
+        ("missingFlags={0}; observedFlags={1}" -f ([string]::Join(', ', @($missingFlags)), [string]::Join(', ', @($ObservedFlags))))
+      }
+    }
+    'attribute-suppression-boundary-visible' {
+      $state = $SemanticEvidence.trackedCategories.'VI Attribute'
+      $passed = ($null -ne $state -and -not [bool]$state)
+      $details = ("VI Attribute checked={0}" -f $state)
+    }
+    'front-panel-position-boundary-visible' {
+      $state = $SemanticEvidence.trackedCategories.'Front Panel Position/Size'
+      $passed = ($null -ne $state -and -not [bool]$state)
+      $details = ("Front Panel Position/Size checked={0}" -f $state)
+    }
+    'block-diagram-cosmetic-boundary-visible' {
+      $state = $SemanticEvidence.trackedCategories.'Block Diagram Cosmetic'
+      $passed = ($null -ne $state -and -not [bool]$state)
+      $details = ("Block Diagram Cosmetic checked={0}" -f $state)
+    }
+    default {
+      throw ("Unsupported pre-push known-flag reviewer assertion requirement: {0}" -f $requirement)
+    }
+  }
+
+  return [pscustomobject]@{
+    id = [string]$Assertion.id
+    surface = $surface
+    requirement = $requirement
+    passed = [bool]$passed
+    details = $details
+  }
+}
+
+function Test-PrePushKnownFlagRawModeBoundary {
+  param(
+    [Parameter(Mandatory)]
+    [object]$Boundary,
+
+    [Parameter(Mandatory)]
+    [object]$SemanticEvidence
+  )
+
+  $expectation = [string]$Boundary.expectation
+  $passed = $false
+  $details = ''
+
+  switch ($expectation) {
+    'full-surface' {
+      $trackedStates = $SemanticEvidence.trackedCategories.PSObject.Properties | ForEach-Object { $_.Value }
+      $missingStates = @($trackedStates | Where-Object { $null -eq $_ })
+      $uncheckedStates = @($trackedStates | Where-Object { $null -ne $_ -and -not [bool]$_ })
+      $passed = ($missingStates.Count -eq 0 -and $uncheckedStates.Count -eq 0)
+      $details = ("trackedCategories={0}" -f (($SemanticEvidence.trackedCategories | ConvertTo-Json -Compress)))
+    }
+    'vi-attributes-suppressed' {
+      $state = $SemanticEvidence.trackedCategories.'VI Attribute'
+      $passed = ($null -ne $state -and -not [bool]$state)
+      $details = ("VI Attribute checked={0}" -f $state)
+    }
+    'front-panel-position-size-suppressed' {
+      $state = $SemanticEvidence.trackedCategories.'Front Panel Position/Size'
+      $passed = ($null -ne $state -and -not [bool]$state)
+      $details = ("Front Panel Position/Size checked={0}" -f $state)
+    }
+    'block-diagram-cosmetic-suppressed' {
+      $state = $SemanticEvidence.trackedCategories.'Block Diagram Cosmetic'
+      $passed = ($null -ne $state -and -not [bool]$state)
+      $details = ("Block Diagram Cosmetic checked={0}" -f $state)
+    }
+    default {
+      throw ("Unsupported pre-push known-flag raw-mode expectation: {0}" -f $expectation)
+    }
+  }
+
+  return [pscustomobject]@{
+    id = [string]$Boundary.id
+    mode = [string]$Boundary.mode
+    surfaceRole = [string]$Boundary.surfaceRole
+    expectation = $expectation
+    passed = [bool]$passed
+    details = $details
+  }
+}
+
 function New-PrePushTransportMatrixScenarios {
   param(
     [AllowNull()]
@@ -826,6 +1013,69 @@ function ConvertTo-PrePushKnownFlagScenarioResultArray {
       }
     }
 
+    $reviewerAssertionResults = New-Object System.Collections.Generic.List[object]
+    if ($scenarioResult.PSObject.Properties['reviewerAssertionResults'] -and $scenarioResult.reviewerAssertionResults) {
+      foreach ($assertionResult in @($scenarioResult.reviewerAssertionResults)) {
+        if ($null -eq $assertionResult) {
+          continue
+        }
+        $reviewerAssertionResults.Add([pscustomobject]@{
+          id = [string]$assertionResult.id
+          surface = [string]$assertionResult.surface
+          requirement = [string]$assertionResult.requirement
+          passed = [bool]$assertionResult.passed
+          details = [string]$assertionResult.details
+        }) | Out-Null
+      }
+    }
+
+    $rawModeBoundaryResults = New-Object System.Collections.Generic.List[object]
+    if ($scenarioResult.PSObject.Properties['rawModeBoundaryResults'] -and $scenarioResult.rawModeBoundaryResults) {
+      foreach ($boundaryResult in @($scenarioResult.rawModeBoundaryResults)) {
+        if ($null -eq $boundaryResult) {
+          continue
+        }
+        $rawModeBoundaryResults.Add([pscustomobject]@{
+          id = [string]$boundaryResult.id
+          mode = [string]$boundaryResult.mode
+          surfaceRole = [string]$boundaryResult.surfaceRole
+          expectation = [string]$boundaryResult.expectation
+          passed = [bool]$boundaryResult.passed
+          details = [string]$boundaryResult.details
+        }) | Out-Null
+      }
+    }
+
+    $semanticEvidence = $null
+    if ($scenarioResult.PSObject.Properties['semanticEvidence'] -and $scenarioResult.semanticEvidence) {
+      $trackedCategories = [ordered]@{}
+      if ($scenarioResult.semanticEvidence.PSObject.Properties['trackedCategories'] -and $scenarioResult.semanticEvidence.trackedCategories) {
+        foreach ($property in $scenarioResult.semanticEvidence.trackedCategories.PSObject.Properties) {
+          $trackedCategories[$property.Name] = $property.Value
+        }
+      }
+
+      $inclusionStates = [ordered]@{}
+      if ($scenarioResult.semanticEvidence.PSObject.Properties['inclusionStates'] -and $scenarioResult.semanticEvidence.inclusionStates) {
+        foreach ($property in $scenarioResult.semanticEvidence.inclusionStates.PSObject.Properties) {
+          $inclusionStates[$property.Name] = $property.Value
+        }
+      }
+
+      $semanticEvidence = [pscustomobject]@{
+        reportPath = if ($scenarioResult.semanticEvidence.PSObject.Properties['reportPath']) { [string]$scenarioResult.semanticEvidence.reportPath } else { '' }
+        inclusionStates = [pscustomobject]$inclusionStates
+        trackedCategories = [pscustomobject]$trackedCategories
+        headingTexts = if ($scenarioResult.semanticEvidence.PSObject.Properties['headingTexts'] -and $scenarioResult.semanticEvidence.headingTexts) {
+          @($scenarioResult.semanticEvidence.headingTexts | ForEach-Object { [string]$_ })
+        } else {
+          @()
+        }
+        inclusionCount = if ($scenarioResult.semanticEvidence.PSObject.Properties['inclusionCount']) { [int]$scenarioResult.semanticEvidence.inclusionCount } else { 0 }
+        headingCount = if ($scenarioResult.semanticEvidence.PSObject.Properties['headingCount']) { [int]$scenarioResult.semanticEvidence.headingCount } else { 0 }
+      }
+    }
+
     $normalizedResults.Add([pscustomobject]@{
       name = [string]$scenarioResult.name
       description = if ($scenarioResult.PSObject.Properties['description']) { [string]$scenarioResult.description } else { '' }
@@ -840,6 +1090,10 @@ function ConvertTo-PrePushKnownFlagScenarioResultArray {
       }
       expectedReviewerAssertions = @($expectedReviewerAssertions.ToArray())
       expectedRawModeEvidenceBoundaries = @($expectedRawModeEvidenceBoundaries.ToArray())
+      reviewerAssertionResults = @($reviewerAssertionResults.ToArray())
+      rawModeBoundaryResults = @($rawModeBoundaryResults.ToArray())
+      semanticEvidence = $semanticEvidence
+      semanticGateOutcome = if ($scenarioResult.PSObject.Properties['semanticGateOutcome']) { [string]$scenarioResult.semanticGateOutcome } else { '' }
       resultClass = [string]$scenarioResult.resultClass
       gateOutcome = [string]$scenarioResult.gateOutcome
       capturePath = [string]$scenarioResult.capturePath
@@ -1075,6 +1329,31 @@ try {
       throw ("NI image flag scenario '{0}' missing enforced -Headless flag in capture." -f $activeScenarioName)
     }
 
+    $semanticEvidence = Get-PrePushKnownFlagScenarioSemanticEvidence -ReportPath $reportPath
+    $reviewerAssertionResults = New-Object System.Collections.Generic.List[object]
+    foreach ($assertion in @($scenario.expectedReviewerAssertions)) {
+      $assertionResult = Test-PrePushKnownFlagReviewerAssertion `
+        -Assertion $assertion `
+        -RequestedFlags $activeScenarioFlags `
+        -ObservedFlags $flagsUsed `
+        -SemanticEvidence $semanticEvidence
+      $reviewerAssertionResults.Add($assertionResult) | Out-Null
+    }
+
+    $rawModeBoundaryResults = New-Object System.Collections.Generic.List[object]
+    foreach ($boundary in @($scenario.expectedRawModeEvidenceBoundaries)) {
+      $boundaryResult = Test-PrePushKnownFlagRawModeBoundary `
+        -Boundary $boundary `
+        -SemanticEvidence $semanticEvidence
+      $rawModeBoundaryResults.Add($boundaryResult) | Out-Null
+    }
+
+    $semanticFailures = @(
+      @($reviewerAssertionResults.ToArray() | Where-Object { -not $_.passed }) +
+      @($rawModeBoundaryResults.ToArray() | Where-Object { -not $_.passed })
+    )
+    $semanticGateOutcome = if ($semanticFailures.Count -eq 0) { 'pass' } else { 'fail' }
+
     $knownFlagScenarioResults.Add([pscustomobject]@{
       name = $activeScenarioName
       description = [string]$scenario.description
@@ -1085,6 +1364,10 @@ try {
       intendedSuppressionSemantics = $scenario.intendedSuppressionSemantics
       expectedReviewerAssertions = @($scenario.expectedReviewerAssertions)
       expectedRawModeEvidenceBoundaries = @($scenario.expectedRawModeEvidenceBoundaries)
+      reviewerAssertionResults = @($reviewerAssertionResults.ToArray())
+      rawModeBoundaryResults = @($rawModeBoundaryResults.ToArray())
+      semanticEvidence = $semanticEvidence
+      semanticGateOutcome = $semanticGateOutcome
       resultClass = $resultClass
       gateOutcome = $gateOutcome
       capturePath = $capturePath
@@ -1095,6 +1378,20 @@ try {
     $knownFlagObservedReportPath = [string]$reportPath
     $observedCapturePath = [string]$capturePath
     $observedReportPath = [string]$reportPath
+
+    if ($semanticFailures.Count -gt 0) {
+      $failureSummary = [string]::Join(
+        '; ',
+        @($semanticFailures | ForEach-Object {
+          if ($_.PSObject.Properties['expectation']) {
+            "{0}: {1}" -f [string]$_.expectation, [string]$_.details
+          } else {
+            "{0}: {1}" -f [string]$_.requirement, [string]$_.details
+          }
+        })
+      )
+      throw ("NI image flag scenario '{0}' failed rendered semantic assertions: {1}" -f $activeScenarioName, $failureSummary)
+    }
   }
   $scenarioReportPath = Write-PrePushKnownFlagScenarioReport `
     -repoRoot $root `

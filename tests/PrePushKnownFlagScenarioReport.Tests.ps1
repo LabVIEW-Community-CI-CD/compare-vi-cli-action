@@ -47,6 +47,9 @@ Describe 'Pre-push known-flag scenario pack report' -Tag 'Unit' {
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Resolve-PrePushKnownFlagScenarioPack')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Write-PrePushKnownFlagScenarioReport')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Write-PrePushSupportLaneReport')
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Get-PrePushKnownFlagScenarioSemanticEvidence')
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Test-PrePushKnownFlagReviewerAssertion')
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Test-PrePushKnownFlagRawModeBoundary')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'New-PrePushTransportMatrixScenarios')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'ConvertTo-PrePushKnownFlagScenarioResultArray')
 
@@ -96,6 +99,86 @@ Describe 'Pre-push known-flag scenario pack report' -Tag 'Unit' {
       'nofppos__nobdcosm',
       'noattr__nofppos__nobdcosm'
     )
+  }
+
+  It 'parses rendered semantic evidence from the inclusion list and headings' {
+    $reportPath = Join-Path $TestDrive 'compare-report.html'
+    @'
+<html>
+  <body>
+    <ul>
+      <li class="checked">Front Panel</li>
+      <li class="checked">Front Panel Position/Size</li>
+      <li class="checked">Block Diagram Functional</li>
+      <li class="checked">Block Diagram Cosmetic</li>
+      <li class="unchecked">VI Attribute</li>
+    </ul>
+    <details><summary class="difference-heading">1. Front Panel - Panel</summary></details>
+    <details><summary class="difference-heading">2. Front Panel objects</summary></details>
+  </body>
+</html>
+'@ | Set-Content -LiteralPath $reportPath -Encoding utf8
+
+    $evidence = Get-PrePushKnownFlagScenarioSemanticEvidence -ReportPath $reportPath
+
+    $evidence.inclusionCount | Should -Be 5
+    $evidence.headingCount | Should -Be 2
+    $evidence.trackedCategories.'Front Panel' | Should -BeTrue
+    $evidence.trackedCategories.'Front Panel Position/Size' | Should -BeTrue
+    $evidence.trackedCategories.'Block Diagram Cosmetic' | Should -BeTrue
+    $evidence.trackedCategories.'VI Attribute' | Should -BeFalse
+    @($evidence.headingTexts) | Should -Contain 'Front Panel - Panel'
+    @($evidence.headingTexts) | Should -Contain 'Front Panel objects'
+  }
+
+  It 'evaluates reviewer assertions and raw boundaries from rendered semantics instead of broad heading absence' {
+    $semanticEvidence = [pscustomobject]@{
+      reportPath = 'compare-report.html'
+      inclusionStates = [pscustomobject]@{
+        'Front Panel' = $true
+        'Front Panel Position/Size' = $false
+        'Block Diagram Functional' = $true
+        'Block Diagram Cosmetic' = $true
+        'VI Attribute' = $true
+      }
+      trackedCategories = [pscustomobject]@{
+        'Front Panel' = $true
+        'Front Panel Position/Size' = $false
+        'Block Diagram Functional' = $true
+        'Block Diagram Cosmetic' = $true
+        'VI Attribute' = $true
+      }
+      headingTexts = @(
+        'Front Panel - Panel',
+        'Front Panel objects'
+      )
+      inclusionCount = 5
+      headingCount = 2
+    }
+
+    $reviewerResult = Test-PrePushKnownFlagReviewerAssertion `
+      -Assertion ([pscustomobject]@{
+        id = 'raw-boundary-explicit'
+        surface = 'compare-report.html'
+        requirement = 'front-panel-position-boundary-visible'
+      }) `
+      -RequestedFlags @('-nofppos') `
+      -ObservedFlags @('-nofppos', '-Headless') `
+      -SemanticEvidence $semanticEvidence
+
+    $rawBoundaryResult = Test-PrePushKnownFlagRawModeBoundary `
+      -Boundary ([pscustomobject]@{
+        id = 'front-panel-position-raw-mode-boundary'
+        mode = 'compare-report'
+        surfaceRole = 'raw-mode-boundary'
+        expectation = 'front-panel-position-size-suppressed'
+      }) `
+      -SemanticEvidence $semanticEvidence
+
+    $reviewerResult.passed | Should -BeTrue
+    $reviewerResult.details | Should -Match 'Front Panel Position/Size checked=False'
+    $rawBoundaryResult.passed | Should -BeTrue
+    $rawBoundaryResult.details | Should -Match 'Front Panel Position/Size checked=False'
   }
 
   It 'writes a deterministic report that mirrors the active scenario pack contract and declared semantic expectations' {
@@ -167,6 +250,46 @@ Describe 'Pre-push known-flag scenario pack report' -Tag 'Unit' {
             expectation = 'full-surface'
           }
         )
+        reviewerAssertionResults = @(
+          [pscustomobject]@{
+            id = 'compare-report-rendered'
+            surface = 'compare-report.html'
+            requirement = 'rendered'
+            passed = $true
+            details = 'inclusionCount=5; headingCount=3'
+          }
+        )
+        rawModeBoundaryResults = @(
+          [pscustomobject]@{
+            id = 'baseline-raw-mode-boundary'
+            mode = 'compare-report'
+            surfaceRole = 'reviewer-primary'
+            expectation = 'full-surface'
+            passed = $true
+            details = 'trackedCategories={...}'
+          }
+        )
+        semanticEvidence = [pscustomobject]@{
+          reportPath = 'tests/results/_agent/pre-push-ni-image/baseline-review-surface/report.html'
+          inclusionStates = [pscustomobject]@{
+            'Front Panel' = $true
+            'Front Panel Position/Size' = $true
+            'Block Diagram Functional' = $true
+            'Block Diagram Cosmetic' = $true
+            'VI Attribute' = $true
+          }
+          trackedCategories = [pscustomobject]@{
+            'Front Panel' = $true
+            'Front Panel Position/Size' = $true
+            'Block Diagram Functional' = $true
+            'Block Diagram Cosmetic' = $true
+            'VI Attribute' = $true
+          }
+          headingTexts = @('Block Diagram objects', 'Front Panel objects', 'VI Attribute - Miscellaneous')
+          inclusionCount = 5
+          headingCount = 3
+        }
+        semanticGateOutcome = 'pass'
         resultClass = 'pass'
         gateOutcome = 'pass'
         capturePath = 'tests/results/_agent/pre-push-ni-image/baseline-review-surface/capture.json'
@@ -214,6 +337,10 @@ Describe 'Pre-push known-flag scenario pack report' -Tag 'Unit' {
     $report.results[0].intendedSuppressionSemantics.reviewerSurfaceIntent | Should -Be 'full-review-surface'
     $report.results[0].expectedReviewerAssertions[0].id | Should -Be 'compare-report-rendered'
     $report.results[0].expectedRawModeEvidenceBoundaries[0].expectation | Should -Be 'full-surface'
+    $report.results[0].reviewerAssertionResults[0].passed | Should -BeTrue
+    $report.results[0].rawModeBoundaryResults[0].passed | Should -BeTrue
+    $report.results[0].semanticEvidence.inclusionCount | Should -Be 5
+    $report.results[0].semanticGateOutcome | Should -Be 'pass'
   }
 
   It 'writes failure outcome and active scenario id without depending on a git checkout' {
@@ -274,6 +401,46 @@ Describe 'Pre-push known-flag scenario pack report' -Tag 'Unit' {
           expectation = 'vi-attributes-suppressed'
         }
       )
+      reviewerAssertionResults = @(
+        [pscustomobject]@{
+          id = 'raw-boundary-explicit'
+          surface = 'compare-report.html'
+          requirement = 'attribute-suppression-boundary-visible'
+          passed = $true
+          details = 'VI Attribute checked=False'
+        }
+      )
+      rawModeBoundaryResults = @(
+        [pscustomobject]@{
+          id = 'attribute-raw-mode-boundary'
+          mode = 'compare-report'
+          surfaceRole = 'raw-mode-boundary'
+          expectation = 'vi-attributes-suppressed'
+          passed = $true
+          details = 'VI Attribute checked=False'
+        }
+      )
+      semanticEvidence = [pscustomobject]@{
+        reportPath = 'tests/results/_agent/pre-push-ni-image/attribute-suppression-boundary/compare-report.html'
+        inclusionStates = [pscustomobject]@{
+          'Front Panel' = $true
+          'Front Panel Position/Size' = $true
+          'Block Diagram Functional' = $true
+          'Block Diagram Cosmetic' = $true
+          'VI Attribute' = $false
+        }
+        trackedCategories = [pscustomobject]@{
+          'Front Panel' = $true
+          'Front Panel Position/Size' = $true
+          'Block Diagram Functional' = $true
+          'Block Diagram Cosmetic' = $true
+          'VI Attribute' = $false
+        }
+        headingTexts = @('Front Panel - Panel', 'Front Panel objects')
+        inclusionCount = 5
+        headingCount = 2
+      }
+      semanticGateOutcome = 'pass'
       resultClass = 'diff'
       gateOutcome = 'pass'
       capturePath = 'tests/results/_agent/pre-push-ni-image/attribute-suppression-boundary/ni-linux-container-capture.json'
@@ -292,6 +459,10 @@ Describe 'Pre-push known-flag scenario pack report' -Tag 'Unit' {
     @($normalized[0].intendedSuppressionSemantics.suppressedCategories) | Should -Be @('vi-attributes')
     $normalized[0].expectedReviewerAssertions[0].requirement | Should -Be 'attribute-suppression-boundary-visible'
     $normalized[0].expectedRawModeEvidenceBoundaries[0].expectation | Should -Be 'vi-attributes-suppressed'
+    $normalized[0].reviewerAssertionResults[0].passed | Should -BeTrue
+    $normalized[0].rawModeBoundaryResults[0].passed | Should -BeTrue
+    $normalized[0].semanticEvidence.trackedCategories.'VI Attribute' | Should -BeFalse
+    $normalized[0].semanticGateOutcome | Should -Be 'pass'
   }
 
   It 'writes deterministic support-lane reports for transport and vi-history smoke lanes' {
