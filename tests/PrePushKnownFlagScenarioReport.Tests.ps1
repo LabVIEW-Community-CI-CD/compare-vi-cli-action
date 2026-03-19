@@ -3,7 +3,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Describe 'Pre-push known-flag scenario report' -Tag 'Unit' {
+Describe 'Pre-push known-flag scenario pack report' -Tag 'Unit' {
   BeforeAll {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
     $script:PrePushScriptPath = Join-Path $repoRoot 'tools' 'PrePush-Checks.ps1'
@@ -44,36 +44,133 @@ Describe 'Pre-push known-flag scenario report' -Tag 'Unit' {
       return $functionAst.Extent.Text
     }
 
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Resolve-PrePushKnownFlagScenarioPack')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Write-PrePushKnownFlagScenarioReport')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Write-PrePushSupportLaneReport')
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'New-PrePushTransportMatrixScenarios')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'ConvertTo-PrePushKnownFlagScenarioResultArray')
-    $script:KnownFlagContract = Get-Content -LiteralPath $script:KnownFlagContractPath -Raw | ConvertFrom-Json -Depth 12
-    $script:ActiveScenario = @($script:KnownFlagContract.scenarios | Where-Object { $_.isActive -eq $true }) | Select-Object -First 1
-    if ($null -eq $script:ActiveScenario) {
-      throw 'Active known-flag scenario not found in contract.'
+
+    $script:KnownFlagContract = Get-Content -LiteralPath $script:KnownFlagContractPath -Raw | ConvertFrom-Json -Depth 20
+    $script:ActiveScenarioPack = @($script:KnownFlagContract.scenarioPacks | Where-Object { $_.isActive -eq $true }) | Select-Object -First 1
+    if ($null -eq $script:ActiveScenarioPack) {
+      throw 'Active known-flag scenario pack not found in contract.'
     }
   }
 
-  It 'writes a deterministic report that mirrors the active scenario contract and observed evidence paths' {
+  It 'resolves the active scenario pack and preserves declared scenario order without generating flag combinations' {
+    $resolved = Resolve-PrePushKnownFlagScenarioPack -repoRoot (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+
+    $resolved.pack.id | Should -Be $script:KnownFlagContract.activeScenarioPackId
+    $resolved.pack.image | Should -Be 'nationalinstruments/labview:2026q1-linux'
+    $resolved.pack.priorityClass | Should -Be 'pre-push'
+    @($resolved.pack.planeApplicability) | Should -Be @('linux-proof')
+    $resolved.baseVi | Should -Match '[\\/]VI1\.vi$'
+    $resolved.headVi | Should -Match '[\\/]VI2\.vi$'
+    @($resolved.scenarios | ForEach-Object { $_.id }) | Should -Be @(
+      'baseline-review-surface',
+      'attribute-suppression-boundary',
+      'front-panel-position-boundary',
+      'block-diagram-cosmetic-boundary'
+    )
+    @($resolved.scenarios[0].requestedFlags) | Should -Be @()
+    @($resolved.scenarios[1].requestedFlags) | Should -Be @('-noattr')
+    @($resolved.scenarios[2].requestedFlags) | Should -Be @('-nofppos')
+    @($resolved.scenarios[3].requestedFlags) | Should -Be @('-nobdcosm')
+  }
+
+  It 'derives the transport smoke matrix from the unique declared requested flags' {
+    $transportMatrixScenarios = New-PrePushTransportMatrixScenarios -scenarioDefinitions @(
+      [pscustomobject]@{ requestedFlags = @() },
+      [pscustomobject]@{ requestedFlags = @('-noattr') },
+      [pscustomobject]@{ requestedFlags = @('-nofppos') },
+      [pscustomobject]@{ requestedFlags = @('-nobdcosm') }
+    )
+
+    @($transportMatrixScenarios | ForEach-Object { $_.name }) | Should -Be @(
+      'baseline',
+      'noattr',
+      'nofppos',
+      'nobdcosm',
+      'noattr__nofppos',
+      'noattr__nobdcosm',
+      'nofppos__nobdcosm',
+      'noattr__nofppos__nobdcosm'
+    )
+  }
+
+  It 'writes a deterministic report that mirrors the active scenario pack contract and declared semantic expectations' {
     $repoRoot = Join-Path $TestDrive 'non-git-repo'
     $resultsRoot = Join-Path $repoRoot 'tests' 'results' '_agent' 'pre-push-ni-image'
     New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
 
     $contract = [pscustomobject]@{
       path = $script:KnownFlagContractPath
-      scenario = $script:ActiveScenario
-      flags = @($script:ActiveScenario.flags)
+      pack = $script:ActiveScenarioPack
+      scenarios = @(
+        [pscustomobject]@{
+          id = 'baseline-review-surface'
+          description = 'Full-surface baseline.'
+          requestedFlags = @()
+          requestedFlagsLabel = '(none)'
+          planeApplicability = @('linux-proof')
+          priorityClass = 'pre-push'
+          intendedSuppressionSemantics = [pscustomobject]@{
+            suppressedCategories = @()
+            reviewerSurfaceIntent = 'full-review-surface'
+            rawModeBoundaryIntent = 'primary-review-surface'
+          }
+          expectedReviewerAssertions = @(
+            [pscustomobject]@{
+              id = 'compare-report-rendered'
+              surface = 'compare-report.html'
+              requirement = 'rendered'
+            }
+          )
+          expectedRawModeEvidenceBoundaries = @(
+            [pscustomobject]@{
+              id = 'baseline-raw-mode-boundary'
+              mode = 'compare-report'
+              surfaceRole = 'reviewer-primary'
+              expectation = 'full-surface'
+            }
+          )
+        }
+      )
       reportPath = Join-Path $resultsRoot 'known-flag-scenario-report.json'
     }
+
     $scenarioResults = @(
       [pscustomobject]@{
-        name = 'ni-linux-known-flag-bundle-v1'
-        requestedFlags = @('-noattr', '-nofppos', '-nobdcosm')
-        flags = @('-noattr', '-nofppos', '-nobdcosm')
+        name = 'baseline-review-surface'
+        description = 'Full-surface baseline.'
+        requestedFlags = @()
+        flags = @('-Headless')
+        planeApplicability = @('linux-proof')
+        priorityClass = 'pre-push'
+        intendedSuppressionSemantics = [pscustomobject]@{
+          suppressedCategories = @()
+          reviewerSurfaceIntent = 'full-review-surface'
+          rawModeBoundaryIntent = 'primary-review-surface'
+        }
+        expectedReviewerAssertions = @(
+          [pscustomobject]@{
+            id = 'compare-report-rendered'
+            surface = 'compare-report.html'
+            requirement = 'rendered'
+          }
+        )
+        expectedRawModeEvidenceBoundaries = @(
+          [pscustomobject]@{
+            id = 'baseline-raw-mode-boundary'
+            mode = 'compare-report'
+            surfaceRole = 'reviewer-primary'
+            expectation = 'full-surface'
+          }
+        )
         resultClass = 'pass'
         gateOutcome = 'pass'
-        capturePath = 'tests/results/_agent/pre-push-ni-image/ni-linux-known-flag-bundle-v1/capture.json'
-        reportPath = 'tests/results/_agent/pre-push-ni-image/ni-linux-known-flag-bundle-v1/report.html'
+        capturePath = 'tests/results/_agent/pre-push-ni-image/baseline-review-surface/capture.json'
+        reportPath = 'tests/results/_agent/pre-push-ni-image/baseline-review-surface/report.html'
       }
     )
 
@@ -83,44 +180,51 @@ Describe 'Pre-push known-flag scenario report' -Tag 'Unit' {
       -observedOutcome 'pass' `
       -scenarioResults $scenarioResults `
       -failureMessage '' `
-      -activeScenarioName 'ni-linux-known-flag-bundle-v1' `
-      -activeCapturePath 'tests/results/_agent/pre-push-ni-image/ni-linux-known-flag-bundle-v1/capture.json' `
-      -activeReportPath 'tests/results/_agent/pre-push-ni-image/ni-linux-known-flag-bundle-v1/report.html'
+      -activeScenarioName 'baseline-review-surface' `
+      -activeCapturePath 'tests/results/_agent/pre-push-ni-image/baseline-review-surface/capture.json' `
+      -activeReportPath 'tests/results/_agent/pre-push-ni-image/baseline-review-surface/report.html'
 
     $reportPath | Should -Be $contract.reportPath
     Test-Path -LiteralPath $reportPath | Should -BeTrue
 
-    $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 16
-    $report.schema | Should -Be 'pre-push-known-flag-scenario-report@v1'
+    $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 24
+    $report.schema | Should -Be 'pre-push-known-flag-scenario-pack-report@v1'
     $report.contractPath | Should -Be $script:KnownFlagContractPath
     $report.branch | Should -BeNullOrEmpty
     $report.headSha | Should -BeNullOrEmpty
-    $report.scenario.id | Should -Be $script:KnownFlagContract.activeScenarioId
-    $report.scenario.image | Should -Be $script:ActiveScenario.image
-    $report.scenario.labviewPathEnv | Should -Be $script:ActiveScenario.labviewPathEnv
-    $report.scenario.defaultLabviewPath | Should -Be $script:ActiveScenario.defaultLabviewPath
-    $report.scenario.requestedFlags | Should -Be @($script:ActiveScenario.flags)
-    $report.scenario.expectedGateOutcome | Should -Be $script:ActiveScenario.expectedGateOutcome
+    $report.scenarioPack.id | Should -Be $script:KnownFlagContract.activeScenarioPackId
+    $report.scenarioPack.image | Should -Be $script:ActiveScenarioPack.image
+    $report.scenarioPack.labviewPathEnv | Should -Be $script:ActiveScenarioPack.labviewPathEnv
+    $report.scenarioPack.defaultLabviewPath | Should -Be $script:ActiveScenarioPack.defaultLabviewPath
+    @($report.scenarioPack.planeApplicability) | Should -Be @('linux-proof')
+    $report.scenarioPack.priorityClass | Should -Be 'pre-push'
+    $report.scenarioPack.target.kind | Should -Be 'fixture-diff'
+    $report.scenarioPack.target.baseVi | Should -Be 'VI1.vi'
+    $report.scenarioPack.target.headVi | Should -Be 'VI2.vi'
     $report.observed.outcome | Should -Be 'pass'
-    $report.observed.activeScenarioName | Should -Be 'ni-linux-known-flag-bundle-v1'
-    $report.observed.capturePath | Should -Be 'tests/results/_agent/pre-push-ni-image/ni-linux-known-flag-bundle-v1/capture.json'
-    $report.observed.reportPath | Should -Be 'tests/results/_agent/pre-push-ni-image/ni-linux-known-flag-bundle-v1/report.html'
-    $report.observed.failureMessage | Should -BeNullOrEmpty
+    $report.observed.activeScenarioId | Should -Be 'baseline-review-surface'
+    $report.observed.capturePath | Should -Be 'tests/results/_agent/pre-push-ni-image/baseline-review-surface/capture.json'
+    $report.observed.reportPath | Should -Be 'tests/results/_agent/pre-push-ni-image/baseline-review-surface/report.html'
     $report.results.Count | Should -Be 1
-    $report.results[0].gateOutcome | Should -Be 'pass'
-    $report.results[0].capturePath | Should -Be 'tests/results/_agent/pre-push-ni-image/ni-linux-known-flag-bundle-v1/capture.json'
-    $report.results[0].reportPath | Should -Be 'tests/results/_agent/pre-push-ni-image/ni-linux-known-flag-bundle-v1/report.html'
+    $report.results[0].name | Should -Be 'baseline-review-surface'
+    $report.results[0].description | Should -Be 'Full-surface baseline.'
+    @($report.results[0].planeApplicability) | Should -Be @('linux-proof')
+    $report.results[0].priorityClass | Should -Be 'pre-push'
+    @($report.results[0].intendedSuppressionSemantics.suppressedCategories) | Should -Be @()
+    $report.results[0].intendedSuppressionSemantics.reviewerSurfaceIntent | Should -Be 'full-review-surface'
+    $report.results[0].expectedReviewerAssertions[0].id | Should -Be 'compare-report-rendered'
+    $report.results[0].expectedRawModeEvidenceBoundaries[0].expectation | Should -Be 'full-surface'
   }
 
-  It 'writes failure outcome and evidence paths without depending on a git checkout' {
+  It 'writes failure outcome and active scenario id without depending on a git checkout' {
     $repoRoot = Join-Path $TestDrive 'non-git-failure-repo'
     $resultsRoot = Join-Path $repoRoot 'tests' 'results' '_agent' 'pre-push-ni-image'
     New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
 
     $contract = [pscustomobject]@{
       path = $script:KnownFlagContractPath
-      scenario = $script:ActiveScenario
-      flags = @($script:ActiveScenario.flags)
+      pack = $script:ActiveScenarioPack
+      scenarios = @()
       reportPath = Join-Path $resultsRoot 'known-flag-scenario-report.json'
     }
 
@@ -129,47 +233,65 @@ Describe 'Pre-push known-flag scenario report' -Tag 'Unit' {
       -contract $contract `
       -observedOutcome 'fail' `
       -scenarioResults @() `
-      -failureMessage 'known-flag scenario failed' `
-      -activeScenarioName 'ni-linux-known-flag-bundle-v1' `
-      -activeCapturePath 'tests/results/_agent/pre-push-ni-image/ni-linux-known-flag-bundle-v1/capture.json' `
-      -activeReportPath 'tests/results/_agent/pre-push-ni-image/ni-linux-known-flag-bundle-v1/report.html'
+      -failureMessage 'scenario pack failed' `
+      -activeScenarioName 'attribute-suppression-boundary' `
+      -activeCapturePath 'tests/results/_agent/pre-push-ni-image/attribute-suppression-boundary/capture.json' `
+      -activeReportPath 'tests/results/_agent/pre-push-ni-image/attribute-suppression-boundary/report.html'
 
-    $reportPath | Should -Be $contract.reportPath
-    $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 16
+    $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 24
     $report.observed.outcome | Should -Be 'fail'
-    $report.observed.failureMessage | Should -Be 'known-flag scenario failed'
+    $report.observed.failureMessage | Should -Be 'scenario pack failed'
+    $report.observed.activeScenarioId | Should -Be 'attribute-suppression-boundary'
     $report.results.Count | Should -Be 0
   }
 
-  It 'normalizes live scenario result collections into plain report records' {
+  It 'normalizes live scenario results into semantic report records' {
     $scenarioResults = [System.Collections.Generic.List[object]]::new()
     $scenarioResults.Add([pscustomobject]@{
-      name = 'baseline'
-      requestedFlags = @()
-      flags = @('-Headless')
+      name = 'attribute-suppression-boundary'
+      description = 'Attribute suppression boundary.'
+      requestedFlags = @('-noattr')
+      flags = @('-Headless', '-noattr')
+      planeApplicability = @('linux-proof')
+      priorityClass = 'pre-push'
+      intendedSuppressionSemantics = [pscustomobject]@{
+        suppressedCategories = @('vi-attributes')
+        reviewerSurfaceIntent = 'attribute-boundary'
+        rawModeBoundaryIntent = 'raw-report-suppresses-vi-attributes'
+      }
+      expectedReviewerAssertions = @(
+        [pscustomobject]@{
+          id = 'raw-boundary-explicit'
+          surface = 'compare-report.html'
+          requirement = 'attribute-suppression-boundary-visible'
+        }
+      )
+      expectedRawModeEvidenceBoundaries = @(
+        [pscustomobject]@{
+          id = 'attribute-raw-mode-boundary'
+          mode = 'compare-report'
+          surfaceRole = 'raw-mode-boundary'
+          expectation = 'vi-attributes-suppressed'
+        }
+      )
       resultClass = 'diff'
       gateOutcome = 'pass'
-      capturePath = 'tests/results/_agent/pre-push-ni-image/baseline/ni-linux-container-capture.json'
-      reportPath = 'tests/results/_agent/pre-push-ni-image/baseline/compare-report.html'
-    }) | Out-Null
-    $scenarioResults.Add([pscustomobject]@{
-      name = 'vi-history-report'
-      requestedFlags = @('vi-history-suite')
-      flags = @('suite-manifest', 'history-report', 'history-summary')
-      resultClass = 'diff'
-      gateOutcome = 'pass'
-      capturePath = 'tests/results/_agent/pre-push-ni-image/vi-history-report/results/ni-linux-container-capture.json'
-      reportPath = 'tests/results/_agent/pre-push-ni-image/vi-history-report/results/history-report.html'
+      capturePath = 'tests/results/_agent/pre-push-ni-image/attribute-suppression-boundary/ni-linux-container-capture.json'
+      reportPath = 'tests/results/_agent/pre-push-ni-image/attribute-suppression-boundary/compare-report.html'
     }) | Out-Null
 
     $normalized = ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $scenarioResults
 
-    $normalized.Count | Should -Be 2
-    $normalized[0].name | Should -Be 'baseline'
-    $normalized[0].flags | Should -Be @('-Headless')
-    $normalized[1].name | Should -Be 'vi-history-report'
-    $normalized[1].requestedFlags | Should -Be @('vi-history-suite')
-    $normalized[1].reportPath | Should -Be 'tests/results/_agent/pre-push-ni-image/vi-history-report/results/history-report.html'
+    $normalized.Count | Should -Be 1
+    $normalized[0].name | Should -Be 'attribute-suppression-boundary'
+    $normalized[0].description | Should -Be 'Attribute suppression boundary.'
+    @($normalized[0].requestedFlags) | Should -Be @('-noattr')
+    @($normalized[0].flags) | Should -Be @('-Headless', '-noattr')
+    @($normalized[0].planeApplicability) | Should -Be @('linux-proof')
+    $normalized[0].priorityClass | Should -Be 'pre-push'
+    @($normalized[0].intendedSuppressionSemantics.suppressedCategories) | Should -Be @('vi-attributes')
+    $normalized[0].expectedReviewerAssertions[0].requirement | Should -Be 'attribute-suppression-boundary-visible'
+    $normalized[0].expectedRawModeEvidenceBoundaries[0].expectation | Should -Be 'vi-attributes-suppressed'
   }
 
   It 'writes deterministic support-lane reports for transport and vi-history smoke lanes' {
@@ -181,8 +303,18 @@ Describe 'Pre-push known-flag scenario report' -Tag 'Unit' {
     $transportResults = @(
       [pscustomobject]@{
         name = 'single-container-matrix'
+        description = 'Transport smoke.'
         requestedFlags = @('all combinations')
         flags = @('-Headless')
+        planeApplicability = @('linux-proof')
+        priorityClass = 'certification'
+        intendedSuppressionSemantics = [pscustomobject]@{
+          suppressedCategories = @()
+          reviewerSurfaceIntent = 'transport-smoke'
+          rawModeBoundaryIntent = 'transport-only'
+        }
+        expectedReviewerAssertions = @()
+        expectedRawModeEvidenceBoundaries = @()
         resultClass = 'diff'
         gateOutcome = 'pass'
         capturePath = 'tests/results/_agent/pre-push-ni-image/single-container-matrix/ni-linux-container-capture.json'
@@ -202,7 +334,6 @@ Describe 'Pre-push known-flag scenario report' -Tag 'Unit' {
       -capturePath 'tests/results/_agent/pre-push-ni-image/single-container-matrix/ni-linux-container-capture.json' `
       -reportArtifactPath 'tests/results/_agent/pre-push-ni-image/single-container-matrix/compare-report.html'
 
-    $reportPath | Should -Be $transportPath
     $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 16
     $report.schema | Should -Be 'pre-push-ni-transport-smoke-report@v1'
     $report.lane.name | Should -Be 'single-container-matrix'
