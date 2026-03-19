@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/ni-linux-flag-combination-certification-v1.schema.json",
+  "title": "NI Linux Flag Combination Certification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "image",
+    "resultsRoot",
+    "laneClass",
+    "blocking",
+    "planeApplicability",
+    "futureParityPlanes",
+    "summary",
+    "scenarios"
+  ],
+  "properties": {
+    "schema": {
+      "const": "ni-linux-flag-combination-certification@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "image": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resultsRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "laneClass": {
+      "const": "certification"
+    },
+    "blocking": {
+      "const": false
+    },
+    "planeApplicability": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "futureParityPlanes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalScenarios",
+        "passingScenarios",
+        "failingScenarios"
+      ],
+      "properties": {
+        "totalScenarios": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passingScenarios": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failingScenarios": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "requestedFlagsLabel",
+          "requestedFlags",
+          "flagsUsed",
+          "executionMode",
+          "resultClass",
+          "gateOutcome",
+          "reportPath",
+          "capturePath",
+          "runtimeSnapshotPath"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requestedFlagsLabel": {
+            "type": "string"
+          },
+          "requestedFlags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "flagsUsed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "executionMode": {
+            "type": "string",
+            "minLength": 1
+          },
+          "resultClass": {
+            "type": "string",
+            "minLength": 1
+          },
+          "gateOutcome": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reportPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "capturePath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "runtimeSnapshotPath": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

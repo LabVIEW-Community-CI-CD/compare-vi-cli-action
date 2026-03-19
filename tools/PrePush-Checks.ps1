@@ -1029,6 +1029,112 @@ function New-PrePushTransportMatrixScenarios {
   return @($transportMatrixScenarioBuffer | Sort-Object @{ Expression = { $_.flags.Count } }, @{ Expression = { $_.orderKey } })
 }
 
+function New-PrePushTransportSmokeScenarios {
+  param(
+    [AllowNull()]
+    [object[]]$scenarioDefinitions
+  )
+
+  $baselineScenario = @(
+    @($scenarioDefinitions) | Where-Object {
+      $requestedFlags = @()
+      if ($_.PSObject.Properties['requestedFlags'] -and $_.requestedFlags) {
+        $requestedFlags = @($_.requestedFlags | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      }
+      $requestedFlags.Count -eq 0
+    }
+  ) | Select-Object -First 1
+
+  if ($null -eq $baselineScenario) {
+    return @(
+      [pscustomobject]@{
+        name = 'baseline'
+        flags = @()
+        requestedFlagsLabel = '(none)'
+        sourceScenarioId = ''
+      }
+    )
+  }
+
+  return @(
+    [pscustomobject]@{
+      name = 'baseline'
+      flags = @()
+      requestedFlagsLabel = '(none)'
+      sourceScenarioId = [string]$baselineScenario.id
+    }
+  )
+}
+
+function Write-PrePushFlagScenarioCatalog {
+  param(
+    [Parameter(Mandatory)]
+    [string]$CatalogPath,
+
+    [AllowNull()]
+    [object[]]$ScenarioDefinitions
+  )
+
+  $catalogDir = Split-Path -Parent $CatalogPath
+  if (-not [string]::IsNullOrWhiteSpace($catalogDir)) {
+    New-Item -ItemType Directory -Path $catalogDir -Force | Out-Null
+  }
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  foreach ($scenarioDefinition in @($ScenarioDefinitions)) {
+    if ($null -eq $scenarioDefinition) {
+      continue
+    }
+
+    $scenarioName = if ($scenarioDefinition.PSObject.Properties['name']) {
+      [string]$scenarioDefinition.name
+    } else {
+      ''
+    }
+    if ([string]::IsNullOrWhiteSpace($scenarioName)) {
+      continue
+    }
+
+    $requestedFlags = @()
+    if ($scenarioDefinition.PSObject.Properties['flags'] -and $scenarioDefinition.flags) {
+      $requestedFlags = @($scenarioDefinition.flags | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+
+    $lines.Add(("{0}`t{1}" -f $scenarioName, ([string]::Join(' ', $requestedFlags)))) | Out-Null
+  }
+
+  if ($lines.Count -eq 0) {
+    throw ("Pre-push transport smoke scenario catalog resolved no entries: {0}" -f $CatalogPath)
+  }
+
+  $lines | Set-Content -LiteralPath $CatalogPath -Encoding utf8
+  return $CatalogPath
+}
+
+function Select-PrePushBaselineTransportSmokeSource {
+  param(
+    [AllowNull()]
+    [object]$ScenarioResults
+  )
+
+  foreach ($scenarioResult in $ScenarioResults) {
+    if ($null -eq $scenarioResult) {
+      continue
+    }
+
+    $requestedFlags = @()
+    if ($scenarioResult.PSObject.Properties['requestedFlags'] -and $scenarioResult.requestedFlags) {
+      $requestedFlags = @($scenarioResult.requestedFlags | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+
+    if ($requestedFlags.Count -eq 0) {
+      return $scenarioResult
+    }
+  }
+
+  return $null
+}
+
 function ConvertTo-PrePushKnownFlagScenarioResultArray {
   param(
     [AllowNull()]
@@ -1309,16 +1415,11 @@ if ([string]::IsNullOrWhiteSpace($containerLabVIEWPath)) {
   throw ("Pre-push known-flag scenario pack '{0}' resolved an empty LabVIEW path." -f $knownFlagScenarioPackId)
 }
 Write-Host ("[pre-push] Active known-flag scenario pack '{0}' image={1} scenarios={2}" -f $knownFlagScenarioPackId, $expectedImage, @($knownFlagScenarioContract.scenarios).Count) -ForegroundColor Cyan
-$singleContainerBootstrapScript = Join-Path $root 'tools' 'NILinux-FlagMatrixBootstrap.sh'
-if (-not (Test-Path -LiteralPath $singleContainerBootstrapScript -PathType Leaf)) {
-  throw ("Single-container flag matrix bootstrap script not found: {0}" -f $singleContainerBootstrapScript)
-}
 $viHistoryBootstrapScript = Join-Path $root 'tools' 'NILinux-VIHistorySuiteBootstrap.sh'
 if (-not (Test-Path -LiteralPath $viHistoryBootstrapScript -PathType Leaf)) {
   throw ("VI history bootstrap script not found: {0}" -f $viHistoryBootstrapScript)
 }
 $knownFlagScenarios = @($knownFlagScenarioContract.scenarios)
-$transportMatrixScenarios = @(New-PrePushTransportMatrixScenarios -scenarioDefinitions $knownFlagScenarios)
 $scenarioRoot = [string]$knownFlagScenarioContract.resultsRoot
 New-Item -ItemType Directory -Path $scenarioRoot -Force | Out-Null
 $scenarioContractReportPath = [string]$knownFlagScenarioContract.reportPath
@@ -1504,164 +1605,43 @@ try {
   Write-Host ("[pre-push] Rendering certification report: {0}" -f $renderingCertificationReportPath) -ForegroundColor DarkGray
 
   $currentLane = 'transport-smoke'
-  $activeScenarioName = 'single-container-matrix'
-  $activeScenarioFlags = @()
-  $scenarioDir = Join-Path $scenarioRoot $activeScenarioName
-  $singleContainerResultsDir = Join-Path $scenarioDir 'matrix-results'
-  New-Item -ItemType Directory -Path $singleContainerResultsDir -Force | Out-Null
-  $reportPath = Join-Path $scenarioDir 'compare-report.html'
-  $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
-  $capturePath = Join-Path $scenarioDir 'ni-linux-container-capture.json'
-  $observedCapturePath = [string]$capturePath
-  $observedReportPath = [string]$reportPath
-  $singleContainerContractPath = Join-Path $scenarioDir 'runtime-bootstrap.json'
-  $singleContainerLedgerPath = Join-Path $singleContainerResultsDir 'flag-matrix-ledger.tsv'
-  $singleContainerMarkerPath = Join-Path $singleContainerResultsDir 'flag-matrix-ran.txt'
-  $singleContainerContract = [ordered]@{
-    schema = 'ni-linux-runtime-bootstrap/v1'
-    mode = 'flag-matrix-single-container'
-    scriptPath = $singleContainerBootstrapScript
-    env = @(
-      [ordered]@{
-        name = 'COMPAREVI_FLAG_MATRIX_RESULTS_DIR'
-        value = '/opt/comparevi/flag-matrix'
-      }
-    )
-    mounts = @(
-      [ordered]@{
-        hostPath = $singleContainerResultsDir
-        containerPath = '/opt/comparevi/flag-matrix'
-      }
-    )
-  }
-  $singleContainerContract | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $singleContainerContractPath -Encoding utf8
-
-  Write-Host '[pre-push] Running NI image flag scenario group single-container-matrix requestedFlags=all combinations' -ForegroundColor Cyan
-  Push-Location $root
-  try {
-    & $niCompareScript `
-      -BaseVi $baseVi `
-      -HeadVi $headVi `
-      -Image $expectedImage `
-      -ReportPath $reportPath `
-      -LabVIEWPath $containerLabVIEWPath `
-      -ContainerNameLabel $activeScenarioName `
-      -TimeoutSeconds 240 `
-      -HeartbeatSeconds 15 `
-      -AutoRepairRuntime:$true `
-      -RuntimeEngineReadyTimeoutSeconds 120 `
-      -RuntimeEngineReadyPollSeconds 3 `
-      -RuntimeSnapshotPath $runtimeSnapshotPath `
-      -RuntimeBootstrapContractPath $singleContainerContractPath
-    $compareExit = $LASTEXITCODE
-    if ($compareExit -notin @(0, 1)) {
-      throw ("NI image flag scenario '{0}' compare failed (exit={1})." -f $activeScenarioName, $compareExit)
-    }
-  } finally {
-    Pop-Location | Out-Null
+  $baselineTransportSource = Select-PrePushBaselineTransportSmokeSource -ScenarioResults $knownFlagScenarioResults
+  if ($null -eq $baselineTransportSource) {
+    throw ("Pre-push known-flag scenario pack '{0}' does not define a baseline transport smoke source." -f $knownFlagScenarioPackId)
   }
 
-  if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
-    throw ("NI image flag scenario '{0}' capture missing: {1}" -f $activeScenarioName, $capturePath)
-  }
-  $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 20
-  $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
-  $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
-  $imageUsed = if ($capture.PSObject.Properties['image']) { [string]$capture.image } else { '' }
-  $commandText = if ($capture.PSObject.Properties['command']) { [string]$capture.command } else { '' }
-  $flagsUsed = @()
-  if ($capture.PSObject.Properties['flags'] -and $capture.flags) {
-    $flagsUsed = @($capture.flags | ForEach-Object { [string]$_ })
-  }
-
-  if (-not [string]::Equals($imageUsed, $expectedImage, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw ("NI image flag scenario '{0}' used unexpected image: {1}" -f $activeScenarioName, $imageUsed)
-  }
-  if (-not [string]::Equals($gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw ("NI image flag scenario '{0}' did not pass (resultClass={1}, gateOutcome={2})." -f $activeScenarioName, $resultClass, $gateOutcome)
-  }
-  if ([string]::IsNullOrWhiteSpace($commandText) -or $commandText -notmatch '(?i)docker run') {
-    throw ("NI image flag scenario '{0}' did not emit a docker run command in capture evidence." -f $activeScenarioName)
-  }
-  if ($flagsUsed -notcontains '-Headless') {
-    throw ("NI image flag scenario '{0}' missing enforced -Headless flag in capture." -f $activeScenarioName)
-  }
-  if (-not (Test-Path -LiteralPath $singleContainerLedgerPath -PathType Leaf)) {
-    throw ("NI image flag scenario '{0}' missing single-container ledger: {1}" -f $activeScenarioName, $singleContainerLedgerPath)
-  }
-  if (-not (Test-Path -LiteralPath $singleContainerMarkerPath -PathType Leaf)) {
-    throw ("NI image flag scenario '{0}' missing single-container marker: {1}" -f $activeScenarioName, $singleContainerMarkerPath)
-  }
-
-  $ledgerRows = @(Get-Content -LiteralPath $singleContainerLedgerPath | Where-Object { $_ -and $_.Trim() })
-  if ($ledgerRows.Count -ne $transportMatrixScenarios.Count) {
-    throw ("NI image flag scenario '{0}' ledger count mismatch ({1} != {2})." -f $activeScenarioName, $ledgerRows.Count, $transportMatrixScenarios.Count)
-  }
-  $ledgerEntries = @(
-    $ledgerRows | ForEach-Object {
-      $parts = [string]$_ -split "`t"
-      [pscustomobject]@{
-        index = if ($parts.Count -gt 0) { [int]$parts[0] } else { 0 }
-        name = if ($parts.Count -gt 1) { [string]$parts[1] } else { '' }
-        requestedFlags = if ($parts.Count -gt 2) { [string]$parts[2] } else { '' }
-        exitCode = if ($parts.Count -gt 3) { [int]$parts[3] } else { 0 }
-        status = if ($parts.Count -gt 4) { [string]$parts[4] } else { '' }
-        diff = if ($parts.Count -gt 5) { [string]$parts[5] } else { '' }
-        reportPath = if ($parts.Count -gt 6) { [string]$parts[6] } else { '' }
-        logPath = if ($parts.Count -gt 7) { [string]$parts[7] } else { '' }
-      }
-    }
-  )
-  $expectedScenarioNames = @($transportMatrixScenarios | ForEach-Object { [string]$_.name })
-  $actualScenarioNames = @($ledgerEntries | ForEach-Object { [string]$_.name })
-  $scenarioNameDifferences = @(Compare-Object -ReferenceObject $expectedScenarioNames -DifferenceObject $actualScenarioNames)
-  if ($scenarioNameDifferences.Count -gt 0) {
-    throw ("NI image flag scenario '{0}' ledger names did not match the expected combination set." -f $activeScenarioName)
-  }
-  $failureMarkers = @(
-    'Report path already exists:'
-    'Use -o to overwrite existing report.'
-    'CreateComparisonReport operation failed.'
-  )
-  foreach ($entry in $ledgerEntries) {
-    $resolvedEntryLogPath = Resolve-ContainerMountedHostPath -Path $entry.logPath -Mounts @($capture.runtimeInjection.mounts)
-    if ([string]::IsNullOrWhiteSpace($resolvedEntryLogPath) -or -not (Test-Path -LiteralPath $resolvedEntryLogPath -PathType Leaf)) {
-      throw ("NI image flag scenario '{0}' missing single-container CLI log for {1}: {2} (resolved: {3})" -f $activeScenarioName, $entry.name, $entry.logPath, $resolvedEntryLogPath)
-    }
-    if (-not [string]::Equals($entry.status, 'completed', [System.StringComparison]::OrdinalIgnoreCase)) {
-      $entryLogTail = Get-LogTailText -Path $resolvedEntryLogPath
-      throw ("NI image flag scenario '{0}' recorded non-completed ledger status for {1}: {2}`nlog={3}`n{4}" -f $activeScenarioName, $entry.name, $entry.status, $resolvedEntryLogPath, $entryLogTail)
-    }
-    $hasFailureText = Select-String -Path $resolvedEntryLogPath -SimpleMatch -Quiet -Pattern $failureMarkers -ErrorAction SilentlyContinue
-    if ($hasFailureText) {
-      $entryLogTail = Get-LogTailText -Path $resolvedEntryLogPath
-      throw ("NI image flag scenario '{0}' detected wrapper/tool failure text for {1}`nlog={2}`n{3}" -f $activeScenarioName, $entry.name, $resolvedEntryLogPath, $entryLogTail)
-    }
-    $resolvedEntryReportPath = Resolve-ContainerMountedHostPath -Path $entry.reportPath -Mounts @($capture.runtimeInjection.mounts)
-    if (-not (Test-Path -LiteralPath $resolvedEntryReportPath -PathType Leaf)) {
-      throw ("NI image flag scenario '{0}' missing single-container report for {1}: {2} (resolved: {3})" -f $activeScenarioName, $entry.name, $entry.reportPath, $resolvedEntryReportPath)
-    }
-  }
-
+  $activeScenarioName = [string]$baselineTransportSource.name
+  $observedCapturePath = [string]$baselineTransportSource.capturePath
+  $observedReportPath = [string]$baselineTransportSource.reportPath
   $transportSmokeResults.Add([pscustomobject]@{
-    name = $activeScenarioName
-    requestedFlags = @('all combinations')
-    flags = @($flagsUsed)
-    resultClass = $resultClass
-    gateOutcome = $gateOutcome
-    capturePath = $capturePath
-    reportPath = $reportPath
+    name = 'baseline-transport-smoke'
+    description = 'Minimal transport smoke projected from the baseline rendered-review run.'
+    requestedFlags = @($baselineTransportSource.requestedFlags)
+    flags = @($baselineTransportSource.flags)
+    planeApplicability = @('linux-proof')
+    priorityClass = 'transport-smoke'
+    intendedSuppressionSemantics = [pscustomobject]@{
+      suppressedCategories = @()
+      reviewerSurfaceIntent = 'transport-smoke'
+      rawModeBoundaryIntent = 'transport-only'
+    }
+    expectedReviewerAssertions = @()
+    expectedRawModeEvidenceBoundaries = @()
+    resultClass = [string]$baselineTransportSource.resultClass
+    gateOutcome = [string]$baselineTransportSource.gateOutcome
+    capturePath = [string]$baselineTransportSource.capturePath
+    reportPath = [string]$baselineTransportSource.reportPath
   }) | Out-Null
-  $transportObservedCapturePath = [string]$capturePath
-  $transportObservedReportPath = [string]$reportPath
-  $observedCapturePath = [string]$capturePath
-  $observedReportPath = [string]$reportPath
+  $transportObservedCapturePath = [string]$baselineTransportSource.capturePath
+  $transportObservedReportPath = [string]$baselineTransportSource.reportPath
+  $observedCapturePath = [string]$baselineTransportSource.capturePath
+  $observedReportPath = [string]$baselineTransportSource.reportPath
   $transportLaneReportPath = Write-PrePushSupportLaneReport `
     -repoRoot $root `
     -reportPath $transportSmokeReportPath `
     -schema 'pre-push-ni-transport-smoke-report@v1' `
-    -laneName 'single-container-matrix' `
-    -description 'Transport-oriented single-container matrix smoke for NI Linux compare execution.' `
+    -laneName 'baseline-transport-smoke' `
+    -description 'Minimal transport smoke projected from the baseline rendered-review run.' `
     -observedOutcome 'pass' `
     -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $transportSmokeResults) `
     -failureMessage '' `
@@ -1905,8 +1885,8 @@ try {
         -repoRoot $root `
         -reportPath $transportSmokeReportPath `
         -schema 'pre-push-ni-transport-smoke-report@v1' `
-        -laneName 'single-container-matrix' `
-        -description 'Transport-oriented single-container matrix smoke for NI Linux compare execution.' `
+        -laneName 'single-container-smoke' `
+        -description 'Minimal transport-oriented single-container bootstrap smoke for NI Linux compare execution.' `
         -observedOutcome 'fail' `
         -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $transportSmokeResults) `
         -failureMessage $failureMessage `

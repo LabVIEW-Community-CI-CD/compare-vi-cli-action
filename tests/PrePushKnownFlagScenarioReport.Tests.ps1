@@ -52,6 +52,9 @@ Describe 'Pre-push known-flag scenario pack report' -Tag 'Unit' {
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Test-PrePushKnownFlagReviewerAssertion')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Test-PrePushKnownFlagRawModeBoundary')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'New-PrePushTransportMatrixScenarios')
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'New-PrePushTransportSmokeScenarios')
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Write-PrePushFlagScenarioCatalog')
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Select-PrePushBaselineTransportSmokeSource')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'ConvertTo-PrePushKnownFlagScenarioResultArray')
 
     $script:KnownFlagContract = Get-Content -LiteralPath $script:KnownFlagContractPath -Raw | ConvertFrom-Json -Depth 20
@@ -82,7 +85,7 @@ Describe 'Pre-push known-flag scenario pack report' -Tag 'Unit' {
     @($resolved.scenarios[3].requestedFlags) | Should -Be @('-nobdcosm')
   }
 
-  It 'derives the transport smoke matrix from the unique declared requested flags' {
+  It 'retains the broad flag combinations as certification-only scenarios' {
     $transportMatrixScenarios = New-PrePushTransportMatrixScenarios -scenarioDefinitions @(
       [pscustomobject]@{ requestedFlags = @() },
       [pscustomobject]@{ requestedFlags = @('-noattr') },
@@ -100,6 +103,56 @@ Describe 'Pre-push known-flag scenario pack report' -Tag 'Unit' {
       'nofppos__nobdcosm',
       'noattr__nofppos__nobdcosm'
     )
+  }
+
+  It 'derives a minimal transport smoke catalog instead of every flag combination' {
+    $transportSmokeScenarios = New-PrePushTransportSmokeScenarios -scenarioDefinitions @(
+      [pscustomobject]@{ id = 'baseline-review-surface'; requestedFlags = @() },
+      [pscustomobject]@{ id = 'attribute-suppression-boundary'; requestedFlags = @('-noattr') },
+      [pscustomobject]@{ id = 'front-panel-position-boundary'; requestedFlags = @('-nofppos') }
+    )
+
+    @($transportSmokeScenarios | ForEach-Object { $_.name }) | Should -Be @('baseline')
+    @($transportSmokeScenarios[0].flags) | Should -Be @()
+    $transportSmokeScenarios[0].requestedFlagsLabel | Should -Be '(none)'
+    $transportSmokeScenarios[0].sourceScenarioId | Should -Be 'baseline-review-surface'
+  }
+
+  It 'writes a deterministic transport smoke scenario catalog for the bootstrap lane' {
+    $catalogPath = Join-Path $TestDrive 'scenario-catalog.tsv'
+    $writtenPath = Write-PrePushFlagScenarioCatalog `
+      -CatalogPath $catalogPath `
+      -ScenarioDefinitions @(
+        [pscustomobject]@{
+          name = 'baseline'
+          flags = @()
+        }
+      )
+
+    $writtenPath | Should -Be $catalogPath
+    Get-Content -LiteralPath $catalogPath | Should -Be @("baseline`t")
+  }
+
+  It 'selects the baseline transport smoke source from a generic list of scenario results' {
+    $scenarioResults = New-Object System.Collections.Generic.List[object]
+    $scenarioResults.Add([pscustomobject]@{
+      name = 'attribute-suppression-boundary'
+      requestedFlags = @('-noattr')
+      capturePath = 'attribute/capture.json'
+      reportPath = 'attribute/report.html'
+    }) | Out-Null
+    $scenarioResults.Add([pscustomobject]@{
+      name = 'baseline-review-surface'
+      requestedFlags = @()
+      capturePath = 'baseline/capture.json'
+      reportPath = 'baseline/report.html'
+    }) | Out-Null
+
+    $baseline = Select-PrePushBaselineTransportSmokeSource -ScenarioResults $scenarioResults
+
+    $baseline.name | Should -Be 'baseline-review-surface'
+    @($baseline.requestedFlags) | Should -Be @()
+    $baseline.capturePath | Should -Be 'baseline/capture.json'
   }
 
   It 'parses rendered semantic evidence from the inclusion list and headings' {

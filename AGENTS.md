@@ -33,6 +33,8 @@ Keep it short, stable, and helper-oriented. Deep runbooks belong in checked-in d
 - Prefer the local parity loop before repeated GitHub Actions cycles:
   - `pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage`
   - `pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -NILinuxReviewSuite`
+  - Treat `tools/PrePush-Checks.ps1` as the blocking rendered-review gate and `-NILinuxReviewSuite` as the broad
+    flag-combination certification lane.
 - Detached unattended delivery surfaces:
   - `node tools/npm/run-script.mjs priority:delivery:agent:ensure`
   - `node tools/npm/run-script.mjs priority:delivery:agent:status`
@@ -113,6 +115,9 @@ Keep it short, stable, and helper-oriented. Deep runbooks belong in checked-in d
   - `tests/results/_agent/pre-push-ni-image/vi-history-smoke-report.json`
 - The post-results rendering certification report is the explicit semantic gate for the
   active scenario pack; transport and VI-history reports remain separate support lanes.
+- The pre-push transport smoke lane is intentionally minimal. Broad flag-combination sweeps now belong in
+  `tests/results/docker-tools-parity/ni-linux-review-suite/flag-combination-certification.json` and the companion
+  Markdown/HTML artifacts emitted by `tools/Invoke-NILinuxReviewSuite.ps1`.
 
 ## References
 

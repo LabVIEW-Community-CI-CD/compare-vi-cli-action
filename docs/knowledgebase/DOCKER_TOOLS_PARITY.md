@@ -7,6 +7,11 @@ tooling. It now covers both the non-LV parity path and the NI Linux review-suite
 The intended operating model is local-first: use Docker Desktop to clear deterministic markdown, workflow-drift,
 NI Linux smoke, and VI history artifact defects before paying for another GitHub Actions review cycle.
 
+The lane split is intentional:
+
+- `tools/PrePush-Checks.ps1` is the blocking rendered-review gate plus a minimal transport/bootstrap smoke.
+- `tools/Invoke-NILinuxReviewSuite.ps1` is the broader flag-combination certification surface.
+
 ## Environment prerequisites
 
 - Docker Desktop (or Engine) must be available. On Windows, confirm with `docker version`; the client/server details
@@ -31,6 +36,8 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerific
   and writes GitHub Pages-ready HTML/JSON outputs under
   `tests/results/docker-tools-parity/ni-linux-review-suite/`, including:
   - `review-suite-summary.html`
+  - `flag-combination-certification.html`
+  - `flag-combination-certification.json`
   - `vi-history-report/results/history-report.html`
   - `vi-history-report/results/history-summary.json`
   - `vi-history-report/results/history-suite-inspection.html`
@@ -63,7 +70,8 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerific
   - markdownlint is clean
   - workflow-drift checks are clean
   - requirements traceability / verification is updated locally
-  - NI Linux smoke is green
+  - the blocking rendered-review gate is green
+  - NI Linux certification artifacts are green when you are changing compare/runtime behavior
   - VI history review artifacts are coherent and reviewable
 - Treat hosted runs as confirmation and publication surfaces once the local loop
   is already green.

@@ -335,26 +335,82 @@ function Read-JsonHashtable {
   return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable)
 }
 
+function Invoke-GitReviewLoopCommand {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)][string[]]$Arguments
+  )
+
+  $gitPath = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+  $gitEnvNames = @(
+    'GIT_DIR',
+    'GIT_WORK_TREE',
+    'GIT_COMMON_DIR',
+    'GIT_INDEX_FILE',
+    'GIT_OBJECT_DIRECTORY',
+    'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+    'GIT_PREFIX',
+    'GIT_CEILING_DIRECTORIES'
+  )
+
+  $psi = [System.Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = $gitPath
+  $psi.WorkingDirectory = $RepoRoot
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  foreach ($arg in @($Arguments)) {
+    [void]$psi.ArgumentList.Add([string]$arg)
+  }
+  foreach ($envName in $gitEnvNames) {
+    [void]$psi.Environment.Remove($envName)
+  }
+
+  $proc = [System.Diagnostics.Process]::new()
+  $proc.StartInfo = $psi
+  try {
+    [void]$proc.Start()
+    $stdout = $proc.StandardOutput.ReadToEnd()
+    $stderr = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    $global:LASTEXITCODE = [int]$proc.ExitCode
+    return [pscustomobject]@{
+      exitCode = [int]$proc.ExitCode
+      stdout = if ([string]::IsNullOrWhiteSpace($stdout)) { @() } else { @($stdout -split "(`r`n|`n|`r)" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) }
+      stderr = $stderr
+    }
+  } finally {
+    $proc.Dispose()
+  }
+}
+
 function Get-GitReviewLoopMetadata {
   param([string]$RepoRoot)
 
-  $headSha = (& git -C $RepoRoot rev-parse HEAD 2>$null | Select-Object -First 1)
-  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($headSha)) {
+  $headCommand = Invoke-GitReviewLoopCommand -RepoRoot $RepoRoot -Arguments @('rev-parse', 'HEAD')
+  $headSha = @($headCommand.stdout | Select-Object -First 1)
+  $headSha = if ($headSha.Count -gt 0) { [string]$headSha[0] } else { '' }
+  if ($headCommand.exitCode -ne 0 -or [string]::IsNullOrWhiteSpace($headSha)) {
     throw 'Unable to resolve git HEAD for Docker/Desktop review-loop receipt generation.'
   }
 
-  $branchName = (& git -C $RepoRoot branch --show-current 2>$null | Select-Object -First 1)
-  if ($LASTEXITCODE -ne 0) {
+  $branchCommand = Invoke-GitReviewLoopCommand -RepoRoot $RepoRoot -Arguments @('branch', '--show-current')
+  $branchName = @($branchCommand.stdout | Select-Object -First 1)
+  $branchName = if ($branchName.Count -gt 0) { [string]$branchName[0] } else { '' }
+  if ($branchCommand.exitCode -ne 0) {
     $branchName = ''
   }
 
-  $mergeBase = (& git -C $RepoRoot merge-base HEAD upstream/develop 2>$null | Select-Object -First 1)
-  if ($LASTEXITCODE -ne 0) {
+  $mergeBaseCommand = Invoke-GitReviewLoopCommand -RepoRoot $RepoRoot -Arguments @('merge-base', 'HEAD', 'upstream/develop')
+  $mergeBase = @($mergeBaseCommand.stdout | Select-Object -First 1)
+  $mergeBase = if ($mergeBase.Count -gt 0) { [string]$mergeBase[0] } else { '' }
+  if ($mergeBaseCommand.exitCode -ne 0) {
     $mergeBase = ''
   }
 
-  $trackedStatus = (& git -C $RepoRoot status --short --untracked-files=no 2>$null)
-  if ($LASTEXITCODE -ne 0) {
+  $trackedStatusCommand = Invoke-GitReviewLoopCommand -RepoRoot $RepoRoot -Arguments @('status', '--short', '--untracked-files=no')
+  $trackedStatus = @($trackedStatusCommand.stdout)
+  if ($trackedStatusCommand.exitCode -ne 0) {
     $trackedStatus = @()
   }
 
@@ -729,6 +785,8 @@ if ($checkStates.niLinuxReviewSuite.enabled) {
     $resultsRootResolved = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $NILinuxReviewSuiteResultsRoot))
     $reviewSuiteSummaryHtmlPath = Join-Path $resultsRootResolved 'review-suite-summary.html'
     $reviewSuiteSummaryJsonPath = Join-Path $resultsRootResolved 'review-suite-summary.json'
+    $flagCombinationCertificationJsonPath = Join-Path $resultsRootResolved 'flag-combination-certification.json'
+    $flagCombinationCertificationHtmlPath = Join-Path $resultsRootResolved 'flag-combination-certification.html'
     $historyMarkdownPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.md'
     $historyHtmlPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.html'
     $historySummaryPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-summary.json'
@@ -775,6 +833,8 @@ if ($checkStates.niLinuxReviewSuite.enabled) {
     foreach ($artifactPath in @(
         $reviewSuiteSummaryHtmlPath,
         $reviewSuiteSummaryJsonPath,
+        $flagCombinationCertificationJsonPath,
+        $flagCombinationCertificationHtmlPath,
         $historyMarkdownPath,
         $historyHtmlPath,
         $historySummaryPath,
@@ -789,12 +849,15 @@ if ($checkStates.niLinuxReviewSuite.enabled) {
     $checkStates.niLinuxReviewSuite.artifacts.resultsRoot = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $resultsRootResolved
     $checkStates.niLinuxReviewSuite.artifacts.reviewSuiteSummaryJsonPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $reviewSuiteSummaryJsonPath
     $checkStates.niLinuxReviewSuite.artifacts.reviewSuiteSummaryHtmlPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $reviewSuiteSummaryHtmlPath
+    $checkStates.niLinuxReviewSuite.artifacts.flagCombinationCertificationJsonPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $flagCombinationCertificationJsonPath
+    $checkStates.niLinuxReviewSuite.artifacts.flagCombinationCertificationHtmlPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $flagCombinationCertificationHtmlPath
     $checkStates.niLinuxReviewSuite.artifacts.historyReportHtmlPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $historyHtmlPath
     $checkStates.niLinuxReviewSuite.artifacts.historySummaryPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $historySummaryPath
     $checkStates.niLinuxReviewSuite.artifacts.historyReviewReceiptPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $historyReviewReceiptPath
 
-    Write-Host ("[docker] ni-linux-review-suite OK (summary={0}; history={1}; facade={2})" -f
+    Write-Host ("[docker] ni-linux-review-suite OK (summary={0}; certification={1}; history={2}; facade={3})" -f
         ([System.IO.Path]::GetRelativePath($repoRootResolved, $reviewSuiteSummaryHtmlPath).Replace('\', '/')),
+        ([System.IO.Path]::GetRelativePath($repoRootResolved, $flagCombinationCertificationHtmlPath).Replace('\', '/')),
         ([System.IO.Path]::GetRelativePath($repoRootResolved, $historyHtmlPath).Replace('\', '/')),
         ([System.IO.Path]::GetRelativePath($repoRootResolved, $historySummaryPath).Replace('\', '/'))) -ForegroundColor Green
   }
@@ -925,4 +988,3 @@ Write-Host 'Non-LabVIEW container checks completed.' -ForegroundColor Green
     -NILinuxResultsRoot $NILinuxReviewSuiteResultsRoot `
     -RequirementsResultsRoot $RequirementsVerificationResultsRoot
 }
-
