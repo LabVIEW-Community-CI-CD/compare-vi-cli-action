@@ -12,6 +12,7 @@
     "toolSource",
     "cacheReuseState",
     "coldWarmClass",
+    "benchmarkSampleKind",
     "repoRoot",
     "resultsRoot",
     "timings",
@@ -42,6 +43,10 @@
     },
     "coldWarmClass": {
       "enum": ["cold", "warm"]
+    },
+    "benchmarkSampleKind": {
+      "type": "string",
+      "minLength": 1
     },
     "repoRoot": {
       "type": "string",

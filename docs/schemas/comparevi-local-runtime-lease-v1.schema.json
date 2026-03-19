@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-local-runtime-lease-v1.schema.json",
+  "title": "CompareVI Local Runtime Lease",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "generatedAt",
+    "acquiredAt",
+    "owner",
+    "scopeKey",
+    "lock",
+    "runtime",
+    "artifacts"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi/local-runtime-lease@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "acquiredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scopeKey": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

@@ -308,6 +308,18 @@ pwsh -NoLogo -NoProfile -File tools/Invoke-VIHistoryLocalRefinement.ps1 `
   -HistoryTargetPath fixtures/vi-attr/Head.vi
 ```
 
+When a warm runtime is already present, `warm-dev` now gates reuse on a fresh
+heartbeat. If the existing container is stale, stopped, or running the wrong
+image, the manager deterministically replaces it instead of blindly reusing it.
+You can force that recovery check without starting a review turn:
+
+```powershell
+node tools/npm/run-script.mjs history:local:warm-runtime:reconcile -- `
+  -RepoRoot . `
+  -ResultsRoot tests/results/local-vi-history/warm-dev `
+  -RuntimeDir tests/results/local-vi-history/runtime/warm-dev
+```
+
 The local refinement facade writes:
 
 - `local-refinement.json` (`schema: comparevi/local-refinement@v1`)
@@ -316,9 +328,16 @@ The local refinement facade writes:
 
 The warm runtime manager writes:
 
+- `local-runtime-lease.json` (`schema: comparevi/local-runtime-lease@v1`)
 - `local-runtime-state.json` (`schema: comparevi/local-runtime-state@v1`)
 - `local-runtime-health.json` (`schema: comparevi/local-runtime-health@v1`)
 - `local-runtime-heartbeat.json`
+
+Benchmark receipts now select the intended sample classes:
+
+- `proof-cold`
+- `dev-fast-cold`
+- `warm-dev-repeat`
 
 These receipts are intentionally local-first. They allow `comparevi-history`
 and downstream consumers to reuse the same runtime planes without changing the

@@ -116,6 +116,52 @@ function Read-JsonText {
   }
 }
 
+function Parse-UtcDateTime {
+  param([AllowEmptyString()][string]$Value)
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return $null
+  }
+
+  try {
+    return [datetime]::Parse(
+      $Value,
+      [System.Globalization.CultureInfo]::InvariantCulture,
+      [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal
+    )
+  } catch {
+    return $null
+  }
+}
+
+function Get-BenchmarkSampleKind {
+  param(
+    [Parameter(Mandatory)][string]$RuntimeProfile,
+    [Parameter(Mandatory)][string]$ColdWarmClass,
+    [Parameter(Mandatory)][string]$CacheReuseState
+  )
+
+  switch ($RuntimeProfile) {
+    'proof' {
+      return 'proof-cold'
+    }
+    'dev-fast' {
+      if ($ColdWarmClass -eq 'cold') {
+        return 'dev-fast-cold'
+      }
+      return 'dev-fast-repeat'
+    }
+    'warm-dev' {
+      if ($CacheReuseState -eq 'warm-runtime-reused' -and $ColdWarmClass -eq 'warm') {
+        return 'warm-dev-repeat'
+      }
+      return 'warm-dev-cold-start'
+    }
+  }
+
+  return ('{0}-{1}' -f $RuntimeProfile, $ColdWarmClass)
+}
+
 $repoRootResolved = if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
   Resolve-AbsolutePath -Path '..' -BasePath $PSScriptRoot
 } else {
@@ -128,7 +174,10 @@ $resultsRootResolved = if ([string]::IsNullOrWhiteSpace($ResultsRoot)) {
 }
 New-Item -ItemType Directory -Path $resultsRootResolved -Force | Out-Null
 
-$buildImageScriptResolved = Resolve-ScriptPath -PathValue $BuildImageScriptPath -DefaultPath 'tools/Build-VIHistoryDevImage.ps1' -RepoRootResolved $repoRootResolved
+$buildImageScriptResolved = ''
+if ($Profile -ne 'proof') {
+  $buildImageScriptResolved = Resolve-ScriptPath -PathValue $BuildImageScriptPath -DefaultPath 'tools/Build-VIHistoryDevImage.ps1' -RepoRootResolved $repoRootResolved
+}
 $reviewSuiteScriptResolved = Resolve-ScriptPath -PathValue $ReviewSuiteScriptPath -DefaultPath 'tools/Invoke-NILinuxReviewSuite.ps1' -RepoRootResolved $repoRootResolved
 $warmRuntimeManagerScriptResolved = ''
 if ($Profile -eq 'warm-dev') {
@@ -183,7 +232,7 @@ if ($Profile -eq 'warm-dev') {
     -ResultsRootResolved $resultsRootResolved
   New-Item -ItemType Directory -Path $warmRuntimeDir -Force | Out-Null
   $warmRuntimeJson = & $warmRuntimeManagerScriptResolved `
-    -Action start `
+    -Action reconcile `
     -RepoRoot $repoRootResolved `
     -ResultsRoot $resultsRootResolved `
     -RuntimeDir $warmRuntimeDir `
@@ -195,12 +244,22 @@ if ($Profile -eq 'warm-dev') {
   if (-not $warmRuntimeState) {
     throw 'Warm runtime manager did not emit valid JSON state.'
   }
-  if ($warmRuntimeState.outcome -eq 'reused') {
-    $cacheReuseState = 'warm-runtime-reused'
-    $coldWarmClass = 'warm'
-  } else {
-    $cacheReuseState = 'warm-runtime-started'
-    $coldWarmClass = 'cold'
+  switch ([string]$warmRuntimeState.outcome) {
+    { $_ -in @('healthy', 'reused') } {
+      $cacheReuseState = 'warm-runtime-reused'
+      $coldWarmClass = 'warm'
+      break
+    }
+    'recovered-stale-runtime' {
+      $cacheReuseState = 'warm-runtime-recovered'
+      $coldWarmClass = 'cold'
+      break
+    }
+    default {
+      $cacheReuseState = 'warm-runtime-started'
+      $coldWarmClass = 'cold'
+      break
+    }
   }
 
   $reviewParams.ReuseContainerName = [string]$warmRuntimeState.container.name
@@ -245,6 +304,7 @@ $receipt = [ordered]@{
   toolSource = $toolSource
   cacheReuseState = $cacheReuseState
   coldWarmClass = $coldWarmClass
+  benchmarkSampleKind = Get-BenchmarkSampleKind -RuntimeProfile $Profile -ColdWarmClass $coldWarmClass -CacheReuseState $cacheReuseState
   repoRoot = $repoRootResolved
   resultsRoot = $resultsRootResolved
   timings = [ordered]@{
@@ -287,6 +347,7 @@ if (Test-Path -LiteralPath $benchmarkRoot -PathType Container) {
   $allReceipts = @(Get-ChildItem -Path $benchmarkRoot -Recurse -Filter 'local-refinement.json' -File -ErrorAction SilentlyContinue)
 }
 $latestByProfile = @{}
+$latestBySampleKind = @{}
 foreach ($candidate in $allReceipts) {
   try {
     $candidateReceipt = Get-Content -LiteralPath $candidate.FullName -Raw | ConvertFrom-Json -Depth 20 -ErrorAction Stop
@@ -300,14 +361,30 @@ foreach ($candidate in $allReceipts) {
   if ([string]::IsNullOrWhiteSpace($profileName)) {
     continue
   }
-  $currentGeneratedAt = [datetime]::Parse([string]$candidateReceipt.generatedAt, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal)
-  if (-not $latestByProfile.ContainsKey($profileName)) {
-    $latestByProfile[$profileName] = $candidateReceipt
+  $currentGeneratedAt = Parse-UtcDateTime -Value ([string]$candidateReceipt.generatedAt)
+  if (-not $currentGeneratedAt) {
     continue
   }
-  $previousGeneratedAt = [datetime]::Parse([string]$latestByProfile[$profileName].generatedAt, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal)
-  if ($currentGeneratedAt -gt $previousGeneratedAt) {
+  if (-not $latestByProfile.ContainsKey($profileName)) {
     $latestByProfile[$profileName] = $candidateReceipt
+  } else {
+    $previousGeneratedAt = Parse-UtcDateTime -Value ([string]$latestByProfile[$profileName].generatedAt)
+    if ($previousGeneratedAt -and $currentGeneratedAt -gt $previousGeneratedAt) {
+      $latestByProfile[$profileName] = $candidateReceipt
+    }
+  }
+
+  $sampleKind = [string]$candidateReceipt.benchmarkSampleKind
+  if ([string]::IsNullOrWhiteSpace($sampleKind)) {
+    continue
+  }
+  if (-not $latestBySampleKind.ContainsKey($sampleKind)) {
+    $latestBySampleKind[$sampleKind] = $candidateReceipt
+    continue
+  }
+  $previousSampleGeneratedAt = Parse-UtcDateTime -Value ([string]$latestBySampleKind[$sampleKind].generatedAt)
+  if ($previousSampleGeneratedAt -and $currentGeneratedAt -gt $previousSampleGeneratedAt) {
+    $latestBySampleKind[$sampleKind] = $candidateReceipt
   }
 }
 
@@ -345,9 +422,22 @@ $benchmarkPayload = [ordered]@{
     devFast = if ($latestByProfile.ContainsKey('dev-fast')) { $latestByProfile['dev-fast'] } else { $null }
     warmDev = if ($latestByProfile.ContainsKey('warm-dev')) { $latestByProfile['warm-dev'] } else { $null }
   }
+  selectedSamples = [ordered]@{
+    proofCold = if ($latestBySampleKind.ContainsKey('proof-cold')) { $latestBySampleKind['proof-cold'] } else { $null }
+    devFastCold = if ($latestBySampleKind.ContainsKey('dev-fast-cold')) { $latestBySampleKind['dev-fast-cold'] } else { $null }
+    warmDevRepeat = if ($latestBySampleKind.ContainsKey('warm-dev-repeat')) { $latestBySampleKind['warm-dev-repeat'] } else { $null }
+  }
   comparisons = [ordered]@{
-    devFastVsProof = New-BenchmarkComparison -Left $(if ($latestByProfile.ContainsKey('proof')) { $latestByProfile['proof'] } else { $null }) -Right $(if ($latestByProfile.ContainsKey('dev-fast')) { $latestByProfile['dev-fast'] } else { $null }) -LeftLabel 'proof' -RightLabel 'dev-fast'
-    warmDevVsDevFast = New-BenchmarkComparison -Left $(if ($latestByProfile.ContainsKey('dev-fast')) { $latestByProfile['dev-fast'] } else { $null }) -Right $(if ($latestByProfile.ContainsKey('warm-dev')) { $latestByProfile['warm-dev'] } else { $null }) -LeftLabel 'dev-fast' -RightLabel 'warm-dev'
+    devFastVsProof = New-BenchmarkComparison `
+      -Left $(if ($latestBySampleKind.ContainsKey('proof-cold')) { $latestBySampleKind['proof-cold'] } else { $null }) `
+      -Right $(if ($latestBySampleKind.ContainsKey('dev-fast-cold')) { $latestBySampleKind['dev-fast-cold'] } else { $null }) `
+      -LeftLabel 'proof-cold' `
+      -RightLabel 'dev-fast-cold'
+    warmDevVsDevFast = New-BenchmarkComparison `
+      -Left $(if ($latestBySampleKind.ContainsKey('dev-fast-cold')) { $latestBySampleKind['dev-fast-cold'] } else { $null }) `
+      -Right $(if ($latestBySampleKind.ContainsKey('warm-dev-repeat')) { $latestBySampleKind['warm-dev-repeat'] } else { $null }) `
+      -LeftLabel 'dev-fast-cold' `
+      -RightLabel 'warm-dev-repeat'
   }
 }
 $benchmarkPath = Join-Path $resultsRootResolved 'local-refinement-benchmark.json'
