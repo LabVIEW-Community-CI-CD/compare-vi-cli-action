@@ -57,3 +57,11 @@ test('hooks multi keeps wrapper parity fast by skipping heavy pre-push scenario 
   assert.match(source, /PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS/);
   assert.match(source, /PREPUSH_SKIP_NI_IMAGE_FLAG_SCENARIOS/);
 });
+
+test('pre-commit PowerShell validation fails closed when PSScriptAnalyzer is unavailable', () => {
+  const source = readRepoFile(path.join('tools', 'hooks', 'scripts', 'pre-commit.ps1'));
+  assert.match(source, /function Invoke-PSScriptAnalyzerGate/);
+  assert.match(source, /PRECOMMIT_SKIP_PSSCRIPTANALYZER/);
+  assert.match(source, /PSScriptAnalyzer not installed; install the module or rerun with -SkipPSScriptAnalyzer/);
+  assert.doesNotMatch(source, /PSScriptAnalyzer not installed; skipping analyzer step/);
+});

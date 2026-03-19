@@ -1,7 +1,8 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
-  [string[]]$StagedFiles
+  [string[]]$StagedFiles,
+  [switch]$SkipPSScriptAnalyzer
 )
 
 Set-StrictMode -Version Latest
@@ -35,24 +36,27 @@ if ($psFiles.Count -eq 0) {
   return
 }
 
-function Invoke-PSScriptAnalyzerIfAvailable {
+function Invoke-PSScriptAnalyzerGate {
   param([string[]]$Paths)
-  try {
-    if (Get-Module -ListAvailable -Name PSScriptAnalyzer) {
-      Write-Output '[pre-commit] Running PSScriptAnalyzer on staged PowerShell files'
-      $res = @()
-      foreach ($path in $Paths) {
-        $res += Invoke-ScriptAnalyzer -Path $path -Severity Error,Warning -ErrorAction Stop
-      }
-      if ($res) {
-        $res | Format-Table -AutoSize | Out-String | Write-Output
-        throw "PSScriptAnalyzer detected issues."
-      }
-    } else {
-      Write-Output '[pre-commit] PSScriptAnalyzer not installed; skipping analyzer step'
-    }
-  } catch {
-    throw
+  $skipAnalyzer = $SkipPSScriptAnalyzer -or ($env:PRECOMMIT_SKIP_PSSCRIPTANALYZER -match '^(1|true|yes|on)$')
+  if ($skipAnalyzer) {
+    Write-Output '[pre-commit] Skipping PSScriptAnalyzer by request'
+    return
+  }
+
+  if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+    throw 'PSScriptAnalyzer not installed; install the module or rerun with -SkipPSScriptAnalyzer (or PRECOMMIT_SKIP_PSSCRIPTANALYZER=1).'
+  }
+
+  Import-Module PSScriptAnalyzer -ErrorAction Stop | Out-Null
+  Write-Output '[pre-commit] Running PSScriptAnalyzer on staged PowerShell files'
+  $res = @()
+  foreach ($path in $Paths) {
+    $res += Invoke-ScriptAnalyzer -Path $path -Severity Error,Warning -ErrorAction Stop
+  }
+  if ($res) {
+    $res | Format-Table -AutoSize | Out-String | Write-Output
+    throw "PSScriptAnalyzer detected issues."
   }
 }
 
@@ -74,7 +78,7 @@ function Invoke-LocalLinter {
   }
 }
 
-Invoke-PSScriptAnalyzerIfAvailable -Paths $psFiles
+Invoke-PSScriptAnalyzerGate -Paths $psFiles
 Invoke-LocalLinter -Paths $psFiles
 
 Write-Output '[pre-commit] PowerShell validation completed.'

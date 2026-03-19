@@ -307,16 +307,21 @@ function tryParseJson(raw) {
   }
 }
 
-function hardFailHookStep(runner, step, reason) {
+function hardFailHookStep(runner, step, reason, options = {}) {
   const rawExitCode = Number.isInteger(step?.rawExitCode) ? step.rawExitCode : step?.exitCode;
-  if (!rawExitCode) {
+  const effectiveExitCode = options.useRawExitCode ? rawExitCode : step?.exitCode;
+  if (!effectiveExitCode) {
     return;
   }
   step.status = 'failed';
-  step.exitCode = rawExitCode;
+  step.exitCode = rawExitCode || effectiveExitCode;
   step.severity = 'error';
+  if (options.useRawExitCode && step.note && /HOOKS_ENFORCE=/.test(step.note)) {
+    delete step.note;
+  }
+  step.error ??= reason || 'Blocking hook step failed.';
   runner.status = 'failed';
-  runner.exitCode = rawExitCode;
+  runner.exitCode = rawExitCode || effectiveExitCode;
   if (reason) {
     runner.addNote(reason);
   }
@@ -458,11 +463,17 @@ function invokePreCommitDelegate(
   if (psFiles.length > 0) {
     const scriptPath = path.join('tools', 'hooks', 'scripts', 'pre-commit.ps1');
     info('[pre-commit] Running PowerShell validation script');
-    runner.runPwshStep('powershell-validation', scriptPath, [], {
+    const powerShellStep = runner.runPwshStep('powershell-validation', scriptPath, [], {
       env: {
         HOOKS_STAGED_FILES_JSON: JSON.stringify(psFiles)
       }
     });
+    hardFailHookStep(
+      runner,
+      powerShellStep,
+      'Blocking local collaboration hook failure in pre-commit: PowerShell validation failed.',
+      { useRawExitCode: true }
+    );
   } else {
     info('[pre-commit] No staged PowerShell files detected; skipping PowerShell lint.');
     runner.addNote('No staged PowerShell files detected; PowerShell lint skipped.');
@@ -512,12 +523,18 @@ function invokePrePushDelegate(
   });
   if (runner.exitCode === 0) {
     info('[pre-push] Running core pre-push checks');
-    runner.runPwshStep('pre-push-checks', path.join('tools', 'PrePush-Checks.ps1'), [], {
+    const prePushChecksStep = runner.runPwshStep('pre-push-checks', path.join('tools', 'PrePush-Checks.ps1'), [], {
       env: {
         LOCAL_COLLAB_ORCHESTRATED: '1',
         LOCAL_COLLAB_PHASE: 'pre-push'
       }
     });
+    hardFailHookStep(
+      runner,
+      prePushChecksStep,
+      'Blocking local collaboration hook failure in pre-push: core pre-push checks failed.',
+      { useRawExitCode: true }
+    );
   } else {
     runner.addNote('Skipped core pre-push checks because local agent review failed.');
   }
