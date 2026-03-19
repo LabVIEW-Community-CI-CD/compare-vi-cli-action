@@ -1,27 +1,165 @@
 {
-  "schema": "prepush-known-flag-scenarios/v1",
+  "schema": "prepush-known-flag-scenario-packs/v1",
   "schemaVersion": "1.0.0",
-  "activeScenarioId": "ni-linux-known-flag-bundle-v1",
-  "scenarios": [
+  "activeScenarioPackId": "ni-linux-reviewer-rendering-pack-v1",
+  "scenarioPacks": [
     {
-      "id": "ni-linux-known-flag-bundle-v1",
+      "id": "ni-linux-reviewer-rendering-pack-v1",
       "isActive": true,
-      "description": "Canonical NI Linux pre-push known-flag scenario for deterministic local gate coverage.",
+      "description": "Canonical NI Linux pre-push scenario pack for reviewer and rendering semantics.",
       "image": "nationalinstruments/labview:2026q1-linux",
       "labviewPathEnv": "NI_LINUX_LABVIEW_PATH",
       "defaultLabviewPath": "/usr/local/natinst/LabVIEW-2026-64/labview",
-      "flags": [
-        "-noattr",
-        "-nofppos",
-        "-nobdcosm"
+      "planeApplicability": [
+        "linux-proof"
       ],
+      "priorityClass": "pre-push",
       "expectedGateOutcome": "pass",
+      "target": {
+        "kind": "fixture-diff",
+        "baseVi": "VI1.vi",
+        "headVi": "VI2.vi"
+      },
       "evidence": {
         "resultsRoot": "tests/results/_agent/pre-push-ni-image",
         "reportPath": "tests/results/_agent/pre-push-ni-image/known-flag-scenario-report.json",
         "incidentInputPath": "tests/results/_agent/canary/pre-push-ni-known-flag-incident-input.json",
         "incidentEventPath": "tests/results/_agent/canary/pre-push-ni-known-flag-incident-event.json"
-      }
+      },
+      "scenarios": [
+        {
+          "id": "baseline-review-surface",
+          "description": "Baseline full-surface compare used to exercise the primary rendered review surface.",
+          "requestedFlags": [],
+          "intendedSuppressionSemantics": {
+            "suppressedCategories": [],
+            "reviewerSurfaceIntent": "full-review-surface",
+            "rawModeBoundaryIntent": "primary-review-surface"
+          },
+          "expectedReviewerAssertions": [
+            {
+              "id": "compare-report-rendered",
+              "surface": "compare-report.html",
+              "requirement": "rendered"
+            },
+            {
+              "id": "capture-flags-match-request",
+              "surface": "ni-linux-container-capture.json",
+              "requirement": "requested-flags-observed"
+            }
+          ],
+          "expectedRawModeEvidenceBoundaries": [
+            {
+              "id": "baseline-raw-mode-boundary",
+              "mode": "compare-report",
+              "surfaceRole": "reviewer-primary",
+              "expectation": "full-surface"
+            }
+          ]
+        },
+        {
+          "id": "attribute-suppression-boundary",
+          "description": "Targeted suppression case that exercises the raw-report boundary when VI attributes are disabled.",
+          "requestedFlags": [
+            "-noattr"
+          ],
+          "intendedSuppressionSemantics": {
+            "suppressedCategories": [
+              "vi-attributes"
+            ],
+            "reviewerSurfaceIntent": "attribute-boundary",
+            "rawModeBoundaryIntent": "raw-report-suppresses-vi-attributes"
+          },
+          "expectedReviewerAssertions": [
+            {
+              "id": "compare-report-rendered",
+              "surface": "compare-report.html",
+              "requirement": "rendered"
+            },
+            {
+              "id": "raw-boundary-explicit",
+              "surface": "compare-report.html",
+              "requirement": "attribute-suppression-boundary-visible"
+            }
+          ],
+          "expectedRawModeEvidenceBoundaries": [
+            {
+              "id": "attribute-raw-mode-boundary",
+              "mode": "compare-report",
+              "surfaceRole": "raw-mode-boundary",
+              "expectation": "vi-attributes-suppressed"
+            }
+          ]
+        },
+        {
+          "id": "front-panel-position-boundary",
+          "description": "Targeted suppression case that exercises the raw-report boundary when front panel position and size are disabled.",
+          "requestedFlags": [
+            "-nofppos"
+          ],
+          "intendedSuppressionSemantics": {
+            "suppressedCategories": [
+              "front-panel-position-size"
+            ],
+            "reviewerSurfaceIntent": "front-panel-position-boundary",
+            "rawModeBoundaryIntent": "raw-report-suppresses-front-panel-position-size"
+          },
+          "expectedReviewerAssertions": [
+            {
+              "id": "compare-report-rendered",
+              "surface": "compare-report.html",
+              "requirement": "rendered"
+            },
+            {
+              "id": "raw-boundary-explicit",
+              "surface": "compare-report.html",
+              "requirement": "front-panel-position-boundary-visible"
+            }
+          ],
+          "expectedRawModeEvidenceBoundaries": [
+            {
+              "id": "front-panel-position-raw-mode-boundary",
+              "mode": "compare-report",
+              "surfaceRole": "raw-mode-boundary",
+              "expectation": "front-panel-position-size-suppressed"
+            }
+          ]
+        },
+        {
+          "id": "block-diagram-cosmetic-boundary",
+          "description": "Targeted suppression case that exercises the raw-report boundary when block diagram cosmetic changes are disabled.",
+          "requestedFlags": [
+            "-nobdcosm"
+          ],
+          "intendedSuppressionSemantics": {
+            "suppressedCategories": [
+              "block-diagram-cosmetic"
+            ],
+            "reviewerSurfaceIntent": "block-diagram-cosmetic-boundary",
+            "rawModeBoundaryIntent": "raw-report-suppresses-block-diagram-cosmetic"
+          },
+          "expectedReviewerAssertions": [
+            {
+              "id": "compare-report-rendered",
+              "surface": "compare-report.html",
+              "requirement": "rendered"
+            },
+            {
+              "id": "raw-boundary-explicit",
+              "surface": "compare-report.html",
+              "requirement": "block-diagram-cosmetic-boundary-visible"
+            }
+          ],
+          "expectedRawModeEvidenceBoundaries": [
+            {
+              "id": "block-diagram-cosmetic-raw-mode-boundary",
+              "mode": "compare-report",
+              "surfaceRole": "raw-mode-boundary",
+              "expectation": "block-diagram-cosmetic-suppressed"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

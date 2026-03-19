@@ -306,7 +306,9 @@ function Write-PrePushNIKnownFlagIncidentEvent {
     [string]$containerLabVIEWPath,
     [string[]]$scenarioFlags,
     [string]$reportPath,
-    [string]$runtimeSnapshotPath
+    [string]$runtimeSnapshotPath,
+    [string]$incidentInputPath,
+    [string]$incidentEventPath
   )
 
   $eventIngestScript = Join-Path $repoRoot 'tools' 'priority' 'event-ingest.mjs'
@@ -316,9 +318,20 @@ function Write-PrePushNIKnownFlagIncidentEvent {
   }
 
   $canaryDir = Join-Path $repoRoot 'tests' 'results' '_agent' 'canary'
-  New-Item -ItemType Directory -Path $canaryDir -Force | Out-Null
-  $inputPath = Join-Path $canaryDir 'pre-push-ni-known-flag-incident-input.json'
-  $eventReportPath = Join-Path $canaryDir 'pre-push-ni-known-flag-incident-event.json'
+  if ([string]::IsNullOrWhiteSpace($incidentInputPath)) {
+    $incidentInputPath = Join-Path $canaryDir 'pre-push-ni-known-flag-incident-input.json'
+  }
+  if ([string]::IsNullOrWhiteSpace($incidentEventPath)) {
+    $incidentEventPath = Join-Path $canaryDir 'pre-push-ni-known-flag-incident-event.json'
+  }
+  $inputDir = Split-Path -Parent $incidentInputPath
+  $eventDir = Split-Path -Parent $incidentEventPath
+  if (-not [string]::IsNullOrWhiteSpace($inputDir)) {
+    New-Item -ItemType Directory -Path $inputDir -Force | Out-Null
+  }
+  if (-not [string]::IsNullOrWhiteSpace($eventDir)) {
+    New-Item -ItemType Directory -Path $eventDir -Force | Out-Null
+  }
   $repository = if ([string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY)) {
     'local/compare-vi-cli-action'
   } else {
@@ -371,82 +384,184 @@ function Write-PrePushNIKnownFlagIncidentEvent {
     }
   }
 
-  $payload | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $inputPath -Encoding utf8
+  $payload | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $incidentInputPath -Encoding utf8
   & node $eventIngestScript `
     --source-type incident-event `
-    --input $inputPath `
-    --report $eventReportPath
+    --input $incidentInputPath `
+    --report $incidentEventPath
   if ($LASTEXITCODE -ne 0) {
     Write-Warning ("[pre-push] NI known-flag incident normalization failed (exit={0})." -f $LASTEXITCODE)
     return $null
   }
 
-  return $eventReportPath
+  return $incidentEventPath
 }
 
-function Resolve-PrePushKnownFlagScenario {
+function Resolve-PrePushKnownFlagScenarioPack {
   param([string]$repoRoot)
 
   $contractPath = Join-Path $repoRoot 'tools' 'policy' 'prepush-known-flag-scenarios.json'
   if (-not (Test-Path -LiteralPath $contractPath -PathType Leaf)) {
-    throw ("Pre-push known-flag scenario contract not found: {0}" -f $contractPath)
+    throw ("Pre-push known-flag scenario-pack contract not found: {0}" -f $contractPath)
   }
 
   try {
     $contract = Get-Content -LiteralPath $contractPath -Raw | ConvertFrom-Json -Depth 20
   } catch {
-    throw ("Unable to parse pre-push known-flag scenario contract: {0}" -f $contractPath)
+    throw ("Unable to parse pre-push known-flag scenario-pack contract: {0}" -f $contractPath)
   }
 
-  if ([string]$contract.schema -ne 'prepush-known-flag-scenarios/v1') {
-    throw ("Unexpected pre-push known-flag scenario contract schema in {0}: {1}" -f $contractPath, $contract.schema)
+  if ([string]$contract.schema -ne 'prepush-known-flag-scenario-packs/v1') {
+    throw ("Unexpected pre-push known-flag scenario-pack contract schema in {0}: {1}" -f $contractPath, $contract.schema)
   }
-  $scenarios = @($contract.scenarios)
-  if ($scenarios.Count -lt 1) {
-    throw ("Pre-push known-flag scenario contract defines no scenarios: {0}" -f $contractPath)
+  $scenarioPacks = @($contract.scenarioPacks)
+  if ($scenarioPacks.Count -lt 1) {
+    throw ("Pre-push known-flag scenario-pack contract defines no scenario packs: {0}" -f $contractPath)
   }
-  $activeScenarios = @($scenarios | Where-Object { $_.isActive -eq $true })
-  if ($activeScenarios.Count -ne 1) {
-    throw ("Pre-push known-flag scenario contract must define exactly one active scenario: {0}" -f $contractPath)
+  $activeScenarioPacks = @($scenarioPacks | Where-Object { $_.isActive -eq $true })
+  if ($activeScenarioPacks.Count -ne 1) {
+    throw ("Pre-push known-flag scenario-pack contract must define exactly one active scenario pack: {0}" -f $contractPath)
   }
 
-  $activeScenario = $activeScenarios[0]
-  if ([string]::IsNullOrWhiteSpace([string]$activeScenario.id)) {
-    throw ("Pre-push known-flag scenario contract active scenario is missing id: {0}" -f $contractPath)
+  $activeScenarioPack = $activeScenarioPacks[0]
+  if ([string]::IsNullOrWhiteSpace([string]$activeScenarioPack.id)) {
+    throw ("Pre-push known-flag scenario-pack contract active scenario pack is missing id: {0}" -f $contractPath)
   }
-  if (-not [string]::IsNullOrWhiteSpace([string]$contract.activeScenarioId) -and
-      -not [string]::Equals([string]$contract.activeScenarioId, [string]$activeScenario.id, [System.StringComparison]::Ordinal)) {
-    throw ("Pre-push known-flag scenario contract activeScenarioId did not match the active scenario id in {0}" -f $contractPath)
+  if (-not [string]::IsNullOrWhiteSpace([string]$contract.activeScenarioPackId) -and
+      -not [string]::Equals([string]$contract.activeScenarioPackId, [string]$activeScenarioPack.id, [System.StringComparison]::Ordinal)) {
+    throw ("Pre-push known-flag scenario-pack contract activeScenarioPackId did not match the active scenario pack id in {0}" -f $contractPath)
   }
-  if ([string]::IsNullOrWhiteSpace([string]$activeScenario.image)) {
-    throw ("Pre-push known-flag scenario contract active scenario is missing image: {0}" -f $contractPath)
+  if ([string]::IsNullOrWhiteSpace([string]$activeScenarioPack.image)) {
+    throw ("Pre-push known-flag scenario-pack contract active scenario pack is missing image: {0}" -f $contractPath)
   }
-  if ([string]::IsNullOrWhiteSpace([string]$activeScenario.expectedGateOutcome)) {
-    throw ("Pre-push known-flag scenario contract active scenario is missing expectedGateOutcome: {0}" -f $contractPath)
+  if ([string]::IsNullOrWhiteSpace([string]$activeScenarioPack.expectedGateOutcome)) {
+    throw ("Pre-push known-flag scenario-pack contract active scenario pack is missing expectedGateOutcome: {0}" -f $contractPath)
   }
-  $scenarioFlags = @($activeScenario.flags | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-  if ($scenarioFlags.Count -lt 1) {
-    throw ("Pre-push known-flag scenario contract active scenario is missing flags: {0}" -f $contractPath)
+  $packPlaneApplicability = @($activeScenarioPack.planeApplicability | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+  if ($packPlaneApplicability.Count -lt 1) {
+    throw ("Pre-push known-flag scenario-pack contract active scenario pack is missing planeApplicability: {0}" -f $contractPath)
   }
-  foreach ($flag in $scenarioFlags) {
-    if (-not $flag.StartsWith('-', [System.StringComparison]::Ordinal)) {
-      throw ("Pre-push known-flag scenario contract flag must start with '-': {0}" -f $flag)
+  if ([string]::IsNullOrWhiteSpace([string]$activeScenarioPack.priorityClass)) {
+    throw ("Pre-push known-flag scenario-pack contract active scenario pack is missing priorityClass: {0}" -f $contractPath)
+  }
+  if (-not $activeScenarioPack.target) {
+    throw ("Pre-push known-flag scenario-pack contract active scenario pack is missing target: {0}" -f $contractPath)
+  }
+  if ([string]::IsNullOrWhiteSpace([string]$activeScenarioPack.target.baseVi) -or
+      [string]::IsNullOrWhiteSpace([string]$activeScenarioPack.target.headVi)) {
+    throw ("Pre-push known-flag scenario-pack contract active scenario pack target is missing baseVi/headVi: {0}" -f $contractPath)
+  }
+  if (-not $activeScenarioPack.evidence) {
+    throw ("Pre-push known-flag scenario-pack contract active scenario pack is missing evidence paths: {0}" -f $contractPath)
+  }
+  if ([string]::IsNullOrWhiteSpace([string]$activeScenarioPack.evidence.resultsRoot) -or
+      [string]::IsNullOrWhiteSpace([string]$activeScenarioPack.evidence.reportPath) -or
+      [string]::IsNullOrWhiteSpace([string]$activeScenarioPack.evidence.incidentInputPath) -or
+      [string]::IsNullOrWhiteSpace([string]$activeScenarioPack.evidence.incidentEventPath)) {
+    throw ("Pre-push known-flag scenario-pack contract active scenario pack is missing evidence paths: {0}" -f $contractPath)
+  }
+
+  $declaredScenarios = @($activeScenarioPack.scenarios)
+  if ($declaredScenarios.Count -lt 1) {
+    throw ("Pre-push known-flag scenario-pack contract active scenario pack defines no scenarios: {0}" -f $contractPath)
+  }
+
+  $resolvedScenarioList = New-Object System.Collections.Generic.List[object]
+  $scenarioIds = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::Ordinal)
+  foreach ($declaredScenario in $declaredScenarios) {
+    $scenarioId = [string]$declaredScenario.id
+    if ([string]::IsNullOrWhiteSpace($scenarioId)) {
+      throw ("Pre-push known-flag scenario-pack contract scenario is missing id: {0}" -f $contractPath)
     }
-  }
-  if (-not $activeScenario.evidence) {
-    throw ("Pre-push known-flag scenario contract active scenario is missing evidence paths: {0}" -f $contractPath)
-  }
-  if ([string]::IsNullOrWhiteSpace([string]$activeScenario.evidence.resultsRoot) -or
-      [string]::IsNullOrWhiteSpace([string]$activeScenario.evidence.reportPath)) {
-    throw ("Pre-push known-flag scenario contract active scenario is missing resultsRoot/reportPath: {0}" -f $contractPath)
+    if (-not $scenarioIds.Add($scenarioId)) {
+      throw ("Pre-push known-flag scenario-pack contract scenario ids must be unique: {0}" -f $scenarioId)
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$declaredScenario.description)) {
+      throw ("Pre-push known-flag scenario-pack contract scenario '{0}' is missing description: {1}" -f $scenarioId, $contractPath)
+    }
+
+    $scenarioFlags = @($declaredScenario.requestedFlags | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    foreach ($flag in $scenarioFlags) {
+      if (-not $flag.StartsWith('-', [System.StringComparison]::Ordinal)) {
+        throw ("Pre-push known-flag scenario-pack contract flag must start with '-': {0}" -f $flag)
+      }
+    }
+
+    if (-not $declaredScenario.intendedSuppressionSemantics) {
+      throw ("Pre-push known-flag scenario-pack contract scenario '{0}' is missing intendedSuppressionSemantics: {1}" -f $scenarioId, $contractPath)
+    }
+    if (-not $declaredScenario.expectedReviewerAssertions -or @($declaredScenario.expectedReviewerAssertions).Count -lt 1) {
+      throw ("Pre-push known-flag scenario-pack contract scenario '{0}' is missing expectedReviewerAssertions: {1}" -f $scenarioId, $contractPath)
+    }
+    if (-not $declaredScenario.expectedRawModeEvidenceBoundaries -or @($declaredScenario.expectedRawModeEvidenceBoundaries).Count -lt 1) {
+      throw ("Pre-push known-flag scenario-pack contract scenario '{0}' is missing expectedRawModeEvidenceBoundaries: {1}" -f $scenarioId, $contractPath)
+    }
+
+    $scenarioPlaneApplicability = @()
+    if ($declaredScenario.PSObject.Properties['planeApplicability'] -and $declaredScenario.planeApplicability) {
+      $scenarioPlaneApplicability = @($declaredScenario.planeApplicability | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    if ($scenarioPlaneApplicability.Count -lt 1) {
+      $scenarioPlaneApplicability = @($packPlaneApplicability)
+    }
+    $scenarioPriorityClass = if (-not $declaredScenario.PSObject.Properties['priorityClass'] -or [string]::IsNullOrWhiteSpace([string]$declaredScenario.priorityClass)) {
+      [string]$activeScenarioPack.priorityClass
+    } else {
+      [string]$declaredScenario.priorityClass
+    }
+
+    $suppressedCategories = @()
+    if ($declaredScenario.intendedSuppressionSemantics.PSObject.Properties['suppressedCategories'] -and
+        $declaredScenario.intendedSuppressionSemantics.suppressedCategories) {
+      $suppressedCategories = @($declaredScenario.intendedSuppressionSemantics.suppressedCategories | ForEach-Object { [string]$_ })
+    }
+
+    $expectedReviewerAssertions = New-Object System.Collections.Generic.List[object]
+    foreach ($assertion in @($declaredScenario.expectedReviewerAssertions)) {
+      $expectedReviewerAssertions.Add([pscustomobject]@{
+        id = [string]$assertion.id
+        surface = [string]$assertion.surface
+        requirement = [string]$assertion.requirement
+      }) | Out-Null
+    }
+
+    $expectedRawModeEvidenceBoundaries = New-Object System.Collections.Generic.List[object]
+    foreach ($boundary in @($declaredScenario.expectedRawModeEvidenceBoundaries)) {
+      $expectedRawModeEvidenceBoundaries.Add([pscustomobject]@{
+        id = [string]$boundary.id
+        mode = [string]$boundary.mode
+        surfaceRole = [string]$boundary.surfaceRole
+        expectation = [string]$boundary.expectation
+      }) | Out-Null
+    }
+
+    $resolvedScenarioList.Add([pscustomobject]@{
+      id = $scenarioId
+      description = [string]$declaredScenario.description
+      requestedFlags = @($scenarioFlags)
+      requestedFlagsLabel = if ($scenarioFlags.Count -eq 0) { '(none)' } else { [string]::Join(', ', $scenarioFlags) }
+      planeApplicability = @($scenarioPlaneApplicability)
+      priorityClass = $scenarioPriorityClass
+      intendedSuppressionSemantics = [pscustomobject]@{
+        suppressedCategories = @($suppressedCategories)
+        reviewerSurfaceIntent = [string]$declaredScenario.intendedSuppressionSemantics.reviewerSurfaceIntent
+        rawModeBoundaryIntent = [string]$declaredScenario.intendedSuppressionSemantics.rawModeBoundaryIntent
+      }
+      expectedReviewerAssertions = @($expectedReviewerAssertions.ToArray())
+      expectedRawModeEvidenceBoundaries = @($expectedRawModeEvidenceBoundaries.ToArray())
+    }) | Out-Null
   }
 
   return [pscustomobject]@{
     path = $contractPath
-    scenario = $activeScenario
-    flags = @($scenarioFlags)
-    resultsRoot = Join-Path $repoRoot ([string]$activeScenario.evidence.resultsRoot)
-    reportPath = Join-Path $repoRoot ([string]$activeScenario.evidence.reportPath)
+    pack = $activeScenarioPack
+    scenarios = @($resolvedScenarioList.ToArray())
+    resultsRoot = Join-Path $repoRoot ([string]$activeScenarioPack.evidence.resultsRoot)
+    reportPath = Join-Path $repoRoot ([string]$activeScenarioPack.evidence.reportPath)
+    incidentInputPath = Join-Path $repoRoot ([string]$activeScenarioPack.evidence.incidentInputPath)
+    incidentEventPath = Join-Path $repoRoot ([string]$activeScenarioPack.evidence.incidentEventPath)
+    baseVi = Join-Path $repoRoot ([string]$activeScenarioPack.target.baseVi)
+    headVi = Join-Path $repoRoot ([string]$activeScenarioPack.target.headVi)
   }
 }
 
@@ -492,23 +607,30 @@ function Write-PrePushKnownFlagScenarioReport {
   } catch {}
 
   $report = [ordered]@{
-    schema = 'pre-push-known-flag-scenario-report@v1'
+    schema = 'pre-push-known-flag-scenario-pack-report@v1'
     generatedAt = (Get-Date).ToUniversalTime().ToString('o')
     contractPath = [string]$contract.path
     branch = $branchName
     headSha = $sha
-    scenario = [ordered]@{
-      id = [string]$contract.scenario.id
-      description = [string]$contract.scenario.description
-      image = [string]$contract.scenario.image
-      labviewPathEnv = [string]$contract.scenario.labviewPathEnv
-      defaultLabviewPath = [string]$contract.scenario.defaultLabviewPath
-      requestedFlags = @($contract.flags)
-      expectedGateOutcome = [string]$contract.scenario.expectedGateOutcome
+    scenarioPack = [ordered]@{
+      id = [string]$contract.pack.id
+      description = [string]$contract.pack.description
+      image = [string]$contract.pack.image
+      labviewPathEnv = [string]$contract.pack.labviewPathEnv
+      defaultLabviewPath = [string]$contract.pack.defaultLabviewPath
+      planeApplicability = @($contract.pack.planeApplicability | ForEach-Object { [string]$_ })
+      priorityClass = [string]$contract.pack.priorityClass
+      expectedGateOutcome = [string]$contract.pack.expectedGateOutcome
+      target = [ordered]@{
+        kind = [string]$contract.pack.target.kind
+        baseVi = [string]$contract.pack.target.baseVi
+        headVi = [string]$contract.pack.target.headVi
+      }
+      scenarioIds = @($contract.scenarios | ForEach-Object { [string]$_.id })
     }
     observed = [ordered]@{
       outcome = $observedOutcome
-      activeScenarioName = $activeScenarioName
+      activeScenarioId = $activeScenarioName
       capturePath = $activeCapturePath
       reportPath = $activeReportPath
       failureMessage = $failureMessage
@@ -582,6 +704,56 @@ function Write-PrePushSupportLaneReport {
   return $reportPath
 }
 
+function New-PrePushTransportMatrixScenarios {
+  param(
+    [AllowNull()]
+    [object[]]$scenarioDefinitions
+  )
+
+  $baseFlagOptions = New-Object System.Collections.Generic.List[object]
+  $seenFlags = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::Ordinal)
+  foreach ($scenarioDefinition in @($scenarioDefinitions)) {
+    if ($null -eq $scenarioDefinition) {
+      continue
+    }
+    $requestedFlags = @()
+    if ($scenarioDefinition.PSObject.Properties['requestedFlags'] -and $scenarioDefinition.requestedFlags) {
+      $requestedFlags = @($scenarioDefinition.requestedFlags | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    foreach ($requestedFlag in $requestedFlags) {
+      if ($seenFlags.Add($requestedFlag)) {
+        $baseFlagOptions.Add([pscustomobject]@{
+          label = ([string]$requestedFlag).TrimStart('-')
+          flag = [string]$requestedFlag
+        }) | Out-Null
+      }
+    }
+  }
+
+  $transportMatrixScenarioBuffer = New-Object System.Collections.Generic.List[object]
+  for ($mask = 0; $mask -lt (1 -shl $baseFlagOptions.Count); $mask++) {
+    $scenarioFlags = @()
+    $scenarioLabels = @()
+    $selectedIndices = @()
+    for ($i = 0; $i -lt $baseFlagOptions.Count; $i++) {
+      if (($mask -band (1 -shl $i)) -ne 0) {
+        $scenarioFlags += [string]$baseFlagOptions[$i].flag
+        $scenarioLabels += [string]$baseFlagOptions[$i].label
+        $selectedIndices += $i
+      }
+    }
+
+    $transportMatrixScenarioBuffer.Add([pscustomobject]@{
+      name = if ($scenarioLabels.Count -eq 0) { 'baseline' } else { [string]::Join('__', $scenarioLabels) }
+      flags = @($scenarioFlags)
+      requestedFlagsLabel = if ($scenarioFlags.Count -eq 0) { '(none)' } else { [string]::Join(', ', $scenarioFlags) }
+      orderKey = if ($selectedIndices.Count -eq 0) { 'none' } else { [string]::Join('-', @($selectedIndices | ForEach-Object { '{0:d2}' -f $_ })) }
+    }) | Out-Null
+  }
+
+  return @($transportMatrixScenarioBuffer | Sort-Object @{ Expression = { $_.flags.Count } }, @{ Expression = { $_.orderKey } })
+}
+
 function ConvertTo-PrePushKnownFlagScenarioResultArray {
   param(
     [AllowNull()]
@@ -604,10 +776,70 @@ function ConvertTo-PrePushKnownFlagScenarioResultArray {
       $flags = @($scenarioResult.flags | ForEach-Object { [string]$_ })
     }
 
+    $planeApplicability = @()
+    if ($scenarioResult.PSObject.Properties['planeApplicability'] -and $scenarioResult.planeApplicability) {
+      $planeApplicability = @($scenarioResult.planeApplicability | ForEach-Object { [string]$_ })
+    }
+
+    $suppressedCategories = @()
+    $reviewerSurfaceIntent = ''
+    $rawModeBoundaryIntent = ''
+    if ($scenarioResult.PSObject.Properties['intendedSuppressionSemantics'] -and $scenarioResult.intendedSuppressionSemantics) {
+      if ($scenarioResult.intendedSuppressionSemantics.PSObject.Properties['suppressedCategories'] -and
+          $scenarioResult.intendedSuppressionSemantics.suppressedCategories) {
+        $suppressedCategories = @($scenarioResult.intendedSuppressionSemantics.suppressedCategories | ForEach-Object { [string]$_ })
+      }
+      if ($scenarioResult.intendedSuppressionSemantics.PSObject.Properties['reviewerSurfaceIntent']) {
+        $reviewerSurfaceIntent = [string]$scenarioResult.intendedSuppressionSemantics.reviewerSurfaceIntent
+      }
+      if ($scenarioResult.intendedSuppressionSemantics.PSObject.Properties['rawModeBoundaryIntent']) {
+        $rawModeBoundaryIntent = [string]$scenarioResult.intendedSuppressionSemantics.rawModeBoundaryIntent
+      }
+    }
+
+    $expectedReviewerAssertions = New-Object System.Collections.Generic.List[object]
+    if ($scenarioResult.PSObject.Properties['expectedReviewerAssertions'] -and $scenarioResult.expectedReviewerAssertions) {
+      foreach ($assertion in @($scenarioResult.expectedReviewerAssertions)) {
+        if ($null -eq $assertion) {
+          continue
+        }
+        $expectedReviewerAssertions.Add([pscustomobject]@{
+          id = [string]$assertion.id
+          surface = [string]$assertion.surface
+          requirement = [string]$assertion.requirement
+        }) | Out-Null
+      }
+    }
+
+    $expectedRawModeEvidenceBoundaries = New-Object System.Collections.Generic.List[object]
+    if ($scenarioResult.PSObject.Properties['expectedRawModeEvidenceBoundaries'] -and $scenarioResult.expectedRawModeEvidenceBoundaries) {
+      foreach ($boundary in @($scenarioResult.expectedRawModeEvidenceBoundaries)) {
+        if ($null -eq $boundary) {
+          continue
+        }
+        $expectedRawModeEvidenceBoundaries.Add([pscustomobject]@{
+          id = [string]$boundary.id
+          mode = [string]$boundary.mode
+          surfaceRole = [string]$boundary.surfaceRole
+          expectation = [string]$boundary.expectation
+        }) | Out-Null
+      }
+    }
+
     $normalizedResults.Add([pscustomobject]@{
       name = [string]$scenarioResult.name
+      description = if ($scenarioResult.PSObject.Properties['description']) { [string]$scenarioResult.description } else { '' }
       requestedFlags = $requestedFlags
       flags = $flags
+      planeApplicability = $planeApplicability
+      priorityClass = if ($scenarioResult.PSObject.Properties['priorityClass']) { [string]$scenarioResult.priorityClass } else { '' }
+      intendedSuppressionSemantics = [pscustomobject]@{
+        suppressedCategories = @($suppressedCategories)
+        reviewerSurfaceIntent = $reviewerSurfaceIntent
+        rawModeBoundaryIntent = $rawModeBoundaryIntent
+      }
+      expectedReviewerAssertions = @($expectedReviewerAssertions.ToArray())
+      expectedRawModeEvidenceBoundaries = @($expectedRawModeEvidenceBoundaries.ToArray())
       resultClass = [string]$scenarioResult.resultClass
       gateOutcome = [string]$scenarioResult.gateOutcome
       capturePath = [string]$scenarioResult.capturePath
@@ -700,7 +932,7 @@ $skipNiImageChecks = $SkipNiImageFlagScenarios `
   -or ($env:PREPUSH_SKIP_LEGACY_FIXTURE_CHECKS -match '^(1|true|yes|on)$') `
   -or ($env:PREPUSH_SKIP_ICON_EDITOR_FIXTURE_CHECKS -match '^(1|true|yes|on)$')
 if ($skipNiImageChecks) {
-  Write-Host '[pre-push] Skipping VI Comparison Report flag combination scenarios by request' -ForegroundColor Yellow
+  Write-Host '[pre-push] Skipping VI Comparison Report scenario-pack and support lanes by request' -ForegroundColor Yellow
   return
 }
 
@@ -708,33 +940,33 @@ $niCompareScript = Join-Path $root 'tools' 'Run-NILinuxContainerCompare.ps1'
 if (-not (Test-Path -LiteralPath $niCompareScript -PathType Leaf)) {
   throw ("NI image compare script not found: {0}" -f $niCompareScript)
 }
-$baseVi = Join-Path $root 'VI1.vi'
-$headVi = Join-Path $root 'VI2.vi'
+$knownFlagScenarioContract = Resolve-PrePushKnownFlagScenarioPack -repoRoot $root
+$knownFlagScenarioPackId = [string]$knownFlagScenarioContract.pack.id
+$baseVi = [string]$knownFlagScenarioContract.baseVi
+$headVi = [string]$knownFlagScenarioContract.headVi
 if (-not (Test-Path -LiteralPath $baseVi -PathType Leaf)) {
-  throw ("Base VI not found for NI image known-flag scenario: {0}" -f $baseVi)
+  throw ("Base VI not found for NI image known-flag scenario pack '{0}': {1}" -f $knownFlagScenarioPackId, $baseVi)
 }
 if (-not (Test-Path -LiteralPath $headVi -PathType Leaf)) {
-  throw ("Head VI not found for NI image known-flag scenario: {0}" -f $headVi)
+  throw ("Head VI not found for NI image known-flag scenario pack '{0}': {1}" -f $knownFlagScenarioPackId, $headVi)
 }
 
-$knownFlagScenarioContract = Resolve-PrePushKnownFlagScenario -repoRoot $root
-$knownFlagScenarioId = [string]$knownFlagScenarioContract.scenario.id
-$expectedImage = [string]$knownFlagScenarioContract.scenario.image
-$labviewPathEnvName = [string]$knownFlagScenarioContract.scenario.labviewPathEnv
+$expectedImage = [string]$knownFlagScenarioContract.pack.image
+$labviewPathEnvName = [string]$knownFlagScenarioContract.pack.labviewPathEnv
 $labviewPathFromEnv = if (-not [string]::IsNullOrWhiteSpace($labviewPathEnvName)) {
   [Environment]::GetEnvironmentVariable($labviewPathEnvName, 'Process')
 } else {
   $null
 }
 $containerLabVIEWPath = if ([string]::IsNullOrWhiteSpace($labviewPathFromEnv)) {
-  ([string]$knownFlagScenarioContract.scenario.defaultLabviewPath).Trim()
+  ([string]$knownFlagScenarioContract.pack.defaultLabviewPath).Trim()
 } else {
   ([string]$labviewPathFromEnv).Trim()
 }
 if ([string]::IsNullOrWhiteSpace($containerLabVIEWPath)) {
-  throw ("Pre-push known-flag scenario '{0}' resolved an empty LabVIEW path." -f $knownFlagScenarioId)
+  throw ("Pre-push known-flag scenario pack '{0}' resolved an empty LabVIEW path." -f $knownFlagScenarioPackId)
 }
-Write-Host ("[pre-push] Active known-flag scenario '{0}' image={1} flags={2}" -f $knownFlagScenarioId, $expectedImage, [string]::Join(', ', @($knownFlagScenarioContract.flags))) -ForegroundColor Cyan
+Write-Host ("[pre-push] Active known-flag scenario pack '{0}' image={1} scenarios={2}" -f $knownFlagScenarioPackId, $expectedImage, @($knownFlagScenarioContract.scenarios).Count) -ForegroundColor Cyan
 $singleContainerBootstrapScript = Join-Path $root 'tools' 'NILinux-FlagMatrixBootstrap.sh'
 if (-not (Test-Path -LiteralPath $singleContainerBootstrapScript -PathType Leaf)) {
   throw ("Single-container flag matrix bootstrap script not found: {0}" -f $singleContainerBootstrapScript)
@@ -743,35 +975,8 @@ $viHistoryBootstrapScript = Join-Path $root 'tools' 'NILinux-VIHistorySuiteBoots
 if (-not (Test-Path -LiteralPath $viHistoryBootstrapScript -PathType Leaf)) {
   throw ("VI history bootstrap script not found: {0}" -f $viHistoryBootstrapScript)
 }
-$baseFlagOptions = @(
-  $knownFlagScenarioContract.flags | ForEach-Object {
-    [ordered]@{
-      label = ([string]$_).TrimStart('-')
-      flag = [string]$_
-    }
-  }
-)
-$knownFlagScenarioBuffer = New-Object System.Collections.Generic.List[object]
-for ($mask = 0; $mask -lt (1 -shl $baseFlagOptions.Count); $mask++) {
-  $scenarioFlags = @()
-  $scenarioLabels = @()
-  $selectedIndices = @()
-  for ($i = 0; $i -lt $baseFlagOptions.Count; $i++) {
-    if (($mask -band (1 -shl $i)) -ne 0) {
-      $scenarioFlags += [string]$baseFlagOptions[$i].flag
-      $scenarioLabels += [string]$baseFlagOptions[$i].label
-      $selectedIndices += $i
-    }
-  }
-
-  $knownFlagScenarioBuffer.Add([pscustomobject]@{
-    name = if ($scenarioLabels.Count -eq 0) { 'baseline' } else { [string]::Join('__', $scenarioLabels) }
-    flags = @($scenarioFlags)
-    requestedFlagsLabel = if ($scenarioFlags.Count -eq 0) { '(none)' } else { [string]::Join(', ', $scenarioFlags) }
-    orderKey = if ($selectedIndices.Count -eq 0) { 'none' } else { [string]::Join('-', @($selectedIndices | ForEach-Object { '{0:d2}' -f $_ })) }
-  }) | Out-Null
-}
-$knownFlagScenarios = @($knownFlagScenarioBuffer | Sort-Object @{ Expression = { $_.flags.Count } }, @{ Expression = { $_.orderKey } })
+$knownFlagScenarios = @($knownFlagScenarioContract.scenarios)
+$transportMatrixScenarios = @(New-PrePushTransportMatrixScenarios -scenarioDefinitions $knownFlagScenarios)
 $scenarioRoot = [string]$knownFlagScenarioContract.resultsRoot
 New-Item -ItemType Directory -Path $scenarioRoot -Force | Out-Null
 $scenarioContractReportPath = [string]$knownFlagScenarioContract.reportPath
@@ -801,11 +1006,11 @@ $observedCapturePath = [string]$capturePath
 $observedReportPath = [string]$reportPath
 
 try {
-  Write-Host ("[pre-push] Running active known-flag scenario '{0}' (real container compare)" -f $knownFlagScenarioId) -ForegroundColor Cyan
+  Write-Host ("[pre-push] Running active known-flag scenario pack '{0}' (real container compare)" -f $knownFlagScenarioPackId) -ForegroundColor Cyan
   $currentLane = 'known-flag'
   foreach ($scenario in $knownFlagScenarios) {
-    $activeScenarioName = [string]$scenario.name
-    $activeScenarioFlags = @($scenario.flags | ForEach-Object { [string]$_ })
+    $activeScenarioName = [string]$scenario.id
+    $activeScenarioFlags = @($scenario.requestedFlags | ForEach-Object { [string]$_ })
     $scenarioDir = Join-Path $scenarioRoot $activeScenarioName
     New-Item -ItemType Directory -Path $scenarioDir -Force | Out-Null
     $reportPath = Join-Path $scenarioDir 'compare-report.html'
@@ -814,7 +1019,7 @@ try {
     $observedCapturePath = [string]$capturePath
     $observedReportPath = [string]$reportPath
 
-    Write-Host ("[pre-push] Running NI image flag scenario '{0}' requestedFlags={1}" -f $activeScenarioName, [string]$scenario.requestedFlagsLabel) -ForegroundColor Cyan
+    Write-Host ("[pre-push] Running NI image scenario-pack member '{0}' requestedFlags={1}" -f $activeScenarioName, [string]$scenario.requestedFlagsLabel) -ForegroundColor Cyan
     Push-Location $root
     try {
       & $niCompareScript `
@@ -872,8 +1077,14 @@ try {
 
     $knownFlagScenarioResults.Add([pscustomobject]@{
       name = $activeScenarioName
+      description = [string]$scenario.description
       requestedFlags = @($activeScenarioFlags)
       flags = @($flagsUsed)
+      planeApplicability = @($scenario.planeApplicability)
+      priorityClass = [string]$scenario.priorityClass
+      intendedSuppressionSemantics = $scenario.intendedSuppressionSemantics
+      expectedReviewerAssertions = @($scenario.expectedReviewerAssertions)
+      expectedRawModeEvidenceBoundaries = @($scenario.expectedRawModeEvidenceBoundaries)
       resultClass = $resultClass
       gateOutcome = $gateOutcome
       capturePath = $capturePath
@@ -987,8 +1198,8 @@ try {
   }
 
   $ledgerRows = @(Get-Content -LiteralPath $singleContainerLedgerPath | Where-Object { $_ -and $_.Trim() })
-  if ($ledgerRows.Count -ne $knownFlagScenarios.Count) {
-    throw ("NI image flag scenario '{0}' ledger count mismatch ({1} != {2})." -f $activeScenarioName, $ledgerRows.Count, $knownFlagScenarios.Count)
+  if ($ledgerRows.Count -ne $transportMatrixScenarios.Count) {
+    throw ("NI image flag scenario '{0}' ledger count mismatch ({1} != {2})." -f $activeScenarioName, $ledgerRows.Count, $transportMatrixScenarios.Count)
   }
   $ledgerEntries = @(
     $ledgerRows | ForEach-Object {
@@ -1005,7 +1216,7 @@ try {
       }
     }
   )
-  $expectedScenarioNames = @($knownFlagScenarios | ForEach-Object { [string]$_.name })
+  $expectedScenarioNames = @($transportMatrixScenarios | ForEach-Object { [string]$_.name })
   $actualScenarioNames = @($ledgerEntries | ForEach-Object { [string]$_.name })
   $scenarioNameDifferences = @(Compare-Object -ReferenceObject $expectedScenarioNames -DifferenceObject $actualScenarioNames)
   if ($scenarioNameDifferences.Count -gt 0) {
@@ -1227,13 +1438,14 @@ try {
     $lines = @(
       '### Pre-push NI Image Scenarios',
       '',
-      ('- activeScenarioId=`{0}` expectedImage=`{1}` requestedFlags=`{2}`' -f $knownFlagScenarioId, $expectedImage, [string]::Join(', ', @($knownFlagScenarioContract.flags))),
+      ('- activeScenarioPackId=`{0}` expectedImage=`{1}` declaredScenarios=`{2}`' -f $knownFlagScenarioPackId, $expectedImage, @($knownFlagScenarioContract.scenarios).Count),
       ''
     )
-    $lines += '#### Active Known-Flag Scenario'
+    $lines += '#### Active Scenario Pack'
     foreach ($scenarioResult in $knownFlagScenarioResults) {
       $requestedFlags = if (@($scenarioResult.requestedFlags).Count -eq 0) { '(none)' } else { [string]::Join(', ', @($scenarioResult.requestedFlags)) }
       $lines += ('- `{0}`: resultClass=`{1}` gateOutcome=`{2}` requestedFlags=`{3}` effectiveFlags=`{4}`' -f $scenarioResult.name, $scenarioResult.resultClass, $scenarioResult.gateOutcome, $requestedFlags, [string]::Join(', ', @($scenarioResult.flags)))
+      $lines += ('  description=`{0}` priorityClass=`{1}` planes=`{2}`' -f $scenarioResult.description, $scenarioResult.priorityClass, [string]::Join(', ', @($scenarioResult.planeApplicability)))
       $lines += ('  capture=`{0}` report=`{1}`' -f $scenarioResult.capturePath, $scenarioResult.reportPath)
     }
     $lines += ''
@@ -1252,7 +1464,7 @@ try {
     }
     $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
   }
-  Write-Host ("[pre-push] Active known-flag scenario '{0}' OK" -f $knownFlagScenarioId) -ForegroundColor Green
+  Write-Host ("[pre-push] Active known-flag scenario pack '{0}' OK" -f $knownFlagScenarioPackId) -ForegroundColor Green
 } catch {
   $failureMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { [string]$_ }
   switch ($currentLane) {
@@ -1306,7 +1518,7 @@ try {
   $eventReportPath = Write-PrePushNIKnownFlagIncidentEvent `
     -repoRoot $root `
     -errorMessage $failureMessage `
-    -scenarioId $knownFlagScenarioId `
+    -scenarioId $knownFlagScenarioPackId `
     -scenarioName $activeScenarioName `
     -scenarioDir $scenarioDir `
     -capturePath $capturePath `
@@ -1314,7 +1526,9 @@ try {
     -containerLabVIEWPath $containerLabVIEWPath `
     -scenarioFlags $activeScenarioFlags `
     -reportPath $reportPath `
-    -runtimeSnapshotPath $runtimeSnapshotPath
+    -runtimeSnapshotPath $runtimeSnapshotPath `
+    -incidentInputPath $knownFlagScenarioContract.incidentInputPath `
+    -incidentEventPath $knownFlagScenarioContract.incidentEventPath
   if (-not [string]::IsNullOrWhiteSpace($eventReportPath)) {
     Write-Host ("[pre-push] NI known-flag incident event report: {0}" -f $eventReportPath) -ForegroundColor Yellow
   }

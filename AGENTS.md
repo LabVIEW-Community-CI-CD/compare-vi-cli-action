@@ -105,7 +105,7 @@ Keep it short, stable, and helper-oriented. Deep runbooks belong in checked-in d
 ## Local Gates
 
 - `tools/PrePush-Checks.ps1` consumes `tools/policy/prepush-known-flag-scenarios.json`.
-- Exactly one active known-flag scenario is allowed in that checked-in contract at a time.
+- Exactly one active scenario pack is allowed in that checked-in contract at a time.
 - Deterministic top-level receipts:
   - `tests/results/_agent/pre-push-ni-image/known-flag-scenario-report.json`
   - `tests/results/_agent/pre-push-ni-image/transport-smoke-report.json`
