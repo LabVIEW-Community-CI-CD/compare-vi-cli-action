@@ -193,9 +193,7 @@ function Get-ChangedPowerShellPaths([string]$repoRoot) {
         $files.Add($absolute)
       }
     }
-    if ($files.Count -gt 0) {
-      break
-    }
+    break
   }
 
   return $files.ToArray()
@@ -209,8 +207,7 @@ function Invoke-PSScriptAnalyzerGate([string]$repoRoot) {
   }
 
   if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
-    Write-Host '[pre-push] PSScriptAnalyzer not installed; skipping analyzer gate' -ForegroundColor Yellow
-    return
+    throw 'PSScriptAnalyzer not installed; install the module or rerun with -SkipPSScriptAnalyzer.'
   }
 
   $paths = @(Get-ChangedPowerShellPaths -repoRoot $repoRoot)
@@ -522,6 +519,69 @@ function Write-PrePushKnownFlagScenarioReport {
   return $reportPath
 }
 
+function Write-PrePushSupportLaneReport {
+  param(
+    [string]$repoRoot,
+    [string]$reportPath,
+    [string]$schema,
+    [string]$laneName,
+    [string]$description,
+    [ValidateSet('pass', 'fail', 'not-run')]
+    [string]$observedOutcome,
+    [object[]]$scenarioResults,
+    [string]$failureMessage,
+    [string]$capturePath,
+    [string]$reportArtifactPath
+  )
+
+  if ([string]::IsNullOrWhiteSpace($reportPath)) {
+    return $null
+  }
+
+  $reportDir = Split-Path -Parent $reportPath
+  if (-not [string]::IsNullOrWhiteSpace($reportDir)) {
+    New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
+  }
+
+  $branchName = $null
+  $sha = $null
+  try {
+    $branchRaw = & git -C $repoRoot rev-parse --abbrev-ref HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and $branchRaw) {
+      $branchName = ($branchRaw | Select-Object -First 1).Trim()
+      if ($branchName -eq 'HEAD') {
+        $branchName = $null
+      }
+    }
+  } catch {}
+  try {
+    $shaRaw = & git -C $repoRoot rev-parse HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and $shaRaw) {
+      $sha = ($shaRaw | Select-Object -First 1).Trim()
+    }
+  } catch {}
+
+  $report = [ordered]@{
+    schema = $schema
+    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    branch = $branchName
+    headSha = $sha
+    lane = [ordered]@{
+      name = $laneName
+      description = $description
+    }
+    observed = [ordered]@{
+      outcome = $observedOutcome
+      capturePath = $capturePath
+      reportPath = $reportArtifactPath
+      failureMessage = $failureMessage
+    }
+    results = @($scenarioResults)
+  }
+  $report | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $reportPath -Encoding utf8
+  return $reportPath
+}
+
 function ConvertTo-PrePushKnownFlagScenarioResultArray {
   param(
     [AllowNull()]
@@ -715,19 +775,34 @@ $knownFlagScenarios = @($knownFlagScenarioBuffer | Sort-Object @{ Expression = {
 $scenarioRoot = [string]$knownFlagScenarioContract.resultsRoot
 New-Item -ItemType Directory -Path $scenarioRoot -Force | Out-Null
 $scenarioContractReportPath = [string]$knownFlagScenarioContract.reportPath
+$transportSmokeReportPath = Join-Path $scenarioRoot 'transport-smoke-report.json'
+$viHistorySmokeReportPath = Join-Path $scenarioRoot 'vi-history-smoke-report.json'
 $activeScenarioName = ''
 $activeScenarioFlags = @()
 $scenarioDir = $scenarioRoot
 $reportPath = Join-Path $scenarioDir 'compare-report.html'
 $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
 $capturePath = Join-Path $scenarioDir 'ni-linux-container-capture.json'
-$scenarioResults = New-Object System.Collections.Generic.List[object]
+$currentLane = 'known-flag'
+$knownFlagScenarioResults = New-Object System.Collections.Generic.List[object]
+$transportSmokeResults = New-Object System.Collections.Generic.List[object]
+$viHistorySmokeResults = New-Object System.Collections.Generic.List[object]
 $scenarioReportPath = $null
+$transportLaneReportPath = $null
+$viHistoryLaneReportPath = $null
+$knownFlagObservedScenarioName = ''
+$knownFlagObservedCapturePath = [string]$capturePath
+$knownFlagObservedReportPath = [string]$reportPath
+$transportObservedCapturePath = ''
+$transportObservedReportPath = ''
+$viHistoryObservedCapturePath = ''
+$viHistoryObservedReportPath = ''
 $observedCapturePath = [string]$capturePath
 $observedReportPath = [string]$reportPath
 
 try {
   Write-Host ("[pre-push] Running active known-flag scenario '{0}' (real container compare)" -f $knownFlagScenarioId) -ForegroundColor Cyan
+  $currentLane = 'known-flag'
   foreach ($scenario in $knownFlagScenarios) {
     $activeScenarioName = [string]$scenario.name
     $activeScenarioFlags = @($scenario.flags | ForEach-Object { [string]$_ })
@@ -795,7 +870,7 @@ try {
       throw ("NI image flag scenario '{0}' missing enforced -Headless flag in capture." -f $activeScenarioName)
     }
 
-    $scenarioResults.Add([pscustomobject]@{
+    $knownFlagScenarioResults.Add([pscustomobject]@{
       name = $activeScenarioName
       requestedFlags = @($activeScenarioFlags)
       flags = @($flagsUsed)
@@ -804,10 +879,24 @@ try {
       capturePath = $capturePath
       reportPath = $reportPath
     }) | Out-Null
+    $knownFlagObservedScenarioName = [string]$activeScenarioName
+    $knownFlagObservedCapturePath = [string]$capturePath
+    $knownFlagObservedReportPath = [string]$reportPath
     $observedCapturePath = [string]$capturePath
     $observedReportPath = [string]$reportPath
   }
+  $scenarioReportPath = Write-PrePushKnownFlagScenarioReport `
+    -repoRoot $root `
+    -contract $knownFlagScenarioContract `
+    -observedOutcome 'pass' `
+    -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $knownFlagScenarioResults) `
+    -failureMessage '' `
+    -activeScenarioName $knownFlagObservedScenarioName `
+    -activeCapturePath $knownFlagObservedCapturePath `
+    -activeReportPath $knownFlagObservedReportPath
+  Write-Host ("[pre-push] Known-flag scenario report: {0}" -f $scenarioReportPath) -ForegroundColor DarkGray
 
+  $currentLane = 'transport-smoke'
   $activeScenarioName = 'single-container-matrix'
   $activeScenarioFlags = @()
   $scenarioDir = Join-Path $scenarioRoot $activeScenarioName
@@ -947,7 +1036,7 @@ try {
     }
   }
 
-  $scenarioResults.Add([pscustomobject]@{
+  $transportSmokeResults.Add([pscustomobject]@{
     name = $activeScenarioName
     requestedFlags = @('all combinations')
     flags = @($flagsUsed)
@@ -956,9 +1045,24 @@ try {
     capturePath = $capturePath
     reportPath = $reportPath
   }) | Out-Null
+  $transportObservedCapturePath = [string]$capturePath
+  $transportObservedReportPath = [string]$reportPath
   $observedCapturePath = [string]$capturePath
   $observedReportPath = [string]$reportPath
+  $transportLaneReportPath = Write-PrePushSupportLaneReport `
+    -repoRoot $root `
+    -reportPath $transportSmokeReportPath `
+    -schema 'pre-push-ni-transport-smoke-report@v1' `
+    -laneName 'single-container-matrix' `
+    -description 'Transport-oriented single-container matrix smoke for NI Linux compare execution.' `
+    -observedOutcome 'pass' `
+    -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $transportSmokeResults) `
+    -failureMessage '' `
+    -capturePath $transportObservedCapturePath `
+    -reportArtifactPath $transportObservedReportPath
+  Write-Host ("[pre-push] Transport smoke report: {0}" -f $transportLaneReportPath) -ForegroundColor DarkGray
 
+  $currentLane = 'vi-history-smoke'
   $activeScenarioName = 'vi-history-report'
   $activeScenarioFlags = @('vi-history-suite')
   $scenarioDir = Join-Path $scenarioRoot $activeScenarioName
@@ -1093,7 +1197,7 @@ try {
     throw ("NI image flag scenario '{0}' missing VI history inspection HTML: {1}" -f $activeScenarioName, $viHistoryInspectionHtmlPath)
   }
 
-  $scenarioResults.Add([pscustomobject]@{
+  $viHistorySmokeResults.Add([pscustomobject]@{
     name = $activeScenarioName
     requestedFlags = @('vi-history-suite')
     flags = @('suite-manifest', 'history-report', 'history-summary')
@@ -1102,8 +1206,22 @@ try {
     capturePath = $capturePath
     reportPath = $viHistoryHtmlPath
   }) | Out-Null
+  $viHistoryObservedCapturePath = [string]$capturePath
+  $viHistoryObservedReportPath = [string]$viHistoryHtmlPath
   $observedCapturePath = [string]$capturePath
   $observedReportPath = [string]$viHistoryHtmlPath
+  $viHistoryLaneReportPath = Write-PrePushSupportLaneReport `
+    -repoRoot $root `
+    -reportPath $viHistorySmokeReportPath `
+    -schema 'pre-push-ni-vi-history-smoke-report@v1' `
+    -laneName 'vi-history-report' `
+    -description 'VI history rendering smoke lane for in-container history bundle generation.' `
+    -observedOutcome 'pass' `
+    -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $viHistorySmokeResults) `
+    -failureMessage '' `
+    -capturePath $viHistoryObservedCapturePath `
+    -reportArtifactPath $viHistoryObservedReportPath
+  Write-Host ("[pre-push] VI history smoke report: {0}" -f $viHistoryLaneReportPath) -ForegroundColor DarkGray
 
   if ($env:GITHUB_STEP_SUMMARY) {
     $lines = @(
@@ -1112,37 +1230,78 @@ try {
       ('- activeScenarioId=`{0}` expectedImage=`{1}` requestedFlags=`{2}`' -f $knownFlagScenarioId, $expectedImage, [string]::Join(', ', @($knownFlagScenarioContract.flags))),
       ''
     )
-    foreach ($scenarioResult in $scenarioResults) {
+    $lines += '#### Active Known-Flag Scenario'
+    foreach ($scenarioResult in $knownFlagScenarioResults) {
+      $requestedFlags = if (@($scenarioResult.requestedFlags).Count -eq 0) { '(none)' } else { [string]::Join(', ', @($scenarioResult.requestedFlags)) }
+      $lines += ('- `{0}`: resultClass=`{1}` gateOutcome=`{2}` requestedFlags=`{3}` effectiveFlags=`{4}`' -f $scenarioResult.name, $scenarioResult.resultClass, $scenarioResult.gateOutcome, $requestedFlags, [string]::Join(', ', @($scenarioResult.flags)))
+      $lines += ('  capture=`{0}` report=`{1}`' -f $scenarioResult.capturePath, $scenarioResult.reportPath)
+    }
+    $lines += ''
+    $lines += '#### Transport Smoke'
+    foreach ($scenarioResult in $transportSmokeResults) {
+      $requestedFlags = if (@($scenarioResult.requestedFlags).Count -eq 0) { '(none)' } else { [string]::Join(', ', @($scenarioResult.requestedFlags)) }
+      $lines += ('- `{0}`: resultClass=`{1}` gateOutcome=`{2}` requestedFlags=`{3}` effectiveFlags=`{4}`' -f $scenarioResult.name, $scenarioResult.resultClass, $scenarioResult.gateOutcome, $requestedFlags, [string]::Join(', ', @($scenarioResult.flags)))
+      $lines += ('  capture=`{0}` report=`{1}`' -f $scenarioResult.capturePath, $scenarioResult.reportPath)
+    }
+    $lines += ''
+    $lines += '#### VI History Smoke'
+    foreach ($scenarioResult in $viHistorySmokeResults) {
       $requestedFlags = if (@($scenarioResult.requestedFlags).Count -eq 0) { '(none)' } else { [string]::Join(', ', @($scenarioResult.requestedFlags)) }
       $lines += ('- `{0}`: resultClass=`{1}` gateOutcome=`{2}` requestedFlags=`{3}` effectiveFlags=`{4}`' -f $scenarioResult.name, $scenarioResult.resultClass, $scenarioResult.gateOutcome, $requestedFlags, [string]::Join(', ', @($scenarioResult.flags)))
       $lines += ('  capture=`{0}` report=`{1}`' -f $scenarioResult.capturePath, $scenarioResult.reportPath)
     }
     $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
   }
-  $scenarioReportPath = Write-PrePushKnownFlagScenarioReport `
-    -repoRoot $root `
-    -contract $knownFlagScenarioContract `
-    -observedOutcome 'pass' `
-    -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $scenarioResults) `
-    -failureMessage '' `
-    -activeScenarioName ([string]$activeScenarioName) `
-    -activeCapturePath $observedCapturePath `
-    -activeReportPath $observedReportPath
-  Write-Host ("[pre-push] Known-flag scenario report: {0}" -f $scenarioReportPath) -ForegroundColor DarkGray
   Write-Host ("[pre-push] Active known-flag scenario '{0}' OK" -f $knownFlagScenarioId) -ForegroundColor Green
 } catch {
   $failureMessage = if ($_.Exception -and $_.Exception.Message) { $_.Exception.Message } else { [string]$_ }
-  $scenarioReportPath = Write-PrePushKnownFlagScenarioReport `
-    -repoRoot $root `
-    -contract $knownFlagScenarioContract `
-    -observedOutcome 'fail' `
-    -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $scenarioResults) `
-    -failureMessage $failureMessage `
-    -activeScenarioName ([string]$activeScenarioName) `
-    -activeCapturePath $observedCapturePath `
-    -activeReportPath $observedReportPath
-  if (-not [string]::IsNullOrWhiteSpace($scenarioReportPath)) {
-    Write-Host ("[pre-push] Known-flag scenario report: {0}" -f $scenarioReportPath) -ForegroundColor Yellow
+  switch ($currentLane) {
+    'known-flag' {
+      $scenarioReportPath = Write-PrePushKnownFlagScenarioReport `
+        -repoRoot $root `
+        -contract $knownFlagScenarioContract `
+        -observedOutcome 'fail' `
+        -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $knownFlagScenarioResults) `
+        -failureMessage $failureMessage `
+        -activeScenarioName ([string]$activeScenarioName) `
+        -activeCapturePath $observedCapturePath `
+        -activeReportPath $observedReportPath
+      if (-not [string]::IsNullOrWhiteSpace($scenarioReportPath)) {
+        Write-Host ("[pre-push] Known-flag scenario report: {0}" -f $scenarioReportPath) -ForegroundColor Yellow
+      }
+    }
+    'transport-smoke' {
+      $transportLaneReportPath = Write-PrePushSupportLaneReport `
+        -repoRoot $root `
+        -reportPath $transportSmokeReportPath `
+        -schema 'pre-push-ni-transport-smoke-report@v1' `
+        -laneName 'single-container-matrix' `
+        -description 'Transport-oriented single-container matrix smoke for NI Linux compare execution.' `
+        -observedOutcome 'fail' `
+        -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $transportSmokeResults) `
+        -failureMessage $failureMessage `
+        -capturePath $observedCapturePath `
+        -reportArtifactPath $observedReportPath
+      if (-not [string]::IsNullOrWhiteSpace($transportLaneReportPath)) {
+        Write-Host ("[pre-push] Transport smoke report: {0}" -f $transportLaneReportPath) -ForegroundColor Yellow
+      }
+    }
+    'vi-history-smoke' {
+      $viHistoryLaneReportPath = Write-PrePushSupportLaneReport `
+        -repoRoot $root `
+        -reportPath $viHistorySmokeReportPath `
+        -schema 'pre-push-ni-vi-history-smoke-report@v1' `
+        -laneName 'vi-history-report' `
+        -description 'VI history rendering smoke lane for in-container history bundle generation.' `
+        -observedOutcome 'fail' `
+        -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $viHistorySmokeResults) `
+        -failureMessage $failureMessage `
+        -capturePath $observedCapturePath `
+        -reportArtifactPath $observedReportPath
+      if (-not [string]::IsNullOrWhiteSpace($viHistoryLaneReportPath)) {
+        Write-Host ("[pre-push] VI history smoke report: {0}" -f $viHistoryLaneReportPath) -ForegroundColor Yellow
+      }
+    }
   }
   $eventReportPath = Write-PrePushNIKnownFlagIncidentEvent `
     -repoRoot $root `

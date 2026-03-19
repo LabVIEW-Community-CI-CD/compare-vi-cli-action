@@ -44,8 +44,12 @@ test('PrePush NI image known-flag scenario consumes the checked-in active scenar
   assert.match(content, /\$failureMarkers = @\(/);
   assert.match(content, /Select-String -Path \$resolvedEntryLogPath -SimpleMatch -Quiet -Pattern \$failureMarkers/);
   assert.match(content, /Write-PrePushKnownFlagScenarioReport/);
-  assert.match(content, /\$observedCapturePath = \[string\]\$capturePath/);
-  assert.match(content, /\$observedReportPath = \[string\]\$viHistoryHtmlPath/);
+  assert.match(content, /Write-PrePushSupportLaneReport/);
+  assert.match(content, /transport-smoke-report\.json/);
+  assert.match(content, /vi-history-smoke-report\.json/);
+  assert.match(content, /#### Active Known-Flag Scenario/);
+  assert.match(content, /#### Transport Smoke/);
+  assert.match(content, /#### VI History Smoke/);
   assert.match(content, /Active known-flag scenario '\{0\}' OK/);
   assert.doesNotMatch(content, /pwsh\s+-NoLogo\s+-NoProfile\s+-File\s+\$niCompareScript/);
   assert.doesNotMatch(content, /Render-VIHistoryReport\.ps1/);
@@ -74,8 +78,12 @@ test('PrePush includes local PSScriptAnalyzer gate for changed PowerShell files'
   const content = readRepoFile('tools/PrePush-Checks.ps1');
   assert.match(content, /function Invoke-PSScriptAnalyzerGate/);
   assert.match(content, /Get-ChangedPowerShellPaths/);
+  assert.match(content, /if \(\$LASTEXITCODE -ne 0\) \{\s*continue\s*\}/);
+  assert.match(content, /\n\s*break\n\s*\}/);
   assert.match(content, /Invoke-ScriptAnalyzer -Path \$path -Severity Error,Warning/);
   assert.match(content, /Invoke-PSScriptAnalyzerGate -repoRoot \$root/);
+  assert.match(content, /PSScriptAnalyzer not installed; install the module or rerun with -SkipPSScriptAnalyzer\./);
+  assert.doesNotMatch(content, /PSScriptAnalyzer not installed; skipping analyzer gate/);
 });
 
 test('PrePush validates watcher telemetry via the sanitized schema wrapper', () => {
