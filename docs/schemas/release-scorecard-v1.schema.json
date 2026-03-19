@@ -139,7 +139,22 @@
       "required": ["status", "breachCount"],
       "properties": {
         "status": { "type": "string" },
-        "breachCount": { "type": ["integer", "null"] }
+        "breachCount": { "type": ["integer", "null"] },
+        "blockerCount": { "type": ["integer", "null"] },
+        "source": { "type": "string" },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string" },
+              "workflow": { "type": "string" },
+              "message": { "type": "string" }
+            }
+          }
+        }
       }
     },
     "rollbackGate": {
@@ -176,4 +191,3 @@
     }
   }
 }
-

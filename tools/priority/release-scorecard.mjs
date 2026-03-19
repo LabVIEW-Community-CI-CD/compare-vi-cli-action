@@ -165,10 +165,26 @@ function loadInputFile(filePath) {
 
 function statusFromSlo(payload) {
   if (!payload || typeof payload !== 'object') {
-    return { status: 'missing', breachCount: null };
+    return { status: 'missing', breachCount: null, blockerCount: null, source: 'missing', blockers: [] };
   }
   const breaches = Array.isArray(payload.breaches) ? payload.breaches : [];
-  return { status: breaches.length > 0 ? 'fail' : 'pass', breachCount: breaches.length };
+  const promotionGate = payload.promotionGate && typeof payload.promotionGate === 'object' ? payload.promotionGate : null;
+  if (promotionGate) {
+    return {
+      status: promotionGate.status || (breaches.length > 0 ? 'fail' : 'pass'),
+      breachCount: breaches.length,
+      blockerCount: Number.isFinite(promotionGate.blockerCount) ? promotionGate.blockerCount : null,
+      source: 'promotion-gate',
+      blockers: Array.isArray(promotionGate.blockers) ? promotionGate.blockers : []
+    };
+  }
+  return {
+    status: breaches.length > 0 ? 'fail' : 'pass',
+    breachCount: breaches.length,
+    blockerCount: breaches.length,
+    source: 'breaches',
+    blockers: breaches
+  };
 }
 
 function statusFromRollback(payload) {
@@ -227,7 +243,11 @@ export function evaluateReleaseScorecard(inputs) {
     recordBlocker('rollback-gate', `Rollback drill status is ${inputs.rollbackGate.status}.`);
   }
   if (inputs.sloGate.status === 'fail') {
-    recordBlocker('slo-breach', `SLO breaches detected (${inputs.sloGate.breachCount}).`);
+    const blockerCount = Number.isFinite(inputs.sloGate.blockerCount)
+      ? inputs.sloGate.blockerCount
+      : inputs.sloGate.breachCount;
+    const sourceLabel = inputs.sloGate.source === 'promotion-gate' ? 'SLO promotion gate' : 'SLO breaches';
+    recordBlocker('slo-breach', `${sourceLabel} detected (${blockerCount}).`);
   }
   if (inputs.trustProvided && inputs.trustGate.status !== 'pass') {
     recordBlocker('trust-gate', `Supply-chain trust gate status is ${inputs.trustGate.status}.`);
@@ -361,4 +381,3 @@ if (process.argv[1] && path.resolve(process.argv[1]) === ENTRY_FILE) {
     process.exitCode = 1;
   });
 }
-

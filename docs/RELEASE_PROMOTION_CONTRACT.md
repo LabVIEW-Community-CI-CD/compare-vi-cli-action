@@ -164,9 +164,20 @@ Scorecard blockers are fail-closed when any gate regresses:
 
 - promotion ledger gate status not `pass`
 - rollback health status not `pass`
-- SLO breaches present
+- SLO promotion readiness gate not `pass`
 - trust gate regressions for release-tag flows
 - signed-tag requirement not met when enabled
+
+The SLO artifact now has two distinct surfaces:
+
+- `breaches`
+  - historical operational SLO debt used for issue routing and dashboards
+- `promotionGate`
+  - current release-readiness status derived from active unresolved incidents and stale-budget checks
+
+When `promotionGate` is present, `release-scorecard.mjs` uses it as the SLO blocker input instead of treating every
+historical breach as an active promotion blocker. This keeps operational debt visible without permanently blocking
+promotion after a workflow has already recovered.
 
 ## Gate outcomes
 

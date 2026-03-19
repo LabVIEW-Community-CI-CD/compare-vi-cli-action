@@ -263,10 +263,16 @@ export function summarizeWorkflowRuns(runs, now = new Date()) {
     .filter((value) => Number.isFinite(value) && value >= 0);
 
   let incidentStartMs = null;
+  let incidentFailureCount = 0;
   const mttrDurations = [];
   for (const entry of considered) {
     if (entry.outcome === 'failure' && incidentStartMs == null) {
       incidentStartMs = Number.isFinite(entry.updatedMs) ? entry.updatedMs : entry.createdMs;
+      incidentFailureCount = 1;
+      continue;
+    }
+    if (entry.outcome === 'failure' && incidentStartMs != null) {
+      incidentFailureCount += 1;
       continue;
     }
     if (entry.outcome === 'success' && incidentStartMs != null) {
@@ -275,8 +281,16 @@ export function summarizeWorkflowRuns(runs, now = new Date()) {
         mttrDurations.push((resolvedMs - incidentStartMs) / 1000);
       }
       incidentStartMs = null;
+      incidentFailureCount = 0;
     }
   }
+
+  const unresolvedIncidentAgeSeconds =
+    incidentStartMs != null && Number.isFinite(now.getTime()) && now.getTime() >= incidentStartMs
+      ? (now.getTime() - incidentStartMs) / 1000
+      : null;
+  const resolvedIncidentCount = mttrDurations.length;
+  const unresolvedIncidentCount = incidentStartMs == null ? 0 : 1;
 
   const lastSuccessMs = successes.length > 0 ? successes[successes.length - 1].updatedMs : null;
   const staleHours =
@@ -300,7 +314,15 @@ export function summarizeWorkflowRuns(runs, now = new Date()) {
       leadTimeP95Seconds: percentile(successDurations, 0.95),
       mttrSeconds: average(mttrDurations),
       staleHours,
-      unresolvedIncident: incidentStartMs != null
+      unresolvedIncident: incidentStartMs != null,
+      unresolvedIncidentAgeSeconds
+    },
+    incidents: {
+      total: resolvedIncidentCount + unresolvedIncidentCount,
+      resolved: resolvedIncidentCount,
+      unresolved: unresolvedIncidentCount,
+      unresolvedFailureCount: incidentStartMs != null ? incidentFailureCount : 0,
+      unresolvedAgeSeconds: unresolvedIncidentAgeSeconds
     }
   };
 }
@@ -457,7 +479,12 @@ export function buildSloSummary(workflowSummaries) {
       leadTimeP95Seconds: summary.metrics.leadTimeP95Seconds,
       mttrSeconds: summary.metrics.mttrSeconds,
       staleHours: summary.metrics.staleHours,
-      skipRate: summary.metrics.skipRate
+      skipRate: summary.metrics.skipRate,
+      unresolvedIncident: summary.metrics.unresolvedIncident,
+      unresolvedIncidentAgeSeconds: summary.metrics.unresolvedIncidentAgeSeconds,
+      incidentTotal: summary.incidents?.total ?? 0,
+      incidentResolved: summary.incidents?.resolved ?? 0,
+      incidentUnresolved: summary.incidents?.unresolved ?? 0
     };
   });
 
@@ -486,6 +513,13 @@ export function buildSloSummary(workflowSummaries) {
     if (values.length === 0) return null;
     return Math.max(...values);
   })();
+  const unresolvedIncidentAgeSeconds = (() => {
+    const values = allRuns
+      .map((item) => item.unresolvedIncidentAgeSeconds)
+      .filter((value) => Number.isFinite(value));
+    if (values.length === 0) return null;
+    return Math.max(...values);
+  })();
 
   return {
     totals,
@@ -495,8 +529,47 @@ export function buildSloSummary(workflowSummaries) {
       leadTimeP50Seconds,
       leadTimeP95Seconds,
       mttrSeconds,
-      staleHours
+      staleHours,
+      unresolvedIncident: allRuns.some((item) => item.unresolvedIncident === true),
+      unresolvedIncidentAgeSeconds
+    },
+    incidents: {
+      total: allRuns.reduce((sum, item) => sum + item.incidentTotal, 0),
+      resolved: allRuns.reduce((sum, item) => sum + item.incidentResolved, 0),
+      unresolved: allRuns.reduce((sum, item) => sum + item.incidentUnresolved, 0)
     }
+  };
+}
+
+export function evaluatePromotionGate(workflowSummaries, thresholds) {
+  const blockers = [];
+  for (const workflow of workflowSummaries) {
+    const metrics = workflow?.summary?.metrics ?? {};
+    if (metrics.unresolvedIncident === true) {
+      const ageHours = Number.isFinite(metrics.unresolvedIncidentAgeSeconds)
+        ? metrics.unresolvedIncidentAgeSeconds / 3600
+        : null;
+      blockers.push({
+        code: 'unresolved-incident',
+        workflow: workflow.workflow,
+        message: Number.isFinite(ageHours)
+          ? `${workflow.workflow} has an unresolved incident open for ${ageHours.toFixed(2)} hours`
+          : `${workflow.workflow} has an unresolved incident`
+      });
+    }
+    if (Number.isFinite(metrics.staleHours) && metrics.staleHours > thresholds.staleHours) {
+      blockers.push({
+        code: 'stale-budget',
+        workflow: workflow.workflow,
+        message: `${workflow.workflow} staleHours ${metrics.staleHours.toFixed(2)} exceeds threshold ${thresholds.staleHours}`
+      });
+    }
+  }
+
+  return {
+    status: blockers.length > 0 ? 'fail' : 'pass',
+    blockerCount: blockers.length,
+    blockers
   };
 }
 
@@ -534,6 +607,7 @@ export async function main(argv = process.argv) {
     gateRegressions: options.thresholdGateRegressions
   };
   const breaches = evaluateBreaches(summary, thresholds);
+  const promotionGate = evaluatePromotionGate(workflowSummaries, thresholds);
 
   const payload = {
     schema: 'priority/slo-metrics@v1',
@@ -543,7 +617,8 @@ export async function main(argv = process.argv) {
     thresholds,
     workflowSummaries,
     summary,
-    breaches
+    breaches,
+    promotionGate
   };
 
   payload.route = await routeBreachIssue(repository, token, payload, options);
@@ -559,6 +634,7 @@ export async function main(argv = process.argv) {
     `- MTTR (hours): \`${formatNumber(summary.metrics.mttrSeconds / 3600, 2)}\``,
     `- Stale hours (max): \`${formatNumber(summary.metrics.staleHours, 2)}\``,
     `- Gate regressions: \`${summary.totals.gateRegressions}\``,
+    `- Promotion gate: \`${promotionGate.status}\``,
     `- Breaches: \`${breaches.length}\``,
     `- Route action: \`${payload.route?.action || 'none'}\``,
     `- Artifact: \`${options.outputPath}\``
