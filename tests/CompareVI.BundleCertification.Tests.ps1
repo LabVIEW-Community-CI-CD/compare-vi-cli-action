@@ -85,4 +85,11 @@ Describe 'CompareVI history bundle certification' -Tag 'CompareVI' {
         @($modeIndex['front-panel'].categoryCounts.PSObject.Properties.Name) | Should -Contain 'Control Changes'
         @($modeIndex['block-diagram'].categoryCounts.PSObject.Properties.Name) | Should -Contain 'Block Diagram'
     }
+
+    It 'unshallows certification history without refetching tags' {
+        $scriptContent = Get-Content -LiteralPath $script:CertificationScript -Raw
+
+        $scriptContent | Should -Match "--unshallow',\s*'--no-tags',\s*'origin',\s*'\+refs/heads/\*:refs/remotes/origin/\*'"
+        $scriptContent | Should -Not -Match "--unshallow',\s*'--tags',\s*'origin'"
+    }
 }
