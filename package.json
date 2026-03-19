@@ -45,6 +45,7 @@
     "history:local:refine": "pwsh -NoLogo -NoProfile -File tools/Invoke-VIHistoryLocalRefinement.ps1 -Profile dev-fast",
     "history:local:warm-runtime": "pwsh -NoLogo -NoProfile -File tools/Manage-VIHistoryRuntimeInDocker.ps1 -Action start",
     "history:local:warm-runtime:logs": "pwsh -NoLogo -NoProfile -File tools/Manage-VIHistoryRuntimeInDocker.ps1 -Action logs",
+    "history:local:warm-runtime:reconcile": "pwsh -NoLogo -NoProfile -File tools/Manage-VIHistoryRuntimeInDocker.ps1 -Action reconcile",
     "history:local:warm-runtime:status": "pwsh -NoLogo -NoProfile -File tools/Manage-VIHistoryRuntimeInDocker.ps1 -Action status",
     "history:local:warm-runtime:stop": "pwsh -NoLogo -NoProfile -File tools/Manage-VIHistoryRuntimeInDocker.ps1 -Action stop",
     "history:run": "pwsh -NoLogo -NoProfile -File scripts/Run-VIHistory.ps1",

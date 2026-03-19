@@ -8,6 +8,7 @@
     "schema",
     "generatedAt",
     "latest",
+    "selectedSamples",
     "comparisons"
   ],
   "properties": {

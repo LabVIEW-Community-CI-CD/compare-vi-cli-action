@@ -216,6 +216,7 @@
         "docs/schemas/comparevi-local-refinement-v1.schema.json",
         "docs/schemas/comparevi-local-refinement-benchmark-v1.schema.json",
         "docs/schemas/comparevi-local-runtime-health-v1.schema.json",
+        "docs/schemas/comparevi-local-runtime-lease-v1.schema.json",
         "docs/schemas/comparevi-local-runtime-state-v1.schema.json",
         "docs/schemas/labview-2026-host-plane-report-v1.schema.json",
         "tests/VIHistoryLocalAcceleration.Tests.ps1",

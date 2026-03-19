@@ -22,8 +22,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $stateSchema = 'comparevi/local-runtime-state@v1'
+$leaseSchema = 'comparevi/local-runtime-lease@v1'
 $healthSchema = 'comparevi/local-runtime-health@v1'
 $logsSchema = 'comparevi/local-runtime-logs@v1'
+$heartbeatSchema = 'comparevi/local-runtime-heartbeat@v1'
 
 function Resolve-AbsolutePath {
   param(
@@ -129,6 +131,38 @@ function Get-OwnerStamp {
   $user = if (-not [string]::IsNullOrWhiteSpace($env:USERNAME)) { $env:USERNAME } else { 'unknown-user' }
   $hostName = if (-not [string]::IsNullOrWhiteSpace($env:COMPUTERNAME)) { $env:COMPUTERNAME } else { 'unknown-host' }
   return ('{0}@{1}' -f $user, $hostName)
+}
+
+function Parse-UtcDateTime {
+  param([AllowEmptyString()][string]$Value)
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return $null
+  }
+
+  try {
+    return [datetime]::Parse(
+      $Value,
+      [System.Globalization.CultureInfo]::InvariantCulture,
+      [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal
+    )
+  } catch {
+    return $null
+  }
+}
+
+function Get-ScopeKey {
+  param([Parameter(Mandatory)][string]$Seed)
+
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes($Seed)
+  $hasher = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $hash = ($hasher.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join ''
+  } finally {
+    $hasher.Dispose()
+  }
+
+  return $hash.Substring(0, 16)
 }
 
 function New-ContainerName {
@@ -245,6 +279,7 @@ function Get-Paths {
     resultsRoot = $ResultsRootResolved
     runtimeDir = $RuntimeDirResolved
     statePath = Join-Path $RuntimeDirResolved 'local-runtime-state.json'
+    leasePath = Join-Path $RuntimeDirResolved 'local-runtime-lease.json'
     healthPath = Join-Path $RuntimeDirResolved 'local-runtime-health.json'
     logsPath = Join-Path $RuntimeDirResolved 'local-runtime-logs.json'
     logsTextPath = Join-Path $RuntimeDirResolved 'local-runtime-logs.txt'
@@ -260,6 +295,141 @@ function Get-Paths {
   }
 }
 
+function Clear-HeartbeatArtifact {
+  param([Parameter(Mandatory)]$Paths)
+
+  if (Test-Path -LiteralPath $Paths.heartbeatPath -PathType Leaf) {
+    Remove-Item -LiteralPath $Paths.heartbeatPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Write-LeaseReceipt {
+  param(
+    [Parameter(Mandatory)]$Paths,
+    [Parameter(Mandatory)][string]$Owner,
+    [Parameter(Mandatory)][datetime]$AcquiredAtUtc
+  )
+
+  $payload = [ordered]@{
+    schema = $leaseSchema
+    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    acquiredAt = $AcquiredAtUtc.ToString('o')
+    owner = $Owner
+    scopeKey = Get-ScopeKey -Seed ('{0}|{1}|{2}' -f $Paths.repoRoot, $Paths.runtimeDir, $Paths.containerName)
+    lock = [ordered]@{
+      strategy = 'exclusive-file-lock'
+      path = $Paths.lockPath
+      processId = $PID
+    }
+    runtime = [ordered]@{
+      containerName = $Paths.containerName
+      image = $Paths.image
+      repositoryRoot = $Paths.repoRoot
+      resultsRoot = $Paths.resultsRoot
+      runtimeDir = $Paths.runtimeDir
+    }
+    artifacts = [ordered]@{
+      statePath = $Paths.statePath
+      healthPath = $Paths.healthPath
+      leasePath = $Paths.leasePath
+      heartbeatPath = $Paths.heartbeatPath
+    }
+  }
+
+  Write-JsonFile -Path $Paths.leasePath -Payload $payload
+  return $payload
+}
+
+function Get-HealthAssessment {
+  param(
+    [Parameter(Mandatory)]$Paths,
+    [AllowNull()]$Record
+  )
+
+  $heartbeat = Read-JsonFile -Path $Paths.heartbeatPath
+  $heartbeatGeneratedAt = $null
+  if ($heartbeat -and $heartbeat.PSObject.Properties['generatedAt']) {
+    $heartbeatGeneratedAt = Parse-UtcDateTime -Value ([string]$heartbeat.generatedAt)
+  }
+
+  $startedAtUtc = $null
+  $finishedAtUtc = $null
+  $containerAgeSeconds = $null
+  if ($Record) {
+    $startedAtUtc = Parse-UtcDateTime -Value ([string]$Record.startedAt)
+    $finishedAtUtc = Parse-UtcDateTime -Value ([string]$Record.finishedAt)
+    if ($startedAtUtc) {
+      $containerAgeSeconds = [int][math]::Floor(((Get-Date).ToUniversalTime() - $startedAtUtc).TotalSeconds)
+    }
+  }
+
+  $ageSeconds = if ($heartbeatGeneratedAt) {
+    [int][math]::Floor(((Get-Date).ToUniversalTime() - $heartbeatGeneratedAt).TotalSeconds)
+  } else {
+    $null
+  }
+
+  $status = 'missing'
+  $reason = 'container-not-found'
+  $recoveryRequired = $true
+  $reuseAllowed = $false
+  $imageMatches = $true
+
+  if ($Record) {
+    $imageMatches = [string]::Equals([string]$Record.image, $Paths.image, [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $imageMatches) {
+      $status = 'stale'
+      $reason = 'image-mismatch'
+    } elseif (-not $Record.running) {
+      $status = 'not-running'
+      $reason = if ([string]::IsNullOrWhiteSpace($Record.status)) { 'container-not-running' } else { [string]$Record.status }
+    } elseif ($heartbeatGeneratedAt -and $ageSeconds -le $HeartbeatFreshSeconds) {
+      $status = 'healthy'
+      $reason = 'heartbeat-fresh'
+      $recoveryRequired = $false
+      $reuseAllowed = $true
+    } elseif ($heartbeatGeneratedAt) {
+      $status = 'stale'
+      $reason = 'heartbeat-stale'
+    } elseif ($containerAgeSeconds -ne $null -and $containerAgeSeconds -le $HeartbeatFreshSeconds) {
+      $status = 'starting'
+      $reason = 'heartbeat-pending'
+      $recoveryRequired = $false
+      $reuseAllowed = $true
+    } else {
+      $status = 'stale'
+      $reason = 'heartbeat-missing'
+    }
+  }
+
+  return [ordered]@{
+    schema = $healthSchema
+    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    containerName = $Paths.containerName
+    image = $Paths.image
+    status = $status
+    reason = $reason
+    heartbeatFreshSeconds = $HeartbeatFreshSeconds
+    heartbeat = [ordered]@{
+      schema = $heartbeatSchema
+      path = $Paths.heartbeatPath
+      present = [bool]$heartbeat
+      generatedAt = if ($heartbeatGeneratedAt) { $heartbeatGeneratedAt.ToString('o') } else { $null }
+      ageSeconds = $ageSeconds
+    }
+    container = [ordered]@{
+      running = if ($Record) { [bool]$Record.running } else { $false }
+      status = if ($Record) { [string]$Record.status } else { '' }
+      startedAt = if ($startedAtUtc) { $startedAtUtc.ToString('o') } else { '' }
+      finishedAt = if ($finishedAtUtc) { $finishedAtUtc.ToString('o') } else { '' }
+      ageSeconds = $containerAgeSeconds
+      imageMatches = $imageMatches
+    }
+    recoveryRequired = $recoveryRequired
+    reuseAllowed = $reuseAllowed
+  }
+}
+
 function Start-LocalRuntimeContainer {
   param([Parameter(Mandatory)]$Paths)
 
@@ -272,6 +442,7 @@ function Start-LocalRuntimeContainer {
   if ($existingRecord) {
     Invoke-Docker -Arguments @('rm', '-f', $Paths.containerName) -IgnoreExitCode | Out-Null
   }
+  Clear-HeartbeatArtifact -Paths $Paths
 
   $heartbeatScript = New-HeartbeatCommand -HeartbeatPathContainer $Paths.heartbeatContainerPath
   $dockerArgs = [System.Collections.Generic.List[string]]::new()
@@ -341,6 +512,7 @@ function New-State {
     }
     artifacts = [ordered]@{
       statePath = $Paths.statePath
+      leasePath = $Paths.leasePath
       healthPath = $Paths.healthPath
       logsPath = $Paths.logsPath
       logsTextPath = $Paths.logsTextPath
@@ -355,55 +527,7 @@ function Write-Health {
     [AllowNull()]$Record
   )
 
-  $heartbeat = Read-JsonFile -Path $Paths.heartbeatPath
-  $heartbeatGeneratedAt = $null
-  if ($heartbeat -and $heartbeat.PSObject.Properties['generatedAt']) {
-    try {
-      $heartbeatGeneratedAt = [datetime]::Parse([string]$heartbeat.generatedAt, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal)
-    } catch {
-      $heartbeatGeneratedAt = $null
-    }
-  }
-  $ageSeconds = if ($heartbeatGeneratedAt) { [int][math]::Floor(((Get-Date).ToUniversalTime() - $heartbeatGeneratedAt).TotalSeconds) } else { $null }
-  $status = 'missing'
-  $reason = 'container-not-found'
-  if ($Record -and $Record.running) {
-    if ($heartbeatGeneratedAt -and $ageSeconds -le $HeartbeatFreshSeconds) {
-      $status = 'healthy'
-      $reason = 'heartbeat-fresh'
-    } elseif ($heartbeatGeneratedAt) {
-      $status = 'stale'
-      $reason = 'heartbeat-stale'
-    } else {
-      $status = 'starting'
-      $reason = 'heartbeat-pending'
-    }
-  } elseif ($Record) {
-    $status = 'not-running'
-    $reason = if ([string]::IsNullOrWhiteSpace($Record.status)) { 'container-not-running' } else { $Record.status }
-  }
-
-  $health = [ordered]@{
-    schema = $healthSchema
-    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
-    containerName = $Paths.containerName
-    image = $Paths.image
-    status = $status
-    reason = $reason
-    heartbeatFreshSeconds = $HeartbeatFreshSeconds
-    heartbeat = [ordered]@{
-      path = $Paths.heartbeatPath
-      present = [bool]$heartbeat
-      generatedAt = if ($heartbeatGeneratedAt) { $heartbeatGeneratedAt.ToString('o') } else { $null }
-      ageSeconds = $ageSeconds
-    }
-    container = [ordered]@{
-      running = if ($Record) { [bool]$Record.running } else { $false }
-      status = if ($Record) { [string]$Record.status } else { '' }
-      startedAt = if ($Record) { [string]$Record.startedAt } else { '' }
-    }
-  }
-
+  $health = Get-HealthAssessment -Paths $Paths -Record $Record
   Write-JsonFile -Path $Paths.healthPath -Payload $health
   return $health
 }
@@ -426,35 +550,47 @@ $paths = Get-Paths `
 
 $lockStream = Acquire-LockStream -LockPath $paths.lockPath -WaitSeconds $LockWaitSeconds
 try {
+  $leaseOwner = Get-OwnerStamp
+  $leaseAcquiredAt = (Get-Date).ToUniversalTime()
+  $leaseReceipt = Write-LeaseReceipt -Paths $paths -Owner $leaseOwner -AcquiredAtUtc $leaseAcquiredAt
   $existing = Get-ContainerRecord -Name $paths.containerName
+  $existingHealth = Get-HealthAssessment -Paths $paths -Record $existing
 
   switch ($Action) {
     'start' {
-      if ($existing -and $existing.running -and [string]::Equals([string]$existing.image, $paths.image, [System.StringComparison]::OrdinalIgnoreCase)) {
+      if ($existingHealth.reuseAllowed) {
         $state = New-State -Outcome 'reused' -Paths $paths -Record $existing
-        Write-JsonFile -Path $paths.statePath -Payload $state
-        $health = Write-Health -Paths $paths -Record $existing
-        $state.health = $health
+        $state.lease = $leaseReceipt
+        $state.health = Write-Health -Paths $paths -Record $existing
+        $state.recovery = [ordered]@{
+          attempted = $false
+          reason = ''
+        }
         Write-JsonFile -Path $paths.statePath -Payload $state
         $state | ConvertTo-Json -Depth 20
         break
       }
+
       $record = Start-LocalRuntimeContainer -Paths $paths
-      $state = New-State -Outcome 'started' -Paths $paths -Record $record
-      Write-JsonFile -Path $paths.statePath -Payload $state
-      $health = Write-Health -Paths $paths -Record $record
-      $state.health = $health
+      $outcome = if ($existing) { 'recovered-stale-runtime' } else { 'started' }
+      $state = New-State -Outcome $outcome -Paths $paths -Record $record
+      $state.lease = $leaseReceipt
+      $state.health = Write-Health -Paths $paths -Record $record
+      $state.recovery = [ordered]@{
+        attempted = [bool]$existing
+        previousHealth = if ($existing) { $existingHealth } else { $null }
+        action = if ($existing) { 'replace-container' } else { 'start-container' }
+      }
       Write-JsonFile -Path $paths.statePath -Payload $state
       $state | ConvertTo-Json -Depth 20
       break
     }
     'status' {
       $state = New-State -Outcome 'status' -Paths $paths -Record $existing
+      $state.lease = $leaseReceipt
+      $state.health = Write-Health -Paths $paths -Record $existing
       Write-JsonFile -Path $paths.statePath -Payload $state
-      $health = Write-Health -Paths $paths -Record $existing
-      $state.health = $health
-      Write-JsonFile -Path $paths.statePath -Payload $state
-      $health | ConvertTo-Json -Depth 20
+      $state.health | ConvertTo-Json -Depth 20
       break
     }
     'logs' {
@@ -484,28 +620,38 @@ try {
           Invoke-Docker -Arguments @('stop', $paths.containerName) -IgnoreExitCode | Out-Null
         }
       }
+      Clear-HeartbeatArtifact -Paths $paths
       $record = Get-ContainerRecord -Name $paths.containerName
       $state = New-State -Outcome 'stopped' -Paths $paths -Record $record
-      Write-JsonFile -Path $paths.statePath -Payload $state
-      $health = Write-Health -Paths $paths -Record $record
-      $state.health = $health
+      $state.lease = $leaseReceipt
+      $state.health = Write-Health -Paths $paths -Record $record
       Write-JsonFile -Path $paths.statePath -Payload $state
       $state | ConvertTo-Json -Depth 20
       break
     }
     'reconcile' {
-      $health = Write-Health -Paths $paths -Record $existing
-      if ($health.status -in @('healthy', 'starting')) {
+      if ($existingHealth.reuseAllowed) {
         $state = New-State -Outcome 'healthy' -Paths $paths -Record $existing
-        $state.health = $health
+        $state.lease = $leaseReceipt
+        $state.health = Write-Health -Paths $paths -Record $existing
+        $state.recovery = [ordered]@{
+          attempted = $false
+          reason = ''
+        }
         Write-JsonFile -Path $paths.statePath -Payload $state
         $state | ConvertTo-Json -Depth 20
         break
       }
+
       $record = Start-LocalRuntimeContainer -Paths $paths
-      $state = New-State -Outcome 'restarted' -Paths $paths -Record $record
-      $health = Write-Health -Paths $paths -Record $record
-      $state.health = $health
+      $state = New-State -Outcome $(if ($existing) { 'recovered-stale-runtime' } else { 'started' }) -Paths $paths -Record $record
+      $state.lease = $leaseReceipt
+      $state.health = Write-Health -Paths $paths -Record $record
+      $state.recovery = [ordered]@{
+        attempted = [bool]$existing
+        previousHealth = $existingHealth
+        action = if ($existing) { 'replace-container' } else { 'start-container' }
+      }
       Write-JsonFile -Path $paths.statePath -Payload $state
       $state | ConvertTo-Json -Depth 20
       break
