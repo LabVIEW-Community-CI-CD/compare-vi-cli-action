@@ -27,6 +27,11 @@ param(
   [int]$RuntimeEngineReadyTimeoutSeconds = 120,
   [ValidateRange(1, 30)]
   [int]$RuntimeEngineReadyPollSeconds = 3,
+  [string]$ReuseContainerName = '',
+  [string]$ReuseRepoHostPath = '',
+  [string]$ReuseRepoContainerPath = '/opt/comparevi/source',
+  [string]$ReuseResultsHostPath = '',
+  [string]$ReuseResultsContainerPath = '/opt/comparevi/vi-history/results',
   [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
   [string]$GitHubStepSummaryPath = $env:GITHUB_STEP_SUMMARY
 )
@@ -185,6 +190,15 @@ function Assert-CompareScenarioArtifacts {
   $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
   $imageUsed = if ($capture.PSObject.Properties['image']) { [string]$capture.image } else { '' }
   $commandText = if ($capture.PSObject.Properties['command']) { [string]$capture.command } else { '' }
+  $containerExecutionMode = if (
+    $capture.PSObject.Properties['containerExecution'] -and
+    $capture.containerExecution -and
+    $capture.containerExecution.PSObject.Properties['mode']
+  ) {
+    [string]$capture.containerExecution.mode
+  } else {
+    ''
+  }
   $flagsUsed = @()
   if ($capture.PSObject.Properties['flags'] -and $capture.flags) {
     $flagsUsed = @($capture.flags | ForEach-Object { [string]$_ })
@@ -196,8 +210,18 @@ function Assert-CompareScenarioArtifacts {
   if (-not [string]::Equals($gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
     throw ("NI Linux review suite scenario '{0}' did not pass (resultClass={1}, gateOutcome={2})." -f $ScenarioName, $resultClass, $gateOutcome)
   }
-  if ([string]::IsNullOrWhiteSpace($commandText) -or $commandText -notmatch '(?i)docker run') {
-    throw ("NI Linux review suite scenario '{0}' did not emit a docker run command in capture evidence." -f $ScenarioName)
+  if (
+    [string]::IsNullOrWhiteSpace($containerExecutionMode) -and
+    -not [string]::IsNullOrWhiteSpace($commandText)
+  ) {
+    if ($commandText -match '(?i)docker exec') {
+      $containerExecutionMode = 'docker-exec'
+    } elseif ($commandText -match '(?i)docker run') {
+      $containerExecutionMode = 'docker-run'
+    }
+  }
+  if ($containerExecutionMode -notin @('docker-run', 'docker-exec')) {
+    throw ("NI Linux review suite scenario '{0}' did not emit a recognized docker execution mode in capture evidence." -f $ScenarioName)
   }
   if ($flagsUsed -notcontains '-Headless') {
     throw ("NI Linux review suite scenario '{0}' missing enforced -Headless flag in capture." -f $ScenarioName)
@@ -212,6 +236,7 @@ function Assert-CompareScenarioArtifacts {
     capture = $capture
     gateOutcome = $gateOutcome
     resultClass = $resultClass
+    executionMode = $containerExecutionMode
     flagsUsed = @($flagsUsed)
   }
 }
@@ -243,6 +268,8 @@ $baseViResolved = Resolve-AbsolutePath -Path $BaseVi -BasePath $repoRootResolved
 $headViResolved = Resolve-AbsolutePath -Path $HeadVi -BasePath $repoRootResolved
 $resultsRootResolved = Resolve-AbsolutePath -Path $ResultsRoot -BasePath $repoRootResolved
 $historyTargetResolved = Resolve-AbsolutePath -Path $HistoryTargetPath -BasePath $repoRootResolved
+$reuseRepoHostPathResolved = if ([string]::IsNullOrWhiteSpace($ReuseRepoHostPath)) { $repoRootResolved } else { Resolve-AbsolutePath -Path $ReuseRepoHostPath -BasePath $repoRootResolved }
+$reuseResultsHostPathResolved = if ([string]::IsNullOrWhiteSpace($ReuseResultsHostPath)) { $resultsRootResolved } else { Resolve-AbsolutePath -Path $ReuseResultsHostPath -BasePath $repoRootResolved }
 $compareScriptPath = Join-Path $PSScriptRoot 'Run-NILinuxContainerCompare.ps1'
 $viHistoryBootstrapScript = Join-Path $PSScriptRoot 'NILinux-VIHistorySuiteBootstrap.sh'
 $historyInspectorScript = Join-Path $PSScriptRoot 'Inspect-VIHistorySuiteArtifacts.ps1'
@@ -304,7 +331,12 @@ foreach ($scenario in $knownFlagScenarios) {
       -AutoRepairRuntime:$true `
       -RuntimeEngineReadyTimeoutSeconds $RuntimeEngineReadyTimeoutSeconds `
       -RuntimeEngineReadyPollSeconds $RuntimeEngineReadyPollSeconds `
-      -RuntimeSnapshotPath $runtimeSnapshotPath
+      -RuntimeSnapshotPath $runtimeSnapshotPath `
+      -ReuseContainerName $ReuseContainerName `
+      -ReuseRepoHostPath $reuseRepoHostPathResolved `
+      -ReuseRepoContainerPath $ReuseRepoContainerPath `
+      -ReuseResultsHostPath $reuseResultsHostPathResolved `
+      -ReuseResultsContainerPath $ReuseResultsContainerPath
     $compareExit = $LASTEXITCODE
     if ($compareExit -notin @(0, 1)) {
       throw ("NI Linux review suite scenario '{0}' compare failed (exit={1})." -f $scenarioName, $compareExit)
@@ -336,6 +368,7 @@ foreach ($scenario in $knownFlagScenarios) {
     requestedFlagsLabel = [string]$scenario.requestedFlagsLabel
     requestedFlags = @($scenario.flags)
     flagsUsed = @($scenarioCheck.flagsUsed)
+    executionMode = [string]$scenarioCheck.executionMode
     gateOutcome = [string]$scenarioCheck.gateOutcome
     resultClass = [string]$scenarioCheck.resultClass
     reportPath = $reportPath
@@ -388,18 +421,23 @@ $historyContract | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $historyC
 Write-Host ("[ni-linux-review-suite] scenario=vi-history-report branchRef={0} baselineRef={1} target={2}" -f $historyRefSelection.effectiveBranchRef, ($(if ([string]::IsNullOrWhiteSpace($historyRefSelection.effectiveBaselineRef)) { '(default)' } else { $historyRefSelection.effectiveBaselineRef })), $historyContract.viHistory.targetPath) -ForegroundColor Cyan
 Push-Location $repoRootResolved
 try {
-  & $compareScriptPath `
-    -Image $Image `
-    -ReportPath $historyReportPath `
-    -LabVIEWPath $LabVIEWPath `
+    & $compareScriptPath `
+      -Image $Image `
+      -ReportPath $historyReportPath `
+      -LabVIEWPath $LabVIEWPath `
     -ContainerNameLabel 'vi-history-report' `
-    -TimeoutSeconds $TimeoutSeconds `
-    -HeartbeatSeconds $HeartbeatSeconds `
-    -AutoRepairRuntime:$true `
-    -RuntimeEngineReadyTimeoutSeconds $RuntimeEngineReadyTimeoutSeconds `
-    -RuntimeEngineReadyPollSeconds $RuntimeEngineReadyPollSeconds `
-    -RuntimeSnapshotPath $historyRuntimeSnapshotPath `
-    -RuntimeBootstrapContractPath $historyContractPath
+      -TimeoutSeconds $TimeoutSeconds `
+      -HeartbeatSeconds $HeartbeatSeconds `
+      -AutoRepairRuntime:$true `
+      -RuntimeEngineReadyTimeoutSeconds $RuntimeEngineReadyTimeoutSeconds `
+      -RuntimeEngineReadyPollSeconds $RuntimeEngineReadyPollSeconds `
+      -RuntimeSnapshotPath $historyRuntimeSnapshotPath `
+      -RuntimeBootstrapContractPath $historyContractPath `
+      -ReuseContainerName $ReuseContainerName `
+      -ReuseRepoHostPath $reuseRepoHostPathResolved `
+      -ReuseRepoContainerPath $ReuseRepoContainerPath `
+      -ReuseResultsHostPath $reuseResultsHostPathResolved `
+      -ReuseResultsContainerPath $ReuseResultsContainerPath
   $historyExit = $LASTEXITCODE
   if ($historyExit -notin @(0, 1)) {
     throw ("NI Linux review suite scenario 'vi-history-report' compare failed (exit={0})." -f $historyExit)
@@ -498,6 +536,7 @@ $scenarioResults += [pscustomobject]@{
   requestedFlagsLabel = 'vi-history-suite'
   requestedFlags = @('vi-history-suite')
   flagsUsed = @($historyCheck.flagsUsed)
+  executionMode = [string]$historyCheck.executionMode
   gateOutcome = [string]$historyCheck.gateOutcome
   resultClass = [string]$historyCheck.resultClass
   reportPath = $historyReportPath
@@ -543,6 +582,7 @@ $summaryRows = foreach ($entry in @($scenarioResults)) {
     kind = [string]$entry.kind
     name = [string]$entry.name
     requestedFlagsLabel = [string]$entry.requestedFlagsLabel
+    executionMode = [string]$entry.executionMode
     resultClass = [string]$entry.resultClass
     gateOutcome = [string]$entry.gateOutcome
     reportPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path ([string]$entry.reportPath)

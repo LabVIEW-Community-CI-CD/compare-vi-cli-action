@@ -119,15 +119,20 @@ $requiredRelativePaths = @(
   'tools/CompareVI.Tools/CompareVI.Tools.psd1',
   'tools/CompareVI.Tools/CompareVI.Tools.psm1',
   'tools/Assert-DockerRuntimeDeterminism.ps1',
+  'tools/Build-VIHistoryDevImage.ps1',
   'tools/Compare-ExitCodeClassifier.ps1',
   'tools/Compare-VIHistory.ps1',
   'tools/Compare-RefsToTemp.ps1',
   'tools/Invoke-LVCompare.ps1',
+  'tools/Invoke-NILinuxReviewSuite.ps1',
+  'tools/Invoke-VIHistoryLocalRefinement.ps1',
+  'tools/Manage-VIHistoryRuntimeInDocker.ps1',
   'tools/New-CompareVIHistoryDiagnosticsBody.ps1',
   'tools/Render-VIHistoryReport.ps1',
   'tools/Run-NILinuxContainerCompare.ps1',
   'tools/VendorTools.psm1',
   'tools/VICategoryBuckets.psm1',
+  'tools/docker/Dockerfile.vi-history-dev',
   'tools/Stage-CompareInputs.ps1',
   'scripts/CompareVI.psm1',
   'scripts/ArgTokenization.psm1'
@@ -227,6 +232,7 @@ try {
     '- For cross-repo VI history, extract the archive and import the module from this bundle instead of checking out the full repository.'
     '- Prefer `Invoke-CompareVIHistoryFacade` when downstream tooling needs a stable summary object plus the generated report paths.'
     '- For comparevi-history comment/summary rendering, resolve `tools/New-CompareVIHistoryDiagnosticsBody.ps1` from this bundle or from the workflow `tooling-path` output instead of copying inline PowerShell helpers.'
+    '- For local-first VI history refinement, use `tools/Build-VIHistoryDevImage.ps1`, `tools/Invoke-VIHistoryLocalRefinement.ps1`, and `tools/Manage-VIHistoryRuntimeInDocker.ps1` from this bundle root.'
     '- The runtime facade JSON is written to `history-summary.json` under the selected results directory.'
     '- Real compare execution still requires the same LVCompare/LabVIEW prerequisites as the source repository.'
   ) | Set-Content -LiteralPath $bundleReadmePath -Encoding utf8
@@ -261,6 +267,7 @@ try {
       'cross-repo-vi-history-via-module',
       'cross-repo-vi-history-via-facade',
       'cross-repo-vi-history-via-hosted-ni-linux-runner',
+      'local-vi-history-refinement-via-runtime-profiles',
       'comparevi-history-comment-rendering-via-tooling-path'
     )
     requires = @(
@@ -324,7 +331,8 @@ try {
       defaultImage = 'nationalinstruments/labview:2026q1-linux'
       notes = @(
         'Hosted Linux consumers can resolve the runner from COMPAREVI_SCRIPTS_ROOT without a full backend checkout.',
-        'Keep the entry script and support scripts adjacent inside the extracted bundle so runtime guard and exit-code classification remain available.'
+        'Keep the entry script and support scripts adjacent inside the extracted bundle so runtime guard and exit-code classification remain available.',
+        'The same extracted bundle also carries the local-only VI history acceleration surfaces (`Build-VIHistoryDevImage.ps1`, `Invoke-VIHistoryLocalRefinement.ps1`, and `Manage-VIHistoryRuntimeInDocker.ps1`) for downstream local refinement loops.'
       )
     }
   }

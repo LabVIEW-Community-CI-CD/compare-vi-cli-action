@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-local-runtime-state-v1.schema.json",
+  "title": "CompareVI Local Runtime State",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "generatedAt",
+    "action",
+    "outcome",
+    "repositoryRoot",
+    "resultsRoot",
+    "runtimeDir",
+    "container",
+    "lease",
+    "mounts",
+    "artifacts"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi/local-runtime-state@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "action": {
+      "enum": ["start", "status", "logs", "stop", "reconcile"]
+    },
+    "outcome": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

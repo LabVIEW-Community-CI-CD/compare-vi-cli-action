@@ -118,16 +118,21 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
       'tools/CompareVI.Tools/CompareVI.Tools.psd1',
       'tools/CompareVI.Tools/CompareVI.Tools.psm1',
       'tools/Assert-DockerRuntimeDeterminism.ps1',
+      'tools/Build-VIHistoryDevImage.ps1',
       'tools/Compare-ExitCodeClassifier.ps1',
       'tools/Compare-VIHistory.ps1',
       'tools/Compare-RefsToTemp.ps1',
       'tools/Invoke-LVCompare.ps1',
+      'tools/Invoke-NILinuxReviewSuite.ps1',
+      'tools/Invoke-VIHistoryLocalRefinement.ps1',
+      'tools/Manage-VIHistoryRuntimeInDocker.ps1',
       'tools/New-CompareVIHistoryDiagnosticsBody.ps1',
       'tools/Render-VIHistoryReport.ps1',
       'tools/Run-NILinuxContainerCompare.ps1',
       'tools/Stage-CompareInputs.ps1',
       'tools/VendorTools.psm1',
       'tools/VICategoryBuckets.psm1',
+      'tools/docker/Dockerfile.vi-history-dev',
       'scripts/CompareVI.psm1',
       'scripts/ArgTokenization.psm1'
     )
@@ -140,6 +145,9 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $archiveMetadata = Get-Content -LiteralPath $archiveMetadataPath -Raw | ConvertFrom-Json
     $archiveMetadata.bundle.metadataPath | Should -Be 'comparevi-tools-release.json'
     $archiveMetadata.bundle.files.Count | Should -BeGreaterThan 5
+    @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Build-VIHistoryDevImage.ps1'
+    @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Invoke-VIHistoryLocalRefinement.ps1'
+    @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Manage-VIHistoryRuntimeInDocker.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Run-NILinuxContainerCompare.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Assert-DockerRuntimeDeterminism.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Compare-ExitCodeClassifier.ps1'
@@ -175,7 +183,7 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $outputLines | Should -Contain "comparevi_tools_module_version=$moduleVersion"
     $outputLines | Should -Contain "comparevi_tools_release_version=$moduleReleaseVersion"
     $outputLines | Should -Contain 'comparevi_tools_module_prerelease='
-    ($outputLines | Where-Object { $_ -like 'comparevi_tools_module_prerelease=*' }).Count | Should -Be 1
+    @($outputLines | Where-Object { $_ -like 'comparevi_tools_module_prerelease=*' }).Count | Should -Be 1
   }
 
   It 'exports the bundle root through COMPAREVI_SCRIPTS_ROOT when invoking the module wrapper' {

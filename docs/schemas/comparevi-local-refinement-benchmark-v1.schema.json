@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-local-refinement-benchmark-v1.schema.json",
+  "title": "CompareVI Local Refinement Benchmark",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "generatedAt",
+    "latest",
+    "comparisons"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi/local-refinement-benchmark@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

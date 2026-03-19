@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-local-runtime-health-v1.schema.json",
+  "title": "CompareVI Local Runtime Health",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "generatedAt",
+    "containerName",
+    "image",
+    "status",
+    "reason",
+    "heartbeatFreshSeconds",
+    "heartbeat",
+    "container"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi/local-runtime-health@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": ["healthy", "starting", "stale", "not-running", "missing"]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

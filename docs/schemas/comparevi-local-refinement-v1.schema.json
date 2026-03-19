@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-local-refinement-v1.schema.json",
+  "title": "CompareVI Local Refinement",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "generatedAt",
+    "runtimeProfile",
+    "image",
+    "toolSource",
+    "cacheReuseState",
+    "coldWarmClass",
+    "repoRoot",
+    "resultsRoot",
+    "timings",
+    "finalStatus"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi/local-refinement@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "runtimeProfile": {
+      "enum": ["proof", "dev-fast", "warm-dev"]
+    },
+    "image": {
+      "type": "string",
+      "minLength": 1
+    },
+    "toolSource": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cacheReuseState": {
+      "type": "string",
+      "minLength": 1
+    },
+    "coldWarmClass": {
+      "enum": ["cold", "warm"]
+    },
+    "repoRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resultsRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timings": {
+      "type": "object",
+      "required": ["elapsedMilliseconds", "elapsedSeconds"],
+      "properties": {
+        "elapsedMilliseconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "elapsedSeconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "finalStatus": {
+      "enum": ["succeeded", "failed"]
+    }
+  }
+}
