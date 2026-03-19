@@ -501,7 +501,7 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
       }
 
       $pathSeparator = if ($IsWindows) { ';' } else { ':' }
-      $dockerOverrideName = if ($IsWindows) { 'docker.cmd' } else { 'docker' }
+      $dockerOverrideName = if ($IsWindows) { 'docker.ps1' } else { 'docker' }
       $env:PATH = "{0}{1}{2}" -f $binDir, $pathSeparator, $env:PATH
       $env:DOCKER_COMMAND_OVERRIDE = (Join-Path $binDir $dockerOverrideName)
       return $binDir
@@ -968,6 +968,79 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
     @($capture.runtimeInjection.envNames) | Should -Contain 'COMPAREVI_VI_HISTORY_GIT_WORK_TREE'
     $capture.runtimeInjection.mounts.Count | Should -BeGreaterThan 1
 
+  }
+
+  It 'preserves viHistory target paths with spaces when building docker runtime-injection env args' {
+    $work = Join-Path $TestDrive 'compare-runtime-vi-history-spaces'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
+    Set-Item Env:DOCKER_STUB_RUN_WRITE_REPORT '1'
+    Set-Item Env:DOCKER_STUB_RUN_WRITE_HISTORY_SUITE '1'
+
+    $repoRoot = Join-Path $work 'consumer-repo'
+    New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
+    $targetRelativePath = 'src/Sample With Spaces.vi'
+    Invoke-WithIsolatedGitWorkspace {
+      Push-Location $repoRoot
+      try {
+        & git init --initial-branch=develop | Out-Null
+        & git config user.email 'agent@example.com'
+        & git config user.name 'Agent Runner'
+        $targetDir = Join-Path $repoRoot 'src'
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        $targetPath = Join-Path $targetDir 'Sample With Spaces.vi'
+        Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
+        & git add -- $targetRelativePath
+        & git commit -m 'initial history repo with spaces' | Out-Null
+        & git switch -c 'consumer/branch' | Out-Null
+        Set-Content -LiteralPath $targetPath -Value 'head' -Encoding utf8
+        & git add -- $targetRelativePath
+        & git commit -m 'update sample vi with spaces' | Out-Null
+      } finally {
+        Pop-Location | Out-Null
+      }
+    }
+
+    $resultsDir = Join-Path $work 'vi-history-results'
+    $runtimeContract = Join-Path $work 'runtime-bootstrap.json'
+    $bootstrapScript = Join-Path (Split-Path -Parent $script:RunnerScript) 'NILinux-VIHistorySuiteBootstrap.sh'
+    $contract = [ordered]@{
+      schema = 'ni-linux-runtime-bootstrap/v1'
+      mode = 'single-container-smoke'
+      branchRef = 'consumer/branch'
+      maxCommitCount = 32
+      scriptPath = $bootstrapScript
+      viHistory = [ordered]@{
+        repoPath = $repoRoot
+        targetPath = $targetRelativePath
+        resultsPath = $resultsDir
+        baselineRef = 'develop'
+        maxPairs = 1
+      }
+    }
+    $contract | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $runtimeContract -Encoding utf8
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 `
+      -RuntimeBootstrapContractPath $runtimeContract 2>&1
+    $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
+
+    $capturePath = Join-Path $resultsDir 'ni-linux-container-capture.json'
+    Test-Path -LiteralPath $capturePath | Should -BeTrue
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+    $capture.status | Should -Be 'diff'
+    $capture.runtimeInjection.enabled | Should -BeTrue
+    $capture.runtimeInjection.viHistory.enabled | Should -BeTrue
+    $capture.runtimeInjection.viHistory.targetPath | Should -Be $targetRelativePath
+    Test-Path -LiteralPath ([string]$capture.reportAnalysis.reportPathExtracted) -PathType Leaf | Should -BeTrue
   }
 
   It 'honors an explicit viHistory baseline ref when develop is absent locally' {

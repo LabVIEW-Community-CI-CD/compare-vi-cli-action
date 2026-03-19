@@ -245,17 +245,25 @@ param(
   [string]$ReuseRepoHostPath = '',
   [string]$ReuseRepoContainerPath = '',
   [string]$ReuseResultsHostPath = '',
-  [string]$ReuseResultsContainerPath = ''
+  [string]$ReuseResultsContainerPath = '',
+  [string[]]$RuntimeInjectionMount = @()
 )
 $logPath = [Environment]::GetEnvironmentVariable('LOCAL_REVIEW_SUITE_STUB_LOG')
 if (-not [string]::IsNullOrWhiteSpace($logPath)) {
   [ordered]@{
+    baseVi = $BaseVi
+    headVi = $HeadVi
+    repoRoot = $RepoRoot
+    historyTargetPath = $HistoryTargetPath
+    historyBranchRef = $HistoryBranchRef
+    historyBaselineRef = $HistoryBaselineRef
     image = $Image
     reuseContainerName = $ReuseContainerName
     reuseRepoHostPath = $ReuseRepoHostPath
     reuseRepoContainerPath = $ReuseRepoContainerPath
     reuseResultsHostPath = $ReuseResultsHostPath
     reuseResultsContainerPath = $ReuseResultsContainerPath
+    runtimeInjectionMounts = @($RuntimeInjectionMount)
   } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $logPath -Encoding utf8
 }
 New-Item -ItemType Directory -Path $ResultsRoot -Force | Out-Null
@@ -513,6 +521,174 @@ $payload | ConvertTo-Json -Depth 10
     $receipt.finalStatus | Should -Be 'succeeded'
     $benchmark = Get-Content -LiteralPath $benchmarkPath -Raw | ConvertFrom-Json -Depth 20
     $benchmark.schema | Should -Be 'comparevi/local-refinement-benchmark@v1'
+  }
+
+  It 'Invoke-VIHistoryLocalRefinement PassThru returns only the canonical receipt when the review suite writes pipeline output' {
+    $work = Join-Path $TestDrive 'local-refinement-pass-thru-noise'
+    $repoRoot = Join-Path $work 'repo'
+    $resultsRoot = Join-Path $repoRoot 'tests/results/local-vi-history/dev-fast'
+    New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $repoRoot 'fixtures/vi-attr') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures/vi-attr/Base.vi') -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures/vi-attr/Head.vi') -Value 'head' -Encoding utf8
+    $dockerStub = New-DockerStub -Root $work
+    $buildStub = Join-Path $work 'build-stub.ps1'
+    $reviewStub = Join-Path $work 'review-noise-stub.ps1'
+    New-BuildStub -Path $buildStub
+
+    @'
+param(
+  [string]$BaseVi,
+  [string]$HeadVi,
+  [string]$RepoRoot,
+  [string]$ResultsRoot,
+  [string]$Image,
+  [string]$LabVIEWPath,
+  [string]$HistoryTargetPath,
+  [string]$HistoryBranchRef,
+  [string]$HistoryBaselineRef,
+  [int]$HistoryMaxPairs,
+  [int]$HistoryMaxCommitCount,
+  [string]$ReuseContainerName = '',
+  [string]$ReuseRepoHostPath = '',
+  [string]$ReuseRepoContainerPath = '',
+  [string]$ReuseResultsHostPath = '',
+  [string]$ReuseResultsContainerPath = ''
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+New-Item -ItemType Directory -Path $ResultsRoot -Force | Out-Null
+'runtime-noise'
+[ordered]@{
+  kind = 'intermediate'
+  image = $Image
+}
+[ordered]@{
+  schema = 'ni-linux-review-suite@v1'
+  image = $Image
+  scenarios = @()
+} | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $ResultsRoot 'review-suite-summary.json') -Encoding utf8
+[ordered]@{
+  schema = 'ni-linux-review-suite-review-loop@v1'
+  finalStatus = 'succeeded'
+} | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $ResultsRoot 'vi-history-review-loop-receipt.json') -Encoding utf8
+'@ | Set-Content -LiteralPath $reviewStub -Encoding utf8
+
+    $originalPath = $env:PATH
+    try {
+      $env:DOCKER_STUB_IMAGE_EXISTS = '1'
+      $env:PATH = ("{0}{1}{2}" -f (Split-Path -Parent $dockerStub.CommandPath), [System.IO.Path]::PathSeparator, $originalPath)
+
+      $result = & $script:WrapperScript `
+        -Profile 'dev-fast' `
+        -RepoRoot $repoRoot `
+        -ResultsRoot $resultsRoot `
+        -BuildImageScriptPath $buildStub `
+        -ReviewSuiteScriptPath $reviewStub `
+        -PassThru
+      $LASTEXITCODE | Should -Be 0
+    } finally {
+      $env:PATH = $originalPath
+      Remove-Item Env:DOCKER_STUB_IMAGE_EXISTS -ErrorAction SilentlyContinue
+    }
+
+    $result.GetType().FullName | Should -Be 'System.Management.Automation.PSCustomObject'
+    $result.schema | Should -Be 'comparevi/local-refinement@v1'
+    $result.runtimeProfile | Should -Be 'dev-fast'
+    $result.resultsRoot | Should -Be $resultsRoot
+  }
+
+  It 'Invoke-VIHistoryLocalRefinement resolves helper scripts and default fixtures from ToolingRoot for cross-repo consumers' {
+    $work = Join-Path $TestDrive 'local-refinement-cross-repo-tooling'
+    $consumerRepoRoot = Join-Path $work 'consumer-repo'
+    $toolingRoot = Join-Path $work 'tooling-root'
+    $resultsRoot = Join-Path $consumerRepoRoot 'tests/results/local-vi-history/proof'
+    New-Item -ItemType Directory -Path (Join-Path $consumerRepoRoot 'Tooling/deployment') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $toolingRoot 'fixtures/vi-attr') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $toolingRoot 'tools') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $consumerRepoRoot 'Tooling/deployment/Test.vi') -Value 'consumer-target' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $toolingRoot 'fixtures/vi-attr/Base.vi') -Value 'tooling-base' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $toolingRoot 'fixtures/vi-attr/Head.vi') -Value 'tooling-head' -Encoding utf8
+
+    $reviewLog = Join-Path $work 'review.log'
+    $reviewStub = Join-Path $toolingRoot 'tools' 'Invoke-NILinuxReviewSuite.ps1'
+    New-ReviewSuiteStub -Path $reviewStub
+
+    try {
+      $env:LOCAL_REVIEW_SUITE_STUB_LOG = $reviewLog
+      & $script:WrapperScript `
+        -Profile 'proof' `
+        -RepoRoot $consumerRepoRoot `
+        -ToolingRoot $toolingRoot `
+        -ResultsRoot $resultsRoot `
+        -HistoryTargetPath 'Tooling/deployment/Test.vi'
+      $LASTEXITCODE | Should -Be 0
+    } finally {
+      Remove-Item Env:LOCAL_REVIEW_SUITE_STUB_LOG -ErrorAction SilentlyContinue
+    }
+
+    $receiptPath = Join-Path $resultsRoot 'local-refinement.json'
+    $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -Depth 20
+    $receipt.schema | Should -Be 'comparevi/local-refinement@v1'
+    $receipt.runtimeProfile | Should -Be 'proof'
+    $receipt.repoRoot | Should -Be $consumerRepoRoot
+    $receipt.resultsRoot | Should -Be $resultsRoot
+
+    $reviewLogObject = Get-Content -LiteralPath $reviewLog -Raw | ConvertFrom-Json -Depth 10
+    $reviewLogObject.repoRoot | Should -Be $consumerRepoRoot
+    $reviewLogObject.baseVi | Should -Be (Join-Path $toolingRoot 'fixtures/vi-attr/Base.vi')
+    $reviewLogObject.headVi | Should -Be (Join-Path $toolingRoot 'fixtures/vi-attr/Head.vi')
+    $reviewLogObject.historyTargetPath | Should -Be (Join-Path $consumerRepoRoot 'Tooling/deployment/Test.vi')
+  }
+
+  It 'Invoke-VIHistoryLocalRefinement supports warm-dev cross-repo consumers with a separate tooling root' {
+    $work = Join-Path $TestDrive 'local-refinement-cross-repo-tooling-warm'
+    $consumerRepoRoot = Join-Path $work 'consumer-repo'
+    $toolingRoot = Join-Path $work 'tooling-root'
+    $resultsRoot = Join-Path $consumerRepoRoot 'tests/results/local-vi-history/warm-dev'
+    New-Item -ItemType Directory -Path (Join-Path $consumerRepoRoot 'Tooling/deployment') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $toolingRoot 'fixtures/vi-attr') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $toolingRoot 'tools') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $consumerRepoRoot 'Tooling/deployment/Test.vi') -Value 'consumer-target' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $toolingRoot 'fixtures/vi-attr/Base.vi') -Value 'tooling-base' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $toolingRoot 'fixtures/vi-attr/Head.vi') -Value 'tooling-head' -Encoding utf8
+
+    $dockerStub = New-DockerStub -Root $work
+    $buildStub = Join-Path $work 'build-stub.ps1'
+    $warmManagerStub = Join-Path $work 'warm-manager-stub.ps1'
+    $reviewLog = Join-Path $work 'review.log'
+    $reviewStub = Join-Path $toolingRoot 'tools' 'Invoke-NILinuxReviewSuite.ps1'
+    New-BuildStub -Path $buildStub
+    New-ReviewSuiteStub -Path $reviewStub
+    New-WarmManagerStub -Path $warmManagerStub
+
+    $originalPath = $env:PATH
+    try {
+      $env:DOCKER_STUB_IMAGE_EXISTS = '1'
+      $env:LOCAL_REVIEW_SUITE_STUB_LOG = $reviewLog
+      $env:PATH = ("{0}{1}{2}" -f (Split-Path -Parent $dockerStub.CommandPath), [System.IO.Path]::PathSeparator, $originalPath)
+
+      & $script:WrapperScript `
+        -Profile 'warm-dev' `
+        -RepoRoot $consumerRepoRoot `
+        -ToolingRoot $toolingRoot `
+        -ResultsRoot $resultsRoot `
+        -BuildImageScriptPath $buildStub `
+        -ReviewSuiteScriptPath $reviewStub `
+        -WarmRuntimeManagerScriptPath $warmManagerStub `
+        -HistoryTargetPath 'Tooling/deployment/Test.vi'
+      $LASTEXITCODE | Should -Be 0
+    } finally {
+      $env:PATH = $originalPath
+      Remove-Item Env:DOCKER_STUB_IMAGE_EXISTS -ErrorAction SilentlyContinue
+      Remove-Item Env:LOCAL_REVIEW_SUITE_STUB_LOG -ErrorAction SilentlyContinue
+    }
+
+    $reviewLogObject = Get-Content -LiteralPath $reviewLog -Raw | ConvertFrom-Json -Depth 10
+    $reviewLogObject.reuseContainerName | Should -Be 'warm-stub'
+    $reviewLogObject.historyTargetPath | Should -Be (Join-Path $consumerRepoRoot 'Tooling/deployment/Test.vi')
+    $reviewLogObject.baseVi | Should -Be (Join-Path $toolingRoot 'fixtures/vi-attr/Base.vi')
+    $reviewLogObject.headVi | Should -Be (Join-Path $toolingRoot 'fixtures/vi-attr/Head.vi')
   }
 
   It 'Invoke-VIHistoryLocalRefinement records warm runtime reuse' {

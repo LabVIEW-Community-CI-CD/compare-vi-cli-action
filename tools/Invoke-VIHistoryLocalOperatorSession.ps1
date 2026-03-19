@@ -6,6 +6,7 @@ param(
   [string]$BaseVi = 'fixtures/vi-attr/Base.vi',
   [string]$HeadVi = 'fixtures/vi-attr/Head.vi',
   [string]$RepoRoot = '',
+  [string]$ToolingRoot = '',
   [string]$HistoryTargetPath = 'fixtures/vi-attr/Head.vi',
   [string]$HistoryBranchRef = 'HEAD',
   [string]$HistoryBaselineRef = '',
@@ -91,6 +92,25 @@ function Resolve-ScriptPath {
   return $resolved
 }
 
+function Resolve-ToolingRoot {
+  param(
+    [AllowEmptyString()][string]$PathValue,
+    [Parameter(Mandatory)][string]$RepoRootResolved
+  )
+
+  $candidate = if ([string]::IsNullOrWhiteSpace($PathValue)) {
+    $env:COMPAREVI_SCRIPTS_ROOT
+  } else {
+    $PathValue
+  }
+
+  if ([string]::IsNullOrWhiteSpace($candidate)) {
+    return $RepoRootResolved
+  }
+
+  return Resolve-AbsolutePath -Path $candidate -BasePath (Get-Location).Path
+}
+
 function New-TimingPayload {
   param([Parameter(Mandatory)][System.Diagnostics.Stopwatch]$Stopwatch)
 
@@ -156,22 +176,53 @@ function New-ReviewOutputsPayload {
   }
 }
 
+function Select-LocalRefinementReceipt {
+  param([AllowNull()]$InvocationResult)
+
+  $candidateReceipts = New-Object System.Collections.Generic.List[object]
+  foreach ($candidate in @($InvocationResult)) {
+    if ($null -eq $candidate) {
+      continue
+    }
+
+    if ($candidate.PSObject.Properties['schema'] -and [string]$candidate.schema -eq 'comparevi/local-refinement@v1') {
+      $candidateReceipts.Add($candidate) | Out-Null
+    }
+  }
+
+  if ($candidateReceipts.Count -eq 1) {
+    return $candidateReceipts[0]
+  }
+
+  if ($candidateReceipts.Count -gt 1) {
+    throw 'Invoke-VIHistoryLocalRefinement.ps1 returned multiple comparevi/local-refinement@v1 receipts.'
+  }
+
+  if ($null -eq $InvocationResult) {
+    return $null
+  }
+
+  throw 'Invoke-VIHistoryLocalRefinement.ps1 did not return a comparevi/local-refinement@v1 receipt.'
+}
+
 $repoRootResolved = if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
   Resolve-AbsolutePath -Path '..' -BasePath $PSScriptRoot
 } else {
   Resolve-AbsolutePath -Path $RepoRoot -BasePath (Get-Location).Path
 }
+$toolingRootResolved = Resolve-ToolingRoot -PathValue $ToolingRoot -RepoRootResolved $repoRootResolved
 
 $localRefinementScriptResolved = Resolve-ScriptPath `
   -PathValue $LocalRefinementScriptPath `
   -DefaultPath 'tools/Invoke-VIHistoryLocalRefinement.ps1' `
-  -RepoRootResolved $repoRootResolved
+  -RepoRootResolved $toolingRootResolved
 
 $refinementParameters = [ordered]@{
   Profile = $Profile
   BaseVi = $BaseVi
   HeadVi = $HeadVi
   RepoRoot = $repoRootResolved
+  ToolingRoot = $toolingRootResolved
   HistoryTargetPath = $HistoryTargetPath
   HistoryBranchRef = $HistoryBranchRef
   HistoryBaselineRef = $HistoryBaselineRef
@@ -212,7 +263,7 @@ $reviewOutputsPayload = New-ReviewOutputsPayload `
   -ReviewRunResolved (Resolve-OptionalAbsolutePath -Path $ReviewRunPath -BasePath $repoRootResolved)
 
 try {
-  $localRefinementReceipt = & $localRefinementScriptResolved @refinementParameters
+  $localRefinementReceipt = Select-LocalRefinementReceipt -InvocationResult (& $localRefinementScriptResolved @refinementParameters)
   if (-not $localRefinementReceipt) {
     throw 'Invoke-VIHistoryLocalRefinement.ps1 did not return a receipt.'
   }

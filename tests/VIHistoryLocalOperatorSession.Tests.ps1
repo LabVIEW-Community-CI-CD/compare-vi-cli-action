@@ -80,6 +80,79 @@ if ($PassThru) {
     $LASTEXITCODE | Should -Be 0
   }
 
+  It 'normalizes noisy local refinement pass-thru output before writing the session manifest' {
+    $repoUnderTest = Join-Path $TestDrive 'repo-noisy-refinement'
+    $resultsRoot = Join-Path $repoUnderTest 'tests/results/local-vi-history/dev-fast'
+    $refinementScript = Join-Path $TestDrive 'Invoke-VIHistoryLocalRefinement.noisy.stub.ps1'
+    New-Item -ItemType Directory -Path (Join-Path $repoUnderTest 'fixtures/vi-attr') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $repoUnderTest 'fixtures/vi-attr/Base.vi') -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoUnderTest 'fixtures/vi-attr/Head.vi') -Value 'head' -Encoding utf8
+
+    @'
+param(
+  [string]$Profile = 'dev-fast',
+  [string]$RepoRoot = '',
+  [string]$ResultsRoot = '',
+  [switch]$PassThru
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$resolvedRepoRoot = if ([string]::IsNullOrWhiteSpace($RepoRoot)) { (Get-Location).Path } else { $RepoRoot }
+$resolvedResultsRoot = if ([string]::IsNullOrWhiteSpace($ResultsRoot)) {
+  Join-Path $resolvedRepoRoot 'tests/results/local-vi-history/dev-fast'
+} else {
+  $ResultsRoot
+}
+New-Item -ItemType Directory -Path $resolvedResultsRoot -Force | Out-Null
+$receipt = [ordered]@{
+  schema = 'comparevi/local-refinement@v1'
+  generatedAt = '2026-03-19T00:00:00Z'
+  runtimeProfile = $Profile
+  image = 'comparevi-vi-history-dev:local'
+  toolSource = 'local-dev-image'
+  cacheReuseState = 'existing-local-image'
+  coldWarmClass = 'warm'
+  benchmarkSampleKind = 'dev-fast-repeat'
+  repoRoot = $resolvedRepoRoot
+  resultsRoot = $resolvedResultsRoot
+  timings = [ordered]@{
+    elapsedMilliseconds = 1500
+    elapsedSeconds = 1.5
+  }
+  finalStatus = 'succeeded'
+}
+$receipt | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $resolvedResultsRoot 'local-refinement.json') -Encoding utf8
+[ordered]@{
+  schema = 'comparevi/local-refinement-benchmark@v1'
+  generatedAt = '2026-03-19T00:00:01Z'
+  latest = [ordered]@{}
+  selectedSamples = [ordered]@{}
+  comparisons = [ordered]@{}
+} | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $resolvedResultsRoot 'local-refinement-benchmark.json') -Encoding utf8
+if ($PassThru) {
+  'runtime-noise'
+  [ordered]@{ kind = 'intermediate' }
+  [pscustomobject]$receipt
+}
+'@ | Set-Content -LiteralPath $refinementScript -Encoding utf8
+
+    $result = & $sessionScript `
+      -Profile 'dev-fast' `
+      -RepoRoot $repoUnderTest `
+      -ResultsRoot $resultsRoot `
+      -LocalRefinementScriptPath $refinementScript `
+      -PassThru
+
+    $result.schema | Should -Be 'comparevi/local-operator-session@v1'
+    $result.runtimeProfile | Should -Be 'dev-fast'
+    $result.localRefinement.schema | Should -Be 'comparevi/local-refinement@v1'
+    $result.localRefinement.finalStatus | Should -Be 'succeeded'
+    Test-Path -LiteralPath (Join-Path $resultsRoot 'local-operator-session.json') | Should -BeTrue
+
+    & $schemaScript -JsonPath $result.artifacts.sessionPath -SchemaPath $schemaPath
+    $LASTEXITCODE | Should -Be 0
+  }
+
   It 'records downstream review outputs when a review hook is provided' {
     $repoUnderTest = Join-Path $TestDrive 'repo-with-review'
     $resultsRoot = Join-Path $repoUnderTest 'tests/results/local-vi-history/warm-dev'
@@ -199,6 +272,98 @@ exit 0
     Test-Path -LiteralPath $previewManifestPath | Should -BeTrue
     Test-Path -LiteralPath $runPath | Should -BeTrue
     Test-Path -LiteralPath $reviewReceiptPath | Should -BeTrue
+
+    & $schemaScript -JsonPath $result.artifacts.sessionPath -SchemaPath $schemaPath
+    $LASTEXITCODE | Should -Be 0
+  }
+
+  It 'resolves the local refinement script from ToolingRoot while keeping RepoRoot as the consumer workspace' {
+    $consumerRepoRoot = Join-Path $TestDrive 'consumer-repo'
+    $toolingRoot = Join-Path $TestDrive 'tooling-root'
+    $resultsRoot = Join-Path $consumerRepoRoot 'tests/results/local-vi-history/dev-fast'
+    $capturePath = Join-Path $TestDrive 'operator-session-cross-repo-capture.json'
+    New-Item -ItemType Directory -Path (Join-Path $consumerRepoRoot 'Tooling/deployment') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $consumerRepoRoot 'Tooling/deployment/Test.vi') -Value 'consumer-target' -Encoding utf8
+    New-Item -ItemType Directory -Path (Join-Path $toolingRoot 'tools') -Force | Out-Null
+
+    @'
+param(
+  [string]$Profile = 'dev-fast',
+  [string]$RepoRoot = '',
+  [string]$ToolingRoot = '',
+  [string]$ResultsRoot = '',
+  [switch]$PassThru
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$capturePath = $env:COMPAREVI_TOOLING_CAPTURE_PATH
+$resolvedRepoRoot = if ([string]::IsNullOrWhiteSpace($RepoRoot)) { (Get-Location).Path } else { [System.IO.Path]::GetFullPath($RepoRoot) }
+$resolvedToolingRoot = if ([string]::IsNullOrWhiteSpace($ToolingRoot)) { '' } else { [System.IO.Path]::GetFullPath($ToolingRoot) }
+$resolvedResultsRoot = if ([string]::IsNullOrWhiteSpace($ResultsRoot)) {
+  Join-Path $resolvedRepoRoot 'tests/results/local-vi-history/dev-fast'
+} else {
+  [System.IO.Path]::GetFullPath($ResultsRoot)
+}
+New-Item -ItemType Directory -Path $resolvedResultsRoot -Force | Out-Null
+[ordered]@{
+  repoRoot = $resolvedRepoRoot
+  toolingRoot = $resolvedToolingRoot
+  resultsRoot = $resolvedResultsRoot
+} | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $capturePath -Encoding utf8
+$receipt = [ordered]@{
+  schema = 'comparevi/local-refinement@v1'
+  generatedAt = '2026-03-19T00:00:00Z'
+  runtimeProfile = $Profile
+  image = 'comparevi-vi-history-dev:local'
+  toolSource = 'local-dev-image'
+  cacheReuseState = 'existing-local-image'
+  coldWarmClass = 'warm'
+  benchmarkSampleKind = 'dev-fast-repeat'
+  repoRoot = $resolvedRepoRoot
+  resultsRoot = $resolvedResultsRoot
+  timings = [ordered]@{
+    elapsedMilliseconds = 900
+    elapsedSeconds = 0.9
+  }
+  finalStatus = 'succeeded'
+}
+$receipt | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $resolvedResultsRoot 'local-refinement.json') -Encoding utf8
+[ordered]@{
+  schema = 'comparevi/local-refinement-benchmark@v1'
+  generatedAt = '2026-03-19T00:00:01Z'
+  latest = [ordered]@{}
+  selectedSamples = [ordered]@{}
+  comparisons = [ordered]@{}
+} | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $resolvedResultsRoot 'local-refinement-benchmark.json') -Encoding utf8
+if ($PassThru) {
+  [pscustomobject]$receipt
+}
+'@ | Set-Content -LiteralPath (Join-Path $toolingRoot 'tools' 'Invoke-VIHistoryLocalRefinement.ps1') -Encoding utf8
+
+    $originalCapturePath = $env:COMPAREVI_TOOLING_CAPTURE_PATH
+    try {
+      $env:COMPAREVI_TOOLING_CAPTURE_PATH = $capturePath
+      $result = & $sessionScript `
+        -Profile 'dev-fast' `
+        -RepoRoot $consumerRepoRoot `
+        -ToolingRoot $toolingRoot `
+        -HistoryTargetPath 'Tooling/deployment/Test.vi' `
+        -ResultsRoot $resultsRoot `
+        -PassThru
+    } finally {
+      if ($null -eq $originalCapturePath) {
+        Remove-Item Env:COMPAREVI_TOOLING_CAPTURE_PATH -ErrorAction SilentlyContinue
+      } else {
+        $env:COMPAREVI_TOOLING_CAPTURE_PATH = $originalCapturePath
+      }
+    }
+
+    $result.finalStatus | Should -Be 'succeeded'
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 10
+    $capture.repoRoot | Should -Be $consumerRepoRoot
+    $capture.toolingRoot | Should -Be $toolingRoot
+    $capture.resultsRoot | Should -Be $resultsRoot
+    $result.artifacts.sessionPath | Should -Be (Join-Path $resultsRoot 'local-operator-session.json')
 
     & $schemaScript -JsonPath $result.artifacts.sessionPath -SchemaPath $schemaPath
     $LASTEXITCODE | Should -Be 0
