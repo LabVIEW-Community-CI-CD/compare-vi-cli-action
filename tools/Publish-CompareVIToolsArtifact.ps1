@@ -310,6 +310,39 @@ try {
         'When source-branch budgeting is requested, the facade also records the evaluated branch budget so downstream consumers can audit the safeguard without parsing raw git state.'
       )
     }
+    localRuntimeProfiles = [ordered]@{
+      schema = 'comparevi-tools/local-refinement-facade@v1'
+      schemaUrl = 'https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-tools-local-refinement-facade-v1.schema.json'
+      exportedFunction = 'Invoke-CompareVIHistoryLocalRefinementFacade'
+      resultsRelativePath = 'local-refinement.json'
+      benchmarkRelativePath = 'local-refinement-benchmark.json'
+      runtimeProfiles = @(
+        'proof',
+        'dev-fast',
+        'warm-dev'
+      )
+      defaultProfile = 'dev-fast'
+      stableFields = @(
+        'runtimeProfile',
+        'image',
+        'toolSource',
+        'cacheReuseState',
+        'coldWarmClass',
+        'benchmarkSampleKind',
+        'timings',
+        'history',
+        'reviewSuite',
+        'reviewLoop',
+        'warmRuntime',
+        'artifacts',
+        'finalStatus'
+      )
+      notes = @(
+        'Use the module facade when comparevi-history or another downstream needs profile-aware local refinement without hard-coding backend script paths.',
+        'The facade defaults RepoRoot to the caller working directory so extracted tooling bundles can target downstream repositories cleanly.',
+        'Proof stays the canonical runtime truth; dev-fast and warm-dev are local acceleration planes only.'
+      )
+    }
     diagnosticsCommentRenderer = [ordered]@{
       entryScriptPath = 'tools/New-CompareVIHistoryDiagnosticsBody.ps1'
       variants = @(

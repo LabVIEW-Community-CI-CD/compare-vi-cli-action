@@ -10,6 +10,7 @@
   FunctionsToExport = @(
     'Invoke-CompareVIHistory',
     'Invoke-CompareVIHistoryFacade',
+    'Invoke-CompareVIHistoryLocalRefinementFacade',
     'Invoke-CompareRefsToTemp'
   )
   CmdletsToExport   = @()

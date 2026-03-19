@@ -80,6 +80,7 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $metadata.module.version | Should -Be $moduleVersion
     $metadata.module.releaseVersion | Should -Be $moduleReleaseVersion
     @($metadata.module.exportedFunctions) | Should -Contain 'Invoke-CompareVIHistoryFacade'
+    @($metadata.module.exportedFunctions) | Should -Contain 'Invoke-CompareVIHistoryLocalRefinementFacade'
     $metadata.source.repository | Should -Be 'owner/repo'
     $metadata.source.ref | Should -Be 'refs/tags/v9.9.9'
     $metadata.source.sha | Should -Be '0123456789abcdef0123456789abcdef01234567'
@@ -90,6 +91,18 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $metadata.consumerContract.historyFacade.resultsRelativePath | Should -Be 'history-summary.json'
     @($metadata.consumerContract.historyFacade.stableFields) | Should -Contain 'target.sourceBranchRef'
     @($metadata.consumerContract.historyFacade.stableFields) | Should -Contain 'target.branchBudget'
+    $metadata.consumerContract.localRuntimeProfiles.schema | Should -Be 'comparevi-tools/local-refinement-facade@v1'
+    $metadata.consumerContract.localRuntimeProfiles.exportedFunction | Should -Be 'Invoke-CompareVIHistoryLocalRefinementFacade'
+    $metadata.consumerContract.localRuntimeProfiles.resultsRelativePath | Should -Be 'local-refinement.json'
+    $metadata.consumerContract.localRuntimeProfiles.benchmarkRelativePath | Should -Be 'local-refinement-benchmark.json'
+    @($metadata.consumerContract.localRuntimeProfiles.runtimeProfiles) | Should -Be @(
+      'proof',
+      'dev-fast',
+      'warm-dev'
+    )
+    $metadata.consumerContract.localRuntimeProfiles.defaultProfile | Should -Be 'dev-fast'
+    @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'benchmarkSampleKind'
+    @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'warmRuntime'
     $metadata.consumerContract.diagnosticsCommentRenderer.entryScriptPath | Should -Be 'tools/New-CompareVIHistoryDiagnosticsBody.ps1'
     @($metadata.consumerContract.diagnosticsCommentRenderer.variants) | Should -Be @(
       'comment-gated',
@@ -322,6 +335,146 @@ if ($GitHubOutputPath) {
     $result.observedInterpretation.coverageClass | Should -Be 'catalog-partial'
     @($result.observedInterpretation.outcomeLabels) | Should -Be @('clean', 'signal-diff')
     @($result.modes | ForEach-Object { [string]$_.slug }) | Should -Be @('default')
+
+    Test-Path -LiteralPath $capturePath | Should -BeTrue
+    $capturedRoot = (Get-Content -LiteralPath $capturePath -Raw).Trim()
+    $capturedRoot | Should -Be $bundleRoot
+  }
+
+  It 'returns the stabilized local refinement facade when invoking the module wrapper' {
+    $bundleRoot = Join-Path $TestDrive 'bundle-local-refinement-facade'
+    $moduleRoot = Join-Path $bundleRoot 'tools' 'CompareVI.Tools'
+    $toolsRoot = Join-Path $bundleRoot 'tools'
+    $downstreamRepoRoot = Join-Path $TestDrive 'downstream-repo'
+    New-Item -ItemType Directory -Path $moduleRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $downstreamRepoRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $downstreamRepoRoot 'fixtures/vi-attr') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $downstreamRepoRoot 'fixtures/vi-attr/Base.vi') -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $downstreamRepoRoot 'fixtures/vi-attr/Head.vi') -Value 'head' -Encoding utf8
+
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'tools' 'CompareVI.Tools' 'CompareVI.Tools.psd1') -Destination (Join-Path $moduleRoot 'CompareVI.Tools.psd1')
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'tools' 'CompareVI.Tools' 'CompareVI.Tools.psm1') -Destination (Join-Path $moduleRoot 'CompareVI.Tools.psm1')
+
+    $capturePath = Join-Path $TestDrive 'local-refinement-scripts-root.txt'
+    @'
+param(
+  [string]$Profile = 'dev-fast',
+  [string]$RepoRoot = '',
+  [string]$ResultsRoot = '',
+  [switch]$PassThru
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+Set-Content -LiteralPath $env:COMPAREVI_CAPTURE_PATH -Value $env:COMPAREVI_SCRIPTS_ROOT -Encoding utf8
+$resolvedRepoRoot = if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+  (Get-Location).Path
+} elseif ([System.IO.Path]::IsPathRooted($RepoRoot)) {
+  [System.IO.Path]::GetFullPath($RepoRoot)
+} else {
+  [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $RepoRoot))
+}
+$resolvedResultsRoot = if ([string]::IsNullOrWhiteSpace($ResultsRoot)) {
+  Join-Path $resolvedRepoRoot 'tests/results/local-vi-history/warm-dev'
+} elseif ([System.IO.Path]::IsPathRooted($ResultsRoot)) {
+  [System.IO.Path]::GetFullPath($ResultsRoot)
+} else {
+  [System.IO.Path]::GetFullPath((Join-Path $resolvedRepoRoot $ResultsRoot))
+}
+New-Item -ItemType Directory -Path $resolvedResultsRoot -Force | Out-Null
+$receiptPath = Join-Path $resolvedResultsRoot 'local-refinement.json'
+$benchmarkPath = Join-Path $resolvedResultsRoot 'local-refinement-benchmark.json'
+$receipt = [ordered]@{
+  schema = 'comparevi/local-refinement@v1'
+  generatedAt = '2026-03-19T00:00:00Z'
+  runtimeProfile = $Profile
+  image = 'comparevi-vi-history-dev:local'
+  toolSource = 'local-dev-image'
+  cacheReuseState = 'warm-runtime-reused'
+  coldWarmClass = 'warm'
+  benchmarkSampleKind = 'warm-dev-repeat'
+  repoRoot = $resolvedRepoRoot
+  resultsRoot = $resolvedResultsRoot
+  timings = [ordered]@{
+    elapsedMilliseconds = 1234
+    elapsedSeconds = 1.234
+  }
+  history = [ordered]@{
+    targetPath = (Join-Path $resolvedRepoRoot 'fixtures/vi-attr/Head.vi')
+    branchRef = 'HEAD'
+    baselineRef = ''
+    maxPairs = 2
+    maxCommitCount = 64
+  }
+  reviewSuite = [ordered]@{
+    schema = 'ni-linux-review-suite@v1'
+    image = 'comparevi-vi-history-dev:local'
+    scenarioCount = 1
+    summaryPath = (Join-Path $resolvedResultsRoot 'review-suite-summary.json')
+  }
+  reviewLoop = [ordered]@{
+    schema = 'ni-linux-review-suite-review-loop@v1'
+    path = (Join-Path $resolvedResultsRoot 'vi-history-review-loop-receipt.json')
+  }
+  warmRuntime = [ordered]@{
+    schema = 'comparevi/local-runtime-state@v1'
+    action = 'reconcile'
+    outcome = 'healthy'
+    container = [ordered]@{
+      name = 'warm-stub'
+      image = 'comparevi-vi-history-dev:local'
+    }
+    artifacts = [ordered]@{
+      statePath = (Join-Path $resolvedResultsRoot 'runtime/local-runtime-state.json')
+      leasePath = (Join-Path $resolvedResultsRoot 'runtime/local-runtime-lease.json')
+      healthPath = (Join-Path $resolvedResultsRoot 'runtime/local-runtime-health.json')
+      heartbeatPath = (Join-Path $resolvedResultsRoot 'runtime/local-runtime-heartbeat.json')
+    }
+  }
+  finalStatus = 'succeeded'
+}
+$receipt | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $receiptPath -Encoding utf8
+[ordered]@{
+  schema = 'comparevi/local-refinement-benchmark@v1'
+  generatedAt = '2026-03-19T00:00:01Z'
+  latest = [ordered]@{}
+  selectedSamples = [ordered]@{}
+  comparisons = [ordered]@{}
+} | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $benchmarkPath -Encoding utf8
+if ($PassThru) {
+  [pscustomobject]$receipt
+}
+'@ | Set-Content -LiteralPath (Join-Path $toolsRoot 'Invoke-VIHistoryLocalRefinement.ps1') -Encoding utf8
+
+    $schemaPath = Join-Path $repoRoot 'docs' 'schemas' 'comparevi-tools-local-refinement-facade-v1.schema.json'
+    $schemaReportPath = Join-Path $TestDrive 'local-refinement-facade.json'
+    $env:COMPAREVI_CAPTURE_PATH = $capturePath
+    try {
+      Import-Module (Join-Path $moduleRoot 'CompareVI.Tools.psd1') -Force
+      Push-Location $downstreamRepoRoot
+      try {
+        $result = Invoke-CompareVIHistoryLocalRefinementFacade -Profile 'warm-dev'
+      } finally {
+        Pop-Location | Out-Null
+      }
+    } finally {
+      Remove-Module CompareVI.Tools -Force -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_CAPTURE_PATH -ErrorAction SilentlyContinue
+      Remove-Item Env:COMPAREVI_SCRIPTS_ROOT -ErrorAction SilentlyContinue
+    }
+
+    $result | Should -Not -BeNullOrEmpty
+    $result.schema | Should -Be 'comparevi-tools/local-refinement-facade@v1'
+    $result.backendReceiptSchema | Should -Be 'comparevi/local-refinement@v1'
+    $result.runtimeProfile | Should -Be 'warm-dev'
+    $result.benchmarkSampleKind | Should -Be 'warm-dev-repeat'
+    $result.repoRoot | Should -Be $downstreamRepoRoot
+    $result.warmRuntime.container.name | Should -Be 'warm-stub'
+    $result.artifacts.localRefinementPath | Should -Be (Join-Path $downstreamRepoRoot 'tests/results/local-vi-history/warm-dev/local-refinement.json')
+    $result.artifacts.benchmarkPath | Should -Be (Join-Path $downstreamRepoRoot 'tests/results/local-vi-history/warm-dev/local-refinement-benchmark.json')
+
+    $result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $schemaReportPath -Encoding utf8
+    & $schemaScript -JsonPath $schemaReportPath -SchemaPath $schemaPath
+    $LASTEXITCODE | Should -Be 0
 
     Test-Path -LiteralPath $capturePath | Should -BeTrue
     $capturedRoot = (Get-Content -LiteralPath $capturePath -Raw).Trim()
