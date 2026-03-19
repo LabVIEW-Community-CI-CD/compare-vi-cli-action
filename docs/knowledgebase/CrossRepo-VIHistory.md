@@ -181,6 +181,77 @@ which comparevi-history consumers can resolve from the extracted tooling root
 or workflow `tooling-path` output instead of copying inline PowerShell comment
 renderers.
 
+## Local-first acceleration planes
+
+Cross-repo maintainers should now separate local refinement speed from canonical
+proof:
+
+- `proof`
+  - image: `nationalinstruments/labview:2026q1-linux`
+  - purpose: release parity and CI truth
+- `dev-fast`
+  - image: `comparevi-vi-history-dev:local`
+  - purpose: faster cold local refinement with a mounted working tree and
+    prewarmed dependencies
+- `warm-dev`
+  - same local dev image
+  - purpose: repeated local turns against one long-lived Docker runtime
+
+This split is deliberate:
+
+- `comparevi-tools` stays the non-LV/tools image only
+- the local dev image is not published in the first slice
+- CI and release workflows keep advertising only the canonical NI image
+
+### Backend local entrypoints
+
+Use the backend runtime substrate from this repo:
+
+```powershell
+node tools/npm/run-script.mjs history:local:build-dev-image
+node tools/npm/run-script.mjs history:local:refine -- `
+  -BaseVi fixtures/vi-attr/Base.vi `
+  -HeadVi fixtures/vi-attr/Head.vi `
+  -HistoryTargetPath fixtures/vi-attr/Head.vi
+node tools/npm/run-script.mjs history:local:proof -- `
+  -BaseVi fixtures/vi-attr/Base.vi `
+  -HeadVi fixtures/vi-attr/Head.vi `
+  -HistoryTargetPath fixtures/vi-attr/Head.vi
+node tools/npm/run-script.mjs history:local:warm-runtime -- `
+  -RepoRoot . `
+  -ResultsRoot tests/results/local-vi-history/warm-dev `
+  -RuntimeDir tests/results/local-vi-history/runtime/warm-dev
+```
+
+Direct PowerShell entrypoints are:
+
+- `tools/Build-VIHistoryDevImage.ps1`
+- `tools/Invoke-VIHistoryLocalRefinement.ps1`
+- `tools/Manage-VIHistoryRuntimeInDocker.ps1`
+
+The local receipts are:
+
+- `comparevi/local-refinement@v1`
+- `comparevi/local-runtime-state@v1`
+- `comparevi/local-runtime-health@v1`
+- `comparevi/local-refinement-benchmark@v1`
+
+Those receipts are the contract `comparevi-history` should consume when it adds
+profile-aware `local-review` and `local-proof` surfaces on top of the backend
+runtime planes.
+
+### Recommended downstream workflow
+
+For a downstream maintainer, the intended loop is now:
+
+1. refine a VI-history change locally with `dev-fast`
+2. repeat locally with `warm-dev` when the turn frequency is high
+3. run `proof` before opening the PR
+4. use GitHub CI only for publication and trust-boundary proof
+
+That keeps sticky comment, preview publication, and trust-split validation in
+GitHub while moving parser/renderer/runtime iteration off the PR churn path.
+
 ## One-off local run from a source checkout (legacy / maintainer path)
 
 1. **Clone the target repo**

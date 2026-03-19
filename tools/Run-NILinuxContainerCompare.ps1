@@ -109,6 +109,11 @@ param(
   [string]$RuntimeBootstrapContractPath,
   [string[]]$RuntimeInjectionEnv,
   [string[]]$RuntimeInjectionMount,
+  [string]$ReuseContainerName,
+  [string]$ReuseRepoHostPath,
+  [string]$ReuseRepoContainerPath = '/opt/comparevi/source',
+  [string]$ReuseResultsHostPath,
+  [string]$ReuseResultsContainerPath = '/opt/comparevi/vi-history/results',
   [switch]$PassThru
 )
 
@@ -389,6 +394,87 @@ function Convert-HostFileToContainerPath {
   $hostDir = Split-Path -Parent $HostFilePath
   $containerDir = Get-OrAddMountPath -Map $MountMap -Index $MountIndex -HostDirectory $hostDir
   return (Join-Path $containerDir (Split-Path -Leaf $HostFilePath)).Replace('\', '/')
+}
+
+function Test-HostPathWithinRoot {
+  param(
+    [Parameter(Mandatory)][string]$RootPath,
+    [Parameter(Mandatory)][string]$HostPath
+  )
+
+  $resolvedRoot = [System.IO.Path]::GetFullPath($RootPath)
+  $resolvedPath = [System.IO.Path]::GetFullPath($HostPath)
+  $relativePath = [System.IO.Path]::GetRelativePath($resolvedRoot, $resolvedPath)
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    return $true
+  }
+  if ([string]::Equals($relativePath, '.', [System.StringComparison]::Ordinal)) {
+    return $true
+  }
+  if ([System.IO.Path]::IsPathRooted($relativePath)) {
+    return $false
+  }
+  return -not (
+    [string]::Equals($relativePath, '..', [System.StringComparison]::Ordinal) -or
+    $relativePath.StartsWith(('..{0}' -f [System.IO.Path]::DirectorySeparatorChar), [System.StringComparison]::Ordinal) -or
+    $relativePath.StartsWith('../', [System.StringComparison]::Ordinal)
+  )
+}
+
+function Convert-HostPathToExistingContainerPath {
+  param(
+    [Parameter(Mandatory)][string]$HostPath,
+    [Parameter(Mandatory)][object[]]$Mappings,
+    [Parameter(Mandatory)][string]$Description
+  )
+
+  $resolvedPath = [System.IO.Path]::GetFullPath($HostPath)
+  $sortedMappings = @($Mappings | Sort-Object @{ Expression = { ([string]$_.hostPath).Length }; Descending = $true })
+  foreach ($mapping in $sortedMappings) {
+    $resolvedRoot = [System.IO.Path]::GetFullPath([string]$mapping.hostPath)
+    if (-not (Test-HostPathWithinRoot -RootPath $resolvedRoot -HostPath $resolvedPath)) {
+      continue
+    }
+
+    $relativePath = [System.IO.Path]::GetRelativePath($resolvedRoot, $resolvedPath)
+    $containerRoot = [string]$mapping.containerPath
+    if ([string]::Equals($relativePath, '.', [System.StringComparison]::Ordinal)) {
+      return $containerRoot.Replace('\', '/')
+    }
+
+    return (Join-Path $containerRoot $relativePath).Replace('\', '/')
+  }
+
+  throw ("{0} '{1}' is not available inside the reused container mounts." -f $Description, $resolvedPath)
+}
+
+function Get-DockerContainerRecord {
+  param([Parameter(Mandatory)][string]$ContainerName)
+
+  $inspectOutput = & docker inspect $ContainerName 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    return $null
+  }
+
+  try {
+    $records = $inspectOutput | ConvertFrom-Json -Depth 12 -ErrorAction Stop
+  } catch {
+    return $null
+  }
+
+  $record = @($records | Select-Object -First 1)
+  if ($record.Count -eq 0) {
+    return $null
+  }
+
+  $state = if ($record[0].PSObject.Properties['State']) { $record[0].State } else { $null }
+  $config = if ($record[0].PSObject.Properties['Config']) { $record[0].Config } else { $null }
+  return [pscustomobject]@{
+    name = $ContainerName
+    image = if ($config -and $config.PSObject.Properties['Image']) { [string]$config.Image } else { '' }
+    running = if ($state -and $state.PSObject.Properties['Running']) { [bool]$state.Running } else { $false }
+    status = if ($state -and $state.PSObject.Properties['Status']) { [string]$state.Status } else { '' }
+  }
 }
 
 function Resolve-RuntimeInjectionEnvEntries {
@@ -1557,6 +1643,75 @@ function Invoke-DockerRunWithTimeout {
   }
 }
 
+function Invoke-DockerExecWithTimeout {
+  param(
+    [Parameter(Mandatory)][string[]]$DockerArgs,
+    [Parameter(Mandatory)][int]$Seconds,
+    [Parameter(Mandatory)][string]$ContainerName,
+    [int]$HeartbeatSeconds = 15
+  )
+
+  $tempDirectory = Resolve-TempDirectoryPath
+  $stdoutFile = Join-Path $tempDirectory ("ni-linux-container-exec-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $stderrFile = Join-Path $tempDirectory ("ni-linux-container-exec-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $process = $null
+  try {
+    $dockerCommandSource = Resolve-DockerCommandSource
+    $startFilePath = $dockerCommandSource
+    $startArgs = @($DockerArgs)
+    if ([System.StringComparer]::OrdinalIgnoreCase.Equals([System.IO.Path]::GetExtension($dockerCommandSource), '.ps1')) {
+      $pwshExe = (Get-Command -Name 'pwsh' -ErrorAction Stop).Source
+      $startFilePath = $pwshExe
+      $startArgs = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + @($DockerArgs)
+    }
+
+    $process = Start-Process -FilePath $startFilePath `
+      -ArgumentList $startArgs `
+      -RedirectStandardOutput $stdoutFile `
+      -RedirectStandardError $stderrFile `
+      -NoNewWindow `
+      -PassThru
+
+    $timeoutSeconds = [Math]::Max(1, $Seconds)
+    $deadline = (Get-Date).AddSeconds($timeoutSeconds)
+    $pollMs = 500
+    $heartbeatWindow = [Math]::Max(5, $HeartbeatSeconds)
+    $lastHeartbeat = Get-Date
+    while (-not $process.HasExited) {
+      if ((Get-Date) -ge $deadline) {
+        try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
+        try { & docker exec $ContainerName sh -lc 'pkill -f LabVIEWCLI || true' *> $null } catch {}
+        try { & docker stop --time 1 $ContainerName *> $null } catch {}
+        return [pscustomobject]@{
+          TimedOut = $true
+          ExitCode = $script:TimeoutExitCode
+          StdOut   = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
+          StdErr   = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
+        }
+      }
+
+      if (((Get-Date) - $lastHeartbeat).TotalSeconds -ge $heartbeatWindow) {
+        Write-Host ("[ni-linux-container-compare] waiting for docker exec in container '{0}'..." -f $ContainerName) -ForegroundColor DarkGray
+        $lastHeartbeat = Get-Date
+      }
+      Start-Sleep -Milliseconds $pollMs
+    }
+
+    return [pscustomobject]@{
+      TimedOut = $false
+      ExitCode = [int]$process.ExitCode
+      StdOut   = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
+      StdErr   = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
+    }
+  } finally {
+    if ($process) {
+      try { $process.Dispose() } catch {}
+    }
+    Remove-Item -LiteralPath $stdoutFile -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stderrFile -ErrorAction SilentlyContinue
+  }
+}
+
 function Write-TextArtifact {
   param(
     [Parameter(Mandatory)][string]$Path,
@@ -1844,6 +1999,14 @@ $capture = [ordered]@{
   command        = $null
   stdoutPath     = $null
   stderrPath     = $null
+  containerExecution = [ordered]@{
+    mode = if ([string]::IsNullOrWhiteSpace($ReuseContainerName)) { 'docker-run' } else { 'docker-exec' }
+    reusedContainerName = if ([string]::IsNullOrWhiteSpace($ReuseContainerName)) { '' } else { $ReuseContainerName }
+    repoHostPath = ''
+    repoContainerPath = ''
+    resultsHostPath = ''
+    resultsContainerPath = ''
+  }
   runtimeDeterminism = $null
   runtimeInjection = [ordered]@{
     enabled = $false
@@ -1928,6 +2091,7 @@ $capturePath = $null
 $stdoutPath = $null
 $stderrPath = $null
 $containerScriptHostPath = $null
+$containerNameForArtifacts = ''
 $containerNameForCleanup = ''
 $containerReportPathForExport = ''
 $reportDirectoryForExport = ''
@@ -2016,14 +2180,35 @@ try {
     throw ("Docker runtime determinism mismatch. See snapshot: {0}" -f $runtimeSnapshot)
   }
 
-  if (-not (Test-DockerImageExists -Tag $Image)) {
+  $useExistingContainer = -not [string]::IsNullOrWhiteSpace($ReuseContainerName)
+  $reusedContainerRecord = $null
+  if ($useExistingContainer) {
+    $reusedContainerRecord = Get-DockerContainerRecord -ContainerName $ReuseContainerName
+    if ($null -eq $reusedContainerRecord) {
+      throw ("Reused container '{0}' not found." -f $ReuseContainerName)
+    }
+    if (-not $reusedContainerRecord.running) {
+      throw ("Reused container '{0}' is not running (status={1})." -f $ReuseContainerName, $reusedContainerRecord.status)
+    }
+    if (
+      -not [string]::IsNullOrWhiteSpace($Image) -and
+      -not [string]::Equals([string]$reusedContainerRecord.image, $Image, [System.StringComparison]::OrdinalIgnoreCase)
+    ) {
+      throw ("Reused container '{0}' is running image '{1}', but '{2}' was requested." -f $ReuseContainerName, $reusedContainerRecord.image, $Image)
+    }
+    $capture.containerExecution.reusedContainerName = $ReuseContainerName
+  } elseif (-not (Test-DockerImageExists -Tag $Image)) {
     throw ("Docker image '{0}' not found locally. Pull it first: docker pull {0}" -f $Image)
   }
 
   if ($Probe) {
-    $capture.status = 'probe-ok'
+    $capture.status = if ($useExistingContainer) { 'probe-reuse-ok' } else { 'probe-ok' }
     $capture.exitCode = 0
-    $capture.message = ("Docker is in linux mode and image '{0}' is available." -f $Image)
+    $capture.message = if ($useExistingContainer) {
+      ("Docker is in linux mode and reused container '{0}' is running image '{1}'." -f $ReuseContainerName, $reusedContainerRecord.image)
+    } else {
+      ("Docker is in linux mode and image '{0}' is available." -f $Image)
+    }
     Write-Host ("[ni-linux-container-probe] {0}" -f $capture.message) -ForegroundColor Green
   } else {
     $reservedRuntimeInjectionVars = @(
@@ -2212,17 +2397,147 @@ try {
     $mounts = @{}
     $mountIndex = 0
     $mountRef = [ref]$mountIndex
-    $containerBaseVi = if ([string]::IsNullOrWhiteSpace($baseViPath)) {
-      ''
+    $existingContainerMappings = @()
+    $containerBaseVi = ''
+    $containerHeadVi = ''
+    $containerReportPath = ''
+    if ($useExistingContainer) {
+      $reuseRepoHostPathResolved = if ([string]::IsNullOrWhiteSpace($ReuseRepoHostPath)) {
+        if ($viHistoryEnabled -and -not [string]::IsNullOrWhiteSpace([string]$resolvedRuntimeBootstrap.viHistory.repoHostPath)) {
+          Resolve-ExistingPathFromBaseDirectory `
+            -BaseDirectory $reportDirectory `
+            -InputPath ([string]$resolvedRuntimeBootstrap.viHistory.repoHostPath) `
+            -ParameterName 'ReuseRepoHostPath'
+        } else {
+          throw '-ReuseRepoHostPath is required when -ReuseContainerName is set.'
+        }
+      } else {
+        Resolve-ExistingPathFromBaseDirectory `
+          -BaseDirectory $reportDirectory `
+          -InputPath $ReuseRepoHostPath `
+          -ParameterName 'ReuseRepoHostPath'
+      }
+      if (-not (Test-Path -LiteralPath $reuseRepoHostPathResolved -PathType Container)) {
+        throw ("-ReuseRepoHostPath must resolve to a directory: {0}" -f $reuseRepoHostPathResolved)
+      }
+
+      $reuseResultsHostPathResolved = if ([string]::IsNullOrWhiteSpace($ReuseResultsHostPath)) {
+        if ($viHistoryEnabled -and -not [string]::IsNullOrWhiteSpace([string]$resolvedRuntimeBootstrap.viHistory.resultsHostPath)) {
+          [System.IO.Path]::GetFullPath([string]$resolvedRuntimeBootstrap.viHistory.resultsHostPath)
+        } else {
+          $reportDirectory
+        }
+      } else {
+        $effectiveResultsInput = Resolve-EffectivePathInput -InputPath $ReuseResultsHostPath -ParameterName 'ReuseResultsHostPath'
+        if ([System.IO.Path]::IsPathRooted($effectiveResultsInput)) {
+          [System.IO.Path]::GetFullPath($effectiveResultsInput)
+        } else {
+          [System.IO.Path]::GetFullPath((Join-Path $reportDirectory $effectiveResultsInput))
+        }
+      }
+      if (-not (Test-Path -LiteralPath $reuseResultsHostPathResolved -PathType Container)) {
+        New-Item -ItemType Directory -Path $reuseResultsHostPathResolved -Force | Out-Null
+      }
+
+      if ($viHistoryEnabled) {
+        if (-not (Test-HostPathWithinRoot -RootPath $reuseRepoHostPathResolved -HostPath ([string]$resolvedRuntimeBootstrap.viHistory.repoHostPath))) {
+          throw ("Runtime bootstrap repo path '{0}' is not covered by -ReuseRepoHostPath '{1}'." -f [string]$resolvedRuntimeBootstrap.viHistory.repoHostPath, $reuseRepoHostPathResolved)
+        }
+        if (-not (Test-HostPathWithinRoot -RootPath $reuseResultsHostPathResolved -HostPath ([string]$resolvedRuntimeBootstrap.viHistory.resultsHostPath))) {
+          throw ("Runtime bootstrap results path '{0}' is not covered by -ReuseResultsHostPath '{1}'." -f [string]$resolvedRuntimeBootstrap.viHistory.resultsHostPath, $reuseResultsHostPathResolved)
+        }
+      }
+
+      $existingContainerMappings += [pscustomobject]@{
+        hostPath = [string]$reuseResultsHostPathResolved
+        containerPath = [string]$ReuseResultsContainerPath
+      }
+      $existingContainerMappings += [pscustomobject]@{
+        hostPath = [string]$reuseRepoHostPathResolved
+        containerPath = [string]$ReuseRepoContainerPath
+      }
+      if (
+        $viHistoryEnabled -and
+        $resolvedRuntimeBootstrap.viHistory.gitInjection.enabled -and
+        -not [string]::IsNullOrWhiteSpace([string]$resolvedRuntimeBootstrap.viHistory.gitInjection.commonGitHostPath)
+      ) {
+        $existingContainerMappings += [pscustomobject]@{
+          hostPath = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.commonGitHostPath
+          containerPath = [string]$resolvedRuntimeBootstrap.viHistory.gitInjection.commonGitContainerPath
+        }
+      }
+      if ($viHistoryEnabled) {
+        $mappedViHistoryResultsContainerPath = Convert-HostPathToExistingContainerPath `
+          -HostPath ([string]$resolvedRuntimeBootstrap.viHistory.resultsHostPath) `
+          -Mappings $existingContainerMappings `
+          -Description 'Runtime bootstrap results path'
+        $resolvedRuntimeBootstrap.viHistory.resultsContainerPath = $mappedViHistoryResultsContainerPath
+        $resolvedRuntimeBootstrap.viHistory.suiteManifestContainerPath = '{0}/suite-manifest.json' -f $mappedViHistoryResultsContainerPath.TrimEnd('/')
+        $resolvedRuntimeBootstrap.viHistory.historyContextContainerPath = '{0}/history-context.json' -f $mappedViHistoryResultsContainerPath.TrimEnd('/')
+        $resolvedRuntimeBootstrap.viHistory.bootstrapReceiptContainerPath = '{0}/vi-history-bootstrap-receipt.json' -f $mappedViHistoryResultsContainerPath.TrimEnd('/')
+        $resolvedRuntimeBootstrap.viHistory.bootstrapMarkerContainerPath = '{0}/vi-history-bootstrap-ran.txt' -f $mappedViHistoryResultsContainerPath.TrimEnd('/')
+        $capture.runtimeInjection.viHistory.resultsContainerPath = [string]$resolvedRuntimeBootstrap.viHistory.resultsContainerPath
+        $capture.runtimeInjection.viHistory.suiteManifestContainerPath = [string]$resolvedRuntimeBootstrap.viHistory.suiteManifestContainerPath
+        $capture.runtimeInjection.viHistory.historyContextContainerPath = [string]$resolvedRuntimeBootstrap.viHistory.historyContextContainerPath
+        $capture.runtimeInjection.viHistory.bootstrapReceiptContainerPath = [string]$resolvedRuntimeBootstrap.viHistory.bootstrapReceiptContainerPath
+        $capture.runtimeInjection.viHistory.bootstrapMarkerContainerPath = [string]$resolvedRuntimeBootstrap.viHistory.bootstrapMarkerContainerPath
+
+        foreach ($runtimeMount in @($resolvedRuntimeInjectionMounts)) {
+          if ([string]::Equals([string]$runtimeMount.hostPath, [string]$resolvedRuntimeBootstrap.viHistory.resultsHostPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $runtimeMount.containerPath = [string]$resolvedRuntimeBootstrap.viHistory.resultsContainerPath
+          }
+        }
+
+        foreach ($runtimeEnv in @($resolvedRuntimeInjectionEnv)) {
+          switch ([string]$runtimeEnv.name) {
+            'COMPAREVI_VI_HISTORY_RESULTS_DIR' { $runtimeEnv.value = [string]$resolvedRuntimeBootstrap.viHistory.resultsContainerPath }
+            'COMPAREVI_VI_HISTORY_SUITE_MANIFEST' { $runtimeEnv.value = [string]$resolvedRuntimeBootstrap.viHistory.suiteManifestContainerPath }
+            'COMPAREVI_VI_HISTORY_CONTEXT' { $runtimeEnv.value = [string]$resolvedRuntimeBootstrap.viHistory.historyContextContainerPath }
+            'COMPAREVI_VI_HISTORY_BOOTSTRAP_RECEIPT' { $runtimeEnv.value = [string]$resolvedRuntimeBootstrap.viHistory.bootstrapReceiptContainerPath }
+            'COMPAREVI_VI_HISTORY_BOOTSTRAP_MARKER' { $runtimeEnv.value = [string]$resolvedRuntimeBootstrap.viHistory.bootstrapMarkerContainerPath }
+          }
+        }
+      }
+
+      foreach ($runtimeMount in @($resolvedRuntimeInjectionMounts)) {
+        $mappedContainerPath = Convert-HostPathToExistingContainerPath `
+          -HostPath ([string]$runtimeMount.hostPath) `
+          -Mappings $existingContainerMappings `
+          -Description 'Runtime injection mount'
+        $expectedContainerPath = ([string]$runtimeMount.containerPath).Replace('\', '/').TrimEnd('/')
+        if (-not [string]::Equals($mappedContainerPath.TrimEnd('/'), $expectedContainerPath, [System.StringComparison]::Ordinal)) {
+          throw ("Runtime injection mount '{0}' expects container path '{1}', but the reused container projects it as '{2}'." -f [string]$runtimeMount.hostPath, $expectedContainerPath, $mappedContainerPath)
+        }
+      }
+
+      $containerBaseVi = if ([string]::IsNullOrWhiteSpace($baseViPath)) {
+        ''
+      } else {
+        Convert-HostPathToExistingContainerPath -HostPath $baseViPath -Mappings $existingContainerMappings -Description 'Base VI'
+      }
+      $containerHeadVi = if ([string]::IsNullOrWhiteSpace($headViPath)) {
+        ''
+      } else {
+        Convert-HostPathToExistingContainerPath -HostPath $headViPath -Mappings $existingContainerMappings -Description 'Head VI'
+      }
+      $containerReportPath = Convert-HostPathToExistingContainerPath -HostPath $resolvedReportPath -Mappings $existingContainerMappings -Description 'Report path'
+      $capture.containerExecution.repoHostPath = [string]$reuseRepoHostPathResolved
+      $capture.containerExecution.repoContainerPath = [string]$ReuseRepoContainerPath
+      $capture.containerExecution.resultsHostPath = [string]$reuseResultsHostPathResolved
+      $capture.containerExecution.resultsContainerPath = [string]$ReuseResultsContainerPath
     } else {
-      Convert-HostFileToContainerPath -HostFilePath $baseViPath -MountMap $mounts -MountIndex $mountRef
+      $containerBaseVi = if ([string]::IsNullOrWhiteSpace($baseViPath)) {
+        ''
+      } else {
+        Convert-HostFileToContainerPath -HostFilePath $baseViPath -MountMap $mounts -MountIndex $mountRef
+      }
+      $containerHeadVi = if ([string]::IsNullOrWhiteSpace($headViPath)) {
+        ''
+      } else {
+        Convert-HostFileToContainerPath -HostFilePath $headViPath -MountMap $mounts -MountIndex $mountRef
+      }
+      $containerReportPath = Convert-HostFileToContainerPath -HostFilePath $resolvedReportPath -MountMap $mounts -MountIndex $mountRef
     }
-    $containerHeadVi = if ([string]::IsNullOrWhiteSpace($headViPath)) {
-      ''
-    } else {
-      Convert-HostFileToContainerPath -HostFilePath $headViPath -MountMap $mounts -MountIndex $mountRef
-    }
-    $containerReportPath = Convert-HostFileToContainerPath -HostFilePath $resolvedReportPath -MountMap $mounts -MountIndex $mountRef
 
     $effectiveContainerLabel = if ([string]::IsNullOrWhiteSpace($ContainerNameLabel)) {
       if ($viHistoryEnabled -and -not [string]::IsNullOrWhiteSpace([string]$resolvedRuntimeBootstrap.mode)) {
@@ -2233,34 +2548,59 @@ try {
     } else {
       $ContainerNameLabel
     }
-    $containerName = New-CompareContainerName -Label $effectiveContainerLabel -HashSeed $reportDirectory
-    $containerNameForCleanup = $containerName
+    $containerName = if ($useExistingContainer) {
+      $ReuseContainerName
+    } else {
+      New-CompareContainerName -Label $effectiveContainerLabel -HashSeed $reportDirectory
+    }
+    $containerNameForArtifacts = $containerName
+    $containerNameForCleanup = if ($useExistingContainer) { '' } else { $containerName }
     $capture.containerName = $containerName
     $containerReportPathForExport = $containerReportPath
     $reportDirectoryForExport = $reportDirectory
     $containerCommand = New-ContainerCommand
     $containerScriptHostPath = Join-Path $reportDirectory ('linux-compare-entrypoint-{0}.sh' -f $containerName)
     Write-UnixScriptArtifact -Path $containerScriptHostPath -Content $containerCommand
-    $containerScriptPath = Convert-HostFileToContainerPath -HostFilePath $containerScriptHostPath -MountMap $mounts -MountIndex $mountRef
+    $containerScriptPath = if ($useExistingContainer) {
+      Convert-HostPathToExistingContainerPath -HostPath $containerScriptHostPath -Mappings $existingContainerMappings -Description 'Container entrypoint script'
+    } else {
+      Convert-HostFileToContainerPath -HostFilePath $containerScriptHostPath -MountMap $mounts -MountIndex $mountRef
+    }
     if (-not [string]::IsNullOrWhiteSpace($resolvedRuntimeInjectionScriptPath)) {
-      $runtimeInjectionScriptContainerPath = Convert-HostFileToContainerPath `
-        -HostFilePath $resolvedRuntimeInjectionScriptPath `
-        -MountMap $mounts `
-        -MountIndex $mountRef
+      $runtimeInjectionScriptContainerPath = if ($useExistingContainer) {
+        Convert-HostPathToExistingContainerPath `
+          -HostPath $resolvedRuntimeInjectionScriptPath `
+          -Mappings $existingContainerMappings `
+          -Description 'Runtime injection script'
+      } else {
+        Convert-HostFileToContainerPath `
+          -HostFilePath $resolvedRuntimeInjectionScriptPath `
+          -MountMap $mounts `
+          -MountIndex $mountRef
+      }
       $capture.runtimeInjection.scriptContainerPath = $runtimeInjectionScriptContainerPath
     }
 
-    $dockerArgs = @(
-      'run',
-      '--name', $containerName,
-      '--workdir', '/compare'
-    )
-    foreach ($entry in ($mounts.GetEnumerator() | Sort-Object Name)) {
-      $volumeSpec = '{0}:{1}' -f $entry.Name, $entry.Value
-      $dockerArgs += @('-v', $volumeSpec)
+    $dockerArgs = if ($useExistingContainer) {
+      @(
+        'exec',
+        '--workdir', $ReuseRepoContainerPath
+      )
+    } else {
+      @(
+        'run',
+        '--name', $containerName,
+        '--workdir', '/compare'
+      )
     }
-    foreach ($runtimeMount in $resolvedRuntimeInjectionMounts) {
-      $dockerArgs += @('-v', ('{0}:{1}' -f $runtimeMount.hostPath, $runtimeMount.containerPath))
+    if (-not $useExistingContainer) {
+      foreach ($entry in ($mounts.GetEnumerator() | Sort-Object Name)) {
+        $volumeSpec = '{0}:{1}' -f $entry.Name, $entry.Value
+        $dockerArgs += @('-v', $volumeSpec)
+      }
+      foreach ($runtimeMount in $resolvedRuntimeInjectionMounts) {
+        $dockerArgs += @('-v', ('{0}:{1}' -f $runtimeMount.hostPath, $runtimeMount.containerPath))
+      }
     }
     if (-not [string]::IsNullOrWhiteSpace($containerBaseVi)) {
       $dockerArgs += @('--env', ("COMPARE_BASE_VI={0}" -f $containerBaseVi))
@@ -2287,26 +2627,45 @@ try {
     if (-not [string]::IsNullOrWhiteSpace($resolvedLabVIEWPath)) {
       $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH={0}" -f $resolvedLabVIEWPath))
     }
+    if ($useExistingContainer) {
+      $dockerArgs += @('--env', ("COMPARE_REUSE_REPO_HOST_PATH={0}" -f $capture.containerExecution.repoHostPath))
+      $dockerArgs += @('--env', ("COMPARE_REUSE_REPO_CONTAINER_PATH={0}" -f $capture.containerExecution.repoContainerPath))
+      $dockerArgs += @('--env', ("COMPARE_REUSE_RESULTS_HOST_PATH={0}" -f $capture.containerExecution.resultsHostPath))
+      $dockerArgs += @('--env', ("COMPARE_REUSE_RESULTS_CONTAINER_PATH={0}" -f $capture.containerExecution.resultsContainerPath))
+    }
     foreach ($runtimeEnv in $resolvedRuntimeInjectionEnv) {
       $dockerArgs += @('--env', ('{0}={1}' -f $runtimeEnv.name, $runtimeEnv.value))
     }
     if (-not [string]::IsNullOrWhiteSpace($runtimeInjectionScriptContainerPath)) {
       $dockerArgs += @('--env', ("COMPARE_RUNTIME_INJECTION_SCRIPT={0}" -f $runtimeInjectionScriptContainerPath))
     }
-    $dockerArgs += @(
-      $Image,
-      'bash',
-      $containerScriptPath
-    )
-
-    $capture.command = ('docker run --name {0} ... {1} bash -lc <linux-compare-script>' -f $containerName, $Image)
-    Write-Host ("[ni-linux-container-compare] image={0} report={1}" -f $Image, $resolvedReportPath) -ForegroundColor Cyan
-
-    $runResult = Invoke-DockerRunWithTimeout `
-      -DockerArgs $dockerArgs `
-      -Seconds $TimeoutSeconds `
-      -ContainerName $containerName `
-      -HeartbeatSeconds $HeartbeatSeconds
+    if ($useExistingContainer) {
+      $dockerArgs += @(
+        $containerName,
+        'bash',
+        $containerScriptPath
+      )
+      $capture.command = ('docker exec --workdir {0} {1} bash {2}' -f $ReuseRepoContainerPath, $containerName, $containerScriptPath)
+      Write-Host ("[ni-linux-container-compare] mode=docker-exec container={0} image={1} report={2}" -f $containerName, $Image, $resolvedReportPath) -ForegroundColor Cyan
+      $runResult = Invoke-DockerExecWithTimeout `
+        -DockerArgs $dockerArgs `
+        -Seconds $TimeoutSeconds `
+        -ContainerName $containerName `
+        -HeartbeatSeconds $HeartbeatSeconds
+    } else {
+      $dockerArgs += @(
+        $Image,
+        'bash',
+        $containerScriptPath
+      )
+      $capture.command = ('docker run --name {0} ... {1} bash -lc <linux-compare-script>' -f $containerName, $Image)
+      Write-Host ("[ni-linux-container-compare] mode=docker-run image={0} report={1}" -f $Image, $resolvedReportPath) -ForegroundColor Cyan
+      $runResult = Invoke-DockerRunWithTimeout `
+        -DockerArgs $dockerArgs `
+        -Seconds $TimeoutSeconds `
+        -ContainerName $containerName `
+        -HeartbeatSeconds $HeartbeatSeconds
+    }
     $stdoutContent = $runResult.StdOut
     $stderrContent = $runResult.StdErr
 
@@ -2352,9 +2711,9 @@ try {
   $capture.message = $_.Exception.Message
   $finalExitCode = $script:PreflightExitCode
 } finally {
-  if (-not $Probe -and -not [string]::IsNullOrWhiteSpace($containerNameForCleanup) -and -not [string]::IsNullOrWhiteSpace($reportDirectoryForExport)) {
+  if (-not $Probe -and -not [string]::IsNullOrWhiteSpace($containerNameForArtifacts) -and -not [string]::IsNullOrWhiteSpace($reportDirectoryForExport)) {
     $exportResult = Export-ContainerArtifacts `
-      -ContainerName $containerNameForCleanup `
+      -ContainerName $containerNameForArtifacts `
       -ContainerReportPath $containerReportPathForExport `
       -HostReportPath $resolvedReportPath `
       -ReportDirectory $reportDirectoryForExport `

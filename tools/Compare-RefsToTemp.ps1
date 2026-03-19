@@ -76,6 +76,8 @@ function Normalize-ExistingPath {
 
 function Resolve-TempRoot {
   $candidates = @(
+    $env:COMPAREVI_COMPARE_TEMP_ROOT,
+    $env:COMPAREVI_TEMP_ROOT,
     $env:TEMP,
     $env:TMP,
     $env:TMPDIR,

@@ -1,0 +1,33 @@
+ARG BASE_IMAGE=nationalinstruments/labview:2026q1-linux
+FROM ${BASE_IMAGE}
+
+ARG BASE_IMAGE
+ARG REPO_SOURCE=unknown
+ARG REPO_REVISION=unknown
+LABEL org.opencontainers.image.title="comparevi-vi-history-dev"
+LABEL org.opencontainers.image.description="Local-only acceleration image for repeated Linux VI History refinement"
+LABEL org.opencontainers.image.source="${REPO_SOURCE}"
+LABEL org.opencontainers.image.revision="${REPO_REVISION}"
+LABEL io.comparevi.base-image="${BASE_IMAGE}"
+LABEL io.comparevi.runtime-plane="vi-history-dev-fast"
+
+RUN apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    coreutils \
+    git \
+    jq \
+    procps \
+    unzip \
+    xvfb \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/comparevi/cache \
+  /opt/comparevi/source \
+  /opt/comparevi/vi-history/results \
+  /opt/comparevi/runtime
+
+WORKDIR /opt/comparevi/source
+
+CMD ["bash", "-lc", "sleep infinity"]

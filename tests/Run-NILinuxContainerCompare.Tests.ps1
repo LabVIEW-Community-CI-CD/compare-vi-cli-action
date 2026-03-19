@@ -1175,6 +1175,8 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
     $work = Join-Path $TestDrive 'bootstrap-single-pair'
     New-Item -ItemType Directory -Path $work -Force | Out-Null
     $repoRoot = Join-Path $work 'consumer-repo'
+    $baseRef = ''
+    $headRef = ''
     New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
     Invoke-WithIsolatedGitWorkspace {
       Push-Location $repoRoot
@@ -1188,16 +1190,18 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
         Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
         & git add .
         & git commit -m 'initial history repo' | Out-Null
-        $baseRef = [string](& git rev-parse HEAD).Trim()
+        $script:baseRef = [string](& git rev-parse HEAD).Trim()
         & git switch -c 'consumer/branch' | Out-Null
         Set-Content -LiteralPath $targetPath -Value 'head' -Encoding utf8
         & git add src/Sample.vi
         & git commit -m 'update sample vi' | Out-Null
-        $headRef = [string](& git rev-parse HEAD).Trim()
+        $script:headRef = [string](& git rev-parse HEAD).Trim()
       } finally {
         Pop-Location | Out-Null
       }
     }
+    $baseRef = $script:baseRef
+    $headRef = $script:headRef
 
     $resultsDir = Join-Path $work 'results'
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null

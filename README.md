@@ -250,6 +250,80 @@ aggregated, or skipped entirely.
 Artifacts are written under `tests/results/ref-compare/history/` using the same
 schema as the workflow outputs.
 
+## Local-first VI history acceleration
+
+For repeated Linux VI-history turns on a developer workstation, this repository
+now exposes three explicit local runtime profiles:
+
+- `proof` keeps the canonical runtime truth:
+  `nationalinstruments/labview:2026q1-linux`
+- `dev-fast` uses the local-only NI-derived acceleration image:
+  `comparevi-vi-history-dev:local`
+- `warm-dev` reuses a long-lived local Docker runtime on top of that same
+  dev image to remove repeated container bootstrap cost
+
+The operating rule is strict:
+
+- local acceleration is for refinement speed only
+- release and CI still prove the canonical `proof` plane
+- `comparevi-tools` remains the non-LV/tools image and is not reused for the
+  VI-history runtime
+
+Build the local acceleration image once:
+
+```powershell
+node tools/npm/run-script.mjs history:local:build-dev-image
+```
+
+Run one cold local refinement turn against the mounted working tree:
+
+```powershell
+node tools/npm/run-script.mjs history:local:refine -- `
+  -BaseVi fixtures/vi-attr/Base.vi `
+  -HeadVi fixtures/vi-attr/Head.vi `
+  -HistoryTargetPath fixtures/vi-attr/Head.vi
+```
+
+Run the same flow against the canonical proof image:
+
+```powershell
+node tools/npm/run-script.mjs history:local:proof -- `
+  -BaseVi fixtures/vi-attr/Base.vi `
+  -HeadVi fixtures/vi-attr/Head.vi `
+  -HistoryTargetPath fixtures/vi-attr/Head.vi
+```
+
+Start and reuse the warm local runtime:
+
+```powershell
+node tools/npm/run-script.mjs history:local:warm-runtime -- `
+  -RepoRoot . `
+  -ResultsRoot tests/results/local-vi-history/warm-dev `
+  -RuntimeDir tests/results/local-vi-history/runtime/warm-dev
+
+pwsh -NoLogo -NoProfile -File tools/Invoke-VIHistoryLocalRefinement.ps1 `
+  -Profile warm-dev `
+  -BaseVi fixtures/vi-attr/Base.vi `
+  -HeadVi fixtures/vi-attr/Head.vi `
+  -HistoryTargetPath fixtures/vi-attr/Head.vi
+```
+
+The local refinement facade writes:
+
+- `local-refinement.json` (`schema: comparevi/local-refinement@v1`)
+- `local-refinement-benchmark.json`
+  (`schema: comparevi/local-refinement-benchmark@v1`)
+
+The warm runtime manager writes:
+
+- `local-runtime-state.json` (`schema: comparevi/local-runtime-state@v1`)
+- `local-runtime-health.json` (`schema: comparevi/local-runtime-health@v1`)
+- `local-runtime-heartbeat.json`
+
+These receipts are intentionally local-first. They allow `comparevi-history`
+and downstream consumers to reuse the same runtime planes without changing the
+review-bundle semantics or the canonical CI proof surface.
+
 For a quicker end-to-end loop:
 
 - `scripts/Run-VIHistory.ps1` regenerates the history results, prints the

@@ -150,6 +150,76 @@ Describe 'CompareVI with Git refs (same path at two commits)' -Tag 'CompareVI','
     ($summary.out.reportHtml -as [string]) | Should -Match 'compare-report.html'
   }
 
+  It 'prefers COMPAREVI_COMPARE_TEMP_ROOT when a caller pins the temp workspace' {
+    $pair = $null
+    foreach ($p in $_pairs) {
+      & git show --no-renames -- "$($p.A):$_target" 1>$null 2>$null
+      $okA = ($LASTEXITCODE -eq 0)
+      & git show --no-renames -- "$($p.B):$_target" 1>$null 2>$null
+      $okB = ($LASTEXITCODE -eq 0)
+      if ($okA -and $okB) { $pair = $p; break }
+    }
+    if (-not $pair) { Set-ItResult -Skipped -Because 'No valid ref pair with content'; return }
+
+    $resultsDir = Join-Path $TestDrive 'ref-compare-temp-override'
+    $tempRoot = Join-Path $TestDrive 'mounted-temp-root'
+    New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+    $stubPath = Join-Path $_repo 'tests/stubs/Invoke-LVCompare.stub.ps1'
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = 'pwsh'
+    foreach ($arg in @(
+      '-NoLogo',
+      '-NoProfile',
+      '-File',
+      (Join-Path $_repo 'tools/Compare-RefsToTemp.ps1'),
+      '-Path',
+      $_target,
+      '-RefA',
+      $pair.A,
+      '-RefB',
+      $pair.B,
+      '-ResultsDir',
+      $resultsDir,
+      '-OutName',
+      'temp-override',
+      '-Detailed',
+      '-RenderReport',
+      '-InvokeScriptPath',
+      $stubPath,
+      '-FailOnDiff:$false'
+    )) {
+      [void]$psi.ArgumentList.Add($arg)
+    }
+    $psi.WorkingDirectory = $_repo
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.Environment['COMPAREVI_COMPARE_TEMP_ROOT'] = $tempRoot
+
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    if ($null -eq $proc) {
+      throw 'Failed to start temp-root override test process.'
+    }
+    try {
+      [System.Threading.Tasks.Task]::WaitAll(@(
+          $proc.StandardOutput.ReadToEndAsync(),
+          $proc.StandardError.ReadToEndAsync()
+        ))
+      $proc.WaitForExit()
+      $proc.ExitCode | Should -Be 0
+    } finally {
+      $proc.Dispose()
+    }
+
+    $execPath = Join-Path $resultsDir 'temp-override-exec.json'
+    Test-Path -LiteralPath $execPath | Should -BeTrue
+    $exec = Get-Content -LiteralPath $execPath -Raw | ConvertFrom-Json -Depth 12
+    $exec.base | Should -Match ([regex]::Escape($tempRoot))
+    $exec.head | Should -Match ([regex]::Escape($tempRoot))
+  }
+
   It 'supports detailed capture mode with stub LVCompare' {
     $pair = $null
     foreach ($p in $_pairs) {
