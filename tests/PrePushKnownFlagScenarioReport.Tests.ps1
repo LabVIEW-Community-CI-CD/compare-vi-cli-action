@@ -46,6 +46,7 @@ Describe 'Pre-push known-flag scenario pack report' -Tag 'Unit' {
 
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Resolve-PrePushKnownFlagScenarioPack')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Write-PrePushKnownFlagScenarioReport')
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Write-PrePushRenderingCertificationReport')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Write-PrePushSupportLaneReport')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Get-PrePushKnownFlagScenarioSemanticEvidence')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Test-PrePushKnownFlagReviewerAssertion')
@@ -370,6 +371,63 @@ Describe 'Pre-push known-flag scenario pack report' -Tag 'Unit' {
     $report.observed.failureMessage | Should -Be 'scenario pack failed'
     $report.observed.activeScenarioId | Should -Be 'attribute-suppression-boundary'
     $report.results.Count | Should -Be 0
+  }
+
+  It 'writes a separate push-blocking post-results rendering certification report' {
+    $repoRoot = Join-Path $TestDrive 'non-git-render-cert'
+    $resultsRoot = Join-Path $repoRoot 'tests' 'results' '_agent' 'pre-push-ni-image'
+    New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+
+    $contract = [pscustomobject]@{
+      path = $script:KnownFlagContractPath
+      pack = $script:ActiveScenarioPack
+      resultsRoot = $resultsRoot
+    }
+
+    $scenarioResults = @(
+      [pscustomobject]@{
+        name = 'attribute-suppression-boundary'
+        semanticGateOutcome = 'pass'
+        reviewerAssertionResults = @(
+          [pscustomobject]@{ passed = $true }
+        )
+        rawModeBoundaryResults = @(
+          [pscustomobject]@{ passed = $true }
+        )
+      },
+      [pscustomobject]@{
+        name = 'front-panel-position-boundary'
+        semanticGateOutcome = 'fail'
+        reviewerAssertionResults = @(
+          [pscustomobject]@{ passed = $false }
+        )
+        rawModeBoundaryResults = @(
+          [pscustomobject]@{ passed = $true }
+        )
+      }
+    )
+
+    $reportPath = Write-PrePushRenderingCertificationReport `
+      -repoRoot $repoRoot `
+      -contract $contract `
+      -observedOutcome 'fail' `
+      -scenarioResults $scenarioResults `
+      -failureMessage 'render contradiction' `
+      -activeScenarioName 'front-panel-position-boundary' `
+      -activeCapturePath 'tests/results/_agent/pre-push-ni-image/front-panel-position-boundary/ni-linux-container-capture.json' `
+      -activeReportPath 'tests/results/_agent/pre-push-ni-image/front-panel-position-boundary/compare-report.html'
+
+    $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 24
+    $report.schema | Should -Be 'pre-push-post-results-rendering-certification-report@v1'
+    $report.certificationPolicy.scope | Should -Be 'pre-push'
+    $report.certificationPolicy.blocking | Should -BeTrue
+    @($report.certificationPolicy.supportLaneReports) | Should -Contain 'transport-smoke-report.json'
+    @($report.certificationPolicy.supportLaneReports) | Should -Contain 'vi-history-smoke-report.json'
+    $report.summary.totalScenarios | Should -Be 2
+    $report.summary.passingScenarios | Should -Be 1
+    $report.summary.failingScenarios | Should -Be 1
+    $report.observed.outcome | Should -Be 'fail'
+    $report.observed.activeScenarioId | Should -Be 'front-panel-position-boundary'
   }
 
   It 'normalizes live scenario results into semantic report records' {

@@ -641,6 +641,94 @@ function Write-PrePushKnownFlagScenarioReport {
   return $reportPath
 }
 
+function Write-PrePushRenderingCertificationReport {
+  param(
+    [string]$repoRoot,
+    [object]$contract,
+    [ValidateSet('pass', 'fail')]
+    [string]$observedOutcome,
+    [object[]]$scenarioResults,
+    [string]$failureMessage,
+    [string]$activeScenarioName,
+    [string]$activeCapturePath,
+    [string]$activeReportPath
+  )
+
+  if ($null -eq $contract) {
+    return $null
+  }
+
+  $reportPath = Join-Path ([string]$contract.resultsRoot) 'post-results-rendering-certification-report.json'
+  $reportDir = Split-Path -Parent $reportPath
+  if (-not [string]::IsNullOrWhiteSpace($reportDir)) {
+    New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
+  }
+
+  $branchName = $null
+  $sha = $null
+  try {
+    $branchRaw = & git -C $repoRoot rev-parse --abbrev-ref HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and $branchRaw) {
+      $branchName = ($branchRaw | Select-Object -First 1).Trim()
+      if ($branchName -eq 'HEAD') {
+        $branchName = $null
+      }
+    }
+  } catch {}
+  try {
+    $shaRaw = & git -C $repoRoot rev-parse HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and $shaRaw) {
+      $sha = ($shaRaw | Select-Object -First 1).Trim()
+    }
+  } catch {}
+
+  $allScenarioResults = @($scenarioResults)
+  $failingScenarioResults = @($allScenarioResults | Where-Object { -not [string]::Equals([string]$_.semanticGateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase) })
+
+  $report = [ordered]@{
+    schema = 'pre-push-post-results-rendering-certification-report@v1'
+    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    contractPath = [string]$contract.path
+    branch = $branchName
+    headSha = $sha
+    certificationPolicy = [ordered]@{
+      scope = 'pre-push'
+      blocking = $true
+      subject = 'post-results-rendering'
+      supportLaneReports = @(
+        'transport-smoke-report.json',
+        'vi-history-smoke-report.json'
+      )
+    }
+    scenarioPack = [ordered]@{
+      id = [string]$contract.pack.id
+      description = [string]$contract.pack.description
+      image = [string]$contract.pack.image
+      expectedGateOutcome = [string]$contract.pack.expectedGateOutcome
+      target = [ordered]@{
+        kind = [string]$contract.pack.target.kind
+        baseVi = [string]$contract.pack.target.baseVi
+        headVi = [string]$contract.pack.target.headVi
+      }
+    }
+    summary = [ordered]@{
+      totalScenarios = $allScenarioResults.Count
+      passingScenarios = @($allScenarioResults | Where-Object { [string]::Equals([string]$_.semanticGateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase) }).Count
+      failingScenarios = $failingScenarioResults.Count
+    }
+    observed = [ordered]@{
+      outcome = $observedOutcome
+      activeScenarioId = $activeScenarioName
+      capturePath = $activeCapturePath
+      reportPath = $activeReportPath
+      failureMessage = $failureMessage
+    }
+    results = @($scenarioResults)
+  }
+  $report | ConvertTo-Json -Depth 24 | Set-Content -LiteralPath $reportPath -Encoding utf8
+  return $reportPath
+}
+
 function Write-PrePushSupportLaneReport {
   param(
     [string]$repoRoot,
@@ -1247,6 +1335,7 @@ $knownFlagScenarioResults = New-Object System.Collections.Generic.List[object]
 $transportSmokeResults = New-Object System.Collections.Generic.List[object]
 $viHistorySmokeResults = New-Object System.Collections.Generic.List[object]
 $scenarioReportPath = $null
+$renderingCertificationReportPath = $null
 $transportLaneReportPath = $null
 $viHistoryLaneReportPath = $null
 $knownFlagObservedScenarioName = ''
@@ -1403,6 +1492,16 @@ try {
     -activeCapturePath $knownFlagObservedCapturePath `
     -activeReportPath $knownFlagObservedReportPath
   Write-Host ("[pre-push] Known-flag scenario report: {0}" -f $scenarioReportPath) -ForegroundColor DarkGray
+  $renderingCertificationReportPath = Write-PrePushRenderingCertificationReport `
+    -repoRoot $root `
+    -contract $knownFlagScenarioContract `
+    -observedOutcome 'pass' `
+    -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $knownFlagScenarioResults) `
+    -failureMessage '' `
+    -activeScenarioName $knownFlagObservedScenarioName `
+    -activeCapturePath $knownFlagObservedCapturePath `
+    -activeReportPath $knownFlagObservedReportPath
+  Write-Host ("[pre-push] Rendering certification report: {0}" -f $renderingCertificationReportPath) -ForegroundColor DarkGray
 
   $currentLane = 'transport-smoke'
   $activeScenarioName = 'single-container-matrix'
@@ -1738,6 +1837,16 @@ try {
       ('- activeScenarioPackId=`{0}` expectedImage=`{1}` declaredScenarios=`{2}`' -f $knownFlagScenarioPackId, $expectedImage, @($knownFlagScenarioContract.scenarios).Count),
       ''
     )
+    $lines += '#### Rendering Certification'
+    $lines += ('- report=`{0}` blocking=`true` scope=`pre-push`' -f $renderingCertificationReportPath)
+    foreach ($scenarioResult in $knownFlagScenarioResults) {
+      $reviewerPassCount = @($scenarioResult.reviewerAssertionResults | Where-Object { $_.passed }).Count
+      $reviewerTotalCount = @($scenarioResult.reviewerAssertionResults).Count
+      $rawBoundaryPassCount = @($scenarioResult.rawModeBoundaryResults | Where-Object { $_.passed }).Count
+      $rawBoundaryTotalCount = @($scenarioResult.rawModeBoundaryResults).Count
+      $lines += ('- `{0}`: semanticGateOutcome=`{1}` reviewerAssertions=`{2}/{3}` rawBoundaries=`{4}/{5}`' -f $scenarioResult.name, $scenarioResult.semanticGateOutcome, $reviewerPassCount, $reviewerTotalCount, $rawBoundaryPassCount, $rawBoundaryTotalCount)
+    }
+    $lines += ''
     $lines += '#### Active Scenario Pack'
     foreach ($scenarioResult in $knownFlagScenarioResults) {
       $requestedFlags = if (@($scenarioResult.requestedFlags).Count -eq 0) { '(none)' } else { [string]::Join(', ', @($scenarioResult.requestedFlags)) }
@@ -1777,6 +1886,18 @@ try {
         -activeReportPath $observedReportPath
       if (-not [string]::IsNullOrWhiteSpace($scenarioReportPath)) {
         Write-Host ("[pre-push] Known-flag scenario report: {0}" -f $scenarioReportPath) -ForegroundColor Yellow
+      }
+      $renderingCertificationReportPath = Write-PrePushRenderingCertificationReport `
+        -repoRoot $root `
+        -contract $knownFlagScenarioContract `
+        -observedOutcome 'fail' `
+        -scenarioResults (ConvertTo-PrePushKnownFlagScenarioResultArray -scenarioResults $knownFlagScenarioResults) `
+        -failureMessage $failureMessage `
+        -activeScenarioName ([string]$activeScenarioName) `
+        -activeCapturePath $observedCapturePath `
+        -activeReportPath $observedReportPath
+      if (-not [string]::IsNullOrWhiteSpace($renderingCertificationReportPath)) {
+        Write-Host ("[pre-push] Rendering certification report: {0}" -f $renderingCertificationReportPath) -ForegroundColor Yellow
       }
     }
     'transport-smoke' {

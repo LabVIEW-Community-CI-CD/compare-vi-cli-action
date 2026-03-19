@@ -108,8 +108,11 @@ Keep it short, stable, and helper-oriented. Deep runbooks belong in checked-in d
 - Exactly one active scenario pack is allowed in that checked-in contract at a time.
 - Deterministic top-level receipts:
   - `tests/results/_agent/pre-push-ni-image/known-flag-scenario-report.json`
+  - `tests/results/_agent/pre-push-ni-image/post-results-rendering-certification-report.json`
   - `tests/results/_agent/pre-push-ni-image/transport-smoke-report.json`
   - `tests/results/_agent/pre-push-ni-image/vi-history-smoke-report.json`
+- The post-results rendering certification report is the explicit semantic gate for the
+  active scenario pack; transport and VI-history reports remain separate support lanes.
 
 ## References
 
