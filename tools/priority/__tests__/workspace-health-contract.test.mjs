@@ -28,7 +28,7 @@ test('PrePush-Checks invokes workspace health gate in optional lease mode', () =
   assert.match(content, /if \(\$null -eq \$mount\) \{\s*continue\s*\}/);
 });
 
-test('PrePush NI image known-flag scenario consumes the checked-in active scenario-pack contract', () => {
+test('PrePush NI image known-flag scenario uses rendered semantic certification and a projected transport smoke lane', () => {
   const content = readRepoFile('tools/PrePush-Checks.ps1');
   assert.match(content, /Run-NILinuxContainerCompare\.ps1/);
   assert.match(content, /Resolve-PrePushKnownFlagScenarioPack/);
@@ -38,19 +38,26 @@ test('PrePush NI image known-flag scenario consumes the checked-in active scenar
   assert.match(content, /& \$niCompareScript/);
   assert.match(content, /-LabVIEWPath \$containerLabVIEWPath/);
   assert.match(content, /-ContainerNameLabel \$activeScenarioName/);
-  assert.match(content, /history-summary\.json/);
-  assert.match(content, /logPath = if \(\$parts.Count -gt 7\)/);
-  assert.match(content, /\$failureMarkers = @\(/);
-  assert.match(content, /Select-String -Path \$resolvedEntryLogPath -SimpleMatch -Quiet -Pattern \$failureMarkers/);
-  assert.match(content, /Write-PrePushKnownFlagScenarioReport/);
+  assert.match(content, /Get-PrePushKnownFlagScenarioSemanticEvidence/);
+  assert.match(content, /Test-PrePushKnownFlagReviewerAssertion/);
+  assert.match(content, /Test-PrePushKnownFlagRawModeBoundary/);
+  assert.match(content, /Write-PrePushRenderingCertificationReport/);
+  assert.match(content, /function Select-PrePushBaselineTransportSmokeSource/);
+  assert.match(content, /\$baselineTransportSource = Select-PrePushBaselineTransportSmokeSource -ScenarioResults \$knownFlagScenarioResults/);
+  assert.match(content, /baseline-transport-smoke/);
+  assert.match(content, /Minimal transport smoke projected from the baseline rendered-review run\./);
   assert.match(content, /Write-PrePushSupportLaneReport/);
+  assert.match(content, /history-summary\.json/);
+  assert.match(content, /Write-PrePushKnownFlagScenarioReport/);
+  assert.match(content, /Write-PrePushFlagScenarioCatalog/);
   assert.match(content, /transport-smoke-report\.json/);
   assert.match(content, /vi-history-smoke-report\.json/);
   assert.match(content, /#### Active Scenario Pack/);
+  assert.match(content, /#### Rendering Certification/);
   assert.match(content, /#### Transport Smoke/);
   assert.match(content, /#### VI History Smoke/);
   assert.match(content, /Active known-flag scenario pack '\{0\}' OK/);
-  assert.match(content, /New-PrePushTransportMatrixScenarios/);
+  assert.match(content, /New-PrePushTransportSmokeScenarios/);
   assert.doesNotMatch(content, /pwsh\s+-NoLogo\s+-NoProfile\s+-File\s+\$niCompareScript/);
   assert.doesNotMatch(content, /Render-VIHistoryReport\.ps1/);
 });
@@ -138,6 +145,8 @@ test('Run-NonLVChecksInDocker exposes Docker Desktop NI Linux review-suite parit
   assert.match(content, /Verify-RequirementsGate\.ps1/);
   assert.match(content, /schema = 'docker-tools-parity-review-loop@v1'/);
   assert.match(content, /review-suite-summary\.html/);
+  assert.match(content, /flag-combination-certification\.html/);
+  assert.match(content, /flag-combination-certification\.json/);
   assert.match(content, /history-report\.html/);
   assert.match(content, /history-summary\.json/);
   assert.match(content, /vi-history-review-loop-receipt\.json/);
@@ -157,6 +166,7 @@ test('AGENTS documents the Docker Desktop local-first review loop for repeat pas
   assert.match(content, /Run-NonLVChecksInDocker\.ps1 -UseToolsImage/);
   assert.match(content, /Run-NonLVChecksInDocker\.ps1 -UseToolsImage -NILinuxReviewSuite/);
   assert.match(content, /iterate locally through Docker\s+Desktop first/i);
+  assert.match(content, /flag-combination-certification\.json/);
   assert.match(content, /DOCKER_TOOLS_PARITY\.md/);
 });
 
@@ -167,6 +177,7 @@ test('Docker parity knowledgebase distinguishes current host-plane behavior from
   assert.match(content, /Targeted single-VI history follow-up/);
   assert.match(content, /touch-aware for deep branches such as `develop`/);
   assert.match(content, /NILinuxReviewSuiteHistoryTargetPath/);
+  assert.match(content, /flag-combination-certification\.html/);
   assert.match(content, /vi-history-review-loop-receipt\.json/);
   assert.match(content, /review-loop-receipt\.json/);
 });

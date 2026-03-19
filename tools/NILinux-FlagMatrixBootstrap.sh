@@ -104,26 +104,50 @@ fi
 mkdir -p "\${RESULTS_DIR}" || exit 2
 : > "\${LEDGER_PATH}" || exit 2
 
-scenario_names=(
-  "baseline"
-  "noattr"
-  "nofppos"
-  "nobdcosm"
-  "noattr__nofppos"
-  "noattr__nobdcosm"
-  "nofppos__nobdcosm"
-  "noattr__nofppos__nobdcosm"
-)
-scenario_flags=(
-  ""
-  "-noattr"
-  "-nofppos"
-  "-nobdcosm"
-  "-noattr -nofppos"
-  "-noattr -nobdcosm"
-  "-nofppos -nobdcosm"
-  "-noattr -nofppos -nobdcosm"
-)
+scenario_names=()
+scenario_flags=()
+scenario_catalog_path="\${COMPAREVI_FLAG_MATRIX_SCENARIO_CATALOG:-}"
+
+if [ -n "\${scenario_catalog_path}" ]; then
+  if [ ! -f "\${scenario_catalog_path}" ]; then
+    echo "COMPAREVI_FLAG_MATRIX_SCENARIO_CATALOG does not exist: \${scenario_catalog_path}" 1>&2
+    exit 2
+  fi
+
+  while IFS=$'\t' read -r scenario_name scenario_flag_text || [ -n "\${scenario_name:-}" ]; do
+    if [ -z "\${scenario_name:-}" ]; then
+      continue
+    fi
+    scenario_names+=("\${scenario_name}")
+    scenario_flags+=("\${scenario_flag_text:-}")
+  done < "\${scenario_catalog_path}"
+else
+  scenario_names=(
+    "baseline"
+    "noattr"
+    "nofppos"
+    "nobdcosm"
+    "noattr__nofppos"
+    "noattr__nobdcosm"
+    "nofppos__nobdcosm"
+    "noattr__nofppos__nobdcosm"
+  )
+  scenario_flags=(
+    ""
+    "-noattr"
+    "-nofppos"
+    "-nobdcosm"
+    "-noattr -nofppos"
+    "-noattr -nobdcosm"
+    "-nofppos -nobdcosm"
+    "-noattr -nofppos -nobdcosm"
+  )
+fi
+
+if [ "\${#scenario_names[@]}" -eq 0 ]; then
+  echo "Flag matrix bootstrap resolved no scenarios." 1>&2
+  exit 2
+fi
 
 processed=0
 diffs=0

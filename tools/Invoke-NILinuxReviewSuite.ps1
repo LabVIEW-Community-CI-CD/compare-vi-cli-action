@@ -82,6 +82,127 @@ function Get-RelativeArtifactPath {
   return [System.IO.Path]::GetRelativePath($RootPath, $Path).Replace('\', '/')
 }
 
+function Write-FlagCombinationCertificationArtifacts {
+  param(
+    [Parameter(Mandatory = $true)][string]$ResultsRoot,
+    [Parameter(Mandatory = $true)][string]$Image,
+    [AllowNull()][object[]]$ScenarioResults
+  )
+
+  $flagCombinationResults = @(
+    @($ScenarioResults) | Where-Object {
+      $_ -and
+      $_.PSObject.Properties['kind'] -and
+      [string]::Equals([string]$_.kind, 'flag-combination', [System.StringComparison]::OrdinalIgnoreCase)
+    }
+  )
+  if ($flagCombinationResults.Count -eq 0) {
+    throw 'NI Linux review suite resolved no flag-combination scenarios for certification.'
+  }
+
+  $jsonPath = Join-Path $ResultsRoot 'flag-combination-certification.json'
+  $markdownPath = Join-Path $ResultsRoot 'flag-combination-certification.md'
+  $htmlPath = Join-Path $ResultsRoot 'flag-combination-certification.html'
+
+  $normalizedScenarios = @(
+    $flagCombinationResults | ForEach-Object {
+      [ordered]@{
+        name = [string]$_.name
+        requestedFlagsLabel = [string]$_.requestedFlagsLabel
+        requestedFlags = @($_.requestedFlags | ForEach-Object { [string]$_ })
+        flagsUsed = @($_.flagsUsed | ForEach-Object { [string]$_ })
+        executionMode = [string]$_.executionMode
+        resultClass = [string]$_.resultClass
+        gateOutcome = [string]$_.gateOutcome
+        reportPath = Get-RelativeArtifactPath -RootPath $ResultsRoot -Path ([string]$_.reportPath)
+        capturePath = Get-RelativeArtifactPath -RootPath $ResultsRoot -Path ([string]$_.capturePath)
+        runtimeSnapshotPath = Get-RelativeArtifactPath -RootPath $ResultsRoot -Path ([string]$_.runtimeSnapshotPath)
+      }
+    }
+  )
+
+  $payload = [ordered]@{
+    schema = 'ni-linux-flag-combination-certification@v1'
+    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    image = $Image
+    resultsRoot = $ResultsRoot
+    laneClass = 'certification'
+    blocking = $false
+    planeApplicability = @('linux-proof')
+    futureParityPlanes = @('windows-mirror-proof', 'host-32bit-shadow')
+    summary = [ordered]@{
+      totalScenarios = $normalizedScenarios.Count
+      passingScenarios = @($normalizedScenarios | Where-Object { [string]::Equals([string]$_.gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase) }).Count
+      failingScenarios = @($normalizedScenarios | Where-Object { -not [string]::Equals([string]$_.gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase) }).Count
+    }
+    scenarios = @($normalizedScenarios)
+  }
+  $payload | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $jsonPath -Encoding utf8
+
+  $markdownLines = @(
+    '# NI Linux flag-combination certification',
+    '',
+    '- Lane class: `certification`',
+    '- Blocking: `false`',
+    ('- Image: `{0}`' -f $Image),
+    ('- Plane applicability: `{0}`' -f ([string]::Join(', ', @($payload.planeApplicability)))),
+    ('- Future parity planes: `{0}`' -f ([string]::Join(', ', @($payload.futureParityPlanes)))),
+    ('- Total scenarios: `{0}`' -f $payload.summary.totalScenarios),
+    ('- Passing scenarios: `{0}`' -f $payload.summary.passingScenarios),
+    ('- Failing scenarios: `{0}`' -f $payload.summary.failingScenarios),
+    '',
+    '| Scenario | Requested Flags | Result | Report | Capture | Runtime |',
+    '| --- | --- | --- | --- | --- | --- |'
+  )
+  foreach ($scenario in @($normalizedScenarios)) {
+    $requestedFlagsLabel = if ([string]::IsNullOrWhiteSpace([string]$scenario.requestedFlagsLabel)) { '(none)' } else { [string]$scenario.requestedFlagsLabel }
+    $markdownLines += ('| {0} | {1} | {2}/{3} | [report](./{4}) | [capture](./{5}) | [runtime](./{6}) |' -f
+        $scenario.name,
+        $requestedFlagsLabel,
+        $scenario.resultClass,
+        $scenario.gateOutcome,
+        $scenario.reportPath,
+        $scenario.capturePath,
+        $scenario.runtimeSnapshotPath)
+  }
+  $markdownLines -join "`n" | Set-Content -LiteralPath $markdownPath -Encoding utf8
+
+  $htmlLines = @(
+    '<html><body><h1>NI Linux flag-combination certification</h1>',
+    ('<p>Lane class: <code>certification</code><br/>Blocking: <code>false</code><br/>Image: <code>{0}</code><br/>Plane applicability: <code>{1}</code><br/>Future parity planes: <code>{2}</code></p>' -f
+      $Image,
+      [string]::Join(', ', @($payload.planeApplicability)),
+      [string]::Join(', ', @($payload.futureParityPlanes))),
+    ('<p>Total scenarios: <code>{0}</code><br/>Passing scenarios: <code>{1}</code><br/>Failing scenarios: <code>{2}</code></p>' -f
+      $payload.summary.totalScenarios,
+      $payload.summary.passingScenarios,
+      $payload.summary.failingScenarios),
+    '<table border="1" cellspacing="0" cellpadding="4">',
+    '<thead><tr><th>Scenario</th><th>Requested Flags</th><th>Result</th><th>Report</th><th>Capture</th><th>Runtime</th></tr></thead>',
+    '<tbody>'
+  )
+  foreach ($scenario in @($normalizedScenarios)) {
+    $requestedFlagsLabel = if ([string]::IsNullOrWhiteSpace([string]$scenario.requestedFlagsLabel)) { '(none)' } else { [string]$scenario.requestedFlagsLabel }
+    $htmlLines += ('<tr><td>{0}</td><td>{1}</td><td>{2}/{3}</td><td><a href="./{4}">report</a></td><td><a href="./{5}">capture</a></td><td><a href="./{6}">runtime</a></td></tr>' -f
+        $scenario.name,
+        $requestedFlagsLabel,
+        $scenario.resultClass,
+        $scenario.gateOutcome,
+        $scenario.reportPath,
+        $scenario.capturePath,
+        $scenario.runtimeSnapshotPath)
+  }
+  $htmlLines += '</tbody></table></body></html>'
+  $htmlLines -join "`n" | Set-Content -LiteralPath $htmlPath -Encoding utf8
+
+  return [pscustomobject]@{
+    schema = 'ni-linux-flag-combination-certification@v1'
+    jsonPath = $jsonPath
+    markdownPath = $markdownPath
+    htmlPath = $htmlPath
+  }
+}
+
 function Resolve-HistoryRefSelection {
   param(
     [AllowEmptyString()][string]$RequestedBranchRef,
@@ -614,6 +735,11 @@ $scenarioResults += [pscustomobject]@{
   historyInspectionHtmlPath = $historyInspectionHtmlPath
 }
 
+$flagCombinationCertification = Write-FlagCombinationCertificationArtifacts `
+  -ResultsRoot $resultsRootResolved `
+  -Image $Image `
+  -ScenarioResults @($scenarioResults)
+
 $baselineTopLevelReportPath = Join-Path $resultsRootResolved 'compare-report.html'
 $summaryRows = foreach ($entry in @($scenarioResults)) {
   $historyMarkdownRelativePath = ''
@@ -675,6 +801,12 @@ $summaryPayload = [ordered]@{
     maxCommitCount = [int]$HistoryMaxCommitCount
   }
   baselineCompareReportPath = $baselineTopLevelReportPath
+  flagCombinationCertification = [ordered]@{
+    schema = [string]$flagCombinationCertification.schema
+    jsonPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path ([string]$flagCombinationCertification.jsonPath)
+    markdownPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path ([string]$flagCombinationCertification.markdownPath)
+    htmlPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path ([string]$flagCombinationCertification.htmlPath)
+  }
   scenarios = @($summaryRows)
 }
 $summaryPayload | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $summaryJsonPath -Encoding utf8
@@ -691,6 +823,7 @@ $markdownLines = @(
   ('- History effective branch ref: `{0}`' -f $historyRefSelection.effectiveBranchRef),
   ('- History effective baseline ref: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.effectiveBaselineRef)) { '(default)' } else { $historyRefSelection.effectiveBaselineRef })),
   ('- History max commit count: `{0}`' -f $HistoryMaxCommitCount),
+  ('- Flag certification: [flag-combination-certification.html](./{0}) ([json](./{1}), [md](./{2}))' -f $summaryPayload.flagCombinationCertification.htmlPath, $summaryPayload.flagCombinationCertification.jsonPath, $summaryPayload.flagCombinationCertification.markdownPath),
   '',
   '| Scenario | Kind | Requested Flags | Result | Report | Extra |',
   '| --- | --- | --- | --- | --- | --- |'
@@ -707,7 +840,7 @@ $markdownLines -join "`n" | Set-Content -LiteralPath $summaryMarkdownPath -Encod
 
 $htmlLines = @(
   '<html><body><h1>NI Linux review suite</h1>',
-  ('<p>Image: <code>{0}</code><br/>LabVIEW path: <code>{1}</code><br/>History ref source: <code>{2}</code><br/>History requested branch ref: <code>{3}</code><br/>History requested baseline ref: <code>{4}</code><br/>History effective branch ref: <code>{5}</code><br/>History effective baseline ref: <code>{6}</code><br/>History max commit count: <code>{7}</code></p>' -f $Image, $LabVIEWPath, $historyRefSelection.source, $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBranchRef)) { '(default)' } else { $historyRefSelection.requestedBranchRef }), $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBaselineRef)) { '(default)' } else { $historyRefSelection.requestedBaselineRef }), $historyRefSelection.effectiveBranchRef, $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.effectiveBaselineRef)) { '(default)' } else { $historyRefSelection.effectiveBaselineRef }), $HistoryMaxCommitCount),
+  ('<p>Image: <code>{0}</code><br/>LabVIEW path: <code>{1}</code><br/>History ref source: <code>{2}</code><br/>History requested branch ref: <code>{3}</code><br/>History requested baseline ref: <code>{4}</code><br/>History effective branch ref: <code>{5}</code><br/>History effective baseline ref: <code>{6}</code><br/>History max commit count: <code>{7}</code><br/>Flag certification: <a href="./{8}">html</a>, <a href="./{9}">json</a>, <a href="./{10}">md</a></p>' -f $Image, $LabVIEWPath, $historyRefSelection.source, $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBranchRef)) { '(default)' } else { $historyRefSelection.requestedBranchRef }), $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBaselineRef)) { '(default)' } else { $historyRefSelection.requestedBaselineRef }), $historyRefSelection.effectiveBranchRef, $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.effectiveBaselineRef)) { '(default)' } else { $historyRefSelection.effectiveBaselineRef }), $HistoryMaxCommitCount, $summaryPayload.flagCombinationCertification.htmlPath, $summaryPayload.flagCombinationCertification.jsonPath, $summaryPayload.flagCombinationCertification.markdownPath),
   '<table border="1" cellspacing="0" cellpadding="4">',
   '<thead><tr><th>Scenario</th><th>Kind</th><th>Requested Flags</th><th>Result</th><th>Report</th><th>Extra</th></tr></thead>',
   '<tbody>'
@@ -730,7 +863,8 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubStepSummaryPath)) {
     ('- artifact root: `{0}`' -f $resultsRootResolved),
     ('- compare scenarios: `{0}`' -f $knownFlagScenarios.Count),
     ('- vi history report: `enabled`'),
-    ('- summary: `{0}`' -f (Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $summaryMarkdownPath))
+    ('- summary: `{0}`' -f (Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $summaryMarkdownPath)),
+    ('- flag certification: `{0}`' -f (Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path ([string]$flagCombinationCertification.markdownPath)))
   ) -join "`n" | Out-File -FilePath $GitHubStepSummaryPath -Append -Encoding utf8
 }
 
@@ -739,6 +873,9 @@ Write-GitHubOutput -Key 'summary_json_path' -Value $summaryJsonPath -Path $GitHu
 Write-GitHubOutput -Key 'summary_markdown_path' -Value $summaryMarkdownPath -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'summary_html_path' -Value $summaryHtmlPath -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'baseline_report_path' -Value $baselineTopLevelReportPath -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'flag_combination_certification_json_path' -Value ([string]$flagCombinationCertification.jsonPath) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'flag_combination_certification_markdown_path' -Value ([string]$flagCombinationCertification.markdownPath) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'flag_combination_certification_html_path' -Value ([string]$flagCombinationCertification.htmlPath) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'history_ref_source' -Value ([string]$historyRefSelection.source) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'history_requested_branch_ref' -Value ([string]$historyRefSelection.requestedBranchRef) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'history_requested_baseline_ref' -Value ([string]$historyRefSelection.requestedBaselineRef) -Path $GitHubOutputPath
