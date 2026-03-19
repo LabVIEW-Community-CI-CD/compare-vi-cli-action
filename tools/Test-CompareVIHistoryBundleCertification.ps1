@@ -239,7 +239,13 @@ function Ensure-NonShallowGitHistory {
         return
     }
 
-    $fetch = Invoke-CapturedProcess -FilePath 'git' -Arguments @('fetch', '--unshallow', '--tags', 'origin') -WorkingDirectory $RepoRoot
+    $fetch = Invoke-CapturedProcess -FilePath 'git' -Arguments @(
+        'fetch',
+        '--unshallow',
+        '--no-tags',
+        'origin',
+        '+refs/heads/*:refs/remotes/origin/*'
+    ) -WorkingDirectory $RepoRoot
     if ($fetch.ExitCode -ne 0) {
         throw "Failed to unshallow repository history for certification: $($fetch.StdErr.Trim())"
     }
