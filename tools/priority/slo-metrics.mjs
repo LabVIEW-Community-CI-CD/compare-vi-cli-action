@@ -29,6 +29,7 @@ function printUsage() {
   console.log('  --threshold-mttr-hours <n>         MTTR breach threshold in hours (default: 24).');
   console.log('  --threshold-stale-hours <n>        Stale-budget breach threshold in hours (default: 1080).');
   console.log('  --threshold-gate-regressions <n>   Gate-regression breach threshold (default: 3).');
+  console.log('  --candidate-workflow <id>          Treat the named in-progress workflow as the remediation candidate.');
   console.log('  --route-on-breach                  Create/update SLO breach issue when breached.');
   console.log('  --route-labels <a,b,c>             Labels for routed issue (default: slo,ci,governance).');
   console.log('  --route-title-prefix <text>        Routed issue title prefix (default: [SLO] Breach detected).');
@@ -48,6 +49,7 @@ export function parseArgs(argv = process.argv) {
     thresholdMttrHours: 24,
     thresholdStaleHours: 1080,
     thresholdGateRegressions: 3,
+    candidateWorkflow: null,
     routeOnBreach: false,
     routeLabels: ['slo', 'ci', 'governance'],
     routeTitlePrefix: '[SLO] Breach detected',
@@ -67,7 +69,13 @@ export function parseArgs(argv = process.argv) {
       continue;
     }
 
-    if (token === '--repo' || token === '--workflow' || token === '--output' || token === '--route-title-prefix') {
+    if (
+      token === '--repo' ||
+      token === '--workflow' ||
+      token === '--output' ||
+      token === '--route-title-prefix' ||
+      token === '--candidate-workflow'
+    ) {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
       }
@@ -78,6 +86,8 @@ export function parseArgs(argv = process.argv) {
         options.workflows.push(next);
       } else if (token === '--output') {
         options.outputPath = next;
+      } else if (token === '--candidate-workflow') {
+        options.candidateWorkflow = next;
       } else {
         options.routeTitlePrefix = next;
       }
@@ -541,21 +551,31 @@ export function buildSloSummary(workflowSummaries) {
   };
 }
 
-export function evaluatePromotionGate(workflowSummaries, thresholds) {
+export function evaluatePromotionGate(workflowSummaries, thresholds, options = {}) {
   const blockers = [];
+  const suppressedBlockers = [];
+  const candidateWorkflow = typeof options.candidateWorkflow === 'string' ? options.candidateWorkflow.trim() : '';
   for (const workflow of workflowSummaries) {
     const metrics = workflow?.summary?.metrics ?? {};
     if (metrics.unresolvedIncident === true) {
       const ageHours = Number.isFinite(metrics.unresolvedIncidentAgeSeconds)
         ? metrics.unresolvedIncidentAgeSeconds / 3600
         : null;
-      blockers.push({
+      const blocker = {
         code: 'unresolved-incident',
         workflow: workflow.workflow,
         message: Number.isFinite(ageHours)
           ? `${workflow.workflow} has an unresolved incident open for ${ageHours.toFixed(2)} hours`
           : `${workflow.workflow} has an unresolved incident`
-      });
+      };
+      if (candidateWorkflow && workflow.workflow === candidateWorkflow) {
+        suppressedBlockers.push({
+          ...blocker,
+          reason: 'candidate-workflow'
+        });
+      } else {
+        blockers.push(blocker);
+      }
     }
     if (Number.isFinite(metrics.staleHours) && metrics.staleHours > thresholds.staleHours) {
       blockers.push({
@@ -569,7 +589,12 @@ export function evaluatePromotionGate(workflowSummaries, thresholds) {
   return {
     status: blockers.length > 0 ? 'fail' : 'pass',
     blockerCount: blockers.length,
-    blockers
+    blockers,
+    suppressedBlockerCount: suppressedBlockers.length,
+    suppressedBlockers,
+    context: {
+      candidateWorkflow: candidateWorkflow || null
+    }
   };
 }
 
@@ -607,7 +632,9 @@ export async function main(argv = process.argv) {
     gateRegressions: options.thresholdGateRegressions
   };
   const breaches = evaluateBreaches(summary, thresholds);
-  const promotionGate = evaluatePromotionGate(workflowSummaries, thresholds);
+  const promotionGate = evaluatePromotionGate(workflowSummaries, thresholds, {
+    candidateWorkflow: options.candidateWorkflow
+  });
 
   const payload = {
     schema: 'priority/slo-metrics@v1',

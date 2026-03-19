@@ -317,6 +317,10 @@
           "type": "integer",
           "minimum": 0
         },
+        "suppressedBlockerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
         "blockers": {
           "type": "array",
           "items": {
@@ -340,6 +344,52 @@
                 "type": "string",
                 "minLength": 1
               }
+            }
+          }
+        },
+        "suppressedBlockers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "workflow",
+              "message",
+              "reason"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "workflow": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "candidateWorkflow"
+          ],
+          "properties": {
+            "candidateWorkflow": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         }

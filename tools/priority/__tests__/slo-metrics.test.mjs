@@ -31,6 +31,8 @@ test('parseArgs applies defaults and supports explicit options', () => {
     'release.yml',
     '--lookback-days',
     '14',
+    '--candidate-workflow',
+    'release.yml',
     '--threshold-failure-rate',
     '0.5',
     '--route-on-breach',
@@ -40,6 +42,7 @@ test('parseArgs applies defaults and supports explicit options', () => {
   assert.equal(parsed.repo, 'owner/repo');
   assert.deepEqual(parsed.workflows, ['release.yml']);
   assert.equal(parsed.lookbackDays, 14);
+  assert.equal(parsed.candidateWorkflow, 'release.yml');
   assert.equal(parsed.thresholdFailureRate, 0.5);
   assert.equal(parsed.routeOnBreach, true);
   assert.deepEqual(parsed.routeLabels, ['slo', 'ci']);
@@ -206,4 +209,25 @@ test('evaluatePromotionGate ignores historical breaches after recovery and block
     active.blockers.map((entry) => entry.code).sort(),
     ['stale-budget', 'unresolved-incident']
   );
+
+  const suppressed = evaluatePromotionGate(
+    [
+      {
+        workflow: 'release.yml',
+        summary: {
+          metrics: {
+            staleHours: 100,
+            unresolvedIncident: true,
+            unresolvedIncidentAgeSeconds: 4 * 3600
+          }
+        }
+      }
+    ],
+    thresholds,
+    { candidateWorkflow: 'release.yml' }
+  );
+  assert.equal(suppressed.status, 'pass');
+  assert.equal(suppressed.blockerCount, 0);
+  assert.equal(suppressed.suppressedBlockerCount, 1);
+  assert.equal(suppressed.context.candidateWorkflow, 'release.yml');
 });

@@ -109,6 +109,7 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.match(workflowRaw, /merge-multiple:\s*true/);
   assert.match(workflowRaw, /tools\/release-review\/Evaluate-ReleaseReviewPolicy\.ps1/);
   assert.match(workflowRaw, /tests\/results\/release-contract\/review-comment\.md/);
+  assert.match(workflowRaw, /--candidate-workflow release\.yml/);
   assert.match(workflowRaw, /signed_tag_args=\(\)/);
   assert.match(workflowRaw, /signed_tag_args\+=\(--require-signed-tag\)/);
   assert.equal(releaseContractJob?.if, "${{ always() && needs.release.result == 'success' }}");
@@ -118,4 +119,11 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.doesNotMatch(workflowRaw, /tarball=\"cli-dl\/comparevi-cli-v\$\{v\}-linux-x64-selfcontained\.tar\.gz\"/);
   assert.doesNotMatch(workflowRaw, /cli-dl\/SHA256SUMS\.txt/);
   assert.doesNotMatch(workflowRaw, /steps\.contract_artifacts\.outputs\.linux_tarball_path/);
+});
+
+test('monthly release workflow marks itself as the SLO remediation candidate', () => {
+  const workflowPath = path.join(workflowsRoot, 'monthly-stability-release.yml');
+  const workflowRaw = readFileSync(workflowPath, 'utf8');
+
+  assert.match(workflowRaw, /--candidate-workflow monthly-stability-release\.yml/);
 });

@@ -772,6 +772,7 @@ jobs:
         run: |
           node tools/priority/slo-metrics.mjs \
             --repo "${{ github.repository }}" \
+            --candidate-workflow release.yml \
             --output tests/results/_agent/slo/release-slo-metrics.json \
             --route-on-breach \
             --route-title-prefix "[SLO] Release promotion breach"
