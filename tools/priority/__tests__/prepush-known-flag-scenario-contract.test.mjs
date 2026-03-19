@@ -36,5 +36,7 @@ test('AGENTS documents the active pre-push known-flag contract surface', () => {
   const content = readRepoFile('AGENTS.md');
   assert.match(content, /prepush-known-flag-scenarios\.json/);
   assert.match(content, /known-flag-scenario-report\.json/);
+  assert.match(content, /transport-smoke-report\.json/);
+  assert.match(content, /vi-history-smoke-report\.json/);
   assert.match(content, /exactly one active known-flag scenario/i);
 });

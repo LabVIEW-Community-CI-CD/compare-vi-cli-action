@@ -45,6 +45,7 @@ Describe 'Pre-push known-flag scenario report' -Tag 'Unit' {
     }
 
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Write-PrePushKnownFlagScenarioReport')
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'Write-PrePushSupportLaneReport')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:PrePushScriptPath -FunctionName 'ConvertTo-PrePushKnownFlagScenarioResultArray')
     $script:KnownFlagContract = Get-Content -LiteralPath $script:KnownFlagContractPath -Raw | ConvertFrom-Json -Depth 12
     $script:ActiveScenario = @($script:KnownFlagContract.scenarios | Where-Object { $_.isActive -eq $true }) | Select-Object -First 1
@@ -169,5 +170,44 @@ Describe 'Pre-push known-flag scenario report' -Tag 'Unit' {
     $normalized[1].name | Should -Be 'vi-history-report'
     $normalized[1].requestedFlags | Should -Be @('vi-history-suite')
     $normalized[1].reportPath | Should -Be 'tests/results/_agent/pre-push-ni-image/vi-history-report/results/history-report.html'
+  }
+
+  It 'writes deterministic support-lane reports for transport and vi-history smoke lanes' {
+    $repoRoot = Join-Path $TestDrive 'non-git-support-lanes'
+    $resultsRoot = Join-Path $repoRoot 'tests' 'results' '_agent' 'pre-push-ni-image'
+    New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+
+    $transportPath = Join-Path $resultsRoot 'transport-smoke-report.json'
+    $transportResults = @(
+      [pscustomobject]@{
+        name = 'single-container-matrix'
+        requestedFlags = @('all combinations')
+        flags = @('-Headless')
+        resultClass = 'diff'
+        gateOutcome = 'pass'
+        capturePath = 'tests/results/_agent/pre-push-ni-image/single-container-matrix/ni-linux-container-capture.json'
+        reportPath = 'tests/results/_agent/pre-push-ni-image/single-container-matrix/compare-report.html'
+      }
+    )
+
+    $reportPath = Write-PrePushSupportLaneReport `
+      -repoRoot $repoRoot `
+      -reportPath $transportPath `
+      -schema 'pre-push-ni-transport-smoke-report@v1' `
+      -laneName 'single-container-matrix' `
+      -description 'Transport smoke.' `
+      -observedOutcome 'pass' `
+      -scenarioResults $transportResults `
+      -failureMessage '' `
+      -capturePath 'tests/results/_agent/pre-push-ni-image/single-container-matrix/ni-linux-container-capture.json' `
+      -reportArtifactPath 'tests/results/_agent/pre-push-ni-image/single-container-matrix/compare-report.html'
+
+    $reportPath | Should -Be $transportPath
+    $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 16
+    $report.schema | Should -Be 'pre-push-ni-transport-smoke-report@v1'
+    $report.lane.name | Should -Be 'single-container-matrix'
+    $report.observed.outcome | Should -Be 'pass'
+    $report.results.Count | Should -Be 1
+    $report.results[0].name | Should -Be 'single-container-matrix'
   }
 }
