@@ -32,6 +32,24 @@ function Resolve-CompareVIOutputPath {
   return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $PathValue))
 }
 
+function Get-CompareVIFacadeValue {
+  param(
+    [AllowNull()]$InputObject,
+    [Parameter(Mandatory = $true)][string]$Name
+  )
+
+  if ($null -eq $InputObject) {
+    return $null
+  }
+  if ($InputObject -is [System.Collections.IDictionary]) {
+    return $InputObject[$Name]
+  }
+  if ($InputObject.PSObject.Properties[$Name]) {
+    return $InputObject.$Name
+  }
+  return $null
+}
+
 function Read-CompareVIGitHubOutputValue {
   param(
     [string]$Path,
@@ -153,6 +171,27 @@ function Invoke-CompareVILocalRefinementScript {
   }
 }
 
+function Invoke-CompareVILocalOperatorSessionScript {
+  param(
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Parameters
+  )
+
+  $operatorSessionScript = Get-CompareVIScriptPath -Name 'Invoke-VIHistoryLocalOperatorSession.ps1'
+  $parametersWithPassThru = @{}
+  foreach ($entry in $Parameters.GetEnumerator()) {
+    $parametersWithPassThru[$entry.Key] = $entry.Value
+  }
+  $parametersWithPassThru['PassThru'] = $true
+
+  $env:COMPAREVI_SCRIPTS_ROOT = $script:BundleRoot
+  try {
+    return & $operatorSessionScript @parametersWithPassThru
+  } finally {
+    Remove-Item Env:COMPAREVI_SCRIPTS_ROOT -ErrorAction SilentlyContinue
+  }
+}
+
 function ConvertTo-CompareVILocalRefinementFacade {
   param(
     [Parameter(Mandatory = $true)]
@@ -170,38 +209,20 @@ function ConvertTo-CompareVILocalRefinementFacade {
   $localRefinementPath = if ($resultsRoot) { Join-Path $resultsRoot 'local-refinement.json' } else { $null }
   $benchmarkPath = if ($resultsRoot) { Join-Path $resultsRoot 'local-refinement-benchmark.json' } else { $null }
 
-  function Get-FacadeValue {
-    param(
-      [AllowNull()]$InputObject,
-      [Parameter(Mandatory = $true)][string]$Name
-    )
-
-    if ($null -eq $InputObject) {
-      return $null
-    }
-    if ($InputObject -is [System.Collections.IDictionary]) {
-      return $InputObject[$Name]
-    }
-    if ($InputObject.PSObject.Properties[$Name]) {
-      return $InputObject.$Name
-    }
-    return $null
-  }
-
-  $warmRuntimeReceipt = Get-FacadeValue -InputObject $Receipt -Name 'warmRuntime'
+  $warmRuntimeReceipt = Get-CompareVIFacadeValue -InputObject $Receipt -Name 'warmRuntime'
   $warmRuntimeFacade = $null
   if ($warmRuntimeReceipt) {
-    $warmRuntimeContainer = Get-FacadeValue -InputObject $warmRuntimeReceipt -Name 'container'
+    $warmRuntimeContainer = Get-CompareVIFacadeValue -InputObject $warmRuntimeReceipt -Name 'container'
     $warmRuntimeFacade = [ordered]@{
-      schema = [string](Get-FacadeValue -InputObject $warmRuntimeReceipt -Name 'schema')
-      action = [string](Get-FacadeValue -InputObject $warmRuntimeReceipt -Name 'action')
-      outcome = [string](Get-FacadeValue -InputObject $warmRuntimeReceipt -Name 'outcome')
+      schema = [string](Get-CompareVIFacadeValue -InputObject $warmRuntimeReceipt -Name 'schema')
+      action = [string](Get-CompareVIFacadeValue -InputObject $warmRuntimeReceipt -Name 'action')
+      outcome = [string](Get-CompareVIFacadeValue -InputObject $warmRuntimeReceipt -Name 'outcome')
       container = [ordered]@{
-        name = [string](Get-FacadeValue -InputObject $warmRuntimeContainer -Name 'name')
-        image = [string](Get-FacadeValue -InputObject $warmRuntimeContainer -Name 'image')
+        name = [string](Get-CompareVIFacadeValue -InputObject $warmRuntimeContainer -Name 'name')
+        image = [string](Get-CompareVIFacadeValue -InputObject $warmRuntimeContainer -Name 'image')
       }
-      health = Get-FacadeValue -InputObject $warmRuntimeReceipt -Name 'health'
-      artifacts = Get-FacadeValue -InputObject $warmRuntimeReceipt -Name 'artifacts'
+      health = Get-CompareVIFacadeValue -InputObject $warmRuntimeReceipt -Name 'health'
+      artifacts = Get-CompareVIFacadeValue -InputObject $warmRuntimeReceipt -Name 'artifacts'
     }
   }
 
@@ -227,6 +248,34 @@ function ConvertTo-CompareVILocalRefinementFacade {
       benchmarkPath = $benchmarkPath
     }
     finalStatus = [string]$Receipt.finalStatus
+  }
+}
+
+function ConvertTo-CompareVILocalOperatorSessionFacade {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Receipt
+  )
+
+  if (-not $Receipt) {
+    throw 'Local operator session receipt was not produced.'
+  }
+  if ([string]$Receipt.schema -ne 'comparevi/local-operator-session@v1') {
+    throw ("Unexpected local operator session receipt schema: {0}" -f [string]$Receipt.schema)
+  }
+
+  return [pscustomobject]@{
+    schema = 'comparevi-tools/local-operator-session-facade@v1'
+    generatedAtUtc = [string]$Receipt.generatedAt
+    backendReceiptSchema = [string]$Receipt.schema
+    runtimeProfile = [string]$Receipt.runtimeProfile
+    repoRoot = [string]$Receipt.repoRoot
+    resultsRoot = [string]$Receipt.resultsRoot
+    localRefinement = Get-CompareVIFacadeValue -InputObject $Receipt -Name 'localRefinement'
+    review = Get-CompareVIFacadeValue -InputObject $Receipt -Name 'review'
+    artifacts = Get-CompareVIFacadeValue -InputObject $Receipt -Name 'artifacts'
+    finalStatus = [string]$Receipt.finalStatus
+    failure = Get-CompareVIFacadeValue -InputObject $Receipt -Name 'failure'
   }
 }
 
@@ -385,6 +434,52 @@ function Invoke-CompareVIHistoryLocalRefinementFacade {
   return ConvertTo-CompareVILocalRefinementFacade -Receipt $receipt
 }
 
+function Invoke-CompareVIHistoryLocalOperatorSessionFacade {
+  [CmdletBinding()]
+  param(
+    [ValidateSet('proof', 'dev-fast', 'warm-dev')]
+    [string]$Profile = 'dev-fast',
+    [string]$BaseVi = 'fixtures/vi-attr/Base.vi',
+    [string]$HeadVi = 'fixtures/vi-attr/Head.vi',
+    [string]$RepoRoot = '',
+    [string]$HistoryTargetPath = 'fixtures/vi-attr/Head.vi',
+    [string]$HistoryBranchRef = 'HEAD',
+    [string]$HistoryBaselineRef = '',
+    [Nullable[int]]$HistoryMaxPairs,
+    [Nullable[int]]$HistoryMaxCommitCount,
+    [string]$ResultsRoot = '',
+    [string]$WarmRuntimeDir = '',
+    [string]$ProofImage = 'nationalinstruments/labview:2026q1-linux',
+    [string]$DevImage = 'comparevi-vi-history-dev:local',
+    [string]$LabVIEWPath = '/usr/local/natinst/LabVIEW-2026-64/labview',
+    [switch]$SkipDevImageBuild,
+    [string]$ReviewCommandPath = '',
+    [string[]]$ReviewCommandArguments = @(),
+    [string]$ReviewWorkingDirectory = '',
+    [string]$ReviewReceiptPath = '',
+    [string]$ReviewBundlePath = '',
+    [string]$ReviewWorkspaceHtmlPath = '',
+    [string]$ReviewWorkspaceMarkdownPath = '',
+    [string]$ReviewPreviewManifestPath = '',
+    [string]$ReviewRunPath = '',
+    [string]$SessionManifestPath = ''
+  )
+
+  $invokeParameters = @{}
+  foreach ($entry in $PSBoundParameters.GetEnumerator()) {
+    if ($null -ne $entry.Value) {
+      $invokeParameters[$entry.Key] = $entry.Value
+    }
+  }
+
+  if (-not $invokeParameters.ContainsKey('RepoRoot') -or [string]::IsNullOrWhiteSpace([string]$invokeParameters['RepoRoot'])) {
+    $invokeParameters['RepoRoot'] = (Get-Location).Path
+  }
+
+  $receipt = Invoke-CompareVILocalOperatorSessionScript -Parameters $invokeParameters
+  return ConvertTo-CompareVILocalOperatorSessionFacade -Receipt $receipt
+}
+
 function Invoke-CompareRefsToTemp {
   [CmdletBinding(DefaultParameterSetName = 'ByPath')]
   param(
@@ -416,4 +511,4 @@ function Invoke-CompareRefsToTemp {
   & $compareScript @PSBoundParameters
 }
 
-Export-ModuleMember -Function Invoke-CompareVIHistory, Invoke-CompareVIHistoryFacade, Invoke-CompareVIHistoryLocalRefinementFacade, Invoke-CompareRefsToTemp
+Export-ModuleMember -Function Invoke-CompareVIHistory, Invoke-CompareVIHistoryFacade, Invoke-CompareVIHistoryLocalRefinementFacade, Invoke-CompareVIHistoryLocalOperatorSessionFacade, Invoke-CompareRefsToTemp
