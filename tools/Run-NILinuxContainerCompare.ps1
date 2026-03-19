@@ -144,7 +144,7 @@ function Resolve-DockerCommandSource {
   $pathSeparator = [System.IO.Path]::PathSeparator
   $pathEntries = @($env:PATH -split [regex]::Escape([string]$pathSeparator))
   $candidates = if ($IsWindows) {
-    @('docker.cmd', 'docker.ps1', 'docker.exe', 'docker.bat', 'docker')
+    @('docker.exe', 'docker.cmd', 'docker.ps1', 'docker.bat', 'docker')
   } else {
     @('docker', 'docker.sh')
   }
@@ -1545,26 +1545,70 @@ exit "${EXIT_CODE}"
 '@
 }
 
-function Resolve-TempDirectoryPath {
-  [string[]]$candidates = @(
-    $env:TEMP,
-    $env:TMP,
-    $env:TMPDIR,
-    [System.IO.Path]::GetTempPath()
+function New-DockerProcessInvocation {
+  param(
+    [Parameter(Mandatory)][string[]]$DockerArgs
   )
-  foreach ($candidate in $candidates) {
-    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
-    try {
-      $fullPath = [System.IO.Path]::GetFullPath($candidate)
-      if (-not (Test-Path -LiteralPath $fullPath -PathType Container)) {
-        New-Item -ItemType Directory -Path $fullPath -Force | Out-Null
-      }
-      return $fullPath
-    } catch {
-      continue
+
+  $dockerCommandSource = Resolve-DockerCommandSource
+  $dockerCommandDirectory = Split-Path -Parent $dockerCommandSource
+  $dockerCommandStem = [System.IO.Path]::GetFileNameWithoutExtension($dockerCommandSource)
+  $dockerCommandExtension = [System.IO.Path]::GetExtension($dockerCommandSource)
+  if ([System.StringComparer]::OrdinalIgnoreCase.Equals($dockerCommandExtension, '.cmd') -or [System.StringComparer]::OrdinalIgnoreCase.Equals($dockerCommandExtension, '.bat')) {
+    $adjacentExecutable = Join-Path $dockerCommandDirectory ('{0}.exe' -f $dockerCommandStem)
+    $adjacentScript = Join-Path $dockerCommandDirectory ('{0}.ps1' -f $dockerCommandStem)
+    if (Test-Path -LiteralPath $adjacentExecutable -PathType Leaf) {
+      $dockerCommandSource = [System.IO.Path]::GetFullPath($adjacentExecutable)
+      $dockerCommandExtension = '.exe'
+    } elseif (Test-Path -LiteralPath $adjacentScript -PathType Leaf) {
+      $dockerCommandSource = [System.IO.Path]::GetFullPath($adjacentScript)
+      $dockerCommandExtension = '.ps1'
     }
   }
-  throw 'Unable to resolve temp directory path for docker compare logs.'
+
+  $startFilePath = $dockerCommandSource
+  $startArgs = @($DockerArgs)
+  if ([System.StringComparer]::OrdinalIgnoreCase.Equals($dockerCommandExtension, '.ps1')) {
+    $pwshExe = (Get-Command -Name 'pwsh' -ErrorAction Stop).Source
+    $startFilePath = $pwshExe
+    $startArgs = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + @($DockerArgs)
+  }
+
+  $psi = [System.Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = $startFilePath
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $psi.CreateNoWindow = $true
+  foreach ($arg in @($startArgs)) {
+    [void]$psi.ArgumentList.Add([string]$arg)
+  }
+
+  $process = [System.Diagnostics.Process]::new()
+  $process.StartInfo = $psi
+  [void]$process.Start()
+
+  return [pscustomobject]@{
+    Process = $process
+    StdOutTask = $process.StandardOutput.ReadToEndAsync()
+    StdErrTask = $process.StandardError.ReadToEndAsync()
+  }
+}
+
+function Complete-DockerProcessInvocation {
+  param(
+    [Parameter(Mandatory)]$Invocation
+  )
+
+  $process = $Invocation.Process
+  try {
+    $process.WaitForExit()
+  } catch {}
+
+  return [pscustomobject]@{
+    StdOut = $Invocation.StdOutTask.GetAwaiter().GetResult()
+    StdErr = $Invocation.StdErrTask.GetAwaiter().GetResult()
+  }
 }
 
 function Invoke-DockerRunWithTimeout {
@@ -1575,26 +1619,10 @@ function Invoke-DockerRunWithTimeout {
     [int]$HeartbeatSeconds = 15
   )
 
-  $tempDirectory = Resolve-TempDirectoryPath
-  $stdoutFile = Join-Path $tempDirectory ("ni-linux-container-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $stderrFile = Join-Path $tempDirectory ("ni-linux-container-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $process = $null
+  $invocation = $null
   try {
-    $dockerCommandSource = Resolve-DockerCommandSource
-    $startFilePath = $dockerCommandSource
-    $startArgs = @($DockerArgs)
-    if ([System.StringComparer]::OrdinalIgnoreCase.Equals([System.IO.Path]::GetExtension($dockerCommandSource), '.ps1')) {
-      $pwshExe = (Get-Command -Name 'pwsh' -ErrorAction Stop).Source
-      $startFilePath = $pwshExe
-      $startArgs = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + @($DockerArgs)
-    }
-
-    $process = Start-Process -FilePath $startFilePath `
-      -ArgumentList $startArgs `
-      -RedirectStandardOutput $stdoutFile `
-      -RedirectStandardError $stderrFile `
-      -NoNewWindow `
-      -PassThru
+    $invocation = New-DockerProcessInvocation -DockerArgs $DockerArgs
+    $process = $invocation.Process
 
     $timeoutSeconds = [Math]::Max(1, $Seconds)
     $deadline = (Get-Date).AddSeconds($timeoutSeconds)
@@ -1604,11 +1632,12 @@ function Invoke-DockerRunWithTimeout {
     while (-not $process.HasExited) {
       if ((Get-Date) -ge $deadline) {
         try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
+        $capturedOutput = Complete-DockerProcessInvocation -Invocation $invocation
         return [pscustomobject]@{
           TimedOut = $true
           ExitCode = $script:TimeoutExitCode
-          StdOut   = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
-          StdErr   = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
+          StdOut   = $capturedOutput.StdOut
+          StdErr   = $capturedOutput.StdErr
         }
       }
       $elapsedSeconds = [math]::Round(((Get-Date) - $process.StartTime).TotalSeconds, 1)
@@ -1620,26 +1649,26 @@ function Invoke-DockerRunWithTimeout {
     }
     if (-not $process.HasExited) {
       try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
+      $capturedOutput = Complete-DockerProcessInvocation -Invocation $invocation
       return [pscustomobject]@{
         TimedOut = $true
         ExitCode = $script:TimeoutExitCode
-        StdOut   = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
-        StdErr   = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
+        StdOut   = $capturedOutput.StdOut
+        StdErr   = $capturedOutput.StdErr
       }
     }
 
+    $capturedOutput = Complete-DockerProcessInvocation -Invocation $invocation
     return [pscustomobject]@{
       TimedOut = $false
       ExitCode = [int]$process.ExitCode
-      StdOut   = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
-      StdErr   = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
+      StdOut   = $capturedOutput.StdOut
+      StdErr   = $capturedOutput.StdErr
     }
   } finally {
-    if ($process) {
-      try { $process.Dispose() } catch {}
+    if ($invocation -and $invocation.Process) {
+      try { $invocation.Process.Dispose() } catch {}
     }
-    Remove-Item -LiteralPath $stdoutFile -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $stderrFile -ErrorAction SilentlyContinue
   }
 }
 
@@ -1651,26 +1680,10 @@ function Invoke-DockerExecWithTimeout {
     [int]$HeartbeatSeconds = 15
   )
 
-  $tempDirectory = Resolve-TempDirectoryPath
-  $stdoutFile = Join-Path $tempDirectory ("ni-linux-container-exec-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $stderrFile = Join-Path $tempDirectory ("ni-linux-container-exec-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $process = $null
+  $invocation = $null
   try {
-    $dockerCommandSource = Resolve-DockerCommandSource
-    $startFilePath = $dockerCommandSource
-    $startArgs = @($DockerArgs)
-    if ([System.StringComparer]::OrdinalIgnoreCase.Equals([System.IO.Path]::GetExtension($dockerCommandSource), '.ps1')) {
-      $pwshExe = (Get-Command -Name 'pwsh' -ErrorAction Stop).Source
-      $startFilePath = $pwshExe
-      $startArgs = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + @($DockerArgs)
-    }
-
-    $process = Start-Process -FilePath $startFilePath `
-      -ArgumentList $startArgs `
-      -RedirectStandardOutput $stdoutFile `
-      -RedirectStandardError $stderrFile `
-      -NoNewWindow `
-      -PassThru
+    $invocation = New-DockerProcessInvocation -DockerArgs $DockerArgs
+    $process = $invocation.Process
 
     $timeoutSeconds = [Math]::Max(1, $Seconds)
     $deadline = (Get-Date).AddSeconds($timeoutSeconds)
@@ -1682,11 +1695,12 @@ function Invoke-DockerExecWithTimeout {
         try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
         try { & docker exec $ContainerName sh -lc 'pkill -f LabVIEWCLI || true' *> $null } catch {}
         try { & docker stop --time 1 $ContainerName *> $null } catch {}
+        $capturedOutput = Complete-DockerProcessInvocation -Invocation $invocation
         return [pscustomobject]@{
           TimedOut = $true
           ExitCode = $script:TimeoutExitCode
-          StdOut   = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
-          StdErr   = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
+          StdOut   = $capturedOutput.StdOut
+          StdErr   = $capturedOutput.StdErr
         }
       }
 
@@ -1697,18 +1711,17 @@ function Invoke-DockerExecWithTimeout {
       Start-Sleep -Milliseconds $pollMs
     }
 
+    $capturedOutput = Complete-DockerProcessInvocation -Invocation $invocation
     return [pscustomobject]@{
       TimedOut = $false
       ExitCode = [int]$process.ExitCode
-      StdOut   = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
-      StdErr   = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
+      StdOut   = $capturedOutput.StdOut
+      StdErr   = $capturedOutput.StdErr
     }
   } finally {
-    if ($process) {
-      try { $process.Dispose() } catch {}
+    if ($invocation -and $invocation.Process) {
+      try { $invocation.Process.Dispose() } catch {}
     }
-    Remove-Item -LiteralPath $stdoutFile -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $stderrFile -ErrorAction SilentlyContinue
   }
 }
 

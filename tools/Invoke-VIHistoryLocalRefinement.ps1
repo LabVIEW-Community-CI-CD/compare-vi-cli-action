@@ -6,6 +6,7 @@ param(
   [string]$BaseVi = 'fixtures/vi-attr/Base.vi',
   [string]$HeadVi = 'fixtures/vi-attr/Head.vi',
   [string]$RepoRoot = '',
+  [string]$ToolingRoot = '',
   [string]$HistoryTargetPath = 'fixtures/vi-attr/Head.vi',
   [string]$HistoryBranchRef = 'HEAD',
   [string]$HistoryBaselineRef = '',
@@ -102,6 +103,47 @@ function Resolve-ScriptPath {
   return $resolved
 }
 
+function Resolve-ToolingRoot {
+  param(
+    [AllowEmptyString()][string]$PathValue,
+    [Parameter(Mandatory)][string]$RepoRootResolved
+  )
+
+  $candidate = if ([string]::IsNullOrWhiteSpace($PathValue)) {
+    $env:COMPAREVI_SCRIPTS_ROOT
+  } else {
+    $PathValue
+  }
+
+  if ([string]::IsNullOrWhiteSpace($candidate)) {
+    return $RepoRootResolved
+  }
+
+  return Resolve-AbsolutePath -Path $candidate -BasePath (Get-Location).Path
+}
+
+function Resolve-DefaultAwarePath {
+  param(
+    [Parameter(Mandatory)][string]$PathValue,
+    [Parameter(Mandatory)][string]$DefaultRelativePath,
+    [Parameter(Mandatory)][string]$RepoRootResolved,
+    [Parameter(Mandatory)][string]$ToolingRootResolved
+  )
+
+  if ([System.IO.Path]::IsPathRooted($PathValue)) {
+    return [System.IO.Path]::GetFullPath($PathValue)
+  }
+
+  if (
+    [string]::Equals($PathValue, $DefaultRelativePath, [System.StringComparison]::OrdinalIgnoreCase) -and
+    (Test-Path -LiteralPath (Join-Path $ToolingRootResolved $PathValue))
+  ) {
+    return Resolve-AbsolutePath -Path $PathValue -BasePath $ToolingRootResolved
+  }
+
+  return Resolve-AbsolutePath -Path $PathValue -BasePath $RepoRootResolved
+}
+
 function Read-JsonText {
   param([Parameter(Mandatory)][string]$Text)
 
@@ -167,6 +209,7 @@ $repoRootResolved = if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
 } else {
   Resolve-AbsolutePath -Path $RepoRoot -BasePath (Get-Location).Path
 }
+$toolingRootResolved = Resolve-ToolingRoot -PathValue $ToolingRoot -RepoRootResolved $repoRootResolved
 $resultsRootResolved = if ([string]::IsNullOrWhiteSpace($ResultsRoot)) {
   Get-ProfileDefaultResultsRoot -RepoRootResolved $repoRootResolved -RuntimeProfile $Profile
 } else {
@@ -176,12 +219,12 @@ New-Item -ItemType Directory -Path $resultsRootResolved -Force | Out-Null
 
 $buildImageScriptResolved = ''
 if ($Profile -ne 'proof') {
-  $buildImageScriptResolved = Resolve-ScriptPath -PathValue $BuildImageScriptPath -DefaultPath 'tools/Build-VIHistoryDevImage.ps1' -RepoRootResolved $repoRootResolved
+  $buildImageScriptResolved = Resolve-ScriptPath -PathValue $BuildImageScriptPath -DefaultPath 'tools/Build-VIHistoryDevImage.ps1' -RepoRootResolved $toolingRootResolved
 }
-$reviewSuiteScriptResolved = Resolve-ScriptPath -PathValue $ReviewSuiteScriptPath -DefaultPath 'tools/Invoke-NILinuxReviewSuite.ps1' -RepoRootResolved $repoRootResolved
+$reviewSuiteScriptResolved = Resolve-ScriptPath -PathValue $ReviewSuiteScriptPath -DefaultPath 'tools/Invoke-NILinuxReviewSuite.ps1' -RepoRootResolved $toolingRootResolved
 $warmRuntimeManagerScriptResolved = ''
 if ($Profile -eq 'warm-dev') {
-  $warmRuntimeManagerScriptResolved = Resolve-ScriptPath -PathValue $WarmRuntimeManagerScriptPath -DefaultPath 'tools/Manage-VIHistoryRuntimeInDocker.ps1' -RepoRootResolved $repoRootResolved
+  $warmRuntimeManagerScriptResolved = Resolve-ScriptPath -PathValue $WarmRuntimeManagerScriptPath -DefaultPath 'tools/Manage-VIHistoryRuntimeInDocker.ps1' -RepoRootResolved $toolingRootResolved
 }
 
 $imageUsed = if ($Profile -eq 'proof') { $ProofImage } else { $DevImage }
@@ -210,13 +253,13 @@ if ($Profile -ne 'proof') {
 }
 
 $reviewParams = [ordered]@{
-  BaseVi = Resolve-AbsolutePath -Path $BaseVi -BasePath $repoRootResolved
-  HeadVi = Resolve-AbsolutePath -Path $HeadVi -BasePath $repoRootResolved
+  BaseVi = Resolve-DefaultAwarePath -PathValue $BaseVi -DefaultRelativePath 'fixtures/vi-attr/Base.vi' -RepoRootResolved $repoRootResolved -ToolingRootResolved $toolingRootResolved
+  HeadVi = Resolve-DefaultAwarePath -PathValue $HeadVi -DefaultRelativePath 'fixtures/vi-attr/Head.vi' -RepoRootResolved $repoRootResolved -ToolingRootResolved $toolingRootResolved
   RepoRoot = $repoRootResolved
   ResultsRoot = $resultsRootResolved
   Image = $imageUsed
   LabVIEWPath = $LabVIEWPath
-  HistoryTargetPath = Resolve-AbsolutePath -Path $HistoryTargetPath -BasePath $repoRootResolved
+  HistoryTargetPath = Resolve-DefaultAwarePath -PathValue $HistoryTargetPath -DefaultRelativePath 'fixtures/vi-attr/Head.vi' -RepoRootResolved $repoRootResolved -ToolingRootResolved $toolingRootResolved
   HistoryBranchRef = $HistoryBranchRef
   HistoryMaxPairs = $HistoryMaxPairs
   HistoryMaxCommitCount = $HistoryMaxCommitCount
@@ -272,7 +315,7 @@ if ($Profile -eq 'warm-dev') {
 $timer = [System.Diagnostics.Stopwatch]::StartNew()
 Push-Location $repoRootResolved
 try {
-  & $reviewSuiteScriptResolved @reviewParams
+  $null = & $reviewSuiteScriptResolved @reviewParams
   $reviewExitCode = $LASTEXITCODE
 } finally {
   Pop-Location | Out-Null

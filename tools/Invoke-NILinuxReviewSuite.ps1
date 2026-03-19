@@ -32,6 +32,7 @@ param(
   [string]$ReuseRepoContainerPath = '/opt/comparevi/source',
   [string]$ReuseResultsHostPath = '',
   [string]$ReuseResultsContainerPath = '/opt/comparevi/vi-history/results',
+  [string[]]$RuntimeInjectionMount = @(),
   [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
   [string]$GitHubStepSummaryPath = $env:GITHUB_STEP_SUMMARY
 )
@@ -259,6 +260,48 @@ function Copy-ArtifactIfPresent {
   Copy-Item -LiteralPath $SourcePath -Destination $DestinationPath -Force -Recurse
 }
 
+function Test-HostPathCoveredByReuseRoots {
+  param(
+    [Parameter(Mandatory = $true)][string]$HostPath,
+    [Parameter(Mandatory = $true)][string[]]$Roots
+  )
+
+  foreach ($root in @($Roots)) {
+    if ([string]::IsNullOrWhiteSpace($root)) {
+      continue
+    }
+
+    if ($HostPath.StartsWith(([System.IO.Path]::GetFullPath($root).TrimEnd('\') + '\'), [System.StringComparison]::OrdinalIgnoreCase)) {
+      return $true
+    }
+    if ([string]::Equals([System.IO.Path]::GetFullPath($HostPath), [System.IO.Path]::GetFullPath($root), [System.StringComparison]::OrdinalIgnoreCase)) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Get-ReuseAccessibleFilePath {
+  param(
+    [Parameter(Mandatory = $true)][string]$SourcePath,
+    [Parameter(Mandatory = $true)][string]$ResultsRoot,
+    [Parameter(Mandatory = $true)][string[]]$CoveredRoots,
+    [Parameter(Mandatory = $true)][string]$StageName
+  )
+
+  $resolvedSourcePath = [System.IO.Path]::GetFullPath($SourcePath)
+  if (Test-HostPathCoveredByReuseRoots -HostPath $resolvedSourcePath -Roots $CoveredRoots) {
+    return $resolvedSourcePath
+  }
+
+  $reuseSupportRoot = Join-Path $ResultsRoot '.reuse-support'
+  New-Item -ItemType Directory -Path $reuseSupportRoot -Force | Out-Null
+  $destinationPath = Join-Path $reuseSupportRoot $StageName
+  Copy-Item -LiteralPath $resolvedSourcePath -Destination $destinationPath -Force
+  return [System.IO.Path]::GetFullPath($destinationPath)
+}
+
 $repoRootResolved = if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
   Resolve-AbsolutePath -Path '..' -BasePath $PSScriptRoot
 } else {
@@ -295,6 +338,24 @@ if (-not (Test-Path -LiteralPath $historyTargetResolved -PathType Leaf)) {
 
 New-Item -ItemType Directory -Path $resultsRootResolved -Force | Out-Null
 
+$reuseModeEnabled = -not [string]::IsNullOrWhiteSpace($ReuseContainerName)
+$reuseCoveredRoots = @($reuseRepoHostPathResolved, $reuseResultsHostPathResolved)
+$baseViComparePath = if ($reuseModeEnabled) {
+  Get-ReuseAccessibleFilePath -SourcePath $baseViResolved -ResultsRoot $resultsRootResolved -CoveredRoots $reuseCoveredRoots -StageName 'Base.vi'
+} else {
+  $baseViResolved
+}
+$headViComparePath = if ($reuseModeEnabled) {
+  Get-ReuseAccessibleFilePath -SourcePath $headViResolved -ResultsRoot $resultsRootResolved -CoveredRoots $reuseCoveredRoots -StageName 'Head.vi'
+} else {
+  $headViResolved
+}
+$viHistoryBootstrapExecutionPath = if ($reuseModeEnabled) {
+  Get-ReuseAccessibleFilePath -SourcePath $viHistoryBootstrapScript -ResultsRoot $resultsRootResolved -CoveredRoots $reuseCoveredRoots -StageName 'NILinux-VIHistorySuiteBootstrap.sh'
+} else {
+  $viHistoryBootstrapScript
+}
+
 $flagScenarioRoot = Join-Path $resultsRootResolved 'flag-combinations'
 $historyScenarioRoot = Join-Path $resultsRootResolved 'vi-history-report'
 $summaryJsonPath = Join-Path $resultsRootResolved 'review-suite-summary.json'
@@ -319,8 +380,8 @@ foreach ($scenario in $knownFlagScenarios) {
   Push-Location $repoRootResolved
   try {
     & $compareScriptPath `
-      -BaseVi $baseViResolved `
-      -HeadVi $headViResolved `
+      -BaseVi $baseViComparePath `
+      -HeadVi $headViComparePath `
       -Image $Image `
       -ReportPath $reportPath `
       -LabVIEWPath $LabVIEWPath `
@@ -336,7 +397,8 @@ foreach ($scenario in $knownFlagScenarios) {
       -ReuseRepoHostPath $reuseRepoHostPathResolved `
       -ReuseRepoContainerPath $ReuseRepoContainerPath `
       -ReuseResultsHostPath $reuseResultsHostPathResolved `
-      -ReuseResultsContainerPath $ReuseResultsContainerPath
+      -ReuseResultsContainerPath $ReuseResultsContainerPath `
+      -RuntimeInjectionMount $RuntimeInjectionMount
     $compareExit = $LASTEXITCODE
     if ($compareExit -notin @(0, 1)) {
       throw ("NI Linux review suite scenario '{0}' compare failed (exit={1})." -f $scenarioName, $compareExit)
@@ -407,7 +469,7 @@ $historyContract = [ordered]@{
     effectiveBranchRef = [string]$historyRefSelection.effectiveBranchRef
     effectiveBaselineRef = [string]$historyRefSelection.effectiveBaselineRef
   }
-  scriptPath = $viHistoryBootstrapScript
+  scriptPath = $viHistoryBootstrapExecutionPath
   viHistory = [ordered]@{
     repoPath = $repoRootResolved
     targetPath = (Get-RelativeArtifactPath -RootPath $repoRootResolved -Path $historyTargetResolved)
@@ -437,7 +499,8 @@ try {
       -ReuseRepoHostPath $reuseRepoHostPathResolved `
       -ReuseRepoContainerPath $ReuseRepoContainerPath `
       -ReuseResultsHostPath $reuseResultsHostPathResolved `
-      -ReuseResultsContainerPath $ReuseResultsContainerPath
+      -ReuseResultsContainerPath $ReuseResultsContainerPath `
+      -RuntimeInjectionMount $RuntimeInjectionMount
   $historyExit = $LASTEXITCODE
   if ($historyExit -notin @(0, 1)) {
     throw ("NI Linux review suite scenario 'vi-history-report' compare failed (exit={0})." -f $historyExit)
