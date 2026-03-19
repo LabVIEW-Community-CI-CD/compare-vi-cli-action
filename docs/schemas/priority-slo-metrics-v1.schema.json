@@ -61,6 +61,9 @@
     "summary": {
       "$ref": "#/$defs/summary"
     },
+    "promotionGate": {
+      "$ref": "#/$defs/promotionGate"
+    },
     "breaches": {
       "type": "array",
       "items": {
@@ -232,6 +235,47 @@
         },
         "unresolvedIncident": {
           "type": "boolean"
+        },
+        "unresolvedIncidentAgeSeconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "incidents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "resolved",
+        "unresolved"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resolved": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unresolved": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unresolvedFailureCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unresolvedAgeSeconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
         }
       }
     },
@@ -248,6 +292,106 @@
         },
         "metrics": {
           "$ref": "#/$defs/metrics"
+        },
+        "incidents": {
+          "$ref": "#/$defs/incidents"
+        }
+      }
+    },
+    "promotionGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "blockerCount",
+        "blockers"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "blockerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "suppressedBlockerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "workflow",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "workflow": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "suppressedBlockers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "workflow",
+              "message",
+              "reason"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "workflow": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "candidateWorkflow"
+          ],
+          "properties": {
+            "candidateWorkflow": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
         }
       }
     }

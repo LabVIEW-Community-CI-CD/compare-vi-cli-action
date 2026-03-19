@@ -8,7 +8,8 @@ import addFormats from 'ajv-formats';
 import {
   summarizeWorkflowRuns,
   buildSloSummary,
-  evaluateBreaches
+  evaluateBreaches,
+  evaluatePromotionGate
 } from '../slo-metrics.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -64,6 +65,7 @@ test('slo metrics schema validates generated payload', async () => {
     workflowSummaries,
     summary,
     breaches: evaluateBreaches(summary, thresholds),
+    promotionGate: evaluatePromotionGate(workflowSummaries, thresholds),
     route: {
       action: 'none'
     }

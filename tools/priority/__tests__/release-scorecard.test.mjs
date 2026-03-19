@@ -54,7 +54,7 @@ test('evaluateReleaseScorecard reports blockers deterministically', () => {
     slo: { exists: true, error: null },
     rollback: { exists: true, error: null },
     promotion: { status: 'pass' },
-    sloGate: { status: 'pass', breachCount: 0 },
+    sloGate: { status: 'pass', breachCount: 0, blockerCount: 0, source: 'promotion-gate', blockers: [] },
     rollbackGate: { status: 'pass' },
     trustGate: { status: 'pass' },
     trustProvided: true,
@@ -69,7 +69,7 @@ test('evaluateReleaseScorecard reports blockers deterministically', () => {
     slo: { exists: false, error: null },
     rollback: { exists: true, error: 'bad json' },
     promotion: { status: 'fail' },
-    sloGate: { status: 'fail', breachCount: 2 },
+    sloGate: { status: 'fail', breachCount: 2, blockerCount: 1, source: 'promotion-gate', blockers: [] },
     rollbackGate: { status: 'fail' },
     trustGate: { status: 'fail' },
     trustProvided: true,
@@ -95,7 +95,12 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
     gate: { status: 'pass', reason: 'ok' }
   });
   writeJson(sloPath, {
-    breaches: []
+    breaches: [],
+    promotionGate: {
+      status: 'pass',
+      blockerCount: 0,
+      blockers: []
+    }
   });
   writeJson(rollbackPath, {
     summary: { status: 'pass', pausePromotion: false }
@@ -126,7 +131,39 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
   assert.equal(passResult.report.summary.blockerCount, 0);
 
   writeJson(sloPath, {
-    breaches: [{ code: 'failure-rate', message: 'too high' }]
+    breaches: [{ code: 'failure-rate', message: 'too high' }],
+    promotionGate: {
+      status: 'pass',
+      blockerCount: 0,
+      blockers: []
+    }
+  });
+  const historicalOnlyOutput = path.join(tmpDir, 'historical-only-scorecard.json');
+  const historicalOnly = await runReleaseScorecard({
+    repo: 'example/repo',
+    stream: 'comparevi-cli',
+    channel: 'stable',
+    tagRef: 'v0.6.4',
+    requireSignedTag: true,
+    ledgerPath,
+    sloPath,
+    rollbackPath,
+    trustPath,
+    outputPath: historicalOnlyOutput,
+    failOnBlockers: true
+  });
+
+  assert.equal(historicalOnly.exitCode, 0);
+  assert.equal(historicalOnly.report.summary.status, 'pass');
+  assert.equal(historicalOnly.report.gates.slo.status, 'pass');
+
+  writeJson(sloPath, {
+    breaches: [{ code: 'gate-regressions', message: 'historical debt still high' }],
+    promotionGate: {
+      status: 'fail',
+      blockerCount: 1,
+      blockers: [{ code: 'stale-budget', workflow: 'release.yml', message: 'release.yml staleHours 300 exceeds threshold 168' }]
+    }
   });
   const failOutput = path.join(tmpDir, 'fail-scorecard.json');
   const failResult = await runReleaseScorecard({
@@ -147,4 +184,3 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
   assert.equal(failResult.report.summary.status, 'fail');
   assert.ok(failResult.report.summary.blockers.some((entry) => entry.code === 'slo-breach'));
 });
-

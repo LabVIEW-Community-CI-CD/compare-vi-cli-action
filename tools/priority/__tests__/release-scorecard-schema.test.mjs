@@ -30,7 +30,14 @@ test('release scorecard schema validates generated scorecard payload', async () 
   const outputPath = path.join(tmpDir, 'scorecard.json');
 
   writeJson(ledgerPath, { gate: { status: 'pass', reason: 'ok' } });
-  writeJson(sloPath, { breaches: [] });
+  writeJson(sloPath, {
+    breaches: [],
+    promotionGate: {
+      status: 'pass',
+      blockerCount: 0,
+      blockers: []
+    }
+  });
   writeJson(rollbackPath, { summary: { status: 'pass', pausePromotion: false } });
   writeJson(trustPath, { summary: { status: 'pass', failureCount: 0 }, tagSignature: { verified: true, reason: 'valid' } });
 
@@ -59,4 +66,3 @@ test('release scorecard schema validates generated scorecard payload', async () 
   assert.equal(result.report.gates.signedTag.status, 'pass');
   assert.equal(result.report.gates.trust.status, 'pass');
 });
-

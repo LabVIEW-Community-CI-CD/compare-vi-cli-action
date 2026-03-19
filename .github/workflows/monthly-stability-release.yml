@@ -279,6 +279,7 @@ jobs:
         run: |
           node tools/priority/slo-metrics.mjs \
             --repo "${{ github.repository }}" \
+            --candidate-workflow monthly-stability-release.yml \
             --output tests/results/_agent/slo/monthly-slo-metrics.json \
             --route-on-breach \
             --route-title-prefix "[SLO] Monthly stability breach"
