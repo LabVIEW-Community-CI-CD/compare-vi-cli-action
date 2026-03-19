@@ -99,22 +99,28 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     @($metadata.consumerContract.localRuntimeProfiles.runtimeProfiles) | Should -Be @(
       'proof',
       'dev-fast',
-      'warm-dev'
+      'warm-dev',
+      'windows-mirror-proof'
     )
     $metadata.consumerContract.localRuntimeProfiles.defaultProfile | Should -Be 'dev-fast'
     @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'benchmarkSampleKind'
+    @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'runtimePlane'
+    @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'windowsMirror'
     @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'warmRuntime'
     ((@($metadata.consumerContract.localRuntimeProfiles.notes) -join [Environment]::NewLine)) | Should -Match 'labview-icon-editor-demo'
     ((@($metadata.consumerContract.localRuntimeProfiles.notes) -join [Environment]::NewLine)) | Should -Match 'comparevi-history'
+    ((@($metadata.consumerContract.localRuntimeProfiles.notes) -join [Environment]::NewLine)) | Should -Match 'windows-mirror-proof'
     $metadata.consumerContract.localOperatorSession.schema | Should -Be 'comparevi-tools/local-operator-session-facade@v1'
     $metadata.consumerContract.localOperatorSession.exportedFunction | Should -Be 'Invoke-CompareVIHistoryLocalOperatorSessionFacade'
     $metadata.consumerContract.localOperatorSession.resultsRelativePath | Should -Be 'local-operator-session.json'
     @($metadata.consumerContract.localOperatorSession.runtimeProfiles) | Should -Be @(
       'proof',
       'dev-fast',
-      'warm-dev'
+      'warm-dev',
+      'windows-mirror-proof'
     )
     $metadata.consumerContract.localOperatorSession.defaultProfile | Should -Be 'dev-fast'
+    @($metadata.consumerContract.localOperatorSession.stableFields) | Should -Contain 'runtimePlane'
     @($metadata.consumerContract.localOperatorSession.stableFields) | Should -Contain 'review.outputs'
     ((@($metadata.consumerContract.localOperatorSession.notes) -join [Environment]::NewLine)) | Should -Match 'comparevi-history'
     $metadata.consumerContract.diagnosticsCommentRenderer.entryScriptPath | Should -Be 'tools/New-CompareVIHistoryDiagnosticsBody.ps1'
@@ -142,6 +148,7 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $bundleReadme = Get-Content -LiteralPath (Join-Path $bundleRoot 'README.md') -Raw
     $bundleReadme | Should -Match 'labview-icon-editor-demo'
     $bundleReadme | Should -Match 'comparevi-history'
+    $bundleReadme | Should -Match 'windows-mirror-proof'
 
     $expectedFiles = @(
       'comparevi-tools-release.json',
@@ -161,7 +168,9 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
       'tools/New-CompareVIHistoryDiagnosticsBody.ps1',
       'tools/Render-VIHistoryReport.ps1',
       'tools/Run-NILinuxContainerCompare.ps1',
+      'tools/Run-NIWindowsContainerCompare.ps1',
       'tools/Stage-CompareInputs.ps1',
+      'tools/Test-WindowsNI2026q1HostPreflight.ps1',
       'tools/VendorTools.psm1',
       'tools/VICategoryBuckets.psm1',
       'tools/docker/Dockerfile.vi-history-dev',
@@ -182,6 +191,8 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Invoke-VIHistoryLocalRefinement.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Manage-VIHistoryRuntimeInDocker.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Run-NILinuxContainerCompare.ps1'
+    @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Run-NIWindowsContainerCompare.ps1'
+    @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Test-WindowsNI2026q1HostPreflight.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Assert-DockerRuntimeDeterminism.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Compare-ExitCodeClassifier.ps1'
   }

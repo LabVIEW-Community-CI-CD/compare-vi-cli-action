@@ -343,6 +343,106 @@ $payload = [ordered]@{
 $payload | ConvertTo-Json -Depth 10
 '@ | Set-Content -LiteralPath $Path -Encoding utf8
     }
+
+    function New-WindowsPreflightStub {
+      param([Parameter(Mandatory)][string]$Path)
+
+      @'
+param(
+  [string]$Image = '',
+  [string]$ResultsDir = '',
+  [string]$OutputJsonPath = ''
+)
+$logPath = [Environment]::GetEnvironmentVariable('LOCAL_WINDOWS_PREFLIGHT_STUB_LOG')
+if (-not [string]::IsNullOrWhiteSpace($logPath)) {
+  [ordered]@{
+    image = $Image
+    resultsDir = $ResultsDir
+    outputJsonPath = $OutputJsonPath
+  } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $logPath -Encoding utf8
+}
+if (-not [string]::IsNullOrWhiteSpace($OutputJsonPath)) {
+  New-Item -ItemType Directory -Path (Split-Path -Parent $OutputJsonPath) -Force | Out-Null
+  [ordered]@{
+    schema = 'comparevi/windows-host-preflight@v1'
+    image = $Image
+    status = 'ready'
+  } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $OutputJsonPath -Encoding utf8
+}
+Write-Output $OutputJsonPath
+exit 0
+'@ | Set-Content -LiteralPath $Path -Encoding utf8
+    }
+
+    function New-WindowsCompareStub {
+      param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$EmitNoise
+      )
+
+      $emitNoiseLiteral = if ($EmitNoise) { '$true' } else { '$false' }
+      $stub = @'
+param(
+  [string]$BaseVi,
+  [string]$HeadVi,
+  [string]$Image = '',
+  [string]$ReportPath = '',
+  [string]$LabVIEWPath = '',
+  [string]$RuntimeSnapshotPath = '',
+  [switch]$PassThru
+)
+$emitNoise = __EMIT_NOISE__
+$logPath = [Environment]::GetEnvironmentVariable('LOCAL_WINDOWS_COMPARE_STUB_LOG')
+if (-not [string]::IsNullOrWhiteSpace($logPath)) {
+  [ordered]@{
+    baseVi = $BaseVi
+    headVi = $HeadVi
+    image = $Image
+    reportPath = $ReportPath
+    labviewPath = $LabVIEWPath
+    runtimeSnapshotPath = $RuntimeSnapshotPath
+  } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $logPath -Encoding utf8
+}
+if (-not [string]::IsNullOrWhiteSpace($ReportPath)) {
+  New-Item -ItemType Directory -Path (Split-Path -Parent $ReportPath) -Force | Out-Null
+  '<html><body>windows mirror report</body></html>' | Set-Content -LiteralPath $ReportPath -Encoding utf8
+  $capturePath = Join-Path (Split-Path -Parent $ReportPath) 'ni-windows-container-capture.json'
+  [ordered]@{
+    status = 'diff'
+    classification = 'diff'
+    resultClass = 'diff'
+    gateOutcome = 'pass'
+    failureClass = 'none'
+    reportPath = $ReportPath
+    capturePath = $capturePath
+  } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $capturePath -Encoding utf8
+}
+if (-not [string]::IsNullOrWhiteSpace($RuntimeSnapshotPath)) {
+  New-Item -ItemType Directory -Path (Split-Path -Parent $RuntimeSnapshotPath) -Force | Out-Null
+  [ordered]@{
+    schema = 'comparevi/runtime-determinism@v1'
+    status = 'ready'
+  } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $RuntimeSnapshotPath -Encoding utf8
+}
+if ($emitNoise) {
+  Write-Output 'windows-compare-noise'
+}
+$result = [pscustomobject]@{
+  schema = 'ni-windows-container-compare/v1'
+  status = 'diff'
+  classification = 'diff'
+  resultClass = 'diff'
+  gateOutcome = 'pass'
+  failureClass = 'none'
+}
+if ($PassThru) {
+  $result
+}
+exit 0
+'@
+      $stub = $stub.Replace('__EMIT_NOISE__', $emitNoiseLiteral)
+      $stub | Set-Content -LiteralPath $Path -Encoding utf8
+    }
   }
 
   It 'Build-VIHistoryDevImage uses the dedicated Dockerfile' {
@@ -521,6 +621,128 @@ $payload | ConvertTo-Json -Depth 10
     $receipt.finalStatus | Should -Be 'succeeded'
     $benchmark = Get-Content -LiteralPath $benchmarkPath -Raw | ConvertFrom-Json -Depth 20
     $benchmark.schema | Should -Be 'comparevi/local-refinement-benchmark@v1'
+  }
+
+  It 'Invoke-VIHistoryLocalRefinement writes a windows-mirror-proof receipt and host artifacts' {
+    $work = Join-Path $TestDrive 'windows-mirror-proof'
+    $repoRoot = Join-Path $work 'repo'
+    $resultsRoot = Join-Path $repoRoot 'tests/results/local-vi-history/windows-mirror-proof'
+    New-Item -ItemType Directory -Path (Join-Path $repoRoot 'fixtures/vi-attr') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures/vi-attr/Base.vi') -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures/vi-attr/Head.vi') -Value 'head' -Encoding utf8
+
+    $preflightStub = Join-Path $work 'Test-WindowsNI2026q1HostPreflight.stub.ps1'
+    $compareStub = Join-Path $work 'Run-NIWindowsContainerCompare.stub.ps1'
+    New-WindowsPreflightStub -Path $preflightStub
+    New-WindowsCompareStub -Path $compareStub
+
+    $preflightLog = Join-Path $work 'windows-preflight.json'
+    $compareLog = Join-Path $work 'windows-compare.json'
+
+    try {
+      $env:LOCAL_WINDOWS_PREFLIGHT_STUB_LOG = $preflightLog
+      $env:LOCAL_WINDOWS_COMPARE_STUB_LOG = $compareLog
+
+      $receipt = & $script:WrapperScript `
+        -Profile 'windows-mirror-proof' `
+        -RepoRoot $repoRoot `
+        -ResultsRoot $resultsRoot `
+        -WindowsMirrorLabVIEWPath 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' `
+        -WindowsHostPreflightScriptPath $preflightStub `
+        -WindowsCompareScriptPath $compareStub `
+        -PassThru
+
+      $receipt.schema | Should -Be 'comparevi/local-refinement@v1'
+      $receipt.runtimeProfile | Should -Be 'windows-mirror-proof'
+      $receipt.runtimePlane | Should -Be 'windows-mirror'
+      $receipt.image | Should -Be 'nationalinstruments/labview:2026q1-windows'
+      $receipt.toolSource | Should -Be 'windows-mirror-proof-image'
+      $receipt.cacheReuseState | Should -Be 'canonical-windows-proof-image'
+      $receipt.coldWarmClass | Should -Be 'cold'
+      $receipt.benchmarkSampleKind | Should -Be 'windows-mirror-proof-cold'
+      $receipt.reviewSuite | Should -Be $null
+      $receipt.reviewLoop | Should -Be $null
+      $receipt.windowsMirror.hostPreflight.path | Should -Be (Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json')
+      $receipt.windowsMirror.compare.reportPath | Should -Be (Join-Path $resultsRoot 'windows-mirror-report.html')
+      $receipt.windowsMirror.compare.capturePath | Should -Be (Join-Path $resultsRoot 'ni-windows-container-capture.json')
+      $receipt.windowsMirror.compare.runtimeSnapshotPath | Should -Be (Join-Path $resultsRoot 'windows-mirror-runtime-snapshot.json')
+      $receipt.windowsMirror.headlessContract.required | Should -BeTrue
+      $receipt.windowsMirror.headlessContract.labviewCliMode | Should -Be 'headless'
+      $receipt.finalStatus | Should -Be 'succeeded'
+
+      Test-Path -LiteralPath (Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json') | Should -BeTrue
+      Test-Path -LiteralPath (Join-Path $resultsRoot 'windows-mirror-report.html') | Should -BeTrue
+      Test-Path -LiteralPath (Join-Path $resultsRoot 'ni-windows-container-capture.json') | Should -BeTrue
+      Test-Path -LiteralPath (Join-Path $resultsRoot 'windows-mirror-runtime-snapshot.json') | Should -BeTrue
+      Test-Path -LiteralPath (Join-Path $resultsRoot 'local-refinement-benchmark.json') | Should -BeTrue
+
+      $preflightCapture = Get-Content -LiteralPath $preflightLog -Raw | ConvertFrom-Json -Depth 10
+      $preflightCapture.image | Should -Be 'nationalinstruments/labview:2026q1-windows'
+      $preflightCapture.outputJsonPath | Should -Be (Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json')
+
+      $compareCapture = Get-Content -LiteralPath $compareLog -Raw | ConvertFrom-Json -Depth 10
+      $compareCapture.image | Should -Be 'nationalinstruments/labview:2026q1-windows'
+      $compareCapture.labviewPath | Should -Be 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
+      $compareCapture.runtimeSnapshotPath | Should -Be (Join-Path $resultsRoot 'windows-mirror-runtime-snapshot.json')
+    } finally {
+      Remove-Item Env:LOCAL_WINDOWS_PREFLIGHT_STUB_LOG -ErrorAction SilentlyContinue
+      Remove-Item Env:LOCAL_WINDOWS_COMPARE_STUB_LOG -ErrorAction SilentlyContinue
+    }
+  }
+
+  It 'rejects non-canonical images for windows-mirror-proof' {
+    $work = Join-Path $TestDrive 'local-refinement-windows-mirror-image-guard'
+    $repoRoot = Join-Path $work 'repo'
+    $resultsRoot = Join-Path $repoRoot 'tests/results/local-vi-history/windows-mirror-proof'
+    New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $repoRoot 'fixtures/vi-attr') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures/vi-attr/Base.vi') -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures/vi-attr/Head.vi') -Value 'head' -Encoding utf8
+
+    $preflightStub = Join-Path $work 'Test-WindowsNI2026q1HostPreflight.stub.ps1'
+    $compareStub = Join-Path $work 'Run-NIWindowsContainerCompare.stub.ps1'
+    New-WindowsPreflightStub -Path $preflightStub
+    New-WindowsCompareStub -Path $compareStub
+
+    {
+      & $script:WrapperScript `
+        -Profile 'windows-mirror-proof' `
+        -RepoRoot $repoRoot `
+        -ResultsRoot $resultsRoot `
+        -WindowsMirrorImage 'nationalinstruments/labview:2026q1-windows-beta' `
+        -WindowsHostPreflightScriptPath $preflightStub `
+        -WindowsCompareScriptPath $compareStub `
+        -PassThru
+    } | Should -Throw "*windows-mirror-proof is pinned to canonical image 'nationalinstruments/labview:2026q1-windows'*"
+  }
+
+  It 'projects windows mirror compare fields even when the compare helper emits pipeline noise' {
+    $work = Join-Path $TestDrive 'windows-mirror-proof-pass-thru-noise'
+    $repoRoot = Join-Path $work 'repo'
+    $resultsRoot = Join-Path $repoRoot 'tests/results/local-vi-history/windows-mirror-proof'
+    New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $repoRoot 'fixtures/vi-attr') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures/vi-attr/Base.vi') -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures/vi-attr/Head.vi') -Value 'head' -Encoding utf8
+
+    $preflightStub = Join-Path $work 'Test-WindowsNI2026q1HostPreflight.stub.ps1'
+    $compareStub = Join-Path $work 'Run-NIWindowsContainerCompare.noisy.stub.ps1'
+    New-WindowsPreflightStub -Path $preflightStub
+    New-WindowsCompareStub -Path $compareStub -EmitNoise
+
+    $receipt = & $script:WrapperScript `
+      -Profile 'windows-mirror-proof' `
+      -RepoRoot $repoRoot `
+      -ResultsRoot $resultsRoot `
+      -WindowsHostPreflightScriptPath $preflightStub `
+      -WindowsCompareScriptPath $compareStub `
+      -PassThru
+
+    $receipt.windowsMirror.compare.status | Should -Be 'diff'
+    $receipt.windowsMirror.compare.classification | Should -Be 'diff'
+    $receipt.windowsMirror.compare.resultClass | Should -Be 'diff'
+    $receipt.windowsMirror.compare.gateOutcome | Should -Be 'pass'
+    $receipt.windowsMirror.compare.failureClass | Should -Be 'none'
   }
 
   It 'Invoke-VIHistoryLocalRefinement PassThru returns only the canonical receipt when the review suite writes pipeline output' {

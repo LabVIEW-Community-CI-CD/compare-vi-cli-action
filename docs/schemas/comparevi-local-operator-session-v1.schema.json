@@ -23,7 +23,10 @@
       "format": "date-time"
     },
     "runtimeProfile": {
-      "enum": ["proof", "dev-fast", "warm-dev"]
+      "enum": ["proof", "dev-fast", "warm-dev", "windows-mirror-proof"]
+    },
+    "runtimePlane": {
+      "type": "string"
     },
     "repoRoot": {
       "type": "string",
@@ -40,6 +43,7 @@
         "schema",
         "receiptPath",
         "benchmarkPath",
+        "runtimePlane",
         "image",
         "toolSource",
         "cacheReuseState",
@@ -58,6 +62,9 @@
         "benchmarkPath": {
           "type": ["string", "null"]
         },
+        "runtimePlane": {
+          "enum": ["linux", "windows-mirror"]
+        },
         "image": {
           "type": "string"
         },
@@ -75,6 +82,9 @@
         },
         "timings": {
           "type": "object"
+        },
+        "windowsMirror": {
+          "type": ["object", "null"]
         },
         "finalStatus": {
           "enum": ["succeeded", "failed"]
@@ -155,6 +165,10 @@
         "warmRuntimeStatePath",
         "warmRuntimeHealthPath",
         "warmRuntimeLeasePath",
+        "windowsMirrorHostPreflightPath",
+        "windowsMirrorReportPath",
+        "windowsMirrorCapturePath",
+        "windowsMirrorRuntimeSnapshotPath",
         "reviewReceiptPath",
         "reviewBundlePath",
         "workspaceHtmlPath",
@@ -179,6 +193,18 @@
           "type": ["string", "null"]
         },
         "warmRuntimeLeasePath": {
+          "type": ["string", "null"]
+        },
+        "windowsMirrorHostPreflightPath": {
+          "type": ["string", "null"]
+        },
+        "windowsMirrorReportPath": {
+          "type": ["string", "null"]
+        },
+        "windowsMirrorCapturePath": {
+          "type": ["string", "null"]
+        },
+        "windowsMirrorRuntimeSnapshotPath": {
           "type": ["string", "null"]
         },
         "reviewReceiptPath": {

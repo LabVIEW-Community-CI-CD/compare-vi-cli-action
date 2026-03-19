@@ -231,6 +231,7 @@ function ConvertTo-CompareVILocalRefinementFacade {
     generatedAtUtc = [string]$Receipt.generatedAt
     backendReceiptSchema = [string]$Receipt.schema
     runtimeProfile = [string]$Receipt.runtimeProfile
+    runtimePlane = if ($Receipt.PSObject.Properties['runtimePlane']) { [string]$Receipt.runtimePlane } else { 'linux' }
     image = [string]$Receipt.image
     toolSource = [string]$Receipt.toolSource
     cacheReuseState = [string]$Receipt.cacheReuseState
@@ -242,6 +243,7 @@ function ConvertTo-CompareVILocalRefinementFacade {
     history = $Receipt.history
     reviewSuite = if ($Receipt.PSObject.Properties['reviewSuite']) { $Receipt.reviewSuite } else { $null }
     reviewLoop = if ($Receipt.PSObject.Properties['reviewLoop']) { $Receipt.reviewLoop } else { $null }
+    windowsMirror = if ($Receipt.PSObject.Properties['windowsMirror']) { $Receipt.windowsMirror } else { $null }
     warmRuntime = $warmRuntimeFacade
     artifacts = [ordered]@{
       localRefinementPath = $localRefinementPath
@@ -269,6 +271,7 @@ function ConvertTo-CompareVILocalOperatorSessionFacade {
     generatedAtUtc = [string]$Receipt.generatedAt
     backendReceiptSchema = [string]$Receipt.schema
     runtimeProfile = [string]$Receipt.runtimeProfile
+    runtimePlane = if ($Receipt.PSObject.Properties['runtimePlane']) { [string]$Receipt.runtimePlane } else { 'linux' }
     repoRoot = [string]$Receipt.repoRoot
     resultsRoot = [string]$Receipt.resultsRoot
     localRefinement = Get-CompareVIFacadeValue -InputObject $Receipt -Name 'localRefinement'
@@ -401,7 +404,7 @@ function Invoke-CompareVIHistoryFacade {
 function Invoke-CompareVIHistoryLocalRefinementFacade {
   [CmdletBinding()]
   param(
-    [ValidateSet('proof', 'dev-fast', 'warm-dev')]
+    [ValidateSet('proof', 'dev-fast', 'warm-dev', 'windows-mirror-proof')]
     [string]$Profile = 'dev-fast',
     [string]$BaseVi = 'fixtures/vi-attr/Base.vi',
     [string]$HeadVi = 'fixtures/vi-attr/Head.vi',
@@ -416,7 +419,11 @@ function Invoke-CompareVIHistoryLocalRefinementFacade {
     [string]$WarmRuntimeDir = '',
     [string]$ProofImage = 'nationalinstruments/labview:2026q1-linux',
     [string]$DevImage = 'comparevi-vi-history-dev:local',
+    [string]$WindowsMirrorImage = 'nationalinstruments/labview:2026q1-windows',
     [string]$LabVIEWPath = '/usr/local/natinst/LabVIEW-2026-64/labview',
+    [string]$WindowsMirrorLabVIEWPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe',
+    [string]$WindowsHostPreflightScriptPath = '',
+    [string]$WindowsCompareScriptPath = '',
     [switch]$SkipDevImageBuild
   )
 
@@ -438,7 +445,7 @@ function Invoke-CompareVIHistoryLocalRefinementFacade {
 function Invoke-CompareVIHistoryLocalOperatorSessionFacade {
   [CmdletBinding()]
   param(
-    [ValidateSet('proof', 'dev-fast', 'warm-dev')]
+    [ValidateSet('proof', 'dev-fast', 'warm-dev', 'windows-mirror-proof')]
     [string]$Profile = 'dev-fast',
     [string]$BaseVi = 'fixtures/vi-attr/Base.vi',
     [string]$HeadVi = 'fixtures/vi-attr/Head.vi',
@@ -453,7 +460,11 @@ function Invoke-CompareVIHistoryLocalOperatorSessionFacade {
     [string]$WarmRuntimeDir = '',
     [string]$ProofImage = 'nationalinstruments/labview:2026q1-linux',
     [string]$DevImage = 'comparevi-vi-history-dev:local',
+    [string]$WindowsMirrorImage = 'nationalinstruments/labview:2026q1-windows',
     [string]$LabVIEWPath = '/usr/local/natinst/LabVIEW-2026-64/labview',
+    [string]$WindowsMirrorLabVIEWPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe',
+    [string]$WindowsHostPreflightScriptPath = '',
+    [string]$WindowsCompareScriptPath = '',
     [switch]$SkipDevImageBuild,
     [string]$ReviewCommandPath = '',
     [string[]]$ReviewCommandArguments = @(),

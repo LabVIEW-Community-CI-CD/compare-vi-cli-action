@@ -249,6 +249,10 @@ proof:
 - `proof`
   - image: `nationalinstruments/labview:2026q1-linux`
   - purpose: release parity and CI truth
+- `windows-mirror-proof`
+  - image: `nationalinstruments/labview:2026q1-windows`
+  - purpose: repeatable headless Windows mirror proof on a Windows host before
+    any host-native LabVIEW 2026 32-bit promotion
 - `dev-fast`
   - image: `comparevi-vi-history-dev:local`
   - purpose: faster cold local refinement with a mounted working tree and
@@ -262,6 +266,8 @@ This split is deliberate:
 - `comparevi-tools` stays the non-LV/tools image only
 - the local dev image is not published in the first slice
 - CI and release workflows keep advertising only the canonical NI image
+- `windows-mirror-proof` is proof-only in this first slice and stays pinned to
+  `nationalinstruments/labview:2026q1-windows`
 
 ### Backend local entrypoints
 
@@ -277,6 +283,10 @@ node tools/npm/run-script.mjs history:local:proof -- `
   -BaseVi fixtures/vi-attr/Base.vi `
   -HeadVi fixtures/vi-attr/Head.vi `
   -HistoryTargetPath fixtures/vi-attr/Head.vi
+node tools/npm/run-script.mjs history:local:windows-mirror:proof -- `
+  -BaseVi fixtures/vi-attr/Base.vi `
+  -HeadVi fixtures/vi-attr/Head.vi `
+  -HistoryTargetPath fixtures/vi-attr/Head.vi
 node tools/npm/run-script.mjs history:local:warm-runtime -- `
   -RepoRoot . `
   -ResultsRoot tests/results/local-vi-history/warm-dev `
@@ -289,6 +299,8 @@ Direct PowerShell entrypoints are:
 - `tools/Invoke-VIHistoryLocalRefinement.ps1`
 - `tools/Invoke-VIHistoryLocalOperatorSession.ps1`
 - `tools/Manage-VIHistoryRuntimeInDocker.ps1`
+- `tools/Test-WindowsNI2026q1HostPreflight.ps1`
+- `tools/Run-NIWindowsContainerCompare.ps1`
 
 The local receipts are:
 
@@ -297,6 +309,15 @@ The local receipts are:
 - `comparevi/local-runtime-health@v1`
 - `comparevi/local-refinement-benchmark@v1`
 - `comparevi/local-operator-session@v1`
+
+Windows mirror proof also records host/image evidence under the local
+refinement and operator-session receipts:
+
+- `runtimePlane = windows-mirror`
+- `windowsMirror.hostPreflight.path`
+- `windowsMirror.compare.reportPath`
+- `windowsMirror.compare.capturePath`
+- `windowsMirror.compare.runtimeSnapshotPath`
 
 Those receipts are the contract `comparevi-history` should consume when it adds
 profile-aware `local-review` and `local-proof` surfaces on top of the backend

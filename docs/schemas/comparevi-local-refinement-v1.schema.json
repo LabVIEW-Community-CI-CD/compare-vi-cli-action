@@ -27,7 +27,10 @@
       "format": "date-time"
     },
     "runtimeProfile": {
-      "enum": ["proof", "dev-fast", "warm-dev"]
+      "enum": ["proof", "dev-fast", "warm-dev", "windows-mirror-proof"]
+    },
+    "runtimePlane": {
+      "enum": ["linux", "windows-mirror"]
     },
     "image": {
       "type": "string",
@@ -69,6 +72,9 @@
           "minimum": 0
         }
       }
+    },
+    "windowsMirror": {
+      "type": ["object", "null"]
     },
     "finalStatus": {
       "enum": ["succeeded", "failed"]
