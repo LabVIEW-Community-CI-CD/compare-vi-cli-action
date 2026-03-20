@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import {
   DEFAULT_ROUTE_LABELS,
   DEFAULT_THRESHOLDS,
+  analyzeLocalAlertVerification,
   buildRemediationCandidates,
   evaluateOverride,
   evaluateSecurityBreaches,
@@ -16,7 +17,8 @@ import {
   parseNextLinkFromHeader,
   parseArgs,
   runSecurityIntake,
-  summarizeDependabotAlerts
+  summarizeDependabotAlerts,
+  verifyLocalRemediationForAlert
 } from '../security-intake.mjs';
 
 function sampleAlert(overrides = {}) {
@@ -30,6 +32,17 @@ function sampleAlert(overrides = {}) {
     html_url: 'https://example.test/alerts/10',
     security_advisory: {
       severity: 'moderate'
+    },
+    security_vulnerability: {
+      package: {
+        ecosystem: 'npm',
+        name: 'brace-expansion'
+      },
+      severity: 'moderate',
+      vulnerable_version_range: '< 2.0.0',
+      first_patched_version: {
+        identifier: '2.0.0'
+      }
     },
     dependency: {
       package: {
@@ -151,6 +164,143 @@ test('normalizeDependabotAlert maps GitHub medium severity to moderate', () => {
     new Date('2026-03-06T12:00:00Z')
   );
   assert.equal(alert.severity, 'moderate');
+  assert.equal(alert.firstPatchedVersion, '2.0.0');
+});
+
+test('verifyLocalRemediationForAlert recognizes remediated direct npm manifests and locks', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'security-intake-verify-'));
+  fs.writeFileSync(
+    path.join(tmpDir, 'package.json'),
+    `${JSON.stringify({
+      name: 'fixture',
+      version: '1.0.0',
+      devDependencies: {
+        'brace-expansion': '2.0.1'
+      }
+    }, null, 2)}\n`
+  );
+  fs.writeFileSync(
+    path.join(tmpDir, 'package-lock.json'),
+    `${JSON.stringify({
+      name: 'fixture',
+      lockfileVersion: 3,
+      packages: {
+        '': {
+          name: 'fixture',
+          version: '1.0.0',
+          devDependencies: {
+            'brace-expansion': '2.0.1'
+          }
+        },
+        'node_modules/brace-expansion': {
+          version: '2.0.1'
+        }
+      }
+    }, null, 2)}\n`
+  );
+
+  const manifestAlert = normalizeDependabotAlert(
+    sampleAlert({
+      number: 11,
+      dependency: {
+        package: {
+          ecosystem: 'npm',
+          name: 'brace-expansion'
+        },
+        manifest_path: 'package.json',
+        relationship: 'direct'
+      }
+    }),
+    new Date('2026-03-06T12:00:00Z')
+  );
+  const lockAlert = normalizeDependabotAlert(
+    sampleAlert({
+      number: 12,
+      dependency: {
+        package: {
+          ecosystem: 'npm',
+          name: 'brace-expansion'
+        },
+        manifest_path: 'package-lock.json',
+        relationship: 'direct'
+      }
+    }),
+    new Date('2026-03-06T12:00:00Z')
+  );
+
+  const manifestVerification = verifyLocalRemediationForAlert(manifestAlert, { repoRoot: tmpDir });
+  const lockVerification = verifyLocalRemediationForAlert(lockAlert, { repoRoot: tmpDir });
+
+  assert.equal(manifestVerification.supported, true);
+  assert.equal(manifestVerification.remediated, true);
+  assert.equal(manifestVerification.detectedVersion, '2.0.1');
+  assert.equal(lockVerification.supported, true);
+  assert.equal(lockVerification.remediated, true);
+  assert.equal(lockVerification.detectedVersion, '2.0.1');
+});
+
+test('analyzeLocalAlertVerification flags platform-stale when every open npm alert is remediated locally', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'security-intake-analyze-'));
+  fs.writeFileSync(
+    path.join(tmpDir, 'package.json'),
+    `${JSON.stringify({
+      name: 'fixture',
+      version: '1.0.0',
+      devDependencies: {
+        'brace-expansion': '2.0.1'
+      }
+    }, null, 2)}\n`
+  );
+  fs.writeFileSync(
+    path.join(tmpDir, 'package-lock.json'),
+    `${JSON.stringify({
+      name: 'fixture',
+      lockfileVersion: 3,
+      packages: {
+        '': {
+          name: 'fixture',
+          version: '1.0.0',
+          devDependencies: {
+            'brace-expansion': '2.0.1'
+          }
+        },
+        'node_modules/brace-expansion': {
+          version: '2.0.1'
+        }
+      }
+    }, null, 2)}\n`
+  );
+
+  const alerts = [
+    normalizeDependabotAlert(
+      sampleAlert({
+        number: 21,
+        dependency: {
+          package: { ecosystem: 'npm', name: 'brace-expansion' },
+          manifest_path: 'package.json',
+          relationship: 'direct'
+        }
+      }),
+      new Date('2026-03-06T12:00:00Z')
+    ),
+    normalizeDependabotAlert(
+      sampleAlert({
+        number: 22,
+        dependency: {
+          package: { ecosystem: 'npm', name: 'brace-expansion' },
+          manifest_path: 'package-lock.json',
+          relationship: 'direct'
+        }
+      }),
+      new Date('2026-03-06T12:00:00Z')
+    )
+  ];
+
+  const verification = analyzeLocalAlertVerification(alerts, { repoRoot: tmpDir });
+  assert.equal(verification.platformStale, true);
+  assert.equal(verification.verifiedRemediationCount, 2);
+  assert.equal(verification.unresolvedCount, 0);
+  assert.deepEqual(verification.verifiedAlertNumbers, [21, 22]);
 });
 
 test('buildRemediationCandidates sorts by severity then age', () => {
@@ -296,6 +446,93 @@ test('runSecurityIntake writes deterministic report and routes on breach', async
   assert.equal(persisted.schema, 'priority/security-intake@v1');
   assert.equal(persisted.route.issueNumber, 123);
   assert.deepEqual(persisted.route.labels, DEFAULT_ROUTE_LABELS);
+  assert.equal(persisted.verification.platformStale, false);
+});
+
+test('runSecurityIntake classifies locally remediated open alerts as platform-stale', async () => {
+  const now = new Date('2026-03-06T12:00:00Z');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'security-intake-platform-stale-'));
+  const outputPath = path.join(tmpDir, 'report.json');
+  fs.writeFileSync(
+    path.join(tmpDir, 'package.json'),
+    `${JSON.stringify({
+      name: 'fixture',
+      version: '1.0.0',
+      devDependencies: {
+        'brace-expansion': '2.0.1'
+      }
+    }, null, 2)}\n`
+  );
+  fs.writeFileSync(
+    path.join(tmpDir, 'package-lock.json'),
+    `${JSON.stringify({
+      name: 'fixture',
+      lockfileVersion: 3,
+      packages: {
+        '': {
+          name: 'fixture',
+          version: '1.0.0',
+          devDependencies: {
+            'brace-expansion': '2.0.1'
+          }
+        },
+        'node_modules/brace-expansion': {
+          version: '2.0.1'
+        }
+      }
+    }, null, 2)}\n`
+  );
+
+  const result = await runSecurityIntake(
+    {
+      outputPath,
+      routeOnBreach: true,
+      failOnBreach: true,
+      thresholds: {
+        ...DEFAULT_THRESHOLDS,
+        openModerateMax: 0
+      }
+    },
+    {
+      now,
+      repoRoot: tmpDir,
+      resolveRepositorySlugFn: () => 'example/repo',
+      resolveTokenFn: () => 'token',
+      listDependabotAlertsFn: async ({ state }) => {
+        if (state !== 'open') return [];
+        return [
+          sampleAlert({
+            number: 31,
+            dependency: {
+              package: { ecosystem: 'npm', name: 'brace-expansion' },
+              manifest_path: 'package.json',
+              relationship: 'direct'
+            }
+          }),
+          sampleAlert({
+            number: 32,
+            dependency: {
+              package: { ecosystem: 'npm', name: 'brace-expansion' },
+              manifest_path: 'package-lock.json',
+              relationship: 'direct'
+            }
+          })
+        ];
+      },
+      upsertRemediationIssueFn: async () => {
+        throw new Error('routeIssue should not run for platform-stale reports');
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.status, 'platform-stale');
+  assert.deepEqual(result.report.breaches, []);
+  assert.equal(result.report.summary.open.total, 0);
+  assert.equal(result.report.source.dependabot.openCount, 2);
+  assert.equal(result.report.verification.platformStale, true);
+  assert.deepEqual(result.report.verification.verifiedAlertNumbers, [31, 32]);
+  assert.equal(result.report.route.action, 'none');
 });
 
 test('runSecurityIntake supports skip semantics and override bypass', async () => {
