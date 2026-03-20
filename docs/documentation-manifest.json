@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-20T00:15:00Z",
+  "updated": "2026-03-20T12:50:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -64,6 +64,7 @@
         "docs/knowledgebase/GitHub-Wiki-Portal-Automation-Evaluation.md",
         "docs/knowledgebase/GitHub-Wiki-Portal.md",
         "docs/knowledgebase/Headless-SampleVI-Corpus.md",
+        "docs/knowledgebase/PrintToSingleFileHtml-Provenance.md",
         "docs/knowledgebase/Offline-RealHistory-Corpus.md",
         "docs/knowledgebase/DOCKER_TOOLS_PARITY.md",
         "docs/LABVIEW_GATING.md",
@@ -210,9 +211,10 @@
       "name": "Headless Sample Corpus Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Checked-in catalog, schemas, evaluator, and focused tests for the evidence-backed public sample VI corpus used by headless certification lanes.",
+      "description": "Checked-in catalog, schemas, evaluator, focused tests, and operation-payload provenance guidance for the evidence-backed public sample VI corpus used by headless certification lanes.",
       "files": [
         "docs/knowledgebase/Headless-SampleVI-Corpus.md",
+        "docs/knowledgebase/PrintToSingleFileHtml-Provenance.md",
         "docs/schemas/headless-sample-vi-corpus-targets-v1.schema.json",
         "docs/schemas/headless-sample-vi-corpus-evaluation-v1.schema.json",
         "fixtures/headless-corpus/sample-vi-corpus.targets.json",

@@ -57,6 +57,7 @@
         "acceptedTargetsRequirePublicGithubEvidence",
         "acceptedTargetsRequireLicense",
         "acceptedTargetsRequirePinnedCommit",
+        "acceptedTargetsRequirePromotableOperationPayload",
         "provisionalTargetsAllowed"
       ],
       "properties": {
@@ -67,6 +68,9 @@
           "type": "boolean"
         },
         "acceptedTargetsRequirePinnedCommit": {
+          "type": "boolean"
+        },
+        "acceptedTargetsRequirePromotableOperationPayload": {
           "type": "boolean"
         },
         "provisionalTargetsAllowed": {
@@ -113,6 +117,21 @@
         "Compare-VIHistory",
         "CreateComparisonReport",
         "PrintToSingleFileHtml"
+      ]
+    },
+    "operationPayloadMode": {
+      "type": "string",
+      "enum": [
+        "builtin",
+        "additional-operation-directory"
+      ]
+    },
+    "operationPayloadProvenanceState": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "research-only",
+        "forbidden"
       ]
     },
     "planeApplicability": {
@@ -268,6 +287,45 @@
         }
       }
     },
+    "operationPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "provenanceState",
+        "notes"
+      ],
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/operationPayloadMode"
+        },
+        "provenanceState": {
+          "$ref": "#/$defs/operationPayloadProvenanceState"
+        },
+        "sourceRepositorySlug": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "sourceRepositoryUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "sourceLicenseSpdx": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     "target": {
       "type": "object",
       "additionalProperties": false,
@@ -297,6 +355,9 @@
         },
         "renderStrategy": {
           "$ref": "#/$defs/renderStrategy"
+        },
+        "operationPayload": {
+          "$ref": "#/$defs/operationPayload"
         },
         "localEvidence": {
           "$ref": "#/$defs/localEvidence"
