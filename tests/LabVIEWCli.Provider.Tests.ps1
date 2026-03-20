@@ -103,4 +103,53 @@ Describe 'LabVIEW CLI provider' -Tag 'Unit' {
       }
     } | Should -Throw "*headless*"
   }
+
+  It 'builds custom operation arguments with additional-operation-directory, help, and explicit LabVIEW path' {
+    $labviewPath = Join-Path $TestDrive 'LabVIEW.exe'
+    Set-Content -LiteralPath $labviewPath -Value '' -Encoding utf8
+    $customOperationRoot = Join-Path $TestDrive 'AddTwoNumbers'
+    New-Item -ItemType Directory -Path $customOperationRoot -Force | Out-Null
+
+    $resolvedPath = (Resolve-Path -LiteralPath $labviewPath).Path
+    $args = InModuleScope $script:providerModule.Name {
+      param($operationRoot, $lvPath)
+      Get-LabVIEWCliArgs -Operation 'RunCustomOperation' -Params @{
+        customOperationName = 'AddTwoNumbers'
+        additionalOperationDirectory = $operationRoot
+        help = $true
+        labviewPath = $lvPath
+      }
+    } -ArgumentList $customOperationRoot, $resolvedPath
+
+    $args[0] | Should -Be '-OperationName'
+    $args[1] | Should -Be 'AddTwoNumbers'
+    $args | Should -Contain '-AdditionalOperationDirectory'
+    $args | Should -Contain '-Help'
+    $labviewIndex = [Array]::IndexOf($args, '-LabVIEWPath')
+    $labviewIndex | Should -BeGreaterThan 0
+    $args[$labviewIndex + 1] | Should -Be $resolvedPath
+  }
+
+  It 'builds custom operation arguments without injecting LabVIEWPath when omitted' {
+    $customOperationRoot = Join-Path $TestDrive 'AddTwoNumbers'
+    New-Item -ItemType Directory -Path $customOperationRoot -Force | Out-Null
+    Set-Item Env:LABVIEW_PATH (Join-Path $TestDrive 'ignored-LabVIEW.exe')
+
+    $args = InModuleScope $script:providerModule.Name {
+      param($operationRoot)
+      Get-LabVIEWCliArgs -Operation 'RunCustomOperation' -Params @{
+        customOperationName = 'AddTwoNumbers'
+        additionalOperationDirectory = $operationRoot
+        arguments = @('-x', '1', '-y', '2')
+        headless = 'true'
+        logToConsole = '1'
+      }
+    } -ArgumentList $customOperationRoot
+
+    $args | Should -Contain '-Headless'
+    $args | Should -Contain '-LogToConsole'
+    $args | Should -Not -Contain '-LabVIEWPath'
+    $args | Should -Contain '-x'
+    $args | Should -Contain '2'
+  }
 }

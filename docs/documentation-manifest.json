@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-20T12:50:00Z",
+  "updated": "2026-03-20T14:40:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -232,6 +232,19 @@
         "docs/schemas/labview-cli-custom-operation-scaffold-v1.schema.json",
         "tools/New-LabVIEWCLICustomOperationWorkspace.ps1",
         "tests/New-LabVIEWCLICustomOperationWorkspace.Tests.ps1"
+      ]
+    },
+    {
+      "name": "LabVIEW CLI Custom Operation Proof Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Fail-closed AddTwoNumbers host-proof helper, analysis module, receipt schema, focused tests, and guidance for investigating LabVIEWCLI custom-operation hangs and path drift on the LabVIEW 2026 host plane.",
+      "files": [
+        "docs/knowledgebase/LabVIEWCLI-CustomOperation-Proof.md",
+        "docs/schemas/labview-cli-custom-operation-proof-v1.schema.json",
+        "tools/LabVIEWCLICustomOperationProof.psm1",
+        "tools/Test-LabVIEWCLICustomOperationProof.ps1",
+        "tests/LabVIEWCLICustomOperationProof.Tests.ps1"
       ]
     },
     {

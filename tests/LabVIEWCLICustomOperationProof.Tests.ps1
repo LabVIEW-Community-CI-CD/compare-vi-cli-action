@@ -1,0 +1,171 @@
+#Requires -Version 7.0
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Describe 'LabVIEW CLI custom operation proof contracts' -Tag 'Unit' {
+  BeforeAll {
+    $script:RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $script:ProofModule = Join-Path $script:RepoRoot 'tools' 'LabVIEWCLICustomOperationProof.psm1'
+    $script:ProofScript = Join-Path $script:RepoRoot 'tools' 'Test-LabVIEWCLICustomOperationProof.ps1'
+    if (-not (Test-Path -LiteralPath $script:ProofModule -PathType Leaf)) {
+      throw "LabVIEWCLICustomOperationProof.psm1 not found at $script:ProofModule"
+    }
+    if (-not (Test-Path -LiteralPath $script:ProofScript -PathType Leaf)) {
+      throw "Test-LabVIEWCLICustomOperationProof.ps1 not found at $script:ProofScript"
+    }
+
+    Import-Module $script:ProofModule -Force | Out-Null
+
+    function script:New-SyntheticCustomOperationExample {
+      param([Parameter(Mandatory)][string]$RootPath)
+
+      New-Item -ItemType Directory -Path $RootPath -Force | Out-Null
+      foreach ($relativePath in @(
+        'AddTwoNumbers.lvclass',
+        'AddTwoNumbers.vi',
+        'GetHelp.vi',
+        'RunOperation.vi'
+      )) {
+        $filePath = Join-Path $RootPath $relativePath
+        $parent = Split-Path -Parent $filePath
+        if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+          New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+        Set-Content -LiteralPath $filePath -Value 'placeholder' -Encoding utf8
+      }
+
+      return $RootPath
+    }
+  }
+
+  It 'classifies default-path drift and custom-operation loading when both explicit scenarios time out' {
+    $analysis = Resolve-LabVIEWCustomOperationProofAnalysis -ScenarioResults @(
+      [pscustomobject]@{
+        name = 'default-help'
+        status = 'timed-out'
+        timedOut = $true
+        cleanup = [pscustomobject]@{ killedPids = @(); errors = @() }
+        lingeringProcesses = @()
+        logInsights = [pscustomobject]@{ observedLabVIEWPath = 'C:\Program Files\National Instruments\LabVIEW 2025\LabVIEW.exe' }
+      },
+      [pscustomobject]@{
+        name = 'explicit-help'
+        status = 'timed-out'
+        timedOut = $true
+        cleanup = [pscustomobject]@{ killedPids = @(4100); errors = @() }
+        lingeringProcesses = @()
+        logInsights = [pscustomobject]@{ observedLabVIEWPath = 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' }
+      },
+      [pscustomobject]@{
+        name = 'explicit-headless-run'
+        status = 'timed-out'
+        timedOut = $true
+        cleanup = [pscustomobject]@{ killedPids = @(4200); errors = @() }
+        lingeringProcesses = @()
+        logInsights = [pscustomobject]@{ observedLabVIEWPath = 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' }
+      }
+    ) -RequestedLabVIEWPath 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe'
+
+    $analysis.defaultPathDriftObserved | Should -BeTrue
+    @($analysis.rootCauseCandidates) | Should -Contain 'default-path-drift'
+    @($analysis.rootCauseCandidates) | Should -Contain 'custom-operation-loading'
+    @($analysis.rootCauseCandidates) | Should -Contain 'host-plane-32bit-startup'
+    $analysis.headlessInteractiveMismatchObserved | Should -BeFalse
+    $analysis.cleanupRequired | Should -BeTrue
+    $analysis.cleanupSucceeded | Should -BeTrue
+  }
+
+  It 'parses both direct and last-used LabVIEW log lines' {
+    $insights = Get-LabVIEWCustomOperationLogInsights -Text @'
+Using last used LabVIEW: "C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe"
+Using LabVIEW: "C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe"
+'@
+
+    @($insights.observedLabVIEWPaths).Count | Should -Be 1
+    $insights.observedLabVIEWPath | Should -Be 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe'
+  }
+
+  It 'classifies headless mismatch when GetHelp succeeds but the headless run times out' {
+    $analysis = Resolve-LabVIEWCustomOperationProofAnalysis -ScenarioResults @(
+      [pscustomobject]@{
+        name = 'default-help'
+        status = 'succeeded'
+        timedOut = $false
+        cleanup = [pscustomobject]@{ killedPids = @(); errors = @() }
+        lingeringProcesses = @()
+        logInsights = [pscustomobject]@{ observedLabVIEWPath = 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' }
+      },
+      [pscustomobject]@{
+        name = 'explicit-help'
+        status = 'succeeded'
+        timedOut = $false
+        cleanup = [pscustomobject]@{ killedPids = @(); errors = @() }
+        lingeringProcesses = @()
+        logInsights = [pscustomobject]@{ observedLabVIEWPath = 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' }
+      },
+      [pscustomobject]@{
+        name = 'explicit-headless-run'
+        status = 'timed-out'
+        timedOut = $true
+        cleanup = [pscustomobject]@{ killedPids = @(); errors = @() }
+        lingeringProcesses = @()
+        logInsights = [pscustomobject]@{ observedLabVIEWPath = 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' }
+      }
+    ) -RequestedLabVIEWPath 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe'
+
+    $analysis.defaultPathDriftObserved | Should -BeFalse
+    $analysis.headlessInteractiveMismatchObserved | Should -BeTrue
+    @($analysis.rootCauseCandidates) | Should -Contain 'headless-interactive-mismatch'
+    @($analysis.rootCauseCandidates) | Should -Not -Contain 'custom-operation-loading'
+  }
+
+  It 'writes a planned proof receipt and summary from a synthetic AddTwoNumbers example' {
+    $sourcePath = New-SyntheticCustomOperationExample -RootPath (Join-Path $TestDrive 'source-example')
+    $resultsRoot = Join-Path $TestDrive 'results-root'
+    $labviewPath = 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:ProofScript `
+      -SourceExamplePath $sourcePath `
+      -ResultsRoot $resultsRoot `
+      -LabVIEWPath $labviewPath `
+      -DryRun `
+      -SkipSchemaValidation *>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $reportPath = Join-Path $resultsRoot 'labview-cli-custom-operation-proof.json'
+    $summaryPath = Join-Path $resultsRoot 'labview-cli-custom-operation-proof.md'
+    $scaffoldReceiptPath = Join-Path $resultsRoot 'custom-operation-scaffold.json'
+
+    $reportPath | Should -Exist
+    $summaryPath | Should -Exist
+    $scaffoldReceiptPath | Should -Exist
+
+    $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 12
+    $report.schema | Should -Be 'labview-cli-custom-operation-proof@v1'
+    $report.status | Should -Be 'planned'
+    $report.operationName | Should -Be 'AddTwoNumbers'
+    $report.explicitLabVIEWPath | Should -Be $labviewPath
+    @($report.scenarios).Count | Should -Be 3
+    (@($report.scenarios | ForEach-Object { $_.status } | Select-Object -Unique)) | Should -Be @('planned')
+
+    $summary = Get-Content -LiteralPath $summaryPath -Raw
+    $summary | Should -Match '# LabVIEW CLI Custom Operation Proof'
+    $summary | Should -Match '- Final status: `planned`'
+    $summary | Should -Match '`default-help`'
+    $summary | Should -Match '`explicit-headless-run`'
+  }
+
+  It 'fails closed when the installed example source is missing' {
+    $missingSource = Join-Path $TestDrive 'missing-example'
+    $resultsRoot = Join-Path $TestDrive 'results-root'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:ProofScript `
+      -SourceExamplePath $missingSource `
+      -ResultsRoot $resultsRoot `
+      -DryRun `
+      -SkipSchemaValidation *>&1
+    $LASTEXITCODE | Should -Not -Be 0
+    (($output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match 'example source was not found'
+  }
+}

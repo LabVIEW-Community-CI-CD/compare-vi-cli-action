@@ -113,6 +113,53 @@
       ]
     },
     {
+      "name": "RunCustomOperation",
+      "parameters": [
+        {
+          "id": "customOperationName",
+          "type": "string",
+          "required": true,
+          "description": "Custom LabVIEW CLI operation name to execute."
+        },
+        {
+          "id": "additionalOperationDirectory",
+          "type": "path",
+          "required": true,
+          "description": "Directory that contains the custom operation payload."
+        },
+        {
+          "id": "arguments",
+          "type": "array",
+          "required": false,
+          "description": "Additional arguments passed positionally to the custom operation."
+        },
+        {
+          "id": "labviewPath",
+          "type": "path",
+          "required": false,
+          "description": "Optional LabVIEW.exe path supplied to LabVIEW CLI."
+        },
+        {
+          "id": "headless",
+          "type": "bool",
+          "required": false,
+          "description": "When true, requests headless execution for compatible CLI versions."
+        },
+        {
+          "id": "logToConsole",
+          "type": "bool",
+          "required": false,
+          "description": "When true, enables LabVIEW CLI console logging."
+        },
+        {
+          "id": "help",
+          "type": "bool",
+          "required": false,
+          "description": "When true, appends -Help so GetHelp.vi is invoked for the custom operation."
+        }
+      ]
+    },
+    {
       "name": "RunVI",
       "parameters": [
         {

@@ -1,0 +1,207 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/labview-cli-custom-operation-proof-v1.schema.json",
+  "title": "LabVIEW CLI Custom Operation Proof v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "generatedAt",
+    "status",
+    "operationName",
+    "operationDirectory",
+    "dryRun",
+    "resultsRoot",
+    "reportPath",
+    "summaryPath",
+    "analysis",
+    "scenarios"
+  ],
+  "properties": {
+    "schema": {
+      "const": "labview-cli-custom-operation-proof@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "succeeded",
+        "blocked"
+      ]
+    },
+    "operationName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceExamplePath": {
+      "type": "string"
+    },
+    "operationDirectory": {
+      "type": "string",
+      "minLength": 1
+    },
+    "explicitLabVIEWPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "labviewCliPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timeoutSeconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "dryRun": {
+      "type": "boolean"
+    },
+    "resultsRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reportPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summaryPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scaffoldReceiptPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "analysis": {
+      "type": "object",
+      "required": [
+        "defaultPathDriftObserved",
+        "explicitHelpTimedOut",
+        "explicitHeadlessTimedOut",
+        "headlessInteractiveMismatchObserved",
+        "customOperationLoadingObserved",
+        "hostPlane32BitConcernObserved",
+        "cleanupRequired",
+        "cleanupSucceeded",
+        "rootCauseCandidates",
+        "notes"
+      ],
+      "properties": {
+        "defaultPathDriftObserved": { "type": "boolean" },
+        "defaultObservedLabVIEWPath": { "type": [ "string", "null" ] },
+        "explicitObservedLabVIEWPath": { "type": [ "string", "null" ] },
+        "explicitHelpTimedOut": { "type": "boolean" },
+        "explicitHeadlessTimedOut": { "type": "boolean" },
+        "headlessInteractiveMismatchObserved": { "type": "boolean" },
+        "customOperationLoadingObserved": { "type": "boolean" },
+        "hostPlane32BitConcernObserved": { "type": "boolean" },
+        "cleanupRequired": { "type": "boolean" },
+        "cleanupSucceeded": { "type": "boolean" },
+        "rootCauseCandidates": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "status",
+          "timedOut",
+          "preview",
+          "cleanup",
+          "lingeringProcesses",
+          "logCapture",
+          "logInsights"
+        ],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "succeeded",
+              "failed",
+              "timed-out"
+            ]
+          },
+          "timedOut": { "type": "boolean" },
+          "requestedLabVIEWPath": { "type": [ "string", "null" ] },
+          "preview": { "type": "object" },
+          "result": { "type": [ "object", "null" ] },
+          "error": { "type": [ "string", "null" ] },
+          "processBefore": { "type": "array", "items": { "type": "object" } },
+          "processAfter": { "type": "array", "items": { "type": "object" } },
+          "processFinal": { "type": "array", "items": { "type": "object" } },
+          "cleanup": {
+            "type": "object",
+            "required": [ "killedPids", "errors" ],
+            "properties": {
+              "killedPids": {
+                "type": "array",
+                "items": { "type": "integer" }
+              },
+              "errors": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          },
+          "lingeringProcesses": { "type": "array", "items": { "type": "object" } },
+          "logCapture": {
+            "type": "object",
+            "required": [ "count", "files" ],
+            "properties": {
+              "count": { "type": "integer", "minimum": 0 },
+              "files": { "type": "array", "items": { "type": "object" } }
+            }
+          },
+          "logInsights": {
+            "type": "object",
+            "required": [
+              "observedLabVIEWPaths",
+              "observedLabVIEWPath",
+              "launchSucceeded",
+              "operationCompleted",
+              "logLineCount"
+            ],
+            "properties": {
+              "observedLabVIEWPaths": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "observedLabVIEWPath": { "type": [ "string", "null" ] },
+              "launchSucceeded": { "type": "boolean" },
+              "operationCompleted": { "type": "boolean" },
+              "logLineCount": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "labviewPidTracker": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
