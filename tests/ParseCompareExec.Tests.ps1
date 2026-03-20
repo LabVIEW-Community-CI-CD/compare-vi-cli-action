@@ -72,6 +72,38 @@ Describe 'Parse-CompareExec.ps1' -Tag 'Unit' {
     $out.compareExec.path | Should -Be $execPath
   }
 
+  It 'resolves custom report artifacts from capture metadata' {
+    $work = Join-Path $TestDrive 'capture-custom-report'
+    New-Item -ItemType Directory -Path $work | Out-Null
+
+    $captureDir = Join-Path $work 'compare'
+    New-Item -ItemType Directory -Path $captureDir | Out-Null
+
+    $capture = [ordered]@{
+      schema    = 'lvcompare-capture-v1'
+      timestamp = '2025-01-02T03:04:05Z'
+      exitCode  = 1
+      seconds   = 0.42
+      environment = [ordered]@{
+        cli = [ordered]@{
+          reportPath = './diff-report-Initialization_UserEvents.vi.html'
+        }
+      }
+    }
+    $capturePath = Join-Path $captureDir 'lvcompare-capture.json'
+    $capture | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $capturePath -Encoding utf8
+    $reportPath = Join-Path $captureDir 'diff-report-Initialization_UserEvents.vi.html'
+    Set-Content -LiteralPath $reportPath -Value '<html></html>' -Encoding utf8
+
+    $outPath = Join-Path $work 'compare-outcome.json'
+    & pwsh -NoLogo -NoProfile -File $script:parseScript -SearchDir $work -OutJson $outPath
+    $LASTEXITCODE | Should -Be 0
+
+    $out = Get-Content -LiteralPath $outPath -Raw | ConvertFrom-Json -Depth 6
+    $out.source | Should -Be 'capture'
+    $out.reportPath | Should -Be $reportPath
+  }
+
   It 'falls back to compare-exec when capture is missing' {
     $work = Join-Path $TestDrive 'exec-only'
     New-Item -ItemType Directory -Path $work | Out-Null

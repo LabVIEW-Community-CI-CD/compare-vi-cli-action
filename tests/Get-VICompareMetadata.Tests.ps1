@@ -79,4 +79,59 @@ Describe 'Get-VICompareMetadata.ps1' -Tag 'Unit' {
         $json.status | Should -Be 'diff'
         $json.diffCategories | Should -Contain 'Block Diagram Cosmetic'
     }
+
+    It 'resolves custom report artifacts from capture metadata' {
+        $baseVi = Join-Path $TestDrive 'Base.vi'
+        $headVi = Join-Path $TestDrive 'Head.vi'
+        Set-Content -LiteralPath $baseVi -Value 'base'
+        Set-Content -LiteralPath $headVi -Value 'head'
+
+        $outputPath = Join-Path $TestDrive 'metadata-custom.json'
+
+        $invoke = {
+            param(
+                [string]$BaseVi,
+                [string]$HeadVi,
+                [string]$OutputDir,
+                [string[]]$Flags,
+                [switch]$ReplaceFlags
+            )
+            New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+
+            $reportPath = Join-Path $OutputDir 'diff-report-Initialization_UserEvents.vi.html'
+            $capturePath = Join-Path $OutputDir 'lvcompare-capture.json'
+            @'
+<!DOCTYPE html>
+<html>
+<body>
+<details open>
+  <summary class="difference-heading">1. VI Attribute - Miscellaneous</summary>
+  <ol class="detailed-description-list">
+    <li class="diff-detail">Difference Type: VI icon</li>
+  </ol>
+</details>
+</body>
+</html>
+'@ | Set-Content -LiteralPath $reportPath -Encoding utf8
+            @'
+{
+  "schema": "lvcompare-capture-v1",
+  "cli": {
+    "reportPath": "./diff-report-Initialization_UserEvents.vi.html"
+  },
+  "out": {
+    "reportHtml": "./diff-report-Initialization_UserEvents.vi.html"
+  }
+}
+'@ | Set-Content -LiteralPath $capturePath -Encoding utf8
+            return [pscustomobject]@{
+                ExitCode = 1
+            }
+        }.GetNewClosure()
+
+        $result = & $script:scriptPath -BaseVi $baseVi -HeadVi $headVi -OutputPath $outputPath -InvokeLVCompare $invoke
+
+        $result.reportPath | Should -Match 'diff-report-Initialization_UserEvents\.vi\.html$'
+        $result.diffCategories | Should -Contain 'VI Attribute'
+    }
 }

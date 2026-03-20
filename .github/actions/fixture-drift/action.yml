@@ -373,9 +373,31 @@ runs:
         $status = 'unknown'; $exitCode = ''
         $artifactsList = @()
         $reportPath = $null
-        if ($latest) {
-          $candidateReport = Join-Path $latest.FullName 'compare-report.html'
-          if (Test-Path $candidateReport) { $reportPath = (Resolve-Path -LiteralPath $candidateReport).Path }
+        $searchBase = '${{ steps.orchestrate.outputs.results_dir }}'
+        if (-not $searchBase) {
+          if ($latest) {
+            $searchBase = $latest.FullName
+          } else {
+            $searchBase = $root
+          }
+        }
+        $compareOutcomePath = Join-Path $searchBase 'compare-outcome.json'
+        if (Test-Path -LiteralPath $compareOutcomePath) {
+          try {
+            $compareOutcome = Get-Content -LiteralPath $compareOutcomePath -Raw | ConvertFrom-Json -Depth 8
+            if ($compareOutcome.reportPath) {
+              $reportCandidate = if ([System.IO.Path]::IsPathRooted([string]$compareOutcome.reportPath)) {
+                [string]$compareOutcome.reportPath
+              } else {
+                Join-Path $searchBase ([string]$compareOutcome.reportPath)
+              }
+              try {
+                $reportPath = (Resolve-Path -LiteralPath $reportCandidate -ErrorAction Stop).Path
+              } catch {
+                $reportPath = $reportCandidate
+              }
+            }
+          } catch {}
         }
         if ($sum -and (Test-Path $sum)) {
           $j = Get-Content -LiteralPath $sum -Raw | ConvertFrom-Json
@@ -386,7 +408,7 @@ runs:
         if (-not $reportPath -and $artifactsList.Count -gt 0) {
           foreach ($rel in $artifactsList) {
             if ([string]::IsNullOrWhiteSpace($rel)) { continue }
-            if ($rel -match 'compare-report.html$') {
+            if ($rel -match '(?i)(compare|diff|print|cli-compare|linux-compare|windows-compare)-report\.(html|xml|txt)$') {
               $resolved = if ([System.IO.Path]::IsPathRooted($rel)) { $rel } else { Join-Path (Get-Location) $rel }
               if (Test-Path -LiteralPath $resolved) { $reportPath = (Resolve-Path -LiteralPath $resolved).Path; break }
             }
@@ -504,4 +526,3 @@ runs:
           $lines += '- Fixture Drift: ./docs/FIXTURE_DRIFT.md'
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
         }
-
