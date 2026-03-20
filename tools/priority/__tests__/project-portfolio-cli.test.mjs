@@ -131,7 +131,15 @@ function buildFields(fieldNames = {}, optionOverrides = {}) {
   };
 }
 
-function buildFakeGhState({ targetUrl, resourceId, title, fields, nextAddedItemId }) {
+function buildFakeGhState({
+  targetUrl,
+  resourceId,
+  title,
+  fields,
+  nextAddedItemId,
+  existingItemId = null,
+  existingItemFieldValues = {},
+}) {
   const fieldMap = {};
   const optionMap = {};
   for (const field of fields.fields) {
@@ -151,11 +159,28 @@ function buildFakeGhState({ targetUrl, resourceId, title, fields, nextAddedItemI
         repository: {
           nameWithOwner: 'example/repo',
         },
+        projectItems: existingItemId
+          ? [
+              {
+                id: existingItemId,
+                projectId: 'PVT_example',
+              },
+            ]
+          : [],
       },
     },
     fieldMap,
     optionMap,
-    itemFields: {},
+    itemFields: existingItemId
+      ? {
+          [existingItemId]: Object.fromEntries(
+            Object.entries(existingItemFieldValues).map(([fieldName, value]) => {
+              const optionId = Object.entries(optionMap).find(([, optionName]) => optionName === value)?.[0] ?? null;
+              return [fieldName, { value, optionId }];
+            }),
+          ),
+        }
+      : {},
     nextAddedItemId,
   };
 }
@@ -203,6 +228,10 @@ function parseGraphqlArgs(argv) {
   return { query, variables };
 }
 
+function extractUpdateAliases(query) {
+  return [...query.matchAll(/([A-Za-z0-9_]+)[ \\t\\r\\n]*:[ \\t\\r\\n]*updateProjectV2ItemFieldValue/g)].map((match) => match[1]);
+}
+
 if (args[0] !== 'api' || args[1] !== 'graphql') {
   if (args[0] === 'project' && args[1] === 'view') {
     saveAndPrint(state.projectView ?? {});
@@ -222,7 +251,43 @@ if (args[0] !== 'api' || args[1] !== 'graphql') {
 
 const { query, variables } = parseGraphqlArgs(args);
 if (query.includes('resource(url: $url)')) {
-  saveAndPrint({ data: { resource: state.resources?.[variables.url] ?? null } });
+  const resource = state.resources?.[variables.url] ?? null;
+  if (!resource) {
+    saveAndPrint({ data: { resource: null } });
+    process.exit(0);
+  }
+
+  if (query.includes('projectItems(first: 100)')) {
+    const projectItems = (resource.projectItems ?? []).map((item) => {
+      const itemFields = state.itemFields?.[item.id] ?? {};
+      const nodes = Object.entries(itemFields).map(([fieldName, fieldState]) => ({
+        __typename: 'ProjectV2ItemFieldSingleSelectValue',
+        field: { name: fieldName },
+        name: fieldState.value,
+        optionId: fieldState.optionId,
+      }));
+      return {
+        id: item.id,
+        project: { id: item.projectId },
+        fieldValues: { nodes },
+      };
+    });
+    saveAndPrint({
+      data: {
+        resource: {
+          __typename: resource.__typename,
+          id: resource.id,
+          url: resource.url,
+          title: resource.title,
+          repository: resource.repository,
+          projectItems: { nodes: projectItems },
+        },
+      },
+    });
+    process.exit(0);
+  }
+
+  saveAndPrint({ data: { resource } });
   process.exit(0);
 }
 
@@ -231,25 +296,47 @@ if (query.includes('addProjectV2ItemById')) {
   state.addCalls.push({ projectId: variables.projectId, contentId: variables.contentId, itemId });
   state.nextAddedItemId = itemId;
   state.itemFields[itemId] ??= {};
+  const resource = Object.values(state.resources ?? {}).find((candidate) => candidate.id === variables.contentId);
+  if (resource) {
+    resource.projectItems ??= [];
+    if (!resource.projectItems.some((item) => item.id === itemId)) {
+      resource.projectItems.push({ id: itemId, projectId: variables.projectId });
+    }
+  }
   saveAndPrint({ data: { addProjectV2ItemById: { item: { id: itemId } } } });
   process.exit(0);
 }
 
 if (query.includes('updateProjectV2ItemFieldValue')) {
   state.itemFields[variables.itemId] ??= {};
-  const fieldName = state.fieldMap?.[variables.fieldId] ?? variables.fieldId;
-  const optionName = state.optionMap?.[variables.optionId] ?? variables.optionId;
-  state.updateCalls.push({
-    projectId: variables.projectId,
-    itemId: variables.itemId,
-    fieldId: variables.fieldId,
-    optionId: variables.optionId,
-  });
-  state.itemFields[variables.itemId][fieldName] = {
-    value: optionName,
-    optionId: variables.optionId,
-  };
-  saveAndPrint({ data: { updateProjectV2ItemFieldValue: { projectV2Item: { id: variables.itemId } } } });
+  const aliases = extractUpdateAliases(query);
+  const data = {};
+  const updates = Object.keys(variables)
+    .filter((key) => /^fieldId[0-9]+$/.test(key))
+    .sort((left, right) => Number.parseInt(left.replace('fieldId', ''), 10) - Number.parseInt(right.replace('fieldId', ''), 10))
+    .map((fieldKey, index) => ({
+      alias: aliases[index] ?? ('fieldUpdate' + index),
+      fieldId: variables[fieldKey],
+      optionId: variables['optionId' + index],
+    }));
+
+  for (const update of updates) {
+    const fieldName = state.fieldMap?.[update.fieldId] ?? update.fieldId;
+    const optionName = state.optionMap?.[update.optionId] ?? update.optionId;
+    state.updateCalls.push({
+      projectId: variables.projectId,
+      itemId: variables.itemId,
+      fieldId: update.fieldId,
+      optionId: update.optionId,
+    });
+    state.itemFields[variables.itemId][fieldName] = {
+      value: optionName,
+      optionId: update.optionId,
+    };
+    data[update.alias] = { projectV2Item: { id: variables.itemId } };
+  }
+
+  saveAndPrint({ data });
   process.exit(0);
 }
 
@@ -600,13 +687,13 @@ test('project portfolio CLI apply mode prefers explicit values and skips add whe
         Milestone: 'Q2 Intake',
         'Linked pull requests': ['https://github.com/example/repo/pull/11'],
         'Sub-issues progress': '1 / 4',
-        Status: 'Todo',
-        Program: 'Shared Infra',
-        Phase: 'Policy',
-        'Environment Class': 'Infra',
-        'Blocking Signal': 'Scope',
-        'Evidence State': 'Ready',
-        'Portfolio Track': 'Agent UX',
+        'Workflow Status': 'Todo',
+        'Program Lane': 'Shared Infra',
+        'Execution Phase': 'Policy',
+        'Runtime Class': 'Infra',
+        'Gate Signal': 'Scope',
+        'Evidence Readiness': 'Ready',
+        'Track Label': 'Agent UX',
         content: {
           url: targetUrl,
           title: 'Existing project issue',
@@ -622,6 +709,16 @@ test('project portfolio CLI apply mode prefers explicit values and skips add whe
     resourceId: 'ISSUE_11',
     title: 'Tracked existing issue',
     fields,
+    existingItemId: 'item-existing-11',
+    existingItemFieldValues: {
+      'Workflow Status': 'Todo',
+      'Program Lane': 'Shared Infra',
+      'Execution Phase': 'Policy',
+      'Runtime Class': 'Infra',
+      'Gate Signal': 'Scope',
+      'Evidence Readiness': 'Ready',
+      'Track Label': 'Agent UX',
+    },
   }));
 
   const result = runCli([
@@ -661,8 +758,207 @@ test('project portfolio CLI apply mode prefers explicit values and skips add whe
   assert.equal(report.appliedFields.find((field) => field.key === 'program').value, 'Shared Infra');
   assert.equal(report.verification.ok, true);
   assert.equal(fakeGhState.addCalls.length, 0);
+  assert.equal(fakeGhState.updateCalls.length, 1);
+  assert.equal(fakeGhState.updateCalls[0].itemId, 'item-existing-11');
+  assert.equal(fakeGhState.updateCalls[0].fieldId, 'status-field');
+});
+
+test('project portfolio CLI live apply skips project item-list and batches field updates for a missing item', async (t) => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'project-portfolio-apply-live-missing-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  const targetUrl = 'https://github.com/example/repo/issues/13';
+  const configPath = path.join(tempRoot, 'config.json');
+  const viewPath = path.join(tempRoot, 'view.json');
+  const fieldsPath = path.join(tempRoot, 'fields.json');
+  const outPath = path.join(tempRoot, 'apply-report.json');
+  const fields = buildFields();
+
+  await writeJson(configPath, buildConfig({ itemUrl: targetUrl }));
+  await writeJson(viewPath, buildView());
+  await writeJson(fieldsPath, fields);
+
+  const fakeGh = await writeFakeGhHarness(tempRoot, buildFakeGhState({
+    targetUrl,
+    resourceId: 'ISSUE_13',
+    title: 'Live apply issue',
+    fields,
+    nextAddedItemId: 'item-added-13',
+  }));
+
+  const result = runCli([
+    'apply',
+    '--config', configPath,
+    '--view-file', viewPath,
+    '--fields-file', fieldsPath,
+    '--out', outPath,
+    '--url', targetUrl,
+    '--use-config',
+  ], {
+    env: {
+      ...fakeGh.env,
+      COMPAREVI_PROJECT_PORTFOLIO_VERIFY_DELAY_MS: '0',
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(await readFile(outPath, 'utf8'));
+  const fakeGhState = JSON.parse(await readFile(fakeGh.statePath, 'utf8'));
+
+  assert.equal(report.target.added, true);
+  assert.equal(report.target.itemId, 'item-added-13');
+  assert.equal(report.verification.ok, true);
+  assert.equal(
+    fakeGhState.calls.some((args) => args[0] === 'project' && args[1] === 'item-list'),
+    false,
+  );
+  const updateMutations = fakeGhState.calls.filter(
+    (args) => args[0] === 'api'
+      && args[1] === 'graphql'
+      && args.some((token) => typeof token === 'string' && token.includes('updateProjectV2ItemFieldValue')),
+  );
+  assert.equal(updateMutations.length, 1);
   assert.equal(fakeGhState.updateCalls.length, 7);
-  assert.ok(fakeGhState.updateCalls.every((call) => call.itemId === 'item-existing-11'));
+});
+
+test('project portfolio CLI live apply resolves existing project membership without a board scrape', async (t) => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'project-portfolio-apply-live-existing-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  const targetUrl = 'https://github.com/example/repo/issues/14';
+  const configPath = path.join(tempRoot, 'config.json');
+  const viewPath = path.join(tempRoot, 'view.json');
+  const fieldsPath = path.join(tempRoot, 'fields.json');
+  const outPath = path.join(tempRoot, 'apply-report.json');
+  const fields = buildFields();
+
+  await writeJson(configPath, buildConfig({ itemUrl: targetUrl }));
+  await writeJson(viewPath, buildView());
+  await writeJson(fieldsPath, fields);
+
+  const fakeGh = await writeFakeGhHarness(tempRoot, buildFakeGhState({
+    targetUrl,
+    resourceId: 'ISSUE_14',
+    title: 'Existing live apply issue',
+    fields,
+    existingItemId: 'item-existing-14',
+    existingItemFieldValues: {
+      Status: 'Todo',
+      Program: 'Shared Infra',
+      Phase: 'Policy',
+      'Environment Class': 'Infra',
+      'Blocking Signal': 'Scope',
+      'Evidence State': 'Ready',
+      'Portfolio Track': 'Agent UX',
+    },
+  }));
+
+  const result = runCli([
+    'apply',
+    '--config', configPath,
+    '--view-file', viewPath,
+    '--fields-file', fieldsPath,
+    '--out', outPath,
+    '--url', targetUrl,
+    '--status', 'In Progress',
+  ], {
+    env: {
+      ...fakeGh.env,
+      COMPAREVI_PROJECT_PORTFOLIO_VERIFY_DELAY_MS: '0',
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(await readFile(outPath, 'utf8'));
+  const fakeGhState = JSON.parse(await readFile(fakeGh.statePath, 'utf8'));
+
+  assert.equal(report.target.added, false);
+  assert.equal(report.target.existed, true);
+  assert.equal(report.target.itemId, 'item-existing-14');
+  assert.equal(report.target.existingItemSnapshot.status, 'Todo');
+  assert.equal(report.target.observedItemSnapshot.status, 'In Progress');
+  assert.equal(
+    fakeGhState.calls.some((args) => args[0] === 'project' && args[1] === 'item-list'),
+    false,
+  );
+  assert.equal(fakeGhState.addCalls.length, 0);
+  const updateMutations = fakeGhState.calls.filter(
+    (args) => args[0] === 'api'
+      && args[1] === 'graphql'
+      && args.some((token) => typeof token === 'string' && token.includes('updateProjectV2ItemFieldValue')),
+  );
+  assert.equal(updateMutations.length, 1);
+  assert.equal(fakeGhState.updateCalls.length, 1);
+  assert.equal(fakeGhState.updateCalls[0].fieldId, 'status-field');
+});
+
+test('project portfolio CLI live apply skips mutations entirely when the target already matches the requested fields', async (t) => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'project-portfolio-apply-live-noop-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  const targetUrl = 'https://github.com/example/repo/issues/15';
+  const configPath = path.join(tempRoot, 'config.json');
+  const viewPath = path.join(tempRoot, 'view.json');
+  const fieldsPath = path.join(tempRoot, 'fields.json');
+  const outPath = path.join(tempRoot, 'apply-report.json');
+  const fields = buildFields();
+
+  await writeJson(configPath, buildConfig({ itemUrl: targetUrl }));
+  await writeJson(viewPath, buildView());
+  await writeJson(fieldsPath, fields);
+
+  const fakeGh = await writeFakeGhHarness(tempRoot, buildFakeGhState({
+    targetUrl,
+    resourceId: 'ISSUE_15',
+    title: 'No-op live apply issue',
+    fields,
+    existingItemId: 'item-existing-15',
+    existingItemFieldValues: {
+      Status: 'Todo',
+      Program: 'Shared Infra',
+      Phase: 'Policy',
+      'Environment Class': 'Infra',
+      'Blocking Signal': 'Scope',
+      'Evidence State': 'Ready',
+      'Portfolio Track': 'Agent UX',
+    },
+  }));
+
+  const result = runCli([
+    'apply',
+    '--config', configPath,
+    '--view-file', viewPath,
+    '--fields-file', fieldsPath,
+    '--out', outPath,
+    '--url', targetUrl,
+    '--use-config',
+  ], {
+    env: {
+      ...fakeGh.env,
+      COMPAREVI_PROJECT_PORTFOLIO_VERIFY_DELAY_MS: '0',
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(await readFile(outPath, 'utf8'));
+  const fakeGhState = JSON.parse(await readFile(fakeGh.statePath, 'utf8'));
+
+  assert.equal(report.target.added, false);
+  assert.equal(report.target.existed, true);
+  assert.equal(report.verification.ok, true);
+  assert.equal(report.verification.skipped, true);
+  assert.equal(report.appliedFields.every((field) => field.applied === false), true);
+  assert.equal(fakeGhState.updateCalls.length, 0);
+  assert.equal(
+    fakeGhState.calls.some((args) => args[0] === 'project' && args[1] === 'item-list'),
+    false,
+  );
 });
 
 test('project portfolio CLI apply mode rejects live option mismatches before mutating GitHub', async (t) => {

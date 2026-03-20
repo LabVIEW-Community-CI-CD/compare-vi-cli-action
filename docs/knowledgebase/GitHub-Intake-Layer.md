@@ -91,11 +91,12 @@ instead of inferring the correct path from prose alone.
 
   The helper reads the checked-in field catalog from `tools/priority/project-portfolio.json`, adds the issue/PR to
   project `LabVIEW-Community-CI-CD#2` when missing, applies the requested single-select fields through the GitHub
-  GraphQL API, and writes `tests/results/_agent/project/portfolio-apply-report.json`. The report now includes a
-  projected post-apply snapshot plus normalized board context for built-in metadata such as `Type`, `Milestone`,
-  `Reviewers`, linked PRs, parent issue, and `Sub-issues progress`, so future agents do not need a second board scrape
-  just to reason about intake state. Use this instead of ad hoc `gh project item-add` plus repeated
-  `gh project item-edit` sequences.
+  GraphQL API, and writes `tests/results/_agent/project/portfolio-apply-report.json`. Live apply mode now resolves the
+  target through a resource-scoped project lookup, batches single-select mutations into one GraphQL call, and reuses the
+  post-apply verification payload instead of reloading the full board. The report still includes a projected post-apply
+  snapshot plus normalized board context for built-in metadata such as `Type`, `Milestone`, `Reviewers`, linked PRs,
+  parent issue, and `Sub-issues progress`, so future agents do not need a second board scrape just to reason about
+  intake state. Use this instead of ad hoc `gh project item-add` plus repeated `gh project item-edit` sequences.
 
 - Canonical GitHub metadata application:
 
