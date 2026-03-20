@@ -35,7 +35,7 @@
       "job_name": "vi-history-scenarios-windows",
       "branch": "develop",
       "event": "pull_request",
-      "runner": "hosted-docker-windows",
+      "runner": "windows-2022",
       "os": "windows",
       "image_tag": "nationalinstruments/labview:2026q1-windows",
       "required_for_stable": false,

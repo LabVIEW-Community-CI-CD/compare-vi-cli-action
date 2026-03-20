@@ -1448,13 +1448,15 @@ jobs:
     if: needs.smoke-gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
-      actions: read
       contents: read
     outputs:
       available: ${{ steps.plan.outputs.available }}
       status: ${{ steps.plan.outputs.status }}
       skip_reason: ${{ steps.plan.outputs.skip_reason }}
       summary_path: ${{ steps.plan.outputs.summary_path }}
+      execution_model: ${{ steps.plan.outputs.execution_model }}
+      runner_image: ${{ steps.plan.outputs.runner_image }}
+      expected_context: ${{ steps.plan.outputs.expected_context }}
     steps:
     - uses: actions/checkout@v5
       with:
@@ -1472,19 +1474,18 @@ jobs:
       with:
         phase: J2
         results-dir: tests/results
-    - name: Resolve hosted Windows runner availability
+    - name: Resolve portable hosted Windows lane
       id: plan
       shell: pwsh
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         $resultsRoot = 'tests/results/_agent/vi-history-dispatch'
         New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
-        $planPath = Join-Path $resultsRoot 'validate-vi-history-windows-runner-plan.json'
-        pwsh -NoLogo -NoProfile -File tools/Resolve-RunnerAvailability.ps1 `
-          -Repository '${{ github.repository }}' `
-          -RequiredLabel 'hosted-docker-windows' `
-          -RequiredOs 'Windows' `
+        $planPath = Join-Path $resultsRoot 'validate-vi-history-windows-hosted-plan.json'
+        pwsh -NoLogo -NoProfile -File tools/Resolve-HostedWindowsLanePlan.ps1 `
+          -RunnerImage 'windows-2022' `
+          -ContainerImage 'nationalinstruments/labview:2026q1-windows' `
+          -ExpectedContext 'default' `
+          -ExpectedOs 'windows' `
           -OutputJsonPath $planPath `
           -GitHubOutputPath $env:GITHUB_OUTPUT `
           -StepSummaryPath $env:GITHUB_STEP_SUMMARY
@@ -1497,10 +1498,12 @@ jobs:
             '### VI History Scenarios (Windows hosted plan)',
             '',
             ('- execute_lanes: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.execute_lanes }}'),
-            ('- runner_available: `{0}`' -f '${{ steps.plan.outputs.available }}'),
-            ('- runner_status: `{0}`' -f '${{ steps.plan.outputs.status }}'),
+            ('- lane_available: `{0}`' -f '${{ steps.plan.outputs.available }}'),
+            ('- lane_status: `{0}`' -f '${{ steps.plan.outputs.status }}'),
             ('- skip_reason: `{0}`' -f '${{ steps.plan.outputs.skip_reason }}'),
-            '- hosted model: agents can dispatch this hosted Windows lane while continuing on local Linux or Windows Docker Desktop lanes.'
+            ('- hosted_model: `{0}`' -f '${{ steps.plan.outputs.execution_model }}'),
+            ('- runner_image: `{0}`' -f '${{ steps.plan.outputs.runner_image }}'),
+            '- hosted model: agents can dispatch this portable hosted Windows lane while continuing on local Linux or Windows Docker Desktop lanes.'
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
         }
@@ -1509,17 +1512,16 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: validate-vi-history-windows-runner-plan
-        path: tests/results/_agent/vi-history-dispatch/validate-vi-history-windows-runner-plan.json
+        name: validate-vi-history-windows-hosted-plan
+        path: tests/results/_agent/vi-history-dispatch/validate-vi-history-windows-hosted-plan.json
         if-no-files-found: error
 
   vi-history-scenarios-windows:
     needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-windows-plan]
     if: needs.smoke-gate.outputs.skip != 'true' && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true' && needs.vi-history-scenarios-windows-plan.outputs.available == 'true'
-    runs-on: [self-hosted, Windows, X64, hosted-docker-windows]
+    runs-on: windows-2022
     timeout-minutes: 50
     permissions:
-      actions: read
       contents: read
     env:
       NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
@@ -1535,8 +1537,9 @@ jobs:
             '### VI History Scenarios (Windows lane)',
             '',
             ('- execute_lanes: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.execute_lanes }}'),
-            ('- runner_status: `{0}`' -f '${{ needs.vi-history-scenarios-windows-plan.outputs.status }}'),
-            ('- runner_skip_reason: `{0}`' -f '${{ needs.vi-history-scenarios-windows-plan.outputs.skip_reason }}'),
+            ('- hosted_status: `{0}`' -f '${{ needs.vi-history-scenarios-windows-plan.outputs.status }}'),
+            ('- runner_image: `{0}`' -f '${{ needs.vi-history-scenarios-windows-plan.outputs.runner_image }}'),
+            ('- expected_context: `{0}`' -f '${{ needs.vi-history-scenarios-windows-plan.outputs.expected_context }}'),
             '- image pull budget: Windows image hydration is materially slower than the Linux lane, so keep local lanes active while hosted proof runs.'
           )
           $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
@@ -1559,20 +1562,6 @@ jobs:
       with:
         phase: J2
         results-dir: tests/results
-    - name: Assert hosted Windows runner label contract
-      shell: pwsh
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        $resultsRoot = 'tests/results/local-parity/windows'
-        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
-        $summaryPath = Join-Path $resultsRoot 'runner-label-contract.json'
-        pwsh -NoLogo -NoProfile -File tools/Assert-RunnerLabelContract.ps1 `
-          -RequiredLabel 'hosted-docker-windows' `
-          -OutputJsonPath $summaryPath `
-          -GitHubOutputPath $env:GITHUB_OUTPUT `
-          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
-
     - name: Prepare NI Windows image and runtime
       shell: pwsh
       run: |
@@ -1582,6 +1571,7 @@ jobs:
         pwsh -NoLogo -NoProfile -File tools/Test-WindowsNI2026q1HostPreflight.ps1 `
           -Image $env:NI_WINDOWS_IMAGE `
           -ResultsDir $resultsRoot `
+          -ExecutionSurface 'github-hosted-windows' `
           -OutputJsonPath $summaryPath `
           -GitHubOutputPath $env:GITHUB_OUTPUT `
           -StepSummaryPath $env:GITHUB_STEP_SUMMARY
@@ -1685,7 +1675,6 @@ jobs:
           tests/results/local-parity/windows/ni-windows-container-stdout.txt
           tests/results/local-parity/windows/ni-windows-container-stderr.txt
           tests/results/local-parity/windows/container-export/**
-          tests/results/local-parity/windows/runner-label-contract.json
           tests/results/local-parity/windows/windows-ni-2026q1-host-preflight.json
           tests/results/local-parity/windows/runtime-manager-compare-windows.json
         if-no-files-found: warn

@@ -1,4 +1,4 @@
-name: Windows Hosted Parity (Manual)
+name: Windows Hosted NI Proof (Manual)
 
 on:
   workflow_dispatch:
@@ -13,11 +13,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  parity:
-    runs-on: windows-latest
-    timeout-minutes: 12
+  hosted-ni-proof:
+    runs-on: windows-2022
+    timeout-minutes: 50
     permissions:
       contents: read
+    env:
+      NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
+      NI_WINDOWS_LABVIEW_PATH: C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe
+    defaults:
+      run:
+        shell: pwsh
     steps:
     - uses: actions/checkout@v5
 
@@ -30,7 +36,6 @@ jobs:
 
     - name: Runner health (notice-only)
       if: ${{ vars.RUNNER_HEALTH != '0' }}
-      shell: pwsh
       run: pwsh -File tools/Collect-RunnerHealth.ps1 -AppendSummary -EmitJson
 
     - name: Hooks preflight parity
@@ -38,26 +43,118 @@ jobs:
         node tools/npm/run-script.mjs hooks:plane
         node tools/npm/run-script.mjs hooks:preflight
 
-    - name: Write parity summary
-      shell: pwsh
+    - name: Prepare NI Windows image and hosted runtime
       run: |
-        $outDir = 'tests/results/windows-hosted-parity'
-        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-        $summary = [ordered]@{
-          schema = 'windows-hosted-parity@v1'
-          generatedAt = (Get-Date).ToUniversalTime().ToString('o')
-          workflow = '${{ github.workflow }}'
-          runId = '${{ github.run_id }}'
-          runAttempt = '${{ github.run_attempt }}'
-          runnerOs = '${{ runner.os }}'
-          note = 'Hosted Windows parity only; no Docker engine mutation and no NI Windows container compare.'
-        }
-        $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outDir 'summary.json') -Encoding utf8
+        $resultsRoot = 'tests/results/windows-hosted-parity'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $summaryPath = Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json'
+        pwsh -NoLogo -NoProfile -File tools/Test-WindowsNI2026q1HostPreflight.ps1 `
+          -Image $env:NI_WINDOWS_IMAGE `
+          -ResultsDir $resultsRoot `
+          -ExecutionSurface 'github-hosted-windows' `
+          -OutputJsonPath $summaryPath `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
-    - name: Upload parity artifacts
+    - name: Run NI Windows create comparison report
+      id: windows-compare
+      run: |
+        $resultsRoot = 'tests/results/windows-hosted-parity'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $reportPath = Join-Path $resultsRoot 'windows-compare-report.html'
+        "windows_compare_report=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-compare-windows.json'
+        pwsh -NoLogo -NoProfile -File tools/Run-NIWindowsContainerCompare.ps1 `
+          -BaseVi 'fixtures/vi-stage/control-rename/Base.vi' `
+          -HeadVi 'fixtures/vi-stage/control-rename/Head.vi' `
+          -Image $env:NI_WINDOWS_IMAGE `
+          -LabVIEWPath $env:NI_WINDOWS_LABVIEW_PATH `
+          -ReportPath $reportPath `
+          -TimeoutSeconds 600 `
+          -RuntimeEngineReadyTimeoutSeconds 180 `
+          -RuntimeEngineReadyPollSeconds 5 `
+          -RuntimeSnapshotPath $runtimeSnapshot
+        $compareExit = $LASTEXITCODE
+
+        $capturePath = Join-Path $resultsRoot 'ni-windows-container-capture.json'
+        if (Test-Path -LiteralPath $capturePath -PathType Leaf) {
+          "windows_compare_capture=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+          $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+          $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+          Write-Host ("[windows-hosted-compare] exit={0} gateOutcome={1} resultClass={2}" -f $compareExit, $gateOutcome, $resultClass)
+          if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
+            exit $compareExit
+          }
+        } elseif ($compareExit -ne 0) {
+          throw ("Windows compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
+        }
+
+    - name: Validate Windows comparison report artifact contract
+      if: always()
+      run: |
+        $resultsRoot = 'tests/results/windows-hosted-parity'
+        $reportPath = '${{ steps.windows-compare.outputs.windows_compare_report }}'
+        if ([string]::IsNullOrWhiteSpace($reportPath)) {
+          $reportPath = Join-Path $resultsRoot 'windows-compare-report.html'
+        }
+        $capturePath = '${{ steps.windows-compare.outputs.windows_compare_capture }}'
+        if ([string]::IsNullOrWhiteSpace($capturePath)) {
+          $capturePath = Join-Path $resultsRoot 'ni-windows-container-capture.json'
+        }
+        $summaryPath = Join-Path $resultsRoot 'windows-compare-artifact-summary.json'
+        $captureResultClass = ''
+        $captureGateOutcome = ''
+        $captureExists = Test-Path -LiteralPath $capturePath -PathType Leaf
+        if ($captureExists) {
+          $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+          if ($capture.PSObject.Properties['resultClass']) {
+            $captureResultClass = [string]$capture.resultClass
+          }
+          if ($capture.PSObject.Properties['gateOutcome']) {
+            $captureGateOutcome = [string]$capture.gateOutcome
+          }
+        }
+
+        $reportExists = Test-Path -LiteralPath $reportPath -PathType Leaf
+        $compareSucceeded = '${{ steps.windows-compare.conclusion }}' -eq 'success'
+
+        $payload = [ordered]@{
+          schema = 'vi-history/windows-compare-artifact-summary@v1'
+          generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+          compareStepConclusion = '${{ steps.windows-compare.conclusion }}'
+          reportPath = $reportPath
+          reportExists = [bool]$reportExists
+          capturePath = $capturePath
+          captureExists = [bool]$captureExists
+          captureResultClass = $captureResultClass
+          captureGateOutcome = $captureGateOutcome
+        }
+        $payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+
+        $requireReport = $compareSucceeded -and [string]::Equals($captureResultClass, 'success-diff', [System.StringComparison]::OrdinalIgnoreCase)
+        if ($requireReport -and -not $reportExists) {
+          throw ("Windows compare classified success-diff but report file was not found: {0}" -f $reportPath)
+        }
+        if ($compareSucceeded -and -not $reportExists -and -not $requireReport) {
+          Write-Host ("::warning::Windows compare succeeded without diff classification ({0}); no report file was generated at {1}." -f $captureResultClass, $reportPath)
+        }
+        if (-not $reportExists) {
+          Write-Host ("::warning::Windows comparison report not found at {0}" -f $reportPath)
+        }
+
+    - name: Upload Windows hosted proof artifacts
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: windows-hosted-parity
-        path: tests/results/windows-hosted-parity/**
+        name: windows-hosted-ni-proof
+        path: |
+          tests/results/windows-hosted-parity/windows-compare-report.html
+          tests/results/windows-hosted-parity/windows-compare-artifact-summary.json
+          tests/results/windows-hosted-parity/windows-ni-2026q1-host-preflight.json
+          tests/results/windows-hosted-parity/ni-windows-container-capture.json
+          tests/results/windows-hosted-parity/ni-windows-container-stdout.txt
+          tests/results/windows-hosted-parity/ni-windows-container-stderr.txt
+          tests/results/windows-hosted-parity/container-export/**
+          tests/results/windows-hosted-parity/runtime-manager-compare-windows.json
         if-no-files-found: warn

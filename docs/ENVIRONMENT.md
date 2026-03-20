@@ -89,7 +89,7 @@ Notes:
 - The `windows-mirror-proof` local VI-history profile is pinned to this same image and is proof-only in the first
   slice; it is not a warm or accelerated lane.
 - Hosted CI now has a matching non-required Windows proof lane in `Validate`:
-  `vi-history-scenarios-windows`. It runs on a `hosted-docker-windows` runner, bootstraps
+  `vi-history-scenarios-windows`. It runs on GitHub-hosted `windows-2022`, bootstraps
   `nationalinstruments/labview:2026q1-windows`, and uses the same canonical in-container LabVIEW path:
   `C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe`.
 - Expect the hosted Windows image pull to be materially slower than the Linux lane.
