@@ -88,6 +88,12 @@ Notes:
   (`classification`, `labviewCliErrorCode`, `recommendation`, `reportExists`) for deterministic triage.
 - The `windows-mirror-proof` local VI-history profile is pinned to this same image and is proof-only in the first
   slice; it is not a warm or accelerated lane.
+- Hosted CI now has a matching non-required Windows proof lane in `Validate`:
+  `vi-history-scenarios-windows`. It runs on a `hosted-docker-windows` runner, bootstraps
+  `nationalinstruments/labview:2026q1-windows`, and uses the same canonical in-container LabVIEW path:
+  `C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe`.
+- Expect the hosted Windows image pull to be materially slower than the Linux lane.
+  Agents can dispatch the hosted lane while manually running the Linux or Windows Docker Desktop/WSL2 lanes on this host.
 
 ### NI 2026 q1 host bootstrap preflight
 

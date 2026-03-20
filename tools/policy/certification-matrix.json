@@ -28,6 +28,18 @@
       "os": "linux",
       "image_tag": "nationalinstruments/labview:2026q1-linux",
       "scenario": "Hosted NI Linux container CreateComparisonReport contract run."
+    },
+    {
+      "id": "validate-vi-history-scenarios-windows-hosted",
+      "workflow": "validate.yml",
+      "job_name": "vi-history-scenarios-windows",
+      "branch": "develop",
+      "event": "pull_request",
+      "runner": "hosted-docker-windows",
+      "os": "windows",
+      "image_tag": "nationalinstruments/labview:2026q1-windows",
+      "required_for_stable": false,
+      "scenario": "Hosted Windows container CreateComparisonReport proof lane for VI history validation."
     }
   ]
 }

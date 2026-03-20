@@ -25,10 +25,15 @@ CI can gate on non-zero exit code or inspect `autoManifest.written` to flag drif
 
 ## Docker runtime manager contract
 
-Fixture Drift now uses hosted Linux lanes only. The workflow keeps two Linux jobs:
+Fixture Drift stays Linux-only by design. The workflow keeps two Linux jobs:
 
 - `Fixture Drift (Ubuntu)` for fixture validator drift checks.
 - `NI Linux Container Compare (Hosted)` for NI Linux image parity evidence.
+
+Hosted Windows image proof now lives in `Validate` under the non-required
+`vi-history-scenarios-windows` lane so fixture drift stays lightweight while
+the slower Windows image hydration runs only on the dedicated Windows
+validation surface.
 
 Linux container evidence is written under:
 
