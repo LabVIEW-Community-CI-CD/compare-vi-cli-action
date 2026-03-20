@@ -9,7 +9,8 @@ NI Linux smoke, and VI history artifact defects before paying for another GitHub
 
 The lane split is intentional:
 
-- `tools/PrePush-Checks.ps1` is the blocking rendered-review gate plus a minimal transport/bootstrap smoke.
+- `tools/PrePush-Checks.ps1` is the blocking rendered-review gate plus a minimal transport/bootstrap smoke and a
+  non-blocking dependency-audit observation receipt under `tests/results/_agent/security/`.
 - `tools/Invoke-NILinuxReviewSuite.ps1` is the broader flag-combination certification surface.
 
 ## Environment prerequisites

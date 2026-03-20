@@ -209,7 +209,9 @@ Quick reference for building, testing, and releasing the LVCompare composite act
 node tools/npm/run-script.mjs build
 node tools/npm/run-script.mjs generate:outputs
 node tools/npm/run-script.mjs lint            # markdownlint + custom checks
-./tools/PrePush-Checks.ps1  # actionlint, optional YAML round-trip
+node tools/npm/run-script.mjs priority:security:audit        # dependency-audit receipt (observe mode)
+node tools/npm/run-script.mjs priority:security:audit:gate   # explicit blocking dependency-audit gate
+./tools/PrePush-Checks.ps1  # actionlint, dependency-audit observation, optional YAML round-trip
 ```
 
 For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
