@@ -1,0 +1,72 @@
+{
+  "$schema": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/headless-sample-vi-corpus-targets-v1.schema.json",
+  "schema": "vi-headless/sample-targets@v1",
+  "generatedAt": "2026-03-20T00:00:00Z",
+  "description": "Single-seed scaffold generated from the comparevi cookiecutter catalog.",
+  "storagePolicy": {
+    "checkedInCatalogPath": "fixtures/headless-corpus/sample-vi-corpus.targets.json",
+    "generatedRoot": "tests/results/_agent/headless-sample-corpus",
+    "rawArtifactsInGit": false
+  },
+  "admissionPolicy": {
+    "acceptedTargetsRequirePublicGithubEvidence": true,
+    "acceptedTargetsRequireLicense": true,
+    "acceptedTargetsRequirePinnedCommit": true,
+    "acceptedTargetsRequirePromotableOperationPayload": true,
+    "provisionalTargetsAllowed": true
+  },
+  "targets": [
+    {
+      "id": "{{ cookiecutter.target_slug }}",
+      "label": "{{ cookiecutter.target_label }}",
+      "admission": {
+        "state": "provisional",
+        "reasons": [
+          "Scaffold generated from the comparevi cookiecutter catalog.",
+          "Promote to accepted only after public evidence, licensing, and payload provenance are verified."
+        ]
+      },
+      "source": {
+        "repoSlug": "{{ cookiecutter.repo_slug }}",
+        "repoUrl": "{{ cookiecutter.repo_url }}",
+        "licenseSpdx": {% if cookiecutter.license_spdx == "" %}null{% else %}"{{ cookiecutter.license_spdx }}"{% endif %},
+        "targetPath": "{{ cookiecutter.target_path }}",
+        "changeKind": "{{ cookiecutter.change_kind }}",
+        "pinnedCommit": "{{ cookiecutter.pinned_commit }}"
+      },
+      "renderStrategy": {
+        "certificationSurface": "{% if cookiecutter.change_kind == 'modified' %}vi-history{% else %}print-single-file{% endif %}",
+        "operation": "{% if cookiecutter.change_kind == 'modified' %}CreateComparisonReport{% else %}PrintToSingleFileHtml{% endif %}",
+        "planeApplicability": [{% for plane in cookiecutter.plane_applicability_csv.split(',') %}"{{ plane.strip() }}"{% if not loop.last %}, {% endif %}{% endfor %}],
+        "evidenceClass": "{% if cookiecutter.change_kind == 'modified' %}history-review{% else %}change-kind-print{% endif %}"
+      }{% if cookiecutter.change_kind != 'modified' %},
+      "operationPayload": {
+        "mode": "additional-operation-directory",
+        "provenanceState": "research-only",
+        "sourceRepositorySlug": "{{ cookiecutter.repo_slug }}",
+        "sourceRepositoryUrl": "{{ cookiecutter.repo_url }}",
+        "sourceLicenseSpdx": {% if cookiecutter.license_spdx == "" %}null{% else %}"{{ cookiecutter.license_spdx }}"{% endif %},
+        "notes": [
+          "Replace with the real operation payload provenance before promotion."
+        ]
+      }{% endif %},
+      "publicEvidence": [
+        {
+          "kind": "pull-request",
+          "url": "{{ cookiecutter.public_pr_url }}",
+          "status": "open",
+          "note": "Replace with the real public PR context."
+        },
+        {
+          "kind": "workflow-run",
+          "url": "{{ cookiecutter.public_workflow_run_url }}",
+          "status": "success",
+          "note": "Replace with the real hosted evidence for this seed."
+        }
+      ],
+      "notes": [
+        "Refine the admission state, evidence, and notes before promotion into the checked-in catalog."
+      ]
+    }
+  ]
+}

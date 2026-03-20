@@ -1,0 +1,25 @@
+{
+  "$schema": "../../docs/schemas/comparevi-cookiecutter-template-catalog-v1.schema.json",
+  "schema": "comparevi-cookiecutter-template-catalog@v1",
+  "schemaVersion": "1.0.0",
+  "templateRoot": "tools/cookiecutter/templates",
+  "cookiecutterVersion": "2.6.0",
+  "runtimeCacheRoot": "tests/results/_agent/cookiecutter-runtime",
+  "scaffoldResultsRoot": "tests/results/_agent/cookiecutter-scaffolds",
+  "templates": [
+    {
+      "id": "scenario-pack",
+      "directory": "scenario-pack",
+      "projectSlugKey": "pack_slug",
+      "defaultOutputRoot": "tests/results/_agent/cookiecutter-scaffolds/scenario-pack",
+      "description": "Generate a deterministic pre-push known-flag scenario-pack skeleton with schema-pinned JSON, docs, tests, and replay metadata."
+    },
+    {
+      "id": "corpus-seed",
+      "directory": "corpus-seed",
+      "projectSlugKey": "target_slug",
+      "defaultOutputRoot": "tests/results/_agent/cookiecutter-scaffolds/corpus-seed",
+      "description": "Generate a deterministic certification corpus seed skeleton with change-kind-aware render strategy, docs, tests, and replay metadata."
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "__prompts__": {
+    "target_slug": "Repo-safe slug for the scaffold folder and target id.",
+    "target_label": "Human-readable label for the certification seed.",
+    "repo_slug": "GitHub owner/repo for the source evidence.",
+    "target_path": "Repo-relative VI path under the source repository.",
+    "change_kind": "How the VI changed for this seed.",
+    "pinned_commit": "Pinned commit SHA for the public evidence."
+  },
+  "target_slug": "example-corpus-seed",
+  "target_label": "Example certification corpus seed",
+  "repo_slug": "LabVIEW-Community-CI-CD/example-repo",
+  "repo_url": "https://github.com/LabVIEW-Community-CI-CD/example-repo",
+  "license_spdx": "MIT",
+  "target_path": "Example.vi",
+  "change_kind": [
+    "modified",
+    "added",
+    "deleted"
+  ],
+  "pinned_commit": "0123456789abcdef0123456789abcdef01234567",
+  "plane_applicability_csv": "linux-proof",
+  "public_pr_url": "https://github.com/LabVIEW-Community-CI-CD/example-repo/pull/1",
+  "public_workflow_run_url": "https://github.com/LabVIEW-Community-CI-CD/example-repo/actions/runs/1"
+}

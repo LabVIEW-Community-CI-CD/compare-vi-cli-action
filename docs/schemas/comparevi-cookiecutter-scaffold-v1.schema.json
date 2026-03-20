@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-cookiecutter-scaffold-v1.schema.json",
+  "title": "CompareVI Cookiecutter Scaffold v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "status",
+    "templateId",
+    "templateDirectory",
+    "templateRoot",
+    "cookiecutterVersion",
+    "pythonExecutable",
+    "outputRoot",
+    "destinationPath",
+    "destinationPolicy",
+    "receiptPath",
+    "replayFilePath",
+    "replayFileExists",
+    "generatedFileCount",
+    "generatedFiles",
+    "notes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-cookiecutter-scaffold@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "const": "succeeded"
+    },
+    "templateId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "templateDirectory": {
+      "type": "string",
+      "minLength": 1
+    },
+    "templateRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cookiecutterVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "pythonExecutable": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contextPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "outputRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "destinationPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "destinationPolicy": {
+      "type": "string",
+      "enum": [
+        "repo-results-root",
+        "outside-repo"
+      ]
+    },
+    "receiptPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "replayFilePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "replayFileExists": {
+      "type": "boolean",
+      "const": true
+    },
+    "generatedFileCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "generatedFiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "notes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}
