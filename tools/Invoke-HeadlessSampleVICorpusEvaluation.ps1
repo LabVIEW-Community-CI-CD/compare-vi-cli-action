@@ -136,6 +136,12 @@ function Test-IsGitHubEvidenceUrl {
   }
 }
 
+function Test-IsRepoSlug {
+  param([AllowNull()][string]$Value)
+
+  return (-not [string]::IsNullOrWhiteSpace($Value)) -and ($Value -match '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
+}
+
 function Test-RenderStrategyAlignment {
   param(
     [Parameter(Mandatory)][string]$ChangeKind,
@@ -214,6 +220,12 @@ foreach ($target in @($catalog.targets)) {
   $operation = [string]$target.renderStrategy.operation
   $planes = @(Get-StringArray -Value $target.renderStrategy.planeApplicability)
   $publicEvidence = @($target.publicEvidence)
+  $operationPayloadMode = 'not-applicable'
+  $operationPayloadProvenanceState = 'not-applicable'
+  $operationPayloadTracked = $true
+  $operationPayloadSourceValid = $true
+  $operationPayloadLicenseDeclared = $true
+  $operationPayloadPromotable = $true
 
   $hasPublicRepo = Test-IsGitHubRepoUrl -Value $repoUrl
   if (-not $hasPublicRepo) {
@@ -247,6 +259,57 @@ foreach ($target in @($catalog.targets)) {
   $renderStrategyAligned = Test-RenderStrategyAlignment -ChangeKind $changeKind -CertificationSurface $surface -Operation $operation
   if (-not $renderStrategyAligned) {
     $notes.Add(("Render strategy is not coherent for changeKind='{0}', surface='{1}', operation='{2}'." -f $changeKind, $surface, $operation)) | Out-Null
+  }
+
+  $requiresOperationPayload = $surface -eq 'print-single-file'
+  if ($requiresOperationPayload) {
+    if (-not ($target.PSObject.Properties['operationPayload'] -and $target.operationPayload)) {
+      $operationPayloadTracked = $false
+      $operationPayloadSourceValid = $false
+      $operationPayloadLicenseDeclared = $false
+      $operationPayloadPromotable = $false
+      $notes.Add('PrintToSingleFileHtml targets must declare operationPayload provenance.') | Out-Null
+    } else {
+      $operationPayloadMode = [string]$target.operationPayload.mode
+      $operationPayloadProvenanceState = [string]$target.operationPayload.provenanceState
+      $payloadSourceRepoSlug = [string]$target.operationPayload.sourceRepositorySlug
+      $payloadSourceRepoUrl = [string]$target.operationPayload.sourceRepositoryUrl
+      $payloadSourceLicense = [string]$target.operationPayload.sourceLicenseSpdx
+      $payloadNotes = @(Get-StringArray -Value $target.operationPayload.notes)
+
+      if ($operationPayloadMode -eq 'additional-operation-directory') {
+        $operationPayloadSourceValid = (Test-IsRepoSlug -Value $payloadSourceRepoSlug) -and
+          (Test-IsGitHubRepoUrl -Value $payloadSourceRepoUrl) -and
+          ($payloadNotes.Count -gt 0)
+        if (-not $operationPayloadSourceValid) {
+          $notes.Add('Custom operation payload provenance is incomplete or not GitHub-backed.') | Out-Null
+        }
+
+        $operationPayloadLicenseDeclared = -not [string]::IsNullOrWhiteSpace($payloadSourceLicense)
+        if (-not $operationPayloadLicenseDeclared) {
+          $notes.Add('Custom operation payload has no declared license.') | Out-Null
+        }
+
+        $operationPayloadPromotable = $operationPayloadProvenanceState -eq 'accepted' -and
+          $operationPayloadSourceValid -and
+          $operationPayloadLicenseDeclared
+        if (-not $operationPayloadPromotable) {
+          $notes.Add('Custom operation payload is not promotable for accepted certification use.') | Out-Null
+        }
+      } elseif ($operationPayloadMode -eq 'builtin') {
+        $operationPayloadSourceValid = $true
+        $operationPayloadLicenseDeclared = $true
+        $operationPayloadPromotable = $operationPayloadProvenanceState -eq 'accepted'
+        if (-not $operationPayloadPromotable) {
+          $notes.Add('Builtin operation payload metadata must still be marked accepted before promotion.') | Out-Null
+        }
+      } else {
+        $operationPayloadSourceValid = $false
+        $operationPayloadLicenseDeclared = $false
+        $operationPayloadPromotable = $false
+        $notes.Add(("Unsupported operation payload mode '{0}'." -f $operationPayloadMode)) | Out-Null
+      }
+    }
   }
 
   $fixturePaths = @()
@@ -283,6 +346,12 @@ foreach ($target in @($catalog.targets)) {
   if ($admissionState -eq 'accepted' -and -not $renderStrategyAligned) {
     $notes.Add('Accepted targets require a render strategy aligned with the change kind.') | Out-Null
   }
+  if ($admissionState -eq 'accepted' -and
+      $policy.acceptedTargetsRequirePromotableOperationPayload -and
+      $requiresOperationPayload -and
+      -not $operationPayloadPromotable) {
+    $notes.Add('Accepted targets require a promotable custom operation payload.') | Out-Null
+  }
   if ($admissionState -eq 'accepted' -and -not $fixturePathsResolved -and $fixturePaths.Count -gt 0) {
     $notes.Add('Accepted target declared local fixture lineage but one or more fixture paths were missing.') | Out-Null
   }
@@ -310,6 +379,8 @@ foreach ($target in @($catalog.targets)) {
       changeKind = $changeKind
       certificationSurface = $surface
       operation = $operation
+      operationPayloadMode = $operationPayloadMode
+      operationPayloadProvenanceState = $operationPayloadProvenanceState
       planeApplicability = @($planes)
       publicEvidenceCount = $publicEvidence.Count
       successfulWorkflowEvidenceCount = $successfulWorkflowEvidenceCount
@@ -323,6 +394,10 @@ foreach ($target in @($catalog.targets)) {
         successfulWorkflowEvidence = $successfulWorkflowEvidenceCount -gt 0
         renderStrategyAligned = $renderStrategyAligned
         localFixturePathsResolved = $fixturePathsResolved
+        operationPayloadTracked = $operationPayloadTracked
+        operationPayloadSourceValid = $operationPayloadSourceValid
+        operationPayloadLicenseDeclared = $operationPayloadLicenseDeclared
+        operationPayloadPromotable = $operationPayloadPromotable
       }
       notes = @($notes.ToArray())
     }) | Out-Null
@@ -359,15 +434,21 @@ $markdownLines = @(
   ('- Drift Targets: `{0}`' -f $summary.driftCount),
   ('- Warning Targets: `{0}`' -f $summary.warningCount),
   '',
-  '| Target | Admission | Status | Surface | Planes | Evidence |',
+  '| Target | Admission | Status | Surface | Payload | Planes | Evidence |',
   '| --- | --- | --- | --- | --- | --- |'
 )
 foreach ($target in @($report.targets)) {
-  $markdownLines += ('| `{0}` | `{1}` | `{2}` | `{3}` | `{4}` | `{5}` successful workflow run(s) |' -f
+  $payloadLabel = if ([string]$target.operationPayloadMode -eq 'not-applicable') {
+    'n/a'
+  } else {
+    ('{0}/{1}' -f [string]$target.operationPayloadMode, [string]$target.operationPayloadProvenanceState)
+  }
+  $markdownLines += ('| `{0}` | `{1}` | `{2}` | `{3}` | `{4}` | `{5}` | `{6}` successful workflow run(s) |' -f
     $target.id,
     $target.admissionState,
     $target.status,
     $target.certificationSurface,
+    $payloadLabel,
     ((@($target.planeApplicability) | ForEach-Object { [string]$_ }) -join ', '),
     $target.successfulWorkflowEvidenceCount)
   if (@($target.notes).Count -gt 0) {

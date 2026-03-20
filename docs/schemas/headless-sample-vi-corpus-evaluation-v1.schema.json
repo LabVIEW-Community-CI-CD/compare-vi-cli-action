@@ -72,7 +72,11 @@
         "pinnedCommit",
         "successfulWorkflowEvidence",
         "renderStrategyAligned",
-        "localFixturePathsResolved"
+        "localFixturePathsResolved",
+        "operationPayloadTracked",
+        "operationPayloadSourceValid",
+        "operationPayloadLicenseDeclared",
+        "operationPayloadPromotable"
       ],
       "properties": {
         "publicRepo": { "type": "boolean" },
@@ -81,7 +85,11 @@
         "pinnedCommit": { "type": "boolean" },
         "successfulWorkflowEvidence": { "type": "boolean" },
         "renderStrategyAligned": { "type": "boolean" },
-        "localFixturePathsResolved": { "type": "boolean" }
+        "localFixturePathsResolved": { "type": "boolean" },
+        "operationPayloadTracked": { "type": "boolean" },
+        "operationPayloadSourceValid": { "type": "boolean" },
+        "operationPayloadLicenseDeclared": { "type": "boolean" },
+        "operationPayloadPromotable": { "type": "boolean" }
       }
     },
     "target": {
@@ -96,6 +104,8 @@
         "changeKind",
         "certificationSurface",
         "operation",
+        "operationPayloadMode",
+        "operationPayloadProvenanceState",
         "planeApplicability",
         "publicEvidenceCount",
         "successfulWorkflowEvidenceCount",
@@ -146,6 +156,23 @@
             "Compare-VIHistory",
             "CreateComparisonReport",
             "PrintToSingleFileHtml"
+          ]
+        },
+        "operationPayloadMode": {
+          "type": "string",
+          "enum": [
+            "not-applicable",
+            "builtin",
+            "additional-operation-directory"
+          ]
+        },
+        "operationPayloadProvenanceState": {
+          "type": "string",
+          "enum": [
+            "not-applicable",
+            "accepted",
+            "research-only",
+            "forbidden"
           ]
         },
         "planeApplicability": {

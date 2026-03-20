@@ -88,6 +88,18 @@ The corpus keeps change kind and rendering intent explicit.
 This keeps the sample corpus aligned with the change-kind-aware rendering work
 tracked in `#1406` and `#1408`.
 
+## Operation payload provenance
+
+For `print-single-file` targets, sample provenance alone is not enough.
+
+The catalog now tracks `operationPayload` separately so the evaluator can
+distinguish:
+
+- a licensed public sample repository
+- from an unlicensed or research-only custom rendering payload
+
+See `docs/knowledgebase/PrintToSingleFileHtml-Provenance.md`.
+
 ## Evaluation
 
 Run the evaluator locally:

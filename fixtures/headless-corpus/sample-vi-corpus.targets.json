@@ -12,6 +12,7 @@
     "acceptedTargetsRequirePublicGithubEvidence": true,
     "acceptedTargetsRequireLicense": true,
     "acceptedTargetsRequirePinnedCommit": true,
+    "acceptedTargetsRequirePromotableOperationPayload": true,
     "provisionalTargetsAllowed": true
   },
   "targets": [
@@ -152,6 +153,17 @@
           "linux-proof"
         ],
         "evidenceClass": "change-kind-print"
+      },
+      "operationPayload": {
+        "mode": "additional-operation-directory",
+        "provenanceState": "research-only",
+        "sourceRepositorySlug": "aphill93/linuxContainerDemo",
+        "sourceRepositoryUrl": "https://github.com/aphill93/linuxContainerDemo",
+        "sourceLicenseSpdx": null,
+        "notes": [
+          "The public proof depends on a custom AdditionalOperationDirectory payload checked into VICompareTooling/PrintToSingleFileHtml.",
+          "That payload remains research-only here because the source repository does not currently declare a license."
+        ]
       },
       "publicEvidence": [
         {
