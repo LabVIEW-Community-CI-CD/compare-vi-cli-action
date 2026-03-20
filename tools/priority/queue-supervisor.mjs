@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { parseRemoteUrl } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { buildQueueReadinessReport, DEFAULT_READINESS_REPORT_PATH } from './queue-readiness.mjs';
+import { hasDeferredPostMergeBranchCleanup, reconcileDeferredBranchCleanup } from './merge-sync-pr.mjs';
 
 const REPORT_SCHEMA = 'priority/queue-supervisor-report@v1';
 const DEFAULT_REPORT_PATH = path.join('tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json');
@@ -126,7 +127,109 @@ function summarizeMergeSyncSummary(summary, summaryPath) {
     finalMode: summary?.finalMode ?? null,
     finalReason: summary?.finalReason ?? null,
     promotionStatus: summary?.promotion?.status ?? null,
-    materialized: isMaterializedMergeSyncSummary(summary)
+    materialized: isMaterializedMergeSyncSummary(summary),
+    branchCleanupRequested: Boolean(summary?.branchCleanup?.requested),
+    branchCleanupStatus: summary?.branchCleanup?.status ?? null,
+    branchCleanupReason: summary?.branchCleanup?.reason ?? null
+  };
+}
+
+async function listMergeSyncSummaryPaths({ repoRoot, readdirFn = readdir } = {}) {
+  const queueResultsRoot = path.join(repoRoot, 'tests', 'results', '_agent', 'queue');
+  let entries = [];
+  try {
+    entries = await readdirFn(queueResultsRoot, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+
+  return entries
+    .filter((entry) => {
+      if (typeof entry === 'string') {
+        return /^merge-sync-\d+\.json$/u.test(entry);
+      }
+      return Boolean(entry?.isFile?.()) && /^merge-sync-\d+\.json$/u.test(entry.name);
+    })
+    .map((entry) => path.join(queueResultsRoot, typeof entry === 'string' ? entry : entry.name))
+    .sort();
+}
+
+async function reconcileDeferredBranchCleanupReceipts({
+  repoRoot,
+  applyMutations = false,
+  readdirFn = readdir,
+  readOptionalJsonFn = readOptionalJson,
+  writeReportFn = writeReport,
+  reconcileDeferredBranchCleanupFn = reconcileDeferredBranchCleanup
+} = {}) {
+  const summaryPaths = await listMergeSyncSummaryPaths({ repoRoot, readdirFn });
+  const actions = [];
+
+  for (const summaryPath of summaryPaths) {
+    const summary = await readOptionalJsonFn(summaryPath);
+    if (!hasDeferredPostMergeBranchCleanup(summary)) {
+      continue;
+    }
+
+    if (!applyMutations) {
+      actions.push({
+        path: summaryPath,
+        pr: summary?.pr ?? null,
+        repo: summary?.repo ?? null,
+        status: 'pending',
+        changed: false,
+        promotionStatus: summary?.promotion?.status ?? null,
+        branchCleanupStatus: summary?.branchCleanup?.status ?? null,
+        branchCleanupReason: summary?.branchCleanup?.reason ?? null
+      });
+      continue;
+    }
+
+    try {
+      const result = await reconcileDeferredBranchCleanupFn({
+        repoRoot,
+        summary
+      });
+      if (result?.changed) {
+        await writeReportFn(summaryPath, result.summary);
+      }
+      actions.push({
+        path: summaryPath,
+        pr: summary?.pr ?? null,
+        repo: summary?.repo ?? null,
+        status: result?.status ?? 'pending',
+        changed: Boolean(result?.changed),
+        promotionStatus: result?.promotion?.status ?? summary?.promotion?.status ?? null,
+        branchCleanupStatus: result?.summary?.branchCleanup?.status ?? summary?.branchCleanup?.status ?? null,
+        branchCleanupReason: result?.summary?.branchCleanup?.reason ?? summary?.branchCleanup?.reason ?? null
+      });
+    } catch (error) {
+      actions.push({
+        path: summaryPath,
+        pr: summary?.pr ?? null,
+        repo: summary?.repo ?? null,
+        status: 'failed',
+        changed: false,
+        promotionStatus: summary?.promotion?.status ?? null,
+        branchCleanupStatus: summary?.branchCleanup?.status ?? null,
+        branchCleanupReason: summary?.branchCleanup?.reason ?? null,
+        error: error?.message ?? String(error)
+      });
+    }
+  }
+
+  return {
+    summary: {
+      totalCount: actions.length,
+      pendingCount: actions.filter((action) => action.status === 'pending' || action.status === 'deferred').length,
+      completedCount: actions.filter((action) => action.status === 'completed').length,
+      dryRunCount: actions.filter((action) => action.status === 'dry-run').length,
+      failedCount: actions.filter((action) => action.status === 'failed').length
+    },
+    actions
   };
 }
 
@@ -1333,9 +1436,11 @@ export async function runQueueSupervisor(options = {}) {
   const now = options.now ?? new Date();
   const runGhJsonFn = options.runGhJsonFn ?? runGhJson;
   const runCommandFn = options.runCommandFn ?? runCommand;
+  const readdirFn = options.readdirFn ?? readdir;
   const readJsonFileFn = options.readJsonFileFn ?? readJsonFile;
   const readOptionalJsonFn = options.readOptionalJsonFn ?? readOptionalJson;
   const writeReportFn = options.writeReportFn ?? writeReport;
+  const reconcileDeferredBranchCleanupFn = options.reconcileDeferredBranchCleanupFn ?? reconcileDeferredBranchCleanup;
   const repository = resolveRepositorySlug(repoRoot, args.repo);
   const repositoryOwner = String(repository).split('/')[0]?.trim().toLowerCase() ?? '';
 
@@ -1580,6 +1685,15 @@ export async function runQueueSupervisor(options = {}) {
     actions: [],
     retryHistory: {}
   };
+
+  report.deferredBranchCleanup = await reconcileDeferredBranchCleanupReceipts({
+    repoRoot,
+    applyMutations: Boolean(args.apply) && !args.dryRun,
+    readdirFn,
+    readOptionalJsonFn,
+    writeReportFn,
+    reconcileDeferredBranchCleanupFn
+  });
 
   if (report.paused || args.dryRun || !args.apply) {
     report.retryHistory = retryHistory;

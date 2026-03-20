@@ -11,11 +11,14 @@ import {
   buildMergeSummaryPayload,
   buildPolicyTrace,
   classifyPromotionState,
+  deleteHeadBranchRef,
   deleteMergedHeadBranch,
   evaluatePromotionReviewClearance,
+  hasDeferredPostMergeBranchCleanup,
   isQueueManagedBaseBranch,
   loadMergeSyncCopilotReviewStrategy,
   normalizeCopilotReviewStrategy,
+  reconcileDeferredBranchCleanup,
   resolveBranchCleanupPlan,
   resolveReadyValidationClearancePath,
   isUpstreamOwnedHead,
@@ -485,6 +488,146 @@ test('deleteMergedHeadBranch treats an already-absent branch as a successful cle
   assert.equal(cleanup.status, 'already-absent');
   assert.equal(cleanup.repository, 'labview-community-ci-cd/compare-vi-cli-action-fork');
   assert.equal(cleanup.headRefName, 'issue/origin-1397-test-branch');
+});
+
+test('deleteHeadBranchRef emits queue-safe dry-run cleanup output', () => {
+  const cleanup = deleteHeadBranchRef({
+    repoRoot,
+    headRepositorySlug: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+    headRefName: 'issue/origin-1430-test-branch',
+    dryRun: true
+  });
+
+  assert.equal(cleanup.status, 'dry-run');
+  assert.equal(cleanup.repository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork');
+  assert.equal(cleanup.headRefName, 'issue/origin-1430-test-branch');
+});
+
+test('hasDeferredPostMergeBranchCleanup detects queued auto-merge cleanup receipts', () => {
+  assert.equal(hasDeferredPostMergeBranchCleanup({
+    branchCleanup: {
+      requested: true,
+      status: 'deferred',
+      postMergeDelete: true
+    }
+  }), true);
+
+  assert.equal(hasDeferredPostMergeBranchCleanup({
+    branchCleanup: {
+      requested: true,
+      status: 'inline-requested',
+      postMergeDelete: false
+    }
+  }), false);
+});
+
+test('reconcileDeferredBranchCleanup completes deferred cleanup once queued promotion materializes', async () => {
+  const cleanupCalls = [];
+  const result = await reconcileDeferredBranchCleanup({
+    repoRoot,
+    summary: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pr: 1430,
+      finalMode: 'auto',
+      promotion: {
+        initial: {
+          state: 'OPEN',
+          mergeStateStatus: 'BLOCKED',
+          isInMergeQueue: false,
+          autoMergeEnabled: false,
+          mergedAt: null
+        },
+        final: {
+          state: 'OPEN',
+          mergeStateStatus: 'BLOCKED',
+          isInMergeQueue: true,
+          autoMergeEnabled: true,
+          mergedAt: null
+        },
+        status: 'queued',
+        materialized: true
+      },
+      branchCleanup: {
+        requested: true,
+        attempted: false,
+        status: 'deferred',
+        reason: 'promotion-not-yet-merged',
+        postMergeDelete: true,
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+        headRefName: 'issue/origin-1430-queue-auto-branch-cleanup'
+      }
+    },
+    readPromotionStateFn: () => ({
+      state: 'MERGED',
+      mergeStateStatus: 'CLEAN',
+      isInMergeQueue: false,
+      autoMergeRequest: null,
+      mergedAt: '2026-03-20T02:15:00Z'
+    }),
+    deleteHeadBranchRefFn: ({ headRepositorySlug, headRefName, dryRun }) => {
+      cleanupCalls.push({ headRepositorySlug, headRefName, dryRun });
+      return {
+        requested: true,
+        attempted: true,
+        status: 'deleted',
+        reason: 'post-merge-api-delete',
+        repository: headRepositorySlug,
+        headRefName
+      };
+    },
+    observedAt: '2026-03-20T02:16:00Z'
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.promotion.status, 'merged');
+  assert.equal(result.summary.branchCleanup.status, 'deleted');
+  assert.equal(result.summary.reconciledAt, '2026-03-20T02:16:00Z');
+  assert.deepEqual(cleanupCalls, [{
+    headRepositorySlug: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+    headRefName: 'issue/origin-1430-queue-auto-branch-cleanup',
+    dryRun: false
+  }]);
+});
+
+test('reconcileDeferredBranchCleanup leaves queued auto-merge cleanup deferred until merged', async () => {
+  const result = await reconcileDeferredBranchCleanup({
+    repoRoot,
+    summary: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pr: 1430,
+      finalMode: 'auto',
+      promotion: {
+        initial: {
+          state: 'OPEN',
+          mergeStateStatus: 'BLOCKED',
+          isInMergeQueue: false,
+          autoMergeEnabled: false,
+          mergedAt: null
+        }
+      },
+      branchCleanup: {
+        requested: true,
+        attempted: false,
+        status: 'deferred',
+        reason: 'promotion-not-yet-merged',
+        postMergeDelete: true,
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+        headRefName: 'issue/origin-1430-queue-auto-branch-cleanup'
+      }
+    },
+    readPromotionStateFn: () => ({
+      state: 'OPEN',
+      mergeStateStatus: 'BLOCKED',
+      isInMergeQueue: true,
+      autoMergeRequest: { enabledAt: '2026-03-20T02:14:00Z' },
+      mergedAt: null
+    })
+  });
+
+  assert.equal(result.changed, false);
+  assert.equal(result.status, 'deferred');
+  assert.equal(result.promotion.status, 'queued');
 });
 
 test('getMergeQueueBranches returns exact queue-managed branches from policy rulesets', () => {
