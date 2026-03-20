@@ -141,6 +141,7 @@
     "priority:codex:state:hygiene": "node --no-warnings tools/priority/codex-state-hygiene.mjs",
     "priority:codex:state:hygiene:apply": "node --no-warnings tools/priority/codex-state-hygiene.mjs --apply",
     "priority:runtime:worktrees:repair": "node tools/priority/repair-runtime-worktrees.mjs",
+    "priority:runtime:ram-budget": "node tools/priority/host-ram-budget.mjs",
     "priority:runtime:daemon": "node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/runtime-daemon.ts --fallback-dist dist/tools/priority/runtime-daemon.js",
     "priority:runtime:daemon:docker": "pwsh -NoLogo -NoProfile -File tools/priority/Manage-RuntimeDaemonInDocker.ps1 -Action start",
     "priority:runtime:daemon:docker:logs": "pwsh -NoLogo -NoProfile -File tools/priority/Manage-RuntimeDaemonInDocker.ps1 -Action logs",

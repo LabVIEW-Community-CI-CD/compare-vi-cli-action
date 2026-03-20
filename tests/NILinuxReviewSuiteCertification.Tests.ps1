@@ -96,7 +96,12 @@ Describe 'NI Linux review-suite flag certification artifacts' -Tag 'Unit' {
     $artifacts = Write-FlagCombinationCertificationArtifacts `
       -ResultsRoot $resultsRoot `
       -Image 'nationalinstruments/labview:2026q1-linux' `
-      -ScenarioResults $scenarioResults
+      -ScenarioResults $scenarioResults `
+      -ParallelBudget ([pscustomobject]@{
+        requestedParallelism = 0
+        actualParallelism = 2
+        decisionSource = 'host-ram-budget'
+      })
 
     Test-Path -LiteralPath $artifacts.jsonPath | Should -BeTrue
     Test-Path -LiteralPath $artifacts.markdownPath | Should -BeTrue
@@ -112,10 +117,13 @@ Describe 'NI Linux review-suite flag certification artifacts' -Tag 'Unit' {
     $report.summary.totalScenarios | Should -Be 2
     $report.summary.passingScenarios | Should -Be 2
     $report.summary.failingScenarios | Should -Be 0
+    $report.parallelBudget.actualParallelism | Should -Be 2
+    $report.parallelBudget.decisionSource | Should -Be 'host-ram-budget'
     @($report.scenarios | ForEach-Object { $_.name }) | Should -Be @('baseline', 'noattr')
 
     $markdown = Get-Content -LiteralPath $artifacts.markdownPath -Raw
     $markdown | Should -Match 'NI Linux flag-combination certification'
+    $markdown | Should -Match 'Parallelism'
     $markdown | Should -Match 'baseline'
     $markdown | Should -Match 'noattr'
 

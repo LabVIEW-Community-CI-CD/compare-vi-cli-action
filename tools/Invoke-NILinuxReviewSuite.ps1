@@ -19,6 +19,9 @@ param(
   [ValidateRange(1, 4096)]
   [int]$HistoryMaxCommitCount = 64,
   [string]$HistoryReviewReceiptPath = '',
+  [ValidateRange(0, 8)]
+  [int]$FlagScenarioParallelism = 0,
+  [string]$HostRamBudgetPath = '',
   [ValidateRange(30, 900)]
   [int]$TimeoutSeconds = 240,
   [ValidateRange(5, 120)]
@@ -86,7 +89,8 @@ function Write-FlagCombinationCertificationArtifacts {
   param(
     [Parameter(Mandatory = $true)][string]$ResultsRoot,
     [Parameter(Mandatory = $true)][string]$Image,
-    [AllowNull()][object[]]$ScenarioResults
+    [AllowNull()][object[]]$ScenarioResults,
+    [AllowNull()]$ParallelBudget
   )
 
   $flagCombinationResults = @(
@@ -135,6 +139,7 @@ function Write-FlagCombinationCertificationArtifacts {
       passingScenarios = @($normalizedScenarios | Where-Object { [string]::Equals([string]$_.gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase) }).Count
       failingScenarios = @($normalizedScenarios | Where-Object { -not [string]::Equals([string]$_.gateOutcome, 'pass', [System.StringComparison]::OrdinalIgnoreCase) }).Count
     }
+    parallelBudget = $ParallelBudget
     scenarios = @($normalizedScenarios)
   }
   $payload | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $jsonPath -Encoding utf8
@@ -147,6 +152,10 @@ function Write-FlagCombinationCertificationArtifacts {
     ('- Image: `{0}`' -f $Image),
     ('- Plane applicability: `{0}`' -f ([string]::Join(', ', @($payload.planeApplicability)))),
     ('- Future parity planes: `{0}`' -f ([string]::Join(', ', @($payload.futureParityPlanes)))),
+    ('- Parallelism: `requested={0}; actual={1}; source={2}`' -f
+      $(if ($ParallelBudget -and $ParallelBudget.PSObject.Properties['requestedParallelism']) { [string]$ParallelBudget.requestedParallelism } else { '0' }),
+      $(if ($ParallelBudget -and $ParallelBudget.PSObject.Properties['actualParallelism']) { [string]$ParallelBudget.actualParallelism } else { '1' }),
+      $(if ($ParallelBudget -and $ParallelBudget.PSObject.Properties['decisionSource']) { [string]$ParallelBudget.decisionSource } else { 'serial-default' })),
     ('- Total scenarios: `{0}`' -f $payload.summary.totalScenarios),
     ('- Passing scenarios: `{0}`' -f $payload.summary.passingScenarios),
     ('- Failing scenarios: `{0}`' -f $payload.summary.failingScenarios),
@@ -173,6 +182,10 @@ function Write-FlagCombinationCertificationArtifacts {
       $Image,
       [string]::Join(', ', @($payload.planeApplicability)),
       [string]::Join(', ', @($payload.futureParityPlanes))),
+    ('<p>Parallelism: <code>requested={0}; actual={1}; source={2}</code></p>' -f
+      $(if ($ParallelBudget -and $ParallelBudget.PSObject.Properties['requestedParallelism']) { [string]$ParallelBudget.requestedParallelism } else { '0' }),
+      $(if ($ParallelBudget -and $ParallelBudget.PSObject.Properties['actualParallelism']) { [string]$ParallelBudget.actualParallelism } else { '1' }),
+      $(if ($ParallelBudget -and $ParallelBudget.PSObject.Properties['decisionSource']) { [string]$ParallelBudget.decisionSource } else { 'serial-default' })),
     ('<p>Total scenarios: <code>{0}</code><br/>Passing scenarios: <code>{1}</code><br/>Failing scenarios: <code>{2}</code></p>' -f
       $payload.summary.totalScenarios,
       $payload.summary.passingScenarios,
@@ -285,6 +298,253 @@ function New-FlagScenarioDefinitions {
   }
 
   return @($scenarioBuffer | Sort-Object @{ Expression = { $_.flags.Count } }, @{ Expression = { $_.orderKey } })
+}
+
+function Get-DefaultHostRamBudgetPath {
+  param([Parameter(Mandatory = $true)][string]$ResultsRoot)
+
+  return (Join-Path $ResultsRoot 'host-ram-budget.json')
+}
+
+function Resolve-FlagScenarioParallelBudget {
+  param(
+    [Parameter(Mandatory = $true)][string]$RepoRoot,
+    [Parameter(Mandatory = $true)][string]$ResultsRoot,
+    [Parameter(Mandatory = $true)][int]$RequestedParallelism,
+    [AllowEmptyString()][string]$HostRamBudgetPath
+  )
+
+  $budgetPathResolved = if ([string]::IsNullOrWhiteSpace($HostRamBudgetPath)) {
+    Get-DefaultHostRamBudgetPath -ResultsRoot $ResultsRoot
+  } else {
+    Resolve-AbsolutePath -Path $HostRamBudgetPath -BasePath $RepoRoot
+  }
+
+  $threadJobAvailable = $null -ne (Get-Command -Name Start-ThreadJob -ErrorAction SilentlyContinue)
+  $targetProfile = 'ni-linux-flag-combination'
+  $budgetReport = $null
+  $recommendedParallelism = 1
+  $decisionSource = 'serial-default'
+  $reason = 'deterministic-floor'
+
+  if ($RequestedParallelism -gt 0) {
+    $recommendedParallelism = [int]$RequestedParallelism
+    $decisionSource = 'explicit-override'
+    $reason = 'explicit-override'
+  } else {
+    $budgetScriptPath = Join-Path $RepoRoot 'tools' 'priority' 'host-ram-budget.mjs'
+    if (-not (Test-Path -LiteralPath $budgetScriptPath -PathType Leaf)) {
+      throw ("Host RAM budget helper not found: {0}" -f $budgetScriptPath)
+    }
+
+    Push-Location $RepoRoot
+    try {
+      & node $budgetScriptPath `
+        --target-profile $targetProfile `
+        --output $budgetPathResolved | Out-Host
+      if ($LASTEXITCODE -ne 0) {
+        throw ("host-ram-budget helper exited with code {0}" -f $LASTEXITCODE)
+      }
+    } finally {
+      Pop-Location | Out-Null
+    }
+
+    if (-not (Test-Path -LiteralPath $budgetPathResolved -PathType Leaf)) {
+      throw ("Host RAM budget helper did not emit a report: {0}" -f $budgetPathResolved)
+    }
+
+    $budgetReport = Get-Content -LiteralPath $budgetPathResolved -Raw | ConvertFrom-Json -Depth 20
+    if (-not $budgetReport.selectedProfile -or -not $budgetReport.selectedProfile.PSObject.Properties['recommendedParallelism']) {
+      throw ("Host RAM budget report missing selected profile recommendation: {0}" -f $budgetPathResolved)
+    }
+    $recommendedParallelism = [int]$budgetReport.selectedProfile.recommendedParallelism
+    $decisionSource = 'host-ram-budget'
+    $reason = if ($budgetReport.selectedProfile.PSObject.Properties['reasons'] -and @($budgetReport.selectedProfile.reasons).Count -gt 0) {
+      [string]::Join(', ', @($budgetReport.selectedProfile.reasons | ForEach-Object { [string]$_ }))
+    } else {
+      'host-ram-budget'
+    }
+  }
+
+  $actualParallelism = [int]$recommendedParallelism
+  if ($actualParallelism -lt 1) {
+    $actualParallelism = 1
+  }
+  if (-not $threadJobAvailable -and $actualParallelism -gt 1) {
+    $actualParallelism = 1
+    $reason = 'threadjob-unavailable'
+  }
+
+  return [pscustomobject]@{
+    targetProfile = $targetProfile
+    path = $budgetPathResolved
+    requestedParallelism = [int]$RequestedParallelism
+    recommendedParallelism = [int]$recommendedParallelism
+    actualParallelism = [int]$actualParallelism
+    decisionSource = $decisionSource
+    reason = $reason
+    threadJobAvailable = [bool]$threadJobAvailable
+    report = $budgetReport
+  }
+}
+
+function Invoke-FlagScenarioCompares {
+  param(
+    [Parameter(Mandatory = $true)][object[]]$ScenarioDefinitions,
+    [Parameter(Mandatory = $true)][int]$Parallelism,
+    [Parameter(Mandatory = $true)][string]$RepoRoot,
+    [Parameter(Mandatory = $true)][string]$FlagScenarioRoot,
+    [Parameter(Mandatory = $true)][string]$CompareScriptPath,
+    [Parameter(Mandatory = $true)][string]$BaseVi,
+    [Parameter(Mandatory = $true)][string]$HeadVi,
+    [Parameter(Mandatory = $true)][string]$Image,
+    [Parameter(Mandatory = $true)][string]$LabVIEWPath,
+    [Parameter(Mandatory = $true)][int]$TimeoutSeconds,
+    [Parameter(Mandatory = $true)][int]$HeartbeatSeconds,
+    [Parameter(Mandatory = $true)][int]$RuntimeEngineReadyTimeoutSeconds,
+    [Parameter(Mandatory = $true)][int]$RuntimeEngineReadyPollSeconds,
+    [AllowEmptyString()][string]$ReuseContainerName,
+    [Parameter(Mandatory = $true)][string]$ReuseRepoHostPath,
+    [Parameter(Mandatory = $true)][string]$ReuseRepoContainerPath,
+    [Parameter(Mandatory = $true)][string]$ReuseResultsHostPath,
+    [Parameter(Mandatory = $true)][string]$ReuseResultsContainerPath,
+    [string[]]$RuntimeInjectionMount = @()
+  )
+
+  $worker = {
+    param(
+      [int]$Sequence,
+      [object]$ScenarioDefinition,
+      [string]$RepoRootValue,
+      [string]$FlagScenarioRootValue,
+      [string]$CompareScriptPathValue,
+      [string]$BaseViValue,
+      [string]$HeadViValue,
+      [string]$ImageValue,
+      [string]$LabVIEWPathValue,
+      [int]$TimeoutSecondsValue,
+      [int]$HeartbeatSecondsValue,
+      [int]$RuntimeEngineReadyTimeoutSecondsValue,
+      [int]$RuntimeEngineReadyPollSecondsValue,
+      [string]$ReuseContainerNameValue,
+      [string]$ReuseRepoHostPathValue,
+      [string]$ReuseRepoContainerPathValue,
+      [string]$ReuseResultsHostPathValue,
+      [string]$ReuseResultsContainerPathValue,
+      [string[]]$RuntimeInjectionMountValue
+    )
+
+    Set-StrictMode -Version Latest
+    $ErrorActionPreference = 'Stop'
+
+    $scenarioName = [string]$ScenarioDefinition.name
+    $scenarioDir = Join-Path $FlagScenarioRootValue $scenarioName
+    New-Item -ItemType Directory -Path $scenarioDir -Force | Out-Null
+    $reportPath = Join-Path $scenarioDir 'compare-report.html'
+    $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
+    $capturePath = Join-Path $scenarioDir 'ni-linux-container-capture.json'
+
+    try {
+      Push-Location $RepoRootValue
+      try {
+        & $CompareScriptPathValue `
+          -BaseVi $BaseViValue `
+          -HeadVi $HeadViValue `
+          -Image $ImageValue `
+          -ReportPath $reportPath `
+          -LabVIEWPath $LabVIEWPathValue `
+          -ContainerNameLabel $scenarioName `
+          -Flags @($ScenarioDefinition.flags) `
+          -TimeoutSeconds $TimeoutSecondsValue `
+          -HeartbeatSeconds $HeartbeatSecondsValue `
+          -AutoRepairRuntime:$true `
+          -RuntimeEngineReadyTimeoutSeconds $RuntimeEngineReadyTimeoutSecondsValue `
+          -RuntimeEngineReadyPollSeconds $RuntimeEngineReadyPollSecondsValue `
+          -RuntimeSnapshotPath $runtimeSnapshotPath `
+          -ReuseContainerName $ReuseContainerNameValue `
+          -ReuseRepoHostPath $ReuseRepoHostPathValue `
+          -ReuseRepoContainerPath $ReuseRepoContainerPathValue `
+          -ReuseResultsHostPath $ReuseResultsHostPathValue `
+          -ReuseResultsContainerPath $ReuseResultsContainerPathValue `
+          -RuntimeInjectionMount $RuntimeInjectionMountValue
+        $compareExit = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+      } finally {
+        Pop-Location | Out-Null
+      }
+
+      if ($compareExit -notin @(0, 1)) {
+        throw ("NI Linux review suite scenario '{0}' compare failed (exit={1})." -f $scenarioName, $compareExit)
+      }
+
+      return [pscustomobject]@{
+        sequence = [int]$Sequence
+        name = $scenarioName
+        requestedFlagsLabel = [string]$ScenarioDefinition.requestedFlagsLabel
+        requestedFlags = @($ScenarioDefinition.flags | ForEach-Object { [string]$_ })
+        scenarioDir = $scenarioDir
+        reportPath = $reportPath
+        runtimeSnapshotPath = $runtimeSnapshotPath
+        capturePath = $capturePath
+        compareExit = [int]$compareExit
+        errorMessage = ''
+      }
+    } catch {
+      return [pscustomobject]@{
+        sequence = [int]$Sequence
+        name = $scenarioName
+        requestedFlagsLabel = [string]$ScenarioDefinition.requestedFlagsLabel
+        requestedFlags = @($ScenarioDefinition.flags | ForEach-Object { [string]$_ })
+        scenarioDir = $scenarioDir
+        reportPath = $reportPath
+        runtimeSnapshotPath = $runtimeSnapshotPath
+        capturePath = $capturePath
+        compareExit = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+        errorMessage = [string]$_.Exception.Message
+      }
+    }
+  }
+
+  $resultBuffer = New-Object System.Collections.Generic.List[object]
+  if ($Parallelism -le 1) {
+    for ($i = 0; $i -lt $ScenarioDefinitions.Count; $i++) {
+      $resultBuffer.Add((& $worker $i $ScenarioDefinitions[$i] $RepoRoot $FlagScenarioRoot $CompareScriptPath $BaseVi $HeadVi $Image $LabVIEWPath $TimeoutSeconds $HeartbeatSeconds $RuntimeEngineReadyTimeoutSeconds $RuntimeEngineReadyPollSeconds $ReuseContainerName $ReuseRepoHostPath $ReuseRepoContainerPath $ReuseResultsHostPath $ReuseResultsContainerPath $RuntimeInjectionMount)) | Out-Null
+    }
+    return @($resultBuffer.ToArray() | Sort-Object sequence)
+  }
+
+  $activeJobs = New-Object System.Collections.Generic.List[object]
+  for ($i = 0; $i -lt $ScenarioDefinitions.Count; $i++) {
+    while ($activeJobs.Count -ge $Parallelism) {
+      $completedJob = Wait-Job -Job $activeJobs.ToArray() -Any
+      if ($null -eq $completedJob) {
+        continue
+      }
+      $jobResult = @(Receive-Job -Job $completedJob -ErrorAction SilentlyContinue) | Select-Object -Last 1
+      if ($jobResult) {
+        $resultBuffer.Add($jobResult) | Out-Null
+      }
+      Remove-Job -Job $completedJob -Force -ErrorAction SilentlyContinue | Out-Null
+      [void]$activeJobs.Remove($completedJob)
+    }
+
+    $job = Start-ThreadJob -ScriptBlock $worker -ArgumentList $i, $ScenarioDefinitions[$i], $RepoRoot, $FlagScenarioRoot, $CompareScriptPath, $BaseVi, $HeadVi, $Image, $LabVIEWPath, $TimeoutSeconds, $HeartbeatSeconds, $RuntimeEngineReadyTimeoutSeconds, $RuntimeEngineReadyPollSeconds, $ReuseContainerName, $ReuseRepoHostPath, $ReuseRepoContainerPath, $ReuseResultsHostPath, $ReuseResultsContainerPath, $RuntimeInjectionMount
+    $activeJobs.Add($job) | Out-Null
+  }
+
+  while ($activeJobs.Count -gt 0) {
+    $completedJob = Wait-Job -Job $activeJobs.ToArray() -Any
+    if ($null -eq $completedJob) {
+      continue
+    }
+    $jobResult = @(Receive-Job -Job $completedJob -ErrorAction SilentlyContinue) | Select-Object -Last 1
+    if ($jobResult) {
+      $resultBuffer.Add($jobResult) | Out-Null
+    }
+    Remove-Job -Job $completedJob -Force -ErrorAction SilentlyContinue | Out-Null
+    [void]$activeJobs.Remove($completedJob)
+  }
+
+  return @($resultBuffer.ToArray() | Sort-Object sequence)
 }
 
 function Assert-CompareScenarioArtifacts {
@@ -482,51 +742,56 @@ $historyScenarioRoot = Join-Path $resultsRootResolved 'vi-history-report'
 $summaryJsonPath = Join-Path $resultsRootResolved 'review-suite-summary.json'
 $summaryMarkdownPath = Join-Path $resultsRootResolved 'review-suite-summary.md'
 $summaryHtmlPath = Join-Path $resultsRootResolved 'review-suite-summary.html'
+$hostRamBudgetPathResolved = if ([string]::IsNullOrWhiteSpace($HostRamBudgetPath)) {
+  Get-DefaultHostRamBudgetPath -ResultsRoot $resultsRootResolved
+} else {
+  Resolve-AbsolutePath -Path $HostRamBudgetPath -BasePath $repoRootResolved
+}
 $scenarioResults = @()
 $knownFlagScenarios = New-FlagScenarioDefinitions
+$flagScenarioParallelBudget = Resolve-FlagScenarioParallelBudget `
+  -RepoRoot $repoRootResolved `
+  -ResultsRoot $resultsRootResolved `
+  -RequestedParallelism $FlagScenarioParallelism `
+  -HostRamBudgetPath $hostRamBudgetPathResolved
 $historyRefSelection = Resolve-HistoryRefSelection -RequestedBranchRef $HistoryBranchRef -RequestedBaselineRef $HistoryBaselineRef
 
 Write-Host ("[ni-linux-review-suite] resultsRoot={0}" -f $resultsRootResolved) -ForegroundColor Cyan
 Write-Host ("[ni-linux-review-suite] historyRefSource={0} requestedBranchRef={1} requestedBaselineRef={2} effectiveBranchRef={3} effectiveBaselineRef={4} maxCommitCount={5}" -f $historyRefSelection.source, ($(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBranchRef)) { '(default)' } else { $historyRefSelection.requestedBranchRef })), ($(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBaselineRef)) { '(default)' } else { $historyRefSelection.requestedBaselineRef })), $historyRefSelection.effectiveBranchRef, ($(if ([string]::IsNullOrWhiteSpace($historyRefSelection.effectiveBaselineRef)) { '(default)' } else { $historyRefSelection.effectiveBaselineRef })), $HistoryMaxCommitCount) -ForegroundColor DarkCyan
+Write-Host ("[ni-linux-review-suite] flag-scenario-parallelism requested={0} actual={1} source={2} reason={3}" -f $flagScenarioParallelBudget.requestedParallelism, $flagScenarioParallelBudget.actualParallelism, $flagScenarioParallelBudget.decisionSource, $flagScenarioParallelBudget.reason) -ForegroundColor DarkCyan
 
-foreach ($scenario in $knownFlagScenarios) {
-  $scenarioName = [string]$scenario.name
-  $scenarioDir = Join-Path $flagScenarioRoot $scenarioName
-  New-Item -ItemType Directory -Path $scenarioDir -Force | Out-Null
-  $reportPath = Join-Path $scenarioDir 'compare-report.html'
-  $runtimeSnapshotPath = Join-Path $scenarioDir 'runtime-determinism.json'
-  $capturePath = Join-Path $scenarioDir 'ni-linux-container-capture.json'
+$flagScenarioOutputs = Invoke-FlagScenarioCompares `
+  -ScenarioDefinitions $knownFlagScenarios `
+  -Parallelism $flagScenarioParallelBudget.actualParallelism `
+  -RepoRoot $repoRootResolved `
+  -FlagScenarioRoot $flagScenarioRoot `
+  -CompareScriptPath $compareScriptPath `
+  -BaseVi $baseViComparePath `
+  -HeadVi $headViComparePath `
+  -Image $Image `
+  -LabVIEWPath $LabVIEWPath `
+  -TimeoutSeconds $TimeoutSeconds `
+  -HeartbeatSeconds $HeartbeatSeconds `
+  -RuntimeEngineReadyTimeoutSeconds $RuntimeEngineReadyTimeoutSeconds `
+  -RuntimeEngineReadyPollSeconds $RuntimeEngineReadyPollSeconds `
+  -ReuseContainerName $ReuseContainerName `
+  -ReuseRepoHostPath $reuseRepoHostPathResolved `
+  -ReuseRepoContainerPath $ReuseRepoContainerPath `
+  -ReuseResultsHostPath $reuseResultsHostPathResolved `
+  -ReuseResultsContainerPath $ReuseResultsContainerPath `
+  -RuntimeInjectionMount $RuntimeInjectionMount
 
-  Write-Host ("[ni-linux-review-suite] scenario={0} requestedFlags={1}" -f $scenarioName, [string]$scenario.requestedFlagsLabel) -ForegroundColor Cyan
-  Push-Location $repoRootResolved
-  try {
-    & $compareScriptPath `
-      -BaseVi $baseViComparePath `
-      -HeadVi $headViComparePath `
-      -Image $Image `
-      -ReportPath $reportPath `
-      -LabVIEWPath $LabVIEWPath `
-      -ContainerNameLabel $scenarioName `
-      -Flags @($scenario.flags) `
-      -TimeoutSeconds $TimeoutSeconds `
-      -HeartbeatSeconds $HeartbeatSeconds `
-      -AutoRepairRuntime:$true `
-      -RuntimeEngineReadyTimeoutSeconds $RuntimeEngineReadyTimeoutSeconds `
-      -RuntimeEngineReadyPollSeconds $RuntimeEngineReadyPollSeconds `
-      -RuntimeSnapshotPath $runtimeSnapshotPath `
-      -ReuseContainerName $ReuseContainerName `
-      -ReuseRepoHostPath $reuseRepoHostPathResolved `
-      -ReuseRepoContainerPath $ReuseRepoContainerPath `
-      -ReuseResultsHostPath $reuseResultsHostPathResolved `
-      -ReuseResultsContainerPath $ReuseResultsContainerPath `
-      -RuntimeInjectionMount $RuntimeInjectionMount
-    $compareExit = $LASTEXITCODE
-    if ($compareExit -notin @(0, 1)) {
-      throw ("NI Linux review suite scenario '{0}' compare failed (exit={1})." -f $scenarioName, $compareExit)
-    }
-  } finally {
-    Pop-Location | Out-Null
+foreach ($scenarioOutput in @($flagScenarioOutputs)) {
+  if (-not [string]::IsNullOrWhiteSpace([string]$scenarioOutput.errorMessage)) {
+    throw ([string]$scenarioOutput.errorMessage)
   }
+
+  $scenarioName = [string]$scenarioOutput.name
+  $scenarioDir = [string]$scenarioOutput.scenarioDir
+  $reportPath = [string]$scenarioOutput.reportPath
+  $runtimeSnapshotPath = [string]$scenarioOutput.runtimeSnapshotPath
+  $capturePath = [string]$scenarioOutput.capturePath
+  $requestedFlags = @($scenarioOutput.requestedFlags | ForEach-Object { [string]$_ })
 
   $scenarioCheck = Assert-CompareScenarioArtifacts `
     -ScenarioName $scenarioName `
@@ -534,7 +799,7 @@ foreach ($scenario in $knownFlagScenarios) {
     -ReportPath $reportPath `
     -RuntimeSnapshotPath $runtimeSnapshotPath `
     -ExpectedImage $Image `
-    -RequestedFlags @($scenario.flags)
+    -RequestedFlags $requestedFlags
 
   if ([string]::Equals($scenarioName, 'baseline', [System.StringComparison]::OrdinalIgnoreCase)) {
     Copy-ArtifactIfPresent -SourcePath $reportPath -DestinationPath (Join-Path $resultsRootResolved 'compare-report.html')
@@ -548,8 +813,8 @@ foreach ($scenario in $knownFlagScenarios) {
   $scenarioResults += [pscustomobject]@{
     kind = 'flag-combination'
     name = $scenarioName
-    requestedFlagsLabel = [string]$scenario.requestedFlagsLabel
-    requestedFlags = @($scenario.flags)
+    requestedFlagsLabel = [string]$scenarioOutput.requestedFlagsLabel
+    requestedFlags = @($requestedFlags)
     flagsUsed = @($scenarioCheck.flagsUsed)
     executionMode = [string]$scenarioCheck.executionMode
     gateOutcome = [string]$scenarioCheck.gateOutcome
@@ -738,7 +1003,8 @@ $scenarioResults += [pscustomobject]@{
 $flagCombinationCertification = Write-FlagCombinationCertificationArtifacts `
   -ResultsRoot $resultsRootResolved `
   -Image $Image `
-  -ScenarioResults @($scenarioResults)
+  -ScenarioResults @($scenarioResults) `
+  -ParallelBudget $flagScenarioParallelBudget
 
 $baselineTopLevelReportPath = Join-Path $resultsRootResolved 'compare-report.html'
 $summaryRows = foreach ($entry in @($scenarioResults)) {
@@ -807,6 +1073,15 @@ $summaryPayload = [ordered]@{
     markdownPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path ([string]$flagCombinationCertification.markdownPath)
     htmlPath = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path ([string]$flagCombinationCertification.htmlPath)
   }
+  flagScenarioBudget = [ordered]@{
+    path = Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $hostRamBudgetPathResolved
+    targetProfile = [string]$flagScenarioParallelBudget.targetProfile
+    requestedParallelism = [int]$flagScenarioParallelBudget.requestedParallelism
+    recommendedParallelism = [int]$flagScenarioParallelBudget.recommendedParallelism
+    actualParallelism = [int]$flagScenarioParallelBudget.actualParallelism
+    decisionSource = [string]$flagScenarioParallelBudget.decisionSource
+    reason = [string]$flagScenarioParallelBudget.reason
+  }
   scenarios = @($summaryRows)
 }
 $summaryPayload | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $summaryJsonPath -Encoding utf8
@@ -823,6 +1098,7 @@ $markdownLines = @(
   ('- History effective branch ref: `{0}`' -f $historyRefSelection.effectiveBranchRef),
   ('- History effective baseline ref: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.effectiveBaselineRef)) { '(default)' } else { $historyRefSelection.effectiveBaselineRef })),
   ('- History max commit count: `{0}`' -f $HistoryMaxCommitCount),
+  ('- Flag scenario budget: `requested={0}; recommended={1}; actual={2}; source={3}` ([json](./{4}))' -f $summaryPayload.flagScenarioBudget.requestedParallelism, $summaryPayload.flagScenarioBudget.recommendedParallelism, $summaryPayload.flagScenarioBudget.actualParallelism, $summaryPayload.flagScenarioBudget.decisionSource, $summaryPayload.flagScenarioBudget.path),
   ('- Flag certification: [flag-combination-certification.html](./{0}) ([json](./{1}), [md](./{2}))' -f $summaryPayload.flagCombinationCertification.htmlPath, $summaryPayload.flagCombinationCertification.jsonPath, $summaryPayload.flagCombinationCertification.markdownPath),
   '',
   '| Scenario | Kind | Requested Flags | Result | Report | Extra |',
@@ -840,7 +1116,7 @@ $markdownLines -join "`n" | Set-Content -LiteralPath $summaryMarkdownPath -Encod
 
 $htmlLines = @(
   '<html><body><h1>NI Linux review suite</h1>',
-  ('<p>Image: <code>{0}</code><br/>LabVIEW path: <code>{1}</code><br/>History ref source: <code>{2}</code><br/>History requested branch ref: <code>{3}</code><br/>History requested baseline ref: <code>{4}</code><br/>History effective branch ref: <code>{5}</code><br/>History effective baseline ref: <code>{6}</code><br/>History max commit count: <code>{7}</code><br/>Flag certification: <a href="./{8}">html</a>, <a href="./{9}">json</a>, <a href="./{10}">md</a></p>' -f $Image, $LabVIEWPath, $historyRefSelection.source, $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBranchRef)) { '(default)' } else { $historyRefSelection.requestedBranchRef }), $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBaselineRef)) { '(default)' } else { $historyRefSelection.requestedBaselineRef }), $historyRefSelection.effectiveBranchRef, $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.effectiveBaselineRef)) { '(default)' } else { $historyRefSelection.effectiveBaselineRef }), $HistoryMaxCommitCount, $summaryPayload.flagCombinationCertification.htmlPath, $summaryPayload.flagCombinationCertification.jsonPath, $summaryPayload.flagCombinationCertification.markdownPath),
+  ('<p>Image: <code>{0}</code><br/>LabVIEW path: <code>{1}</code><br/>History ref source: <code>{2}</code><br/>History requested branch ref: <code>{3}</code><br/>History requested baseline ref: <code>{4}</code><br/>History effective branch ref: <code>{5}</code><br/>History effective baseline ref: <code>{6}</code><br/>History max commit count: <code>{7}</code><br/>Flag scenario budget: <code>requested={8}; recommended={9}; actual={10}; source={11}</code> (<a href=\"./{12}\">json</a>)<br/>Flag certification: <a href=\"./{13}\">html</a>, <a href=\"./{14}\">json</a>, <a href=\"./{15}\">md</a></p>' -f $Image, $LabVIEWPath, $historyRefSelection.source, $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBranchRef)) { '(default)' } else { $historyRefSelection.requestedBranchRef }), $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.requestedBaselineRef)) { '(default)' } else { $historyRefSelection.requestedBaselineRef }), $historyRefSelection.effectiveBranchRef, $(if ([string]::IsNullOrWhiteSpace($historyRefSelection.effectiveBaselineRef)) { '(default)' } else { $historyRefSelection.effectiveBaselineRef }), $HistoryMaxCommitCount, $summaryPayload.flagScenarioBudget.requestedParallelism, $summaryPayload.flagScenarioBudget.recommendedParallelism, $summaryPayload.flagScenarioBudget.actualParallelism, $summaryPayload.flagScenarioBudget.decisionSource, $summaryPayload.flagScenarioBudget.path, $summaryPayload.flagCombinationCertification.htmlPath, $summaryPayload.flagCombinationCertification.jsonPath, $summaryPayload.flagCombinationCertification.markdownPath),
   '<table border="1" cellspacing="0" cellpadding="4">',
   '<thead><tr><th>Scenario</th><th>Kind</th><th>Requested Flags</th><th>Result</th><th>Report</th><th>Extra</th></tr></thead>',
   '<tbody>'
@@ -862,6 +1138,7 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubStepSummaryPath)) {
     '',
     ('- artifact root: `{0}`' -f $resultsRootResolved),
     ('- compare scenarios: `{0}`' -f $knownFlagScenarios.Count),
+    ('- flag scenario budget: `{0}`' -f $summaryPayload.flagScenarioBudget.path),
     ('- vi history report: `enabled`'),
     ('- summary: `{0}`' -f (Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path $summaryMarkdownPath)),
     ('- flag certification: `{0}`' -f (Get-RelativeArtifactPath -RootPath $resultsRootResolved -Path ([string]$flagCombinationCertification.markdownPath)))
@@ -872,6 +1149,7 @@ Write-GitHubOutput -Key 'results_root' -Value $resultsRootResolved -Path $GitHub
 Write-GitHubOutput -Key 'summary_json_path' -Value $summaryJsonPath -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'summary_markdown_path' -Value $summaryMarkdownPath -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'summary_html_path' -Value $summaryHtmlPath -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'host_ram_budget_path' -Value $hostRamBudgetPathResolved -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'baseline_report_path' -Value $baselineTopLevelReportPath -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'flag_combination_certification_json_path' -Value ([string]$flagCombinationCertification.jsonPath) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'flag_combination_certification_markdown_path' -Value ([string]$flagCombinationCertification.markdownPath) -Path $GitHubOutputPath
