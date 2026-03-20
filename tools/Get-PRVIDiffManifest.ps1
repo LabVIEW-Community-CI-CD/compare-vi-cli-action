@@ -5,7 +5,8 @@ Generates a manifest of VI path pairs for pull-request comparisons.
 
 .DESCRIPTION
 This is the initial scaffold for issue #324. The script will eventually detect
-`.vi` changes between two git refs and emit a `vi-diff-manifest@v1` JSON file.
+LabVIEW binary changes between two git refs and emit a `vi-diff-manifest@v1`
+JSON file.
 Implementation is intentionally stubbed out while the spike design is finalized.
 
 .PARAMETER BaseRef
@@ -40,6 +41,12 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$binaryToolsModule = Join-Path (Split-Path -Parent $PSCommandPath) 'LabVIEWBinaryTools.psm1'
+if (-not (Test-Path -LiteralPath $binaryToolsModule -PathType Leaf)) {
+    throw ("LabVIEWBinaryTools.psm1 not found: {0}" -f $binaryToolsModule)
+}
+Import-Module $binaryToolsModule -Force
 
 Write-Verbose "Base ref: $BaseRef"
 Write-Verbose "Head ref: $HeadRef"
@@ -93,20 +100,33 @@ function Should-IgnorePath {
     return $false
 }
 
-function Test-IsViPath {
+function Test-IsLabVIEWChange {
     param(
-        [string]$Path
+        [string]$BasePath,
+        [string]$HeadPath,
+        [string]$ChangeType,
+        [string]$BaseRefValue,
+        [string]$HeadRefValue,
+        [string]$RepoPath
     )
 
-    if ([string]::IsNullOrWhiteSpace($Path)) {
-        return $false
+    switch ($ChangeType) {
+        'added' {
+            return (Test-IsLabVIEWBinaryAtGitPath -RepoPath $RepoPath -Ref $HeadRefValue -Path $HeadPath)
+        }
+        'deleted' {
+            return (Test-IsLabVIEWBinaryAtGitPath -RepoPath $RepoPath -Ref $BaseRefValue -Path $BasePath)
+        }
+        default {
+            if (-not [string]::IsNullOrWhiteSpace($HeadPath) -and (Test-IsLabVIEWBinaryAtGitPath -RepoPath $RepoPath -Ref $HeadRefValue -Path $HeadPath)) {
+                return $true
+            }
+            if (-not [string]::IsNullOrWhiteSpace($BasePath) -and (Test-IsLabVIEWBinaryAtGitPath -RepoPath $RepoPath -Ref $BaseRefValue -Path $BasePath)) {
+                return $true
+            }
+            return $false
+        }
     }
-
-    return [System.String]::Equals(
-        [System.IO.Path]::GetExtension($Path),
-        '.vi',
-        [System.StringComparison]::OrdinalIgnoreCase
-    )
 }
 
 function Get-SortKey {
@@ -235,16 +255,15 @@ try {
             $headPath = $headPath.Replace('\', '/')
         }
 
-        if ($basePath -and -not (Test-IsViPath -Path $basePath)) {
-            if (-not ($headPath -and (Test-IsViPath -Path $headPath))) {
-                Write-Verbose "Skipping non-VI change: $line"
-                continue
-            }
-        } elseif ($headPath -and -not (Test-IsViPath -Path $headPath)) {
-            if (-not ($basePath -and (Test-IsViPath -Path $basePath))) {
-                Write-Verbose "Skipping non-VI change: $line"
-                continue
-            }
+        if (-not (Test-IsLabVIEWChange `
+            -BasePath $basePath `
+            -HeadPath $headPath `
+            -ChangeType $changeType `
+            -BaseRefValue $BaseRef `
+            -HeadRefValue $HeadRef `
+            -RepoPath $repoRoot)) {
+            Write-Verbose "Skipping non-LabVIEW-binary change: $line"
+            continue
         }
 
         if ((Should-IgnorePath -Path $basePath) -or (Should-IgnorePath -Path $headPath)) {

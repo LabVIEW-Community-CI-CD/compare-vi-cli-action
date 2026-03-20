@@ -290,6 +290,65 @@ Describe 'Summarize-VIStaging.ps1' -Tag 'Unit' {
         $result.pairs[0].diffCategoryDetails[0].slug | Should -Be 'block-diagram-functional'
     }
 
+    It 'prefers capture-derived custom report artifacts over fixed compare-report leaf guesses' {
+        $compareRoot = Join-Path $TestDrive 'compare-custom'
+        $pairDir = Join-Path $compareRoot 'pair-01'
+        New-Item -ItemType Directory -Path $pairDir -Force | Out-Null
+
+        $reportPath = Join-Path $pairDir 'diff-report-Initialization_UserEvents.vi.html'
+        @'
+<!DOCTYPE html>
+<html>
+<body>
+<details open>
+  <summary class="difference-heading">1. VI Attribute - Miscellaneous</summary>
+  <ol class="detailed-description-list">
+    <li class="diff-detail">Difference Type: VI icon</li>
+  </ol>
+</details>
+</body>
+</html>
+'@ | Set-Content -LiteralPath $reportPath -Encoding utf8
+
+        $capturePath = Join-Path $pairDir 'lvcompare-capture.json'
+        @'
+{
+  "schema": "lvcompare-capture-v1",
+  "out": {
+    "reportHtml": "./diff-report-Initialization_UserEvents.vi.html"
+  },
+  "cli": {
+    "reportPath": "./diff-report-Initialization_UserEvents.vi.html"
+  }
+}
+'@ | Set-Content -LiteralPath $capturePath -Encoding utf8
+
+        $compareEntry = @(
+            [ordered]@{
+                index      = 1
+                changeType = 'modify'
+                basePath   = 'resource/plugins/NIIconEditor/Miscellaneous/User Events/Initialization_UserEvents.vi'
+                headPath   = 'resource/plugins/NIIconEditor/Miscellaneous/User Events/Initialization_UserEvents.vi'
+                outputDir  = $pairDir
+                status     = 'diff'
+                exitCode   = 1
+                reportPath = $null
+                capturePath= $null
+            }
+        )
+
+        $compareJson = Join-Path $TestDrive 'vi-staging-compare-custom-report.json'
+        $compareEntry | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $compareJson -Encoding utf8
+
+        $result = & $script:scriptPath -CompareJson $compareJson
+
+        $result | Should -Not -BeNullOrEmpty
+        $result.pairs.Count | Should -Be 1
+        $result.pairs[0].reportPath | Should -Be $reportPath
+        ($result.pairs[0].reportRelative.Replace('\','/')) | Should -Be 'pair-01/diff-report-Initialization_UserEvents.vi.html'
+        $result.pairs[0].diffCategories | Should -Contain 'VI Attribute'
+    }
+
     It 'renders consolidated html with valid local artifact links' {
         $compareRoot = Join-Path $TestDrive 'compare-html'
         $pairDir = Join-Path $compareRoot 'pair-01'

@@ -5,6 +5,33 @@ Describe 'Find-VIComparisonCandidates.ps1' -Tag 'Compare','Analysis','Unit' {
         $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
         Set-Variable -Scope Script -Name scriptPath -Value (Join-Path $repoRoot 'tools/compare/Find-VIComparisonCandidates.ps1')
         Test-Path -LiteralPath $script:scriptPath | Should -BeTrue "Candidate discovery script not found."
+
+        function Set-LabVIEWBinaryFixture {
+            param(
+                [Parameter(Mandatory)][string]$Path,
+                [Parameter(Mandatory)][ValidateSet('LVIN', 'LVCC')][string]$Signature,
+                [string]$Payload = ''
+            )
+
+            $directory = Split-Path -Parent $Path
+            if ($directory -and -not (Test-Path -LiteralPath $directory -PathType Container)) {
+                New-Item -ItemType Directory -Path $directory -Force | Out-Null
+            }
+
+            $payloadBytes = if ([string]::IsNullOrWhiteSpace($Payload)) {
+                [byte[]]@()
+            } else {
+                [System.Text.Encoding]::UTF8.GetBytes($Payload)
+            }
+
+            $minimumLength = 12 + $payloadBytes.Length
+            $bytes = New-Object byte[] ([Math]::Max(16, $minimumLength))
+            [System.Text.Encoding]::ASCII.GetBytes($Signature).CopyTo($bytes, 8)
+            if ($payloadBytes.Length -gt 0) {
+                [Array]::Copy($payloadBytes, 0, $bytes, 12, $payloadBytes.Length)
+            }
+            [System.IO.File]::WriteAllBytes($Path, $bytes)
+        }
     }
 
     BeforeEach {
@@ -16,22 +43,27 @@ Describe 'Find-VIComparisonCandidates.ps1' -Tag 'Compare','Analysis','Unit' {
         git config user.email "tester@example.com" | Out-Null
         git config user.name "Tester" | Out-Null
 
-        $script:viPath = 'resource/plugins/NIIconEditor/Miscellaneous/User Events/Initialization_UserEvents.vi'
-        $script:renameSource = 'resource/plugins/NIIconEditor/Support/ApplyLibIconOverlayToVIIcon.vi'
-        $script:renameTarget = 'resource/plugins/NIIconEditor/Support/ApplyLibIconOverlayToVIIcon_Renamed.vi'
+        $script:viPath = 'resource/plugins/NIIconEditor/Miscellaneous/User Events/Initialization_UserEvents.bin'
+        $script:renameSource = 'resource/plugins/NIIconEditor/Support/ApplyLibIconOverlayToVIIcon.source'
+        $script:renameTarget = 'resource/plugins/NIIconEditor/Support/ApplyLibIconOverlayToVIIcon_Renamed.target'
         $script:ignoredPath = 'docs/readme.txt'
+        $script:textViPath = 'resource/plugins/NIIconEditor/Support/TextOnly.vi'
 
-        foreach ($path in @($script:viPath, $script:renameSource, $script:ignoredPath)) {
+        foreach ($path in @($script:ignoredPath)) {
             $dir = Split-Path -Parent (Join-Path $script:testRoot $path)
             New-Item -ItemType Directory -Path $dir -Force | Out-Null
             Set-Content -LiteralPath (Join-Path $script:testRoot $path) -Value "content for $path" -NoNewline
         }
+        Set-LabVIEWBinaryFixture -Path (Join-Path $script:testRoot $script:viPath) -Signature 'LVIN' -Payload 'vi-v1'
+        Set-LabVIEWBinaryFixture -Path (Join-Path $script:testRoot $script:renameSource) -Signature 'LVCC' -Payload 'rename-v1'
+        Set-Content -LiteralPath (Join-Path $script:testRoot $script:textViPath) -Value 'text only' -NoNewline
 
         git add . | Out-Null
         git commit -m 'initial baseline' --quiet | Out-Null
         $script:baseline = (git rev-parse HEAD).Trim()
 
-        Set-Content -LiteralPath (Join-Path $script:testRoot $script:viPath) -Value 'modified vi content' -NoNewline
+        Set-LabVIEWBinaryFixture -Path (Join-Path $script:testRoot $script:viPath) -Signature 'LVIN' -Payload 'vi-v2'
+        Set-Content -LiteralPath (Join-Path $script:testRoot $script:textViPath) -Value 'still text only' -NoNewline
         git commit -am 'modify vi payload' --quiet | Out-Null
         $script:modifyCommit = (git rev-parse HEAD).Trim()
 
@@ -69,6 +101,9 @@ Describe 'Find-VIComparisonCandidates.ps1' -Tag 'Compare','Analysis','Unit' {
         $rename.files[0].status | Should -Match '^R'
         $rename.files[0].path | Should -Be $script:renameTarget
         $rename.files[0].oldPath | Should -Be $script:renameSource
+        @($result.commits | ForEach-Object { @($_.files) } | Where-Object {
+            $_.path -eq $script:textViPath -or $_.oldPath -eq $script:textViPath
+        }).Count | Should -Be 0
     }
 
     It 'honors overrides for max commits and output path' {
