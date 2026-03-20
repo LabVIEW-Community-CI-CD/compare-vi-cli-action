@@ -227,8 +227,8 @@ export function resolveBranchCleanupPlan({
     return {
       requested: true,
       inlineDeleteBranch: false,
-      postMergeDelete: false,
-      reason: 'promotion-pending'
+      postMergeDelete: true,
+      reason: 'post-merge-api-delete'
     };
   }
 
@@ -830,9 +830,12 @@ function promotionSnapshotToState(snapshot = {}) {
 }
 
 export function hasDeferredPostMergeBranchCleanup(summary = {}) {
-  return Boolean(summary?.branchCleanup?.requested) &&
-    normalizeLower(summary?.branchCleanup?.status) === 'deferred' &&
-    Boolean(summary?.branchCleanup?.postMergeDelete);
+  const requested = Boolean(summary?.branchCleanup?.requested);
+  const deferred = normalizeLower(summary?.branchCleanup?.status) === 'deferred';
+  const plannedPostMergeDelete = Boolean(summary?.branchCleanup?.postMergeDelete);
+  const legacyAutoDeferred = normalizeLower(summary?.finalMode) === 'auto' &&
+    !Boolean(summary?.branchCleanup?.inlineDeleteBranch);
+  return requested && deferred && (plannedPostMergeDelete || legacyAutoDeferred);
 }
 
 export async function reconcileDeferredBranchCleanup({
