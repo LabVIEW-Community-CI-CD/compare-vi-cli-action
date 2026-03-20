@@ -40,6 +40,7 @@
     "history:corpus:evaluate": "pwsh -NoLogo -NoProfile -File tools/Invoke-OfflineRealHistoryCorpusEvaluation.ps1",
     "history:corpus:samples:evaluate": "pwsh -NoLogo -NoProfile -File tools/Invoke-HeadlessSampleVICorpusEvaluation.ps1",
     "history:custom-operation:proof": "pwsh -NoLogo -NoProfile -File tools/Test-LabVIEWCLICustomOperationProof.ps1",
+    "history:custom-operation:proof:windows": "pwsh -NoLogo -NoProfile -File tools/Test-LabVIEWCLICustomOperationProof.ps1 -ExecutionPlane windows-container",
     "history:custom-operation:scaffold": "pwsh -NoLogo -NoProfile -File tools/New-LabVIEWCLICustomOperationWorkspace.ps1",
     "history:corpus:normalize": "pwsh -NoLogo -NoProfile -File tools/Normalize-OfflineRealHistoryCorpus.ps1",
     "history:diagnostics:show": "pwsh -NoLogo -NoProfile -File tools/Show-DockerFastLoopDiagnostics.ps1",

@@ -144,6 +144,7 @@ Using LabVIEW: "C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW
     $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 12
     $report.schema | Should -Be 'labview-cli-custom-operation-proof@v1'
     $report.status | Should -Be 'planned'
+    $report.executionPlane | Should -Be 'host'
     $report.operationName | Should -Be 'AddTwoNumbers'
     $report.explicitLabVIEWPath | Should -Be $labviewPath
     @($report.scenarios).Count | Should -Be 3
@@ -154,6 +155,32 @@ Using LabVIEW: "C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW
     $summary | Should -Match '- Final status: `planned`'
     $summary | Should -Match '`default-help`'
     $summary | Should -Match '`explicit-headless-run`'
+  }
+
+  It 'writes a planned windows-container proof that keeps help scenarios headless' {
+    $sourcePath = New-SyntheticCustomOperationExample -RootPath (Join-Path $TestDrive 'source-example-container')
+    $resultsRoot = Join-Path $TestDrive 'results-root-container'
+    $containerLabVIEWPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:ProofScript `
+      -ExecutionPlane windows-container `
+      -SourceExamplePath $sourcePath `
+      -ResultsRoot $resultsRoot `
+      -WindowsContainerLabVIEWPath $containerLabVIEWPath `
+      -DryRun `
+      -SkipSchemaValidation *>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $reportPath = Join-Path $resultsRoot 'labview-cli-custom-operation-proof.json'
+    $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 12
+
+    $report.executionPlane | Should -Be 'windows-container'
+    $report.containerImage | Should -Be 'nationalinstruments/labview:2026q1-windows'
+    $report.explicitLabVIEWPath | Should -Be $containerLabVIEWPath
+    @($report.scenarios).Count | Should -Be 3
+    ($report.scenarios | Where-Object { $_.name -eq 'default-help' } | Select-Object -First 1).preview.args | Should -Contain '-Headless'
+    ($report.scenarios | Where-Object { $_.name -eq 'explicit-help' } | Select-Object -First 1).preview.args | Should -Contain '-Headless'
+    ($report.scenarios | Where-Object { $_.name -eq 'explicit-help' } | Select-Object -First 1).preview.args | Should -Contain $containerLabVIEWPath
   }
 
   It 'fails closed when the installed example source is missing' {
