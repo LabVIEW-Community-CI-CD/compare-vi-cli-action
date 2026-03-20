@@ -176,6 +176,13 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object schema,selectedMode,finalMode,@{Name='baseRefName';Expression={$_.prState.baseRefName}},policyTrace | ConvertTo-Json -Depth 6"
   ```
 
+- Inspect repository-aware merge method selection (`mergeMethod`,
+  `mergeMethodSelection.requestedMethod`, `mergeMethodSelection.effectiveMethod`):
+
+  ```powershell
+  pwsh -NoLogo -NoProfile -Command "Get-Content tests/results/_agent/priority/merge-sync-dry-run.json -Raw | ConvertFrom-Json | Select-Object mergeMethod,@{Name='requestedMethod';Expression={$_.mergeMethodSelection.requestedMethod}},@{Name='requestedSource';Expression={$_.mergeMethodSelection.requestedSource}},@{Name='effectiveMethod';Expression={$_.mergeMethodSelection.effectiveMethod}},@{Name='methodReason';Expression={$_.mergeMethodSelection.reason}} | ConvertTo-Json -Depth 6"
+  ```
+
 - Inspect reason diagnostics (`selectedReason`, `finalReason`) for queue/non-queue
   troubleshooting:
 

@@ -7,7 +7,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { runCopilotReviewGate } from './copilot-review-gate.mjs';
-import { ensureGhCli, resolveUpstream } from './lib/remote-utils.mjs';
+import { ensureGhCli, resolveUpstream, runGhJson } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import {
   DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
@@ -30,7 +30,7 @@ const USAGE_LINES = [
   '  --pr <number>            Pull request number to merge (required)',
   '  --repo <owner/repo>      Target repository (defaults to upstream remote)',
   '  --method <merge|squash|rebase>',
-  '                           Merge method (default: squash)',
+  '                           Merge method override (default: repository-aware selection preferring squash)',
   '  --admin                  Explicitly use admin merge override',
   '  --keep-branch            Keep head branch after merge',
   '  --dry-run                Print selected mode and merge command without executing',
@@ -39,6 +39,7 @@ const USAGE_LINES = [
 ];
 
 const MERGE_METHODS = new Set(['merge', 'squash', 'rebase']);
+const MERGE_METHOD_FALLBACK_ORDER = ['squash', 'rebase', 'merge'];
 const MERGE_ACTIVATION_POLL_ATTEMPTS = 5;
 const MERGE_ACTIVATION_POLL_DELAY_MS = 1500;
 const PROMOTION_REVIEW_GATE_POLL_ATTEMPTS = 1;
@@ -71,6 +72,7 @@ function parseArgs(argv = process.argv) {
     pr: null,
     repo: null,
     method: 'squash',
+    methodExplicit: false,
     admin: false,
     keepBranch: false,
     dryRun: false,
@@ -115,6 +117,7 @@ function parseArgs(argv = process.argv) {
           throw new Error(`Invalid --method '${value}'. Expected one of: ${Array.from(MERGE_METHODS).join(', ')}`);
         }
         options.method = value;
+        options.methodExplicit = true;
       } else if (arg === '--summary-path') {
         options.summaryPath = value;
       }
@@ -366,6 +369,7 @@ export function buildMergeSummaryPayload({
   repo,
   pr,
   mergeMethod,
+  mergeMethodSelection = null,
   selectedMode,
   selectedReason,
   finalMode,
@@ -389,6 +393,7 @@ export function buildMergeSummaryPayload({
     repo,
     pr,
     mergeMethod,
+    mergeMethodSelection,
     selectedMode,
     selectedReason,
     finalMode,
@@ -737,6 +742,97 @@ export function buildMergeArgs({ pr, repo, method, mode, keepBranch, inlineDelet
   return args;
 }
 
+export function normalizeRepositoryMergeCapabilities(payload = {}) {
+  const capabilities = {
+    allowMergeCommit: payload?.allow_merge_commit === true,
+    allowSquashMerge: payload?.allow_squash_merge === true,
+    allowRebaseMerge: payload?.allow_rebase_merge === true
+  };
+  const supportedMethods = MERGE_METHOD_FALLBACK_ORDER.filter((method) => {
+    if (method === 'merge') {
+      return capabilities.allowMergeCommit;
+    }
+    if (method === 'squash') {
+      return capabilities.allowSquashMerge;
+    }
+    if (method === 'rebase') {
+      return capabilities.allowRebaseMerge;
+    }
+    return false;
+  });
+
+  return {
+    ...capabilities,
+    supportedMethods
+  };
+}
+
+export function readRepositoryMergeCapabilities({
+  repoRoot,
+  repo,
+  runGhJsonFn = runGhJson,
+  spawnSyncFn = spawnSync
+} = {}) {
+  const payload = runGhJsonFn(repoRoot, ['api', `repos/${repo}`], { spawnSyncFn }) ?? {};
+  return normalizeRepositoryMergeCapabilities(payload);
+}
+
+export function selectMergeMethod({
+  repo,
+  requestedMethod = 'squash',
+  requestedSource = 'default',
+  capabilities = null
+} = {}) {
+  const normalizedRequested = MERGE_METHODS.has(requestedMethod) ? requestedMethod : 'squash';
+  const supportedMethods = Array.isArray(capabilities?.supportedMethods)
+    ? [...capabilities.supportedMethods]
+    : [];
+
+  if (supportedMethods.length === 0) {
+    throw new Error(`Repository '${repo}' does not allow merge, squash, or rebase merges.`);
+  }
+
+  if (requestedSource === 'cli') {
+    if (!supportedMethods.includes(normalizedRequested)) {
+      throw new Error(
+        `Repository '${repo}' does not allow requested merge method '${normalizedRequested}'. ` +
+          `Supported methods: ${supportedMethods.join(', ')}.`
+      );
+    }
+
+    return {
+      requestedMethod: normalizedRequested,
+      requestedSource,
+      effectiveMethod: normalizedRequested,
+      reason: 'requested-supported',
+      capabilities
+    };
+  }
+
+  if (supportedMethods.includes(normalizedRequested)) {
+    return {
+      requestedMethod: normalizedRequested,
+      requestedSource,
+      effectiveMethod: normalizedRequested,
+      reason: 'default-preferred-supported',
+      capabilities
+    };
+  }
+
+  const fallbackMethod = MERGE_METHOD_FALLBACK_ORDER.find((method) => supportedMethods.includes(method));
+  if (!fallbackMethod) {
+    throw new Error(`Repository '${repo}' does not allow a fallback merge method for '${normalizedRequested}'.`);
+  }
+
+  return {
+    requestedMethod: normalizedRequested,
+    requestedSource,
+    effectiveMethod: fallbackMethod,
+    reason: `default-fallback-${fallbackMethod}`,
+    capabilities
+  };
+}
+
 export function deleteHeadBranchRef({
   repoRoot,
   headRepositorySlug = '',
@@ -992,7 +1088,8 @@ export async function runMergeSync({
   runMergeAttemptFn = runMergeAttempt,
   evaluatePromotionReviewClearanceFn = evaluatePromotionReviewClearance,
   deleteMergedHeadBranchFn = deleteMergedHeadBranch,
-  loadMergeSyncCopilotReviewStrategyFn = loadMergeSyncCopilotReviewStrategy
+  loadMergeSyncCopilotReviewStrategyFn = loadMergeSyncCopilotReviewStrategy,
+  readRepositoryMergeCapabilitiesFn = readRepositoryMergeCapabilities
 } = {}) {
   const options = parseArgs(argv);
 
@@ -1001,6 +1098,16 @@ export async function runMergeSync({
     const upstream = resolveUpstreamFn(repoRoot);
     return `${upstream.owner}/${upstream.repo}`;
   })();
+  const repositoryMergeCapabilities = readRepositoryMergeCapabilitiesFn({
+    repoRoot,
+    repo: resolvedRepo
+  });
+  const mergeMethodSelection = selectMergeMethod({
+    repo: resolvedRepo,
+    requestedMethod: options.method,
+    requestedSource: options.methodExplicit ? 'cli' : 'default',
+    capabilities: repositoryMergeCapabilities
+  });
 
   const policyRaw = await readFile(manifestPath, 'utf8');
   const policy = JSON.parse(policyRaw);
@@ -1075,7 +1182,7 @@ export async function runMergeSync({
           pr: options.pr
         });
   console.log(
-    `[priority:merge-sync] selected mode=${selection.mode} reason=${selection.reason} mergeState=${prInfo.mergeStateStatus ?? 'n/a'}`
+    `[priority:merge-sync] selected mode=${selection.mode} reason=${selection.reason} mergeState=${prInfo.mergeStateStatus ?? 'n/a'} mergeMethod=${mergeMethodSelection.effectiveMethod} methodReason=${mergeMethodSelection.reason}`
   );
   let branchCleanupPlan = resolveBranchCleanupPlan({
     keepBranch: options.keepBranch,
@@ -1101,7 +1208,7 @@ export async function runMergeSync({
     const initialArgs = buildMergeArgs({
       pr: options.pr,
       repo: resolvedRepo,
-      method: options.method,
+      method: mergeMethodSelection.effectiveMethod,
       mode: selection.mode,
       keepBranch: options.keepBranch,
       inlineDeleteBranch: branchCleanupPlan.inlineDeleteBranch
@@ -1126,7 +1233,7 @@ export async function runMergeSync({
         const retryArgs = buildMergeArgs({
           pr: options.pr,
           repo: resolvedRepo,
-          method: options.method,
+          method: mergeMethodSelection.effectiveMethod,
           mode: 'auto',
           keepBranch: options.keepBranch,
           inlineDeleteBranch: false
@@ -1226,7 +1333,8 @@ export async function runMergeSync({
   const payload = buildMergeSummaryPayload({
     repo: resolvedRepo,
     pr: options.pr,
-    mergeMethod: options.method,
+    mergeMethod: mergeMethodSelection.effectiveMethod,
+    mergeMethodSelection,
     selectedMode: selection.mode,
     selectedReason: selection.reason,
     finalMode,

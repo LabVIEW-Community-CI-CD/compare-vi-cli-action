@@ -17,13 +17,16 @@ import {
   hasDeferredPostMergeBranchCleanup,
   isQueueManagedBaseBranch,
   loadMergeSyncCopilotReviewStrategy,
+  normalizeRepositoryMergeCapabilities,
   normalizeCopilotReviewStrategy,
   reconcileDeferredBranchCleanup,
+  readRepositoryMergeCapabilities,
   resolveBranchCleanupPlan,
   resolveReadyValidationClearancePath,
   isUpstreamOwnedHead,
   normalizeBaseRefName,
   runMergeSync,
+  selectMergeMethod,
   selectMergeMode,
   shouldRetryWithAuto,
   getMergeQueueBranches
@@ -32,6 +35,23 @@ import { classifyBranch, loadBranchClassContract } from '../lib/branch-classific
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const branchClassContract = loadBranchClassContract(repoRoot);
+const DEFAULT_REPOSITORY_MERGE_CAPABILITIES = normalizeRepositoryMergeCapabilities({
+  allow_merge_commit: false,
+  allow_squash_merge: true,
+  allow_rebase_merge: true
+});
+
+function buildRepositoryMergeCapabilities(overrides = {}) {
+  return {
+    ...DEFAULT_REPOSITORY_MERGE_CAPABILITIES,
+    ...overrides,
+    supportedMethods: Array.isArray(overrides.supportedMethods)
+      ? [...overrides.supportedMethods]
+      : Array.isArray(DEFAULT_REPOSITORY_MERGE_CAPABILITIES.supportedMethods)
+        ? [...DEFAULT_REPOSITORY_MERGE_CAPABILITIES.supportedMethods]
+        : []
+  };
+}
 
 test('selectMergeMode chooses auto for policy-blocked merge states', () => {
   const selection = selectMergeMode({
@@ -831,6 +851,97 @@ test('normalizeBaseRefName handles refs prefix and casing', () => {
   assert.equal(normalizeBaseRefName(undefined), '');
 });
 
+test('normalizeRepositoryMergeCapabilities maps GitHub repo fields into supported merge methods', () => {
+  const capabilities = normalizeRepositoryMergeCapabilities({
+    allow_merge_commit: false,
+    allow_squash_merge: true,
+    allow_rebase_merge: true
+  });
+
+  assert.deepEqual(capabilities, {
+    allowMergeCommit: false,
+    allowSquashMerge: true,
+    allowRebaseMerge: true,
+    supportedMethods: ['squash', 'rebase']
+  });
+});
+
+test('selectMergeMethod keeps the preferred default when the repository supports squash', () => {
+  const selection = selectMergeMethod({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    requestedMethod: 'squash',
+    requestedSource: 'default',
+    capabilities: buildRepositoryMergeCapabilities({
+      supportedMethods: ['squash', 'rebase']
+    })
+  });
+
+  assert.deepEqual(selection, {
+    requestedMethod: 'squash',
+    requestedSource: 'default',
+    effectiveMethod: 'squash',
+    reason: 'default-preferred-supported',
+    capabilities: buildRepositoryMergeCapabilities({
+      supportedMethods: ['squash', 'rebase']
+    })
+  });
+});
+
+test('selectMergeMethod falls back to a supported method when the default is disabled by repo policy', () => {
+  const selection = selectMergeMethod({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    requestedMethod: 'squash',
+    requestedSource: 'default',
+    capabilities: buildRepositoryMergeCapabilities({
+      allowSquashMerge: false,
+      supportedMethods: ['rebase']
+    })
+  });
+
+  assert.equal(selection.effectiveMethod, 'rebase');
+  assert.equal(selection.reason, 'default-fallback-rebase');
+});
+
+test('selectMergeMethod fails closed when an explicit unsupported method is requested', () => {
+  assert.throws(
+    () =>
+      selectMergeMethod({
+        repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        requestedMethod: 'merge',
+        requestedSource: 'cli',
+        capabilities: buildRepositoryMergeCapabilities({
+          allowMergeCommit: false,
+          supportedMethods: ['squash', 'rebase']
+        })
+      }),
+    /does not allow requested merge method 'merge'/i
+  );
+});
+
+test('readRepositoryMergeCapabilities uses the repo REST endpoint and normalizes support flags', () => {
+  let observedArgs = null;
+  const capabilities = readRepositoryMergeCapabilities({
+    repoRoot: '/tmp/repo',
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runGhJsonFn: (_repoRoot, args) => {
+      observedArgs = args;
+      return {
+        allow_merge_commit: false,
+        allow_squash_merge: true,
+        allow_rebase_merge: false
+      };
+    }
+  });
+
+  assert.deepEqual(observedArgs, ['api', 'repos/LabVIEW-Community-CI-CD/compare-vi-cli-action']);
+  assert.deepEqual(capabilities, {
+    allowMergeCommit: false,
+    allowSquashMerge: true,
+    allowRebaseMerge: false,
+    supportedMethods: ['squash']
+  });
+});
+
 test('buildMergeSummaryPayload captures admin override selection details', () => {
   const payload = buildMergeSummaryPayload({
     repo: 'owner/repo',
@@ -1037,6 +1148,7 @@ test('runMergeSync records queued promotion state after auto merge activation ma
     ],
     repoRoot,
     ensureGhCliFn: () => {},
+    readRepositoryMergeCapabilitiesFn: () => buildRepositoryMergeCapabilities(),
     readPrInfoFn: () => ({
       number: 123,
       state: 'OPEN',
@@ -1072,6 +1184,105 @@ test('runMergeSync records queued promotion state after auto merge activation ma
   assert.equal(written.promotion.status, 'queued');
 });
 
+test('runMergeSync falls back to a supported repository merge method before invoking gh pr merge', async () => {
+  const mergeArgs = [];
+  let promotionReads = 0;
+
+  const payload = await runMergeSync({
+    argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '555', '--repo', 'owner/repo'],
+    repoRoot,
+    ensureGhCliFn: () => {},
+    readRepositoryMergeCapabilitiesFn: () =>
+      buildRepositoryMergeCapabilities({
+        allowSquashMerge: false,
+        allowRebaseMerge: true,
+        supportedMethods: ['rebase']
+      }),
+    readPrInfoFn: () => ({
+      number: 555,
+      state: 'OPEN',
+      isDraft: false,
+      mergeStateStatus: 'CLEAN',
+      mergeable: 'MERGEABLE',
+      baseRefName: 'sync-test',
+      headRefOid: '1234567890123456789012345678901234567890',
+      url: 'https://example.test/pr/555'
+    }),
+    evaluatePromotionReviewClearanceFn: async () => ({
+      ok: true,
+      report: {
+        status: 'pass',
+        gateState: 'ready',
+        reasons: ['current-head-review-run-completed-clean']
+      }
+    }),
+    readPromotionStateFn: () => {
+      promotionReads += 1;
+      return promotionReads === 1
+        ? {
+            state: 'OPEN',
+            mergeStateStatus: 'CLEAN',
+            isInMergeQueue: false,
+            autoMergeRequest: null,
+            mergedAt: null
+          }
+        : {
+            state: 'MERGED',
+            mergeStateStatus: 'CLEAN',
+            isInMergeQueue: false,
+            autoMergeRequest: null,
+            mergedAt: '2026-03-20T03:14:00Z'
+          };
+    },
+    runMergeAttemptFn: ({ args }) => {
+      mergeArgs.push(args);
+      return { status: 0, stdout: 'merged', stderr: '' };
+    },
+    sleepFn: async () => {}
+  });
+
+  assert.deepEqual(mergeArgs, [[
+    'pr',
+    'merge',
+    '555',
+    '--repo',
+    'owner/repo',
+    '--rebase',
+    '--delete-branch'
+  ]]);
+  assert.equal(payload.mergeMethod, 'rebase');
+  assert.equal(payload.mergeMethodSelection.requestedMethod, 'squash');
+  assert.equal(payload.mergeMethodSelection.effectiveMethod, 'rebase');
+  assert.equal(payload.mergeMethodSelection.reason, 'default-fallback-rebase');
+});
+
+test('runMergeSync fails before merge when an explicit unsupported method is requested', async () => {
+  let mergeAttempted = false;
+
+  await assert.rejects(
+    () =>
+      runMergeSync({
+        argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '556', '--repo', 'owner/repo', '--method', 'merge'],
+        repoRoot,
+        ensureGhCliFn: () => {},
+        readRepositoryMergeCapabilitiesFn: () =>
+          buildRepositoryMergeCapabilities({
+            allowMergeCommit: false,
+            allowSquashMerge: true,
+            allowRebaseMerge: false,
+            supportedMethods: ['squash']
+          }),
+        runMergeAttemptFn: () => {
+          mergeAttempted = true;
+          return { status: 0, stdout: '', stderr: '' };
+        }
+      }),
+    /does not allow requested merge method 'merge'/i
+  );
+
+  assert.equal(mergeAttempted, false);
+});
+
 test('runMergeSync creates the parent directory for explicit summary paths', async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'merge-sync-pr-summary-dir-'));
   const nestedSummaryPath = path.join(tempDir, 'tests', 'results', '_agent', 'queue', 'merge-sync-1433.json');
@@ -1089,6 +1300,7 @@ test('runMergeSync creates the parent directory for explicit summary paths', asy
     ],
     repoRoot,
     ensureGhCliFn: () => {},
+    readRepositoryMergeCapabilitiesFn: () => buildRepositoryMergeCapabilities(),
     readPrInfoFn: () => ({
       number: 1433,
       state: 'OPEN',
@@ -1157,6 +1369,7 @@ test('runMergeSync omits inline delete and performs post-merge cleanup for admin
     ],
     repoRoot,
     ensureGhCliFn: () => {},
+    readRepositoryMergeCapabilitiesFn: () => buildRepositoryMergeCapabilities(),
     readPrInfoFn: () => ({
       number: 128,
       state: 'OPEN',
@@ -1245,6 +1458,7 @@ test('runMergeSync fails when auto merge command succeeds but no durable promoti
         argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '124', '--repo', 'owner/repo'],
         repoRoot,
         ensureGhCliFn: () => {},
+        readRepositoryMergeCapabilitiesFn: () => buildRepositoryMergeCapabilities(),
         readPrInfoFn: () => ({
           number: 124,
           state: 'OPEN',
@@ -1286,6 +1500,7 @@ test('runMergeSync forwards the effective copilot review strategy into merge adm
         argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '124', '--repo', 'owner/repo'],
         repoRoot,
         ensureGhCliFn: () => {},
+        readRepositoryMergeCapabilitiesFn: () => buildRepositoryMergeCapabilities(),
         loadMergeSyncCopilotReviewStrategyFn: async () => 'draft-only-explicit',
         readPromotionStateFn: () => ({
           state: 'OPEN',
@@ -1499,6 +1714,7 @@ test('runMergeSync fails closed when current-head Copilot comments remain unreso
         argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '124', '--repo', 'owner/repo'],
         repoRoot,
         ensureGhCliFn: () => {},
+        readRepositoryMergeCapabilitiesFn: () => buildRepositoryMergeCapabilities(),
         readPrInfoFn: () => ({
           number: 124,
           state: 'OPEN',
@@ -1551,6 +1767,7 @@ test('runMergeSync includes review clearance evidence when clean current-head ad
     ],
     repoRoot,
     ensureGhCliFn: () => {},
+    readRepositoryMergeCapabilitiesFn: () => buildRepositoryMergeCapabilities(),
     readPrInfoFn: () => ({
       number: 127,
         state: 'OPEN',
@@ -1624,6 +1841,7 @@ test('runMergeSync fails closed when the head repository plane is outside the tr
         argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '130', '--repo', 'LabVIEW-Community-CI-CD/compare-vi-cli-action'],
         repoRoot,
         ensureGhCliFn: () => {},
+        readRepositoryMergeCapabilitiesFn: () => buildRepositoryMergeCapabilities(),
         readPrInfoFn: () => ({
           number: 130,
           state: 'OPEN',
@@ -1668,6 +1886,7 @@ test('runMergeSync does not query promotion state when the PR is already merged'
     argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '125', '--repo', 'owner/repo'],
     repoRoot,
     ensureGhCliFn: () => {},
+    readRepositoryMergeCapabilitiesFn: () => buildRepositoryMergeCapabilities(),
     readPrInfoFn: () => ({
       number: 125,
       state: 'MERGED',
@@ -1695,6 +1914,7 @@ test('runMergeSync rejects repo slugs with extra path segments', async () => {
         argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '126', '--repo', 'owner/repo/extra'],
         repoRoot,
         ensureGhCliFn: () => {},
+        readRepositoryMergeCapabilitiesFn: () => buildRepositoryMergeCapabilities(),
         readPrInfoFn: () => ({
           number: 126,
           state: 'OPEN',
