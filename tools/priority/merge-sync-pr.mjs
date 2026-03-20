@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
@@ -973,6 +973,7 @@ async function maybeWriteSummary(summaryPath, payload) {
     return;
   }
   const resolved = path.resolve(summaryPath);
+  await mkdir(path.dirname(resolved), { recursive: true });
   await writeFile(resolved, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   console.log(`[priority:merge-sync] wrote summary: ${resolved}`);
 }

@@ -1045,6 +1045,71 @@ test('runMergeSync records queued promotion state after auto merge activation ma
   assert.equal(written.promotion.status, 'queued');
 });
 
+test('runMergeSync creates the parent directory for explicit summary paths', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'merge-sync-pr-summary-dir-'));
+  const nestedSummaryPath = path.join(tempDir, 'tests', 'results', '_agent', 'queue', 'merge-sync-1433.json');
+
+  await runMergeSync({
+    argv: [
+      'node',
+      'tools/priority/merge-sync-pr.mjs',
+      '--pr',
+      '1433',
+      '--repo',
+      'owner/repo',
+      '--summary-path',
+      nestedSummaryPath
+    ],
+    repoRoot,
+    ensureGhCliFn: () => {},
+    readPrInfoFn: () => ({
+      number: 1433,
+      state: 'OPEN',
+      isDraft: false,
+      mergeStateStatus: 'BLOCKED',
+      mergeable: 'MERGEABLE',
+      baseRefName: 'develop',
+      headRefOid: '1234567890123456789012345678901234567890',
+      url: 'https://example.test/pr/1433'
+    }),
+    evaluatePromotionReviewClearanceFn: async () => ({
+      ok: true,
+      report: {
+        status: 'pass',
+        gateState: 'ready',
+        reasons: ['current-head-review-run-completed-clean']
+      }
+    }),
+    readPromotionStateFn: (() => {
+      let reads = 0;
+      return () => {
+        reads += 1;
+        return reads === 1
+          ? {
+              state: 'OPEN',
+              mergeStateStatus: 'BLOCKED',
+              isInMergeQueue: false,
+              autoMergeRequest: null,
+              mergedAt: null
+            }
+          : {
+              state: 'OPEN',
+              mergeStateStatus: 'BLOCKED',
+              isInMergeQueue: true,
+              autoMergeRequest: null,
+              mergedAt: null
+            };
+      };
+    })(),
+    runMergeAttemptFn: () => ({ status: 0, stdout: 'queued', stderr: '' }),
+    sleepFn: async () => {}
+  });
+
+  const written = JSON.parse(await readFile(nestedSummaryPath, 'utf8'));
+  assert.equal(written.pr, 1433);
+  assert.equal(written.promotion.status, 'queued');
+});
+
 test('runMergeSync omits inline delete and performs post-merge cleanup for admin merges on queue-managed bases', async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'merge-sync-pr-admin-cleanup-'));
   const mergeArgs = [];
