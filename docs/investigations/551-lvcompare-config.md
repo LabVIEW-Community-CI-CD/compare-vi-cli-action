@@ -8,7 +8,8 @@ Objective
 Planned work
 
 - `tools/New-LVCompareConfig.ps1` (name TBD) to:
-  - Detect LabVIEW/LVCompare/LabVIEWCLI paths via VendorTools heuristics (Program Files scan, env vars, existing config entries).
+  - Detect LabVIEW/LVCompare/LabVIEWCLI paths via VendorTools heuristics
+    (Program Files scan, env vars, existing config entries).
   - Prompt for confirmation/override and write `configs/labview-paths.local.json` (git-ignored).
   - Optionally run `Verify-LVCompareSetup.ps1 -ProbeCli` after writing the config.
 - `tools/Verify-LocalDiffSession.ps1` enhancements:
