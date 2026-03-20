@@ -447,14 +447,14 @@ export function buildGhPrEditArgs({ upstream, pullRequest, title, body }) {
   ];
 }
 
-export function buildGhPrListArgs({ upstream, branch, base, head }) {
+export function buildGhPrListArgs({ upstream, branch, base, head, state = 'open' }) {
   return [
     'pr',
     'list',
     '--repo',
     buildRepositorySlug(upstream),
     '--state',
-    'open',
+    state,
     '--base',
     base,
     '--head',
@@ -578,6 +578,62 @@ export function findExistingPullRequest(
         .toLowerCase();
 
       if (headRefName !== branch || baseRefName !== base) {
+        return false;
+      }
+      if (!expectedOwner) {
+        return true;
+      }
+      return headOwner === expectedOwner;
+    }) ?? null
+  );
+}
+
+export function findMergedPullRequest(
+  repoRoot,
+  { upstream, origin, headRepository, branch, base },
+  {
+    runGhJsonFn = runGhJson,
+    spawnSyncFn = spawnSync
+  } = {}
+) {
+  const resolvedHeadRepository = headRepository ?? origin;
+  const expectedOwner = String(resolvedHeadRepository?.owner ?? '')
+    .trim()
+    .toLowerCase();
+  const headSelectors = Array.from(
+    new Set([
+      expectedOwner ? `${resolvedHeadRepository.owner}:${branch}` : null,
+      branch
+    ].filter(Boolean))
+  );
+  const pulls = [];
+  for (const headSelector of headSelectors) {
+    const response =
+      runGhJsonFn(repoRoot, buildGhPrListArgs({ upstream, branch, base, head: headSelector, state: 'merged' }), {
+        spawnSyncFn
+      }) ?? [];
+    if (Array.isArray(response) && response.length > 0) {
+      pulls.push(...response);
+      break;
+    }
+  }
+  if (pulls.length === 0) {
+    return null;
+  }
+
+  return (
+    pulls.find((pull) => {
+      const headRefName = String(pull?.headRefName ?? '').trim();
+      const baseRefName = String(pull?.baseRefName ?? '').trim();
+      const headOwner = String(pull?.headRepositoryOwner?.login ?? '')
+        .trim()
+        .toLowerCase();
+      const state = String(pull?.state ?? '').trim().toUpperCase();
+
+      if (headRefName !== branch || baseRefName !== base) {
+        return false;
+      }
+      if (state && state !== 'MERGED') {
         return false;
       }
       if (!expectedOwner) {
