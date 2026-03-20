@@ -105,6 +105,7 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $metadata.consumerContract.localRuntimeProfiles.defaultProfile | Should -Be 'dev-fast'
     @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'benchmarkSampleKind'
     @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'runtimePlane'
+    @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'hostRamBudget'
     @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'windowsMirror'
     @($metadata.consumerContract.localRuntimeProfiles.stableFields) | Should -Contain 'warmRuntime'
     ((@($metadata.consumerContract.localRuntimeProfiles.notes) -join [Environment]::NewLine)) | Should -Match 'labview-icon-editor-demo'
@@ -121,6 +122,7 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     )
     $metadata.consumerContract.localOperatorSession.defaultProfile | Should -Be 'dev-fast'
     @($metadata.consumerContract.localOperatorSession.stableFields) | Should -Contain 'runtimePlane'
+    @($metadata.consumerContract.localOperatorSession.stableFields) | Should -Contain 'hostRamBudget'
     @($metadata.consumerContract.localOperatorSession.stableFields) | Should -Contain 'review.outputs'
     ((@($metadata.consumerContract.localOperatorSession.notes) -join [Environment]::NewLine)) | Should -Match 'comparevi-history'
     $metadata.consumerContract.diagnosticsCommentRenderer.entryScriptPath | Should -Be 'tools/New-CompareVIHistoryDiagnosticsBody.ps1'
@@ -158,6 +160,7 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
       'tools/Assert-DockerRuntimeDeterminism.ps1',
       'tools/Build-VIHistoryDevImage.ps1',
       'tools/Compare-ExitCodeClassifier.ps1',
+      'tools/HostRamBudget.psm1',
       'tools/Compare-VIHistory.ps1',
       'tools/Compare-RefsToTemp.ps1',
       'tools/Invoke-LVCompare.ps1',
@@ -173,6 +176,7 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
       'tools/Test-WindowsNI2026q1HostPreflight.ps1',
       'tools/VendorTools.psm1',
       'tools/VICategoryBuckets.psm1',
+      'tools/priority/host-ram-budget.mjs',
       'tools/docker/Dockerfile.vi-history-dev',
       'scripts/CompareVI.psm1',
       'scripts/ArgTokenization.psm1'
@@ -190,6 +194,8 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Invoke-VIHistoryLocalOperatorSession.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Invoke-VIHistoryLocalRefinement.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Manage-VIHistoryRuntimeInDocker.ps1'
+    @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/HostRamBudget.psm1'
+    @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/priority/host-ram-budget.mjs'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Run-NILinuxContainerCompare.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Run-NIWindowsContainerCompare.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Test-WindowsNI2026q1HostPreflight.ps1'
@@ -461,6 +467,15 @@ $receipt = [ordered]@{
       heartbeatPath = (Join-Path $resolvedResultsRoot 'runtime/local-runtime-heartbeat.json')
     }
   }
+  hostRamBudget = [ordered]@{
+    path = (Join-Path $resolvedResultsRoot 'runtime/host-ram-budget.json')
+    targetProfile = 'heavy'
+    requestedParallelism = 0
+    recommendedParallelism = 2
+    actualParallelism = 1
+    decisionSource = 'host-ram-budget'
+    reason = 'warm-runtime-single-container'
+  }
   finalStatus = 'succeeded'
 }
 $receipt | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $receiptPath -Encoding utf8
@@ -498,10 +513,12 @@ if ($PassThru) {
     $result.backendReceiptSchema | Should -Be 'comparevi/local-refinement@v1'
     $result.runtimeProfile | Should -Be 'warm-dev'
     $result.benchmarkSampleKind | Should -Be 'warm-dev-repeat'
+    $result.hostRamBudget.reason | Should -Be 'warm-runtime-single-container'
     $result.repoRoot | Should -Be $downstreamRepoRoot
     $result.warmRuntime.container.name | Should -Be 'warm-stub'
     $result.artifacts.localRefinementPath | Should -Be (Join-Path $downstreamRepoRoot 'tests/results/local-vi-history/warm-dev/local-refinement.json')
     $result.artifacts.benchmarkPath | Should -Be (Join-Path $downstreamRepoRoot 'tests/results/local-vi-history/warm-dev/local-refinement-benchmark.json')
+    $result.artifacts.hostRamBudgetPath | Should -Be (Join-Path $downstreamRepoRoot 'tests/results/local-vi-history/warm-dev/runtime/host-ram-budget.json')
 
     $result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $schemaReportPath -Encoding utf8
     & $schemaScript -JsonPath $schemaReportPath -SchemaPath $schemaPath
@@ -565,11 +582,29 @@ $receipt = [ordered]@{
     cacheReuseState = 'existing-local-image'
     coldWarmClass = 'warm'
     benchmarkSampleKind = 'dev-fast-repeat'
+    hostRamBudget = [ordered]@{
+      path = (Join-Path $resolvedResultsRoot 'host-ram-budget.json')
+      targetProfile = 'heavy'
+      requestedParallelism = 0
+      recommendedParallelism = 3
+      actualParallelism = 1
+      decisionSource = 'host-ram-budget'
+      reason = 'single-review-execution'
+    }
     timings = [ordered]@{
       elapsedMilliseconds = 1000
       elapsedSeconds = 1.0
     }
     finalStatus = 'succeeded'
+  }
+  hostRamBudget = [ordered]@{
+    path = (Join-Path $resolvedResultsRoot 'host-ram-budget.json')
+    targetProfile = 'heavy'
+    requestedParallelism = 0
+    recommendedParallelism = 3
+    actualParallelism = 1
+    decisionSource = 'host-ram-budget'
+    reason = 'single-review-execution'
   }
   review = [ordered]@{
     status = 'succeeded'
@@ -593,6 +628,7 @@ $receipt = [ordered]@{
     sessionPath = $sessionPath
     localRefinementPath = (Join-Path $resolvedResultsRoot 'local-refinement.json')
     benchmarkPath = (Join-Path $resolvedResultsRoot 'local-refinement-benchmark.json')
+    hostRamBudgetPath = (Join-Path $resolvedResultsRoot 'host-ram-budget.json')
     warmRuntimeStatePath = $null
     warmRuntimeHealthPath = $null
     warmRuntimeLeasePath = $null
@@ -633,6 +669,7 @@ if ($PassThru) {
     $result.schema | Should -Be 'comparevi-tools/local-operator-session-facade@v1'
     $result.backendReceiptSchema | Should -Be 'comparevi/local-operator-session@v1'
     $result.runtimeProfile | Should -Be 'dev-fast'
+    $result.hostRamBudget.reason | Should -Be 'single-review-execution'
     $result.review.status | Should -Be 'succeeded'
     $result.review.outputs.reviewBundlePath | Should -Be (Join-Path $downstreamRepoRoot 'tests/results/local-vi-history/dev-fast/review-bundle.json')
     $result.artifacts.sessionPath | Should -Be (Join-Path $downstreamRepoRoot 'tests/results/local-vi-history/dev-fast/local-operator-session.json')

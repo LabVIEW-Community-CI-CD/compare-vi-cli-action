@@ -16,6 +16,12 @@ param(
   [int]$HistoryMaxCommitCount = 64,
   [string]$ResultsRoot = '',
   [string]$WarmRuntimeDir = '',
+  [ValidateRange(0, 8)]
+  [int]$HeavyExecutionParallelism = 0,
+  [string]$HostRamBudgetPath = '',
+  [Nullable[long]]$HostRamBudgetTotalBytes = $null,
+  [Nullable[long]]$HostRamBudgetFreeBytes = $null,
+  [Nullable[int]]$HostRamBudgetCpuParallelism = $null,
   [string]$ProofImage = 'nationalinstruments/labview:2026q1-linux',
   [string]$DevImage = 'comparevi-vi-history-dev:local',
   [string]$WindowsMirrorImage = 'nationalinstruments/labview:2026q1-windows',
@@ -113,6 +119,24 @@ function Resolve-ToolingRoot {
   }
 
   return Resolve-AbsolutePath -Path $candidate -BasePath (Get-Location).Path
+}
+
+function Get-OptionalObjectValue {
+  param(
+    [AllowNull()]$InputObject,
+    [Parameter(Mandatory)][string]$Name
+  )
+
+  if ($null -eq $InputObject) {
+    return $null
+  }
+  if ($InputObject -is [System.Collections.IDictionary]) {
+    return $InputObject[$Name]
+  }
+  if ($InputObject.PSObject.Properties[$Name]) {
+    return $InputObject.$Name
+  }
+  return $null
 }
 
 function New-TimingPayload {
@@ -234,6 +258,11 @@ $refinementParameters = [ordered]@{
   HistoryMaxCommitCount = $HistoryMaxCommitCount
   ResultsRoot = $ResultsRoot
   WarmRuntimeDir = $WarmRuntimeDir
+  HeavyExecutionParallelism = $HeavyExecutionParallelism
+  HostRamBudgetPath = $HostRamBudgetPath
+  HostRamBudgetTotalBytes = $HostRamBudgetTotalBytes
+  HostRamBudgetFreeBytes = $HostRamBudgetFreeBytes
+  HostRamBudgetCpuParallelism = $HostRamBudgetCpuParallelism
   ProofImage = $ProofImage
   DevImage = $DevImage
   WindowsMirrorImage = $WindowsMirrorImage
@@ -366,6 +395,11 @@ $warmRuntimeArtifacts = $null
 if ($localRefinementReceipt -and $localRefinementReceipt.PSObject.Properties['warmRuntime'] -and $localRefinementReceipt.warmRuntime) {
   $warmRuntimeArtifacts = $localRefinementReceipt.warmRuntime.artifacts
 }
+$hostRamBudget = if ($localRefinementReceipt -and $localRefinementReceipt.PSObject.Properties['hostRamBudget']) {
+  $localRefinementReceipt.hostRamBudget
+} else {
+  $null
+}
 
 $sessionReceipt = [ordered]@{
   schema = 'comparevi/local-operator-session@v1'
@@ -385,6 +419,7 @@ $sessionReceipt = [ordered]@{
       cacheReuseState = [string]$localRefinementReceipt.cacheReuseState
       coldWarmClass = [string]$localRefinementReceipt.coldWarmClass
       benchmarkSampleKind = [string]$localRefinementReceipt.benchmarkSampleKind
+      hostRamBudget = if ($localRefinementReceipt.PSObject.Properties['hostRamBudget']) { $localRefinementReceipt.hostRamBudget } else { $null }
       timings = $localRefinementReceipt.timings
       windowsMirror = if ($localRefinementReceipt.PSObject.Properties['windowsMirror']) { $localRefinementReceipt.windowsMirror } else { $null }
       finalStatus = [string]$localRefinementReceipt.finalStatus
@@ -400,10 +435,12 @@ $sessionReceipt = [ordered]@{
     timings = $reviewTimingPayload
     outputs = $reviewOutputsPayload
   }
+  hostRamBudget = $hostRamBudget
   artifacts = [ordered]@{
     sessionPath = $sessionManifestResolved
     localRefinementPath = if (Test-Path -LiteralPath $localRefinementReceiptPath -PathType Leaf) { $localRefinementReceiptPath } else { $null }
     benchmarkPath = if (Test-Path -LiteralPath $benchmarkPath -PathType Leaf) { $benchmarkPath } else { $null }
+    hostRamBudgetPath = [string](Get-OptionalObjectValue -InputObject $hostRamBudget -Name 'path')
     warmRuntimeStatePath = if ($warmRuntimeArtifacts) { [string]$warmRuntimeArtifacts.statePath } else { $null }
     warmRuntimeHealthPath = if ($warmRuntimeArtifacts) { [string]$warmRuntimeArtifacts.healthPath } else { $null }
     warmRuntimeLeasePath = if ($warmRuntimeArtifacts) { [string]$warmRuntimeArtifacts.leasePath } else { $null }

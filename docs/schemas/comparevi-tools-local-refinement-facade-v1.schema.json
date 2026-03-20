@@ -17,6 +17,7 @@
     "resultsRoot",
     "timings",
     "history",
+    "hostRamBudget",
     "artifacts",
     "finalStatus"
   ],
@@ -64,6 +65,9 @@
     "history": {
       "type": "object"
     },
+    "hostRamBudget": {
+      "type": ["object", "null"]
+    },
     "reviewSuite": {
       "type": ["object", "null"]
     },
@@ -80,13 +84,17 @@
       "type": "object",
       "required": [
         "localRefinementPath",
-        "benchmarkPath"
+        "benchmarkPath",
+        "hostRamBudgetPath"
       ],
       "properties": {
         "localRefinementPath": {
           "type": ["string", "null"]
         },
         "benchmarkPath": {
+          "type": ["string", "null"]
+        },
+        "hostRamBudgetPath": {
           "type": ["string", "null"]
         }
       },

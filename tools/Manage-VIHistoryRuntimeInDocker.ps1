@@ -8,6 +8,14 @@ param(
   [string]$RuntimeDir = 'tests/results/local-vi-history/runtime',
   [string]$Image = 'comparevi-vi-history-dev:local',
   [string]$ContainerName = '',
+  [ValidateRange(0, 8)]
+  [int]$HeavyExecutionParallelism = 0,
+  [string]$HostRamBudgetPath = '',
+  [ValidateSet('heavy', 'windows-mirror-heavy')]
+  [string]$HostRamBudgetTargetProfile = 'heavy',
+  [Nullable[long]]$HostRamBudgetTotalBytes = $null,
+  [Nullable[long]]$HostRamBudgetFreeBytes = $null,
+  [Nullable[int]]$HostRamBudgetCpuParallelism = $null,
   [ValidateRange(5, 900)]
   [int]$HeartbeatFreshSeconds = 180,
   [ValidateRange(1, 600)]
@@ -20,6 +28,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'HostRamBudget.psm1') -Force
 
 $stateSchema = 'comparevi/local-runtime-state@v1'
 $leaseSchema = 'comparevi/local-runtime-lease@v1'
@@ -284,6 +293,7 @@ function Get-Paths {
     logsPath = Join-Path $RuntimeDirResolved 'local-runtime-logs.json'
     logsTextPath = Join-Path $RuntimeDirResolved 'local-runtime-logs.txt'
     heartbeatPath = Join-Path $RuntimeDirResolved 'local-runtime-heartbeat.json'
+    hostRamBudgetPath = Join-Path $RuntimeDirResolved 'host-ram-budget.json'
     lockPath = Join-Path $RuntimeDirResolved 'local-runtime.lock'
     containerName = $ContainerNameResolved
     image = $ImageResolved
@@ -333,6 +343,7 @@ function Write-LeaseReceipt {
       healthPath = $Paths.healthPath
       leasePath = $Paths.leasePath
       heartbeatPath = $Paths.heartbeatPath
+      hostRamBudgetPath = $Paths.hostRamBudgetPath
     }
   }
 
@@ -343,7 +354,8 @@ function Write-LeaseReceipt {
 function Get-HealthAssessment {
   param(
     [Parameter(Mandatory)]$Paths,
-    [AllowNull()]$Record
+    [AllowNull()]$Record,
+    [AllowNull()]$HostRamBudget
   )
 
   $heartbeat = Read-JsonFile -Path $Paths.heartbeatPath
@@ -427,6 +439,7 @@ function Get-HealthAssessment {
     }
     recoveryRequired = $recoveryRequired
     reuseAllowed = $reuseAllowed
+    hostRamBudget = $HostRamBudget
   }
 }
 
@@ -476,7 +489,8 @@ function New-State {
   param(
     [Parameter(Mandatory)][string]$Outcome,
     [Parameter(Mandatory)]$Paths,
-    [AllowNull()]$Record
+    [AllowNull()]$Record,
+    [AllowNull()]$HostRamBudget
   )
 
   return [ordered]@{
@@ -517,17 +531,20 @@ function New-State {
       logsPath = $Paths.logsPath
       logsTextPath = $Paths.logsTextPath
       heartbeatPath = $Paths.heartbeatPath
+      hostRamBudgetPath = $Paths.hostRamBudgetPath
     }
+    hostRamBudget = $HostRamBudget
   }
 }
 
 function Write-Health {
   param(
     [Parameter(Mandatory)]$Paths,
-    [AllowNull()]$Record
+    [AllowNull()]$Record,
+    [AllowNull()]$HostRamBudget
   )
 
-  $health = Get-HealthAssessment -Paths $Paths -Record $Record
+  $health = Get-HealthAssessment -Paths $Paths -Record $Record -HostRamBudget $HostRamBudget
   Write-JsonFile -Path $Paths.healthPath -Payload $health
   return $health
 }
@@ -547,6 +564,21 @@ $paths = Get-Paths `
   -ContainerNameResolved $resolvedContainerName `
   -ImageResolved $Image `
   -GitCommonMount $gitCommonMount
+if (-not [string]::IsNullOrWhiteSpace($HostRamBudgetPath)) {
+  $paths.hostRamBudgetPath = Resolve-AbsolutePath -Path $HostRamBudgetPath -BasePath $repoRootResolved
+}
+$hostRamBudgetReport = Resolve-CompareVIHostRamBudgetReport `
+  -RepoRoot $repoRootResolved `
+  -OutputPath $paths.hostRamBudgetPath `
+  -TargetProfile $HostRamBudgetTargetProfile `
+  -TotalBytes $HostRamBudgetTotalBytes `
+  -FreeBytes $HostRamBudgetFreeBytes `
+  -CpuParallelism $HostRamBudgetCpuParallelism
+$hostRamBudget = New-CompareVISerialHostRamBudgetDecision `
+  -BudgetReport $hostRamBudgetReport.report `
+  -BudgetPath $hostRamBudgetReport.path `
+  -RequestedParallelism $HeavyExecutionParallelism `
+  -ReasonWhenParallelEligible 'warm-runtime-single-container'
 
 $lockStream = Acquire-LockStream -LockPath $paths.lockPath -WaitSeconds $LockWaitSeconds
 try {
@@ -554,14 +586,14 @@ try {
   $leaseAcquiredAt = (Get-Date).ToUniversalTime()
   $leaseReceipt = Write-LeaseReceipt -Paths $paths -Owner $leaseOwner -AcquiredAtUtc $leaseAcquiredAt
   $existing = Get-ContainerRecord -Name $paths.containerName
-  $existingHealth = Get-HealthAssessment -Paths $paths -Record $existing
+  $existingHealth = Get-HealthAssessment -Paths $paths -Record $existing -HostRamBudget $hostRamBudget
 
   switch ($Action) {
     'start' {
       if ($existingHealth.reuseAllowed) {
-        $state = New-State -Outcome 'reused' -Paths $paths -Record $existing
+        $state = New-State -Outcome 'reused' -Paths $paths -Record $existing -HostRamBudget $hostRamBudget
         $state.lease = $leaseReceipt
-        $state.health = Write-Health -Paths $paths -Record $existing
+        $state.health = Write-Health -Paths $paths -Record $existing -HostRamBudget $hostRamBudget
         $state.recovery = [ordered]@{
           attempted = $false
           reason = ''
@@ -573,9 +605,9 @@ try {
 
       $record = Start-LocalRuntimeContainer -Paths $paths
       $outcome = if ($existing) { 'recovered-stale-runtime' } else { 'started' }
-      $state = New-State -Outcome $outcome -Paths $paths -Record $record
+      $state = New-State -Outcome $outcome -Paths $paths -Record $record -HostRamBudget $hostRamBudget
       $state.lease = $leaseReceipt
-      $state.health = Write-Health -Paths $paths -Record $record
+      $state.health = Write-Health -Paths $paths -Record $record -HostRamBudget $hostRamBudget
       $state.recovery = [ordered]@{
         attempted = [bool]$existing
         previousHealth = if ($existing) { $existingHealth } else { $null }
@@ -586,9 +618,9 @@ try {
       break
     }
     'status' {
-      $state = New-State -Outcome 'status' -Paths $paths -Record $existing
+      $state = New-State -Outcome 'status' -Paths $paths -Record $existing -HostRamBudget $hostRamBudget
       $state.lease = $leaseReceipt
-      $state.health = Write-Health -Paths $paths -Record $existing
+      $state.health = Write-Health -Paths $paths -Record $existing -HostRamBudget $hostRamBudget
       Write-JsonFile -Path $paths.statePath -Payload $state
       $state.health | ConvertTo-Json -Depth 20
       break
@@ -622,18 +654,18 @@ try {
       }
       Clear-HeartbeatArtifact -Paths $paths
       $record = Get-ContainerRecord -Name $paths.containerName
-      $state = New-State -Outcome 'stopped' -Paths $paths -Record $record
+      $state = New-State -Outcome 'stopped' -Paths $paths -Record $record -HostRamBudget $hostRamBudget
       $state.lease = $leaseReceipt
-      $state.health = Write-Health -Paths $paths -Record $record
+      $state.health = Write-Health -Paths $paths -Record $record -HostRamBudget $hostRamBudget
       Write-JsonFile -Path $paths.statePath -Payload $state
       $state | ConvertTo-Json -Depth 20
       break
     }
     'reconcile' {
       if ($existingHealth.reuseAllowed) {
-        $state = New-State -Outcome 'healthy' -Paths $paths -Record $existing
+        $state = New-State -Outcome 'healthy' -Paths $paths -Record $existing -HostRamBudget $hostRamBudget
         $state.lease = $leaseReceipt
-        $state.health = Write-Health -Paths $paths -Record $existing
+        $state.health = Write-Health -Paths $paths -Record $existing -HostRamBudget $hostRamBudget
         $state.recovery = [ordered]@{
           attempted = $false
           reason = ''
@@ -644,9 +676,9 @@ try {
       }
 
       $record = Start-LocalRuntimeContainer -Paths $paths
-      $state = New-State -Outcome $(if ($existing) { 'recovered-stale-runtime' } else { 'started' }) -Paths $paths -Record $record
+      $state = New-State -Outcome $(if ($existing) { 'recovered-stale-runtime' } else { 'started' }) -Paths $paths -Record $record -HostRamBudget $hostRamBudget
       $state.lease = $leaseReceipt
-      $state.health = Write-Health -Paths $paths -Record $record
+      $state.health = Write-Health -Paths $paths -Record $record -HostRamBudget $hostRamBudget
       $state.recovery = [ordered]@{
         attempted = [bool]$existing
         previousHealth = $existingHealth

@@ -16,6 +16,12 @@ param(
   [int]$HistoryMaxCommitCount = 64,
   [string]$ResultsRoot = '',
   [string]$WarmRuntimeDir = '',
+  [ValidateRange(0, 8)]
+  [int]$HeavyExecutionParallelism = 0,
+  [string]$HostRamBudgetPath = '',
+  [Nullable[long]]$HostRamBudgetTotalBytes = $null,
+  [Nullable[long]]$HostRamBudgetFreeBytes = $null,
+  [Nullable[int]]$HostRamBudgetCpuParallelism = $null,
   [string]$ProofImage = 'nationalinstruments/labview:2026q1-linux',
   [string]$DevImage = 'comparevi-vi-history-dev:local',
   [string]$WindowsMirrorImage = 'nationalinstruments/labview:2026q1-windows',
@@ -32,6 +38,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'HostRamBudget.psm1') -Force
 
 function Resolve-AbsolutePath {
   param(
@@ -124,6 +131,23 @@ function Resolve-ToolingRoot {
   }
 
   return Resolve-AbsolutePath -Path $candidate -BasePath (Get-Location).Path
+}
+
+function Get-DefaultLocalRefinementHostRamBudgetPath {
+  param(
+    [Parameter(Mandatory)][string]$ProfileName,
+    [Parameter(Mandatory)][string]$ResultsRootResolved,
+    [AllowNull()][string]$WarmRuntimeDirResolved
+  )
+
+  if (
+    [string]::Equals($ProfileName, 'warm-dev', [System.StringComparison]::OrdinalIgnoreCase) -and
+    -not [string]::IsNullOrWhiteSpace($WarmRuntimeDirResolved)
+  ) {
+    return Join-Path $WarmRuntimeDirResolved 'host-ram-budget.json'
+  }
+
+  return Join-Path $ResultsRootResolved 'host-ram-budget.json'
 }
 
 function Resolve-DefaultAwarePath {
@@ -320,6 +344,9 @@ $toolSource = switch ($Profile) {
 }
 $warmRuntimeState = $null
 $windowsMirrorReceipt = $null
+$hostRamBudget = $null
+$warmRuntimeDir = $null
+$hostRamBudgetTargetProfile = if ($Profile -eq 'windows-mirror-proof') { 'windows-mirror-heavy' } else { 'heavy' }
 
 if ($Profile -in @('dev-fast', 'warm-dev')) {
   if (-not (Test-DockerImageExists -ImageName $imageUsed)) {
@@ -362,12 +389,23 @@ if ($Profile -eq 'warm-dev') {
     -RepoRootResolved $repoRootResolved `
     -ResultsRootResolved $resultsRootResolved
   New-Item -ItemType Directory -Path $warmRuntimeDir -Force | Out-Null
+  $hostRamBudgetPathResolved = if ([string]::IsNullOrWhiteSpace($HostRamBudgetPath)) {
+    Get-DefaultLocalRefinementHostRamBudgetPath -ProfileName $Profile -ResultsRootResolved $resultsRootResolved -WarmRuntimeDirResolved $warmRuntimeDir
+  } else {
+    Resolve-AbsolutePath -Path $HostRamBudgetPath -BasePath $repoRootResolved
+  }
   $warmRuntimeJson = & $warmRuntimeManagerScriptResolved `
     -Action reconcile `
     -RepoRoot $repoRootResolved `
     -ResultsRoot $resultsRootResolved `
     -RuntimeDir $warmRuntimeDir `
-    -Image $imageUsed
+    -Image $imageUsed `
+    -HeavyExecutionParallelism $HeavyExecutionParallelism `
+    -HostRamBudgetPath $hostRamBudgetPathResolved `
+    -HostRamBudgetTargetProfile $hostRamBudgetTargetProfile `
+    -HostRamBudgetTotalBytes $HostRamBudgetTotalBytes `
+    -HostRamBudgetFreeBytes $HostRamBudgetFreeBytes `
+    -HostRamBudgetCpuParallelism $HostRamBudgetCpuParallelism
   if ($LASTEXITCODE -ne 0) {
     throw ("Manage-VIHistoryRuntimeInDocker.ps1 failed with exit code {0}." -f $LASTEXITCODE)
   }
@@ -392,12 +430,33 @@ if ($Profile -eq 'warm-dev') {
       break
     }
   }
+  if ($warmRuntimeState.PSObject.Properties['hostRamBudget']) {
+    $hostRamBudget = $warmRuntimeState.hostRamBudget
+  }
 
   $reviewParams.ReuseContainerName = [string]$warmRuntimeState.container.name
   $reviewParams.ReuseRepoHostPath = [string]$warmRuntimeState.mounts.repoHostPath
   $reviewParams.ReuseRepoContainerPath = [string]$warmRuntimeState.mounts.repoContainerPath
   $reviewParams.ReuseResultsHostPath = [string]$warmRuntimeState.mounts.resultsHostPath
   $reviewParams.ReuseResultsContainerPath = [string]$warmRuntimeState.mounts.resultsContainerPath
+} else {
+  $hostRamBudgetPathResolved = if ([string]::IsNullOrWhiteSpace($HostRamBudgetPath)) {
+    Get-DefaultLocalRefinementHostRamBudgetPath -ProfileName $Profile -ResultsRootResolved $resultsRootResolved -WarmRuntimeDirResolved $null
+  } else {
+    Resolve-AbsolutePath -Path $HostRamBudgetPath -BasePath $repoRootResolved
+  }
+  $hostRamBudgetReport = Resolve-CompareVIHostRamBudgetReport `
+    -RepoRoot $toolingRootResolved `
+    -OutputPath $hostRamBudgetPathResolved `
+    -TargetProfile $hostRamBudgetTargetProfile `
+    -TotalBytes $HostRamBudgetTotalBytes `
+    -FreeBytes $HostRamBudgetFreeBytes `
+    -CpuParallelism $HostRamBudgetCpuParallelism
+  $hostRamBudget = New-CompareVISerialHostRamBudgetDecision `
+    -BudgetReport $hostRamBudgetReport.report `
+    -BudgetPath $hostRamBudgetReport.path `
+    -RequestedParallelism $HeavyExecutionParallelism `
+    -ReasonWhenParallelEligible 'single-review-execution'
 }
 
 $timer = [System.Diagnostics.Stopwatch]::StartNew()
@@ -523,6 +582,7 @@ $receipt = [ordered]@{
   }
   windowsMirror = if ($windowsMirrorReceipt) { $windowsMirrorReceipt } else { $null }
   warmRuntime = if ($warmRuntimeState) { $warmRuntimeState } else { $null }
+  hostRamBudget = $hostRamBudget
   reviewLoop = if ($reviewLoopReceipt) {
     [ordered]@{
       schema = [string]$reviewLoopReceipt.schema
