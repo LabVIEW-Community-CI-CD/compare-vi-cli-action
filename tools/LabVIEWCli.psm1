@@ -946,6 +946,54 @@ function Invoke-LVRunVI {
   Invoke-LVOperation -Operation 'RunVI' -Params $params -Provider $Provider -Preview:$Preview
 }
 
+function Invoke-LVCustomOperation {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)][string]$CustomOperationName,
+    [Parameter(Mandatory)][string]$AdditionalOperationDirectory,
+    [object[]]$Arguments,
+    [switch]$Help,
+    [switch]$Headless,
+    [switch]$LogToConsole,
+    [string]$LabVIEWPath,
+    [string]$Provider = 'auto',
+    [switch]$Preview,
+    [Nullable[int]]$TimeoutSeconds
+  )
+
+  $params = @{
+    customOperationName = $CustomOperationName
+    additionalOperationDirectory = $AdditionalOperationDirectory
+  }
+  if ($PSBoundParameters.ContainsKey('Arguments') -and $Arguments) {
+    $params.arguments = @($Arguments | ForEach-Object { [string]$_ })
+  }
+  if ($PSBoundParameters.ContainsKey('Help')) {
+    $params.help = $Help.IsPresent
+  }
+  if ($PSBoundParameters.ContainsKey('Headless')) {
+    $params.headless = $Headless.IsPresent
+  }
+  if ($PSBoundParameters.ContainsKey('LogToConsole')) {
+    $params.logToConsole = $LogToConsole.IsPresent
+  }
+  if ($PSBoundParameters.ContainsKey('LabVIEWPath') -and $LabVIEWPath) {
+    $params.labviewPath = $LabVIEWPath
+  }
+
+  $invokeArgs = @{
+    Operation = 'RunCustomOperation'
+    Params = $params
+    Provider = $Provider
+    Preview = $Preview.IsPresent
+  }
+  if ($PSBoundParameters.ContainsKey('TimeoutSeconds') -and $TimeoutSeconds -gt 0) {
+    $invokeArgs.TimeoutSeconds = [int]$TimeoutSeconds
+  }
+
+  Invoke-LVOperation @invokeArgs
+}
+
 function Invoke-LVRunVIAnalyzer {
   [CmdletBinding()]
   param(
@@ -1026,6 +1074,7 @@ function Invoke-LVExecuteBuildSpec {
 
 Export-ModuleMember -Function `
   Invoke-LVCreateComparisonReport, `
+  Invoke-LVCustomOperation, `
   Invoke-LVRunVI, `
   Invoke-LVRunVIAnalyzer, `
   Invoke-LVRunUnitTests, `

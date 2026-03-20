@@ -169,6 +169,32 @@ function Get-LabVIEWCliArgs {
       }
       return $args
     }
+    'RunCustomOperation' {
+      $args = @(
+        '-OperationName', $Params.customOperationName,
+        '-AdditionalOperationDirectory', $Params.additionalOperationDirectory
+      )
+      if ($Params.ContainsKey('help') -and $Params.help) {
+        $args += '-Help'
+      }
+      if ($Params.ContainsKey('arguments') -and $Params.arguments) {
+        foreach ($arg in $Params.arguments) {
+          if (-not [string]::IsNullOrWhiteSpace([string]$arg)) {
+            $args += [string]$arg
+          }
+        }
+      }
+      if ($Params.ContainsKey('labviewPath') -and $Params.labviewPath) {
+        $args += @('-LabVIEWPath', $Params.labviewPath)
+      }
+      if ($Params.ContainsKey('logToConsole')) {
+        $args += @('-LogToConsole', (Convert-ToCliBoolString -Value $Params.logToConsole -ParameterName 'logToConsole'))
+      }
+      if ($Params.ContainsKey('headless')) {
+        $args += @('-Headless', (Convert-ToCliBoolString -Value $Params.headless -ParameterName 'headless'))
+      }
+      return $args
+    }
     'RunVI' {
       $args = @(
         '-OperationName','RunVI',
@@ -255,7 +281,7 @@ function New-LVProvider {
   $provider | Add-Member ScriptMethod ResolveBinaryPath { Resolve-LabVIEWCliBinaryPath }
   $provider | Add-Member ScriptMethod Supports {
     param($Operation)
-    return @('CloseLabVIEW','CreateComparisonReport','RunVI','RunVIAnalyzer','RunUnitTests','MassCompile','ExecuteBuildSpec') -contains $Operation
+    return @('CloseLabVIEW','CreateComparisonReport','RunCustomOperation','RunVI','RunVIAnalyzer','RunUnitTests','MassCompile','ExecuteBuildSpec') -contains $Operation
   }
   $provider | Add-Member ScriptMethod BuildArgs {
     param($Operation,$Params)
@@ -279,4 +305,3 @@ function Get-ProviderRepoRoot {
   $script:ProviderRepoRoot = (Resolve-Path -LiteralPath $start).Path
   return $script:ProviderRepoRoot
 }
-
