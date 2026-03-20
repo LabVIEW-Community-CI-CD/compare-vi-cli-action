@@ -90,6 +90,8 @@ Keep it short, stable, and helper-oriented. Deep runbooks belong in checked-in d
 - Keep bulky diagnostics out of source; prefer issue attachments or generated artifact folders.
 - Use vendor resolvers from `tools/VendorTools.psm1` rather than ad-hoc PATH lookups.
 - For multiline GitHub bodies in mixed Windows/WSL shells, use `--body-file`.
+  For issue comments, prefer `pwsh -File tools/Post-IssueComment.ps1 -Issue <number> -BodyFile <path>`
+  over inline `gh issue comment --body "..."`.
 
 ## Handoff And Live State
 

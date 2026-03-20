@@ -25,6 +25,22 @@ function Ensure-Gh {
 
 Ensure-Gh
 
+function Invoke-GhIssueComment {
+  param(
+    [Parameter(Mandatory=$true)]
+    [string[]]$Arguments
+  )
+
+  & gh @Arguments
+  if (-not $?) {
+    $exitCode = if (Test-Path variable:LASTEXITCODE) { $LASTEXITCODE } else { $null }
+    if ($null -ne $exitCode) {
+      throw "gh issue comment exited with code $exitCode."
+    }
+    throw 'gh issue comment failed.'
+  }
+}
+
 $issueArg = @('issue','comment',$Issue.ToString())
 if ($EditLast) {
   $issueArg = @('issue','comment',$Issue.ToString(),'--edit-last')
@@ -37,10 +53,7 @@ switch ($PSCmdlet.ParameterSetName) {
     if (-not $Quiet) {
       Write-Host ("Posting comment from file '{0}' to issue #{1}..." -f $resolved.Path, $Issue)
     }
-    & gh @args
-    if ($LASTEXITCODE -ne 0) {
-      throw "gh issue comment exited with code $LASTEXITCODE."
-    }
+    Invoke-GhIssueComment -Arguments $args
   }
   'Body' {
     $temp = [System.IO.Path]::GetTempFileName()
@@ -50,10 +63,7 @@ switch ($PSCmdlet.ParameterSetName) {
       if (-not $Quiet) {
         Write-Host ("Posting comment to issue #{0} using temporary body file..." -f $Issue)
       }
-      & gh @args
-      if ($LASTEXITCODE -ne 0) {
-        throw "gh issue comment exited with code $LASTEXITCODE."
-      }
+      Invoke-GhIssueComment -Arguments $args
     } finally {
       Remove-Item -LiteralPath $temp -ErrorAction SilentlyContinue
     }

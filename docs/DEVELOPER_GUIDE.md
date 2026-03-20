@@ -168,6 +168,9 @@ Quick reference for building, testing, and releasing the LVCompare composite act
 - `node tools/priority/github-helper.mjs sanitize --input issue-body.md --output issue-body.gh.txt`  
   Doubles backslashes and normalises line endings so literal sequences (for example `\t`, `\tools`) survive
   `gh issue create/edit`. Omit `--output` to print to STDOUT.
+- `pwsh -NoLogo -NoProfile -File tools/Post-IssueComment.ps1 -Issue <number> -BodyFile issue-comment.md`
+  Posts GitHub issue comments through `--body-file` by default so multiline Markdown survives PowerShell and mixed
+  Windows/WSL shells without backtick-escape drift.
 - `node tools/priority/github-helper.mjs snippet --issue 531 --prefix Fixes`  
   Emits an auto-link snippet (defaults to `Fixes #531`) you can drop into PR descriptions so GitHub auto-closes the issue.
 - `node tools/npm/run-script.mjs priority:project:portfolio:apply -- --url <issue-or-pr-url> --use-config`  
@@ -506,6 +509,10 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `gh issue create` / `node tools/npm/run-script.mjs priority:pr`. For PR scenarios, the helper can hydrate
   issue title/URL and standing-priority state from the existing issue snapshot
   under `tests/results/_agent/issue/`.
+- For issue comments with multiline Markdown, use
+  `pwsh -File tools/Post-IssueComment.ps1 -Issue <number> -BodyFile issue-comment.md`
+  (or `-Body <text>` when the caller already has the rendered markdown in memory) instead of inline
+  `gh issue comment --body "..."`.
 - For a machine-readable execution planner and explicit apply helper, use
   `pwsh -File tools/Invoke-GitHubIntakeScenario.ps1 -Scenario <name> -AsJson`.
   This stays in dry-run mode by default, emits the structured execution plan,
