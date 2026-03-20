@@ -1,0 +1,62 @@
+{
+  "$schema": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/prepush-known-flag-scenario-packs-v1.schema.json",
+  "schema": "prepush-known-flag-scenario-packs/v1",
+  "schemaVersion": "1.0.0",
+  "activeScenarioPackId": "{{ cookiecutter.pack_id }}",
+  "scenarioPacks": [
+    {
+      "id": "{{ cookiecutter.pack_id }}",
+      "isActive": true,
+      "description": "{{ cookiecutter.pack_description }}",
+      "image": "{{ cookiecutter.image }}",
+      "labviewPathEnv": "NI_LINUX_LABVIEW_PATH",
+      "defaultLabviewPath": "/usr/local/natinst/LabVIEW-2026-64/labview",
+      "planeApplicability": [{% for plane in cookiecutter.plane_applicability_csv.split(',') %}"{{ plane.strip() }}"{% if not loop.last %}, {% endif %}{% endfor %}],
+      "priorityClass": "certification",
+      "expectedGateOutcome": "pass",
+      "target": {
+        "kind": "fixture-diff",
+        "baseVi": "{{ cookiecutter.base_vi }}",
+        "headVi": "{{ cookiecutter.head_vi }}"
+      },
+      "evidence": {
+        "resultsRoot": "{{ cookiecutter.results_root }}",
+        "reportPath": "{{ cookiecutter.report_path }}",
+        "incidentInputPath": "{{ cookiecutter.incident_input_path }}",
+        "incidentEventPath": "{{ cookiecutter.incident_event_path }}"
+      },
+      "scenarios": [
+        {
+          "id": "baseline-review-surface",
+          "description": "Starter baseline scenario generated from the cookiecutter scaffold.",
+          "requestedFlags": [],
+          "intendedSuppressionSemantics": {
+            "suppressedCategories": [],
+            "reviewerSurfaceIntent": "full-review-surface",
+            "rawModeBoundaryIntent": "primary-review-surface"
+          },
+          "expectedReviewerAssertions": [
+            {
+              "id": "compare-report-rendered",
+              "surface": "compare-report.html",
+              "requirement": "rendered"
+            },
+            {
+              "id": "capture-flags-match-request",
+              "surface": "ni-linux-container-capture.json",
+              "requirement": "requested-flags-observed"
+            }
+          ],
+          "expectedRawModeEvidenceBoundaries": [
+            {
+              "id": "baseline-raw-mode-boundary",
+              "mode": "compare-report",
+              "surfaceRole": "reviewer-primary",
+              "expectation": "full-surface"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

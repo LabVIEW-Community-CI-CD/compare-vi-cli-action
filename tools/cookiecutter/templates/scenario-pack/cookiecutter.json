@@ -1,0 +1,21 @@
+{
+  "__prompts__": {
+    "pack_slug": "Repo-safe slug for the scaffold folder and pack identity.",
+    "pack_description": "Short description of the scenario-pack intent.",
+    "image": "Pinned image for the scenario-pack.",
+    "plane_applicability_csv": "Comma-separated runtime planes that can execute this pack.",
+    "base_vi": "Base VI path for the starter diff target.",
+    "head_vi": "Head VI path for the starter diff target."
+  },
+  "pack_slug": "example-scenario-pack",
+  "pack_id": "{{ cookiecutter.pack_slug }}-v1",
+  "pack_description": "Scenario-pack scaffold generated from the comparevi cookiecutter catalog.",
+  "image": "nationalinstruments/labview:2026q1-linux",
+  "plane_applicability_csv": "linux-proof",
+  "results_root": "tests/results/_agent/scenario-packs/{{ cookiecutter.pack_slug }}",
+  "report_path": "tests/results/_agent/scenario-packs/{{ cookiecutter.pack_slug }}/known-flag-scenario-report.json",
+  "incident_input_path": "tests/results/_agent/canary/{{ cookiecutter.pack_slug }}-incident-input.json",
+  "incident_event_path": "tests/results/_agent/canary/{{ cookiecutter.pack_slug }}-incident-event.json",
+  "base_vi": "VI1.vi",
+  "head_vi": "VI2.vi"
+}

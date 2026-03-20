@@ -208,7 +208,9 @@
     "watch:pester:fast": "node tools/follow-pester-artifacts.mjs --results tests/results --warn-seconds 60 --hang-seconds 120",
     "watch:pester:fast:exit": "node tools/follow-pester-artifacts.mjs --results tests/results --warn-seconds 60 --hang-seconds 120 --poll-ms 2000 --no-progress-seconds 60 --exit-on-hang --exit-on-no-progress",
     "watch:pester:ps": "pwsh -NoLogo -NoProfile -File tools/Follow-PesterArtifacts.ps1 -ResultsDir tests/results -WarnSeconds 60 -HangSeconds 120",
-    "watch:pester:ps:exit": "pwsh -NoLogo -NoProfile -File tools/Follow-PesterArtifacts.ps1 -ResultsDir tests/results -WarnSeconds 60 -HangSeconds 120 -NoProgressSeconds 60 -PollMs 2000 -ExitOnHang -ExitOnNoProgress"
+    "watch:pester:ps:exit": "pwsh -NoLogo -NoProfile -File tools/Follow-PesterArtifacts.ps1 -ResultsDir tests/results -WarnSeconds 60 -HangSeconds 120 -NoProgressSeconds 60 -PollMs 2000 -ExitOnHang -ExitOnNoProgress",
+    "priority:scaffold:cookiecutter": "pwsh -NoLogo -NoProfile -File tools/New-CompareVICookiecutterScaffold.ps1",
+    "priority:scaffold:cookiecutter:list": "pwsh -NoLogo -NoProfile -File tools/New-CompareVICookiecutterScaffold.ps1 -ListTemplates"
   },
   "devDependencies": {
     "@types/argparse": "^2.0.16",

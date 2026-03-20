@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-20T15:58:00Z",
+  "updated": "2026-03-20T19:44:05.8724152Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -60,6 +60,7 @@
         "docs/knowledgebase/FEATURE_BRANCH_POLICY.md",
         "docs/knowledgebase/LVCompare-Git-CLI-Guide_Windows-LabVIEW-2025Q3.md",
         "docs/knowledgebase/CrossRepo-VIHistory.md",
+        "docs/knowledgebase/Cookiecutter-Certification-Scaffolds.md",
         "docs/knowledgebase/GitHub-Intake-Layer.md",
         "docs/knowledgebase/GitHub-Wiki-Portal-Automation-Evaluation.md",
         "docs/knowledgebase/GitHub-Wiki-Portal.md",
@@ -220,6 +221,24 @@
         "fixtures/headless-corpus/sample-vi-corpus.targets.json",
         "tools/Invoke-HeadlessSampleVICorpusEvaluation.ps1",
         "tests/Invoke-HeadlessSampleVICorpusEvaluation.Tests.ps1"
+      ]
+    },
+    {
+      "name": "Cookiecutter Scaffold Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Pinned cookiecutter catalog, schemas, wrapper, focused tests, and template trees for generating reviewable scenario-pack and certification corpus scaffold outputs.",
+      "files": [
+        "docs/knowledgebase/Cookiecutter-Certification-Scaffolds.md",
+        "docs/schemas/comparevi-cookiecutter-scaffold-v1.schema.json",
+        "docs/schemas/comparevi-cookiecutter-template-catalog-v1.schema.json",
+        "tests/New-CompareVICookiecutterScaffold.Tests.ps1",
+        "tools/New-CompareVICookiecutterScaffold.ps1",
+        "tools/cookiecutter/run-cookiecutter.py",
+        "tools/policy/comparevi-cookiecutter-templates.json"
+      ],
+      "include": [
+        "tools/cookiecutter/templates/**/*"
       ]
     },
     {
