@@ -308,7 +308,13 @@ param(
   [string]$RepoRoot,
   [string]$ResultsRoot,
   [string]$RuntimeDir,
-  [string]$Image
+  [string]$Image,
+  [int]$HeavyExecutionParallelism = 0,
+  [string]$HostRamBudgetPath = '',
+  [string]$HostRamBudgetTargetProfile = 'heavy',
+  [Nullable[long]]$HostRamBudgetTotalBytes = $null,
+  [Nullable[long]]$HostRamBudgetFreeBytes = $null,
+  [Nullable[int]]$HostRamBudgetCpuParallelism = $null
 )
 $logPath = [Environment]::GetEnvironmentVariable('LOCAL_WARM_MANAGER_STUB_LOG')
 if (-not [string]::IsNullOrWhiteSpace($logPath)) {
@@ -318,6 +324,12 @@ if (-not [string]::IsNullOrWhiteSpace($logPath)) {
     resultsRoot = $ResultsRoot
     runtimeDir = $RuntimeDir
     image = $Image
+    heavyExecutionParallelism = $HeavyExecutionParallelism
+    hostRamBudgetPath = $HostRamBudgetPath
+    hostRamBudgetTargetProfile = $HostRamBudgetTargetProfile
+    hostRamBudgetTotalBytes = $HostRamBudgetTotalBytes
+    hostRamBudgetFreeBytes = $HostRamBudgetFreeBytes
+    hostRamBudgetCpuParallelism = $HostRamBudgetCpuParallelism
   } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $logPath -Encoding utf8
 }
 $outcome = [Environment]::GetEnvironmentVariable('LOCAL_WARM_MANAGER_OUTCOME')
@@ -338,6 +350,25 @@ $payload = [ordered]@{
     repoContainerPath = '/opt/comparevi/source'
     resultsHostPath = $ResultsRoot
     resultsContainerPath = '/opt/comparevi/vi-history/results'
+  }
+  hostRamBudget = [ordered]@{
+    path = if ([string]::IsNullOrWhiteSpace($HostRamBudgetPath)) { (Join-Path $RuntimeDir 'host-ram-budget.json') } else { $HostRamBudgetPath }
+    targetProfile = $HostRamBudgetTargetProfile
+    requestedParallelism = [int]$HeavyExecutionParallelism
+    recommendedParallelism = if ($HeavyExecutionParallelism -gt 0) { [int]$HeavyExecutionParallelism } else { 2 }
+    actualParallelism = 1
+    decisionSource = if ($HeavyExecutionParallelism -gt 0) { 'explicit-override' } else { 'host-ram-budget' }
+    reason = if ($HeavyExecutionParallelism -gt 0) { 'warm-runtime-single-container' } else { 'warm-runtime-single-container' }
+    executionMode = 'serial'
+    parallelExecutionSupported = $false
+    report = [ordered]@{
+      schema = 'priority/host-ram-budget@v1'
+      selectedProfile = [ordered]@{
+        id = $HostRamBudgetTargetProfile
+        recommendedParallelism = if ($HeavyExecutionParallelism -gt 0) { [int]$HeavyExecutionParallelism } else { 2 }
+        reasons = @('balanced')
+      }
+    }
   }
 }
 $payload | ConvertTo-Json -Depth 10
@@ -492,12 +523,22 @@ exit 0
         -ResultsRoot $resultsRoot `
         -RuntimeDir $runtimeDir `
         -Image 'comparevi-vi-history-dev:local' `
+        -HeavyExecutionParallelism 3 `
+        -HostRamBudgetTotalBytes 34359738368 `
+        -HostRamBudgetFreeBytes 25769803776 `
+        -HostRamBudgetCpuParallelism 8 `
         -DockerCommand $dockerStub.CommandPath
       $LASTEXITCODE | Should -Be 0
       $startState = ($startJson -join "`n") | ConvertFrom-Json -Depth 20
       $startState.schema | Should -Be 'comparevi/local-runtime-state@v1'
       $startState.outcome | Should -Be 'started'
       $startState.lease.schema | Should -Be 'comparevi/local-runtime-lease@v1'
+      $startState.hostRamBudget.targetProfile | Should -Be 'heavy'
+      $startState.hostRamBudget.decisionSource | Should -Be 'explicit-override'
+      $startState.hostRamBudget.requestedParallelism | Should -Be 3
+      $startState.hostRamBudget.recommendedParallelism | Should -Be 3
+      $startState.hostRamBudget.actualParallelism | Should -Be 1
+      $startState.hostRamBudget.reason | Should -Be 'warm-runtime-single-container'
 
       $healthJson = & $script:ManagerScript `
         -Action status `
@@ -505,11 +546,17 @@ exit 0
         -ResultsRoot $resultsRoot `
         -RuntimeDir $runtimeDir `
         -Image 'comparevi-vi-history-dev:local' `
+        -HeavyExecutionParallelism 3 `
+        -HostRamBudgetTotalBytes 34359738368 `
+        -HostRamBudgetFreeBytes 25769803776 `
+        -HostRamBudgetCpuParallelism 8 `
         -DockerCommand $dockerStub.CommandPath
       $LASTEXITCODE | Should -Be 0
       $health = ($healthJson -join "`n") | ConvertFrom-Json -Depth 20
       $health.schema | Should -Be 'comparevi/local-runtime-health@v1'
       $health.status | Should -Be 'healthy'
+      $health.hostRamBudget.decisionSource | Should -Be 'explicit-override'
+      $health.hostRamBudget.reason | Should -Be 'warm-runtime-single-container'
     } finally {
       Remove-Item Env:DOCKER_STUB_IMAGE_EXISTS -ErrorAction SilentlyContinue
     }
@@ -517,9 +564,46 @@ exit 0
     $statePath = Join-Path $runtimeDir 'local-runtime-state.json'
     $leasePath = Join-Path $runtimeDir 'local-runtime-lease.json'
     $healthPath = Join-Path $runtimeDir 'local-runtime-health.json'
+    $hostRamBudgetPath = Join-Path $runtimeDir 'host-ram-budget.json'
     (Test-Path -LiteralPath $statePath -PathType Leaf) | Should -BeTrue
     (Test-Path -LiteralPath $leasePath -PathType Leaf) | Should -BeTrue
     (Test-Path -LiteralPath $healthPath -PathType Leaf) | Should -BeTrue
+    (Test-Path -LiteralPath $hostRamBudgetPath -PathType Leaf) | Should -BeTrue
+  }
+
+  It 'Manage-VIHistoryRuntimeInDocker records deterministic-floor RAM budgets under pressure' {
+    $work = Join-Path $TestDrive 'runtime-manager-floor'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    $repoRoot = Join-Path $work 'repo'
+    $resultsRoot = Join-Path $repoRoot 'tests/results/local-vi-history/warm-dev'
+    $runtimeDir = Join-Path $repoRoot 'tests/results/local-vi-history/runtime/warm-dev'
+    New-Item -ItemType Directory -Path (Join-Path $repoRoot '.git') -Force | Out-Null
+    New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
+    $dockerStub = New-DockerStub -Root $work
+
+    try {
+      $env:DOCKER_STUB_IMAGE_EXISTS = '1'
+      $startJson = & $script:ManagerScript `
+        -Action start `
+        -RepoRoot $repoRoot `
+        -ResultsRoot $resultsRoot `
+        -RuntimeDir $runtimeDir `
+        -Image 'comparevi-vi-history-dev:local' `
+        -HostRamBudgetTotalBytes 8589934592 `
+        -HostRamBudgetFreeBytes 2147483648 `
+        -HostRamBudgetCpuParallelism 8 `
+        -DockerCommand $dockerStub.CommandPath
+      $LASTEXITCODE | Should -Be 0
+    } finally {
+      Remove-Item Env:DOCKER_STUB_IMAGE_EXISTS -ErrorAction SilentlyContinue
+    }
+
+    $startState = ($startJson -join "`n") | ConvertFrom-Json -Depth 20
+    $startState.hostRamBudget.decisionSource | Should -Be 'host-ram-budget'
+    $startState.hostRamBudget.recommendedParallelism | Should -Be 1
+    $startState.hostRamBudget.actualParallelism | Should -Be 1
+    $startState.hostRamBudget.reason | Should -Match 'deterministic-floor'
   }
 
   It 'Manage-VIHistoryRuntimeInDocker reconciles stale heartbeat runtimes by replacing the container' {
@@ -602,7 +686,10 @@ exit 0
         -Profile 'dev-fast' `
         -RepoRoot $repoRoot `
         -BuildImageScriptPath $buildStub `
-        -ReviewSuiteScriptPath $reviewStub
+        -ReviewSuiteScriptPath $reviewStub `
+        -HostRamBudgetTotalBytes 34359738368 `
+        -HostRamBudgetFreeBytes 25769803776 `
+        -HostRamBudgetCpuParallelism 8
       $LASTEXITCODE | Should -Be 0
     } finally {
       $env:PATH = $originalPath
@@ -618,9 +705,43 @@ exit 0
     $receipt.runtimeProfile | Should -Be 'dev-fast'
     $receipt.cacheReuseState | Should -Be 'built-local-image'
     $receipt.benchmarkSampleKind | Should -Be 'dev-fast-cold'
+    $receipt.hostRamBudget.decisionSource | Should -Be 'host-ram-budget'
+    $receipt.hostRamBudget.targetProfile | Should -Be 'heavy'
+    $receipt.hostRamBudget.recommendedParallelism | Should -Be 3
+    $receipt.hostRamBudget.actualParallelism | Should -Be 1
+    $receipt.hostRamBudget.reason | Should -Be 'single-review-execution'
     $receipt.finalStatus | Should -Be 'succeeded'
     $benchmark = Get-Content -LiteralPath $benchmarkPath -Raw | ConvertFrom-Json -Depth 20
     $benchmark.schema | Should -Be 'comparevi/local-refinement-benchmark@v1'
+    Test-Path -LiteralPath (Join-Path $repoRoot 'tests/results/local-vi-history/dev-fast/host-ram-budget.json') | Should -BeTrue
+  }
+
+  It 'Invoke-VIHistoryLocalRefinement preserves deterministic-floor RAM budgets for proof' {
+    $work = Join-Path $TestDrive 'local-refinement-proof-floor'
+    $repoRoot = Join-Path $work 'repo'
+    $resultsRoot = Join-Path $repoRoot 'tests/results/local-vi-history/proof'
+    New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $repoRoot 'fixtures/vi-attr') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures/vi-attr/Base.vi') -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures/vi-attr/Head.vi') -Value 'head' -Encoding utf8
+    $reviewStub = Join-Path $work 'review-stub.ps1'
+    New-ReviewSuiteStub -Path $reviewStub
+
+    & $script:WrapperScript `
+      -Profile 'proof' `
+      -RepoRoot $repoRoot `
+      -ResultsRoot $resultsRoot `
+      -ReviewSuiteScriptPath $reviewStub `
+      -HostRamBudgetTotalBytes 8589934592 `
+      -HostRamBudgetFreeBytes 2147483648 `
+      -HostRamBudgetCpuParallelism 8
+    $LASTEXITCODE | Should -Be 0
+
+    $receipt = Get-Content -LiteralPath (Join-Path $resultsRoot 'local-refinement.json') -Raw | ConvertFrom-Json -Depth 20
+    $receipt.hostRamBudget.decisionSource | Should -Be 'host-ram-budget'
+    $receipt.hostRamBudget.recommendedParallelism | Should -Be 1
+    $receipt.hostRamBudget.actualParallelism | Should -Be 1
+    $receipt.hostRamBudget.reason | Should -Match 'deterministic-floor'
   }
 
   It 'Invoke-VIHistoryLocalRefinement writes a windows-mirror-proof receipt and host artifacts' {
@@ -654,8 +775,8 @@ exit 0
 
       $receipt.schema | Should -Be 'comparevi/local-refinement@v1'
       $receipt.runtimeProfile | Should -Be 'windows-mirror-proof'
-      $receipt.runtimePlane | Should -Be 'windows-mirror'
-      $receipt.image | Should -Be 'nationalinstruments/labview:2026q1-windows'
+    $receipt.runtimePlane | Should -Be 'windows-mirror'
+    $receipt.image | Should -Be 'nationalinstruments/labview:2026q1-windows'
       $receipt.toolSource | Should -Be 'windows-mirror-proof-image'
       $receipt.cacheReuseState | Should -Be 'canonical-windows-proof-image'
       $receipt.coldWarmClass | Should -Be 'cold'
@@ -665,8 +786,10 @@ exit 0
       $receipt.windowsMirror.hostPreflight.path | Should -Be (Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json')
       $receipt.windowsMirror.compare.reportPath | Should -Be (Join-Path $resultsRoot 'windows-mirror-report.html')
       $receipt.windowsMirror.compare.capturePath | Should -Be (Join-Path $resultsRoot 'ni-windows-container-capture.json')
-      $receipt.windowsMirror.compare.runtimeSnapshotPath | Should -Be (Join-Path $resultsRoot 'windows-mirror-runtime-snapshot.json')
-      $receipt.windowsMirror.headlessContract.required | Should -BeTrue
+    $receipt.windowsMirror.compare.runtimeSnapshotPath | Should -Be (Join-Path $resultsRoot 'windows-mirror-runtime-snapshot.json')
+    $receipt.hostRamBudget.targetProfile | Should -Be 'windows-mirror-heavy'
+    $receipt.hostRamBudget.actualParallelism | Should -Be 1
+    $receipt.windowsMirror.headlessContract.required | Should -BeTrue
       $receipt.windowsMirror.headlessContract.labviewCliMode | Should -Be 'headless'
       $receipt.finalStatus | Should -Be 'succeeded'
 
@@ -958,6 +1081,8 @@ New-Item -ItemType Directory -Path $ResultsRoot -Force | Out-Null
     $receipt.cacheReuseState | Should -Be 'warm-runtime-reused'
     $receipt.coldWarmClass | Should -Be 'warm'
     $receipt.benchmarkSampleKind | Should -Be 'warm-dev-repeat'
+    $receipt.hostRamBudget.targetProfile | Should -Be 'heavy'
+    $receipt.hostRamBudget.reason | Should -Be 'warm-runtime-single-container'
 
     $reviewLogObject = Get-Content -LiteralPath $reviewLog -Raw | ConvertFrom-Json -Depth 10
     $reviewLogObject.reuseContainerName | Should -Be 'warm-stub'
@@ -965,6 +1090,7 @@ New-Item -ItemType Directory -Path $ResultsRoot -Force | Out-Null
 
     $warmManagerLogObject = Get-Content -LiteralPath $warmManagerLog -Raw | ConvertFrom-Json -Depth 10
     $warmManagerLogObject.action | Should -Be 'reconcile'
+    $warmManagerLogObject.hostRamBudgetTargetProfile | Should -Be 'heavy'
   }
 
   It 'Invoke-VIHistoryLocalRefinement benchmarks proof cold, dev-fast cold, and warm-dev repeat samples' {

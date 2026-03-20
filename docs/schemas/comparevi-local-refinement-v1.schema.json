@@ -73,6 +73,9 @@
         }
       }
     },
+    "hostRamBudget": {
+      "type": ["object", "null"]
+    },
     "windowsMirror": {
       "type": ["object", "null"]
     },

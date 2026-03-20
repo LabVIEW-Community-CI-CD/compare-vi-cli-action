@@ -225,6 +225,7 @@ function ConvertTo-CompareVILocalRefinementFacade {
       artifacts = Get-CompareVIFacadeValue -InputObject $warmRuntimeReceipt -Name 'artifacts'
     }
   }
+  $hostRamBudget = if ($Receipt.PSObject.Properties['hostRamBudget']) { $Receipt.hostRamBudget } else { $null }
 
   return [pscustomobject]@{
     schema = 'comparevi-tools/local-refinement-facade@v1'
@@ -243,11 +244,13 @@ function ConvertTo-CompareVILocalRefinementFacade {
     history = $Receipt.history
     reviewSuite = if ($Receipt.PSObject.Properties['reviewSuite']) { $Receipt.reviewSuite } else { $null }
     reviewLoop = if ($Receipt.PSObject.Properties['reviewLoop']) { $Receipt.reviewLoop } else { $null }
+    hostRamBudget = $hostRamBudget
     windowsMirror = if ($Receipt.PSObject.Properties['windowsMirror']) { $Receipt.windowsMirror } else { $null }
     warmRuntime = $warmRuntimeFacade
     artifacts = [ordered]@{
       localRefinementPath = $localRefinementPath
       benchmarkPath = $benchmarkPath
+      hostRamBudgetPath = [string](Get-CompareVIFacadeValue -InputObject $hostRamBudget -Name 'path')
     }
     finalStatus = [string]$Receipt.finalStatus
   }
@@ -274,6 +277,7 @@ function ConvertTo-CompareVILocalOperatorSessionFacade {
     runtimePlane = if ($Receipt.PSObject.Properties['runtimePlane']) { [string]$Receipt.runtimePlane } else { 'linux' }
     repoRoot = [string]$Receipt.repoRoot
     resultsRoot = [string]$Receipt.resultsRoot
+    hostRamBudget = Get-CompareVIFacadeValue -InputObject $Receipt -Name 'hostRamBudget'
     localRefinement = Get-CompareVIFacadeValue -InputObject $Receipt -Name 'localRefinement'
     review = Get-CompareVIFacadeValue -InputObject $Receipt -Name 'review'
     artifacts = Get-CompareVIFacadeValue -InputObject $Receipt -Name 'artifacts'
@@ -417,6 +421,12 @@ function Invoke-CompareVIHistoryLocalRefinementFacade {
     [Nullable[int]]$HistoryMaxCommitCount,
     [string]$ResultsRoot = '',
     [string]$WarmRuntimeDir = '',
+    [ValidateRange(0, 8)]
+    [int]$HeavyExecutionParallelism = 0,
+    [string]$HostRamBudgetPath = '',
+    [Nullable[long]]$HostRamBudgetTotalBytes = $null,
+    [Nullable[long]]$HostRamBudgetFreeBytes = $null,
+    [Nullable[int]]$HostRamBudgetCpuParallelism = $null,
     [string]$ProofImage = 'nationalinstruments/labview:2026q1-linux',
     [string]$DevImage = 'comparevi-vi-history-dev:local',
     [string]$WindowsMirrorImage = 'nationalinstruments/labview:2026q1-windows',
@@ -458,6 +468,12 @@ function Invoke-CompareVIHistoryLocalOperatorSessionFacade {
     [Nullable[int]]$HistoryMaxCommitCount,
     [string]$ResultsRoot = '',
     [string]$WarmRuntimeDir = '',
+    [ValidateRange(0, 8)]
+    [int]$HeavyExecutionParallelism = 0,
+    [string]$HostRamBudgetPath = '',
+    [Nullable[long]]$HostRamBudgetTotalBytes = $null,
+    [Nullable[long]]$HostRamBudgetFreeBytes = $null,
+    [Nullable[int]]$HostRamBudgetCpuParallelism = $null,
     [string]$ProofImage = 'nationalinstruments/labview:2026q1-linux',
     [string]$DevImage = 'comparevi-vi-history-dev:local',
     [string]$WindowsMirrorImage = 'nationalinstruments/labview:2026q1-windows',

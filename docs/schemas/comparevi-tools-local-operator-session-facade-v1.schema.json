@@ -11,6 +11,7 @@
     "runtimeProfile",
     "repoRoot",
     "resultsRoot",
+    "hostRamBudget",
     "localRefinement",
     "review",
     "artifacts",
@@ -38,6 +39,9 @@
     },
     "resultsRoot": {
       "type": "string"
+    },
+    "hostRamBudget": {
+      "type": ["object", "null"]
     },
     "localRefinement": {
       "type": ["object", "null"]

@@ -10,6 +10,7 @@
     "runtimeProfile",
     "repoRoot",
     "resultsRoot",
+    "hostRamBudget",
     "review",
     "artifacts",
     "finalStatus"
@@ -36,6 +37,9 @@
       "type": "string",
       "minLength": 1
     },
+    "hostRamBudget": {
+      "type": ["object", "null"]
+    },
     "localRefinement": {
       "type": ["object", "null"],
       "additionalProperties": false,
@@ -49,6 +53,7 @@
         "cacheReuseState",
         "coldWarmClass",
         "benchmarkSampleKind",
+        "hostRamBudget",
         "timings",
         "finalStatus"
       ],
@@ -79,6 +84,9 @@
         },
         "benchmarkSampleKind": {
           "type": "string"
+        },
+        "hostRamBudget": {
+          "type": ["object", "null"]
         },
         "timings": {
           "type": "object"
@@ -162,6 +170,7 @@
         "sessionPath",
         "localRefinementPath",
         "benchmarkPath",
+        "hostRamBudgetPath",
         "warmRuntimeStatePath",
         "warmRuntimeHealthPath",
         "warmRuntimeLeasePath",
@@ -184,6 +193,9 @@
           "type": ["string", "null"]
         },
         "benchmarkPath": {
+          "type": ["string", "null"]
+        },
+        "hostRamBudgetPath": {
           "type": ["string", "null"]
         },
         "warmRuntimeStatePath": {
