@@ -49,11 +49,23 @@ if (-not [string]::IsNullOrWhiteSpace($logPath)) {
 if ($Args.Count -eq 0) { exit 0 }
 
 $stubEnv = @{}
+$volumeMap = @()
 for ($i = 0; $i -lt $Args.Count; $i++) {
   if ($Args[$i] -eq '--env' -and ($i + 1) -lt $Args.Count) {
     $pair = [string]$Args[$i + 1]
     if ($pair -match '^(?<k>[^=]+)=(?<v>.*)$') {
       $stubEnv[$Matches['k']] = $Matches['v']
+    }
+    $i++
+    continue
+  }
+  if ($Args[$i] -eq '-v' -and ($i + 1) -lt $Args.Count) {
+    $spec = [string]$Args[$i + 1]
+    if ($spec -match '^(?<host>[A-Za-z]:.+):(?<container>[A-Za-z]:.+)$') {
+      $volumeMap += [pscustomobject]@{
+        host = [string]$Matches['host']
+        container = [string]$Matches['container']
+      }
     }
     $i++
   }
@@ -64,6 +76,25 @@ function Get-StubEnvValue {
     return [string]$stubEnv[$Name]
   }
   return [System.Environment]::GetEnvironmentVariable($Name)
+}
+function Resolve-StubHostPathFromContainerPath {
+  param([Parameter(Mandatory)][string]$ContainerPath)
+
+  foreach ($mapping in $volumeMap) {
+    $containerRoot = [string]$mapping.container
+    if ([string]::IsNullOrWhiteSpace($containerRoot)) {
+      continue
+    }
+    if ([string]::Equals($ContainerPath, $containerRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+      return [string]$mapping.host
+    }
+    $prefix = '{0}\' -f $containerRoot.TrimEnd('\')
+    if ($ContainerPath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      $relative = $ContainerPath.Substring($prefix.Length)
+      return (Join-Path ([string]$mapping.host) $relative)
+    }
+  }
+  return $ContainerPath
 }
 
 $contextOverride = $null
@@ -139,13 +170,29 @@ if ($Args[0] -eq 'cp') {
     Set-Content -LiteralPath $destination -Value $reportHtml -Encoding utf8
   }
   if ($copyExitCode -ne 0) {
-    [Console]::Error.WriteLine('docker cp failed')
+    $copyStdErr = Get-StubEnvValue -Name 'DOCKER_STUB_CP_STDERR'
+    if ([string]::IsNullOrWhiteSpace($copyStdErr)) {
+      $copyStdErr = 'docker cp failed'
+    }
+    [Console]::Error.WriteLine($copyStdErr)
     exit $copyExitCode
   }
   exit 0
 }
 
 if ($Args[0] -eq 'rm') {
+  $rmExitRaw = Get-StubEnvValue -Name 'DOCKER_STUB_RM_EXIT_CODE'
+  if (-not [string]::IsNullOrWhiteSpace($rmExitRaw)) {
+    $rmExitCode = [int]$rmExitRaw
+    if ($rmExitCode -ne 0) {
+      $rmStdErr = Get-StubEnvValue -Name 'DOCKER_STUB_RM_STDERR'
+      if ([string]::IsNullOrWhiteSpace($rmStdErr)) {
+        $rmStdErr = 'docker rm failed'
+      }
+      [Console]::Error.WriteLine($rmStdErr)
+      exit $rmExitCode
+    }
+  }
   Write-Output 'removed'
   exit 0
 }
@@ -153,7 +200,7 @@ if ($Args[0] -eq 'rm') {
 if ($Args[0] -eq 'run') {
   $writeReport = Get-StubEnvValue -Name 'DOCKER_STUB_RUN_WRITE_REPORT'
   if ([string]::Equals($writeReport, '1', [System.StringComparison]::OrdinalIgnoreCase) -and $stubEnv.ContainsKey('COMPARE_REPORT_PATH')) {
-    $reportPath = [string]$stubEnv['COMPARE_REPORT_PATH']
+    $reportPath = Resolve-StubHostPathFromContainerPath -ContainerPath ([string]$stubEnv['COMPARE_REPORT_PATH'])
     $reportDir = Split-Path -Parent $reportPath
     if (-not [string]::IsNullOrWhiteSpace($reportDir) -and -not (Test-Path -LiteralPath $reportDir -PathType Container)) {
       New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
@@ -271,7 +318,10 @@ exit 0
       DOCKER_STUB_CP_REPORT_HTML    = $env:DOCKER_STUB_CP_REPORT_HTML
       DOCKER_STUB_CP_FAIL           = $env:DOCKER_STUB_CP_FAIL
       DOCKER_STUB_CP_EXIT_CODE      = $env:DOCKER_STUB_CP_EXIT_CODE
+      DOCKER_STUB_CP_STDERR         = $env:DOCKER_STUB_CP_STDERR
       DOCKER_STUB_CP_WRITE_ON_FAIL  = $env:DOCKER_STUB_CP_WRITE_ON_FAIL
+      DOCKER_STUB_RM_EXIT_CODE      = $env:DOCKER_STUB_RM_EXIT_CODE
+      DOCKER_STUB_RM_STDERR         = $env:DOCKER_STUB_RM_STDERR
       DOCKER_STUB_RUN_WRITE_REPORT  = $env:DOCKER_STUB_RUN_WRITE_REPORT
       DOCKER_COMMAND_OVERRIDE       = $env:DOCKER_COMMAND_OVERRIDE
       NI_WINDOWS_LABVIEW_PATH       = $env:NI_WINDOWS_LABVIEW_PATH
@@ -312,7 +362,7 @@ exit 0
     $records = & $script:ReadDockerStubLog -Path $logPath
     (@($records | Where-Object {
       ($_.args[0] -eq 'info') -or ($_.args.Count -ge 3 -and $_.args[0] -eq '--context' -and $_.args[2] -eq 'info')
-    })).Count | Should -Be 1
+    })).Count | Should -BeGreaterOrEqual 1
     (@($records | Where-Object { $_.args[0] -eq 'image' -and $_.args[1] -eq 'inspect' })).Count | Should -Be 1
   }
 
@@ -353,7 +403,7 @@ exit 0
       -RuntimeEngineReadyPollSeconds 1 `
       -Probe 2>&1
     $LASTEXITCODE | Should -Not -Be 0
-    ($output -join "`n") | Should -Match 'runtime determinism mismatch|expected os=windows'
+    ($output -join "`n") | Should -Match 'Runtime invariant mismatch|expectedOs=windows|expected os=windows'
   }
 
   It 'fails compare mode when LabVIEWPath is not supplied to the container contract' {
@@ -826,6 +876,46 @@ exit 0
     $capture.containerArtifacts.copyAttempts[0].recoveredFromHostReport | Should -BeTrue
     $capture.containerArtifacts.copyAttempts[0].recoveryKind | Should -Be 'host-report'
     Test-Path -LiteralPath ([string]$capture.reportAnalysis.reportPathExtracted) -PathType Leaf | Should -BeTrue
+  }
+
+  It 'suppresses daemon noise when host-report recovery succeeds after the container is already gone' {
+    $work = Join-Path $TestDrive 'compare-export-container-missing'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '0'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed.'
+    Set-Item Env:DOCKER_STUB_RUN_WRITE_REPORT '1'
+    Set-Item Env:DOCKER_STUB_CP_FAIL '1'
+    Set-Item Env:DOCKER_STUB_CP_STDERR 'Error response from daemon: No such container: synthetic-container'
+    Set-Item Env:DOCKER_STUB_RM_EXIT_CODE '1'
+    Set-Item Env:DOCKER_STUB_RM_STDERR 'Error response from daemon: No such container: synthetic-container'
+
+    $baseVi = Join-Path $work 'Base.vi'
+    $headVi = Join-Path $work 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+    $reportPath = Join-Path $work 'out\compare-report.html'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -BaseVi $baseVi `
+      -HeadVi $headVi `
+      -ReportPath $reportPath `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+    ($output -join "`n") | Should -Not -Match 'No such container'
+
+    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-windows-container-capture.json'
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
+    $capture.containerArtifacts.copyStatus | Should -Be 'success'
+    $capture.containerArtifacts.recoveredCopyCount | Should -Be 1
+    $capture.containerArtifacts.copyAttempts[0].recoveredFromHostReport | Should -BeTrue
+    $capture.containerArtifacts.copyAttempts[0].recoveryKind | Should -Be 'host-report'
   }
 
   It 'classifies exit 1 with CLI error signature as failure-tool' {

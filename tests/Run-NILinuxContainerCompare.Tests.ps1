@@ -199,13 +199,29 @@ if ($Args[0] -eq 'cp') {
     Set-Content -LiteralPath $destination -Value $reportHtml -Encoding utf8
   }
   if ($copyExitCode -ne 0) {
-    [Console]::Error.WriteLine('docker cp failed')
+    $copyStdErr = Get-StubEnvValue -Name 'DOCKER_STUB_CP_STDERR'
+    if ([string]::IsNullOrWhiteSpace($copyStdErr)) {
+      $copyStdErr = 'docker cp failed'
+    }
+    [Console]::Error.WriteLine($copyStdErr)
     exit $copyExitCode
   }
   exit 0
 }
 
 if ($Args[0] -eq 'rm') {
+  $rmExitRaw = Get-StubEnvValue -Name 'DOCKER_STUB_RM_EXIT_CODE'
+  if (-not [string]::IsNullOrWhiteSpace($rmExitRaw)) {
+    $rmExitCode = [int]$rmExitRaw
+    if ($rmExitCode -ne 0) {
+      $rmStdErr = Get-StubEnvValue -Name 'DOCKER_STUB_RM_STDERR'
+      if ([string]::IsNullOrWhiteSpace($rmStdErr)) {
+        $rmStdErr = 'docker rm failed'
+      }
+      [Console]::Error.WriteLine($rmStdErr)
+      exit $rmExitCode
+    }
+  }
   Write-Output 'removed'
   exit 0
 }
@@ -616,7 +632,10 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
       DOCKER_STUB_CP_REPORT_HTML    = $env:DOCKER_STUB_CP_REPORT_HTML
       DOCKER_STUB_CP_FAIL           = $env:DOCKER_STUB_CP_FAIL
       DOCKER_STUB_CP_EXIT_CODE      = $env:DOCKER_STUB_CP_EXIT_CODE
+      DOCKER_STUB_CP_STDERR         = $env:DOCKER_STUB_CP_STDERR
       DOCKER_STUB_CP_WRITE_ON_FAIL  = $env:DOCKER_STUB_CP_WRITE_ON_FAIL
+      DOCKER_STUB_RM_EXIT_CODE      = $env:DOCKER_STUB_RM_EXIT_CODE
+      DOCKER_STUB_RM_STDERR         = $env:DOCKER_STUB_RM_STDERR
       DOCKER_STUB_RUN_WRITE_REPORT  = $env:DOCKER_STUB_RUN_WRITE_REPORT
       DOCKER_STUB_RUN_WRITE_HISTORY_SUITE = $env:DOCKER_STUB_RUN_WRITE_HISTORY_SUITE
       DOCKER_STUB_CONTAINER_INSPECT_JSON = $env:DOCKER_STUB_CONTAINER_INSPECT_JSON
@@ -1907,6 +1926,45 @@ export COMPAREVI_VI_HISTORY_MAX_PAIRS='6'
     $capture.containerArtifacts.recoveredCopyCount | Should -Be 1
     $capture.containerArtifacts.copyAttempts[0].recoveryKind | Should -BeIn @('host-report', 'nonzero-exit')
     Test-Path -LiteralPath ([string]$capture.reportAnalysis.reportPathExtracted) -PathType Leaf | Should -BeTrue
+  }
+
+  It 'suppresses daemon noise when host-report recovery succeeds after the container is already gone' {
+    $work = Join-Path $TestDrive 'compare-export-container-missing'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '0'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed.'
+    Set-Item Env:DOCKER_STUB_RUN_WRITE_REPORT '1'
+    Set-Item Env:DOCKER_STUB_CP_FAIL '1'
+    Set-Item Env:DOCKER_STUB_CP_STDERR 'Error response from daemon: No such container: synthetic-container'
+    Set-Item Env:DOCKER_STUB_RM_EXIT_CODE '1'
+    Set-Item Env:DOCKER_STUB_RM_STDERR 'Error response from daemon: No such container: synthetic-container'
+
+    $baseVi = Join-Path $work 'Base.vi'
+    $headVi = Join-Path $work 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+    $reportPath = Join-Path $work 'out\compare-report.html'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -BaseVi $baseVi `
+      -HeadVi $headVi `
+      -ReportPath $reportPath `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 2>&1
+    $LASTEXITCODE | Should -BeIn @(0, 1) -Because ($output -join "`n")
+    ($output -join "`n") | Should -Not -Match 'No such container'
+
+    $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-linux-container-capture.json'
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
+    $capture.containerArtifacts.copyStatus | Should -Be 'success'
+    $capture.containerArtifacts.recoveredCopyCount | Should -Be 1
+    $capture.containerArtifacts.copyAttempts[0].recoveryKind | Should -BeIn @('host-report', 'nonzero-exit')
   }
 
   It 'classifies exit 1 with CLI error signature as failure-tool' {
