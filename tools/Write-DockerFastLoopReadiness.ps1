@@ -624,6 +624,7 @@ $hostExecutionPolicy = if ($summary.PSObject.Properties['hostExecutionPolicy']) 
   $null
 }
 $dockerDesktopPlanes = Get-DockerFastLoopDockerDesktopPlaneProjection -ContextObject $summary -HostExecutionPolicy $hostExecutionPolicy
+$hostRamBudget = if ($summary.PSObject.Properties['hostRamBudget']) { $summary.hostRamBudget } else { $null }
 if ($hostPlaneSummary.declared -and [string]$hostPlaneSummary.status -ne 'ok') {
   $verdict = 'not-ready'
   $statusRecommendation = 'do-not-push'
@@ -701,6 +702,7 @@ $readiness = [ordered]@{
   history = $historical
   hostPlane = $hostPlane
   hostPlaneSummary = $hostPlaneSummary
+  hostRamBudget = $hostRamBudget
   hostPlanes = $hostPlanes
   hostExecutionPolicy = $hostExecutionPolicy
   dockerDesktopPlanes = $dockerDesktopPlanes
@@ -748,6 +750,16 @@ if (-not [string]::IsNullOrWhiteSpace([string]$hostPlaneSummary.sha256)) {
 }
 if (-not [string]::IsNullOrWhiteSpace([string]$hostPlaneSummary.reason)) {
   $mdLines.Add(('| Host Plane Summary Reason | `{0}` |' -f [string]$hostPlaneSummary.reason)) | Out-Null
+}
+if ($hostRamBudget) {
+  if ($hostRamBudget.PSObject.Properties['path'] -and -not [string]::IsNullOrWhiteSpace([string]$hostRamBudget.path)) {
+    $mdLines.Add(('| Host RAM Budget Path | `{0}` |' -f [string]$hostRamBudget.path)) | Out-Null
+  }
+  $mdLines.Add(('| Host RAM Budget Target Profile | `{0}` |' -f [string]$hostRamBudget.targetProfile)) | Out-Null
+  $mdLines.Add(('| Host RAM Budget Requested Parallelism | `{0}` |' -f [int]$hostRamBudget.requestedParallelism)) | Out-Null
+  $mdLines.Add(('| Host RAM Budget Recommended Parallelism | `{0}` |' -f [int]$hostRamBudget.recommendedParallelism)) | Out-Null
+  $mdLines.Add(('| Host RAM Budget Actual Parallelism | `{0}` |' -f [int]$hostRamBudget.actualParallelism)) | Out-Null
+  $mdLines.Add(('| Host RAM Budget Reason | `{0}` |' -f [string]$hostRamBudget.reason)) | Out-Null
 }
 if ($hostPlane -and $hostPlane.PSObject.Properties['host'] -and $hostPlane.host -and $hostPlane.host.PSObject.Properties['os']) {
   $mdLines.Add(('| Host OS | `{0}` |' -f [string]$hostPlane.host.os)) | Out-Null

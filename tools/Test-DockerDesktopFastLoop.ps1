@@ -30,6 +30,8 @@ param(
   [string]$SequentialFixturePath = 'fixtures/vi-history/sequential.json',
   [ValidateRange(1, 86400)]
   [int]$StepTimeoutSeconds = 600,
+  [ValidateRange(0, 8)]
+  [int]$HeavyStepParallelism = 0,
   [bool]$ManageDockerEngine = $false,
   [ValidateSet('linux-first', 'windows-first')]
   [string]$LaneOrder = 'linux-first',
@@ -176,6 +178,12 @@ function Resolve-AbsolutePath {
   return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
 }
 
+function Get-DefaultFastLoopHostRamBudgetPath {
+  param([Parameter(Mandatory)][string]$ResultsRoot)
+
+  return (Join-Path $ResultsRoot 'host-ram-budget.json')
+}
+
 function Get-RepoRootFromToolsScript {
   return [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 }
@@ -196,6 +204,136 @@ function Resolve-RepoRelativePath {
     throw ("{0} not found: {1}" -f $Description, $resolved)
   }
   return $resolved
+}
+
+function Get-DockerFastLoopHeavyStepMetrics {
+  param(
+    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$StepDefinitions
+  )
+
+  $windowsHeavyStepNames = New-Object System.Collections.Generic.List[string]
+  $linuxHeavyStepNames = New-Object System.Collections.Generic.List[string]
+  $parallelEligibleStepNames = New-Object System.Collections.Generic.List[string]
+
+  foreach ($definition in @($StepDefinitions)) {
+    if (-not $definition -or -not $definition.PSObject.Properties['name']) {
+      continue
+    }
+
+    $name = [string]$definition.name
+    if ($name -like 'windows-container-probe' -or $name -like 'windows-history-*') {
+      $windowsHeavyStepNames.Add($name) | Out-Null
+    }
+    if ($name -like 'linux-container-probe' -or $name -like 'linux-vi-history-suite-bootstrap-smoke' -or $name -like 'linux-history-*') {
+      $linuxHeavyStepNames.Add($name) | Out-Null
+    }
+    if ($name -like 'windows-history-*' -or $name -like 'linux-history-*') {
+      $parallelEligibleStepNames.Add($name) | Out-Null
+    }
+  }
+
+  return [pscustomobject]@{
+    heavyStepCount = [int]($windowsHeavyStepNames.Count + $linuxHeavyStepNames.Count)
+    windowsHeavyStepCount = [int]$windowsHeavyStepNames.Count
+    linuxHeavyStepCount = [int]$linuxHeavyStepNames.Count
+    parallelEligibleStepCount = [int]$parallelEligibleStepNames.Count
+    windowsHeavyStepNames = @($windowsHeavyStepNames.ToArray())
+    linuxHeavyStepNames = @($linuxHeavyStepNames.ToArray())
+    parallelEligibleStepNames = @($parallelEligibleStepNames.ToArray())
+  }
+}
+
+function Resolve-DockerFastLoopHostRamBudget {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)][string]$ResultsRoot,
+    [Parameter(Mandatory)][int]$RequestedParallelism,
+    [Parameter(Mandatory)][string]$LaneScope,
+    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$StepDefinitions
+  )
+
+  $budgetScriptPath = Join-Path $RepoRoot 'tools' 'priority' 'host-ram-budget.mjs'
+  if (-not (Test-Path -LiteralPath $budgetScriptPath -PathType Leaf)) {
+    throw ("Host RAM budget helper not found: {0}" -f $budgetScriptPath)
+  }
+
+  $budgetPathResolved = Get-DefaultFastLoopHostRamBudgetPath -ResultsRoot $ResultsRoot
+  $metrics = Get-DockerFastLoopHeavyStepMetrics -StepDefinitions $StepDefinitions
+  $targetProfile = if ($metrics.windowsHeavyStepCount -gt 0) {
+    'windows-mirror-heavy'
+  } elseif ($metrics.linuxHeavyStepCount -gt 0) {
+    'ni-linux-flag-combination'
+  } else {
+    'heavy'
+  }
+
+  Push-Location $RepoRoot
+  try {
+    & node $budgetScriptPath `
+      --target-profile $targetProfile `
+      --output $budgetPathResolved | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+      throw ("host-ram-budget helper exited with code {0}" -f $LASTEXITCODE)
+    }
+  } finally {
+    Pop-Location | Out-Null
+  }
+
+  if (-not (Test-Path -LiteralPath $budgetPathResolved -PathType Leaf)) {
+    throw ("Host RAM budget helper did not emit a report: {0}" -f $budgetPathResolved)
+  }
+
+  $budgetReport = Get-Content -LiteralPath $budgetPathResolved -Raw | ConvertFrom-Json -Depth 20
+  if (-not $budgetReport.selectedProfile -or -not $budgetReport.selectedProfile.PSObject.Properties['recommendedParallelism']) {
+    throw ("Host RAM budget report missing selected profile recommendation: {0}" -f $budgetPathResolved)
+  }
+
+  $threadJobAvailable = $null -ne (Get-Command -Name Start-ThreadJob -ErrorAction SilentlyContinue)
+  $recommendedParallelism = [int]$budgetReport.selectedProfile.recommendedParallelism
+  $decisionSource = 'host-ram-budget'
+  if ($RequestedParallelism -gt 0) {
+    $recommendedParallelism = [int]$RequestedParallelism
+    $decisionSource = 'explicit-override'
+  }
+
+  $actualParallelism = 1
+  $reason = 'sequential-orchestration-contract'
+  if ($metrics.parallelEligibleStepCount -le 0) {
+    $reason = 'no-parallel-eligible-steps'
+  } elseif ($metrics.parallelEligibleStepCount -eq 1) {
+    $reason = 'single-heavy-step'
+  } elseif ([string]::Equals($LaneScope, 'both', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $reason = 'cross-plane-exclusivity'
+  } elseif (-not $threadJobAvailable) {
+    $reason = 'threadjob-unavailable'
+  } elseif ($recommendedParallelism -le 1) {
+    $reason = if ($budgetReport.selectedProfile.PSObject.Properties['reasons'] -and @($budgetReport.selectedProfile.reasons).Count -gt 0) {
+      [string]::Join(', ', @($budgetReport.selectedProfile.reasons | ForEach-Object { [string]$_ }))
+    } else {
+      'deterministic-floor'
+    }
+  }
+
+  return [pscustomobject]@{
+    path = $budgetPathResolved
+    targetProfile = $targetProfile
+    heavyStepCount = [int]$metrics.heavyStepCount
+    windowsHeavyStepCount = [int]$metrics.windowsHeavyStepCount
+    linuxHeavyStepCount = [int]$metrics.linuxHeavyStepCount
+    parallelEligibleStepCount = [int]$metrics.parallelEligibleStepCount
+    windowsHeavyStepNames = @($metrics.windowsHeavyStepNames)
+    linuxHeavyStepNames = @($metrics.linuxHeavyStepNames)
+    parallelEligibleStepNames = @($metrics.parallelEligibleStepNames)
+    requestedParallelism = [int]$RequestedParallelism
+    recommendedParallelism = [int]$recommendedParallelism
+    actualParallelism = [int]$actualParallelism
+    decisionSource = $decisionSource
+    reason = $reason
+    executionMode = 'serial'
+    parallelExecutionSupported = $false
+    threadJobAvailable = [bool]$threadJobAvailable
+    report = $budgetReport
+  }
 }
 
 function Get-VIHistorySourceBranchGuard {
@@ -1318,7 +1456,8 @@ function Write-SemiLiveStatus {
     [AllowEmptyString()][string]$HostPlaneSummaryStatus = '',
     [AllowEmptyString()][string]$HostPlaneSummarySha256 = '',
     [AllowEmptyString()][string]$HostPlaneSummaryReason = '',
-    [AllowNull()]$RuntimeManagerTelemetry = $null
+    [AllowNull()]$RuntimeManagerTelemetry = $null,
+    [AllowNull()]$HostRamBudget = $null
   )
 
   if ([string]::IsNullOrWhiteSpace($Path)) {
@@ -1361,6 +1500,7 @@ function Write-SemiLiveStatus {
     laneLifecycle = $telemetry.laneLifecycle
     telemetry = $telemetry
     runtimeManager = $RuntimeManagerTelemetry
+    hostRamBudget = $HostRamBudget
     steps = @($Steps)
     summaryPath = ($SummaryPath ?? '')
     hostPlaneReportPath = ($HostPlaneReportPath ?? '')
@@ -2340,6 +2480,13 @@ $loopLabel = Get-DockerFastLoopLabel -ContextObject @{
   steps = $stepDefinitions.ToArray()
 }
 $loopPrefix = ('[{0}]' -f $loopLabel)
+$hostRamBudget = Resolve-DockerFastLoopHostRamBudget `
+  -RepoRoot $repoRoot `
+  -ResultsRoot $root `
+  -RequestedParallelism $HeavyStepParallelism `
+  -LaneScope $laneScopeNormalized `
+  -StepDefinitions $stepDefinitions.ToArray()
+Write-Host ("{0} host-ram-budget target={1} requested={2} recommended={3} actual={4} reason={5}" -f $loopPrefix, $hostRamBudget.targetProfile, $hostRamBudget.requestedParallelism, $hostRamBudget.recommendedParallelism, $hostRamBudget.actualParallelism, $hostRamBudget.reason) -ForegroundColor DarkCyan
 
 $totalSteps = $stepDefinitions.Count
 $stepPlan = @($stepDefinitions.ToArray() | ForEach-Object { [string]$_.name })
@@ -2360,7 +2507,8 @@ Write-SemiLiveStatus `
   -LoopLabel $loopLabel `
   -SummaryPath '' `
   -HostPlaneReportPath $hostPlaneReportPath `
-  -HostPlaneSummaryPath $hostPlaneSummaryPath
+  -HostPlaneSummaryPath $hostPlaneSummaryPath `
+  -HostRamBudget $hostRamBudget
 
 foreach ($definition in $stepDefinitions.ToArray()) {
   $stepName = [string]$definition.name
@@ -2381,7 +2529,8 @@ foreach ($definition in $stepDefinitions.ToArray()) {
     -LoopLabel $loopLabel `
     -SummaryPath '' `
     -HostPlaneReportPath $hostPlaneReportPath `
-    -HostPlaneSummaryPath $hostPlaneSummaryPath
+    -HostPlaneSummaryPath $hostPlaneSummaryPath `
+    -HostRamBudget $hostRamBudget
 
   $allowedExitCodes = @(0)
   if ($definition.PSObject.Properties['allowedExitCodes'] -and $definition.allowedExitCodes) {
@@ -2563,6 +2712,7 @@ $summary = [ordered]@{
   stepTimeoutSeconds = [int]$StepTimeoutSeconds
   manageDockerEngine = [bool]$effectiveManageDockerEngine
   laneOrder = $LaneOrder
+  hostRamBudget = $hostRamBudget
   viHistorySourceBranch = [ordered]@{
     branchRef = $VIHistorySourceBranch
     maxCommitCount = [int]$VIHistorySourceBranchCommitLimit
@@ -2608,7 +2758,8 @@ Write-SemiLiveStatus `
   -HostPlaneSummaryStatus ([string]$hostPlaneSummary.status) `
   -HostPlaneSummarySha256 ([string]$hostPlaneSummary.sha256) `
   -HostPlaneSummaryReason ([string]$hostPlaneSummary.reason) `
-  -RuntimeManagerTelemetry $summary.runtimeManager
+  -RuntimeManagerTelemetry $summary.runtimeManager `
+  -HostRamBudget $hostRamBudget
 
 Write-GitHubOutputValue -Key 'docker-fast-loop-summary-path' -Value $summaryPath -Path $GitHubOutputPath
 Write-GitHubOutputValue -Key 'docker-fast-loop-status-path' -Value $statusResolved -Path $GitHubOutputPath
@@ -2616,6 +2767,7 @@ Write-GitHubOutputValue -Key 'docker-fast-loop-host-plane-summary-path' -Value (
 Write-GitHubOutputValue -Key 'docker-fast-loop-host-plane-summary-status' -Value ([string]$hostPlaneSummary.status) -Path $GitHubOutputPath
 Write-GitHubOutputValue -Key 'docker-fast-loop-host-plane-summary-sha256' -Value ([string]$hostPlaneSummary.sha256) -Path $GitHubOutputPath
 Write-GitHubOutputValue -Key 'docker-fast-loop-host-plane-summary-reason' -Value ([string]$hostPlaneSummary.reason) -Path $GitHubOutputPath
+Write-GitHubOutputValue -Key 'docker-fast-loop-host-ram-budget-path' -Value ([string]$hostRamBudget.path) -Path $GitHubOutputPath
 
 Write-StepSummarySection -Path $StepSummaryPath -Lines @(
   '### Docker Fast Loop Summary'
@@ -2625,6 +2777,8 @@ Write-StepSummarySection -Path $StepSummaryPath -Lines @(
   ('- Host Plane Summary Status: `{0}`' -f [string]$hostPlaneSummary.status)
   ('- Host Plane Summary SHA-256: `{0}`' -f [string]$hostPlaneSummary.sha256)
   ('- Host Plane Summary Reason: `{0}`' -f [string]$hostPlaneSummary.reason)
+  ('- Host RAM Budget Path: `{0}`' -f [string]$hostRamBudget.path)
+  ('- Host RAM Budget: `target={0}; requested={1}; recommended={2}; actual={3}; reason={4}`' -f [string]$hostRamBudget.targetProfile, [int]$hostRamBudget.requestedParallelism, [int]$hostRamBudget.recommendedParallelism, [int]$hostRamBudget.actualParallelism, [string]$hostRamBudget.reason)
 )
 
 if ($hostPlaneSummary.declared -and [string]$hostPlaneSummary.status -ne 'ok') {
