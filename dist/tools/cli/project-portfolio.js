@@ -126,6 +126,7 @@ const resourceQuerySchema = z.object({
             id: z.string().min(1),
             url: z.string().url(),
             title: z.string().min(1).optional(),
+            body: z.string().optional().nullable(),
             repository: z.object({
                 nameWithOwner: z.string().min(1),
             }).optional(),
@@ -168,6 +169,7 @@ const projectScopedResourceQuerySchema = z.object({
             id: z.string().min(1),
             url: z.string().url(),
             title: z.string().min(1).optional(),
+            body: z.string().optional().nullable(),
             repository: z.object({
                 nameWithOwner: z.string().min(1),
             }).optional(),
@@ -398,6 +400,64 @@ function buildConfigItemFromNormalizedItem(item) {
         portfolioTrack: item.portfolioTrack,
     };
 }
+function extractIssueUrlsFromPullRequestBody(body, repositoryNameWithOwner) {
+    if (!body || body.trim().length === 0) {
+        return [];
+    }
+    const issueUrls = new Set();
+    const issueUrlPattern = /^\s*-\s*Issue URL:\s*(https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/issues\/\d+)\s*$/gim;
+    for (const match of body.matchAll(issueUrlPattern)) {
+        const issueUrl = match[1]?.trim();
+        if (issueUrl) {
+            issueUrls.add(issueUrl);
+        }
+    }
+    if (issueUrls.size === 0 && repositoryNameWithOwner) {
+        const primaryIssuePattern = /^\s*-\s*Primary issue:\s*#(\d+)\s*$/gim;
+        for (const match of body.matchAll(primaryIssuePattern)) {
+            const issueNumber = match[1]?.trim();
+            if (issueNumber) {
+                issueUrls.add(`https://github.com/${repositoryNameWithOwner}/issues/${issueNumber}`);
+            }
+        }
+    }
+    return [...issueUrls];
+}
+function dedupeNormalizedItems(items) {
+    const seenUrls = new Set();
+    const dedupedItems = [];
+    for (const item of items) {
+        const comparableUrl = normalizeComparableUrl(item.url);
+        if (seenUrls.has(comparableUrl)) {
+            continue;
+        }
+        seenUrls.add(comparableUrl);
+        dedupedItems.push(item);
+    }
+    return dedupedItems;
+}
+function resolveBodyLinkedIssueContextItems(view, fieldNames, body, repositoryNameWithOwner) {
+    const issueUrls = extractIssueUrlsFromPullRequestBody(body, repositoryNameWithOwner);
+    if (issueUrls.length === 0) {
+        return [];
+    }
+    const linkedContextItems = [];
+    for (const issueUrl of issueUrls) {
+        try {
+            const issueTarget = resolveProjectResourceInView(view, fieldNames, issueUrl);
+            if (issueTarget.existingItem) {
+                linkedContextItems.push(issueTarget.existingItem);
+            }
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (!message.startsWith(`GitHub resource not found for ${issueUrl}.`)) {
+                throw error;
+            }
+        }
+    }
+    return linkedContextItems;
+}
 function resolveInferredConfigItem(targetUrl, normalizedItems, target) {
     const normalizedTargetUrl = normalizeComparableUrl(targetUrl);
     const linkedSnapshotItem = normalizedItems.find((item) => (item.linkedPullRequests.some((pullRequestUrl) => normalizeComparableUrl(pullRequestUrl) === normalizedTargetUrl)
@@ -518,6 +578,7 @@ function resolveProjectResource(url) {
             id
             url
             title
+            body
             repository {
               nameWithOwner
             }
@@ -526,6 +587,7 @@ function resolveProjectResource(url) {
             id
             url
             title
+            body
             repository {
               nameWithOwner
             }
@@ -547,6 +609,7 @@ function resolveProjectResourceInView(view, fieldNames, url) {
             id
             url
             title
+            body
             repository {
               nameWithOwner
             }
@@ -577,6 +640,7 @@ function resolveProjectResourceInView(view, fieldNames, url) {
             id
             url
             title
+            body
             repository {
               nameWithOwner
             }
@@ -646,11 +710,12 @@ function resolveProjectResourceInView(view, fieldNames, url) {
         id: response.data.resource.id,
         url: response.data.resource.url,
         title: response.data.resource.title,
+        body: response.data.resource.body,
         repository: response.data.resource.repository,
     };
     const existingProjectItem = response.data.resource.projectItems.nodes
         .find((item) => item.project.id === view.id) ?? null;
-    const linkedContextItems = response.data.resource.__typename === 'PullRequest'
+    const graphLinkedContextItems = response.data.resource.__typename === 'PullRequest'
         ? (response.data.resource.closingIssuesReferences?.nodes ?? [])
             .map((linkedIssue) => {
             const linkedIssueProjectItem = linkedIssue.projectItems.nodes.find((item) => item.project.id === view.id) ?? null;
@@ -668,6 +733,13 @@ function resolveProjectResourceInView(view, fieldNames, url) {
         })
             .filter((item) => item !== null)
         : [];
+    const bodyLinkedContextItems = response.data.resource.__typename === 'PullRequest'
+        ? resolveBodyLinkedIssueContextItems(view, fieldNames, response.data.resource.body, response.data.resource.repository?.nameWithOwner ?? null)
+        : [];
+    const linkedContextItems = dedupeNormalizedItems([
+        ...graphLinkedContextItems,
+        ...bodyLinkedContextItems,
+    ]);
     return {
         resource,
         existingItem: existingProjectItem

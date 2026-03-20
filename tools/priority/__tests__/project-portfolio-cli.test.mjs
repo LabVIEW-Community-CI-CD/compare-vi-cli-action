@@ -135,6 +135,7 @@ function buildFakeGhState({
   targetUrl,
   resourceId,
   title,
+  body = null,
   fields,
   nextAddedItemId,
   existingItemId = null,
@@ -158,6 +159,7 @@ function buildFakeGhState({
         id: resourceId,
         url: targetUrl,
         title,
+        body,
         repository: {
           nameWithOwner: 'example/repo',
         },
@@ -286,6 +288,7 @@ if (query.includes('resource(url: $url)')) {
           id: resource.id,
           url: resource.url,
           title: resource.title,
+          body: resource.body ?? null,
           repository: resource.repository,
           projectItems: { nodes: projectItems },
           closingIssuesReferences: {
@@ -293,6 +296,7 @@ if (query.includes('resource(url: $url)')) {
               id: issue.id,
               url: issue.url,
               title: issue.title,
+              body: issue.body ?? null,
               repository: issue.repository,
               projectItems: { nodes: serializeProjectItems(issue) },
             })),
@@ -927,6 +931,93 @@ test('project portfolio CLI live apply infers fresh PR field defaults from a lin
 
   assert.equal(report.target.added, true);
   assert.equal(report.target.itemId, 'item-added-22');
+  assert.equal(report.appliedFields.length, 7);
+  assert.ok(report.appliedFields.every((field) => field.source === 'inferred-linked-issue'));
+  assert.ok(report.appliedFields.every((field) => field.sourceUrl === linkedIssueUrl));
+  assert.equal(fakeGhState.addCalls.length, 1);
+  assert.equal(fakeGhState.updateCalls.length, 7);
+});
+
+test('project portfolio CLI live apply infers fresh PR field defaults from issue metadata in the PR body', async (t) => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'project-portfolio-apply-live-pr-body-infer-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  const targetUrl = 'https://github.com/example/repo/pull/23';
+  const linkedIssueUrl = 'https://github.com/example/repo/issues/23';
+  const configPath = path.join(tempRoot, 'config.json');
+  const viewPath = path.join(tempRoot, 'view.json');
+  const fieldsPath = path.join(tempRoot, 'fields.json');
+  const outPath = path.join(tempRoot, 'apply-report.json');
+  const fields = buildFields();
+
+  await writeJson(configPath, buildConfig({
+    itemUrl: linkedIssueUrl,
+    status: 'Todo',
+  }));
+  await writeJson(viewPath, buildView());
+  await writeJson(fieldsPath, fields);
+
+  const fakeGh = await writeFakeGhHarness(tempRoot, buildFakeGhState({
+    targetUrl,
+    resourceId: 'PR_23',
+    title: 'Fresh PR apply target from body metadata',
+    body: `## Issue Linkage\n- Primary issue: #23\n- Issue URL: ${linkedIssueUrl}\n`,
+    fields,
+    nextAddedItemId: 'item-added-23',
+    resourceType: 'PullRequest',
+  }));
+
+  const state = JSON.parse(await readFile(fakeGh.statePath, 'utf8'));
+  state.resources[linkedIssueUrl] = {
+    __typename: 'Issue',
+    id: 'ISSUE_23',
+    url: linkedIssueUrl,
+    title: 'Standing issue context',
+    repository: {
+      nameWithOwner: 'example/repo',
+    },
+    projectItems: [
+      {
+        id: 'item-existing-issue-23',
+        projectId: 'PVT_example',
+      },
+    ],
+    closingIssuesReferences: [],
+  };
+  state.itemFields['item-existing-issue-23'] = {
+    Status: { value: 'Todo', optionId: 'status-todo' },
+    Program: { value: 'Shared Infra', optionId: 'program-shared' },
+    Phase: { value: 'Policy', optionId: 'phase-policy' },
+    'Environment Class': { value: 'Infra', optionId: 'environment-infra' },
+    'Blocking Signal': { value: 'Scope', optionId: 'blocking-scope' },
+    'Evidence State': { value: 'Ready', optionId: 'evidence-ready' },
+    'Portfolio Track': { value: 'Agent UX', optionId: 'track-agent' },
+  };
+  await writeJson(fakeGh.statePath, state);
+
+  const result = runCli([
+    'apply',
+    '--config', configPath,
+    '--view-file', viewPath,
+    '--fields-file', fieldsPath,
+    '--out', outPath,
+    '--url', targetUrl,
+    '--use-config',
+  ], {
+    env: {
+      ...fakeGh.env,
+      COMPAREVI_PROJECT_PORTFOLIO_VERIFY_DELAY_MS: '0',
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(await readFile(outPath, 'utf8'));
+  const fakeGhState = JSON.parse(await readFile(fakeGh.statePath, 'utf8'));
+
+  assert.equal(report.target.added, true);
+  assert.equal(report.target.itemId, 'item-added-23');
   assert.equal(report.appliedFields.length, 7);
   assert.ok(report.appliedFields.every((field) => field.source === 'inferred-linked-issue'));
   assert.ok(report.appliedFields.every((field) => field.sourceUrl === linkedIssueUrl));
