@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
@@ -737,14 +737,13 @@ export function buildMergeArgs({ pr, repo, method, mode, keepBranch, inlineDelet
   return args;
 }
 
-export function deleteMergedHeadBranch({
+export function deleteHeadBranchRef({
   repoRoot,
-  prInfo,
+  headRepositorySlug = '',
+  headRefName = '',
   dryRun = false,
   spawnSyncFn = spawnSync
 } = {}) {
-  const headRefName = normalizeText(prInfo?.headRefName);
-  const headRepositorySlug = resolveHeadRepositorySlug(prInfo);
   if (!headRefName || !headRepositorySlug) {
     return {
       requested: true,
@@ -803,6 +802,107 @@ export function deleteMergedHeadBranch({
       detail || `exit ${result.status}`
     }`
   );
+}
+
+export function deleteMergedHeadBranch({
+  repoRoot,
+  prInfo,
+  dryRun = false,
+  spawnSyncFn = spawnSync
+} = {}) {
+  return deleteHeadBranchRef({
+    repoRoot,
+    headRepositorySlug: resolveHeadRepositorySlug(prInfo),
+    headRefName: normalizeText(prInfo?.headRefName),
+    dryRun,
+    spawnSyncFn
+  });
+}
+
+function promotionSnapshotToState(snapshot = {}) {
+  return {
+    state: snapshot?.state ?? null,
+    mergeStateStatus: snapshot?.mergeStateStatus ?? null,
+    isInMergeQueue: Boolean(snapshot?.isInMergeQueue),
+    autoMergeRequest: snapshot?.autoMergeEnabled ? { enabledAt: snapshot?.autoMergeEnabledAt ?? true } : null,
+    mergedAt: snapshot?.mergedAt ?? null
+  };
+}
+
+export function hasDeferredPostMergeBranchCleanup(summary = {}) {
+  return Boolean(summary?.branchCleanup?.requested) &&
+    normalizeLower(summary?.branchCleanup?.status) === 'deferred' &&
+    Boolean(summary?.branchCleanup?.postMergeDelete);
+}
+
+export async function reconcileDeferredBranchCleanup({
+  repoRoot = getRepoRoot(),
+  summary = null,
+  readPromotionStateFn = readPromotionState,
+  readPrInfoFn = readPrInfo,
+  deleteHeadBranchRefFn = deleteHeadBranchRef,
+  dryRun = false,
+  observedAt = new Date().toISOString()
+} = {}) {
+  if (!hasDeferredPostMergeBranchCleanup(summary)) {
+    return {
+      changed: false,
+      status: 'not-applicable',
+      summary
+    };
+  }
+
+  const repo = normalizeText(summary?.repo);
+  const pr = Number(summary?.pr);
+  if (!repo || !Number.isInteger(pr) || pr <= 0) {
+    throw new Error('Deferred branch cleanup reconciliation requires summary.repo and summary.pr.');
+  }
+
+  const latestPromotionState = readPromotionStateFn({ repoRoot, repo, pr });
+  const promotion = {
+    ...classifyPromotionState(promotionSnapshotToState(summary?.promotion?.initial), latestPromotionState, {
+      finalMode: normalizeText(summary?.finalMode) || 'auto'
+    }),
+    observedAt,
+    pollAttemptsUsed: 0
+  };
+
+  if (!(promotion.materialized && ['merged', 'already-merged'].includes(promotion.status))) {
+    return {
+      changed: false,
+      status: 'deferred',
+      summary,
+      promotion
+    };
+  }
+
+  let headRepositorySlug = normalizeText(summary?.branchCleanup?.repository);
+  let headRefName = normalizeText(summary?.branchCleanup?.headRefName);
+  if (!headRepositorySlug || !headRefName) {
+    const prInfo = readPrInfoFn({ repoRoot, repo, pr });
+    headRepositorySlug ||= resolveHeadRepositorySlug(prInfo);
+    headRefName ||= normalizeText(prInfo?.headRefName);
+  }
+
+  const branchCleanup = deleteHeadBranchRefFn({
+    repoRoot,
+    headRepositorySlug,
+    headRefName,
+    dryRun
+  });
+
+  return {
+    changed: true,
+    status: branchCleanup.status === 'dry-run' ? 'dry-run' : 'completed',
+    summary: {
+      ...summary,
+      promotion,
+      branchCleanup,
+      reconciledAt: observedAt
+    },
+    promotion,
+    branchCleanup
+  };
 }
 
 async function verifyPromotionActivation({
@@ -873,6 +973,7 @@ async function maybeWriteSummary(summaryPath, payload) {
     return;
   }
   const resolved = path.resolve(summaryPath);
+  await mkdir(path.dirname(resolved), { recursive: true });
   await writeFile(resolved, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   console.log(`[priority:merge-sync] wrote summary: ${resolved}`);
 }

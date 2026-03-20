@@ -952,6 +952,199 @@ test('runQueueSupervisor does not mark enqueue success when merge-sync exits 0 w
   assert.equal(report.actions[0].mergeSummary.promotionStatus, 'unchanged');
 });
 
+test('runQueueSupervisor reconciles deferred branch cleanup receipts after queued merges materialize', async () => {
+  const writes = [];
+  const reconcileCalls = [];
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'pr' && args[1] === 'list') {
+      return [];
+    }
+    if (args[0] === 'api' && String(args[1]).includes('validate.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:50:00Z', updated_at: '2026-03-05T20:52:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('policy-guard-upstream.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:40:00Z', updated_at: '2026-03-05T20:41:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('fixture-drift.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('commit-integrity.yml')) return { workflow_runs: [] };
+    throw new Error(`Unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const readJsonFileFn = async (filePath) => {
+    if (String(filePath).endsWith('branch-required-checks.json')) {
+      return { branches: { develop: ['lint'] } };
+    }
+    if (String(filePath).endsWith('policy.json')) {
+      return {
+        rulesets: {
+          develop: {
+            includes: ['refs/heads/develop'],
+            merge_queue: { merge_method: 'SQUASH' }
+          }
+        }
+      };
+    }
+    throw new Error(`Unexpected read path: ${filePath}`);
+  };
+
+  const mergeSummaryReceipt = {
+    repo: 'owner/repo',
+    pr: 711,
+    branchCleanup: {
+      requested: true,
+      status: 'deferred',
+      reason: 'promotion-not-yet-merged',
+      postMergeDelete: true,
+      repository: 'owner/repo-fork',
+      headRefName: 'issue/origin-711-test'
+    },
+    promotion: {
+      status: 'queued',
+      materialized: true
+    }
+  };
+
+  const { report } = await runQueueSupervisor({
+    repoRoot: process.cwd(),
+    args: {
+      apply: true,
+      dryRun: false,
+      reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      maxInflight: 5,
+      minInflight: 1,
+      adaptiveCap: false,
+      maxQueuedRuns: 6,
+      maxInProgressRuns: 8,
+      stallThresholdMinutes: 45,
+      repo: 'owner/repo',
+      baseBranches: ['develop', 'main'],
+      healthBranch: 'develop',
+      help: false
+    },
+    now: new Date('2026-03-05T21:30:00.000Z'),
+    runGhJsonFn,
+    runCommandFn: () => ({ status: 0, stdout: '', stderr: '' }),
+    readdirFn: async () => ['merge-sync-711.json'],
+    readJsonFileFn,
+    readOptionalJsonFn: async (filePath) => {
+      if (String(filePath).includes('merge-sync-711.json')) {
+        return mergeSummaryReceipt;
+      }
+      return null;
+    },
+    reconcileDeferredBranchCleanupFn: async ({ summary }) => {
+      reconcileCalls.push(summary.pr);
+      return {
+        changed: true,
+        status: 'completed',
+        promotion: { status: 'merged' },
+        summary: {
+          ...summary,
+          branchCleanup: {
+            ...summary.branchCleanup,
+            status: 'deleted',
+            reason: 'post-merge-api-delete'
+          }
+        }
+      };
+    },
+    writeReportFn: async (reportPath, payload) => {
+      writes.push({ reportPath: String(reportPath), payload });
+      return reportPath;
+    }
+  });
+
+  assert.deepEqual(reconcileCalls, [711]);
+  assert.equal(report.deferredBranchCleanup.summary.completedCount, 1);
+  assert.equal(report.deferredBranchCleanup.summary.pendingCount, 0);
+  assert.equal(report.deferredBranchCleanup.actions[0].status, 'completed');
+  assert.equal(report.deferredBranchCleanup.actions[0].branchCleanupStatus, 'deleted');
+  assert.ok(writes.some((entry) => String(entry.reportPath).includes('merge-sync-711.json')));
+});
+
+test('runQueueSupervisor reports deferred branch cleanup receipts in dry-run mode without mutating them', async () => {
+  let reconcileCalled = false;
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'pr' && args[1] === 'list') {
+      return [];
+    }
+    if (args[0] === 'api' && String(args[1]).includes('validate.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('policy-guard-upstream.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('fixture-drift.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('commit-integrity.yml')) return { workflow_runs: [] };
+    throw new Error(`Unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const readJsonFileFn = async (filePath) => {
+    if (String(filePath).endsWith('branch-required-checks.json')) {
+      return { branches: { develop: ['lint'] } };
+    }
+    if (String(filePath).endsWith('policy.json')) {
+      return { rulesets: {} };
+    }
+    throw new Error(`Unexpected read path: ${filePath}`);
+  };
+
+  const { report } = await runQueueSupervisor({
+    repoRoot: process.cwd(),
+    args: {
+      apply: false,
+      dryRun: true,
+      reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      maxInflight: 5,
+      minInflight: 1,
+      adaptiveCap: false,
+      maxQueuedRuns: 6,
+      maxInProgressRuns: 8,
+      stallThresholdMinutes: 45,
+      repo: 'owner/repo',
+      baseBranches: ['develop', 'main'],
+      healthBranch: 'develop',
+      help: false
+    },
+    now: new Date('2026-03-05T21:30:00.000Z'),
+    runGhJsonFn,
+    readdirFn: async () => ['merge-sync-712.json'],
+    readJsonFileFn,
+    readOptionalJsonFn: async (filePath) => {
+      if (String(filePath).includes('merge-sync-712.json')) {
+        return {
+          repo: 'owner/repo',
+          pr: 712,
+          branchCleanup: {
+            requested: true,
+            status: 'deferred',
+            reason: 'promotion-not-yet-merged',
+            postMergeDelete: true
+          },
+          promotion: {
+            status: 'queued',
+            materialized: true
+          }
+        };
+      }
+      return null;
+    },
+    reconcileDeferredBranchCleanupFn: async () => {
+      reconcileCalled = true;
+      return null;
+    },
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(reconcileCalled, false);
+  assert.equal(report.deferredBranchCleanup.summary.pendingCount, 1);
+  assert.equal(report.deferredBranchCleanup.actions[0].status, 'pending');
+});
+
 test('runQueueSupervisor respects governor pause mode before enqueue actions', async () => {
   const commandCalls = [];
   const runGhJsonFn = (args) => {
