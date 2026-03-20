@@ -31,6 +31,8 @@ const DEFAULT_BRANCH = 'develop';
 const DEFAULT_BASE_REMOTE = 'upstream';
 const REMEDIATION_COMMIT_AUTHOR_NAME = 'compare-vi-cli-action parity bot';
 const REMEDIATION_COMMIT_AUTHOR_EMAIL = 'compare-vi-cli-action@users.noreply.github.com';
+const DEFAULT_PUSH_TRANSPORT_RETRY_ATTEMPTS = 3;
+const DEFAULT_PUSH_TRANSPORT_RETRY_DELAY_MS = 1500;
 
 function printUsage() {
   console.log('Usage: node tools/priority/diverged-develop-remediation-pr.mjs [options]');
@@ -178,6 +180,7 @@ export function buildDivergedDevelopRemediationSummaryPayload({
   draftState,
   autoMerge,
   promotionTarget,
+  failure,
   syncMethod = 'pull-request-draft',
   createdAt = new Date().toISOString()
 }) {
@@ -205,7 +208,8 @@ export function buildDivergedDevelopRemediationSummaryPayload({
     pullRequest: pullRequest ?? null,
     draftState: draftState ?? null,
     autoMerge: autoMerge ?? null,
-    promotionTarget: promotionTarget ?? null
+    promotionTarget: promotionTarget ?? null,
+    failure: failure ?? null
   };
 }
 
@@ -378,6 +382,29 @@ function buildGhError(args, result) {
 
 function isGitHubSshAuthFailure(message) {
   return /Permission denied \(publickey\)|Could not read from remote repository/i.test(String(message || ''));
+}
+
+export function classifyRetryablePushTransportFailure(message) {
+  const text = trimText(message);
+  if (!text) {
+    return null;
+  }
+
+  if (/bad record mac|SSL_read|curl 56/i.test(text)) {
+    return 'transport-tls';
+  }
+  if (/unexpected disconnect while reading sideband packet|remote end hung up unexpectedly|connection reset by peer/i.test(text)) {
+    return 'transport-disconnect';
+  }
+  if (/RPC failed/i.test(text)) {
+    return 'transport-rpc';
+  }
+
+  return null;
+}
+
+export function isRetryablePushTransportFailure(message) {
+  return classifyRetryablePushTransportFailure(message) !== null;
 }
 
 function runGh(args, { repoRoot, spawnSyncFn = spawnSync, ignoreExitCode = false } = {}) {
@@ -607,23 +634,86 @@ function createSyntheticParityCommit(
   };
 }
 
-function publishSyncBranch(
+function sleepSync(delayMs) {
+  if (!Number.isFinite(delayMs) || delayMs <= 0) {
+    return;
+  }
+
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+}
+
+function readRemoteBranchHead(repoRoot, targetRemote, syncBranch, { spawnSyncFn = spawnSync } = {}) {
+  const remoteHead = trimText(
+    runGit(repoRoot, ['ls-remote', '--heads', targetRemote, syncBranch], {
+      spawnSyncFn,
+      ignoreExitCode: true
+    }).stdout
+  );
+  return remoteHead.split(/\s+/, 1)[0] || null;
+}
+
+function buildPushFailureSummary({
+  targetRemote,
+  syncBranch,
+  remoteHeadBefore,
+  remoteHeadAfter = null,
+  attemptCount,
+  maxAttempts,
+  failureMessage,
+  failureClassification = null,
+  retryable = false
+}) {
+  return {
+    status: retryable ? 'transport-failed' : 'failed',
+    remote: targetRemote,
+    branch: syncBranch,
+    remoteHeadBefore: remoteHeadBefore || null,
+    remoteHeadAfter: remoteHeadAfter || null,
+    attemptCount,
+    maxAttempts,
+    retryable,
+    retryExhausted: retryable,
+    failureClassification,
+    failureMessage: trimText(failureMessage)
+  };
+}
+
+function runPushWithSshFallback(repoRoot, targetRemote, pushArgs, { spawnSyncFn = spawnSync } = {}) {
+  try {
+    runGit(repoRoot, pushArgs(targetRemote), { spawnSyncFn });
+    return;
+  } catch (error) {
+    if (!isGitHubSshAuthFailure(error.message)) {
+      throw error;
+    }
+    const fetchUrl = getRemoteFetchUrl(repoRoot, targetRemote, { spawnSyncFn });
+    if (!fetchUrl || fetchUrl === targetRemote) {
+      throw error;
+    }
+    runGit(repoRoot, pushArgs(fetchUrl), { spawnSyncFn });
+  }
+}
+
+export function publishSyncBranch(
   repoRoot,
   {
     targetRemote,
     syncBranch,
     syntheticCommitSha
   },
-  { spawnSyncFn = spawnSync } = {}
+  {
+    spawnSyncFn = spawnSync,
+    sleepFn = sleepSync,
+    maxAttempts = DEFAULT_PUSH_TRANSPORT_RETRY_ATTEMPTS,
+    retryDelayMs = DEFAULT_PUSH_TRANSPORT_RETRY_DELAY_MS
+  } = {}
 ) {
+  if (!Number.isFinite(maxAttempts) || maxAttempts < 1) {
+    throw new Error('publishSyncBranch maxAttempts must be at least 1.');
+  }
+
   const remoteRef = `refs/heads/${syncBranch}`;
-  const remoteHeadBefore = trimText(
-    runGit(repoRoot, ['ls-remote', '--heads', targetRemote, syncBranch], {
-      spawnSyncFn,
-      ignoreExitCode: true
-    }).stdout
-  )
-    .split(/\s+/, 1)[0];
+  const remoteHeadBefore = readRemoteBranchHead(repoRoot, targetRemote, syncBranch, { spawnSyncFn });
 
   if (remoteHeadBefore && remoteHeadBefore === syntheticCommitSha) {
     return {
@@ -631,7 +721,9 @@ function publishSyncBranch(
       remote: targetRemote,
       branch: syncBranch,
       remoteHeadBefore,
-      remoteHeadAfter: remoteHeadBefore
+      remoteHeadAfter: remoteHeadBefore,
+      recoveredFromPushFailure: false,
+      attemptCount: 0
     };
   }
 
@@ -646,34 +738,62 @@ function publishSyncBranch(
       : ['push', destination, `${syntheticCommitSha}:${remoteRef}`]
   );
 
-  try {
-    runGit(repoRoot, pushArgs(targetRemote), { spawnSyncFn });
-  } catch (error) {
-    if (!isGitHubSshAuthFailure(error.message)) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      runPushWithSshFallback(repoRoot, targetRemote, pushArgs, { spawnSyncFn });
+      const remoteHeadAfter = readRemoteBranchHead(repoRoot, targetRemote, syncBranch, { spawnSyncFn });
+      if (remoteHeadAfter !== syntheticCommitSha) {
+        throw new Error(
+          `Remediation branch ${targetRemote}/${syncBranch} resolved to ${remoteHeadAfter || '<missing>'}; expected ${syntheticCommitSha}.`
+        );
+      }
+
+      return {
+        status: 'pushed',
+        remote: targetRemote,
+        branch: syncBranch,
+        remoteHeadBefore: remoteHeadBefore || null,
+        remoteHeadAfter,
+        recoveredFromPushFailure: attempt > 1,
+        attemptCount: attempt
+      };
+    } catch (error) {
+      const failureMessage = trimText(error.message);
+      const failureClassification = classifyRetryablePushTransportFailure(failureMessage);
+      const remoteHeadAfter = readRemoteBranchHead(repoRoot, targetRemote, syncBranch, { spawnSyncFn });
+      if (remoteHeadAfter === syntheticCommitSha) {
+        return {
+          status: 'already-published',
+          remote: targetRemote,
+          branch: syncBranch,
+          remoteHeadBefore: remoteHeadBefore || null,
+          remoteHeadAfter,
+          recoveredFromPushFailure: true,
+          attemptCount: attempt
+        };
+      }
+
+      if (failureClassification && attempt < maxAttempts) {
+        sleepFn(retryDelayMs * attempt);
+        continue;
+      }
+
+      error.pushSummary = buildPushFailureSummary({
+        targetRemote,
+        syncBranch,
+        remoteHeadBefore,
+        remoteHeadAfter,
+        attemptCount: attempt,
+        maxAttempts,
+        failureMessage,
+        failureClassification,
+        retryable: Boolean(failureClassification)
+      });
       throw error;
     }
-    const fetchUrl = getRemoteFetchUrl(repoRoot, targetRemote, { spawnSyncFn });
-    if (!fetchUrl || fetchUrl === targetRemote) {
-      throw error;
-    }
-    runGit(repoRoot, pushArgs(fetchUrl), { spawnSyncFn });
   }
 
-  const remoteHeadAfter = gitValue(repoRoot, ['ls-remote', '--heads', targetRemote, syncBranch], { spawnSyncFn })
-    .split(/\s+/, 1)[0];
-  if (remoteHeadAfter !== syntheticCommitSha) {
-    throw new Error(
-      `Remediation branch ${targetRemote}/${syncBranch} resolved to ${remoteHeadAfter || '<missing>'}; expected ${syntheticCommitSha}.`
-    );
-  }
-
-  return {
-    status: 'pushed',
-    remote: targetRemote,
-    branch: syncBranch,
-    remoteHeadBefore: remoteHeadBefore || null,
-    remoteHeadAfter
-  };
+  throw new Error(`Remediation branch ${targetRemote}/${syncBranch} could not be published.`);
 }
 
 export function runDivergedDevelopRemediation({
@@ -741,78 +861,81 @@ export function runDivergedDevelopRemediation({
     },
     { spawnSyncFn }
   );
-  const push = publishSyncBranch(
-    repoRoot,
-    {
-      targetRemote: options.targetRemote,
-      syncBranch,
-      syntheticCommitSha: syntheticCommit.sha
-    },
-    { spawnSyncFn }
-  );
-  const body = buildDivergedDevelopRemediationPrBody({
-    upstream,
-    targetRepository,
-    targetRemote: options.targetRemote,
-    baseRemote: options.baseRemote,
-    branch: options.branch,
-    syncBranch,
-    reason: options.reason,
-    localHead: options.localHead,
-    baseHead: upstreamHead,
-    targetHead: divergedHead,
-    syntheticCommit: syntheticCommit.sha,
-    reference: options.reference
-  });
-
-  const createResult = runGhPrCreateFn(
-    {
-      repoRoot,
-      upstream: targetRepository,
-      headRepository: targetRepository,
-      branch: syncBranch,
-      base: options.branch,
-      title,
-      body
-    },
-    {
-      spawnSyncFn,
-      runGhJsonFn
-    }
-  );
-
-  let pullRequest = createResult?.pullRequest ?? null;
-  const reusedExisting = createResult?.reusedExisting === true;
-  const partialReport = buildDivergedDevelopRemediationSummaryPayload({
-    targetRemote: options.targetRemote,
-    baseRemote: options.baseRemote,
-    branch: options.branch,
-    syncBranch,
-    reason: options.reason,
-    localHead: options.localHead,
-    upstream,
-    targetRepository,
-    planeTransition,
-    baseRef,
-    headRef,
-    upstreamHead,
-    divergedHead,
-    upstreamTree,
-    divergedTree,
-    syntheticCommit,
-    push,
-    pullRequest: buildRemediationPullRequestSummary(pullRequest, {
-      syncBranch,
-      branch: options.branch,
-      reusedExisting
-    })
-  });
-  writeReport(reportPath, partialReport);
-  if (!pullRequest?.number) {
-    throw new Error(`Unable to resolve remediation pull request for ${targetRepoSlug}:${syncBranch}.`);
-  }
-
+  let push = null;
+  let pullRequest = null;
+  let reusedExisting = false;
   try {
+    push = publishSyncBranch(
+      repoRoot,
+      {
+        targetRemote: options.targetRemote,
+        syncBranch,
+        syntheticCommitSha: syntheticCommit.sha
+      },
+      { spawnSyncFn }
+    );
+    const body = buildDivergedDevelopRemediationPrBody({
+      upstream,
+      targetRepository,
+      targetRemote: options.targetRemote,
+      baseRemote: options.baseRemote,
+      branch: options.branch,
+      syncBranch,
+      reason: options.reason,
+      localHead: options.localHead,
+      baseHead: upstreamHead,
+      targetHead: divergedHead,
+      syntheticCommit: syntheticCommit.sha,
+      reference: options.reference
+    });
+
+    const createResult = runGhPrCreateFn(
+      {
+        repoRoot,
+        upstream: targetRepository,
+        headRepository: targetRepository,
+        branch: syncBranch,
+        base: options.branch,
+        title,
+        body
+      },
+      {
+        spawnSyncFn,
+        runGhJsonFn
+      }
+    );
+
+    pullRequest = createResult?.pullRequest ?? null;
+    reusedExisting = createResult?.reusedExisting === true;
+    const partialReport = buildDivergedDevelopRemediationSummaryPayload({
+      targetRemote: options.targetRemote,
+      baseRemote: options.baseRemote,
+      branch: options.branch,
+      syncBranch,
+      reason: options.reason,
+      localHead: options.localHead,
+      upstream,
+      targetRepository,
+      planeTransition,
+      baseRef,
+      headRef,
+      upstreamHead,
+      divergedHead,
+      upstreamTree,
+      divergedTree,
+      syntheticCommit,
+      push,
+      pullRequest: buildRemediationPullRequestSummary(pullRequest, {
+        syncBranch,
+        branch: options.branch,
+        reusedExisting
+      })
+    });
+    writeReport(reportPath, partialReport);
+    if (!pullRequest?.number) {
+      throw new Error(`Unable to resolve remediation pull request for ${targetRepoSlug}:${syncBranch}.`);
+    }
+
     if (pullRequest?.number && reusedExisting) {
       updateExistingPullRequestFn(
         repoRoot,
@@ -879,6 +1002,40 @@ export function runDivergedDevelopRemediation({
     writeReport(reportPath, report);
     return { reportPath, report };
   } catch (error) {
+    const pushSummary = error.pushSummary ?? push ?? null;
+    if (upstream && targetRepository && planeTransition && syntheticCommit) {
+      const failureReport = buildDivergedDevelopRemediationSummaryPayload({
+        targetRemote: options.targetRemote,
+        baseRemote: options.baseRemote,
+        branch: options.branch,
+        syncBranch,
+        reason: options.reason,
+        localHead: options.localHead,
+        upstream,
+        targetRepository,
+        planeTransition,
+        baseRef,
+        headRef,
+        upstreamHead,
+        divergedHead,
+        upstreamTree,
+        divergedTree,
+        syntheticCommit,
+        push: pushSummary,
+        pullRequest: buildRemediationPullRequestSummary(pullRequest, {
+          syncBranch,
+          branch: options.branch,
+          reusedExisting
+        }),
+        failure: {
+          stage: push ? 'finalize-remediation-pr' : 'publish-sync-branch',
+          classification: error.pushSummary?.failureClassification ?? null,
+          retryable: error.pushSummary?.retryable === true,
+          message: trimText(error.message)
+        }
+      });
+      writeReport(reportPath, failureReport);
+    }
     const reusableReport = tryBuildReusableRemediationReport({
       repoRoot,
       targetRepoSlug,
