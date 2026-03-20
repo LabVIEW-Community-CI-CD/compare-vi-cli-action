@@ -42,6 +42,116 @@ test('parseRepoSlug trims whitespace and rejects slugs with extra segments', asy
   );
 });
 
+test('copilot-review-gate auth prefers GH_TOKEN over file candidates', async () => {
+  const { getAuthToken, resolveAuthToken } = await loadModule();
+
+  const token = getAuthToken(
+    {
+      GH_TOKEN: ' env-token ',
+      GH_TOKEN_FILE: 'C:\\token.txt',
+    },
+    {
+      readFileSyncFn: () => 'file-token',
+      platform: 'win32',
+    },
+  );
+
+  assert.equal(token, 'env-token');
+  assert.deepEqual(
+    resolveAuthToken(
+      {
+        GH_TOKEN: ' env-token ',
+        GH_TOKEN_FILE: 'C:\\token.txt',
+      },
+      {
+        readFileSyncFn: () => 'file-token',
+        platform: 'win32',
+      },
+    ),
+    {
+      token: 'env-token',
+      source: 'gh-token-env',
+    },
+  );
+});
+
+test('copilot-review-gate auth uses GH_TOKEN_FILE when environment tokens are missing', async () => {
+  const { getAuthToken, resolveAuthToken } = await loadModule();
+
+  const reads = [];
+  const token = getAuthToken(
+    {
+      GH_TOKEN_FILE: 'C:\\custom-gh-token.txt',
+    },
+    {
+      readFileSyncFn: (filePath) => {
+        reads.push(filePath);
+        return ' file-token ';
+      },
+      platform: 'win32',
+    },
+  );
+
+  assert.equal(token, 'file-token');
+  assert.deepEqual(reads, ['C:\\custom-gh-token.txt']);
+  assert.deepEqual(
+    resolveAuthToken(
+      {
+        GH_TOKEN_FILE: 'C:\\custom-gh-token.txt',
+      },
+      {
+        readFileSyncFn: () => ' file-token ',
+        platform: 'win32',
+      },
+    ),
+    {
+      token: 'file-token',
+      source: 'gh-token-file',
+    },
+  );
+});
+
+test('copilot-review-gate auth falls back to the standard host token file path', async () => {
+  const { getAuthToken, listGitHubTokenFileCandidates, resolveAuthToken } = await loadModule();
+
+  assert.deepEqual(
+    listGitHubTokenFileCandidates({}, 'win32'),
+    ['C:\\github_token.txt'],
+  );
+  assert.deepEqual(
+    listGitHubTokenFileCandidates({}, 'linux'),
+    ['/mnt/c/github_token.txt'],
+  );
+
+  const reads = [];
+  const token = getAuthToken(
+    {},
+    {
+      readFileSyncFn: (filePath) => {
+        reads.push(filePath);
+        return ' fallback-token ';
+      },
+      platform: 'win32',
+    },
+  );
+
+  assert.equal(token, 'fallback-token');
+  assert.deepEqual(reads, ['C:\\github_token.txt']);
+  assert.deepEqual(
+    resolveAuthToken(
+      {},
+      {
+        readFileSyncFn: () => ' fallback-token ',
+        platform: 'win32',
+      },
+    ),
+    {
+      token: 'fallback-token',
+      source: 'standard-host-token-file',
+    },
+  );
+});
+
 test('copilot-review-gate skips draft PRs before any live lookup', async () => {
   const { runCopilotReviewGate } = await loadModule();
   let reviewsCalled = false;
@@ -107,6 +217,11 @@ test('copilot-review-gate passes ready PRs in draft-only-explicit mode without p
       '--poll-delay-ms',
       '1',
     ]),
+    env: {},
+    platform: 'win32',
+    readFileSyncFn: () => {
+      throw new Error('missing token file');
+    },
     loadReviewsFn: async () => {
       reviewsCallCount += 1;
       return [];
@@ -134,10 +249,112 @@ test('copilot-review-gate passes ready PRs in draft-only-explicit mode without p
   assert.equal(result.report?.status, 'pass');
   assert.equal(result.report?.gateState, 'ready');
   assert.deepEqual(result.report?.reasons, ['local-review-mode-no-github-review-required']);
+  assert.deepEqual(result.report?.auth, {
+    required: true,
+    source: null,
+    failureClass: null,
+  });
   assert.equal(result.report?.source.copilotReviewStrategy, 'draft-only-explicit');
   assert.equal(result.report?.poll, undefined);
   assert.equal(reviewsCallCount, 1);
   assert.equal(threadsCallCount, 1);
+});
+
+test('copilot-review-gate records the standard token file fallback in successful live receipts', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+  let observedToken = null;
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '1094',
+      '--head-sha',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+      '--copilot-review-strategy',
+      'draft-only-explicit',
+    ]),
+    env: {},
+    platform: 'win32',
+    readFileSyncFn: () => ' standard-token ',
+    loadReviewsFn: async (_options, token) => {
+      observedToken = token;
+      return [];
+    },
+    loadThreadsFn: async () => ({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [],
+            },
+          },
+        },
+      },
+    }),
+    loadReviewRunFn: async () => null,
+    writeReportFn: () => 'memory://copilot-review-gate-token-source.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(observedToken, 'standard-token');
+  assert.deepEqual(result.report?.auth, {
+    required: true,
+    source: 'standard-host-token-file',
+    failureClass: null,
+  });
+});
+
+test('copilot-review-gate reports auth-unavailable when no live token source can be resolved', async () => {
+  const { runCopilotReviewGate } = await loadModule();
+
+  const result = await runCopilotReviewGate({
+    argv: createArgv([
+      '--event-name',
+      'pull_request_target',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--pr',
+      '1094',
+      '--head-sha',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      '--base-ref',
+      'develop',
+      '--draft',
+      'false',
+    ]),
+    env: {},
+    platform: 'win32',
+    readFileSyncFn: () => {
+      throw new Error('missing token file');
+    },
+    loadReviewsFn: async (_options, token) => {
+      if (!token) {
+        throw new Error('GitHub token is required for live Copilot queue gate lookups.');
+      }
+      return [];
+    },
+    writeReportFn: () => 'memory://copilot-review-gate-auth-unavailable.json',
+    appendStepSummaryFn: () => {},
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report?.status, 'fail');
+  assert.equal(result.report?.gateState, 'error');
+  assert.deepEqual(result.report?.reasons, ['copilot-review-auth-unavailable']);
+  assert.deepEqual(result.report?.auth, {
+    required: true,
+    source: null,
+    failureClass: 'auth-unavailable',
+  });
 });
 
 test('copilot-review-gate keeps merge-group validation non-blocking in draft-only-explicit mode when GitHub review is intentionally absent', async () => {

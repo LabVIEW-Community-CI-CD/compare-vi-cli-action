@@ -388,8 +388,102 @@ export function parseCliArgs(argv = process.argv) {
   return options;
 }
 
-function getAuthToken(env = process.env) {
-  return normalizeText(env.GH_TOKEN) ?? normalizeText(env.GITHUB_TOKEN);
+function readGitHubTokenFile(filePath, readFileSyncFn = readFileSync) {
+  const normalizedPath = normalizeText(filePath);
+  if (!normalizedPath) {
+    return null;
+  }
+
+  try {
+    return normalizeText(readFileSyncFn(normalizedPath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function listGitHubTokenFileCandidateDescriptors(env = process.env, platform = process.platform) {
+  const candidates = [];
+  const pushCandidate = (pathValue, source) => {
+    const normalizedPath = normalizeText(pathValue);
+    if (!normalizedPath) {
+      return;
+    }
+    if (candidates.some((candidate) => candidate.path === normalizedPath)) {
+      return;
+    }
+    candidates.push({
+      path: normalizedPath,
+      source,
+    });
+  };
+
+  pushCandidate(env.GH_TOKEN_FILE, 'gh-token-file');
+  pushCandidate(env.GITHUB_TOKEN_FILE, 'github-token-file');
+  pushCandidate(platform === 'win32' ? 'C:\\github_token.txt' : '/mnt/c/github_token.txt', 'standard-host-token-file');
+  return candidates;
+}
+
+export function listGitHubTokenFileCandidates(env = process.env, platform = process.platform) {
+  return listGitHubTokenFileCandidateDescriptors(env, platform).map((candidate) => candidate.path);
+}
+
+export function resolveAuthToken(
+  env = process.env,
+  { readFileSyncFn = readFileSync, platform = process.platform } = {},
+) {
+  const ghToken = normalizeText(env.GH_TOKEN);
+  if (ghToken) {
+    return {
+      token: ghToken,
+      source: 'gh-token-env',
+    };
+  }
+
+  const githubToken = normalizeText(env.GITHUB_TOKEN);
+  if (githubToken) {
+    return {
+      token: githubToken,
+      source: 'github-token-env',
+    };
+  }
+
+  for (const candidate of listGitHubTokenFileCandidateDescriptors(env, platform)) {
+    const token = readGitHubTokenFile(candidate.path, readFileSyncFn);
+    if (token) {
+      return {
+        token,
+        source: candidate.source,
+      };
+    }
+  }
+
+  return {
+    token: null,
+    source: null,
+  };
+}
+
+export function getAuthToken(env = process.env, { readFileSyncFn = readFileSync, platform = process.platform } = {}) {
+  return resolveAuthToken(env, { readFileSyncFn, platform }).token;
+}
+
+function createAuthReport({ required = false, source = null, failureClass = null } = {}) {
+  return {
+    required,
+    source: normalizeText(source),
+    failureClass: normalizeText(failureClass),
+  };
+}
+
+function classifyAuthFailure(error, auth) {
+  const message = normalizeText(error?.message) ?? '';
+  if (auth?.required === true && !normalizeText(auth?.source)) {
+    return 'auth-unavailable';
+  }
+  if (/401\b|unauthorized/i.test(message)) {
+    return 'auth-unauthorized';
+  }
+  return null;
 }
 
 async function githubRequestJson(url, { method = 'GET', body = null, token } = {}) {
@@ -791,6 +885,7 @@ function evaluateGateOutcome({
   reviewRun,
   errors = [],
   gatedBaseRefs,
+  auth = createAuthReport(),
   now,
 }) {
   const reasons = [];
@@ -927,6 +1022,7 @@ function evaluateGateOutcome({
     status,
     gateState,
     repository,
+    auth,
     source: {
       mode: sourceMode,
       eventName,
@@ -1073,6 +1169,7 @@ function buildReportFromSignal(options, signalReport, now) {
     reviewRun,
     errors,
     gatedBaseRefs: options.gatedBaseRefs,
+    auth: createAuthReport({ required: false }),
     now,
   });
 }
@@ -1085,6 +1182,7 @@ function buildReportFromLiveData(
   workflowRun = null,
   livePullRequest = null,
   mergeGroupSource = null,
+  auth = createAuthReport({ required: true }),
 ) {
   const pullRequest = buildPullRequest(options, null, livePullRequest, mergeGroupSource);
   const reviews = normalizeReviews(reviewsPayload, pullRequest.headSha);
@@ -1104,13 +1202,16 @@ function buildReportFromLiveData(
     reviewRun: buildReviewRunFromLiveRun(workflowRun, options),
     errors,
     gatedBaseRefs: options.gatedBaseRefs,
+    auth,
     now,
   });
 }
 
-function buildFailureReport(options, now, error) {
+function buildFailureReport(options, now, error, auth = createAuthReport({ required: false })) {
   const mergeGroupSource = options.eventName === 'merge_group' ? parseMergeGroupHeadBranch(options.headBranch) : null;
   const pullRequest = buildPullRequest(options, null, null, mergeGroupSource);
+  const authFailureClass = classifyAuthFailure(error, auth);
+  const reasons = [authFailureClass === 'auth-unavailable' ? 'copilot-review-auth-unavailable' : 'copilot-review-data-error'];
   return {
     schema: COPILOT_REVIEW_GATE_SCHEMA,
     schemaVersion: '1.0.0',
@@ -1118,6 +1219,11 @@ function buildFailureReport(options, now, error) {
     status: 'fail',
     gateState: 'error',
     repository: normalizeText(options.repo),
+    auth: createAuthReport({
+      required: auth.required,
+      source: auth.source,
+      failureClass: authFailureClass,
+    }),
     source: {
       mode: options.eventName === 'merge_group' ? 'merge-group' : 'live',
       eventName: options.eventName,
@@ -1161,7 +1267,7 @@ function buildFailureReport(options, now, error) {
     reviewRun: buildReviewRunFromOptions(options),
     latestCopilotReview: null,
     actionableThreads: [],
-    reasons: ['copilot-review-data-error'],
+    reasons,
     errors: [error.message ?? String(error)],
   };
 }
@@ -1190,6 +1296,9 @@ function appendStepSummary(stepSummaryPath, report) {
     `- event_name: \`${report.source.eventName}\``,
     `- copilot_review_strategy: \`${report.source.copilotReviewStrategy ?? DEFAULT_COPILOT_REVIEW_STRATEGY}\``,
     `- repository: \`${report.repository ?? 'unknown'}\``,
+    `- auth_source: \`${report.auth?.source ?? 'none'}\``,
+    `- auth_required: \`${report.auth?.required ?? false}\``,
+    `- auth_failure_class: \`${report.auth?.failureClass ?? 'none'}\``,
     `- pull_request: \`#${report.pullRequest.number ?? 'unknown'}\``,
     `- base_ref: \`${report.pullRequest.baseRef ?? 'unknown'}\``,
     `- draft: \`${report.pullRequest.draft}\``,
@@ -1277,6 +1386,9 @@ function shouldContinuePolling(report) {
 export async function runCopilotReviewGate({
   argv = process.argv,
   now = new Date(),
+  env = process.env,
+  platform = process.platform,
+  readFileSyncFn = readFileSync,
   readSignalFn = readJsonFile,
   loadPullRequestFn = loadLivePullRequest,
   loadReviewsFn = loadLiveReviews,
@@ -1297,6 +1409,7 @@ export async function runCopilotReviewGate({
 
   let exitCode = 0;
   let report;
+  let auth = createAuthReport({ required: false });
 
   try {
     const signalPathExists = options.signalPath && existsSync(path.resolve(process.cwd(), options.signalPath));
@@ -1348,16 +1461,23 @@ export async function runCopilotReviewGate({
           reviewRun: buildReviewRunFromSignal(signalReport, resolvedOptions),
           errors: [],
           gatedBaseRefs: options.gatedBaseRefs,
+          auth: createAuthReport({ required: false }),
           now,
         });
       } else if (signalReport) {
         report = buildReportFromSignal(resolvedOptions, signalReport, now);
       } else {
-        const livePullRequest = options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions) : null;
+        const authResolution = resolveAuthToken(env, { readFileSyncFn, platform });
+        auth = createAuthReport({
+          required: true,
+          source: authResolution.source,
+        });
+        const livePullRequest =
+          options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions, authResolution.token) : null;
         const liveResolvedOptions = resolveLiveHeadOptions(resolvedOptions, livePullRequest);
-        const reviews = await loadReviewsFn(liveResolvedOptions);
-        const threads = await loadThreadsFn(liveResolvedOptions);
-        const reviewRun = await loadReviewRunFn(liveResolvedOptions);
+        const reviews = await loadReviewsFn(liveResolvedOptions, authResolution.token);
+        const threads = await loadThreadsFn(liveResolvedOptions, authResolution.token);
+        const reviewRun = await loadReviewRunFn(liveResolvedOptions, authResolution.token);
         report = buildReportFromLiveData(
           liveResolvedOptions,
           reviews,
@@ -1366,6 +1486,7 @@ export async function runCopilotReviewGate({
           reviewRun,
           livePullRequest,
           mergeGroupSource,
+          auth,
         );
       }
 
@@ -1374,11 +1495,17 @@ export async function runCopilotReviewGate({
         while (attemptsUsed < options.pollAttempts) {
           attemptsUsed += 1;
           await sleep(options.pollDelayMs);
-          const livePullRequest = options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions) : null;
+          const authResolution = resolveAuthToken(env, { readFileSyncFn, platform });
+          auth = createAuthReport({
+            required: true,
+            source: authResolution.source,
+          });
+          const livePullRequest =
+            options.eventName === 'merge_group' ? await loadPullRequestFn(resolvedOptions, authResolution.token) : null;
           const liveResolvedOptions = resolveLiveHeadOptions(resolvedOptions, livePullRequest);
-          const reviews = await loadReviewsFn(liveResolvedOptions);
-          const threads = await loadThreadsFn(liveResolvedOptions);
-          const reviewRun = await loadReviewRunFn(liveResolvedOptions);
+          const reviews = await loadReviewsFn(liveResolvedOptions, authResolution.token);
+          const threads = await loadThreadsFn(liveResolvedOptions, authResolution.token);
+          const reviewRun = await loadReviewRunFn(liveResolvedOptions, authResolution.token);
           report = buildReportFromLiveData(
             liveResolvedOptions,
             reviews,
@@ -1387,6 +1514,7 @@ export async function runCopilotReviewGate({
             reviewRun,
             livePullRequest,
             mergeGroupSource,
+            auth,
           );
           if (!shouldContinuePolling(report)) {
             break;
@@ -1409,7 +1537,7 @@ export async function runCopilotReviewGate({
     }
   } catch (error) {
     exitCode = 1;
-    report = buildFailureReport(options, now, error instanceof Error ? error : new Error(String(error)));
+    report = buildFailureReport(options, now, error instanceof Error ? error : new Error(String(error)), auth);
   }
 
   const reportPath = writeReportFn(options.outPath, report);
