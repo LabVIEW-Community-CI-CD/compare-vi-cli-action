@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/headless-sample-vi-corpus-targets-v1.schema.json",
+  "title": "Headless Sample VI Corpus Targets v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema",
+    "generatedAt",
+    "description",
+    "storagePolicy",
+    "admissionPolicy",
+    "targets"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "../../docs/schemas/headless-sample-vi-corpus-targets-v1.schema.json"
+    },
+    "schema": {
+      "const": "vi-headless/sample-targets@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "storagePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkedInCatalogPath",
+        "generatedRoot",
+        "rawArtifactsInGit"
+      ],
+      "properties": {
+        "checkedInCatalogPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rawArtifactsInGit": {
+          "const": false
+        }
+      }
+    },
+    "admissionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "acceptedTargetsRequirePublicGithubEvidence",
+        "acceptedTargetsRequireLicense",
+        "acceptedTargetsRequirePinnedCommit",
+        "provisionalTargetsAllowed"
+      ],
+      "properties": {
+        "acceptedTargetsRequirePublicGithubEvidence": {
+          "type": "boolean"
+        },
+        "acceptedTargetsRequireLicense": {
+          "type": "boolean"
+        },
+        "acceptedTargetsRequirePinnedCommit": {
+          "type": "boolean"
+        },
+        "provisionalTargetsAllowed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/target"
+      }
+    }
+  },
+  "$defs": {
+    "admissionState": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "provisional",
+        "rejected"
+      ]
+    },
+    "changeKind": {
+      "type": "string",
+      "enum": [
+        "modified",
+        "added",
+        "deleted"
+      ]
+    },
+    "certificationSurface": {
+      "type": "string",
+      "enum": [
+        "vi-history",
+        "compare-report",
+        "print-single-file"
+      ]
+    },
+    "operation": {
+      "type": "string",
+      "enum": [
+        "Compare-VIHistory",
+        "CreateComparisonReport",
+        "PrintToSingleFileHtml"
+      ]
+    },
+    "planeApplicability": {
+      "type": "string",
+      "enum": [
+        "linux-proof",
+        "windows-mirror",
+        "host-shadow"
+      ]
+    },
+    "admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "reasons"
+      ],
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/admissionState"
+        },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repoSlug",
+        "repoUrl",
+        "licenseSpdx",
+        "targetPath",
+        "changeKind",
+        "pinnedCommit"
+      ],
+      "properties": {
+        "repoSlug": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "repoUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "licenseSpdx": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "targetPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "changeKind": {
+          "$ref": "#/$defs/changeKind"
+        },
+        "pinnedCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "renderStrategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "certificationSurface",
+        "operation",
+        "planeApplicability",
+        "evidenceClass"
+      ],
+      "properties": {
+        "certificationSurface": {
+          "$ref": "#/$defs/certificationSurface"
+        },
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "planeApplicability": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/planeApplicability"
+          }
+        },
+        "evidenceClass": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "publicEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "url",
+        "status",
+        "note"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "workflow-run",
+            "pull-request",
+            "issue-comment"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "merged",
+            "open",
+            "warning",
+            "failed"
+          ]
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "localEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixturePaths"
+      ],
+      "properties": {
+        "fixturePaths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "admission",
+        "source",
+        "renderStrategy",
+        "publicEvidence",
+        "notes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "admission": {
+          "$ref": "#/$defs/admission"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "renderStrategy": {
+          "$ref": "#/$defs/renderStrategy"
+        },
+        "localEvidence": {
+          "$ref": "#/$defs/localEvidence"
+        },
+        "publicEvidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/publicEvidence"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

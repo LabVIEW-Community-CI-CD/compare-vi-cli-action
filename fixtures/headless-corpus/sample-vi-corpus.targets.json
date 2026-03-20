@@ -1,0 +1,183 @@
+{
+  "$schema": "../../docs/schemas/headless-sample-vi-corpus-targets-v1.schema.json",
+  "schema": "vi-headless/sample-targets@v1",
+  "generatedAt": "2026-03-19T23:55:00Z",
+  "description": "Evidence-backed public sample VIs used to certify headless compare and history rendering lanes above the minimal local fixtures.",
+  "storagePolicy": {
+    "checkedInCatalogPath": "fixtures/headless-corpus/sample-vi-corpus.targets.json",
+    "generatedRoot": "tests/results/_agent/headless-sample-corpus",
+    "rawArtifactsInGit": false
+  },
+  "admissionPolicy": {
+    "acceptedTargetsRequirePublicGithubEvidence": true,
+    "acceptedTargetsRequireLicense": true,
+    "acceptedTargetsRequirePinnedCommit": true,
+    "provisionalTargetsAllowed": true
+  },
+  "targets": [
+    {
+      "id": "icon-editor-settings-init-history",
+      "label": "labview-icon-editor Settings Init.vi history seed",
+      "admission": {
+        "state": "accepted",
+        "reasons": [
+          "MIT-licensed upstream repository.",
+          "Checked-in history fixture lineage already exists in this repository.",
+          "Public PR VI History workflow evidence exists on the upstream repository."
+        ]
+      },
+      "source": {
+        "repoSlug": "LabVIEW-Community-CI-CD/labview-icon-editor",
+        "repoUrl": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor",
+        "licenseSpdx": "MIT",
+        "targetPath": "resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi",
+        "changeKind": "modified",
+        "pinnedCommit": "fda45ac448d4b3dcf498bac291681b1dc3bc449d"
+      },
+      "renderStrategy": {
+        "certificationSurface": "vi-history",
+        "operation": "Compare-VIHistory",
+        "planeApplicability": [
+          "windows-mirror"
+        ],
+        "evidenceClass": "history-review"
+      },
+      "localEvidence": {
+        "fixturePaths": [
+          "fixtures/cross-repo/labview-icon-editor/settings-init/manifest.json",
+          "fixtures/cross-repo/labview-icon-editor/settings-init/history-report.md",
+          "fixtures/cross-repo/labview-icon-editor/settings-init/history-report.html"
+        ]
+      },
+      "publicEvidence": [
+        {
+          "kind": "workflow-run",
+          "url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor/actions/runs/22530196636",
+          "status": "success",
+          "note": "Public PR VI History workflow succeeded on the upstream MIT-licensed repository."
+        },
+        {
+          "kind": "pull-request",
+          "url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor/pull/20",
+          "status": "merged",
+          "note": "Org-owned PR VI History rollout kept the public workflow surface active for this repository."
+        }
+      ],
+      "notes": [
+        "Public evidence is repository-level; target-specific lineage is anchored by the checked-in fixture under fixtures/cross-repo/labview-icon-editor/settings-init.",
+        "This seed keeps the Windows-mirror VI history lane tied to a licensed public source repository."
+      ]
+    },
+    {
+      "id": "icon-editor-demo-vip-preinstall-history",
+      "label": "labview-icon-editor-demo VIP_Pre-Install Custom Action.vi proof PR",
+      "admission": {
+        "state": "accepted",
+        "reasons": [
+          "MIT-licensed downstream demo repository.",
+          "Target-specific public proof PR and workflow runs already exist.",
+          "The sample exercises changed-VI discovery and rendered review surfaces on a real VI change."
+        ]
+      },
+      "source": {
+        "repoSlug": "LabVIEW-Community-CI-CD/labview-icon-editor-demo",
+        "repoUrl": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo",
+        "licenseSpdx": "MIT",
+        "targetPath": "Tooling/deployment/VIP_Pre-Install Custom Action.vi",
+        "changeKind": "modified",
+        "pinnedCommit": "49d1415b3c593f24e3a1bb798211caec695735f6"
+      },
+      "renderStrategy": {
+        "certificationSurface": "vi-history",
+        "operation": "Compare-VIHistory",
+        "planeApplicability": [
+          "linux-proof"
+        ],
+        "evidenceClass": "history-review"
+      },
+      "publicEvidence": [
+        {
+          "kind": "pull-request",
+          "url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/pull/31",
+          "status": "open",
+          "note": "Standing proof PR carrying the real modified VI used for downstream CompareVI History validation."
+        },
+        {
+          "kind": "workflow-run",
+          "url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/actions/runs/23280819231",
+          "status": "success",
+          "note": "Pull request diagnostics workflow succeeded on the real modified VI change."
+        },
+        {
+          "kind": "workflow-run",
+          "url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/actions/runs/23280887595",
+          "status": "success",
+          "note": "Diagnostics publish workflow succeeded and rendered the reviewer surface."
+        },
+        {
+          "kind": "workflow-run",
+          "url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/actions/runs/23280903916",
+          "status": "success",
+          "note": "Agent canary workflow succeeded on the same proof surface."
+        }
+      ],
+      "notes": [
+        "This seed is the cleanest public target-specific proof currently available for CompareVI History reviewer rendering.",
+        "No checked-in local fixture is required because the public PR and workflow evidence are already target-specific."
+      ]
+    },
+    {
+      "id": "linuxcontainerdemo-newthing-print",
+      "label": "linuxContainerDemo NewThing.vi added-VI print path",
+      "admission": {
+        "state": "provisional",
+        "reasons": [
+          "Public successful Linux workflow evidence exists for the added-VI print path.",
+          "The repository currently declares no license, so this seed cannot be promoted to accepted status yet.",
+          "The sample still documents the best available public added-VI PrintToSingleFileHtml pattern for research and future replacement."
+        ]
+      },
+      "source": {
+        "repoSlug": "aphill93/linuxContainerDemo",
+        "repoUrl": "https://github.com/aphill93/linuxContainerDemo",
+        "licenseSpdx": null,
+        "targetPath": "Test-VIs/NewThing.vi",
+        "changeKind": "added",
+        "pinnedCommit": "0f31bc7a0c26624742101c925f58320dffece847"
+      },
+      "renderStrategy": {
+        "certificationSurface": "print-single-file",
+        "operation": "PrintToSingleFileHtml",
+        "planeApplicability": [
+          "linux-proof"
+        ],
+        "evidenceClass": "change-kind-print"
+      },
+      "publicEvidence": [
+        {
+          "kind": "pull-request",
+          "url": "https://github.com/aphill93/linuxContainerDemo/pull/7",
+          "status": "open",
+          "note": "Public PR carrying the change-kind-aware VI compare and print surface, including NewThing.vi as an added VI."
+        },
+        {
+          "kind": "workflow-run",
+          "url": "https://github.com/aphill93/linuxContainerDemo/actions/runs/22909143209",
+          "status": "success",
+          "note": "Linux VI Compare workflow succeeded on the PR head after change-kind rendering landed."
+        },
+        {
+          "kind": "workflow-run",
+          "url": "https://github.com/aphill93/linuxContainerDemo/actions/runs/22909143196",
+          "status": "success",
+          "note": "Linux headless LabVIEWCLI workflow succeeded on the same PR head."
+        }
+      ],
+      "notes": [
+        "Keep this seed provisional until licensing is explicit and a replacement accepted sample is available.",
+        "Do not use this target as a blocking accepted corpus lane while it remains license-ambiguous.",
+        "This seed currently covers Linux-only public evidence; it does not establish Windows parity."
+      ]
+    }
+  ]
+}
