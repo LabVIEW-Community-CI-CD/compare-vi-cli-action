@@ -169,6 +169,59 @@ export function normalizeBaseRefName(value) {
   return lowered;
 }
 
+export function isQueueManagedBaseBranch({ baseRefName = '', mergeQueueBranches = new Set(), baseBranchClass = null } = {}) {
+  if (baseBranchClass?.mergePolicy === 'merge-queue-squash') {
+    return true;
+  }
+  const normalizedBaseRefName = normalizeBaseRefName(baseRefName);
+  if (!normalizedBaseRefName) {
+    return false;
+  }
+  return mergeQueueBranches.has(normalizedBaseRefName);
+}
+
+export function resolveBranchCleanupPlan({
+  keepBranch = false,
+  mode = 'auto',
+  baseRefName = '',
+  mergeQueueBranches = new Set(),
+  baseBranchClass = null
+} = {}) {
+  if (keepBranch) {
+    return {
+      requested: false,
+      inlineDeleteBranch: false,
+      postMergeDelete: false,
+      reason: 'keep-branch'
+    };
+  }
+
+  if (mode === 'auto') {
+    return {
+      requested: true,
+      inlineDeleteBranch: false,
+      postMergeDelete: false,
+      reason: 'promotion-pending'
+    };
+  }
+
+  if (isQueueManagedBaseBranch({ baseRefName, mergeQueueBranches, baseBranchClass })) {
+    return {
+      requested: true,
+      inlineDeleteBranch: false,
+      postMergeDelete: true,
+      reason: 'post-merge-api-delete'
+    };
+  }
+
+  return {
+    requested: true,
+    inlineDeleteBranch: true,
+    postMergeDelete: false,
+    reason: 'inline-gh-delete-branch'
+  };
+}
+
 export function resolveReadyValidationClearancePath({ repoRoot, repo, pr }) {
   const repositorySegment = sanitizeSegment(repo || 'repo');
   const pullRequestSegment = sanitizeSegment(`pr-${pr || 'unknown'}`);
@@ -296,6 +349,7 @@ export function buildMergeSummaryPayload({
   prInfo,
   branchClassTrace = null,
   reviewClearance = null,
+  branchCleanup = null,
   promotion = null,
   planeTransition = null,
   createdAt = new Date().toISOString()
@@ -317,6 +371,7 @@ export function buildMergeSummaryPayload({
     branchClassTrace,
     attempts,
     reviewClearance,
+    branchCleanup,
     prState: {
       state: prInfo?.state ?? null,
       mergeStateStatus: prInfo?.mergeStateStatus ?? null,
@@ -639,9 +694,9 @@ export async function evaluatePromotionReviewClearance({
   };
 }
 
-export function buildMergeArgs({ pr, repo, method, mode, keepBranch }) {
+export function buildMergeArgs({ pr, repo, method, mode, keepBranch, inlineDeleteBranch = !keepBranch && mode !== 'auto' }) {
   const args = ['pr', 'merge', String(pr), '--repo', repo, `--${method}`];
-  if (!keepBranch && mode !== 'auto') {
+  if (inlineDeleteBranch) {
     args.push('--delete-branch');
   }
   if (mode === 'auto') {
@@ -650,6 +705,74 @@ export function buildMergeArgs({ pr, repo, method, mode, keepBranch }) {
     args.push('--admin');
   }
   return args;
+}
+
+export function deleteMergedHeadBranch({
+  repoRoot,
+  prInfo,
+  dryRun = false,
+  spawnSyncFn = spawnSync
+} = {}) {
+  const headRefName = normalizeText(prInfo?.headRefName);
+  const headRepositorySlug = resolveHeadRepositorySlug(prInfo);
+  if (!headRefName || !headRepositorySlug) {
+    return {
+      requested: true,
+      attempted: false,
+      status: 'skipped',
+      reason: 'missing-head-branch-metadata',
+      repository: headRepositorySlug || null,
+      headRefName: headRefName || null
+    };
+  }
+
+  const apiPath = `repos/${headRepositorySlug}/git/refs/heads/${encodeURIComponent(headRefName)}`;
+  if (dryRun) {
+    console.log(`[priority:merge-sync] dry-run post-merge branch cleanup: gh api -X DELETE ${apiPath}`);
+    return {
+      requested: true,
+      attempted: false,
+      status: 'dry-run',
+      reason: 'post-merge-api-delete',
+      repository: headRepositorySlug,
+      headRefName
+    };
+  }
+
+  const result = spawnSyncFn('gh', ['api', '-X', 'DELETE', apiPath], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  const detail = `${result.stderr ?? ''}${result.stdout ?? ''}`.trim();
+  if (result.status === 0) {
+    return {
+      requested: true,
+      attempted: true,
+      status: 'deleted',
+      reason: 'post-merge-api-delete',
+      repository: headRepositorySlug,
+      headRefName
+    };
+  }
+
+  if (/reference does not exist|not found|http 404/i.test(detail)) {
+    return {
+      requested: true,
+      attempted: true,
+      status: 'already-absent',
+      reason: 'post-merge-api-delete',
+      repository: headRepositorySlug,
+      headRefName,
+      detail
+    };
+  }
+
+  throw new Error(
+    `[priority:merge-sync] post-merge branch cleanup failed for ${headRepositorySlug}:${headRefName}: ${
+      detail || `exit ${result.status}`
+    }`
+  );
 }
 
 async function verifyPromotionActivation({
@@ -733,7 +856,8 @@ export async function runMergeSync({
   readPromotionStateFn = readPromotionState,
   sleepFn = delay,
   runMergeAttemptFn = runMergeAttempt,
-  evaluatePromotionReviewClearanceFn = evaluatePromotionReviewClearance
+  evaluatePromotionReviewClearanceFn = evaluatePromotionReviewClearance,
+  deleteMergedHeadBranchFn = deleteMergedHeadBranch
 } = {}) {
   const options = parseArgs(argv);
 
@@ -816,6 +940,13 @@ export async function runMergeSync({
   console.log(
     `[priority:merge-sync] selected mode=${selection.mode} reason=${selection.reason} mergeState=${prInfo.mergeStateStatus ?? 'n/a'}`
   );
+  let branchCleanupPlan = resolveBranchCleanupPlan({
+    keepBranch: options.keepBranch,
+    mode: selection.mode,
+    baseRefName: prInfo?.baseRefName,
+    mergeQueueBranches,
+    baseBranchClass
+  });
 
   if (!reviewClearance?.ok) {
     const reasons = Array.isArray(reviewClearance?.report?.reasons) ? reviewClearance.report.reasons : [];
@@ -835,7 +966,8 @@ export async function runMergeSync({
       repo: resolvedRepo,
       method: options.method,
       mode: selection.mode,
-      keepBranch: options.keepBranch
+      keepBranch: options.keepBranch,
+      inlineDeleteBranch: branchCleanupPlan.inlineDeleteBranch
     });
     const initialResult = runMergeAttemptFn({ repoRoot, args: initialArgs, dryRun: options.dryRun });
     attempts.push({
@@ -859,7 +991,15 @@ export async function runMergeSync({
           repo: resolvedRepo,
           method: options.method,
           mode: 'auto',
-          keepBranch: options.keepBranch
+          keepBranch: options.keepBranch,
+          inlineDeleteBranch: false
+        });
+        branchCleanupPlan = resolveBranchCleanupPlan({
+          keepBranch: options.keepBranch,
+          mode: 'auto',
+          baseRefName: prInfo?.baseRefName,
+          mergeQueueBranches,
+          baseBranchClass
         });
         const retryResult = runMergeAttemptFn({ repoRoot, args: retryArgs, dryRun: options.dryRun });
         attempts.push({
@@ -909,6 +1049,43 @@ export async function runMergeSync({
     });
   }
 
+  let branchCleanup = {
+    requested: branchCleanupPlan.requested,
+    attempted: false,
+    status: branchCleanupPlan.requested ? 'deferred' : 'kept',
+    reason: branchCleanupPlan.reason,
+    inlineDeleteBranch: branchCleanupPlan.inlineDeleteBranch,
+    postMergeDelete: branchCleanupPlan.postMergeDelete,
+    repository: resolveHeadRepositorySlug(prInfo) || null,
+    headRefName: normalizeText(prInfo?.headRefName) || null
+  };
+  if (branchCleanupPlan.inlineDeleteBranch) {
+    branchCleanup = {
+      ...branchCleanup,
+      status: options.dryRun ? 'dry-run-inline' : 'inline-requested'
+    };
+  } else if (branchCleanupPlan.postMergeDelete) {
+    if (options.dryRun) {
+      branchCleanup = deleteMergedHeadBranchFn({
+        repoRoot,
+        prInfo,
+        dryRun: true
+      });
+    } else if (promotion.materialized && ['merged', 'already-merged'].includes(promotion.status)) {
+      branchCleanup = deleteMergedHeadBranchFn({
+        repoRoot,
+        prInfo,
+        dryRun: false
+      });
+    } else {
+      branchCleanup = {
+        ...branchCleanup,
+        status: 'deferred',
+        reason: 'promotion-not-yet-merged'
+      };
+    }
+  }
+
   const payload = buildMergeSummaryPayload({
     repo: resolvedRepo,
     pr: options.pr,
@@ -926,6 +1103,7 @@ export async function runMergeSync({
       baseBranchClass
     }),
     reviewClearance: reviewClearance?.report ?? null,
+    branchCleanup,
     promotion,
     planeTransition
   });

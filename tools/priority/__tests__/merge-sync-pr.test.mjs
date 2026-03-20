@@ -11,7 +11,10 @@ import {
   buildMergeSummaryPayload,
   buildPolicyTrace,
   classifyPromotionState,
+  deleteMergedHeadBranch,
   evaluatePromotionReviewClearance,
+  isQueueManagedBaseBranch,
+  resolveBranchCleanupPlan,
   resolveReadyValidationClearancePath,
   isUpstreamOwnedHead,
   normalizeBaseRefName,
@@ -236,6 +239,76 @@ test('buildMergeArgs keeps --delete-branch for direct merges when branch cleanup
   ]);
 });
 
+test('isQueueManagedBaseBranch honors branch-class merge policy and normalized base refs', () => {
+  const baseBranchClass = classifyBranch({
+    branch: 'develop',
+    contract: branchClassContract,
+    repositoryRole: 'upstream'
+  });
+
+  assert.equal(
+    isQueueManagedBaseBranch({
+      baseRefName: 'refs/heads/develop',
+      mergeQueueBranches: new Set(),
+      baseBranchClass
+    }),
+    true
+  );
+  assert.equal(
+    isQueueManagedBaseBranch({
+      baseRefName: 'refs/heads/main',
+      mergeQueueBranches: new Set(['main'])
+    }),
+    true
+  );
+});
+
+test('resolveBranchCleanupPlan switches queue-managed admin merges to post-merge cleanup', () => {
+  const baseBranchClass = classifyBranch({
+    branch: 'develop',
+    contract: branchClassContract,
+    repositoryRole: 'upstream'
+  });
+
+  assert.deepEqual(
+    resolveBranchCleanupPlan({
+      keepBranch: false,
+      mode: 'admin',
+      baseRefName: 'develop',
+      mergeQueueBranches: new Set(),
+      baseBranchClass
+    }),
+    {
+      requested: true,
+      inlineDeleteBranch: false,
+      postMergeDelete: true,
+      reason: 'post-merge-api-delete'
+    }
+  );
+});
+
+test('buildMergeArgs omits --delete-branch when inline cleanup is disabled for admin merges', () => {
+  assert.deepEqual(
+    buildMergeArgs({
+      pr: 1018,
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      method: 'squash',
+      mode: 'admin',
+      keepBranch: false,
+      inlineDeleteBranch: false
+    }),
+    [
+      'pr',
+      'merge',
+      '1018',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--squash',
+      '--admin'
+    ]
+  );
+});
+
 test('selectMergeMode keeps queue reason stable for refs/heads base branch values', () => {
   const selection = selectMergeMode(
     {
@@ -390,6 +463,26 @@ test('buildMergeArgs omits --delete-branch for auto merges so merge-queue branch
     '--squash',
     '--auto'
   ]);
+});
+
+test('deleteMergedHeadBranch treats an already-absent branch as a successful cleanup outcome', () => {
+  const cleanup = deleteMergedHeadBranch({
+    repoRoot,
+    prInfo: {
+      headRefName: 'issue/origin-1397-test-branch',
+      headRepository: { name: 'compare-vi-cli-action-fork' },
+      headRepositoryOwner: { login: 'LabVIEW-Community-CI-CD' }
+    },
+    spawnSyncFn: () => ({
+      status: 1,
+      stdout: '',
+      stderr: 'gh: Not Found (HTTP 404)\n'
+    })
+  });
+
+  assert.equal(cleanup.status, 'already-absent');
+  assert.equal(cleanup.repository, 'labview-community-ci-cd/compare-vi-cli-action-fork');
+  assert.equal(cleanup.headRefName, 'issue/origin-1397-test-branch');
 });
 
 test('getMergeQueueBranches returns exact queue-managed branches from policy rulesets', () => {
@@ -783,6 +876,107 @@ test('runMergeSync records queued promotion state after auto merge activation ma
 
   const written = JSON.parse(await readFile(path.join(tempDir, 'summary.json'), 'utf8'));
   assert.equal(written.promotion.status, 'queued');
+});
+
+test('runMergeSync omits inline delete and performs post-merge cleanup for admin merges on queue-managed bases', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'merge-sync-pr-admin-cleanup-'));
+  const mergeArgs = [];
+  const cleanupCalls = [];
+  let promotionReads = 0;
+
+  const payload = await runMergeSync({
+    argv: [
+      'node',
+      'tools/priority/merge-sync-pr.mjs',
+      '--pr',
+      '128',
+      '--repo',
+      'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      '--admin',
+      '--summary-path',
+      path.join(tempDir, 'summary.json')
+    ],
+    repoRoot,
+    ensureGhCliFn: () => {},
+    readPrInfoFn: () => ({
+      number: 128,
+      state: 'OPEN',
+      isDraft: false,
+      mergeStateStatus: 'BLOCKED',
+      mergeable: 'MERGEABLE',
+      baseRefName: 'develop',
+      headRefName: 'issue/origin-1397-merge-queue-delete-branch',
+      headRepository: {
+        name: 'compare-vi-cli-action-fork'
+      },
+      headRepositoryOwner: {
+        login: 'LabVIEW-Community-CI-CD'
+      },
+      headRefOid: '1234567890123456789012345678901234567890',
+      url: 'https://example.test/pr/128'
+    }),
+    evaluatePromotionReviewClearanceFn: async () => ({
+      ok: true,
+      report: {
+        status: 'pass',
+        gateState: 'ready',
+        reasons: ['current-head-review-run-completed-clean']
+      }
+    }),
+    readPromotionStateFn: () => {
+      promotionReads += 1;
+      return promotionReads === 1
+        ? {
+            state: 'OPEN',
+            mergeStateStatus: 'BLOCKED',
+            isInMergeQueue: false,
+            autoMergeRequest: null,
+            mergedAt: null
+          }
+        : {
+            state: 'MERGED',
+            mergeStateStatus: 'CLEAN',
+            isInMergeQueue: false,
+            autoMergeRequest: null,
+            mergedAt: '2026-03-20T01:26:17Z'
+          };
+    },
+    runMergeAttemptFn: ({ args }) => {
+      mergeArgs.push(args);
+      return { status: 0, stdout: 'merged', stderr: '' };
+    },
+    deleteMergedHeadBranchFn: ({ prInfo, dryRun }) => {
+      cleanupCalls.push({ headRefName: prInfo.headRefName, dryRun });
+      return {
+        requested: true,
+        attempted: true,
+        status: 'already-absent',
+        reason: 'post-merge-api-delete',
+        repository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+        headRefName: prInfo.headRefName
+      };
+    },
+    sleepFn: async () => {}
+  });
+
+  assert.deepEqual(mergeArgs, [[
+    'pr',
+    'merge',
+    '128',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--squash',
+    '--admin'
+  ]]);
+  assert.deepEqual(cleanupCalls, [{
+    headRefName: 'issue/origin-1397-merge-queue-delete-branch',
+    dryRun: false
+  }]);
+  assert.equal(payload.promotion.status, 'merged');
+  assert.equal(payload.branchCleanup.status, 'already-absent');
+
+  const written = JSON.parse(await readFile(path.join(tempDir, 'summary.json'), 'utf8'));
+  assert.equal(written.branchCleanup.status, 'already-absent');
 });
 
 test('runMergeSync fails when auto merge command succeeds but no durable promotion state appears', async () => {
