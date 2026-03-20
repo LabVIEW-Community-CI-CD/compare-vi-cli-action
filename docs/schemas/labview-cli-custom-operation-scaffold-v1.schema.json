@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/labview-cli-custom-operation-scaffold-v1.schema.json",
+  "title": "LabVIEW CLI Custom Operation Scaffold v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "status",
+    "sourceExampleName",
+    "sourceExamplePath",
+    "destinationPath",
+    "destinationPolicy",
+    "receiptPath",
+    "sourceExists",
+    "destinationExists",
+    "labviewPathHint",
+    "labviewVersionHint",
+    "copiedFileCount",
+    "copiedFiles",
+    "notes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "labview-cli-custom-operation-scaffold@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "const": "succeeded"
+    },
+    "sourceExampleName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceExamplePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "destinationPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "destinationPolicy": {
+      "type": "string",
+      "enum": [
+        "repo-results-root",
+        "outside-repo"
+      ]
+    },
+    "receiptPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceExists": {
+      "type": "boolean",
+      "const": true
+    },
+    "destinationExists": {
+      "type": "boolean",
+      "const": true
+    },
+    "labviewPathHint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "labviewVersionHint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "copiedFileCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "copiedFiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "notes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

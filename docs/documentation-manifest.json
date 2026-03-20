@@ -223,6 +223,18 @@
       ]
     },
     {
+      "name": "LabVIEW CLI Custom Operation Scaffold Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Disposable workspace scaffold, receipt schema, focused tests, and guidance for bootstrapping repo-owned LabVIEW CLI custom operation authoring from NI's installed AddTwoNumbers example without vendoring NI files.",
+      "files": [
+        "docs/knowledgebase/LabVIEWCLI-CustomOperation-Scaffold.md",
+        "docs/schemas/labview-cli-custom-operation-scaffold-v1.schema.json",
+        "tools/New-LabVIEWCLICustomOperationWorkspace.ps1",
+        "tests/New-LabVIEWCLICustomOperationWorkspace.Tests.ps1"
+      ]
+    },
+    {
       "name": "Host Plane Diagnostics Contracts",
       "category": "supporting",
       "status": "reference",

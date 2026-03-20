@@ -1,0 +1,80 @@
+<!-- markdownlint-disable-next-line MD041 -->
+# LabVIEW CLI Custom Operation Scaffold
+
+This note defines the disposable workspace scaffold used to bootstrap
+repo-owned LabVIEW CLI custom operation authoring from NI's installed
+`AddTwoNumbers` example without vendoring NI example files into git.
+
+## Purpose
+
+Use the scaffold helper when an agent or human needs a repeatable starting point
+for a future repo-owned custom operation payload such as
+`PrintToSingleFileHtml`.
+
+This helper does not promote the NI example into the repository.
+
+- It copies from the installed example tree on the host.
+- It defaults the destination into `tests/results/_agent/`.
+- It emits a machine-readable receipt that records the source example path and
+  LabVIEW path/version hint used for the scaffold.
+
+## Entry points
+
+- Helper: `tools/New-LabVIEWCLICustomOperationWorkspace.ps1`
+- Receipt schema:
+  `docs/schemas/labview-cli-custom-operation-scaffold-v1.schema.json`
+- Focused test:
+  `tests/New-LabVIEWCLICustomOperationWorkspace.Tests.ps1`
+
+## Default source and destination
+
+- Default source:
+  `C:\Users\Public\Documents\National Instruments\LabVIEW CLI\Examples\AddTwoNumbers`
+- Default destination root:
+  `tests/results/_agent/custom-operation-scaffolds/`
+
+If the destination is inside the repository, the helper only allows child paths
+under `tests/results/_agent/custom-operation-scaffolds/`.
+
+The shared scaffold root itself is not a valid destination. This keeps `-Force`
+from wiping the entire disposable scaffold area in one call.
+
+## Usage
+
+Scaffold into the default disposable results root:
+
+```powershell
+node tools/npm/run-script.mjs history:custom-operation:scaffold
+```
+
+Scaffold into an explicit disposable path:
+
+```powershell
+pwsh -NoLogo -NoProfile -File tools/New-LabVIEWCLICustomOperationWorkspace.ps1 `
+  -DestinationPath tests/results/_agent/custom-operation-scaffolds/manual-authoring `
+  -Force
+```
+
+## Receipt
+
+Successful runs emit `labview-cli-custom-operation-scaffold@v1` with:
+
+- source example path
+- destination path
+- destination policy (`repo-results-root` or `outside-repo`)
+- receipt path
+- LabVIEW path hint
+- LabVIEW version hint
+- copied file inventory
+
+## Boundary
+
+This scaffold is bootstrap only.
+
+- It does not prove that the custom operation executes correctly.
+- It does not resolve the host hang tracked in `#1472`.
+- It does not make the eventual payload promotable on its own.
+
+It exists so the payload-authoring lane tracked by `#1469` has a deterministic,
+repeatable workspace bootstrap instead of manual copying from the NI install
+tree.
