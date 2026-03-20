@@ -297,6 +297,7 @@ test('createPriorityPr refuses to open a priority PR when the standing queue is 
 test('parseIssueNumberFromBranch extracts issue numbers from issue/* branches', () => {
   assert.equal(parseIssueNumberFromBranch('issue/680-sync-standing-priority'), 680);
   assert.equal(parseIssueNumberFromBranch('issue/personal-680-sync-standing-priority'), 680);
+  assert.equal(parseIssueNumberFromBranch('issue/origin-1420-security-intake-dependabot-api-400'), 1420);
   assert.equal(parseIssueNumberFromBranch('feature/something'), null);
 });
 
@@ -384,7 +385,12 @@ test('createPriorityPr builds PR metadata from resolved standing issue', () => {
     getCurrentBranchFn: () => 'issue/680-sync-standing-priority',
     ensureGhCliFn: () => {},
     resolveUpstreamFn: () => ({ owner: 'upstream-owner', repo: 'repo' }),
-    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => ({ owner: 'fork-owner', repo: 'repo', remoteName: remote }),
+    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => ({
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action-fork',
+      sameOwnerFork: true,
+      remoteName: remote
+    }),
     pushBranchFn: (_repoRoot, branch, remote) => {
       pushedBranch = `${remote}:${branch}`;
     },
@@ -516,6 +522,37 @@ test('createPriorityPr fails before PR creation when branch issue mismatches sta
     /maps to #588, but standing priority resolves to #680/i
   );
   assert.equal(prCreated, false);
+});
+
+test('createPriorityPr ignores incidental trailing numeric suffixes when matching standing issue branches', () => {
+  let prPayload = null;
+  const result = createPriorityPr({
+    env: {},
+    options: {
+      issue: 1420
+    },
+    readFileSyncFn: readDefaultPrTemplate,
+    getRepoRootFn: () => '/tmp/repo',
+    getCurrentBranchFn: () => 'issue/origin-1420-security-intake-dependabot-api-400',
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => ({ owner: 'upstream-owner', repo: 'repo' }),
+    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => ({
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action-fork',
+      sameOwnerFork: true,
+      remoteName: remote
+    }),
+    pushBranchFn: () => {},
+    runGhPrCreateFn: (payload) => {
+      prPayload = payload;
+      return { strategy: 'gh-pr-create' };
+    },
+    resolveStandingIssueNumberFn: () => ({ issueNumber: 1420, source: 'router' }),
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
+  });
+
+  assert.equal(result.issueNumber, 1420);
+  assert.equal(prPayload.branch, 'issue/origin-1420-security-intake-dependabot-api-400');
 });
 
 test('createPriorityPr uses mirror metadata for PR closing references while matching the local mirror branch', () => {

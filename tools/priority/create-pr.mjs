@@ -330,11 +330,19 @@ export function resolveStandingIssueNumberForPr(repoRoot, { readJsonFn = readJso
 }
 
 export function parseIssueNumberFromBranch(branch) {
-  const match = String(branch || '').match(/^issue\/(?:(?<fork>[a-z0-9._-]+)-)?(?<issue>\d+)(?:-|$)/i);
-  if (!match?.groups?.issue) {
+  const normalized = normalizeText(branch);
+  if (!normalized.toLowerCase().startsWith('issue/')) {
     return null;
   }
-  return toPositiveInteger(match.groups.issue);
+  const suffix = normalized.slice('issue/'.length);
+  const tokens = suffix.split('-').map((entry) => entry.trim()).filter(Boolean);
+  for (const token of tokens) {
+    const issueNumber = toPositiveInteger(token);
+    if (issueNumber) {
+      return issueNumber;
+    }
+  }
+  return null;
 }
 
 export function assertBranchMatchesIssue(branch, issueNumber) {
