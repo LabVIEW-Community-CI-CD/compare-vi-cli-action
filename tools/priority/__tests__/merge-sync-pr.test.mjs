@@ -292,6 +292,23 @@ test('resolveBranchCleanupPlan switches queue-managed admin merges to post-merge
   );
 });
 
+test('resolveBranchCleanupPlan uses post-merge cleanup for auto mode', () => {
+  assert.deepEqual(
+    resolveBranchCleanupPlan({
+      keepBranch: false,
+      mode: 'auto',
+      baseRefName: 'develop',
+      mergeQueueBranches: new Set(['develop'])
+    }),
+    {
+      requested: true,
+      inlineDeleteBranch: false,
+      postMergeDelete: true,
+      reason: 'post-merge-api-delete'
+    }
+  );
+});
+
 test('buildMergeArgs omits --delete-branch when inline cleanup is disabled for admin merges', () => {
   assert.deepEqual(
     buildMergeArgs({
@@ -519,6 +536,16 @@ test('hasDeferredPostMergeBranchCleanup detects queued auto-merge cleanup receip
       postMergeDelete: false
     }
   }), false);
+
+  assert.equal(hasDeferredPostMergeBranchCleanup({
+    finalMode: 'auto',
+    branchCleanup: {
+      requested: true,
+      status: 'deferred',
+      postMergeDelete: false,
+      inlineDeleteBranch: false
+    }
+  }), true);
 });
 
 test('reconcileDeferredBranchCleanup completes deferred cleanup once queued promotion materializes', async () => {
