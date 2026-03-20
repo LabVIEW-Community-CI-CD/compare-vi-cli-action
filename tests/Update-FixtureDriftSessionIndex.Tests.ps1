@@ -39,9 +39,9 @@ Describe 'Update-FixtureDriftSessionIndex.ps1' -Tag 'Unit' {
       -ResultsDir $resultsDir `
       -ContextPath $contextPath `
       -RuntimeSnapshotPath $runtimeSnapshotPath `
-      -RequiredLabel 'self-hosted-docker-windows' `
+      -RequiredLabel 'hosted-docker-windows' `
       -HasRequiredLabel:$true `
-      -RunnerLabelsCsv 'self-hosted,windows,self-hosted-docker-windows' `
+      -RunnerLabelsCsv 'self-hosted,windows,hosted-docker-windows' `
       -ManagerStatus 'success' `
       -ManagerSummaryPath 'results/fixture-drift/docker-runtime-manager.json' `
       -WindowsImageDigest 'sha256:windows' `
@@ -56,9 +56,9 @@ Describe 'Update-FixtureDriftSessionIndex.ps1' -Tag 'Unit' {
     $updated.runContext.dockerRuntimeManager.windowsImageDigest | Should -Be 'sha256:windows'
     $updated.runContext.dockerRuntimeManager.contextArtifactPath | Should -Be $contextPath
     $updated.runContext.dockerRuntimeManager.runtimeSnapshotPath | Should -Be $runtimeSnapshotPath
-    $updated.runContext.runnerLabelContract.requiredLabel | Should -Be 'self-hosted-docker-windows'
+    $updated.runContext.runnerLabelContract.requiredLabel | Should -Be 'hosted-docker-windows'
     $updated.runContext.runnerLabelContract.hasRequiredLabel | Should -BeTrue
-    @($updated.runContext.runnerLabelContract.labels) | Should -Contain 'self-hosted-docker-windows'
+    @($updated.runContext.runnerLabelContract.labels) | Should -Contain 'hosted-docker-windows'
   }
 
   It 'does not throw when session-index is missing and IgnoreMissingSessionIndex is enabled' {
