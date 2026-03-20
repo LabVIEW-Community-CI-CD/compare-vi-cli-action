@@ -14,7 +14,7 @@ param(
   [string]$Repository = $env:GITHUB_REPOSITORY,
   [string]$RunId = $env:GITHUB_RUN_ID,
   [string]$RunnerName = $env:RUNNER_NAME,
-  [string]$RequiredLabel = 'self-hosted-docker-windows',
+  [string]$RequiredLabel = 'hosted-docker-windows',
   [string]$Token = $env:GITHUB_TOKEN,
   [string]$OutputJsonPath = 'results/fixture-drift/runner-label-contract.json',
   [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
