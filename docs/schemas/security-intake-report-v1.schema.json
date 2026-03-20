@@ -12,6 +12,7 @@
     "thresholds",
     "override",
     "source",
+    "verification",
     "summary",
     "breaches",
     "remediation",
@@ -111,6 +112,66 @@
             },
             "openCount": { "type": "integer", "minimum": 0 },
             "resolvedCount": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repoRoot",
+        "rawOpenCount",
+        "verifiedRemediationCount",
+        "unresolvedCount",
+        "unsupportedCount",
+        "platformStale",
+        "verifiedAlertNumbers",
+        "unresolvedAlertNumbers",
+        "entries"
+      ],
+      "properties": {
+        "repoRoot": { "type": "string" },
+        "rawOpenCount": { "type": "integer", "minimum": 0 },
+        "verifiedRemediationCount": { "type": "integer", "minimum": 0 },
+        "unresolvedCount": { "type": "integer", "minimum": 0 },
+        "unsupportedCount": { "type": "integer", "minimum": 0 },
+        "platformStale": { "type": "boolean" },
+        "verifiedAlertNumbers": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "unresolvedAlertNumbers": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "number",
+              "packageName",
+              "ecosystem",
+              "manifestPath",
+              "firstPatchedVersion",
+              "detectedVersion",
+              "supported",
+              "remediated",
+              "reason"
+            ],
+            "properties": {
+              "number": { "type": ["integer", "null"] },
+              "packageName": { "type": ["string", "null"] },
+              "ecosystem": { "type": ["string", "null"] },
+              "manifestPath": { "type": ["string", "null"] },
+              "firstPatchedVersion": { "type": ["string", "null"] },
+              "detectedVersion": { "type": ["string", "null"] },
+              "supported": { "type": "boolean" },
+              "remediated": { "type": "boolean" },
+              "reason": { "type": "string" }
+            }
           }
         }
       }
@@ -231,7 +292,7 @@
       }
     },
     "status": {
-      "enum": ["pass", "breach", "overridden", "skip", "error"]
+      "enum": ["pass", "breach", "overridden", "platform-stale", "skip", "error"]
     },
     "errors": {
       "type": "array",
@@ -247,4 +308,3 @@
     }
   }
 }
-

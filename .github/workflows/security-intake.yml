@@ -42,7 +42,9 @@ jobs:
             '## Security Intake',
             `- status: \`${report.status}\``,
             `- breaches: \`${Array.isArray(report.breaches) ? report.breaches.length : 0}\``,
-            `- open alerts: \`${report.summary?.open?.total ?? 0}\``,
+            `- source open alerts: \`${report.source?.dependabot?.openCount ?? 0}\``,
+            `- gated open alerts: \`${report.summary?.open?.total ?? 0}\``,
+            `- platform stale: \`${report.verification?.platformStale ?? false}\``,
             `- route action: \`${report.route?.action ?? 'none'}\``
           ];
           if (process.env.GITHUB_STEP_SUMMARY) {
@@ -58,4 +60,3 @@ jobs:
           name: security-intake-report
           path: tests/results/_agent/security/security-intake-report.json
           if-no-files-found: warn
-

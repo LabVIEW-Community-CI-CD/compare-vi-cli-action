@@ -209,6 +209,44 @@ function round(value) {
   return Math.round(value * 100) / 100;
 }
 
+function readJsonIfPresent(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function normalizeVersionCandidate(raw) {
+  const normalized = asOptional(raw);
+  if (!normalized) return null;
+  const match = normalized.match(/(\d+(?:\.\d+){0,3})(?:[-+][0-9A-Za-z.-]+)?/);
+  return match ? match[0] : null;
+}
+
+function compareComparableVersions(left, right) {
+  const normalizedLeft = normalizeVersionCandidate(left);
+  const normalizedRight = normalizeVersionCandidate(right);
+  if (!normalizedLeft || !normalizedRight) return null;
+  const leftCore = normalizedLeft.split(/[-+]/, 1)[0];
+  const rightCore = normalizedRight.split(/[-+]/, 1)[0];
+  const leftParts = leftCore.split('.').map((entry) => Number.parseInt(entry, 10));
+  const rightParts = rightCore.split('.').map((entry) => Number.parseInt(entry, 10));
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftValue = Number.isFinite(leftParts[index]) ? leftParts[index] : 0;
+    const rightValue = Number.isFinite(rightParts[index]) ? rightParts[index] : 0;
+    if (leftValue > rightValue) return 1;
+    if (leftValue < rightValue) return -1;
+  }
+  const leftHasPrerelease = normalizedLeft.includes('-');
+  const rightHasPrerelease = normalizedRight.includes('-');
+  if (leftHasPrerelease && !rightHasPrerelease) return -1;
+  if (!leftHasPrerelease && rightHasPrerelease) return 1;
+  return 0;
+}
+
 function severity(raw) {
   const normalized = String(raw || '').toLowerCase().trim();
   if (normalized === 'medium') return 'moderate';
@@ -239,11 +277,117 @@ export function normalizeDependabotAlert(alert, now = new Date()) {
     packageName: asOptional(alert?.dependency?.package?.name),
     ecosystem: asOptional(alert?.dependency?.package?.ecosystem),
     manifestPath: asOptional(alert?.dependency?.manifest_path),
+    dependencyScope: asOptional(alert?.dependency?.scope),
+    dependencyRelationship: asOptional(alert?.dependency?.relationship),
+    firstPatchedVersion: asOptional(alert?.security_vulnerability?.first_patched_version?.identifier),
+    vulnerableVersionRange: asOptional(alert?.security_vulnerability?.vulnerable_version_range),
     createdAt,
     resolvedAt,
     ageDays: createdMs != null && nowMs >= createdMs ? round((nowMs - createdMs) / MS_DAY) : null,
     mttrDays: createdMs != null && resolvedMs != null && resolvedMs >= createdMs ? round((resolvedMs - createdMs) / MS_DAY) : null,
     url: alert?.html_url || null
+  };
+}
+
+function resolvePackageJsonVersion(packageJson, packageName) {
+  if (!packageJson || typeof packageJson !== 'object' || !packageName) return null;
+  for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+    const value = packageJson?.[section]?.[packageName];
+    if (asOptional(value)) return { section, version: String(value).trim() };
+  }
+  return null;
+}
+
+function resolvePackageLockVersion(packageLock, packageName) {
+  if (!packageLock || typeof packageLock !== 'object' || !packageName) return null;
+  const rootDependencies = packageLock?.packages?.[''] ?? {};
+  for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+    const value = rootDependencies?.[section]?.[packageName];
+    if (asOptional(value)) {
+      const installed = asOptional(packageLock?.packages?.[`node_modules/${packageName}`]?.version);
+      return { section, version: installed || String(value).trim(), declaredVersion: String(value).trim() };
+    }
+  }
+  const installed = asOptional(packageLock?.packages?.[`node_modules/${packageName}`]?.version);
+  if (installed) return { section: 'packages', version: installed, declaredVersion: null };
+  return null;
+}
+
+export function verifyLocalRemediationForAlert(alert, { repoRoot = process.cwd(), readJsonFn = readJsonIfPresent } = {}) {
+  const result = {
+    number: Number.isInteger(alert?.number) ? alert.number : null,
+    packageName: asOptional(alert?.packageName),
+    ecosystem: asOptional(alert?.ecosystem),
+    manifestPath: asOptional(alert?.manifestPath),
+    firstPatchedVersion: asOptional(alert?.firstPatchedVersion),
+    detectedVersion: null,
+    supported: false,
+    remediated: false,
+    reason: 'unsupported-alert-shape'
+  };
+
+  if (String(alert?.ecosystem || '').toLowerCase() !== 'npm') {
+    result.reason = 'unsupported-ecosystem';
+    return result;
+  }
+  if (String(alert?.dependencyRelationship || '').toLowerCase() !== 'direct') {
+    result.reason = 'unsupported-relationship';
+    return result;
+  }
+  if (!result.packageName || !result.manifestPath || !result.firstPatchedVersion) {
+    result.reason = 'missing-alert-metadata';
+    return result;
+  }
+
+  const manifestFile = path.resolve(repoRoot, result.manifestPath);
+  const manifestName = path.basename(result.manifestPath).toLowerCase();
+  const payload = readJsonFn(manifestFile);
+  if (!payload) {
+    result.reason = 'manifest-unavailable';
+    return result;
+  }
+
+  let resolved = null;
+  if (manifestName === 'package.json') {
+    resolved = resolvePackageJsonVersion(payload, result.packageName);
+  } else if (manifestName === 'package-lock.json' || manifestName === 'npm-shrinkwrap.json') {
+    resolved = resolvePackageLockVersion(payload, result.packageName);
+  } else {
+    result.reason = 'unsupported-manifest';
+    return result;
+  }
+
+  if (!resolved?.version) {
+    result.reason = 'package-not-present';
+    return result;
+  }
+
+  result.supported = true;
+  result.detectedVersion = resolved.version;
+  const comparison = compareComparableVersions(resolved.version, result.firstPatchedVersion);
+  if (comparison == null) {
+    result.reason = 'version-unparseable';
+    return result;
+  }
+  result.remediated = comparison >= 0;
+  result.reason = result.remediated ? 'verified-local-remediation' : 'detected-version-below-first-patched';
+  return result;
+}
+
+export function analyzeLocalAlertVerification(openAlerts = [], { repoRoot = process.cwd(), readJsonFn = readJsonIfPresent } = {}) {
+  const entries = openAlerts.map((alert) => verifyLocalRemediationForAlert(alert, { repoRoot, readJsonFn }));
+  const verifiedEntries = entries.filter((entry) => entry.supported && entry.remediated);
+  const unresolvedEntries = entries.filter((entry) => !(entry.supported && entry.remediated));
+  return {
+    repoRoot: path.resolve(repoRoot),
+    rawOpenCount: openAlerts.length,
+    verifiedRemediationCount: verifiedEntries.length,
+    unresolvedCount: unresolvedEntries.length,
+    unsupportedCount: entries.filter((entry) => !entry.supported).length,
+    platformStale: openAlerts.length > 0 && verifiedEntries.length === openAlerts.length,
+    verifiedAlertNumbers: verifiedEntries.map((entry) => entry.number).filter((value) => Number.isInteger(value)).sort((l, r) => l - r),
+    unresolvedAlertNumbers: unresolvedEntries.map((entry) => entry.number).filter((value) => Number.isInteger(value)).sort((l, r) => l - r),
+    entries
   };
 }
 
@@ -465,6 +609,7 @@ export async function runSecurityIntake(rawOptions = {}, deps = {}) {
   const routeIssue = deps.upsertRemediationIssueFn || upsertRemediationIssue;
   const writeReport = deps.writeJsonFn || writeJson;
   const repository = resolveRepo(options.repo);
+  const repoRoot = path.resolve(asOptional(deps.repoRoot) || process.cwd());
   const override = evaluateOverride(options, now);
   const base = {
     schema: 'priority/security-intake@v1',
@@ -480,6 +625,17 @@ export async function runSecurityIntake(rawOptions = {}, deps = {}) {
     thresholds: { ...options.thresholds },
     override,
     source: { dependabot: { sampledStates: ['open', 'fixed', 'dismissed', 'auto_dismissed'], openCount: 0, resolvedCount: 0 } },
+    verification: {
+      repoRoot,
+      rawOpenCount: 0,
+      verifiedRemediationCount: 0,
+      unresolvedCount: 0,
+      unsupportedCount: 0,
+      platformStale: false,
+      verifiedAlertNumbers: [],
+      unresolvedAlertNumbers: [],
+      entries: []
+    },
     summary: {
       open: { total: 0, bySeverity: { critical: 0, high: 0, moderate: 0, low: 0, unknown: 0 }, oldestOpenDays: 0, staleDaysThreshold: options.thresholds.staleOpenDays, staleCount: 0, staleAlertNumbers: [] },
       resolved: { lookbackDays: options.lookbackDays, total: 0, mttrDays: { average: null, p50: null, p90: null, max: null } }
@@ -509,18 +665,23 @@ export async function runSecurityIntake(rawOptions = {}, deps = {}) {
     const autoDismissedRaw = await listAlerts({ repo: repository, token, state: 'auto_dismissed', maxPages: options.maxPages, fetchImpl });
     const openAlerts = openRaw.map((item) => normalizeDependabotAlert(item, now));
     const resolvedAlerts = [...fixedRaw, ...dismissedRaw, ...autoDismissedRaw].map((item) => normalizeDependabotAlert(item, now));
+    const verification = analyzeLocalAlertVerification(openAlerts, { repoRoot });
+    const effectiveOpenAlerts = verification.entries.length
+      ? openAlerts.filter((alert) => !verification.verifiedAlertNumbers.includes(alert.number))
+      : openAlerts;
     const summary = summarizeDependabotAlerts({
-      openAlerts,
+      openAlerts: effectiveOpenAlerts,
       resolvedAlerts,
       thresholds: options.thresholds,
       lookbackDays: options.lookbackDays,
       now
     });
     const breaches = evaluateSecurityBreaches(summary, options.thresholds);
-    const candidates = buildRemediationCandidates(openAlerts);
+    const candidates = buildRemediationCandidates(effectiveOpenAlerts);
     const report = {
       ...base,
       source: { dependabot: { sampledStates: ['open', 'fixed', 'dismissed', 'auto_dismissed'], openCount: openAlerts.length, resolvedCount: resolvedAlerts.length } },
+      verification,
       summary,
       breaches,
       remediation: { candidateCount: candidates.length, candidates }
@@ -553,6 +714,8 @@ export async function runSecurityIntake(rawOptions = {}, deps = {}) {
       } else {
         report.status = 'breach';
       }
+    } else if (verification.platformStale) {
+      report.status = 'platform-stale';
     }
     const reportPath = writeReport(options.outputPath, report);
     console.log(`[security-intake] report: ${reportPath}`);
