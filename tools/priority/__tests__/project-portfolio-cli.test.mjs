@@ -139,6 +139,8 @@ function buildFakeGhState({
   nextAddedItemId,
   existingItemId = null,
   existingItemFieldValues = {},
+  resourceType = 'Issue',
+  linkedIssueResources = [],
 }) {
   const fieldMap = {};
   const optionMap = {};
@@ -152,7 +154,7 @@ function buildFakeGhState({
   return {
     resources: {
       [targetUrl]: {
-        __typename: 'Issue',
+        __typename: resourceType,
         id: resourceId,
         url: targetUrl,
         title,
@@ -167,6 +169,7 @@ function buildFakeGhState({
               },
             ]
           : [],
+        closingIssuesReferences: linkedIssueResources,
       },
     },
     fieldMap,
@@ -232,6 +235,23 @@ function extractUpdateAliases(query) {
   return [...query.matchAll(/([A-Za-z0-9_]+)[ \\t\\r\\n]*:[ \\t\\r\\n]*updateProjectV2ItemFieldValue/g)].map((match) => match[1]);
 }
 
+function serializeProjectItems(resource) {
+  return (resource.projectItems ?? []).map((item) => {
+    const itemFields = state.itemFields?.[item.id] ?? {};
+    const nodes = Object.entries(itemFields).map(([fieldName, fieldState]) => ({
+      __typename: 'ProjectV2ItemFieldSingleSelectValue',
+      field: { name: fieldName },
+      name: fieldState.value,
+      optionId: fieldState.optionId,
+    }));
+    return {
+      id: item.id,
+      project: { id: item.projectId },
+      fieldValues: { nodes },
+    };
+  });
+}
+
 if (args[0] !== 'api' || args[1] !== 'graphql') {
   if (args[0] === 'project' && args[1] === 'view') {
     saveAndPrint(state.projectView ?? {});
@@ -258,20 +278,7 @@ if (query.includes('resource(url: $url)')) {
   }
 
   if (query.includes('projectItems(first: 100)')) {
-    const projectItems = (resource.projectItems ?? []).map((item) => {
-      const itemFields = state.itemFields?.[item.id] ?? {};
-      const nodes = Object.entries(itemFields).map(([fieldName, fieldState]) => ({
-        __typename: 'ProjectV2ItemFieldSingleSelectValue',
-        field: { name: fieldName },
-        name: fieldState.value,
-        optionId: fieldState.optionId,
-      }));
-      return {
-        id: item.id,
-        project: { id: item.projectId },
-        fieldValues: { nodes },
-      };
-    });
+    const projectItems = serializeProjectItems(resource);
     saveAndPrint({
       data: {
         resource: {
@@ -281,6 +288,15 @@ if (query.includes('resource(url: $url)')) {
           title: resource.title,
           repository: resource.repository,
           projectItems: { nodes: projectItems },
+          closingIssuesReferences: {
+            nodes: (resource.closingIssuesReferences ?? []).map((issue) => ({
+              id: issue.id,
+              url: issue.url,
+              title: issue.title,
+              repository: issue.repository,
+              projectItems: { nodes: serializeProjectItems(issue) },
+            })),
+          },
         },
       },
     });
@@ -823,6 +839,101 @@ test('project portfolio CLI live apply skips project item-list and batches field
   assert.equal(fakeGhState.updateCalls.length, 7);
 });
 
+test('project portfolio CLI live apply infers fresh PR field defaults from a linked issue project item', async (t) => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'project-portfolio-apply-live-pr-infer-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  const targetUrl = 'https://github.com/example/repo/pull/22';
+  const linkedIssueUrl = 'https://github.com/example/repo/issues/22';
+  const configPath = path.join(tempRoot, 'config.json');
+  const viewPath = path.join(tempRoot, 'view.json');
+  const fieldsPath = path.join(tempRoot, 'fields.json');
+  const outPath = path.join(tempRoot, 'apply-report.json');
+  const fields = buildFields();
+
+  await writeJson(configPath, buildConfig({
+    itemUrl: linkedIssueUrl,
+    status: 'Todo',
+  }));
+  await writeJson(viewPath, buildView());
+  await writeJson(fieldsPath, fields);
+
+  const fakeGh = await writeFakeGhHarness(tempRoot, buildFakeGhState({
+    targetUrl,
+    resourceId: 'PR_22',
+    title: 'Fresh PR apply target',
+    fields,
+    nextAddedItemId: 'item-added-22',
+    resourceType: 'PullRequest',
+    linkedIssueResources: [
+      {
+        id: 'ISSUE_22',
+        url: linkedIssueUrl,
+        title: 'Linked issue context',
+        repository: {
+          nameWithOwner: 'example/repo',
+        },
+        projectItems: [
+          {
+            id: 'item-existing-issue-22',
+            projectId: 'PVT_example',
+          },
+        ],
+      },
+    ],
+    existingItemFieldValues: {
+      Status: 'Todo',
+      Program: 'Shared Infra',
+      Phase: 'Policy',
+      'Environment Class': 'Infra',
+      'Blocking Signal': 'Scope',
+      'Evidence State': 'Ready',
+      'Portfolio Track': 'Agent UX',
+    },
+  }));
+
+  const state = JSON.parse(await readFile(fakeGh.statePath, 'utf8'));
+  state.itemFields['item-existing-issue-22'] = {
+    Status: { value: 'Todo', optionId: 'status-todo' },
+    Program: { value: 'Shared Infra', optionId: 'program-shared' },
+    Phase: { value: 'Policy', optionId: 'phase-policy' },
+    'Environment Class': { value: 'Infra', optionId: 'environment-infra' },
+    'Blocking Signal': { value: 'Scope', optionId: 'blocking-scope' },
+    'Evidence State': { value: 'Ready', optionId: 'evidence-ready' },
+    'Portfolio Track': { value: 'Agent UX', optionId: 'track-agent' },
+  };
+  await writeJson(fakeGh.statePath, state);
+
+  const result = runCli([
+    'apply',
+    '--config', configPath,
+    '--view-file', viewPath,
+    '--fields-file', fieldsPath,
+    '--out', outPath,
+    '--url', targetUrl,
+    '--use-config',
+  ], {
+    env: {
+      ...fakeGh.env,
+      COMPAREVI_PROJECT_PORTFOLIO_VERIFY_DELAY_MS: '0',
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(await readFile(outPath, 'utf8'));
+  const fakeGhState = JSON.parse(await readFile(fakeGh.statePath, 'utf8'));
+
+  assert.equal(report.target.added, true);
+  assert.equal(report.target.itemId, 'item-added-22');
+  assert.equal(report.appliedFields.length, 7);
+  assert.ok(report.appliedFields.every((field) => field.source === 'inferred-linked-issue'));
+  assert.ok(report.appliedFields.every((field) => field.sourceUrl === linkedIssueUrl));
+  assert.equal(fakeGhState.addCalls.length, 1);
+  assert.equal(fakeGhState.updateCalls.length, 7);
+});
+
 test('project portfolio CLI live apply resolves existing project membership without a board scrape', async (t) => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'project-portfolio-apply-live-existing-'));
   t.after(async () => {
@@ -972,14 +1083,22 @@ test('project portfolio CLI apply mode rejects live option mismatches before mut
   const viewPath = path.join(tempRoot, 'view.json');
   const fieldsPath = path.join(tempRoot, 'fields.json');
   const itemsPath = path.join(tempRoot, 'items.json');
+  const fields = buildFields({}, { status: 'Backlog' });
 
   await writeJson(configPath, buildConfig({ itemUrl: targetUrl }));
   await writeJson(viewPath, buildView());
-  await writeJson(fieldsPath, buildFields({}, { status: 'Backlog' }));
+  await writeJson(fieldsPath, fields);
   await writeJson(itemsPath, {
     totalCount: 0,
     items: [],
   });
+  const fakeGh = await writeFakeGhHarness(tempRoot, buildFakeGhState({
+    targetUrl,
+    resourceId: 'ISSUE_12',
+    title: 'Issue 12',
+    fields,
+    nextAddedItemId: 'item-added-12',
+  }));
 
   const result = runCli([
     'apply',
@@ -989,7 +1108,9 @@ test('project portfolio CLI apply mode rejects live option mismatches before mut
     '--item-file', itemsPath,
     '--url', targetUrl,
     '--status', 'In Progress',
-  ]);
+  ], {
+    env: fakeGh.env,
+  });
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /does not expose option 'In Progress'/);

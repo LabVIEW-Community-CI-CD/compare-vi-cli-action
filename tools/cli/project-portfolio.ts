@@ -5,7 +5,7 @@ import { ArgumentParser } from 'argparse';
 import { z } from 'zod';
 
 type Mode = 'snapshot' | 'check' | 'apply';
-type ApplyFieldSource = 'explicit' | 'config';
+type ApplyFieldSource = 'explicit' | 'config' | 'inferred-linked-issue';
 
 const snapshotReportSchemaId = 'project-portfolio-report@v2';
 const applyReportSchemaId = 'project-portfolio-apply-report@v1';
@@ -160,6 +160,28 @@ const addItemMutationSchema = z.object({
   }),
 });
 
+const projectItemNodeSchema = z.object({
+  id: z.string().min(1),
+  project: z.object({
+    id: z.string().min(1),
+  }).passthrough(),
+  fieldValues: z.object({
+    nodes: z.array(projectFieldValueNodeSchema),
+  }),
+}).passthrough();
+
+const linkedIssueProjectResourceSchema = z.object({
+  id: z.string().min(1),
+  url: z.string().url(),
+  title: z.string().min(1).optional(),
+  repository: z.object({
+    nameWithOwner: z.string().min(1),
+  }).optional(),
+  projectItems: z.object({
+    nodes: z.array(projectItemNodeSchema),
+  }),
+}).passthrough();
+
 const projectScopedResourceQuerySchema = z.object({
   data: z.object({
     resource: z.object({
@@ -171,16 +193,11 @@ const projectScopedResourceQuerySchema = z.object({
         nameWithOwner: z.string().min(1),
       }).optional(),
       projectItems: z.object({
-        nodes: z.array(z.object({
-          id: z.string().min(1),
-          project: z.object({
-            id: z.string().min(1),
-          }).passthrough(),
-          fieldValues: z.object({
-            nodes: z.array(projectFieldValueNodeSchema),
-          }),
-        }).passthrough()),
+        nodes: z.array(projectItemNodeSchema),
       }),
+      closingIssuesReferences: z.object({
+        nodes: z.array(linkedIssueProjectResourceSchema),
+      }).optional(),
     }).nullable(),
   }),
 });
@@ -295,6 +312,7 @@ interface RequestedApplyField {
   key: ConfigFieldKey;
   value: string;
   source: ApplyFieldSource;
+  sourceUrl: string | null;
 }
 
 interface ResolvedApplyField extends RequestedApplyField {
@@ -309,6 +327,7 @@ interface ResolvedApplyTarget {
   itemId: string | null;
   added: boolean;
   wouldAdd: boolean;
+  linkedContextItems: NormalizedItem[];
 }
 
 interface VerifiedApplyFieldState {
@@ -563,11 +582,72 @@ function normalizeExplicitFieldValue(value: string, allowedValues: string[]): st
   return allowedValues.includes(normalizedValue) ? normalizedValue : trimmedValue;
 }
 
-function resolveRequestedApplyFields(args: Args, config: PortfolioConfig, targetUrl: string): RequestedApplyField[] {
+function hasCompleteProjectFieldContext(item: NormalizedItem): boolean {
+  return configFieldKeys.every((fieldKey) => {
+    const value = item[fieldKey];
+    return typeof value === 'string' && value.trim().length > 0;
+  });
+}
+
+function buildConfigItemFromNormalizedItem(item: NormalizedItem): ConfigItem {
+  if (!hasCompleteProjectFieldContext(item)) {
+    throw new Error(`Normalized project item ${item.url} does not expose a complete apply field set.`);
+  }
+
+  return {
+    url: item.url,
+    status: item.status as string,
+    program: item.program as string,
+    phase: item.phase as string,
+    environmentClass: item.environmentClass as string,
+    blockingSignal: item.blockingSignal as string,
+    evidenceState: item.evidenceState as string,
+    portfolioTrack: item.portfolioTrack as string,
+  };
+}
+
+function resolveInferredConfigItem(
+  targetUrl: string,
+  normalizedItems: NormalizedItem[],
+  target: ResolvedApplyTarget,
+): { item: ConfigItem; source: ApplyFieldSource; sourceUrl: string } | null {
+  const normalizedTargetUrl = normalizeComparableUrl(targetUrl);
+  const linkedSnapshotItem = normalizedItems.find((item) => (
+    item.linkedPullRequests.some((pullRequestUrl) => normalizeComparableUrl(pullRequestUrl) === normalizedTargetUrl)
+    && hasCompleteProjectFieldContext(item)
+  ));
+  if (linkedSnapshotItem) {
+    return {
+      item: buildConfigItemFromNormalizedItem(linkedSnapshotItem),
+      source: 'inferred-linked-issue',
+      sourceUrl: linkedSnapshotItem.url,
+    };
+  }
+
+  const linkedContextItem = target.linkedContextItems.find((item) => hasCompleteProjectFieldContext(item));
+  if (linkedContextItem) {
+    return {
+      item: buildConfigItemFromNormalizedItem(linkedContextItem),
+      source: 'inferred-linked-issue',
+      sourceUrl: linkedContextItem.url,
+    };
+  }
+
+  return null;
+}
+
+function resolveRequestedApplyFields(
+  args: Args,
+  config: PortfolioConfig,
+  targetUrl: string,
+  inferredConfigItem: { item: ConfigItem; source: ApplyFieldSource; sourceUrl: string } | null,
+): RequestedApplyField[] {
   const configItem = resolveConfigItemByUrl(config, targetUrl);
-  if (args.use_config && !configItem) {
+  if (args.use_config && !configItem && !inferredConfigItem) {
     const configPath = resolvePath(args.config ?? 'tools/priority/project-portfolio.json');
-    throw new Error(`Config item not found for ${targetUrl}. Add it to ${configPath} or pass explicit field values.`);
+    throw new Error(
+      `Config item not found for ${targetUrl}, and no linked issue context could be inferred. Add it to ${configPath} or pass explicit field values.`,
+    );
   }
 
   const resolved: RequestedApplyField[] = [];
@@ -579,6 +659,7 @@ function resolveRequestedApplyFields(args: Args, config: PortfolioConfig, target
         key: fieldKey,
         value: normalizeExplicitFieldValue(explicitValue, allowedValues),
         source: 'explicit',
+        sourceUrl: null,
       });
       continue;
     }
@@ -588,6 +669,17 @@ function resolveRequestedApplyFields(args: Args, config: PortfolioConfig, target
         key: fieldKey,
         value: configItem[fieldKey],
         source: 'config',
+        sourceUrl: configItem.url,
+      });
+      continue;
+    }
+
+    if (args.use_config && inferredConfigItem) {
+      resolved.push({
+        key: fieldKey,
+        value: inferredConfigItem.item[fieldKey],
+        source: inferredConfigItem.source,
+        sourceUrl: inferredConfigItem.sourceUrl,
       });
     }
   }
@@ -767,6 +859,38 @@ function resolveProjectResourceInView(
                 }
               }
             }
+            closingIssuesReferences(first: 20) {
+              nodes {
+                id
+                url
+                title
+                repository {
+                  nameWithOwner
+                }
+                projectItems(first: 100) {
+                  nodes {
+                    id
+                    project {
+                      id
+                    }
+                    fieldValues(first: 50) {
+                      nodes {
+                        __typename
+                        ... on ProjectV2ItemFieldSingleSelectValue {
+                          field {
+                            ... on ProjectV2SingleSelectField {
+                              name
+                            }
+                          }
+                          name
+                          optionId
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -788,6 +912,25 @@ function resolveProjectResourceInView(
   };
   const existingProjectItem = response.data.resource.projectItems.nodes
     .find((item) => item.project.id === view.id) ?? null;
+  const linkedContextItems = response.data.resource.__typename === 'PullRequest'
+    ? (response.data.resource.closingIssuesReferences?.nodes ?? [])
+      .map((linkedIssue) => {
+        const linkedIssueProjectItem = linkedIssue.projectItems.nodes.find((item) => item.project.id === view.id) ?? null;
+        if (!linkedIssueProjectItem) {
+          return null;
+        }
+
+        const linkedIssueResource: IssueOrPullRequestResource = {
+          __typename: 'Issue',
+          id: linkedIssue.id,
+          url: linkedIssue.url,
+          title: linkedIssue.title,
+          repository: linkedIssue.repository,
+        };
+        return normalizeProjectItemFromResource(linkedIssueResource, linkedIssueProjectItem, fieldNames);
+      })
+      .filter((item): item is NormalizedItem => item !== null)
+    : [];
 
   return {
     resource,
@@ -797,6 +940,7 @@ function resolveProjectResourceInView(
     itemId: existingProjectItem?.id ?? null,
     added: false,
     wouldAdd: false,
+    linkedContextItems,
   };
 }
 
@@ -993,6 +1137,9 @@ function resolveApplyTargetFromSnapshot(
   const resource = resolveProjectResource(targetUrl);
   const normalizedResourceUrl = normalizeComparableUrl(resource.url);
   const existingItem = normalizedItems.find((item) => normalizeComparableUrl(item.url) === normalizedResourceUrl) ?? null;
+  const linkedContextItems = normalizedItems.filter((item) => (
+    item.linkedPullRequests.some((pullRequestUrl) => normalizeComparableUrl(pullRequestUrl) === normalizedResourceUrl)
+  ));
 
   if (existingItem) {
     return {
@@ -1001,6 +1148,7 @@ function resolveApplyTargetFromSnapshot(
       itemId: existingItem.id,
       added: false,
       wouldAdd: false,
+      linkedContextItems,
     };
   }
 
@@ -1011,6 +1159,7 @@ function resolveApplyTargetFromSnapshot(
       itemId: null,
       added: false,
       wouldAdd: true,
+      linkedContextItems,
     };
   }
 
@@ -1021,6 +1170,7 @@ function resolveApplyTargetFromSnapshot(
     itemId,
     added: true,
     wouldAdd: false,
+    linkedContextItems,
   };
 }
 
@@ -1502,13 +1652,15 @@ function main(): void {
     }
 
     const targetUrl = normalizeGitHubUrl(args.url);
-    const requestedFields = resolveRequestedApplyFields(args, config, targetUrl);
-    const liveFields = resolveLiveFields(config, context.fields);
-    const resolvedFieldUpdates = resolveApplyFieldUpdates(requestedFields, liveFields);
     const dryRun = Boolean(args.dry_run);
+    const fieldNameMap = buildFieldNameMap(config);
     const target = args.item_file
       ? resolveApplyTargetFromSnapshot(context.view, context.normalizedItems, targetUrl, dryRun)
-      : resolveProjectResourceInView(context.view, buildFieldNameMap(config), targetUrl);
+      : resolveProjectResourceInView(context.view, fieldNameMap, targetUrl);
+    const inferredConfigItem = resolveInferredConfigItem(targetUrl, context.normalizedItems, target);
+    const requestedFields = resolveRequestedApplyFields(args, config, targetUrl, inferredConfigItem);
+    const liveFields = resolveLiveFields(config, context.fields);
+    const resolvedFieldUpdates = resolveApplyFieldUpdates(requestedFields, liveFields);
     const resolvedTarget = target.itemId
       ? target
       : dryRun
@@ -1603,6 +1755,7 @@ function main(): void {
       appliedFields: resolvedFieldUpdates.map((fieldUpdate) => ({
         key: fieldUpdate.key,
         source: fieldUpdate.source,
+        sourceUrl: fieldUpdate.sourceUrl,
         value: fieldUpdate.value,
         fieldId: fieldUpdate.fieldId,
         fieldName: fieldUpdate.fieldName,
