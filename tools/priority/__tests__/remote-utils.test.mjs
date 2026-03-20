@@ -21,6 +21,7 @@ import {
   buildSameOwnerForkHeadRefCandidates,
   extractPullRequestFromMutation,
   findExistingPullRequest,
+  findMergedPullRequest,
   isExistingPullRequestError,
   runGhPrCreate
 } from '../lib/remote-utils.mjs';
@@ -372,6 +373,31 @@ test('buildGhPrListArgs targets the upstream repository and supports owner-quali
   ]);
 });
 
+test('buildGhPrListArgs accepts merged history lookups for branch reuse guards', () => {
+  const args = buildGhPrListArgs({
+    upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+    branch: 'issue/origin-1430-queue-auto-branch-cleanup',
+    base: 'develop',
+    head: 'LabVIEW-Community-CI-CD:issue/origin-1430-queue-auto-branch-cleanup',
+    state: 'merged'
+  });
+
+  assert.deepEqual(args, [
+    'pr',
+    'list',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--state',
+    'merged',
+    '--base',
+    'develop',
+    '--head',
+    'LabVIEW-Community-CI-CD:issue/origin-1430-queue-auto-branch-cleanup',
+    '--json',
+    'number,url,state,isDraft,headRefName,baseRefName,headRepositoryOwner,isCrossRepository'
+  ]);
+});
+
 test('graphql PR helpers expose the same-owner fork mutation contract', () => {
   assert.equal(
     selectPullRequestCreateStrategy({
@@ -509,6 +535,39 @@ test('findExistingPullRequest rejects ambiguous matches when an expected owner i
   );
 
   assert.equal(pullRequest, null);
+});
+
+test('findMergedPullRequest resolves merged branch history before a follow-up PR is created', () => {
+  const calls = [];
+  const pullRequest = findMergedPullRequest(
+    '/tmp/repo',
+    {
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      headRepository: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+      branch: 'issue/origin-1430-queue-auto-branch-cleanup',
+      base: 'develop'
+    },
+    {
+      runGhJsonFn: (_repoRoot, args) => {
+        calls.push(args);
+        return [
+          {
+            number: 1433,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1433',
+            state: 'MERGED',
+            headRefName: 'issue/origin-1430-queue-auto-branch-cleanup',
+            baseRefName: 'develop',
+            headRepositoryOwner: { login: 'LabVIEW-Community-CI-CD' },
+            isCrossRepository: true
+          }
+        ];
+      }
+    }
+  );
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][5], 'merged');
+  assert.equal(pullRequest.number, 1433);
 });
 
 test('isExistingPullRequestError detects duplicate-create responses', () => {

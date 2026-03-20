@@ -17,6 +17,7 @@ import {
   normalizeForkRemoteName,
   pushBranch,
   runGhPrCreate,
+  findMergedPullRequest,
   parseRepositorySlug,
   buildRepositorySlug
 } from './lib/remote-utils.mjs';
@@ -689,6 +690,7 @@ export function createPriorityPr({
   ensureForkRemoteFn = ensureForkRemote,
   pushBranchFn = pushBranch,
   runGhPrCreateFn = runGhPrCreate,
+  findMergedPullRequestFn = findMergedPullRequest,
   resolveStandingIssueNumberFn = resolveStandingIssueNumberForPr,
   loadBranchClassContractFn = loadBranchClassContract
 } = {}) {
@@ -756,6 +758,7 @@ export function createPriorityPr({
     loadBranchClassContractFn
   });
   const headRepository = ensureForkRemoteFn(repoRoot, upstream, headRemote);
+  const base = options.base || env.PR_BASE || 'develop';
   const branchModel = resolvePriorityPrBranchModel({
     repoRoot,
     branch,
@@ -766,9 +769,23 @@ export function createPriorityPr({
     readFileSyncFn,
     loadBranchClassContractFn
   });
+  const mergedPullRequest = findMergedPullRequestFn(repoRoot, {
+    upstream,
+    headRepository,
+    branch,
+    base
+  });
+  if (mergedPullRequest?.number) {
+    const mergedReference = mergedPullRequest.url
+      ? `#${mergedPullRequest.number} (${mergedPullRequest.url})`
+      : `#${mergedPullRequest.number}`;
+    throw new Error(
+      `Branch '${branch}' already backed merged PR ${mergedReference} into '${base}'. ` +
+        'Cut a fresh branch from develop before opening a follow-up PR so squash-merged history is not reused.'
+    );
+  }
 
   const pushResult = pushBranchFn(repoRoot, branch, headRemote);
-  const base = options.base || env.PR_BASE || 'develop';
   const title = options.title || buildTitle(branch, issueNumber, env);
   const body = resolveBody({
     options: {
