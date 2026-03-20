@@ -1442,3 +1442,226 @@ jobs:
           tests/results/local-parity/linux/runtime-manager-preflight-linux.json
           tests/results/local-parity/linux/runtime-manager-compare-linux.json
         if-no-files-found: warn
+
+  vi-history-scenarios-windows-plan:
+    needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan]
+    if: needs.smoke-gate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      available: ${{ steps.plan.outputs.available }}
+      status: ${{ steps.plan.outputs.status }}
+      skip_reason: ${{ steps.plan.outputs.skip_reason }}
+      summary_path: ${{ steps.plan.outputs.summary_path }}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Resolve hosted Windows runner availability
+      id: plan
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        $resultsRoot = 'tests/results/_agent/vi-history-dispatch'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $planPath = Join-Path $resultsRoot 'validate-vi-history-windows-runner-plan.json'
+        pwsh -NoLogo -NoProfile -File tools/Resolve-RunnerAvailability.ps1 `
+          -Repository '${{ github.repository }}' `
+          -RequiredLabel 'hosted-docker-windows' `
+          -RequiredOs 'Windows' `
+          -OutputJsonPath $planPath `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+    - name: Append VI history Windows runner plan
+      shell: pwsh
+      run: |
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines = @(
+            '### VI History Scenarios (Windows hosted plan)',
+            '',
+            ('- execute_lanes: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.execute_lanes }}'),
+            ('- runner_available: `{0}`' -f '${{ steps.plan.outputs.available }}'),
+            ('- runner_status: `{0}`' -f '${{ steps.plan.outputs.status }}'),
+            ('- skip_reason: `{0}`' -f '${{ steps.plan.outputs.skip_reason }}'),
+            '- hosted model: agents can dispatch this hosted Windows lane while continuing on local Linux or Windows Docker Desktop lanes.'
+          )
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+        }
+
+    - name: Upload VI history Windows runner plan artifact
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: validate-vi-history-windows-runner-plan
+        path: tests/results/_agent/vi-history-dispatch/validate-vi-history-windows-runner-plan.json
+        if-no-files-found: error
+
+  vi-history-scenarios-windows:
+    needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-windows-plan]
+    if: needs.smoke-gate.outputs.skip != 'true' && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true' && needs.vi-history-scenarios-windows-plan.outputs.available == 'true'
+    runs-on: [self-hosted, Windows, X64, hosted-docker-windows]
+    timeout-minutes: 50
+    permissions:
+      actions: read
+      contents: read
+    env:
+      NI_WINDOWS_IMAGE: nationalinstruments/labview:2026q1-windows
+      NI_WINDOWS_LABVIEW_PATH: C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+    - name: Append VI history Windows lane plan
+      run: |
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines = @(
+            '### VI History Scenarios (Windows lane)',
+            '',
+            ('- execute_lanes: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.execute_lanes }}'),
+            ('- runner_status: `{0}`' -f '${{ needs.vi-history-scenarios-windows-plan.outputs.status }}'),
+            ('- runner_skip_reason: `{0}`' -f '${{ needs.vi-history-scenarios-windows-plan.outputs.skip_reason }}'),
+            '- image pull budget: Windows image hydration is materially slower than the Linux lane, so keep local lanes active while hosted proof runs.'
+          )
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+        }
+
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+    - name: Assert hosted Windows runner label contract
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        $resultsRoot = 'tests/results/local-parity/windows'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $summaryPath = Join-Path $resultsRoot 'runner-label-contract.json'
+        pwsh -NoLogo -NoProfile -File tools/Assert-RunnerLabelContract.ps1 `
+          -RequiredLabel 'hosted-docker-windows' `
+          -OutputJsonPath $summaryPath `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+    - name: Prepare NI Windows image and runtime
+      shell: pwsh
+      run: |
+        $resultsRoot = 'tests/results/local-parity/windows'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $summaryPath = Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json'
+        pwsh -NoLogo -NoProfile -File tools/Test-WindowsNI2026q1HostPreflight.ps1 `
+          -Image $env:NI_WINDOWS_IMAGE `
+          -ResultsDir $resultsRoot `
+          -OutputJsonPath $summaryPath `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+    - name: Run NI Windows create comparison report (fail-fast)
+      id: windows-compare
+      shell: pwsh
+      run: |
+        $resultsRoot = 'tests/results/local-parity/windows'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $reportPath = Join-Path $resultsRoot 'windows-compare-report.html'
+        "windows_compare_report=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        $runtimeSnapshot = Join-Path $resultsRoot 'runtime-manager-compare-windows.json'
+        pwsh -NoLogo -NoProfile -File tools/Run-NIWindowsContainerCompare.ps1 `
+          -BaseVi 'fixtures/vi-stage/control-rename/Base.vi' `
+          -HeadVi 'fixtures/vi-stage/control-rename/Head.vi' `
+          -Image $env:NI_WINDOWS_IMAGE `
+          -LabVIEWPath $env:NI_WINDOWS_LABVIEW_PATH `
+          -ReportPath $reportPath `
+          -TimeoutSeconds 600 `
+          -RuntimeEngineReadyTimeoutSeconds 180 `
+          -RuntimeEngineReadyPollSeconds 5 `
+          -RuntimeSnapshotPath $runtimeSnapshot
+        $compareExit = $LASTEXITCODE
+
+        $capturePath = Join-Path $resultsRoot 'ni-windows-container-capture.json'
+        if (Test-Path -LiteralPath $capturePath -PathType Leaf) {
+          "windows_compare_capture=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+          $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+          $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+          Write-Host ("[windows-compare] exit={0} gateOutcome={1} resultClass={2}" -f $compareExit, $gateOutcome, $resultClass)
+          if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
+            exit $compareExit
+          }
+        } elseif ($compareExit -ne 0) {
+          throw ("Windows compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
+        }
+
+    - name: Validate Windows comparison report artifact contract
+      if: always()
+      shell: pwsh
+      run: |
+        $resultsRoot = 'tests/results/local-parity/windows'
+        $reportPath = '${{ steps.windows-compare.outputs.windows_compare_report }}'
+        if ([string]::IsNullOrWhiteSpace($reportPath)) {
+          $reportPath = Join-Path $resultsRoot 'windows-compare-report.html'
+        }
+        $capturePath = Join-Path $resultsRoot 'ni-windows-container-capture.json'
+        $summaryPath = Join-Path $resultsRoot 'windows-compare-artifact-summary.json'
+
+        $captureExists = Test-Path -LiteralPath $capturePath -PathType Leaf
+        $captureResultClass = ''
+        $captureGateOutcome = ''
+        if ($captureExists) {
+          try {
+            $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+            $captureResultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+            $captureGateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
+          } catch {
+            Write-Host ("::warning::Unable to parse Windows compare capture for artifact validation: {0}" -f $_.Exception.Message)
+          }
+        }
+
+        $reportExists = Test-Path -LiteralPath $reportPath -PathType Leaf
+        $compareSucceeded = '${{ steps.windows-compare.conclusion }}' -eq 'success'
+
+        $payload = [ordered]@{
+          schema = 'vi-history/windows-compare-artifact-summary@v1'
+          generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+          compareStepConclusion = '${{ steps.windows-compare.conclusion }}'
+          reportPath = $reportPath
+          reportExists = [bool]$reportExists
+          capturePath = $capturePath
+          captureExists = [bool]$captureExists
+          captureResultClass = $captureResultClass
+          captureGateOutcome = $captureGateOutcome
+        }
+        $payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
+
+        $requireReport = $compareSucceeded -and [string]::Equals($captureResultClass, 'success-diff', [System.StringComparison]::OrdinalIgnoreCase)
+        if ($requireReport -and -not $reportExists) {
+          throw ("Windows compare classified success-diff but report file was not found: {0}" -f $reportPath)
+        }
+        if ($compareSucceeded -and -not $reportExists -and -not $requireReport) {
+          Write-Host ("::warning::Windows compare succeeded without diff classification ({0}); no report file was generated at {1}." -f $captureResultClass, $reportPath)
+        }
+        if (-not $reportExists) {
+          Write-Host ("::warning::Windows comparison report not found at {0}" -f $reportPath)
+        }
+
+    - name: Upload VI history scenario artifacts (Windows lane)
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: validate-vi-history-scenarios-windows
+        path: |
+          tests/results/local-parity/windows/windows-compare-report.html
+          tests/results/local-parity/windows/windows-compare-artifact-summary.json
+          tests/results/local-parity/windows/ni-windows-container-capture.json
+          tests/results/local-parity/windows/ni-windows-container-stdout.txt
+          tests/results/local-parity/windows/ni-windows-container-stderr.txt
+          tests/results/local-parity/windows/container-export/**
+          tests/results/local-parity/windows/runner-label-contract.json
+          tests/results/local-parity/windows/windows-ni-2026q1-host-preflight.json
+          tests/results/local-parity/windows/runtime-manager-compare-windows.json
+        if-no-files-found: warn

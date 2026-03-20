@@ -2,3 +2,5 @@ self-hosted-runner:
   labels:
     - self-hosted-docker-windows
     - self-hosted-docker-linux
+    - hosted-docker-windows
+    - hosted-docker-linux

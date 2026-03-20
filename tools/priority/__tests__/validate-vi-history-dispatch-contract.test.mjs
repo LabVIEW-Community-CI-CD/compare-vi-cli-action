@@ -40,7 +40,7 @@ test('validate workflow centralizes VI-history dispatch planning before Linux la
 
 test('validate workflow Linux VI-history lane consumes shared dispatch-plan outputs', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
-  const linuxSection = extractWorkflowJobSection(workflow, 'vi-history-scenarios-linux');
+  const linuxSection = extractWorkflowJobSection(workflow, 'vi-history-scenarios-linux', 'vi-history-scenarios-windows-plan');
 
   assert.match(workflow, /vi-history-scenarios-linux:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'/);
   assert.match(workflow, /Append VI history Linux lane plan/);
@@ -50,4 +50,23 @@ test('validate workflow Linux VI-history lane consumes shared dispatch-plan outp
   assert.doesNotMatch(workflow, /vi-history-scenarios-skip-note:/);
   assert.match(linuxSection, /permissions:\s*\r?\n\s+contents: read/);
   assert.doesNotMatch(linuxSection, /pull-requests: read/);
+});
+
+test('validate workflow Windows VI-history lane is gated by shared dispatch planning and runner availability', () => {
+  const workflow = readRepoFile('.github/workflows/validate.yml');
+  const planSection = extractWorkflowJobSection(workflow, 'vi-history-scenarios-windows-plan', 'vi-history-scenarios-windows');
+  const windowsSection = extractWorkflowJobSection(workflow, 'vi-history-scenarios-windows');
+
+  assert.match(workflow, /vi-history-scenarios-windows-plan:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'/);
+  assert.match(planSection, /permissions:\s*\r?\n\s+actions: read\r?\n\s+contents: read/);
+  assert.match(planSection, /Resolve hosted Windows runner availability/);
+  assert.match(planSection, /tools\/Resolve-RunnerAvailability\.ps1/);
+  assert.match(planSection, /-RequiredLabel 'hosted-docker-windows'/);
+  assert.match(planSection, /outputs:\s*\r?\n\s+available:\s+\$\{\{\s*steps\.plan\.outputs\.available\s*\}\}/);
+
+  assert.match(workflow, /vi-history-scenarios-windows:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-windows-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true' && needs\.vi-history-scenarios-plan\.outputs\.execute_lanes == 'true' && needs\.vi-history-scenarios-windows-plan\.outputs\.available == 'true'/);
+  assert.match(windowsSection, /runs-on:\s*\[self-hosted, Windows, X64, hosted-docker-windows\]/);
+  assert.match(windowsSection, /Assert-RunnerLabelContract\.ps1/);
+  assert.match(windowsSection, /Test-WindowsNI2026q1HostPreflight\.ps1/);
+  assert.match(windowsSection, /Run-NIWindowsContainerCompare\.ps1/);
 });
