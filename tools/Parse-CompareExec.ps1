@@ -6,6 +6,26 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$artifactModulePath = Join-Path (Split-Path -Parent $PSCommandPath) 'VICompareArtifacts.psm1'
+if (-not (Test-Path -LiteralPath $artifactModulePath -PathType Leaf)) {
+  throw "VICompareArtifacts.psm1 not found at $artifactModulePath"
+}
+Import-Module $artifactModulePath -Force
+
+function Get-PropertyValue {
+  param(
+    $Object,
+    [string]$Property
+  )
+
+  if ($null -eq $Object -or [string]::IsNullOrWhiteSpace($Property)) { return $null }
+  try {
+    $member = $Object.PSObject.Properties[$Property]
+    if ($member) { return $member.Value }
+  } catch {}
+  return $null
+}
+
 try { $resolvedDir = (Resolve-Path -LiteralPath $SearchDir -ErrorAction Stop).Path } catch { $resolvedDir = $SearchDir }
 
 $capturePath = @(Get-ChildItem -Path $resolvedDir -Recurse -Include lvcompare-capture.json -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName) | Sort-Object -Descending | Select-Object -First 1
@@ -39,23 +59,42 @@ if ($capturePath -and (Test-Path -LiteralPath $capturePath)) {
     $payload.capture.reason = $null
     $payload.source = 'capture'
     $payload.file = $capturePath
-    if ($cap.exitCode -ne $null) { $payload.exitCode = [int]$cap.exitCode }
-    if ($cap.command) { $payload.command = [string]$cap.command }
-    if ($cap.cliPath) { $payload.cliPath = [string]$cap.cliPath }
-    if ($cap.seconds -ne $null) { $payload.durationMs = [math]::Round([double]$cap.seconds * 1000,3) }
+    $capExitCode = Get-PropertyValue -Object $cap -Property 'exitCode'
+    if ($capExitCode -ne $null) { $payload.exitCode = [int]$capExitCode }
+    $capCommand = Get-PropertyValue -Object $cap -Property 'command'
+    if ($capCommand) { $payload.command = [string]$capCommand }
+    $capCliPath = Get-PropertyValue -Object $cap -Property 'cliPath'
+    if ($capCliPath) { $payload.cliPath = [string]$capCliPath }
+    $capSeconds = Get-PropertyValue -Object $cap -Property 'seconds'
+    if ($capSeconds -ne $null) { $payload.durationMs = [math]::Round([double]$capSeconds * 1000,3) }
     if ($payload.exitCode -ne $null) { $payload.diff = ($payload.exitCode -eq 1) }
-    if ($cap.stdoutLen -ne $null) { $payload.stdoutLen = [int]$cap.stdoutLen }
-    if ($cap.stderrLen -ne $null) { $payload.stderrLen = [int]$cap.stderrLen }
+    $capStdoutLen = Get-PropertyValue -Object $cap -Property 'stdoutLen'
+    if ($capStdoutLen -ne $null) { $payload.stdoutLen = [int]$capStdoutLen }
+    $capStderrLen = Get-PropertyValue -Object $cap -Property 'stderrLen'
+    if ($capStderrLen -ne $null) { $payload.stderrLen = [int]$capStderrLen }
     $capDir = Split-Path -Parent $capturePath
     $stdoutCandidate = Join-Path $capDir 'lvcompare-stdout.txt'
     if (Test-Path -LiteralPath $stdoutCandidate) { $payload.stdoutPath = $stdoutCandidate }
     $stderrCandidate = Join-Path $capDir 'lvcompare-stderr.txt'
     if (Test-Path -LiteralPath $stderrCandidate) { $payload.stderrPath = $stderrCandidate }
-    $reportCandidate = Join-Path $capDir 'compare-report.html'
-    if (Test-Path -LiteralPath $reportCandidate) { $payload.reportPath = $reportCandidate }
-    $cliArtifacts = $null
+    $explicitReportPath = $null
     $capEnv = $null
     if ($cap.PSObject.Properties['environment']) { $capEnv = $cap.environment }
+    if (-not $capEnv -and $cap.PSObject.Properties['cli']) {
+      $capEnv = [pscustomobject]@{ cli = $cap.cli }
+    }
+    if ($capEnv -and $capEnv.PSObject.Properties['cli']) {
+      $capCli = $capEnv.cli
+      if ($capCli -and $capCli.PSObject.Properties['reportPath'] -and $capCli.reportPath) {
+        $explicitReportPath = [string]$capCli.reportPath
+      }
+    }
+    $payload.reportPath = Find-VICompareReportArtifact `
+      -ExplicitReportPath $explicitReportPath `
+      -CapturePath $capturePath `
+      -SearchDirectories @($capDir) `
+      -Recursive
+    $cliArtifacts = $null
     if ($capEnv -and $capEnv.PSObject.Properties['cli']) {
       $capCli = $capEnv.cli
       if ($capCli -and $capCli.PSObject.Properties['artifacts']) { $cliArtifacts = $capCli.artifacts }

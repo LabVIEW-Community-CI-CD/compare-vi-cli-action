@@ -65,6 +65,32 @@ Describe 'Dev Dashboard loaders' -Tag 'Unit','REQ:WATCH_AND_QUEUE' {
     $suite.ModeManifestsJson | Should -Match '"slug":"attributes"'
   }
 
+  It 'resolves custom compare report artifacts from capture metadata' {
+    $resultsRoot = Join-Path $TestDrive 'dashboard-custom-report'
+    $compareDir = Join-Path $resultsRoot 'compare'
+    New-Item -ItemType Directory -Path $compareDir -Force | Out-Null
+
+    $reportPath = Join-Path $compareDir 'diff-report-Initialization_UserEvents.vi.html'
+    Set-Content -LiteralPath $reportPath -Value '<html></html>' -Encoding utf8
+    @'
+{
+  "schema": "lvcompare-capture-v1",
+  "exitCode": 1,
+  "seconds": 0.2,
+  "environment": {
+    "cli": {
+      "reportPath": "./diff-report-Initialization_UserEvents.vi.html"
+    }
+  }
+}
+'@ | Set-Content -LiteralPath (Join-Path $compareDir 'lvcompare-capture.json') -Encoding utf8
+
+    $compare = Get-CompareOutcomeTelemetry -ResultsRoot $resultsRoot
+    $compare | Should -Not -BeNullOrEmpty
+    $compare.ReportPath | Should -Be $reportPath
+    $compare.Diff | Should -BeTrue
+  }
+
   It 'resolves stakeholder information from configuration' {
     $info = Get-StakeholderInfo -Group 'pester-selfhosted' -StakeholderPath $script:stakeholderPath
     $info.Found | Should -BeTrue

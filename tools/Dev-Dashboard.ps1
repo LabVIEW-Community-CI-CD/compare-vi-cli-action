@@ -16,6 +16,10 @@ $script:toolRoot = Split-Path -Parent $PSCommandPath
 $script:repoRoot = Split-Path -Parent $toolRoot
 $modulePath = Join-Path $toolRoot 'Dev-Dashboard.psm1'
 Import-Module $modulePath -Force
+$artifactModulePath = Join-Path $toolRoot 'VICompareArtifacts.psm1'
+if (Test-Path -LiteralPath $artifactModulePath -PathType Leaf) {
+  Import-Module $artifactModulePath -Force
+}
 
 function Invoke-Git {
   param([string[]]$Arguments)
@@ -58,6 +62,41 @@ function Get-PropertyValue {
   return $null
 }
 
+function Resolve-ArtifactPathHint {
+  param(
+    [string]$ArtifactPath,
+    [string]$SessionIndexPath,
+    [string]$ResultsRoot
+  )
+
+  if ([string]::IsNullOrWhiteSpace($ArtifactPath)) { return $null }
+
+  try {
+    $resolved = Resolve-Path -LiteralPath $ArtifactPath -ErrorAction Stop
+    return $resolved.ProviderPath
+  } catch {}
+
+  $candidates = @()
+  if (-not [System.IO.Path]::IsPathRooted($ArtifactPath)) {
+    if ($SessionIndexPath) {
+      $candidates += Join-Path (Split-Path -Parent $SessionIndexPath) $ArtifactPath
+    }
+    if ($ResultsRoot) {
+      $candidates += Join-Path $ResultsRoot $ArtifactPath
+    }
+  }
+
+  foreach ($candidate in $candidates) {
+    try {
+      $resolved = Resolve-Path -LiteralPath $candidate -ErrorAction Stop
+      return $resolved.ProviderPath
+    } catch {}
+  }
+
+  if ($candidates.Count -gt 0) { return $candidates[0] }
+  return $ArtifactPath
+}
+
 function Get-CompareOutcomeTelemetry {
   param([string]$ResultsRoot)
 
@@ -80,7 +119,7 @@ function Get-CompareOutcomeTelemetry {
         Source       = if ($data.source) { $data.source } else { 'compare-outcome' }
         JsonPath     = $outcome.FullName
         CapturePath  = if ($data.captureJson) { $data.captureJson } else { $data.file }
-        ReportPath   = if ($data.reportPath) { $data.reportPath } else { $null }
+        ReportPath   = Resolve-ArtifactPathHint -ArtifactPath $data.reportPath -SessionIndexPath $outcome.FullName -ResultsRoot $resolved
         ExitCode     = if ($data.exitCode -ne $null) { [int]$data.exitCode } else { $null }
         Diff         = if ($data.diff -ne $null) { [bool]$data.diff } else { $null }
         DurationMs   = if ($data.durationMs -ne $null) { [double]$data.durationMs } else { $null }
@@ -101,12 +140,16 @@ function Get-CompareOutcomeTelemetry {
     if ($capture) {
       try {
         $cap = Get-Content -LiteralPath $capture.FullName -Raw | ConvertFrom-Json -Depth 6
-        $exitCode = if ($cap.exitCode -ne $null) { [int]$cap.exitCode } else { $null }
+        $capExitCode = Get-PropertyValue -Object $cap -Property 'exitCode'
+        $exitCode = if ($capExitCode -ne $null) { [int]$capExitCode } else { $null }
         $diff = if ($exitCode -ne $null) { $exitCode -eq 1 } else { $null }
         $durationMs = $null
-        if ($cap.seconds -ne $null) { $durationMs = [math]::Round([double]$cap.seconds * 1000, 3) }
-        $cliPath = if ($cap.cliPath) { [string]$cap.cliPath } else { $null }
-        $command = if ($cap.command) { [string]$cap.command } else { $null }
+        $capSeconds = Get-PropertyValue -Object $cap -Property 'seconds'
+        if ($capSeconds -ne $null) { $durationMs = [math]::Round([double]$capSeconds * 1000, 3) }
+        $capCliPath = Get-PropertyValue -Object $cap -Property 'cliPath'
+        $cliPath = if ($capCliPath) { [string]$capCliPath } else { $null }
+        $capCommand = Get-PropertyValue -Object $cap -Property 'command'
+        $command = if ($capCommand) { [string]$capCommand } else { $null }
 
         $artifacts = $null
         if ($cap.environment -and $cap.environment.cli -and $cap.environment.cli.PSObject.Properties.Name -contains 'artifacts') {
@@ -114,15 +157,17 @@ function Get-CompareOutcomeTelemetry {
         }
 
         $reportPath = $null
+        $explicitReportPath = $null
         if ($cap.environment -and $cap.environment.cli -and $cap.environment.cli.PSObject.Properties.Name -contains 'reportPath') {
-          $reportPath = $cap.environment.cli.reportPath
+          $explicitReportPath = [string]$cap.environment.cli.reportPath
+        } elseif ($cap.PSObject.Properties.Name -contains 'cli' -and $cap.cli -and $cap.cli.PSObject.Properties.Name -contains 'reportPath') {
+          $explicitReportPath = [string]$cap.cli.reportPath
         }
-        if (-not $reportPath) {
-          $compareHtml = Join-Path (Split-Path -Parent $capture.FullName) 'compare-report.html'
-          if (Test-Path -LiteralPath $compareHtml) { $reportPath = $compareHtml }
-          $cliHtml = Join-Path (Split-Path -Parent $capture.FullName) 'cli-report.html'
-          if (Test-Path -LiteralPath $cliHtml) { $reportPath = $cliHtml }
-        }
+        $reportPath = Find-VICompareReportArtifact `
+          -ExplicitReportPath $explicitReportPath `
+          -CapturePath $capture.FullName `
+          -SearchDirectories @((Split-Path -Parent $capture.FullName)) `
+          -Recursive
 
         $latestOutcome = [pscustomobject][ordered]@{
           Source       = 'capture'

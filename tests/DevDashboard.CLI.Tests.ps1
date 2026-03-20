@@ -92,4 +92,30 @@ Describe 'Dev Dashboard CLI' -Tag 'Unit' {
     $json = (($jsonOutput | Out-String) | ConvertFrom-Json)
     $json.PesterTelemetry.RuntimeEvents | Should -BeNullOrEmpty
   }
+
+  It 'surfaces custom compare report artifacts in the CLI snapshot' {
+    $resultsRoot = Join-Path $TestDrive 'samples-custom-report'
+    Copy-Item -LiteralPath $script:samplesRoot -Destination $resultsRoot -Recurse -Force
+
+    $compareDir = Join-Path $resultsRoot 'compare'
+    New-Item -ItemType Directory -Path $compareDir -Force | Out-Null
+    $reportPath = Join-Path $compareDir 'diff-report-Initialization_UserEvents.vi.html'
+    Set-Content -LiteralPath $reportPath -Value '<html></html>' -Encoding utf8
+    @'
+{
+  "schema": "lvcompare-capture-v1",
+  "exitCode": 1,
+  "seconds": 0.2,
+  "environment": {
+    "cli": {
+      "reportPath": "./diff-report-Initialization_UserEvents.vi.html"
+    }
+  }
+}
+'@ | Set-Content -LiteralPath (Join-Path $compareDir 'lvcompare-capture.json') -Encoding utf8
+
+    $jsonOutput = & $script:cliPath -Group 'pester-selfhosted' -ResultsRoot $resultsRoot -Quiet -Json
+    $json = (($jsonOutput | Out-String) | ConvertFrom-Json)
+    $json.CompareOutcome.ReportPath | Should -Be $reportPath
+  }
 }

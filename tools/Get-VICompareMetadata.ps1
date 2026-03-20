@@ -58,6 +58,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$artifactModulePath = Join-Path (Split-Path -Parent $PSCommandPath) 'VICompareArtifacts.psm1'
+if (-not (Test-Path -LiteralPath $artifactModulePath -PathType Leaf)) {
+    throw "VICompareArtifacts.psm1 not found at $artifactModulePath"
+}
+Import-Module $artifactModulePath -Force
+
 function Resolve-ExistingFile {
     param([string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
@@ -158,8 +164,17 @@ if ($invokeResult -is [int]) {
     $exitCode = $LASTEXITCODE
 }
 
-$reportPath = Resolve-ExistingFile -Path (Join-Path $compareDir 'compare-report.html')
 $capturePath = Resolve-ExistingFile -Path (Join-Path $compareDir 'lvcompare-capture.json')
+$explicitReportPath = if ($invokeResult -and $invokeResult.PSObject.Properties['ReportPath']) {
+    [string]$invokeResult.ReportPath
+} else {
+    $null
+}
+$reportPath = Find-VICompareReportArtifact `
+    -ExplicitReportPath $explicitReportPath `
+    -CapturePath $capturePath `
+    -SearchDirectories @($compareDir) `
+    -Recursive
 
 if (-not $reportPath) {
     throw "Compare report not found in $compareDir"
