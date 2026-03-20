@@ -39,8 +39,11 @@ Quick reference for building, testing, and releasing the LVCompare composite act
       - `keep_branch`: set to `true` when you want to inspect the synthetic scratch
         PR afterward; keep `false` for normal sweeps so the helper cleans up.
     - Requires `GH_TOKEN`/`GITHUB_TOKEN` with push + workflow scopes. Locally,
-      populate `$env:GH_TOKEN` (for example from `C:\github_token.txt`) before
-      running `tools/Test-PRVIStagingSmoke.ps1`.
+      the repo helpers also honor `GH_TOKEN_FILE`, `GITHUB_TOKEN_FILE`, and the
+      standard host token file fallback (`C:\github_token.txt` on Windows,
+      `/mnt/c/github_token.txt` on non-Windows host planes), so explicit
+      `$env:GH_TOKEN` export is only needed when you want to override that
+      default resolution order.
     - Successful runs upload `tests/results/_agent/smoke/vi-stage/smoke-*.json`
       summaries and assert the scratch PR carries the `vi-staging-ready` label.
     - Scenario catalog (defined in `Get-VIStagingSmokeScenarios`):

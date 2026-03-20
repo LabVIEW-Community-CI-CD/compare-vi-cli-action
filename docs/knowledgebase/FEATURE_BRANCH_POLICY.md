@@ -226,6 +226,18 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
   ```
 
+- Merge-sync and the Copilot queue gate now resolve local GitHub auth in this
+  order before live review lookups:
+  1. `GH_TOKEN`
+  2. `GITHUB_TOKEN`
+  3. `GH_TOKEN_FILE`
+  4. `GITHUB_TOKEN_FILE`
+  5. standard host token file fallback (`C:\github_token.txt` on Windows,
+     `/mnt/c/github_token.txt` on non-Windows host planes)
+  The gate receipt records this under `auth.source` and classifies a missing
+  live token source as `auth.failureClass = "auth-unavailable"` instead of a
+  generic data error.
+
 ### `main`
 - **Ruleset**: `8614140` (repository ruleset, scope `refs/heads/main`).
 - **Allowed merges**: queue-managed squash enforced by the `merge_queue` rule (`merge_method=SQUASH`); direct merges and
