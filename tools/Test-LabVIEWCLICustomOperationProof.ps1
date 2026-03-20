@@ -5,7 +5,12 @@ param(
   [string]$OperationName = 'AddTwoNumbers',
   [string]$SourceExamplePath = 'C:\Users\Public\Documents\National Instruments\LabVIEW CLI\Examples\AddTwoNumbers',
   [string]$OperationDirectory = '',
+  [ValidateSet('host', 'windows-container')]
+  [string]$ExecutionPlane = 'host',
   [string]$LabVIEWPath = '',
+  [string]$WindowsContainerImage = 'nationalinstruments/labview:2026q1-windows',
+  [string]$WindowsContainerLabVIEWPath = 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe',
+  [string]$WindowsContainerRunnerScriptPath = '',
   [int]$TimeoutSeconds = 90,
   [string]$ResultsRoot = '',
   [string]$ReportPath = '',
@@ -44,6 +49,21 @@ function Ensure-Directory {
   }
 
   return (Resolve-Path -LiteralPath $Path).Path
+}
+
+function Resolve-ScriptPath {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [AllowEmptyString()][string]$PathValue,
+    [Parameter(Mandatory)][string]$DefaultRelativePath
+  )
+
+  $effective = if ([string]::IsNullOrWhiteSpace($PathValue)) { $DefaultRelativePath } else { $PathValue }
+  $resolved = Resolve-AbsolutePath -BasePath $RepoRoot -PathValue $effective
+  if (-not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+    throw "Script path was not found: '$resolved'."
+  }
+  return $resolved
 }
 
 function Convert-ToRepoRelativePath {
@@ -106,6 +126,18 @@ function Invoke-SchemaValidation {
     $message = ($output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
     throw "Schema validation failed for '$DataPath': $message"
   }
+}
+
+function Quote-CommandArgument {
+  param([AllowNull()][string]$Text)
+
+  if ($null -eq $Text) {
+    return '""'
+  }
+  if ($Text -match '[\s"]') {
+    return '"' + ($Text -replace '"', '\"') + '"'
+  }
+  return $Text
 }
 
 function Get-PreferredLabVIEWHint {
@@ -304,15 +336,87 @@ function Copy-ScenarioLogs {
   }
 }
 
+function New-ScenarioPreview {
+  param(
+    [Parameter(Mandatory)]$Scenario,
+    [Parameter(Mandatory)][string]$OperationName,
+    [Parameter(Mandatory)][string]$AdditionalOperationDirectory,
+    [ValidateSet('host', 'windows-container')]
+    [string]$ExecutionPlane = 'host'
+  )
+
+  $previewArgs = @{
+    CustomOperationName = $OperationName
+    AdditionalOperationDirectory = $AdditionalOperationDirectory
+    Provider = 'labviewcli'
+    Preview = $true
+  }
+  if ($Scenario.help) { $previewArgs.Help = $true }
+  if ($Scenario.headless) { $previewArgs.Headless = $true }
+  if ($Scenario.logToConsole) { $previewArgs.LogToConsole = $true }
+  if ($Scenario.arguments.Count -gt 0) { $previewArgs.Arguments = @($Scenario.arguments) }
+  if ($Scenario.requestedLabVIEWPath) { $previewArgs.LabVIEWPath = $Scenario.requestedLabVIEWPath }
+  $preview = Invoke-LVCustomOperation @previewArgs
+
+  if ($ExecutionPlane -eq 'windows-container') {
+    $args = @($preview.args | ForEach-Object { [string]$_ })
+    return [ordered]@{
+      operation = 'RunCustomOperation'
+      provider = 'labviewcli'
+      cliPath = 'in-container'
+      args = $args
+      command = ('LabVIEWCLI.exe {0}' -f ((@($args | ForEach-Object { Quote-CommandArgument -Text $_ })) -join ' '))
+    }
+  }
+
+  return $preview
+}
+
+function Get-LogInsightsFromCapturedFiles {
+  param(
+    [AllowNull()][object[]]$Files
+  )
+
+  $texts = New-Object System.Collections.Generic.List[string]
+  foreach ($file in @($Files)) {
+    if ($null -eq $file) { continue }
+    $destinationPath = if ($file.PSObject.Properties['destinationPath']) { [string]$file.destinationPath } else { [string]$file }
+    if ([string]::IsNullOrWhiteSpace($destinationPath)) { continue }
+    if (-not (Test-Path -LiteralPath $destinationPath -PathType Leaf)) { continue }
+    $texts.Add((Get-Content -LiteralPath $destinationPath -Raw -ErrorAction SilentlyContinue)) | Out-Null
+  }
+
+  if ($texts.Count -eq 0) {
+    return [ordered]@{
+      observedLabVIEWPaths = @()
+      observedLabVIEWPath = $null
+      launchSucceeded = $false
+      operationCompleted = $false
+      logLineCount = 0
+    }
+  }
+
+  return Get-LabVIEWCustomOperationLogInsights -Text (($texts.ToArray()) -join [Environment]::NewLine)
+}
+
 function Get-ScenarioCatalog {
-  param([AllowNull()][string]$ExplicitLabVIEWPath)
+  param(
+    [AllowNull()][string]$ExplicitLabVIEWPath,
+    [ValidateSet('host', 'windows-container')]
+    [string]$ExecutionPlane = 'host'
+  )
 
   $scenarios = New-Object System.Collections.Generic.List[object]
+  $containerHeadless = ($ExecutionPlane -eq 'windows-container')
   $scenarios.Add([pscustomobject]@{
       name = 'default-help'
-      description = 'Probe the implicit LabVIEW selection used by LabVIEWCLI when -LabVIEWPath is omitted.'
+      description = if ($containerHeadless) {
+        'Probe the implicit LabVIEW selection used by LabVIEWCLI when -LabVIEWPath is omitted, while honoring the Windows container headless requirement.'
+      } else {
+        'Probe the implicit LabVIEW selection used by LabVIEWCLI when -LabVIEWPath is omitted.'
+      }
       help = $true
-      headless = $false
+      headless = $containerHeadless
       logToConsole = $false
       arguments = @()
       requestedLabVIEWPath = $null
@@ -321,9 +425,13 @@ function Get-ScenarioCatalog {
   if (-not [string]::IsNullOrWhiteSpace($ExplicitLabVIEWPath)) {
     $scenarios.Add([pscustomobject]@{
         name = 'explicit-help'
-        description = 'Run GetHelp.vi against the explicit LabVIEW 2026 host plane.'
+        description = if ($containerHeadless) {
+          'Run GetHelp.vi against the explicit LabVIEW 2026 Windows-container plane with -Headless.'
+        } else {
+          'Run GetHelp.vi against the explicit LabVIEW 2026 host plane.'
+        }
         help = $true
-        headless = $false
+        headless = $containerHeadless
         logToConsole = $false
         arguments = @()
         requestedLabVIEWPath = $ExplicitLabVIEWPath
@@ -354,18 +462,11 @@ function Invoke-CustomOperationScenario {
   )
 
   $scenarioRoot = Ensure-Directory -Path (Join-Path $ResultsRoot $Scenario.name)
-  $previewArgs = @{
-    CustomOperationName = $OperationName
-    AdditionalOperationDirectory = $AdditionalOperationDirectory
-    Provider = 'labviewcli'
-    Preview = $true
-  }
-  if ($Scenario.help) { $previewArgs.Help = $true }
-  if ($Scenario.headless) { $previewArgs.Headless = $true }
-  if ($Scenario.logToConsole) { $previewArgs.LogToConsole = $true }
-  if ($Scenario.arguments.Count -gt 0) { $previewArgs.Arguments = @($Scenario.arguments) }
-  if ($Scenario.requestedLabVIEWPath) { $previewArgs.LabVIEWPath = $Scenario.requestedLabVIEWPath }
-  $preview = Invoke-LVCustomOperation @previewArgs
+  $preview = New-ScenarioPreview `
+    -Scenario $Scenario `
+    -OperationName $OperationName `
+    -AdditionalOperationDirectory $AdditionalOperationDirectory `
+    -ExecutionPlane 'host'
 
   if ($DryRun) {
     return [pscustomobject]@{
@@ -466,6 +567,148 @@ function Invoke-CustomOperationScenario {
   }
 }
 
+function Invoke-WindowsContainerCustomOperationScenario {
+  param(
+    [Parameter(Mandatory)]$Scenario,
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)][string]$ResultsRoot,
+    [Parameter(Mandatory)][string]$OperationName,
+    [Parameter(Mandatory)][string]$AdditionalOperationDirectory,
+    [Parameter(Mandatory)][int]$TimeoutSeconds,
+    [Parameter(Mandatory)][string]$Image,
+    [Parameter(Mandatory)][string]$RunnerScriptPath,
+    [switch]$DryRun
+  )
+
+  $scenarioRoot = Ensure-Directory -Path (Join-Path $ResultsRoot $Scenario.name)
+  $preview = New-ScenarioPreview `
+    -Scenario $Scenario `
+    -OperationName $OperationName `
+    -AdditionalOperationDirectory 'C:\custom-operation' `
+    -ExecutionPlane 'windows-container'
+
+  if ($DryRun) {
+    return [pscustomobject]@{
+      name = $Scenario.name
+      description = $Scenario.description
+      status = 'planned'
+      timedOut = $false
+      requestedLabVIEWPath = $Scenario.requestedLabVIEWPath
+      preview = $preview
+      result = $null
+      error = $null
+      processBefore = @()
+      processAfter = @()
+      processFinal = @()
+      cleanup = [ordered]@{
+        killedPids = @()
+        errors = @()
+      }
+      lingeringProcesses = @()
+      logCapture = [ordered]@{
+        count = 0
+        files = @()
+      }
+      logInsights = [ordered]@{
+        observedLabVIEWPaths = @()
+        observedLabVIEWPath = $null
+        launchSucceeded = $false
+        operationCompleted = $false
+        logLineCount = 0
+      }
+      containerCapturePath = $null
+    }
+  }
+
+  $capturePath = Join-Path $scenarioRoot 'ni-windows-custom-operation-capture.json'
+  $runnerArgs = @(
+    '-NoLogo',
+    '-NoProfile',
+    '-File',
+    $RunnerScriptPath,
+    '-OperationName',
+    $OperationName,
+    '-AdditionalOperationDirectory',
+    $AdditionalOperationDirectory,
+    '-ResultsRoot',
+    $scenarioRoot,
+    '-Image',
+    $Image,
+    '-TimeoutSeconds',
+    [string]$TimeoutSeconds
+  )
+  if ($Scenario.help) { $runnerArgs += '-Help' }
+  if ($Scenario.headless) { $runnerArgs += '-Headless' }
+  if ($Scenario.logToConsole) { $runnerArgs += '-LogToConsole' }
+  if ($Scenario.arguments.Count -gt 0) {
+    $runnerArgs += @('-ArgumentsJson', ((@($Scenario.arguments | ForEach-Object { [string]$_ }) | ConvertTo-Json -Compress)))
+  }
+  if ($Scenario.requestedLabVIEWPath) {
+    $runnerArgs += @('-LabVIEWPath', [string]$Scenario.requestedLabVIEWPath)
+  }
+
+  $runnerOutput = & pwsh @runnerArgs *>&1
+  $runnerExitCode = $LASTEXITCODE
+  $runnerCapture = if (Test-Path -LiteralPath $capturePath -PathType Leaf) {
+    Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+  } else {
+    $null
+  }
+
+  $scenarioResult = if ($runnerCapture -and $runnerCapture.scenarioResult) { $runnerCapture.scenarioResult } else { $null }
+  $capturedFiles = if ($scenarioResult -and $scenarioResult.logFiles) { @($scenarioResult.logFiles) } else { @() }
+  $logInsights = Get-LogInsightsFromCapturedFiles -Files $capturedFiles
+
+  $status = 'failed'
+  $timedOut = $false
+  if ($runnerCapture) {
+    switch ([string]$runnerCapture.status) {
+      'ok' {
+        $status = 'succeeded'
+      }
+      'timeout' {
+        $status = 'timed-out'
+        $timedOut = $true
+      }
+      default {
+        $status = if ($runnerExitCode -eq 0 -and $scenarioResult -and ([string]$scenarioResult.status -eq 'succeeded')) { 'succeeded' } else { 'failed' }
+      }
+    }
+  }
+
+  if ($scenarioResult -and $scenarioResult.timedOut) {
+    $timedOut = [bool]$scenarioResult.timedOut
+    if ($timedOut) {
+      $status = 'timed-out'
+    }
+  }
+
+  return [pscustomobject]@{
+    name = $Scenario.name
+    description = $Scenario.description
+    status = $status
+    timedOut = [bool]$timedOut
+    requestedLabVIEWPath = $Scenario.requestedLabVIEWPath
+    preview = $preview
+    result = $scenarioResult
+    error = if ($runnerCapture -and $runnerCapture.message) { [string]$runnerCapture.message } elseif ($runnerExitCode -ne 0) { (($runnerOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) } else { $null }
+    processBefore = @()
+    processAfter = @()
+    processFinal = @()
+    cleanup = [ordered]@{
+      killedPids = @()
+      errors = @()
+    }
+    lingeringProcesses = @()
+    logCapture = [ordered]@{
+      count = @($capturedFiles).Count
+      files = @($capturedFiles)
+    }
+    logInsights = $logInsights
+    containerCapturePath = if ($runnerCapture) { $capturePath } else { $null }
+  }
+}
+
 function New-ProofMarkdown {
   param(
     [Parameter(Mandatory)]$Report,
@@ -477,10 +720,17 @@ function New-ProofMarkdown {
   $lines.Add('') | Out-Null
   $lines.Add(('- Report: `{0}`' -f $ReportPath)) | Out-Null
   $lines.Add(('- Final status: `{0}`' -f $Report.status)) | Out-Null
+  $lines.Add(('- Execution plane: `{0}`' -f $Report.executionPlane)) | Out-Null
   $lines.Add(('- Operation: `{0}`' -f $Report.operationName)) | Out-Null
   $lines.Add(('- Operation directory: `{0}`' -f $Report.operationDirectory)) | Out-Null
   if ($Report.explicitLabVIEWPath) {
     $lines.Add(('- Explicit LabVIEW path: `{0}`' -f $Report.explicitLabVIEWPath)) | Out-Null
+  }
+  if ($Report.containerImage) {
+    $lines.Add(('- Container image: `{0}`' -f $Report.containerImage)) | Out-Null
+  }
+  if ($Report.preflightPath) {
+    $lines.Add(('- Preflight report: `{0}`' -f $Report.preflightPath)) | Out-Null
   }
   $rootCauseText = if (@($Report.analysis.rootCauseCandidates).Count -gt 0) {
     (@($Report.analysis.rootCauseCandidates) -join ', ')
@@ -549,10 +799,21 @@ $summaryResolved = if ([string]::IsNullOrWhiteSpace($SummaryPath)) {
   Resolve-AbsolutePath -BasePath $repoRoot -PathValue $SummaryPath
 }
 
-$explicitLabVIEWPath = if ([string]::IsNullOrWhiteSpace($LabVIEWPath)) {
+$explicitLabVIEWPath = if ($ExecutionPlane -eq 'windows-container') {
+  if ([string]::IsNullOrWhiteSpace($LabVIEWPath)) {
+    $WindowsContainerLabVIEWPath
+  } else {
+    $LabVIEWPath
+  }
+} elseif ([string]::IsNullOrWhiteSpace($LabVIEWPath)) {
   Get-PreferredLabVIEWHint -RepoRoot $repoRoot
 } else {
   Resolve-AbsolutePath -BasePath $repoRoot -PathValue $LabVIEWPath
+}
+$windowsContainerRunnerResolved = if ($ExecutionPlane -eq 'windows-container') {
+  Resolve-ScriptPath -RepoRoot $repoRoot -PathValue $WindowsContainerRunnerScriptPath -DefaultRelativePath 'tools/Run-NIWindowsContainerCustomOperation.ps1'
+} else {
+  $null
 }
 
 $operationDirectoryResolved = $null
@@ -594,24 +855,48 @@ foreach ($requiredFile in @('GetHelp.vi', 'RunOperation.vi')) {
   }
 }
 
-$scenarioCatalog = Get-ScenarioCatalog -ExplicitLabVIEWPath $explicitLabVIEWPath
+$scenarioCatalog = Get-ScenarioCatalog -ExplicitLabVIEWPath $explicitLabVIEWPath -ExecutionPlane $ExecutionPlane
 $scenarioResults = New-Object System.Collections.Generic.List[object]
 foreach ($scenario in $scenarioCatalog) {
-  $scenarioResults.Add(
-    (Invoke-CustomOperationScenario `
-      -Scenario $scenario `
-      -RepoRoot $repoRoot `
-      -ResultsRoot $resultsRootResolved `
-      -OperationName $OperationName `
-      -AdditionalOperationDirectory $operationDirectoryResolved `
-      -TimeoutSeconds $TimeoutSeconds `
-      -DryRun:$DryRun)
-  ) | Out-Null
+  if ($ExecutionPlane -eq 'windows-container') {
+    $scenarioResults.Add(
+      (Invoke-WindowsContainerCustomOperationScenario `
+        -Scenario $scenario `
+        -RepoRoot $repoRoot `
+        -ResultsRoot $resultsRootResolved `
+        -OperationName $OperationName `
+        -AdditionalOperationDirectory $operationDirectoryResolved `
+        -TimeoutSeconds $TimeoutSeconds `
+        -Image $WindowsContainerImage `
+        -RunnerScriptPath $windowsContainerRunnerResolved `
+        -DryRun:$DryRun)
+    ) | Out-Null
+  } else {
+    $scenarioResults.Add(
+      (Invoke-CustomOperationScenario `
+        -Scenario $scenario `
+        -RepoRoot $repoRoot `
+        -ResultsRoot $resultsRootResolved `
+        -OperationName $OperationName `
+        -AdditionalOperationDirectory $operationDirectoryResolved `
+        -TimeoutSeconds $TimeoutSeconds `
+        -DryRun:$DryRun)
+    ) | Out-Null
+  }
 }
 $labviewCliPath = $null
 foreach ($scenarioResult in @($scenarioResults.ToArray())) {
+  if ($scenarioResult.result -and $scenarioResult.result.cliPath) {
+    $labviewCliPath = [string]$scenarioResult.result.cliPath
+    break
+  }
   if ($scenarioResult.preview -and $scenarioResult.preview.cliPath) {
-    $labviewCliPath = [string]$scenarioResult.preview.cliPath
+    $candidatePath = [string]$scenarioResult.preview.cliPath
+    if (-not [string]::Equals($candidatePath, 'in-container', [System.StringComparison]::OrdinalIgnoreCase)) {
+      $labviewCliPath = $candidatePath
+    } elseif (-not $labviewCliPath) {
+      $labviewCliPath = $candidatePath
+    }
     break
   }
 }
@@ -638,11 +923,28 @@ $report = [ordered]@{
   schema = 'labview-cli-custom-operation-proof@v1'
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
   status = $status
+  executionPlane = $ExecutionPlane
   operationName = $OperationName
   sourceExamplePath = $sourceExampleResolved
   operationDirectory = $operationDirectoryResolved
   explicitLabVIEWPath = $explicitLabVIEWPath
   labviewCliPath = $labviewCliPath
+  containerImage = if ($ExecutionPlane -eq 'windows-container') { $WindowsContainerImage } else { $null }
+  preflightPath = if ($ExecutionPlane -eq 'windows-container') {
+    $firstContainerScenario = @($scenarioResults | Where-Object { $_.containerCapturePath } | Select-Object -First 1)
+    if ($firstContainerScenario.Count -gt 0 -and (Test-Path -LiteralPath $firstContainerScenario[0].containerCapturePath -PathType Leaf)) {
+      try {
+        $containerCapture = Get-Content -LiteralPath $firstContainerScenario[0].containerCapturePath -Raw | ConvertFrom-Json -Depth 12
+        if ($containerCapture.preflightPath) { [string]$containerCapture.preflightPath } else { $null }
+      } catch {
+        $null
+      }
+    } else {
+      $null
+    }
+  } else {
+    $null
+  }
   timeoutSeconds = [int]$TimeoutSeconds
   dryRun = [bool]$DryRun
   resultsRoot = $resultsRootResolved

@@ -1,9 +1,10 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # LabVIEW CLI Custom Operation Proof
 
-This note defines the fail-closed proof helper used to investigate
+This note defines the fail-closed proof helpers used to investigate
 `LabVIEWCLI` custom-operation execution on the official NI `AddTwoNumbers`
-example.
+example across both the native host plane and the pinned Windows container
+mirror plane.
 
 ## Purpose
 
@@ -11,8 +12,11 @@ Use the proof helper when you need deterministic evidence for:
 
 - implicit `LabVIEWCLI` path drift
 - explicit `-LabVIEWPath` behavior on the LabVIEW 2026 host plane
+- explicit `-LabVIEWPath` behavior inside `nationalinstruments/labview:2026q1-windows`
 - `GetHelp.vi` vs headless `RunOperation.vi` behavior
 - lingering `LabVIEW` / `LabVIEWCLI` residue after a hang
+- whether a failure is host-native-specific or reproducible on the Windows
+  container mirror
 
 The helper always writes a machine-readable receipt and summary, even when the
 proof ends blocked.
@@ -20,11 +24,14 @@ proof ends blocked.
 ## Entry points
 
 - Helper: `tools/Test-LabVIEWCLICustomOperationProof.ps1`
+- Windows container runner: `tools/Run-NIWindowsContainerCustomOperation.ps1`
 - Analysis module: `tools/LabVIEWCLICustomOperationProof.psm1`
 - Receipt schema:
   `docs/schemas/labview-cli-custom-operation-proof-v1.schema.json`
 - Focused test:
   `tests/LabVIEWCLICustomOperationProof.Tests.ps1`
+- Focused Windows runner test:
+  `tests/Run-NIWindowsContainerCustomOperation.Tests.ps1`
 
 ## Default behavior
 
@@ -47,6 +54,14 @@ abstraction:
 
 When `-LabVIEWPath` is omitted, the helper prefers the LabVIEW 2026 32-bit host
 plane when one is installed and falls back to the next available candidate.
+
+When `-ExecutionPlane windows-container` is selected, the helper keeps both help
+scenarios headless because LabVIEW 2026 Windows containers require `-Headless`
+CLI execution.
+
+The Windows container runner also assumes native `powershell` inside
+`nationalinstruments/labview:2026q1-windows`; it must not assume `pwsh` exists
+in that image.
 
 ## Residue policy
 
@@ -74,12 +89,25 @@ The final receipt computes root-cause candidates for:
 - `headless-interactive-mismatch`
 - `host-plane-32bit-startup`
 
+For Windows container runs, the receipt also records:
+
+- `executionPlane = windows-container`
+- `containerImage = nationalinstruments/labview:2026q1-windows`
+- `preflightPath` from the Windows Docker Desktop host-plane preflight
+- per-scenario `containerCapturePath`
+
 ## Usage
 
 Run the live host proof:
 
 ```powershell
 node tools/npm/run-script.mjs history:custom-operation:proof
+```
+
+Run the live Windows container mirror proof:
+
+```powershell
+node tools/npm/run-script.mjs history:custom-operation:proof:windows
 ```
 
 Preview the disposable plan without executing LabVIEW:
@@ -97,12 +125,22 @@ pwsh -NoLogo -NoProfile -File tools/Test-LabVIEWCLICustomOperationProof.ps1 `
   -LabVIEWPath "C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe"
 ```
 
+Run the Windows container proof against an explicit in-container LabVIEW path:
+
+```powershell
+pwsh -NoLogo -NoProfile -File tools/Test-LabVIEWCLICustomOperationProof.ps1 `
+  -ExecutionPlane windows-container `
+  -WindowsContainerLabVIEWPath "C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe"
+```
+
 ## Receipt
 
 Successful or blocked runs emit `labview-cli-custom-operation-proof@v1` with:
 
 - proof status
+- execution plane (`host` or `windows-container`)
 - explicit LabVIEW path used for forced scenarios
+- container image and preflight path when the Windows mirror plane is used
 - scaffold receipt path when applicable
 - per-scenario preview/invocation results
 - copied log inventory
@@ -112,9 +150,27 @@ Successful or blocked runs emit `labview-cli-custom-operation-proof@v1` with:
 
 ## Boundary
 
-This helper proves the host-plane behavior of the official NI example.
+These helpers prove the host plane and the Windows container mirror plane for
+the official NI example.
 
 - It does not make repo-owned custom operation payloads promotable by itself.
 - It does not replace the scaffold helper from `#1471`.
-- It exists so `#1472` can be closed with deterministic evidence instead of ad
-  hoc terminal transcripts.
+- The host plane and Windows container plane should be compared before blaming
+  native 32-bit host behavior.
+- The Windows mirror plane is pinned to
+  `nationalinstruments/labview:2026q1-windows`; do not drift that image without
+  a deliberate contract change.
+
+## Current conclusion
+
+As of March 20, 2026, this repo has deterministic evidence that:
+
+- the native LabVIEW 2026 x86 host plane can hang on the official
+  `AddTwoNumbers` custom operation helper scenarios
+- the Windows 64-bit container mirror plane succeeds on the same host against
+  `nationalinstruments/labview:2026q1-windows`
+
+That means the remaining suspicion is narrower than "LabVIEWCLI is broken" or
+"the NI example is invalid". The current evidence points back toward native
+host-plane behavior, especially the 32-bit host surface, rather than a general
+container-plane failure.

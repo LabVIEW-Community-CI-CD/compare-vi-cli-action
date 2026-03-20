@@ -33,6 +33,13 @@
         "blocked"
       ]
     },
+    "executionPlane": {
+      "type": "string",
+      "enum": [
+        "host",
+        "windows-container"
+      ]
+    },
     "operationName": {
       "type": "string",
       "minLength": 1
@@ -51,6 +58,18 @@
       ]
     },
     "labviewCliPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "containerImage": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "preflightPath": {
       "type": [
         "string",
         "null"
@@ -197,6 +216,12 @@
           "labviewPidTracker": {
             "type": [
               "object",
+              "null"
+            ]
+          },
+          "containerCapturePath": {
+            "type": [
+              "string",
               "null"
             ]
           }
