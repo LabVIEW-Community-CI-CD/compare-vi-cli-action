@@ -11,7 +11,9 @@ import {
   buildRemediationCandidates,
   evaluateOverride,
   evaluateSecurityBreaches,
+  listDependabotAlerts,
   normalizeDependabotAlert,
+  parseNextLinkFromHeader,
   parseArgs,
   runSecurityIntake,
   summarizeDependabotAlerts
@@ -139,6 +141,18 @@ test('summaries and breaches calculate expected values', () => {
   );
 });
 
+test('normalizeDependabotAlert maps GitHub medium severity to moderate', () => {
+  const alert = normalizeDependabotAlert(
+    sampleAlert({
+      security_advisory: {
+        severity: 'medium'
+      }
+    }),
+    new Date('2026-03-06T12:00:00Z')
+  );
+  assert.equal(alert.severity, 'moderate');
+});
+
 test('buildRemediationCandidates sorts by severity then age', () => {
   const candidates = buildRemediationCandidates([
     { number: 5, severity: 'moderate', ageDays: 3 },
@@ -177,6 +191,64 @@ test('evaluateOverride enforces metadata and expiration', () => {
   assert.equal(invalid.active, false);
   assert.ok(invalid.validationErrors.includes('reason-missing'));
   assert.ok(invalid.validationErrors.includes('expires-at-not-future'));
+});
+
+test('parseNextLinkFromHeader extracts the next cursor URL from Link headers', () => {
+  const header = '<https://api.github.com/repos/example/repo/dependabot/alerts?state=open&per_page=100&after=opaque>; rel="next", <https://api.github.com/repos/example/repo/dependabot/alerts?state=open&per_page=100&after=last>; rel="last"';
+  assert.equal(
+    parseNextLinkFromHeader(header),
+    'https://api.github.com/repos/example/repo/dependabot/alerts?state=open&per_page=100&after=opaque'
+  );
+  assert.equal(parseNextLinkFromHeader(null), null);
+});
+
+test('listDependabotAlerts uses cursor pagination instead of page parameters', async () => {
+  const requestedUrls = [];
+  const responses = [
+    {
+      payload: [sampleAlert({ number: 1 })],
+      link: '<https://api.github.com/repos/example/repo/dependabot/alerts?state=open&per_page=100&after=cursor-1>; rel="next"'
+    },
+    {
+      payload: [sampleAlert({ number: 2 })],
+      link: null
+    }
+  ];
+  let index = 0;
+  const alerts = await listDependabotAlerts({
+    repo: 'example/repo',
+    token: 'token',
+    state: 'open',
+    fetchImpl: async (url) => {
+      requestedUrls.push(String(url));
+      const current = responses[index++];
+      return {
+        ok: true,
+        status: 200,
+        headers: {
+          get(name) {
+            return name.toLowerCase() === 'link' ? current.link : null;
+          }
+        },
+        async text() {
+          return JSON.stringify(current.payload);
+        }
+      };
+    }
+  });
+
+  assert.deepEqual(
+    requestedUrls,
+    [
+      'https://api.github.com/repos/example/repo/dependabot/alerts?state=open&per_page=100',
+      'https://api.github.com/repos/example/repo/dependabot/alerts?state=open&per_page=100&after=cursor-1'
+    ]
+  );
+  assert.ok(requestedUrls.every((entry) => !/[?&]page=/.test(entry)));
+  assert.deepEqual(
+    alerts.map((entry) => entry.number),
+    [1, 2]
+  );
 });
 
 test('runSecurityIntake writes deterministic report and routes on breach', async () => {
@@ -289,3 +361,29 @@ test('runSecurityIntake supports skip semantics and override bypass', async () =
   assert.equal(overridden.report.override.active, true);
 });
 
+test('runSecurityIntake treats 404 dependabot access failures as skip semantics', async () => {
+  const now = new Date('2026-03-06T12:00:00Z');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'security-intake-'));
+
+  const result = await runSecurityIntake(
+    {
+      outputPath: path.join(tmpDir, 'auth-skip.json'),
+      failOnSkip: false
+    },
+    {
+      now,
+      resolveRepositorySlugFn: () => 'example/repo',
+      resolveTokenFn: () => 'token',
+      listDependabotAlertsFn: async () => {
+        const error = new Error('GitHub API GET https://api.github.com/repos/example/repo/dependabot/alerts failed (404).');
+        error.status = 404;
+        error.url = 'https://api.github.com/repos/example/repo/dependabot/alerts';
+        throw error;
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.status, 'skip');
+  assert.equal(result.report.errors[0].code, 'auth-or-permission-unavailable');
+});

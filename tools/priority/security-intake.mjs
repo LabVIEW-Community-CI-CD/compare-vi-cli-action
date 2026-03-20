@@ -211,6 +211,7 @@ function round(value) {
 
 function severity(raw) {
   const normalized = String(raw || '').toLowerCase().trim();
+  if (normalized === 'medium') return 'moderate';
   return ['critical', 'high', 'moderate', 'low'].includes(normalized) ? normalized : 'unknown';
 }
 
@@ -267,17 +268,34 @@ export async function requestGitHubJson(url, { token, method = 'GET', body = nul
     error.url = url;
     throw error;
   }
-  return payload;
+  return {
+    payload,
+    headers: {
+      link: response.headers?.get?.('link') ?? null
+    }
+  };
+}
+
+export function parseNextLinkFromHeader(linkHeader) {
+  const normalized = asOptional(linkHeader);
+  if (!normalized) return null;
+  for (const segment of normalized.split(',')) {
+    const match = segment.match(/<([^>]+)>\s*;\s*rel=\"([^\"]+)\"/i);
+    if (!match) continue;
+    if (String(match[2]).trim().toLowerCase() !== 'next') continue;
+    return match[1];
+  }
+  return null;
 }
 
 export async function listDependabotAlerts({ repo, token, state, maxPages = DEFAULT_MAX_PAGES, perPage = 100, fetchImpl = globalThis.fetch }) {
   const alerts = [];
-  for (let page = 1; page <= maxPages; page += 1) {
-    const url = `https://api.github.com/repos/${repo}/dependabot/alerts?state=${encodeURIComponent(state)}&per_page=${perPage}&page=${page}`;
-    const payload = await requestGitHubJson(url, { token, fetchImpl });
+  let url = `https://api.github.com/repos/${repo}/dependabot/alerts?state=${encodeURIComponent(state)}&per_page=${perPage}`;
+  for (let pageIndex = 0; pageIndex < maxPages && url; pageIndex += 1) {
+    const { payload, headers } = await requestGitHubJson(url, { token, fetchImpl });
     if (!Array.isArray(payload)) throw new Error(`Unexpected Dependabot response for state=${state}.`);
     alerts.push(...payload);
-    if (payload.length < perPage) break;
+    url = parseNextLinkFromHeader(headers?.link);
   }
   return alerts;
 }
@@ -385,7 +403,7 @@ function isAuthError(error) {
 export async function upsertRemediationIssue({ repo, token, report, titlePrefix = DEFAULT_ROUTE_TITLE_PREFIX, labels = DEFAULT_ROUTE_LABELS, fetchImpl = globalThis.fetch }) {
   const routeLabels = normalizeLabels(labels.join(','));
   const listUrl = `https://api.github.com/repos/${repo}/issues?state=open&labels=${encodeURIComponent(routeLabels.join(','))}&per_page=100`;
-  const openIssues = await requestGitHubJson(listUrl, { token, fetchImpl });
+  const { payload: openIssues } = await requestGitHubJson(listUrl, { token, fetchImpl });
   const existing = Array.isArray(openIssues) ? openIssues.find((issue) => String(issue.title || '').trim() === titlePrefix) : null;
   const bodyLines = [
     '## Security intake breach',
@@ -406,7 +424,7 @@ export async function upsertRemediationIssue({ repo, token, report, titlePrefix 
   ];
   const body = bodyLines.join('\n');
   if (existing) {
-    const updated = await requestGitHubJson(`https://api.github.com/repos/${repo}/issues/${existing.number}`, {
+    const { payload: updated } = await requestGitHubJson(`https://api.github.com/repos/${repo}/issues/${existing.number}`, {
       token,
       method: 'PATCH',
       body: { title: titlePrefix, body, labels: routeLabels },
@@ -414,7 +432,7 @@ export async function upsertRemediationIssue({ repo, token, report, titlePrefix 
     });
     return { action: 'updated', issueNumber: updated?.number || existing.number, issueUrl: updated?.html_url || existing.html_url || null, title: titlePrefix, labels: routeLabels };
   }
-  const created = await requestGitHubJson(`https://api.github.com/repos/${repo}/issues`, {
+  const { payload: created } = await requestGitHubJson(`https://api.github.com/repos/${repo}/issues`, {
     token,
     method: 'POST',
     body: { title: titlePrefix, body, labels: routeLabels },
