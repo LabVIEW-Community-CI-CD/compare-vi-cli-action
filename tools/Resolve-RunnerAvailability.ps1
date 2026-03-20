@@ -1,12 +1,12 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  Resolves whether an online self-hosted runner with a required label is available.
+  Resolves whether an online runner with a required label is available.
 
 .DESCRIPTION
   Queries the repository Actions runners API (or a supplied payload file) and
   emits a deterministic planning artifact plus GitHub outputs suitable for
-  gating expensive self-hosted workflow lanes.
+  gating expensive hosted runner workflow lanes.
 #>
 [CmdletBinding()]
 param(
@@ -47,7 +47,7 @@ function Write-GitHubOutput {
   Add-Content -LiteralPath $dest -Value ("{0}={1}" -f $Key, ($Value ?? '')) -Encoding utf8
 }
 
-function New-ApiException {
+function Get-ApiException {
   param(
     [Parameter(Mandatory)][string]$Message,
     [AllowNull()][int]$StatusCode
@@ -63,7 +63,6 @@ function New-ApiException {
 function Get-StatusCodeFromError {
   param([Parameter(Mandatory)][System.Management.Automation.ErrorRecord]$ErrorRecord)
 
-  $statusCode = 0
   try {
     $ex = $ErrorRecord.Exception
     if ($ex -and $ex.Data -and $ex.Data.Contains('HttpStatusCode')) {
@@ -74,13 +73,16 @@ function Get-StatusCodeFromError {
         return [int]$ex.Response.StatusCode
       }
     }
-  } catch {}
+  } catch {
+    Write-Verbose ('Unable to extract HTTP status directly from error object: {0}' -f $ErrorRecord.Exception.Message)
+  }
 
   $message = [string]$ErrorRecord.Exception.Message
-  if ($message -match '"status"\s*:\s*"?(\d{3})"?' -or $message -match 'HTTP\s*(\d{3})') {
-    [void][int]::TryParse($Matches[1], [ref]$statusCode)
+  $parsedStatusCode = 0
+  if (($message -match '"status"\s*:\s*"?(\d{3})"?' -or $message -match 'HTTP\s*(\d{3})') -and [int]::TryParse($Matches[1], [ref]$parsedStatusCode)) {
+    return $parsedStatusCode
   }
-  return $statusCode
+  return 0
 }
 
 function Convert-RunnerLabelsToArray {
@@ -102,7 +104,7 @@ function Convert-RunnerLabelsToArray {
   return @($values.ToArray() | Sort-Object -Unique)
 }
 
-function Get-RepositoryRunners {
+function Get-RepositoryRunnerInventory {
   param(
     [Parameter(Mandatory)][string]$Repository,
     [string]$Token,
@@ -112,7 +114,7 @@ function Get-RepositoryRunners {
   if (-not [string]::IsNullOrWhiteSpace($RunnersPayloadPath)) {
     $payloadResolved = Resolve-AbsolutePath -Path $RunnersPayloadPath
     if (-not (Test-Path -LiteralPath $payloadResolved -PathType Leaf)) {
-      throw (New-ApiException -Message ("Runners payload file not found: {0}" -f $payloadResolved) -StatusCode 0)
+      throw (Get-ApiException -Message ("Runners payload file not found: {0}" -f $payloadResolved) -StatusCode 0)
     }
     $payload = Get-Content -LiteralPath $payloadResolved -Raw | ConvertFrom-Json -Depth 30
     if ($payload -is [System.Array]) {
@@ -124,13 +126,13 @@ function Get-RepositoryRunners {
     if ($payload.PSObject.Properties['status'] -and $payload.PSObject.Properties['message']) {
       $status = 0
       [void][int]::TryParse([string]$payload.status, [ref]$status)
-      throw (New-ApiException -Message ([string]$payload.message) -StatusCode $status)
+      throw (Get-ApiException -Message ([string]$payload.message) -StatusCode $status)
     }
-    throw (New-ApiException -Message ("Unsupported runners payload format: {0}" -f $payloadResolved) -StatusCode 0)
+    throw (Get-ApiException -Message ("Unsupported runners payload format: {0}" -f $payloadResolved) -StatusCode 0)
   }
 
   if ([string]::IsNullOrWhiteSpace($Token)) {
-    throw (New-ApiException -Message 'GITHUB_TOKEN is required to resolve self-hosted runner availability. Set permissions.actions=read.' -StatusCode 401)
+    throw (Get-ApiException -Message 'GITHUB_TOKEN is required to resolve runner availability. Set permissions.actions=read.' -StatusCode 401)
   }
 
   $headers = @{
@@ -144,7 +146,7 @@ function Get-RepositoryRunners {
   } catch {
     $status = Get-StatusCodeFromError -ErrorRecord $_
     $message = [string]$_.Exception.Message
-    throw (New-ApiException -Message $message -StatusCode $status)
+    throw (Get-ApiException -Message $message -StatusCode $status)
   }
   return @($response.runners)
 }
@@ -178,7 +180,7 @@ try {
   if ([string]::IsNullOrWhiteSpace($Repository)) { throw 'Repository is required.' }
   if ([string]::IsNullOrWhiteSpace($RequiredLabel)) { throw 'RequiredLabel is required.' }
 
-  $allRunners = @(Get-RepositoryRunners -Repository $Repository -Token $Token -RunnersPayloadPath $RunnersPayloadPath)
+  $allRunners = @(Get-RepositoryRunnerInventory -Repository $Repository -Token $Token -RunnersPayloadPath $RunnersPayloadPath)
   $summary.totalRunnerCount = $allRunners.Count
 
   $matchingRunners = foreach ($runner in $allRunners) {
@@ -265,7 +267,7 @@ try {
 
   if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     $lines = @(
-      '### Self-Hosted Runner Availability',
+      '### Runner Availability',
       '',
       ('- required label: `{0}`' -f [string]$summary.requiredLabel),
       ('- required OS: `{0}`' -f [string]$summary.requiredOs),

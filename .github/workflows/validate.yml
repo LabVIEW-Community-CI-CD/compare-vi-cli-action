@@ -1460,6 +1460,18 @@ jobs:
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
     - name: Resolve hosted Windows runner availability
       id: plan
       shell: pwsh
@@ -1535,6 +1547,18 @@ jobs:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
     - name: Assert hosted Windows runner label contract
       shell: pwsh
       env:

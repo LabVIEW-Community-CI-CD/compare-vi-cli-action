@@ -69,7 +69,7 @@ Describe 'Resolve-RunnerAvailability.ps1' -Tag 'Unit' {
     $ghOutput | Should -Match 'online_matching_runner_count=1'
 
     $summary = Get-Content -LiteralPath $stepSummaryPath -Raw
-    $summary | Should -Match '### Self-Hosted Runner Availability'
+    $summary | Should -Match '### Runner Availability'
     $summary | Should -Match 'status: `available`'
   }
 
