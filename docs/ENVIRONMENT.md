@@ -120,6 +120,7 @@ Common remediation:
 | `COMPAREVI_TOOLS_IMAGE` | Default image when `-UseToolsImage` is set without `-ToolsImageTag`. |
 |                          | Used by `tools/Run-NonLVChecksInDocker.ps1`. |
 |                          | Example: `ghcr.io/labview-community-ci-cd/comparevi-tools:latest`. |
+|                          | Mutable tags like `latest` are not sufficient freshness evidence by themselves; repo tooling now forces pull-or-digest evidence before treating them as stale. |
 
 ## Schema locations
 

@@ -369,19 +369,15 @@ function Test-ActionlintVersionAtLeast {
   }
 }
 
-function Invoke-ContainerCapture {
-  param(
-    [Parameter(Mandatory)][string]$Image,
-    [Parameter(Mandatory)][string[]]$Arguments,
-    [string[]]$DockerRunArguments = @()
-  )
+function Invoke-DockerCliCapture {
+  param([Parameter(Mandatory)][string[]]$Arguments)
 
   $psi = [System.Diagnostics.ProcessStartInfo]::new()
   $psi.FileName = 'docker'
   $psi.UseShellExecute = $false
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
-  foreach ($arg in @('run') + $commonArgs + @($DockerRunArguments) + @($Image) + @($Arguments)) {
+  foreach ($arg in @($Arguments)) {
     [void]$psi.ArgumentList.Add([string]$arg)
   }
 
@@ -401,6 +397,123 @@ function Invoke-ContainerCapture {
   } finally {
     $proc.Dispose()
   }
+}
+
+function Test-IsMutableToolsImageReference {
+  param([AllowEmptyString()][string]$Image)
+
+  if ([string]::IsNullOrWhiteSpace($Image)) {
+    return $false
+  }
+
+  if ($Image -match '@sha256:[0-9a-fA-F]{64}$') {
+    return $false
+  }
+
+  if (-not $Image.Contains('/')) {
+    return $false
+  }
+
+  $lastSlash = $Image.LastIndexOf('/')
+  $tagDelimiter = $Image.LastIndexOf(':')
+  if ($tagDelimiter -le $lastSlash) {
+    return $true
+  }
+
+  $tag = $Image.Substring($tagDelimiter + 1)
+  return [string]::Equals($tag, 'latest', [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-ContainerImageRepoDigest {
+  param([Parameter(Mandatory)][string]$Image)
+
+  $inspect = Invoke-DockerCliCapture -Arguments @('image', 'inspect', $Image, '--format', '{{json .RepoDigests}}')
+  if ($inspect.exitCode -ne 0) {
+    return ''
+  }
+
+  $stdout = ($inspect.stdout ?? '').Trim()
+  if ([string]::IsNullOrWhiteSpace($stdout)) {
+    return ''
+  }
+
+  try {
+    $repoDigests = $stdout | ConvertFrom-Json -Depth 5
+  } catch {
+    return ''
+  }
+
+  $imageName = $Image
+  if ($imageName -match '@') {
+    $imageName = ($imageName -split '@', 2)[0]
+  }
+
+  $lastSlash = $imageName.LastIndexOf('/')
+  $tagDelimiter = $imageName.LastIndexOf(':')
+  if ($tagDelimiter -gt $lastSlash) {
+    $imageName = $imageName.Substring(0, $tagDelimiter)
+  }
+
+  foreach ($candidate in @($repoDigests)) {
+    $candidateText = [string]$candidate
+    if ($candidateText.StartsWith($imageName + '@', [System.StringComparison]::OrdinalIgnoreCase)) {
+      return $candidateText
+    }
+  }
+
+  $firstCandidate = @($repoDigests | Select-Object -First 1)
+  if ($firstCandidate.Count -gt 0) {
+    return [string]$firstCandidate[0]
+  }
+
+  return ''
+}
+
+function Resolve-ToolsImageVerificationEvidence {
+  param([Parameter(Mandatory)][string]$Image)
+
+  if ($Image -match '^(?<digestRef>.+@sha256:[0-9a-fA-F]{64})$') {
+    return [ordered]@{
+      strategy = 'digest-pinned'
+      pulled = $false
+      repoDigest = [string]$matches['digestRef']
+      evidenceRef = [string]$matches['digestRef']
+    }
+  }
+
+  if (Test-IsMutableToolsImageReference -Image $Image) {
+    $pull = Invoke-DockerCliCapture -Arguments @('pull', $Image)
+    if ($pull.exitCode -ne 0) {
+      $message = ((($pull.stdout ?? '') + "`n" + ($pull.stderr ?? '')).Trim())
+      throw ("docker pull failed for '{0}' while verifying mutable tools image tags. Output: {1}" -f $Image, $message)
+    }
+
+    $repoDigest = Get-ContainerImageRepoDigest -Image $Image
+    return [ordered]@{
+      strategy = 'pull-and-inspect'
+      pulled = $true
+      repoDigest = $repoDigest
+      evidenceRef = if ([string]::IsNullOrWhiteSpace($repoDigest)) { $Image } else { $repoDigest }
+    }
+  }
+
+  $repoDigest = Get-ContainerImageRepoDigest -Image $Image
+  return [ordered]@{
+    strategy = 'local-inspect'
+    pulled = $false
+    repoDigest = $repoDigest
+    evidenceRef = if ([string]::IsNullOrWhiteSpace($repoDigest)) { $Image } else { $repoDigest }
+  }
+}
+
+function Invoke-ContainerCapture {
+  param(
+    [Parameter(Mandatory)][string]$Image,
+    [Parameter(Mandatory)][string[]]$Arguments,
+    [string[]]$DockerRunArguments = @()
+  )
+
+  return Invoke-DockerCliCapture -Arguments (@('run') + $commonArgs + @($DockerRunArguments) + @($Image) + @($Arguments))
 }
 
 function Get-ContainerActionlintVersion {
@@ -441,13 +554,18 @@ function Resolve-ActionlintContainerInvocation {
       source = 'official-image'
       requiredVersion = $requiredVersion
       detectedVersion = $requiredVersion
+      verificationStrategy = 'official-pinned-tag'
+      verificationEvidenceRef = $officialImage
+      verifiedRepoDigest = ''
+      pulledFresh = $false
       fallbackReason = ''
     }
   }
 
+  $toolsImageVerification = Resolve-ToolsImageVerificationEvidence -Image $ToolsImageTag
   $detectedToolsVersion = Get-ContainerActionlintVersion -Image $ToolsImageTag -Arguments @('actionlint', '-version')
   if (-not (Test-ActionlintVersionAtLeast -Version $detectedToolsVersion -MinimumVersion $requiredVersion)) {
-    Write-Host ("[docker] Tools image actionlint version '{0}' is below required '{1}'; using official fallback image '{2}'." -f $(if ([string]::IsNullOrWhiteSpace($detectedToolsVersion)) { '(unknown)' } else { $detectedToolsVersion }), $requiredVersion, $officialImage) -ForegroundColor Yellow
+    Write-Host ("[docker] Tools image actionlint version '{0}' is below required '{1}'; using official fallback image '{2}'. Evidence: {3}" -f $(if ([string]::IsNullOrWhiteSpace($detectedToolsVersion)) { '(unknown)' } else { $detectedToolsVersion }), $requiredVersion, $officialImage, $toolsImageVerification.evidenceRef) -ForegroundColor Yellow
     return [ordered]@{
       image = $officialImage
       arguments = @('-color')
@@ -456,6 +574,10 @@ function Resolve-ActionlintContainerInvocation {
       source = 'official-image-fallback'
       requiredVersion = $requiredVersion
       detectedVersion = $detectedToolsVersion
+      verificationStrategy = [string]$toolsImageVerification.strategy
+      verificationEvidenceRef = [string]$toolsImageVerification.evidenceRef
+      verifiedRepoDigest = [string]$toolsImageVerification.repoDigest
+      pulledFresh = [bool]$toolsImageVerification.pulled
       fallbackReason = 'tools-image-stale'
     }
   }
@@ -468,10 +590,13 @@ function Resolve-ActionlintContainerInvocation {
     source = 'tools-image'
     requiredVersion = $requiredVersion
     detectedVersion = $detectedToolsVersion
+    verificationStrategy = [string]$toolsImageVerification.strategy
+    verificationEvidenceRef = [string]$toolsImageVerification.evidenceRef
+    verifiedRepoDigest = [string]$toolsImageVerification.repoDigest
+    pulledFresh = [bool]$toolsImageVerification.pulled
     fallbackReason = ''
   }
 }
-
 function Invoke-GitReviewLoopCommand {
   param(
     [Parameter(Mandatory)][string]$RepoRoot,
