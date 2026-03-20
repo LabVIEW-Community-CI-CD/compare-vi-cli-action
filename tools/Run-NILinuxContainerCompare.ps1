@@ -1611,6 +1611,31 @@ function Complete-DockerProcessInvocation {
   }
 }
 
+function Invoke-DockerCommandAndCapture {
+  param(
+    [Parameter(Mandatory)][string[]]$DockerArgs
+  )
+
+  $invocation = $null
+  try {
+    $invocation = New-DockerProcessInvocation -DockerArgs $DockerArgs
+    $process = $invocation.Process
+    try {
+      $process.WaitForExit()
+    } catch {}
+    $completed = Complete-DockerProcessInvocation -Invocation $invocation
+    return [pscustomobject]@{
+      ExitCode = [int]$process.ExitCode
+      StdOut = [string]$completed.StdOut
+      StdErr = [string]$completed.StdErr
+    }
+  } finally {
+    if ($invocation -and $invocation.Process) {
+      try { $invocation.Process.Dispose() } catch {}
+    }
+  }
+}
+
 function Invoke-DockerRunWithTimeout {
   param(
     [Parameter(Mandatory)][string[]]$DockerArgs,
@@ -1856,8 +1881,8 @@ function Export-ContainerArtifacts {
       Remove-Item -LiteralPath $reportPathExtracted -Force -ErrorAction SilentlyContinue
     }
     $sourceSpec = '{0}:{1}' -f $ContainerName, $ContainerReportPath
-    & docker cp $sourceSpec $reportPathExtracted *> $null
-    $copyExitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+    $copyResult = Invoke-DockerCommandAndCapture -DockerArgs @('cp', $sourceSpec, $reportPathExtracted)
+    $copyExitCode = [int]$copyResult.ExitCode
     $artifactPresent = Test-Path -LiteralPath $reportPathExtracted -PathType Leaf -ErrorAction SilentlyContinue
     $recoveredFromNonZeroExit = ($copyExitCode -ne 0 -and $artifactPresent)
     $recoveredFromHostReport = $false
@@ -1912,8 +1937,8 @@ function Export-ContainerArtifacts {
       Remove-Item -LiteralPath $destinationPath -Force -ErrorAction SilentlyContinue
     }
     $sourceSpec = '{0}:{1}' -f $ContainerName, $containerPath
-    & docker cp $sourceSpec $destinationPath *> $null
-    $copyExitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+    $copyResult = Invoke-DockerCommandAndCapture -DockerArgs @('cp', $sourceSpec, $destinationPath)
+    $copyExitCode = [int]$copyResult.ExitCode
     $artifactPresent = Test-Path -LiteralPath $destinationPath -PathType Leaf -ErrorAction SilentlyContinue
     $recoveredFromNonZeroExit = ($copyExitCode -ne 0 -and $artifactPresent)
     if ($artifactPresent) {
@@ -2743,7 +2768,7 @@ try {
   }
 
   if (-not [string]::IsNullOrWhiteSpace($containerNameForCleanup)) {
-    try { & docker rm -f $containerNameForCleanup *> $null } catch {}
+    try { [void](Invoke-DockerCommandAndCapture -DockerArgs @('rm', '-f', $containerNameForCleanup)) } catch {}
   }
   if (-not [string]::IsNullOrWhiteSpace($containerScriptHostPath) -and (Test-Path -LiteralPath $containerScriptHostPath -PathType Leaf)) {
     Remove-Item -LiteralPath $containerScriptHostPath -Force -ErrorAction SilentlyContinue

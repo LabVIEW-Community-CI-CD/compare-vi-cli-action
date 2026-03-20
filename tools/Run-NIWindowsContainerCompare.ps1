@@ -130,6 +130,37 @@ function Resolve-DockerCommandSource {
   return [string]$command.Source
 }
 
+function Get-DockerProcessLaunchSpec {
+  param(
+    [Parameter(Mandatory)][string[]]$DockerArgs
+  )
+
+  $dockerCommandSource = Resolve-DockerCommandSource
+  $startFilePath = $dockerCommandSource
+  $startArgs = @($DockerArgs)
+  $dockerSourceExt = [System.IO.Path]::GetExtension($dockerCommandSource)
+  if ([System.StringComparer]::OrdinalIgnoreCase.Equals($dockerSourceExt, '.ps1')) {
+    $pwshExe = (Get-Command -Name 'pwsh' -ErrorAction Stop).Source
+    $startFilePath = $pwshExe
+    $quotedDockerArgs = @(
+      foreach ($arg in @($DockerArgs)) {
+        $text = [string]$arg
+        if ($text -match '\s') {
+          '"{0}"' -f ($text -replace '"', '\"')
+        } else {
+          $text
+        }
+      }
+    )
+    $startArgs = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + $quotedDockerArgs
+  }
+
+  return [pscustomobject]@{
+    FilePath = $startFilePath
+    Arguments = @($startArgs)
+  }
+}
+
 function Resolve-EnvTokenValue {
   param(
     [Parameter(Mandatory)][string]$Name
@@ -142,6 +173,37 @@ function Resolve-EnvTokenValue {
     }
   }
   return $null
+}
+
+function Invoke-DockerCommandAndCapture {
+  param(
+    [Parameter(Mandatory)][string[]]$DockerArgs
+  )
+
+  $stdoutFile = Join-Path $env:TEMP ("ni-windows-docker-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $stderrFile = Join-Path $env:TEMP ("ni-windows-docker-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $process = $null
+  try {
+    $launchSpec = Get-DockerProcessLaunchSpec -DockerArgs $DockerArgs
+    $process = Start-Process -FilePath $launchSpec.FilePath `
+      -ArgumentList $launchSpec.Arguments `
+      -RedirectStandardOutput $stdoutFile `
+      -RedirectStandardError $stderrFile `
+      -NoNewWindow `
+      -PassThru
+    $process.WaitForExit()
+    return [pscustomobject]@{
+      ExitCode = [int]$process.ExitCode
+      StdOut = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) { Get-Content -LiteralPath $stdoutFile -Raw } else { '' }
+      StdErr = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) { Get-Content -LiteralPath $stderrFile -Raw } else { '' }
+    }
+  } finally {
+    if ($process) {
+      try { $process.Dispose() } catch {}
+    }
+    Remove-Item -LiteralPath $stdoutFile -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stderrFile -ErrorAction SilentlyContinue
+  }
 }
 
 function Resolve-EffectivePathInput {
@@ -494,28 +556,10 @@ function Invoke-DockerRunWithTimeout {
   $stderrFile = Join-Path $env:TEMP ("ni-windows-container-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
   $process = $null
   try {
-    $dockerCommandSource = Resolve-DockerCommandSource
-    $startFilePath = $dockerCommandSource
-    $startArgs = @($DockerArgs)
-    $dockerSourceExt = [System.IO.Path]::GetExtension($dockerCommandSource)
-    if ([System.StringComparer]::OrdinalIgnoreCase.Equals($dockerSourceExt, '.ps1')) {
-      $pwshExe = (Get-Command -Name 'pwsh' -ErrorAction Stop).Source
-      $startFilePath = $pwshExe
-      $quotedDockerArgs = @(
-        foreach ($arg in @($DockerArgs)) {
-          $text = [string]$arg
-          if ($text -match '\s') {
-            '"{0}"' -f ($text -replace '"', '\"')
-          } else {
-            $text
-          }
-        }
-      )
-      $startArgs = @('-NoLogo', '-NoProfile', '-File', $dockerCommandSource) + $quotedDockerArgs
-    }
+    $launchSpec = Get-DockerProcessLaunchSpec -DockerArgs $DockerArgs
 
-    $process = Start-Process -FilePath $startFilePath `
-      -ArgumentList $startArgs `
+    $process = Start-Process -FilePath $launchSpec.FilePath `
+      -ArgumentList $launchSpec.Arguments `
       -RedirectStandardOutput $stdoutFile `
       -RedirectStandardError $stderrFile `
       -NoNewWindow `
@@ -747,8 +791,8 @@ function Export-ContainerArtifacts {
       Remove-Item -LiteralPath $reportPathExtracted -Force -ErrorAction SilentlyContinue
     }
     $sourceSpec = '{0}:{1}' -f $ContainerName, $ContainerReportPath
-    & docker cp $sourceSpec $reportPathExtracted *> $null
-    $copyExitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+    $copyResult = Invoke-DockerCommandAndCapture -DockerArgs @('cp', $sourceSpec, $reportPathExtracted)
+    $copyExitCode = [int]$copyResult.ExitCode
     $artifactPresent = Test-Path -LiteralPath $reportPathExtracted -PathType Leaf -ErrorAction SilentlyContinue
     $recoveredFromNonZeroExit = ($copyExitCode -ne 0 -and $artifactPresent)
     $recoveredFromHostReport = $false
@@ -803,8 +847,8 @@ function Export-ContainerArtifacts {
       Remove-Item -LiteralPath $destinationPath -Force -ErrorAction SilentlyContinue
     }
     $sourceSpec = '{0}:{1}' -f $ContainerName, $containerPath
-    & docker cp $sourceSpec $destinationPath *> $null
-    $copyExitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
+    $copyResult = Invoke-DockerCommandAndCapture -DockerArgs @('cp', $sourceSpec, $destinationPath)
+    $copyExitCode = [int]$copyResult.ExitCode
     $artifactPresent = Test-Path -LiteralPath $destinationPath -PathType Leaf -ErrorAction SilentlyContinue
     $recoveredFromNonZeroExit = ($copyExitCode -ne 0 -and $artifactPresent)
     if ($artifactPresent) {
@@ -1213,7 +1257,7 @@ try {
   }
 
   if (-not [string]::IsNullOrWhiteSpace($containerNameForCleanup)) {
-    try { & docker rm -f $containerNameForCleanup *> $null } catch {}
+    try { [void](Invoke-DockerCommandAndCapture -DockerArgs @('rm', '-f', $containerNameForCleanup)) } catch {}
   }
 
   if ($restoreCompareLabVIEWPath) {
