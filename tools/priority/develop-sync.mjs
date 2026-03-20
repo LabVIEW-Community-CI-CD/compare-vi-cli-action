@@ -122,6 +122,105 @@ export function buildPwshArgs({ repoRoot, remote, parityReportPath }) {
   ];
 }
 
+export function parseGitWorktreeListPorcelain(text) {
+  const entries = [];
+  let current = null;
+  for (const rawLine of String(text ?? '').split(/\r?\n/)) {
+    const line = String(rawLine ?? '');
+    if (!line.trim()) {
+      if (current?.path) entries.push(current);
+      current = null;
+      continue;
+    }
+    if (line.startsWith('worktree ')) {
+      if (current?.path) entries.push(current);
+      current = {
+        path: line.slice('worktree '.length).trim(),
+        branchRef: null,
+        head: null
+      };
+      continue;
+    }
+    if (!current) continue;
+    if (line.startsWith('branch ')) {
+      current.branchRef = line.slice('branch '.length).trim();
+      continue;
+    }
+    if (line.startsWith('HEAD ')) {
+      current.head = line.slice('HEAD '.length).trim();
+    }
+  }
+  if (current?.path) entries.push(current);
+  return entries;
+}
+
+function runGitText(spawnSyncFn, cwd, args, env) {
+  const result = spawnSyncFn('git', args, {
+    cwd,
+    env,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  if (result.status !== 0) {
+    const detail = String(result.stderr ?? result.stdout ?? '').trim() || `git exited with status ${result.status}`;
+    throw new Error(detail);
+  }
+  return String(result.stdout ?? '').trim();
+}
+
+export function resolveDevelopSyncExecutionRoot({ repoRoot, env = process.env, spawnSyncFn = spawnSync } = {}) {
+  const normalizedRepoRoot = path.resolve(repoRoot);
+  let currentBranch = '';
+  try {
+    currentBranch = runGitText(spawnSyncFn, normalizedRepoRoot, ['branch', '--show-current'], env);
+  } catch {
+    return {
+      repoRoot: normalizedRepoRoot,
+      executionRepoRoot: normalizedRepoRoot,
+      currentBranch: null,
+      delegated: false,
+      helperRoot: null
+    };
+  }
+
+  if (!/^(issue\/|feature\/|release\/|hotfix\/|bugfix\/)/i.test(currentBranch)) {
+    return {
+      repoRoot: normalizedRepoRoot,
+      executionRepoRoot: normalizedRepoRoot,
+      currentBranch,
+      delegated: false,
+      helperRoot: null
+    };
+  }
+
+  try {
+    const worktreeText = runGitText(spawnSyncFn, normalizedRepoRoot, ['worktree', 'list', '--porcelain'], env);
+    const helperRoot = parseGitWorktreeListPorcelain(worktreeText)
+      .map((entry) => ({
+        ...entry,
+        path: path.resolve(entry.path)
+      }))
+      .find((entry) => entry.path !== normalizedRepoRoot && entry.branchRef === 'refs/heads/develop')?.path;
+    if (helperRoot) {
+      return {
+        repoRoot: normalizedRepoRoot,
+        executionRepoRoot: helperRoot,
+        currentBranch,
+        delegated: true,
+        helperRoot
+      };
+    }
+  } catch {}
+
+  return {
+    repoRoot: normalizedRepoRoot,
+    executionRepoRoot: normalizedRepoRoot,
+    currentBranch,
+    delegated: false,
+    helperRoot: null
+  };
+}
+
 function requireClassifiedBranch({
   branch,
   repositoryRole,
@@ -280,6 +379,7 @@ export function runDevelopSync({
   env = process.env,
   spawnSyncFn = spawnSync
 } = {}) {
+  const executionPlan = resolveDevelopSyncExecutionRoot({ repoRoot, env, spawnSyncFn });
   const remotes = resolveForkRemoteTargets(options.forkRemote, env);
   const actions = [];
   const reportPath = path.isAbsolute(options.reportPath) ? options.reportPath : path.join(repoRoot, options.reportPath);
@@ -290,13 +390,13 @@ export function runDevelopSync({
 
   for (const remote of remotes) {
     const parityReportPath = buildParityReportPath(repoRoot, remote);
-    const adminPaths = buildSyncAdminPaths({ repoRoot, remote, env, spawnSyncFn });
-    const args = buildPwshArgs({ repoRoot, remote, parityReportPath });
+    const adminPaths = buildSyncAdminPaths({ repoRoot: executionPlan.executionRepoRoot, remote, env, spawnSyncFn });
+    const args = buildPwshArgs({ repoRoot: executionPlan.executionRepoRoot, remote, parityReportPath });
     if (existsSync(parityReportPath)) {
       rmSync(parityReportPath, { force: true });
     }
     const result = spawnSyncFn('pwsh', args, {
-      cwd: repoRoot,
+      cwd: executionPlan.executionRepoRoot,
       stdio: 'inherit',
       encoding: 'utf8'
     });

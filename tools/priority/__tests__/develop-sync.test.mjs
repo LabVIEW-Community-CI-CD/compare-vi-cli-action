@@ -21,6 +21,8 @@ import {
   buildSyncAdminPaths,
   buildSyncLockName,
   buildDevelopSyncBranchClassTrace,
+  parseGitWorktreeListPorcelain,
+  resolveDevelopSyncExecutionRoot,
   runDevelopSync
 } from '../develop-sync.mjs';
 
@@ -106,6 +108,67 @@ test('buildPwshArgs pins the selected remote and parity path', () => {
   assert.ok(args.includes('-HeadRemote'));
   assert.ok(args.includes('personal'));
   assert.ok(args.includes(parityReportPath));
+});
+
+test('parseGitWorktreeListPorcelain preserves branch refs for helper-root delegation', () => {
+  const parsed = parseGitWorktreeListPorcelain([
+    'worktree C:/repo/issue-branch',
+    'HEAD 1111111111111111111111111111111111111111',
+    'branch refs/heads/issue/origin-1412-helper',
+    '',
+    'worktree C:/repo/develop-root',
+    'HEAD 2222222222222222222222222222222222222222',
+    'branch refs/heads/develop',
+    ''
+  ].join('\n'));
+
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].path, 'C:/repo/issue-branch');
+  assert.equal(parsed[1].branchRef, 'refs/heads/develop');
+});
+
+test('resolveDevelopSyncExecutionRoot delegates work-branch syncs to an existing develop helper worktree', () => {
+  const repoRoot = path.join('C:', 'repo', 'issue-root');
+  const helperRoot = path.join('C:', 'repo', 'develop-root');
+  const calls = [];
+  const plan = resolveDevelopSyncExecutionRoot({
+    repoRoot,
+    spawnSyncFn: (command, args, options) => {
+      calls.push({ command, args, cwd: options.cwd });
+      if (command !== 'git') {
+        throw new Error(`Unexpected command ${command}`);
+      }
+      if (args[0] === 'branch' && args[1] === '--show-current') {
+        return { status: 0, stdout: 'issue/origin-1412-helper\n', stderr: '' };
+      }
+      if (args[0] === 'worktree' && args[1] === 'list') {
+        return {
+          status: 0,
+          stdout: [
+            `worktree ${repoRoot}`,
+            'HEAD 1111111111111111111111111111111111111111',
+            'branch refs/heads/issue/origin-1412-helper',
+            '',
+            `worktree ${helperRoot}`,
+            'HEAD 2222222222222222222222222222222222222222',
+            'branch refs/heads/develop',
+            ''
+          ].join('\n'),
+          stderr: ''
+        };
+      }
+      throw new Error(`Unexpected git args: ${args.join(' ')}`);
+    }
+  });
+
+  assert.equal(plan.currentBranch, 'issue/origin-1412-helper');
+  assert.equal(plan.executionRepoRoot, helperRoot);
+  assert.equal(plan.helperRoot, helperRoot);
+  assert.equal(plan.delegated, true);
+  assert.deepEqual(
+    calls.map((entry) => entry.args.join(' ')),
+    ['branch --show-current', 'worktree list --porcelain']
+  );
 });
 
 test('buildDevelopSyncBranchClassTrace classifies upstream develop to fork develop as a mirror sync', () => {
@@ -199,6 +262,96 @@ test('Sync-OriginUpstreamDevelop classifies diverged fork planes before retrying
   assert.match(source, /Remote already converged for \{0\}\/\{1\} after non-fast-forward rejection/);
   assert.match(source, /diverged-fork-plane: direct push to \{0\}\/\{1\} cannot fast-forward/);
   assert.match(source, /if \(Test-GitPushNonFastForwardFailure -Message \$message\)/);
+});
+
+test('runDevelopSync launches the sync script from the delegated develop helper worktree while keeping reports in the caller checkout', async (t) => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-delegate-'));
+  const issueRoot = path.join(tempRoot, 'issue-root');
+  const helperRoot = path.join(tempRoot, 'develop-root');
+  const reportPath = path.join(tempRoot, 'develop-sync-report.json');
+  const parityReportPath = path.join(issueRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  await mkdir(path.join(issueRoot, 'tests', 'results', '_agent', 'issue'), { recursive: true });
+  await mkdir(path.join(issueRoot, 'tools', 'policy'), { recursive: true });
+  await mkdir(path.join(helperRoot, 'tools', 'priority'), { recursive: true });
+  await mkdir(path.join(helperRoot, 'tests', 'results', '_agent', 'issue'), { recursive: true });
+  await mkdir(path.join(helperRoot, 'tools', 'policy'), { recursive: true });
+  await writeFile(path.join(issueRoot, 'tools', 'policy', 'branch-classes.json'), readFileSyncImmediate(path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'), 'utf8'));
+  await writeFile(path.join(helperRoot, 'tools', 'policy', 'branch-classes.json'), readFileSyncImmediate(path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'), 'utf8'));
+
+  const gitDir = path.join(helperRoot, '.git');
+  const gitCommonDir = path.join(helperRoot, '.git-common');
+  const gitConfigPath = path.join(gitDir, 'config');
+  await mkdir(gitDir, { recursive: true });
+  await mkdir(gitCommonDir, { recursive: true });
+  await writeFile(gitConfigPath, '[core]\n\trepositoryformatversion = 0\n', 'utf8');
+
+  const spawnCalls = [];
+  const result = runDevelopSync({
+    repoRoot: issueRoot,
+    options: { forkRemote: 'origin', reportPath },
+    spawnSyncFn: (command, args, options) => {
+      spawnCalls.push({ command, args, cwd: options.cwd });
+      if (command === 'git') {
+        if (args[0] === 'branch' && args[1] === '--show-current') {
+          if (options.cwd === issueRoot) {
+            return { status: 0, stdout: 'issue/origin-1412-helper\n', stderr: '' };
+          }
+          return { status: 0, stdout: 'develop\n', stderr: '' };
+        }
+        if (args[0] === 'worktree' && args[1] === 'list') {
+          return {
+            status: 0,
+            stdout: [
+              `worktree ${issueRoot}`,
+              'HEAD 1111111111111111111111111111111111111111',
+              'branch refs/heads/issue/origin-1412-helper',
+              '',
+              `worktree ${helperRoot}`,
+              'HEAD 2222222222222222222222222222222222222222',
+              'branch refs/heads/develop',
+              ''
+            ].join('\n'),
+            stderr: ''
+          };
+        }
+        if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
+          return { status: 0, stdout: `${helperRoot}\n`, stderr: '' };
+        }
+        if (args[0] === 'rev-parse' && args[1] === '--git-dir') {
+          return { status: 0, stdout: `${gitDir}\n`, stderr: '' };
+        }
+        if (args[0] === 'rev-parse' && args[1] === '--git-common-dir') {
+          return { status: 0, stdout: `${gitCommonDir}\n`, stderr: '' };
+        }
+        if (args[0] === 'rev-parse' && args[1] === '--git-path' && args[2] === 'config') {
+          return { status: 0, stdout: `${gitConfigPath}\n`, stderr: '' };
+        }
+        throw new Error(`Unexpected git args: ${args.join(' ')}`);
+      }
+      if (command === 'pwsh') {
+        assert.equal(options.cwd, helperRoot);
+        assert.equal(args[3], path.join(helperRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'));
+        const emittedParityReport = {
+          planeTransition: { from: 'upstream', to: 'origin', action: 'sync', via: 'priority:develop:sync' },
+          syncResult: { mode: 'direct-push', reason: 'direct-push', parityConverged: true },
+          tipDiff: { fileCount: 0 }
+        };
+        writeFileSyncImmediate(parityReportPath, `${JSON.stringify(emittedParityReport, null, 2)}\n`, 'utf8');
+        return { status: 0, stdout: '', stderr: '' };
+      }
+      throw new Error(`Unexpected command ${command}`);
+    }
+  });
+
+  assert.equal(result.report.status, 'ok');
+  assert.equal(result.report.actions[0].status, 'ok');
+  assert.equal(result.report.actions[0].parityReportPath, 'tests/results/_agent/issue/origin-upstream-parity.json');
+  assert.equal(result.report.actions[0].adminPaths.gitDir, gitDir);
+  assert.ok(spawnCalls.some((entry) => entry.command === 'pwsh' && entry.cwd === helperRoot));
 });
 
 test('buildSyncAdminPaths uses git-common-dir for repo-wide lock serialization in a linked worktree', () => {
