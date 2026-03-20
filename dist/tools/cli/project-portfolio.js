@@ -126,6 +126,7 @@ const resourceQuerySchema = z.object({
             id: z.string().min(1),
             url: z.string().url(),
             title: z.string().min(1).optional(),
+            body: z.string().optional().nullable(),
             repository: z.object({
                 nameWithOwner: z.string().min(1),
             }).optional(),
@@ -141,6 +142,26 @@ const addItemMutationSchema = z.object({
         }),
     }),
 });
+const projectItemNodeSchema = z.object({
+    id: z.string().min(1),
+    project: z.object({
+        id: z.string().min(1),
+    }).passthrough(),
+    fieldValues: z.object({
+        nodes: z.array(projectFieldValueNodeSchema),
+    }),
+}).passthrough();
+const linkedIssueProjectResourceSchema = z.object({
+    id: z.string().min(1),
+    url: z.string().url(),
+    title: z.string().min(1).optional(),
+    repository: z.object({
+        nameWithOwner: z.string().min(1),
+    }).optional(),
+    projectItems: z.object({
+        nodes: z.array(projectItemNodeSchema),
+    }),
+}).passthrough();
 const projectScopedResourceQuerySchema = z.object({
     data: z.object({
         resource: z.object({
@@ -148,20 +169,16 @@ const projectScopedResourceQuerySchema = z.object({
             id: z.string().min(1),
             url: z.string().url(),
             title: z.string().min(1).optional(),
+            body: z.string().optional().nullable(),
             repository: z.object({
                 nameWithOwner: z.string().min(1),
             }).optional(),
             projectItems: z.object({
-                nodes: z.array(z.object({
-                    id: z.string().min(1),
-                    project: z.object({
-                        id: z.string().min(1),
-                    }).passthrough(),
-                    fieldValues: z.object({
-                        nodes: z.array(projectFieldValueNodeSchema),
-                    }),
-                }).passthrough()),
+                nodes: z.array(projectItemNodeSchema),
             }),
+            closingIssuesReferences: z.object({
+                nodes: z.array(linkedIssueProjectResourceSchema),
+            }).optional(),
         }).nullable(),
     }),
 });
@@ -362,11 +379,111 @@ function normalizeExplicitFieldValue(value, allowedValues) {
     const normalizedValue = trimmedValue.replace(/\^/g, '').trim();
     return allowedValues.includes(normalizedValue) ? normalizedValue : trimmedValue;
 }
-function resolveRequestedApplyFields(args, config, targetUrl) {
+function hasCompleteProjectFieldContext(item) {
+    return configFieldKeys.every((fieldKey) => {
+        const value = item[fieldKey];
+        return typeof value === 'string' && value.trim().length > 0;
+    });
+}
+function buildConfigItemFromNormalizedItem(item) {
+    if (!hasCompleteProjectFieldContext(item)) {
+        throw new Error(`Normalized project item ${item.url} does not expose a complete apply field set.`);
+    }
+    return {
+        url: item.url,
+        status: item.status,
+        program: item.program,
+        phase: item.phase,
+        environmentClass: item.environmentClass,
+        blockingSignal: item.blockingSignal,
+        evidenceState: item.evidenceState,
+        portfolioTrack: item.portfolioTrack,
+    };
+}
+function extractIssueUrlsFromPullRequestBody(body, repositoryNameWithOwner) {
+    if (!body || body.trim().length === 0) {
+        return [];
+    }
+    const issueUrls = new Set();
+    const issueUrlPattern = /^\s*-\s*Issue URL:\s*(https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/issues\/\d+)\s*$/gim;
+    for (const match of body.matchAll(issueUrlPattern)) {
+        const issueUrl = match[1]?.trim();
+        if (issueUrl) {
+            issueUrls.add(issueUrl);
+        }
+    }
+    if (issueUrls.size === 0 && repositoryNameWithOwner) {
+        const primaryIssuePattern = /^\s*-\s*Primary issue:\s*#(\d+)\s*$/gim;
+        for (const match of body.matchAll(primaryIssuePattern)) {
+            const issueNumber = match[1]?.trim();
+            if (issueNumber) {
+                issueUrls.add(`https://github.com/${repositoryNameWithOwner}/issues/${issueNumber}`);
+            }
+        }
+    }
+    return [...issueUrls];
+}
+function dedupeNormalizedItems(items) {
+    const seenUrls = new Set();
+    const dedupedItems = [];
+    for (const item of items) {
+        const comparableUrl = normalizeComparableUrl(item.url);
+        if (seenUrls.has(comparableUrl)) {
+            continue;
+        }
+        seenUrls.add(comparableUrl);
+        dedupedItems.push(item);
+    }
+    return dedupedItems;
+}
+function resolveBodyLinkedIssueContextItems(view, fieldNames, body, repositoryNameWithOwner) {
+    const issueUrls = extractIssueUrlsFromPullRequestBody(body, repositoryNameWithOwner);
+    if (issueUrls.length === 0) {
+        return [];
+    }
+    const linkedContextItems = [];
+    for (const issueUrl of issueUrls) {
+        try {
+            const issueTarget = resolveProjectResourceInView(view, fieldNames, issueUrl);
+            if (issueTarget.existingItem) {
+                linkedContextItems.push(issueTarget.existingItem);
+            }
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (!message.startsWith(`GitHub resource not found for ${issueUrl}.`)) {
+                throw error;
+            }
+        }
+    }
+    return linkedContextItems;
+}
+function resolveInferredConfigItem(targetUrl, normalizedItems, target) {
+    const normalizedTargetUrl = normalizeComparableUrl(targetUrl);
+    const linkedSnapshotItem = normalizedItems.find((item) => (item.linkedPullRequests.some((pullRequestUrl) => normalizeComparableUrl(pullRequestUrl) === normalizedTargetUrl)
+        && hasCompleteProjectFieldContext(item)));
+    if (linkedSnapshotItem) {
+        return {
+            item: buildConfigItemFromNormalizedItem(linkedSnapshotItem),
+            source: 'inferred-linked-issue',
+            sourceUrl: linkedSnapshotItem.url,
+        };
+    }
+    const linkedContextItem = target.linkedContextItems.find((item) => hasCompleteProjectFieldContext(item));
+    if (linkedContextItem) {
+        return {
+            item: buildConfigItemFromNormalizedItem(linkedContextItem),
+            source: 'inferred-linked-issue',
+            sourceUrl: linkedContextItem.url,
+        };
+    }
+    return null;
+}
+function resolveRequestedApplyFields(args, config, targetUrl, inferredConfigItem) {
     const configItem = resolveConfigItemByUrl(config, targetUrl);
-    if (args.use_config && !configItem) {
+    if (args.use_config && !configItem && !inferredConfigItem) {
         const configPath = resolvePath(args.config ?? 'tools/priority/project-portfolio.json');
-        throw new Error(`Config item not found for ${targetUrl}. Add it to ${configPath} or pass explicit field values.`);
+        throw new Error(`Config item not found for ${targetUrl}, and no linked issue context could be inferred. Add it to ${configPath} or pass explicit field values.`);
     }
     const resolved = [];
     for (const fieldKey of configFieldKeys) {
@@ -377,6 +494,7 @@ function resolveRequestedApplyFields(args, config, targetUrl) {
                 key: fieldKey,
                 value: normalizeExplicitFieldValue(explicitValue, allowedValues),
                 source: 'explicit',
+                sourceUrl: null,
             });
             continue;
         }
@@ -385,6 +503,16 @@ function resolveRequestedApplyFields(args, config, targetUrl) {
                 key: fieldKey,
                 value: configItem[fieldKey],
                 source: 'config',
+                sourceUrl: configItem.url,
+            });
+            continue;
+        }
+        if (args.use_config && inferredConfigItem) {
+            resolved.push({
+                key: fieldKey,
+                value: inferredConfigItem.item[fieldKey],
+                source: inferredConfigItem.source,
+                sourceUrl: inferredConfigItem.sourceUrl,
             });
         }
     }
@@ -450,6 +578,7 @@ function resolveProjectResource(url) {
             id
             url
             title
+            body
             repository {
               nameWithOwner
             }
@@ -458,6 +587,7 @@ function resolveProjectResource(url) {
             id
             url
             title
+            body
             repository {
               nameWithOwner
             }
@@ -479,6 +609,7 @@ function resolveProjectResourceInView(view, fieldNames, url) {
             id
             url
             title
+            body
             repository {
               nameWithOwner
             }
@@ -509,6 +640,7 @@ function resolveProjectResourceInView(view, fieldNames, url) {
             id
             url
             title
+            body
             repository {
               nameWithOwner
             }
@@ -534,6 +666,38 @@ function resolveProjectResourceInView(view, fieldNames, url) {
                 }
               }
             }
+            closingIssuesReferences(first: 20) {
+              nodes {
+                id
+                url
+                title
+                repository {
+                  nameWithOwner
+                }
+                projectItems(first: 100) {
+                  nodes {
+                    id
+                    project {
+                      id
+                    }
+                    fieldValues(first: 50) {
+                      nodes {
+                        __typename
+                        ... on ProjectV2ItemFieldSingleSelectValue {
+                          field {
+                            ... on ProjectV2SingleSelectField {
+                              name
+                            }
+                          }
+                          name
+                          optionId
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -546,10 +710,36 @@ function resolveProjectResourceInView(view, fieldNames, url) {
         id: response.data.resource.id,
         url: response.data.resource.url,
         title: response.data.resource.title,
+        body: response.data.resource.body,
         repository: response.data.resource.repository,
     };
     const existingProjectItem = response.data.resource.projectItems.nodes
         .find((item) => item.project.id === view.id) ?? null;
+    const graphLinkedContextItems = response.data.resource.__typename === 'PullRequest'
+        ? (response.data.resource.closingIssuesReferences?.nodes ?? [])
+            .map((linkedIssue) => {
+            const linkedIssueProjectItem = linkedIssue.projectItems.nodes.find((item) => item.project.id === view.id) ?? null;
+            if (!linkedIssueProjectItem) {
+                return null;
+            }
+            const linkedIssueResource = {
+                __typename: 'Issue',
+                id: linkedIssue.id,
+                url: linkedIssue.url,
+                title: linkedIssue.title,
+                repository: linkedIssue.repository,
+            };
+            return normalizeProjectItemFromResource(linkedIssueResource, linkedIssueProjectItem, fieldNames);
+        })
+            .filter((item) => item !== null)
+        : [];
+    const bodyLinkedContextItems = response.data.resource.__typename === 'PullRequest'
+        ? resolveBodyLinkedIssueContextItems(view, fieldNames, response.data.resource.body, response.data.resource.repository?.nameWithOwner ?? null)
+        : [];
+    const linkedContextItems = dedupeNormalizedItems([
+        ...graphLinkedContextItems,
+        ...bodyLinkedContextItems,
+    ]);
     return {
         resource,
         existingItem: existingProjectItem
@@ -558,6 +748,7 @@ function resolveProjectResourceInView(view, fieldNames, url) {
         itemId: existingProjectItem?.id ?? null,
         added: false,
         wouldAdd: false,
+        linkedContextItems,
     };
 }
 function addProjectItem(projectId, contentId) {
@@ -713,6 +904,7 @@ function resolveApplyTargetFromSnapshot(view, normalizedItems, targetUrl, dryRun
     const resource = resolveProjectResource(targetUrl);
     const normalizedResourceUrl = normalizeComparableUrl(resource.url);
     const existingItem = normalizedItems.find((item) => normalizeComparableUrl(item.url) === normalizedResourceUrl) ?? null;
+    const linkedContextItems = normalizedItems.filter((item) => (item.linkedPullRequests.some((pullRequestUrl) => normalizeComparableUrl(pullRequestUrl) === normalizedResourceUrl)));
     if (existingItem) {
         return {
             resource,
@@ -720,6 +912,7 @@ function resolveApplyTargetFromSnapshot(view, normalizedItems, targetUrl, dryRun
             itemId: existingItem.id,
             added: false,
             wouldAdd: false,
+            linkedContextItems,
         };
     }
     if (dryRun) {
@@ -729,6 +922,7 @@ function resolveApplyTargetFromSnapshot(view, normalizedItems, targetUrl, dryRun
             itemId: null,
             added: false,
             wouldAdd: true,
+            linkedContextItems,
         };
     }
     const itemId = addProjectItem(view.id, resource.id);
@@ -738,6 +932,7 @@ function resolveApplyTargetFromSnapshot(view, normalizedItems, targetUrl, dryRun
         itemId,
         added: true,
         wouldAdd: false,
+        linkedContextItems,
     };
 }
 function normalizeProjectItemFromResource(resource, item, fieldNames) {
@@ -1147,13 +1342,15 @@ function main() {
             throw new Error('Apply mode requires --url <issue-or-pr-url>.');
         }
         const targetUrl = normalizeGitHubUrl(args.url);
-        const requestedFields = resolveRequestedApplyFields(args, config, targetUrl);
-        const liveFields = resolveLiveFields(config, context.fields);
-        const resolvedFieldUpdates = resolveApplyFieldUpdates(requestedFields, liveFields);
         const dryRun = Boolean(args.dry_run);
+        const fieldNameMap = buildFieldNameMap(config);
         const target = args.item_file
             ? resolveApplyTargetFromSnapshot(context.view, context.normalizedItems, targetUrl, dryRun)
-            : resolveProjectResourceInView(context.view, buildFieldNameMap(config), targetUrl);
+            : resolveProjectResourceInView(context.view, fieldNameMap, targetUrl);
+        const inferredConfigItem = resolveInferredConfigItem(targetUrl, context.normalizedItems, target);
+        const requestedFields = resolveRequestedApplyFields(args, config, targetUrl, inferredConfigItem);
+        const liveFields = resolveLiveFields(config, context.fields);
+        const resolvedFieldUpdates = resolveApplyFieldUpdates(requestedFields, liveFields);
         const resolvedTarget = target.itemId
             ? target
             : dryRun
@@ -1240,6 +1437,7 @@ function main() {
             appliedFields: resolvedFieldUpdates.map((fieldUpdate) => ({
                 key: fieldUpdate.key,
                 source: fieldUpdate.source,
+                sourceUrl: fieldUpdate.sourceUrl,
                 value: fieldUpdate.value,
                 fieldId: fieldUpdate.fieldId,
                 fieldName: fieldUpdate.fieldName,
