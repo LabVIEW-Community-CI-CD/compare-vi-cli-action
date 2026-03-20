@@ -12,10 +12,11 @@ Describe 'Test-DockerDesktopFastLoop.ps1' -Tag 'Unit' {
     $script:DiagnosticsModule = Join-Path $script:RepoRoot 'tools' 'DockerFastLoopDiagnostics.psm1'
     $script:HostPlaneModule = Join-Path $script:RepoRoot 'tools' 'LabVIEW2026HostPlaneDiagnostics.psm1'
     $script:VendorToolsModule = Join-Path $script:RepoRoot 'tools' 'VendorTools.psm1'
+    $script:HostRamBudgetScript = Join-Path $script:RepoRoot 'tools' 'priority' 'host-ram-budget.mjs'
     $script:ClassifierScript = Join-Path $script:RepoRoot 'tools' 'Compare-ExitCodeClassifier.ps1'
     $script:LinuxBootstrapScript = Join-Path $script:RepoRoot 'tools' 'NILinux-VIHistorySuiteBootstrap.sh'
 
-    foreach ($path in @($script:FastLoopScript, $script:ReadinessScript, $script:HostPlaneDiagnosticsScript, $script:DiagnosticsModule, $script:HostPlaneModule, $script:VendorToolsModule, $script:ClassifierScript, $script:LinuxBootstrapScript)) {
+    foreach ($path in @($script:FastLoopScript, $script:ReadinessScript, $script:HostPlaneDiagnosticsScript, $script:DiagnosticsModule, $script:HostPlaneModule, $script:VendorToolsModule, $script:HostRamBudgetScript, $script:ClassifierScript, $script:LinuxBootstrapScript)) {
       if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required script not found: $path"
       }
@@ -28,10 +29,12 @@ Describe 'Test-DockerDesktopFastLoop.ps1' -Tag 'Unit' {
 
       New-Item -ItemType Directory -Path $RootPath -Force | Out-Null
       $toolsDir = Join-Path $RootPath 'tools'
+      $priorityDir = Join-Path $toolsDir 'priority'
       $fixturesDir = Join-Path $RootPath 'fixtures'
       $viHistoryDir = Join-Path $fixturesDir 'vi-history'
       $viAttrDir = Join-Path $fixturesDir 'vi-attr'
       New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
+      New-Item -ItemType Directory -Path $priorityDir -Force | Out-Null
       New-Item -ItemType Directory -Path $viHistoryDir -Force | Out-Null
       New-Item -ItemType Directory -Path $viAttrDir -Force | Out-Null
 
@@ -41,6 +44,7 @@ Describe 'Test-DockerDesktopFastLoop.ps1' -Tag 'Unit' {
       Copy-Item -LiteralPath $script:DiagnosticsModule -Destination (Join-Path $toolsDir 'DockerFastLoopDiagnostics.psm1') -Force
       Copy-Item -LiteralPath $script:HostPlaneModule -Destination (Join-Path $toolsDir 'LabVIEW2026HostPlaneDiagnostics.psm1') -Force
       Copy-Item -LiteralPath $script:VendorToolsModule -Destination (Join-Path $toolsDir 'VendorTools.psm1') -Force
+      Copy-Item -LiteralPath $script:HostRamBudgetScript -Destination (Join-Path $priorityDir 'host-ram-budget.mjs') -Force
       Copy-Item -LiteralPath $script:ClassifierScript -Destination (Join-Path $toolsDir 'Compare-ExitCodeClassifier.ps1') -Force
       Copy-Item -LiteralPath $script:LinuxBootstrapScript -Destination (Join-Path $toolsDir 'NILinux-VIHistorySuiteBootstrap.sh') -Force
 
@@ -1987,6 +1991,120 @@ Remove-Item -LiteralPath $summaryResolved -Force -ErrorAction Stop
       $linuxFirstWindowsIndex = ($stepNames | Select-String -SimpleMatch 'windows-runtime-preflight' | Select-Object -First 1).LineNumber
       $linuxIndex = ($stepNames | Select-String -SimpleMatch 'linux-runtime-preflight' | Select-Object -First 1).LineNumber
       $linuxFirstWindowsIndex | Should -BeGreaterThan $linuxIndex
+    } finally {
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'projects the host RAM budget artifact and cross-plane serial reason into fast-loop outputs' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-host-ram-budget'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'head-step-1.vi') -Value 'head-step-1' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'head-step-2.vi') -Value 'head-step-2' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'vi-history' 'pr-harness.json') -Encoding utf8 -Value @'
+{
+  "schema": "vi-history-pr-harness@v1",
+  "scenarios": [
+    {
+      "id": "attribute",
+      "mode": "attribute",
+      "source": "fixtures/vi-attr/Head.vi",
+      "requireDiff": true
+    },
+    {
+      "id": "sequential",
+      "mode": "sequential",
+      "requireDiff": true
+    }
+  ]
+}
+'@
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures' 'vi-history' 'sequential.json') -Encoding utf8 -Value @'
+{
+  "schema": "vi-history-sequence@v1",
+  "targetPath": "fixtures/vi-attr/Head.vi",
+  "maxPairs": 2,
+  "steps": [
+    {
+      "id": "step-1",
+      "source": "fixtures/head-step-1.vi",
+      "requireDiff": true,
+      "message": "chore: sequential step 1"
+    },
+    {
+      "id": "step-2",
+      "source": "fixtures/head-step-2.vi",
+      "requireDiff": true,
+      "message": "chore: sequential step 2"
+    }
+  ]
+}
+'@
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $githubOutputPath = Join-Path $resultsRoot 'gh-output.txt'
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -HistoryScenarioSet smoke `
+        -GitHubOutputPath $githubOutputPath 2>&1
+      $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+      $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+      $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 16
+      Test-Path -LiteralPath $summary.hostRamBudget.path -PathType Leaf | Should -BeTrue
+      $summary.hostRamBudget.targetProfile | Should -Be 'windows-mirror-heavy'
+      $summary.hostRamBudget.decisionSource | Should -Be 'host-ram-budget'
+      $summary.hostRamBudget.actualParallelism | Should -Be 1
+      $summary.hostRamBudget.reason | Should -Be 'cross-plane-exclusivity'
+      $summary.hostRamBudget.parallelEligibleStepCount | Should -BeGreaterThan 1
+
+      $statusPath = Join-Path $resultsRoot 'docker-runtime-fastloop-status.json'
+      $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json -Depth 16
+      $status.hostRamBudget.path | Should -Be $summary.hostRamBudget.path
+      $status.hostRamBudget.reason | Should -Be 'cross-plane-exclusivity'
+
+      $readinessPath = Join-Path $resultsRoot 'docker-runtime-fastloop-readiness.json'
+      $readiness = Get-Content -LiteralPath $readinessPath -Raw | ConvertFrom-Json -Depth 16
+      $readiness.hostRamBudget.path | Should -Be $summary.hostRamBudget.path
+      $readiness.hostRamBudget.reason | Should -Be 'cross-plane-exclusivity'
+
+      $githubOutputs = @{}
+      foreach ($line in Get-Content -LiteralPath $githubOutputPath) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line -notmatch '=') { continue }
+        $parts = $line -split '=', 2
+        $githubOutputs[$parts[0]] = $parts[1]
+      }
+      $githubOutputs['docker-fast-loop-host-ram-budget-path'] | Should -Be $summary.hostRamBudget.path
+    } finally {
+      Pop-Location | Out-Null
+    }
+  }
+
+  It 'records explicit heavy-step parallelism overrides without bypassing the host RAM artifact' {
+    $repoRoot = Join-Path $TestDrive 'fast-loop-host-ram-budget-override'
+    New-HarnessRepo -RootPath $repoRoot
+
+    Push-Location $repoRoot
+    try {
+      $resultsRoot = Join-Path $repoRoot 'tests/results/local-parity'
+      $output = & pwsh -NoLogo -NoProfile -File (Join-Path $repoRoot 'tools' 'Test-DockerDesktopFastLoop.ps1') `
+        -ResultsRoot $resultsRoot `
+        -LaneScope windows `
+        -HeavyStepParallelism 3 `
+        -HistoryScenarioSet history-core 2>&1
+      $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+      $summaryPath = Get-LatestFastLoopSummary -ResultsRoot $resultsRoot
+      $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json -Depth 16
+      Test-Path -LiteralPath $summary.hostRamBudget.path -PathType Leaf | Should -BeTrue
+      $summary.hostRamBudget.decisionSource | Should -Be 'explicit-override'
+      $summary.hostRamBudget.requestedParallelism | Should -Be 3
+      $summary.hostRamBudget.recommendedParallelism | Should -Be 3
+      $summary.hostRamBudget.actualParallelism | Should -Be 1
+      $summary.hostRamBudget.reason | Should -Be 'single-heavy-step'
     } finally {
       Pop-Location | Out-Null
     }
