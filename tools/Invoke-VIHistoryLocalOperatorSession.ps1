@@ -400,6 +400,17 @@ $hostRamBudget = if ($localRefinementReceipt -and $localRefinementReceipt.PSObje
 } else {
   $null
 }
+$windowsMirrorPayload = if (
+  $localRefinementReceipt -and
+  $localRefinementReceipt.PSObject.Properties['windowsMirror'] -and
+  $localRefinementReceipt.windowsMirror
+) {
+  $localRefinementReceipt.windowsMirror
+} else {
+  $null
+}
+$windowsMirrorHostPreflight = Get-OptionalObjectValue -InputObject $windowsMirrorPayload -Name 'hostPreflight'
+$windowsMirrorCompare = Get-OptionalObjectValue -InputObject $windowsMirrorPayload -Name 'compare'
 
 $sessionReceipt = [ordered]@{
   schema = 'comparevi/local-operator-session@v1'
@@ -421,7 +432,7 @@ $sessionReceipt = [ordered]@{
       benchmarkSampleKind = [string]$localRefinementReceipt.benchmarkSampleKind
       hostRamBudget = if ($localRefinementReceipt.PSObject.Properties['hostRamBudget']) { $localRefinementReceipt.hostRamBudget } else { $null }
       timings = $localRefinementReceipt.timings
-      windowsMirror = if ($localRefinementReceipt.PSObject.Properties['windowsMirror']) { $localRefinementReceipt.windowsMirror } else { $null }
+      windowsMirror = $windowsMirrorPayload
       finalStatus = [string]$localRefinementReceipt.finalStatus
     }
   } else {
@@ -444,10 +455,10 @@ $sessionReceipt = [ordered]@{
     warmRuntimeStatePath = if ($warmRuntimeArtifacts) { [string]$warmRuntimeArtifacts.statePath } else { $null }
     warmRuntimeHealthPath = if ($warmRuntimeArtifacts) { [string]$warmRuntimeArtifacts.healthPath } else { $null }
     warmRuntimeLeasePath = if ($warmRuntimeArtifacts) { [string]$warmRuntimeArtifacts.leasePath } else { $null }
-    windowsMirrorHostPreflightPath = if ($localRefinementReceipt -and $localRefinementReceipt.PSObject.Properties['windowsMirror']) { [string]$localRefinementReceipt.windowsMirror.hostPreflight.path } else { $null }
-    windowsMirrorReportPath = if ($localRefinementReceipt -and $localRefinementReceipt.PSObject.Properties['windowsMirror']) { [string]$localRefinementReceipt.windowsMirror.compare.reportPath } else { $null }
-    windowsMirrorCapturePath = if ($localRefinementReceipt -and $localRefinementReceipt.PSObject.Properties['windowsMirror']) { [string]$localRefinementReceipt.windowsMirror.compare.capturePath } else { $null }
-    windowsMirrorRuntimeSnapshotPath = if ($localRefinementReceipt -and $localRefinementReceipt.PSObject.Properties['windowsMirror']) { [string]$localRefinementReceipt.windowsMirror.compare.runtimeSnapshotPath } else { $null }
+    windowsMirrorHostPreflightPath = [string](Get-OptionalObjectValue -InputObject $windowsMirrorHostPreflight -Name 'path')
+    windowsMirrorReportPath = [string](Get-OptionalObjectValue -InputObject $windowsMirrorCompare -Name 'reportPath')
+    windowsMirrorCapturePath = [string](Get-OptionalObjectValue -InputObject $windowsMirrorCompare -Name 'capturePath')
+    windowsMirrorRuntimeSnapshotPath = [string](Get-OptionalObjectValue -InputObject $windowsMirrorCompare -Name 'runtimeSnapshotPath')
     reviewReceiptPath = [string]$reviewOutputsPayload.receiptPath
     reviewBundlePath = [string]$reviewOutputsPayload.reviewBundlePath
     workspaceHtmlPath = [string]$reviewOutputsPayload.workspaceHtmlPath

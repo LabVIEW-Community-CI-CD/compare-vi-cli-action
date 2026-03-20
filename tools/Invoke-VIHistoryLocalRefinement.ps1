@@ -439,6 +439,14 @@ if ($Profile -eq 'warm-dev') {
   $reviewParams.ReuseRepoContainerPath = [string]$warmRuntimeState.mounts.repoContainerPath
   $reviewParams.ReuseResultsHostPath = [string]$warmRuntimeState.mounts.resultsHostPath
   $reviewParams.ReuseResultsContainerPath = [string]$warmRuntimeState.mounts.resultsContainerPath
+  $reviewParams.FlagScenarioParallelism = if (
+    $hostRamBudget -and
+    $hostRamBudget.PSObject.Properties['actualParallelism']
+  ) {
+    [int]$hostRamBudget.actualParallelism
+  } else {
+    1
+  }
 } else {
   $hostRamBudgetPathResolved = if ([string]::IsNullOrWhiteSpace($HostRamBudgetPath)) {
     Get-DefaultLocalRefinementHostRamBudgetPath -ProfileName $Profile -ResultsRootResolved $resultsRootResolved -WarmRuntimeDirResolved $null
@@ -457,6 +465,9 @@ if ($Profile -eq 'warm-dev') {
     -BudgetPath $hostRamBudgetReport.path `
     -RequestedParallelism $HeavyExecutionParallelism `
     -ReasonWhenParallelEligible 'single-review-execution'
+  if ($HeavyExecutionParallelism -gt 0) {
+    $reviewParams.FlagScenarioParallelism = $HeavyExecutionParallelism
+  }
 }
 
 $timer = [System.Diagnostics.Stopwatch]::StartNew()

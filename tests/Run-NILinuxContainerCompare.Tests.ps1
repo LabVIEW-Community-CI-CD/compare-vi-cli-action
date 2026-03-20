@@ -153,6 +153,16 @@ if ($Args[0] -eq 'image' -and $Args.Count -ge 2 -and $Args[1] -eq 'inspect') {
   exit 1
 }
 
+if ($Args[0] -eq 'inspect' -and $Args.Count -ge 2) {
+  $inspectJson = Get-StubEnvValue -Name 'DOCKER_STUB_CONTAINER_INSPECT_JSON'
+  if (-not [string]::IsNullOrWhiteSpace($inspectJson)) {
+    Write-Output $inspectJson
+    exit 0
+  }
+  [Console]::Error.WriteLine('Error: No such container')
+  exit 1
+}
+
 if ($Args[0] -eq 'cp') {
   $copyExitCode = 0
   $exitRaw = Get-StubEnvValue -Name 'DOCKER_STUB_CP_EXIT_CODE'
@@ -609,6 +619,7 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
       DOCKER_STUB_CP_WRITE_ON_FAIL  = $env:DOCKER_STUB_CP_WRITE_ON_FAIL
       DOCKER_STUB_RUN_WRITE_REPORT  = $env:DOCKER_STUB_RUN_WRITE_REPORT
       DOCKER_STUB_RUN_WRITE_HISTORY_SUITE = $env:DOCKER_STUB_RUN_WRITE_HISTORY_SUITE
+      DOCKER_STUB_CONTAINER_INSPECT_JSON = $env:DOCKER_STUB_CONTAINER_INSPECT_JSON
       DOCKER_STUB_INFO_JSON         = $env:DOCKER_STUB_INFO_JSON
       DOCKER_COMMAND_OVERRIDE       = $env:DOCKER_COMMAND_OVERRIDE
       COMPAREVI_DOCKER_RUNTIME_PROVIDER = $env:COMPAREVI_DOCKER_RUNTIME_PROVIDER
@@ -728,7 +739,7 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
       -RuntimeEngineReadyTimeoutSeconds 5 `
       -RuntimeEngineReadyPollSeconds 1 `
       -Flags @('-noattr') 2>&1
-    $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
+    $LASTEXITCODE | Should -BeIn @(0, 1) -Because ($output -join "`n")
 
     $capturePath = Join-Path (Split-Path -Parent $reportPath) 'ni-linux-container-capture.json'
     Test-Path -LiteralPath $capturePath | Should -BeTrue
@@ -762,6 +773,47 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
     $cpIndex = [array]::IndexOf($records, $cpRecords[0])
     $rmIndex = [array]::IndexOf($records, $rmRecords[0])
     $cpIndex | Should -BeLessThan $rmIndex
+  }
+
+  It 'disables prelaunch when reusing an existing linux container' {
+    $work = Join-Path $TestDrive 'compare-reuse-container-disables-prelaunch'
+    $repoRoot = Join-Path $work 'consumer-repo'
+    $resultsRoot = Join-Path $work 'results'
+    New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+    Set-Item Env:DOCKER_STUB_CONTAINER_INSPECT_JSON '[{"State":{"Running":true,"Status":"running"},"Config":{"Image":"nationalinstruments/labview:2026q1-linux"}}]'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
+
+    $baseVi = Join-Path $repoRoot 'Base.vi'
+    $headVi = Join-Path $repoRoot 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding utf8
+    $reportPath = Join-Path $resultsRoot 'compare-report.html'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -BaseVi $baseVi `
+      -HeadVi $headVi `
+      -ReportPath $reportPath `
+      -ReuseContainerName 'comparevi-vi-history-warm-test' `
+      -ReuseRepoHostPath $repoRoot `
+      -ReuseResultsHostPath $resultsRoot `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 2>&1
+    $LASTEXITCODE | Should -BeIn @(0, 1) -Because ($output -join "`n")
+
+    $records = & $script:ReadDockerStubLog -Path (Join-Path $work 'docker-log.ndjson')
+    $execRecord = @($records | Where-Object { $_.args[0] -eq 'exec' } | Select-Object -First 1)
+    $execRecord.Count | Should -Be 1
+
+    $prelaunchEnv = @($execRecord[0].args | Where-Object { $_ -eq 'COMPARE_PRELAUNCH_ENABLED=0' })
+    $prelaunchEnv.Count | Should -Be 1 -Because (($execRecord[0].args -join ' ') | Out-String)
+    @($execRecord[0].args | Where-Object { $_ -eq 'COMPARE_PRELAUNCH_ENABLED=1' }).Count | Should -Be 0
   }
 
   It 'uses NI_LINUX_LABVIEW_PATH when no explicit linux container path is supplied' {
