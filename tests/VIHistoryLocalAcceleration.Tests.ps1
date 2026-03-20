@@ -241,6 +241,7 @@ param(
   [string]$HistoryBaselineRef,
   [int]$HistoryMaxPairs,
   [int]$HistoryMaxCommitCount,
+  [int]$FlagScenarioParallelism = 0,
   [string]$ReuseContainerName = '',
   [string]$ReuseRepoHostPath = '',
   [string]$ReuseRepoContainerPath = '',
@@ -257,6 +258,7 @@ if (-not [string]::IsNullOrWhiteSpace($logPath)) {
     historyTargetPath = $HistoryTargetPath
     historyBranchRef = $HistoryBranchRef
     historyBaselineRef = $HistoryBaselineRef
+    flagScenarioParallelism = $FlagScenarioParallelism
     image = $Image
     reuseContainerName = $ReuseContainerName
     reuseRepoHostPath = $ReuseRepoHostPath
@@ -1087,6 +1089,7 @@ New-Item -ItemType Directory -Path $ResultsRoot -Force | Out-Null
     $reviewLogObject = Get-Content -LiteralPath $reviewLog -Raw | ConvertFrom-Json -Depth 10
     $reviewLogObject.reuseContainerName | Should -Be 'warm-stub'
     $reviewLogObject.reuseRepoContainerPath | Should -Be '/opt/comparevi/source'
+    $reviewLogObject.flagScenarioParallelism | Should -Be 1
 
     $warmManagerLogObject = Get-Content -LiteralPath $warmManagerLog -Raw | ConvertFrom-Json -Depth 10
     $warmManagerLogObject.action | Should -Be 'reconcile'

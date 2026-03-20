@@ -41,7 +41,28 @@ Describe 'NI Linux review-suite flag certification artifacts' -Tag 'Unit' {
     }
 
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:ReviewSuiteScriptPath -FunctionName 'Get-RelativeArtifactPath')
+    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:ReviewSuiteScriptPath -FunctionName 'Select-FlagScenarioWorkerResult')
     Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $script:ReviewSuiteScriptPath -FunctionName 'Write-FlagCombinationCertificationArtifacts')
+  }
+
+  It 'selects the canonical worker result from noisy scenario output' {
+    $result = Select-FlagScenarioWorkerResult -InvocationResult @(
+      [pscustomobject]@{
+        schema = 'comparevi/local-refinement@v1'
+      },
+      [pscustomobject]@{
+        name = 'baseline'
+        scenarioDir = 'results/flag-combinations/baseline'
+        reportPath = 'results/flag-combinations/baseline/compare-report.html'
+        capturePath = 'results/flag-combinations/baseline/ni-linux-container-capture.json'
+        runtimeSnapshotPath = 'results/flag-combinations/baseline/runtime-determinism.json'
+        errorMessage = ''
+      }
+    )
+
+    $result | Should -Not -BeNullOrEmpty
+    $result.name | Should -Be 'baseline'
+    $result.capturePath | Should -Match 'ni-linux-container-capture\.json$'
   }
 
   It 'writes explicit certification artifacts for the broad flag-combination sweep' {

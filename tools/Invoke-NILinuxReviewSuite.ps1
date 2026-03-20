@@ -311,7 +311,8 @@ function Resolve-FlagScenarioParallelBudget {
     [Parameter(Mandatory = $true)][string]$RepoRoot,
     [Parameter(Mandatory = $true)][string]$ResultsRoot,
     [Parameter(Mandatory = $true)][int]$RequestedParallelism,
-    [AllowEmptyString()][string]$HostRamBudgetPath
+    [AllowEmptyString()][string]$HostRamBudgetPath,
+    [AllowEmptyString()][string]$ReuseContainerName
   )
 
   $budgetPathResolved = if ([string]::IsNullOrWhiteSpace($HostRamBudgetPath)) {
@@ -374,6 +375,10 @@ function Resolve-FlagScenarioParallelBudget {
     $actualParallelism = 1
     $reason = 'threadjob-unavailable'
   }
+  if (-not [string]::IsNullOrWhiteSpace($ReuseContainerName)) {
+    $actualParallelism = 1
+    $reason = 'reuse-container-single-runtime'
+  }
 
   return [pscustomobject]@{
     targetProfile = $targetProfile
@@ -386,6 +391,34 @@ function Resolve-FlagScenarioParallelBudget {
     threadJobAvailable = [bool]$threadJobAvailable
     report = $budgetReport
   }
+}
+
+function Select-FlagScenarioWorkerResult {
+  param([AllowNull()]$InvocationResult)
+
+  $canonicalResults = New-Object System.Collections.Generic.List[object]
+  foreach ($candidate in @($InvocationResult)) {
+    if ($null -eq $candidate) {
+      continue
+    }
+
+    $properties = $candidate.PSObject.Properties
+    if (
+      $properties['name'] -and
+      $properties['scenarioDir'] -and
+      $properties['reportPath'] -and
+      $properties['capturePath'] -and
+      $properties['runtimeSnapshotPath']
+    ) {
+      $canonicalResults.Add($candidate) | Out-Null
+    }
+  }
+
+  if ($canonicalResults.Count -eq 0) {
+    return $null
+  }
+
+  return $canonicalResults[$canonicalResults.Count - 1]
 }
 
 function Invoke-FlagScenarioCompares {
@@ -507,7 +540,11 @@ function Invoke-FlagScenarioCompares {
   $resultBuffer = New-Object System.Collections.Generic.List[object]
   if ($Parallelism -le 1) {
     for ($i = 0; $i -lt $ScenarioDefinitions.Count; $i++) {
-      $resultBuffer.Add((& $worker $i $ScenarioDefinitions[$i] $RepoRoot $FlagScenarioRoot $CompareScriptPath $BaseVi $HeadVi $Image $LabVIEWPath $TimeoutSeconds $HeartbeatSeconds $RuntimeEngineReadyTimeoutSeconds $RuntimeEngineReadyPollSeconds $ReuseContainerName $ReuseRepoHostPath $ReuseRepoContainerPath $ReuseResultsHostPath $ReuseResultsContainerPath $RuntimeInjectionMount)) | Out-Null
+      $workerResult = Select-FlagScenarioWorkerResult -InvocationResult (& $worker $i $ScenarioDefinitions[$i] $RepoRoot $FlagScenarioRoot $CompareScriptPath $BaseVi $HeadVi $Image $LabVIEWPath $TimeoutSeconds $HeartbeatSeconds $RuntimeEngineReadyTimeoutSeconds $RuntimeEngineReadyPollSeconds $ReuseContainerName $ReuseRepoHostPath $ReuseRepoContainerPath $ReuseResultsHostPath $ReuseResultsContainerPath $RuntimeInjectionMount)
+      if ($null -eq $workerResult) {
+        throw ("NI Linux review suite scenario '{0}' worker did not emit a canonical result." -f [string]$ScenarioDefinitions[$i].name)
+      }
+      $resultBuffer.Add($workerResult) | Out-Null
     }
     return @($resultBuffer.ToArray() | Sort-Object sequence)
   }
@@ -519,7 +556,7 @@ function Invoke-FlagScenarioCompares {
       if ($null -eq $completedJob) {
         continue
       }
-      $jobResult = @(Receive-Job -Job $completedJob -ErrorAction SilentlyContinue) | Select-Object -Last 1
+      $jobResult = Select-FlagScenarioWorkerResult -InvocationResult @(Receive-Job -Job $completedJob -ErrorAction SilentlyContinue)
       if ($jobResult) {
         $resultBuffer.Add($jobResult) | Out-Null
       }
@@ -536,7 +573,7 @@ function Invoke-FlagScenarioCompares {
     if ($null -eq $completedJob) {
       continue
     }
-    $jobResult = @(Receive-Job -Job $completedJob -ErrorAction SilentlyContinue) | Select-Object -Last 1
+    $jobResult = Select-FlagScenarioWorkerResult -InvocationResult @(Receive-Job -Job $completedJob -ErrorAction SilentlyContinue)
     if ($jobResult) {
       $resultBuffer.Add($jobResult) | Out-Null
     }
@@ -753,7 +790,8 @@ $flagScenarioParallelBudget = Resolve-FlagScenarioParallelBudget `
   -RepoRoot $repoRootResolved `
   -ResultsRoot $resultsRootResolved `
   -RequestedParallelism $FlagScenarioParallelism `
-  -HostRamBudgetPath $hostRamBudgetPathResolved
+  -HostRamBudgetPath $hostRamBudgetPathResolved `
+  -ReuseContainerName $ReuseContainerName
 $historyRefSelection = Resolve-HistoryRefSelection -RequestedBranchRef $HistoryBranchRef -RequestedBaselineRef $HistoryBaselineRef
 
 Write-Host ("[ni-linux-review-suite] resultsRoot={0}" -f $resultsRootResolved) -ForegroundColor Cyan
@@ -782,8 +820,13 @@ $flagScenarioOutputs = Invoke-FlagScenarioCompares `
   -RuntimeInjectionMount $RuntimeInjectionMount
 
 foreach ($scenarioOutput in @($flagScenarioOutputs)) {
-  if (-not [string]::IsNullOrWhiteSpace([string]$scenarioOutput.errorMessage)) {
-    throw ([string]$scenarioOutput.errorMessage)
+  $scenarioErrorMessage = if ($scenarioOutput.PSObject.Properties['errorMessage']) {
+    [string]$scenarioOutput.errorMessage
+  } else {
+    ''
+  }
+  if (-not [string]::IsNullOrWhiteSpace($scenarioErrorMessage)) {
+    throw $scenarioErrorMessage
   }
 
   $scenarioName = [string]$scenarioOutput.name

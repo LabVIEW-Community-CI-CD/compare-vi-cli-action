@@ -54,6 +54,7 @@ $receipt = [ordered]@{
     decisionSource = 'host-ram-budget'
     reason = 'single-review-execution'
   }
+  windowsMirror = $null
   finalStatus = 'succeeded'
 }
 $receipt | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $resolvedResultsRoot 'local-refinement.json') -Encoding utf8

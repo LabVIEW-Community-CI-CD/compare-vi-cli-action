@@ -2625,7 +2625,8 @@ try {
     $dockerArgs += @('--env', ("COMPARE_REPORT_TYPE={0}" -f $reportInfo.CliReportType))
     $dockerArgs += @('--env', ("COMPARE_FLAGS_B64={0}" -f $flagsB64))
     $dockerArgs += @('--env', 'LV_RTE_HEADLESS=1')
-    $dockerArgs += @('--env', ("COMPARE_PRELAUNCH_ENABLED={0}" -f 1))
+    $prelaunchEnabled = if ($useExistingContainer) { 0 } else { 1 }
+    $dockerArgs += @('--env', ("COMPARE_PRELAUNCH_ENABLED={0}" -f $prelaunchEnabled))
     $dockerArgs += @('--env', ("COMPARE_PRELAUNCH_WAIT_SECONDS={0}" -f [Math]::Max(0, $PrelaunchWaitSeconds)))
     $dockerArgs += @('--env', ("COMPARE_STARTUP_RETRY_COUNT={0}" -f [Math]::Max(0, $StartupRetryCount)))
     $dockerArgs += @('--env', ("COMPARE_RETRY_DELAY_SECONDS={0}" -f [Math]::Max(0, $RetryDelaySeconds)))
