@@ -19,6 +19,9 @@ import {
 } from './lib/branch-classification.mjs';
 
 const manifestPath = new URL('./policy.json', import.meta.url);
+const DELIVERY_AGENT_POLICY_RELATIVE_PATH = path.join('tools', 'priority', 'delivery-agent.policy.json');
+const DEFAULT_COPILOT_REVIEW_STRATEGY = 'github-review-required';
+const LOCAL_ONLY_COPILOT_REVIEW_STRATEGY = 'draft-only-explicit';
 
 const USAGE_LINES = [
   'Usage: node tools/priority/merge-sync-pr.mjs --pr <number> [options]',
@@ -141,6 +144,14 @@ function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+export function normalizeCopilotReviewStrategy(value) {
+  const normalized = normalizeText(value) || DEFAULT_COPILOT_REVIEW_STRATEGY;
+  if (normalized === DEFAULT_COPILOT_REVIEW_STRATEGY || normalized === LOCAL_ONLY_COPILOT_REVIEW_STRATEGY) {
+    return normalized;
+  }
+  throw new Error(`Unsupported copilotReviewStrategy: ${normalized}`);
+}
+
 function normalizeOwner(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
@@ -155,6 +166,22 @@ function parseRepoSlug(repo) {
   }
   const [owner, name] = parts;
   return { owner, name };
+}
+
+export async function loadMergeSyncCopilotReviewStrategy({
+  repoRoot = getRepoRoot(),
+  readFileFn = readFile
+} = {}) {
+  const policyPath = path.join(repoRoot, DELIVERY_AGENT_POLICY_RELATIVE_PATH);
+  try {
+    const payload = JSON.parse(await readFileFn(policyPath, 'utf8'));
+    return normalizeCopilotReviewStrategy(payload?.copilotReviewStrategy);
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return DEFAULT_COPILOT_REVIEW_STRATEGY;
+    }
+    throw error;
+  }
 }
 
 export function normalizeBaseRefName(value) {
@@ -564,6 +591,7 @@ export async function evaluatePromotionReviewClearance({
   repo,
   pr,
   prInfo,
+  copilotReviewStrategy = DEFAULT_COPILOT_REVIEW_STRATEGY,
   runCopilotReviewGateFn = runCopilotReviewGate,
   readReadyValidationClearanceFn = loadReadyValidationClearance,
   pollAttempts = PROMOTION_REVIEW_GATE_POLL_ATTEMPTS,
@@ -660,6 +688,8 @@ export async function evaluatePromotionReviewClearance({
       normalizeBaseRefName(prInfo?.baseRefName),
       '--draft',
       prInfo?.isDraft ? 'true' : 'false',
+      '--copilot-review-strategy',
+      normalizeCopilotReviewStrategy(copilotReviewStrategy),
       '--poll-attempts',
       String(pollAttempts),
       '--poll-delay-ms',
@@ -857,7 +887,8 @@ export async function runMergeSync({
   sleepFn = delay,
   runMergeAttemptFn = runMergeAttempt,
   evaluatePromotionReviewClearanceFn = evaluatePromotionReviewClearance,
-  deleteMergedHeadBranchFn = deleteMergedHeadBranch
+  deleteMergedHeadBranchFn = deleteMergedHeadBranch,
+  loadMergeSyncCopilotReviewStrategyFn = loadMergeSyncCopilotReviewStrategy
 } = {}) {
   const options = parseArgs(argv);
 
@@ -871,6 +902,7 @@ export async function runMergeSync({
   const policy = JSON.parse(policyRaw);
   const mergeQueueBranches = getMergeQueueBranches(policy);
   const branchClassContract = loadBranchClassContract(repoRoot);
+  const copilotReviewStrategy = await loadMergeSyncCopilotReviewStrategyFn({ repoRoot });
 
   const prInfo = readPrInfoFn({
     repoRoot,
@@ -921,7 +953,8 @@ export async function runMergeSync({
           repoRoot,
           repo: resolvedRepo,
           pr: options.pr,
-          prInfo
+          prInfo,
+          copilotReviewStrategy
         });
   const initialPromotionState =
     selection.mode === 'none'

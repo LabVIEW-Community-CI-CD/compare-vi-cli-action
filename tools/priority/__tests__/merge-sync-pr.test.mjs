@@ -14,6 +14,8 @@ import {
   deleteMergedHeadBranch,
   evaluatePromotionReviewClearance,
   isQueueManagedBaseBranch,
+  loadMergeSyncCopilotReviewStrategy,
+  normalizeCopilotReviewStrategy,
   resolveBranchCleanupPlan,
   resolveReadyValidationClearancePath,
   isUpstreamOwnedHead,
@@ -757,6 +759,28 @@ test('buildMergeSummaryPayload preserves selected/final reason fields for diagno
   assert.equal(payload.finalReason, 'direct-merge-policy-block-retry-auto');
 });
 
+test('normalizeCopilotReviewStrategy defaults and accepts the local-only strategy', () => {
+  assert.equal(normalizeCopilotReviewStrategy(null), 'github-review-required');
+  assert.equal(normalizeCopilotReviewStrategy('draft-only-explicit'), 'draft-only-explicit');
+  assert.throws(() => normalizeCopilotReviewStrategy('disabled'), /Unsupported copilotReviewStrategy/);
+});
+
+test('loadMergeSyncCopilotReviewStrategy reads delivery-agent policy and falls back when absent', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'merge-sync-pr-policy-'));
+  await mkdir(path.join(tempDir, 'tools', 'priority'), { recursive: true });
+  await writeFile(
+    path.join(tempDir, 'tools', 'priority', 'delivery-agent.policy.json'),
+    `${JSON.stringify({ copilotReviewStrategy: 'draft-only-explicit' })}\n`,
+    'utf8'
+  );
+
+  assert.equal(await loadMergeSyncCopilotReviewStrategy({ repoRoot: tempDir }), 'draft-only-explicit');
+  assert.equal(
+    await loadMergeSyncCopilotReviewStrategy({ repoRoot: path.join(tempDir, 'missing-policy-root') }),
+    'github-review-required'
+  );
+});
+
 test('classifyPromotionState reports queued and already-queued distinctly', () => {
   assert.deepEqual(
     classifyPromotionState(
@@ -1018,7 +1042,53 @@ test('runMergeSync fails when auto merge command succeeds but no durable promoti
   );
 });
 
+test('runMergeSync forwards the effective copilot review strategy into merge admission', async () => {
+  let observedStrategy = null;
+
+  await assert.rejects(
+    () =>
+      runMergeSync({
+        argv: ['node', 'tools/priority/merge-sync-pr.mjs', '--pr', '124', '--repo', 'owner/repo'],
+        repoRoot,
+        ensureGhCliFn: () => {},
+        loadMergeSyncCopilotReviewStrategyFn: async () => 'draft-only-explicit',
+        readPromotionStateFn: () => ({
+          state: 'OPEN',
+          mergeStateStatus: 'BLOCKED',
+          isInMergeQueue: false,
+          autoMergeRequest: null,
+          mergedAt: null
+        }),
+        readPrInfoFn: () => ({
+          number: 124,
+          state: 'OPEN',
+          isDraft: false,
+          mergeStateStatus: 'BLOCKED',
+          mergeable: 'MERGEABLE',
+          baseRefName: 'develop',
+          headRefOid: '1234567890123456789012345678901234567890',
+          url: 'https://example.test/pr/124'
+        }),
+        evaluatePromotionReviewClearanceFn: async ({ copilotReviewStrategy }) => {
+          observedStrategy = copilotReviewStrategy;
+          return {
+            ok: false,
+            report: {
+              status: 'fail',
+              gateState: 'blocked',
+              reasons: ['copilot-review-run-unobserved']
+            }
+          };
+        }
+      }),
+    /copilot-review-run-unobserved/
+  );
+
+  assert.equal(observedStrategy, 'draft-only-explicit');
+});
+
 test('evaluatePromotionReviewClearance summarizes a passing current-head no-comment review run', async () => {
+  let receivedArgs = null;
   const result = await evaluatePromotionReviewClearance({
     repo: 'owner/repo',
     pr: 125,
@@ -1027,25 +1097,31 @@ test('evaluatePromotionReviewClearance summarizes a passing current-head no-comm
       baseRefName: 'develop',
       headRefOid: '1234567890123456789012345678901234567890'
     },
-    runCopilotReviewGateFn: async () => ({
-      exitCode: 0,
-      report: {
-        status: 'pass',
-        gateState: 'ready',
-        reasons: ['current-head-review-run-completed-clean'],
-        summary: {
-          actionableCommentCount: 0,
-          actionableThreadCount: 0
-        },
-        signals: {
-          hasCurrentHeadReview: false,
-          latestReviewIsCurrentHead: false,
-          reviewRunCompletedClean: true
+    copilotReviewStrategy: 'draft-only-explicit',
+    runCopilotReviewGateFn: async ({ argv }) => {
+      receivedArgs = argv;
+      return {
+        exitCode: 0,
+        report: {
+          status: 'pass',
+          gateState: 'ready',
+          reasons: ['current-head-review-run-completed-clean'],
+          summary: {
+            actionableCommentCount: 0,
+            actionableThreadCount: 0
+          },
+          signals: {
+            hasCurrentHeadReview: false,
+            latestReviewIsCurrentHead: false,
+            reviewRunCompletedClean: true
+          }
         }
-      }
-    })
+      };
+    }
   });
 
+  assert.ok(receivedArgs.includes('--copilot-review-strategy'));
+  assert.ok(receivedArgs.includes('draft-only-explicit'));
   assert.equal(result.ok, true);
   assert.deepEqual(result.report, {
     status: 'pass',
