@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-windows-host-preflight-v1.schema.json",
+  "title": "CompareVI Windows Host Preflight v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "executionSurface",
+    "image",
+    "status",
+    "failureClass",
+    "failureMessage",
+    "contexts",
+    "runtimeProvider",
+    "runtimeDeterminism",
+    "bootstrap",
+    "probe",
+    "hostedContract"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi/windows-host-preflight@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "executionSurface": {
+      "enum": ["desktop-local", "github-hosted-windows"]
+    },
+    "image": {
+      "type": "string"
+    },
+    "status": {
+      "enum": ["pending", "ready", "warning", "failure"]
+    },
+    "failureClass": {
+      "type": "string"
+    },
+    "failureMessage": {
+      "type": "string"
+    },
+    "runnerEnvironment": {
+      "type": "string"
+    },
+    "contexts": {
+      "type": "object",
+      "required": ["start", "startOsType", "final", "finalOsType"],
+      "properties": {
+        "start": { "type": "string" },
+        "startOsType": { "type": "string" },
+        "final": { "type": "string" },
+        "finalOsType": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "runtimeProvider": {
+      "type": "string"
+    },
+    "runtimeDeterminism": {
+      "type": "object",
+      "required": ["status", "reason", "snapshotPath", "failureClass"],
+      "properties": {
+        "status": { "type": "string" },
+        "reason": { "type": "string" },
+        "snapshotPath": { "type": "string" },
+        "failureClass": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "bootstrap": {
+      "type": "object",
+      "required": [
+        "attempted",
+        "pulled",
+        "imagePresent",
+        "localImageId",
+        "localRepoDigest",
+        "localDigest",
+        "pullDurationMs",
+        "pullError"
+      ],
+      "properties": {
+        "attempted": { "type": "boolean" },
+        "pulled": { "type": "boolean" },
+        "imagePresent": { "type": "boolean" },
+        "localImageId": { "type": "string" },
+        "localRepoDigest": { "type": "string" },
+        "localDigest": { "type": "string" },
+        "pullDurationMs": { "type": "integer", "minimum": 0 },
+        "pullError": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "probe": {
+      "type": "object",
+      "required": ["attempted", "status", "exitCode", "durationMs", "output", "command", "error"],
+      "properties": {
+        "attempted": { "type": "boolean" },
+        "status": { "type": "string" },
+        "exitCode": { "type": "integer" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "output": { "type": "string" },
+        "command": { "type": "string" },
+        "error": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "hostedContract": {
+      "type": "object",
+      "required": ["hostEngineMutationAllowed", "expectedContext", "expectedOs"],
+      "properties": {
+        "hostEngineMutationAllowed": { "type": "boolean" },
+        "expectedContext": { "type": "string" },
+        "expectedOs": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -52,21 +52,22 @@ test('validate workflow Linux VI-history lane consumes shared dispatch-plan outp
   assert.doesNotMatch(linuxSection, /pull-requests: read/);
 });
 
-test('validate workflow Windows VI-history lane is gated by shared dispatch planning and runner availability', () => {
+test('validate workflow Windows VI-history lane is gated by shared dispatch planning and portable hosted execution', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
   const planSection = extractWorkflowJobSection(workflow, 'vi-history-scenarios-windows-plan', 'vi-history-scenarios-windows');
   const windowsSection = extractWorkflowJobSection(workflow, 'vi-history-scenarios-windows');
 
   assert.match(workflow, /vi-history-scenarios-windows-plan:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'/);
-  assert.match(planSection, /permissions:\s*\r?\n\s+actions: read\r?\n\s+contents: read/);
-  assert.match(planSection, /Resolve hosted Windows runner availability/);
-  assert.match(planSection, /tools\/Resolve-RunnerAvailability\.ps1/);
-  assert.match(planSection, /-RequiredLabel 'hosted-docker-windows'/);
+  assert.match(planSection, /permissions:\s*\r?\n\s+contents: read/);
+  assert.match(planSection, /Resolve portable hosted Windows lane/);
+  assert.match(planSection, /tools\/Resolve-HostedWindowsLanePlan\.ps1/);
+  assert.match(planSection, /-RunnerImage 'windows-2022'/);
   assert.match(planSection, /outputs:\s*\r?\n\s+available:\s+\$\{\{\s*steps\.plan\.outputs\.available\s*\}\}/);
 
   assert.match(workflow, /vi-history-scenarios-windows:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-windows-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true' && needs\.vi-history-scenarios-plan\.outputs\.execute_lanes == 'true' && needs\.vi-history-scenarios-windows-plan\.outputs\.available == 'true'/);
-  assert.match(windowsSection, /runs-on:\s*\[self-hosted, Windows, X64, hosted-docker-windows\]/);
-  assert.match(windowsSection, /Assert-RunnerLabelContract\.ps1/);
+  assert.match(windowsSection, /runs-on:\s*windows-2022/);
   assert.match(windowsSection, /Test-WindowsNI2026q1HostPreflight\.ps1/);
+  assert.match(windowsSection, /-ExecutionSurface 'github-hosted-windows'/);
   assert.match(windowsSection, /Run-NIWindowsContainerCompare\.ps1/);
+  assert.doesNotMatch(windowsSection, /Assert-RunnerLabelContract\.ps1/);
 });

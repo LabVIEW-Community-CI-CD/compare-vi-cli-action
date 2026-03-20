@@ -400,8 +400,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `vi-history-scenarios-*` runs for `compare-engine-history`, `docker-vi-history`, `mixed-runtime`, `unclassified`, and
   explicit manual dispatches; the final VI-history plan still honors `history_scenario_set`.
 - Hosted Windows mirror proof now lives in `Validate` as the non-required `vi-history-scenarios-windows` lane.
-  That lane only runs when a `hosted-docker-windows` runner is online, and it is expected to hydrate
-  `nationalinstruments/labview:2026q1-windows` much more slowly than the Linux lane.
+  That lane runs on GitHub-hosted `windows-2022`, hydrates
+  `nationalinstruments/labview:2026q1-windows` with no repository runner dependency, and is expected to
+  take materially longer to pull than the Linux lane.
   Agents can dispatch the hosted lane while continuing with the manual Linux or Windows Docker Desktop/WSL2 lanes locally.
 - Machine-readable routing evidence is written to
   `tests/results/_agent/validate-scope-plan/validate-scope-plan.json` and summarized in the Validate step summary so
