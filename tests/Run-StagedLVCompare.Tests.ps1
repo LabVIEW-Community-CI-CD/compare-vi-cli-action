@@ -165,6 +165,77 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
         $outputMap['skip_count'] | Should -Be '0'
     }
 
+    It 'resolves custom report artifact paths from capture metadata when the invoke result omits ReportPath' {
+        $resultsPath = Join-Path $TestDrive 'vi-staging-results-custom-report.json'
+        $artifactsDir = Join-Path $TestDrive 'artifacts-custom-report'
+        New-Item -ItemType Directory -Path (Split-Path $resultsPath -Parent) -Force | Out-Null
+        New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
+
+        $stagedBase = Join-Path $TestDrive 'staged-custom\Base.vi'
+        $stagedHead = Join-Path $TestDrive 'staged-custom\Head.vi'
+        New-Item -ItemType Directory -Path (Split-Path $stagedBase -Parent) -Force | Out-Null
+        Set-Content -LiteralPath $stagedBase -Value 'base'
+        Set-Content -LiteralPath $stagedHead -Value 'head'
+
+        @(
+            [ordered]@{
+                changeType = 'modify'
+                basePath   = 'resource/plugins/NIIconEditor/Miscellaneous/User Events/Initialization_UserEvents.vi'
+                headPath   = 'resource/plugins/NIIconEditor/Miscellaneous/User Events/Initialization_UserEvents.vi'
+                staged     = [ordered]@{
+                    Base         = $stagedBase
+                    Head         = $stagedHead
+                    AllowSameLeaf= $false
+                }
+            }
+        ) | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultsPath -Encoding utf8
+
+        $invoke = {
+            param(
+                [string]$BaseVi,
+                [string]$HeadVi,
+                [string]$OutputDir,
+                [switch]$AllowSameLeaf,
+                [switch]$RenderReport,
+                [string[]]$Flags,
+                [switch]$ReplaceFlags,
+                [switch]$LeakCheck,
+                [Nullable[int]]$TimeoutSeconds,
+                [Nullable[double]]$LeakGraceSeconds,
+                [string]$NoiseProfile
+            )
+            New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+            $capturePath = Join-Path $OutputDir 'lvcompare-capture.json'
+            $reportPath  = Join-Path $OutputDir 'diff-report-Initialization_UserEvents.vi.html'
+            @'
+{
+  "schema": "lvcompare-capture-v1",
+  "out": {
+    "reportHtml": "./diff-report-Initialization_UserEvents.vi.html"
+  },
+  "cli": {
+    "reportPath": "./diff-report-Initialization_UserEvents.vi.html"
+  }
+}
+'@ | Set-Content -LiteralPath $capturePath -Encoding utf8
+            '<html><body>custom report</body></html>' | Set-Content -LiteralPath $reportPath -Encoding utf8
+            return [pscustomobject]@{
+                ExitCode    = 0
+                CapturePath = $capturePath
+            }
+        }.GetNewClosure()
+
+        & $script:scriptPath -ResultsPath $resultsPath -ArtifactsDir $artifactsDir -RenderReport -InvokeLVCompare $invoke
+
+        $updated = @(Get-Content -LiteralPath $resultsPath -Raw | ConvertFrom-Json)
+        $entry = $updated[0]
+        $entry.compare.reportPath | Should -Match 'diff-report-Initialization_UserEvents\.vi\.html$'
+
+        $summaryPath = Join-Path $artifactsDir 'vi-staging-compare.json'
+        $compareSummary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
+        $compareSummary[0].reportPath | Should -Match 'diff-report-Initialization_UserEvents\.vi\.html$'
+    }
+
     It 'treats exit 0 with diff headings as diff' {
         $resultsPath = Join-Path $TestDrive 'vi-staging-results-diff.json'
         $artifactsDir = Join-Path $TestDrive 'artifacts-diff'
@@ -1057,6 +1128,5 @@ Describe 'Run-StagedLVCompare.ps1' -Tag 'Unit' {
         }
     }
 }
-
 
 

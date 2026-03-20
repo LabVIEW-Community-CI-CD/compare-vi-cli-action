@@ -16,6 +16,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
+$binaryToolsModule = Join-Path (Split-Path -Parent (Split-Path -Parent $PSCommandPath)) 'LabVIEWBinaryTools.psm1'
+if (-not (Test-Path -LiteralPath $binaryToolsModule -PathType Leaf)) {
+  throw ("LabVIEWBinaryTools.psm1 not found: {0}" -f $binaryToolsModule)
+}
+Import-Module $binaryToolsModule -Force
+
 function Resolve-RepoRoot {
   param([string]$StartPath = (Get-Location).Path)
   try {
@@ -74,7 +80,7 @@ if (-not $repoResolved -or -not (Test-Path -LiteralPath $repoResolved -PathType 
 
 $knownKinds = @{
   vi = @{
-    Extensions      = @('.vi', '.vim', '.vit', '.ctl', '.ctt', '.lvclass', '.lvlib', '.lvproj', '.lvsc', '.lvlibp')
+    Extensions      = @(Get-LabVIEWKnownFileExtensions)
     IncludePatterns = @('resource/', 'Resource/', 'Test/', 'tests/', 'compare/', 'Support/', 'support/', 'LVCompare/')
   }
 }
@@ -104,6 +110,70 @@ if ($Extensions) {
     if ($ext) {
       $normalized = $ext.StartsWith('.') ? $ext : ".$ext"
       [void]$resolvedExtensions.Add($normalized)
+    }
+  }
+}
+
+$explicitExtensionsProvided = [bool]$Extensions
+
+function Test-IsCandidateLabVIEWBinaryChange {
+  param(
+    [Parameter(Mandatory)][string]$RepoPath,
+    [AllowEmptyString()][string]$BaseRefValue,
+    [Parameter(Mandatory)][string]$HeadRefValue,
+    [AllowEmptyString()][string]$StatusCode,
+    [AllowEmptyString()][string]$PathValue,
+    [AllowEmptyString()][string]$OldPathValue,
+    [string[]]$KnownExtensions = @()
+  )
+
+  $normalizedStatus = if ([string]::IsNullOrWhiteSpace($StatusCode)) { '' } else { $StatusCode.Substring(0, 1).ToUpperInvariant() }
+  $knownExtensionSet = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($extension in @($KnownExtensions)) {
+    if (-not [string]::IsNullOrWhiteSpace([string]$extension)) {
+      [void]$knownExtensionSet.Add([string]$extension)
+    }
+  }
+
+  $testPathAtRef = {
+    param(
+      [string]$RefValue,
+      [string]$CandidatePath,
+      [bool]$AllowExtensionFallback
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RefValue) -or [string]::IsNullOrWhiteSpace($CandidatePath)) {
+      return $false
+    }
+
+    if (Test-IsLabVIEWBinaryAtGitPath -RepoPath $RepoPath -Ref $RefValue -Path $CandidatePath) {
+      return $true
+    }
+
+    if ($AllowExtensionFallback) {
+      $candidateExtension = [System.IO.Path]::GetExtension($CandidatePath)
+      if (-not [string]::IsNullOrWhiteSpace($candidateExtension) -and $knownExtensionSet.Contains($candidateExtension)) {
+        return $true
+      }
+    }
+
+    return $false
+  }
+
+  switch ($normalizedStatus) {
+    'A' { return (& $testPathAtRef $HeadRefValue $PathValue $false) }
+    'M' {
+      if (& $testPathAtRef $HeadRefValue $PathValue $false) { return $true }
+      return (& $testPathAtRef $BaseRefValue $PathValue ([string]::IsNullOrWhiteSpace($BaseRefValue)))
+    }
+    'D' { return (& $testPathAtRef $BaseRefValue $PathValue $true) }
+    'R' {
+      if (& $testPathAtRef $HeadRefValue $PathValue $false) { return $true }
+      return (& $testPathAtRef $BaseRefValue $OldPathValue $true)
+    }
+    default {
+      if (& $testPathAtRef $HeadRefValue $PathValue $false) { return $true }
+      return (& $testPathAtRef $BaseRefValue $OldPathValue $true)
     }
   }
 }
@@ -185,8 +255,22 @@ foreach ($line in $lines) {
   if (-not $matchesPattern) { continue }
 
   $extension = [System.IO.Path]::GetExtension($path)
-  if ($resolvedExtensions.Count -gt 0 -and -not $resolvedExtensions.Contains($extension)) {
-    continue
+  if ($explicitExtensionsProvided) {
+    if ($resolvedExtensions.Count -gt 0 -and -not $resolvedExtensions.Contains($extension)) {
+      continue
+    }
+  } else {
+    $oldPathForDetection = if ([string]::IsNullOrWhiteSpace($oldPath)) { $path } else { $oldPath }
+    if (-not (Test-IsCandidateLabVIEWBinaryChange `
+      -RepoPath $repoResolved `
+      -BaseRefValue $BaseRef `
+      -HeadRefValue $headRefResolved `
+      -StatusCode $statusCode `
+      -PathValue $path `
+      -OldPathValue $oldPathForDetection `
+      -KnownExtensions $knownKinds['vi'].Extensions)) {
+      continue
+    }
   }
 
   $fileInfo = [pscustomobject]@{

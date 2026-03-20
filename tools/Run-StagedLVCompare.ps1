@@ -42,6 +42,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$artifactModulePath = Join-Path (Split-Path -Parent $PSCommandPath) 'VICompareArtifacts.psm1'
+if (-not (Test-Path -LiteralPath $artifactModulePath -PathType Leaf)) {
+    throw "VICompareArtifacts.psm1 not found at $artifactModulePath"
+}
+Import-Module $artifactModulePath -Force
+
 $flagsProvided = $PSBoundParameters.ContainsKey('Flags')
 $effectiveFlags = $Flags
 $effectiveReplace = $ReplaceFlags.IsPresent
@@ -423,15 +429,6 @@ foreach ($entry in $results) {
             if ($profile.flags) { $modeInfo.flags = @($profile.flags) }
             if ($allowSameLeafRequested) { $modeInfo.allowSameLeaf = $true }
 
-            $reportCandidates = @('compare-report.html', 'compare-report.xml', 'compare-report.txt')
-            foreach ($candidate in $reportCandidates) {
-                $candidatePath = Join-Path $modeOutputDir $candidate
-                if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
-                    $modeInfo.reportPath = $candidatePath
-                    break
-                }
-            }
-
             if ($invokeResult -and $invokeResult.PSObject.Properties['CapturePath'] -and $invokeResult.CapturePath) {
                 $modeInfo.capturePath = $invokeResult.CapturePath
             } else {
@@ -443,6 +440,11 @@ foreach ($entry in $results) {
             if ($invokeResult -and $invokeResult.PSObject.Properties['ReportPath'] -and $invokeResult.ReportPath) {
                 $modeInfo.reportPath = $invokeResult.ReportPath
             }
+            $modeInfo.reportPath = Find-VICompareReportArtifact `
+                -ExplicitReportPath $modeInfo.reportPath `
+                -CapturePath $modeInfo.capturePath `
+                -SearchDirectories @($modeOutputDir) `
+                -Recursive
 
             $diffDetected = Test-ReportHasDiff -Path $modeInfo.reportPath
 
