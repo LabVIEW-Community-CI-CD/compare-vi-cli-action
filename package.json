@@ -38,6 +38,7 @@
     "history:bundle:verify": "tsc -p tsconfig.cli.json && node dist/tools/cli/verify-history-bundle-certification.js",
     "history:corpus:offline": "pwsh -NoLogo -NoProfile -File tools/Invoke-OfflineRealHistoryCorpus.ps1",
     "history:corpus:evaluate": "pwsh -NoLogo -NoProfile -File tools/Invoke-OfflineRealHistoryCorpusEvaluation.ps1",
+    "history:corpus:samples:evaluate": "pwsh -NoLogo -NoProfile -File tools/Invoke-HeadlessSampleVICorpusEvaluation.ps1",
     "history:corpus:normalize": "pwsh -NoLogo -NoProfile -File tools/Normalize-OfflineRealHistoryCorpus.ps1",
     "history:diagnostics:show": "pwsh -NoLogo -NoProfile -File tools/Show-DockerFastLoopDiagnostics.ps1",
     "history:local:build-dev-image": "pwsh -NoLogo -NoProfile -File tools/Build-VIHistoryDevImage.ps1",

@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/headless-sample-vi-corpus-evaluation-v1.schema.json",
+  "title": "Headless Sample VI Corpus Evaluation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "catalogPath",
+    "overallStatus",
+    "summary",
+    "targets"
+  ],
+  "properties": {
+    "schema": {
+      "const": "vi-headless/sample-corpus-evaluation@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "catalogPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overallStatus": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "drift"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetCount",
+        "acceptedCount",
+        "provisionalCount",
+        "rejectedCount",
+        "okCount",
+        "warningCount",
+        "driftCount"
+      ],
+      "properties": {
+        "targetCount": { "type": "integer", "minimum": 0 },
+        "acceptedCount": { "type": "integer", "minimum": 0 },
+        "provisionalCount": { "type": "integer", "minimum": 0 },
+        "rejectedCount": { "type": "integer", "minimum": 0 },
+        "okCount": { "type": "integer", "minimum": 0 },
+        "warningCount": { "type": "integer", "minimum": 0 },
+        "driftCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/target"
+      }
+    }
+  },
+  "$defs": {
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "publicRepo",
+        "githubEvidenceUrls",
+        "licenseDeclared",
+        "pinnedCommit",
+        "successfulWorkflowEvidence",
+        "renderStrategyAligned",
+        "localFixturePathsResolved"
+      ],
+      "properties": {
+        "publicRepo": { "type": "boolean" },
+        "githubEvidenceUrls": { "type": "boolean" },
+        "licenseDeclared": { "type": "boolean" },
+        "pinnedCommit": { "type": "boolean" },
+        "successfulWorkflowEvidence": { "type": "boolean" },
+        "renderStrategyAligned": { "type": "boolean" },
+        "localFixturePathsResolved": { "type": "boolean" }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "admissionState",
+        "status",
+        "repoSlug",
+        "targetPath",
+        "changeKind",
+        "certificationSurface",
+        "operation",
+        "planeApplicability",
+        "publicEvidenceCount",
+        "successfulWorkflowEvidenceCount",
+        "localFixtureCount",
+        "localFixtureExistingCount",
+        "checks",
+        "notes"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "admissionState": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "provisional",
+            "rejected"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "warning",
+            "drift"
+          ]
+        },
+        "repoSlug": { "type": "string", "minLength": 1 },
+        "targetPath": { "type": "string", "minLength": 1 },
+        "changeKind": {
+          "type": "string",
+          "enum": [
+            "modified",
+            "added",
+            "deleted"
+          ]
+        },
+        "certificationSurface": {
+          "type": "string",
+          "enum": [
+            "vi-history",
+            "compare-report",
+            "print-single-file"
+          ]
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "Compare-VIHistory",
+            "CreateComparisonReport",
+            "PrintToSingleFileHtml"
+          ]
+        },
+        "planeApplicability": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "linux-proof",
+              "windows-mirror",
+              "host-shadow"
+            ]
+          }
+        },
+        "publicEvidenceCount": { "type": "integer", "minimum": 0 },
+        "successfulWorkflowEvidenceCount": { "type": "integer", "minimum": 0 },
+        "localFixtureCount": { "type": "integer", "minimum": 0 },
+        "localFixtureExistingCount": { "type": "integer", "minimum": 0 },
+        "checks": { "$ref": "#/$defs/checks" },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}
