@@ -10,7 +10,10 @@ import {
   buildDivergedDevelopRemediationBranchName,
   buildDivergedDevelopRemediationPrTitle,
   resolveAutoMergeMethod,
-  buildDeterministicCommitEnv
+  buildDeterministicCommitEnv,
+  classifyRetryablePushTransportFailure,
+  isRetryablePushTransportFailure,
+  publishSyncBranch
 } from '../diverged-develop-remediation-pr.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -86,6 +89,133 @@ test('diverged remediation helper pins deterministic author and committer metada
   assert.equal(env.GIT_COMMITTER_NAME, 'compare-vi-cli-action parity bot');
   assert.equal(env.GIT_COMMITTER_EMAIL, 'compare-vi-cli-action@users.noreply.github.com');
   assert.equal(env.GIT_COMMITTER_DATE, '2026-03-16T12:00:00-07:00');
+});
+
+test('diverged remediation helper classifies retryable remediation push transport failures', () => {
+  const transportMessage = [
+    'error: RPC failed; curl 56 OpenSSL SSL_read: OpenSSL/3.5.5: error:0A0003FC:SSL routines::ssl/tls alert bad record mac, errno 0',
+    'send-pack: unexpected disconnect while reading sideband packet',
+    'fatal: the remote end hung up unexpectedly'
+  ].join('\n');
+
+  assert.equal(classifyRetryablePushTransportFailure(transportMessage), 'transport-tls');
+  assert.equal(isRetryablePushTransportFailure(transportMessage), true);
+  assert.equal(classifyRetryablePushTransportFailure('fatal: repository rule violated'), null);
+});
+
+test('publishSyncBranch retries bounded transport failures before succeeding', () => {
+  const calls = [];
+  const sleeps = [];
+  let pushAttempts = 0;
+  let lsRemoteCalls = 0;
+  const syntheticCommitSha = 'abc123';
+
+  const result = publishSyncBranch(
+    '/tmp/repo',
+    {
+      targetRemote: 'origin',
+      syncBranch: 'sync/origin-develop-parity',
+      syntheticCommitSha
+    },
+    {
+      sleepFn: (delayMs) => {
+        sleeps.push(delayMs);
+      },
+      spawnSyncFn: (_command, args) => {
+        calls.push(args);
+        if (args[0] === 'ls-remote') {
+          lsRemoteCalls += 1;
+          return {
+            status: 0,
+            stdout: lsRemoteCalls >= 3 ? `${syntheticCommitSha}\trefs/heads/sync/origin-develop-parity\n` : '',
+            stderr: ''
+          };
+        }
+        if (args[0] === 'push') {
+          pushAttempts += 1;
+          if (pushAttempts === 1) {
+            return {
+              status: 1,
+              stdout: '',
+              stderr: [
+                'error: RPC failed; curl 56 OpenSSL SSL_read: OpenSSL/3.5.5: error:0A0003FC:SSL routines::ssl/tls alert bad record mac, errno 0',
+                'send-pack: unexpected disconnect while reading sideband packet',
+                'fatal: the remote end hung up unexpectedly'
+              ].join('\n')
+            };
+          }
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        if (args[0] === 'config') {
+          return { status: 1, stdout: '', stderr: '' };
+        }
+        throw new Error(`Unexpected git args: ${args.join(' ')}`);
+      }
+    }
+  );
+
+  assert.equal(result.status, 'pushed');
+  assert.equal(result.recoveredFromPushFailure, true);
+  assert.equal(result.attemptCount, 2);
+  assert.deepEqual(sleeps, [1500]);
+  assert.deepEqual(
+    calls.filter((args) => args[0] === 'push').map((args) => args.slice(0, 2)),
+    [
+      ['push', 'origin'],
+      ['push', 'origin']
+    ]
+  );
+});
+
+test('publishSyncBranch treats a branch published after a transport failure as already-published success', () => {
+  let pushAttempts = 0;
+  let lsRemoteCalls = 0;
+  const syntheticCommitSha = 'abc123';
+
+  const result = publishSyncBranch(
+    '/tmp/repo',
+    {
+      targetRemote: 'origin',
+      syncBranch: 'sync/origin-develop-parity',
+      syntheticCommitSha
+    },
+    {
+      sleepFn: () => {
+        throw new Error('sleepFn should not run when remote publication is observed immediately.');
+      },
+      spawnSyncFn: (_command, args) => {
+        if (args[0] === 'ls-remote') {
+          lsRemoteCalls += 1;
+          return {
+            status: 0,
+            stdout: lsRemoteCalls >= 2 ? `${syntheticCommitSha}\trefs/heads/sync/origin-develop-parity\n` : '',
+            stderr: ''
+          };
+        }
+        if (args[0] === 'push') {
+          pushAttempts += 1;
+          return {
+            status: 1,
+            stdout: '',
+            stderr: [
+              'error: RPC failed; curl 56 OpenSSL SSL_read: OpenSSL/3.5.5: error:0A0003FC:SSL routines::ssl/tls alert bad record mac, errno 0',
+              'send-pack: unexpected disconnect while reading sideband packet',
+              'fatal: the remote end hung up unexpectedly'
+            ].join('\n')
+          };
+        }
+        if (args[0] === 'config') {
+          return { status: 1, stdout: '', stderr: '' };
+        }
+        throw new Error(`Unexpected git args: ${args.join(' ')}`);
+      }
+    }
+  );
+
+  assert.equal(pushAttempts, 1);
+  assert.equal(result.status, 'already-published');
+  assert.equal(result.recoveredFromPushFailure, true);
+  assert.equal(result.attemptCount, 1);
 });
 
 test('diverged remediation helper preserves draft state while recording the queue promotion target', () => {

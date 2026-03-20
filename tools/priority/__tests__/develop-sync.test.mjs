@@ -242,17 +242,20 @@ test('Sync-OriginUpstreamDevelop classifies diverged fork planes before retrying
   assert.match(source, /function Refresh-ObservedRemoteTrackingRef/);
   assert.match(source, /function Get-DivergedDevelopRemediationBranchName/);
   assert.match(source, /function Test-DraftSafeParityRemediation/);
+  assert.match(source, /function Test-TransportOnlyParityRemediationFailure/);
   assert.match(source, /diverged-develop-remediation-pr\.mjs/);
   assert.match(source, /Diverged fork plane detected for \{0\}\/\{1\}; staging deterministic parity remediation/);
   assert.match(source, /Remove-Item -LiteralPath \$attemptParityRemediationReportPath -Force/);
   assert.match(source, /\$attemptParityRemediation = Get-Content -LiteralPath \$attemptParityRemediationReportPath -Raw \| ConvertFrom-Json -AsHashtable/);
   assert.match(source, /\$attemptSyncMode = \[string\]\(\$attemptParityRemediation\['syncMethod'\] \?\? 'pull-request-draft'\)/);
+  assert.match(source, /diverged-fork-plane-transport-failure: remediation branch publication failed for/);
   assert.match(source, /diverged-fork-plane-remediation: unable to stage remediation/);
   assert.match(source, /Remote already converged for \{0\}\/\{1\} before remediation staging completed/);
   assert.match(source, /\[string\]\$parityPullRequest\['state'\] -eq 'OPEN'/);
   assert.match(source, /\[string\]\$parityPullRequest\['headRefName'\] -eq \$expectedHeadRef/);
   assert.match(source, /\[string\]\$parityPullRequest\['baseRefName'\] -eq \$expectedBaseRef/);
   assert.match(source, /Test-DraftSafeParityRemediation -ParityRemediation \$attemptParityRemediation -ExpectedHeadRefName \$syncBranch -ExpectedBaseRefName \$Branch/);
+  assert.match(source, /Test-TransportOnlyParityRemediationFailure -ParityRemediation \$attemptParityRemediation/);
   assert.match(source, /remediation report is not draft-safe/);
   assert.match(source, /elseif \(\$ParityRemediation -and \$ParityRemediationReportPath\)/);
   assert.match(source, /pull-request-draft-remediation: draft parity remediation staged for/);
@@ -2655,6 +2658,169 @@ process.exit(1);
   assert.equal(parityReport.syncResult.mode, 'direct-push');
   assert.equal(parityReport.syncResult.reason, 'diverged-fork-plane');
   assert.equal(parityReport.syncResult.parityConverged, false);
+});
+
+test('Sync-OriginUpstreamDevelop preserves remediation evidence for transport-only parity branch publication failures', async (t) => {
+  const sandboxRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-diverged-remediation-transport-'));
+  const upstreamBare = path.join(sandboxRoot, 'upstream.git');
+  const originBare = path.join(sandboxRoot, 'origin.git');
+  const seedRepo = path.join(sandboxRoot, 'seed');
+  const controlRepo = path.join(sandboxRoot, 'control');
+  const worktreeRepo = path.join(sandboxRoot, 'worktree');
+  const upstreamUpdaterRepo = path.join(sandboxRoot, 'upstream-updater');
+  const originUpdaterRepo = path.join(sandboxRoot, 'origin-updater');
+  t.after(async () => {
+    await rm(sandboxRoot, { recursive: true, force: true });
+  });
+
+  initBareRepo(upstreamBare);
+  initBareRepo(originBare);
+
+  initRepo(seedRepo);
+  await writeFile(path.join(seedRepo, 'README.md'), 'seed\n', 'utf8');
+  run('git', ['add', 'README.md'], { cwd: seedRepo });
+  run('git', ['commit', '-m', 'seed'], { cwd: seedRepo });
+  run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: seedRepo });
+  run('git', ['remote', 'add', 'origin', originBare], { cwd: seedRepo });
+  run('git', ['push', 'upstream', 'develop'], { cwd: seedRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: seedRepo });
+
+  run('git', ['clone', originBare, originUpdaterRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: originUpdaterRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: originUpdaterRepo });
+  await writeFile(path.join(originUpdaterRepo, 'ORIGIN.txt'), 'origin-only\n', 'utf8');
+  run('git', ['add', 'ORIGIN.txt'], { cwd: originUpdaterRepo });
+  run('git', ['commit', '-m', 'origin diverges'], { cwd: originUpdaterRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: originUpdaterRepo });
+
+  run('git', ['clone', upstreamBare, upstreamUpdaterRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: upstreamUpdaterRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: upstreamUpdaterRepo });
+  await writeFile(path.join(upstreamUpdaterRepo, 'UPSTREAM.txt'), 'upstream-only\n', 'utf8');
+  run('git', ['add', 'UPSTREAM.txt'], { cwd: upstreamUpdaterRepo });
+  run('git', ['commit', '-m', 'upstream diverges'], { cwd: upstreamUpdaterRepo });
+  run('git', ['push', 'origin', 'develop'], { cwd: upstreamUpdaterRepo });
+
+  run('git', ['clone', upstreamBare, controlRepo], { cwd: sandboxRoot });
+  run('git', ['config', 'user.email', 'agent@example.com'], { cwd: controlRepo });
+  run('git', ['config', 'user.name', 'Agent Runner'], { cwd: controlRepo });
+  run('git', ['remote', 'rename', 'origin', 'upstream'], { cwd: controlRepo });
+  run('git', ['remote', 'add', 'origin', originBare], { cwd: controlRepo });
+  run('git', ['fetch', 'origin'], { cwd: controlRepo });
+  run('git', ['worktree', 'add', '-b', 'issue/test-sync-remediation-transport', worktreeRepo, 'develop'], { cwd: controlRepo });
+  run('git', ['checkout', '--detach'], { cwd: controlRepo });
+
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'priority', 'lib'), { recursive: true });
+  await mkdir(path.join(worktreeRepo, 'tools', 'policy'), { recursive: true });
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'),
+    path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'report-origin-upstream-parity.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'report-origin-upstream-parity.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'priority', 'lib', 'branch-classification.mjs'),
+    path.join(worktreeRepo, 'tools', 'priority', 'lib', 'branch-classification.mjs')
+  );
+  await copyFile(
+    path.join(repoRoot, 'tools', 'policy', 'branch-classes.json'),
+    path.join(worktreeRepo, 'tools', 'policy', 'branch-classes.json')
+  );
+  await writeFile(
+    path.join(worktreeRepo, 'tools', 'priority', 'diverged-develop-remediation-pr.mjs'),
+    `#!/usr/bin/env node
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+const args = process.argv.slice(2);
+const reportIndex = args.indexOf('--report-path');
+const reportPath = reportIndex >= 0 ? args[reportIndex + 1] : path.join(process.cwd(), 'tests/results/_agent/issue/origin-diverged-develop-remediation.json');
+mkdirSync(path.dirname(reportPath), { recursive: true });
+writeFileSync(reportPath, JSON.stringify({
+  schema: 'priority/diverged-develop-remediation@v1',
+  generatedAt: '2026-03-20T09:00:00.000Z',
+  targetRemote: 'origin',
+  baseRemote: 'upstream',
+  branch: 'develop',
+  syncBranch: 'sync/origin-develop-parity',
+  reason: 'diverged-fork-plane',
+  syncMethod: 'pull-request-draft',
+  planeTransition: {
+    from: 'upstream',
+    to: 'origin',
+    action: 'sync',
+    via: 'priority:develop:sync'
+  },
+  syntheticCommit: {
+    sha: 'transport-failed-sha',
+    tree: 'transport-failed-tree',
+    parent: 'transport-parent',
+    timestamp: '2026-03-20T09:00:00.000Z',
+    messageTitle: '[sync]: restore develop parity with upstream/develop'
+  },
+  push: {
+    status: 'transport-failed',
+    remote: 'origin',
+    branch: 'sync/origin-develop-parity',
+    remoteHeadBefore: null,
+    remoteHeadAfter: null,
+    attemptCount: 3,
+    maxAttempts: 3,
+    retryable: true,
+    retryExhausted: true,
+    failureClassification: 'transport-tls',
+    failureMessage: 'error: RPC failed; curl 56 OpenSSL SSL_read: OpenSSL/3.5.5: error:0A0003FC:SSL routines::ssl/tls alert bad record mac, errno 0'
+  },
+  pullRequest: null,
+  draftState: null,
+  autoMerge: null,
+  promotionTarget: null,
+  failure: {
+    stage: 'publish-sync-branch',
+    classification: 'transport-tls',
+    retryable: true,
+    message: 'error: RPC failed; curl 56 OpenSSL SSL_read: OpenSSL/3.5.5: error:0A0003FC:SSL routines::ssl/tls alert bad record mac, errno 0'
+  }
+}, null, 2) + '\\n', 'utf8');
+console.error('error: RPC failed; curl 56 OpenSSL SSL_read: OpenSSL/3.5.5: error:0A0003FC:SSL routines::ssl/tls alert bad record mac, errno 0');
+process.exit(1);
+`,
+    'utf8'
+  );
+
+  const parityReportPath = path.join(worktreeRepo, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
+  const result = spawnSync(
+    'pwsh',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-File',
+      path.join(worktreeRepo, 'tools', 'priority', 'Sync-OriginUpstreamDevelop.ps1'),
+      '-HeadRemote',
+      'origin',
+      '-ParityReportPath',
+      parityReportPath
+    ],
+    {
+      cwd: worktreeRepo,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 180000
+    }
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /Attempt 2\/3/);
+  assert.match(`${result.stdout}\n${result.stderr}`, /diverged-fork-plane-transport-failure/);
+  const parityReport = JSON.parse(await readFile(parityReportPath, 'utf8'));
+  assert.equal(parityReport.syncResult.mode, 'pull-request-draft');
+  assert.equal(parityReport.syncResult.reason, 'diverged-fork-plane');
+  assert.equal(parityReport.syncResult.parityConverged, false);
+  assert.equal(parityReport.syncResult.reportPath.endsWith('origin-diverged-develop-remediation.json'), true);
+  assert.equal(parityReport.syncResult.parityRemediation.push.status, 'transport-failed');
+  assert.equal(parityReport.syncResult.parityRemediation.push.failureClassification, 'transport-tls');
 });
 
 test('Sync-OriginUpstreamDevelop fails closed when a successful remediation report is not draft-safe', async (t) => {

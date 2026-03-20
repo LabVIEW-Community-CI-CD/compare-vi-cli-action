@@ -204,6 +204,7 @@ function Test-NonRetryableSyncFailure {
   if ($Message -match '(?i)CONFLICT') { return $true }
   if ($Message -match '(?i)diverged-fork-plane') { return $true }
   if ($Message -match '(?i)diverged-fork-plane-remediation') { return $true }
+  if ($Message -match '(?i)diverged-fork-plane-transport-failure') { return $true }
   if ($Message -match '(?i)pull-request-draft-remediation') { return $true }
   return $false
 }
@@ -381,8 +382,8 @@ function Test-DraftSafeParityRemediation {
   $autoMergeSafeStatus = $parityAutoMerge -and @('already-disabled', 'disabled') -contains $parityAutoMerge['status']
   $expectedHeadRef = [string]$ExpectedHeadRefName
   $expectedBaseRef = [string]$ExpectedBaseRefName
-  $headMatches = [string]$parityPullRequest['headRefName'] -eq $expectedHeadRef
-  $baseMatches = [string]$parityPullRequest['baseRefName'] -eq $expectedBaseRef
+  $headMatches = $parityPullRequest -and [string]$parityPullRequest['headRefName'] -eq $expectedHeadRef
+  $baseMatches = $parityPullRequest -and [string]$parityPullRequest['baseRefName'] -eq $expectedBaseRef
 
   return [bool](
     $parityPullRequest -and
@@ -393,6 +394,29 @@ function Test-DraftSafeParityRemediation {
     $baseMatches -and
     $draftSafeStatus -and
     $autoMergeSafeStatus
+  )
+}
+
+function Test-TransportOnlyParityRemediationFailure {
+  param([hashtable]$ParityRemediation)
+
+  if (-not $ParityRemediation) {
+    return $false
+  }
+
+  $parityPush = $ParityRemediation['push']
+  if (-not $parityPush) {
+    return $false
+  }
+
+  $status = [string]$parityPush['status']
+  if ($status -eq 'transport-failed') {
+    return $true
+  }
+
+  return [bool](
+    $parityPush['retryable'] -eq $true -and
+    $parityPush['retryExhausted'] -eq $true
   )
 }
 
@@ -615,6 +639,9 @@ try {
                   $attemptParityRemediation = $null
                 }
               }
+              if ($attemptParityRemediation -and -not [string]::IsNullOrWhiteSpace([string]$attemptParityRemediation['syncMethod'])) {
+                $attemptSyncMode = [string]($attemptParityRemediation['syncMethod'] ?? 'pull-request-draft')
+              }
               if (Test-DraftSafeParityRemediation -ParityRemediation $attemptParityRemediation -ExpectedHeadRefName $syncBranch -ExpectedBaseRefName $Branch) {
                 $attemptSyncMode = [string]($attemptParityRemediation['syncMethod'] ?? 'pull-request-draft')
                 Write-Warning ("[sync] Remediation PR already staged for {0}/{1}; reusing persisted report after helper finalization failure: {2}" -f $HeadRemote, $Branch, $helperMessage)
@@ -627,12 +654,17 @@ try {
                   -AdminPaths $adminPaths `
                   -SyncMode $attemptSyncMode `
                   -SyncReason $attemptSyncReason `
+                  -ParityRemediation $attemptParityRemediation `
+                  -ParityRemediationReportPath $attemptParityRemediationReportPath `
                   -FailureMessage $helperMessage
                 $raceTipDiffCount = [int]((($raceParityReport['tipDiff']))['fileCount'])
                 if ($raceTipDiffCount -eq 0) {
                   $attemptSyncReason = 'remote-already-converged'
                   Write-Host ("[sync] Remote already converged for {0}/{1} before remediation staging completed" -f $HeadRemote, $Branch)
                 } else {
+                  if (Test-TransportOnlyParityRemediationFailure -ParityRemediation $attemptParityRemediation) {
+                    throw ("diverged-fork-plane-transport-failure: remediation branch publication failed for {0}/{1}. See {2}" -f $HeadRemote, $Branch, $attemptParityRemediationReportPath)
+                  }
                   throw ("diverged-fork-plane-remediation: unable to stage remediation for {0}/{1}. {2}" -f $HeadRemote, $Branch, $helperMessage)
                 }
               }
