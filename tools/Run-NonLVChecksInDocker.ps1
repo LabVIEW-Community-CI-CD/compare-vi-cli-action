@@ -608,6 +608,7 @@ function Write-DockerParityReviewLoopReceipt {
 
   $reviewSuiteSummaryJsonPath = Join-Path $niResultsRootResolved 'review-suite-summary.json'
   $reviewSuiteSummaryHtmlPath = Join-Path $niResultsRootResolved 'review-suite-summary.html'
+  $hostRamBudgetPath = Join-Path $niResultsRootResolved 'host-ram-budget.json'
   $historyReviewReceiptPath = Join-Path $niResultsRootResolved 'vi-history-review-loop-receipt.json'
   $requirementsSummaryPath = Join-Path $requirementsResultsRootResolved 'verification-summary.json'
   $traceMatrixJsonPath = Join-Path $requirementsResultsRootResolved 'trace-matrix.json'
@@ -623,6 +624,7 @@ function Write-DockerParityReviewLoopReceipt {
     agentVerificationSummaryPath = Get-RepoRelativePath -RepoRoot $RepoRoot -Path $agentVerificationSummaryPath
     reviewSuiteSummaryJsonPath = if (Test-Path -LiteralPath $reviewSuiteSummaryJsonPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $reviewSuiteSummaryJsonPath } else { '' }
     reviewSuiteSummaryHtmlPath = if (Test-Path -LiteralPath $reviewSuiteSummaryHtmlPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $reviewSuiteSummaryHtmlPath } else { '' }
+    hostRamBudgetPath = if (Test-Path -LiteralPath $hostRamBudgetPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $hostRamBudgetPath } else { '' }
     historyReviewReceiptPath = if (Test-Path -LiteralPath $historyReviewReceiptPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $historyReviewReceiptPath } else { '' }
     requirementsSummaryPath = if (Test-Path -LiteralPath $requirementsSummaryPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $requirementsSummaryPath } else { '' }
     traceMatrixJsonPath = if (Test-Path -LiteralPath $traceMatrixJsonPath -PathType Leaf) { Get-RepoRelativePath -RepoRoot $RepoRoot -Path $traceMatrixJsonPath } else { '' }
@@ -634,6 +636,9 @@ function Write-DockerParityReviewLoopReceipt {
   $recommendedReviewOrder.Add($artifacts.agentVerificationSummaryPath)
   if ($artifacts.reviewSuiteSummaryHtmlPath) {
     $recommendedReviewOrder.Add($artifacts.reviewSuiteSummaryHtmlPath)
+  }
+  if ($artifacts.hostRamBudgetPath) {
+    $recommendedReviewOrder.Add($artifacts.hostRamBudgetPath)
   }
   if ($historyReceipt -and $historyReceipt.ContainsKey('artifacts')) {
     foreach ($artifactKey in @(
@@ -942,6 +947,7 @@ if ($checkStates.niLinuxReviewSuite.enabled) {
     $resultsRootResolved = [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $NILinuxReviewSuiteResultsRoot))
     $reviewSuiteSummaryHtmlPath = Join-Path $resultsRootResolved 'review-suite-summary.html'
     $reviewSuiteSummaryJsonPath = Join-Path $resultsRootResolved 'review-suite-summary.json'
+    $hostRamBudgetPath = Join-Path $resultsRootResolved 'host-ram-budget.json'
     $flagCombinationCertificationJsonPath = Join-Path $resultsRootResolved 'flag-combination-certification.json'
     $flagCombinationCertificationHtmlPath = Join-Path $resultsRootResolved 'flag-combination-certification.html'
     $historyMarkdownPath = Join-Path $resultsRootResolved 'vi-history-report/results/history-report.md'
@@ -990,6 +996,7 @@ if ($checkStates.niLinuxReviewSuite.enabled) {
     foreach ($artifactPath in @(
         $reviewSuiteSummaryHtmlPath,
         $reviewSuiteSummaryJsonPath,
+        $hostRamBudgetPath,
         $flagCombinationCertificationJsonPath,
         $flagCombinationCertificationHtmlPath,
         $historyMarkdownPath,
@@ -1006,6 +1013,7 @@ if ($checkStates.niLinuxReviewSuite.enabled) {
     $checkStates.niLinuxReviewSuite.artifacts.resultsRoot = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $resultsRootResolved
     $checkStates.niLinuxReviewSuite.artifacts.reviewSuiteSummaryJsonPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $reviewSuiteSummaryJsonPath
     $checkStates.niLinuxReviewSuite.artifacts.reviewSuiteSummaryHtmlPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $reviewSuiteSummaryHtmlPath
+    $checkStates.niLinuxReviewSuite.artifacts.hostRamBudgetPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $hostRamBudgetPath
     $checkStates.niLinuxReviewSuite.artifacts.flagCombinationCertificationJsonPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $flagCombinationCertificationJsonPath
     $checkStates.niLinuxReviewSuite.artifacts.flagCombinationCertificationHtmlPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $flagCombinationCertificationHtmlPath
     $checkStates.niLinuxReviewSuite.artifacts.historyReportHtmlPath = Get-RepoRelativePath -RepoRoot $repoRootResolved -Path $historyHtmlPath

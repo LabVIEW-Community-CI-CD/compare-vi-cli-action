@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/host-ram-budget-v1.schema.json",
+  "title": "Host RAM Budget Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "host",
+    "policy",
+    "profiles",
+    "selectedProfile"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/host-ram-budget@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform",
+        "arch",
+        "detectionSource",
+        "totalBytes",
+        "freeBytes",
+        "cpuParallelism"
+      ],
+      "properties": {
+        "platform": { "type": "string", "minLength": 1 },
+        "arch": { "type": "string", "minLength": 1 },
+        "detectionSource": { "type": "string", "minLength": 1 },
+        "totalBytes": { "type": "integer", "minimum": 0 },
+        "freeBytes": { "type": "integer", "minimum": 0 },
+        "cpuParallelism": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimumParallelism",
+        "systemReserveBytes",
+        "freeReserveBytes",
+        "usableByTotalBytes",
+        "usableByFreeBytes",
+        "effectiveUsableBytes"
+      ],
+      "properties": {
+        "minimumParallelism": { "type": "integer", "minimum": 1 },
+        "systemReserveBytes": { "type": "integer", "minimum": 0 },
+        "freeReserveBytes": { "type": "integer", "minimum": 0 },
+        "usableByTotalBytes": { "type": "integer", "minimum": 0 },
+        "usableByFreeBytes": { "type": "integer", "minimum": 0 },
+        "effectiveUsableBytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/profile" }
+    },
+    "selectedProfile": {
+      "$ref": "#/$defs/profile"
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "laneClass",
+        "perWorkerBytes",
+        "maxParallelism",
+        "memoryBoundCeiling",
+        "cpuBoundCeiling",
+        "recommendedParallelism",
+        "floorApplied",
+        "degradedByPressure",
+        "reasons"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "laneClass": { "type": "string", "minLength": 1 },
+        "perWorkerBytes": { "type": "integer", "minimum": 1 },
+        "maxParallelism": { "type": "integer", "minimum": 1 },
+        "memoryBoundCeiling": { "type": "integer", "minimum": 1 },
+        "cpuBoundCeiling": { "type": "integer", "minimum": 1 },
+        "recommendedParallelism": { "type": "integer", "minimum": 1 },
+        "floorApplied": { "type": "boolean" },
+        "degradedByPressure": { "type": "boolean" },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
