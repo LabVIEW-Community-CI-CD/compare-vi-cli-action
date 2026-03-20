@@ -7,10 +7,10 @@ single source of truth when deciding which helper to run locally, invoke from VS
 ## Quick Reference
 
 - **`tools/PrePush-Checks.ps1`**
-  - Scope: workflow linting (`actionlint`).
+  - Scope: workflow linting (`actionlint`), dependency-audit observation, and rendered-review certification.
   - Typical invocation: `pwsh -File tools/PrePush-Checks.ps1`.
   - Exit semantics: `0` = clean, non-zero = lint failure.
-  - Artifacts: none (console only).
+  - Artifacts: `tests/results/_agent/security/dependency-audit-report.json` plus the NI/rendering receipts already emitted by the script.
 - **`Invoke-PesterTests.ps1`**
   - Scope: unit plus integration Pester suites.
   - Typical invocation: `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude`.
@@ -46,14 +46,17 @@ single source of truth when deciding which helper to run locally, invoke from VS
 
 Audience: anyone touching `.github/workflows/**`.
 
-- **What it does** – Locates (or installs) the platform-appropriate `actionlint` binary via `Resolve-ActionlintPath`
-  and runs it against the repository workflows.
+- **What it does** – Locates (or installs) the platform-appropriate `actionlint` binary via `Resolve-ActionlintPath`,
+  runs the dependency-audit observation lane (`priority:security:audit`), and then executes the rendered-review
+  certification path.
 - **Inputs** – Optional `-ActionlintVersion` and `-InstallIfMissing`. Defaults keep parity with CI (1.7.8 as of this
   document). No additional env vars required.
-- **Expected output** – Streams `actionlint` diagnostics to the console; no files are written. Successful runs finish
-  quickly (<10 seconds on the tools image cache).
+- **Expected output** – Streams `actionlint` diagnostics and audit summaries to the console. The dependency-audit lane
+  writes `tests/results/_agent/security/dependency-audit-report.json` and the raw npm payload under the same directory.
 - **Failure modes** – Missing binary (when `-InstallIfMissing:$false`), lint errors, or transient download failures.
-  Non-zero exit codes block pre-push hooks and VS Code tasks.
+  The dependency-audit lane is observe-only in this script, so vulnerability or transport findings are reported in the
+  receipt without turning pre-push into a blind fail-everything audit gate. Use
+  `node tools/npm/run-script.mjs priority:security:audit:gate` when you need the blocking variant.
 - **When to run** – Before pushing workflow changes, before dispatching a `priority:handoff-tests` suite, or when the
   priority router lists `validate:lint` at the top.
 
@@ -148,4 +151,3 @@ Audience: engineers running the full integration gate (auto-push + watcher + ses
   (`tests/results/_agent/watcher` tree), and refreshed session-index JSON.
 - **Action item** – Until the script exists, replicate the intended flow with `tools/Run-LocalBackbone.ps1` plus manual
   watcher dispatch; update this document once `tools/Start-IntegrationGated.ps1` is merged.
-

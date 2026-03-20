@@ -105,6 +105,8 @@
     "priority:release:conductor": "node tools/priority/release-conductor.mjs",
     "priority:remediation:slo": "node tools/priority/remediation-slo-evaluator.mjs",
     "priority:weekly:scorecard": "node tools/priority/weekly-scorecard.mjs",
+    "priority:security:audit": "node tools/priority/dependency-audit.mjs",
+    "priority:security:audit:gate": "node tools/priority/dependency-audit.mjs --mode enforce",
     "priority:security:intake": "node tools/priority/security-intake.mjs",
     "priority:security:gate": "node tools/priority/security-intake.mjs --route-on-breach --fail-on-breach --fail-on-skip",
     "priority:onboard:downstream": "node tools/priority/downstream-onboarding.mjs",

@@ -294,6 +294,47 @@ function Invoke-WatcherTelemetrySchemaGate([string]$repoRoot) {
   Write-Host '[pre-push] watcher telemetry schema OK' -ForegroundColor Green
 }
 
+function Invoke-DependencyAuditObservation([string]$repoRoot) {
+  $runScriptPath = Join-Path $repoRoot 'tools' 'npm' 'run-script.mjs'
+  if (-not (Test-Path -LiteralPath $runScriptPath -PathType Leaf)) {
+    throw ("sanitized npm wrapper not found: {0}" -f $runScriptPath)
+  }
+
+  $reportPath = Join-Path $repoRoot 'tests' 'results' '_agent' 'security' 'dependency-audit-report.json'
+  Write-Host '[pre-push] Running dependency audit observation lane' -ForegroundColor Cyan
+  Push-Location $repoRoot
+  try {
+    & node $runScriptPath 'priority:security:audit'
+    if ($LASTEXITCODE -ne 0) {
+      throw ("dependency audit observation failed unexpectedly (exit={0})." -f $LASTEXITCODE)
+    }
+  } finally {
+    Pop-Location | Out-Null
+  }
+
+  if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+    throw ("dependency audit observation did not emit a report: {0}" -f $reportPath)
+  }
+
+  $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 20
+  $result = if ($report.PSObject.Properties['result']) { [string]$report.result } else { 'unknown' }
+  switch ($result) {
+    'pass' {
+      Write-Host '[pre-push] dependency audit observation OK' -ForegroundColor Green
+    }
+    'warn' {
+      Write-Host '[pre-push] dependency audit observation detected reportable vulnerabilities (non-blocking in observe mode)' -ForegroundColor Yellow
+    }
+    'error' {
+      Write-Host '[pre-push] dependency audit observation encountered an execution error (non-blocking in observe mode)' -ForegroundColor Yellow
+    }
+    default {
+      Write-Host ("[pre-push] dependency audit observation produced unexpected result '{0}'" -f $result) -ForegroundColor Yellow
+    }
+  }
+  Write-Host ("[pre-push] Dependency audit report: {0}" -f $reportPath) -ForegroundColor DarkGray
+}
+
 function Write-PrePushNIKnownFlagIncidentEvent {
   param(
     [string]$repoRoot,
@@ -1372,6 +1413,7 @@ if (Test-Path -LiteralPath $commitIntegrityContractScript -PathType Leaf) {
   Write-Host '[pre-push] commit-integrity contract OK' -ForegroundColor Green
 }
 
+Invoke-DependencyAuditObservation -repoRoot $root
 Invoke-SafeGitReliabilitySummary -repoRoot $root
 
 $skipNiImageChecks = $SkipNiImageFlagScenarios `
