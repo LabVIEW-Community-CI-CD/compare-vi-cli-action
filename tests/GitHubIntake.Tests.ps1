@@ -89,6 +89,18 @@ Describe 'GitHubIntake.psm1' {
     $catalog.routes.scenario | Should -Contain 'human-pr'
   }
 
+  It 'documents safe body-file issue comment guidance in the agent and intake docs' {
+    $agentGuide = Get-Content (Join-Path $PSScriptRoot '..' 'AGENTS.md') -Raw
+    $intakeGuide = Get-Content (Join-Path $PSScriptRoot '..' 'docs' 'knowledgebase' 'GitHub-Intake-Layer.md') -Raw
+    $developerGuide = Get-Content (Join-Path $PSScriptRoot '..' 'docs' 'DEVELOPER_GUIDE.md') -Raw
+
+    $agentGuide | Should -Match 'Post-IssueComment\.ps1'
+    $agentGuide | Should -Match 'gh issue comment'
+    $intakeGuide | Should -Match 'pwsh -File tools/Post-IssueComment\.ps1 -Issue 875 -BodyFile issue-comment\.md'
+    $intakeGuide | Should -Match 'gh issue comment 875 --body-file issue-comment\.md'
+    $developerGuide | Should -Match 'tools/Post-IssueComment\.ps1'
+  }
+
   It 'resolves workflow-policy intake to the workflow-policy issue template' {
     $route = Resolve-GitHubIntakeRoute -Scenario 'workflow-policy'
 

@@ -126,6 +126,13 @@ instead of inferring the correct path from prose alone.
   gh issue create --title "<title>" --body-file issue-body.md
   ```
 
+- Issue comments:
+
+  ```powershell
+  pwsh -File tools/Post-IssueComment.ps1 -Issue 875 -BodyFile issue-comment.md
+  gh issue comment 875 --body-file issue-comment.md
+  ```
+
 - PR bodies:
 
   ```powershell
@@ -213,5 +220,7 @@ Human-authored PRs should use the `human-change` template so they do not acciden
 
 ## Mixed-Shell Guidance
 
-For issue and PR creation in mixed WSL/Windows shells, prefer `--body-file` over inline multiline `--body` strings.
-That keeps quoting deterministic and aligns with the guidance in `AGENTS.md`.
+For issue creation, issue comments, and PR creation in mixed WSL/Windows shells, prefer `--body-file` over inline
+multiline `--body` strings. For issue comments, prefer `tools/Post-IssueComment.ps1` so PowerShell lanes always route
+through a temporary or explicit body file. That keeps quoting deterministic and aligns with the guidance in
+`AGENTS.md`.
