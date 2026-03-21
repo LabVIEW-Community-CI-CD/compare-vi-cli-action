@@ -840,6 +840,225 @@ test('buildLocalReviewLoopRequest treats policy booleans as the full requested c
   });
 });
 
+test('buildTemplateAgentVerificationReportRefreshOptions derives a pending report refresh after a landed iteration', () => {
+  const refreshOptions = compareviRuntimeTest.buildTemplateAgentVerificationReportRefreshOptions({
+    repoRoot: '/repo',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    policy: {
+      templateAgentVerificationLane: {
+        enabled: true,
+        reportPath: 'tests/results/_agent/promotion/template-agent-verification-report.json',
+        targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      issue: 1632,
+      branch: {
+        name: 'issue/origin-1632-template-agent-verification-lane'
+      },
+      objective: {
+        summary: 'Advance issue #1632'
+      },
+      evidence: {
+        delivery: {
+          selectedIssue: {
+            number: 1632
+          }
+        }
+      },
+      pullRequest: {
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1632'
+      }
+    },
+    executionReceipt: {
+      status: 'completed',
+      details: {
+        laneLifecycle: 'waiting-review',
+        startHead: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        endHead: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+      }
+    }
+  });
+
+  assert.deepEqual(refreshOptions, {
+    policyPath: path.join('/repo', 'tools', 'priority', 'delivery-agent.policy.json'),
+    outputPath: path.join('/repo', 'tests', 'results', '_agent', 'promotion', 'template-agent-verification-report.json'),
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    iterationLabel: 'post-merge #1632',
+    iterationRef: 'issue/origin-1632-template-agent-verification-lane',
+    iterationHeadSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    verificationStatus: 'pending',
+    durationSeconds: null,
+    provider: 'hosted-github-workflow',
+    runUrl: null,
+    templateRepo: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+    failOnBlockers: false
+  });
+});
+
+test('comparevi canonical execution refreshes the template-agent verification report after persisting a landed iteration', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'comparevi-template-agent-refresh-'));
+  const refreshCalls = [];
+
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-1632',
+        issue: 1632,
+        forkRemote: 'origin',
+        branch: 'issue/origin-1632-template-agent-verification-lane'
+      },
+      artifacts: {
+        standingRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        standingIssueNumber: 1632,
+        laneLifecycle: 'coding',
+        selectedActionType: 'advance-child-issue'
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      issue: 1632,
+      branch: {
+        name: 'issue/origin-1632-template-agent-verification-lane',
+        forkRemote: 'origin'
+      },
+      objective: {
+        summary: 'Advance issue #1632'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'coding',
+          selectedActionType: 'advance-child-issue',
+          selectedIssue: {
+            number: 1632
+          },
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+          },
+          pullRequest: {
+            number: 1632,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1632',
+            isDraft: false
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    taskPacketArtifacts: {
+      latestPath: path.join(runtimeDir, 'task-packet.json')
+    },
+    runtimeArtifactPaths: {
+      runtimeDir
+    },
+    deps: {
+      loadBranchClassContractFn: () => ({
+        schema: 'branch-classes/v1',
+        upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        repositoryPlanes: [
+          {
+            id: 'upstream',
+            repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action'],
+            laneBranchPrefix: 'issue/'
+          },
+          {
+            id: 'origin',
+            repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'],
+            laneBranchPrefix: 'issue/origin-'
+          }
+        ],
+        classes: [
+          {
+            id: 'lane',
+            repositoryRoles: ['upstream', 'fork'],
+            branchPatterns: ['issue/*'],
+            purpose: 'lane',
+            prSourceAllowed: true,
+            prTargetAllowed: false,
+            mergePolicy: 'n/a'
+          }
+        ],
+        allowedTransitions: [
+          {
+            from: 'lane',
+            action: 'promote',
+            to: 'upstream-integration',
+            via: 'pull-request'
+          }
+        ],
+        planeTransitions: [
+          {
+            from: 'origin',
+            action: 'promote',
+            to: 'upstream',
+            via: 'pull-request',
+            branchClass: 'lane'
+          }
+        ]
+      }),
+      invokeDeliveryTurnBrokerFn: async () => ({
+        status: 'completed',
+        outcome: 'coding-command-finished',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'execute-coding-turn',
+          laneLifecycle: 'waiting-review',
+          blockerClass: 'review',
+          retryable: true,
+          nextWakeCondition: 'draft-review-clearance',
+          startHead: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          endHead: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+        }
+      }),
+      runTemplateAgentVerificationReportFn: async (options) => {
+        refreshCalls.push(options);
+        return {
+          report: {
+            summary: {
+              status: 'pending'
+            }
+          },
+          outputPath: options.outputPath
+        };
+      }
+    }
+  });
+
+  assert.equal(execution.outcome, 'coding-command-finished');
+  assert.equal(execution.details.laneLifecycle, 'waiting-review');
+  assert.equal(refreshCalls.length, 1);
+  assert.equal(refreshCalls[0].policyPath, path.join(repoRoot, 'tools', 'priority', 'delivery-agent.policy.json'));
+  assert.equal(
+    refreshCalls[0].outputPath,
+    path.join(repoRoot, 'tests', 'results', '_agent', 'promotion', 'template-agent-verification-report.json')
+  );
+  assert.equal(refreshCalls[0].repo, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(refreshCalls[0].iterationLabel, 'post-merge #1632');
+  assert.equal(refreshCalls[0].iterationRef, 'issue/origin-1632-template-agent-verification-lane');
+  assert.equal(refreshCalls[0].iterationHeadSha, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+  assert.equal(refreshCalls[0].verificationStatus, 'pending');
+  assert.equal(refreshCalls[0].provider, 'hosted-github-workflow');
+  assert.equal(refreshCalls[0].templateRepo, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(refreshCalls[0].failOnBlockers, false);
+});
+
 test('comparevi branch resolver matches the repo issue branch naming contract', () => {
   const branch = compareviRuntimeTest.resolveCompareviIssueBranchName({
     issueNumber: 998,

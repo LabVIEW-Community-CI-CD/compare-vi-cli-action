@@ -69,6 +69,10 @@ import {
   loadLiveAgentModelSelectionPolicy,
   loadLiveAgentModelSelectionReport
 } from './live-agent-model-selection.mjs';
+import {
+  DEFAULT_OUTPUT_PATH as DEFAULT_TEMPLATE_AGENT_VERIFICATION_REPORT_PATH,
+  runTemplateAgentVerificationReport
+} from './template-agent-verification-report.mjs';
 
 export {
   ACTIONS,
@@ -854,6 +858,64 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
   };
 }
 
+function buildTemplateAgentVerificationReportRefreshOptions({
+  repoRoot,
+  repository,
+  policy,
+  taskPacket,
+  executionReceipt
+}) {
+  const lane = policy?.templateAgentVerificationLane ?? {};
+  const receiptStatus = normalizeText(executionReceipt?.status).toLowerCase();
+  const laneLifecycle = normalizeText(executionReceipt?.details?.laneLifecycle).toLowerCase();
+  if (lane.enabled !== true) {
+    return null;
+  }
+  if (receiptStatus !== 'completed') {
+    return null;
+  }
+  if (!lane.reportPath) {
+    return null;
+  }
+  if (laneLifecycle === 'idle' || laneLifecycle === 'blocked') {
+    return null;
+  }
+
+  const issueNumber =
+    coercePositiveInteger(taskPacket?.evidence?.delivery?.selectedIssue?.number) ??
+    coercePositiveInteger(taskPacket?.issue);
+  const branchName = normalizeText(taskPacket?.branch?.name);
+  const iterationLabel =
+    issueNumber != null
+      ? `post-merge #${issueNumber}`
+      : branchName
+        ? `post-merge ${branchName}`
+        : normalizeText(taskPacket?.objective?.summary) || 'post-merge iteration';
+  const iterationRef = branchName || normalizeText(taskPacket?.pullRequest?.url) || null;
+  const iterationHeadSha =
+    normalizeText(executionReceipt?.details?.endHead) ||
+    normalizeText(executionReceipt?.details?.startHead) ||
+    null;
+  const reportPath = path.isAbsolute(lane.reportPath)
+    ? lane.reportPath
+    : path.join(repoRoot, lane.reportPath);
+
+  return {
+    policyPath: path.join(repoRoot, DELIVERY_AGENT_POLICY_RELATIVE_PATH),
+    outputPath: reportPath || DEFAULT_TEMPLATE_AGENT_VERIFICATION_REPORT_PATH,
+    repo: normalizeText(repository) || normalizeText(taskPacket?.repository) || null,
+    iterationLabel,
+    iterationRef,
+    iterationHeadSha,
+    verificationStatus: 'pending',
+    durationSeconds: null,
+    provider: 'hosted-github-workflow',
+    runUrl: null,
+    templateRepo: normalizeText(lane.targetRepository) || null,
+    failOnBlockers: false
+  };
+}
+
 function buildMirrorCloseComment({ upstreamIssueNumber, upstreamIssueUrl, implementationLanded = false }) {
   if (implementationLanded) {
     return `Closing this fork mirror. The implementation has already landed upstream for canonical issue #${upstreamIssueNumber} (${upstreamIssueUrl}). Future work should continue on the upstream issue or a rematerialized fork mirror if local execution is needed again.`;
@@ -927,7 +989,7 @@ async function persistCompareviDeliveryRuntime({
     ...deps,
     policyPath: deps.deliveryAgentPolicyPath || DELIVERY_AGENT_POLICY_RELATIVE_PATH
   });
-  return persistDeliveryAgentRuntimeState({
+  const runtimeState = await persistDeliveryAgentRuntimeState({
     repoRoot,
     runtimeDir: runtimeArtifactPaths.runtimeDir,
     repository,
@@ -937,6 +999,19 @@ async function persistCompareviDeliveryRuntime({
     executionReceipt,
     now
   });
+  const templateVerificationReportOptions = buildTemplateAgentVerificationReportRefreshOptions({
+    repoRoot,
+    repository,
+    policy: deliveryPolicy,
+    taskPacket,
+    executionReceipt
+  });
+  if (templateVerificationReportOptions) {
+    const runTemplateAgentVerificationReportFn =
+      deps.runTemplateAgentVerificationReportFn ?? runTemplateAgentVerificationReport;
+    await runTemplateAgentVerificationReportFn(templateVerificationReportOptions);
+  }
+  return runtimeState;
 }
 
 async function executeCompareviTurn({
@@ -1242,6 +1317,7 @@ export const compareviRuntimeTest = {
   activateCompareviWorkerLane,
   buildSchedulerDecisionFromSnapshot,
   buildCompareviTaskPacket,
+  buildTemplateAgentVerificationReportRefreshOptions,
   bootstrapCompareviWorkerCheckout,
   executeCompareviTurn,
   isCadenceAlertIssue,

@@ -57,6 +57,11 @@ iteration-level metrics, timing, provenance, and a follow-up recommendation so
 future agents can decide whether template verification is improving, regressing,
 or stalling.
 
+After each landed iteration, the runtime supervisor refreshes the report path
+with a machine-readable `pending` snapshot for the iteration. The hosted
+verification run or a manual rerun can then overwrite the same file with the
+final `pass`/`fail` result.
+
 Generate the report with:
 
 ```powershell
