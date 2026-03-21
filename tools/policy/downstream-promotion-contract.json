@@ -29,6 +29,8 @@
   },
   "artifacts": {
     "manifestSchema": "docs/schemas/downstream-promotion-manifest-v1.schema.json",
-    "defaultOutputPath": "tests/results/_agent/promotion/downstream-develop-promotion-manifest.json"
+    "defaultOutputPath": "tests/results/_agent/promotion/downstream-develop-promotion-manifest.json",
+    "provingScorecardSchema": "docs/schemas/downstream-promotion-scorecard-v1.schema.json",
+    "provingScorecardDefaultPath": "tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json"
   }
 }
