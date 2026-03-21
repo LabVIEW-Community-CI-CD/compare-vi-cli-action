@@ -127,6 +127,7 @@
     "priority:cost:invoice-normalize": "node tools/priority/agent-cost-invoice-normalize.mjs",
     "priority:cost:turn": "node tools/priority/agent-cost-turn.mjs",
     "priority:cost:rollup": "node tools/priority/agent-cost-rollup.mjs",
+    "priority:cost:pr-spend": "node tools/priority/pr-spend-projection.mjs",
     "priority:model:select": "node tools/priority/live-agent-model-selection.mjs",
     "priority:onboard:downstream": "node tools/priority/downstream-onboarding.mjs",
     "priority:onboard:feedback": "node tools/priority/downstream-onboarding-feedback.mjs",

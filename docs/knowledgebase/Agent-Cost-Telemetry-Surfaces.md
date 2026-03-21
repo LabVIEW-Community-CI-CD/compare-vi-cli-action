@@ -238,6 +238,7 @@ The smallest defensible first implementation is:
 - helper: `tools/priority/agent-cost-invoice-normalize.mjs`
 - helper: `tools/priority/agent-cost-turn.mjs`
 - helper: `tools/priority/agent-cost-rollup.mjs`
+- helper: `tools/priority/pr-spend-projection.mjs`
 - sample fixtures:
   - `tools/priority/__fixtures__/agent-cost-rollup/live-turn-estimated.json`
   - `tools/priority/__fixtures__/agent-cost-rollup/background-turn-exact.json`
@@ -263,6 +264,39 @@ while still reducing manual transcription drift.
 
 The checked-in fixture must never embed the private invoice path. Local receipts
 may carry that path under operator control for later reconciliation.
+
+## PR Spend Projection
+
+`#1679` adds a stakeholder-facing PR projection surface on top of the rollup.
+This remains a projection layer, not a second billing system.
+
+- schema: `docs/schemas/pr-spend-projection-v1.schema.json`
+- helper: `tools/priority/pr-spend-projection.mjs`
+- outputs:
+  - `tests/results/_agent/cost/pr-spend-projection.json`
+  - `tests/results/_agent/cost/pr-spend-projection.md`
+- wrapper:
+  - `node tools/npm/run-script.mjs priority:cost:pr-spend -- --pr <number> --repo <owner/repo>`
+
+Behavior:
+
+- consumes the existing rollup at `tests/results/_agent/cost/agent-cost-rollup.json`
+- preserves rollup billing-truth provenance:
+  - `estimated-only`
+  - `mixed`
+  - `exact-only`
+- summarizes spend by:
+  - live versus background agent
+  - provider
+  - model
+  - issue
+  - lane
+- can optionally upsert a PR comment for stakeholder visibility
+
+This surface must always remain honest about intermediate state. It may show
+heuristic USD while calibration is still in progress, but it must not claim
+final reconciled billing truth unless the underlying rollup carries that
+evidence.
 
 ## Sticky Calibration Funding-Window Mode
 
