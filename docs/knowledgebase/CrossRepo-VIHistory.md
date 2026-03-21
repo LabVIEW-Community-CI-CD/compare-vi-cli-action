@@ -310,6 +310,33 @@ The local receipts are:
 - `comparevi/local-refinement-benchmark@v1`
 - `comparevi/local-operator-session@v1`
 
+The cross-plane budget receipt layers on top of those timing artifacts:
+
+- `vi-history/cross-plane-performance-budget@v1`
+- default JSON path:
+  `tests/results/_agent/vi-history/cross-plane-performance-budget.json`
+- companion Markdown summary:
+  `tests/results/_agent/vi-history/cross-plane-performance-budget.md`
+
+Run the budget after Linux proof and Windows mirror proof receipts exist:
+
+```powershell
+node tools/npm/run-script.mjs env:labview:2026:host-planes
+node tools/npm/run-script.mjs priority:vi-history:budget -- `
+  --linux-receipt tests/results/local-vi-history/proof/local-refinement.json `
+  --windows-receipt tests/results/local-vi-history/windows-mirror-proof/local-refinement.json `
+  --host-plane-report tests/results/_agent/host-planes/labview-2026-host-plane-report.json
+```
+
+Add `--shadow-receipt <path>` when a host-native 32-bit VI History lane emits a
+timing receipt for the same workload. The budget report:
+
+- enforces the Windows budget at `<= 1.2x` Linux wall-clock time
+- records when a justification was supplied for an over-budget Windows result
+- warns when shadow 32-bit timing is missing or when it is not acting as a
+  throughput accelerator against the measured container planes
+- writes a PR-comment-ready Markdown summary next to the JSON report
+
 Windows mirror proof also records host/image evidence under the local
 refinement and operator-session receipts:
 

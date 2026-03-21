@@ -19,6 +19,8 @@ Describe 'Cross-repo VI history docs' -Tag 'CompareVI' {
     $script:crossRepoDoc | Should -Match 'comparevi-history'
     $script:crossRepoDoc | Should -Match 'local-review'
     $script:crossRepoDoc | Should -Match 'local-proof'
+    $script:crossRepoDoc | Should -Match 'priority:vi-history:budget'
+    $script:crossRepoDoc | Should -Match 'cross-plane-performance-budget\.json'
     $script:crossRepoDoc | Should -Match 'develop'
     $script:crossRepoDoc | Should -Match 'VIP_Post-Install Custom Action\.vi'
   }
