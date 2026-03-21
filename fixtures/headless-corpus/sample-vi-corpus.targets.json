@@ -1,7 +1,7 @@
 {
   "$schema": "../../docs/schemas/headless-sample-vi-corpus-targets-v1.schema.json",
   "schema": "vi-headless/sample-targets@v1",
-  "generatedAt": "2026-03-19T23:55:00Z",
+  "generatedAt": "2026-03-21T07:20:00Z",
   "description": "Evidence-backed public sample VIs used to certify headless compare and history rendering lanes above the minimal local fixtures.",
   "storagePolicy": {
     "checkedInCatalogPath": "fixtures/headless-corpus/sample-vi-corpus.targets.json",
@@ -125,6 +125,60 @@
       "notes": [
         "This seed is the cleanest public target-specific proof currently available for CompareVI History reviewer rendering.",
         "No checked-in local fixture is required because the public PR and workflow evidence are already target-specific."
+      ]
+    },
+    {
+      "id": "icon-editor-demo-canaryprobe-print",
+      "label": "labview-icon-editor-demo CanaryProbe.vi licensed added-VI print candidate",
+      "admission": {
+        "state": "provisional",
+        "reasons": [
+          "MIT-licensed public consumer repository with a pinned added-VI proof PR.",
+          "Public CompareVI History diagnostics succeeded on the added-VI PR head and recorded CanaryProbe.vi as an added target.",
+          "The published public evidence is still history-surface only, so standalone PrintToSingleFileHtml certification remains unproven."
+        ]
+      },
+      "source": {
+        "repoSlug": "LabVIEW-Community-CI-CD/labview-icon-editor-demo",
+        "repoUrl": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo",
+        "licenseSpdx": "MIT",
+        "targetPath": "Tooling/comparevi-history-canary/CanaryProbe.vi",
+        "changeKind": "added",
+        "pinnedCommit": "91516373bf6c95e1d3cee2ee97452bc9d08f4ed7"
+      },
+      "renderStrategy": {
+        "certificationSurface": "print-single-file",
+        "operation": "PrintToSingleFileHtml",
+        "planeApplicability": [
+          "linux-proof"
+        ],
+        "evidenceClass": "change-kind-print"
+      },
+      "operationPayload": {
+        "mode": "builtin",
+        "provenanceState": "research-only",
+        "notes": [
+          "The candidate is intentionally tracked against the builtin PrintToSingleFileHtml surface rather than an external AdditionalOperationDirectory payload.",
+          "Public evidence for this licensed sample currently proves added-VI discovery and history publication only, so builtin print metadata stays research-only until a standalone print proof run exists."
+        ]
+      },
+      "publicEvidence": [
+        {
+          "kind": "pull-request",
+          "url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/pull/29",
+          "status": "merged",
+          "note": "Merged public PR that added CanaryProbe.vi and its variants on the MIT-licensed consumer repository."
+        },
+        {
+          "kind": "workflow-run",
+          "url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/actions/runs/23225926010",
+          "status": "success",
+          "note": "CompareVI History pull-request diagnostics succeeded on the added-VI PR head and recorded CanaryProbe.vi as an added target, but the published receipts remained history-surface artifacts rather than standalone print-single-file proof."
+        }
+      ],
+      "notes": [
+        "This target narrows the remaining blocker from sample licensing to print-surface evidence: the sample repository is licensed and pinned, but the public proof still needs an explicit PrintToSingleFileHtml run.",
+        "Keep this seed provisional until a public workflow publishes print-single-file receipts for the same or an equivalent licensed added/deleted VI."
       ]
     },
     {

@@ -26,7 +26,7 @@ Describe 'Invoke-HeadlessSampleVICorpusEvaluation.ps1' -Tag 'Unit' {
     $report.schema | Should -Be 'vi-headless/sample-corpus-evaluation@v1'
     $report.overallStatus | Should -Be 'ok'
     $report.summary.acceptedCount | Should -Be 2
-    $report.summary.provisionalCount | Should -Be 1
+    $report.summary.provisionalCount | Should -Be 2
     $report.summary.driftCount | Should -Be 0
 
     $accepted = @($report.targets | Where-Object { [string]$_.id -eq 'icon-editor-demo-vip-preinstall-history' } | Select-Object -First 1)
@@ -48,6 +48,19 @@ Describe 'Invoke-HeadlessSampleVICorpusEvaluation.ps1' -Tag 'Unit' {
     $provisional.checks.operationPayloadLicenseDeclared | Should -BeFalse
     $provisional.checks.operationPayloadPromotable | Should -BeFalse
     (($provisional.notes | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match 'Custom operation payload has no declared license'
+
+    $licensedCandidate = @($report.targets | Where-Object { [string]$_.id -eq 'icon-editor-demo-canaryprobe-print' } | Select-Object -First 1)
+    $licensedCandidate | Should -Not -BeNullOrEmpty
+    $licensedCandidate.status | Should -Be 'warning'
+    $licensedCandidate.certificationSurface | Should -Be 'print-single-file'
+    $licensedCandidate.operationPayloadMode | Should -Be 'builtin'
+    $licensedCandidate.operationPayloadProvenanceState | Should -Be 'research-only'
+    $licensedCandidate.checks.licenseDeclared | Should -BeTrue
+    $licensedCandidate.checks.successfulWorkflowEvidence | Should -BeTrue
+    $licensedCandidate.checks.operationPayloadTracked | Should -BeTrue
+    $licensedCandidate.checks.operationPayloadLicenseDeclared | Should -BeTrue
+    $licensedCandidate.checks.operationPayloadPromotable | Should -BeFalse
+    (($licensedCandidate.notes | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match 'Builtin operation payload metadata must still be marked accepted before promotion'
   }
 
   It 'fails closed when an accepted seed loses its declared license' {

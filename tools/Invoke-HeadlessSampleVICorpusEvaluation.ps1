@@ -272,9 +272,9 @@ foreach ($target in @($catalog.targets)) {
     } else {
       $operationPayloadMode = [string]$target.operationPayload.mode
       $operationPayloadProvenanceState = [string]$target.operationPayload.provenanceState
-      $payloadSourceRepoSlug = [string]$target.operationPayload.sourceRepositorySlug
-      $payloadSourceRepoUrl = [string]$target.operationPayload.sourceRepositoryUrl
-      $payloadSourceLicense = [string]$target.operationPayload.sourceLicenseSpdx
+      $payloadSourceRepoSlug = if ($target.operationPayload.PSObject.Properties['sourceRepositorySlug']) { [string]$target.operationPayload.sourceRepositorySlug } else { '' }
+      $payloadSourceRepoUrl = if ($target.operationPayload.PSObject.Properties['sourceRepositoryUrl']) { [string]$target.operationPayload.sourceRepositoryUrl } else { '' }
+      $payloadSourceLicense = if ($target.operationPayload.PSObject.Properties['sourceLicenseSpdx']) { [string]$target.operationPayload.sourceLicenseSpdx } else { '' }
       $payloadNotes = @(Get-StringArray -Value $target.operationPayload.notes)
 
       if ($operationPayloadMode -eq 'additional-operation-directory') {
