@@ -15,6 +15,9 @@
       match the release semver/core version.
 - [ ] `CompareVI.Tools.psd1` `ModuleVersion` (and prerelease metadata, when
       used) matches the release semver.
+- [ ] If `CompareVI.Tools` publishes `X.Y.Z-tools.N`, the release plan and
+      bundle metadata treat `vX.Y.Z-tools.N` as the immutable consumer pin and
+      `vX.Y.Z` only as the stable-family alias.
 
 ## Stable backend surfaces
 
@@ -23,6 +26,9 @@
 - [ ] `CompareVi.Shared` package version matches the backend release semver.
 - [ ] `CompareVI.Tools` bundle is published from the same source ref/tag as the
       CLI assets.
+- [ ] `comparevi-tools-release.json` exposes a version contract that separates
+      compatibility family (`X.Y.Z`) from immutable tools payload identity
+      (`X.Y.Z-tools.N` when present).
 - [ ] Release notes call out stable versus rc expectations explicitly.
 
 ## Artifact packaging

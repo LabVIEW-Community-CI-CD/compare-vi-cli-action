@@ -79,6 +79,15 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $metadata.module.name | Should -Be 'CompareVI.Tools'
     $metadata.module.version | Should -Be $moduleVersion
     $metadata.module.releaseVersion | Should -Be $moduleReleaseVersion
+    $metadata.versionContract.schema | Should -Be 'comparevi-tools/version-contract@v1'
+    $metadata.versionContract.baseSemver | Should -Be $moduleVersion
+    $metadata.versionContract.releaseVersion | Should -Be $moduleReleaseVersion
+    $metadata.versionContract.stableFamilyTag | Should -Be "v$moduleVersion"
+    $metadata.versionContract.stableFamilyTagMutable | Should -Be ($moduleReleaseVersion -ne $moduleVersion)
+    $metadata.versionContract.toolsIteration | Should -BeNullOrEmpty
+    $metadata.versionContract.authoritativeConsumerPin | Should -Be 'v9.9.9'
+    $metadata.versionContract.authoritativeConsumerPinKind | Should -Be 'release-tag'
+    ((@($metadata.versionContract.notes) -join [Environment]::NewLine)) | Should -Match 'immutable consumer identity'
     @($metadata.module.exportedFunctions) | Should -Contain 'Invoke-CompareVIHistoryFacade'
     @($metadata.module.exportedFunctions) | Should -Contain 'Invoke-CompareVIHistoryLocalRefinementFacade'
     @($metadata.module.exportedFunctions) | Should -Contain 'Invoke-CompareVIHistoryLocalOperatorSessionFacade'
@@ -151,6 +160,7 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $bundleReadme | Should -Match 'labview-icon-editor-demo'
     $bundleReadme | Should -Match 'comparevi-history'
     $bundleReadme | Should -Match 'windows-mirror-proof'
+    $bundleReadme | Should -Match 'authoritativeConsumerPin'
 
     $expectedFiles = @(
       'comparevi-tools-release.json',
@@ -201,6 +211,44 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Test-WindowsNI2026q1HostPreflight.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Assert-DockerRuntimeDeterminism.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Compare-ExitCodeClassifier.ps1'
+  }
+
+  It 'records tools-iteration releases as immutable toolchain identities distinct from the stable family alias' {
+    $outDir = Join-Path $TestDrive 'artifacts-tools-iteration'
+    $metadataPath = Join-Path $TestDrive 'comparevi-tools-artifact-tools-iteration.json'
+    $tempModulePath = Join-Path $TestDrive 'CompareVI.Tools.ToolsIteration.psd1'
+    $tempModuleContents = Get-Content -LiteralPath $modulePath -Raw
+    $tempModuleContents = $tempModuleContents.Replace(
+      "ProjectUri = 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action'",
+      "ProjectUri = 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action'`r`n      Prerelease = 'tools.14'"
+    )
+    Set-Content -LiteralPath $tempModulePath -Value $tempModuleContents -Encoding utf8
+    $relativeModulePath = [System.IO.Path]::GetRelativePath($repoRoot, $tempModulePath)
+
+    & $publishScript `
+      -ModuleManifestPath $relativeModulePath `
+      -OutputRoot $outDir `
+      -MetadataReportPath $metadataPath `
+      -Repository 'owner/repo' `
+      -SourceRef 'refs/tags/v0.6.3-tools.14' `
+      -SourceSha '0123456789abcdef0123456789abcdef01234567' `
+      -ReleaseTag 'v0.6.3-tools.14'
+
+    Test-Path -LiteralPath $metadataPath | Should -BeTrue
+    & $schemaScript -JsonPath $metadataPath -SchemaPath $schemaPath
+    $LASTEXITCODE | Should -Be 0
+
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    $metadata.module.version | Should -Be '0.6.3'
+    $metadata.module.releaseVersion | Should -Be '0.6.3-tools.14'
+    $metadata.versionContract.baseSemver | Should -Be '0.6.3'
+    $metadata.versionContract.releaseVersion | Should -Be '0.6.3-tools.14'
+    $metadata.versionContract.stableFamilyTag | Should -Be 'v0.6.3'
+    $metadata.versionContract.stableFamilyTagMutable | Should -BeTrue
+    $metadata.versionContract.toolsIteration | Should -Be 14
+    $metadata.versionContract.authoritativeConsumerPin | Should -Be 'v0.6.3-tools.14'
+    $metadata.versionContract.authoritativeConsumerPinKind | Should -Be 'release-tag'
+    ((@($metadata.versionContract.notes) -join [Environment]::NewLine)) | Should -Match 'stableFamilyTag'
   }
 
   It 'emits an empty prerelease GitHub output for stable CompareVI.Tools bundles' {

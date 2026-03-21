@@ -110,6 +110,42 @@ function Write-GitHubOutputValue {
   "$Key=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 }
 
+function Get-CompareVIToolsVersionContract {
+  param(
+    [Parameter(Mandatory = $true)][string]$ModuleVersion,
+    [Parameter(Mandatory = $true)][string]$ModuleReleaseVersion,
+    [AllowEmptyString()][string]$ReleaseTag
+  )
+
+  $toolsIteration = $null
+  $toolsMatch = [regex]::Match($ModuleReleaseVersion, '^(?<family>\d+\.\d+\.\d+)-tools\.(?<iteration>\d+)$')
+  if ($toolsMatch.Success) {
+    $toolsIteration = [int]$toolsMatch.Groups['iteration'].Value
+  }
+
+  $stableFamilyTag = "v$ModuleVersion"
+  $releaseTagNormalized = if ([string]::IsNullOrWhiteSpace($ReleaseTag)) { $null } else { $ReleaseTag.Trim() }
+  $authoritativePin = if ($releaseTagNormalized) { $releaseTagNormalized } else { $ModuleReleaseVersion }
+  $authoritativePinKind = if ($releaseTagNormalized) { 'release-tag' } else { 'release-version' }
+  $stableFamilyTagMutable = $ModuleReleaseVersion -ne $ModuleVersion
+
+  return [ordered]@{
+    schema = 'comparevi-tools/version-contract@v1'
+    baseSemver = $ModuleVersion
+    releaseVersion = $ModuleReleaseVersion
+    stableFamilyTag = $stableFamilyTag
+    stableFamilyTagMutable = $stableFamilyTagMutable
+    toolsIteration = $toolsIteration
+    authoritativeConsumerPin = $authoritativePin
+    authoritativeConsumerPinKind = $authoritativePinKind
+    notes = @(
+      'Use authoritativeConsumerPin as the immutable consumer identity for this bundle.',
+      'baseSemver and stableFamilyTag describe the compatibility family, not a mutable-friendly pin override.',
+      'When toolsIteration is present, stableFamilyTag stays on the X.Y.Z family while the immutable bundle identity moves to X.Y.Z-tools.N.'
+    )
+  }
+}
+
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $moduleManifestResolved = (Resolve-Path -LiteralPath (Join-Path $repoRoot $ModuleManifestPath)).Path
 $moduleRoot = Split-Path -Parent $moduleManifestResolved
@@ -181,6 +217,10 @@ $resolvedReleaseTag = if (-not [string]::IsNullOrWhiteSpace($ReleaseTag)) {
 } else {
   ''
 }
+$versionContract = Get-CompareVIToolsVersionContract `
+  -ModuleVersion $moduleVersion `
+  -ModuleReleaseVersion $moduleReleaseVersion `
+  -ReleaseTag $resolvedReleaseTag
 
 $outputRootResolved = if ([System.IO.Path]::IsPathRooted($OutputRoot)) {
   $OutputRoot
@@ -241,6 +281,7 @@ try {
     '- For Windows mirror proof on a Windows host, keep `tools/Test-WindowsNI2026q1HostPreflight.ps1` and `tools/Run-NIWindowsContainerCompare.ps1` adjacent in the extracted bundle; `windows-mirror-proof` is pinned to `nationalinstruments/labview:2026q1-windows`.'
     '- For a unified local operator shell, use `tools/Invoke-VIHistoryLocalOperatorSession.ps1` or the exported `Invoke-CompareVIHistoryLocalOperatorSessionFacade` wrapper from this bundle.'
     '- The first documented downstream local-first consumer is `LabVIEW-Community-CI-CD/labview-icon-editor-demo` via comparevi-history local-review/local-proof targeting `develop`.'
+    '- Treat the bundle metadata `versionContract.authoritativeConsumerPin` as the immutable toolchain identity. If `versionContract.toolsIteration` is present, `vX.Y.Z` remains the compatibility family tag and `vX.Y.Z-tools.N` is the immutable release identity.'
     '- The runtime facade JSON is written to `history-summary.json` under the selected results directory.'
     '- Real compare execution still requires the same LVCompare/LabVIEW prerequisites as the source repository.'
   ) | Set-Content -LiteralPath $bundleReadmePath -Encoding utf8
@@ -430,6 +471,7 @@ try {
     schema = 'comparevi-tools-release-manifest@v1'
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
     module = $moduleMetadata
+    versionContract = $versionContract
     source = $sourceMetadata
     compatibility = $compatibilityMetadata
     consumerContract = $consumerContractMetadata

@@ -55,6 +55,13 @@ is the reviewed release tag plus its published checksum/provenance.
    `consumerContract.historyFacade` and
    `consumerContract.hostedNiLinuxRunner`.
 
+   `versionContract` is the authoritative interpretation layer for release
+   identity. Treat `versionContract.authoritativeConsumerPin` as the immutable
+   consumer pin for the bundle. When `versionContract.toolsIteration` is
+   present, `versionContract.baseSemver` and `versionContract.stableFamilyTag`
+   only describe the compatibility family; they do not supersede the immutable
+   `vX.Y.Z-tools.N` release identity.
+
 4. **Import the module from the extracted bundle**
 
    ```powershell
