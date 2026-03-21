@@ -1274,6 +1274,21 @@ try {
 }
 
 try {
+  $continuityScript = Join-Path $repoRoot 'tools' 'priority' 'continuity-telemetry.mjs'
+  $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+  if ($nodeCmd -and (Test-Path -LiteralPath $continuityScript -PathType Leaf)) {
+    $continuityRuntimePath = Join-Path $ResultsRoot '_agent/runtime/continuity-telemetry.json'
+    $continuityHandoffPath = Join-Path $ResultsRoot '_agent/handoff/continuity-summary.json'
+    & $nodeCmd.Source $continuityScript `
+      --repo-root $repoRoot `
+      --output $continuityRuntimePath `
+      --handoff-output $continuityHandoffPath | Out-Host
+  }
+} catch {
+  Write-Warning ("Failed to refresh continuity telemetry: {0}" -f $_.Exception.Message)
+}
+
+try {
   $priorityContext = Ensure-StandingPriorityContext -RepoRoot (Resolve-Path '.').Path -ResultsRoot $ResultsRoot
   if ($priorityContext) {
     Write-Host ''
@@ -1333,6 +1348,38 @@ try {
   }
 } catch {
   Write-Warning ("Failed to display standing priority summary: {0}" -f $_.Exception.Message)
+}
+
+try {
+  $continuityPath = Join-Path $ResultsRoot '_agent/handoff/continuity-summary.json'
+  if (Test-Path -LiteralPath $continuityPath -PathType Leaf) {
+    $continuity = Get-Content -LiteralPath $continuityPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    Write-Host ''
+    Write-Host '[Continuity]' -ForegroundColor Cyan
+    Write-Host ("  status   : {0}" -f (Format-NullableValue $continuity.status))
+    Write-Host ("  quiet    : {0}" -f (Format-NullableValue $continuity.continuity.quietPeriod.status))
+    Write-Host ("  gap      : {0}s" -f (Format-NullableValue $continuity.continuity.quietPeriod.silenceGapSeconds))
+    Write-Host ("  pause    : {0}" -f (Format-BoolLabel $continuity.continuity.quietPeriod.operatorQuietPeriodTreatedAsPause))
+    Write-Host ("  context  : {0}" -f (Format-NullableValue $continuity.issueContext.mode))
+    Write-Host ("  signals  : {0}" -f (Format-NullableValue $continuity.continuity.unattendedSignalCount))
+    Write-Host ("  action   : {0}" -f (Format-NullableValue $continuity.continuity.recommendation))
+
+    if ($env:GITHUB_STEP_SUMMARY) {
+      $continuityLines = @(
+        '### Continuity',
+        '',
+        ('- Status: {0}' -f (Format-NullableValue $continuity.status)),
+        ('- Quiet period: {0}  Gap: {1}s' -f (Format-NullableValue $continuity.continuity.quietPeriod.status), (Format-NullableValue $continuity.continuity.quietPeriod.silenceGapSeconds)),
+        ('- Operator quiet treated as pause: {0}' -f (Format-BoolLabel $continuity.continuity.quietPeriod.operatorQuietPeriodTreatedAsPause)),
+        ('- Issue context: {0}' -f (Format-NullableValue $continuity.issueContext.mode)),
+        ('- Unattended signals: {0}' -f (Format-NullableValue $continuity.continuity.unattendedSignalCount)),
+        ('- Recommended action: {0}' -f (Format-NullableValue $continuity.continuity.recommendation))
+      )
+      ($continuityLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+    }
+  }
+} catch {
+  Write-Warning ("Failed to display continuity summary: {0}" -f $_.Exception.Message)
 }
 
 try {

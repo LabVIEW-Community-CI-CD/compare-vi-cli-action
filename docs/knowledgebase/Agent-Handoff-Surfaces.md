@@ -15,6 +15,9 @@ entrypoint and machine-generated live state.
   output.
 - It refreshes `tests/results/_agent/handoff/entrypoint-status.json`, which is
   the canonical machine-readable index for future agents.
+- It refreshes `tests/results/_agent/runtime/continuity-telemetry.json` and the
+  mirrored handoff summary `tests/results/_agent/handoff/continuity-summary.json`
+  so operator quiet periods can be measured without being mistaken for a reset.
 - It also refreshes the standing-priority summary, router copy, watcher
   telemetry, Docker/Desktop verification summary mirror, and session capsule
   surfaces under `tests/results/_agent/`.
@@ -37,6 +40,8 @@ entrypoint and machine-generated live state.
 - `tests/results/_agent/issue/standing-lane-reconciliation-*.json`
 - `tests/results/_agent/issue/no-standing-priority.json`
 - `tests/results/_agent/verification/docker-review-loop-summary.json`
+- `tests/results/_agent/runtime/continuity-telemetry.json`
+- `tests/results/_agent/handoff/continuity-summary.json`
 - `tests/results/_agent/handoff/entrypoint-status.json`
 - `tests/results/_agent/handoff/docker-review-loop-summary.json`
 - `tests/results/_agent/handoff/*.json`

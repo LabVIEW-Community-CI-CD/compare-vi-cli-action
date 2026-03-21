@@ -42,6 +42,7 @@ $releaseSummary = Read-HandoffJson -Name 'release-summary.json'
 $testSummary = Read-HandoffJson -Name 'test-summary.json'
 $dockerReviewLoopSummary = Read-HandoffJson -Name 'docker-review-loop-summary.json'
 $entrypointStatus = Read-HandoffJson -Name 'entrypoint-status.json'
+$continuitySummary = Read-HandoffJson -Name 'continuity-summary.json'
 
 if ($issueSummary) {
   Write-Host '[handoff] Standing priority snapshot' -ForegroundColor Cyan
@@ -214,4 +215,23 @@ if ($entrypointStatus) {
     }
   }
   Set-Variable -Name HandoffEntrypointStatus -Scope Global -Value $entrypointStatus -Force
+}
+
+if ($continuitySummary) {
+  Write-Host '[handoff] Continuity summary' -ForegroundColor Cyan
+  Write-Host ("  status   : {0}" -f (Format-NullableValue $continuitySummary.status))
+  if ($continuitySummary.PSObject.Properties['issueContext'] -and $continuitySummary.issueContext) {
+    Write-Host ("  context  : {0}" -f (Format-NullableValue $continuitySummary.issueContext.mode))
+  }
+  if ($continuitySummary.PSObject.Properties['continuity'] -and $continuitySummary.continuity) {
+    $quiet = $continuitySummary.continuity.quietPeriod
+    if ($quiet) {
+      Write-Host ("  quiet    : {0}" -f (Format-NullableValue $quiet.status))
+      Write-Host ("  gap      : {0}s" -f (Format-NullableValue $quiet.silenceGapSeconds))
+      Write-Host ("  pause    : {0}" -f (Format-BoolLabel $quiet.operatorQuietPeriodTreatedAsPause))
+    }
+    Write-Host ("  signals  : {0}" -f (Format-NullableValue $continuitySummary.continuity.unattendedSignalCount))
+    Write-Host ("  action   : {0}" -f (Format-NullableValue $continuitySummary.continuity.recommendation))
+  }
+  Set-Variable -Name HandoffContinuitySummary -Scope Global -Value $continuitySummary -Force
 }

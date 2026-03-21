@@ -623,6 +623,10 @@ pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim
 - Refreshes `tests/results/_agent/handoff/entrypoint-status.json` so the
   standard handoff command also writes the canonical machine-readable entrypoint
   index for future agents.
+- Refreshes `tests/results/_agent/runtime/continuity-telemetry.json` and the
+  mirrored `tests/results/_agent/handoff/continuity-summary.json` so operator
+  quiet periods are scored from unattended evidence instead of being treated as
+  an implicit reset.
 - Auto-trim policy: if `needsTrim=true`, watcher logs are trimmed to the last ~4000 lines when either
   `-AutoTrim` is passed or `HANDOFF_AUTOTRIM=1` is set. Dev watcher also trims on start.
 - Trim thresholds: ~5MB per log file; only oversized logs are trimmed.

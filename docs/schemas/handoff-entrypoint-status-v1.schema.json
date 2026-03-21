@@ -92,6 +92,7 @@
         "router",
         "noStandingPriority",
         "dockerReviewLoopSummary",
+        "continuitySummary",
         "entrypointStatus",
         "handoffGlob",
         "sessionGlob"
@@ -101,6 +102,7 @@
         "router": { "type": "string", "minLength": 1 },
         "noStandingPriority": { "type": "string", "minLength": 1 },
         "dockerReviewLoopSummary": { "type": "string", "minLength": 1 },
+        "continuitySummary": { "type": "string", "minLength": 1 },
         "entrypointStatus": { "type": "string", "minLength": 1 },
         "handoffGlob": { "type": "string", "minLength": 1 },
         "sessionGlob": { "type": "string", "minLength": 1 }

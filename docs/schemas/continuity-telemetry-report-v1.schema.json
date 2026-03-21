@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Continuity telemetry report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repoRoot",
+    "status",
+    "issueContext",
+    "continuity",
+    "sources",
+    "artifacts"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/continuity-telemetry-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repoRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "maintained",
+        "at-risk",
+        "stale"
+      ]
+    },
+    "issueContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "issue",
+        "present",
+        "fresh",
+        "observedAt",
+        "reason"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "issue",
+            "queue-empty",
+            "missing"
+          ]
+        },
+        "issue": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "present": {
+          "type": "boolean"
+        },
+        "fresh": {
+          "type": "boolean"
+        },
+        "observedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "continuity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "preservedWithoutPrompt",
+        "promptDependency",
+        "unattendedSignalCount",
+        "quietPeriod",
+        "recommendation"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "maintained",
+            "at-risk",
+            "stale"
+          ]
+        },
+        "preservedWithoutPrompt": {
+          "type": "boolean"
+        },
+        "promptDependency": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "unattendedSignalCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quietPeriod": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "continuityReferenceAt",
+            "silenceGapSeconds",
+            "operatorQuietPeriodTreatedAsPause"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "covered",
+                "degrading",
+                "broken"
+              ]
+            },
+            "continuityReferenceAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            },
+            "silenceGapSeconds": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "operatorQuietPeriodTreatedAsPause": {
+              "type": "boolean"
+            }
+          }
+        },
+        "recommendation": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "writerLease",
+        "router",
+        "noStanding",
+        "handoffEntrypoint",
+        "sessions",
+        "deliveryState",
+        "observerHeartbeat"
+      ],
+      "properties": {
+        "writerLease": {
+          "$ref": "#/$defs/source"
+        },
+        "router": {
+          "$ref": "#/$defs/source"
+        },
+        "noStanding": {
+          "$ref": "#/$defs/source"
+        },
+        "handoffEntrypoint": {
+          "$ref": "#/$defs/source"
+        },
+        "sessions": {
+          "$ref": "#/$defs/sessionSource"
+        },
+        "deliveryState": {
+          "$ref": "#/$defs/source"
+        },
+        "observerHeartbeat": {
+          "$ref": "#/$defs/source"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtimePath",
+        "handoffPath"
+      ],
+      "properties": {
+        "runtimePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "handoffPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "path",
+        "exists",
+        "observedAt",
+        "ageSeconds",
+        "freshnessThresholdSeconds",
+        "fresh",
+        "error"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "observedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "ageSeconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "freshnessThresholdSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fresh": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "sessionSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "exists",
+        "observedAt",
+        "ageSeconds",
+        "freshnessThresholdSeconds",
+        "fresh",
+        "count",
+        "latestPath"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "observedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "ageSeconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "freshnessThresholdSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fresh": {
+          "type": "boolean"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latestPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

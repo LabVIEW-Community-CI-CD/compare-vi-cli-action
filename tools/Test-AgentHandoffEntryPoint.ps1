@@ -34,6 +34,7 @@ $requiredArtifacts = @(
   'tests/results/_agent/issue/router.json',
   'tests/results/_agent/issue/no-standing-priority.json',
   'tests/results/_agent/verification/docker-review-loop-summary.json',
+  'tests/results/_agent/handoff/continuity-summary.json',
   'tests/results/_agent/handoff/entrypoint-status.json',
   'tests/results/_agent/handoff/*.json',
   'tests/results/_agent/sessions/*.json'
@@ -52,6 +53,7 @@ $artifactCatalog = [ordered]@{
   router = 'tests/results/_agent/issue/router.json'
   noStandingPriority = 'tests/results/_agent/issue/no-standing-priority.json'
   dockerReviewLoopSummary = 'tests/results/_agent/verification/docker-review-loop-summary.json'
+  continuitySummary = 'tests/results/_agent/handoff/continuity-summary.json'
   entrypointStatus = 'tests/results/_agent/handoff/entrypoint-status.json'
   handoffGlob = 'tests/results/_agent/handoff/*.json'
   sessionGlob = 'tests/results/_agent/sessions/*.json'
