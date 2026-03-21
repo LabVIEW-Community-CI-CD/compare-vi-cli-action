@@ -36,6 +36,16 @@ That source bundle fixes the payload-license gap, but it does not by itself
 promote the payload to `accepted`. Public proof is still required before any
 sample target should claim `operationPayload.provenanceState = accepted`.
 
+As of March 21, 2026, the bundle is still explicitly `source-only`:
+
+- the expected runnable files remain `GetHelp.vi` and `RunOperation.vi`
+- `#1619` bootstraps disposable authoring workspaces from installed official
+  CLI operation directories
+- `#1621` tracks the repo-owned authoring step that must land before public
+  proof can be attempted
+- `tools/Inspect-OperationPayloadSourceBundle.ps1` now emits the fail-closed
+  executable-state receipt for the checked-in bundle
+
 ## Repo policy
 
 - Do not vendor or mirror unlicensed `AdditionalOperationDirectory` payloads.

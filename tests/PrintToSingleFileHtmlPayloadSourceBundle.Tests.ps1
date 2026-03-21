@@ -30,6 +30,11 @@ Describe 'PrintToSingleFileHtml payload source bundle' -Tag 'Unit' {
     @($manifest.intendedChangeKinds) | Should -Be @('added', 'deleted')
     @($manifest.expectedOperationFiles) | Should -Contain 'GetHelp.vi'
     @($manifest.expectedOperationFiles) | Should -Contain 'RunOperation.vi'
+    @($manifest.checkedInOperationFiles) | Should -Be @()
+    $manifest.executableState | Should -Be 'source-only'
+    $manifest.authoringBootstrap.issue | Should -Be 1621
+    $manifest.authoringBootstrap.sourceKind | Should -Be 'installed-cli-operation'
+    $manifest.authoringBootstrap.preferredInstalledOperation | Should -Be 'CreateComparisonReport'
   }
 
   It 'records that promotion remains blocked until runnable payload files and public proof exist' {
@@ -42,11 +47,15 @@ Describe 'PrintToSingleFileHtml payload source bundle' -Tag 'Unit' {
 
     $readme = Get-Content -LiteralPath $script:ReadmePath -Raw
     $readme | Should -Match 'not yet executable'
+    $readme | Should -Match 'source-only'
     $readme | Should -Match 'not yet promotable'
     $readme | Should -Match 'official LabVIEW `Print:VI To HTML` capability'
+    $readme | Should -Match 'installed-operation scaffold'
 
     $provenanceDoc = Get-Content -LiteralPath $script:ProvenanceDocPath -Raw
     $provenanceDoc | Should -Match 'fixtures/headless-corpus/operation-payloads/PrintToSingleFileHtml/'
     $provenanceDoc | Should -Match 'Public proof is still required'
+    $provenanceDoc | Should -Match '#1619'
+    $provenanceDoc | Should -Match '#1621'
   }
 }
