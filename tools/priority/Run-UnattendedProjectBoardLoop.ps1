@@ -11,6 +11,7 @@ param(
   [int]$MaxCycles = 0,
   [switch]$QueueApply,
   [switch]$NoPortfolioApply,
+  [string]$ProjectContextCacheFile = 'tests/results/_agent/project/portfolio-context-cache.json',
   [switch]$StopWhenNoOpenIssues,
   [string]$ProjectStatus = 'In Progress',
   [string]$ProjectProgram = 'Shared Infra',
@@ -239,6 +240,9 @@ function Invoke-ProjectPortfolioApply {
     '--portfolio-track',
     $ProjectPortfolioTrack
   )
+  if (-not [string]::IsNullOrWhiteSpace($ProjectContextCacheFile)) {
+    $args += @('--context-cache-file', $ProjectContextCacheFile)
+  }
   if ($DryRun) {
     $args += '--dry-run'
   }
