@@ -63,6 +63,7 @@ test('parseArgs accepts queue refresh receipt and merge-summary flags', () => {
     'owner/repo',
     '--head-remote',
     'origin',
+    '--skip-rebase',
     '--summary-path',
     'tests/results/_agent/queue/queue-refresh-1568.json',
     '--merge-summary-path',
@@ -74,6 +75,7 @@ test('parseArgs accepts queue refresh receipt and merge-summary flags', () => {
     pr: 1568,
     repo: 'owner/repo',
     headRemote: 'origin',
+    skipRebase: true,
     summaryPath: 'tests/results/_agent/queue/queue-refresh-1568.json',
     mergeSummaryPath: 'tests/results/_agent/queue/merge-sync-1568.json',
     dryRun: true
@@ -92,6 +94,7 @@ test('runQueueRefresh skips non-queued PRs without dequeueing, rebasing, or requ
       pr: 123,
       repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       headRemote: null,
+      skipRebase: false,
       summaryPath: 'memory://queue-refresh-123.json',
       mergeSummaryPath: 'memory://merge-sync-123.json',
       dryRun: false
@@ -144,6 +147,7 @@ test('runQueueRefresh dequeues, rebases, force-pushes, and re-arms merge queue a
       pr: 123,
       repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       headRemote: null,
+      skipRebase: false,
       summaryPath: 'memory://queue-refresh-123.json',
       mergeSummaryPath: 'memory://merge-sync-123.json',
       dryRun: false
@@ -204,6 +208,7 @@ test('runQueueRefresh dequeues, rebases, force-pushes, and re-arms merge queue a
   assert.equal(receipt.dequeue.status, 'completed');
   assert.equal(receipt.dequeue.finalIsInMergeQueue, false);
   assert.equal(receipt.refresh.status, 'completed');
+  assert.equal(receipt.refresh.mode, 'rebase');
   assert.equal(receipt.refresh.rebasedHeadSha, 'fedcba9876543210fedcba9876543210fedcba98');
   assert.equal(receipt.requeue.status, 'completed');
   assert.equal(receipt.requeue.promotionStatus, 'queued');
@@ -244,6 +249,7 @@ test('runQueueRefresh aborts the rebase and records a failed receipt when local 
         pr: 123,
         repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
         headRemote: null,
+        skipRebase: false,
         summaryPath: 'memory://queue-refresh-123.json',
         mergeSummaryPath: 'memory://merge-sync-123.json',
         dryRun: false
@@ -296,4 +302,108 @@ test('runQueueRefresh aborts the rebase and records a failed receipt when local 
     ['rebase', 'upstream/develop'],
     ['rebase', '--abort']
   ]);
+});
+
+test('runQueueRefresh can amend a queued PR without rebasing when local head is already checked out', async () => {
+  const gitCalls = [];
+  const mergeSyncCalls = [];
+  let queueReads = 0;
+
+  const { receipt } = await runQueueRefresh({
+    repoRoot: process.cwd(),
+    args: {
+      pr: 123,
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      headRemote: null,
+      skipRebase: true,
+      summaryPath: 'memory://queue-refresh-123.json',
+      mergeSummaryPath: 'memory://merge-sync-123.json',
+      dryRun: false
+    },
+    ensureGhCliFn: () => {},
+    readPolicyFn: async () => buildQueuePolicy(),
+    readPullRequestViewFn: async () => buildPullRequestView(),
+    readPullRequestQueueStateFn: async () => {
+      queueReads += 1;
+      return queueReads === 1 ? buildQueueState({ isInMergeQueue: true }) : buildQueueState({ isInMergeQueue: false });
+    },
+    dequeuePullRequestFn: async () => ({}),
+    runGitCommandFn: (_repoRoot, args) => {
+      gitCalls.push(args);
+      if (args[0] === 'status') {
+        return { status: 0, stdout: '', stderr: '' };
+      }
+      if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+        return { status: 0, stdout: 'fedcba9876543210fedcba9876543210fedcba98\n', stderr: '' };
+      }
+      if (args[0] === 'push') {
+        return { status: 0, stdout: '', stderr: '' };
+      }
+      throw new Error(`Unexpected git args: ${args.join(' ')}`);
+    },
+    readCurrentBranchFn: () => 'issue/origin-123-queue-refresh',
+    readTrackingRemoteFn: () => 'origin',
+    resolveHeadRemoteNameFn: () => ({ remoteName: 'origin', source: 'test' }),
+    runMergeSyncFn: async (payload) => {
+      mergeSyncCalls.push(payload);
+      return {
+        promotion: {
+          status: 'queued',
+          materialized: true
+        },
+        finalMode: 'auto',
+        finalReason: 'merge-state-blocked'
+      };
+    },
+    sleepFn: async () => {},
+    writeReceiptFn: async (receiptPath) => receiptPath
+  });
+
+  assert.equal(receipt.refresh.status, 'completed');
+  assert.equal(receipt.refresh.mode, 'amend');
+  assert.equal(receipt.refresh.reason, 'amended-and-pushed');
+  assert.deepEqual(gitCalls, [
+    ['status', '--porcelain'],
+    ['rev-parse', 'HEAD'],
+    ['push', '--force-with-lease', 'origin', 'HEAD:issue/origin-123-queue-refresh']
+  ]);
+  assert.equal(mergeSyncCalls.length, 1);
+});
+
+test('runQueueRefresh amend mode fails closed when the checked-out branch is not the PR head', async () => {
+  let queueReads = 0;
+  await assert.rejects(
+    runQueueRefresh({
+      repoRoot: process.cwd(),
+      args: {
+        pr: 123,
+        repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        headRemote: null,
+        skipRebase: true,
+        summaryPath: 'memory://queue-refresh-123.json',
+        mergeSummaryPath: 'memory://merge-sync-123.json',
+        dryRun: false
+      },
+      ensureGhCliFn: () => {},
+      readPolicyFn: async () => buildQueuePolicy(),
+      readPullRequestViewFn: async () => buildPullRequestView(),
+      readPullRequestQueueStateFn: async () => {
+        queueReads += 1;
+        return queueReads === 1 ? buildQueueState({ isInMergeQueue: true }) : buildQueueState({ isInMergeQueue: false });
+      },
+      dequeuePullRequestFn: async () => ({}),
+      runGitCommandFn: (_repoRoot, args) => {
+        if (args[0] === 'status') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        throw new Error(`Unexpected git args: ${args.join(' ')}`);
+      },
+      readCurrentBranchFn: () => 'develop',
+      readTrackingRemoteFn: () => 'origin',
+      resolveHeadRemoteNameFn: () => ({ remoteName: 'origin', source: 'test' }),
+      runMergeSyncFn: async () => ({}),
+      writeReceiptFn: async (receiptPath) => receiptPath
+    }),
+    /Queue amend mode requires the checked-out branch/
+  );
 });

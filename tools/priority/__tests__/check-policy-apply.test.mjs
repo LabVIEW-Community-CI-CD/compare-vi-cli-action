@@ -596,6 +596,8 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   );
   const developMergeQueueRule = rulesetDevelop.rules.find((rule) => rule.type === 'merge_queue');
   assert.ok(developMergeQueueRule, 'merge_queue rule expected on develop');
+  assert.equal(developMergeQueueRule.parameters.max_entries_to_build, 5);
+  assert.equal(developMergeQueueRule.parameters.max_entries_to_merge, 5);
   assert.equal(developMergeQueueRule.parameters.min_entries_to_merge_wait_minutes, 1);
   const developPullRule = rulesetDevelop.rules.find((rule) => rule.type === 'pull_request');
   assert.deepEqual(
