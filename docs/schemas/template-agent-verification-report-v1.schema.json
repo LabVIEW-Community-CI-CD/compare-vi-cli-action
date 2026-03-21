@@ -22,11 +22,11 @@
     "iteration": {
       "type": "object",
       "additionalProperties": true,
-      "required": ["label"],
+      "required": ["label", "headSha"],
       "properties": {
         "label": { "type": "string" },
         "ref": { "type": ["string", "null"] },
-        "headSha": { "type": ["string", "null"] }
+        "headSha": { "type": "string" }
       }
     },
     "lane": {

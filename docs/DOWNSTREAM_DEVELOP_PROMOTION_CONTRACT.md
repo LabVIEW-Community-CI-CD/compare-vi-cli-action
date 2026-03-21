@@ -57,6 +57,10 @@ iteration-level metrics, timing, provenance, and a follow-up recommendation so
 future agents can decide whether template verification is improving, regressing,
 or stalling.
 
+The checked-in report is expected to capture the landed iteration label,
+iteration ref, and landed iteration head SHA so the evidence can be tied back
+to one immutable turn.
+
 After each landed iteration, the runtime supervisor refreshes the report path
 with a machine-readable `pending` snapshot for the iteration. The hosted
 verification run or a manual rerun can then overwrite the same file with the
@@ -67,6 +71,7 @@ Generate the report with:
 ```powershell
 node tools/npm/run-script.mjs priority:template:agent:verify -- `
   --iteration-label "post-merge #1635" `
+  --iteration-head-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa `
   --verification-status pass `
   --duration-seconds 240 `
   --run-url https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/actions/runs/123456789

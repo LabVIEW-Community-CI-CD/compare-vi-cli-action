@@ -20,6 +20,8 @@ test('parseArgs captures template-agent verification report inputs', () => {
     'template-agent-verification-report.mjs',
     '--iteration-label',
     'post-merge #1635',
+    '--iteration-head-sha',
+    'abc123',
     '--verification-status',
     'pass',
     '--duration-seconds',
@@ -29,10 +31,26 @@ test('parseArgs captures template-agent verification report inputs', () => {
   ]);
 
   assert.equal(options.iterationLabel, 'post-merge #1635');
+  assert.equal(options.iterationHeadSha, 'abc123');
   assert.equal(options.verificationStatus, 'pass');
   assert.equal(options.durationSeconds, 240);
   assert.equal(options.runUrl, 'https://github.com/example/run/1');
   assert.equal(options.outputPath, DEFAULT_OUTPUT_PATH);
+});
+
+test('parseArgs requires the landed iteration head SHA for template-agent verification evidence', () => {
+  assert.throws(
+    () =>
+      parseArgs([
+        'node',
+        'template-agent-verification-report.mjs',
+        '--iteration-label',
+        'post-merge #1635',
+        '--verification-status',
+        'pass'
+      ]),
+    /Missing required option: --iteration-head-sha <sha>\./
+  );
 });
 
 test('evaluateTemplateAgentVerificationReport passes when the reserved hosted lane is healthy', () => {
@@ -69,9 +87,46 @@ test('evaluateTemplateAgentVerificationReport passes when the reserved hosted la
 
   assert.equal(report.summary.status, 'pass');
   assert.equal(report.summary.recommendation, 'continue-template-agent-loop');
+  assert.equal(report.iteration.headSha, 'abc123');
   assert.equal(report.lane.implementationSlotsRemaining, 3);
   assert.equal(report.metrics.durationWithinGoal, true);
   assert.equal(report.blockers.length, 0);
+});
+
+test('evaluateTemplateAgentVerificationReport blocks when the landed iteration head SHA is missing', () => {
+  const report = evaluateTemplateAgentVerificationReport({
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      workerPool: {
+        targetSlotCount: 4
+      },
+      templateAgentVerificationLane: {
+        enabled: true,
+        reservedSlotCount: 1,
+        minimumImplementationSlots: 3,
+        executionMode: 'hosted-first',
+        targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        consumerRailBranch: 'downstream/develop',
+        metrics: {
+          maxVerificationLagIterations: 1,
+          maxHostedDurationMinutes: 30,
+          requireMachineReadableRecommendation: true
+        }
+      }
+    },
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    iterationLabel: 'post-merge #1635',
+    iterationRef: 'issue/origin-1632-template-agent-verification-lane',
+    iterationHeadSha: null,
+    verificationStatus: 'pass',
+    durationSeconds: 240,
+    provider: 'hosted-github-workflow',
+    runUrl: 'https://github.com/example/run/1',
+    templateRepo: null
+  });
+
+  assert.equal(report.summary.status, 'blocked');
+  assert.match(report.blockers[0].code, /iteration-head-sha-missing/);
 });
 
 test('runTemplateAgentVerificationReport blocks when reserved capacity is missing', () => {
@@ -109,7 +164,7 @@ test('runTemplateAgentVerificationReport blocks when reserved capacity is missin
       repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       iterationLabel: 'post-merge #1635',
       iterationRef: null,
-      iterationHeadSha: null,
+      iterationHeadSha: 'abc123',
       verificationStatus: 'pass',
       durationSeconds: 240,
       provider: 'hosted-github-workflow',
@@ -136,6 +191,8 @@ test('CLI entrypoint writes the template-agent verification report on Windows pa
       path.join(repoRoot, 'tools', 'priority', 'template-agent-verification-report.mjs'),
       '--iteration-label',
       'post-merge #1635',
+      '--iteration-head-sha',
+      'abc123',
       '--verification-status',
       'pass',
       '--duration-seconds',

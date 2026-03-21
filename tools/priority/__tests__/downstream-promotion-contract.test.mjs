@@ -44,6 +44,7 @@ test('package scripts and runbook expose downstream promotion manifest and score
   assert.match(runbook, /priority:promote:downstream:scorecard/);
   assert.match(runbook, /--manifest-report tests\/results\/_agent\/promotion\/downstream-develop-promotion-manifest\.json/);
   assert.match(runbook, /priority:template:agent:verify/);
+  assert.match(runbook, /--iteration-head-sha/);
   assert.match(runbook, /cookiecutter/i);
   assert.match(runbook, /rollback/i);
   assert.match(runbook, /replay/i);
