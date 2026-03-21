@@ -78,6 +78,49 @@ function makeLeaseDeps() {
   };
 }
 
+function makeLaneBranchClassContract() {
+  return {
+    schema: 'branch-classes/v1',
+    upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    repositoryPlanes: [
+      {
+        id: 'upstream',
+        repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action'],
+        laneBranchPrefix: 'issue/'
+      },
+      {
+        id: 'origin',
+        repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'],
+        laneBranchPrefix: 'issue/origin-'
+      },
+      {
+        id: 'personal',
+        repositories: ['svelderrainruiz/compare-vi-cli-action'],
+        laneBranchPrefix: 'issue/personal-'
+      }
+    ],
+    classes: [
+      {
+        id: 'lane',
+        repositoryRoles: ['upstream', 'fork'],
+        branchPatterns: ['issue/*'],
+        purpose: 'lane',
+        prSourceAllowed: true,
+        prTargetAllowed: false,
+        mergePolicy: 'n/a'
+      }
+    ],
+    allowedTransitions: [
+      {
+        from: 'lane',
+        action: 'promote',
+        to: 'upstream-integration',
+        via: 'pull-request'
+      }
+    ]
+  };
+}
+
 test('parseArgs accepts runtime action, lane metadata, and lease options', () => {
   const parsed = parseArgs([
     'node',
@@ -1161,6 +1204,213 @@ test('canonical delivery scheduler keeps sync-required waiting-ci PRs ahead of c
   assert.equal(decision.artifacts.selectedActionType, 'existing-pr-unblock');
   assert.equal(decision.artifacts.laneLifecycle, 'waiting-ci');
   assert.equal(decision.artifacts.pullRequest.nextWakeCondition, 'branch-synced');
+});
+
+test('canonical delivery scheduler skips merged zero-diff child lanes before assigning work', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-canonical-stale-landed-child-'));
+  const gitCalls = [];
+  const decision = await buildCanonicalDeliveryDecision({
+    repoRoot,
+    upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    targetRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    issueSnapshot: {
+      number: 1010,
+      title: 'Epic: Linux-first unattended delivery runtime',
+      body: 'epic body',
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    issueGraph: {
+      standingIssue: {
+        number: 1010,
+        title: 'Epic: Linux-first unattended delivery runtime',
+        body: 'epic body',
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+        state: 'OPEN',
+        labels: [],
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        createdAt: '2026-03-10T00:00:00Z',
+        updatedAt: '2026-03-10T00:00:00Z',
+        priority: 1,
+        epic: true,
+        pullRequests: []
+      },
+      subIssues: [
+        {
+          number: 1012,
+          title: '[P1] Replay landed child lane',
+          body: 'child',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1012',
+          state: 'OPEN',
+          labels: [],
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          createdAt: '2026-03-09T00:00:00Z',
+          updatedAt: '2026-03-09T00:00:00Z',
+          priority: 1,
+          epic: false,
+          pullRequests: [
+            {
+              number: 88,
+              title: 'Already landed child slice',
+              url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/88',
+              state: 'MERGED',
+              isDraft: false,
+              reviewDecision: 'APPROVED',
+              headRefName: 'issue/origin-1012-replay-landed-child-lane',
+              mergeStateStatus: 'UNKNOWN',
+              mergeable: 'UNKNOWN',
+              statusCheckRollup: []
+            }
+          ]
+        },
+        {
+          number: 1013,
+          title: '[P1] Keep coding another child slice',
+          body: 'child',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1013',
+          state: 'OPEN',
+          labels: [],
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          createdAt: '2026-03-10T00:00:00Z',
+          updatedAt: '2026-03-10T00:00:00Z',
+          priority: 1,
+          epic: false,
+          pullRequests: []
+        }
+      ],
+      pullRequests: []
+    },
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      backlogAuthority: 'issues',
+      implementationRemote: 'origin',
+      copilotReviewStrategy: 'draft-only-explicit',
+      readyForReviewPurpose: 'final-validation',
+      autoSlice: true,
+      autoMerge: true,
+      maxActiveCodingLanes: 1,
+      allowPolicyMutations: false,
+      allowReleaseAdmin: false,
+      stopWhenNoOpenEpics: true
+    },
+    deps: {
+      loadBranchClassContractFn: () => makeLaneBranchClassContract(),
+      spawnSyncFn: (command, args) => {
+        gitCalls.push({ command, args });
+        assert.equal(command, 'git');
+        assert.match(args[3], /upstream\/develop\.\.\.issue\/origin-1012-p1-replay-landed-child-lane$/);
+        return {
+          status: 0,
+          stdout: '4\t0\n',
+          stderr: ''
+        };
+      }
+    }
+  });
+
+  assert.equal(decision.stepOptions.issue, 1013);
+  assert.equal(decision.artifacts.selectedActionType, 'advance-child-issue');
+  assert.equal(gitCalls.length, 1);
+});
+
+test('canonical delivery scheduler preserves merged child lanes that still have local diff after a partial merge', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-canonical-partial-merge-child-'));
+  const decision = await buildCanonicalDeliveryDecision({
+    repoRoot,
+    upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    targetRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    issueSnapshot: {
+      number: 1010,
+      title: 'Epic: Linux-first unattended delivery runtime',
+      body: 'epic body',
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    issueGraph: {
+      standingIssue: {
+        number: 1010,
+        title: 'Epic: Linux-first unattended delivery runtime',
+        body: 'epic body',
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010',
+        state: 'OPEN',
+        labels: [],
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        createdAt: '2026-03-10T00:00:00Z',
+        updatedAt: '2026-03-10T00:00:00Z',
+        priority: 1,
+        epic: true,
+        pullRequests: []
+      },
+      subIssues: [
+        {
+          number: 1012,
+          title: '[P1] Preserve remaining local delta after partial merge',
+          body: 'child',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1012',
+          state: 'OPEN',
+          labels: [],
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          createdAt: '2026-03-09T00:00:00Z',
+          updatedAt: '2026-03-09T00:00:00Z',
+          priority: 1,
+          epic: false,
+          pullRequests: [
+            {
+              number: 88,
+              title: 'Partially merged child slice',
+              url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/88',
+              state: 'MERGED',
+              isDraft: false,
+              reviewDecision: 'APPROVED',
+              headRefName: 'issue/origin-1012-preserve-remaining-local-delta-after-partial-merge',
+              mergeStateStatus: 'UNKNOWN',
+              mergeable: 'UNKNOWN',
+              statusCheckRollup: []
+            }
+          ]
+        },
+        {
+          number: 1013,
+          title: '[P1] Secondary child slice',
+          body: 'child',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1013',
+          state: 'OPEN',
+          labels: [],
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          createdAt: '2026-03-10T00:00:00Z',
+          updatedAt: '2026-03-10T00:00:00Z',
+          priority: 1,
+          epic: false,
+          pullRequests: []
+        }
+      ],
+      pullRequests: []
+    },
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      backlogAuthority: 'issues',
+      implementationRemote: 'origin',
+      copilotReviewStrategy: 'draft-only-explicit',
+      readyForReviewPurpose: 'final-validation',
+      autoSlice: true,
+      autoMerge: true,
+      maxActiveCodingLanes: 1,
+      allowPolicyMutations: false,
+      allowReleaseAdmin: false,
+      stopWhenNoOpenEpics: true
+    },
+    deps: {
+      loadBranchClassContractFn: () => makeLaneBranchClassContract(),
+      spawnSyncFn: () => ({
+        status: 0,
+        stdout: '1\t2\n',
+        stderr: ''
+      })
+    }
+  });
+
+  assert.equal(decision.stepOptions.issue, 1012);
+  assert.equal(decision.artifacts.selectedActionType, 'advance-child-issue');
 });
 
 test('canonical delivery scheduler attaches the live Copilot review workflow to waiting-review lanes', async () => {
