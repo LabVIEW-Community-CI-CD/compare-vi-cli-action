@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -222,6 +223,90 @@ export function buildPrReadyArgs({ repository, pullRequestNumber, ready = true }
   ];
 }
 
+export function resolveReadyTransitionDryRunSummaryPath({
+  repoRoot,
+  repository,
+  pullRequestNumber
+}) {
+  const repositorySlug = normalizeText(repository)
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return path.join(
+    repoRoot,
+    'tests',
+    'results',
+    '_agent',
+    'issue',
+    `${repositorySlug || 'repository'}-pr-${pullRequestNumber}-ready-transition-dry-run.json`
+  );
+}
+
+export function buildReadyTransitionMergeSyncDryRunArgs({ repository, pullRequestNumber, summaryPath }) {
+  const repoSlug = normalizeText(repository);
+  const prNumber = toPositiveInteger(pullRequestNumber);
+  if (!repoSlug) {
+    throw new Error('Repository slug is required to probe merge-sync readiness.');
+  }
+  if (!prNumber) {
+    throw new Error('Pull request number is required to probe merge-sync readiness.');
+  }
+  if (!normalizeText(summaryPath)) {
+    throw new Error('Dry-run summary path is required to probe merge-sync readiness.');
+  }
+  return [
+    'tools/priority/merge-sync-pr.mjs',
+    '--pr',
+    String(prNumber),
+    '--repo',
+    repoSlug,
+    '--dry-run',
+    '--summary-path',
+    summaryPath
+  ];
+}
+
+export function probeReadyTransitionViaMergeSyncDryRun({
+  repoRoot,
+  repository,
+  pullRequestNumber,
+  readJsonFn = readJsonFile,
+  spawnSyncFn = spawnSync
+}) {
+  const summaryPath = resolveReadyTransitionDryRunSummaryPath({
+    repoRoot,
+    repository,
+    pullRequestNumber
+  });
+  const args = buildReadyTransitionMergeSyncDryRunArgs({
+    repository,
+    pullRequestNumber,
+    summaryPath
+  });
+  const result = spawnSyncFn('node', args, {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  const summary = readJsonFn(summaryPath) ?? null;
+  const reviewClearance = summary?.reviewClearance ?? null;
+  const reasons = Array.isArray(reviewClearance?.reasons)
+    ? reviewClearance.reasons.filter((entry) => normalizeText(entry))
+    : [];
+  const reason =
+    reasons.join(', ') ||
+    normalizeText(reviewClearance?.gateState) ||
+    normalizeText(result?.stderr) ||
+    normalizeText(result?.stdout) ||
+    `merge-sync-dry-run-exit-${result?.status ?? 'unknown'}`;
+  return {
+    ok: result?.status === 0 && normalizeText(reviewClearance?.status).toLowerCase() === 'pass',
+    summaryPath,
+    helperCall: `node ${args.join(' ')}`,
+    reviewClearance,
+    reason
+  };
+}
+
 export function readReadyValidationClearance({
   repoRoot,
   repository,
@@ -310,7 +395,8 @@ export function maybePromotePullRequestToReady({
   pullRequest,
   currentHeadSha,
   readJsonFn = readJsonFile,
-  runFn = run
+  runFn = run,
+  runReadyProbeFn = probeReadyTransitionViaMergeSyncDryRun
 }) {
   const repository = buildRepositorySlug(upstream);
   const readyValidationClearance = readReadyValidationClearance({
@@ -325,15 +411,63 @@ export function maybePromotePullRequestToReady({
     currentHeadSha,
     readyValidationClearance
   });
+  const shouldProbeMergeSyncReady =
+    !eligibility.eligible &&
+    ['clearance-missing', 'clearance-invalid', 'stale-head'].includes(eligibility.status);
+  const readyProbe = shouldProbeMergeSyncReady
+    ? runReadyProbeFn({
+        repoRoot,
+        repository,
+        pullRequestNumber: pullRequest?.number,
+        readJsonFn
+      })
+    : null;
+  if (!eligibility.eligible && readyProbe?.ok) {
+    const args = buildPrReadyArgs({
+      repository,
+      pullRequestNumber: pullRequest.number,
+      ready: true
+    });
+    try {
+      runFn('gh', args, { cwd: repoRoot });
+      return {
+        status: 'ready',
+        reason: 'Marked the PR ready for review after merge-sync dry-run proved the current head queue-safe.',
+        receiptPath: readyValidationClearance.receiptPath,
+        readyHeadSha: normalizeText(currentHeadSha) || null,
+        currentHeadSha: normalizeText(currentHeadSha) || null,
+        attempted: true,
+        helperCall: `gh ${args.join(' ')}`,
+        dryRunSummaryPath: readyProbe.summaryPath,
+        reviewClearance: readyProbe.reviewClearance
+      };
+    } catch (error) {
+      return {
+        status: 'transition-failed',
+        reason: normalizeText(error?.stderr) || normalizeText(error?.message) || String(error),
+        receiptPath: readyValidationClearance.receiptPath,
+        readyHeadSha: normalizeText(currentHeadSha) || null,
+        currentHeadSha: normalizeText(currentHeadSha) || null,
+        attempted: true,
+        helperCall: `gh ${args.join(' ')}`,
+        dryRunSummaryPath: readyProbe.summaryPath,
+        reviewClearance: readyProbe.reviewClearance
+      };
+    }
+  }
   if (!eligibility.eligible) {
     return {
       status: eligibility.status,
-      reason: eligibility.reason,
+      reason: readyProbe?.reason
+        ? `${eligibility.reason} Merge-sync dry-run readiness: ${readyProbe.reason}.`
+        : eligibility.reason,
       receiptPath: readyValidationClearance.receiptPath,
       readyHeadSha:
         eligibility.readyHeadSha ?? (normalizeText(readyValidationClearance.receipt?.readyHeadSha) || null),
       currentHeadSha: normalizeText(currentHeadSha) || null,
-      attempted: false
+      attempted: false,
+      dryRunSummaryPath: readyProbe?.summaryPath ?? null,
+      reviewClearance: readyProbe?.reviewClearance ?? null
     };
   }
 
@@ -351,7 +485,9 @@ export function maybePromotePullRequestToReady({
       readyHeadSha: eligibility.readyHeadSha ?? null,
       currentHeadSha: normalizeText(currentHeadSha) || null,
       attempted: true,
-      helperCall: `gh ${args.join(' ')}`
+      helperCall: `gh ${args.join(' ')}`,
+      dryRunSummaryPath: null,
+      reviewClearance: null
     };
   } catch (error) {
     return {
@@ -361,7 +497,9 @@ export function maybePromotePullRequestToReady({
       readyHeadSha: eligibility.readyHeadSha ?? null,
       currentHeadSha: normalizeText(currentHeadSha) || null,
       attempted: true,
-      helperCall: `gh ${args.join(' ')}`
+      helperCall: `gh ${args.join(' ')}`,
+      dryRunSummaryPath: null,
+      reviewClearance: null
     };
   }
 }
@@ -893,6 +1031,7 @@ export function createPriorityPr({
   pushBranchFn = pushBranch,
   runFn = run,
   runGhPrCreateFn = runGhPrCreate,
+  runReadyProbeFn = probeReadyTransitionViaMergeSyncDryRun,
   findMergedPullRequestFn = findMergedPullRequest,
   findOpenAncestorPullRequestFn = findOpenAncestorPullRequest,
   resolveStandingIssueNumberFn = resolveStandingIssueNumberForPr,
@@ -1066,7 +1205,8 @@ export function createPriorityPr({
     pullRequest: prResult?.pullRequest ?? null,
     currentHeadSha: headSha,
     readJsonFn,
-    runFn
+    runFn,
+    runReadyProbeFn
   });
   const pullRequest =
     readyTransition?.status === 'ready' && prResult?.pullRequest
@@ -1169,7 +1309,9 @@ export function buildPriorityPrReport(result, generatedAt = new Date().toISOStri
           helperCall: result.readyTransition.helperCall ?? null,
           receiptPath: result.readyTransition.receiptPath ?? null,
           readyHeadSha: result.readyTransition.readyHeadSha ?? null,
-          currentHeadSha: result.readyTransition.currentHeadSha ?? null
+          currentHeadSha: result.readyTransition.currentHeadSha ?? null,
+          dryRunSummaryPath: result.readyTransition.dryRunSummaryPath ?? null,
+          reviewClearance: result.readyTransition.reviewClearance ?? null
         }
       : null,
     stackedFollowUp: result.stackedFollowUp

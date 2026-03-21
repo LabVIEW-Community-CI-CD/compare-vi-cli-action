@@ -152,6 +152,89 @@ test('maybePromotePullRequestToReady invokes gh pr ready when stored clearance m
   assert.equal(calls[0].options.cwd, '/tmp/repo');
 });
 
+test('maybePromotePullRequestToReady invokes gh pr ready when merge-sync dry-run proves the current head queue-safe', () => {
+  const calls = [];
+  const result = maybePromotePullRequestToReady({
+    repoRoot: '/tmp/repo',
+    upstream: {
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action'
+    },
+    strategy: 'graphql-same-owner-fork',
+    pullRequest: {
+      number: 1607,
+      isDraft: true
+    },
+    currentHeadSha: 'cccccccccccccccccccccccccccccccccccccccc',
+    readJsonFn: () => null,
+    runReadyProbeFn: () => ({
+      ok: true,
+      summaryPath: '/tmp/repo/tests/results/_agent/issue/merge-sync-dry-run.json',
+      reviewClearance: {
+        status: 'pass',
+        gateState: 'ready',
+        reasons: ['local-review-mode-no-github-review-required']
+      },
+      reason: 'local-review-mode-no-github-review-required'
+    }),
+    runFn: (command, args, options) => {
+      calls.push({ command, args, options });
+      return '';
+    }
+  });
+
+  assert.equal(result.status, 'ready');
+  assert.equal(result.reason, 'Marked the PR ready for review after merge-sync dry-run proved the current head queue-safe.');
+  assert.equal(result.dryRunSummaryPath, '/tmp/repo/tests/results/_agent/issue/merge-sync-dry-run.json');
+  assert.equal(result.reviewClearance.status, 'pass');
+  assert.deepEqual(result.reviewClearance.reasons, ['local-review-mode-no-github-review-required']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, 'gh');
+  assert.deepEqual(calls[0].args, [
+    'pr',
+    'ready',
+    '1607',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  ]);
+});
+
+test('maybePromotePullRequestToReady preserves the draft state and probe evidence when merge-sync dry-run is not ready', () => {
+  const result = maybePromotePullRequestToReady({
+    repoRoot: '/tmp/repo',
+    upstream: {
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action'
+    },
+    strategy: 'graphql-same-owner-fork',
+    pullRequest: {
+      number: 1609,
+      isDraft: true
+    },
+    currentHeadSha: 'dddddddddddddddddddddddddddddddddddddddd',
+    readJsonFn: () => null,
+    runReadyProbeFn: () => ({
+      ok: false,
+      summaryPath: '/tmp/repo/tests/results/_agent/issue/merge-sync-dry-run.json',
+      reviewClearance: {
+        status: 'fail',
+        gateState: 'blocked',
+        reasons: ['draft-review-clearance-missing']
+      },
+      reason: 'draft-review-clearance-missing'
+    }),
+    runFn: () => {
+      throw new Error('gh pr ready should not be called when the dry-run probe is not ready');
+    }
+  });
+
+  assert.equal(result.status, 'clearance-missing');
+  assert.match(result.reason, /Merge-sync dry-run readiness: draft-review-clearance-missing/i);
+  assert.equal(result.attempted, false);
+  assert.equal(result.dryRunSummaryPath, '/tmp/repo/tests/results/_agent/issue/merge-sync-dry-run.json');
+  assert.equal(result.reviewClearance.status, 'fail');
+});
+
 test('parseArgs accepts explicit PR helper overrides', () => {
   const options = parseArgs([
     'node',
@@ -1102,6 +1185,82 @@ test('createPriorityPr auto-promotes same-owner draft PRs when stored ready-vali
   assert.equal(runCalls[0].options.cwd, '/tmp/repo');
 });
 
+test('createPriorityPr auto-promotes same-owner draft PRs when merge-sync dry-run proves the current head queue-safe', () => {
+  const runCalls = [];
+  const result = createPriorityPrWithNoMergedHistory({
+    env: {},
+    options: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      issue: 1610,
+      branch: 'issue/origin-1610-pr-create-ready-gap',
+      base: 'develop',
+      title: 'Ready transition gap helper',
+      body: 'Body'
+    },
+    getRepoRootFn: () => '/tmp/repo',
+    getCurrentBranchFn: () => 'issue/000-ignored',
+    getCurrentHeadShaFn: () => 'ffffffffffffffffffffffffffffffffffffffff',
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => {
+      throw new Error('should not resolve upstream when --repo is explicit');
+    },
+    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => ({
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action-fork',
+      sameOwnerFork: true,
+      remoteName: remote
+    }),
+    pushBranchFn: () => ({
+      status: 'pushed'
+    }),
+    runFn: (command, args, options) => {
+      runCalls.push({ command, args, options });
+      return '';
+    },
+    runReadyProbeFn: () => ({
+      ok: true,
+      summaryPath: '/tmp/repo/tests/results/_agent/issue/merge-sync-dry-run.json',
+      reviewClearance: {
+        status: 'pass',
+        gateState: 'ready',
+        reasons: ['local-review-mode-no-github-review-required']
+      },
+      reason: 'local-review-mode-no-github-review-required'
+    }),
+    runGhPrCreateFn: () => ({
+      strategy: 'graphql-same-owner-fork',
+      reusedExisting: true,
+      pullRequest: {
+        number: 1610,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1610',
+        isDraft: true
+      }
+    }),
+    readJsonFn: () => null,
+    resolveStandingIssueNumberFn: () => {
+      throw new Error('should not resolve standing priority when --issue is explicit');
+    },
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
+  });
+
+  assert.equal(result.currentHeadSha, 'ffffffffffffffffffffffffffffffffffffffff');
+  assert.equal(result.pullRequest.number, 1610);
+  assert.equal(result.pullRequest.isDraft, false);
+  assert.equal(result.readyTransition.status, 'ready');
+  assert.equal(result.readyTransition.dryRunSummaryPath, '/tmp/repo/tests/results/_agent/issue/merge-sync-dry-run.json');
+  assert.equal(result.readyTransition.reviewClearance.status, 'pass');
+  assert.equal(result.readyTransition.attempted, true);
+  assert.equal(runCalls.length, 1);
+  assert.equal(runCalls[0].command, 'gh');
+  assert.deepEqual(runCalls[0].args, [
+    'pr',
+    'ready',
+    '1610',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  ]);
+});
+
 test('writePriorityPrReport persists ready-transition metadata for unattended resume', () => {
   const reportDir = mkdtempSync(path.join(os.tmpdir(), 'priority-pr-ready-report-'));
   const { report } = writePriorityPrReport(
@@ -1155,7 +1314,13 @@ test('writePriorityPrReport persists ready-transition metadata for unattended re
         helperCall: 'gh pr ready 1597 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action',
         receiptPath: path.join(reportDir, 'tests', 'results', '_agent', 'runtime', 'ready-validation-clearance', 'receipt.json'),
         readyHeadSha: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-        currentHeadSha: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+        currentHeadSha: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        dryRunSummaryPath: path.join(reportDir, 'tests', 'results', '_agent', 'issue', 'merge-sync-dry-run.json'),
+        reviewClearance: {
+          status: 'pass',
+          gateState: 'ready',
+          reasons: ['local-review-mode-no-github-review-required']
+        }
       },
       reusedExistingPullRequest: true,
       pullRequest: {
@@ -1174,6 +1339,8 @@ test('writePriorityPrReport persists ready-transition metadata for unattended re
   assert.equal(report.readyTransition.status, 'ready');
   assert.equal(report.readyTransition.attempted, true);
   assert.match(report.readyTransition.helperCall, /^gh pr ready 1597/);
+  assert.match(report.readyTransition.dryRunSummaryPath, /merge-sync-dry-run\.json$/);
+  assert.equal(report.readyTransition.reviewClearance.status, 'pass');
 });
 
 test('createPriorityPr fails closed before push when the branch already backed a merged PR', () => {
