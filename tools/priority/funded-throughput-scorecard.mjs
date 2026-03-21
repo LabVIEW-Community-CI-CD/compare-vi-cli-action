@@ -14,24 +14,19 @@ export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'capi
 
 export const IMPLEMENTED_METRIC_CODES = [
   'validated-merged-prs-per-funded-dollar',
+  'issues-closed-per-funded-dollar',
+  'promotion-evidence-per-funded-dollar',
+  'lane-minutes-allocated-per-funded-dollar',
   'hosted-wait-escapes-per-funded-dollar',
   'heuristic-spend-drift-relative-to-invoice-turn'
 ];
 
-export const DEFERRED_METRICS = [
-  {
-    code: 'issues-closed-per-funded-dollar',
-    reason: 'requires-issue-closure-evidence-beyond-cost-rollup-and-throughput-scorecard'
-  },
-  {
-    code: 'promotion-evidence-per-funded-dollar',
-    reason: 'requires-promotion-scorecard-inputs-not-included-in-the-first-slice'
-  },
-  {
-    code: 'lane-minutes-allocated-per-funded-dollar',
-    reason: 'no-deterministic-lane-minute-surface-in-cost-rollup-or-throughput-scorecard'
-  }
+export const PROJECTED_METRIC_CODES = [
+  'issues-closed-per-funded-dollar',
+  'promotion-evidence-per-funded-dollar',
+  'lane-minutes-allocated-per-funded-dollar'
 ];
+export const DEFERRED_METRICS = [];
 
 const HELP = [
   'Usage: node tools/priority/funded-throughput-scorecard.mjs [options]',
@@ -287,10 +282,26 @@ function extractThroughputEvidence(throughputScorecard = null, throughputScoreca
     : {};
 
   const validatedMergedPullRequestCount = coerceNonNegativeInteger(delivery.mergedPullRequestCount);
+  const closedIssueCount =
+    coerceNonNegativeInteger(delivery.closedPullRequestCount) ??
+    coerceNonNegativeInteger(summaryMetrics.closedPullRequestCount);
   const totalTerminalPullRequestCount = coerceNonNegativeInteger(delivery.totalTerminalPullRequestCount);
   const hostedWaitEscapeCount =
     coerceNonNegativeInteger(delivery.hostedWaitEscapeCount) ??
     coerceNonNegativeInteger(summaryMetrics.hostedWaitEscapeCount);
+  const concurrentLaneActiveCount =
+    coerceNonNegativeInteger(summaryMetrics.concurrentLaneActiveCount) ??
+    coerceNonNegativeInteger(throughputScorecard?.concurrentLanes?.activeLaneCount);
+  const meanTerminalDurationMinutes =
+    coerceNonNegativeNumber(delivery.meanTerminalDurationMinutes) ??
+    coerceNonNegativeNumber(summaryMetrics.meanTerminalDurationMinutes);
+  const promotionEvidenceCount =
+    totalTerminalPullRequestCount ??
+    ((validatedMergedPullRequestCount ?? 0) + (closedIssueCount ?? 0));
+  const laneMinutesAllocated =
+    concurrentLaneActiveCount != null && meanTerminalDurationMinutes != null
+      ? roundNumber(concurrentLaneActiveCount * meanTerminalDurationMinutes)
+      : null;
 
   if (validatedMergedPullRequestCount == null) {
     blockers.push(
@@ -323,6 +334,11 @@ function extractThroughputEvidence(throughputScorecard = null, throughputScoreca
   return {
     blockers,
     validatedMergedPullRequestCount: validatedMergedPullRequestCount ?? 0,
+    closedIssueCount: closedIssueCount ?? 0,
+    promotionEvidenceCount: promotionEvidenceCount ?? 0,
+    concurrentLaneActiveCount: concurrentLaneActiveCount ?? 0,
+    meanTerminalDurationMinutes,
+    laneMinutesAllocated,
     totalTerminalPullRequestCount: totalTerminalPullRequestCount ?? 0,
     hostedWaitEscapeCount: hostedWaitEscapeCount ?? 0
   };
@@ -401,10 +417,27 @@ export function buildFundedThroughputScorecard({
     estimatedUsd: costEvidence.estimatedUsd,
     actualUsdConsumed: costEvidence.actualUsdConsumed,
     validatedMergedPullRequestCount: throughputEvidence.validatedMergedPullRequestCount,
+    closedIssueCount: throughputEvidence.closedIssueCount,
+    promotionEvidenceCount: throughputEvidence.promotionEvidenceCount,
+    concurrentLaneActiveCount: throughputEvidence.concurrentLaneActiveCount,
+    meanTerminalDurationMinutes: throughputEvidence.meanTerminalDurationMinutes,
+    laneMinutesAllocated: throughputEvidence.laneMinutesAllocated,
     totalTerminalPullRequestCount: throughputEvidence.totalTerminalPullRequestCount,
     hostedWaitEscapeCount: throughputEvidence.hostedWaitEscapeCount,
     validatedMergedPullRequestsPerFundedUsd: computeRatio(
       throughputEvidence.validatedMergedPullRequestCount,
+      costEvidence.fundedUsd
+    ),
+    closedIssuesPerFundedUsd: computeRatio(
+      throughputEvidence.closedIssueCount,
+      costEvidence.fundedUsd
+    ),
+    promotionEvidencePerFundedUsd: computeRatio(
+      throughputEvidence.promotionEvidenceCount,
+      costEvidence.fundedUsd
+    ),
+    laneMinutesAllocatedPerFundedUsd: computeRatio(
+      throughputEvidence.laneMinutesAllocated,
       costEvidence.fundedUsd
     ),
     hostedWaitEscapesPerFundedUsd: computeRatio(
@@ -444,6 +477,7 @@ export function buildFundedThroughputScorecard({
     },
     coverage: {
       implementedMetricCodes: [...IMPLEMENTED_METRIC_CODES],
+      projectedMetricCodes: [...PROJECTED_METRIC_CODES],
       deferredMetrics: DEFERRED_METRICS.map((entry) => ({ ...entry }))
     },
     fundingWindow: costEvidence.fundingWindow,

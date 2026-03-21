@@ -21,9 +21,13 @@
     "coverage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["implementedMetricCodes", "deferredMetrics"],
+      "required": ["implementedMetricCodes", "projectedMetricCodes", "deferredMetrics"],
       "properties": {
         "implementedMetricCodes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "projectedMetricCodes": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         },
@@ -98,9 +102,17 @@
             "estimatedUsd",
             "actualUsdConsumed",
             "validatedMergedPullRequestCount",
+            "closedIssueCount",
+            "promotionEvidenceCount",
+            "concurrentLaneActiveCount",
+            "meanTerminalDurationMinutes",
+            "laneMinutesAllocated",
             "totalTerminalPullRequestCount",
             "hostedWaitEscapeCount",
             "validatedMergedPullRequestsPerFundedUsd",
+            "closedIssuesPerFundedUsd",
+            "promotionEvidencePerFundedUsd",
+            "laneMinutesAllocatedPerFundedUsd",
             "hostedWaitEscapesPerFundedUsd",
             "heuristicUsdDelta",
             "heuristicUsdDeltaRatio"
@@ -111,9 +123,17 @@
             "estimatedUsd": { "type": "number", "minimum": 0 },
             "actualUsdConsumed": { "type": ["number", "null"], "minimum": 0 },
             "validatedMergedPullRequestCount": { "type": "integer", "minimum": 0 },
+            "closedIssueCount": { "type": "integer", "minimum": 0 },
+            "promotionEvidenceCount": { "type": "integer", "minimum": 0 },
+            "concurrentLaneActiveCount": { "type": "integer", "minimum": 0 },
+            "meanTerminalDurationMinutes": { "type": ["number", "null"], "minimum": 0 },
+            "laneMinutesAllocated": { "type": ["number", "null"], "minimum": 0 },
             "totalTerminalPullRequestCount": { "type": "integer", "minimum": 0 },
             "hostedWaitEscapeCount": { "type": "integer", "minimum": 0 },
             "validatedMergedPullRequestsPerFundedUsd": { "type": ["number", "null"], "minimum": 0 },
+            "closedIssuesPerFundedUsd": { "type": ["number", "null"], "minimum": 0 },
+            "promotionEvidencePerFundedUsd": { "type": ["number", "null"], "minimum": 0 },
+            "laneMinutesAllocatedPerFundedUsd": { "type": ["number", "null"], "minimum": 0 },
             "hostedWaitEscapesPerFundedUsd": { "type": ["number", "null"], "minimum": 0 },
             "heuristicUsdDelta": { "type": ["number", "null"] },
             "heuristicUsdDeltaRatio": { "type": ["number", "null"] }
