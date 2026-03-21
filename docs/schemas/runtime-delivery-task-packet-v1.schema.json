@@ -92,6 +92,20 @@
               }
             },
             "localReviewLoop": { "type": ["object", "null"], "additionalProperties": true },
+            "concurrentLaneDispatch": {
+              "type": ["object", "null"],
+              "additionalProperties": true,
+              "properties": {
+                "historyScenarioSet": { "enum": ["none", "smoke", "history-core"] },
+                "sampleIdStrategy": { "enum": ["auto", "explicit"] },
+                "sampleId": { "type": ["string", "null"] },
+                "allowForkMode": { "enum": ["auto", "always", "never"] },
+                "pushMissing": { "type": ["boolean", "null"] },
+                "forcePushOk": { "type": ["boolean", "null"] },
+                "allowNonCanonicalViHistory": { "type": ["boolean", "null"] },
+                "allowNonCanonicalHistoryCore": { "type": ["boolean", "null"] }
+              }
+            },
             "workerPool": {
               "type": ["object", "null"],
               "additionalProperties": true,

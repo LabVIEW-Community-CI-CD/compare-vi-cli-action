@@ -161,7 +161,13 @@ test('applyConcurrentLanePlan dispatches hosted lanes and defers manual docker l
   assert.equal(receipt.plan.source, 'file');
   assert.equal(receipt.summary.selectedBundleId, 'hosted-plus-manual-linux-docker');
   assert.equal(receipt.validateDispatch.status, 'dispatched');
+  assert.equal(receipt.validateDispatch.sampleIdStrategy, 'explicit');
   assert.equal(receipt.validateDispatch.reportPath, path.join(tempDir, 'priority-validate-dispatch-upstream-1482.json'));
+  assert.equal(receipt.validateDispatch.allowFork, true);
+  assert.equal(receipt.validateDispatch.pushMissing, false);
+  assert.equal(receipt.validateDispatch.forcePushOk, false);
+  assert.equal(receipt.validateDispatch.allowNonCanonicalViHistory, false);
+  assert.equal(receipt.validateDispatch.allowNonCanonicalHistoryCore, false);
   assert.equal(receipt.summary.hostedDispatchCount, 2);
   assert.deepEqual(receipt.summary.manualLaneIds, ['manual-linux-docker']);
   assert.deepEqual(receipt.summary.shadowLaneIds, []);
@@ -220,6 +226,9 @@ test('applyConcurrentLanePlan recomputes the plan and records hosted dry-run wit
   assert.equal(receipt.plan.source, 'recomputed');
   assert.equal(receipt.summary.selectedBundleId, 'hosted-plus-host-native-32-shadow');
   assert.equal(receipt.validateDispatch.status, 'dry-run');
+  assert.equal(receipt.validateDispatch.sampleIdStrategy, 'auto');
+  assert.equal(receipt.validateDispatch.allowFork, false);
+  assert.equal(receipt.validateDispatch.pushMissing, false);
   assert.equal(findLane(receipt, 'hosted-linux-proof').decision, 'planned-dispatch');
   assert.equal(findLane(receipt, 'hosted-windows-proof').decision, 'planned-dispatch');
   assert.equal(findLane(receipt, 'host-native-32-shadow').decision, 'deferred');
@@ -268,6 +277,7 @@ test('applyConcurrentLanePlan writes a failed receipt when hosted dispatch fails
   assert.match(error?.message ?? '', /gh workflow dispatch failed/);
   assert.equal(receipt.status, 'failed');
   assert.equal(receipt.validateDispatch.status, 'failed');
+  assert.equal(receipt.validateDispatch.sampleIdStrategy, 'auto');
   assert.match(receipt.validateDispatch.error ?? '', /gh workflow dispatch failed/);
   assert.equal(findLane(receipt, 'hosted-linux-proof').decision, 'blocked');
   assert.equal(findLane(receipt, 'hosted-windows-proof').decision, 'blocked');

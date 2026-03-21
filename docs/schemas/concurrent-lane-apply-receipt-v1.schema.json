@@ -64,8 +64,14 @@
         "repository",
         "remote",
         "ref",
+        "sampleIdStrategy",
         "sampleId",
         "historyScenarioSet",
+        "allowFork",
+        "pushMissing",
+        "forcePushOk",
+        "allowNonCanonicalViHistory",
+        "allowNonCanonicalHistoryCore",
         "reportPath",
         "runDatabaseId",
         "error"
@@ -88,12 +94,30 @@
         "ref": {
           "type": ["string", "null"]
         },
+        "sampleIdStrategy": {
+          "enum": ["auto", "explicit"]
+        },
         "sampleId": {
           "type": ["string", "null"]
         },
         "historyScenarioSet": {
           "type": "string",
           "minLength": 1
+        },
+        "allowFork": {
+          "type": "boolean"
+        },
+        "pushMissing": {
+          "type": "boolean"
+        },
+        "forcePushOk": {
+          "type": "boolean"
+        },
+        "allowNonCanonicalViHistory": {
+          "type": "boolean"
+        },
+        "allowNonCanonicalHistoryCore": {
+          "type": "boolean"
         },
         "reportPath": {
           "type": ["string", "null"]

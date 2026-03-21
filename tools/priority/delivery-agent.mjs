@@ -199,6 +199,16 @@ const DEFAULT_POLICY = {
     manageDockerEngine: false,
     allowHostEngineMutation: false,
   },
+  concurrentLaneDispatch: {
+    historyScenarioSet: 'smoke',
+    sampleIdStrategy: 'auto',
+    sampleId: '',
+    allowForkMode: 'auto',
+    pushMissing: true,
+    forcePushOk: false,
+    allowNonCanonicalViHistory: false,
+    allowNonCanonicalHistoryCore: false
+  },
   localReviewLoop: {
     enabled: true,
     bodyMarkers: ['Daemon-first local iteration extension'],
@@ -725,6 +735,64 @@ function normalizeCopilotReviewStrategy(value) {
     return normalized;
   }
   throw new Error(`Unsupported copilotReviewStrategy: ${normalized}`);
+}
+
+function normalizeConcurrentLaneDispatchPolicy(value) {
+  const concurrentLaneDispatch = value && typeof value === 'object' ? value : {};
+  const historyScenarioSet = normalizeText(concurrentLaneDispatch.historyScenarioSet).toLowerCase();
+  const sampleIdStrategy = normalizeText(concurrentLaneDispatch.sampleIdStrategy).toLowerCase();
+  const allowForkMode =
+    normalizeText(concurrentLaneDispatch.allowForkMode).toLowerCase() ||
+    (typeof concurrentLaneDispatch.allowFork === 'boolean'
+      ? concurrentLaneDispatch.allowFork
+        ? 'always'
+        : 'never'
+      : '');
+
+  const normalizedHistoryScenarioSet = historyScenarioSet || DEFAULT_POLICY.concurrentLaneDispatch.historyScenarioSet;
+  if (!['none', 'smoke', 'history-core'].includes(normalizedHistoryScenarioSet)) {
+    throw new Error(`Unsupported concurrentLaneDispatch.historyScenarioSet: ${normalizedHistoryScenarioSet}`);
+  }
+
+  const normalizedSampleIdStrategy = sampleIdStrategy || DEFAULT_POLICY.concurrentLaneDispatch.sampleIdStrategy;
+  if (!['auto', 'explicit'].includes(normalizedSampleIdStrategy)) {
+    throw new Error(`Unsupported concurrentLaneDispatch.sampleIdStrategy: ${normalizedSampleIdStrategy}`);
+  }
+
+  const normalizedAllowForkMode = allowForkMode || DEFAULT_POLICY.concurrentLaneDispatch.allowForkMode;
+  if (!['auto', 'always', 'never'].includes(normalizedAllowForkMode)) {
+    throw new Error(`Unsupported concurrentLaneDispatch.allowForkMode: ${normalizedAllowForkMode}`);
+  }
+
+  const sampleId = normalizeText(concurrentLaneDispatch.sampleId);
+  if (normalizedSampleIdStrategy === 'explicit' && !sampleId) {
+    throw new Error('concurrentLaneDispatch.sampleId is required when sampleIdStrategy is explicit.');
+  }
+
+  return {
+    ...DEFAULT_POLICY.concurrentLaneDispatch,
+    ...concurrentLaneDispatch,
+    historyScenarioSet: normalizedHistoryScenarioSet,
+    sampleIdStrategy: normalizedSampleIdStrategy,
+    sampleId,
+    allowForkMode: normalizedAllowForkMode,
+    pushMissing:
+      typeof concurrentLaneDispatch.pushMissing === 'boolean'
+        ? concurrentLaneDispatch.pushMissing
+        : DEFAULT_POLICY.concurrentLaneDispatch.pushMissing,
+    forcePushOk:
+      typeof concurrentLaneDispatch.forcePushOk === 'boolean'
+        ? concurrentLaneDispatch.forcePushOk
+        : DEFAULT_POLICY.concurrentLaneDispatch.forcePushOk,
+    allowNonCanonicalViHistory:
+      typeof concurrentLaneDispatch.allowNonCanonicalViHistory === 'boolean'
+        ? concurrentLaneDispatch.allowNonCanonicalViHistory
+        : DEFAULT_POLICY.concurrentLaneDispatch.allowNonCanonicalViHistory,
+    allowNonCanonicalHistoryCore:
+      typeof concurrentLaneDispatch.allowNonCanonicalHistoryCore === 'boolean'
+        ? concurrentLaneDispatch.allowNonCanonicalHistoryCore
+        : DEFAULT_POLICY.concurrentLaneDispatch.allowNonCanonicalHistoryCore
+  };
 }
 
 function normalizeLocalReviewLoopPolicy(value) {
@@ -1657,6 +1725,7 @@ export async function loadDeliveryAgentPolicy(repoRoot, deps = {}) {
       ...DEFAULT_POLICY.dockerRuntime,
       ...(filePolicy?.dockerRuntime && typeof filePolicy.dockerRuntime === 'object' ? filePolicy.dockerRuntime : {})
     },
+    concurrentLaneDispatch: normalizeConcurrentLaneDispatchPolicy(filePolicy?.concurrentLaneDispatch),
     localReviewLoop: normalizeLocalReviewLoopPolicy(filePolicy?.localReviewLoop),
     codingTurnCommand: normalizeCommandList(filePolicy?.codingTurnCommand)
   };
@@ -2277,14 +2346,20 @@ function buildConcurrentLaneApplyRuntimeState({ taskPacket, executionReceipt }) 
     receiptPath: normalizeText(concurrentLaneApply.receiptPath) || null,
     status: normalizeText(concurrentLaneApply.status) || null,
     selectedBundleId: normalizeText(concurrentLaneApply.selectedBundleId) || null,
-    validateDispatch: validateDispatch
+        validateDispatch: validateDispatch
       ? {
           status: normalizeText(validateDispatch.status) || null,
           repository: normalizeText(validateDispatch.repository) || null,
           remote: normalizeText(validateDispatch.remote) || null,
           ref: normalizeText(validateDispatch.ref) || null,
+          sampleIdStrategy: normalizeText(validateDispatch.sampleIdStrategy) || null,
           sampleId: normalizeText(validateDispatch.sampleId) || null,
           historyScenarioSet: normalizeText(validateDispatch.historyScenarioSet) || null,
+          allowFork: validateDispatch.allowFork === true,
+          pushMissing: validateDispatch.pushMissing === true,
+          forcePushOk: validateDispatch.forcePushOk === true,
+          allowNonCanonicalViHistory: validateDispatch.allowNonCanonicalViHistory === true,
+          allowNonCanonicalHistoryCore: validateDispatch.allowNonCanonicalHistoryCore === true,
           reportPath: normalizeText(validateDispatch.reportPath) || null,
           runDatabaseId: coercePositiveInteger(validateDispatch.runDatabaseId),
           error: normalizeText(validateDispatch.error) || null
@@ -2421,9 +2496,26 @@ function shouldDispatchConcurrentLanes(taskPacket = {}) {
   return normalizeText(providerSelection.selectedAssignmentMode).toLowerCase() === 'async-validation';
 }
 
-function buildConcurrentLaneApplyOptions({ repoRoot, taskPacket }) {
+function buildConcurrentLaneApplyOptions({ repoRoot, taskPacket, policy }) {
   const branchName = normalizeText(taskPacket?.branch?.name);
   const forkRemote = normalizeText(taskPacket?.branch?.forkRemote).toLowerCase();
+  const request = normalizeOptionalObject(taskPacket?.evidence?.delivery?.concurrentLaneDispatch);
+  const concurrentLaneDispatch = normalizeConcurrentLaneDispatchPolicy({
+    ...(policy?.concurrentLaneDispatch && typeof policy.concurrentLaneDispatch === 'object'
+      ? policy.concurrentLaneDispatch
+      : {}),
+    ...(request ?? {})
+  });
+  const allowFork =
+    concurrentLaneDispatch.allowForkMode === 'always'
+      ? true
+      : concurrentLaneDispatch.allowForkMode === 'never'
+        ? false
+        : Boolean(forkRemote && forkRemote !== 'upstream');
+  const sampleIdStrategy =
+    concurrentLaneDispatch.sampleIdStrategy === 'explicit' && normalizeText(concurrentLaneDispatch.sampleId)
+      ? 'explicit'
+      : 'auto';
   return {
     planPath: path.resolve(repoRoot, DEFAULT_CONCURRENT_LANE_PLAN_PATH),
     outputPath: path.resolve(repoRoot, DEFAULT_CONCURRENT_LANE_APPLY_RECEIPT_PATH),
@@ -2434,13 +2526,14 @@ function buildConcurrentLaneApplyOptions({ repoRoot, taskPacket }) {
     hostedWindows: 'available',
     shadowMode: 'auto',
     ref: branchName || null,
-    sampleId: null,
-    historyScenarioSet: 'smoke',
-    allowFork: Boolean(forkRemote && forkRemote !== 'upstream'),
-    pushMissing: true,
-    forcePushOk: false,
-    allowNonCanonicalViHistory: false,
-    allowNonCanonicalHistoryCore: false,
+    sampleIdStrategy,
+    sampleId: sampleIdStrategy === 'explicit' ? normalizeText(concurrentLaneDispatch.sampleId) : null,
+    historyScenarioSet: concurrentLaneDispatch.historyScenarioSet,
+    allowFork,
+    pushMissing: concurrentLaneDispatch.pushMissing === true,
+    forcePushOk: concurrentLaneDispatch.forcePushOk === true,
+    allowNonCanonicalViHistory: concurrentLaneDispatch.allowNonCanonicalViHistory === true,
+    allowNonCanonicalHistoryCore: concurrentLaneDispatch.allowNonCanonicalHistoryCore === true,
     dryRun: false,
     recomputePlan: false,
     help: false
@@ -2510,11 +2603,12 @@ function buildConcurrentLaneHelperCommands({ repoRoot, applyOptions, statusOptio
 async function dispatchConcurrentLanes({
   taskPacket,
   repoRoot,
+  policy,
   deps = {}
 }) {
   const applyConcurrentLanePlanFn = deps.applyConcurrentLanePlanFn ?? applyConcurrentLanePlan;
   const observeConcurrentLaneStatusFn = deps.observeConcurrentLaneStatusFn ?? observeConcurrentLaneStatus;
-  const applyOptions = buildConcurrentLaneApplyOptions({ repoRoot, taskPacket });
+  const applyOptions = buildConcurrentLaneApplyOptions({ repoRoot, taskPacket, policy });
   const statusOptions = buildConcurrentLaneStatusOptions({
     repoRoot,
     taskPacket,
@@ -4856,6 +4950,7 @@ export async function runDeliveryTurnBroker({
     const dispatchResult = await dispatchConcurrentLanes({
       taskPacket: enrichedPacket,
       repoRoot,
+      policy,
       deps
     });
     return withWorkerProviderDispatch(dispatchResult, enrichedPacket);
