@@ -60,6 +60,11 @@ if ($Args[0] -eq 'context' -and $Args.Count -ge 3 -and $Args[1] -eq 'use') {
 }
 
 if ($Args[0] -eq 'info') {
+  $infoExitCode = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INFO_EXITCODE')
+  if (-not [string]::IsNullOrWhiteSpace($infoExitCode)) {
+    [Console]::Error.WriteLine('failed to connect to the docker API at npipe:////./pipe/docker_engine; check if the path is correct and if the daemon is running: open //./pipe/docker_engine: The system cannot find the file specified.')
+    exit ([int]$infoExitCode)
+  }
   $infoJson = [Environment]::GetEnvironmentVariable('DOCKER_STUB_INFO_JSON')
   if ($Args -contains '{{json .}}' -and -not [string]::IsNullOrWhiteSpace($infoJson)) {
     Write-Output $infoJson
@@ -136,6 +141,7 @@ exit 0
       DOCKER_STUB_OSTYPE = $env:DOCKER_STUB_OSTYPE
       DOCKER_STUB_IMAGE_EXISTS = $env:DOCKER_STUB_IMAGE_EXISTS
       DOCKER_STUB_INFO_JSON = $env:DOCKER_STUB_INFO_JSON
+      DOCKER_STUB_INFO_EXITCODE = $env:DOCKER_STUB_INFO_EXITCODE
     }
   }
 
@@ -185,5 +191,33 @@ exit 0
     $json.bootstrap.imagePresent | Should -BeTrue
     $json.probe.status | Should -Be 'success'
     $json.hostedContract.hostEngineMutationAllowed | Should -BeFalse
+  }
+
+  It 'classifies hosted Docker daemon absence as unavailable when explicitly allowed' {
+    $work = Join-Path $TestDrive 'hosted-unavailable'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerHostedStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_CONTEXT 'default'
+    Set-Item Env:DOCKER_STUB_INFO_EXITCODE '1'
+
+    $resultsRoot = Join-Path $work 'results'
+    $outputJsonPath = Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json'
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:ToolPath `
+      -Image 'nationalinstruments/labview:2026q1-windows' `
+      -ResultsDir $resultsRoot `
+      -ExecutionSurface 'github-hosted-windows' `
+      -AllowUnavailable `
+      -OutputJsonPath $outputJsonPath `
+      -GitHubOutputPath '' `
+      -StepSummaryPath '' 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $json = Get-Content -LiteralPath $outputJsonPath -Raw | ConvertFrom-Json -Depth 20
+    $json.status | Should -Be 'unavailable'
+    $json.failureClass | Should -Be 'docker-runtime-unavailable'
+    $json.runtimeDeterminism.status | Should -Be 'unavailable'
+    $json.runtimeDeterminism.reason | Should -Be 'docker-daemon-unavailable'
   }
 }

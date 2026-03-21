@@ -76,7 +76,10 @@ test('validate workflow Windows VI-history lane is gated by shared dispatch plan
   assert.match(windowsSection, /tools\/Write-VIHistoryLaneEvidence\.ps1/);
   assert.match(windowsSection, /Test-WindowsNI2026q1HostPreflight\.ps1/);
   assert.match(windowsSection, /-ExecutionSurface 'github-hosted-windows'/);
+  assert.match(windowsSection, /-AllowUnavailable/);
+  assert.match(windowsSection, /id:\s*windows-preflight/);
   assert.match(windowsSection, /Run-NIWindowsContainerCompare\.ps1/);
+  assert.match(windowsSection, /if:\s*steps\.windows-preflight\.outputs\.windows_host_preflight_status == 'ready'/);
   assert.match(windowsSection, /ni-windows-container-stdout\.txt/);
   assert.match(windowsSection, /ni-windows-container-stderr\.txt/);
   assert.doesNotMatch(windowsSection, /Assert-RunnerLabelContract\.ps1/);

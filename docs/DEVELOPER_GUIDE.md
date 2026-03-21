@@ -406,6 +406,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   That lane runs on GitHub-hosted `windows-2022`, hydrates
   `nationalinstruments/labview:2026q1-windows` with no repository runner dependency, and is expected to
   take materially longer to pull than the Linux lane.
+- If the hosted Windows runner cannot expose a Docker Windows daemon, the lane records
+  `windows_host_preflight_status = unavailable` and skips the heavy compare instead of poisoning
+  the current queue item with a non-required proof failure.
   Agents can dispatch the hosted lane while continuing with the manual Linux or Windows Docker Desktop/WSL2 lanes locally.
 - `node tools/npm/run-script.mjs priority:lane:concurrency:plan` now reads the host-plane report, host RAM budget,
   and optional Docker runtime snapshot to recommend a safe concurrent hosted/manual bundle before those lanes are
