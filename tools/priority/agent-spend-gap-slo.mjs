@@ -99,6 +99,12 @@ function roundMetric(value) {
   return Math.round(parsed * 1000) / 1000;
 }
 
+function roundPerDollar(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.round(parsed * 1000000) / 1000000;
+}
+
 function normalizeInputRef(input = null) {
   return {
     path: input?.path ?? null,
@@ -166,6 +172,74 @@ function extractThroughputEvidence(throughputScorecard = null) {
     concurrentLaneDeferredCount,
     hostedWaitEscapeCount,
     throughputReasons: reasons
+  };
+}
+
+function extractFundedThroughputEvidence({ costRollup = null, throughputScorecard = null, inputPaths = {}, observedMinutes = 0 } = {}) {
+  const billingWindow = costRollup?.billingWindow && typeof costRollup.billingWindow === 'object' ? costRollup.billingWindow : {};
+  const summaryMetrics = costRollup?.summary?.metrics && typeof costRollup.summary.metrics === 'object'
+    ? costRollup.summary.metrics
+    : {};
+  const delivery = throughputScorecard?.delivery && typeof throughputScorecard.delivery === 'object'
+    ? throughputScorecard.delivery
+    : {};
+  const fundedUsd = coerceNonNegativeNumber(billingWindow.prepaidUsd);
+  const actualUsdConsumed = coerceNonNegativeNumber(summaryMetrics.actualUsdConsumed);
+  const heuristicUsdDelta =
+    actualUsdConsumed != null && coerceNonNegativeNumber(summaryMetrics.totalUsd) != null
+      ? roundMetric(summaryMetrics.totalUsd - actualUsdConsumed)
+      : null;
+  const heuristicUsdDeltaRatio =
+    actualUsdConsumed != null && actualUsdConsumed > 0 && heuristicUsdDelta != null
+      ? roundPerDollar(heuristicUsdDelta / actualUsdConsumed)
+      : null;
+
+  const validatedPullRequestCount = coerceNonNegativeInteger(delivery.mergedPullRequestCount) ?? 0;
+  const closedIssueCount = coerceNonNegativeInteger(delivery.closedPullRequestCount) ?? 0;
+  const promotionEvidenceCount = coerceNonNegativeInteger(delivery.totalTerminalPullRequestCount) ?? (validatedPullRequestCount + closedIssueCount);
+  const hostedWaitEscapeCount = coerceNonNegativeInteger(delivery.hostedWaitEscapeCount) ?? 0;
+  const activeLaneCount =
+    coerceNonNegativeInteger(throughputScorecard?.concurrentLanes?.activeLaneCount) ??
+    coerceNonNegativeInteger(throughputScorecard?.summary?.metrics?.concurrentLaneActiveCount) ??
+    0;
+  const laneMinutesAllocated = roundMetric(activeLaneCount * Math.max(observedMinutes, 0));
+
+  const perDollar = fundedUsd != null && fundedUsd > 0
+    ? (count) => roundPerDollar(count / fundedUsd)
+    : () => null;
+
+  return {
+    fundingWindow: {
+      invoiceTurnId: normalizeText(billingWindow.invoiceTurnId) || null,
+      mode: normalizeText(billingWindow.selection?.mode) || null,
+      calibrationWindowId: normalizeText(billingWindow.selection?.calibrationWindowId) || null,
+      activationState: normalizeText(billingWindow.activationState) || null,
+      fundingPurpose: normalizeText(billingWindow.fundingPurpose) || null,
+      kind: normalizeText(billingWindow.fundingPurpose) === 'calibration' ? 'calibration' : 'operational',
+      prepaidUsd: fundedUsd,
+      actualUsdConsumed,
+      heuristicUsdDelta,
+      heuristicUsdDeltaRatio
+    },
+    metrics: {
+      validatedPullRequestCount,
+      closedIssueCount,
+      promotionEvidenceCount,
+      laneMinutesAllocated,
+      hostedWaitEscapeCount,
+      validatedPullRequestsPerFundedDollar: perDollar(validatedPullRequestCount),
+      closedIssuesPerFundedDollar: perDollar(closedIssueCount),
+      promotionEvidencePerFundedDollar: perDollar(promotionEvidenceCount),
+      laneMinutesAllocatedPerFundedDollar: perDollar(laneMinutesAllocated),
+      hostedWaitEscapesPerFundedDollar: perDollar(hostedWaitEscapeCount)
+    },
+    provenance: {
+      costRollup: normalizeInputRef(inputPaths.costRollupPath),
+      throughputScorecard: normalizeInputRef(inputPaths.throughputScorecardPath),
+      sourceKind: 'composed-scorecard',
+      sourcePathEvidence: 'Derived from agent-cost-rollup billingWindow and throughput-scorecard delivery evidence.',
+      operatorNote: 'Validated throughput per funded dollar is reported as a derived projection, not a replacement for invoice-turn reconciliation.'
+    }
   };
 }
 
@@ -365,6 +439,16 @@ export function buildAgentSpendGapSlo({
     orderedTurns.length > 1
       ? roundMetric((orderedTurns[orderedTurns.length - 1].event.ms - orderedTurns[0].event.ms) / 60000)
       : 0;
+  const fundedThroughput = extractFundedThroughputEvidence({
+    costRollup,
+    throughputScorecard,
+    inputPaths,
+    observedMinutes
+  });
+
+  if (fundedThroughput.fundingWindow.prepaidUsd == null || fundedThroughput.fundingWindow.prepaidUsd === 0) {
+    reasons.push('funded-throughput-window-unavailable');
+  }
 
   return {
     schema: REPORT_SCHEMA,
@@ -383,13 +467,14 @@ export function buildAgentSpendGapSlo({
     summary: {
       status:
         reasons.some((reason) =>
-          ['cost-rollup-unavailable', 'throughput-scorecard-unavailable', 'optimization-signal-gaps-observed', 'spend-gap-evidence-incomplete'].includes(reason)
+          ['cost-rollup-unavailable', 'throughput-scorecard-unavailable', 'optimization-signal-gaps-observed', 'spend-gap-evidence-incomplete', 'funded-throughput-window-unavailable'].includes(reason)
         )
           ? 'warn'
           : 'pass',
       reasons,
       metrics
     },
+    fundedThroughput,
     gaps
   };
 }
