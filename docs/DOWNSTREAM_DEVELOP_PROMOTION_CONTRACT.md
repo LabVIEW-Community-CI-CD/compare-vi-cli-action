@@ -7,6 +7,8 @@ It is not a second feature-development branch.
 ## Contract source of truth
 
 - Policy file: `tools/policy/downstream-promotion-contract.json`
+- Workflow: `.github/workflows/downstream-promotion.yml`
+- Required check context: `Downstream Promotion / downstream-promotion`
 - Manifest generator: `tools/priority/downstream-promotion-manifest.mjs`
 - Manifest schema: `docs/schemas/downstream-promotion-manifest-v1.schema.json`
 - Default output: `tests/results/_agent/promotion/downstream-develop-promotion-manifest.json`
@@ -69,3 +71,16 @@ node tools/npm/run-script.mjs priority:promote:downstream:manifest -- `
 
 The command fails closed when the required immutable inputs are missing or when the local
 `upstream/develop` ref resolves to a different commit than the requested source SHA.
+
+## Hosted promotion workflow
+
+Use `.github/workflows/downstream-promotion.yml` when the proving rail should be advanced from
+checked-in automation instead of ad hoc local git mutation.
+
+The workflow:
+
+- verifies that the requested `source_sha` still matches `upstream/develop`
+- runs downstream onboarding feedback against the requested consumer repository
+- emits `downstream-develop-promotion-manifest.json`
+- emits `downstream-develop-promotion-scorecard.json`
+- advances `downstream/develop` only when the downstream promotion scorecard passes

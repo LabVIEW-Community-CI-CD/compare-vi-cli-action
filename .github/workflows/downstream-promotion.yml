@@ -1,0 +1,266 @@
+name: Downstream Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: 'Immutable upstream/develop commit SHA to promote'
+        required: true
+        type: string
+      downstream_repo:
+        description: 'Consumer repository slug (owner/repo). Defaults to vars.DOWNSTREAM_PILOT_REPO.'
+        required: false
+        default: ''
+        type: string
+      comparevi_tools_release:
+        description: 'CompareVI.Tools release identity'
+        required: true
+        type: string
+      comparevi_history_release:
+        description: 'comparevi-history release identity'
+        required: true
+        type: string
+      scenario_pack_id:
+        description: 'Scenario-pack or corpus identity'
+        required: true
+        type: string
+      cookiecutter_template_id:
+        description: 'Cookiecutter/template identity'
+        required: true
+        type: string
+      started_at:
+        description: 'Optional proving start timestamp (ISO-8601 UTC)'
+        required: false
+        default: ''
+        type: string
+      create_hardening_issues:
+        description: 'Create hardening issues from downstream proving gaps'
+        required: false
+        default: false
+        type: boolean
+      fail_on_gap:
+        description: 'Fail proving when required downstream checks are missing'
+        required: false
+        default: true
+        type: boolean
+      push_downstream:
+        description: 'Advance downstream/develop when the promotion scorecard passes'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  actions: read
+  issues: write
+
+jobs:
+  downstream-promotion:
+    name: Downstream Promotion / downstream-promotion
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
+      DOWNSTREAM_REPO: ${{ inputs.downstream_repo }}
+      DOWNSTREAM_STARTED_AT: ${{ inputs.started_at }}
+      DOWNSTREAM_CREATE_ISSUES: ${{ inputs.create_hardening_issues || 'false' }}
+      DOWNSTREAM_FAIL_ON_GAP: ${{ inputs.fail_on_gap || 'false' }}
+      DOWNSTREAM_PILOT_REPO: ${{ vars.DOWNSTREAM_PILOT_REPO }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve immutable upstream source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin '+refs/heads/develop:refs/remotes/upstream/develop'
+          git fetch --no-tags origin '+refs/heads/downstream/develop:refs/remotes/origin/downstream/develop' || true
+          resolved="$(git rev-parse upstream/develop)"
+          expected="${{ inputs.source_sha }}"
+          if [ "$resolved" != "$expected" ]; then
+            echo "Requested source_sha does not match upstream/develop."
+            echo "expected=$expected"
+            echo "resolved=$resolved"
+            exit 1
+          fi
+          echo "source_sha=$resolved" >> "$GITHUB_OUTPUT"
+
+      - name: Run downstream onboarding feedback harness
+        id: feedback
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${DOWNSTREAM_REPO}"
+          if [ -z "$repo" ]; then
+            repo="${DOWNSTREAM_PILOT_REPO:-$GITHUB_REPOSITORY}"
+          fi
+          args=(
+            --repo "$repo"
+            --parent-issue 1497
+            --report tests/results/_agent/onboarding/downstream-onboarding.json
+            --success-output tests/results/_agent/onboarding/downstream-onboarding-success.json
+            --feedback-output tests/results/_agent/onboarding/downstream-onboarding-feedback.json
+          )
+          if [ -n "${DOWNSTREAM_STARTED_AT}" ]; then
+            args+=(--started-at "${DOWNSTREAM_STARTED_AT}")
+          fi
+          if [ "${DOWNSTREAM_CREATE_ISSUES}" = "true" ]; then
+            args+=(--create-hardening-issues)
+          fi
+          if [ "${DOWNSTREAM_FAIL_ON_GAP}" = "true" ]; then
+            args+=(--fail-on-gap)
+          fi
+          node tools/priority/downstream-onboarding-feedback.mjs "${args[@]}"
+
+      - name: Validate onboarding report schema
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/downstream-onboarding-report-v1.schema.json \
+            --data tests/results/_agent/onboarding/downstream-onboarding.json
+
+      - name: Validate success report schema
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-success.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/downstream-onboarding-success-v1.schema.json \
+            --data tests/results/_agent/onboarding/downstream-onboarding-success.json
+
+      - name: Validate feedback report schema
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-feedback.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/downstream-onboarding-feedback-v1.schema.json \
+            --data tests/results/_agent/onboarding/downstream-onboarding-feedback.json
+
+      - name: Generate downstream promotion manifest
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/priority/downstream-promotion-manifest.mjs \
+            --source-sha '${{ steps.source.outputs.source_sha }}' \
+            --comparevi-tools-release '${{ inputs.comparevi_tools_release }}' \
+            --comparevi-history-release '${{ inputs.comparevi_history_release }}' \
+            --scenario-pack-id '${{ inputs.scenario_pack_id }}' \
+            --cookiecutter-template-id '${{ inputs.cookiecutter_template_id }}' \
+            --proving-scorecard-ref tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json \
+            --actor '${{ github.actor }}' \
+            --output tests/results/_agent/promotion/downstream-develop-promotion-manifest.json
+
+      - name: Validate downstream promotion manifest schema
+        if: ${{ always() && hashFiles('tests/results/_agent/promotion/downstream-develop-promotion-manifest.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/downstream-promotion-manifest-v1.schema.json \
+            --data tests/results/_agent/promotion/downstream-develop-promotion-manifest.json
+
+      - name: Build downstream promotion scorecard
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-success.json') != '' && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-feedback.json') != '' && hashFiles('tests/results/_agent/promotion/downstream-develop-promotion-manifest.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/priority/downstream-promotion-scorecard.mjs \
+            --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json \
+            --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json \
+            --manifest-report tests/results/_agent/promotion/downstream-develop-promotion-manifest.json \
+            --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
+
+      - name: Validate downstream promotion scorecard schema
+        if: ${{ always() && hashFiles('tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/downstream-promotion-scorecard-v1.schema.json \
+            --data tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
+
+      - name: Promote downstream/develop ref
+        if: ${{ inputs.push_downstream }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const reportPath = 'tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json';
+          if (!fs.existsSync(reportPath)) {
+            console.error(`Downstream promotion scorecard missing: ${reportPath}`);
+            process.exit(1);
+          }
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+          if (report.summary?.status !== 'pass') {
+            console.error(`Downstream promotion scorecard must pass before promotion (status=${report.summary?.status ?? 'missing'}).`);
+            process.exit(1);
+          }
+          NODE
+          git push origin '${{ steps.source.outputs.source_sha }}:refs/heads/downstream/develop'
+
+      - name: Append downstream promotion summary
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const summaryLines = [
+            '## Downstream Promotion',
+            `- source sha: \`${process.env.SOURCE_SHA}\``,
+            `- push requested: \`${process.env.PUSH_DOWNSTREAM}\``,
+            `- downstream repo: \`${process.env.RESOLVED_REPO}\``
+          ];
+          const scorecardPath = 'tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json';
+          if (fs.existsSync(scorecardPath)) {
+            const report = JSON.parse(fs.readFileSync(scorecardPath, 'utf8'));
+            summaryLines.push(`- scorecard status: \`${report.summary?.status ?? 'unknown'}\``);
+            summaryLines.push(`- scorecard blockers: \`${report.summary?.blockerCount ?? 'unknown'}\``);
+          } else {
+            summaryLines.push('- scorecard status: `missing`');
+          }
+          const text = `${summaryLines.join('\n')}\n`;
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
+          }
+          console.log(text);
+          NODE
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+          PUSH_DOWNSTREAM: ${{ inputs.push_downstream }}
+          RESOLVED_REPO: ${{ inputs.downstream_repo || vars.DOWNSTREAM_PILOT_REPO || github.repository }}
+
+      - name: Upload downstream promotion artifacts
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/*.json', 'tests/results/_agent/promotion/*.json') != '' }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: downstream-promotion-${{ github.run_id }}
+          path: |
+            tests/results/_agent/onboarding/*.json
+            tests/results/_agent/promotion/*.json
+          if-no-files-found: error
+
+      - name: Enforce downstream proving failure
+        if: ${{ steps.feedback.outcome == 'failure' }}
+        shell: bash
+        run: |
+          echo 'Downstream onboarding feedback reported a failure.'
+          exit 1
