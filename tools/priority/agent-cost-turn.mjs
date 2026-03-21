@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const REPORT_SCHEMA = 'priority/agent-cost-turn@v1';
@@ -39,6 +40,38 @@ function normalizeReasoningEffort(value) {
 function sanitizeFileSegment(value, fallback) {
   const normalized = normalizeText(value).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
   return normalized || fallback;
+}
+
+function resolveActiveLaneBranch(explicitLaneBranch, env = process.env, execSyncFn = execSync) {
+  const explicit = normalizeText(explicitLaneBranch);
+  if (explicit) {
+    return explicit;
+  }
+
+  const headRef = normalizeText(env?.GITHUB_HEAD_REF);
+  if (headRef) {
+    return headRef;
+  }
+
+  const refName = normalizeText(env?.GITHUB_REF_NAME);
+  if (refName && refName !== 'merge') {
+    return refName;
+  }
+
+  try {
+    const currentBranch = normalizeText(
+      execSyncFn('git branch --show-current', {
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).toString('utf8')
+    );
+    if (currentBranch) {
+      return currentBranch;
+    }
+  } catch {
+    // Ignore git fallback failures and surface a clear validation error below.
+  }
+
+  return '';
 }
 
 export function parseArgs(argv = process.argv) {
@@ -213,7 +246,6 @@ export function parseArgs(argv = process.argv) {
     ['requestedModel', '--requested-model'],
     ['repository', '--repository'],
     ['laneId', '--lane-id'],
-    ['laneBranch', '--lane-branch'],
     ['sessionId', '--session-id'],
     ['turnId', '--turn-id'],
     ['agentRole', '--agent-role'],
@@ -230,6 +262,7 @@ export function parseArgs(argv = process.argv) {
     throw new Error('Missing required option: --issue-number <integer>.');
   }
 
+  options.laneBranch = resolveActiveLaneBranch(options.laneBranch);
   options.inputTokens = toNonNegativeInteger(options.inputTokens) ?? 0;
   options.cachedInputTokens = toNonNegativeInteger(options.cachedInputTokens) ?? 0;
   options.outputTokens = toNonNegativeInteger(options.outputTokens) ?? 0;
@@ -246,6 +279,9 @@ export function parseArgs(argv = process.argv) {
   }
   if (!['live', 'background'].includes(normalizeText(options.agentRole).toLowerCase())) {
     throw new Error('agent-role must be live or background.');
+  }
+  if (!normalizeText(options.laneBranch)) {
+    throw new Error('Missing required option: --lane-branch <value> or a resolvable active branch.');
   }
 
   options.effectiveModel = normalizeText(options.effectiveModel) || normalizeText(options.requestedModel);
@@ -270,6 +306,7 @@ export function buildAgentCostTurn(options, now = new Date()) {
   const normalizedRequestedReasoningEffort = normalizeReasoningEffort(options.requestedReasoningEffort);
   const normalizedEffectiveReasoningEffort =
     normalizeReasoningEffort(options.effectiveReasoningEffort) ?? normalizedRequestedReasoningEffort;
+  const resolvedLaneBranch = resolveActiveLaneBranch(options.laneBranch);
   const normalizedInputTokens = toNonNegativeInteger(options.inputTokens) ?? 0;
   const normalizedCachedInputTokens = toNonNegativeInteger(options.cachedInputTokens) ?? 0;
   const normalizedOutputTokens = toNonNegativeInteger(options.outputTokens) ?? 0;
@@ -357,7 +394,7 @@ export function buildAgentCostTurn(options, now = new Date()) {
       repository: normalizeText(options.repository),
       issueNumber: options.issueNumber,
       laneId: normalizeText(options.laneId),
-      laneBranch: normalizeText(options.laneBranch),
+      laneBranch: resolvedLaneBranch,
       sessionId: normalizeText(options.sessionId),
       turnId: normalizeText(options.turnId),
       workerSlotId: normalizeText(options.workerSlotId) || null,
@@ -404,7 +441,7 @@ function printUsage() {
   console.log('  --repository <owner/repo>');
   console.log('  --issue-number <integer>');
   console.log('  --lane-id <value>');
-  console.log('  --lane-branch <value>');
+  console.log('  --lane-branch <value>    Optional; defaults to GITHUB_HEAD_REF or the current git branch.');
   console.log('  --session-id <value>');
   console.log('  --turn-id <value>');
   console.log('  --agent-role <live|background>');
