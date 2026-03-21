@@ -9,6 +9,7 @@ export const REPORT_SCHEMA = 'priority/throughput-scorecard@v1';
 export const DEFAULT_RUNTIME_STATE_PATH = path.join('tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json');
 export const DEFAULT_DELIVERY_MEMORY_PATH = path.join('tests', 'results', '_agent', 'runtime', 'delivery-memory.json');
 export const DEFAULT_QUEUE_REPORT_PATH = path.join('tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json');
+export const DEFAULT_UTILIZATION_POLICY_PATH = path.join('tools', 'policy', 'merge-queue-utilization-target.json');
 export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'throughput', 'throughput-scorecard.json');
 
 const HELP = [
@@ -18,6 +19,7 @@ const HELP = [
   `  --runtime-state <path>   Runtime state JSON path (default: ${DEFAULT_RUNTIME_STATE_PATH}).`,
   `  --delivery-memory <path> Delivery memory JSON path (default: ${DEFAULT_DELIVERY_MEMORY_PATH}).`,
   `  --queue-report <path>    Queue supervisor report path (default: ${DEFAULT_QUEUE_REPORT_PATH}).`,
+  `  --utilization-policy <path> Merge-queue utilization policy path (default: ${DEFAULT_UTILIZATION_POLICY_PATH}).`,
   `  --output <path>          Output path (default: ${DEFAULT_OUTPUT_PATH}).`,
   '  --repo <owner/repo>      Repository slug override.',
   '  --help                   Show help.'
@@ -83,12 +85,58 @@ function coerceNonNegativeNumber(value) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function clampRatio(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.min(parsed, 1) : null;
+}
+
+function evaluateMergeQueueUtilization(queueSummary, policy = null) {
+  const mergeQueuePolicy = policy?.mergeQueue && typeof policy.mergeQueue === 'object' ? policy.mergeQueue : {};
+  const readyInventoryFloor = Number(mergeQueuePolicy.readyInventoryFloor ?? 2) || 2;
+  const occupancyFloorRatio = clampRatio(mergeQueuePolicy.occupancyFloorRatio ?? 0.5) ?? 0.5;
+  const occupancyTargetRatio = clampRatio(mergeQueuePolicy.occupancyTargetRatio ?? 1) ?? 1;
+  const treatPausedQueueAsExempt = mergeQueuePolicy.treatPausedQueueAsExempt !== false;
+  const effectiveMaxInflight = Number(queueSummary.effectiveMaxInflight ?? 0) || 0;
+  const inflight = Number(queueSummary.inflight ?? 0) || 0;
+  const readyPrInventory = Number(queueSummary.readyPrInventory ?? 0) || 0;
+  const occupancyRatio = effectiveMaxInflight > 0 ? Math.min(inflight / effectiveMaxInflight, 1) : null;
+  const reasons = [];
+
+  if (!(queueSummary.paused && treatPausedQueueAsExempt) && effectiveMaxInflight > 0) {
+    if (readyPrInventory < readyInventoryFloor) {
+      reasons.push('merge-queue-ready-inventory-below-floor');
+    }
+    if ((occupancyRatio ?? 0) < occupancyFloorRatio) {
+      reasons.push('merge-queue-occupancy-below-floor');
+    }
+  }
+
+  return {
+    target: {
+      readyInventoryFloor,
+      occupancyFloorRatio,
+      occupancyTargetRatio,
+      treatPausedQueueAsExempt
+    },
+    observed: {
+      readyPrInventory,
+      inflight,
+      effectiveMaxInflight,
+      occupancyRatio,
+      paused: queueSummary.paused
+    },
+    status: reasons.length > 0 ? 'warn' : 'pass',
+    reasons
+  };
+}
+
 export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
     runtimeStatePath: DEFAULT_RUNTIME_STATE_PATH,
     deliveryMemoryPath: DEFAULT_DELIVERY_MEMORY_PATH,
     queueReportPath: DEFAULT_QUEUE_REPORT_PATH,
+    utilizationPolicyPath: DEFAULT_UTILIZATION_POLICY_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
     repo: null,
     help: false
@@ -101,7 +149,7 @@ export function parseArgs(argv = process.argv) {
       options.help = true;
       continue;
     }
-    if (['--runtime-state', '--delivery-memory', '--queue-report', '--output', '--repo'].includes(token)) {
+    if (['--runtime-state', '--delivery-memory', '--queue-report', '--utilization-policy', '--output', '--repo'].includes(token)) {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
       }
@@ -109,6 +157,7 @@ export function parseArgs(argv = process.argv) {
       if (token === '--runtime-state') options.runtimeStatePath = next;
       if (token === '--delivery-memory') options.deliveryMemoryPath = next;
       if (token === '--queue-report') options.queueReportPath = next;
+      if (token === '--utilization-policy') options.utilizationPolicyPath = next;
       if (token === '--output') options.outputPath = next;
       if (token === '--repo') options.repo = next;
       continue;
@@ -124,6 +173,7 @@ export function buildThroughputScorecard({
   runtimeState = null,
   deliveryMemory = null,
   queueReport = null,
+  utilizationPolicy = null,
   inputPaths = {},
   now = new Date()
 }) {
@@ -155,6 +205,7 @@ export function buildThroughputScorecard({
     meanTerminalDurationMinutes: coerceNonNegativeNumber(deliveryMemory?.summary?.meanTerminalDurationMinutes),
     viHistorySuitePullRequestCount: Number(deliveryMemory?.summary?.viHistorySuitePullRequestCount ?? 0) || 0
   };
+  const mergeQueueUtilization = evaluateMergeQueueUtilization(queueSummary, utilizationPolicy);
 
   const reasons = [];
   if (queueSummary.readyPrInventory > 0 && workerPoolSummary.occupiedSlotCount === 0 && queueSummary.capacity > 0) {
@@ -163,6 +214,7 @@ export function buildThroughputScorecard({
   if (queueSummary.readyPrInventory > 0 && queueSummary.paused) {
     reasons.push('queue-paused-with-ready-inventory');
   }
+  reasons.push(...mergeQueueUtilization.reasons);
 
   const status = reasons.length > 0 ? 'warn' : 'pass';
 
@@ -173,10 +225,12 @@ export function buildThroughputScorecard({
     inputs: {
       runtimeStatePath: inputPaths.runtimeStatePath ?? null,
       deliveryMemoryPath: inputPaths.deliveryMemoryPath ?? null,
-      queueReportPath: inputPaths.queueReportPath ?? null
+      queueReportPath: inputPaths.queueReportPath ?? null,
+      utilizationPolicyPath: inputPaths.utilizationPolicyPath ?? null
     },
     workerPool: workerPoolSummary,
     queue: queueSummary,
+    mergeQueueUtilization,
     delivery: deliverySummary,
     summary: {
       status,
@@ -186,6 +240,8 @@ export function buildThroughputScorecard({
         readyPrInventory: queueSummary.readyPrInventory,
         mergeQueueInflight: queueSummary.inflight,
         mergeQueueCapacity: queueSummary.capacity,
+        mergeQueueOccupancyRatio: mergeQueueUtilization.observed.occupancyRatio,
+        mergeQueueReadyInventoryFloor: mergeQueueUtilization.target.readyInventoryFloor,
         hostedWaitEscapeCount: deliverySummary.hostedWaitEscapeCount,
         meanTerminalDurationMinutes: deliverySummary.meanTerminalDurationMinutes
       }
@@ -198,12 +254,14 @@ export function runThroughputScorecard({
   runtimeStatePath = DEFAULT_RUNTIME_STATE_PATH,
   deliveryMemoryPath = DEFAULT_DELIVERY_MEMORY_PATH,
   queueReportPath = DEFAULT_QUEUE_REPORT_PATH,
+  utilizationPolicyPath = DEFAULT_UTILIZATION_POLICY_PATH,
   outputPath = DEFAULT_OUTPUT_PATH,
   now = new Date()
 } = {}) {
   const runtimeStateInput = loadJsonInput(runtimeStatePath);
   const deliveryMemoryInput = loadJsonInput(deliveryMemoryPath);
   const queueReportInput = loadJsonInput(queueReportPath);
+  const utilizationPolicyInput = loadJsonInput(utilizationPolicyPath);
   const repository =
     normalizeText(repo) ||
     normalizeText(runtimeStateInput.payload?.repository) ||
@@ -216,10 +274,12 @@ export function runThroughputScorecard({
     runtimeState: runtimeStateInput.payload,
     deliveryMemory: deliveryMemoryInput.payload,
     queueReport: queueReportInput.payload,
+    utilizationPolicy: utilizationPolicyInput.payload,
     inputPaths: {
       runtimeStatePath: runtimeStateInput.path,
       deliveryMemoryPath: deliveryMemoryInput.path,
-      queueReportPath: queueReportInput.path
+      queueReportPath: queueReportInput.path,
+      utilizationPolicyPath: utilizationPolicyInput.path
     },
     now
   });
@@ -233,7 +293,8 @@ export function runThroughputScorecard({
     inputs: {
       runtimeState: runtimeStateInput,
       deliveryMemory: deliveryMemoryInput,
-      queueReport: queueReportInput
+      queueReport: queueReportInput,
+      utilizationPolicy: utilizationPolicyInput
     }
   };
 }

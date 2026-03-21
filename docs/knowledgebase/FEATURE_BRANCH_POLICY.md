@@ -309,11 +309,40 @@ to confirm each workflow includes both triggers.
    (`QUEUE_AUTOPILOT_MIN_INFLIGHT` floor) so enqueue pressure self-throttles under runtime saturation.
    Hosted cadence runs every 5 minutes, with immediate `--apply` runs triggered by
    `Validate` / `Policy Guard (Upstream)` completions on `develop`.
-6. Autonomous merge tooling accepts clean PRs from approved fork planes as well as upstream-owned branches. Use
+6. Treat merge-queue utilization as a throughput target, not only as a branch-protection setting. The checked-in
+   contract lives in `tools/policy/merge-queue-utilization-target.json`, and the measurable scorecard is:
+
+   ```powershell
+   node tools/npm/run-script.mjs priority:throughput:scorecard
+   ```
+
+   Current target on `develop`:
+   - keep at least `2` ready PRs available for queue admission
+   - warn when active queue occupancy falls below `50%` of `effectiveMaxInflight`
+   - aim for `100%` occupancy when the queue is active
+   - treat paused queues as operationally exempt until the pause is lifted
+
+   The scorecard writes `tests/results/_agent/throughput/throughput-scorecard.json` and now emits:
+   - `mergeQueueUtilization.target`
+   - `mergeQueueUtilization.observed`
+   - `mergeQueueUtilization.status`
+   - `mergeQueueUtilization.reasons`
+
+   Immediate reason codes:
+   - `merge-queue-ready-inventory-below-floor`
+   - `merge-queue-occupancy-below-floor`
+7. Delivery-agent receipt follow-up: project at least these merge-queue signals into runtime receipts once the
+   queue-orchestration lane takes them on:
+   - `readyPrInventory`
+   - `effectiveMaxInflight`
+   - `mergeQueueOccupancyRatio`
+   - `mergeQueueReadyInventoryFloor`
+   - latest `mergeQueueUtilization.reasons`
+8. Autonomous merge tooling accepts clean PRs from approved fork planes as well as upstream-owned branches. Use
    `AGENT_PRIORITY_ACTIVE_FORK_REMOTE=origin|personal` (or `priority:pr -- --head-remote ...`) so the PR head owner is
    explicit, then let `priority:queue:supervisor` / `priority:merge-sync` enqueue the upstream PR directly instead of
    mirroring branches back to upstream first.
-7. Standard `Validate` PR and merge-queue runs are machine-gated only: they do not use a protected `validation`
+9. Standard `Validate` PR and merge-queue runs are machine-gated only: they do not use a protected `validation`
    deployment or require environment approval. Protected environment approvals are reserved for release/promotion
    flows (`production`, `monthly-stability-release`).
 
