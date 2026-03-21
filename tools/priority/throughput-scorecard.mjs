@@ -9,6 +9,7 @@ export const REPORT_SCHEMA = 'priority/throughput-scorecard@v1';
 export const DEFAULT_RUNTIME_STATE_PATH = path.join('tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json');
 export const DEFAULT_DELIVERY_MEMORY_PATH = path.join('tests', 'results', '_agent', 'runtime', 'delivery-memory.json');
 export const DEFAULT_QUEUE_REPORT_PATH = path.join('tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json');
+export const DEFAULT_CONCURRENT_LANE_STATUS_PATH = path.join('tests', 'results', '_agent', 'runtime', 'concurrent-lane-status-receipt.json');
 export const DEFAULT_UTILIZATION_POLICY_PATH = path.join('tools', 'policy', 'merge-queue-utilization-target.json');
 export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'throughput', 'throughput-scorecard.json');
 
@@ -19,6 +20,7 @@ const HELP = [
   `  --runtime-state <path>   Runtime state JSON path (default: ${DEFAULT_RUNTIME_STATE_PATH}).`,
   `  --delivery-memory <path> Delivery memory JSON path (default: ${DEFAULT_DELIVERY_MEMORY_PATH}).`,
   `  --queue-report <path>    Queue supervisor report path (default: ${DEFAULT_QUEUE_REPORT_PATH}).`,
+  `  --concurrent-lane-status <path> Concurrent lane status receipt path (default: ${DEFAULT_CONCURRENT_LANE_STATUS_PATH}).`,
   `  --utilization-policy <path> Merge-queue utilization policy path (default: ${DEFAULT_UTILIZATION_POLICY_PATH}).`,
   `  --output <path>          Output path (default: ${DEFAULT_OUTPUT_PATH}).`,
   '  --repo <owner/repo>      Repository slug override.',
@@ -130,12 +132,51 @@ function evaluateMergeQueueUtilization(queueSummary, policy = null) {
   };
 }
 
+function summarizeConcurrentLaneStatus(input = null) {
+  const payload = input?.payload && typeof input.payload === 'object' ? input.payload : null;
+  const summary = payload?.summary && typeof payload.summary === 'object' ? payload.summary : {};
+  const orchestratorDisposition = normalizeText(summary.orchestratorDisposition) || null;
+  let workerDisposition = 'unknown';
+  if (orchestratorDisposition === 'wait-hosted-run') {
+    workerDisposition = 'retain';
+  } else if (orchestratorDisposition === 'hold-investigate') {
+    workerDisposition = 'investigate';
+  } else if (orchestratorDisposition && orchestratorDisposition.startsWith('release-')) {
+    workerDisposition = 'release';
+  }
+
+  return {
+    path: input?.path ?? null,
+    exists: input?.exists === true,
+    error: input?.error ?? null,
+    status: normalizeText(payload?.status) || (input?.exists === true ? 'unknown' : 'not-observed'),
+    hostedObservationStatus: normalizeText(payload?.hostedRun?.observationStatus) || null,
+    pullRequestObservationStatus: normalizeText(payload?.pullRequest?.observationStatus) || null,
+    orchestratorDisposition,
+    workerDisposition,
+    selectedBundleId:
+      normalizeText(summary.selectedBundleId) ||
+      normalizeText(payload?.applyReceipt?.selectedBundleId) ||
+      null,
+    laneCount: Number(summary.laneCount ?? 0) || 0,
+    activeLaneCount: Number(summary.activeLaneCount ?? 0) || 0,
+    completedLaneCount: Number(summary.completedLaneCount ?? 0) || 0,
+    failedLaneCount: Number(summary.failedLaneCount ?? 0) || 0,
+    blockedLaneCount: Number(summary.blockedLaneCount ?? 0) || 0,
+    plannedLaneCount: Number(summary.plannedLaneCount ?? 0) || 0,
+    deferredLaneCount: Number(summary.deferredLaneCount ?? 0) || 0,
+    manualLaneCount: Number(summary.manualLaneCount ?? 0) || 0,
+    shadowLaneCount: Number(summary.shadowLaneCount ?? 0) || 0
+  };
+}
+
 export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
     runtimeStatePath: DEFAULT_RUNTIME_STATE_PATH,
     deliveryMemoryPath: DEFAULT_DELIVERY_MEMORY_PATH,
     queueReportPath: DEFAULT_QUEUE_REPORT_PATH,
+    concurrentLaneStatusPath: DEFAULT_CONCURRENT_LANE_STATUS_PATH,
     utilizationPolicyPath: DEFAULT_UTILIZATION_POLICY_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
     repo: null,
@@ -149,7 +190,7 @@ export function parseArgs(argv = process.argv) {
       options.help = true;
       continue;
     }
-    if (['--runtime-state', '--delivery-memory', '--queue-report', '--utilization-policy', '--output', '--repo'].includes(token)) {
+    if (['--runtime-state', '--delivery-memory', '--queue-report', '--concurrent-lane-status', '--utilization-policy', '--output', '--repo'].includes(token)) {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
       }
@@ -157,6 +198,7 @@ export function parseArgs(argv = process.argv) {
       if (token === '--runtime-state') options.runtimeStatePath = next;
       if (token === '--delivery-memory') options.deliveryMemoryPath = next;
       if (token === '--queue-report') options.queueReportPath = next;
+      if (token === '--concurrent-lane-status') options.concurrentLaneStatusPath = next;
       if (token === '--utilization-policy') options.utilizationPolicyPath = next;
       if (token === '--output') options.outputPath = next;
       if (token === '--repo') options.repo = next;
@@ -173,6 +215,8 @@ export function buildThroughputScorecard({
   runtimeState = null,
   deliveryMemory = null,
   queueReport = null,
+  concurrentLaneStatus = null,
+  concurrentLaneStatusInput = null,
   utilizationPolicy = null,
   inputPaths = {},
   now = new Date()
@@ -206,6 +250,14 @@ export function buildThroughputScorecard({
     viHistorySuitePullRequestCount: Number(deliveryMemory?.summary?.viHistorySuitePullRequestCount ?? 0) || 0
   };
   const mergeQueueUtilization = evaluateMergeQueueUtilization(queueSummary, utilizationPolicy);
+  const concurrentLanes = summarizeConcurrentLaneStatus(
+    concurrentLaneStatusInput ?? {
+      path: inputPaths.concurrentLaneStatusPath ?? null,
+      exists: concurrentLaneStatus !== null && concurrentLaneStatus !== undefined,
+      error: null,
+      payload: concurrentLaneStatus
+    }
+  );
 
   const reasons = [];
   if (queueSummary.readyPrInventory > 0 && workerPoolSummary.occupiedSlotCount === 0 && queueSummary.capacity > 0) {
@@ -226,11 +278,13 @@ export function buildThroughputScorecard({
       runtimeStatePath: inputPaths.runtimeStatePath ?? null,
       deliveryMemoryPath: inputPaths.deliveryMemoryPath ?? null,
       queueReportPath: inputPaths.queueReportPath ?? null,
+      concurrentLaneStatusPath: inputPaths.concurrentLaneStatusPath ?? null,
       utilizationPolicyPath: inputPaths.utilizationPolicyPath ?? null
     },
     workerPool: workerPoolSummary,
     queue: queueSummary,
     mergeQueueUtilization,
+    concurrentLanes,
     delivery: deliverySummary,
     summary: {
       status,
@@ -242,6 +296,8 @@ export function buildThroughputScorecard({
         mergeQueueCapacity: queueSummary.capacity,
         mergeQueueOccupancyRatio: mergeQueueUtilization.observed.occupancyRatio,
         mergeQueueReadyInventoryFloor: mergeQueueUtilization.target.readyInventoryFloor,
+        concurrentLaneActiveCount: concurrentLanes.activeLaneCount,
+        concurrentLaneDeferredCount: concurrentLanes.deferredLaneCount,
         hostedWaitEscapeCount: deliverySummary.hostedWaitEscapeCount,
         meanTerminalDurationMinutes: deliverySummary.meanTerminalDurationMinutes
       }
@@ -254,6 +310,7 @@ export function runThroughputScorecard({
   runtimeStatePath = DEFAULT_RUNTIME_STATE_PATH,
   deliveryMemoryPath = DEFAULT_DELIVERY_MEMORY_PATH,
   queueReportPath = DEFAULT_QUEUE_REPORT_PATH,
+  concurrentLaneStatusPath = DEFAULT_CONCURRENT_LANE_STATUS_PATH,
   utilizationPolicyPath = DEFAULT_UTILIZATION_POLICY_PATH,
   outputPath = DEFAULT_OUTPUT_PATH,
   now = new Date()
@@ -261,12 +318,14 @@ export function runThroughputScorecard({
   const runtimeStateInput = loadJsonInput(runtimeStatePath);
   const deliveryMemoryInput = loadJsonInput(deliveryMemoryPath);
   const queueReportInput = loadJsonInput(queueReportPath);
+  const concurrentLaneStatusInput = loadJsonInput(concurrentLaneStatusPath);
   const utilizationPolicyInput = loadJsonInput(utilizationPolicyPath);
   const repository =
     normalizeText(repo) ||
     normalizeText(runtimeStateInput.payload?.repository) ||
     normalizeText(deliveryMemoryInput.payload?.repository) ||
     normalizeText(queueReportInput.payload?.repository) ||
+    normalizeText(concurrentLaneStatusInput.payload?.repository) ||
     resolveRepoSlug(repo) ||
     null;
   const report = buildThroughputScorecard({
@@ -274,11 +333,14 @@ export function runThroughputScorecard({
     runtimeState: runtimeStateInput.payload,
     deliveryMemory: deliveryMemoryInput.payload,
     queueReport: queueReportInput.payload,
+    concurrentLaneStatus: concurrentLaneStatusInput.payload,
+    concurrentLaneStatusInput,
     utilizationPolicy: utilizationPolicyInput.payload,
     inputPaths: {
       runtimeStatePath: runtimeStateInput.path,
       deliveryMemoryPath: deliveryMemoryInput.path,
       queueReportPath: queueReportInput.path,
+      concurrentLaneStatusPath: concurrentLaneStatusInput.path,
       utilizationPolicyPath: utilizationPolicyInput.path
     },
     now
@@ -294,6 +356,7 @@ export function runThroughputScorecard({
       runtimeState: runtimeStateInput,
       deliveryMemory: deliveryMemoryInput,
       queueReport: queueReportInput,
+      concurrentLaneStatus: concurrentLaneStatusInput,
       utilizationPolicy: utilizationPolicyInput
     }
   };

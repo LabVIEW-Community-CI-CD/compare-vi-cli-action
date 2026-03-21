@@ -12,6 +12,7 @@ test('throughput-scorecard parseArgs exposes deterministic defaults', () => {
   assert.match(options.runtimeStatePath, /delivery-agent-state\.json$/);
   assert.match(options.deliveryMemoryPath, /delivery-memory\.json$/);
   assert.match(options.queueReportPath, /queue-supervisor-report\.json$/);
+  assert.match(options.concurrentLaneStatusPath, /concurrent-lane-status-receipt\.json$/);
   assert.match(options.utilizationPolicyPath, /merge-queue-utilization-target\.json$/);
   assert.match(options.outputPath, /throughput-scorecard\.json$/);
 });
@@ -75,6 +76,7 @@ test('runThroughputScorecard writes a pass report when queue pressure and worker
   const runtimeStatePath = path.join(tempDir, 'delivery-agent-state.json');
   const deliveryMemoryPath = path.join(tempDir, 'delivery-memory.json');
   const queueReportPath = path.join(tempDir, 'queue-supervisor-report.json');
+  const concurrentLaneStatusPath = path.join(tempDir, 'concurrent-lane-status-receipt.json');
   const utilizationPolicyPath = path.join(tempDir, 'merge-queue-utilization-target.json');
   const outputPath = path.join(tempDir, 'throughput-scorecard.json');
 
@@ -125,6 +127,34 @@ test('runThroughputScorecard writes a pass report when queue pressure and worker
     'utf8'
   );
   fs.writeFileSync(
+    concurrentLaneStatusPath,
+    JSON.stringify({
+      schema: 'priority/concurrent-lane-status-receipt@v1',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'active',
+      hostedRun: {
+        observationStatus: 'active'
+      },
+      pullRequest: {
+        observationStatus: 'queued'
+      },
+      summary: {
+        selectedBundleId: 'hosted-plus-manual-linux-docker',
+        laneCount: 3,
+        activeLaneCount: 2,
+        completedLaneCount: 0,
+        failedLaneCount: 0,
+        blockedLaneCount: 0,
+        plannedLaneCount: 0,
+        deferredLaneCount: 1,
+        manualLaneCount: 1,
+        shadowLaneCount: 0,
+        orchestratorDisposition: 'wait-hosted-run'
+      }
+    }),
+    'utf8'
+  );
+  fs.writeFileSync(
     utilizationPolicyPath,
     JSON.stringify({
       schema: 'priority/merge-queue-utilization-target@v1',
@@ -139,12 +169,13 @@ test('runThroughputScorecard writes a pass report when queue pressure and worker
   );
 
   const result = runThroughputScorecard({
-    runtimeStatePath,
-    deliveryMemoryPath,
-    queueReportPath,
-    utilizationPolicyPath,
-    outputPath,
-    now: new Date('2026-03-21T03:05:00.000Z')
+      runtimeStatePath,
+      deliveryMemoryPath,
+      queueReportPath,
+      concurrentLaneStatusPath,
+      utilizationPolicyPath,
+      outputPath,
+      now: new Date('2026-03-21T03:05:00.000Z')
   });
 
   assert.equal(result.report.summary.status, 'pass');
@@ -152,9 +183,97 @@ test('runThroughputScorecard writes a pass report when queue pressure and worker
   assert.equal(result.report.delivery.hostedWaitEscapeCount, 3);
   assert.equal(result.report.queue.readySetTop[0], 1511);
   assert.equal(result.report.mergeQueueUtilization.status, 'pass');
+  assert.equal(result.report.concurrentLanes.status, 'active');
+  assert.equal(result.report.concurrentLanes.workerDisposition, 'retain');
+  assert.equal(result.report.concurrentLanes.deferredLaneCount, 1);
+  assert.equal(result.report.summary.metrics.concurrentLaneActiveCount, 2);
+  assert.equal(result.report.summary.metrics.concurrentLaneDeferredCount, 1);
   assert.equal(result.report.summary.metrics.mergeQueueOccupancyRatio, 1);
   assert.equal(result.report.summary.metrics.mergeQueueReadyInventoryFloor, 1);
   assert.ok(fs.existsSync(outputPath));
+});
+
+test('buildThroughputScorecard projects concurrent lane status without changing warning semantics', () => {
+  const report = buildThroughputScorecard({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeState: {
+      workerPool: {
+        targetSlotCount: 4,
+        occupiedSlotCount: 2,
+        availableSlotCount: 2,
+        releasedLaneCount: 1,
+        utilizationRatio: 0.5
+      },
+      activeCodingLanes: 2
+    },
+    deliveryMemory: {
+      summary: {
+        totalTerminalPullRequestCount: 9,
+        mergedPullRequestCount: 7,
+        closedPullRequestCount: 2,
+        hostedWaitEscapeCount: 4,
+        meanTerminalDurationMinutes: 11.5,
+        viHistorySuitePullRequestCount: 2
+      }
+    },
+    queueReport: {
+      inflight: 2,
+      capacity: 1,
+      effectiveMaxInflight: 2,
+      paused: false,
+      throughputController: { mode: 'healthy' },
+      governor: { mode: 'normal' },
+      readiness: {
+        readySet: [{ number: 1589 }, { number: 1590 }]
+      }
+    },
+    concurrentLaneStatus: {
+      schema: 'priority/concurrent-lane-status-receipt@v1',
+      status: 'settled',
+      hostedRun: {
+        observationStatus: 'completed'
+      },
+      pullRequest: {
+        observationStatus: 'queued'
+      },
+      summary: {
+        selectedBundleId: 'hosted-plus-host-native-32-shadow',
+        laneCount: 3,
+        activeLaneCount: 0,
+        completedLaneCount: 2,
+        failedLaneCount: 0,
+        blockedLaneCount: 0,
+        plannedLaneCount: 0,
+        deferredLaneCount: 1,
+        manualLaneCount: 0,
+        shadowLaneCount: 1,
+        orchestratorDisposition: 'release-with-deferred-local'
+      }
+    },
+    inputPaths: {
+      concurrentLaneStatusPath: 'tests/results/_agent/runtime/concurrent-lane-status-receipt.json'
+    },
+    utilizationPolicy: {
+      mergeQueue: {
+        readyInventoryFloor: 2,
+        occupancyFloorRatio: 0.5,
+        occupancyTargetRatio: 1,
+        treatPausedQueueAsExempt: true
+      }
+    },
+    now: new Date('2026-03-21T03:11:00.000Z')
+  });
+
+  assert.equal(report.summary.status, 'pass');
+  assert.deepEqual(report.summary.reasons, []);
+  assert.equal(report.concurrentLanes.status, 'settled');
+  assert.equal(report.concurrentLanes.hostedObservationStatus, 'completed');
+  assert.equal(report.concurrentLanes.pullRequestObservationStatus, 'queued');
+  assert.equal(report.concurrentLanes.orchestratorDisposition, 'release-with-deferred-local');
+  assert.equal(report.concurrentLanes.workerDisposition, 'release');
+  assert.equal(report.concurrentLanes.shadowLaneCount, 1);
+  assert.equal(report.summary.metrics.concurrentLaneActiveCount, 0);
+  assert.equal(report.summary.metrics.concurrentLaneDeferredCount, 1);
 });
 
 test('buildThroughputScorecard warns when merge-queue ready inventory drops below the defined floor', () => {
