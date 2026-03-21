@@ -38,6 +38,15 @@
       "type": [
         "string",
         "null"
+      ],
+      "enum": [
+        null,
+        "gh-token-env",
+        "github-token-env",
+        "gh-enterprise-token-env",
+        "gh-token-file",
+        "github-token-file",
+        "standard-host-token-file"
       ]
     },
     "forkRun": {

@@ -16,6 +16,7 @@ import {
   normalizeDependabotAlert,
   parseNextLinkFromHeader,
   parseArgs,
+  resolveTokenResult,
   runSecurityIntake,
   summarizeDependabotAlerts,
   verifyLocalRemediationForAlert
@@ -103,6 +104,42 @@ test('parseArgs supports thresholds, routing, and override flags', () => {
   assert.equal(parsed.overrideReason, 'release freeze');
   assert.equal(parsed.overrideExpiresAt, '2026-04-01T00:00:00Z');
   assert.equal(parsed.overrideTicket, '#999');
+});
+
+test('security-intake token resolution honors GITHUB_TOKEN_FILE and the standard host fallback', () => {
+  const githubTokenFile = resolveTokenResult(
+    {
+      GITHUB_TOKEN_FILE: 'C:\\custom-github-token.txt',
+    },
+    {
+      readFileSyncFn: (filePath) => {
+        assert.equal(filePath, 'C:\\custom-github-token.txt');
+        return ' file-token ';
+      },
+      platform: 'win32',
+    }
+  );
+
+  assert.deepEqual(githubTokenFile, {
+    token: 'file-token',
+    source: 'github-token-file'
+  });
+
+  const hostFallback = resolveTokenResult(
+    {},
+    {
+      readFileSyncFn: (filePath) => {
+        assert.equal(filePath, '/mnt/c/github_token.txt');
+        return ' fallback-token ';
+      },
+      platform: 'linux',
+    }
+  );
+
+  assert.deepEqual(hostFallback, {
+    token: 'fallback-token',
+    source: 'standard-host-token-file'
+  });
 });
 
 test('summaries and breaches calculate expected values', () => {
@@ -419,7 +456,7 @@ test('runSecurityIntake writes deterministic report and routes on breach', async
     {
       now,
       resolveRepositorySlugFn: () => 'example/repo',
-      resolveTokenFn: () => 'token',
+      resolveTokenFn: () => ({ token: 'token', source: 'github-token-file' }),
       listDependabotAlertsFn: async ({ state }) => {
         if (state === 'open') return [sampleAlert()];
         return [];
@@ -440,10 +477,12 @@ test('runSecurityIntake writes deterministic report and routes on breach', async
   assert.equal(result.report.route.issueNumber, 123);
   assert.equal(result.report.flags.routeOnBreach, true);
   assert.equal(result.report.flags.failOnBreach, true);
+  assert.equal(result.report.authSource, 'github-token-file');
   assert.equal(result.report.remediation.candidateCount, 1);
 
   const persisted = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
   assert.equal(persisted.schema, 'priority/security-intake@v1');
+  assert.equal(persisted.authSource, 'github-token-file');
   assert.equal(persisted.route.issueNumber, 123);
   assert.deepEqual(persisted.route.labels, DEFAULT_ROUTE_LABELS);
   assert.equal(persisted.verification.platformStale, false);

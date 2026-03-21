@@ -507,6 +507,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `Authorization unavailable` or `authenticated-no-admin`, rotate `GH_TOKEN`/`GITHUB_TOKEN` secrets in upstream. For
   Dependabot-triggered runs, seed `GH_TOKEN` in Dependabot secret scope as well:
   `gh secret set GH_TOKEN --repo <owner/repo> --app dependabot`.
+- Node-based security/policy helpers now share the same GitHub token precedence:
+  `GH_TOKEN`, `GITHUB_TOKEN`, `GH_TOKEN_FILE`, `GITHUB_TOKEN_FILE`, then the standard host token file fallback
+  (`C:\github_token.txt` on Windows, `/mnt/c/github_token.txt` on non-Windows host planes).
 - Use `node tools/npm/run-script.mjs priority:policy:apply` only with admin token scope when you intentionally need to
   sync GitHub protections/rulesets back to `tools/priority/policy.json`.
 - Run `node tools/npm/run-script.mjs priority:commit-integrity -- --pr <number>` to evaluate commit trust posture
