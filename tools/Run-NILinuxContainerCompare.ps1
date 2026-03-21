@@ -2030,6 +2030,7 @@ $capture = [ordered]@{
   timedOut       = $false
   dockerServerOs = $null
   dockerContext  = $null
+  observedDockerHost = $null
   baseVi         = $null
   headVi         = $null
   reportPath     = $null
@@ -2203,10 +2204,13 @@ try {
       observed = [ordered]@{
         osType = $runtimeObj.observed.osType
         context = $runtimeObj.observed.context
+        dockerHost = $runtimeObj.observed.dockerHost
       }
     }
     $capture.dockerServerOs = $runtimeObj.observed.osType
     $capture.dockerContext = $runtimeObj.observed.context
+    $capture.observedDockerHost = $runtimeObj.observed.dockerHost
+    Write-Host ("[ni-linux-container-compare] observedDockerHost={0} dockerContext={1} dockerServerOs={2} runtimeSnapshot={3}" -f (($capture.observedDockerHost ?? '<null>')), (($capture.dockerContext ?? '<null>')), (($capture.dockerServerOs ?? '<null>')), $runtimeSnapshot) -ForegroundColor DarkCyan
   } catch {
     $capture.runtimeDeterminism = [ordered]@{
       status = 'error'

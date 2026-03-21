@@ -449,6 +449,7 @@ exit 0
     Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-windows'
     Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
     Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
+    Set-Item Env:DOCKER_HOST 'npipe:////./pipe/docker_engine'
 
     $baseVi = Join-Path $work 'Base.vi'
     $headVi = Join-Path $work 'Head.vi'
@@ -592,6 +593,8 @@ exit 0
     $capture.labviewPath | Should -Be $script:ContainerLabVIEWPath
     $capture.flags | Should -Contain '-noattr'
     $capture.flags | Should -Contain '-Headless'
+    $capture.observedDockerHost | Should -Be 'npipe:////./pipe/docker_engine'
+    $capture.runtimeDeterminism.observed.dockerHost | Should -Be 'npipe:////./pipe/docker_engine'
     $capture.timedOut | Should -BeFalse
     $capture.headlessContract.required | Should -BeTrue
     $capture.headlessContract.enforcedCliHeadless | Should -BeTrue
@@ -631,6 +634,7 @@ exit 0
     $cpIndex = [array]::IndexOf($records, $cpRecords[0])
     $rmIndex = [array]::IndexOf($records, $rmRecords[0])
     $cpIndex | Should -BeLessThan $rmIndex
+    ($output -join "`n") | Should -Match 'observedDockerHost=npipe:////./pipe/docker_engine'
   }
 
   It 'validates report flag labels against docker compare flags' {

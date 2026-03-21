@@ -46,6 +46,8 @@ test('validate workflow Linux VI-history lane consumes shared dispatch-plan outp
   assert.match(workflow, /Append VI history Linux lane plan/);
   assert.match(workflow, /needs\.vi-history-scenarios-plan\.outputs\.execute_lanes == 'true'/);
   assert.match(workflow, /needs\.vi-history-scenarios-plan\.outputs\.history_scenario_set/);
+  assert.match(linuxSection, /Show Linux live Docker evidence/);
+  assert.match(linuxSection, /Show-NIContainerCaptureEvidence\.ps1/);
   assert.doesNotMatch(workflow, /Resolve VI history Linux lane execution mode/);
   assert.doesNotMatch(workflow, /vi-history-scenarios-skip-note:/);
   assert.match(linuxSection, /permissions:\s*\r?\n\s+contents: read/);
@@ -69,5 +71,7 @@ test('validate workflow Windows VI-history lane is gated by shared dispatch plan
   assert.match(windowsSection, /Test-WindowsNI2026q1HostPreflight\.ps1/);
   assert.match(windowsSection, /-ExecutionSurface 'github-hosted-windows'/);
   assert.match(windowsSection, /Run-NIWindowsContainerCompare\.ps1/);
+  assert.match(windowsSection, /Show Windows live Docker evidence/);
+  assert.match(windowsSection, /Show-NIContainerCaptureEvidence\.ps1/);
   assert.doesNotMatch(windowsSection, /Assert-RunnerLabelContract\.ps1/);
 });

@@ -1350,12 +1350,30 @@ jobs:
           $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
           $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
           $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+          $observedDockerHost = if ($capture.PSObject.Properties['observedDockerHost']) { [string]$capture.observedDockerHost } else { '' }
+          $dockerContext = if ($capture.PSObject.Properties['dockerContext']) { [string]$capture.dockerContext } else { '' }
+          $dockerServerOs = if ($capture.PSObject.Properties['dockerServerOs']) { [string]$capture.dockerServerOs } else { '' }
           Write-Host ("[linux-compare] exit={0} gateOutcome={1} resultClass={2}" -f $compareExit, $gateOutcome, $resultClass)
+          Write-Host ("[linux-compare] observedDockerHost={0} dockerContext={1} dockerServerOs={2} capture={3}" -f ($observedDockerHost ?? '<null>'), ($dockerContext ?? '<null>'), ($dockerServerOs ?? '<null>'), $capturePath)
           if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
             exit $compareExit
           }
         } elseif ($compareExit -ne 0) {
           throw ("Linux compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
+        }
+
+    - name: Show Linux live Docker evidence
+      if: always() && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
+      run: |
+        $resultsRoot = 'tests/results/local-parity/linux'
+        $capturePath = Join-Path $resultsRoot 'ni-linux-container-capture.json'
+        if (Test-Path -LiteralPath $capturePath -PathType Leaf) {
+          pwsh -NoLogo -NoProfile -File tools/Show-NIContainerCaptureEvidence.ps1 `
+            -CapturePath $capturePath `
+            -BasePath $resultsRoot `
+            -TailLineCount 20
+        } else {
+          Write-Host ("::warning::Linux compare capture not found at {0}" -f $capturePath)
         }
 
     - name: Validate Linux comparison report artifact contract
@@ -1603,12 +1621,31 @@ jobs:
           $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
           $gateOutcome = if ($capture.PSObject.Properties['gateOutcome']) { [string]$capture.gateOutcome } else { '' }
           $resultClass = if ($capture.PSObject.Properties['resultClass']) { [string]$capture.resultClass } else { '' }
+          $observedDockerHost = if ($capture.PSObject.Properties['observedDockerHost']) { [string]$capture.observedDockerHost } else { '' }
+          $dockerContext = if ($capture.PSObject.Properties['dockerContext']) { [string]$capture.dockerContext } else { '' }
+          $dockerServerOs = if ($capture.PSObject.Properties['dockerServerOs']) { [string]$capture.dockerServerOs } else { '' }
           Write-Host ("[windows-compare] exit={0} gateOutcome={1} resultClass={2}" -f $compareExit, $gateOutcome, $resultClass)
+          Write-Host ("[windows-compare] observedDockerHost={0} dockerContext={1} dockerServerOs={2} capture={3}" -f ($observedDockerHost ?? '<null>'), ($dockerContext ?? '<null>'), ($dockerServerOs ?? '<null>'), $capturePath)
           if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
             exit $compareExit
           }
         } elseif ($compareExit -ne 0) {
           throw ("Windows compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
+        }
+
+    - name: Show Windows live Docker evidence
+      if: always()
+      shell: pwsh
+      run: |
+        $resultsRoot = 'tests/results/local-parity/windows'
+        $capturePath = Join-Path $resultsRoot 'ni-windows-container-capture.json'
+        if (Test-Path -LiteralPath $capturePath -PathType Leaf) {
+          pwsh -NoLogo -NoProfile -File tools/Show-NIContainerCaptureEvidence.ps1 `
+            -CapturePath $capturePath `
+            -BasePath $resultsRoot `
+            -TailLineCount 20
+        } else {
+          Write-Host ("::warning::Windows compare capture not found at {0}" -f $capturePath)
         }
 
     - name: Validate Windows comparison report artifact contract
