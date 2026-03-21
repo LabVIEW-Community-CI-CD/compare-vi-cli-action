@@ -12,6 +12,15 @@
       "reason": "merge_queue-unsupported-throughput-fork"
     }
   },
+  "forkProfile": {
+    "branches": {
+      "develop": {
+        "branch_class_id": "fork-mirror",
+        "allow_force_pushes": true,
+        "allow_fork_syncing": false
+      }
+    }
+  },
   "branches": {
     "develop": {
       "branch_class_id": "upstream-integration",

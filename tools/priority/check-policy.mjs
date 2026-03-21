@@ -169,13 +169,20 @@ function normalizePortabilityReason(reason, fallback = null) {
   return normalized.length > 0 ? normalized : fallback;
 }
 
-function resolveManifestPortabilityOverride(manifest, repositorySlug) {
+function resolveManifestRepoProfile(manifest, repositorySlug) {
   const normalizedRepositorySlug = String(repositorySlug ?? '').trim().toLowerCase();
   const repoProfileEntry = Object.entries(manifest?.repoProfiles ?? {}).find(
     ([slug]) => String(slug ?? '').trim().toLowerCase() === normalizedRepositorySlug
   );
-  const repoProfile = repoProfileEntry?.[1];
-  if (!repoProfile || typeof repoProfile !== 'object') {
+  return repoProfileEntry?.[1] && typeof repoProfileEntry[1] === 'object'
+    ? repoProfileEntry[1]
+    : null;
+}
+
+function resolveManifestPortabilityOverride(manifest, repositorySlug) {
+  const normalizedRepositorySlug = String(repositorySlug ?? '').trim().toLowerCase();
+  const repoProfile = resolveManifestRepoProfile(manifest, normalizedRepositorySlug);
+  if (!repoProfile) {
     return null;
   }
 
@@ -200,6 +207,46 @@ function resolveManifestPortabilityOverride(manifest, repositorySlug) {
   throw new Error(
     `Invalid repo portability profile for ${repositorySlug}: unsupported rulesetMode '${mode}'.`
   );
+}
+
+function mergeBranchExpectationOverrides(baseExpectation, overrideExpectation) {
+  if (!overrideExpectation || typeof overrideExpectation !== 'object') {
+    return baseExpectation;
+  }
+  return {
+    ...(baseExpectation ?? {}),
+    ...overrideExpectation
+  };
+}
+
+function applyBranchExpectationOverrides(branches, overrides) {
+  if (!branches || typeof branches !== 'object' || !overrides || typeof overrides !== 'object') {
+    return branches;
+  }
+
+  for (const [branch, overrideExpectation] of Object.entries(overrides)) {
+    branches[branch] = mergeBranchExpectationOverrides(branches[branch], overrideExpectation);
+  }
+
+  return branches;
+}
+
+function buildEffectiveManifest(manifest, repoData, repositorySlug) {
+  const effectiveManifest = structuredClone(manifest ?? {});
+  const repoProfile = resolveManifestRepoProfile(effectiveManifest, repositorySlug);
+
+  if (repoData?.fork === true) {
+    applyBranchExpectationOverrides(
+      effectiveManifest.branches,
+      effectiveManifest?.forkProfile?.branches
+    );
+  }
+
+  if (repoProfile?.branchOverrides && typeof repoProfile.branchOverrides === 'object') {
+    applyBranchExpectationOverrides(effectiveManifest.branches, repoProfile.branchOverrides);
+  }
+
+  return effectiveManifest;
 }
 
 function buildRulesetPortabilityProfile(_repoData, overrides = {}) {
@@ -1274,6 +1321,23 @@ function mergeBranchStatesByName(branchStates, refreshedBranchStates) {
   return branchStates.map((entry) => replacements.get(entry.branch) ?? entry);
 }
 
+function bindStateToManifest(state, manifest) {
+  const branchExpectations = manifest?.branches ?? {};
+  const rulesetExpectations = manifest?.rulesets ?? {};
+
+  return {
+    ...state,
+    branchStates: (state?.branchStates ?? []).map((entry) => ({
+      ...entry,
+      expectations: branchExpectations[entry.branch] ?? entry.expectations
+    })),
+    rulesetStates: (state?.rulesetStates ?? []).map((entry) => ({
+      ...entry,
+      expectations: rulesetExpectations[entry.key] ?? entry.expectations
+    }))
+  };
+}
+
 function evaluateDiffs(manifest, state, options = {}) {
   const repoDiffs = compareRepoSettings(manifest.repo ?? {}, state.repoData ?? {});
   const queueManagedBranches =
@@ -1499,9 +1563,9 @@ export async function run({
     }
     const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
 
-    let initialState;
+    let initialStateRaw;
     try {
-      initialState = await invokeWithAuthFallback('collectState', (token) =>
+      initialStateRaw = await invokeWithAuthFallback('collectState', (token) =>
         collectState(manifest, repoUrl, token, fetchFn, log)
       );
     } catch (authError) {
@@ -1515,9 +1579,9 @@ export async function run({
       throw authError;
     }
     if (options.debug) {
-      const repoKeys = initialState.repoData ? Object.keys(initialState.repoData) : [];
+      const repoKeys = initialStateRaw.repoData ? Object.keys(initialStateRaw.repoData) : [];
       dbg(`Repo response keys: ${repoKeys.length ? repoKeys.join(', ') : '(none)'}`);
-      for (const entry of initialState.branchStates) {
+      for (const entry of initialStateRaw.branchStates) {
         if (entry.error) {
           dbg(`Branch ${entry.branch} protection fetch error: ${entry.error.message}`);
         } else {
@@ -1525,7 +1589,7 @@ export async function run({
           dbg(`Branch ${entry.branch} protection keys: ${Object.keys(protection).join(', ') || '(none)'}`);
         }
       }
-      for (const entry of initialState.rulesetStates) {
+      for (const entry of initialStateRaw.rulesetStates) {
         if (entry.error) {
           dbg(`Ruleset ${entry.key ?? entry.id} fetch error: ${entry.error.message}`);
         } else {
@@ -1539,7 +1603,17 @@ export async function run({
     }
 
     const repositorySlug = `${owner}/${repo}`;
-    const manifestPortabilityOverride = resolveManifestPortabilityOverride(manifest, repositorySlug);
+    const effectiveManifest = buildEffectiveManifest(manifest, initialStateRaw.repoData, repositorySlug);
+    const initialState = bindStateToManifest(initialStateRaw, effectiveManifest);
+
+    if (
+      initialStateRaw.repoData?.fork === true &&
+      effectiveManifest?.forkProfile?.branches?.develop
+    ) {
+      log('[policy] Fork mirror branch policy override applied for develop.');
+    }
+
+    const manifestPortabilityOverride = resolveManifestPortabilityOverride(effectiveManifest, repositorySlug);
     if (
       manifestPortabilityOverride?.queueManagedRulesetsPortable === false &&
       initialState.repoData?.fork !== true
@@ -1558,8 +1632,8 @@ export async function run({
       log('[policy] Queue-managed fork-local ruleset enforcement is relaxed for this repository.');
     }
 
-    let queueManagedBranches = deriveActiveQueueManagedBranches(manifest, portabilityProfile);
-    const initialDiffs = evaluateDiffs(manifest, initialState, {
+    let queueManagedBranches = deriveActiveQueueManagedBranches(effectiveManifest, portabilityProfile);
+    const initialDiffs = evaluateDiffs(effectiveManifest, initialState, {
       queueManagedBranches,
       ignoreRulesetEntryFn: (entry) => shouldIgnoreRulesetEntry(entry, portabilityProfile)
     });
@@ -1651,7 +1725,7 @@ export async function run({
               reason: `ruleset ${entry.key ?? entry.id}: merge_queue unsupported`
             });
             report.portability = portabilityProfile;
-            queueManagedBranches = deriveActiveQueueManagedBranches(manifest, portabilityProfile);
+            queueManagedBranches = deriveActiveQueueManagedBranches(effectiveManifest, portabilityProfile);
             log(
               `[policy] Fork ruleset portability downgrade detected for ${report.repository}: merge_queue rules are unsupported on this fork. Continuing with non-queue ruleset enforcement only.`
             );
@@ -1677,10 +1751,11 @@ export async function run({
 
       await applyBranchUpdates(collectBranchStatesNeedingUpdates(branchStatesForApply, queueManagedBranches));
 
-      const postState = await invokeWithAuthFallback('collectState(post-apply)', (token) =>
+      const postStateRaw = await invokeWithAuthFallback('collectState(post-apply)', (token) =>
         collectState(manifest, repoUrl, token, fetchFn, log)
       );
-      const postDiffs = evaluateDiffs(manifest, postState, {
+      const postState = bindStateToManifest(postStateRaw, effectiveManifest);
+      const postDiffs = evaluateDiffs(effectiveManifest, postState, {
         queueManagedBranches,
         ignoreRulesetEntryFn: (entry) => shouldIgnoreRulesetEntry(entry, portabilityProfile)
       });

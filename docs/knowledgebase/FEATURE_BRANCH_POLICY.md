@@ -116,6 +116,12 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 - **Admin bypass**: leave disabled; administrators should only intervene when `priority:policy` confirms parity.
 - **Reapply**: Use `node tools/npm/run-script.mjs priority:policy -- --apply` to push the manifest configuration when drift is detected.
 
+### Fork `develop`
+- **Branch class**: mirror rail, not a human integration branch.
+- **Force alignment**: fork `develop` allows force-push so upstream parity can be restored without remediation PR churn.
+- **Fork syncing**: stays disabled in the checked-in policy until GitHub's fork-sync behavior is proven deterministic for this rail.
+- **Authority split**: upstream `develop` remains the protected integration rail; the fork override only changes fork-hosted branch protection behavior.
+
 #### Requirements verification gate (local runbook)
 
 - Generate and evaluate the gate summary locally:
