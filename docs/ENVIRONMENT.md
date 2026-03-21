@@ -116,11 +116,11 @@ Common remediation:
 ## Tooling helpers
 
 | Variable | Purpose |
-| -------- | ------- |
+| --- | --- |
 | `COMPAREVI_TOOLS_IMAGE` | Default image when `-UseToolsImage` is set without `-ToolsImageTag`. |
-|                          | Used by `tools/Run-NonLVChecksInDocker.ps1`. |
-|                          | Example: `ghcr.io/labview-community-ci-cd/comparevi-tools:latest`. |
-|                          | Mutable tags like `latest` are not sufficient freshness evidence by themselves; repo tooling now forces pull-or-digest evidence before treating them as stale. |
+| | Used by `tools/Run-NonLVChecksInDocker.ps1`. |
+| | Example: `ghcr.io/labview-community-ci-cd/comparevi-tools:latest`. |
+| | Mutable tags like `latest` are not sufficient freshness evidence by themselves; repo tooling now forces pull-or-digest evidence before treating them as stale. |
 
 ## Schema locations
 
@@ -131,7 +131,7 @@ Common remediation:
 ## Runbook & fixture reporting
 
 | Variable | Purpose |
-| -------- | ------- |
+| --- | --- |
 | `RUNBOOK_LOOP_ITERATIONS`, `RUNBOOK_LOOP_QUICK`, `RUNBOOK_LOOP_FAIL_ON_DIFF` | Integration runbook knobs |
 | `FAIL_ON_NEW_STRUCTURAL`, `SUMMARY_VERBOSE` | Fixture reporting strictness |
 | `DELTA_FORCE_V2`, `DELTA_SCHEMA_VERSION` | Fixture delta schema selection |

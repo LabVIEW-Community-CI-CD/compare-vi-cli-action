@@ -61,7 +61,7 @@ Begin updating workflows now to avoid disruption.
 ## 🧪 Contract / Coverage Additions
 
 | Area | Addition | Purpose |
-|------|----------|---------|
+| --- | --- | --- |
 | CompareVI | Short-circuit contract test | Ensures identical-path detection stays stable |
 | Release | Checklist verifier script | Prevents partial / inconsistent tag creation |
 | Runbook | Schema + script | Standardizes environment readiness & documentation |
@@ -69,7 +69,7 @@ Begin updating workflows now to avoid disruption.
 ## 🔭 Roadmap (Forward Looking)
 
 | Target | Planned Item | Status |
-|--------|--------------|--------|
+| --- | --- | --- |
 | v0.5.0 | Remove legacy Base/Head fallback | Planned |
 | v0.5.0 | Expand naming guard to scripts + docs | Planned |
 | v0.5.x | Potential additional runbook event enrichment | Under evaluation |

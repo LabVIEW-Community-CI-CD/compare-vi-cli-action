@@ -69,7 +69,7 @@ Next Update ETA: <time>
 ## 8. Decision Matrix Snapshot
 
 | Scenario | Action | Tag Path |
-|----------|--------|---------|
+| --- | --- | --- |
 | Single feature regression (naming warning too noisy) | Hotfix adjust warning gating | v0.4.1 |
 | Bitness guard false positives | Hotfix relax guard behind env | v0.4.1 |
 | Multiple interdependent failures | Full rollback | v0.3.x line |

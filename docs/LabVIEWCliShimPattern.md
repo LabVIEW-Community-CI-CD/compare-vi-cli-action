@@ -57,9 +57,9 @@ abstraction, and clean up temporary overrides.
 
 ## Versioning
 
-| Version | Date       | Commit                                  | Notes                            |
-|---------|------------|-----------------------------------------|----------------------------------|
-| 1.0     | 2025-10-14 | 9a3ee054e21157311443c134b9e7dece29f03ce4 | Initial definition and example. |
+| Version | Date | Commit | Notes |
+| --- | --- | --- | --- |
+| 1.0 | 2025-10-14 | 9a3ee054e21157311443c134b9e7dece29f03ce4 | Initial definition and example. |
 
 When the pattern changes (for example, to support additional providers or expanded environment handling),
 increment the version, update this document, and annotate the affected shims with the new version number.
