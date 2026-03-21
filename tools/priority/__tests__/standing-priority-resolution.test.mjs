@@ -19,6 +19,7 @@ import {
   determinePrioritySyncExitCode,
   isStandingPriorityCacheCandidate,
   resolveStandingPriorityLabels,
+  resolveStandingPriorityRepositorySlug,
   resolveStandingPriorityFromSources,
   resolveUpstreamRepositorySlug,
   resolveStandingPriorityLookupPlan,
@@ -2291,6 +2292,24 @@ test('resolveUpstreamRepositorySlug honors explicit env override', async (t) => 
     { AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'upstream-owner/compare-vi-cli-action' }
   );
   assert.equal(upstream, 'upstream-owner/compare-vi-cli-action');
+});
+
+test('resolveStandingPriorityRepositorySlug prefers the canonical upstream slug for fork worktrees', async (t) => {
+  const repoRoot = await mkdtemp(path.join(tmpdir(), 'standing-repo-slug-'));
+  t.after(() => rm(repoRoot, { recursive: true, force: true }));
+
+  await mkdir(path.join(repoRoot, '.git'), { recursive: true });
+  await writeFile(
+    path.join(repoRoot, '.git', 'config'),
+    '[remote "origin"]\n  url = https://github.com/svelderrainruiz/compare-vi-cli-action.git\n[remote "upstream"]\n  url = https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action.git\n',
+    'utf8'
+  );
+
+  const slug = resolveStandingPriorityRepositorySlug(repoRoot, {
+    GITHUB_REPOSITORY: 'svelderrainruiz/compare-vi-cli-action'
+  });
+
+  assert.equal(slug, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
 });
 
 test('resolveStandingPriorityLookupPlan checks upstream when fork lookup reports empty', async () => {

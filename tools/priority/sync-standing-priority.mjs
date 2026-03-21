@@ -1212,6 +1212,11 @@ export function resolveRepositorySlug(repoRoot, env = process.env) {
   return null;
 }
 
+export function resolveStandingPriorityRepositorySlug(repoRoot, env = process.env) {
+  const resolvedSlug = resolveRepositorySlug(repoRoot, env);
+  return resolveUpstreamRepositorySlug(repoRoot, resolvedSlug, env) || resolvedSlug;
+}
+
 function normalizeRepositorySlug(slug) {
   return typeof slug === 'string' ? slug.trim().toLowerCase() : '';
 }
@@ -2547,7 +2552,7 @@ export async function main(options = {}) {
     Boolean(options.autoSelectNext) ||
     normalizeBooleanValue((options.env || process.env).AGENT_PRIORITY_AUTO_SELECT_NEXT);
   const repoRoot = gitRoot();
-  const slug = resolveRepositorySlug(repoRoot, options.env || process.env);
+  const slug = resolveStandingPriorityRepositorySlug(repoRoot, options.env || process.env);
   const standingPriorityLabels = resolveStandingPriorityLabels(repoRoot, slug);
   const cachePath = path.join(repoRoot, '.agent_priority_cache.json');
   const hasCacheFile = fs.existsSync(cachePath);
