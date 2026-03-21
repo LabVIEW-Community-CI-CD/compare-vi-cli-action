@@ -33,6 +33,7 @@ This contract now makes the three collaboration planes explicit:
 | `upstream-integration` | upstream | `develop` | Canonical integration branch | Queue-managed squash only |
 | `upstream-release` | upstream | `main` | Protected release branch | Queue-managed squash only |
 | `upstream-release-prep` | upstream | `release/*` | Release-preparation branches | Rebase-only PR promotion |
+| `downstream-consumer-proving-rail` | upstream | `downstream/develop` | Consumer proving rail fed from immutable upstream manifests | Promotion-manifest only |
 | `fork-mirror-develop` | fork | `develop` | Mirror/sync copy of upstream `develop` | Mirror-only, never an implementation or PR source surface |
 | `fork-passive-main` | fork | `main` | Optional passive mirror of upstream `main` | Mirror-only |
 | `lane` | upstream or fork | `issue/*` | Short-lived implementation branches | PR source only |
@@ -50,6 +51,7 @@ The `Via` column below mirrors the exact `allowedTransitions[*].via` tokens from
 | `feature` | `promote` | `upstream-integration` | `pull-request` |
 | `lane` | `promote` | `upstream-release-prep` | `pull-request` |
 | `upstream-release-prep` | `promote` | `upstream-release` | `pull-request` |
+| `upstream-integration` | `promote` | `downstream-consumer-proving-rail` | `downstream-promotion-manifest` |
 | `upstream-integration` | `sync` | `fork-mirror-develop` | `priority:develop:sync` |
 | `upstream-integration` | `queue` | `merge-queue` | `priority:merge-sync` |
 | `upstream-release` | `queue` | `merge-queue` | `priority:merge-sync` |
@@ -74,6 +76,7 @@ The explicit collaboration flow between forks now lives beside the generic branc
 ## Operational Implications
 
 - `upstream/develop` is the only integration surface for standing work.
+- `downstream/develop` is a proving rail, not a feature branch. It should only be updated from immutable promotion manifests sourced from `upstream/develop`.
 - `origin/develop` and `personal/develop` are mirrors, not independent integration branches.
 - The personal plane is optimized for authoring; the org fork is optimized for review-oriented collaboration.
 - Lane branches may exist in forks, but they still promote into upstream protected branches.

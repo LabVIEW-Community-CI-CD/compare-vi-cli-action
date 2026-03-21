@@ -143,6 +143,11 @@ test('classifyBranch resolves upstream integration, fork mirror, and lane branch
     contract,
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
   });
+  const downstreamDevelop = classifyBranch({
+    branch: 'downstream/develop',
+    contract,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  });
   const forkDevelop = classifyBranch({
     branch: 'develop',
     contract,
@@ -156,6 +161,9 @@ test('classifyBranch resolves upstream integration, fork mirror, and lane branch
 
   assert.equal(upstreamDevelop.id, 'upstream-integration');
   assert.equal(upstreamDevelop.repositoryPlane, 'upstream');
+  assert.equal(downstreamDevelop.id, 'downstream-consumer-proving-rail');
+  assert.equal(downstreamDevelop.repositoryPlane, 'upstream');
+  assert.equal(downstreamDevelop.mergePolicy, 'promotion-manifest');
   assert.equal(forkDevelop.id, 'fork-mirror-develop');
   assert.equal(forkDevelop.repositoryPlane, 'origin');
   assert.equal(personalLane.id, 'lane');
@@ -180,7 +188,14 @@ test('assertAllowedTransition accepts upstream develop sync to fork mirror and r
     action: 'sync',
     contract
   });
+  const downstreamPromotion = assertAllowedTransition({
+    from: 'upstream-integration',
+    to: 'downstream-consumer-proving-rail',
+    action: 'promote',
+    contract
+  });
   assert.equal(syncTransition.via, 'priority:develop:sync');
+  assert.equal(downstreamPromotion.via, 'downstream-promotion-manifest');
 
   assert.throws(
     () =>

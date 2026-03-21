@@ -1,0 +1,34 @@
+{
+  "schema": "priority/downstream-promotion-contract@v1",
+  "schemaVersion": "1.0.0",
+  "sourceRef": "upstream/develop",
+  "targetBranch": "downstream/develop",
+  "targetBranchClassId": "downstream-consumer-proving-rail",
+  "directDevelopment": "unsupported",
+  "promotionKinds": [
+    "promote",
+    "replay",
+    "rollback"
+  ],
+  "requiredInputs": [
+    "sourceCommitSha",
+    "compareviToolsRelease",
+    "compareviHistoryRelease",
+    "scenarioPackIdentity",
+    "cookiecutterTemplateIdentity",
+    "provingScorecardRef",
+    "actor"
+  ],
+  "rollbackPolicy": {
+    "mode": "manifest-pinned-reset",
+    "description": "Rollback must reference a previously emitted downstream promotion manifest instead of ad hoc branch mutation."
+  },
+  "replayPolicy": {
+    "mode": "immutable-input-replay",
+    "description": "Replay reuses the same immutable proving inputs and emits a new manifest with fresh actor/timestamp evidence."
+  },
+  "artifacts": {
+    "manifestSchema": "docs/schemas/downstream-promotion-manifest-v1.schema.json",
+    "defaultOutputPath": "tests/results/_agent/promotion/downstream-develop-promotion-manifest.json"
+  }
+}

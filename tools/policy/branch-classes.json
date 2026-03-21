@@ -85,6 +85,19 @@
       "mergePolicy": "rebase-only"
     },
     {
+      "id": "downstream-consumer-proving-rail",
+      "repositoryRoles": [
+        "upstream"
+      ],
+      "branchPatterns": [
+        "downstream/develop"
+      ],
+      "purpose": "Consumer proving rail fed from immutable manifests promoted out of upstream develop. This is not a direct feature-development branch.",
+      "prSourceAllowed": false,
+      "prTargetAllowed": true,
+      "mergePolicy": "promotion-manifest"
+    },
+    {
       "id": "fork-mirror-develop",
       "repositoryRoles": [
         "fork"
@@ -176,6 +189,13 @@
       "action": "promote",
       "to": "upstream-release",
       "via": "pull-request"
+    },
+    {
+      "from": "upstream-integration",
+      "action": "promote",
+      "to": "downstream-consumer-proving-rail",
+      "via": "downstream-promotion-manifest",
+      "notes": "Consumer proving promotions must be replayable from immutable manifest inputs."
     },
     {
       "from": "upstream-integration",
