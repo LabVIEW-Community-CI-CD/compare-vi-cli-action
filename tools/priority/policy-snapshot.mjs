@@ -242,9 +242,9 @@ export function buildMergeQueueContinuityAssessment(manifest = {}) {
     evidenceLevel: hasMeasuredContinuity ? 'measured' : 'policy-only',
     rationale: mergeQueue
       ? [
-          'Develop currently batches up to five entries per merge-queue build.',
-          'Single-entry groups reduce batch blast radius, but this snapshot does not contain measured hosted rerun churn, requeue frequency, or throughput evidence.',
-          'Keep the grouped configuration until telemetry justifies a promotion.'
+          `Develop currently exposes ${current.max_entries_to_build} build slots and ${current.max_entries_to_merge} merge slots in the checked-in queue policy.`,
+          'Single-entry groups would reduce batch blast radius, but they would also leave the extra queue headroom underutilized unless the scheduler keeps live/background lanes busy.',
+          'Keep the grouped configuration and exploit the added headroom with higher queue occupancy until telemetry justifies a promotion.'
         ]
       : [
           'The develop ruleset does not currently define a merge_queue policy in the checked-in manifest.'

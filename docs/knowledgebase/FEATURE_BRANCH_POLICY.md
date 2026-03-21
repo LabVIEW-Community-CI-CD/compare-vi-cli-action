@@ -346,8 +346,10 @@ to confirm each workflow includes both triggers.
    - `merge-queue-ready-inventory-below-floor`
    - `merge-queue-occupancy-below-floor`
    The policy snapshot report at `tests/results/_agent/policy/policy-state-snapshot.json` also includes
-   `state.mergeQueueContinuity`, which compares the checked-in `develop` batch settings against a hypothetical
-   single-entry merge-group proposal and records the current recommendation without changing `tools/policy/policy.json`.
+   `state.mergeQueueContinuity`, which compares the checked-in `develop` merge-queue settings against a hypothetical
+   single-entry merge-group proposal and records the scheduler guidance. The current queue policy now shows
+   build concurrency `20` and maximum group size `20`, so the recommendation is to keep the queue occupied and
+   let the scheduler exploit that headroom instead of idling live/background lanes.
 7. Delivery-agent receipt follow-up: project at least these merge-queue signals into runtime receipts once the
    queue-orchestration lane takes them on:
    - `readyPrInventory`
