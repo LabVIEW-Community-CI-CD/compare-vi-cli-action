@@ -42,6 +42,7 @@ test('package scripts and runbook expose downstream promotion manifest and score
   assert.match(runbook, /downstream\/develop/);
   assert.match(runbook, /priority:promote:downstream:manifest/);
   assert.match(runbook, /priority:promote:downstream:scorecard/);
+  assert.match(runbook, /--manifest-report tests\/results\/_agent\/promotion\/downstream-develop-promotion-manifest\.json/);
   assert.match(runbook, /priority:template:agent:verify/);
   assert.match(runbook, /cookiecutter/i);
   assert.match(runbook, /rollback/i);
@@ -71,6 +72,9 @@ test('downstream promotion workflow turns the proving rail into checked-in autom
   assert.match(workflow, /downstream-promotion-manifest\.mjs/);
   assert.match(workflow, /Build downstream promotion scorecard/);
   assert.match(workflow, /downstream-promotion-scorecard\.mjs/);
+  assert.ok(
+    workflow.indexOf('Generate downstream promotion manifest') < workflow.indexOf('Build downstream promotion scorecard')
+  );
   assert.match(workflow, /Upload downstream promotion artifacts/);
   assert.match(workflow, /name:\s*downstream-promotion-\$\{\{\s*github\.run_id\s*\}\}/);
   assert.match(workflow, /git push origin '\$\{\{ steps\.source\.outputs\.source_sha \}\}:refs\/heads\/downstream\/develop'/);
