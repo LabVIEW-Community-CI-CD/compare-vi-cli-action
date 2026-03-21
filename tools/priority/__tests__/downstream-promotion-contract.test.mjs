@@ -42,6 +42,8 @@ test('package scripts and runbook expose downstream promotion manifest and score
   assert.match(runbook, /rollback/i);
   assert.match(runbook, /replay/i);
   assert.match(runbook, /downstream-develop-promotion-scorecard\.json/);
+  assert.match(runbook, /Release consumption/);
+  assert.match(runbook, /downstream-promotion\.yml/);
 });
 
 test('downstream promotion workflow turns the proving rail into checked-in automation', () => {
@@ -60,6 +62,8 @@ test('downstream promotion workflow turns the proving rail into checked-in autom
   assert.match(workflow, /downstream-promotion-manifest\.mjs/);
   assert.match(workflow, /Build downstream promotion scorecard/);
   assert.match(workflow, /downstream-promotion-scorecard\.mjs/);
+  assert.match(workflow, /Upload downstream promotion artifacts/);
+  assert.match(workflow, /name:\s*downstream-promotion-\$\{\{\s*github\.run_id\s*\}\}/);
   assert.match(workflow, /git push origin '\$\{\{ steps\.source\.outputs\.source_sha \}\}:refs\/heads\/downstream\/develop'/);
 });
 

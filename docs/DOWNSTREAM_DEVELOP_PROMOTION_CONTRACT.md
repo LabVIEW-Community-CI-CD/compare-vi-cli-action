@@ -84,3 +84,19 @@ The workflow:
 - emits `downstream-develop-promotion-manifest.json`
 - emits `downstream-develop-promotion-scorecard.json`
 - advances `downstream/develop` only when the downstream promotion scorecard passes
+
+## Release consumption
+
+Release promotion should consume the downstream proving rail through the
+`Downstream Promotion` workflow artifact, not from the onboarding-only feedback
+workflow.
+
+That means release should select a successful `downstream-promotion.yml` run
+whose `downstream-develop-promotion-scorecard.json`:
+
+- reports `summary.status = pass`
+- proves `targetBranch = downstream/develop`
+- records `summary.provenance.sourceCommitSha` matching the release source commit
+
+Release evidence should retain the machine-readable selection report that points
+back to the exact downstream promotion run and scorecard artifact used.
