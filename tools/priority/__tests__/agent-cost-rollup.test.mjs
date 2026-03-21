@@ -27,12 +27,20 @@ test('parseArgs accepts repeated turn reports and optional repo override', () =>
     'turn-a.json',
     '--turn-report',
     'turn-b.json',
+    '--invoice-turn',
+    'invoice-a.json',
+    '--invoice-turn',
+    'invoice-b.json',
+    '--invoice-turn-id',
+    'invoice-turn-2026-03-HQ1VJLMV-0027',
     '--repo',
     'example/repo',
     '--no-fail-on-invalid-inputs'
   ]);
 
   assert.deepEqual(parsed.turnReportPaths, ['turn-a.json', 'turn-b.json']);
+  assert.deepEqual(parsed.invoiceTurnPaths, ['invoice-a.json', 'invoice-b.json']);
+  assert.equal(parsed.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.equal(parsed.repo, 'example/repo');
   assert.equal(parsed.failOnInvalidInputs, false);
 });
@@ -84,6 +92,9 @@ test('invoice turn helper derives the prepaid baseline deterministically', () =>
   assert.equal(report.billing.prepaidUsd, 400);
   assert.equal(report.credits.purchased, 10000);
   assert.equal(report.credits.unitPriceUsd, 0.04);
+  assert.equal(report.policy.activationState, 'active');
+  assert.equal(report.policy.fundingPurpose, 'operational');
+  assert.equal(report.reconciliation.status, 'baseline-only');
 });
 
 test('evaluateAgentCostRollup reports blockers deterministically', () => {
@@ -192,7 +203,7 @@ test('runAgentCostRollup aggregates exact and estimated turn spend with provenan
       path.join(fixtureRoot, 'live-turn-estimated.json'),
       path.join(fixtureRoot, 'background-turn-exact.json')
     ],
-    invoiceTurnPath: path.join(fixtureRoot, 'invoice-turn-baseline.json'),
+    invoiceTurnPaths: [path.join(fixtureRoot, 'invoice-turn-baseline.json')],
     outputPath
   });
 
@@ -208,17 +219,159 @@ test('runAgentCostRollup aggregates exact and estimated turn spend with provenan
   assert.equal(result.report.summary.metrics.estimatedCreditsConsumed, 1.565);
   assert.equal(result.report.summary.metrics.creditsRemaining, 9998.435);
   assert.equal(result.report.summary.metrics.estimatedPrepaidUsdRemaining, 399.9374);
+  assert.equal(result.report.summary.metrics.actualUsdConsumed, null);
+  assert.equal(result.report.summary.metrics.heuristicUsdDelta, null);
   assert.equal(result.report.summary.metrics.totalInputTokens, 3600);
   assert.equal(result.report.summary.metrics.totalOutputTokens, 760);
   assert.ok(result.report.summary.provenance.sessionIds.includes('session-live-001'));
   assert.ok(result.report.summary.provenance.reasoningEfforts.includes('xhigh'));
   assert.equal(result.report.summary.provenance.invoiceTurn.invoiceId, 'HQ1VJLMV-0027');
+  assert.equal(result.report.summary.provenance.invoiceTurn.activationState, 'active');
+  assert.equal(result.report.summary.provenance.invoiceTurnSelection.strategy, 'single-candidate');
   assert.equal(result.report.billingWindow.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
+  assert.equal(result.report.billingWindow.activationState, 'active');
+  assert.equal(result.report.billingWindow.selection.selectedInvoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.ok(result.report.summary.provenance.repositories.includes('LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'));
   assert.ok(result.report.breakdown.byProvider.some((entry) => entry.key === 'codex-cli' && entry.totalUsd === 0.0201));
   assert.ok(result.report.breakdown.byReasoningEffort.some((entry) => entry.key === 'xhigh' && entry.turnCount === 1));
   assert.ok(result.report.breakdown.byAgentRole.some((entry) => entry.key === 'background' && entry.turnCount === 1));
   assert.equal(fs.existsSync(outputPath), true);
+});
+
+test('runAgentCostRollup selects the active invoice turn deterministically when multiple receipts coexist', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-rollup-overlap-'));
+  const outputPath = path.join(tmpDir, 'agent-cost-rollup.json');
+  const lateTurnPath = path.join(tmpDir, 'late-turn.json');
+
+  const liveTurn = JSON.parse(fs.readFileSync(path.join(fixtureRoot, 'live-turn-estimated.json'), 'utf8'));
+  liveTurn.provenance.usageObservedAt = '2026-04-20T12:00:00.000Z';
+  writeJson(lateTurnPath, liveTurn);
+
+  const result = runAgentCostRollup({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    turnReportPaths: [lateTurnPath],
+    invoiceTurnPaths: [
+      path.join(fixtureRoot, 'invoice-turn-baseline.json'),
+      path.join(fixtureRoot, 'invoice-turn-next-baseline.json')
+    ],
+    outputPath
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.summary.provenance.invoiceTurn.invoiceId, 'HQ1VJLMV-0028');
+  assert.equal(result.report.summary.provenance.invoiceTurnSelection.strategy, 'active-window-latest-openedAt');
+  assert.equal(result.report.billingWindow.invoiceTurnId, 'invoice-turn-2026-04-HQ1VJLMV-0028');
+  assert.equal(result.report.summary.metrics.estimatedPrepaidUsdRemaining, 319.9799);
+  assert.notEqual(result.report.summary.metrics.estimatedPrepaidUsdRemaining, 719.9799);
+});
+
+test('runAgentCostRollup honors an explicit invoice-turn selection override', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-rollup-explicit-'));
+  const outputPath = path.join(tmpDir, 'agent-cost-rollup.json');
+
+  const result = runAgentCostRollup({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    turnReportPaths: [path.join(fixtureRoot, 'live-turn-estimated.json')],
+    invoiceTurnPaths: [
+      path.join(fixtureRoot, 'invoice-turn-baseline.json'),
+      path.join(fixtureRoot, 'invoice-turn-next-baseline.json')
+    ],
+    invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
+    outputPath
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.summary.provenance.invoiceTurnSelection.strategy, 'explicit-id');
+  assert.equal(result.report.billingWindow.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
+});
+
+test('runAgentCostRollup ignores held calibration invoice turns during automatic selection', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-rollup-hold-'));
+  const outputPath = path.join(tmpDir, 'agent-cost-rollup.json');
+  const holdInvoiceTurnPath = path.join(tmpDir, 'invoice-turn-calibration-hold.json');
+
+  const holdInvoiceTurn = JSON.parse(fs.readFileSync(path.join(fixtureRoot, 'invoice-turn-next-baseline.json'), 'utf8'));
+  holdInvoiceTurn.invoiceTurnId = 'invoice-turn-2026-03-HQ1VJLMV-0028-calibration';
+  holdInvoiceTurn.invoiceId = 'HQ1VJLMV-0028';
+  holdInvoiceTurn.billingPeriod.openedAt = '2026-03-21T12:00:00.000-07:00';
+  holdInvoiceTurn.credits.purchased = 2500;
+  holdInvoiceTurn.billing.prepaidUsd = 100;
+  holdInvoiceTurn.policy.activationState = 'hold';
+  holdInvoiceTurn.policy.fundingPurpose = 'calibration';
+  holdInvoiceTurn.provenance.operatorNote = 'Protected one-time calibration funding window.';
+  writeJson(holdInvoiceTurnPath, holdInvoiceTurn);
+
+  const result = runAgentCostRollup({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    turnReportPaths: [path.join(fixtureRoot, 'live-turn-estimated.json')],
+    invoiceTurnPaths: [
+      path.join(fixtureRoot, 'invoice-turn-baseline.json'),
+      holdInvoiceTurnPath
+    ],
+    outputPath
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.summary.provenance.invoiceTurn.invoiceId, 'HQ1VJLMV-0027');
+  assert.equal(result.report.summary.provenance.invoiceTurnSelection.strategy, 'single-candidate');
+  assert.equal(result.report.billingWindow.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
+  assert.notEqual(result.report.billingWindow.invoiceId, 'HQ1VJLMV-0028');
+});
+
+test('runAgentCostRollup honors an explicit hold-window calibration selection override', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-rollup-hold-explicit-'));
+  const outputPath = path.join(tmpDir, 'agent-cost-rollup.json');
+  const holdInvoiceTurnPath = path.join(tmpDir, 'invoice-turn-calibration-hold.json');
+
+  const holdInvoiceTurn = JSON.parse(fs.readFileSync(path.join(fixtureRoot, 'invoice-turn-next-baseline.json'), 'utf8'));
+  holdInvoiceTurn.invoiceTurnId = 'invoice-turn-2026-03-HQ1VJLMV-0028-calibration';
+  holdInvoiceTurn.invoiceId = 'HQ1VJLMV-0028';
+  holdInvoiceTurn.billingPeriod.openedAt = '2026-03-21T12:00:00.000-07:00';
+  holdInvoiceTurn.credits.purchased = 2500;
+  holdInvoiceTurn.billing.prepaidUsd = 100;
+  holdInvoiceTurn.policy.activationState = 'hold';
+  holdInvoiceTurn.policy.fundingPurpose = 'calibration';
+  writeJson(holdInvoiceTurnPath, holdInvoiceTurn);
+
+  const result = runAgentCostRollup({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    turnReportPaths: [path.join(fixtureRoot, 'live-turn-estimated.json')],
+    invoiceTurnPaths: [
+      path.join(fixtureRoot, 'invoice-turn-baseline.json'),
+      holdInvoiceTurnPath
+    ],
+    invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0028-calibration',
+    outputPath
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.summary.provenance.invoiceTurn.invoiceId, 'HQ1VJLMV-0028');
+  assert.equal(result.report.summary.provenance.invoiceTurn.activationState, 'hold');
+  assert.equal(result.report.summary.provenance.invoiceTurn.fundingPurpose, 'calibration');
+  assert.equal(result.report.summary.provenance.invoiceTurnSelection.strategy, 'explicit-id');
+  assert.equal(result.report.billingWindow.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0028-calibration');
+});
+
+test('runAgentCostRollup emits heuristic drift metrics when actual invoice consumption is available', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-rollup-reconciled-'));
+  const outputPath = path.join(tmpDir, 'agent-cost-rollup.json');
+
+  const result = runAgentCostRollup({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    turnReportPaths: [
+      path.join(fixtureRoot, 'live-turn-estimated.json'),
+      path.join(fixtureRoot, 'background-turn-exact.json')
+    ],
+    invoiceTurnPaths: [path.join(fixtureRoot, 'invoice-turn-baseline-reconciled.json')],
+    outputPath
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.summary.metrics.actualUsdConsumed, 11.2);
+  assert.equal(result.report.summary.metrics.actualCreditsConsumed, 280);
+  assert.equal(result.report.summary.metrics.heuristicUsdDelta, -11.1374);
+  assert.equal(result.report.summary.metrics.heuristicCreditsDelta, -278.435);
+  assert.equal(result.report.billingWindow.reconciliationStatus, 'actual-observed');
 });
 
 test('runAgentCostRollup fails closed when a turn report cannot resolve cost', () => {
@@ -298,6 +451,13 @@ test('runAgentCostInvoiceTurn writes a normalized invoice-turn receipt', () => {
       sourceKind: 'operator-invoice',
       sourcePath: 'C:/Users/sveld/Downloads/Invoice-HQ1VJLMV-0027.pdf',
       operatorNote: 'First invoice turn baseline.',
+      activationState: 'active',
+      fundingPurpose: 'operational',
+      actualUsdConsumed: null,
+      actualCreditsConsumed: null,
+      reconciledAt: null,
+      reconciliationSourceKind: null,
+      reconciliationNote: null,
       outputPath
     },
     new Date('2026-03-21T17:00:00.000Z')
@@ -305,6 +465,7 @@ test('runAgentCostInvoiceTurn writes a normalized invoice-turn receipt', () => {
 
   assert.equal(result.report.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.equal(result.report.billing.prepaidUsd, 400);
+  assert.equal(result.report.reconciliation.status, 'baseline-only');
   assert.equal(fs.existsSync(outputPath), true);
 });
 
@@ -323,6 +484,18 @@ test('agent-cost-invoice-turn CLI writes a receipt when invoked directly', () =>
       '10000',
       '--unit-price-usd',
       '0.04',
+      '--activation-state',
+      'hold',
+      '--funding-purpose',
+      'calibration',
+      '--actual-usd-consumed',
+      '11.2',
+      '--actual-credits-consumed',
+      '280',
+      '--reconciled-at',
+      '2026-04-01T09:30:00.000-07:00',
+      '--reconciliation-source-kind',
+      'operator-observed',
       '--output',
       outputPath
     ],
@@ -335,6 +508,9 @@ test('agent-cost-invoice-turn CLI writes a receipt when invoked directly', () =>
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /\[agent-cost-invoice-turn\] wrote /);
   assert.equal(fs.existsSync(outputPath), true);
+  const output = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
+  assert.equal(output.policy.activationState, 'hold');
+  assert.equal(output.policy.fundingPurpose, 'calibration');
 });
 
 test('agent-cost-rollup CLI writes a rollup receipt when invoked directly', () => {
@@ -350,6 +526,8 @@ test('agent-cost-rollup CLI writes a rollup receipt when invoked directly', () =
       path.join('tools', 'priority', '__fixtures__', 'agent-cost-rollup', 'background-turn-exact.json'),
       '--invoice-turn',
       path.join('tools', 'priority', '__fixtures__', 'agent-cost-rollup', 'invoice-turn-baseline.json'),
+      '--invoice-turn',
+      path.join('tools', 'priority', '__fixtures__', 'agent-cost-rollup', 'invoice-turn-next-baseline.json'),
       '--output',
       outputPath
     ],

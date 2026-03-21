@@ -12,6 +12,8 @@
     "billingPeriod",
     "credits",
     "billing",
+    "policy",
+    "reconciliation",
     "provenance"
   ],
   "properties": {
@@ -45,6 +47,28 @@
         "currency": { "const": "USD" },
         "prepaidUsd": { "type": "number", "minimum": 0 },
         "pricingBasis": { "enum": ["prepaid-credit", "usage-billed", "hybrid"] }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["activationState", "fundingPurpose"],
+      "properties": {
+        "activationState": { "enum": ["active", "hold"] },
+        "fundingPurpose": { "enum": ["operational", "calibration"] }
+      }
+    },
+    "reconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "actualUsdConsumed", "actualCreditsConsumed", "reconciledAt", "sourceKind", "note"],
+      "properties": {
+        "status": { "enum": ["baseline-only", "actual-observed"] },
+        "actualUsdConsumed": { "type": ["number", "null"], "minimum": 0 },
+        "actualCreditsConsumed": { "type": ["number", "null"], "minimum": 0 },
+        "reconciledAt": { "type": ["string", "null"], "format": "date-time" },
+        "sourceKind": { "type": ["string", "null"], "enum": ["operator-observed", "billing-export", "manual-reconciliation", null] },
+        "note": { "type": ["string", "null"] }
       }
     },
     "provenance": {

@@ -1,11 +1,11 @@
 {
   "schema": "priority/agent-cost-invoice-turn@v1",
-  "generatedAt": "2026-03-21T17:00:00.000Z",
+  "generatedAt": "2026-03-31T17:00:00.000Z",
   "invoiceTurnId": "invoice-turn-2026-03-HQ1VJLMV-0027",
   "invoiceId": "HQ1VJLMV-0027",
   "billingPeriod": {
     "openedAt": "2026-03-21T10:01:07.000-07:00",
-    "closedAt": null
+    "closedAt": "2026-03-31T23:59:59.000-07:00"
   },
   "credits": {
     "purchased": 10000,
@@ -21,16 +21,16 @@
     "fundingPurpose": "operational"
   },
   "reconciliation": {
-    "status": "baseline-only",
-    "actualUsdConsumed": null,
-    "actualCreditsConsumed": null,
-    "reconciledAt": null,
-    "sourceKind": null,
-    "note": null
+    "status": "actual-observed",
+    "actualUsdConsumed": 11.2,
+    "actualCreditsConsumed": 280,
+    "reconciledAt": "2026-04-01T09:30:00.000-07:00",
+    "sourceKind": "operator-observed",
+    "note": "Synthetic reconciliation fixture for heuristic drift testing."
   },
   "provenance": {
     "sourceKind": "operator-invoice",
     "sourcePath": null,
-    "operatorNote": "Normalized example for the first invoice-turn baseline."
+    "operatorNote": "Closed invoice turn carrying actual observed spend for drift tests."
   }
 }

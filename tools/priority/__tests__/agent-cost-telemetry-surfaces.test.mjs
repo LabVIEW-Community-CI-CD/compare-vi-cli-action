@@ -25,6 +25,8 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-invoice-turn.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-turn.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-rollup.mjs'));
+  assert.ok(contractEntry.files.includes('tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-next-baseline.json'));
+  assert.ok(contractEntry.files.includes('tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline-reconciled.json'));
   assert.match(guide, /tools\/local-collab\/ledger\/local-review-ledger\.mjs/);
   assert.match(guide, /tests\/results\/_agent\/local-collab\/ledger\/receipts\/<phase>\/<head-sha>\.json/);
   assert.match(guide, /requestedModel/);
@@ -54,4 +56,8 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.match(guide, /priority:cost:turn/);
   assert.match(guide, /priority:cost:rollup/);
   assert.match(guide, /xhigh/);
+  assert.match(guide, /multiple invoice-turn receipts may coexist/);
+  assert.match(guide, /--invoice-turn-id/);
+  assert.match(guide, /policy\.activationState = hold/);
+  assert.match(guide, /heuristic drift directly/);
 });

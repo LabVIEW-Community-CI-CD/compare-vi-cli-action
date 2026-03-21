@@ -12,18 +12,18 @@
     "inputs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["turnReportPaths", "invoiceTurnPath"],
+      "required": ["turnReportPaths", "invoiceTurnPaths", "selectedInvoiceTurnId", "explicitInvoiceTurnId"],
       "properties": {
         "turnReportPaths": {
           "type": "array",
           "items": { "$ref": "#/$defs/inputRef" }
         },
-        "invoiceTurnPath": {
-          "anyOf": [
-            { "$ref": "#/$defs/inputRef" },
-            { "type": "null" }
-          ]
-        }
+        "invoiceTurnPaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inputRef" }
+        },
+        "selectedInvoiceTurnId": { "$ref": "#/$defs/nullableString" },
+        "explicitInvoiceTurnId": { "$ref": "#/$defs/nullableString" }
       }
     },
     "turns": {
@@ -158,6 +158,14 @@
         "unitPriceUsd",
         "prepaidUsd",
         "pricingBasis",
+        "activationState",
+        "fundingPurpose",
+        "reconciliationStatus",
+        "actualUsdConsumed",
+        "actualCreditsConsumed",
+        "reconciledAt",
+        "reconciliationSourceKind",
+        "reconciliationNote",
         "sourceKind",
         "sourcePathEvidence",
         "operatorNote"
@@ -172,9 +180,42 @@
         "unitPriceUsd": { "type": "number", "minimum": 0 },
         "prepaidUsd": { "type": "number", "minimum": 0 },
         "pricingBasis": { "$ref": "#/$defs/nullableString" },
+        "activationState": { "$ref": "#/$defs/nullableString" },
+        "fundingPurpose": { "$ref": "#/$defs/nullableString" },
+        "reconciliationStatus": { "type": "string", "enum": ["baseline-only", "actual-observed"] },
+        "actualUsdConsumed": { "type": ["number", "null"], "minimum": 0 },
+        "actualCreditsConsumed": { "type": ["number", "null"], "minimum": 0 },
+        "reconciledAt": { "$ref": "#/$defs/nullableString" },
+        "reconciliationSourceKind": { "$ref": "#/$defs/nullableString" },
+        "reconciliationNote": { "$ref": "#/$defs/nullableString" },
         "sourceKind": { "$ref": "#/$defs/nullableString" },
         "sourcePathEvidence": { "$ref": "#/$defs/nullableString" },
         "operatorNote": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "invoiceTurnSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy",
+        "explicitInvoiceTurnId",
+        "selectionObservedAt",
+        "candidateCount",
+        "matchingCandidateCount",
+        "candidateInvoiceTurnIds",
+        "selectedInvoiceTurnId"
+      ],
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["none", "single-candidate", "explicit-id", "explicit-id-missing", "active-window-latest-openedAt", "latest-openedAt-fallback"]
+        },
+        "explicitInvoiceTurnId": { "$ref": "#/$defs/nullableString" },
+        "selectionObservedAt": { "$ref": "#/$defs/nullableString" },
+        "candidateCount": { "type": "integer", "minimum": 0 },
+        "matchingCandidateCount": { "type": "integer", "minimum": 0 },
+        "candidateInvoiceTurnIds": { "type": "array", "items": { "type": "string" } },
+        "selectedInvoiceTurnId": { "$ref": "#/$defs/nullableString" }
       }
     },
     "summary": {
@@ -210,7 +251,12 @@
             "estimatedCreditsConsumed",
             "creditsRemaining",
             "estimatedPrepaidUsdRemaining",
-            "prepaidUsdConsumedRatio"
+            "prepaidUsdConsumedRatio",
+            "actualUsdConsumed",
+            "actualCreditsConsumed",
+            "heuristicUsdDelta",
+            "heuristicUsdDeltaRatio",
+            "heuristicCreditsDelta"
           ],
           "properties": {
             "totalTurns": { "type": "integer", "minimum": 0 },
@@ -227,13 +273,18 @@
             "estimatedCreditsConsumed": { "type": ["number", "null"], "minimum": 0 },
             "creditsRemaining": { "type": ["number", "null"], "minimum": 0 },
             "estimatedPrepaidUsdRemaining": { "type": ["number", "null"], "minimum": 0 },
-            "prepaidUsdConsumedRatio": { "type": ["number", "null"], "minimum": 0 }
+            "prepaidUsdConsumedRatio": { "type": ["number", "null"], "minimum": 0 },
+            "actualUsdConsumed": { "type": ["number", "null"], "minimum": 0 },
+            "actualCreditsConsumed": { "type": ["number", "null"], "minimum": 0 },
+            "heuristicUsdDelta": { "type": ["number", "null"] },
+            "heuristicUsdDeltaRatio": { "type": ["number", "null"] },
+            "heuristicCreditsDelta": { "type": ["number", "null"] }
           }
         },
         "provenance": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "reasoningEfforts", "invoiceTurn"],
+          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "reasoningEfforts", "invoiceTurn", "invoiceTurnSelection", "invoiceTurns"],
           "properties": {
             "sessionIds": { "type": "array", "items": { "type": "string" } },
             "issueNumbers": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
@@ -259,6 +310,11 @@
                 { "$ref": "#/$defs/invoiceTurnSummary" },
                 { "type": "null" }
               ]
+            },
+            "invoiceTurnSelection": { "$ref": "#/$defs/invoiceTurnSelection" },
+            "invoiceTurns": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/invoiceTurnSummary" }
             }
           }
         }
@@ -273,9 +329,18 @@
         "openedAt",
         "closedAt",
         "pricingBasis",
+        "activationState",
+        "fundingPurpose",
         "sourceKind",
         "sourcePathEvidence",
-        "operatorNote"
+        "operatorNote",
+        "reconciliationStatus",
+        "actualUsdConsumed",
+        "actualCreditsConsumed",
+        "reconciledAt",
+        "reconciliationSourceKind",
+        "reconciliationNote",
+        "selection"
       ],
       "properties": {
         "invoiceTurnId": { "$ref": "#/$defs/nullableString" },
@@ -283,9 +348,18 @@
         "openedAt": { "$ref": "#/$defs/nullableString" },
         "closedAt": { "$ref": "#/$defs/nullableString" },
         "pricingBasis": { "$ref": "#/$defs/nullableString" },
+        "activationState": { "$ref": "#/$defs/nullableString" },
+        "fundingPurpose": { "$ref": "#/$defs/nullableString" },
         "sourceKind": { "$ref": "#/$defs/nullableString" },
         "sourcePathEvidence": { "$ref": "#/$defs/nullableString" },
-        "operatorNote": { "$ref": "#/$defs/nullableString" }
+        "operatorNote": { "$ref": "#/$defs/nullableString" },
+        "reconciliationStatus": { "type": "string", "enum": ["baseline-only", "actual-observed"] },
+        "actualUsdConsumed": { "type": ["number", "null"], "minimum": 0 },
+        "actualCreditsConsumed": { "type": ["number", "null"], "minimum": 0 },
+        "reconciledAt": { "$ref": "#/$defs/nullableString" },
+        "reconciliationSourceKind": { "$ref": "#/$defs/nullableString" },
+        "reconciliationNote": { "$ref": "#/$defs/nullableString" },
+        "selection": { "$ref": "#/$defs/invoiceTurnSelection" }
       }
     },
     "breakdownEntry": {
