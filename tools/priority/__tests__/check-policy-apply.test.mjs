@@ -75,7 +75,7 @@ function createAlignedRepoState(overrides = {}) {
   };
 }
 
-function createAlignedBranchProtection(requiredChecks) {
+function createAlignedBranchProtection(requiredChecks, overrides = {}) {
   return {
     required_status_checks: {
       strict: true,
@@ -86,14 +86,19 @@ function createAlignedBranchProtection(requiredChecks) {
     required_pull_request_reviews: null,
     restrictions: null,
     required_linear_history: { enabled: true },
-    allow_force_pushes: { enabled: false },
+    allow_force_pushes: { enabled: Boolean(overrides.allowForcePushes) },
     allow_deletions: { enabled: false },
     block_creations: { enabled: false },
     required_conversation_resolution: { enabled: false },
     lock_branch: { enabled: false },
-    allow_fork_syncing: { enabled: false }
+    allow_fork_syncing: { enabled: Boolean(overrides.allowForkSyncing) }
   };
 }
+
+const FORK_MIRROR_BRANCH_PROTECTION = {
+  allowForcePushes: true,
+  allowForkSyncing: false
+};
 
 function createPullRequestRule({
   dismissStaleReviewsOnPush = false,
@@ -817,10 +822,15 @@ test('priority:policy --apply updates fork-local rulesets resolved by stable ide
     const method = options.method ?? 'GET';
     requests.push({ method, url, body: options.body });
     if (method === 'GET' && url === repoUrl) {
-      return createResponse(createAlignedRepoState());
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'Organization', login: 'test-org' },
+        permissions: { admin: true }
+      });
     }
     if (method === 'GET' && url === branchDevelopUrl) {
-      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
@@ -1012,10 +1022,15 @@ test('priority:policy --apply creates missing fork-local rulesets when no identi
   const fetchMock = async (url, options = {}) => {
     const method = options.method ?? 'GET';
     if (method === 'GET' && url === repoUrl) {
-      return createResponse(createAlignedRepoState());
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'Organization', login: 'test-org' },
+        permissions: { admin: true }
+      });
     }
     if (method === 'GET' && url === branchDevelopUrl) {
-      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
@@ -1107,7 +1122,7 @@ test('priority:policy verify passes on user-owned throughput forks while still e
       });
     }
     if (method === 'GET' && url === branchDevelopUrl) {
-      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
@@ -1189,7 +1204,7 @@ test('priority:policy verify honors repo portability overrides for forks that ca
       });
     }
     if (method === 'GET' && url === branchDevelopUrl) {
-      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
@@ -1267,7 +1282,7 @@ test('priority:policy fails closed when throughput portability override targets 
       });
     }
     if (method === 'GET' && url === branchDevelopUrl) {
-      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
@@ -1335,7 +1350,7 @@ test('priority:policy fails closed on invalid repo portability profile modes', a
       });
     }
     if (method === 'GET' && url === branchDevelopUrl) {
-      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
@@ -1405,7 +1420,7 @@ test('priority:policy --apply skips queue-managed rulesets on user-owned through
       });
     }
     if (method === 'GET' && url === branchDevelopUrl) {
-      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
@@ -1489,7 +1504,7 @@ test('priority:policy --apply downgrades queue-managed rulesets when a fork reje
       });
     }
     if (method === 'GET' && url === branchDevelopUrl) {
-      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS));
+      return createResponse(createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS, FORK_MIRROR_BRANCH_PROTECTION));
     }
     if (method === 'GET' && url === branchMainUrl) {
       return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
@@ -1578,7 +1593,7 @@ test('priority:policy --apply enforces required checks after merge_queue portabi
   const rulesetReleaseUrl = `${repoUrl}/rulesets/8614172`;
   const requests = [];
   let createdReleaseRuleset = null;
-  let developProtection = createAlignedBranchProtection([]);
+  let developProtection = createAlignedBranchProtection([], FORK_MIRROR_BRANCH_PROTECTION);
   let mainProtection = createAlignedBranchProtection([]);
 
   const fetchMock = async (url, options = {}) => {
