@@ -742,6 +742,7 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
     Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
     Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
     Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
+    Set-Item Env:DOCKER_HOST 'unix:///var/run/docker.sock'
 
     $baseVi = Join-Path $work 'Base.vi'
     $headVi = Join-Path $work 'Head.vi'
@@ -774,6 +775,8 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
     $capture.flags | Should -Contain '-Headless'
     $capture.containerName | Should -Match '^ni-lnx-compare-flag-baseline-[a-f0-9]{8}$'
     $capture.command | Should -Match ('docker run --name {0}\b' -f [regex]::Escape([string]$capture.containerName))
+    $capture.observedDockerHost | Should -Be 'unix:///var/run/docker.sock'
+    $capture.runtimeDeterminism.observed.dockerHost | Should -Be 'unix:///var/run/docker.sock'
     $capture.headlessContract.required | Should -BeTrue
     $capture.headlessContract.enforcedCliHeadless | Should -BeTrue
     $capture.headlessContract.lvRteHeadlessEnv | Should -BeTrue
@@ -792,6 +795,7 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
     $cpIndex = [array]::IndexOf($records, $cpRecords[0])
     $rmIndex = [array]::IndexOf($records, $rmRecords[0])
     $cpIndex | Should -BeLessThan $rmIndex
+    ($output -join "`n") | Should -Match 'observedDockerHost=unix:///var/run/docker.sock'
   }
 
   It 'disables prelaunch when reusing an existing linux container' {
