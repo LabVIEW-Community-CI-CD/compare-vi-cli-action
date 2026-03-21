@@ -6,8 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const REPORT_SCHEMA = 'priority/agent-cost-usage-export@v1';
-export const DEFAULT_OUTPUT_DIR = path.join('tests', 'results', '_agent', 'cost', 'usage-export');
+export const DEFAULT_OUTPUT_DIR = path.join('tests', 'results', '_agent', 'cost', 'usage-exports');
 export const DEFAULT_SOURCE_KIND = 'operator-private-usage-export-csv';
+export const DEFAULT_OPERATOR_NOTE = 'Normalized from a local private account usage export CSV.';
 export const REQUIRED_HEADERS = [
   'date_partition',
   'account_id',
@@ -63,9 +64,9 @@ function parseDatePartition(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function datePartitionDifferenceInDays(leftValue, rightValue) {
-  const left = parseDatePartition(leftValue);
-  const right = parseDatePartition(rightValue);
+function daysBetweenDates(leftDate, rightDate) {
+  const left = parseDatePartition(leftDate);
+  const right = parseDatePartition(rightDate);
   if (left == null || right == null) {
     return null;
   }
@@ -202,96 +203,86 @@ function createUsageTypeTotals(rows) {
   return Array.from(totals.values());
 }
 
-function resolveSourceKind(value) {
-  return normalizeText(value) || DEFAULT_SOURCE_KIND;
+function ensureSingleValue(rows, fieldName, errorMessage) {
+  const firstValue = normalizeText(rows[0][fieldName]);
+  for (const row of rows) {
+    if (normalizeText(row[fieldName]) !== firstValue) {
+      throw new Error(errorMessage);
+    }
+  }
+  return firstValue;
 }
 
-function createWindowReceipt(rows, sourceMeta, now = new Date()) {
+function createReceiptFromRows(rows, sourceMeta, now = new Date()) {
   if (rows.length === 0) {
     throw new Error('Usage export CSV must contain at least one normalized row.');
   }
 
-  const firstRow = rows[0];
-  const accountFields = ['accountId', 'accountUserId', 'email', 'name', 'publicId', 'usageUnits'];
-  for (const row of rows) {
-    for (const field of accountFields) {
-      if (normalizeText(row[field]) !== normalizeText(firstRow[field])) {
-        throw new Error('Usage export CSV must describe one account identity and one usage-units family.');
-      }
-    }
-  }
+  const usageType = ensureSingleValue(rows, 'usageType', 'Usage export CSV must describe one usage type per receipt.');
+  const usageUnits = ensureSingleValue(rows, 'usageUnits', 'Usage export CSV must describe one usage-units family per receipt.');
+  const accountId = ensureSingleValue(rows, 'accountId', 'Usage export CSV must describe one account identity per receipt.');
+  const accountUserId = ensureSingleValue(rows, 'accountUserId', 'Usage export CSV must describe one account identity per receipt.');
+  const email = ensureSingleValue(rows, 'email', 'Usage export CSV must describe one account identity per receipt.');
+  const name = ensureSingleValue(rows, 'name', 'Usage export CSV must describe one account identity per receipt.');
+  const publicId = ensureSingleValue(rows, 'publicId', 'Usage export CSV must describe one account identity per receipt.');
 
   const sortedDatePartitions = [...new Set(rows.map((row) => row.datePartition))].sort();
-  const totalUsageCredits = roundNumber(rows.reduce((sum, row) => sum + row.usageCredits, 0)) ?? 0;
-  const totalUsageQuantity = roundNumber(rows.reduce((sum, row) => sum + row.usageQuantity, 0)) ?? 0;
-  const usageTypeTotals = createUsageTypeTotals(rows);
+  const reportWindow = {
+    startDate: sortedDatePartitions[0],
+    endDate: sortedDatePartitions[sortedDatePartitions.length - 1],
+    rowCount: rows.length
+  };
+  const windowId = `${reportWindow.startDate}..${reportWindow.endDate}`;
+  const totals = {
+    usageCredits: roundNumber(rows.reduce((sum, row) => sum + row.usageCredits, 0)) ?? 0,
+    usageQuantity: roundNumber(rows.reduce((sum, row) => sum + row.usageQuantity, 0)) ?? 0
+  };
   const sourcePath = normalizeText(sourceMeta.sourcePath) || null;
   const sourceFileName = sourcePath ? path.basename(sourcePath) : null;
   const sourceSha256 = normalizeText(sourceMeta.sourceSha256) || null;
-  const sourceKind = resolveSourceKind(sourceMeta.sourceKind);
-  const firstDatePartition = sortedDatePartitions[0];
-  const lastDatePartition = sortedDatePartitions[sortedDatePartitions.length - 1];
-  const windowId = `${firstDatePartition}..${lastDatePartition}`;
+  const sourceKind = normalizeText(sourceMeta.sourceKind) || DEFAULT_SOURCE_KIND;
+  const operatorNote = normalizeText(sourceMeta.operatorNote) || DEFAULT_OPERATOR_NOTE;
 
   return {
-    windowId,
     schema: REPORT_SCHEMA,
     generatedAt: now.toISOString(),
-    source: {
-      kind: sourceKind,
-      path: sourcePath,
-      fileName: sourceFileName,
-      sha256: sourceSha256,
-      header: [...REQUIRED_HEADERS],
-      rowCount: rows.length
-    },
-    account: {
-      accountId: firstRow.accountId,
-      accountUserId: firstRow.accountUserId,
-      email: firstRow.email,
-      name: firstRow.name,
-      publicId: firstRow.publicId
-    },
-    period: {
-      firstDatePartition,
-      lastDatePartition,
-      datePartitionCount: sortedDatePartitions.length
-    },
-    summary: {
-      rowCount: rows.length,
-      usageUnits: firstRow.usageUnits,
-      totalUsageCredits,
-      totalUsageQuantity,
-      usageTypes: usageTypeTotals.map((entry) => entry.usageType),
-      usageTypeTotals
-    },
-    rows,
+    reportWindow,
+    usageType,
+    totals,
+    sourceKind,
+    sourcePathEvidence: sourcePath,
+    operatorNote,
     provenance: {
       sourceKind,
       sourcePath,
+      sourcePathEvidence: sourcePath,
       sourceSha256,
       sourceFileName,
-      accountId: firstRow.accountId,
-      accountUserId: firstRow.accountUserId,
-      publicId: firstRow.publicId,
-      email: firstRow.email,
-      windowId,
-      windowIndex: 1,
-      windowCount: 1
+      accountId,
+      accountUserId,
+      email,
+      name,
+      publicId,
+      usageUnits,
+      usageType,
+      rowCount: rows.length,
+      datePartitionCount: sortedDatePartitions.length,
+      windowId
     },
     confidence: {
       level: 'high',
-      basis: ['csv-header-match', 'row-count-match', 'uniform-account-identity', 'uniform-usage-units', 'numeric-field-parse'],
+      basis: ['csv-header-match', 'row-count-match', 'uniform-account-identity', 'uniform-usage-units', 'uniform-usage-type', 'numeric-field-parse'],
       rowCoverage: 1,
-      accountCoverage: 1
+      accountCoverage: 1,
+      windowCoverage: 1
     },
     continuity: {
       windowIndex: 1,
       windowCount: 1,
       previousWindowId: null,
       nextWindowId: null,
-      previousWindowLastDatePartition: null,
-      nextWindowFirstDatePartition: null,
+      previousReportWindowEndDate: null,
+      nextReportWindowStartDate: null,
       gapDaysFromPrevious: null,
       gapDaysToNext: null,
       isContiguousWithPrevious: null,
@@ -302,7 +293,7 @@ function createWindowReceipt(rows, sourceMeta, now = new Date()) {
   };
 }
 
-function buildWindowReceiptFromCsv(csvText, options = {}, now = new Date()) {
+function buildReceiptFromCsv(csvText, options = {}, now = new Date()) {
   const records = parseCsv(csvText);
   if (records.length < 2) {
     throw new Error('Usage export CSV must contain a header and at least one data row.');
@@ -318,207 +309,76 @@ function buildWindowReceiptFromCsv(csvText, options = {}, now = new Date()) {
     return normalizeRow(header, record, index + 1);
   });
 
-  return createWindowReceipt(rows, options, now);
+  return createReceiptFromRows(rows, options, now);
 }
 
-function buildTransition(prevWindow, nextWindow) {
-  const dayDifference = datePartitionDifferenceInDays(prevWindow.period.lastDatePartition, nextWindow.period.firstDatePartition);
-  if (dayDifference == null) {
-    throw new Error(`Usage export windows ${prevWindow.windowId} and ${nextWindow.windowId} contain invalid dates.`);
-  }
-  if (dayDifference <= 0) {
-    const overlapDays = Math.abs(dayDifference) + 1;
-    throw new Error(
-      `Usage export windows overlap between ${prevWindow.windowId} and ${nextWindow.windowId} by ${overlapDays} day(s).`
-    );
-  }
-
-  const gapDays = dayDifference - 1;
-  return {
-    fromWindowId: prevWindow.windowId,
-    fromWindowIndex: prevWindow.continuity.windowIndex,
-    toWindowId: nextWindow.windowId,
-    toWindowIndex: nextWindow.continuity.windowIndex,
-    fromLastDatePartition: prevWindow.period.lastDatePartition,
-    toFirstDatePartition: nextWindow.period.firstDatePartition,
-    gapDays,
-    overlapDays: 0,
-    status: gapDays === 0 ? 'adjacent' : 'gap',
-    isContiguous: gapDays === 0
-  };
+function readReceiptPath(filePath) {
+  const receipt = buildReceiptFromCsv(fs.readFileSync(path.resolve(filePath), 'utf8'), {
+    sourcePath: path.resolve(filePath),
+    sourceKind: DEFAULT_SOURCE_KIND
+  });
+  return { filePath: path.resolve(filePath), receipt };
 }
 
-function decorateWindowsWithContinuity(windows) {
-  const windowCount = windows.length;
-  if (windowCount === 0) {
-    return { windows: [], transitions: [], contiguousTransitionCount: 0, gapTransitionCount: 0, overlapTransitionCount: 0 };
+function decorateContinuity(receipts) {
+  if (receipts.length === 0) {
+    return [];
   }
 
-  const decorated = windows.map((window, index) => ({
-    ...window,
-    continuity: {
-      windowIndex: index + 1,
-      windowCount,
-      previousWindowId: index > 0 ? windows[index - 1].windowId : null,
-      nextWindowId: index < windowCount - 1 ? windows[index + 1].windowId : null,
-      previousWindowLastDatePartition: index > 0 ? windows[index - 1].period.lastDatePartition : null,
-      nextWindowFirstDatePartition: index < windowCount - 1 ? windows[index + 1].period.firstDatePartition : null,
-      gapDaysFromPrevious: null,
-      gapDaysToNext: null,
-      isContiguousWithPrevious: null,
-      isContiguousWithNext: null,
-      isFirstWindow: index === 0,
-      isLastWindow: index === windowCount - 1
-    },
-    provenance: {
-      ...window.provenance,
-      windowIndex: index + 1,
-      windowCount
+  const ordered = [...receipts].sort((left, right) => {
+    const dateCompare = left.reportWindow.startDate.localeCompare(right.reportWindow.startDate);
+    if (dateCompare !== 0) {
+      return dateCompare;
     }
-  }));
+    return normalizeText(left.sourcePathEvidence).localeCompare(normalizeText(right.sourcePathEvidence));
+  });
 
-  const transitions = [];
-  let contiguousTransitionCount = 0;
-  let gapTransitionCount = 0;
-  let overlapTransitionCount = 0;
+  return ordered.map((receipt, index) => {
+    const previous = index > 0 ? ordered[index - 1] : null;
+    const next = index < ordered.length - 1 ? ordered[index + 1] : null;
 
-  for (let index = 0; index < decorated.length - 1; index += 1) {
-    const transition = buildTransition(decorated[index], decorated[index + 1]);
-    transitions.push(transition);
-    if (transition.isContiguous) {
-      contiguousTransitionCount += 1;
-    } else {
-      gapTransitionCount += 1;
+    if (previous) {
+      const dayDifference = daysBetweenDates(previous.reportWindow.endDate, receipt.reportWindow.startDate);
+      if (dayDifference == null) {
+        throw new Error(`Usage export receipts ${previous.provenance.windowId} and ${receipt.provenance.windowId} contain invalid dates.`);
+      }
+      if (dayDifference <= 0) {
+        throw new Error(`Usage export receipts overlap between ${previous.provenance.windowId} and ${receipt.provenance.windowId}.`);
+      }
     }
-    decorated[index].continuity.gapDaysToNext = transition.gapDays;
-    decorated[index].continuity.isContiguousWithNext = transition.isContiguous;
-    decorated[index + 1].continuity.gapDaysFromPrevious = transition.gapDays;
-    decorated[index + 1].continuity.isContiguousWithPrevious = transition.isContiguous;
-  }
 
-  return { windows: decorated, transitions, contiguousTransitionCount, gapTransitionCount, overlapTransitionCount };
+    const previousGapDays = previous ? Math.max(daysBetweenDates(previous.reportWindow.endDate, receipt.reportWindow.startDate) - 1, 0) : null;
+    const nextGapDays = next ? Math.max(daysBetweenDates(receipt.reportWindow.endDate, next.reportWindow.startDate) - 1, 0) : null;
+
+    return {
+      ...receipt,
+      continuity: {
+        windowIndex: index + 1,
+        windowCount: ordered.length,
+        previousWindowId: previous?.provenance?.windowId || null,
+        nextWindowId: next?.provenance?.windowId || null,
+        previousReportWindowEndDate: previous?.reportWindow?.endDate || null,
+        nextReportWindowStartDate: next?.reportWindow?.startDate || null,
+        gapDaysFromPrevious: previousGapDays,
+        gapDaysToNext: nextGapDays,
+        isContiguousWithPrevious: previous ? previousGapDays === 0 : null,
+        isContiguousWithNext: next ? nextGapDays === 0 : null,
+        isFirstWindow: index === 0,
+        isLastWindow: index === ordered.length - 1
+      },
+      provenance: {
+        ...receipt.provenance,
+        windowIndex: index + 1,
+        windowCount: ordered.length
+      }
+    };
+  });
 }
 
-function aggregateWindows(windows, transitions) {
-  const usageTypeTotals = new Map();
-  const usageUnits = windows[0]?.summary?.usageUnits || null;
-  const account = windows[0]?.account || null;
-  const uniqueDates = new Set();
-  let totalUsageCredits = 0;
-  let totalUsageQuantity = 0;
-  let totalRowCount = 0;
-
-  for (const window of windows) {
-    totalUsageCredits = roundNumber(totalUsageCredits + window.summary.totalUsageCredits) ?? totalUsageCredits;
-    totalUsageQuantity = roundNumber(totalUsageQuantity + window.summary.totalUsageQuantity) ?? totalUsageQuantity;
-    totalRowCount += window.summary.rowCount;
-    for (const row of window.rows) {
-      uniqueDates.add(row.datePartition);
-    }
-    for (const usageTypeTotal of window.summary.usageTypeTotals) {
-      const existing = usageTypeTotals.get(usageTypeTotal.usageType) || {
-        usageType: usageTypeTotal.usageType,
-        rowCount: 0,
-        usageCredits: 0,
-        usageQuantity: 0
-      };
-      existing.rowCount += usageTypeTotal.rowCount;
-      existing.usageCredits = roundNumber(existing.usageCredits + usageTypeTotal.usageCredits) ?? existing.usageCredits;
-      existing.usageQuantity = roundNumber(existing.usageQuantity + usageTypeTotal.usageQuantity) ?? existing.usageQuantity;
-      usageTypeTotals.set(usageTypeTotal.usageType, existing);
-    }
-  }
-
-  const firstWindow = windows[0] || null;
-  const lastWindow = windows[windows.length - 1] || null;
-  const firstDatePartition = firstWindow?.period.firstDatePartition || null;
-  const lastDatePartition = lastWindow?.period.lastDatePartition || null;
-  const transitionCount = transitions.length;
-  const contiguousTransitionCount = transitions.filter((transition) => transition.isContiguous).length;
-  const gapTransitionCount = transitions.filter((transition) => transition.status === 'gap').length;
-  const overlapTransitionCount = 0;
-
-  return {
-    account,
-    period: {
-      firstDatePartition,
-      lastDatePartition,
-      datePartitionCount: uniqueDates.size,
-      windowCount: windows.length,
-      transitionCount,
-      contiguousTransitionCount,
-      gapTransitionCount,
-      overlapTransitionCount
-    },
-    summary: {
-      windowCount: windows.length,
-      transitionCount,
-      contiguousTransitionCount,
-      gapTransitionCount,
-      overlapTransitionCount,
-      rowCount: totalRowCount,
-      totalUsageCredits,
-      totalUsageQuantity,
-      usageUnits,
-      usageTypes: [...usageTypeTotals.keys()],
-      usageTypeTotals: [...usageTypeTotals.values()],
-      continuityStatus: gapTransitionCount === 0 ? 'contiguous' : 'gapped'
-    },
-    source: {
-      kind: windows[0]?.source?.kind || DEFAULT_SOURCE_KIND,
-      inputCount: windows.length,
-      windowCount: windows.length,
-      rowCount: totalRowCount,
-      files: windows.map((window) => ({
-        path: window.source.path,
-        fileName: window.source.fileName,
-        sha256: window.source.sha256,
-        header: [...window.source.header],
-        rowCount: window.source.rowCount,
-        windowId: window.windowId,
-        firstDatePartition: window.period.firstDatePartition,
-        lastDatePartition: window.period.lastDatePartition
-      }))
-    },
-    provenance: {
-      sourceKind: windows[0]?.provenance?.sourceKind || DEFAULT_SOURCE_KIND,
-      sourcePaths: windows.map((window) => window.provenance.sourcePath),
-      sourceSha256s: windows.map((window) => window.provenance.sourceSha256),
-      sourceFileNames: windows.map((window) => window.provenance.sourceFileName),
-      accountId: account?.accountId || null,
-      accountUserId: account?.accountUserId || null,
-      publicId: account?.publicId || null,
-      email: account?.email || null,
-      windowCount: windows.length,
-      windowIds: windows.map((window) => window.windowId)
-    },
-    confidence: {
-      level: gapTransitionCount === 0 ? 'high' : 'medium',
-      basis: gapTransitionCount === 0
-        ? ['csv-header-match', 'row-count-match', 'uniform-account-identity', 'uniform-usage-units', 'numeric-field-parse', 'adjacent-window-continuity']
-        : ['csv-header-match', 'row-count-match', 'uniform-account-identity', 'uniform-usage-units', 'numeric-field-parse', 'window-gap-observed'],
-      rowCoverage: 1,
-      accountCoverage: 1,
-      windowCoverage: 1,
-      continuityCoverage: windows.length <= 1 ? 1 : contiguousTransitionCount / transitions.length
-    },
-    transitions
-  };
-}
-
-export function deriveDefaultOutputPath(inputPaths = [], report = null) {
-  const normalizedPaths = Array.isArray(inputPaths) ? inputPaths.filter((entry) => normalizeText(entry)) : [];
-  if (report?.period?.firstDatePartition && report?.period?.lastDatePartition) {
-    const windowCount = report?.summary?.windowCount ?? report?.windows?.length ?? normalizedPaths.length;
-    const label = `usage-export-${report.period.firstDatePartition}_to_${report.period.lastDatePartition}-${windowCount || 0}-windows.json`;
-    return path.resolve(DEFAULT_OUTPUT_DIR, label);
-  }
-  if (normalizedPaths.length > 0) {
-    const stems = normalizedPaths.map((entry) => sanitizeFileStem(path.basename(entry)) || 'usage-export');
-    const label = `${stems.join('__') || 'usage-export-rollup'}.json`;
-    return path.resolve(DEFAULT_OUTPUT_DIR, label);
-  }
-  return path.resolve(DEFAULT_OUTPUT_DIR, 'usage-export-rollup.json');
+export function deriveDefaultOutputPath(inputPath) {
+  const resolvedPath = normalizeText(inputPath) ? path.resolve(inputPath) : null;
+  const stem = resolvedPath ? sanitizeFileStem(path.basename(resolvedPath)) || 'usage-export' : 'usage-export';
+  return path.resolve(DEFAULT_OUTPUT_DIR, `${stem}.json`);
 }
 
 export function parseArgs(argv = process.argv) {
@@ -527,6 +387,7 @@ export function parseArgs(argv = process.argv) {
     inputPaths: [],
     outputPath: null,
     sourceKind: DEFAULT_SOURCE_KIND,
+    operatorNote: DEFAULT_OPERATOR_NOTE,
     help: false
   };
 
@@ -538,7 +399,7 @@ export function parseArgs(argv = process.argv) {
       options.help = true;
       continue;
     }
-    if (['--input', '--output', '--source-kind'].includes(token)) {
+    if (['--input', '--output', '--source-kind', '--operator-note'].includes(token)) {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
       }
@@ -546,6 +407,7 @@ export function parseArgs(argv = process.argv) {
       if (token === '--input') options.inputPaths.push(next);
       if (token === '--output') options.outputPath = next;
       if (token === '--source-kind') options.sourceKind = next;
+      if (token === '--operator-note') options.operatorNote = next;
       continue;
     }
     throw new Error(`Unknown option: ${token}`);
@@ -559,74 +421,66 @@ export function parseArgs(argv = process.argv) {
 }
 
 export function buildNormalizedUsageExportReceiptFromCsv(csvText, options = {}, now = new Date()) {
-  const report = buildWindowReceiptFromCsv(csvText, options, now);
+  const report = buildReceiptFromCsv(csvText, options, now);
   return {
     report,
-    outputPath: deriveDefaultOutputPath([options.inputPath || options.sourcePath || 'usage-export.csv'])
+    outputPath: deriveDefaultOutputPath(options.inputPath || options.sourcePath || 'usage-export.csv')
   };
 }
 
-export function buildNormalizedUsageExportRollupFromCsvInputs(inputs, options = {}, now = new Date()) {
+export function buildNormalizedUsageExportReceiptsFromCsvInputs(inputs, options = {}, now = new Date()) {
   if (!Array.isArray(inputs) || inputs.length === 0) {
     throw new Error('Usage export normalization requires at least one input file.');
   }
 
-  const windows = inputs.map((input) => {
-    const report = buildWindowReceiptFromCsv(input.raw, {
-      sourceKind: options.sourceKind || input.sourceKind || DEFAULT_SOURCE_KIND,
+  const receipts = inputs.map((input) => {
+    const csvText = typeof input.raw === 'string' ? input.raw : fs.readFileSync(path.resolve(input.resolvedPath), 'utf8');
+    return buildReceiptFromCsv(csvText, {
       sourcePath: input.resolvedPath,
+      sourceKind: options.sourceKind || DEFAULT_SOURCE_KIND,
+      operatorNote: options.operatorNote || DEFAULT_OPERATOR_NOTE,
       sourceSha256: input.sourceSha256
     }, now);
-    return report;
   });
 
-  windows.sort((left, right) => {
-    const dateCompare = left.period.firstDatePartition.localeCompare(right.period.firstDatePartition);
-    if (dateCompare !== 0) {
-      return dateCompare;
-    }
-    return (left.source.fileName || left.source.path || '').localeCompare(right.source.fileName || right.source.path || '');
-  });
-
-  const firstWindow = windows[0];
-  const accountFields = ['accountId', 'accountUserId', 'email', 'name', 'publicId'];
-  const usageUnits = firstWindow.summary.usageUnits;
-  for (const window of windows) {
-    for (const field of accountFields) {
-      if (normalizeText(window.account[field]) !== normalizeText(firstWindow.account[field])) {
-        throw new Error('Usage export windows must describe the same account identity.');
-      }
-    }
-    if (normalizeText(window.summary.usageUnits) !== normalizeText(usageUnits)) {
-      throw new Error('Usage export windows must use the same usage-units family.');
-    }
-  }
-
-  const continuity = decorateWindowsWithContinuity(windows);
-  const report = {
-    schema: REPORT_SCHEMA,
-    generatedAt: now.toISOString(),
-    ...aggregateWindows(continuity.windows, continuity.transitions),
-    transitions: continuity.transitions,
-    windows: continuity.windows
+  const decorated = decorateContinuity(receipts);
+  return {
+    reports: decorated,
+    outputPaths: decorated.map((receipt) => path.resolve(DEFAULT_OUTPUT_DIR, `usage-export-${receipt.reportWindow.startDate}.json`))
   };
-  const outputPath = deriveDefaultOutputPath(inputs.map((input) => input.resolvedPath), report);
-  return { report, outputPath };
 }
+
+export const buildNormalizedUsageExportRollupFromCsvInputs = buildNormalizedUsageExportReceiptsFromCsvInputs;
 
 export function runAgentCostUsageExportNormalize(options, now = new Date()) {
   const inputs = options.inputPaths.map((inputPath) => readCsv(inputPath));
-  const result = buildNormalizedUsageExportRollupFromCsvInputs(inputs, {
-    outputPath: options.outputPath,
-    sourceKind: options.sourceKind
+  const result = buildNormalizedUsageExportReceiptsFromCsvInputs(inputs, {
+    sourceKind: options.sourceKind,
+    operatorNote: options.operatorNote
   }, now);
 
-  const outputPath = path.resolve(options.outputPath || result.outputPath);
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, `${JSON.stringify(result.report, null, 2)}\n`, 'utf8');
+  const isSingleInput = result.reports.length === 1;
+  const outputBasePath = options.outputPath
+    ? path.resolve(options.outputPath)
+    : isSingleInput
+      ? result.outputPaths[0]
+      : path.resolve(DEFAULT_OUTPUT_DIR);
+
+  fs.mkdirSync(isSingleInput ? path.dirname(outputBasePath) : outputBasePath, { recursive: true });
+
+  if (isSingleInput) {
+    fs.writeFileSync(outputBasePath, `${JSON.stringify(result.reports[0], null, 2)}\n`, 'utf8');
+  } else {
+    for (const receipt of result.reports) {
+      const fileStem = `usage-export-${receipt.reportWindow.startDate}`;
+      const receiptPath = path.join(outputBasePath, `${fileStem}.json`);
+      fs.writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
+    }
+  }
+
   return {
     ...result,
-    outputPath
+    outputPath: outputBasePath
   };
 }
 
@@ -634,10 +488,11 @@ function printUsage() {
   console.log('Usage: node tools/priority/agent-cost-usage-export-normalize.mjs [options]');
   console.log('');
   console.log('Options:');
-  console.log('  --input <csv>      Private account usage export CSV path (repeatable, required).');
-  console.log('  --output <path>    Optional receipt output override.');
-  console.log(`  --source-kind <id> Source kind for provenance (default: ${DEFAULT_SOURCE_KIND}).`);
-  console.log('  -h, --help         Show help and exit.');
+  console.log('  --input <csv>         Private account usage export CSV path (repeatable, required).');
+  console.log('  --output <path>       Output receipt file path for one input, or output directory for many inputs.');
+  console.log(`  --source-kind <id>    Source kind for provenance (default: ${DEFAULT_SOURCE_KIND}).`);
+  console.log(`  --operator-note <msg> Operator note recorded on the receipt (default: ${DEFAULT_OPERATOR_NOTE}).`);
+  console.log('  -h, --help            Show help and exit.');
 }
 
 export async function main(argv = process.argv) {
@@ -662,5 +517,3 @@ if (entrypointPath && modulePath === entrypointPath) {
   const exitCode = await main(process.argv);
   process.exit(exitCode);
 }
-
-

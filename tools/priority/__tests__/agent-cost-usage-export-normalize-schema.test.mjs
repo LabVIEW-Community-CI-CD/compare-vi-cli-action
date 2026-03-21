@@ -6,7 +6,7 @@ import path from 'node:path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 
-import { buildNormalizedUsageExportRollupFromCsvInputs } from '../agent-cost-usage-export-normalize.mjs';
+import { buildNormalizedUsageExportReceiptFromCsv, buildNormalizedUsageExportReceiptsFromCsvInputs } from '../agent-cost-usage-export-normalize.mjs';
 
 const repoRoot = path.resolve(process.cwd());
 const fixturePath = path.join(repoRoot, 'tools', 'priority', '__fixtures__', 'agent-cost-rollup', 'usage-export-sample.csv');
@@ -64,10 +64,31 @@ function writeUsageExportCsv(filePath, csvText) {
   fs.writeFileSync(filePath, `${csvText}\n`, 'utf8');
 }
 
-test('normalized usage export rollup matches the checked-in schema', () => {
+test('normalized usage export receipt matches the checked-in schema', () => {
+  const csv = fs.readFileSync(fixturePath, 'utf8');
+  const { report } = buildNormalizedUsageExportReceiptFromCsv(csv, {
+    inputPath: fixturePath,
+    sourcePath: fixturePath,
+    sourceSha256: 'local-private-fingerprint'
+  }, new Date('2026-03-21T20:10:00.000Z'));
+
+  const schema = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, 'docs', 'schemas', 'agent-cost-usage-export-v1.schema.json'), 'utf8')
+  );
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const validate = ajv.compile(schema);
+  assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(report.reportWindow.startDate, '2026-03-15');
+  assert.equal(report.reportWindow.endDate, '2026-03-20');
+  assert.equal(report.usageType, 'codex');
+});
+
+test('adjacent usage export receipts retain explicit continuity metadata', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-usage-export-schema-'));
   const janPath = path.join(tmpDir, 'usage-export-2026-01-15.csv');
   const febPath = path.join(tmpDir, 'usage-export-2026-02-15.csv');
+  const marPath = path.join(tmpDir, 'usage-export-2026-03-15.csv');
 
   writeUsageExportCsv(
     janPath,
@@ -93,7 +114,6 @@ test('normalized usage export rollup matches the checked-in schema', () => {
       baseUsageQuantity: 20000
     })
   );
-  const marPath = path.join(tmpDir, 'usage-export-2026-03-15.csv');
   fs.copyFileSync(fixturePath, marPath);
 
   const inputs = [janPath, febPath, marPath].map((inputPath) => ({
@@ -101,7 +121,7 @@ test('normalized usage export rollup matches the checked-in schema', () => {
     raw: fs.readFileSync(inputPath, 'utf8'),
     sourceSha256: `sha256-${path.basename(inputPath)}`
   }));
-  const { report } = buildNormalizedUsageExportRollupFromCsvInputs(inputs, {
+  const { reports } = buildNormalizedUsageExportReceiptsFromCsvInputs(inputs, {
     sourceKind: 'operator-private-usage-export-csv'
   }, new Date('2026-03-21T20:10:00.000Z'));
 
@@ -111,8 +131,13 @@ test('normalized usage export rollup matches the checked-in schema', () => {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   addFormats(ajv);
   const validate = ajv.compile(schema);
-  assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
-  assert.equal(report.windows.length, 3);
-  assert.equal(report.transitions[0].status, 'adjacent');
-});
 
+  for (const report of reports) {
+    assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
+  }
+  assert.equal(reports.length, 3);
+  assert.equal(reports[0].continuity.isContiguousWithNext, true);
+  assert.equal(reports[1].continuity.isContiguousWithPrevious, true);
+  assert.equal(reports[1].continuity.isContiguousWithNext, true);
+  assert.equal(reports[2].continuity.isContiguousWithPrevious, true);
+});
