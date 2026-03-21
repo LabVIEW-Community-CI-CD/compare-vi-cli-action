@@ -47,6 +47,10 @@ As of March 21, 2026, the bundle is still explicitly `source-only`:
   executable-state receipt for the checked-in bundle
 - `tools/New-PrintToSingleFileHtmlAuthoringWorkspace.ps1` now wraps the generic
   scaffold so this payload has a dedicated disposable authoring bootstrap
+- `tools/New-PrintToSingleFileHtmlAuthoringPacket.ps1` now turns the remaining
+  gap into an explicit native-authoring packet with the installed
+  `Operations.lvproj`, `Toolkit-Operations.lvproj`, LabVIEW 2026 x86 path, an
+  authoring checklist, and a launch helper
 
 ## Repo policy
 
