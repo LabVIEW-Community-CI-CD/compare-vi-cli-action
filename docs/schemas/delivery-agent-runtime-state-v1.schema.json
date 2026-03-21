@@ -47,6 +47,17 @@
       }
     },
     "workerPool": { "$ref": "#/$defs/workerPool" },
+    "marketplace": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "status": { "type": ["string", "null"] },
+        "snapshotPath": { "type": ["string", "null"] },
+        "error": { "type": ["string", "null"] },
+        "summary": { "type": ["object", "null"], "additionalProperties": true },
+        "recommendedLane": { "type": ["object", "null"], "additionalProperties": true }
+      }
+    },
     "localReviewLoop": {
       "type": ["object", "null"],
       "additionalProperties": true,
