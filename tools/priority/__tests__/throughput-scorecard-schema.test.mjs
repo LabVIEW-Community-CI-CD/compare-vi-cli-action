@@ -54,7 +54,16 @@ test('throughput-scorecard schema validates generated report payloads', () => {
     inputPaths: {
       runtimeStatePath: 'tests/results/_agent/runtime/delivery-agent-state.json',
       deliveryMemoryPath: 'tests/results/_agent/runtime/delivery-memory.json',
-      queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json'
+      queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      utilizationPolicyPath: 'tools/policy/merge-queue-utilization-target.json'
+    },
+    utilizationPolicy: {
+      mergeQueue: {
+        readyInventoryFloor: 2,
+        occupancyFloorRatio: 0.5,
+        occupancyTargetRatio: 1,
+        treatPausedQueueAsExempt: true
+      }
     },
     now: new Date('2026-03-21T03:10:00.000Z')
   });

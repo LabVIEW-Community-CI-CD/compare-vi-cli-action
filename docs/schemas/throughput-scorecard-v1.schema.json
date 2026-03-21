@@ -4,7 +4,7 @@
   "title": "Throughput Scorecard v1",
   "type": "object",
   "additionalProperties": true,
-  "required": ["schema", "generatedAt", "inputs", "workerPool", "queue", "delivery", "summary"],
+  "required": ["schema", "generatedAt", "inputs", "workerPool", "queue", "mergeQueueUtilization", "delivery", "summary"],
   "properties": {
     "schema": {
       "const": "priority/throughput-scorecard@v1"
@@ -19,11 +19,12 @@
     "inputs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["runtimeStatePath", "deliveryMemoryPath", "queueReportPath"],
+      "required": ["runtimeStatePath", "deliveryMemoryPath", "queueReportPath", "utilizationPolicyPath"],
       "properties": {
         "runtimeStatePath": { "type": ["string", "null"] },
         "deliveryMemoryPath": { "type": ["string", "null"] },
-        "queueReportPath": { "type": ["string", "null"] }
+        "queueReportPath": { "type": ["string", "null"] },
+        "utilizationPolicyPath": { "type": ["string", "null"] }
       }
     },
     "workerPool": {
@@ -73,6 +74,41 @@
         }
       }
     },
+    "mergeQueueUtilization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "observed", "status", "reasons"],
+      "properties": {
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["readyInventoryFloor", "occupancyFloorRatio", "occupancyTargetRatio", "treatPausedQueueAsExempt"],
+          "properties": {
+            "readyInventoryFloor": { "type": "integer", "minimum": 0 },
+            "occupancyFloorRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "occupancyTargetRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "treatPausedQueueAsExempt": { "type": "boolean" }
+          }
+        },
+        "observed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["readyPrInventory", "inflight", "effectiveMaxInflight", "occupancyRatio", "paused"],
+          "properties": {
+            "readyPrInventory": { "type": "integer", "minimum": 0 },
+            "inflight": { "type": "integer", "minimum": 0 },
+            "effectiveMaxInflight": { "type": "integer", "minimum": 0 },
+            "occupancyRatio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "paused": { "type": "boolean" }
+          }
+        },
+        "status": { "enum": ["pass", "warn"] },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
     "delivery": {
       "type": "object",
       "additionalProperties": false,
@@ -111,6 +147,8 @@
             "readyPrInventory",
             "mergeQueueInflight",
             "mergeQueueCapacity",
+            "mergeQueueOccupancyRatio",
+            "mergeQueueReadyInventoryFloor",
             "hostedWaitEscapeCount",
             "meanTerminalDurationMinutes"
           ],
@@ -119,6 +157,8 @@
             "readyPrInventory": { "type": "integer", "minimum": 0 },
             "mergeQueueInflight": { "type": "integer", "minimum": 0 },
             "mergeQueueCapacity": { "type": "integer", "minimum": 0 },
+            "mergeQueueOccupancyRatio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "mergeQueueReadyInventoryFloor": { "type": "integer", "minimum": 0 },
             "hostedWaitEscapeCount": { "type": "integer", "minimum": 0 },
             "meanTerminalDurationMinutes": { "type": ["number", "null"], "minimum": 0 }
           }

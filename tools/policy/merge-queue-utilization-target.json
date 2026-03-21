@@ -1,0 +1,16 @@
+{
+  "schema": "priority/merge-queue-utilization-target@v1",
+  "scope": "develop",
+  "mergeQueue": {
+    "readyInventoryFloor": 2,
+    "occupancyFloorRatio": 0.5,
+    "occupancyTargetRatio": 1,
+    "treatPausedQueueAsExempt": true
+  },
+  "notes": [
+    "Treat merge-queue utilization as a throughput target, not only as a repository setting.",
+    "Aim to keep at least two ready PRs available for queue admission while the queue is active.",
+    "Warn when active queue occupancy falls below 50% of the current effective inflight cap.",
+    "Paused queues are operationally exempt until the pause is lifted."
+  ]
+}
