@@ -24,6 +24,7 @@ import {
   selectMarketplaceRecommendation,
   writeMarketplaceSnapshot
 } from './lane-marketplace.mjs';
+import { extractGitResultMessage, refreshUpstreamTrackingRef } from './lib/upstream-ref-refresh.mjs';
 
 export const DELIVERY_AGENT_POLICY_SCHEMA = 'priority/delivery-agent-policy@v1';
 export const DELIVERY_AGENT_RUNTIME_STATE_SCHEMA = 'priority/delivery-agent-runtime-state@v1';
@@ -3902,17 +3903,18 @@ async function updatePullRequestBranch({ taskPacket, repoRoot, executionRoot = r
         deps
       );
       if (workspaceStatus.status === 0 && !normalizeText(workspaceStatus.stdout)) {
-        const upstreamFetchResult = await runCommand(
-          'git',
-          ['fetch', 'upstream', baseRefName],
-          { cwd: executionRoot, env: process.env },
-          deps
-        );
-        helperCallsExecuted.push(`git fetch upstream ${baseRefName}`);
+        const upstreamRefresh = await refreshUpstreamTrackingRef({
+          baseRefName,
+          initialArgs: ['fetch', 'upstream', baseRefName],
+          runGitFn: async (args) =>
+            runCommand('git', args, { cwd: executionRoot, env: process.env }, deps)
+        });
+        const upstreamFetchResult = upstreamRefresh.result;
+        helperCallsExecuted.push(...upstreamRefresh.attempts);
         if (upstreamFetchResult.status !== 0) {
           const upstreamFetchMessage =
-            normalizeText(upstreamFetchResult.stderr) ||
-            normalizeText(upstreamFetchResult.stdout) ||
+            normalizeText(upstreamRefresh.initialMessage) ||
+            extractGitResultMessage(upstreamFetchResult) ||
             `git fetch upstream failed (${upstreamFetchResult.status})`;
           return {
             status: 'blocked',

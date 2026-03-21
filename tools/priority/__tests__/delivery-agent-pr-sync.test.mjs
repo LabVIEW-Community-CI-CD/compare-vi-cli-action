@@ -411,6 +411,101 @@ test('runDeliveryTurnBroker surfaces upstream fetch failures from the local bran
   assert.deepEqual(brokerResult.details.helperCallsExecuted, ['gh pr update-branch', 'git fetch upstream develop']);
 });
 
+test('runDeliveryTurnBroker repairs concurrent upstream ref races during the local branch-sync fallback', async (t) => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-pr-sync-upstream-fetch-race-'));
+  const executionRoot = path.join(repoRoot, 'worker');
+  t.after(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  const commandLog = [];
+  let upstreamFetchAttempts = 0;
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-review',
+      branch: {
+        name: 'issue/origin-959-codex-pressure-governor'
+      },
+      evidence: {
+        lane: {
+          workerCheckoutPath: executionRoot
+        },
+        delivery: {
+          laneLifecycle: 'waiting-review',
+          pullRequest: {
+            number: 1017,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1017',
+            headRefName: 'issue/origin-959-codex-pressure-governor',
+            baseRefName: 'develop',
+            mergeStateStatus: 'BEHIND',
+            syncRequired: true,
+            checks: {
+              blockerClass: 'ci'
+            }
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: []
+      }),
+      runCommandFn: async (command, args, options) => {
+        commandLog.push({ command, args, cwd: options?.cwd || '' });
+        if (command === 'gh' && args[0] === 'pr' && args[1] === 'update-branch') {
+          return { status: 1, stdout: '', stderr: 'GraphQL: Something went wrong while executing your query.' };
+        }
+        if (command === 'git' && args[0] === 'status') {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        if (command === 'git' && args[0] === 'fetch' && args[1] === 'upstream') {
+          upstreamFetchAttempts += 1;
+          if (upstreamFetchAttempts === 1) {
+            return {
+              status: 1,
+              stdout: '',
+              stderr: "error: cannot lock ref 'refs/remotes/upstream/develop': incorrect old value provided"
+            };
+          }
+          return { status: 0, stdout: '', stderr: '' };
+        }
+        return { status: 0, stdout: '', stderr: '' };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.outcome, 'branch-updated');
+  assert.deepEqual(brokerResult.details.helperCallsExecuted, [
+    'gh pr update-branch',
+    'git fetch upstream develop',
+    'git fetch upstream +develop:refs/remotes/upstream/develop',
+    'git fetch origin issue/origin-959-codex-pressure-governor',
+    'git checkout issue/origin-959-codex-pressure-governor',
+    'git rebase upstream/develop',
+    'git push --force-with-lease origin HEAD:issue/origin-959-codex-pressure-governor'
+  ]);
+  assert.ok(
+    commandLog.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'fetch' &&
+        entry.args[1] === 'upstream' &&
+        entry.args[2] === '+develop:refs/remotes/upstream/develop'
+    )
+  );
+});
+
 test('runDeliveryTurnBroker surfaces checkout failures from the local branch-sync fallback', async (t) => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-pr-sync-checkout-fail-'));
   const executionRoot = path.join(repoRoot, 'worker');
