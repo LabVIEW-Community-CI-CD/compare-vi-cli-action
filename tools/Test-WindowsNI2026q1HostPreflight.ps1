@@ -95,6 +95,30 @@ function Invoke-DockerCommand {
   }
 }
 
+function Get-DesktopDockerObservation {
+  $contextResult = Invoke-DockerCommand -Arguments @('context', 'show') -IgnoreExitCode
+  $infoResult = Invoke-DockerCommand -Arguments @('info', '--format', '{{.OSType}}') -IgnoreExitCode
+
+  $context = ''
+  if ($contextResult.ExitCode -eq 0) {
+    $context = [string]($contextResult.Text ?? '').Trim()
+  }
+
+  $osType = ''
+  if ($infoResult.ExitCode -eq 0) {
+    $osType = [string]($infoResult.Text ?? '').Trim()
+  }
+
+  return [ordered]@{
+    context = $context
+    osType = $osType
+    contextExitCode = [int]$contextResult.ExitCode
+    contextError = [string]$contextResult.Text
+    infoExitCode = [int]$infoResult.ExitCode
+    infoError = [string]$infoResult.Text
+  }
+}
+
 function Ensure-LocalImageAvailability {
   param(
     [Parameter(Mandatory)][string]$Image
@@ -262,6 +286,21 @@ $snapshotPath = ''
 try {
   if ($ExecutionSurface -eq 'desktop-local') {
     $summary.runtimeProvider = 'docker-desktop'
+    $desktopObservation = Get-DesktopDockerObservation
+    $summary.contexts.start = [string]$desktopObservation.context
+    $summary.contexts.startOsType = [string]$desktopObservation.osType
+    $summary.contexts.final = [string]$desktopObservation.context
+    $summary.contexts.finalOsType = [string]$desktopObservation.osType
+
+    if ([string]::Equals([string]$desktopObservation.osType, 'linux', [System.StringComparison]::OrdinalIgnoreCase)) {
+      $summary.status = 'failure'
+      $summary.failureClass = 'docker-engine-mismatch'
+      $summary.failureMessage = ("desktop-local Windows NI preflight requires Docker Desktop Windows containers. Observed context '{0}' with OSType '{1}'. Switch Docker Desktop to Windows containers (`desktop-windows`) and retry." -f ([string]$desktopObservation.context ?? ''), [string]$desktopObservation.osType)
+      $summary.runtimeDeterminism.status = 'mismatch'
+      $summary.runtimeDeterminism.reason = 'desktop-local-windows-preflight-requires-windows-engine'
+      $summary.runtimeDeterminism.failureClass = 'docker-engine-mismatch'
+      throw $summary.failureMessage
+    }
 
     $managerOutput = @(& $runtimeManagerScript `
       -ProbeScope 'windows' `
@@ -403,8 +442,12 @@ try {
 
   if (-not $handledUnavailable) {
     $summary.status = 'failure'
-    $summary.failureClass = 'preflight-failed'
-    $summary.failureMessage = $failureMessage
+    if ([string]::IsNullOrWhiteSpace([string]$summary.failureClass) -or [string]::Equals([string]$summary.failureClass, 'none', [System.StringComparison]::OrdinalIgnoreCase)) {
+      $summary.failureClass = 'preflight-failed'
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$summary.failureMessage)) {
+      $summary.failureMessage = $failureMessage
+    }
     ($summary | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $jsonPathResolved -Encoding utf8
     throw
   }
