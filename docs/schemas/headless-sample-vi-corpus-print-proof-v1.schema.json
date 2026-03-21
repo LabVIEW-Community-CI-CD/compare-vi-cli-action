@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/headless-sample-vi-corpus-print-proof-v1.schema.json",
+  "title": "Headless Sample VI Corpus Print Proof v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "catalogPath",
+    "targetId",
+    "targetPath",
+    "changeKind",
+    "certificationSurface",
+    "operation",
+    "payloadBundlePath",
+    "payloadInspectionPath",
+    "payloadInspectionMarkdownPath",
+    "payloadDeclaredExecutableState",
+    "payloadObservedExecutableState",
+    "executionAttempted",
+    "finalStatus",
+    "blockingReason",
+    "notes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "vi-headless/sample-print-proof@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "catalogPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targetId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targetPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "changeKind": {
+      "type": "string",
+      "enum": [
+        "added",
+        "deleted"
+      ]
+    },
+    "certificationSurface": {
+      "const": "print-single-file"
+    },
+    "operation": {
+      "const": "PrintToSingleFileHtml"
+    },
+    "payloadBundlePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payloadInspectionPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payloadInspectionMarkdownPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payloadDeclaredExecutableState": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payloadObservedExecutableState": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executionAttempted": {
+      "type": "boolean"
+    },
+    "finalStatus": {
+      "type": "string",
+      "enum": [
+        "blocked",
+        "ready"
+      ]
+    },
+    "blockingReason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}
