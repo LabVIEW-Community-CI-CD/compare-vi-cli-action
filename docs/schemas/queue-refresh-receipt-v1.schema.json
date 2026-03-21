@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/queue-refresh-receipt-v1.schema.json",
+  "title": "Queue Refresh Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repo",
+    "pr",
+    "dryRun",
+    "baseRefName",
+    "headRefName",
+    "headRepositorySlug",
+    "headRemote",
+    "queueManagedBase",
+    "initial",
+    "dequeue",
+    "refresh",
+    "requeue",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/queue-refresh-receipt@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repo": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "pr": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "dryRun": {
+      "type": "boolean"
+    },
+    "baseRefName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "headRefName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "headRepositorySlug": {
+      "type": ["string", "null"]
+    },
+    "headRemote": {
+      "type": ["string", "null"]
+    },
+    "queueManagedBase": {
+      "type": "boolean"
+    },
+    "initial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "mergeStateStatus",
+        "isInMergeQueue",
+        "autoMergeEnabled",
+        "mergedAt",
+        "headRefOid",
+        "currentBranch"
+      ],
+      "properties": {
+        "state": {
+          "type": ["string", "null"]
+        },
+        "mergeStateStatus": {
+          "type": ["string", "null"]
+        },
+        "isInMergeQueue": {
+          "type": "boolean"
+        },
+        "autoMergeEnabled": {
+          "type": "boolean"
+        },
+        "mergedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "headRefOid": {
+          "type": ["string", "null"]
+        },
+        "currentBranch": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "dequeue": {
+      "$ref": "#/$defs/dequeueStep"
+    },
+    "refresh": {
+      "$ref": "#/$defs/refreshStep"
+    },
+    "requeue": {
+      "$ref": "#/$defs/requeueStep"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "enum": ["completed", "skipped", "dry-run", "failed"]
+        },
+        "reason": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "stepBase": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "attempted",
+        "status",
+        "reason",
+        "helperCallsExecuted"
+      ],
+      "properties": {
+        "attempted": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": ["skipped", "dry-run", "completed", "failed"]
+        },
+        "reason": {
+          "type": ["string", "null"]
+        },
+        "helperCallsExecuted": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "dequeueStep": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/stepBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "pullRequestId",
+            "pollAttemptsUsed",
+            "finalIsInMergeQueue"
+          ],
+          "properties": {
+            "pullRequestId": {
+              "type": ["string", "null"]
+            },
+            "pollAttemptsUsed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "finalIsInMergeQueue": {
+              "type": ["boolean", "null"]
+            }
+          }
+        }
+      ]
+    },
+    "refreshStep": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/stepBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "baseRemoteRef",
+            "forcePushTarget",
+            "rebasedHeadSha"
+          ],
+          "properties": {
+            "baseRemoteRef": {
+              "type": ["string", "null"]
+            },
+            "forcePushTarget": {
+              "type": ["string", "null"]
+            },
+            "rebasedHeadSha": {
+              "type": ["string", "null"]
+            }
+          }
+        }
+      ]
+    },
+    "requeueStep": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/stepBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "mergeSummaryPath",
+            "promotionStatus",
+            "materialized",
+            "finalMode",
+            "finalReason"
+          ],
+          "properties": {
+            "mergeSummaryPath": {
+              "type": ["string", "null"]
+            },
+            "promotionStatus": {
+              "type": ["string", "null"]
+            },
+            "materialized": {
+              "type": ["boolean", "null"]
+            },
+            "finalMode": {
+              "type": ["string", "null"]
+            },
+            "finalReason": {
+              "type": ["string", "null"]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
