@@ -26,12 +26,14 @@ function sampleAlert(overrides = {}) {
   return {
     number: 10,
     state: 'open',
+    url: 'https://api.example.test/alerts/10',
     created_at: '2026-01-01T00:00:00Z',
     fixed_at: null,
     dismissed_at: null,
     auto_dismissed_at: null,
     html_url: 'https://example.test/alerts/10',
     security_advisory: {
+      ghsa_id: 'GHSA-test-0000-0000',
       severity: 'moderate'
     },
     security_vulnerability: {
@@ -195,6 +197,7 @@ test('normalizeDependabotAlert maps GitHub medium severity to moderate', () => {
   const alert = normalizeDependabotAlert(
     sampleAlert({
       security_advisory: {
+        ghsa_id: 'GHSA-medium-0000',
         severity: 'medium'
       }
     }),
@@ -202,6 +205,9 @@ test('normalizeDependabotAlert maps GitHub medium severity to moderate', () => {
   );
   assert.equal(alert.severity, 'moderate');
   assert.equal(alert.firstPatchedVersion, '2.0.0');
+  assert.equal(alert.ghsaId, 'GHSA-medium-0000');
+  assert.equal(alert.apiUrl, 'https://api.example.test/alerts/10');
+  assert.equal(alert.url, 'https://example.test/alerts/10');
 });
 
 test('verifyLocalRemediationForAlert recognizes remediated direct npm manifests and locks', () => {
@@ -271,6 +277,9 @@ test('verifyLocalRemediationForAlert recognizes remediated direct npm manifests 
   assert.equal(manifestVerification.supported, true);
   assert.equal(manifestVerification.remediated, true);
   assert.equal(manifestVerification.detectedVersion, '2.0.1');
+  assert.equal(manifestVerification.ghsaId, 'GHSA-test-0000-0000');
+  assert.equal(manifestVerification.alertApiUrl, 'https://api.example.test/alerts/10');
+  assert.equal(manifestVerification.alertUrl, 'https://example.test/alerts/10');
   assert.equal(lockVerification.supported, true);
   assert.equal(lockVerification.remediated, true);
   assert.equal(lockVerification.detectedVersion, '2.0.1');
@@ -571,6 +580,9 @@ test('runSecurityIntake classifies locally remediated open alerts as platform-st
   assert.equal(result.report.source.dependabot.openCount, 2);
   assert.equal(result.report.verification.platformStale, true);
   assert.deepEqual(result.report.verification.verifiedAlertNumbers, [31, 32]);
+  assert.equal(result.report.verification.entries[0].ghsaId, 'GHSA-test-0000-0000');
+  assert.equal(result.report.verification.entries[0].alertApiUrl, 'https://api.example.test/alerts/10');
+  assert.equal(result.report.verification.entries[0].alertUrl, 'https://example.test/alerts/10');
   assert.equal(result.report.route.action, 'none');
 });
 

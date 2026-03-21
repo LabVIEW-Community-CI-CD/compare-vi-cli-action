@@ -291,6 +291,8 @@ export function normalizeDependabotAlert(alert, now = new Date()) {
     resolvedAt,
     ageDays: createdMs != null && nowMs >= createdMs ? round((nowMs - createdMs) / MS_DAY) : null,
     mttrDays: createdMs != null && resolvedMs != null && resolvedMs >= createdMs ? round((resolvedMs - createdMs) / MS_DAY) : null,
+    ghsaId: asOptional(alert?.security_advisory?.ghsa_id),
+    apiUrl: alert?.url || null,
     url: alert?.html_url || null
   };
 }
@@ -326,6 +328,9 @@ export function verifyLocalRemediationForAlert(alert, { repoRoot = process.cwd()
     ecosystem: asOptional(alert?.ecosystem),
     manifestPath: asOptional(alert?.manifestPath),
     firstPatchedVersion: asOptional(alert?.firstPatchedVersion),
+    ghsaId: asOptional(alert?.ghsaId),
+    alertApiUrl: alert?.apiUrl || null,
+    alertUrl: alert?.url || null,
     detectedVersion: null,
     supported: false,
     remediated: false,
@@ -736,6 +741,15 @@ export async function runSecurityIntake(rawOptions = {}, deps = {}) {
     }
     const reportPath = writeReport(options.outputPath, report);
     console.log(`[security-intake] report: ${reportPath}`);
+    if (verification.platformStale) {
+      const staleAlerts = verification.entries
+        .filter((entry) => entry.supported && entry.remediated)
+        .map((entry) => `#${entry.number}:${entry.packageName}@${entry.detectedVersion}`)
+        .join(', ');
+      if (staleAlerts) {
+        console.log(`[security-intake] platform-stale alerts remain open upstream: ${staleAlerts}`);
+      }
+    }
     if (report.route.action !== 'none') {
       console.log(`[security-intake] remediation issue ${report.route.action}: #${report.route.issueNumber ?? '?'} ${report.route.issueUrl ?? ''}`.trim());
     }
