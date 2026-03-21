@@ -80,6 +80,11 @@ if (-not (Test-Path -LiteralPath $classifierScriptPath -PathType Leaf)) {
 }
 . $classifierScriptPath
 
+$shellContractScriptPath = Join-Path (Split-Path -Parent $PSCommandPath) 'Get-LabVIEWContainerShellContract.ps1'
+if (-not (Test-Path -LiteralPath $shellContractScriptPath -PathType Leaf)) {
+  throw ("LabVIEW container shell contract script not found: {0}" -f $shellContractScriptPath)
+}
+
 $script:PreflightExitCode = 2
 $script:TimeoutExitCode = 124
 
@@ -930,6 +935,8 @@ if ($TimeoutSeconds -le 0) {
   throw '-TimeoutSeconds must be greater than zero.'
 }
 
+$containerShellContract = & $shellContractScriptPath -Plane 'windows'
+
 $capture = [ordered]@{
   schema        = 'ni-windows-container-compare/v1'
   generatedAt   = (Get-Date).ToUniversalTime().ToString('o')
@@ -944,13 +951,7 @@ $capture = [ordered]@{
   dockerServerOs= $null
   dockerContext = $null
   observedDockerHost = $null
-  containerShellContract = [ordered]@{
-    plane = 'windows'
-    executable = 'powershell'
-    family = 'windows-powershell'
-    encodedCommand = $true
-    pwshRequired = $false
-  }
+  containerShellContract = $containerShellContract
   baseVi        = $null
   headVi        = $null
   reportPath    = $null
@@ -1175,14 +1176,14 @@ try {
     $dockerArgs += @('--env', 'COMPARE_LABVIEW_PATH')
     $dockerArgs += @(
       $Image,
-      'powershell',
+      [string]$containerShellContract.executable,
       '-NoLogo',
       '-NoProfile',
       '-EncodedCommand',
       $encodedContainerCommand
     )
 
-    $capture.command = ('docker run --name {0} ... {1} powershell -NoLogo -NoProfile -EncodedCommand <base64-compare-script>' -f $containerName, $Image)
+    $capture.command = ('docker run --name {0} ... {1} {2} -NoLogo -NoProfile -EncodedCommand <base64-compare-script>' -f $containerName, $Image, [string]$containerShellContract.executable)
     Write-Host ("[ni-container-compare] image={0} report={1} capture={2} stdout={3} stderr={4}" -f $Image, $resolvedReportPath, $capturePath, $stdoutPath, $stderrPath) -ForegroundColor Cyan
 
     $runResult = Invoke-DockerRunWithTimeout `
