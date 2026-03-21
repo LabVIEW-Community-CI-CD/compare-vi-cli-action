@@ -49,6 +49,10 @@ Promotion remains blocked until both of these are true:
 1. runnable operation files are authored and checked in under this bundle
 2. at least one public workflow run proves the payload on an added or deleted VI
 
+For this bundle, "runnable" now means more than matching file names: the expected
+`GetHelp.vi` and `RunOperation.vi` files must also inspect as real LabVIEW
+binary artifacts, not placeholder text files.
+
 Machine-readable provenance for this bundle lives in `payload-provenance.json`.
 Use `tools/Inspect-OperationPayloadSourceBundle.ps1` to project the current
 executable-state inspection receipt for this bundle.

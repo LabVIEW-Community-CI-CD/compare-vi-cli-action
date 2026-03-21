@@ -39,6 +39,9 @@ sample target should claim `operationPayload.provenanceState = accepted`.
 As of March 21, 2026, the bundle is still explicitly `source-only`:
 
 - the expected runnable files remain `GetHelp.vi` and `RunOperation.vi`
+- those files must inspect as real LabVIEW binaries before the bundle can
+  transition from `source-only` to `runnable`; placeholder text files do not
+  satisfy the executable-state contract
 - `#1619` bootstraps disposable authoring workspaces from installed official
   CLI operation directories
 - `#1621` tracks the repo-owned authoring step that must land before public
