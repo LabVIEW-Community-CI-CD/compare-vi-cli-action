@@ -25,6 +25,10 @@ This corpus is not the pre-push gate.
   `docs/schemas/headless-sample-vi-corpus-evaluation-v1.schema.json`
 - Evaluator:
   `tools/Invoke-HeadlessSampleVICorpusEvaluation.ps1`
+- Print proof wrapper:
+  `tools/Invoke-HeadlessSampleVICorpusPrintProof.ps1`
+- Linux print runner:
+  `tools/Run-NILinuxContainerCustomOperation.ps1`
 
 ## Admission states
 
@@ -149,3 +153,21 @@ Do not let this corpus replace:
 
 It exists to strengthen those surfaces with public, realistic, machine-tracked
 sample provenance.
+
+## Print proof lane
+
+For `print-single-file` targets, the checked-in wrapper now has two explicit
+states:
+
+- `blocked`
+  - the repo-owned payload still inspects as `source-only`
+  - no execution is attempted
+- `succeeded` / `failed`
+  - the payload inspects as runnable
+  - the wrapper materializes the pinned public sample repo (or uses an explicit
+    local checkout override)
+  - the Linux proof lane runs `PrintToSingleFileHtml` through
+    `tools/Run-NILinuxContainerCustomOperation.ps1`
+
+That keeps the wrapper fail-closed while still giving the repo a real Linux
+execution plane as soon as the repo-owned payload becomes runnable.

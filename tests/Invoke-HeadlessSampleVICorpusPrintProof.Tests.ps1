@@ -103,7 +103,7 @@ $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ReportPath -Encodi
     $report.payloadObservedExecutableState | Should -Be 'source-only'
   }
 
-  It 'emits a ready receipt when the payload bundle is no longer source-only' {
+  It 'executes the Linux custom-operation runner once the payload bundle is runnable' {
     $catalogPath = Join-Path $TestDrive 'catalog-ready.json'
     @'
 {
@@ -175,6 +175,50 @@ $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ReportPath -Encodi
 '# Inspection summary' | Set-Content -LiteralPath $MarkdownPath -Encoding utf8
 '@ | Set-Content -LiteralPath $inspectionStub -Encoding utf8
 
+    $fakeRepo = Join-Path $TestDrive 'sample-repo'
+    $fakeTargetDir = Join-Path $fakeRepo 'Tooling' 'comparevi-history-canary'
+    New-Item -ItemType Directory -Path $fakeTargetDir -Force | Out-Null
+    'stub-vi' | Set-Content -LiteralPath (Join-Path $fakeTargetDir 'CanaryProbe.vi') -Encoding utf8
+
+    $runnerStub = Join-Path $TestDrive 'Stub-RunLinuxCustomOperation.ps1'
+    @'
+param(
+  [string]$OperationName,
+  [string]$AdditionalOperationDirectory,
+  [string]$ResultsRoot,
+  [string[]]$AdditionalMount,
+  [object[]]$Arguments,
+  [string]$ExpectedOutputPath,
+  [switch]$Headless,
+  [switch]$LogToConsole
+)
+$resultsRootResolved = [System.IO.Path]::GetFullPath($ResultsRoot)
+if (-not (Test-Path -LiteralPath $resultsRootResolved -PathType Container)) {
+  New-Item -ItemType Directory -Path $resultsRootResolved -Force | Out-Null
+}
+$capturePath = Join-Path $resultsRootResolved 'ni-linux-custom-operation-capture.json'
+$scenarioResultPath = Join-Path $resultsRootResolved 'scenario-result.json'
+$renderedOutputPath = Join-Path $resultsRootResolved 'print-output.html'
+[ordered]@{
+  schema = 'ni-linux-container-custom-operation/v1'
+  status = 'ok'
+  operationName = $OperationName
+  additionalMounts = @($AdditionalMount)
+  preview = [ordered]@{
+    args = @($Arguments)
+  }
+  exitCode = 0
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $capturePath -Encoding utf8
+[ordered]@{
+  schema = 'ni-linux-container-custom-operation-scenario@v1'
+  status = 'succeeded'
+  exitCode = 0
+  expectedOutputPath = $ExpectedOutputPath
+  outputExists = $true
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $scenarioResultPath -Encoding utf8
+'<html><body>printed</body></html>' | Set-Content -LiteralPath $renderedOutputPath -Encoding utf8
+'@ | Set-Content -LiteralPath $runnerStub -Encoding utf8
+
     $resultsRoot = Join-Path $TestDrive 'results-ready'
     $output = & pwsh -NoLogo -NoProfile -File $script:ProofScript `
       -CatalogPath $catalogPath `
@@ -182,14 +226,20 @@ $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ReportPath -Encodi
       -PayloadBundlePath 'fixtures/headless-corpus/operation-payloads/PrintToSingleFileHtml' `
       -ResultsRoot $resultsRoot `
       -InspectionScriptPath $inspectionStub `
+      -RunnerScriptPath $runnerStub `
+      -TargetRepositoryPath $fakeRepo `
       -SkipSchemaValidation *>&1
     $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
 
     $reportPath = Join-Path $resultsRoot 'print-proof-print-target.json'
     $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 20
-    $report.finalStatus | Should -Be 'ready'
+    $report.finalStatus | Should -Be 'succeeded'
     $report.blockingReason | Should -BeNullOrEmpty
-    $report.executionAttempted | Should -BeFalse
+    $report.executionAttempted | Should -BeTrue
     $report.payloadObservedExecutableState | Should -Be 'runnable'
+    $report.executionStatus | Should -Be 'succeeded'
+    $report.executionExitCode | Should -Be 0
+    $report.executionCapturePath | Should -Match 'ni-linux-custom-operation-capture\.json$'
+    $report.renderedOutputPath | Should -Match 'print-output\.html$'
   }
 }

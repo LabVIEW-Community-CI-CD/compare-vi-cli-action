@@ -18,7 +18,16 @@
     "payloadInspectionMarkdownPath",
     "payloadDeclaredExecutableState",
     "payloadObservedExecutableState",
+    "runnerPath",
+    "targetRepositoryPath",
+    "targetRepositoryMaterialized",
     "executionAttempted",
+    "executionResultsRoot",
+    "executionCapturePath",
+    "scenarioResultPath",
+    "renderedOutputPath",
+    "executionExitCode",
+    "executionStatus",
     "finalStatus",
     "blockingReason",
     "notes"
@@ -76,14 +85,64 @@
       "type": "string",
       "minLength": 1
     },
+    "runnerPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targetRepositoryPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "targetRepositoryMaterialized": {
+      "type": "boolean"
+    },
     "executionAttempted": {
       "type": "boolean"
+    },
+    "executionResultsRoot": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "executionCapturePath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "scenarioResultPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "renderedOutputPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "executionExitCode": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "executionStatus": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "finalStatus": {
       "type": "string",
       "enum": [
         "blocked",
-        "ready"
+        "succeeded",
+        "failed"
       ]
     },
     "blockingReason": {
