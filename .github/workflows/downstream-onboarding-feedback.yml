@@ -88,10 +88,12 @@ jobs:
           if [ -z "$branch" ]; then
             branch="${policy_branch:-}"
           fi
-          printf 'policy_template_repo=%s\n' "$policy_repo" >> "$GITHUB_OUTPUT"
-          printf 'policy_template_branch=%s\n' "$policy_branch" >> "$GITHUB_OUTPUT"
-          printf 'resolved_repo=%s\n' "$repo" >> "$GITHUB_OUTPUT"
-          printf 'resolved_branch=%s\n' "$branch" >> "$GITHUB_OUTPUT"
+          {
+            printf 'policy_template_repo=%s\n' "$policy_repo"
+            printf 'policy_template_branch=%s\n' "$policy_branch"
+            printf 'resolved_repo=%s\n' "$repo"
+            printf 'resolved_branch=%s\n' "$branch"
+          } >> "$GITHUB_OUTPUT"
           args=(
             --repo "$repo"
             --parent-issue 715
