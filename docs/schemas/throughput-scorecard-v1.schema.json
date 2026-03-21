@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/throughput-scorecard-v1.schema.json",
+  "title": "Throughput Scorecard v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "generatedAt", "inputs", "workerPool", "queue", "delivery", "summary"],
+  "properties": {
+    "schema": {
+      "const": "priority/throughput-scorecard@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": ["string", "null"]
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtimeStatePath", "deliveryMemoryPath", "queueReportPath"],
+      "properties": {
+        "runtimeStatePath": { "type": ["string", "null"] },
+        "deliveryMemoryPath": { "type": ["string", "null"] },
+        "queueReportPath": { "type": ["string", "null"] }
+      }
+    },
+    "workerPool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetSlotCount",
+        "occupiedSlotCount",
+        "availableSlotCount",
+        "releasedLaneCount",
+        "utilizationRatio",
+        "activeCodingLanes"
+      ],
+      "properties": {
+        "targetSlotCount": { "type": "integer", "minimum": 0 },
+        "occupiedSlotCount": { "type": "integer", "minimum": 0 },
+        "availableSlotCount": { "type": "integer", "minimum": 0 },
+        "releasedLaneCount": { "type": "integer", "minimum": 0 },
+        "utilizationRatio": { "type": "number", "minimum": 0 },
+        "activeCodingLanes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "queue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readyPrInventory",
+        "inflight",
+        "capacity",
+        "effectiveMaxInflight",
+        "paused",
+        "throughputMode",
+        "governorMode",
+        "readySetTop"
+      ],
+      "properties": {
+        "readyPrInventory": { "type": "integer", "minimum": 0 },
+        "inflight": { "type": "integer", "minimum": 0 },
+        "capacity": { "type": "integer", "minimum": 0 },
+        "effectiveMaxInflight": { "type": "integer", "minimum": 0 },
+        "paused": { "type": "boolean" },
+        "throughputMode": { "type": ["string", "null"] },
+        "governorMode": { "type": ["string", "null"] },
+        "readySetTop": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalTerminalPullRequestCount",
+        "mergedPullRequestCount",
+        "closedPullRequestCount",
+        "hostedWaitEscapeCount",
+        "meanTerminalDurationMinutes",
+        "viHistorySuitePullRequestCount"
+      ],
+      "properties": {
+        "totalTerminalPullRequestCount": { "type": "integer", "minimum": 0 },
+        "mergedPullRequestCount": { "type": "integer", "minimum": 0 },
+        "closedPullRequestCount": { "type": "integer", "minimum": 0 },
+        "hostedWaitEscapeCount": { "type": "integer", "minimum": 0 },
+        "meanTerminalDurationMinutes": { "type": ["number", "null"], "minimum": 0 },
+        "viHistorySuitePullRequestCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reasons", "metrics"],
+      "properties": {
+        "status": { "enum": ["pass", "warn"] },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "currentWorkerUtilizationRatio",
+            "readyPrInventory",
+            "mergeQueueInflight",
+            "mergeQueueCapacity",
+            "hostedWaitEscapeCount",
+            "meanTerminalDurationMinutes"
+          ],
+          "properties": {
+            "currentWorkerUtilizationRatio": { "type": "number", "minimum": 0 },
+            "readyPrInventory": { "type": "integer", "minimum": 0 },
+            "mergeQueueInflight": { "type": "integer", "minimum": 0 },
+            "mergeQueueCapacity": { "type": "integer", "minimum": 0 },
+            "hostedWaitEscapeCount": { "type": "integer", "minimum": 0 },
+            "meanTerminalDurationMinutes": { "type": ["number", "null"], "minimum": 0 }
+          }
+        }
+      }
+    }
+  }
+}

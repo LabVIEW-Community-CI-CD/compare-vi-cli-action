@@ -105,6 +105,7 @@
     "priority:deployment:gate-policy": "node tools/priority/check-deployment-gates.mjs",
     "priority:deployment:gate-sync": "node tools/priority/sync-deployment-environments.mjs",
     "priority:release:scorecard": "node tools/priority/release-scorecard.mjs",
+    "priority:throughput:scorecard": "node tools/priority/throughput-scorecard.mjs",
     "priority:release:cadence": "node tools/priority/release-cadence-check.mjs",
     "priority:release:conductor": "node tools/priority/release-conductor.mjs",
     "priority:remediation:slo": "node tools/priority/remediation-slo-evaluator.mjs",

@@ -176,7 +176,9 @@ test('delivery memory summarizes merged and poisoned-branch PR outcomes with eff
   assert.equal(report.summary.totalTerminalPullRequestCount, 2);
   assert.equal(report.summary.mergedPullRequestCount, 1);
   assert.equal(report.summary.closedPullRequestCount, 1);
+  assert.equal(report.summary.hostedWaitEscapeCount, 1);
   assert.equal(report.summary.poisonedBranchClosureCount, 1);
+  assert.equal(report.summary.meanTerminalDurationMinutes, 7.5);
   assert.equal(report.summary.viHistorySuitePullRequestCount, 1);
   assert.equal(report.summary.viHistorySuiteMergedPullRequestCount, 1);
   assert.equal(report.summary.viHistorySuiteClosedPullRequestCount, 0);
