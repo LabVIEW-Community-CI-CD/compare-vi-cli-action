@@ -1180,7 +1180,7 @@ test('runRuntimeSupervisor step writes runtime state, lane, turn, event, and blo
   );
 
   const runtimeRoot = path.join(repoRoot, runtimeDir);
-  const state = await readJson(path.join(runtimeRoot, 'runtime-state.json'));
+  const state = await readJson(path.join(runtimeRoot, 'delivery-agent-state.json'));
   const lane = await readJson(path.join(runtimeRoot, 'lanes', 'origin-977.json'));
   const blocker = await readJson(path.join(runtimeRoot, 'last-blocker.json'));
   const events = await readNdjson(path.join(runtimeRoot, 'runtime-events.ndjson'));
@@ -1269,7 +1269,7 @@ test('stop, step with stop request, and resume manage runtime control state dete
   assert.equal(resumeResult.exitCode, 0);
 
   const runtimeRoot = path.join(repoRoot, runtimeDir);
-  const state = await readJson(path.join(runtimeRoot, 'runtime-state.json'));
+  const state = await readJson(path.join(runtimeRoot, 'delivery-agent-state.json'));
   const events = await readNdjson(path.join(runtimeRoot, 'runtime-events.ndjson'));
 
   assert.equal(state.lifecycle.stopRequested, false);

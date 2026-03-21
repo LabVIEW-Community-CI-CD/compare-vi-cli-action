@@ -19,6 +19,8 @@ export const WORKER_BRANCH_SCHEMA = 'priority/runtime-worker-branch@v1';
 export const TASK_PACKET_SCHEMA = 'priority/runtime-worker-task-packet@v1';
 export const EXECUTION_RECEIPT_SCHEMA = 'priority/runtime-execution-receipt@v1';
 export const DEFAULT_RUNTIME_DIR = path.join('tests', 'results', '_agent', 'runtime');
+export const DEFAULT_STATE_FILENAME = 'delivery-agent-state.json';
+export const LEGACY_STATE_FILENAME = 'runtime-state.json';
 export const DEFAULT_LEASE_SCOPE = 'workspace';
 export const ACTIONS = new Set(['status', 'step', 'stop', 'resume']);
 export const BLOCKER_CLASSES = new Set(['none', 'merge', 'review', 'ci', 'scope', 'helper', 'auth']);
@@ -29,7 +31,7 @@ function printUsage() {
   console.log('Options:');
   console.log('  --repo <owner/repo>         Repository slug to record in state.');
   console.log(`  --runtime-dir <path>        Runtime artifact root (default: ${DEFAULT_RUNTIME_DIR}).`);
-  console.log('  --state-path <path>         Override runtime-state.json path.');
+  console.log(`  --state-path <path>         Override ${DEFAULT_STATE_FILENAME} path.`);
   console.log('  --events-path <path>        Override runtime-events.ndjson path.');
   console.log('  --lanes-dir <path>          Override lane artifact directory.');
   console.log('  --turns-dir <path>          Override turn artifact directory.');
@@ -138,9 +140,11 @@ async function countJsonFiles(dirPath) {
 
 function resolveRuntimePaths(repoRoot, options) {
   const runtimeDir = resolvePath(repoRoot, options.runtimeDir || DEFAULT_RUNTIME_DIR);
+  const hasCustomStatePath = Boolean(options.statePath);
   return {
     runtimeDir,
-    statePath: options.statePath ? resolvePath(repoRoot, options.statePath) : path.join(runtimeDir, 'runtime-state.json'),
+    statePath: hasCustomStatePath ? resolvePath(repoRoot, options.statePath) : path.join(runtimeDir, DEFAULT_STATE_FILENAME),
+    legacyStatePath: hasCustomStatePath ? null : path.join(runtimeDir, LEGACY_STATE_FILENAME),
     eventsPath: options.eventsPath ? resolvePath(repoRoot, options.eventsPath) : path.join(runtimeDir, 'runtime-events.ndjson'),
     lanesDir: options.lanesDir ? resolvePath(repoRoot, options.lanesDir) : path.join(runtimeDir, 'lanes'),
     turnsDir: options.turnsDir ? resolvePath(repoRoot, options.turnsDir) : path.join(runtimeDir, 'turns'),
@@ -597,16 +601,21 @@ async function ensureRuntimeLayout(runtimePaths) {
 
 async function loadState({ repository, repoRoot, runtimePaths, now, owner, adapter }) {
   const existing = await readJson(runtimePaths.statePath);
-  if (existing) {
+  const existingLegacy =
+    existing || !runtimePaths.legacyStatePath || path.resolve(runtimePaths.legacyStatePath) === path.resolve(runtimePaths.statePath)
+      ? null
+      : await readJson(runtimePaths.legacyStatePath);
+  const persisted = existing ?? existingLegacy;
+  if (persisted) {
     return {
-      ...existing,
-      repository: existing.repository || repository,
-      repoRoot: existing.repoRoot || repoRoot,
-      runtimeDir: existing.runtimeDir || runtimePaths.runtimeDir,
-      runtimeAdapter: existing.runtimeAdapter || adapter.name,
-      owner: existing.owner || owner,
+      ...persisted,
+      repository: persisted.repository || repository,
+      repoRoot: persisted.repoRoot || repoRoot,
+      runtimeDir: persisted.runtimeDir || runtimePaths.runtimeDir,
+      runtimeAdapter: persisted.runtimeAdapter || adapter.name,
+      owner: persisted.owner || owner,
       artifacts: {
-        ...(existing.artifacts || {}),
+        ...(persisted.artifacts || {}),
         statePath: runtimePaths.statePath,
         eventsPath: runtimePaths.eventsPath,
         lanesDir: runtimePaths.lanesDir,

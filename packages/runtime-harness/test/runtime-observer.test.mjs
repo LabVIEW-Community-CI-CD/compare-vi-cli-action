@@ -304,7 +304,7 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
   const workerBranchHistory = await readdir(path.join(runtimeDir, 'workers-branch'));
   const taskPacket = await readJson(path.join(runtimeDir, 'task-packet.json'));
   const taskPacketHistory = await readdir(path.join(runtimeDir, 'task-packets'));
-  const state = await readJson(path.join(runtimeDir, 'runtime-state.json'));
+  const state = await readJson(path.join(runtimeDir, 'delivery-agent-state.json'));
 
   assert.equal(result.exitCode, 0);
   assert.equal(result.report.outcome, 'max-cycles-reached');
