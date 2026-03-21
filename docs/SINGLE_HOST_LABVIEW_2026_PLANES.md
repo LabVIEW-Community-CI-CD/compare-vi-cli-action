@@ -39,11 +39,15 @@ Use these commands as the checked-in operator surfaces:
 
 1. Host-plane report:
    - `node tools/npm/run-script.mjs env:labview:2026:host-planes`
-2. Fast Docker Desktop lane loops:
+2. Concurrent lane planner:
+   - `node tools/npm/run-script.mjs priority:lane:concurrency:plan`
+   - Optional Docker runtime input:
+     - `node tools/npm/run-script.mjs priority:lane:concurrency:plan -- --docker-runtime-snapshot tests/results/ni-linux-container/runtime-determinism.json`
+3. Fast Docker Desktop lane loops:
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope linux -StepTimeoutSeconds 600`
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope windows -StepTimeoutSeconds 600`
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope both -StepTimeoutSeconds 600`
-3. Differentiated diagnostics replay:
+4. Differentiated diagnostics replay:
    - `node tools/npm/run-script.mjs history:diagnostics:show -- --ResultsRoot tests/results/local-parity/windows`
 
 The replay helper is the fastest operator readback. It prints the host-plane report first and then the differentiated
@@ -63,19 +67,21 @@ Use these artifacts as the machine-readable source of truth:
 1. Host-plane report:
    - `tests/results/_agent/host-planes/labview-2026-host-plane-report.json`
    - `tests/results/_agent/host-planes/labview-2026-host-plane-summary.md`
-2. Fast-loop readiness envelope:
+2. Concurrent lane planner:
+   - `tests/results/_agent/runtime/concurrent-lane-plan.json`
+3. Fast-loop readiness envelope:
    - `docker-runtime-fastloop-readiness.json`
    - `docker-runtime-fastloop-readiness.md`
-3. Fast-loop proof bundle when produced:
+4. Fast-loop proof bundle when produced:
    - `docker-fast-loop-proof-*.json`
-4. Top-level fast-loop GitHub outputs when `tools/Test-DockerDesktopFastLoop.ps1` runs inside GitHub Actions:
+5. Top-level fast-loop GitHub outputs when `tools/Test-DockerDesktopFastLoop.ps1` runs inside GitHub Actions:
    - `docker-fast-loop-summary-path`
    - `docker-fast-loop-status-path`
    - `docker-fast-loop-host-plane-summary-path`
    - `docker-fast-loop-host-plane-summary-status`
    - `docker-fast-loop-host-plane-summary-sha256`
    - `docker-fast-loop-host-plane-summary-reason`
-5. Top-level fast-loop Step Summary when `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
+6. Top-level fast-loop Step Summary when `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
    - `Summary Path`
    - `Status Path`
    - `Host Plane Summary Path`
@@ -99,31 +105,35 @@ Use the artifacts in this order:
    - records the operator-facing summary paired with the report
    - is projected into the fast-loop readiness/proof/replay surfaces as provenance
    - should remain hash-stable for a given report payload
-3. `docker-runtime-fastloop-readiness.json`
+3. `concurrent-lane-plan.json`
+   - records the current hosted/manual/shadow lane availability
+   - ranks safe concurrent bundles for the present host, RAM, and Docker-runtime state
+   - keeps the mutually exclusive local Docker planes out of the same recommended bundle
+4. `docker-runtime-fastloop-readiness.json`
    - records the fast-loop verdict and lane outcomes
    - carries the differentiated Docker Desktop plane projection
    - records `hostPlaneSummary.path`, `hostPlaneSummary.status`, and `hostPlaneSummary.sha256`
    - records whether Docker exclusivity was required and whether it was satisfied
-4. `docker-fast-loop-proof-*.json`
+5. `docker-fast-loop-proof-*.json`
    - records `hostPlaneSummaryPath`
    - records `hostPlaneSummaryProvenance`
    - records `hashes.hostPlaneSummarySha256`
    - projects GitHub outputs:
      - `docker-fast-loop-proof-host-plane-summary-path`
      - `docker-fast-loop-proof-host-plane-summary-sha256`
-5. Top-level `tools/Test-DockerDesktopFastLoop.ps1` GitHub outputs
+6. Top-level `tools/Test-DockerDesktopFastLoop.ps1` GitHub outputs
    - project `docker-fast-loop-summary-path` and `docker-fast-loop-status-path`
    - project `docker-fast-loop-host-plane-summary-path`
    - project `docker-fast-loop-host-plane-summary-status`
    - project `docker-fast-loop-host-plane-summary-sha256`
    - project `docker-fast-loop-host-plane-summary-reason`
    - keep success and fail-closed summary provenance available to downstream workflow consumers without reopening JSON
-6. Top-level `tools/Test-DockerDesktopFastLoop.ps1` Step Summary
+7. Top-level `tools/Test-DockerDesktopFastLoop.ps1` Step Summary
    - appends `### Docker Fast Loop Summary`
    - prints the same summary path and status path surfaced through GitHub outputs
    - prints host-plane summary path, status, SHA-256, and fail-closed reason
    - preserves the missing-summary reason before the script throws
-7. `history:diagnostics:show`
+8. `history:diagnostics:show`
    - replays the same distinction in console form for the operator
    - prints `[host-plane-split][summary] <path> status=<status> sha256=<sha256>` when summary provenance exists
 
@@ -136,12 +146,16 @@ trustworthy.
 2. Use `-LaneScope both` only when the run is explicitly about the dual-lane contract.
 3. Do not infer the active Docker plane from filenames alone; rely on the readiness envelope and replay helper.
 4. Do not infer the active native plane from a generic LabVIEW path; use the host-plane report.
-5. When summarizing a run, name the exact plane identifier instead of saying “host” or “Docker” without qualification.
+5. Use `priority:lane:concurrency:plan` before dispatching hosted Windows/Linux plus manual lanes so the plan stays
+   explicit and replayable.
+6. When summarizing a run, name the exact plane identifier instead of saying “host” or “Docker” without qualification.
 
 ## Related contracts
 
 - [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)
+- [concurrent-lane-plan-v1.schema.json](schemas/concurrent-lane-plan-v1.schema.json)
 - [labview-2026-host-plane-report-v1.schema.json](schemas/labview-2026-host-plane-report-v1.schema.json)
 - [Write-LabVIEW2026HostPlaneDiagnostics.ps1](../tools/Write-LabVIEW2026HostPlaneDiagnostics.ps1)
+- [concurrent-lane-plan.mjs](../tools/priority/concurrent-lane-plan.mjs)
 - [Test-DockerDesktopFastLoop.ps1](../tools/Test-DockerDesktopFastLoop.ps1)
 - [Show-DockerFastLoopDiagnostics.ps1](../tools/Show-DockerFastLoopDiagnostics.ps1)

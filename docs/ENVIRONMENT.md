@@ -94,6 +94,9 @@ Notes:
   `C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe`.
 - Expect the hosted Windows image pull to be materially slower than the Linux lane.
   Agents can dispatch the hosted lane while manually running the Linux or Windows Docker Desktop/WSL2 lanes on this host.
+- Use `node tools/npm/run-script.mjs priority:lane:concurrency:plan` to turn the current host-plane,
+  host-RAM, and Docker-runtime receipts into a recommended concurrent hosted/manual lane bundle before
+  dispatching work.
 
 ### NI 2026 q1 host bootstrap preflight
 
