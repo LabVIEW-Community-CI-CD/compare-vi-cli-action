@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import { run, getRepoRoot, getCurrentBranch, ensureCleanWorkingTree } from './lib/branch-utils.mjs';
 import { resolveRepoContext } from './lib/git-context.mjs';
-import { ensureGhCli } from './lib/remote-utils.mjs';
+import { ensureGhCli, isSameRepository, normalizeForkRemoteName } from './lib/remote-utils.mjs';
 
 const USAGE = [
   'Usage: node tools/priority/dispatch-validate.mjs [--ref <branch>] [--sample-id <id>] [--history-scenario-set <none|smoke|history-core>] [--allow-fork] [--push-missing] [--force-push-ok] [--allow-noncanonical-vi-history] [--allow-noncanonical-history-core]',
@@ -222,6 +222,108 @@ export function findRemoteRef(repoRoot, remoteName, ref) {
   return null;
 }
 
+export function inferForkLaneRemoteFromBranch(branchName) {
+  const normalized = String(branchName ?? '').trim();
+  const match = normalized.match(/^[^/]+\/(?<remote>origin|personal)-/i);
+  if (!match?.groups?.remote) {
+    return null;
+  }
+
+  return normalizeForkRemoteName(match.groups.remote);
+}
+
+export function resolveValidateDispatchTarget({
+  repoRoot,
+  context,
+  ref,
+  branchName,
+  remoteName = 'upstream',
+  findRemoteRefFn = findRemoteRef
+} = {}) {
+  const upstream = context?.upstream ?? null;
+  if (!upstream?.owner || !upstream?.repo) {
+    throw new Error('Unable to resolve upstream repository. Configure an upstream remote.');
+  }
+
+  const candidates = [];
+  const seen = new Set();
+  const addCandidate = (candidate) => {
+    const repository = candidate?.repository;
+    const candidateRemote = String(candidate?.remoteName ?? '').trim();
+    if (!candidateRemote || !repository?.owner || !repository?.repo) {
+      return;
+    }
+
+    const key = `${candidateRemote}:${repository.owner}/${repository.repo}`.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    candidates.push({
+      remoteName: candidateRemote,
+      repository,
+      selection: candidate.selection ?? 'candidate'
+    });
+  };
+
+  addCandidate({
+    remoteName,
+    repository: upstream,
+    selection: 'upstream-default'
+  });
+
+  const branchForkRemote = inferForkLaneRemoteFromBranch(branchName);
+  if (branchForkRemote) {
+    const branchForkRepository = branchForkRemote === 'personal' ? context?.personal : context?.origin;
+    if (branchForkRepository && !isSameRepository(branchForkRepository, upstream)) {
+      addCandidate({
+        remoteName: branchForkRemote,
+        repository: branchForkRepository,
+        selection: 'branch-fork-lane'
+      });
+    }
+  }
+
+  const activeForkRemote = String(context?.activeForkRemote ?? '').trim();
+  const activeFork = context?.activeFork ?? null;
+  if (activeForkRemote && activeFork && !isSameRepository(activeFork, upstream)) {
+    addCandidate({
+      remoteName: activeForkRemote,
+      repository: activeFork,
+      selection: 'active-fork'
+    });
+  }
+
+  for (const candidate of candidates) {
+    const remoteRef = findRemoteRefFn(repoRoot, candidate.remoteName, ref);
+    if (remoteRef) {
+      return {
+        ...candidate,
+        remoteRef
+      };
+    }
+  }
+
+  const preferredFork =
+    candidates.find((candidate) => candidate.selection === 'branch-fork-lane') ??
+    candidates.find((candidate) => candidate.selection === 'active-fork') ??
+    null;
+
+  if (preferredFork) {
+    return {
+      ...preferredFork,
+      remoteRef: null
+    };
+  }
+
+  return {
+    remoteName,
+    repository: upstream,
+    selection: 'upstream-default',
+    remoteRef: null
+  };
+}
+
 export function dispatchValidate({
   argv = process.argv,
   env = process.env,
@@ -295,75 +397,85 @@ export function dispatchValidate({
   }
 
   const branchName = localFullRef.slice('refs/heads/'.length);
-  let remoteRef = findRemoteRefFn(repoRoot, remoteName, ref);
+  const dispatchTarget = resolveValidateDispatchTarget({
+    repoRoot,
+    context,
+    ref,
+    branchName,
+    remoteName,
+    findRemoteRefFn
+  });
+  const targetRemoteName = dispatchTarget.remoteName;
+  const targetRepository = dispatchTarget.repository;
+  let remoteRef = dispatchTarget.remoteRef;
 
   const ensureCleanBeforePush = () =>
     ensureCleanWorkingTreeFn(
       (command, args) => runFn(command, args, { cwd: repoRoot }),
-      'Working tree not clean. Commit or stash changes before pushing to upstream.'
+      `Working tree not clean. Commit or stash changes before pushing to ${targetRemoteName}.`
     );
 
   if (!remoteRef) {
-    console.log(`[validate] Ref '${branchName}' not found on remote '${remoteName}'.`);
+    console.log(`[validate] Ref '${branchName}' not found on remote '${targetRemoteName}'.`);
     if (!pushMissing) {
       console.log(
         "[validate] Hint: rerun with --push-missing (or set VALIDATE_DISPATCH_PUSH=1) to publish the branch automatically."
       );
       throw new Error(
-        `Ref '${ref}' not found on remote '${remoteName}'. Push it first (git push ${remoteName} ${branchName}).`
+        `Ref '${ref}' not found on remote '${targetRemoteName}'. Push it first (git push ${targetRemoteName} ${branchName}).`
       );
     }
 
     ensureCleanBeforePush();
-    console.log(`[validate] Pushing '${branchName}' to '${remoteName}'...`);
-    const pushArgs = ['push', remoteName];
+    console.log(`[validate] Pushing '${branchName}' to '${targetRemoteName}'...`);
+    const pushArgs = ['push', targetRemoteName];
     if (forcePushOk) {
       pushArgs.push('--force-with-lease');
     }
     pushArgs.push(`${localFullRef}:${localFullRef}`);
     runFn('git', pushArgs, { cwd: repoRoot });
 
-    remoteRef = ensureRemoteHasRefFn(repoRoot, remoteName, ref);
+    remoteRef = ensureRemoteHasRefFn(repoRoot, targetRemoteName, ref);
   }
 
   if (remoteRef.pattern?.startsWith('refs/tags/')) {
     throw new Error(
-      `Ref '${ref}' resolves to tag '${remoteRef.pattern}' on '${remoteName}'. Provide a branch ref for Validate dispatch.`
+      `Ref '${ref}' resolves to tag '${remoteRef.pattern}' on '${targetRemoteName}'. Provide a branch ref for Validate dispatch.`
     );
   }
 
   if (remoteRef.sha && remoteRef.sha !== localSha) {
     if (!pushMissing) {
       throw new Error(
-        `Ref '${ref}' on '${remoteName}' points to ${remoteRef.sha}, but local branch '${branchName}' is ${localSha}. ` +
-          `Push the branch (git push ${remoteName} ${branchName}) or rerun with --push-missing to align automatically.`
+        `Ref '${ref}' on '${targetRemoteName}' points to ${remoteRef.sha}, but local branch '${branchName}' is ${localSha}. ` +
+          `Push the branch (git push ${targetRemoteName} ${branchName}) or rerun with --push-missing to align automatically.`
       );
     }
 
     if (!forcePushOk) {
       throw new Error(
-        `Ref '${ref}' on '${remoteName}' points to ${remoteRef.sha}, but local branch '${branchName}' is ${localSha}. ` +
+        `Ref '${ref}' on '${targetRemoteName}' points to ${remoteRef.sha}, but local branch '${branchName}' is ${localSha}. ` +
           'Pass --force-push-ok to overwrite the upstream tip or reconcile manually before dispatch.'
       );
     }
 
     ensureCleanBeforePush();
     console.log(
-      `[validate] Upstream ref '${branchName}' differs from local tip. Forcing push of ${localSha} to '${remoteName}'.`
+      `[validate] Remote ref '${branchName}' differs from local tip. Forcing push of ${localSha} to '${targetRemoteName}'.`
     );
-    const pushArgs = ['push', remoteName, '--force-with-lease', `${localFullRef}:${localFullRef}`];
+    const pushArgs = ['push', targetRemoteName, '--force-with-lease', `${localFullRef}:${localFullRef}`];
     runFn('git', pushArgs, { cwd: repoRoot });
 
-    const updatedRef = findRemoteRefFn(repoRoot, remoteName, ref);
+    const updatedRef = findRemoteRefFn(repoRoot, targetRemoteName, ref);
     if (!updatedRef || updatedRef.sha !== localSha) {
       throw new Error(
-        `Force push to '${remoteName}' did not update ref '${ref}' to ${localSha}. Aborting Validate dispatch.`
+        `Force push to '${targetRemoteName}' did not update ref '${ref}' to ${localSha}. Aborting Validate dispatch.`
       );
     }
     remoteRef = updatedRef;
   }
 
-  const slug = `${context.upstream.owner}/${context.upstream.repo}`;
+  const slug = `${targetRepository.owner}/${targetRepository.repo}`;
   const sampleId = normalizeSampleId(sampleIdArg) ?? generateSampleId();
   const workflowArgs = [
     'workflow',
@@ -427,6 +539,7 @@ export function dispatchValidate({
   return {
     dispatched: true,
     repo: slug,
+    remote: targetRemoteName,
     ref,
     sampleId,
     historyScenarioSet,

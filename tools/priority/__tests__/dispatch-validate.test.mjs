@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dispatchValidate, parseCliOptions } from '../dispatch-validate.mjs';
+import {
+  dispatchValidate,
+  inferForkLaneRemoteFromBranch,
+  parseCliOptions,
+  resolveValidateDispatchTarget
+} from '../dispatch-validate.mjs';
 
 function createRunStub({
   fullRef = 'refs/heads/feature/x',
@@ -99,6 +104,40 @@ test('parseCliOptions trims non-empty sample ids', () => {
   assert.equal(opts.sampleId, 'ts-20260308-000000-abcd');
 });
 
+test('inferForkLaneRemoteFromBranch extracts the fork remote from fork lane branches', () => {
+  assert.equal(inferForkLaneRemoteFromBranch('issue/origin-1490-validate-same-owner-fork-standing-lanes'), 'origin');
+  assert.equal(inferForkLaneRemoteFromBranch('issue/personal-1490-validate-same-owner-fork-standing-lanes'), 'personal');
+  assert.equal(inferForkLaneRemoteFromBranch('issue/1490-upstream-native-lane'), null);
+});
+
+test('resolveValidateDispatchTarget prefers a published fork ref for same-owner fork lanes', () => {
+  const calls = [];
+  const target = resolveValidateDispatchTarget({
+    repoRoot: 'repo',
+    context: {
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      origin: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+      personal: null,
+      activeForkRemote: 'origin',
+      activeFork: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' }
+    },
+    ref: 'issue/origin-1490-validate-same-owner-fork-standing-lanes',
+    branchName: 'issue/origin-1490-validate-same-owner-fork-standing-lanes',
+    findRemoteRefFn: (_repoRoot, remoteName) => {
+      calls.push(remoteName);
+      if (remoteName === 'origin') {
+        return { pattern: 'refs/heads/issue/origin-1490-validate-same-owner-fork-standing-lanes', sha: 'abc1234' };
+      }
+      return null;
+    }
+  });
+
+  assert.deepEqual(calls, ['upstream', 'origin']);
+  assert.equal(target.remoteName, 'origin');
+  assert.equal(target.repository.repo, 'compare-vi-cli-action-fork');
+  assert.equal(target.selection, 'branch-fork-lane');
+});
+
 test('dispatchValidate blocks fork by default', () => {
   assert.throws(
     () =>
@@ -149,6 +188,7 @@ test('dispatchValidate allows fork when override set', () => {
   });
 
   assert.equal(result.dispatched, true);
+  assert.equal(result.remote, 'upstream');
   assert.ok(
     runStub.calls.some(
       (call) =>
@@ -185,6 +225,7 @@ test('dispatchValidate generates and forwards a sample_id when not provided', ()
   });
 
   assert.equal(result.dispatched, true);
+  assert.equal(result.remote, 'upstream');
   assert.match(result.sampleId, /^ts-\d{8}-\d{6}-[0-9a-z]{4}$/);
   const workflowCall = runStub.calls.find(
     (call) => call.cmd === 'gh' && call.args[0] === 'workflow' && call.args[1] === 'run'
@@ -218,6 +259,7 @@ test('dispatchValidate generates a sample_id when --sample-id is blank', () => {
   });
 
   assert.equal(result.dispatched, true);
+  assert.equal(result.remote, 'upstream');
   assert.match(result.sampleId, /^ts-\d{8}-\d{6}-[0-9a-z]{4}$/);
   const workflowCall = runStub.calls.find(
     (call) => call.cmd === 'gh' && call.args[0] === 'workflow' && call.args[1] === 'run'
@@ -353,5 +395,102 @@ test('dispatchValidate force pushes when override present', () => {
   assert.equal(forcePushInvoked, true);
   assert.ok(
     runStub.calls.some((call) => call.cmd === 'gh' && call.args[0] === 'workflow' && call.args[1] === 'run')
+  );
+});
+
+test('dispatchValidate targets the same-owner fork repo when the branch is published there', () => {
+  const runStub = createRunStub({ fullRef: 'refs/heads/issue/origin-1490-validate-same-owner-fork-standing-lanes' });
+  const result = dispatchValidate({
+    argv: ['node', 'script', '--ref', 'issue/origin-1490-validate-same-owner-fork-standing-lanes'],
+    env: { VALIDATE_DISPATCH_ALLOW_FORK: '1' },
+    getRepoRootFn: () => 'repo',
+    resolveContextFn: () => ({
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      origin: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+      personal: null,
+      activeForkRemote: 'origin',
+      activeFork: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+      isFork: false
+    }),
+    getCurrentBranchFn: () => 'issue/origin-1490-validate-same-owner-fork-standing-lanes',
+    findRemoteRefFn: (_repoRoot, remoteName) => {
+      if (remoteName === 'origin') {
+        return { pattern: 'refs/heads/issue/origin-1490-validate-same-owner-fork-standing-lanes', sha: 'abc1234' };
+      }
+      return null;
+    },
+    ensureRemoteHasRefFn: () => ({ pattern: 'refs/heads/issue/origin-1490-validate-same-owner-fork-standing-lanes', sha: 'abc1234' }),
+    ensureCleanWorkingTreeFn: () => {},
+    runFn: runStub,
+    ensureGhCliFn: () => {}
+  });
+
+  assert.equal(result.dispatched, true);
+  assert.equal(result.repo, 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork');
+  assert.equal(result.remote, 'origin');
+  assert.ok(
+    runStub.calls.some(
+      (call) =>
+        call.cmd === 'gh' &&
+        call.args[0] === 'workflow' &&
+        call.args[1] === 'run' &&
+        call.args.includes('--repo') &&
+        call.args.includes('LabVIEW-Community-CI-CD/compare-vi-cli-action-fork')
+    )
+  );
+});
+
+test('dispatchValidate pushes missing same-owner fork refs to the fork remote', () => {
+  let published = false;
+  let pushArgs = null;
+  const runStub = createRunStub({
+    fullRef: 'refs/heads/issue/origin-1490-validate-same-owner-fork-standing-lanes',
+    onPush: (args) => {
+      pushArgs = args;
+      published = true;
+    }
+  });
+
+  const result = dispatchValidate({
+    argv: ['node', 'script', '--ref', 'issue/origin-1490-validate-same-owner-fork-standing-lanes', '--push-missing'],
+    env: { VALIDATE_DISPATCH_ALLOW_FORK: '1' },
+    getRepoRootFn: () => 'repo',
+    resolveContextFn: () => ({
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      origin: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+      personal: null,
+      activeForkRemote: 'origin',
+      activeFork: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+      isFork: false
+    }),
+    getCurrentBranchFn: () => 'issue/origin-1490-validate-same-owner-fork-standing-lanes',
+    findRemoteRefFn: (_repoRoot, remoteName) => {
+      if (remoteName === 'origin' && published) {
+        return { pattern: 'refs/heads/issue/origin-1490-validate-same-owner-fork-standing-lanes', sha: 'abc1234' };
+      }
+      return null;
+    },
+    ensureRemoteHasRefFn: (_repoRoot, remoteName) => {
+      assert.equal(remoteName, 'origin');
+      return { pattern: 'refs/heads/issue/origin-1490-validate-same-owner-fork-standing-lanes', sha: 'abc1234' };
+    },
+    ensureCleanWorkingTreeFn: () => {},
+    runFn: runStub,
+    ensureGhCliFn: () => {}
+  });
+
+  assert.equal(result.dispatched, true);
+  assert.equal(result.repo, 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork');
+  assert.equal(result.remote, 'origin');
+  assert.ok(pushArgs, 'should invoke git push');
+  assert.equal(pushArgs[1], 'origin');
+  assert.ok(
+    runStub.calls.some(
+      (call) =>
+        call.cmd === 'gh' &&
+        call.args[0] === 'workflow' &&
+        call.args[1] === 'run' &&
+        call.args.includes('LabVIEW-Community-CI-CD/compare-vi-cli-action-fork')
+    )
   );
 });

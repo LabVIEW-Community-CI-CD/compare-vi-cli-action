@@ -38,8 +38,9 @@ promotion behavior, not the branch-class source of truth.
 - `node tools/npm/run-script.mjs priority:pr` pushes the current branch to your fork and opens a PR targeting `develop`, keeping the linear
   history contract intact.
 - `node tools/npm/run-script.mjs priority:validate -- --ref <branch> --push-missing` publishes the branch to the
-  upstream remote (when it is absent) before dispatching Validate. The helper refuses to push when the branch is dirty,
-  when the ref resolves to a tag, or when the upstream tip differs unless you also pass `--force-push-ok`
+  selected dispatch remote (upstream-native lanes stay on `upstream`; same-owner fork lanes can target `origin`/`personal`)
+  when it is absent before dispatching Validate. The helper refuses to push when the branch is dirty,
+  when the ref resolves to a tag, or when the remote tip differs unless you also pass `--force-push-ok`
   (`VALIDATE_DISPATCH_PUSH=1` / `VALIDATE_DISPATCH_FORCE_PUSH=1` provide the same behaviour for automation).
 
 ### CI guardrails
