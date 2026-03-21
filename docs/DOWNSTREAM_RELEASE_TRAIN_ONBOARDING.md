@@ -117,6 +117,7 @@ Build the downstream consumer-proving scorecard from the success + feedback outp
 node tools/npm/run-script.mjs priority:promote:downstream:scorecard -- \
   --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json \
   --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json \
+  --manifest-report tests/results/_agent/promotion/downstream-develop-promotion-manifest.json \
   --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
 ```
 
@@ -142,4 +143,5 @@ It now follows the shared hosted-signal contract in [`HOSTED_SIGNAL_REPORT_FIRST
 - exports both `GH_TOKEN` and `GITHUB_TOKEN`
 - appends a deterministic step summary from the feedback report when present
 - builds and validates the downstream promotion scorecard before artifact upload
+- projects immutable downstream promotion manifest inputs into the scorecard when the manifest artifact is present
 - keeps schema validation and artifact upload existence-aware so missing-report cascades do not mask the primary failure

@@ -19,25 +19,27 @@
     "inputs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["successReport", "feedbackReport"],
+      "required": ["successReport", "feedbackReport", "manifestReport"],
       "properties": {
         "successReport": { "$ref": "#/$defs/inputRef" },
-        "feedbackReport": { "$ref": "#/$defs/inputRef" }
+        "feedbackReport": { "$ref": "#/$defs/inputRef" },
+        "manifestReport": { "$ref": "#/$defs/inputRefNullablePath" }
       }
     },
     "gates": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["successReport", "feedbackReport"],
+      "required": ["successReport", "feedbackReport", "manifestReport"],
       "properties": {
         "successReport": { "$ref": "#/$defs/successGate" },
-        "feedbackReport": { "$ref": "#/$defs/feedbackGate" }
+        "feedbackReport": { "$ref": "#/$defs/feedbackGate" },
+        "manifestReport": { "$ref": "#/$defs/manifestGate" }
       }
     },
     "summary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "blockerCount", "blockers", "metrics"],
+      "required": ["status", "blockerCount", "blockers", "metrics", "provenance"],
       "properties": {
         "status": { "enum": ["pass", "fail"] },
         "blockerCount": { "type": "integer", "minimum": 0 },
@@ -54,6 +56,26 @@
             "totalBlockers": { "type": ["integer", "null"], "minimum": 0 },
             "totalWarnings": { "type": ["integer", "null"], "minimum": 0 }
           }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sourceRef",
+            "sourceCommitSha",
+            "compareviToolsRelease",
+            "compareviHistoryRelease",
+            "scenarioPackIdentity",
+            "cookiecutterTemplateIdentity"
+          ],
+          "properties": {
+            "sourceRef": { "type": ["string", "null"] },
+            "sourceCommitSha": { "type": ["string", "null"] },
+            "compareviToolsRelease": { "type": ["string", "null"] },
+            "compareviHistoryRelease": { "type": ["string", "null"] },
+            "scenarioPackIdentity": { "type": ["string", "null"] },
+            "cookiecutterTemplateIdentity": { "type": ["string", "null"] }
+          }
         }
       }
     }
@@ -65,6 +87,16 @@
       "required": ["path", "exists", "error"],
       "properties": {
         "path": { "type": "string" },
+        "exists": { "type": "boolean" },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "inputRefNullablePath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "exists", "error"],
+      "properties": {
+        "path": { "type": ["string", "null"] },
         "exists": { "type": "boolean" },
         "error": { "type": ["string", "null"] }
       }
@@ -102,6 +134,36 @@
         "evaluateExitCode": { "type": ["integer", "null"], "minimum": 0 },
         "successExitCode": { "type": ["integer", "null"], "minimum": 0 },
         "downstreamRepository": { "type": ["string", "null"] }
+      }
+    },
+    "manifestGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "schema",
+        "targetBranch",
+        "targetBranchClassId",
+        "sourceRef",
+        "sourceCommitSha",
+        "localSourceMatched",
+        "compareviToolsRelease",
+        "compareviHistoryRelease",
+        "scenarioPackIdentity",
+        "cookiecutterTemplateIdentity"
+      ],
+      "properties": {
+        "status": { "enum": ["pass", "fail", "missing"] },
+        "schema": { "type": ["string", "null"] },
+        "targetBranch": { "type": ["string", "null"] },
+        "targetBranchClassId": { "type": ["string", "null"] },
+        "sourceRef": { "type": ["string", "null"] },
+        "sourceCommitSha": { "type": ["string", "null"] },
+        "localSourceMatched": { "type": ["boolean", "null"] },
+        "compareviToolsRelease": { "type": ["string", "null"] },
+        "compareviHistoryRelease": { "type": ["string", "null"] },
+        "scenarioPackIdentity": { "type": ["string", "null"] },
+        "cookiecutterTemplateIdentity": { "type": ["string", "null"] }
       }
     }
   }

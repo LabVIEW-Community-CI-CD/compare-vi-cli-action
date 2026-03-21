@@ -25,6 +25,7 @@ test('downstream promotion scorecard schema validates generated report payload',
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-promotion-scorecard-schema-'));
   const successReportPath = path.join(tmpDir, 'downstream-onboarding-success.json');
   const feedbackReportPath = path.join(tmpDir, 'downstream-onboarding-feedback.json');
+  const manifestReportPath = path.join(tmpDir, 'downstream-develop-promotion-manifest.json');
   const outputPath = path.join(tmpDir, 'scorecard.json');
 
   writeJson(successReportPath, {
@@ -47,11 +48,31 @@ test('downstream promotion scorecard schema validates generated report payload',
       successExitCode: 0
     }
   });
+  writeJson(manifestReportPath, {
+    schema: 'priority/downstream-promotion-manifest@v1',
+    promotion: {
+      sourceRef: 'upstream/develop',
+      sourceCommitSha: '1234567890abcdef1234567890abcdef12345678',
+      targetBranch: 'downstream/develop',
+      targetBranchClassId: 'downstream-consumer-proving-rail',
+      localSourceVerification: {
+        attempted: true,
+        matched: true
+      }
+    },
+    inputs: {
+      compareviToolsRelease: 'v0.6.3-tools.14',
+      compareviHistoryRelease: 'v1.3.24',
+      scenarioPackIdentity: 'scenario-pack@v1',
+      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.0'
+    }
+  });
 
   const result = runDownstreamPromotionScorecard({
     repo: 'example/repo',
     successReportPath,
     feedbackReportPath,
+    manifestReportPath,
     outputPath
   });
 
@@ -64,4 +85,5 @@ test('downstream promotion scorecard schema validates generated report payload',
 
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.gates.feedbackReport.status, 'pass');
+  assert.equal(result.report.gates.manifestReport.status, 'pass');
 });
