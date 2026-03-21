@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schemas.labview-cicd.example/comparevi/print-to-single-file-html-authoring-packet-v1.schema.json",
+  "title": "PrintToSingleFileHtml native authoring packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "status",
+    "payloadBundlePath",
+    "payloadManifestPath",
+    "payloadName",
+    "declaredExecutableState",
+    "authoringWorkspacePath",
+    "authoringWorkspaceReceiptPath",
+    "labviewPath",
+    "operationsProjectPath",
+    "toolkitOperationsProjectPath",
+    "launchScriptPath",
+    "checklistPath",
+    "notes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi/print-to-single-file-html-authoring-packet@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "const": "succeeded"
+    },
+    "payloadBundlePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payloadManifestPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payloadName": {
+      "const": "PrintToSingleFileHtml"
+    },
+    "declaredExecutableState": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authoringWorkspacePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authoringWorkspaceReceiptPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "labviewPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operationsProjectPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "toolkitOperationsProjectPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "launchScriptPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checklistPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

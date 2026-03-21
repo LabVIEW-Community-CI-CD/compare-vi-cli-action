@@ -56,3 +56,9 @@ Use `tools/New-PrintToSingleFileHtmlAuthoringWorkspace.ps1` or
 `node tools/npm/run-script.mjs history:custom-operation:scaffold:print-single-file`
 to create the disposable authoring workspace from the preferred installed
 official CLI operation.
+Use `tools/New-PrintToSingleFileHtmlAuthoringPacket.ps1` or
+`node tools/npm/run-script.mjs history:custom-operation:authoring-packet:print-single-file`
+to build the stronger native-authoring packet. That packet adds the installed
+`Operations.lvproj`, `Toolkit-Operations.lvproj`, LabVIEW 2026 x86 path, an
+authoring checklist, and a convenience launch script on top of the disposable
+workspace.
