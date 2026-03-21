@@ -97,6 +97,31 @@
         }
       }
     },
+    "liveAgentModelSelection": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "mode": { "type": ["string", "null"] },
+        "policyPath": { "type": ["string", "null"] },
+        "reportPath": { "type": ["string", "null"] },
+        "previousReportPath": { "type": ["string", "null"] },
+        "recommendationStatus": { "type": ["string", "null"] },
+        "generatedAt": { "type": ["string", "null"] },
+        "blockerCount": { "type": ["integer", "null"], "minimum": 0 },
+        "selectedProviderId": { "type": ["string", "null"] },
+        "currentProvider": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        },
+        "providers": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
     "activeLane": {
       "type": "object",
       "additionalProperties": true,
@@ -191,6 +216,31 @@
             "recommendedReviewOrder": {
               "type": ["array", "null"],
               "items": { "type": "string" }
+            }
+          }
+        },
+        "liveAgentModelSelection": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "properties": {
+            "mode": { "type": ["string", "null"] },
+            "policyPath": { "type": ["string", "null"] },
+            "reportPath": { "type": ["string", "null"] },
+            "previousReportPath": { "type": ["string", "null"] },
+            "recommendationStatus": { "type": ["string", "null"] },
+            "generatedAt": { "type": ["string", "null"] },
+            "blockerCount": { "type": ["integer", "null"], "minimum": 0 },
+            "selectedProviderId": { "type": ["string", "null"] },
+            "currentProvider": {
+              "type": ["object", "null"],
+              "additionalProperties": true
+            },
+            "providers": {
+              "type": ["array", "null"],
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
             }
           }
         },

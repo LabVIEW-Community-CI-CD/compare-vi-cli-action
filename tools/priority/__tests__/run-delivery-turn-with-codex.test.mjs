@@ -48,6 +48,17 @@ test('buildCodexTurnPrompt includes bounded delivery context and helper surfaces
           standingIssue: {
             number: 1010
           },
+          liveAgentModelSelection: {
+            mode: 'recommend-only',
+            currentProvider: {
+              providerId: 'local-codex',
+              currentModel: 'gpt-5.4',
+              selectedModel: 'gpt-5.4',
+              action: 'stay',
+              confidence: 'medium',
+              reasonCodes: ['stable-current-model']
+            }
+          },
           turnBudget: {
             maxMinutes: 20,
             maxToolCalls: 12
@@ -62,6 +73,9 @@ test('buildCodexTurnPrompt includes bounded delivery context and helper surfaces
   assert.match(prompt, /Working directory: \/work\/repo\/\.runtime-worktrees\/example\/origin-1012/);
   assert.match(prompt, /Selected issue: #1012/);
   assert.match(prompt, /Standing issue\/epic: #1010/);
+  assert.match(prompt, /Model recommendation mode: recommend-only/);
+  assert.match(prompt, /Provider model recommendation: gpt-5\.4/);
+  assert.match(prompt, /Recommendation reasons: stable-current-model/);
   assert.match(prompt, /priority:pr/);
   assert.match(prompt, /runtime-supervisor\.mjs/);
   assert.match(prompt, /All automation-authored PRs begin as drafts/i);

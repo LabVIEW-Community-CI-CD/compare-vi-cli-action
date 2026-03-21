@@ -38,6 +38,12 @@ import {
   writeMarketplaceSnapshot
 } from './lane-marketplace.mjs';
 import { extractGitResultMessage, refreshUpstreamTrackingRef } from './lib/upstream-ref-refresh.mjs';
+import {
+  buildLiveAgentModelSelectionProjection,
+  DEFAULT_POLICY_PATH as DEFAULT_LIVE_AGENT_MODEL_SELECTION_POLICY_PATH,
+  loadLiveAgentModelSelectionPolicy,
+  loadLiveAgentModelSelectionReport
+} from './live-agent-model-selection.mjs';
 
 export const DELIVERY_AGENT_POLICY_SCHEMA = 'priority/delivery-agent-policy@v1';
 export const DELIVERY_AGENT_RUNTIME_STATE_SCHEMA = 'priority/delivery-agent-runtime-state@v1';
@@ -2748,6 +2754,30 @@ function buildRuntimeWorkerProviderDispatch({ taskPacket, executionReceipt, prov
   });
 }
 
+function buildRuntimeLiveAgentModelSelection({ taskPacket, executionReceipt, repoRoot }) {
+  const detailsSelection = normalizeOptionalObject(executionReceipt?.details?.liveAgentModelSelection);
+  if (detailsSelection) {
+    return detailsSelection;
+  }
+  const packetSelection = normalizeOptionalObject(taskPacket?.evidence?.delivery?.liveAgentModelSelection);
+  if (packetSelection) {
+    return packetSelection;
+  }
+  const policyLoad = loadLiveAgentModelSelectionPolicy(repoRoot, DEFAULT_LIVE_AGENT_MODEL_SELECTION_POLICY_PATH);
+  const reportLoad = loadLiveAgentModelSelectionReport(repoRoot, policyLoad.policy.outputPath);
+  return buildLiveAgentModelSelectionProjection({
+    policy: {
+      ...policyLoad.policy,
+      __policyPath: path.relative(repoRoot, policyLoad.path).replace(/\\/g, '/')
+    },
+    report: reportLoad.report,
+    selectedProviderId:
+      normalizeText(executionReceipt?.details?.workerProviderSelection?.selectedProviderId) ||
+      normalizeText(taskPacket?.evidence?.delivery?.workerProviderSelection?.selectedProviderId) ||
+      null
+  });
+}
+
 function buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt }) {
   const request = normalizeOptionalObject(taskPacket?.evidence?.delivery?.localReviewLoop);
   const details = normalizeOptionalObject(executionReceipt?.details?.localReviewLoop);
@@ -3016,6 +3046,7 @@ export function buildDeliveryAgentRuntimeRecord({
   const readyValidationClearance = buildReadyValidationClearanceRuntimeState({ taskPacket, executionReceipt });
   const concurrentLaneApply = buildConcurrentLaneApplyRuntimeState({ taskPacket, executionReceipt });
   const concurrentLaneStatus = buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt });
+  const liveAgentModelSelection = buildRuntimeLiveAgentModelSelection({ taskPacket, executionReceipt, repoRoot });
   const planeTransition = resolveDeliveryPlaneTransition({
     repoRoot,
     repository,
@@ -3053,6 +3084,7 @@ export function buildDeliveryAgentRuntimeRecord({
     readyValidationClearance,
     concurrentLaneApply,
     concurrentLaneStatus,
+    liveAgentModelSelection,
     workerProviderSelection,
     providerDispatch
   };
@@ -3097,6 +3129,7 @@ export function buildDeliveryAgentRuntimeRecord({
     localReviewLoop,
     concurrentLaneApply,
     concurrentLaneStatus,
+    liveAgentModelSelection,
     marketplace,
     activeLane,
     artifacts: {
@@ -4629,13 +4662,22 @@ async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, execution
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-turn-'));
   const receiptPath = path.join(tmpDir, 'coding-receipt.json');
   try {
+    const liveAgentModelSelection = normalizeOptionalObject(taskPacket?.evidence?.delivery?.liveAgentModelSelection);
+    const liveAgentCurrentProvider = normalizeOptionalObject(liveAgentModelSelection?.currentProvider);
     const env = {
       ...process.env,
       COMPAREVI_DELIVERY_TASK_PACKET_PATH: taskPacket.__taskPacketPath || '',
       COMPAREVI_DELIVERY_RECEIPT_PATH: receiptPath,
       COMPAREVI_DELIVERY_POLICY_PATH: policyPath || '',
       COMPAREVI_DELIVERY_REPO_ROOT: executionRoot,
-      COMPAREVI_DELIVERY_CONTROL_ROOT: repoRoot
+      COMPAREVI_DELIVERY_CONTROL_ROOT: repoRoot,
+      COMPAREVI_LIVE_AGENT_MODEL_SELECTION_PATH: normalizeText(liveAgentModelSelection?.reportPath) || '',
+      COMPAREVI_LIVE_AGENT_MODEL_SELECTION_MODE: normalizeText(liveAgentModelSelection?.mode) || '',
+      COMPAREVI_LIVE_AGENT_MODEL_PROVIDER_ID: normalizeText(liveAgentCurrentProvider?.providerId) || '',
+      COMPAREVI_LIVE_AGENT_MODEL_CURRENT: normalizeText(liveAgentCurrentProvider?.currentModel) || '',
+      COMPAREVI_LIVE_AGENT_MODEL_SELECTED: normalizeText(liveAgentCurrentProvider?.selectedModel) || '',
+      COMPAREVI_LIVE_AGENT_MODEL_ACTION: normalizeText(liveAgentCurrentProvider?.action) || '',
+      COMPAREVI_LIVE_AGENT_MODEL_CONFIDENCE: normalizeText(liveAgentCurrentProvider?.confidence) || ''
     };
     const result = await runCommand(command[0], command.slice(1), { cwd: executionRoot, env }, deps);
     const fileReceipt = await readJsonIfPresent(receiptPath);

@@ -1256,3 +1256,138 @@ test('persistDeliveryAgentRuntimeState projects a cross-repo marketplace recomme
   assert.equal(result.payload.marketplace.recommendedLane.repository, 'LabVIEW-Community-CI-CD/comparevi-history');
   assert.equal(path.basename(result.payload.artifacts.marketplaceSnapshotPath), 'lane-marketplace-snapshot.json');
 });
+
+test('persistDeliveryAgentRuntimeState projects live-agent model selection into runtime state', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-live-agent-model-selection-'));
+  const policy = await loadDeliveryAgentPolicy(repoRoot);
+  const liveAgentModelSelection = {
+    mode: 'recommend-only',
+    policyPath: 'tools/policy/live-agent-model-selection.json',
+    reportPath: 'tests/results/_agent/runtime/live-agent-model-selection.json',
+    previousReportPath: 'tests/results/_agent/runtime/live-agent-model-selection.json',
+    recommendationStatus: 'pass',
+    generatedAt: '2026-03-21T14:05:00.000Z',
+    blockerCount: 0,
+    selectedProviderId: 'local-codex',
+    currentProvider: {
+      providerId: 'local-codex',
+      providerKind: 'local-codex',
+      agentRole: 'live',
+      currentModel: 'gpt-5.4',
+      selectedModel: 'gpt-5.4',
+      action: 'stay',
+      confidence: 'medium',
+      reasonCodes: ['stable-current-model']
+    },
+    providers: [
+      {
+        providerId: 'local-codex',
+        currentModel: 'gpt-5.4',
+        selectedModel: 'gpt-5.4',
+        action: 'stay',
+        confidence: 'medium',
+        reasonCodes: ['stable-current-model']
+      }
+    ]
+  };
+
+  const result = await persistDeliveryAgentRuntimeState({
+    repoRoot,
+    runtimeDir,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    policy,
+    schedulerDecision: {
+      outcome: 'actionable',
+      activeLane: {
+        laneId: 'origin-1640',
+        issue: 1640,
+        branch: 'issue/origin-1640-live-agent-model-selection-telemetry',
+        forkRemote: 'origin'
+      },
+      artifacts: {}
+    },
+    taskPacket: {
+      schema: 'priority/runtime-worker-task-packet@v1',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'coding',
+      laneId: 'origin-1640',
+      objective: {
+        summary: 'Advance issue #1640: drive deterministic live-agent model selection from telemetry',
+        source: 'test'
+      },
+      branch: {
+        name: 'issue/origin-1640-live-agent-model-selection-telemetry',
+        forkRemote: 'origin'
+      },
+      evidence: {
+        lane: {
+          workerSlotId: 'worker-slot-1',
+          workerProviderId: 'local-codex',
+          workerCheckoutPath: path.join(repoRoot, '.tmp', 'runtime-worker')
+        },
+        delivery: {
+          executionMode: 'canonical-delivery',
+          laneLifecycle: 'coding',
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+          },
+          liveAgentModelSelection,
+          workerProviderSelection: {
+            source: 'lane-lifecycle-default',
+            laneLifecycle: 'coding',
+            selectedActionType: 'advance-child-issue',
+            requiredAssignmentMode: 'interactive-coding',
+            preferredProviderIds: ['local-codex'],
+            preferredExecutionPlanes: ['local'],
+            eligibleProviderIds: ['local-codex'],
+            selectedProviderId: 'local-codex',
+            selectedProviderKind: 'local-codex',
+            selectedExecutionPlane: 'local',
+            selectedAssignmentMode: 'interactive-coding',
+            dispatchSurface: 'runtime-harness',
+            completionMode: 'sync',
+            selectedSlotId: 'worker-slot-1',
+            requiresLocalCheckout: true
+          },
+          mutationEnvelope: {
+            backlogAuthority: 'issues',
+            implementationRemote: 'origin',
+            copilotReviewStrategy: 'draft-only-explicit',
+            readyForReviewPurpose: 'final-validation',
+            allowPolicyMutations: false,
+            allowReleaseAdmin: false,
+            maxActiveCodingLanes: 4
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    executionReceipt: {
+      laneId: 'origin-1640',
+      status: 'completed',
+      outcome: 'coding-command-finished',
+      details: {
+        laneLifecycle: 'coding',
+        blockerClass: 'none',
+        retryable: true,
+        nextWakeCondition: 'scheduler-rescan',
+        helperCallsExecuted: [],
+        filesTouched: []
+      }
+    }
+  });
+
+  assert.equal(result.payload.liveAgentModelSelection.currentProvider.providerId, 'local-codex');
+  assert.equal(result.payload.liveAgentModelSelection.currentProvider.selectedModel, 'gpt-5.4');
+  assert.equal(result.payload.activeLane.liveAgentModelSelection.currentProvider.providerId, 'local-codex');
+  assert.equal(result.payload.activeLane.liveAgentModelSelection.currentProvider.selectedModel, 'gpt-5.4');
+});

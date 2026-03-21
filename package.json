@@ -124,6 +124,7 @@
     "priority:security:gate": "node tools/priority/security-intake.mjs --route-on-breach --fail-on-breach --fail-on-skip",
     "priority:cost:invoice-turn": "node tools/priority/agent-cost-invoice-turn.mjs",
     "priority:cost:rollup": "node tools/priority/agent-cost-rollup.mjs",
+    "priority:model:select": "node tools/priority/live-agent-model-selection.mjs",
     "priority:onboard:downstream": "node tools/priority/downstream-onboarding.mjs",
     "priority:onboard:feedback": "node tools/priority/downstream-onboarding-feedback.mjs",
     "priority:onboard:success": "node tools/priority/downstream-onboarding-success.mjs",
