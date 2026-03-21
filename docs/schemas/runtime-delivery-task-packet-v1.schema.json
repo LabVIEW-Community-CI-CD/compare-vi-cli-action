@@ -36,8 +36,22 @@
           "additionalProperties": true,
           "properties": {
             "workerSlotId": { "type": ["string", "null"] },
+            "workerProviderId": { "type": ["string", "null"] },
             "workerCheckoutPath": { "type": ["string", "null"] }
-          }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "workerSlotId": { "type": "string" }
+                },
+                "required": ["workerSlotId"]
+              },
+              "then": {
+                "required": ["workerProviderId"]
+              }
+            }
+          ]
         },
         "delivery": {
           "type": "object",
@@ -90,8 +104,38 @@
                 },
                 "providers": {
                   "type": "array",
-                  "items": { "type": "object", "additionalProperties": true }
+                  "items": { "$ref": "#/$defs/workerProvider" }
                 }
+              }
+            },
+            "workerProviderSelection": {
+              "type": ["object", "null"],
+              "additionalProperties": true,
+              "properties": {
+                "source": { "type": ["string", "null"] },
+                "laneLifecycle": { "type": ["string", "null"] },
+                "selectedActionType": { "type": ["string", "null"] },
+                "requiredAssignmentMode": { "type": ["string", "null"] },
+                "preferredProviderIds": {
+                  "type": ["array", "null"],
+                  "items": { "type": "string" }
+                },
+                "preferredExecutionPlanes": {
+                  "type": ["array", "null"],
+                  "items": { "type": "string" }
+                },
+                "eligibleProviderIds": {
+                  "type": ["array", "null"],
+                  "items": { "type": "string" }
+                },
+                "selectedProviderId": { "type": ["string", "null"] },
+                "selectedProviderKind": { "type": ["string", "null"] },
+                "selectedExecutionPlane": { "type": ["string", "null"] },
+                "selectedAssignmentMode": { "type": ["string", "null"] },
+                "dispatchSurface": { "type": ["string", "null"] },
+                "completionMode": { "type": ["string", "null"] },
+                "selectedSlotId": { "type": ["string", "null"] },
+                "requiresLocalCheckout": { "type": ["boolean", "null"] }
               }
             },
             "mutationEnvelope": { "type": "object", "additionalProperties": true },
@@ -105,5 +149,49 @@
       }
     },
     "artifacts": { "type": "object", "additionalProperties": true }
+  },
+  "$defs": {
+    "workerProvider": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "kind",
+        "executionPlane",
+        "assignmentMode",
+        "dispatchSurface",
+        "completionMode",
+        "requiresLocalCheckout",
+        "enabled",
+        "slotCount"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": {
+          "enum": [
+            "local-codex",
+            "hosted-github-workflow",
+            "remote-copilot-lane",
+            "local-shadow-native"
+          ]
+        },
+        "executionPlane": { "enum": ["local", "hosted", "remote", "local-shadow"] },
+        "assignmentMode": {
+          "enum": [
+            "interactive-coding",
+            "async-validation",
+            "remote-implementation",
+            "shadow-validation"
+          ]
+        },
+        "dispatchSurface": {
+          "enum": ["runtime-harness", "github-actions", "remote-copilot", "native-shadow"]
+        },
+        "completionMode": { "enum": ["sync", "async"] },
+        "requiresLocalCheckout": { "type": "boolean" },
+        "enabled": { "type": "boolean" },
+        "slotCount": { "type": "integer", "minimum": 1 }
+      }
+    }
   }
 }

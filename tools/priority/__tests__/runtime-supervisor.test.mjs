@@ -185,6 +185,9 @@ test('buildCompareviTaskPacket carries a daemon-requested Docker/Desktop review 
   assert.equal(packet.evidence.delivery.localReviewLoop.requirementsVerification, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.niLinuxReviewSuite, true);
   assert.equal(packet.evidence.delivery.localReviewLoop.singleViHistory, null);
+  assert.equal(packet.evidence.lane.workerProviderId, 'local-codex');
+  assert.equal(packet.evidence.delivery.workerProviderSelection.selectedProviderId, 'local-codex');
+  assert.equal(packet.evidence.delivery.workerProviderSelection.selectedAssignmentMode, 'interactive-coding');
   assert.equal(packet.evidence.delivery.planeTransition.from, 'origin');
   assert.equal(packet.evidence.delivery.planeTransition.to, 'upstream');
   assert.equal(packet.evidence.delivery.planeTransition.action, 'promote');

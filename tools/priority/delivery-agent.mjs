@@ -42,28 +42,55 @@ const DEFAULT_WORKER_PROVIDER_BLUEPRINTS = Object.freeze([
     id: 'local-codex',
     kind: 'local-codex',
     executionPlane: 'local',
-    assignmentMode: 'interactive-coding'
+    assignmentMode: 'interactive-coding',
+    dispatchSurface: 'runtime-harness',
+    completionMode: 'sync',
+    requiresLocalCheckout: true
   }),
   Object.freeze({
     id: 'hosted-github-workflow',
     kind: 'hosted-github-workflow',
     executionPlane: 'hosted',
-    assignmentMode: 'async-validation'
+    assignmentMode: 'async-validation',
+    dispatchSurface: 'github-actions',
+    completionMode: 'async',
+    requiresLocalCheckout: false
   }),
   Object.freeze({
     id: 'remote-copilot-lane',
     kind: 'remote-copilot-lane',
     executionPlane: 'remote',
-    assignmentMode: 'remote-implementation'
+    assignmentMode: 'remote-implementation',
+    dispatchSurface: 'remote-copilot',
+    completionMode: 'async',
+    requiresLocalCheckout: false
   }),
   Object.freeze({
     id: 'local-shadow-native',
     kind: 'local-shadow-native',
     executionPlane: 'local-shadow',
-    assignmentMode: 'shadow-validation'
+    assignmentMode: 'shadow-validation',
+    dispatchSurface: 'native-shadow',
+    completionMode: 'sync',
+    requiresLocalCheckout: false
   })
 ]);
 const DEFAULT_WORKER_RELEASE_WAITING_STATES = Object.freeze(['waiting-ci', 'waiting-review', 'ready-merge']);
+const SUPPORTED_WORKER_PROVIDER_KINDS = new Set(
+  DEFAULT_WORKER_PROVIDER_BLUEPRINTS.map((provider) => provider.kind)
+);
+const SUPPORTED_WORKER_EXECUTION_PLANES = new Set(
+  DEFAULT_WORKER_PROVIDER_BLUEPRINTS.map((provider) => provider.executionPlane)
+);
+const SUPPORTED_WORKER_ASSIGNMENT_MODES = new Set(
+  DEFAULT_WORKER_PROVIDER_BLUEPRINTS.map((provider) => provider.assignmentMode)
+);
+const SUPPORTED_WORKER_DISPATCH_SURFACES = new Set(
+  DEFAULT_WORKER_PROVIDER_BLUEPRINTS.map((provider) => provider.dispatchSurface)
+);
+const SUPPORTED_WORKER_COMPLETION_MODES = new Set(
+  DEFAULT_WORKER_PROVIDER_BLUEPRINTS.map((provider) => provider.completionMode)
+);
 
 const DEFAULT_POLICY = {
   schema: DELIVERY_AGENT_POLICY_SCHEMA,
@@ -371,6 +398,15 @@ function normalizeStringList(value) {
   return Array.isArray(value) ? value.map((entry) => normalizeText(entry)).filter(Boolean) : [];
 }
 
+function normalizeUniqueStringList(value) {
+  return uniqueStrings(normalizeStringList(value));
+}
+
+function normalizeAllowedString(value, allowedValues, fallbackValue) {
+  const normalized = normalizeText(value);
+  return allowedValues.has(normalized) ? normalized : fallbackValue;
+}
+
 function buildDefaultWorkerPoolProviders(targetSlotCount) {
   const resolvedTargetSlotCount =
     coercePositiveInteger(targetSlotCount) ?? DEFAULT_POLICY.workerPool.targetSlotCount;
@@ -383,6 +419,9 @@ function buildDefaultWorkerPoolProviders(targetSlotCount) {
       kind: blueprint.kind,
       executionPlane: blueprint.executionPlane,
       assignmentMode: blueprint.assignmentMode,
+      dispatchSurface: blueprint.dispatchSurface,
+      completionMode: blueprint.completionMode,
+      requiresLocalCheckout: blueprint.requiresLocalCheckout,
       enabled: true,
       slotCount: 1
     });
@@ -396,9 +435,31 @@ function normalizeWorkerProviderPolicy(value, { fallbackIndex = 0 } = {}) {
     DEFAULT_WORKER_PROVIDER_BLUEPRINTS[fallbackIndex % DEFAULT_WORKER_PROVIDER_BLUEPRINTS.length];
   return {
     id: normalizeText(provider.id) || fallbackBlueprint.id,
-    kind: normalizeText(provider.kind) || fallbackBlueprint.kind,
-    executionPlane: normalizeText(provider.executionPlane) || fallbackBlueprint.executionPlane,
-    assignmentMode: normalizeText(provider.assignmentMode) || fallbackBlueprint.assignmentMode,
+    kind: normalizeAllowedString(provider.kind, SUPPORTED_WORKER_PROVIDER_KINDS, fallbackBlueprint.kind),
+    executionPlane: normalizeAllowedString(
+      provider.executionPlane,
+      SUPPORTED_WORKER_EXECUTION_PLANES,
+      fallbackBlueprint.executionPlane
+    ),
+    assignmentMode: normalizeAllowedString(
+      provider.assignmentMode,
+      SUPPORTED_WORKER_ASSIGNMENT_MODES,
+      fallbackBlueprint.assignmentMode
+    ),
+    dispatchSurface: normalizeAllowedString(
+      provider.dispatchSurface,
+      SUPPORTED_WORKER_DISPATCH_SURFACES,
+      fallbackBlueprint.dispatchSurface
+    ),
+    completionMode: normalizeAllowedString(
+      provider.completionMode,
+      SUPPORTED_WORKER_COMPLETION_MODES,
+      fallbackBlueprint.completionMode
+    ),
+    requiresLocalCheckout:
+      typeof provider.requiresLocalCheckout === 'boolean'
+        ? provider.requiresLocalCheckout
+        : fallbackBlueprint.requiresLocalCheckout,
     enabled: provider.enabled !== false,
     slotCount: coercePositiveInteger(provider.slotCount) ?? 1
   };
@@ -414,6 +475,14 @@ function normalizeWorkerPoolPolicy(value, { maxActiveCodingLanes = DEFAULT_POLIC
           normalizeWorkerProviderPolicy(provider, { fallbackIndex: index })
         )
       : buildDefaultWorkerPoolProviders(requestedMaxActiveCodingLanes);
+  const providerIds = new Set();
+  for (const provider of providers) {
+    const providerKey = provider.id.toLowerCase();
+    if (providerIds.has(providerKey)) {
+      throw new Error(`Duplicate workerPool provider id: ${provider.id}`);
+    }
+    providerIds.add(providerKey);
+  }
   const enabledSlotCount = providers
     .filter((provider) => provider.enabled !== false)
     .reduce((total, provider) => total + (coercePositiveInteger(provider.slotCount) ?? 1), 0);
@@ -450,6 +519,163 @@ export function buildWorkerPoolPolicySnapshot(policy = {}) {
     prewarmSlotCount: workerPool.prewarmSlotCount,
     releaseWaitingStates: [...workerPool.releaseWaitingStates],
     providers: workerPool.providers.map((provider) => ({ ...provider }))
+  };
+}
+
+function buildDefaultWorkerProviderSelection({ laneLifecycle, selectedActionType }) {
+  const normalizedLaneLifecycle = normalizeLifecycle(laneLifecycle, 'coding');
+  const normalizedActionType = normalizeText(selectedActionType);
+  if (['waiting-ci', 'waiting-review', 'ready-merge'].includes(normalizedLaneLifecycle)) {
+    return {
+      source: 'lane-lifecycle-default',
+      laneLifecycle: normalizedLaneLifecycle,
+      selectedActionType: normalizedActionType || null,
+      requiredAssignmentMode: 'async-validation',
+      preferredProviderIds: ['hosted-github-workflow'],
+      preferredExecutionPlanes: ['hosted'],
+      requiresLocalCheckout: false
+    };
+  }
+  return {
+    source: 'selected-action-default',
+    laneLifecycle: normalizedLaneLifecycle,
+    selectedActionType: normalizedActionType || null,
+    requiredAssignmentMode: 'interactive-coding',
+    preferredProviderIds: ['local-codex'],
+    preferredExecutionPlanes: ['local'],
+    requiresLocalCheckout: true
+  };
+}
+
+function normalizeWorkerProviderSelection(value, defaults = {}) {
+  const normalizedDefaults = buildDefaultWorkerProviderSelection(defaults);
+  const raw = value && typeof value === 'object' ? value : {};
+  const preferredProviderIds = normalizeUniqueStringList(
+    raw.preferredProviderIds ??
+      raw.providerIds ??
+      [raw.selectedProviderId, raw.workerProviderId, raw.providerId].filter(Boolean)
+  );
+  const explicitAssignmentMode = normalizeAllowedString(
+    raw.requiredAssignmentMode,
+    SUPPORTED_WORKER_ASSIGNMENT_MODES,
+    ''
+  );
+  return {
+    source: normalizeText(raw.source) || normalizedDefaults.source,
+    laneLifecycle: normalizeLifecycle(raw.laneLifecycle, normalizedDefaults.laneLifecycle),
+    selectedActionType: normalizeText(raw.selectedActionType) || normalizedDefaults.selectedActionType,
+    requiredAssignmentMode:
+      explicitAssignmentMode || (preferredProviderIds.length > 0 ? null : normalizedDefaults.requiredAssignmentMode),
+    preferredProviderIds:
+      preferredProviderIds.length > 0 ? preferredProviderIds : [...normalizedDefaults.preferredProviderIds],
+    preferredExecutionPlanes: normalizeUniqueStringList(raw.preferredExecutionPlanes).filter((entry) =>
+      SUPPORTED_WORKER_EXECUTION_PLANES.has(entry)
+    ),
+    requiresLocalCheckout:
+      typeof raw.requiresLocalCheckout === 'boolean' ? raw.requiresLocalCheckout : normalizedDefaults.requiresLocalCheckout
+  };
+}
+
+export function buildWorkerProviderSelectionRequest({
+  schedulerDecision = null,
+  laneLifecycle = '',
+  selectedActionType = '',
+  override = null
+} = {}) {
+  const artifacts = schedulerDecision?.artifacts ?? {};
+  return normalizeWorkerProviderSelection(
+    override ?? artifacts.workerProviderSelection ?? null,
+    {
+      laneLifecycle: laneLifecycle || artifacts.laneLifecycle || schedulerDecision?.activeLane?.laneLifecycle || 'coding',
+      selectedActionType: selectedActionType || artifacts.selectedActionType || ''
+    }
+  );
+}
+
+function matchesWorkerProviderSelection(provider, selection) {
+  if (!provider || provider.enabled === false) {
+    return false;
+  }
+  if (selection.requiredAssignmentMode && provider.assignmentMode !== selection.requiredAssignmentMode) {
+    return false;
+  }
+  return true;
+}
+
+function rankWorkerProvider(provider, selection) {
+  const preferredProviderIndex = selection.preferredProviderIds.findIndex(
+    (providerId) => providerId.toLowerCase() === provider.id.toLowerCase()
+  );
+  const preferredExecutionPlaneIndex = selection.preferredExecutionPlanes.findIndex(
+    (executionPlane) => executionPlane === provider.executionPlane
+  );
+  return [
+    preferredProviderIndex >= 0 ? preferredProviderIndex : Number.MAX_SAFE_INTEGER,
+    preferredExecutionPlaneIndex >= 0 ? preferredExecutionPlaneIndex : Number.MAX_SAFE_INTEGER,
+    provider.id
+  ];
+}
+
+export function selectWorkerProviderAssignment({
+  policy = {},
+  selection = null,
+  preferredSlotId = null,
+  availableSlots = []
+} = {}) {
+  const workerPoolPolicy = buildWorkerPoolPolicySnapshot(policy);
+  const normalizedSelection = normalizeWorkerProviderSelection(selection, selection ?? {});
+  const enabledProviders = workerPoolPolicy.providers.filter((provider) => provider.enabled !== false);
+  const eligibleProviders = enabledProviders.filter((provider) => matchesWorkerProviderSelection(provider, normalizedSelection));
+  const rankedProviders = [...eligibleProviders].sort((left, right) => {
+    const leftRank = rankWorkerProvider(left, normalizedSelection);
+    const rightRank = rankWorkerProvider(right, normalizedSelection);
+    for (let index = 0; index < leftRank.length; index += 1) {
+      if (leftRank[index] < rightRank[index]) return -1;
+      if (leftRank[index] > rightRank[index]) return 1;
+    }
+    return 0;
+  });
+  const selectedProvider = rankedProviders[0] ?? null;
+  const normalizedPreferredSlotId = normalizeText(preferredSlotId) || null;
+  const selectedSlot =
+    normalizedPreferredSlotId && Array.isArray(availableSlots)
+      ? availableSlots.find((slot) => normalizeText(slot?.slotId) === normalizedPreferredSlotId) ?? null
+      : null;
+  return {
+    ...normalizedSelection,
+    eligibleProviderIds: eligibleProviders.map((provider) => provider.id),
+    selectedProviderId: selectedProvider?.id ?? null,
+    selectedProviderKind: selectedProvider?.kind ?? null,
+    selectedExecutionPlane: selectedProvider?.executionPlane ?? null,
+    selectedAssignmentMode: selectedProvider?.assignmentMode ?? null,
+    dispatchSurface: selectedProvider?.dispatchSurface ?? null,
+    completionMode: selectedProvider?.completionMode ?? null,
+    requiresLocalCheckout:
+      selectedProvider?.requiresLocalCheckout ?? normalizedSelection.requiresLocalCheckout ?? true,
+    selectedSlotId: normalizeText(selectedSlot?.slotId) || normalizedPreferredSlotId
+  };
+}
+
+function buildWorkerProviderDispatchReceipt(providerSelection, {
+  dispatchStatus = '',
+  completionStatus = '',
+  workerSlotId = null,
+  failureClass = null
+} = {}) {
+  if (!providerSelection?.selectedProviderId) {
+    return null;
+  }
+  return {
+    providerId: providerSelection.selectedProviderId,
+    providerKind: providerSelection.selectedProviderKind ?? null,
+    executionPlane: providerSelection.selectedExecutionPlane ?? null,
+    assignmentMode: providerSelection.selectedAssignmentMode ?? null,
+    dispatchSurface: providerSelection.dispatchSurface ?? null,
+    completionMode: providerSelection.completionMode ?? null,
+    workerSlotId: normalizeText(workerSlotId ?? providerSelection.selectedSlotId) || null,
+    dispatchStatus: normalizeText(dispatchStatus) || null,
+    completionStatus: normalizeText(completionStatus) || null,
+    failureClass: normalizeText(failureClass) || null
   };
 }
 
@@ -1789,6 +2015,9 @@ function buildWorkerPoolRuntimeState({ policy, laneId, issue, laneLifecycle, pre
         providerKind: provider.kind,
         executionPlane: provider.executionPlane,
         assignmentMode: provider.assignmentMode,
+        dispatchSurface: provider.dispatchSurface,
+        completionMode: provider.completionMode,
+        requiresLocalCheckout: provider.requiresLocalCheckout,
         status: 'available',
         laneId: null,
         issue: null,
@@ -1803,6 +2032,9 @@ function buildWorkerPoolRuntimeState({ policy, laneId, issue, laneLifecycle, pre
       providerKind: null,
       executionPlane: null,
       assignmentMode: null,
+      dispatchSurface: null,
+      completionMode: null,
+      requiresLocalCheckout: null,
       status: 'available',
       laneId: null,
       issue: null,
@@ -1813,8 +2045,9 @@ function buildWorkerPoolRuntimeState({ policy, laneId, issue, laneLifecycle, pre
   const releasedLanes = [];
   const preferredSlotIndex = slots.findIndex((slot) => slot.slotId === normalizeText(preferredSlotId));
   const selectedSlotIndex = preferredSlotIndex >= 0 ? preferredSlotIndex : 0;
-  const selectedSlotId = (slots[selectedSlotIndex]?.slotId ?? normalizeText(preferredSlotId)) || null;
-  if (workerPoolPolicy.releaseWaitingStates.includes(laneLifecycle)) {
+  const selectedSlotId =
+    preferredSlotIndex >= 0 ? slots[selectedSlotIndex]?.slotId ?? null : normalizeText(preferredSlotId) || null;
+  if (workerPoolPolicy.releaseWaitingStates.includes(laneLifecycle) && selectedSlotId) {
     releasedLanes.push({
       slotId: selectedSlotId,
       laneId,
@@ -1853,6 +2086,33 @@ function buildWorkerPoolRuntimeState({ policy, laneId, issue, laneLifecycle, pre
 
 function normalizeOptionalObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
+function buildRuntimeWorkerProviderSelection({ taskPacket, executionReceipt, policy, preferredSlotId = null }) {
+  const selectionSource =
+    normalizeOptionalObject(executionReceipt?.details?.workerProviderSelection) ??
+    normalizeOptionalObject(taskPacket?.evidence?.delivery?.workerProviderSelection);
+  if (selectionSource) {
+    return selectWorkerProviderAssignment({
+      policy,
+      selection: selectionSource,
+      preferredSlotId
+    });
+  }
+  return null;
+}
+
+function buildRuntimeWorkerProviderDispatch({ taskPacket, executionReceipt, providerSelection }) {
+  const detailsDispatch = normalizeOptionalObject(executionReceipt?.details?.providerDispatch);
+  if (detailsDispatch) {
+    return detailsDispatch;
+  }
+  return buildWorkerProviderDispatchReceipt(providerSelection, {
+    workerSlotId:
+      normalizeText(executionReceipt?.details?.workerSlotId) ||
+      normalizeText(taskPacket?.evidence?.lane?.workerSlotId) ||
+      null
+  });
 }
 
 function buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt }) {
@@ -2091,6 +2351,23 @@ export function buildDeliveryAgentRuntimeRecord({
       normalizeText(executionReceipt?.details?.workerSlotId) ||
       null
   });
+  const workerProviderSelection = buildRuntimeWorkerProviderSelection({
+    taskPacket,
+    executionReceipt,
+    policy: {
+      ...policy,
+      workerPool: workerPoolPolicy
+    },
+    preferredSlotId:
+      normalizeText(taskPacket?.evidence?.lane?.workerSlotId) ||
+      normalizeText(executionReceipt?.details?.workerSlotId) ||
+      null
+  });
+  const providerDispatch = buildRuntimeWorkerProviderDispatch({
+    taskPacket,
+    executionReceipt,
+    providerSelection: workerProviderSelection
+  });
   const reviewMonitor =
     executionReceipt?.details?.reviewMonitor ??
     taskPacket?.evidence?.delivery?.pullRequest?.copilotReviewWorkflow ??
@@ -2160,13 +2437,16 @@ export function buildDeliveryAgentRuntimeRecord({
       reviewMonitor,
       planeTransition,
       localReviewLoop,
-      readyValidationClearance
+      readyValidationClearance,
+      workerProviderSelection,
+      providerDispatch
     },
     artifacts: {
       statePath,
       lanePath,
       localReviewLoopReceiptPath: normalizeText(localReviewLoop?.receiptPath) || null,
-      planeTransition
+      planeTransition,
+      providerDispatch
     }
   };
 }
@@ -3783,6 +4063,57 @@ export function planDeliveryBrokerAction(taskPacket = {}) {
   };
 }
 
+function resolveProviderDispatchOutcome(result = {}) {
+  const status = normalizeText(result.status).toLowerCase();
+  const laneLifecycle = normalizeLifecycle(result.details?.laneLifecycle, 'idle');
+  const blockerClass = normalizeText(result.details?.blockerClass) || null;
+  if (status === 'blocked' || laneLifecycle === 'blocked') {
+    return {
+      dispatchStatus: 'blocked',
+      completionStatus: 'blocked',
+      failureClass: blockerClass
+    };
+  }
+  if (['waiting-ci', 'waiting-review', 'ready-merge'].includes(laneLifecycle)) {
+    return {
+      dispatchStatus: 'completed',
+      completionStatus: 'waiting',
+      failureClass: null
+    };
+  }
+  return {
+    dispatchStatus: 'completed',
+    completionStatus: 'completed',
+    failureClass: null
+  };
+}
+
+function buildTaskPacketProviderSelection(taskPacket) {
+  return normalizeOptionalObject(taskPacket?.evidence?.delivery?.workerProviderSelection);
+}
+
+function withWorkerProviderDispatch(result, taskPacket) {
+  if (!result || typeof result !== 'object') {
+    return result;
+  }
+  const providerSelection = buildTaskPacketProviderSelection(taskPacket);
+  if (!providerSelection?.selectedProviderId) {
+    return result;
+  }
+  const dispatchOutcome = resolveProviderDispatchOutcome(result);
+  return {
+    ...result,
+    details: {
+      ...(result.details && typeof result.details === 'object' ? result.details : {}),
+      workerProviderSelection: providerSelection,
+      providerDispatch: buildWorkerProviderDispatchReceipt(providerSelection, {
+        workerSlotId: normalizeText(taskPacket?.evidence?.lane?.workerSlotId) || null,
+        ...dispatchOutcome
+      })
+    }
+  };
+}
+
 export async function runDeliveryTurnBroker({
   taskPacket,
   taskPacketPath = '',
@@ -3807,7 +4138,7 @@ export async function runDeliveryTurnBroker({
   const planned = planDeliveryBrokerAction(enrichedPacket);
 
   if (planned.actionType === 'idle') {
-    return {
+    return withWorkerProviderDispatch({
       status: 'completed',
       outcome: 'idle',
       reason: normalizeText(taskPacket.objective?.summary) || 'No actionable delivery lane is selected.',
@@ -3821,7 +4152,7 @@ export async function runDeliveryTurnBroker({
         helperCallsExecuted: [],
         filesTouched: []
       }
-    };
+    }, enrichedPacket);
   }
 
   if (planned.actionType === 'watch-pr') {
@@ -3833,9 +4164,9 @@ export async function runDeliveryTurnBroker({
       deps
     });
     if (draftOnlyResult) {
-      return draftOnlyResult;
+      return withWorkerProviderDispatch(draftOnlyResult, enrichedPacket);
     }
-    return {
+    return withWorkerProviderDispatch({
       status: 'completed',
       outcome: planned.laneLifecycle,
       reason:
@@ -3862,16 +4193,16 @@ export async function runDeliveryTurnBroker({
         helperCallsExecuted: [],
         filesTouched: []
       }
-    };
+    }, enrichedPacket);
   }
 
   if (planned.actionType === 'sync-pr-branch') {
-    return updatePullRequestBranch({
+    return withWorkerProviderDispatch(await updatePullRequestBranch({
       taskPacket: enrichedPacket,
       repoRoot,
       executionRoot,
       deps
-    });
+    }), enrichedPacket);
   }
 
   if (planned.actionType === 'merge-pr') {
@@ -3881,7 +4212,7 @@ export async function runDeliveryTurnBroker({
       deps
     });
     if (mergeResult.status !== 'completed' || mergeResult.outcome !== 'merged') {
-      return mergeResult;
+      return withWorkerProviderDispatch(mergeResult, enrichedPacket);
     }
 
     try {
@@ -3891,7 +4222,7 @@ export async function runDeliveryTurnBroker({
         deps
       });
       if (normalizeText(finalization.standingSelectionWarning)) {
-        return {
+        return withWorkerProviderDispatch({
           status: 'blocked',
           outcome: 'merged-finalization-blocked',
           reason: `Merged PR for issue #${finalization.selectedIssueNumber}, but automatic standing-priority handoff is still pending: ${finalization.standingSelectionWarning}. The standing issue remains open for deterministic retry.`,
@@ -3913,9 +4244,9 @@ export async function runDeliveryTurnBroker({
             nextStandingIssueNumber: finalization.nextStandingIssueNumber ?? null,
             standingSelectionWarning: normalizeText(finalization.standingSelectionWarning) || ''
           }
-        };
+        }, enrichedPacket);
       }
-      return {
+      return withWorkerProviderDispatch({
         ...mergeResult,
         reason:
           finalization.selectedIssueNumber && finalization.nextStandingIssueNumber
@@ -3936,9 +4267,9 @@ export async function runDeliveryTurnBroker({
           nextStandingIssueNumber: finalization.nextStandingIssueNumber ?? null,
           standingSelectionWarning: normalizeText(finalization.standingSelectionWarning) || ''
         }
-      };
+      }, enrichedPacket);
     } catch (error) {
-      return {
+      return withWorkerProviderDispatch({
         status: 'blocked',
         outcome: 'merged-finalization-blocked',
         reason: `${mergeResult.reason} Finalization failed: ${error.message}`,
@@ -3954,13 +4285,13 @@ export async function runDeliveryTurnBroker({
             : [],
           filesTouched: []
         }
-      };
+      }, enrichedPacket);
     }
   }
 
   if (planned.actionType === 'reshape-backlog') {
     if (policy.autoSlice !== true) {
-      return {
+      return withWorkerProviderDispatch({
         status: 'blocked',
         outcome: 'auto-slice-disabled',
         reason: 'delivery-agent policy disables unattended child-slice creation.',
@@ -3974,22 +4305,22 @@ export async function runDeliveryTurnBroker({
           helperCallsExecuted: [],
           filesTouched: []
         }
-      };
+      }, enrichedPacket);
     }
-    return autoSliceIssue({
+    return withWorkerProviderDispatch(await autoSliceIssue({
       taskPacket: enrichedPacket,
       repoRoot,
       deps,
       now
-    });
+    }), enrichedPacket);
   }
 
-  return invokeCodingTurnCommand({
+  return withWorkerProviderDispatch(await invokeCodingTurnCommand({
     taskPacket: enrichedPacket,
     policy,
     repoRoot,
     executionRoot,
     policyPath: effectivePolicyPath,
     deps
-  });
+  }), enrichedPacket);
 }

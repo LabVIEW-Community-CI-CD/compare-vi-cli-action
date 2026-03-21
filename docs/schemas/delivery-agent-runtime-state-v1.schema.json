@@ -182,6 +182,52 @@
               "items": { "type": "string" }
             }
           }
+        },
+        "workerProviderSelection": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "properties": {
+            "source": { "type": ["string", "null"] },
+            "laneLifecycle": { "type": ["string", "null"] },
+            "selectedActionType": { "type": ["string", "null"] },
+            "requiredAssignmentMode": { "type": ["string", "null"] },
+            "preferredProviderIds": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "preferredExecutionPlanes": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "eligibleProviderIds": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "selectedProviderId": { "type": ["string", "null"] },
+            "selectedProviderKind": { "type": ["string", "null"] },
+            "selectedExecutionPlane": { "type": ["string", "null"] },
+            "selectedAssignmentMode": { "type": ["string", "null"] },
+            "dispatchSurface": { "type": ["string", "null"] },
+            "completionMode": { "type": ["string", "null"] },
+            "selectedSlotId": { "type": ["string", "null"] },
+            "requiresLocalCheckout": { "type": ["boolean", "null"] }
+          }
+        },
+        "providerDispatch": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "properties": {
+            "providerId": { "type": ["string", "null"] },
+            "providerKind": { "type": ["string", "null"] },
+            "executionPlane": { "type": ["string", "null"] },
+            "assignmentMode": { "type": ["string", "null"] },
+            "dispatchSurface": { "type": ["string", "null"] },
+            "completionMode": { "type": ["string", "null"] },
+            "workerSlotId": { "type": ["string", "null"] },
+            "dispatchStatus": { "type": ["string", "null"] },
+            "completionStatus": { "type": ["string", "null"] },
+            "failureClass": { "type": ["string", "null"] }
+          }
         }
       }
     },
@@ -191,12 +237,25 @@
     "workerProvider": {
       "type": "object",
       "additionalProperties": true,
-      "required": ["id", "kind", "executionPlane", "assignmentMode", "enabled", "slotCount"],
+      "required": [
+        "id",
+        "kind",
+        "executionPlane",
+        "assignmentMode",
+        "dispatchSurface",
+        "completionMode",
+        "requiresLocalCheckout",
+        "enabled",
+        "slotCount"
+      ],
       "properties": {
         "id": { "type": "string" },
         "kind": { "type": "string" },
         "executionPlane": { "type": "string" },
         "assignmentMode": { "type": "string" },
+        "dispatchSurface": { "type": "string" },
+        "completionMode": { "type": "string" },
+        "requiresLocalCheckout": { "type": "boolean" },
         "enabled": { "type": "boolean" },
         "slotCount": { "type": "integer", "minimum": 1 }
       }
@@ -211,6 +270,9 @@
         "providerKind": { "type": ["string", "null"] },
         "executionPlane": { "type": ["string", "null"] },
         "assignmentMode": { "type": ["string", "null"] },
+        "dispatchSurface": { "type": ["string", "null"] },
+        "completionMode": { "type": ["string", "null"] },
+        "requiresLocalCheckout": { "type": ["boolean", "null"] },
         "status": { "enum": ["available", "occupied"] },
         "laneId": { "type": ["string", "null"] },
         "issue": { "type": ["integer", "null"], "minimum": 1 },

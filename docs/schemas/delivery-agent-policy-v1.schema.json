@@ -55,8 +55,22 @@
                   "local-shadow-native"
                 ]
               },
-              "executionPlane": { "type": "string" },
-              "assignmentMode": { "type": "string" },
+              "executionPlane": { "enum": ["local", "hosted", "remote", "local-shadow"] },
+              "assignmentMode": {
+                "enum": [
+                  "interactive-coding",
+                  "async-validation",
+                  "remote-implementation",
+                  "shadow-validation"
+                ]
+              },
+              "dispatchSurface": {
+                "enum": ["runtime-harness", "github-actions", "remote-copilot", "native-shadow"]
+              },
+              "completionMode": {
+                "enum": ["sync", "async"]
+              },
+              "requiresLocalCheckout": { "type": "boolean" },
               "enabled": { "type": "boolean" },
               "slotCount": { "type": "integer", "minimum": 1 }
             }

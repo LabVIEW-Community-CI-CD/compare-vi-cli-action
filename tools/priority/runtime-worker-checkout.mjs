@@ -6,6 +6,11 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { loadBranchClassContract } from './lib/branch-classification.mjs';
 import { assertLaneBranchMatchesPlane } from './lib/runtime-lane-branch-contract.mjs';
+import {
+  buildWorkerProviderSelectionRequest,
+  loadDeliveryAgentPolicy,
+  selectWorkerProviderAssignment
+} from './delivery-agent.mjs';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_WORKER_REF = 'upstream/develop';
@@ -509,11 +514,20 @@ function resolveRuntimeDir({ repoRoot, options = {} }) {
   return path.isAbsolute(runtimeDir) ? runtimeDir : path.join(repoRoot, runtimeDir);
 }
 
-function selectWorkerSlotId({ deliveryState, laneId }) {
+function slotMatchesProvider(slot, selectedProviderId) {
+  if (!selectedProviderId) {
+    return true;
+  }
+  return normalizeText(slot?.providerId).toLowerCase() === selectedProviderId.toLowerCase();
+}
+
+function selectWorkerSlotId({ deliveryState, laneId, selectedProviderId }) {
   const normalizedLaneId = normalizeText(laneId);
   const slots = Array.isArray(deliveryState?.workerPool?.slots) ? deliveryState.workerPool.slots : [];
   const releasedLanes = Array.isArray(deliveryState?.workerPool?.releasedLanes) ? deliveryState.workerPool.releasedLanes : [];
-  const existingSlot = slots.find((slot) => normalizeText(slot?.laneId) === normalizedLaneId);
+  const existingSlot = slots.find(
+    (slot) => normalizeText(slot?.laneId) === normalizedLaneId && slotMatchesProvider(slot, selectedProviderId)
+  );
   if (normalizeText(existingSlot?.slotId)) {
     return normalizeText(existingSlot.slotId);
   }
@@ -521,9 +535,16 @@ function selectWorkerSlotId({ deliveryState, laneId }) {
     (entry) => normalizeText(entry?.laneId) === normalizedLaneId && normalizeText(entry?.slotId)
   );
   if (normalizeText(releasedSlot?.slotId)) {
-    return normalizeText(releasedSlot.slotId);
+    const releasedProviderSlot = slots.find(
+      (slot) => normalizeText(slot?.slotId) === normalizeText(releasedSlot.slotId) && slotMatchesProvider(slot, selectedProviderId)
+    );
+    if (normalizeText(releasedProviderSlot?.slotId)) {
+      return normalizeText(releasedProviderSlot.slotId);
+    }
   }
-  const availableSlot = slots.find((slot) => normalizeText(slot?.status).toLowerCase() === 'available');
+  const availableSlot = slots.find(
+    (slot) => normalizeText(slot?.status).toLowerCase() === 'available' && slotMatchesProvider(slot, selectedProviderId)
+  );
   if (normalizeText(availableSlot?.slotId)) {
     return normalizeText(availableSlot.slotId);
   }
@@ -546,9 +567,23 @@ export async function prepareCompareviWorkerCheckout({
   const runtimeDir = resolveRuntimeDir({ repoRoot, options });
   const deliveryStatePath = runtimeDir ? path.join(runtimeDir, 'delivery-agent-state.json') : '';
   const deliveryState = deliveryStatePath ? await readJsonIfPresent(deliveryStatePath) : null;
+  const deliveryPolicy = await loadDeliveryAgentPolicy(repoRoot, deps);
+  const providerSelection = selectWorkerProviderAssignment({
+    policy: deliveryPolicy,
+    selection: buildWorkerProviderSelectionRequest({
+      schedulerDecision,
+      laneLifecycle: schedulerDecision?.artifacts?.laneLifecycle,
+      selectedActionType: schedulerDecision?.artifacts?.selectedActionType
+    }),
+    availableSlots: Array.isArray(deliveryState?.workerPool?.slots) ? deliveryState.workerPool.slots : []
+  });
+  if (providerSelection.selectedProviderId && providerSelection.requiresLocalCheckout === false) {
+    return null;
+  }
   const slotId = selectWorkerSlotId({
     deliveryState,
-    laneId: activeLane.laneId
+    laneId: activeLane.laneId,
+    selectedProviderId: providerSelection.selectedProviderId
   });
   const { checkoutRoot, checkoutPath } = resolveCompareviWorkerCheckoutPath({
     repoRoot,
@@ -615,6 +650,10 @@ export async function prepareCompareviWorkerCheckout({
         return {
           laneId: activeLane.laneId,
           slotId,
+          providerId: providerSelection.selectedProviderId,
+          providerKind: providerSelection.selectedProviderKind,
+          executionPlane: providerSelection.selectedExecutionPlane,
+          assignmentMode: providerSelection.selectedAssignmentMode,
           checkoutRoot,
           checkoutPath: resolvedCheckoutPath,
           status: 'reused',
@@ -630,6 +669,10 @@ export async function prepareCompareviWorkerCheckout({
       return {
         laneId: activeLane.laneId,
         slotId,
+        providerId: providerSelection.selectedProviderId,
+        providerKind: providerSelection.selectedProviderKind,
+        executionPlane: providerSelection.selectedExecutionPlane,
+        assignmentMode: providerSelection.selectedAssignmentMode,
         checkoutRoot,
         checkoutPath: resolvedCheckoutPath,
         status: 'blocked',
@@ -673,6 +716,10 @@ export async function prepareCompareviWorkerCheckout({
   return {
     laneId: activeLane.laneId,
     slotId,
+    providerId: providerSelection.selectedProviderId,
+    providerKind: providerSelection.selectedProviderKind,
+    executionPlane: providerSelection.selectedExecutionPlane,
+    assignmentMode: providerSelection.selectedAssignmentMode,
     checkoutRoot,
     checkoutPath: resolvedCheckoutPath,
     status: 'created',
