@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/concurrent-lane-apply-receipt-v1.schema.json",
+  "title": "Concurrent Lane Apply Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "status",
+    "plan",
+    "validateDispatch",
+    "selectedLanes",
+    "observations",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/concurrent-lane-apply-receipt@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": ["succeeded", "failed", "noop"]
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "path", "schema", "recommendedBundleId", "selectedBundle"],
+      "properties": {
+        "source": {
+          "enum": ["file", "recomputed"]
+        },
+        "path": {
+          "type": ["string", "null"]
+        },
+        "schema": {
+          "type": ["string", "null"]
+        },
+        "recommendedBundleId": {
+          "type": ["string", "null"]
+        },
+        "selectedBundle": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/bundle" }
+          ]
+        }
+      }
+    },
+    "validateDispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "command",
+        "repository",
+        "remote",
+        "ref",
+        "sampleId",
+        "historyScenarioSet",
+        "reportPath",
+        "runDatabaseId",
+        "error"
+      ],
+      "properties": {
+        "status": {
+          "enum": ["not-required", "dry-run", "dispatched", "failed"]
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "repository": {
+          "type": ["string", "null"]
+        },
+        "remote": {
+          "type": ["string", "null"]
+        },
+        "ref": {
+          "type": ["string", "null"]
+        },
+        "sampleId": {
+          "type": ["string", "null"]
+        },
+        "historyScenarioSet": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reportPath": {
+          "type": ["string", "null"]
+        },
+        "runDatabaseId": {
+          "type": ["integer", "string", "null"]
+        },
+        "error": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "selectedLanes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/selectedLane" }
+    },
+    "observations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectedBundleId",
+        "selectedLaneCount",
+        "hostedDispatchCount",
+        "deferredLaneCount",
+        "hostedLaneIds",
+        "deferredLaneIds",
+        "manualLaneIds",
+        "shadowLaneIds"
+      ],
+      "properties": {
+        "selectedBundleId": {
+          "type": ["string", "null"]
+        },
+        "selectedLaneCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hostedDispatchCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deferredLaneCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hostedLaneIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "deferredLaneIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "manualLaneIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "shadowLaneIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "classification", "laneIds", "reasons"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "classification": { "enum": ["recommended", "fallback"] },
+        "laneIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "selectedLane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "laneClass",
+        "executionPlane",
+        "resourceGroup",
+        "availability",
+        "decision",
+        "reasons",
+        "metadata"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "laneClass": {
+          "enum": ["hosted-proof", "manual-docker", "shadow-validation"]
+        },
+        "executionPlane": {
+          "enum": ["hosted", "local", "local-shadow"]
+        },
+        "resourceGroup": { "type": "string", "minLength": 1 },
+        "availability": {
+          "enum": ["available", "disabled", "unavailable"]
+        },
+        "decision": {
+          "enum": ["dispatched", "planned-dispatch", "blocked", "deferred"]
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

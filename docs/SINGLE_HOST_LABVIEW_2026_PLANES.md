@@ -60,11 +60,16 @@ Use these commands as the checked-in operator surfaces:
    - `node tools/npm/run-script.mjs priority:lane:concurrency:plan`
    - Optional Docker runtime input:
      - `node tools/npm/run-script.mjs priority:lane:concurrency:plan -- --docker-runtime-snapshot tests/results/ni-linux-container/runtime-determinism.json`
-3. Fast Docker Desktop lane loops:
+3. Concurrent lane apply helper:
+   - `node tools/npm/run-script.mjs priority:lane:concurrency:apply -- --dry-run`
+   - Use this after planning when you need a first-class receipt that records
+     which hosted lanes were dispatched and which manual/shadow lanes remained
+     explicitly deferred.
+4. Fast Docker Desktop lane loops:
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope linux -StepTimeoutSeconds 600`
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope windows -StepTimeoutSeconds 600`
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope both -StepTimeoutSeconds 600`
-4. Differentiated diagnostics replay:
+5. Differentiated diagnostics replay:
    - `node tools/npm/run-script.mjs history:diagnostics:show -- --ResultsRoot tests/results/local-parity/windows`
 
 The replay helper is the fastest operator readback. It prints the host-plane report first and then the differentiated
@@ -86,19 +91,21 @@ Use these artifacts as the machine-readable source of truth:
    - `tests/results/_agent/host-planes/labview-2026-host-plane-summary.md`
 2. Concurrent lane planner:
    - `tests/results/_agent/runtime/concurrent-lane-plan.json`
-3. Fast-loop readiness envelope:
+3. Concurrent lane apply receipt:
+   - `tests/results/_agent/runtime/concurrent-lane-apply-receipt.json`
+4. Fast-loop readiness envelope:
    - `docker-runtime-fastloop-readiness.json`
    - `docker-runtime-fastloop-readiness.md`
-4. Fast-loop proof bundle when produced:
+5. Fast-loop proof bundle when produced:
    - `docker-fast-loop-proof-*.json`
-5. Top-level fast-loop GitHub outputs when `tools/Test-DockerDesktopFastLoop.ps1` runs inside GitHub Actions:
+6. Top-level fast-loop GitHub outputs when `tools/Test-DockerDesktopFastLoop.ps1` runs inside GitHub Actions:
    - `docker-fast-loop-summary-path`
    - `docker-fast-loop-status-path`
    - `docker-fast-loop-host-plane-summary-path`
    - `docker-fast-loop-host-plane-summary-status`
    - `docker-fast-loop-host-plane-summary-sha256`
    - `docker-fast-loop-host-plane-summary-reason`
-6. Top-level fast-loop Step Summary when `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
+7. Top-level fast-loop Step Summary when `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
    - `Summary Path`
    - `Status Path`
    - `Host Plane Summary Path`
@@ -127,31 +134,35 @@ Use the artifacts in this order:
    - projects the host-native 32-bit shadow policy into lane metadata
    - ranks safe concurrent bundles for the present host, RAM, and Docker-runtime state
    - keeps the mutually exclusive local Docker planes out of the same recommended bundle
-4. `docker-runtime-fastloop-readiness.json`
+4. `concurrent-lane-apply-receipt.json`
+   - records the selected concurrent bundle actually applied for the current turn
+   - records the hosted Validate dispatch helper command and dispatch report path when hosted proof lanes were launched
+   - records manual Docker and host-native shadow lanes as explicitly deferred when they remain operator-required
+5. `docker-runtime-fastloop-readiness.json`
    - records the fast-loop verdict and lane outcomes
    - carries the differentiated Docker Desktop plane projection
    - records `hostPlaneSummary.path`, `hostPlaneSummary.status`, and `hostPlaneSummary.sha256`
    - records whether Docker exclusivity was required and whether it was satisfied
-5. `docker-fast-loop-proof-*.json`
+6. `docker-fast-loop-proof-*.json`
    - records `hostPlaneSummaryPath`
    - records `hostPlaneSummaryProvenance`
    - records `hashes.hostPlaneSummarySha256`
    - projects GitHub outputs:
      - `docker-fast-loop-proof-host-plane-summary-path`
      - `docker-fast-loop-proof-host-plane-summary-sha256`
-6. Top-level `tools/Test-DockerDesktopFastLoop.ps1` GitHub outputs
+7. Top-level `tools/Test-DockerDesktopFastLoop.ps1` GitHub outputs
    - project `docker-fast-loop-summary-path` and `docker-fast-loop-status-path`
    - project `docker-fast-loop-host-plane-summary-path`
    - project `docker-fast-loop-host-plane-summary-status`
    - project `docker-fast-loop-host-plane-summary-sha256`
    - project `docker-fast-loop-host-plane-summary-reason`
    - keep success and fail-closed summary provenance available to downstream workflow consumers without reopening JSON
-7. Top-level `tools/Test-DockerDesktopFastLoop.ps1` Step Summary
+8. Top-level `tools/Test-DockerDesktopFastLoop.ps1` Step Summary
    - appends `### Docker Fast Loop Summary`
    - prints the same summary path and status path surfaced through GitHub outputs
    - prints host-plane summary path, status, SHA-256, and fail-closed reason
    - preserves the missing-summary reason before the script throws
-8. `history:diagnostics:show`
+9. `history:diagnostics:show`
    - replays the same distinction in console form for the operator
    - prints `[host-plane-split][summary] <path> status=<status> sha256=<sha256>` when summary provenance exists
 
@@ -166,15 +177,19 @@ trustworthy.
 4. Do not infer the active native plane from a generic LabVIEW path; use the host-plane report.
 5. Use `priority:lane:concurrency:plan` before dispatching hosted Windows/Linux plus manual lanes so the plan stays
    explicit and replayable.
-6. When summarizing a run, name the exact plane identifier instead of saying “host” or “Docker” without qualification.
-7. Do not treat `native-labview-2026-32` as a release or CI authority surface; it is a shadow accelerator only.
+6. Use `priority:lane:concurrency:apply` when you need the plan projected into a machine-readable execution receipt
+   instead of leaving the launched hosted lanes and deferred manual/shadow lanes implicit.
+7. When summarizing a run, name the exact plane identifier instead of saying “host” or “Docker” without qualification.
+8. Do not treat `native-labview-2026-32` as a release or CI authority surface; it is a shadow accelerator only.
 
 ## Related contracts
 
 - [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)
+- [concurrent-lane-apply-receipt-v1.schema.json](schemas/concurrent-lane-apply-receipt-v1.schema.json)
 - [concurrent-lane-plan-v1.schema.json](schemas/concurrent-lane-plan-v1.schema.json)
 - [labview-2026-host-plane-report-v1.schema.json](schemas/labview-2026-host-plane-report-v1.schema.json)
 - [Write-LabVIEW2026HostPlaneDiagnostics.ps1](../tools/Write-LabVIEW2026HostPlaneDiagnostics.ps1)
+- [concurrent-lane-apply.mjs](../tools/priority/concurrent-lane-apply.mjs)
 - [concurrent-lane-plan.mjs](../tools/priority/concurrent-lane-plan.mjs)
 - [Test-DockerDesktopFastLoop.ps1](../tools/Test-DockerDesktopFastLoop.ps1)
 - [Show-DockerFastLoopDiagnostics.ps1](../tools/Show-DockerFastLoopDiagnostics.ps1)
