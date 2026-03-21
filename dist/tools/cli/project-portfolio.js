@@ -1239,12 +1239,11 @@ function compareProject(config, view, fields, items) {
         .filter((item) => !actualByUrl.has(item.url))
         .map((item) => item.url)
         .sort((a, b) => a.localeCompare(b));
-    const extraItems = config.allowAdditionalItems
-        ? []
-        : items
-            .filter((item) => !expectedByUrl.has(item.url))
-            .map((item) => item.url)
-            .sort((a, b) => a.localeCompare(b));
+    const observedExtraItems = items
+        .filter((item) => !expectedByUrl.has(item.url))
+        .map((item) => item.url)
+        .sort((a, b) => a.localeCompare(b));
+    const extraItems = config.allowAdditionalItems ? [] : observedExtraItems;
     const fieldMismatches = [];
     for (const expected of config.items) {
         const actual = actualByUrl.get(expected.url);
@@ -1300,6 +1299,13 @@ function compareProject(config, view, fields, items) {
         fieldCatalogMismatches,
         missingItems,
         extraItems,
+        inventory: {
+            trackedItemCount: config.items.length,
+            actualItemCount: items.length,
+            missingItemCount: missingItems.length,
+            extraItemCount: observedExtraItems.length,
+            additionalItemsAllowed: config.allowAdditionalItems,
+        },
         fieldMismatches,
         missingRepositories,
         unexpectedRepositories,
@@ -1650,7 +1656,7 @@ function main() {
     // eslint-disable-next-line no-console
     console.log(`${statusLabel} Project ${owner}#${number} snapshot written to ${outPath}`);
     // eslint-disable-next-line no-console
-    console.log(`${statusLabel} Items expected=${config.items.length} actual=${context.normalizedItems.length} drift=${drift.ok ? 'none' : 'present'}`);
+    console.log(`${statusLabel} Inventory tracked=${drift.inventory.trackedItemCount} actual=${drift.inventory.actualItemCount} missing=${drift.inventory.missingItemCount} extra=${drift.inventory.extraItemCount} extraAllowed=${drift.inventory.additionalItemsAllowed ? 'yes' : 'no'} drift=${drift.ok ? 'none' : 'present'}`);
     if (args.mode === 'check' && !drift.ok) {
         throw new Error('Project portfolio drift detected. Review the JSON report for details.');
     }

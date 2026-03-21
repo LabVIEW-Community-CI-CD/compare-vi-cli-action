@@ -32,6 +32,7 @@ function buildConfig({
   fieldNames = {},
   itemUrl = 'https://github.com/example/repo/issues/1',
   status = 'Todo',
+  allowAdditionalItems = false,
 } = {}) {
   return {
     schema: 'project-portfolio-config@v1',
@@ -41,7 +42,7 @@ function buildConfig({
     shortDescription: 'Example description',
     readme: 'Example readme',
     public: false,
-    allowAdditionalItems: false,
+    allowAdditionalItems,
     repositories: ['example/repo'],
     fieldCatalog: {
       status: { name: fieldNames.status ?? 'Status', options: ['Todo', 'In Progress'] },
@@ -583,6 +584,101 @@ test('project portfolio CLI normalizes item values using fieldCatalog display na
   assert.equal(report.items[0].evidenceState, 'Ready');
   assert.equal(report.items[0].portfolioTrack, 'Agent UX');
   assert.deepEqual(report.drift.fieldMismatches, []);
+});
+
+test('project portfolio CLI check treats project growth as inventory, not drift, when additional items are allowed', async (t) => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'project-portfolio-allow-growth-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  const configPath = path.join(tempRoot, 'config.json');
+  const viewPath = path.join(tempRoot, 'view.json');
+  const fieldsPath = path.join(tempRoot, 'fields.json');
+  const itemsPath = path.join(tempRoot, 'items.json');
+  const outPath = path.join(tempRoot, 'report.json');
+
+  await writeJson(configPath, buildConfig({
+    allowAdditionalItems: true,
+    itemUrl: 'https://github.com/example/repo/issues/1',
+  }));
+  await writeJson(viewPath, buildView({ itemCount: 3 }));
+  await writeJson(fieldsPath, buildFields());
+  await writeJson(itemsPath, {
+    totalCount: 3,
+    items: [
+      {
+        id: 'item-1',
+        Status: 'Todo',
+        Program: 'Shared Infra',
+        Phase: 'Policy',
+        'Environment Class': 'Infra',
+        'Blocking Signal': 'Scope',
+        'Evidence State': 'Ready',
+        'Portfolio Track': 'Agent UX',
+        content: {
+          url: 'https://github.com/example/repo/issues/1',
+          title: 'Tracked issue',
+          repository: 'example/repo',
+          type: 'Issue',
+        },
+      },
+      {
+        id: 'item-2',
+        Status: 'In Progress',
+        Program: 'Shared Infra',
+        Phase: 'Policy',
+        'Environment Class': 'Infra',
+        'Blocking Signal': 'Scope',
+        'Evidence State': 'Ready',
+        'Portfolio Track': 'Agent UX',
+        content: {
+          url: 'https://github.com/example/repo/issues/2',
+          title: 'Extra issue 1',
+          repository: 'example/repo',
+          type: 'Issue',
+        },
+      },
+      {
+        id: 'item-3',
+        Status: 'In Progress',
+        Program: 'Shared Infra',
+        Phase: 'Policy',
+        'Environment Class': 'Infra',
+        'Blocking Signal': 'Scope',
+        'Evidence State': 'Ready',
+        'Portfolio Track': 'Agent UX',
+        content: {
+          url: 'https://github.com/example/repo/issues/3',
+          title: 'Extra issue 2',
+          repository: 'example/repo',
+          type: 'Issue',
+        },
+      },
+    ],
+  });
+
+  const result = runCli([
+    'check',
+    '--config', configPath,
+    '--view-file', viewPath,
+    '--fields-file', fieldsPath,
+    '--item-file', itemsPath,
+    '--out', outPath,
+  ]);
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(await readFile(outPath, 'utf8'));
+  assert.equal(report.drift.ok, true);
+  assert.deepEqual(report.drift.extraItems, []);
+  assert.deepEqual(report.drift.inventory, {
+    trackedItemCount: 1,
+    actualItemCount: 3,
+    missingItemCount: 0,
+    extraItemCount: 2,
+    additionalItemsAllowed: true,
+  });
+  assert.match(result.stdout, /Inventory tracked=1 actual=3 missing=0 extra=2 extraAllowed=yes drift=none/);
 });
 
 test('project portfolio CLI rejects config field values outside fieldCatalog options', async (t) => {
