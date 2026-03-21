@@ -308,6 +308,10 @@ function summarizeWorker(workerRecord) {
   return {
     laneId: workerRecord.laneId,
     slotId: workerRecord.slotId ?? null,
+    providerId: workerRecord.providerId ?? null,
+    providerKind: workerRecord.providerKind ?? null,
+    executionPlane: workerRecord.executionPlane ?? null,
+    assignmentMode: workerRecord.assignmentMode ?? null,
     checkoutPath: workerRecord.checkoutPath,
     checkoutRoot: workerRecord.checkoutRoot,
     status: workerRecord.status,
@@ -323,6 +327,10 @@ function summarizeWorkerReady(workerReadyRecord) {
   return {
     laneId: workerReadyRecord.laneId,
     slotId: workerReadyRecord.slotId ?? null,
+    providerId: workerReadyRecord.providerId ?? null,
+    providerKind: workerReadyRecord.providerKind ?? null,
+    executionPlane: workerReadyRecord.executionPlane ?? null,
+    assignmentMode: workerReadyRecord.assignmentMode ?? null,
     checkoutPath: workerReadyRecord.checkoutPath,
     status: workerReadyRecord.status,
     bootstrapCommand: workerReadyRecord.bootstrapCommand,
@@ -337,6 +345,10 @@ function summarizeWorkerBranch(workerBranchRecord) {
   return {
     laneId: workerBranchRecord.laneId,
     slotId: workerBranchRecord.slotId ?? null,
+    providerId: workerBranchRecord.providerId ?? null,
+    providerKind: workerBranchRecord.providerKind ?? null,
+    executionPlane: workerBranchRecord.executionPlane ?? null,
+    assignmentMode: workerBranchRecord.assignmentMode ?? null,
     checkoutPath: workerBranchRecord.checkoutPath,
     branch: workerBranchRecord.branch,
     status: workerBranchRecord.status,

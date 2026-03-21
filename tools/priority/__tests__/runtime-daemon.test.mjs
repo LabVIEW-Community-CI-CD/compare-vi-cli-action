@@ -371,6 +371,26 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
   );
 });
 
+test('comparevi worker checkout allocator skips local checkout for hosted waiting-state providers', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-hosted-provider-'));
+  const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
+    repoRoot,
+    repository: 'example/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-1509'
+      },
+      artifacts: {
+        laneLifecycle: 'waiting-review',
+        selectedActionType: 'existing-pr-unblock'
+      },
+      stepOptions: {}
+    }
+  });
+
+  assert.equal(prepared, null);
+});
+
 test('comparevi worker checkout allocator quarantines stale runtime drift before recreating a lane worktree', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-repair-'));
   const laneId = 'origin-959';

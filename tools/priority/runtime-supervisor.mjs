@@ -49,8 +49,10 @@ import {
   selectAutoStandingPriorityCandidateForRepo
 } from './sync-standing-priority.mjs';
 import {
+  buildWorkerProviderSelectionRequest,
   buildLocalReviewLoopRequest,
   buildCanonicalDeliveryDecision,
+  selectWorkerProviderAssignment,
   buildWorkerPoolPolicySnapshot,
   DELIVERY_AGENT_POLICY_RELATIVE_PATH,
   fetchIssueExecutionGraph,
@@ -587,6 +589,23 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
     deliveryPolicy?.workerPool && typeof deliveryPolicy.workerPool === 'object'
       ? buildWorkerPoolPolicySnapshot(deliveryPolicy)
       : null;
+  const workerProviderSelection = selectWorkerProviderAssignment({
+    policy: deliveryPolicy,
+    selection: buildWorkerProviderSelectionRequest({
+      schedulerDecision,
+      laneLifecycle,
+      selectedActionType
+    }),
+    preferredSlotId:
+      normalizeText(preparedWorker?.slotId) ||
+      normalizeText(workerReady?.slotId) ||
+      normalizeText(workerBranch?.slotId) ||
+      null,
+    availableSlots: workerPool?.providers?.map((provider, index) => ({
+      slotId: `worker-slot-${index + 1}`,
+      providerId: provider.id
+    })) ?? []
+  });
 
   return {
     source: 'comparevi-runtime',
@@ -626,6 +645,12 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
           normalizeText(workerReady?.slotId) ||
           normalizeText(preparedWorker?.slotId) ||
           null,
+        workerProviderId:
+          normalizeText(workerBranch?.providerId) ||
+          normalizeText(workerReady?.providerId) ||
+          normalizeText(preparedWorker?.providerId) ||
+          workerProviderSelection.selectedProviderId ||
+          null,
         workerCheckoutPath:
           normalizeText(workerBranch?.checkoutPath) ||
           normalizeText(workerReady?.checkoutPath) ||
@@ -662,6 +687,7 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
         planeTransition,
         localReviewLoop,
         workerPool,
+        workerProviderSelection,
         mutationEnvelope: {
           backlogAuthority: 'issues',
           implementationRemote: normalizeText(activeLane?.forkRemote) || 'origin',
