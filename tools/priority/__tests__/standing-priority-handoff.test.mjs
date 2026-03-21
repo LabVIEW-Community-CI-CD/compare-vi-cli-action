@@ -112,6 +112,77 @@ test('handoffStandingPriority normalizes fork standing labels and syncs cache', 
   assert.equal(leaseReleaseCount, 1);
 });
 
+test('handoffStandingPriority strips stale fork standing labels during an upstream handoff', async () => {
+  const calls = [];
+  const patchCalls = [];
+  const issues = new Map([
+    [
+      315,
+      {
+        number: 315,
+        title: 'Target issue with stale mixed standing labels',
+        labels: [{ name: 'standing-priority' }, { name: 'fork-standing-priority' }],
+        url: 'https://github.com/example/repo/issues/315'
+      }
+    ],
+    [
+      317,
+      {
+        number: 317,
+        title: 'Current upstream standing issue',
+        labels: [{ name: 'standing-priority' }],
+        url: 'https://github.com/example/repo/issues/317'
+      }
+    ]
+  ]);
+
+  const ghRunner = (args) => {
+    calls.push(args);
+    if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label') && args.includes('standing-priority')) {
+      return JSON.stringify([issues.get(315), issues.get(317)]);
+    }
+    if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label') && args.includes('fork-standing-priority')) {
+      return JSON.stringify([issues.get(315)]);
+    }
+    if (args[0] === 'issue' && args[1] === 'view') {
+      return JSON.stringify(issues.get(Number(args[2])));
+    }
+    return '';
+  };
+
+  const patchIssueLabelsFn = (_repoRoot, _repoSlug, issueNumber, labels) => {
+    patchCalls.push({ issueNumber, labels });
+    const issue = issues.get(issueNumber);
+    issue.labels = labels.map((label) => ({ name: label }));
+  };
+
+  await handoffStandingPriority(315, {
+    ghRunner,
+    patchIssueLabelsFn,
+    syncFn: async () => {},
+    leaseReleaseFn: async () => ({ status: 'released' }),
+    logger: () => {},
+    env: {
+      GITHUB_REPOSITORY: 'upstream-owner/compare-vi-cli-action',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'upstream-owner/compare-vi-cli-action'
+    }
+  });
+
+  assert.ok(
+    calls.some(
+      (args) =>
+        args[0] === 'issue' &&
+        args[1] === 'list' &&
+        args.includes('--label') &&
+        args.includes('fork-standing-priority')
+    )
+  );
+  assert.deepEqual(patchCalls, [
+    { issueNumber: 317, labels: [] },
+    { issueNumber: 315, labels: ['standing-priority'] }
+  ]);
+});
+
 test('handoffStandingPriority auto-selects the next actionable issue and skips cadence alerts', async () => {
   const calls = [];
   const patchCalls = [];
@@ -597,6 +668,20 @@ test('handoffStandingPriority dry-run only inspects current issues and candidate
       'number,title,body,labels,createdAt,updatedAt,url',
       '--label',
       'standing-priority'
+    ],
+    [
+      'issue',
+      'list',
+      '--repo',
+      'owner/repo',
+      '--state',
+      'open',
+      '--limit',
+      '100',
+      '--json',
+      'number,title,body,labels,createdAt,updatedAt,url',
+      '--label',
+      'fork-standing-priority'
     ],
     [
       'issue',

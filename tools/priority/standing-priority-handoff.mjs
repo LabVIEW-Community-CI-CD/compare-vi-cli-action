@@ -18,6 +18,8 @@ import { assertPresent } from './lib/github-text.mjs';
 
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(scriptPath), '..', '..');
+const DEFAULT_STANDING_PRIORITY_LABEL = 'standing-priority';
+const FORK_STANDING_PRIORITY_LABEL = 'fork-standing-priority';
 
 function normalizeIssueLabels(labels) {
   if (!Array.isArray(labels)) {
@@ -138,6 +140,12 @@ function collectStandingIssues(ghRunner, repoSlug, standingPriorityLabels) {
   }
 
   return Array.from(issueMap.values()).sort((left, right) => left.number - right.number);
+}
+
+function buildStandingPriorityCleanupLabels(standingPriorityLabels) {
+  return Array.from(
+    new Set([...(standingPriorityLabels || []), DEFAULT_STANDING_PRIORITY_LABEL, FORK_STANDING_PRIORITY_LABEL])
+  );
 }
 
 function buildIssueEditArgs(issueNumber, { removeLabels = [], addLabels = [] } = {}) {
@@ -318,11 +326,12 @@ export async function handoffStandingPriority(
   assertPresent(resolvedRepoSlug, 'Unable to resolve repository slug for standing-priority handoff.');
   const standingPriorityLabels = resolveStandingPriorityLabels(workingRepoRoot, resolvedRepoSlug, env);
   const primaryLabel = standingPriorityLabels[0];
+  const cleanupLabels = buildStandingPriorityCleanupLabels(standingPriorityLabels);
 
   logger(
-    `[standing-handoff] Resolving standing issues in ${resolvedRepoSlug} using labels: ${standingPriorityLabels.join(', ')}`
+    `[standing-handoff] Resolving standing issues in ${resolvedRepoSlug} using primary=${primaryLabel} cleanup=${cleanupLabels.join(', ')}`
   );
-  const currentIssues = collectStandingIssues(ghRunner, resolvedRepoSlug, standingPriorityLabels);
+  const currentIssues = collectStandingIssues(ghRunner, resolvedRepoSlug, cleanupLabels);
   const currentIssueNumbers = currentIssues.map((issue) => issue.number);
   const openIssues = auto ? listOpenIssues(ghRunner, resolvedRepoSlug) : [];
   const targetSelection = await resolveTargetIssue(
@@ -341,12 +350,12 @@ export async function handoffStandingPriority(
     .filter((issue) => issue.number !== targetIssueNumber)
     .map((issue) => ({
       number: issue.number,
-      removeLabels: standingPriorityLabels.filter((label) => issue.labels.includes(label))
+      removeLabels: cleanupLabels.filter((label) => issue.labels.includes(label))
     }))
     .filter((issue) => issue.removeLabels.length > 0);
   const targetIssue = currentIssues.find((issue) => issue.number === targetIssueNumber) || null;
   const targetRemoveLabels = targetIssue
-    ? standingPriorityLabels.filter((label) => label !== primaryLabel && targetIssue.labels.includes(label))
+    ? cleanupLabels.filter((label) => label !== primaryLabel && targetIssue.labels.includes(label))
     : [];
   const targetNeedsPrimaryLabel = Number.isInteger(targetIssueNumber) && (!targetIssue || !targetIssue.labels.includes(primaryLabel));
   const currentIssueMap = new Map(currentIssues.map((issue) => [issue.number, issue]));
