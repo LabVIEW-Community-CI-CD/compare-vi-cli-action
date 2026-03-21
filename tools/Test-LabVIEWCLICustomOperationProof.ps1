@@ -399,6 +399,36 @@ function Get-LogInsightsFromCapturedFiles {
   return Get-LabVIEWCustomOperationLogInsights -Text (($texts.ToArray()) -join [Environment]::NewLine)
 }
 
+function Get-DeduplicatedCopiedLogFiles {
+  param(
+    [AllowNull()][object[]]$Files
+  )
+
+  $deduped = New-Object System.Collections.Generic.List[object]
+  $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($file in @($Files)) {
+    if ($null -eq $file) { continue }
+    $key = $null
+    foreach ($propertyName in @('destinationPath', 'copiedPath', 'copiedPathRelative', 'sourcePath', 'name')) {
+      if ($file.PSObject.Properties[$propertyName]) {
+        $candidate = [string]$file.$propertyName
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+          $key = $candidate
+          break
+        }
+      }
+    }
+    if ([string]::IsNullOrWhiteSpace($key)) {
+      $key = ($file | ConvertTo-Json -Depth 10 -Compress)
+    }
+    if ($seen.Add($key)) {
+      $deduped.Add($file) | Out-Null
+    }
+  }
+
+  return @($deduped.ToArray())
+}
+
 function Get-ScenarioCatalog {
   param(
     [AllowNull()][string]$ExplicitLabVIEWPath,
@@ -656,7 +686,11 @@ function Invoke-WindowsContainerCustomOperationScenario {
   }
 
   $scenarioResult = if ($runnerCapture -and $runnerCapture.scenarioResult) { $runnerCapture.scenarioResult } else { $null }
-  $capturedFiles = if ($scenarioResult -and $scenarioResult.logFiles) { @($scenarioResult.logFiles) } else { @() }
+  $capturedFiles = if ($scenarioResult -and $scenarioResult.logFiles) {
+    Get-DeduplicatedCopiedLogFiles -Files @($scenarioResult.logFiles)
+  } else {
+    @()
+  }
   $logInsights = Get-LogInsightsFromCapturedFiles -Files $capturedFiles
 
   $status = 'failed'
