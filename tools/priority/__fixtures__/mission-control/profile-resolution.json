@@ -29,7 +29,7 @@
       "focus": "queue-health",
       "overrides": []
     },
-    "summary": "Use GitHub wait time to prepare one disjoint parked slice.",
-    "description": "Use when the live lane is waiting on hosted checks or merge queue only and exactly one parked lane should be prepared."
+    "summary": "Use available worker-slot capacity to prepare one disjoint support slice.",
+    "description": "Use when queue health needs another disjoint support lane prepared or refreshed while worker-slot capacity remains."
   }
 }

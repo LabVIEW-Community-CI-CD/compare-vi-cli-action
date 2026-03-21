@@ -74,7 +74,7 @@ test('renderMissionControlEnvelopeReport fails closed for drifted custom envelop
 
   const driftedEnvelopePath = path.join(tmpDir, 'mission-control-envelope.json');
   const driftedEnvelope = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
-  driftedEnvelope.missionControl.lanePolicy.allowThirdLane = true;
+  driftedEnvelope.missionControl.lanePolicy.allowThirdLane = false;
   fs.writeFileSync(driftedEnvelopePath, `${JSON.stringify(driftedEnvelope, null, 2)}\n`, 'utf8');
 
   assert.throws(

@@ -89,7 +89,7 @@ test('renderMissionControlPrompt fails closed for invalid envelope files', async
 
   const invalidEnvelopePath = path.join(tmpDir, 'invalid-envelope.json');
   const invalidEnvelope = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
-  invalidEnvelope.missionControl.lanePolicy.allowThirdLane = true;
+  invalidEnvelope.missionControl.lanePolicy.allowThirdLane = false;
   fs.writeFileSync(invalidEnvelopePath, `${JSON.stringify(invalidEnvelope, null, 2)}\n`, 'utf8');
 
   assert.throws(

@@ -263,6 +263,18 @@ export function buildThroughputScorecard({
   if (queueSummary.readyPrInventory > 0 && workerPoolSummary.occupiedSlotCount === 0 && queueSummary.capacity > 0) {
     reasons.push('actionable-work-with-idle-worker-pool');
   }
+  const actionableLaneDemand = Math.max(
+    queueSummary.readyPrInventory,
+    concurrentLanes.activeLaneCount + concurrentLanes.plannedLaneCount
+  );
+  if (
+    workerPoolSummary.occupiedSlotCount > 0
+    && workerPoolSummary.availableSlotCount > 0
+    && workerPoolSummary.targetSlotCount > workerPoolSummary.occupiedSlotCount
+    && actionableLaneDemand > workerPoolSummary.occupiedSlotCount
+  ) {
+    reasons.push('actionable-work-below-worker-slot-target');
+  }
   if (queueSummary.readyPrInventory > 0 && queueSummary.paused) {
     reasons.push('queue-paused-with-ready-inventory');
   }

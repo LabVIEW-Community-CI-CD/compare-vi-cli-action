@@ -81,19 +81,19 @@
               "const": 1
             },
             "maxActiveCodingLanes": {
-              "const": 2
+              "const": 4
             },
             "maxParkedLaneCount": {
-              "const": 1
+              "const": 3
             },
             "parkedLaneRequiresGithubWait": {
-              "const": true
+              "const": false
             },
             "requireDisjointFileScopes": {
               "const": true
             },
             "allowThirdLane": {
-              "const": false
+              "const": true
             },
             "mergeAuthority": {
               "const": "live-lane-only"

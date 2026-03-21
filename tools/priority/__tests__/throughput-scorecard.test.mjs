@@ -276,6 +276,81 @@ test('buildThroughputScorecard projects concurrent lane status without changing 
   assert.equal(report.summary.metrics.concurrentLaneDeferredCount, 1);
 });
 
+test('buildThroughputScorecard warns when actionable lane demand leaves the four-slot worker pool underfilled', () => {
+  const report = buildThroughputScorecard({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeState: {
+      workerPool: {
+        targetSlotCount: 4,
+        occupiedSlotCount: 1,
+        availableSlotCount: 3,
+        releasedLaneCount: 0,
+        utilizationRatio: 0.25
+      },
+      activeCodingLanes: 1
+    },
+    deliveryMemory: {
+      summary: {
+        totalTerminalPullRequestCount: 6,
+        mergedPullRequestCount: 4,
+        closedPullRequestCount: 2,
+        hostedWaitEscapeCount: 3,
+        meanTerminalDurationMinutes: 13.4,
+        viHistorySuitePullRequestCount: 1
+      }
+    },
+    queueReport: {
+      inflight: 1,
+      capacity: 2,
+      effectiveMaxInflight: 3,
+      paused: false,
+      throughputController: { mode: 'healthy' },
+      governor: { mode: 'normal' },
+      readiness: {
+        readySet: [{ number: 1601 }, { number: 1602 }, { number: 1603 }]
+      }
+    },
+    concurrentLaneStatus: {
+      schema: 'priority/concurrent-lane-status-receipt@v1',
+      status: 'active',
+      hostedRun: {
+        observationStatus: 'active'
+      },
+      pullRequest: {
+        observationStatus: 'queued'
+      },
+      summary: {
+        selectedBundleId: 'hosted-plus-manual-linux-docker',
+        laneCount: 4,
+        activeLaneCount: 1,
+        completedLaneCount: 0,
+        failedLaneCount: 0,
+        blockedLaneCount: 0,
+        plannedLaneCount: 2,
+        deferredLaneCount: 0,
+        manualLaneCount: 1,
+        shadowLaneCount: 0,
+        orchestratorDisposition: 'retain-and-expand'
+      }
+    },
+    utilizationPolicy: {
+      mergeQueue: {
+        readyInventoryFloor: 2,
+        occupancyFloorRatio: 0.3,
+        occupancyTargetRatio: 1,
+        treatPausedQueueAsExempt: true
+      }
+    },
+    now: new Date('2026-03-21T03:12:00.000Z')
+  });
+
+  assert.equal(report.summary.status, 'warn');
+  assert.ok(report.summary.reasons.includes('actionable-work-below-worker-slot-target'));
+  assert.equal(report.workerPool.targetSlotCount, 4);
+  assert.equal(report.workerPool.occupiedSlotCount, 1);
+  assert.equal(report.concurrentLanes.plannedLaneCount, 2);
+});
+
 test('buildThroughputScorecard warns when merge-queue ready inventory drops below the defined floor', () => {
   const report = buildThroughputScorecard({
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',

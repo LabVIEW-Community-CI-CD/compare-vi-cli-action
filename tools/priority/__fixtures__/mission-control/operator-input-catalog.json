@@ -5,13 +5,13 @@
       "id": "continue-driving-autonomously",
       "summary": "Keep the standing lane moving without waiting for new operator prompts.",
       "allowedFocuses": ["standing-priority", "queue-health", "policy-drift", "docs-contract"],
-      "description": "Default unattended operating mode. Finish the live standing lane, rotate to the next child issue, and keep one parked lane prepared when the live lane is waiting on GitHub."
+      "description": "Default unattended operating mode. Finish the live standing lane, rotate to the next child issue, and proactively fill safe worker-slot capacity up to the checked-in four-lane cap."
     },
     {
       "id": "finish-live-standing-lane",
       "summary": "Bias execution toward the current standing lane only.",
       "allowedFocuses": ["standing-priority", "current-head-failure", "queue-health"],
-      "description": "Use when the operator wants the current live PR merged before new parked-lane work expands."
+      "description": "Use when the operator wants the current live PR merged before additional support-lane work expands."
     },
     {
       "id": "stabilize-current-head-failure",
@@ -27,9 +27,9 @@
     },
     {
       "id": "prepare-parked-lane",
-      "summary": "Use live-lane wait time to cut one disjoint follow-up slice.",
+      "summary": "Use available worker-slot capacity to cut or refresh one disjoint follow-up slice.",
       "allowedFocuses": ["docs-contract", "queue-health", "standing-priority"],
-      "description": "Use when the live lane is waiting on hosted checks or merge queue only and there is room for exactly one parked coding lane."
+      "description": "Use when queue health needs another disjoint support lane prepared or refreshed while worker-slot capacity remains."
     }
   ],
   "focuses": [
@@ -49,7 +49,7 @@
       "id": "queue-health",
       "summary": "Keep the queue populated with concrete child issues and merge-ready PRs.",
       "standingPriorityRequired": false,
-      "description": "Use for intake restoration, parked-lane preparation, and anti-idle queue hygiene."
+      "description": "Use for intake restoration, support-lane preparation, and anti-idle queue hygiene."
     },
     {
       "id": "handoff",
@@ -87,7 +87,7 @@
       "key": "allowParkedLane",
       "valueType": "boolean",
       "wideningAllowed": false,
-      "description": "Temporary override that allows or suppresses the single parked coding lane without changing the hard max-active-lanes cap."
+      "description": "Historical compatibility override that allows or suppresses additional disjoint support-lane preparation without changing the hard max-active-lanes cap."
     },
     {
       "key": "copilotCliUsage",

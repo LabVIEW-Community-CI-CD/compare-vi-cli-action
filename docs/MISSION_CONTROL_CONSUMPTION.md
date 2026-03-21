@@ -38,11 +38,16 @@ This document defines how future agents and operator tooling should discover, re
    - phase overlays under `.github/instructions/` still control draft-review vs ready-validation behavior.
 6. Keep downstream automation fail-closed when operator input conflicts with the envelope contract, the operator input
    catalog, the profile catalog, or the repository-wide instruction surfaces above.
+7. Audit actual lane utilization through the checked-in and emitted receipts:
+   - checked-in worker-slot target: `tools/priority/delivery-agent.policy.json`
+   - current slot occupancy and released waits: `tests/results/_agent/runtime/delivery-agent-state.json`
+   - utilization and queue pressure summary: `tests/results/_agent/throughput/throughput-scorecard.json`
 
 ## Guardrails
 
 - Do not treat free-form operator text as a policy surface.
 - Do not bypass the checked-in schemas, fixtures, or authoritative loader/resolver helpers.
-- Do not widen lane counts, merge authority, or raw-package-manager policy outside the bounded override catalog.
+- Do not widen lane counts, merge authority, or raw-package-manager policy outside the checked-in delivery-agent policy
+  and mission-control envelope contract.
 - Keep future mission-control helpers deterministic and machine-readable so local review and standing-priority receipts
   remain attributable.
