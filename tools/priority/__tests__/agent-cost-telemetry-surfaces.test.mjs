@@ -72,4 +72,7 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.match(guide, /--invoice-turn-id/);
   assert.match(guide, /policy\.activationState = hold/);
   assert.match(guide, /heuristic drift directly/);
+  assert.match(guide, /Operator Steering Attribution/);
+  assert.match(guide, /summary\.metrics\.steeredTurnCount/);
+  assert.match(guide, /breakdown\.bySteering/);
 });

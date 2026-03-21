@@ -260,6 +260,12 @@ function normalizeTurnReceipt(input) {
       effectiveModel: normalizeText(payload?.model?.effective) || null,
       requestedReasoningEffort: normalizeReasoningEffort(payload?.model?.requestedReasoningEffort),
       effectiveReasoningEffort: normalizeReasoningEffort(payload?.model?.effectiveReasoningEffort),
+      operatorIntervened: payload?.steering?.operatorIntervened === true,
+      steeringKind: normalizeText(payload?.steering?.kind) || null,
+      steeringSource: normalizeText(payload?.steering?.source) || null,
+      steeringObservedAt: normalizeDateTime(payload?.steering?.observedAt),
+      steeringNote: normalizeText(payload?.steering?.note) || null,
+      steeringInvoiceTurnId: normalizeText(payload?.steering?.invoiceTurnId) || null,
       usageUnitKind,
       usageUnitCount,
       inputTokens,
@@ -698,6 +704,10 @@ export function runAgentCostRollup(options) {
   const totalOutputTokens = validTurns.reduce((sumValue, entry) => sumValue + (entry.outputTokens ?? 0), 0);
   const totalTokens = validTurns.reduce((sumValue, entry) => sumValue + (entry.totalTokens ?? 0), 0);
   const totalUsageUnits = roundUsd(validTurns.reduce((sumValue, entry) => sumValue + (entry.usageUnitCount ?? 0), 0)) ?? 0;
+  const steeredTurns = validTurns.filter((entry) => entry.operatorIntervened === true);
+  const unsteeredTurns = validTurns.filter((entry) => entry.operatorIntervened !== true);
+  const steeredUsd = sum(steeredTurns.map((entry) => entry.amountUsd));
+  const unsteeredUsd = sum(unsteeredTurns.map((entry) => entry.amountUsd));
 
   const byProviderCount = new Map();
   const byProviderUsd = new Map();
@@ -713,6 +723,8 @@ export function runAgentCostRollup(options) {
   const byAgentRoleUsd = new Map();
   const byRepositoryCount = new Map();
   const byRepositoryUsd = new Map();
+  const bySteeringCount = new Map();
+  const bySteeringUsd = new Map();
 
   const rateCards = new Map();
   const sessionIds = new Set();
@@ -720,6 +732,8 @@ export function runAgentCostRollup(options) {
   const laneIds = new Set();
   const repositories = new Set();
   const reasoningEfforts = new Set();
+  const steeringKinds = new Set();
+  const steeringSources = new Set();
 
   for (const turn of validTurns) {
     incrementCount(byProviderCount, turn.providerId);
@@ -736,6 +750,8 @@ export function runAgentCostRollup(options) {
     addUsd(byAgentRoleUsd, turn.agentRole, turn.amountUsd);
     incrementCount(byRepositoryCount, turn.repository);
     addUsd(byRepositoryUsd, turn.repository, turn.amountUsd);
+    incrementCount(bySteeringCount, turn.operatorIntervened ? 'steered' : 'unsteered');
+    addUsd(bySteeringUsd, turn.operatorIntervened ? 'steered' : 'unsteered', turn.amountUsd);
     if (turn.rateCardId || turn.rateCardSource) {
       const rateCardKey = `${turn.rateCardId || 'unknown'}|${turn.rateCardSource || 'unknown'}`;
       if (!rateCards.has(rateCardKey)) {
@@ -761,6 +777,12 @@ export function runAgentCostRollup(options) {
     }
     if (turn.effectiveReasoningEffort) {
       reasoningEfforts.add(turn.effectiveReasoningEffort);
+    }
+    if (turn.steeringKind) {
+      steeringKinds.add(turn.steeringKind);
+    }
+    if (turn.steeringSource) {
+      steeringSources.add(turn.steeringSource);
     }
   }
 
@@ -824,6 +846,10 @@ export function runAgentCostRollup(options) {
         totalOutputTokens,
         totalTokens,
         totalUsageUnits,
+        steeredTurnCount: steeredTurns.length,
+        unsteeredTurnCount: unsteeredTurns.length,
+        steeredUsd,
+        unsteeredUsd,
         estimatedCreditsConsumed,
         creditsRemaining,
         estimatedPrepaidUsdRemaining,
@@ -840,6 +866,8 @@ export function runAgentCostRollup(options) {
         laneIds: [...laneIds].sort(),
         repositories: [...repositories].sort(),
         reasoningEfforts: [...reasoningEfforts].sort(),
+        steeringKinds: [...steeringKinds].sort(),
+        steeringSources: [...steeringSources].sort(),
         rateCards: [...rateCards.values()].sort((left, right) =>
           `${left.id || ''}|${left.source || ''}`.localeCompare(`${right.id || ''}|${right.source || ''}`)
         ),
@@ -879,7 +907,8 @@ export function runAgentCostRollup(options) {
       byIssue: materializeBreakdown(byIssueCount, byIssueUsd),
       byLane: materializeBreakdown(byLaneCount, byLaneUsd),
       byAgentRole: materializeBreakdown(byAgentRoleCount, byAgentRoleUsd),
-      byRepository: materializeBreakdown(byRepositoryCount, byRepositoryUsd)
+      byRepository: materializeBreakdown(byRepositoryCount, byRepositoryUsd),
+      bySteering: materializeBreakdown(bySteeringCount, bySteeringUsd)
     }
   };
 

@@ -80,6 +80,12 @@ export function parseArgs(argv = process.argv) {
     sourceReceiptPath: null,
     sourceReportPath: null,
     usageObservedAt: null,
+    operatorSteered: false,
+    operatorSteeringKind: null,
+    operatorSteeringSource: null,
+    operatorSteeringObservedAt: null,
+    operatorSteeringNote: null,
+    steeringInvoiceTurnId: null,
     outputPath: null,
     help: false
   };
@@ -121,6 +127,11 @@ export function parseArgs(argv = process.argv) {
     '--source-receipt-path',
     '--source-report-path',
     '--usage-observed-at',
+    '--operator-steering-kind',
+    '--operator-steering-source',
+    '--operator-steering-observed-at',
+    '--operator-steering-note',
+    '--steering-invoice-turn-id',
     '--output'
   ]);
 
@@ -129,6 +140,10 @@ export function parseArgs(argv = process.argv) {
     const next = args[index + 1];
     if (token === '-h' || token === '--help') {
       options.help = true;
+      continue;
+    }
+    if (token === '--operator-steered') {
+      options.operatorSteered = true;
       continue;
     }
     if (tokensWithValue.has(token)) {
@@ -173,6 +188,11 @@ export function parseArgs(argv = process.argv) {
         case '--source-receipt-path': options.sourceReceiptPath = next; break;
         case '--source-report-path': options.sourceReportPath = next; break;
         case '--usage-observed-at': options.usageObservedAt = next; break;
+        case '--operator-steering-kind': options.operatorSteeringKind = next; break;
+        case '--operator-steering-source': options.operatorSteeringSource = next; break;
+        case '--operator-steering-observed-at': options.operatorSteeringObservedAt = next; break;
+        case '--operator-steering-note': options.operatorSteeringNote = next; break;
+        case '--steering-invoice-turn-id': options.steeringInvoiceTurnId = next; break;
         case '--output': options.outputPath = next; break;
         default: break;
       }
@@ -269,6 +289,18 @@ export function buildAgentCostTurn(options, now = new Date()) {
       DEFAULT_OUTPUT_DIR,
       `${sanitizeFileSegment(options.sessionId, 'session')}--${sanitizeFileSegment(options.turnId, 'turn')}.json`
     );
+  const normalizedOperatorSteeringKind = normalizeText(options.operatorSteeringKind) || null;
+  const normalizedOperatorSteeringSource = normalizeText(options.operatorSteeringSource) || null;
+  const normalizedOperatorSteeringObservedAt = normalizeText(options.operatorSteeringObservedAt) || null;
+  const normalizedOperatorSteeringNote = normalizeText(options.operatorSteeringNote) || null;
+  const normalizedSteeringInvoiceTurnId = normalizeText(options.steeringInvoiceTurnId) || null;
+  const normalizedOperatorSteered =
+    Boolean(options.operatorSteered) ||
+    normalizedOperatorSteeringKind !== null ||
+    normalizedOperatorSteeringSource !== null ||
+    normalizedOperatorSteeringObservedAt !== null ||
+    normalizedOperatorSteeringNote !== null ||
+    normalizedSteeringInvoiceTurnId !== null;
 
   const rateCardPresent = [
     options.rateCardId,
@@ -336,6 +368,14 @@ export function buildAgentCostTurn(options, now = new Date()) {
       sourceReceiptPath: normalizeText(options.sourceReceiptPath) || null,
       sourceReportPath: normalizeText(options.sourceReportPath) || null,
       usageObservedAt: normalizeText(options.usageObservedAt)
+    },
+    steering: {
+      operatorIntervened: normalizedOperatorSteered,
+      kind: normalizedOperatorSteeringKind,
+      source: normalizedOperatorSteeringSource,
+      observedAt: normalizedOperatorSteeringObservedAt,
+      note: normalizedOperatorSteeringNote,
+      invoiceTurnId: normalizedSteeringInvoiceTurnId
     }
   };
 
@@ -398,6 +438,12 @@ function printUsage() {
   console.log('  --worker-slot-id <value>');
   console.log('  --source-receipt-path <path>');
   console.log('  --source-report-path <path>');
+  console.log('  --operator-steered');
+  console.log('  --operator-steering-kind <value>');
+  console.log('  --operator-steering-source <value>');
+  console.log('  --operator-steering-observed-at <date-time>');
+  console.log('  --operator-steering-note <text>');
+  console.log('  --steering-invoice-turn-id <value>');
   console.log('  --output <path>');
   console.log('  -h, --help');
 }

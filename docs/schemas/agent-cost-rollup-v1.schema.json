@@ -85,6 +85,12 @@
         "effectiveModel",
         "requestedReasoningEffort",
         "effectiveReasoningEffort",
+        "operatorIntervened",
+        "steeringKind",
+        "steeringSource",
+        "steeringObservedAt",
+        "steeringNote",
+        "steeringInvoiceTurnId",
         "usageUnitKind",
         "usageUnitCount",
         "inputTokens",
@@ -119,6 +125,12 @@
         "effectiveModel": { "$ref": "#/$defs/nullableString" },
         "requestedReasoningEffort": { "$ref": "#/$defs/nullableString" },
         "effectiveReasoningEffort": { "$ref": "#/$defs/nullableString" },
+        "operatorIntervened": { "type": "boolean" },
+        "steeringKind": { "$ref": "#/$defs/nullableString" },
+        "steeringSource": { "$ref": "#/$defs/nullableString" },
+        "steeringObservedAt": { "$ref": "#/$defs/nullableString" },
+        "steeringNote": { "$ref": "#/$defs/nullableString" },
+        "steeringInvoiceTurnId": { "$ref": "#/$defs/nullableString" },
         "usageUnitKind": { "$ref": "#/$defs/nullableString" },
         "usageUnitCount": { "type": ["number", "integer", "null"], "minimum": 0 },
         "inputTokens": { "type": "integer", "minimum": 0 },
@@ -275,6 +287,10 @@
             "totalOutputTokens",
             "totalTokens",
             "totalUsageUnits",
+            "steeredTurnCount",
+            "unsteeredTurnCount",
+            "steeredUsd",
+            "unsteeredUsd",
             "estimatedCreditsConsumed",
             "creditsRemaining",
             "estimatedPrepaidUsdRemaining",
@@ -297,6 +313,10 @@
             "totalOutputTokens": { "type": "integer", "minimum": 0 },
             "totalTokens": { "type": "integer", "minimum": 0 },
             "totalUsageUnits": { "type": "number", "minimum": 0 },
+            "steeredTurnCount": { "type": "integer", "minimum": 0 },
+            "unsteeredTurnCount": { "type": "integer", "minimum": 0 },
+            "steeredUsd": { "type": "number", "minimum": 0 },
+            "unsteeredUsd": { "type": "number", "minimum": 0 },
             "estimatedCreditsConsumed": { "type": ["number", "null"], "minimum": 0 },
             "creditsRemaining": { "type": ["number", "null"], "minimum": 0 },
             "estimatedPrepaidUsdRemaining": { "type": ["number", "null"], "minimum": 0 },
@@ -311,13 +331,15 @@
         "provenance": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "reasoningEfforts", "invoiceTurn", "invoiceTurnSelection", "invoiceTurns"],
+          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "reasoningEfforts", "steeringKinds", "steeringSources", "invoiceTurn", "invoiceTurnSelection", "invoiceTurns"],
           "properties": {
             "sessionIds": { "type": "array", "items": { "type": "string" } },
             "issueNumbers": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
             "laneIds": { "type": "array", "items": { "type": "string" } },
             "repositories": { "type": "array", "items": { "type": "string" } },
             "reasoningEfforts": { "type": "array", "items": { "type": "string" } },
+            "steeringKinds": { "type": "array", "items": { "type": "string" } },
+            "steeringSources": { "type": "array", "items": { "type": "string" } },
             "rateCards": {
               "type": "array",
               "items": {
@@ -402,7 +424,7 @@
     "breakdown": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["byProvider", "byModel", "byReasoningEffort", "byIssue", "byLane", "byAgentRole", "byRepository"],
+      "required": ["byProvider", "byModel", "byReasoningEffort", "byIssue", "byLane", "byAgentRole", "byRepository", "bySteering"],
       "properties": {
         "byProvider": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
         "byModel": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
@@ -410,7 +432,8 @@
         "byIssue": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
         "byLane": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
         "byAgentRole": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
-        "byRepository": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } }
+        "byRepository": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
+        "bySteering": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } }
       }
     }
   }
