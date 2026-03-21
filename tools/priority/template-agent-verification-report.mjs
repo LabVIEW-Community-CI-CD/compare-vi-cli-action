@@ -24,7 +24,7 @@ function printUsage() {
   console.log('  --repo <owner/repo>             Repository slug override.');
   console.log('  --iteration-label <value>       Human-readable iteration label (required).');
   console.log('  --iteration-ref <value>         Branch/PR/ref identifier.');
-  console.log('  --iteration-head-sha <sha>      Iteration head commit SHA.');
+  console.log('  --iteration-head-sha <sha>      Iteration head commit SHA (required).');
   console.log('  --verification-status <status>  Verification status: pass|fail|blocked|pending (required).');
   console.log('  --duration-seconds <number>     Hosted verification duration in seconds.');
   console.log('  --provider <id>                 Verification provider id (default: hosted-github-workflow).');
@@ -169,6 +169,9 @@ export function parseArgs(argv = process.argv) {
   if (!options.help && !asOptional(options.iterationLabel)) {
     throw new Error('Missing required option: --iteration-label <value>.');
   }
+  if (!options.help && !asOptional(options.iterationHeadSha)) {
+    throw new Error('Missing required option: --iteration-head-sha <sha>.');
+  }
   if (!options.help && !['pass', 'fail', 'blocked', 'pending'].includes(normalizeText(options.verificationStatus))) {
     throw new Error('Missing required option: --verification-status <pass|fail|blocked|pending>.');
   }
@@ -208,6 +211,7 @@ export function evaluateTemplateAgentVerificationReport({
   const durationGoalMinutes = toNonNegativeInteger(lane?.metrics?.maxHostedDurationMinutes);
   const durationGoalSeconds = durationGoalMinutes == null ? null : durationGoalMinutes * 60;
   const durationWithinGoal = durationGoalSeconds == null || durationSeconds == null ? null : durationSeconds <= durationGoalSeconds;
+  const landedIterationHeadSha = asOptional(iterationHeadSha);
 
   if (lane.enabled !== true) {
     blockers.push(createBlocker('lane-disabled', 'Template-agent verification lane must remain enabled.'));
@@ -225,6 +229,9 @@ export function evaluateTemplateAgentVerificationReport({
   }
   if (!targetRepository) {
     blockers.push(createBlocker('target-repository-missing', 'Template-agent verification target repository is missing.'));
+  }
+  if (!landedIterationHeadSha) {
+    blockers.push(createBlocker('iteration-head-sha-missing', 'Template-agent verification report requires the landed iteration head SHA.'));
   }
   if (verificationStatus === 'fail') {
     blockers.push(createBlocker('verification-failed', 'Template-agent verification reported a failure.'));
@@ -261,7 +268,7 @@ export function evaluateTemplateAgentVerificationReport({
     iteration: {
       label: iterationLabel,
       ref: asOptional(iterationRef),
-      headSha: asOptional(iterationHeadSha)
+      headSha: landedIterationHeadSha
     },
     lane: {
       enabled: lane.enabled === true,
