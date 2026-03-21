@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { loadBranchClassContract } from './lib/branch-classification.mjs';
 import { assertLaneBranchMatchesPlane } from './lib/runtime-lane-branch-contract.mjs';
+import { extractGitResultMessage, formatGitInvocation, refreshUpstreamTrackingRef } from './lib/upstream-ref-refresh.mjs';
 import {
   buildWorkerProviderSelectionRequest,
   loadDeliveryAgentPolicy,
@@ -14,6 +15,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_WORKER_REF = 'upstream/develop';
+const DEFAULT_BASE_REF_NAME = 'develop';
 const BOOTSTRAP_RELATIVE_PATH = path.join('tools', 'priority', 'bootstrap.ps1');
 const ATTACHABLE_REMOTES = ['upstream', 'origin', 'personal'];
 const GITHUB_PUSH_REMOTES = ['origin', 'personal'];
@@ -318,6 +320,68 @@ function formatBootstrapFailure(error) {
 
 function formatExecError(error) {
   return normalizeText(error?.stderr) || normalizeText(error?.message) || String(error);
+}
+
+function coerceExecResult(result = {}) {
+  return {
+    status: 0,
+    stdout: normalizeText(result?.stdout),
+    stderr: normalizeText(result?.stderr)
+  };
+}
+
+function coerceExecErrorResult(error) {
+  return {
+    status: Number.isInteger(error?.code) ? error.code : 1,
+    stdout: normalizeText(error?.stdout),
+    stderr: normalizeText(error?.stderr) || normalizeText(error?.message)
+  };
+}
+
+function buildGitFetchError(result, attemptedCommand) {
+  const message =
+    extractGitResultMessage(result) ||
+    `${normalizeText(attemptedCommand) || 'git fetch'} failed (${Number.isInteger(result?.status) ? result.status : 1})`;
+  const error = new Error(message);
+  error.code = Number.isInteger(result?.status) ? result.status : 1;
+  error.stdout = normalizeText(result?.stdout);
+  error.stderr = normalizeText(result?.stderr);
+  return error;
+}
+
+async function fetchAttachableRemote(execFileFn, cwd, remote) {
+  const fetchArgs = ['fetch', remote, '--prune'];
+  if (remote !== 'upstream') {
+    await execFileFn('git', fetchArgs, { cwd });
+    return {
+      attempts: [formatGitInvocation(fetchArgs)],
+      repairedRace: false
+    };
+  }
+
+  const refreshResult = await refreshUpstreamTrackingRef({
+    baseRefName: DEFAULT_BASE_REF_NAME,
+    initialArgs: fetchArgs,
+    runGitFn: async (args) => {
+      try {
+        return coerceExecResult(await execFileFn('git', args, { cwd }));
+      } catch (error) {
+        return coerceExecErrorResult(error);
+      }
+    }
+  });
+
+  if (refreshResult.result?.status === 0) {
+    return {
+      attempts: refreshResult.attempts,
+      repairedRace: refreshResult.repairedRace
+    };
+  }
+
+  throw buildGitFetchError(
+    refreshResult.result,
+    refreshResult.attempts.at(-1) || formatGitInvocation(fetchArgs)
+  );
 }
 
 async function inspectReusedWorktreeState(execFileFn, checkoutPath) {
@@ -631,10 +695,10 @@ export async function prepareCompareviWorkerCheckout({
           .map((entry) => normalizeText(entry))
           .filter(Boolean);
         if (availableRemotes.includes('upstream')) {
-          await execFileFn('git', ['fetch', 'upstream', '--prune'], { cwd: resolvedCheckoutPath });
+          await fetchAttachableRemote(execFileFn, resolvedCheckoutPath, 'upstream');
           fetchedRemotes.push('upstream');
         } else if (availableRemotes.includes('origin')) {
-          await execFileFn('git', ['fetch', 'origin', '--prune'], { cwd: resolvedCheckoutPath });
+          await fetchAttachableRemote(execFileFn, resolvedCheckoutPath, 'origin');
           fetchedRemotes.push('origin');
         }
         let resolvedRef = DEFAULT_WORKER_REF;
@@ -792,7 +856,7 @@ export async function bootstrapCompareviWorkerCheckout({
         if (!availableRemotes.includes(remote)) {
           continue;
         }
-        await execFileFn('git', ['fetch', remote, '--prune'], { cwd: preparedWorker.checkoutPath });
+        await fetchAttachableRemote(execFileFn, preparedWorker.checkoutPath, remote);
       }
 
       const currentBranch = await tryReadGitStdout(execFileFn, ['branch', '--show-current'], {
@@ -924,7 +988,7 @@ export async function activateCompareviWorkerLane({
       if (!availableRemotes.includes(remote)) {
         continue;
       }
-      await execFileFn('git', ['fetch', remote, '--prune'], { cwd: checkoutPath });
+      await fetchAttachableRemote(execFileFn, checkoutPath, remote);
       fetchedRemotes.push(remote);
     }
     const currentBranch = await tryReadGitStdout(execFileFn, ['branch', '--show-current'], { cwd: checkoutPath });

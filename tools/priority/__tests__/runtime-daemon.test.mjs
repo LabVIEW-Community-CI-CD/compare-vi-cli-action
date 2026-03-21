@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runRuntimeObserverLoop } from '../runtime-daemon.mjs';
@@ -367,6 +367,91 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
         entry.args[0] === 'checkout' &&
         entry.args.includes('--force') &&
         entry.args.includes('--detach')
+    )
+  );
+});
+
+test('comparevi worker checkout allocator repairs concurrent upstream fetch races when reusing a lane worktree', async (t) => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-reuse-upstream-race-'));
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId: 'personal-996'
+  });
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', 'personal-996');
+  await mkdir(checkoutPath, { recursive: true });
+  await mkdir(worktreeAdminDir, { recursive: true });
+  await writeFile(path.join(checkoutPath, '.git'), 'gitdir: C:/stale/windows/path\n', 'utf8');
+  await writeFile(path.join(worktreeAdminDir, 'gitdir'), '/mnt/c/stale/linux/path/.git\n', 'utf8');
+  t.after(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  const calls = [];
+  let upstreamFetchAttempts = 0;
+  const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
+    repoRoot,
+    repository: 'example/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'personal-996'
+      },
+      stepOptions: {}
+    },
+    deps: {
+      platform: 'linux',
+      execFileFn: async (command, args, options) => {
+        calls.push({ command, args, options });
+        if (command !== 'git') {
+          throw new Error(`unexpected command: ${command}`);
+        }
+        if (args[0] === 'remote') {
+          if (args[1] === 'get-url' && args[2] === 'origin') {
+            return { stdout: 'https://github.com/example/repo-fork\n', stderr: '' };
+          }
+          if (args[1] === 'get-url' && args[2] === '--push' && args[3] === 'origin') {
+            return { stdout: 'https://github.com/example/repo-fork\n', stderr: '' };
+          }
+          if (args[1] === 'set-url' && args[2] === '--push' && args[3] === 'origin') {
+            assert.equal(args[4], 'git@github.com:example/repo-fork.git');
+            return { stdout: '', stderr: '' };
+          }
+          return { stdout: 'upstream\norigin\n', stderr: '' };
+        }
+        if (args[0] === 'status' && args[1] === '--porcelain' && args[2] === '--untracked-files=all') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '--prune') {
+          upstreamFetchAttempts += 1;
+          if (upstreamFetchAttempts === 1) {
+            const error = new Error("error: cannot lock ref 'refs/remotes/upstream/develop': incorrect old value provided");
+            error.code = 1;
+            error.stderr = "error: cannot lock ref 'refs/remotes/upstream/develop': incorrect old value provided";
+            error.stdout = '';
+            throw error;
+          }
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '+develop:refs/remotes/upstream/develop') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'checkout' && args[1] === '--force' && args[2] === '--detach' && args[3] === 'upstream/develop') {
+          return { stdout: '', stderr: '' };
+        }
+        throw new Error(`unexpected git args: ${args.join(' ')}`);
+      }
+    }
+  });
+
+  assert.equal(prepared.status, 'reused');
+  assert.deepEqual(prepared.fetchedRemotes, ['upstream']);
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'fetch' &&
+        entry.args[1] === 'upstream' &&
+        entry.args[2] === '+develop:refs/remotes/upstream/develop'
     )
   );
 });
