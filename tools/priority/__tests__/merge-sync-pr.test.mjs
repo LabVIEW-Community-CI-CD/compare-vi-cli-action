@@ -1184,6 +1184,131 @@ test('runMergeSync records queued promotion state after auto merge activation ma
   assert.equal(written.promotion.status, 'queued');
 });
 
+test('runMergeSync retries policy-blocked direct merges without reintroducing inline branch deletion', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'merge-sync-pr-retry-cleanup-'));
+  const mergeArgs = [];
+  let promotionReads = 0;
+
+  const payload = await runMergeSync({
+    argv: [
+      'node',
+      'tools/priority/merge-sync-pr.mjs',
+      '--pr',
+      '557',
+      '--repo',
+      'svelderrainruiz/compare-vi-cli-action',
+      '--summary-path',
+      path.join(tempDir, 'summary.json')
+    ],
+    repoRoot,
+    ensureGhCliFn: () => {},
+    readRepositoryMergeCapabilitiesFn: () => buildRepositoryMergeCapabilities(),
+    readPrInfoFn: () => ({
+      number: 557,
+      state: 'OPEN',
+      isDraft: false,
+      mergeStateStatus: 'CLEAN',
+      mergeable: 'MERGEABLE',
+      baseRefName: 'develop',
+      headRefName: 'issue/personal-1397-retry-cleanup',
+      headRepository: {
+        name: 'compare-vi-cli-action'
+      },
+      headRepositoryOwner: {
+        login: 'svelderrainruiz'
+      },
+      headRefOid: '1234567890123456789012345678901234567890',
+      url: 'https://example.test/pr/557'
+    }),
+    evaluatePromotionReviewClearanceFn: async () => ({
+      ok: true,
+      report: {
+        status: 'pass',
+        gateState: 'ready',
+        reasons: ['current-head-review-run-completed-clean']
+      }
+    }),
+    readPromotionStateFn: () => {
+      promotionReads += 1;
+      return promotionReads === 1
+        ? {
+            state: 'OPEN',
+            mergeStateStatus: 'CLEAN',
+            isInMergeQueue: false,
+            autoMergeRequest: null,
+            mergedAt: null
+          }
+        : {
+            state: 'OPEN',
+            mergeStateStatus: 'BLOCKED',
+            isInMergeQueue: true,
+            autoMergeRequest: null,
+            mergedAt: null
+          };
+    },
+    runMergeAttemptFn: ({ args }) => {
+      mergeArgs.push(args);
+      return mergeArgs.length === 1
+        ? {
+            status: 1,
+            stdout: '',
+            stderr: 'Base branch policy requires merge queue; direct merge blocked.'
+          }
+        : {
+            status: 0,
+            stdout: 'queued',
+            stderr: ''
+          };
+    },
+    sleepFn: async () => {}
+  });
+
+  assert.deepEqual(mergeArgs, [
+    [
+      'pr',
+      'merge',
+      '557',
+      '--repo',
+      'svelderrainruiz/compare-vi-cli-action',
+      '--squash'
+    ],
+    [
+      'pr',
+      'merge',
+      '557',
+      '--repo',
+      'svelderrainruiz/compare-vi-cli-action',
+      '--squash',
+      '--auto'
+    ]
+  ]);
+  assert.equal(payload.selectedMode, 'direct');
+  assert.equal(payload.finalMode, 'auto');
+  assert.equal(payload.finalReason, 'direct-merge-policy-block-retry-auto');
+  assert.deepEqual(
+    payload.attempts.map((attempt) => ({ mode: attempt.mode, exitCode: attempt.exitCode })),
+    [
+      { mode: 'direct', exitCode: 1 },
+      { mode: 'auto', exitCode: 0 }
+    ]
+  );
+  assert.deepEqual(payload.branchCleanup, {
+    requested: true,
+    attempted: false,
+    status: 'deferred',
+    reason: 'promotion-not-yet-merged',
+    inlineDeleteBranch: false,
+    postMergeDelete: true,
+    repository: 'svelderrainruiz/compare-vi-cli-action',
+    headRefName: 'issue/personal-1397-retry-cleanup'
+  });
+
+  const written = JSON.parse(await readFile(path.join(tempDir, 'summary.json'), 'utf8'));
+  assert.equal(written.finalReason, 'direct-merge-policy-block-retry-auto');
+  assert.equal(written.branchCleanup.status, 'deferred');
+  assert.equal(written.branchCleanup.postMergeDelete, true);
+});
+
 test('runMergeSync falls back to a supported repository merge method before invoking gh pr merge', async () => {
   const mergeArgs = [];
   let promotionReads = 0;
