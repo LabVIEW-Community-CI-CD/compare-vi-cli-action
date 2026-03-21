@@ -1213,6 +1213,152 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
     $capture.runtimeInjection.viHistory.resultsHostPath | Should -Be (Resolve-Path -LiteralPath $resultsDir).Path
   }
 
+  It 'falls back to the explicit baseline range when merge-base probing fails for commit-addressed refs' {
+    $work = Join-Path $TestDrive 'compare-runtime-vi-history-merge-base-fallback'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    & $script:NewDockerStub -WorkRoot $work | Out-Null
+
+    Set-Item Env:DOCKER_STUB_LOG (Join-Path $work 'docker-log.ndjson')
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+    Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
+    Set-Item Env:DOCKER_STUB_RUN_EXIT_CODE '1'
+    Set-Item Env:DOCKER_STUB_RUN_STDOUT 'CreateComparisonReport completed with diff.'
+    Set-Item Env:DOCKER_STUB_RUN_WRITE_REPORT '1'
+    Set-Item Env:DOCKER_STUB_RUN_WRITE_HISTORY_SUITE '1'
+
+    $repoRoot = Join-Path $work 'consumer-repo'
+    New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
+    $gitSetup = Invoke-WithIsolatedGitWorkspace {
+      Push-Location $repoRoot
+      try {
+        & git init --initial-branch=main | Out-Null
+        & git config user.email 'agent@example.com'
+        & git config user.name 'Agent Runner'
+        $targetDir = Join-Path $repoRoot 'src'
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        $targetPath = Join-Path $targetDir 'Sample.vi'
+        Set-Content -LiteralPath $targetPath -Value 'base' -Encoding utf8
+        & git add .
+        & git commit -m 'initial history repo' | Out-Null
+        $baselineShaLocal = [string](& git rev-parse HEAD | Select-Object -Last 1)
+
+        & git switch -c 'consumer/branch' | Out-Null
+        Set-Content -LiteralPath $targetPath -Value 'head' -Encoding utf8
+        & git add src/Sample.vi
+        & git commit -m 'update sample vi' | Out-Null
+        $headShaLocal = [string](& git rev-parse HEAD | Select-Object -Last 1)
+        return [pscustomobject]@{
+          baselineSha = $baselineShaLocal
+          headSha = $headShaLocal
+        }
+      } finally {
+        Pop-Location | Out-Null
+      }
+    }
+    $baselineSha = [string]$gitSetup.baselineSha
+    $headSha = [string]$gitSetup.headSha
+
+    $gitBinDir = Join-Path $work 'git-bin'
+    New-Item -ItemType Directory -Path $gitBinDir -Force | Out-Null
+    $realGitPath = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+    $pwshPath = (Get-Command pwsh -ErrorAction Stop).Source
+
+    $gitStubPs1 = @'
+param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
+$realGitPath = '__REAL_GIT__'
+if ($Args.Count -gt 0 -and [string]::Equals($Args[0], 'merge-base', [System.StringComparison]::Ordinal)) {
+  [Console]::Error.WriteLine('fatal: synthetic merge-base failure')
+  exit 1
+}
+
+$psi = [System.Diagnostics.ProcessStartInfo]::new()
+$psi.FileName = $realGitPath
+$psi.WorkingDirectory = (Get-Location).Path
+$psi.UseShellExecute = $false
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError = $true
+foreach ($arg in @($Args)) {
+  [void]$psi.ArgumentList.Add([string]$arg)
+}
+
+$proc = [System.Diagnostics.Process]::new()
+$proc.StartInfo = $psi
+try {
+  [void]$proc.Start()
+  $stdout = $proc.StandardOutput.ReadToEnd()
+  $stderr = $proc.StandardError.ReadToEnd()
+  $proc.WaitForExit()
+  if (-not [string]::IsNullOrWhiteSpace($stdout)) {
+    [Console]::Out.Write($stdout)
+  }
+  if (-not [string]::IsNullOrWhiteSpace($stderr)) {
+    [Console]::Error.Write($stderr)
+  }
+  exit $proc.ExitCode
+} finally {
+  $proc.Dispose()
+}
+'@.Replace('__REAL_GIT__', $realGitPath.Replace('\', '\\'))
+    Set-Content -LiteralPath (Join-Path $gitBinDir 'git.ps1') -Value $gitStubPs1 -Encoding utf8
+
+    $gitStubCmd = @"
+@echo off
+"$pwshPath" -NoLogo -NoProfile -File "%~dp0git.ps1" %*
+"@
+    Set-Content -LiteralPath (Join-Path $gitBinDir 'git.cmd') -Value $gitStubCmd -Encoding ascii
+
+    $gitStubSh = @'
+#!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/git.ps1" "$@"
+'@.Replace('__PWSH__', $pwshPath)
+    $gitStubShPath = Join-Path $gitBinDir 'git'
+    Set-Content -LiteralPath $gitStubShPath -Value $gitStubSh -Encoding utf8
+    if (-not $IsWindows) {
+      & chmod +x $gitStubShPath
+    }
+
+    $pathSeparator = if ($IsWindows) { ';' } else { ':' }
+    $env:PATH = "{0}{1}{2}" -f $gitBinDir, $pathSeparator, $env:PATH
+
+    $resultsDir = Join-Path $work 'vi-history-results'
+    $runtimeContract = Join-Path $work 'runtime-bootstrap.json'
+    $bootstrapScript = Join-Path (Split-Path -Parent $script:RunnerScript) 'NILinux-VIHistorySuiteBootstrap.sh'
+    $contract = [ordered]@{
+      schema = 'ni-linux-runtime-bootstrap/v1'
+      mode = 'single-container-smoke'
+      branchRef = $headSha
+      maxCommitCount = 2
+      scriptPath = $bootstrapScript
+      viHistory = [ordered]@{
+        repoPath = $repoRoot
+        targetPath = 'src/Sample.vi'
+        resultsPath = $resultsDir
+        baselineRef = $baselineSha
+        maxPairs = 2
+      }
+    }
+    $contract | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $runtimeContract -Encoding utf8
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:RunnerScript `
+      -RuntimeEngineReadyTimeoutSeconds 5 `
+      -RuntimeEngineReadyPollSeconds 1 `
+      -RuntimeBootstrapContractPath $runtimeContract 2>&1
+    $LASTEXITCODE | Should -Be 1 -Because ($output -join "`n")
+
+    $capturePath = Join-Path $resultsDir 'ni-linux-container-capture.json'
+    Test-Path -LiteralPath $capturePath -PathType Leaf | Should -BeTrue
+    $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json -Depth 12
+    $capture.runtimeInjection.viHistory.branchBudget.sourceBranchRef | Should -Be $headSha
+    $capture.runtimeInjection.viHistory.branchBudget.requestedBaselineRef | Should -Be $baselineSha
+    $capture.runtimeInjection.viHistory.branchBudget.baselineRef | Should -Be $baselineSha
+    $capture.runtimeInjection.viHistory.branchBudget.mergeBaseRef | Should -Be $baselineSha
+    $capture.runtimeInjection.viHistory.branchBudget.commitRange | Should -Be ('{0}..{1}' -f $baselineSha, $headSha)
+    $capture.runtimeInjection.viHistory.branchBudget.commitCount | Should -Be 1
+    $capture.runtimeInjection.viHistory.branchBudget.status | Should -Be 'ok'
+  }
+
   It 'preserves linked-worktree git injection for viHistory bootstrap contracts' {
     $work = Join-Path $TestDrive 'compare-runtime-vi-history-worktree'
     New-Item -ItemType Directory -Path $work | Out-Null

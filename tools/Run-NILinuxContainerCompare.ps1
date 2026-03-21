@@ -717,81 +717,93 @@ function Get-HostGitBranchBudget {
   return Invoke-WithoutGitWorkspaceOverride {
     Push-Location $RepoPath
     try {
-    & git rev-parse --verify $normalizedBranchRef *> $null
-    if ($LASTEXITCODE -ne 0) {
-      $result.status = 'invalid'
-      $result.reason = 'branch-ref-not-found'
-      return [pscustomobject]$result
-    }
+      $countOutput = $null
 
-    $effectiveBaselineRef = $null
-    if (-not [string]::IsNullOrWhiteSpace($BaselineRef)) {
-      $requestedBaselineRef = $BaselineRef.Trim()
-      & git rev-parse --verify $requestedBaselineRef *> $null
+      & git rev-parse --verify $normalizedBranchRef *> $null
       if ($LASTEXITCODE -ne 0) {
         $result.status = 'invalid'
-        $result.reason = 'baseline-ref-not-found'
+        $result.reason = 'branch-ref-not-found'
         return [pscustomobject]$result
       }
-      $effectiveBaselineRef = $requestedBaselineRef
-    } else {
-      & git rev-parse --verify develop *> $null
-      if ($LASTEXITCODE -eq 0) {
-        $effectiveBaselineRef = 'develop'
-      }
-    }
-    $result.baselineRef = $effectiveBaselineRef
 
-    $range = if ($effectiveBaselineRef) {
-      if ([string]::Equals($normalizedBranchRef, $effectiveBaselineRef, [System.StringComparison]::OrdinalIgnoreCase)) {
-        ('{0}..{0}' -f $effectiveBaselineRef)
+      $effectiveBaselineRef = $null
+      if (-not [string]::IsNullOrWhiteSpace($BaselineRef)) {
+        $requestedBaselineRef = $BaselineRef.Trim()
+        & git rev-parse --verify $requestedBaselineRef *> $null
+        if ($LASTEXITCODE -ne 0) {
+          $result.status = 'invalid'
+          $result.reason = 'baseline-ref-not-found'
+          return [pscustomobject]$result
+        }
+        $effectiveBaselineRef = $requestedBaselineRef
       } else {
-        $mergeBaseOutput = & git merge-base $effectiveBaselineRef $normalizedBranchRef
+        & git rev-parse --verify develop *> $null
+        if ($LASTEXITCODE -eq 0) {
+          $effectiveBaselineRef = 'develop'
+        }
+      }
+      $result.baselineRef = $effectiveBaselineRef
+
+      $range = if ($effectiveBaselineRef) {
+        if ([string]::Equals($normalizedBranchRef, $effectiveBaselineRef, [System.StringComparison]::OrdinalIgnoreCase)) {
+          ('{0}..{0}' -f $effectiveBaselineRef)
+        } else {
+          $mergeBaseOutput = & git merge-base $effectiveBaselineRef $normalizedBranchRef 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $mergeBaseRef = [string]($mergeBaseOutput | Select-Object -Last 1)
+            if ([string]::IsNullOrWhiteSpace($mergeBaseRef)) {
+              $result.status = 'error'
+              $result.reason = 'merge-base-empty'
+              return [pscustomobject]$result
+            }
+
+            $result.mergeBaseRef = $mergeBaseRef
+            ('{0}..{1}' -f $mergeBaseRef, $normalizedBranchRef)
+          } else {
+            $fallbackRange = '{0}..{1}' -f $effectiveBaselineRef, $normalizedBranchRef
+            $fallbackCountOutput = & git rev-list --count --first-parent $fallbackRange 2>$null
+            if ($LASTEXITCODE -ne 0) {
+              $result.status = 'error'
+              $result.reason = 'merge-base-query-failed'
+              return [pscustomobject]$result
+            }
+
+            $countOutput = $fallbackCountOutput
+            $result.mergeBaseRef = $effectiveBaselineRef
+            $fallbackRange
+          }
+        }
+      } else {
+        $normalizedBranchRef
+      }
+      $result.commitRange = $range
+
+      if ($null -eq $countOutput) {
+        $countOutput = & git rev-list --count --first-parent $range
         if ($LASTEXITCODE -ne 0) {
           $result.status = 'error'
-          $result.reason = 'merge-base-query-failed'
+          $result.reason = 'commit-count-query-failed'
           return [pscustomobject]$result
         }
-
-        $mergeBaseRef = [string]($mergeBaseOutput | Select-Object -Last 1)
-        if ([string]::IsNullOrWhiteSpace($mergeBaseRef)) {
-          $result.status = 'error'
-          $result.reason = 'merge-base-empty'
-          return [pscustomobject]$result
-        }
-
-        $result.mergeBaseRef = $mergeBaseRef
-        ('{0}..{1}' -f $mergeBaseRef, $normalizedBranchRef)
       }
-    } else {
-      $normalizedBranchRef
-    }
-    $result.commitRange = $range
 
-    $countOutput = & git rev-list --count --first-parent $range
-    if ($LASTEXITCODE -ne 0) {
-      $result.status = 'error'
-      $result.reason = 'commit-count-query-failed'
-      return [pscustomobject]$result
-    }
+      $countText = [string]($countOutput | Select-Object -Last 1)
+      $countValue = 0
+      if (-not [int]::TryParse($countText, [ref]$countValue)) {
+        $result.status = 'error'
+        $result.reason = 'commit-count-parse-failed'
+        return [pscustomobject]$result
+      }
 
-    $countText = [string]($countOutput | Select-Object -Last 1)
-    $countValue = 0
-    if (-not [int]::TryParse($countText, [ref]$countValue)) {
-      $result.status = 'error'
-      $result.reason = 'commit-count-parse-failed'
-      return [pscustomobject]$result
-    }
+      $result.commitCount = [int]$countValue
+      if ($countValue -gt $MaxCommitCount) {
+        $result.status = 'blocked'
+        $result.reason = 'commit-limit-exceeded'
+        throw ("VI history source branch '{0}' exceeds the commit safeguard ({1} > {2}). Narrow the branch or raise -RuntimeBootstrapContractPath maxCommitCount." -f $normalizedBranchRef, $countValue, $MaxCommitCount)
+      }
 
-    $result.commitCount = [int]$countValue
-    if ($countValue -gt $MaxCommitCount) {
-      $result.status = 'blocked'
-      $result.reason = 'commit-limit-exceeded'
-      throw ("VI history source branch '{0}' exceeds the commit safeguard ({1} > {2}). Narrow the branch or raise -RuntimeBootstrapContractPath maxCommitCount." -f $normalizedBranchRef, $countValue, $MaxCommitCount)
-    }
-
-    $result.status = 'ok'
-    $result.reason = 'within-limit'
+      $result.status = 'ok'
+      $result.reason = 'within-limit'
       return [pscustomobject]$result
     } finally {
       Pop-Location | Out-Null
