@@ -125,6 +125,7 @@
     "priority:onboard:downstream": "node tools/priority/downstream-onboarding.mjs",
     "priority:onboard:feedback": "node tools/priority/downstream-onboarding-feedback.mjs",
     "priority:onboard:success": "node tools/priority/downstream-onboarding-success.mjs",
+    "priority:pivot:template": "node tools/priority/template-pivot-gate.mjs",
     "priority:promote:downstream:manifest": "node tools/priority/downstream-promotion-manifest.mjs",
     "priority:promote:downstream:scorecard": "node tools/priority/downstream-promotion-scorecard.mjs",
     "priority:diagnostics:public-linux": "node tools/priority/public-linux-diagnostics-harness.mjs",

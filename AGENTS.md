@@ -12,7 +12,9 @@ Keep it short, stable, and helper-oriented. Deep runbooks belong in checked-in d
   - forks: `fork-standing-priority` with fallback to `standing-priority`
 - Start every session with `pwsh -NoLogo -NoProfile -File tools/priority/bootstrap.ps1`.
 - If bootstrap writes `tests/results/_agent/issue/no-standing-priority.json` with `reason = queue-empty`, treat the
-  repo as intentionally idle until a real tracked issue exists.
+  repo as intentionally idle until a real tracked issue exists. If release summary evidence also shows an RC build,
+  evaluate `node tools/npm/run-script.mjs priority:pivot:template`; only a future agent may pivot to
+  `LabviewGitHubCiTemplate` when that report is `ready`.
 - The operator token is admin-capable; privileged GitHub actions are allowed when they are safe and policy-aligned.
 - Reference `#<standing-number>` in automation-authored commits and PRs.
 - Scope boundary: this repo is for compare-vi CLI action workflows only. LabVIEW icon editor development lives in `svelderrainruiz/labview-icon-editor`.
@@ -99,6 +101,8 @@ Keep it short, stable, and helper-oriented. Deep runbooks belong in checked-in d
 - `node tools/npm/run-script.mjs handoff:entrypoint:check` refreshes the machine-readable index at `tests/results/_agent/handoff/entrypoint-status.json`.
 - `node tools/npm/run-script.mjs priority:handoff` prints that machine-readable index and
   `tests/results/_agent/verification/docker-review-loop-summary.json`.
+- `node tools/npm/run-script.mjs priority:pivot:template` evaluates the future-agent-only pivot from queue-empty
+  release-candidate state into `LabviewGitHubCiTemplate`.
 - Primary live-state artifacts:
   - `.agent_priority_cache.json`
   - `tests/results/_agent/issue/router.json`

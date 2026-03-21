@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/template-pivot-gate-policy-v1.schema.json",
+  "title": "Template Pivot Gate Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "sourceRepository",
+    "targetRepository",
+    "targetBranch",
+    "queueEmpty",
+    "releaseCandidate",
+    "handoffEntrypoint",
+    "decision",
+    "artifacts"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "priority/template-pivot-gate-policy@v1"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceRepository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targetRepository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targetBranch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "queueEmpty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiredSchema",
+        "requiredReason",
+        "requiredOpenIssueCount"
+      ],
+      "properties": {
+        "requiredSchema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredOpenIssueCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "releaseCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiredSchema",
+        "requireValid",
+        "versionPattern",
+        "versionPatternDescription"
+      ],
+      "properties": {
+        "requiredSchema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requireValid": {
+          "type": "boolean"
+        },
+        "versionPattern": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionPatternDescription": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "handoffEntrypoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiredSchema",
+        "requiredStatus"
+      ],
+      "properties": {
+        "requiredSchema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredStatus": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "futureAgentOnly",
+        "operatorSteeringAllowed",
+        "requirePreciseSessionFeedback"
+      ],
+      "properties": {
+        "futureAgentOnly": {
+          "type": "boolean"
+        },
+        "operatorSteeringAllowed": {
+          "type": "boolean"
+        },
+        "requirePreciseSessionFeedback": {
+          "type": "boolean"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policySchema",
+        "reportSchema",
+        "defaultOutputPath",
+        "queueEmptyReportPath",
+        "releaseSummaryPath",
+        "handoffEntrypointStatusPath"
+      ],
+      "properties": {
+        "policySchema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reportSchema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaultOutputPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "queueEmptyReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "releaseSummaryPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "handoffEntrypointStatusPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

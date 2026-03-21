@@ -103,3 +103,35 @@ whose `downstream-develop-promotion-scorecard.json`:
 
 Release evidence should retain the machine-readable selection report that points
 back to the exact downstream promotion run and scorecard artifact used.
+
+## Template pivot gate
+
+When `compare-vi-cli-action` reaches release-candidate state and the standing
+queue is empty, the next move is a checked-in pivot gate rather than operator
+steering.
+
+- Policy: `tools/policy/template-pivot-gate.json`
+- Evaluator: `tools/priority/template-pivot-gate.mjs`
+- Output: `tests/results/_agent/promotion/template-pivot-gate-report.json`
+- Target repository: `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`
+
+The gate only reports `ready` when all of the following are true:
+
+- `tests/results/_agent/issue/no-standing-priority.json` exists with
+  `reason = queue-empty`
+- `openIssueCount = 0`
+- `tests/results/_agent/handoff/release-summary.json` is valid and its version
+  matches `X.Y.Z-rc.N`
+- `tests/results/_agent/handoff/entrypoint-status.json` reports `status = pass`
+- the policy still requires a future agent, disallows operator steering, and
+  requires precise session feedback at pivot time
+
+Run the evaluator with:
+
+```powershell
+node tools/npm/run-script.mjs priority:pivot:template
+```
+
+`ready` means a future agent may pivot into
+`LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`. `blocked` means
+`compare-vi-cli-action` stays in focus until the evidence gap closes.
