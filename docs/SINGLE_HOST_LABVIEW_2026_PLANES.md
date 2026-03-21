@@ -62,7 +62,9 @@ Use these commands as the checked-in operator surfaces:
      - `node tools/npm/run-script.mjs priority:lane:concurrency:plan -- --docker-runtime-snapshot tests/results/ni-linux-container/runtime-determinism.json`
 3. Concurrent lane apply helper:
    - `node tools/npm/run-script.mjs priority:lane:concurrency:apply -- --dry-run`
-   - Use this after planning when you need a first-class receipt that records which hosted lanes were dispatched and which manual/shadow lanes remained explicitly deferred.
+   - Use this after planning when you need a first-class receipt that records
+     which hosted lanes were dispatched and which manual/shadow lanes remained
+     explicitly deferred.
 4. Fast Docker Desktop lane loops:
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope linux -StepTimeoutSeconds 600`
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope windows -StepTimeoutSeconds 600`
@@ -160,7 +162,7 @@ Use the artifacts in this order:
    - prints the same summary path and status path surfaced through GitHub outputs
    - prints host-plane summary path, status, SHA-256, and fail-closed reason
    - preserves the missing-summary reason before the script throws
-8. `history:diagnostics:show`
+9. `history:diagnostics:show`
    - replays the same distinction in console form for the operator
    - prints `[host-plane-split][summary] <path> status=<status> sha256=<sha256>` when summary provenance exists
 
