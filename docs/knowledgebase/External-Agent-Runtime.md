@@ -35,6 +35,7 @@ next turn until one of two stop conditions is true:
 | --- | --- | --- |
 | Supervisor | Owns the event loop, stop conditions, ranking, and lease renewal. | `tools/priority/queue-supervisor.mjs` |
 | State mirror | Refreshes live GitHub epics, child issues, PRs, checks, and project metadata. | `gh`, `priority:project:portfolio:check` |
+| Marketplace registry | Enumerates cross-repo integration, fork, and consumer rails for rankable work stealing. | `tools/priority/lane-marketplace.json`, `priority:lane:marketplace` |
 | Lease broker | Prevents overlapping writers in the same repo scope. | `tools/priority/agent-writer-lease.mjs` |
 | Worker pool | Maintains isolated worktrees per lane/fork. | git worktrees + `priority:develop:sync` |
 | Command broker | Executes repo-native helpers and records fallback evidence. | `bootstrap.ps1`, `priority:pr`, `priority:issue:mirror` |
@@ -191,13 +192,15 @@ Refresh phase:
 2. read live upstream issues and PRs
 3. repair missing epic or child links before feature work
 4. refresh fork mirror issues and fork PR state
+5. refresh the cross-repo lane marketplace snapshot when multiple repo rails are enabled
 
 Selection phase:
 
 1. candidate epics are all open upstream epics
 2. candidate children are all open non-epic issues attached to open epics
 3. rank epics and children using the repo's selection algorithm
-4. choose one action type in this order:
+4. when the active repo has no immediately actionable lane, consult the cross-repo marketplace ranking
+5. choose one action type in this order:
    - fix blocker on an existing upstream PR
    - advance a different child issue on a free fork while upstream waits
    - finish a fork PR that is one iteration from promotion
