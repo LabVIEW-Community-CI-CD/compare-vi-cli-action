@@ -345,6 +345,9 @@ to confirm each workflow includes both triggers.
    Immediate reason codes:
    - `merge-queue-ready-inventory-below-floor`
    - `merge-queue-occupancy-below-floor`
+   The policy snapshot report at `tests/results/_agent/policy/policy-state-snapshot.json` also includes
+   `state.mergeQueueContinuity`, which compares the checked-in `develop` batch settings against a hypothetical
+   single-entry merge-group proposal and records the current recommendation without changing `tools/policy/policy.json`.
 7. Delivery-agent receipt follow-up: project at least these merge-queue signals into runtime receipts once the
    queue-orchestration lane takes them on:
    - `readyPrInventory`

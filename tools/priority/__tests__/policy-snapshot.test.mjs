@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import {
   parseArgs,
   parseRemoteUrl,
   resolveRepositorySlug,
   collectPolicyState,
-  summarizeCopilotReviewState
+  summarizeCopilotReviewState,
+  buildMergeQueueContinuityAssessment
 } from '../policy-snapshot.mjs';
 
 test('parseArgs applies defaults and accepts explicit repo/output', () => {
@@ -151,4 +153,23 @@ test('summarizeCopilotReviewState flags observed copilot review rules and unreso
   assert.equal(summary.rulesets.develop.parameters.review_draft_pull_requests, true);
   assert.equal(summary.rulesets.release.status, 'unresolved');
   assert.equal(summary.expectedRepositoryAutomaticRequestSetting, 'disabled');
+});
+
+test('buildMergeQueueContinuityAssessment compares the current develop merge queue to a single-entry proposal', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'tools', 'priority', 'policy.json'), 'utf8'));
+  const report = buildMergeQueueContinuityAssessment(manifest);
+
+  assert.equal(report.status, 'pass');
+  assert.equal(report.recommendation, 'retain-grouped-pending-telemetry');
+  assert.equal(report.evidenceLevel, 'policy-only');
+  assert.equal(report.current.branch, 'develop');
+  assert.equal(report.current.mergeQueue.max_entries_to_build, 5);
+  assert.equal(report.current.mergeQueue.max_entries_to_merge, 5);
+  assert.equal(report.proposed.mergeQueue.max_entries_to_build, 1);
+  assert.equal(report.proposed.mergeQueue.max_entries_to_merge, 1);
+  assert.equal(report.comparison.queueOccupancy.expectedDirection, 'lower-batch-size');
+  assert.equal(report.comparison.hostedRerunChurn.expectedDirection, 'lower');
+  assert.equal(report.comparison.requeueFrequency.expectedDirection, 'lower-blast-radius');
+  assert.equal(report.comparison.mergeThroughput.expectedDirection, 'lower-or-equal');
+  assert.match(report.rationale.join(' '), /hosted rerun churn/i);
 });

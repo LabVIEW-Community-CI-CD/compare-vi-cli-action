@@ -207,6 +207,83 @@ export function summarizeCopilotReviewState(rulesets = {}) {
   };
 }
 
+function normalizeMergeQueueParameters(parameters = {}) {
+  return {
+    merge_method: parameters.merge_method ?? null,
+    grouping_strategy: parameters.grouping_strategy ?? null,
+    max_entries_to_build: parameters.max_entries_to_build ?? null,
+    min_entries_to_merge: parameters.min_entries_to_merge ?? null,
+    max_entries_to_merge: parameters.max_entries_to_merge ?? null,
+    min_entries_to_merge_wait_minutes: parameters.min_entries_to_merge_wait_minutes ?? null,
+    check_response_timeout_minutes: parameters.check_response_timeout_minutes ?? null
+  };
+}
+
+export function buildMergeQueueContinuityAssessment(manifest = {}) {
+  const developRuleset = manifest?.rulesets?.develop && typeof manifest.rulesets.develop === 'object'
+    ? manifest.rulesets.develop
+    : null;
+  const mergeQueue = developRuleset?.merge_queue && typeof developRuleset.merge_queue === 'object'
+    ? developRuleset.merge_queue
+    : null;
+  const current = normalizeMergeQueueParameters(mergeQueue ?? {});
+  const proposed = mergeQueue
+    ? {
+        ...current,
+        max_entries_to_build: 1,
+        max_entries_to_merge: 1
+      }
+    : null;
+  const hasMeasuredContinuity = false;
+
+  return {
+    status: mergeQueue ? 'pass' : 'warn',
+    recommendation: mergeQueue ? 'retain-grouped-pending-telemetry' : 'repair-develop-merge-queue-policy',
+    evidenceLevel: hasMeasuredContinuity ? 'measured' : 'policy-only',
+    rationale: mergeQueue
+      ? [
+          'Develop currently batches up to five entries per merge-queue build.',
+          'Single-entry groups reduce batch blast radius, but this snapshot does not contain measured hosted rerun churn, requeue frequency, or throughput evidence.',
+          'Keep the grouped configuration until telemetry justifies a promotion.'
+        ]
+      : [
+          'The develop ruleset does not currently define a merge_queue policy in the checked-in manifest.'
+        ],
+    current: {
+      branch: 'develop',
+      mergeQueue: current
+    },
+    proposed: proposed
+      ? {
+          branch: 'develop',
+          mergeQueue: proposed
+        }
+      : null,
+    comparison: {
+      queueOccupancy: {
+        currentBatchCeiling: current.max_entries_to_build,
+        proposedBatchCeiling: proposed?.max_entries_to_build ?? null,
+        expectedDirection: mergeQueue ? 'lower-batch-size' : 'unknown'
+      },
+      hostedRerunChurn: {
+        current: current.max_entries_to_merge != null && current.max_entries_to_merge > 1 ? 'batched' : 'single-entry',
+        proposed: mergeQueue ? 'single-entry' : null,
+        expectedDirection: mergeQueue ? 'lower' : 'unknown'
+      },
+      requeueFrequency: {
+        current: current.max_entries_to_merge != null && current.max_entries_to_merge > 1 ? 'batch-level' : 'single-entry',
+        proposed: mergeQueue ? 'single-entry' : null,
+        expectedDirection: mergeQueue ? 'lower-blast-radius' : 'unknown'
+      },
+      mergeThroughput: {
+        current: current.max_entries_to_merge != null && current.max_entries_to_merge > 1 ? 'batched' : 'single-entry',
+        proposed: mergeQueue ? 'single-entry' : null,
+        expectedDirection: mergeQueue ? 'lower-or-equal' : 'unknown'
+      }
+    }
+  };
+}
+
 export async function collectPolicyState({
   repo,
   token,
@@ -289,6 +366,7 @@ export async function main(argv = process.argv) {
     token,
     manifest
   });
+  state.mergeQueueContinuity = buildMergeQueueContinuityAssessment(manifest);
 
   const payload = {
     schema: 'priority/policy-live-state@v1',
