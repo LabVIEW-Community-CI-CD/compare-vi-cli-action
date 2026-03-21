@@ -22,6 +22,11 @@ function normalizeReasoningEffort(value) {
   return ['low', 'medium', 'high', 'xhigh'].includes(normalized) ? normalized : null;
 }
 
+function normalizeSelectionMode(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return ['hold', 'sticky-calibration', 'ended'].includes(normalized) ? normalized : null;
+}
+
 function toNonNegativeNumber(value) {
   if (value == null || value === '') {
     return null;
@@ -348,7 +353,12 @@ function normalizeInvoiceTurnReceipt(input) {
       reconciliationNote: normalizeText(payload?.reconciliation?.note) || null,
       sourceKind: normalizeText(payload?.provenance?.sourceKind) || null,
       sourcePathEvidence: normalizeText(payload?.provenance?.sourcePath) || null,
-      operatorNote: normalizeText(payload?.provenance?.operatorNote) || null
+      operatorNote: normalizeText(payload?.provenance?.operatorNote) || null,
+      selection: {
+        mode: normalizeSelectionMode(payload?.selection?.mode) || 'hold',
+        calibrationWindowId: normalizeText(payload?.selection?.calibrationWindowId) || null,
+        reason: normalizeText(payload?.selection?.reason) || null
+      }
     }
   };
 }
@@ -384,24 +394,61 @@ function determineSelectionTimestamp(turns = []) {
   return Math.max(...candidates);
 }
 
+function summarizeInvoiceTurnSelection(selectedInvoiceTurn, strategy, extras = {}) {
+  const normalizedStrategy = normalizeText(strategy) || 'none';
+  const normalizedSelectionMode =
+    normalizeSelectionMode(selectedInvoiceTurn?.selection?.mode) ||
+    (selectedInvoiceTurn &&
+    normalizeText(selectedInvoiceTurn?.fundingPurpose) === 'calibration' &&
+    normalizeText(selectedInvoiceTurn?.activationState) !== 'hold'
+      ? 'sticky-calibration'
+      : 'hold');
+  const calibrationWindowId =
+    normalizedSelectionMode === 'hold'
+      ? null
+      : normalizeText(selectedInvoiceTurn?.selection?.calibrationWindowId) ||
+        selectedInvoiceTurn?.invoiceTurnId ||
+        null;
+  const reason =
+    normalizeText(selectedInvoiceTurn?.selection?.reason) ||
+    (normalizedSelectionMode === 'sticky-calibration'
+      ? 'Calibration funding window remains pinned until explicitly ended.'
+      : normalizedSelectionMode === 'ended'
+        ? 'Calibration funding window was explicitly ended.'
+        : 'Calibration funding window remains on hold before activation.');
+
+  return {
+    strategy: normalizedStrategy,
+    explicitInvoiceTurnId: normalizeText(extras.explicitInvoiceTurnId) || null,
+    selectionObservedAt: normalizeText(extras.selectionObservedAt) || null,
+    candidateCount: extras.candidateCount ?? 0,
+    matchingCandidateCount: extras.matchingCandidateCount ?? 0,
+    candidateInvoiceTurnIds: ensureArray(extras.candidateInvoiceTurnIds),
+    selectedInvoiceTurnId: selectedInvoiceTurn?.invoiceTurnId ?? null,
+    mode: normalizedSelectionMode,
+    calibrationWindowId,
+    reason
+  };
+}
+
 function selectInvoiceTurn(invoiceTurns, turns, explicitInvoiceTurnId = null) {
   const validInvoiceTurns = invoiceTurns.filter((entry) => entry?.status === 'valid').map((entry) => entry.invoiceTurn);
-  const autoSelectableInvoiceTurns = validInvoiceTurns.filter((entry) => normalizeText(entry.activationState) !== 'hold');
   const selectionTimestamp = determineSelectionTimestamp(turns);
   const selectionObservedAt = new Date(selectionTimestamp).toISOString();
+  const candidateInvoiceTurnIds = validInvoiceTurns.map((entry) => entry.invoiceTurnId).filter(Boolean).sort();
+  const activeInvoiceTurns = validInvoiceTurns.filter((entry) => normalizeText(entry.activationState) !== 'hold');
+  const stickyCalibrationInvoiceTurns = activeInvoiceTurns.filter((entry) => normalizeText(entry.fundingPurpose) === 'calibration');
 
   if (validInvoiceTurns.length === 0) {
     return {
       selectedInvoiceTurn: null,
-      selection: {
-        strategy: 'none',
-        explicitInvoiceTurnId: normalizeText(explicitInvoiceTurnId) || null,
+      selection: summarizeInvoiceTurnSelection(null, 'none', {
+        explicitInvoiceTurnId,
         selectionObservedAt,
         candidateCount: 0,
         matchingCandidateCount: 0,
-        candidateInvoiceTurnIds: [],
-        selectedInvoiceTurnId: null
-      }
+        candidateInvoiceTurnIds: []
+      })
     };
   }
 
@@ -409,54 +456,69 @@ function selectInvoiceTurn(invoiceTurns, turns, explicitInvoiceTurnId = null) {
     const selectedInvoiceTurn = validInvoiceTurns.find((entry) => entry.invoiceTurnId === normalizeText(explicitInvoiceTurnId)) ?? null;
     return {
       selectedInvoiceTurn,
-      selection: {
-        strategy: selectedInvoiceTurn ? 'explicit-id' : 'explicit-id-missing',
-        explicitInvoiceTurnId: normalizeText(explicitInvoiceTurnId),
+      selection: summarizeInvoiceTurnSelection(selectedInvoiceTurn, selectedInvoiceTurn ? 'explicit-id' : 'explicit-id-missing', {
+        explicitInvoiceTurnId,
         selectionObservedAt,
         candidateCount: validInvoiceTurns.length,
         matchingCandidateCount: selectedInvoiceTurn ? 1 : 0,
-        candidateInvoiceTurnIds: validInvoiceTurns.map((entry) => entry.invoiceTurnId).filter(Boolean).sort(),
-        selectedInvoiceTurnId: selectedInvoiceTurn?.invoiceTurnId ?? null
-      }
+        candidateInvoiceTurnIds
+      })
     };
   }
 
-  if (autoSelectableInvoiceTurns.length === 0) {
+  if (stickyCalibrationInvoiceTurns.length > 0) {
+    const selectedInvoiceTurn = [...stickyCalibrationInvoiceTurns].sort((left, right) => {
+      const leftOpenedAt = toTimestamp(left.openedAt) ?? 0;
+      const rightOpenedAt = toTimestamp(right.openedAt) ?? 0;
+      if (rightOpenedAt !== leftOpenedAt) {
+        return rightOpenedAt - leftOpenedAt;
+      }
+      return (right.invoiceTurnId || '').localeCompare(left.invoiceTurnId || '');
+    })[0] ?? null;
+    return {
+      selectedInvoiceTurn,
+      selection: summarizeInvoiceTurnSelection(selectedInvoiceTurn, stickyCalibrationInvoiceTurns.length === 1 ? 'sticky-calibration-active' : 'sticky-calibration-latest-openedAt', {
+        explicitInvoiceTurnId: null,
+        selectionObservedAt,
+        candidateCount: validInvoiceTurns.length,
+        matchingCandidateCount: stickyCalibrationInvoiceTurns.length,
+        candidateInvoiceTurnIds
+      })
+    };
+  }
+
+  if (activeInvoiceTurns.length === 0) {
     return {
       selectedInvoiceTurn: null,
-      selection: {
-        strategy: 'none',
+      selection: summarizeInvoiceTurnSelection(null, 'none', {
         explicitInvoiceTurnId: null,
         selectionObservedAt,
         candidateCount: validInvoiceTurns.length,
         matchingCandidateCount: 0,
-        candidateInvoiceTurnIds: validInvoiceTurns.map((entry) => entry.invoiceTurnId).filter(Boolean).sort(),
-        selectedInvoiceTurnId: null
-      }
+        candidateInvoiceTurnIds
+      })
     };
   }
 
-  if (autoSelectableInvoiceTurns.length === 1) {
+  if (activeInvoiceTurns.length === 1) {
     return {
-      selectedInvoiceTurn: autoSelectableInvoiceTurns[0],
-      selection: {
-        strategy: 'single-candidate',
+      selectedInvoiceTurn: activeInvoiceTurns[0],
+      selection: summarizeInvoiceTurnSelection(activeInvoiceTurns[0], 'single-candidate', {
         explicitInvoiceTurnId: null,
         selectionObservedAt,
         candidateCount: validInvoiceTurns.length,
         matchingCandidateCount: 1,
-        candidateInvoiceTurnIds: validInvoiceTurns.map((entry) => entry.invoiceTurnId).filter(Boolean).sort(),
-        selectedInvoiceTurnId: autoSelectableInvoiceTurns[0].invoiceTurnId ?? null
-      }
+        candidateInvoiceTurnIds
+      })
     };
   }
 
-  const activeCandidates = autoSelectableInvoiceTurns.filter((entry) => {
+  const activeCandidates = activeInvoiceTurns.filter((entry) => {
     const openedAt = toTimestamp(entry.openedAt);
     const closedAt = toTimestamp(entry.closedAt);
     return openedAt != null && openedAt <= selectionTimestamp && (closedAt == null || selectionTimestamp <= closedAt);
   });
-  const candidatesToRank = activeCandidates.length > 0 ? activeCandidates : autoSelectableInvoiceTurns;
+  const candidatesToRank = activeCandidates.length > 0 ? activeCandidates : activeInvoiceTurns;
   const selectedInvoiceTurn = [...candidatesToRank].sort((left, right) => {
     const leftOpenedAt = toTimestamp(left.openedAt) ?? 0;
     const rightOpenedAt = toTimestamp(right.openedAt) ?? 0;
@@ -468,15 +530,13 @@ function selectInvoiceTurn(invoiceTurns, turns, explicitInvoiceTurnId = null) {
 
   return {
     selectedInvoiceTurn,
-    selection: {
-      strategy: activeCandidates.length > 0 ? 'active-window-latest-openedAt' : 'latest-openedAt-fallback',
+    selection: summarizeInvoiceTurnSelection(selectedInvoiceTurn, activeCandidates.length > 0 ? 'active-window-latest-openedAt' : 'latest-openedAt-fallback', {
       explicitInvoiceTurnId: null,
       selectionObservedAt,
       candidateCount: validInvoiceTurns.length,
       matchingCandidateCount: activeCandidates.length > 0 ? activeCandidates.length : validInvoiceTurns.length,
-      candidateInvoiceTurnIds: validInvoiceTurns.map((entry) => entry.invoiceTurnId).filter(Boolean).sort(),
-      selectedInvoiceTurnId: selectedInvoiceTurn?.invoiceTurnId ?? null
-    }
+      candidateInvoiceTurnIds
+    })
   };
 }
 

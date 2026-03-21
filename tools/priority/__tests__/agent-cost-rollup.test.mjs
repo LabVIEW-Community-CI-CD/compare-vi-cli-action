@@ -95,6 +95,34 @@ test('invoice turn helper derives the prepaid baseline deterministically', () =>
   assert.equal(report.policy.activationState, 'active');
   assert.equal(report.policy.fundingPurpose, 'operational');
   assert.equal(report.reconciliation.status, 'baseline-only');
+  assert.equal(report.selection.mode, 'hold');
+  assert.equal(report.selection.calibrationWindowId, null);
+});
+
+test('invoice turn helper carries sticky calibration selection metadata when explicitly activated', () => {
+  const parsed = parseInvoiceTurnArgs([
+    'node',
+    'agent-cost-invoice-turn.mjs',
+    '--invoice-id',
+    'HQ1VJLMV-0027',
+    '--opened-at',
+    '2026-03-21T10:01:07.000-07:00',
+    '--credits-purchased',
+    '10000',
+    '--unit-price-usd',
+    '0.04',
+    '--selection-mode',
+    'sticky-calibration',
+    '--selection-reason',
+    'Calibration is active and must remain pinned to the funding window.',
+    '--calibration-window-id',
+    'invoice-turn-2026-03-HQ1VJLMV-0027'
+  ]);
+
+  const { report } = buildAgentCostInvoiceTurn(parsed, new Date('2026-03-21T17:00:00.000Z'));
+  assert.equal(report.selection.mode, 'sticky-calibration');
+  assert.equal(report.selection.calibrationWindowId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
+  assert.equal(report.selection.reason, 'Calibration is active and must remain pinned to the funding window.');
 });
 
 test('evaluateAgentCostRollup reports blockers deterministically', () => {
@@ -228,14 +256,57 @@ test('runAgentCostRollup aggregates exact and estimated turn spend with provenan
   assert.equal(result.report.summary.provenance.invoiceTurn.invoiceId, 'HQ1VJLMV-0027');
   assert.equal(result.report.summary.provenance.invoiceTurn.activationState, 'active');
   assert.equal(result.report.summary.provenance.invoiceTurnSelection.strategy, 'single-candidate');
+  assert.equal(result.report.summary.provenance.invoiceTurnSelection.mode, 'hold');
   assert.equal(result.report.billingWindow.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.equal(result.report.billingWindow.activationState, 'active');
+  assert.equal(result.report.billingWindow.selection.mode, 'hold');
   assert.equal(result.report.billingWindow.selection.selectedInvoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.ok(result.report.summary.provenance.repositories.includes('LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'));
   assert.ok(result.report.breakdown.byProvider.some((entry) => entry.key === 'codex-cli' && entry.totalUsd === 0.0201));
   assert.ok(result.report.breakdown.byReasoningEffort.some((entry) => entry.key === 'xhigh' && entry.turnCount === 1));
   assert.ok(result.report.breakdown.byAgentRole.some((entry) => entry.key === 'background' && entry.turnCount === 1));
   assert.equal(fs.existsSync(outputPath), true);
+});
+
+test('runAgentCostRollup prefers sticky calibration invoice turns over operational windows', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-rollup-sticky-'));
+  const outputPath = path.join(tmpDir, 'agent-cost-rollup.json');
+  const stickyInvoiceTurnPath = path.join(tmpDir, 'invoice-turn-sticky-calibration.json');
+
+  const stickyInvoiceTurn = JSON.parse(fs.readFileSync(path.join(fixtureRoot, 'invoice-turn-next-baseline.json'), 'utf8'));
+  stickyInvoiceTurn.invoiceTurnId = 'invoice-turn-2026-03-HQ1VJLMV-0028-calibration';
+  stickyInvoiceTurn.invoiceId = 'HQ1VJLMV-0028';
+  stickyInvoiceTurn.billingPeriod.openedAt = '2026-03-21T12:00:00.000-07:00';
+  stickyInvoiceTurn.credits.purchased = 2500;
+  stickyInvoiceTurn.billing.prepaidUsd = 100;
+  stickyInvoiceTurn.policy.activationState = 'active';
+  stickyInvoiceTurn.policy.fundingPurpose = 'calibration';
+  stickyInvoiceTurn.provenance.operatorNote = 'Protected calibration funding window that must remain sticky.';
+  stickyInvoiceTurn.selection = {
+    mode: 'sticky-calibration',
+    calibrationWindowId: 'invoice-turn-2026-03-HQ1VJLMV-0028-calibration',
+    reason: 'Calibration remains pinned until the session is explicitly ended.'
+  };
+  writeJson(stickyInvoiceTurnPath, stickyInvoiceTurn);
+
+  const result = runAgentCostRollup({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    turnReportPaths: [path.join(fixtureRoot, 'live-turn-estimated.json')],
+    invoiceTurnPaths: [
+      path.join(fixtureRoot, 'invoice-turn-baseline.json'),
+      stickyInvoiceTurnPath
+    ],
+    outputPath
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.summary.provenance.invoiceTurn.invoiceId, 'HQ1VJLMV-0028');
+  assert.equal(result.report.summary.provenance.invoiceTurnSelection.strategy, 'sticky-calibration-active');
+  assert.equal(result.report.summary.provenance.invoiceTurnSelection.mode, 'sticky-calibration');
+  assert.equal(result.report.summary.provenance.invoiceTurnSelection.calibrationWindowId, 'invoice-turn-2026-03-HQ1VJLMV-0028-calibration');
+  assert.match(result.report.summary.provenance.invoiceTurnSelection.reason, /pinned/i);
+  assert.equal(result.report.billingWindow.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0028-calibration');
+  assert.equal(result.report.billingWindow.selection.mode, 'sticky-calibration');
 });
 
 test('runAgentCostRollup selects the active invoice turn deterministically when multiple receipts coexist', () => {
@@ -488,6 +559,10 @@ test('agent-cost-invoice-turn CLI writes a receipt when invoked directly', () =>
       'hold',
       '--funding-purpose',
       'calibration',
+      '--selection-mode',
+      'sticky-calibration',
+      '--selection-reason',
+      'Calibration receipts stay pinned while the window is active.',
       '--actual-usd-consumed',
       '11.2',
       '--actual-credits-consumed',
@@ -511,6 +586,7 @@ test('agent-cost-invoice-turn CLI writes a receipt when invoked directly', () =>
   const output = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
   assert.equal(output.policy.activationState, 'hold');
   assert.equal(output.policy.fundingPurpose, 'calibration');
+  assert.equal(output.selection.mode, 'sticky-calibration');
 });
 
 test('agent-cost-rollup CLI writes a rollup receipt when invoked directly', () => {

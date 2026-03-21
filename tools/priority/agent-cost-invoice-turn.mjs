@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 export const REPORT_SCHEMA = 'priority/agent-cost-invoice-turn@v1';
 export const DEFAULT_OUTPUT_DIR = path.join('tests', 'results', '_agent', 'cost', 'invoice-turns');
+export const SELECTION_MODES = new Set(['hold', 'sticky-calibration', 'ended']);
 
 function normalizeText(value) {
   if (value == null) {
@@ -28,6 +29,11 @@ function roundUsd(value) {
     return null;
   }
   return Number(parsed.toFixed(6));
+}
+
+function normalizeSelectionMode(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return SELECTION_MODES.has(normalized) ? normalized : null;
 }
 
 function computeDefaultInvoiceTurnId(invoiceId, openedAt) {
@@ -58,6 +64,9 @@ export function parseArgs(argv = process.argv) {
     reconciledAt: null,
     reconciliationSourceKind: null,
     reconciliationNote: null,
+    selectionMode: 'hold',
+    selectionReason: null,
+    calibrationWindowId: null,
     outputPath: null,
     help: false
   };
@@ -90,6 +99,9 @@ export function parseArgs(argv = process.argv) {
         '--reconciled-at',
         '--reconciliation-source-kind',
         '--reconciliation-note',
+        '--selection-mode',
+        '--selection-reason',
+        '--calibration-window-id',
         '--output'
       ].includes(token)
     ) {
@@ -115,6 +127,9 @@ export function parseArgs(argv = process.argv) {
       if (token === '--reconciled-at') options.reconciledAt = next;
       if (token === '--reconciliation-source-kind') options.reconciliationSourceKind = next;
       if (token === '--reconciliation-note') options.reconciliationNote = next;
+      if (token === '--selection-mode') options.selectionMode = next;
+      if (token === '--selection-reason') options.selectionReason = next;
+      if (token === '--calibration-window-id') options.calibrationWindowId = next;
       if (token === '--output') options.outputPath = next;
       continue;
     }
@@ -174,15 +189,23 @@ export function parseArgs(argv = process.argv) {
   ) {
     throw new Error('reconciled-at is required when actual reconciliation values are present.');
   }
+  if (!normalizeSelectionMode(options.selectionMode)) {
+    throw new Error('selection-mode must be hold, sticky-calibration, or ended.');
+  }
 
   return options;
 }
 
 export function buildAgentCostInvoiceTurn(options, now = new Date()) {
   const invoiceTurnId = normalizeText(options.invoiceTurnId) || computeDefaultInvoiceTurnId(options.invoiceId, options.openedAt);
+  const normalizedSelectionMode = normalizeSelectionMode(options.selectionMode) || 'hold';
+  const normalizedSelectionReason = normalizeText(options.selectionReason) || normalizeText(options.operatorNote) || null;
+  const normalizedCalibrationWindowId = normalizeText(options.calibrationWindowId) || null;
   const outputPath =
     normalizeText(options.outputPath) ||
     path.join(DEFAULT_OUTPUT_DIR, `${normalizeText(options.invoiceId).replace(/[^A-Za-z0-9._-]/g, '_')}.json`);
+  const effectiveCalibrationWindowId =
+    normalizedSelectionMode === 'hold' ? null : normalizedCalibrationWindowId || invoiceTurnId;
 
   const report = {
     schema: REPORT_SCHEMA,
@@ -218,6 +241,11 @@ export function buildAgentCostInvoiceTurn(options, now = new Date()) {
       sourceKind: normalizeText(options.sourceKind),
       sourcePath: normalizeText(options.sourcePath) || null,
       operatorNote: normalizeText(options.operatorNote) || null
+    },
+    selection: {
+      mode: normalizedSelectionMode,
+      calibrationWindowId: effectiveCalibrationWindowId,
+      reason: normalizedSelectionReason
     }
   };
 
@@ -255,6 +283,9 @@ function printUsage() {
   console.log('  --reconciled-at <date-time>     Required when reconciled values are present.');
   console.log('  --reconciliation-source-kind    operator-observed | billing-export | manual-reconciliation.');
   console.log('  --reconciliation-note <text>    Optional reconciliation note.');
+  console.log('  --selection-mode <mode>         hold | sticky-calibration | ended (default: hold).');
+  console.log('  --selection-reason <text>       Optional reason carried into the selection record.');
+  console.log('  --calibration-window-id <id>    Optional pinned calibration invoice-turn id.');
   console.log('  --invoice-turn-id <value>       Optional explicit invoice turn id.');
   console.log('  --output <path>                 Output path override.');
   console.log('  -h, --help                      Show help and exit.');

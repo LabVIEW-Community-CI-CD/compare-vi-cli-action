@@ -264,6 +264,30 @@ while still reducing manual transcription drift.
 The checked-in fixture must never embed the private invoice path. Local receipts
 may carry that path under operator control for later reconciliation.
 
+## Sticky Calibration Funding-Window Mode
+
+`#1657` extends the invoice-turn contract with an explicit selection record so
+calibration windows can stay pinned while calibration remains active:
+
+- `selection.mode = hold` is the default before calibration activation
+- `selection.mode = sticky-calibration` pins the calibration invoice turn for
+  continued auto-selection
+- `selection.mode = ended` marks the calibration window as explicitly closed
+- `selection.calibrationWindowId` records the pinned invoice-turn identifier
+- `selection.reason` explains why the window remained selected
+
+The roll-up surface copies that selection state into both:
+
+- `summary.provenance.invoiceTurn.selection`
+- `billingWindow.selection`
+
+Use the invoice-turn helper with:
+
+- `--selection-mode hold`
+- `--selection-mode sticky-calibration --selection-reason <text>`
+- `--calibration-window-id <invoice-turn-id>` when the pinned window id needs to
+  be spelled out explicitly
+
 Use the helpers like this:
 
 - `node tools/priority/agent-cost-invoice-turn.mjs ...`
