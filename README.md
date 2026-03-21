@@ -189,16 +189,16 @@ the same summary table to a GitHub issue for stakeholders.
 
 ## Optional inputs
 
-| Input name                 | Default   | Description                                                                 |
-| -------------------------- | --------- | --------------------------------------------------------------------------- |
-| `compare_depth`            | `0`       | Maximum commit pairs to evaluate (`0` = no limit)                           |
-| `compare_modes`            | `default` | Comma/semicolon list of compare modes (`default,attributes,front-panel`) |
-| `compare_ignore_flags`     | `none`    | LVCompare ignore toggles (`none`, `default`, or comma-separated flags)      |
-| `compare_additional_flags` | _(empty)_ | Extra LVCompare switches (space-delimited)                                  |
-| `compare_fail_fast`        | `false`   | Stop after the first diff                                                   |
-| `compare_fail_on_diff`     | `false`   | Fail the workflow when any diff is detected                                 |
-| `sample_id`                | _(empty)_ | Optional concurrency key (advanced use)                                     |
-| `notify_issue`             | _(empty)_ | Issue number to receive the summary table as a comment                      |
+| Input name | Default | Description |
+| --- | --- | --- |
+| `compare_depth` | `0` | Maximum commit pairs to evaluate (`0` = no limit) |
+| `compare_modes` | `default` | Comma/semicolon list of compare modes (`default,attributes,front-panel`) |
+| `compare_ignore_flags` | `none` | LVCompare ignore toggles (`none`, `default`, or comma-separated flags) |
+| `compare_additional_flags` | _(empty)_ | Extra LVCompare switches (space-delimited) |
+| `compare_fail_fast` | `false` | Stop after the first diff |
+| `compare_fail_on_diff` | `false` | Fail the workflow when any diff is detected |
+| `sample_id` | _(empty)_ | Optional concurrency key (advanced use) |
+| `notify_issue` | _(empty)_ | Issue number to receive the summary table as a comment |
 
 These inputs map directly onto the parameters in `tools/Compare-VIHistory.ps1`,
 so advanced behaviour remains available without cluttering the default UX.

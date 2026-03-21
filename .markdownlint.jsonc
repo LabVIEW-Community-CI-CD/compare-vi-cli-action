@@ -33,9 +33,6 @@
     // Allow a limited buffer of consecutive blank lines while legacy docs are refactored.
     "maximum": 2
   },
-  // Newer markdownlint releases add stricter table-style enforcement; keep it non-blocking
-  // until the legacy documentation corpus is normalized intentionally.
-  "MD060": false,
   "MD041": {
     // Require a top-level heading on the first content line.
     "level": 1

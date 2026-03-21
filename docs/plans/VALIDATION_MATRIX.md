@@ -10,7 +10,8 @@ single source of truth when deciding which helper to run locally, invoke from VS
   - Scope: workflow linting (`actionlint`), dependency-audit observation, and rendered-review certification.
   - Typical invocation: `pwsh -File tools/PrePush-Checks.ps1`.
   - Exit semantics: `0` = clean, non-zero = lint failure.
-  - Artifacts: `tests/results/_agent/security/dependency-audit-report.json` plus the NI/rendering receipts already emitted by the script.
+  - Artifacts: `tests/results/_agent/security/dependency-audit-report.json`
+    plus the NI/rendering receipts already emitted by the script.
 - **`Invoke-PesterTests.ps1`**
   - Scope: unit plus integration Pester suites.
   - Typical invocation: `pwsh -File Invoke-PesterTests.ps1 -IntegrationMode exclude`.
