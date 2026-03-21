@@ -42,27 +42,19 @@ looks stale:
 - `tests/results/_agent/runtime/delivery-agent-wsl-daemon-pid.json`
 - `tests/results/_agent/runtime/daemon-host-signal.json`
 
-## Current Compatibility And Debt Register
+## Audit Registers
 
-### Runtime-state naming split
+Use these checked-in audit registers instead of rebuilding daemon debt and
+platform-expansion context from session notes:
 
-- `delivery-agent-state.json` is the intended primary runtime receipt.
-- `runtime-state.json` is legacy compatibility-only and should only be used as
-  a fallback by readers that have not been migrated yet.
-- Do not write new primary state to `runtime-state.json`; treat it as tracked
-  compatibility debt, not a cue to invent a third receipt family.
-- Owner lane: `#1634`.
+- [Unattended-Delivery-Daemon-Debt-Register.md](./Unattended-Delivery-Daemon-Debt-Register.md)
+- [Unattended-Delivery-Daemon-Capability-Expansion-Register.md](./Unattended-Delivery-Daemon-Capability-Expansion-Register.md)
 
-### Marketplace snapshot contract
+The registers only keep follow-up issues that still threaten RC determinism,
+standing reconciliation, four-lane utilization, or consumer-proving
+reliability.
 
-- `lane-marketplace-snapshot.json` is already persisted and referenced through
-  `artifacts.marketplaceSnapshotPath`.
-- The surface is test-backed, but it does not yet have its own checked-in docs
-  schema entry.
-- Until that is split, trust the persisted path plus the lane-marketplace tests
-  over any inferred file naming.
-
-### Thin daemon entrypoint
+## Behavior Authority
 
 - `tools/priority/runtime-daemon.mjs` is intentionally a thin CLI wrapper.
 - The behavioral authority lives in:
@@ -90,3 +82,5 @@ large hosted run:
 - [External-Agent-Runtime.md](./External-Agent-Runtime.md)
 - [Agent-Handoff-Surfaces.md](./Agent-Handoff-Surfaces.md)
 - [DOCKER_TOOLS_PARITY.md](./DOCKER_TOOLS_PARITY.md)
+- [Unattended-Delivery-Daemon-Debt-Register.md](./Unattended-Delivery-Daemon-Debt-Register.md)
+- [Unattended-Delivery-Daemon-Capability-Expansion-Register.md](./Unattended-Delivery-Daemon-Capability-Expansion-Register.md)
