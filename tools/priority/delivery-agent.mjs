@@ -4,6 +4,19 @@ import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {
+  applyConcurrentLanePlan,
+  DEFAULT_OUTPUT_PATH as DEFAULT_CONCURRENT_LANE_APPLY_RECEIPT_PATH,
+  DEFAULT_PLAN_PATH as DEFAULT_CONCURRENT_LANE_PLAN_PATH
+} from './concurrent-lane-apply.mjs';
+import {
+  DEFAULT_HOST_PLANE_REPORT_PATH,
+  DEFAULT_HOST_RAM_BUDGET_PATH
+} from './concurrent-lane-plan.mjs';
+import {
+  DEFAULT_STATUS_OUTPUT_PATH as DEFAULT_CONCURRENT_LANE_STATUS_RECEIPT_PATH,
+  observeConcurrentLaneStatus
+} from './concurrent-lane-status.mjs';
 import { loadBranchClassContract, resolveBranchPlaneTransition } from './lib/branch-classification.mjs';
 import { resolveRequiredLaneBranchPrefix } from './lib/runtime-lane-branch-contract.mjs';
 import {
@@ -2238,6 +2251,48 @@ function normalizeOptionalObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
 
+function toRepoRelativePath(repoRoot, candidatePath) {
+  const normalized = normalizeText(candidatePath);
+  if (!normalized) {
+    return null;
+  }
+  const resolved = path.isAbsolute(normalized) ? normalized : path.resolve(repoRoot, normalized);
+  const relative = path.relative(repoRoot, resolved);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    return normalized;
+  }
+  return relative.replaceAll('\\', '/');
+}
+
+function buildConcurrentLaneApplyRuntimeState({ taskPacket, executionReceipt }) {
+  const concurrentLaneApply =
+    normalizeOptionalObject(executionReceipt?.details?.concurrentLaneApply) ??
+    normalizeOptionalObject(taskPacket?.evidence?.delivery?.concurrentLaneApply);
+  if (!concurrentLaneApply) {
+    return null;
+  }
+
+  const validateDispatch = normalizeOptionalObject(concurrentLaneApply.validateDispatch);
+  return {
+    receiptPath: normalizeText(concurrentLaneApply.receiptPath) || null,
+    status: normalizeText(concurrentLaneApply.status) || null,
+    selectedBundleId: normalizeText(concurrentLaneApply.selectedBundleId) || null,
+    validateDispatch: validateDispatch
+      ? {
+          status: normalizeText(validateDispatch.status) || null,
+          repository: normalizeText(validateDispatch.repository) || null,
+          remote: normalizeText(validateDispatch.remote) || null,
+          ref: normalizeText(validateDispatch.ref) || null,
+          sampleId: normalizeText(validateDispatch.sampleId) || null,
+          historyScenarioSet: normalizeText(validateDispatch.historyScenarioSet) || null,
+          reportPath: normalizeText(validateDispatch.reportPath) || null,
+          runDatabaseId: coercePositiveInteger(validateDispatch.runDatabaseId),
+          error: normalizeText(validateDispatch.error) || null
+        }
+      : null
+  };
+}
+
 function buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt }) {
   const concurrentLaneStatus =
     normalizeOptionalObject(executionReceipt?.details?.concurrentLaneStatus) ??
@@ -2350,6 +2405,226 @@ function buildConcurrentLaneWatchPlan(concurrentLaneStatus = null) {
   }
 
   return null;
+}
+
+function shouldDispatchConcurrentLanes(taskPacket = {}) {
+  const delivery = taskPacket?.evidence?.delivery ?? {};
+  const pullRequest = normalizeOptionalObject(delivery.pullRequest);
+  const concurrentLaneStatus = normalizeOptionalObject(delivery.concurrentLaneStatus);
+  const providerSelection = buildTaskPacketProviderSelection(taskPacket);
+  if (pullRequest?.url || concurrentLaneStatus) {
+    return false;
+  }
+  if (!providerSelection) {
+    return false;
+  }
+  return normalizeText(providerSelection.selectedAssignmentMode).toLowerCase() === 'async-validation';
+}
+
+function buildConcurrentLaneApplyOptions({ repoRoot, taskPacket }) {
+  const branchName = normalizeText(taskPacket?.branch?.name);
+  const forkRemote = normalizeText(taskPacket?.branch?.forkRemote).toLowerCase();
+  return {
+    planPath: path.resolve(repoRoot, DEFAULT_CONCURRENT_LANE_PLAN_PATH),
+    outputPath: path.resolve(repoRoot, DEFAULT_CONCURRENT_LANE_APPLY_RECEIPT_PATH),
+    hostPlaneReportPath: path.resolve(repoRoot, DEFAULT_HOST_PLANE_REPORT_PATH),
+    hostRamBudgetPath: path.resolve(repoRoot, DEFAULT_HOST_RAM_BUDGET_PATH),
+    dockerRuntimeSnapshotPath: '',
+    hostedLinux: 'available',
+    hostedWindows: 'available',
+    shadowMode: 'auto',
+    ref: branchName || null,
+    sampleId: null,
+    historyScenarioSet: 'smoke',
+    allowFork: Boolean(forkRemote && forkRemote !== 'upstream'),
+    pushMissing: true,
+    forcePushOk: false,
+    allowNonCanonicalViHistory: false,
+    allowNonCanonicalHistoryCore: false,
+    dryRun: false,
+    recomputePlan: false,
+    help: false
+  };
+}
+
+function buildConcurrentLaneStatusOptions({ repoRoot, taskPacket, applyReceiptPath }) {
+  return {
+    applyReceiptPath,
+    outputPath: path.resolve(repoRoot, DEFAULT_CONCURRENT_LANE_STATUS_RECEIPT_PATH),
+    repo: normalizeText(taskPacket?.repository) || null,
+    pr: null,
+    ref: normalizeText(taskPacket?.branch?.name) || null,
+    help: false
+  };
+}
+
+function buildConcurrentLaneHelperCommands({ repoRoot, applyOptions, statusOptions }) {
+  const applyCommand = ['node', 'tools/priority/concurrent-lane-apply.mjs'];
+  applyCommand.push('--plan', toRepoRelativePath(repoRoot, applyOptions.planPath) || DEFAULT_CONCURRENT_LANE_PLAN_PATH);
+  applyCommand.push('--output', toRepoRelativePath(repoRoot, applyOptions.outputPath) || DEFAULT_CONCURRENT_LANE_APPLY_RECEIPT_PATH);
+  applyCommand.push(
+    '--host-plane-report',
+    toRepoRelativePath(repoRoot, applyOptions.hostPlaneReportPath) || DEFAULT_HOST_PLANE_REPORT_PATH
+  );
+  applyCommand.push(
+    '--host-ram-budget',
+    toRepoRelativePath(repoRoot, applyOptions.hostRamBudgetPath) || DEFAULT_HOST_RAM_BUDGET_PATH
+  );
+  if (normalizeText(applyOptions.ref)) {
+    applyCommand.push('--ref', normalizeText(applyOptions.ref));
+  }
+  if (normalizeText(applyOptions.sampleId)) {
+    applyCommand.push('--sample-id', normalizeText(applyOptions.sampleId));
+  }
+  applyCommand.push('--history-scenario-set', normalizeText(applyOptions.historyScenarioSet) || 'smoke');
+  if (applyOptions.allowFork) applyCommand.push('--allow-fork');
+  if (applyOptions.pushMissing) applyCommand.push('--push-missing');
+  if (applyOptions.forcePushOk) applyCommand.push('--force-push-ok');
+  if (applyOptions.allowNonCanonicalViHistory) applyCommand.push('--allow-noncanonical-vi-history');
+  if (applyOptions.allowNonCanonicalHistoryCore) applyCommand.push('--allow-noncanonical-history-core');
+  if (applyOptions.dryRun) applyCommand.push('--dry-run');
+  if (applyOptions.recomputePlan) applyCommand.push('--recompute-plan');
+
+  const statusCommand = ['node', 'tools/priority/concurrent-lane-status.mjs'];
+  statusCommand.push(
+    '--apply-receipt',
+    toRepoRelativePath(repoRoot, statusOptions.applyReceiptPath) || DEFAULT_CONCURRENT_LANE_APPLY_RECEIPT_PATH
+  );
+  statusCommand.push(
+    '--output',
+    toRepoRelativePath(repoRoot, statusOptions.outputPath) || DEFAULT_CONCURRENT_LANE_STATUS_RECEIPT_PATH
+  );
+  if (normalizeText(statusOptions.repo)) {
+    statusCommand.push('--repo', normalizeText(statusOptions.repo));
+  }
+  if (normalizeText(statusOptions.ref)) {
+    statusCommand.push('--ref', normalizeText(statusOptions.ref));
+  }
+  if (statusOptions.pr != null) {
+    statusCommand.push('--pr', String(statusOptions.pr));
+  }
+
+  return [applyCommand.join(' '), statusCommand.join(' ')];
+}
+
+async function dispatchConcurrentLanes({
+  taskPacket,
+  repoRoot,
+  deps = {}
+}) {
+  const applyConcurrentLanePlanFn = deps.applyConcurrentLanePlanFn ?? applyConcurrentLanePlan;
+  const observeConcurrentLaneStatusFn = deps.observeConcurrentLaneStatusFn ?? observeConcurrentLaneStatus;
+  const applyOptions = buildConcurrentLaneApplyOptions({ repoRoot, taskPacket });
+  const statusOptions = buildConcurrentLaneStatusOptions({
+    repoRoot,
+    taskPacket,
+    applyReceiptPath: applyOptions.outputPath
+  });
+  const helperCallsExecuted = buildConcurrentLaneHelperCommands({
+    repoRoot,
+    applyOptions,
+    statusOptions
+  });
+
+  let applyResult;
+  try {
+    applyResult = await applyConcurrentLanePlanFn(applyOptions);
+  } catch (error) {
+    return {
+      status: 'blocked',
+      outcome: 'concurrent-lane-dispatch-failed',
+      reason: normalizeText(error?.message) || 'Concurrent lane apply dispatch failed before a receipt was written.',
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'dispatch-concurrent-lanes',
+        laneLifecycle: 'blocked',
+        blockerClass: 'helper',
+        retryable: true,
+        nextWakeCondition: 'concurrent-lane-apply-repaired',
+        helperCallsExecuted,
+        filesTouched: []
+      }
+    };
+  }
+
+  const applyReceipt = normalizeOptionalObject(applyResult?.receipt);
+  const applyReceiptPath = normalizeText(applyResult?.outputPath) || normalizeText(applyOptions.outputPath);
+  statusOptions.applyReceiptPath = applyReceiptPath || statusOptions.applyReceiptPath;
+
+  let statusResult;
+  try {
+    statusResult = await observeConcurrentLaneStatusFn(statusOptions, {
+      getRepoRootFn: () => repoRoot
+    });
+  } catch (error) {
+    return {
+      status: 'blocked',
+      outcome: 'concurrent-lane-status-failed',
+      reason: normalizeText(error?.message) || 'Concurrent lane status observation failed.',
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'dispatch-concurrent-lanes',
+        laneLifecycle: 'blocked',
+        blockerClass: 'helper',
+        retryable: true,
+        nextWakeCondition: 'concurrent-lane-status-repaired',
+        helperCallsExecuted,
+        filesTouched: [toRepoRelativePath(repoRoot, applyReceiptPath)].filter(Boolean),
+        concurrentLaneApply: applyReceipt
+          ? {
+              receiptPath: toRepoRelativePath(repoRoot, applyReceiptPath),
+              status: normalizeText(applyReceipt.status) || null,
+              selectedBundleId: normalizeText(applyReceipt.summary?.selectedBundleId) || null,
+              validateDispatch: normalizeOptionalObject(applyReceipt.validateDispatch)
+            }
+          : null
+      }
+    };
+  }
+
+  const statusReceipt = normalizeOptionalObject(statusResult?.receipt);
+  const statusReceiptPath = normalizeText(statusResult?.outputPath) || normalizeText(statusOptions.outputPath);
+  const projectedStatus = {
+    receiptPath: toRepoRelativePath(repoRoot, statusReceiptPath),
+    status: normalizeText(statusReceipt?.status) || null,
+    selectedBundleId:
+      normalizeText(statusReceipt?.summary?.selectedBundleId) ||
+      normalizeText(statusReceipt?.applyReceipt?.selectedBundleId) ||
+      null,
+    hostedRun: normalizeOptionalObject(statusReceipt?.hostedRun),
+    pullRequest: normalizeOptionalObject(statusReceipt?.pullRequest),
+    summary: normalizeOptionalObject(statusReceipt?.summary)
+  };
+  const watchPlan = buildConcurrentLaneWatchPlan(projectedStatus);
+  const blocked = watchPlan?.laneLifecycle === 'blocked';
+  const filesTouched = [applyReceiptPath, statusReceiptPath]
+    .map((entry) => toRepoRelativePath(repoRoot, entry))
+    .filter(Boolean);
+
+  return {
+    status: blocked ? 'blocked' : 'completed',
+    outcome: watchPlan?.laneLifecycle || 'complete',
+    reason:
+      watchPlan?.reason ||
+      'Concurrent lane planner/apply/status completed without further remote work to watch.',
+    source: 'delivery-agent-broker',
+    details: {
+      actionType: 'dispatch-concurrent-lanes',
+      laneLifecycle: watchPlan?.laneLifecycle || 'complete',
+      blockerClass: watchPlan?.blockerClass || 'none',
+      retryable: watchPlan?.retryable === true,
+      nextWakeCondition: watchPlan?.nextWakeCondition || 'scheduler-rescan',
+      helperCallsExecuted,
+      filesTouched,
+      concurrentLaneApply: {
+        receiptPath: toRepoRelativePath(repoRoot, applyReceiptPath),
+        status: normalizeText(applyReceipt?.status) || null,
+        selectedBundleId: normalizeText(applyReceipt?.summary?.selectedBundleId) || null,
+        validateDispatch: normalizeOptionalObject(applyReceipt?.validateDispatch)
+      },
+      concurrentLaneStatus: projectedStatus
+    }
+  };
 }
 
 function buildRuntimeWorkerProviderSelection({ taskPacket, executionReceipt, policy, preferredSlotId = null }) {
@@ -2645,6 +2920,7 @@ export function buildDeliveryAgentRuntimeRecord({
     null;
   const localReviewLoop = buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt });
   const readyValidationClearance = buildReadyValidationClearanceRuntimeState({ taskPacket, executionReceipt });
+  const concurrentLaneApply = buildConcurrentLaneApplyRuntimeState({ taskPacket, executionReceipt });
   const concurrentLaneStatus = buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt });
   const planeTransition = resolveDeliveryPlaneTransition({
     repoRoot,
@@ -2681,6 +2957,7 @@ export function buildDeliveryAgentRuntimeRecord({
     planeTransition,
     localReviewLoop,
     readyValidationClearance,
+    concurrentLaneApply,
     concurrentLaneStatus,
     workerProviderSelection,
     providerDispatch
@@ -2724,6 +3001,7 @@ export function buildDeliveryAgentRuntimeRecord({
     activeCodingLanes,
     workerPool,
     localReviewLoop,
+    concurrentLaneApply,
     concurrentLaneStatus,
     marketplace,
     activeLane,
@@ -2731,6 +3009,7 @@ export function buildDeliveryAgentRuntimeRecord({
       statePath,
       lanePath,
       localReviewLoopReceiptPath: normalizeText(localReviewLoop?.receiptPath) || null,
+      concurrentLaneApplyReceiptPath: normalizeText(concurrentLaneApply?.receiptPath) || null,
       concurrentLaneStatusReceiptPath: normalizeText(concurrentLaneStatus?.receiptPath) || null,
       marketplaceSnapshotPath: normalizeText(marketplace?.snapshotPath) || null,
       planeTransition,
@@ -4362,6 +4641,12 @@ export function planDeliveryBrokerAction(taskPacket = {}) {
       laneLifecycle: 'reshaping-backlog'
     };
   }
+  if (shouldDispatchConcurrentLanes(taskPacket)) {
+    return {
+      actionType: 'dispatch-concurrent-lanes',
+      laneLifecycle: lifecycle === 'planning' ? 'waiting-ci' : lifecycle
+    };
+  }
   if (!pullRequest?.url) {
     const concurrentLanePlan = buildConcurrentLaneWatchPlan(concurrentLaneStatus);
     if (concurrentLanePlan) {
@@ -4565,6 +4850,15 @@ export async function runDeliveryTurnBroker({
         concurrentLaneStatus: planned.concurrentLaneStatus
       }
     }, enrichedPacket);
+  }
+
+  if (planned.actionType === 'dispatch-concurrent-lanes') {
+    const dispatchResult = await dispatchConcurrentLanes({
+      taskPacket: enrichedPacket,
+      repoRoot,
+      deps
+    });
+    return withWorkerProviderDispatch(dispatchResult, enrichedPacket);
   }
 
   if (planned.actionType === 'sync-pr-branch') {
