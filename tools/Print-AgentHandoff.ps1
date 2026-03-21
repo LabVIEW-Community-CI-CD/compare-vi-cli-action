@@ -1388,6 +1388,34 @@ try {
 }
 
 try {
+  $steeringPath = Join-Path $ResultsRoot '_agent/handoff/operator-steering-event.json'
+  if (Test-Path -LiteralPath $steeringPath -PathType Leaf) {
+    $steering = Get-Content -LiteralPath $steeringPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    Write-Host ''
+    Write-Host '[Operator Steering]' -ForegroundColor Cyan
+    Write-Host ("  steering : {0}" -f (Format-NullableValue $steering.steeringKind))
+    Write-Host ("  trigger  : {0}" -f (Format-NullableValue $steering.triggerKind))
+    Write-Host ("  issue    : {0}" -f (Format-NullableValue $steering.issueContext.issue))
+    Write-Host ("  funding  : {0}" -f (Format-NullableValue $steering.fundingWindow.invoiceTurnId))
+    Write-Host ("  boundary : {0}" -f (Format-NullableValue $steering.continuity.turnBoundary.status))
+    if ($env:GITHUB_STEP_SUMMARY) {
+      $steeringLines = @(
+        '### Operator Steering',
+        '',
+        ('- Steering kind: {0}' -f (Format-NullableValue $steering.steeringKind)),
+        ('- Trigger kind: {0}' -f (Format-NullableValue $steering.triggerKind)),
+        ('- Issue: {0}' -f (Format-NullableValue $steering.issueContext.issue)),
+        ('- Funding window: {0}' -f (Format-NullableValue $steering.fundingWindow.invoiceTurnId)),
+        ('- Continuity boundary: {0}' -f (Format-NullableValue $steering.continuity.turnBoundary.status))
+      )
+      ($steeringLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+    }
+  }
+} catch {
+  Write-Warning ("Failed to display operator steering summary: {0}" -f $_.Exception.Message)
+}
+
+try {
   $releasePath = Join-Path (Resolve-Path '.').Path 'tests/results/_agent/handoff/release-summary.json'
   if (Test-Path -LiteralPath $releasePath -PathType Leaf) {
     $release = Get-Content -LiteralPath $releasePath -Raw | ConvertFrom-Json -ErrorAction Stop

@@ -160,6 +160,24 @@ function Invoke-NodeScriptFromRepoRoot {
   }
 }
 
+function Test-NodeScriptContainsToken {
+  param(
+    [Parameter(Mandatory = $true)][string]$ScriptPath,
+    [Parameter(Mandatory = $true)][string]$Token
+  )
+
+  if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) {
+    return $false
+  }
+
+  try {
+    $content = Get-Content -LiteralPath $ScriptPath -Raw -ErrorAction Stop
+    return $content -match [regex]::Escape($Token)
+  } catch {
+    return $false
+  }
+}
+
 function Invoke-WorkspaceHealthGate {
   param(
     [ValidateSet('ignore','optional','required')][string]$LeaseMode = 'optional',
@@ -832,11 +850,41 @@ if (-not $PreflightOnly) {
   Write-Host '[bootstrap] Writing continuity telemetry…'
   $continuityRuntimePath = Join-Path $priorityWorkingDirectory 'tests/results/_agent/runtime/continuity-telemetry.json'
   $continuityHandoffPath = Join-Path $priorityWorkingDirectory 'tests/results/_agent/handoff/continuity-summary.json'
+  $continuityRepoRoot = $priorityHelperRepoRoot
+  $continuityHelperScriptPath = Join-Path $priorityHelperRepoRoot 'tools/priority/continuity-telemetry.mjs'
+  $continuityCallerScriptPath = Join-Path $priorityWorkingDirectory 'tools/priority/continuity-telemetry.mjs'
+  if (
+    (Test-Path -LiteralPath $continuityCallerScriptPath -PathType Leaf) -and
+    (
+      -not (Test-NodeScriptContainsToken -ScriptPath $continuityHelperScriptPath -Token 'operatorTurnEndWouldCreateIdleGap') -or
+      -not (Test-NodeScriptContainsToken -ScriptPath $continuityHelperScriptPath -Token 'turnBoundary')
+    )
+  ) {
+    $continuityRepoRoot = $priorityWorkingDirectory
+    Write-Host '[bootstrap] Continuity helper checkout lacks turn-boundary support; using caller checkout script until develop helper catches up.'
+  }
   Invoke-NodeScriptFromRepoRoot `
-    -RepoRoot $priorityHelperRepoRoot `
+    -RepoRoot $continuityRepoRoot `
     -WorkingDirectory $priorityWorkingDirectory `
     -ScriptRelativePath 'tools/priority/continuity-telemetry.mjs' `
     -Arguments @('--repo-root', $priorityWorkingDirectory, '--output', $continuityRuntimePath, '--handoff-output', $continuityHandoffPath) `
+    -AllowFailure:$true
+
+  Write-Host '[bootstrap] Recording operator steering event evidence when continuity resumes with active work…'
+  $steeringRuntimePath = Join-Path $priorityWorkingDirectory 'tests/results/_agent/runtime/operator-steering-event.json'
+  $steeringHandoffPath = Join-Path $priorityWorkingDirectory 'tests/results/_agent/handoff/operator-steering-event.json'
+  $steeringHistoryDir = Join-Path $priorityWorkingDirectory 'tests/results/_agent/runtime/operator-steering-events'
+  $invoiceTurnDir = Join-Path $priorityWorkingDirectory 'tests/results/_agent/cost/invoice-turns'
+  $steeringRepoRoot = $priorityHelperRepoRoot
+  if (-not (Test-Path -LiteralPath (Join-Path $steeringRepoRoot 'tools/priority/operator-steering-event.mjs') -PathType Leaf)) {
+    $steeringRepoRoot = $priorityWorkingDirectory
+    Write-Host '[bootstrap] Steering helper checkout is unavailable; using caller checkout script.'
+  }
+  Invoke-NodeScriptFromRepoRoot `
+    -RepoRoot $steeringRepoRoot `
+    -WorkingDirectory $priorityWorkingDirectory `
+    -ScriptRelativePath 'tools/priority/operator-steering-event.mjs' `
+    -Arguments @('--repo-root', $priorityWorkingDirectory, '--continuity', $continuityRuntimePath, '--output', $steeringRuntimePath, '--handoff-output', $steeringHandoffPath, '--history-dir', $steeringHistoryDir, '--invoice-turn-dir', $invoiceTurnDir) `
     -AllowFailure:$true
 }
 
