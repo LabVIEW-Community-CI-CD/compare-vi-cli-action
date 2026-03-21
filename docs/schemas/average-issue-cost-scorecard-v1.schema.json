@@ -1,0 +1,391 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/average-issue-cost-scorecard-v1.schema.json",
+  "title": "Average Issue Cost Scorecard v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "inputs",
+    "coverage",
+    "issueHydration",
+    "summary",
+    "stateAverages",
+    "windows",
+    "issues"
+  ],
+  "properties": {
+    "schema": { "const": "priority/average-issue-cost-scorecard@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repository": { "$ref": "#/$defs/nullableString" },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["costRollupPath", "invoiceTurnPaths"],
+      "properties": {
+        "costRollupPath": { "$ref": "#/$defs/inputRef" },
+        "invoiceTurnPaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inputRef" }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implementedMetricCodes", "deferredMetrics"],
+      "properties": {
+        "implementedMetricCodes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "deferredMetrics": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/deferredMetric" }
+        }
+      }
+    },
+    "issueHydration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "attempted",
+        "stateAttributionBasis",
+        "hydratedIssueCount",
+        "failedIssueNumbers",
+        "warnings"
+      ],
+      "properties": {
+        "status": { "enum": ["pass", "warn", "skipped"] },
+        "attempted": { "type": "boolean" },
+        "stateAttributionBasis": { "enum": ["current-issue-snapshot", "unavailable"] },
+        "hydratedIssueCount": { "type": "integer", "minimum": 0 },
+        "failedIssueNumbers": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/warning" }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "recommendation", "reasons", "blockerCount", "blockers", "metrics"],
+      "properties": {
+        "status": { "enum": ["pass", "warn", "fail"] },
+        "recommendation": {
+          "enum": [
+            "repair-input-receipts",
+            "continue-observing-funding-windows",
+            "refresh-issue-state-hydration",
+            "tighten-issue-attribution",
+            "continue-estimated-telemetry",
+            "benchmark-average-issue-cost"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "blockerCount": { "type": "integer", "minimum": 0 },
+        "blockers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blocker" }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "observedFundingWindowCount",
+            "distinctIssueCount",
+            "totalUsd",
+            "issueAttributedUsd",
+            "unattributedUsd",
+            "exactUsd",
+            "estimatedUsd",
+            "liveAgentUsd",
+            "backgroundAgentUsd",
+            "hostedValidationUsd",
+            "rollingAverageUsdPerIssue",
+            "currentActiveWindowAverageUsdPerIssue",
+            "activeCalibrationWindowAverageUsdPerIssue",
+            "latestTrailingOperationalWindowAverageUsdPerIssue",
+            "unattributedTurnCount"
+          ],
+          "properties": {
+            "observedFundingWindowCount": { "type": "integer", "minimum": 0 },
+            "distinctIssueCount": { "type": "integer", "minimum": 0 },
+            "totalUsd": { "type": "number", "minimum": 0 },
+            "issueAttributedUsd": { "type": "number", "minimum": 0 },
+            "unattributedUsd": { "type": "number", "minimum": 0 },
+            "exactUsd": { "type": "number", "minimum": 0 },
+            "estimatedUsd": { "type": "number", "minimum": 0 },
+            "liveAgentUsd": { "type": "number", "minimum": 0 },
+            "backgroundAgentUsd": { "type": "number", "minimum": 0 },
+            "hostedValidationUsd": { "type": "number", "minimum": 0 },
+            "rollingAverageUsdPerIssue": { "type": ["number", "null"], "minimum": 0 },
+            "currentActiveWindowAverageUsdPerIssue": { "type": ["number", "null"], "minimum": 0 },
+            "activeCalibrationWindowAverageUsdPerIssue": { "type": ["number", "null"], "minimum": 0 },
+            "latestTrailingOperationalWindowAverageUsdPerIssue": { "type": ["number", "null"], "minimum": 0 },
+            "unattributedTurnCount": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "stateAverages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/stateAverage" }
+    },
+    "windows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/windowEntry" }
+    },
+    "issues": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/issueEntry" }
+    }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "inputRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "exists", "error"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nullableString" },
+        "exists": { "type": "boolean" },
+        "error": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "inputPath"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "inputPath": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "issueNumber"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "issueNumber": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "deferredMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "reason"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "stateAverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stateBucket", "issueCount", "totalUsd", "averageUsdPerIssue"],
+      "properties": {
+        "stateBucket": { "enum": ["blocked-external", "closed-completed", "open", "unknown"] },
+        "issueCount": { "type": "integer", "minimum": 0 },
+        "totalUsd": { "type": "number", "minimum": 0 },
+        "averageUsdPerIssue": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "windowMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalUsd",
+        "issueAttributedUsd",
+        "unattributedUsd",
+        "exactUsd",
+        "estimatedUsd",
+        "turnCount",
+        "attributedTurnCount",
+        "unattributedTurnCount",
+        "distinctIssueCount",
+        "averageUsdPerIssue",
+        "liveAgentUsd",
+        "backgroundAgentUsd",
+        "hostedValidationUsd",
+        "firstTurnAt",
+        "lastTurnAt",
+        "rollingDistinctIssueCount",
+        "rollingAverageUsdPerIssue"
+      ],
+      "properties": {
+        "totalUsd": { "type": "number", "minimum": 0 },
+        "issueAttributedUsd": { "type": "number", "minimum": 0 },
+        "unattributedUsd": { "type": "number", "minimum": 0 },
+        "exactUsd": { "type": "number", "minimum": 0 },
+        "estimatedUsd": { "type": "number", "minimum": 0 },
+        "turnCount": { "type": "integer", "minimum": 0 },
+        "attributedTurnCount": { "type": "integer", "minimum": 0 },
+        "unattributedTurnCount": { "type": "integer", "minimum": 0 },
+        "distinctIssueCount": { "type": "integer", "minimum": 0 },
+        "averageUsdPerIssue": { "type": ["number", "null"], "minimum": 0 },
+        "liveAgentUsd": { "type": "number", "minimum": 0 },
+        "backgroundAgentUsd": { "type": "number", "minimum": 0 },
+        "hostedValidationUsd": { "type": "number", "minimum": 0 },
+        "firstTurnAt": { "$ref": "#/$defs/nullableString" },
+        "lastTurnAt": { "$ref": "#/$defs/nullableString" },
+        "rollingDistinctIssueCount": { "type": "integer", "minimum": 0 },
+        "rollingAverageUsdPerIssue": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "windowEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePath",
+        "synthetic",
+        "invoiceTurnId",
+        "invoiceId",
+        "openedAt",
+        "closedAt",
+        "fundingPurpose",
+        "activationState",
+        "windowClass",
+        "windowRole",
+        "reconciliationStatus",
+        "selectionMode",
+        "calibrationWindowId",
+        "reconciledAt",
+        "issueNumbers",
+        "issueStateAverages",
+        "metrics"
+      ],
+      "properties": {
+        "sourcePath": { "$ref": "#/$defs/nullableString" },
+        "synthetic": { "type": "boolean" },
+        "invoiceTurnId": { "$ref": "#/$defs/nullableString" },
+        "invoiceId": { "$ref": "#/$defs/nullableString" },
+        "openedAt": { "$ref": "#/$defs/nullableString" },
+        "closedAt": { "$ref": "#/$defs/nullableString" },
+        "fundingPurpose": { "$ref": "#/$defs/nullableString" },
+        "activationState": { "$ref": "#/$defs/nullableString" },
+        "windowClass": { "enum": ["operational", "calibration", "unknown"] },
+        "windowRole": { "enum": ["current-active", "calibration", "trailing-operational", "historical"] },
+        "reconciliationStatus": { "$ref": "#/$defs/nullableString" },
+        "selectionMode": { "$ref": "#/$defs/nullableString" },
+        "calibrationWindowId": { "$ref": "#/$defs/nullableString" },
+        "reconciledAt": { "$ref": "#/$defs/nullableString" },
+        "issueNumbers": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "issueStateAverages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/stateAverage" }
+        },
+        "metrics": { "$ref": "#/$defs/windowMetrics" }
+      }
+    },
+    "issueProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "turnIds",
+        "turnSourcePaths",
+        "sourceReceiptPaths",
+        "sourceReportPaths",
+        "invoiceTurnIds",
+        "assignmentStrategies"
+      ],
+      "properties": {
+        "turnIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "turnSourcePaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "sourceReceiptPaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "sourceReportPaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "invoiceTurnIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "assignmentStrategies": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "billing-window-fallback",
+              "billing-window-selected",
+              "latest-opened-window",
+              "single-window-fallback",
+              "steering-invoice-turn",
+              "timestamp-match"
+            ]
+          }
+        }
+      }
+    },
+    "issueEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issueNumber",
+        "title",
+        "url",
+        "state",
+        "stateBucket",
+        "stateSnapshotUpdatedAt",
+        "totalUsd",
+        "exactUsd",
+        "estimatedUsd",
+        "turnCount",
+        "liveAgentUsd",
+        "backgroundAgentUsd",
+        "hostedValidationUsd",
+        "firstTurnAt",
+        "lastTurnAt",
+        "windowIds",
+        "provenance"
+      ],
+      "properties": {
+        "issueNumber": { "type": "integer", "minimum": 1 },
+        "title": { "$ref": "#/$defs/nullableString" },
+        "url": { "$ref": "#/$defs/nullableString" },
+        "state": { "$ref": "#/$defs/nullableString" },
+        "stateBucket": { "enum": ["blocked-external", "closed-completed", "open", "unknown"] },
+        "stateSnapshotUpdatedAt": { "$ref": "#/$defs/nullableString" },
+        "totalUsd": { "type": "number", "minimum": 0 },
+        "exactUsd": { "type": "number", "minimum": 0 },
+        "estimatedUsd": { "type": "number", "minimum": 0 },
+        "turnCount": { "type": "integer", "minimum": 0 },
+        "liveAgentUsd": { "type": "number", "minimum": 0 },
+        "backgroundAgentUsd": { "type": "number", "minimum": 0 },
+        "hostedValidationUsd": { "type": "number", "minimum": 0 },
+        "firstTurnAt": { "$ref": "#/$defs/nullableString" },
+        "lastTurnAt": { "$ref": "#/$defs/nullableString" },
+        "windowIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "provenance": { "$ref": "#/$defs/issueProvenance" }
+      }
+    }
+  }
+}

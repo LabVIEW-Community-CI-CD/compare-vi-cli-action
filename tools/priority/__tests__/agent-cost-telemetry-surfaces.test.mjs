@@ -27,6 +27,10 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-invoice-turn.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-turn.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-rollup.mjs'));
+  assert.ok(contractEntry.files.includes('docs/schemas/average-issue-cost-scorecard-v1.schema.json'));
+  assert.ok(contractEntry.files.includes('tools/priority/average-issue-cost-scorecard.mjs'));
+  assert.ok(contractEntry.files.includes('tools/priority/__tests__/average-issue-cost-scorecard.test.mjs'));
+  assert.ok(contractEntry.files.includes('tools/priority/__tests__/average-issue-cost-scorecard-schema.test.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/__fixtures__/agent-cost-rollup/private-invoice-metadata-sample.json'));
   assert.ok(contractEntry.files.includes('tools/priority/__tests__/agent-cost-invoice-normalize.test.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/__tests__/agent-cost-invoice-normalize-schema.test.mjs'));
@@ -65,6 +69,13 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.match(guide, /priority:cost:turn/);
   assert.match(guide, /priority:cost:rollup/);
   assert.match(guide, /xhigh/);
+  assert.match(guide, /Average Issue Cost Over Time/);
+  assert.match(guide, /docs\/schemas\/average-issue-cost-scorecard-v1\.schema\.json/);
+  assert.match(guide, /tools\/priority\/average-issue-cost-scorecard\.mjs/);
+  assert.match(guide, /tests\/results\/_agent\/capital\/average-issue-cost-scorecard\.json/);
+  assert.match(guide, /rollingAverageUsdPerIssue/);
+  assert.match(guide, /blocked-external/);
+  assert.match(guide, /current hydrated issue state/);
   assert.match(guide, /Sticky Calibration Funding-Window Mode/);
   assert.match(guide, /selection\.mode = sticky-calibration/);
   assert.match(guide, /--selection-mode sticky-calibration --selection-reason <text>/);

@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-21T20:00:00Z",
+  "updated": "2026-03-21T21:30:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -131,6 +131,7 @@
         "docs/schemas/agent-cost-invoice-turn-v1.schema.json",
         "docs/schemas/agent-cost-turn-v1.schema.json",
         "docs/schemas/agent-cost-rollup-v1.schema.json",
+        "docs/schemas/average-issue-cost-scorecard-v1.schema.json",
         "docs/schemas/pr-spend-projection-v1.schema.json",
         "tools/priority/__fixtures__/agent-cost-rollup/live-turn-estimated.json",
         "tools/priority/__fixtures__/agent-cost-rollup/background-turn-exact.json",
@@ -142,7 +143,10 @@
         "tools/priority/agent-cost-invoice-turn.mjs",
         "tools/priority/agent-cost-turn.mjs",
         "tools/priority/agent-cost-rollup.mjs",
+        "tools/priority/average-issue-cost-scorecard.mjs",
         "tools/priority/pr-spend-projection.mjs",
+        "tools/priority/__tests__/average-issue-cost-scorecard.test.mjs",
+        "tools/priority/__tests__/average-issue-cost-scorecard-schema.test.mjs",
         "tools/priority/__tests__/agent-cost-invoice-normalize.test.mjs",
         "tools/priority/__tests__/agent-cost-invoice-normalize-schema.test.mjs",
         "tools/priority/__tests__/agent-cost-turn.test.mjs",

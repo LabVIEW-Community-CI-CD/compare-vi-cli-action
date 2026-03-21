@@ -298,6 +298,44 @@ heuristic USD while calibration is still in progress, but it must not claim
 final reconciled billing truth unless the underlying rollup carries that
 evidence.
 
+## Average Issue Cost Over Time
+
+`#1708` adds a first machine-readable average issue cost scorecard that stays on
+top of the existing rollup and invoice-turn receipts instead of creating a
+second spend system.
+
+- schema: `docs/schemas/average-issue-cost-scorecard-v1.schema.json`
+- helper: `tools/priority/average-issue-cost-scorecard.mjs`
+- output:
+  - `tests/results/_agent/capital/average-issue-cost-scorecard.json`
+
+Behavior:
+
+- consumes the existing rollup at `tests/results/_agent/cost/agent-cost-rollup.json`
+- ties spend attribution to invoice turns and funding windows
+- emits a time-ordered funding-window series with:
+  - per-window `averageUsdPerIssue`
+  - cumulative `rollingAverageUsdPerIssue`
+- separates observed spend into:
+  - `liveAgentUsd`
+  - `backgroundAgentUsd`
+  - `hostedValidationUsd` when the turn is explicitly hosted-plane
+- reports current issue-state buckets:
+  - `open`
+  - `closed-completed`
+  - `blocked-external`
+  - `unknown`
+- preserves per-issue provenance:
+  - turn ids
+  - source receipt/report paths
+  - invoice-turn ids
+  - assignment strategies
+
+This first slice is intentionally honest about issue state. It applies the
+current hydrated issue state to observed spend windows, which is enough to
+benchmark present averages but not enough to prove historical state transitions
+inside older windows.
+
 ## Sticky Calibration Funding-Window Mode
 
 `#1657` extends the invoice-turn contract with an explicit selection record so
