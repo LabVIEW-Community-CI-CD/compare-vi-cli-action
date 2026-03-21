@@ -92,6 +92,14 @@ if ($Args[0] -eq 'pull') {
 }
 
 if ($Args[0] -eq 'run') {
+  $runStderr = [Environment]::GetEnvironmentVariable('DOCKER_STUB_RUN_STDERR')
+  if (-not [string]::IsNullOrWhiteSpace($runStderr)) {
+    [Console]::Error.WriteLine($runStderr)
+  }
+  $runExitCode = [Environment]::GetEnvironmentVariable('DOCKER_STUB_RUN_EXITCODE')
+  if (-not [string]::IsNullOrWhiteSpace($runExitCode)) {
+    exit ([int]$runExitCode)
+  }
   Write-Output 'ni-runtime-probe-ok'
   exit 0
 }
@@ -142,6 +150,8 @@ exit 0
       DOCKER_STUB_IMAGE_EXISTS = $env:DOCKER_STUB_IMAGE_EXISTS
       DOCKER_STUB_INFO_JSON = $env:DOCKER_STUB_INFO_JSON
       DOCKER_STUB_INFO_EXITCODE = $env:DOCKER_STUB_INFO_EXITCODE
+      DOCKER_STUB_RUN_STDERR = $env:DOCKER_STUB_RUN_STDERR
+      DOCKER_STUB_RUN_EXITCODE = $env:DOCKER_STUB_RUN_EXITCODE
     }
   }
 
@@ -219,5 +229,44 @@ exit 0
     $json.failureClass | Should -Be 'docker-runtime-unavailable'
     $json.runtimeDeterminism.status | Should -Be 'unavailable'
     $json.runtimeDeterminism.reason | Should -Be 'docker-daemon-unavailable'
+  }
+
+  It 'fails desktop-local fast and quietly when Docker Desktop is still on the Linux engine' {
+    $work = Join-Path $TestDrive 'desktop-local-linux-engine'
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    & $script:CreateDockerHostedStubs -WorkRoot $work
+
+    Set-Item Env:DOCKER_STUB_CONTEXT 'desktop-linux'
+    Set-Item Env:DOCKER_STUB_OSTYPE 'linux'
+    Set-Item Env:DOCKER_STUB_RUN_STDERR 'Error response from daemon: No such container: synthetic-container'
+    Set-Item Env:DOCKER_STUB_RUN_EXITCODE '1'
+
+    $resultsRoot = Join-Path $work 'results'
+    $outputJsonPath = Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json'
+
+    $output = @(& pwsh -NoLogo -NoProfile -File $script:ToolPath `
+      -Image 'nationalinstruments/labview:2026q1-windows' `
+      -ResultsDir $resultsRoot `
+      -ExecutionSurface 'desktop-local' `
+      -OutputJsonPath $outputJsonPath `
+      -GitHubOutputPath '' `
+      -StepSummaryPath '' 2>&1)
+    $LASTEXITCODE | Should -Not -Be 0
+    ($output -join "`n") | Should -Not -Match 'No such container'
+
+    $json = Get-Content -LiteralPath $outputJsonPath -Raw | ConvertFrom-Json -Depth 20
+    $json.executionSurface | Should -Be 'desktop-local'
+    $json.status | Should -Be 'failure'
+    $json.failureClass | Should -Be 'docker-engine-mismatch'
+    $json.failureMessage | Should -Match 'Switch Docker Desktop to Windows containers'
+    $json.contexts.start | Should -Be 'desktop-linux'
+    $json.contexts.startOsType | Should -Be 'linux'
+    $json.contexts.final | Should -Be 'desktop-linux'
+    $json.contexts.finalOsType | Should -Be 'linux'
+    $json.runtimeDeterminism.status | Should -Be 'mismatch'
+    $json.runtimeDeterminism.reason | Should -Be 'desktop-local-windows-preflight-requires-windows-engine'
+    $json.runtimeDeterminism.failureClass | Should -Be 'docker-engine-mismatch'
+    $json.bootstrap.attempted | Should -BeFalse
+    $json.probe.attempted | Should -BeFalse
   }
 }
