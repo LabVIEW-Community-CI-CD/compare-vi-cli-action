@@ -1,0 +1,30 @@
+{
+  "schema": "comparevi/operation-payload-source-bundle@v1",
+  "name": "PrintToSingleFileHtml",
+  "payloadMode": "additional-operation-directory",
+  "sourceRepositorySlug": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+  "sourceRepositoryUrl": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action",
+  "sourceLicenseSpdx": "BSD-3-Clause",
+  "ownership": "repo-owned",
+  "implementationBasis": "LabVIEW Print:VI To HTML",
+  "intendedCertificationSurface": "print-single-file",
+  "intendedChangeKinds": [
+    "added",
+    "deleted"
+  ],
+  "expectedOperationFiles": [
+    "GetHelp.vi",
+    "RunOperation.vi"
+  ],
+  "currentState": "licensed-source-bundle",
+  "promotionTarget": "accepted",
+  "promotionBlocked": true,
+  "blockingReasons": [
+    "Runnable LabVIEW operation files are not checked in yet.",
+    "No public workflow run has proven this repo-owned payload on an added or deleted VI."
+  ],
+  "notes": [
+    "This bundle replaces research-only provenance with an explicit BSD-3 licensed repo-owned source surface.",
+    "Do not promote a headless sample corpus target on this payload until the public proof requirement is satisfied."
+  ]
+}
