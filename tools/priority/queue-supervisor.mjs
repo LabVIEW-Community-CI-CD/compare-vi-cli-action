@@ -1656,7 +1656,21 @@ export async function runQueueSupervisor(options = {}) {
     runtimeState,
     runtimeStatePath
   });
+  const queueManagedCandidates = classified.candidates.filter((candidate) => queueManagedBranches.has(candidate.baseRefName));
   const candidateByNumber = new Map(classified.candidates.map((candidate) => [candidate.number, candidate]));
+  const readyCandidates = queueReadiness.readySet.map((entry) => candidateByNumber.get(entry.number)).filter(Boolean);
+  const readyQueuedCount = readyCandidates.filter((candidate) => candidate.autoMergeEnabled).length;
+  const readyUnqueuedCount = Math.max(0, readyCandidates.length - readyQueuedCount);
+  const queueInventory = {
+    queueManagedOpenCount: queueManagedCandidates.length,
+    readyPrInventory: readyCandidates.length,
+    blockedPrInventory: Math.max(0, queueManagedCandidates.length - readyCandidates.length),
+    readyQueuedCount,
+    readyUnqueuedCount,
+    mergeQueueOccupancy: inflight,
+    mergeQueueTargetCapacity: effectiveMaxInflight,
+    mergeQueueAvailableCapacity: capacity
+  };
   const planned = queueReadiness.readySet
     .map((entry) => candidateByNumber.get(entry.number))
     .filter(Boolean)
@@ -1707,6 +1721,7 @@ export async function runQueueSupervisor(options = {}) {
     paused: uniquePausedReasons.length > 0,
     pausedReasons: uniquePausedReasons,
     throughputController: throughputControllerState,
+    queueInventory,
     readiness: {
       reportPath: readinessReportPath,
       summary: queueReadiness.summary,
@@ -1721,6 +1736,14 @@ export async function runQueueSupervisor(options = {}) {
       candidateCount: classified.candidates.length,
       eligibleCount: classified.orderedEligible.length,
       cycleDetected: classified.cycleDetected,
+      queueManagedOpenCount: queueInventory.queueManagedOpenCount,
+      readyPrInventory: queueInventory.readyPrInventory,
+      blockedPrInventory: queueInventory.blockedPrInventory,
+      readyQueuedCount: queueInventory.readyQueuedCount,
+      readyUnqueuedCount: queueInventory.readyUnqueuedCount,
+      mergeQueueOccupancy: queueInventory.mergeQueueOccupancy,
+      mergeQueueTargetCapacity: queueInventory.mergeQueueTargetCapacity,
+      mergeQueueAvailableCapacity: queueInventory.mergeQueueAvailableCapacity,
       plannedCount: toProcess.length,
       enqueuedCount: 0,
       quarantinedCount: 0,
@@ -1907,7 +1930,9 @@ export async function main(argv = process.argv) {
   if (readinessPath) {
     console.log(`[queue-supervisor] readiness report: ${readinessPath}`);
   }
-  console.log(`[queue-supervisor] paused=${report.paused} eligible=${report.summary.eligibleCount} planned=${report.summary.plannedCount} enqueued=${report.summary.enqueuedCount}`);
+  console.log(
+    `[queue-supervisor] paused=${report.paused} ready=${report.summary.readyPrInventory} blocked=${report.summary.blockedPrInventory} occupancy=${report.summary.mergeQueueOccupancy}/${report.summary.mergeQueueTargetCapacity} planned=${report.summary.plannedCount} enqueued=${report.summary.enqueuedCount}`
+  );
   if (report.paused) {
     console.log(`[queue-supervisor] pause reasons: ${report.pausedReasons.join(', ')}`);
   }

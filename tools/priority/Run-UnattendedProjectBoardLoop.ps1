@@ -756,12 +756,22 @@ while ($true) {
     $eligibleCount = $null
     $plannedCount = $null
     $enqueuedCount = $null
+    $readyPrInventory = $null
+    $blockedPrInventory = $null
+    $mergeQueueOccupancy = $null
+    $mergeQueueTargetCapacity = $null
+    $mergeQueueAvailableCapacity = $null
     if ($queueReport.parsed) {
       $paused = [bool]$queueReport.parsed.paused
       $pausedReasons = @($queueReport.parsed.pausedReasons | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
       $eligibleCount = $queueReport.parsed.summary.eligibleCount
       $plannedCount = $queueReport.parsed.summary.plannedCount
       $enqueuedCount = $queueReport.parsed.summary.enqueuedCount
+      $readyPrInventory = $queueReport.parsed.summary.readyPrInventory
+      $blockedPrInventory = $queueReport.parsed.summary.blockedPrInventory
+      $mergeQueueOccupancy = $queueReport.parsed.summary.mergeQueueOccupancy
+      $mergeQueueTargetCapacity = $queueReport.parsed.summary.mergeQueueTargetCapacity
+      $mergeQueueAvailableCapacity = $queueReport.parsed.summary.mergeQueueAvailableCapacity
     }
     $cycleReport.queueSupervisor.report = [ordered]@{
       path = $queueReport.path
@@ -772,6 +782,11 @@ while ($true) {
       eligibleCount = $eligibleCount
       plannedCount = $plannedCount
       enqueuedCount = $enqueuedCount
+      readyPrInventory = $readyPrInventory
+      blockedPrInventory = $blockedPrInventory
+      mergeQueueOccupancy = $mergeQueueOccupancy
+      mergeQueueTargetCapacity = $mergeQueueTargetCapacity
+      mergeQueueAvailableCapacity = $mergeQueueAvailableCapacity
     }
 
     if ($paused) {

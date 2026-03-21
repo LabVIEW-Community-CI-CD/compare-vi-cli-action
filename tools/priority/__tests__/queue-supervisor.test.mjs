@@ -1096,6 +1096,153 @@ test('runQueueSupervisor enqueues eligible PRs in dependency-safe deterministic 
   assert.equal(mergeSyncInvocations.length, 3);
 });
 
+test('runQueueSupervisor projects merge-queue occupancy and ready inventory into the report surface', async () => {
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'pr' && args[1] === 'list') {
+      return [
+        {
+          number: 601,
+          title: '[P0] queued ready change',
+          body: 'Coupling: independent',
+          baseRefName: 'develop',
+          headRepositoryOwner: { login: 'owner' },
+          isDraft: false,
+          mergeStateStatus: 'BLOCKED',
+          mergeable: 'MERGEABLE',
+          updatedAt: '2026-03-05T20:00:00Z',
+          url: 'https://example.test/pr/601',
+          labels: [],
+          statusCheckRollup: [successCheck('lint')],
+          autoMergeRequest: { enabledAt: '2026-03-05T21:00:00Z' }
+        },
+        {
+          number: 602,
+          title: '[P1] ready but not queued',
+          body: 'Coupling: independent',
+          baseRefName: 'develop',
+          headRepositoryOwner: { login: 'owner' },
+          isDraft: false,
+          mergeStateStatus: 'CLEAN',
+          mergeable: 'MERGEABLE',
+          updatedAt: '2026-03-05T20:10:00Z',
+          url: 'https://example.test/pr/602',
+          labels: [],
+          statusCheckRollup: [successCheck('lint')],
+          autoMergeRequest: null
+        },
+        {
+          number: 603,
+          title: '[P2] blocked by draft',
+          body: 'Coupling: independent',
+          baseRefName: 'develop',
+          headRepositoryOwner: { login: 'owner' },
+          isDraft: true,
+          mergeStateStatus: 'CLEAN',
+          mergeable: 'MERGEABLE',
+          updatedAt: '2026-03-05T20:15:00Z',
+          url: 'https://example.test/pr/603',
+          labels: [],
+          statusCheckRollup: [successCheck('lint')],
+          autoMergeRequest: null
+        },
+        {
+          number: 604,
+          title: '[P2] non-queue branch',
+          body: 'Coupling: independent',
+          baseRefName: 'release/2026.03',
+          headRepositoryOwner: { login: 'owner' },
+          isDraft: false,
+          mergeStateStatus: 'CLEAN',
+          mergeable: 'MERGEABLE',
+          updatedAt: '2026-03-05T20:20:00Z',
+          url: 'https://example.test/pr/604',
+          labels: [],
+          statusCheckRollup: [successCheck('lint')],
+          autoMergeRequest: null
+        }
+      ];
+    }
+    if (args[0] === 'api' && String(args[1]).includes('validate.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:50:00Z', updated_at: '2026-03-05T20:52:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('policy-guard-upstream.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-05T20:40:00Z', updated_at: '2026-03-05T20:41:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('fixture-drift.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('commit-integrity.yml')) return { workflow_runs: [] };
+    throw new Error(`Unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const readJsonFileFn = async (filePath) => {
+    if (String(filePath).endsWith('branch-required-checks.json')) {
+      return { branches: { develop: ['lint'] } };
+    }
+    if (String(filePath).endsWith('policy.json')) {
+      return {
+        rulesets: {
+          develop: {
+            includes: ['refs/heads/develop'],
+            merge_queue: { merge_method: 'SQUASH' }
+          }
+        }
+      };
+    }
+    throw new Error(`Unexpected read path: ${filePath}`);
+  };
+
+  const { report } = await runQueueSupervisor({
+    repoRoot: process.cwd(),
+    args: {
+      apply: false,
+      dryRun: true,
+      reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      maxInflight: 5,
+      minInflight: 1,
+      adaptiveCap: false,
+      maxQueuedRuns: 6,
+      maxInProgressRuns: 8,
+      stallThresholdMinutes: 45,
+      repo: 'owner/repo',
+      baseBranches: ['develop', 'main'],
+      healthBranch: 'develop',
+      help: false
+    },
+    now: new Date('2026-03-05T21:30:00.000Z'),
+    runGhJsonFn,
+    runCommandFn: () => ({ status: 0, stdout: '', stderr: '' }),
+    readJsonFileFn,
+    readOptionalJsonFn: async () => ({}),
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(report.summary.queueManagedOpenCount, 3);
+  assert.equal(report.summary.readyPrInventory, 2);
+  assert.equal(report.summary.blockedPrInventory, 1);
+  assert.equal(report.summary.readyQueuedCount, 1);
+  assert.equal(report.summary.readyUnqueuedCount, 1);
+  assert.equal(report.summary.mergeQueueOccupancy, 1);
+  assert.equal(report.summary.mergeQueueTargetCapacity, 5);
+  assert.equal(report.summary.mergeQueueAvailableCapacity, 4);
+  assert.deepEqual(report.queueInventory, {
+    queueManagedOpenCount: 3,
+    readyPrInventory: 2,
+    blockedPrInventory: 1,
+    readyQueuedCount: 1,
+    readyUnqueuedCount: 1,
+    mergeQueueOccupancy: 1,
+    mergeQueueTargetCapacity: 5,
+    mergeQueueAvailableCapacity: 4
+  });
+});
+
 test('runQueueSupervisor does not mark enqueue success when merge-sync exits 0 without durable promotion state', async () => {
   const runGhJsonFn = (args) => {
     if (args[0] === 'pr' && args[1] === 'list') {

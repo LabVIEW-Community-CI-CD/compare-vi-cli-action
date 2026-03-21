@@ -12,6 +12,7 @@
     "mode",
     "queueManagedBranches",
     "summary",
+    "queueInventory",
     "paused",
     "pausedReasons",
     "actions",
@@ -65,6 +66,14 @@
         "openCount",
         "candidateCount",
         "eligibleCount",
+        "queueManagedOpenCount",
+        "readyPrInventory",
+        "blockedPrInventory",
+        "readyQueuedCount",
+        "readyUnqueuedCount",
+        "mergeQueueOccupancy",
+        "mergeQueueTargetCapacity",
+        "mergeQueueAvailableCapacity",
         "plannedCount",
         "enqueuedCount",
         "quarantinedCount",
@@ -83,6 +92,38 @@
           "type": "integer",
           "minimum": 0
         },
+        "queueManagedOpenCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readyPrInventory": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blockedPrInventory": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readyQueuedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readyUnqueuedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mergeQueueOccupancy": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mergeQueueTargetCapacity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mergeQueueAvailableCapacity": {
+          "type": "integer",
+          "minimum": 0
+        },
         "plannedCount": {
           "type": "integer",
           "minimum": 0
@@ -97,6 +138,54 @@
         },
         "securityIntakeStatus": {
           "enum": ["pass", "breach", "overridden", "platform-stale", "skip", "error", null]
+        }
+      }
+    },
+    "queueInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queueManagedOpenCount",
+        "readyPrInventory",
+        "blockedPrInventory",
+        "readyQueuedCount",
+        "readyUnqueuedCount",
+        "mergeQueueOccupancy",
+        "mergeQueueTargetCapacity",
+        "mergeQueueAvailableCapacity"
+      ],
+      "properties": {
+        "queueManagedOpenCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readyPrInventory": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blockedPrInventory": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readyQueuedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readyUnqueuedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mergeQueueOccupancy": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mergeQueueTargetCapacity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mergeQueueAvailableCapacity": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
