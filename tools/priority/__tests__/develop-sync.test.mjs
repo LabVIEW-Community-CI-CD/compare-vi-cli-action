@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   parseArgs,
+  listConfiguredForkRemotes,
   resolveForkRemoteTargets,
   buildParityReportPath,
   buildPwshArgs,
@@ -90,10 +91,66 @@ test('develop-sync parseArgs accepts fork-remote and report overrides', () => {
   assert.equal(parsed.reportPath, 'custom/report.json');
 });
 
-test('resolveForkRemoteTargets defaults to origin and supports all lanes', () => {
-  assert.deepEqual(resolveForkRemoteTargets(null, {}), ['origin']);
+test('resolveForkRemoteTargets uses configured fork rails by default and still supports explicit all lanes', () => {
+  assert.deepEqual(resolveForkRemoteTargets(null, {}), ['origin', 'personal']);
   assert.deepEqual(resolveForkRemoteTargets('personal', {}), ['personal']);
   assert.deepEqual(resolveForkRemoteTargets('all', {}), ['origin', 'personal']);
+});
+
+test('listConfiguredForkRemotes returns only supported configured fork remotes', () => {
+  const remotes = listConfiguredForkRemotes({
+    repoRoot: 'C:/repo',
+    spawnSyncFn: (command, args) => {
+      assert.equal(command, 'git');
+      assert.deepEqual(args, ['remote']);
+      return {
+        status: 0,
+        stdout: 'origin\nupstream\npersonal\nmirror\n',
+        stderr: ''
+      };
+    }
+  });
+
+  assert.deepEqual(remotes, ['origin', 'personal']);
+});
+
+test('resolveForkRemoteTargets defaults to all configured fork remotes when both origin and personal exist', () => {
+  const targets = resolveForkRemoteTargets(null, {}, {
+    repoRoot: 'C:/repo',
+    spawnSyncFn: () => ({
+      status: 0,
+      stdout: 'origin\npersonal\nupstream\n',
+      stderr: ''
+    })
+  });
+
+  assert.deepEqual(targets, ['origin', 'personal']);
+});
+
+test('resolveForkRemoteTargets defaults to the only configured fork remote in a single-fork repo shape', () => {
+  const targets = resolveForkRemoteTargets(null, {}, {
+    repoRoot: 'C:/repo',
+    spawnSyncFn: () => ({
+      status: 0,
+      stdout: 'origin\nupstream\n',
+      stderr: ''
+    })
+  });
+
+  assert.deepEqual(targets, ['origin']);
+});
+
+test('resolveForkRemoteTargets still honors explicit remote overrides when multiple fork remotes are configured', () => {
+  const targets = resolveForkRemoteTargets('personal', {}, {
+    repoRoot: 'C:/repo',
+    spawnSyncFn: () => ({
+      status: 0,
+      stdout: 'origin\npersonal\nupstream\n',
+      stderr: ''
+    })
+  });
+
+  assert.deepEqual(targets, ['personal']);
 });
 
 test('buildPwshArgs pins the selected remote and parity path', () => {
@@ -736,6 +793,84 @@ test('runDevelopSync reports every requested remote before failing aggregate all
     ]
   );
   assert.equal(report.actions[1].commitDivergence.headOnly, 5);
+});
+
+test('runDevelopSync defaults to all configured fork remotes when both fork rails exist and no explicit remote is requested', async (t) => {
+  const sandboxRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-default-all-remotes-'));
+  const upstreamBare = path.join(sandboxRoot, 'upstream.git');
+  const originBare = path.join(sandboxRoot, 'origin.git');
+  const personalBare = path.join(sandboxRoot, 'personal.git');
+  const localRepo = path.join(sandboxRoot, 'local');
+  const reportPath = path.join(sandboxRoot, 'develop-sync-report.json');
+  t.after(async () => {
+    await rm(sandboxRoot, { recursive: true, force: true });
+  });
+
+  initBareRepo(upstreamBare);
+  initBareRepo(originBare);
+  initBareRepo(personalBare);
+  initTempGitRepo(localRepo);
+  run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: localRepo });
+  run('git', ['remote', 'add', 'origin', originBare], { cwd: localRepo });
+  run('git', ['remote', 'add', 'personal', personalBare], { cwd: localRepo });
+
+  const attemptedRemotes = [];
+  const writeParityReport = (parityReportPath, remote) => {
+    writeFileSyncImmediate(
+      parityReportPath,
+      JSON.stringify(
+        {
+          schema: `${remote}-upstream-parity@v1`,
+          status: 'ok',
+          tipDiff: { fileCount: 0 },
+          planeTransition: {
+            from: 'upstream',
+            to: remote,
+            action: 'sync',
+            via: 'priority:develop:sync'
+          },
+          syncResult: {
+            mode: 'direct-push',
+            reason: 'direct-push',
+            parityConverged: true
+          }
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+  };
+
+  const { report } = runDevelopSync({
+    repoRoot: localRepo,
+    options: { reportPath },
+    spawnSyncFn: (command, args, options = {}) => {
+      if (command === 'git') {
+        return spawnSync(command, args, {
+          ...options,
+          cwd: options.cwd ?? localRepo,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+      }
+      if (command === 'pwsh') {
+        const remote = args[args.indexOf('-HeadRemote') + 1];
+        attemptedRemotes.push(remote);
+        const parityReportPath = path.join(localRepo, 'tests', 'results', '_agent', 'issue', `${remote}-upstream-parity.json`);
+        mkdirSync(path.dirname(parityReportPath), { recursive: true });
+        writeParityReport(parityReportPath, remote);
+        return { status: 0, stdout: '', stderr: '' };
+      }
+      throw new Error(`Unexpected command ${command}`);
+    }
+  });
+
+  assert.deepEqual(attemptedRemotes, ['origin', 'personal']);
+  assert.deepEqual(report.remotes, ['origin', 'personal']);
+  assert.equal(report.remoteSelection.requested, null);
+  assert.deepEqual(report.remoteSelection.resolved, ['origin', 'personal']);
+  assert.equal(report.remoteSelection.summary, 'origin, personal');
 });
 
 test('runDevelopSync continues to later remotes after an earlier all-remote failure', async (t) => {
