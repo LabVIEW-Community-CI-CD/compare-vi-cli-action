@@ -49,6 +49,7 @@ test('package scripts and runbook expose downstream promotion manifest and score
   assert.match(runbook, /replay/i);
   assert.match(runbook, /downstream-develop-promotion-scorecard\.json/);
   assert.match(runbook, /template-agent-verification-report\.json/);
+  assert.match(runbook, /`pending` snapshot/);
   assert.match(runbook, /reservedSlotCount = 1/);
   assert.match(runbook, /minimumImplementationSlots = 3/);
   assert.match(runbook, /hosted-first/);
