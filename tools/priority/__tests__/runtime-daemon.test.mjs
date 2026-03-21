@@ -468,12 +468,14 @@ test('comparevi worker checkout allocator quarantines stale runtime drift before
 test('comparevi worker checkout allocator rewrites new WSL worktree pointers into cross-plane relative metadata', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-create-relative-'));
   const laneId = 'origin-1201';
+  const slotId = 'worker-slot-1';
   const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
     repoRoot,
     repository: 'example/repo',
-    laneId
+    laneId,
+    slotId
   });
-  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', laneId);
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', slotId);
 
   const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
     repoRoot,
@@ -496,8 +498,8 @@ test('comparevi worker checkout allocator rewrites new WSL worktree pointers int
         if (args[0] === 'worktree' && args[1] === 'add') {
           await mkdir(checkoutPath, { recursive: true });
           await mkdir(worktreeAdminDir, { recursive: true });
-          await writeFile(path.join(checkoutPath, '.git'), `gitdir: /mnt/c/mock/.git/worktrees/${laneId}\n`, 'utf8');
-          await writeFile(path.join(worktreeAdminDir, 'gitdir'), `/mnt/c/mock/.runtime-worktrees/example-repo/${laneId}/.git\n`, 'utf8');
+          await writeFile(path.join(checkoutPath, '.git'), `gitdir: /mnt/c/mock/.git/worktrees/${slotId}\n`, 'utf8');
+          await writeFile(path.join(worktreeAdminDir, 'gitdir'), `/mnt/c/mock/.runtime-worktrees/example-repo/${slotId}/.git\n`, 'utf8');
           return { stdout: '', stderr: '' };
         }
         if (args[0] === 'remote') {
@@ -518,6 +520,7 @@ test('comparevi worker checkout allocator rewrites new WSL worktree pointers int
   });
 
   assert.equal(prepared.status, 'created');
+  assert.equal(prepared.slotId, slotId);
   assert.equal(
     await readFile(path.join(checkoutPath, '.git'), 'utf8'),
     `gitdir: ${path.relative(checkoutPath, worktreeAdminDir).replace(/\\/g, '/')}\n`

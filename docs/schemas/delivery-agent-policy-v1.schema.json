@@ -27,6 +27,43 @@
     "allowPolicyMutations": { "type": "boolean" },
     "allowReleaseAdmin": { "type": "boolean" },
     "stopWhenNoOpenEpics": { "type": "boolean" },
+    "workerPool": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "targetSlotCount": { "type": "integer", "minimum": 1 },
+        "prewarmSlotCount": { "type": "integer", "minimum": 0 },
+        "releaseWaitingStates": {
+          "type": "array",
+          "items": {
+            "enum": ["waiting-ci", "waiting-review", "ready-merge"]
+          }
+        },
+        "providers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["id", "kind", "executionPlane", "assignmentMode", "enabled", "slotCount"],
+            "properties": {
+              "id": { "type": "string" },
+              "kind": {
+                "enum": [
+                  "local-codex",
+                  "hosted-github-workflow",
+                  "remote-copilot-lane",
+                  "local-shadow-native"
+                ]
+              },
+              "executionPlane": { "type": "string" },
+              "assignmentMode": { "type": "string" },
+              "enabled": { "type": "boolean" },
+              "slotCount": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    },
     "hostIsolation": {
       "type": "object",
       "additionalProperties": true,

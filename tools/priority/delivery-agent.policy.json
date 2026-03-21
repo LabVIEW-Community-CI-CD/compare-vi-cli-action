@@ -5,10 +5,53 @@
   "copilotReviewStrategy": "draft-only-explicit",
   "autoSlice": true,
   "autoMerge": true,
-  "maxActiveCodingLanes": 1,
+  "maxActiveCodingLanes": 4,
   "allowPolicyMutations": false,
   "allowReleaseAdmin": false,
   "stopWhenNoOpenEpics": true,
+  "workerPool": {
+    "targetSlotCount": 4,
+    "prewarmSlotCount": 1,
+    "releaseWaitingStates": [
+      "waiting-ci",
+      "waiting-review",
+      "ready-merge"
+    ],
+    "providers": [
+      {
+        "id": "local-codex",
+        "kind": "local-codex",
+        "executionPlane": "local",
+        "assignmentMode": "interactive-coding",
+        "enabled": true,
+        "slotCount": 1
+      },
+      {
+        "id": "hosted-github-workflow",
+        "kind": "hosted-github-workflow",
+        "executionPlane": "hosted",
+        "assignmentMode": "async-validation",
+        "enabled": true,
+        "slotCount": 1
+      },
+      {
+        "id": "remote-copilot-lane",
+        "kind": "remote-copilot-lane",
+        "executionPlane": "remote",
+        "assignmentMode": "remote-implementation",
+        "enabled": true,
+        "slotCount": 1
+      },
+      {
+        "id": "local-shadow-native",
+        "kind": "local-shadow-native",
+        "executionPlane": "local-shadow",
+        "assignmentMode": "shadow-validation",
+        "enabled": true,
+        "slotCount": 1
+      }
+    ]
+  },
   "hostIsolation": {
     "mode": "hard-cutover",
     "wslDistro": "Ubuntu",

@@ -307,6 +307,7 @@ function summarizeWorker(workerRecord) {
   if (!workerRecord) return null;
   return {
     laneId: workerRecord.laneId,
+    slotId: workerRecord.slotId ?? null,
     checkoutPath: workerRecord.checkoutPath,
     checkoutRoot: workerRecord.checkoutRoot,
     status: workerRecord.status,
@@ -321,6 +322,7 @@ function summarizeWorkerReady(workerReadyRecord) {
   if (!workerReadyRecord) return null;
   return {
     laneId: workerReadyRecord.laneId,
+    slotId: workerReadyRecord.slotId ?? null,
     checkoutPath: workerReadyRecord.checkoutPath,
     status: workerReadyRecord.status,
     bootstrapCommand: workerReadyRecord.bootstrapCommand,
@@ -334,6 +336,7 @@ function summarizeWorkerBranch(workerBranchRecord) {
   if (!workerBranchRecord) return null;
   return {
     laneId: workerBranchRecord.laneId,
+    slotId: workerBranchRecord.slotId ?? null,
     checkoutPath: workerBranchRecord.checkoutPath,
     branch: workerBranchRecord.branch,
     status: workerBranchRecord.status,

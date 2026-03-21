@@ -42,9 +42,11 @@
         "schema": { "const": "priority/delivery-agent-policy@v1" },
         "implementationRemote": { "type": "string" },
         "copilotReviewStrategy": { "enum": ["draft-only-explicit"] },
-        "maxActiveCodingLanes": { "type": "integer", "minimum": 1 }
+        "maxActiveCodingLanes": { "type": "integer", "minimum": 1 },
+        "workerPool": { "$ref": "#/$defs/workerPoolPolicy" }
       }
     },
+    "workerPool": { "$ref": "#/$defs/workerPool" },
     "localReviewLoop": {
       "type": ["object", "null"],
       "additionalProperties": true,
@@ -184,5 +186,105 @@
       }
     },
     "artifacts": { "type": "object", "additionalProperties": true }
+  },
+  "$defs": {
+    "workerProvider": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "kind", "executionPlane", "assignmentMode", "enabled", "slotCount"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string" },
+        "executionPlane": { "type": "string" },
+        "assignmentMode": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "slotCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "workerSlot": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["slotId", "status"],
+      "properties": {
+        "slotId": { "type": "string" },
+        "providerId": { "type": ["string", "null"] },
+        "providerKind": { "type": ["string", "null"] },
+        "executionPlane": { "type": ["string", "null"] },
+        "assignmentMode": { "type": ["string", "null"] },
+        "status": { "enum": ["available", "occupied"] },
+        "laneId": { "type": ["string", "null"] },
+        "issue": { "type": ["integer", "null"], "minimum": 1 },
+        "laneLifecycle": { "type": ["string", "null"] }
+      }
+    },
+    "releasedLane": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["laneId", "laneLifecycle", "releaseReason"],
+      "properties": {
+        "slotId": { "type": ["string", "null"] },
+        "laneId": { "type": "string" },
+        "issue": { "type": ["integer", "null"], "minimum": 1 },
+        "laneLifecycle": { "type": "string" },
+        "releaseReason": { "type": "string" }
+      }
+    },
+    "workerPool": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "targetSlotCount",
+        "prewarmSlotCount",
+        "releaseWaitingStates",
+        "providers",
+        "slots",
+        "occupiedSlotCount",
+        "availableSlotCount",
+        "releasedLaneCount",
+        "releasedLanes",
+        "utilizationRatio"
+      ],
+      "properties": {
+        "targetSlotCount": { "type": "integer", "minimum": 1 },
+        "prewarmSlotCount": { "type": "integer", "minimum": 0 },
+        "releaseWaitingStates": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "providers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/workerProvider" }
+        },
+        "slots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/workerSlot" }
+        },
+        "occupiedSlotCount": { "type": "integer", "minimum": 0 },
+        "availableSlotCount": { "type": "integer", "minimum": 0 },
+        "releasedLaneCount": { "type": "integer", "minimum": 0 },
+        "releasedLanes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/releasedLane" }
+        },
+        "utilizationRatio": { "type": "number", "minimum": 0 }
+      }
+    },
+    "workerPoolPolicy": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["targetSlotCount", "prewarmSlotCount", "releaseWaitingStates", "providers"],
+      "properties": {
+        "targetSlotCount": { "type": "integer", "minimum": 1 },
+        "prewarmSlotCount": { "type": "integer", "minimum": 0 },
+        "releaseWaitingStates": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "providers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/workerProvider" }
+        }
+      }
+    }
   }
 }

@@ -31,6 +31,14 @@
       "additionalProperties": true,
       "required": ["delivery"],
       "properties": {
+        "lane": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "workerSlotId": { "type": ["string", "null"] },
+            "workerCheckoutPath": { "type": ["string", "null"] }
+          }
+        },
         "delivery": {
           "type": "object",
           "additionalProperties": true,
@@ -70,6 +78,22 @@
               }
             },
             "localReviewLoop": { "type": ["object", "null"], "additionalProperties": true },
+            "workerPool": {
+              "type": ["object", "null"],
+              "additionalProperties": true,
+              "properties": {
+                "targetSlotCount": { "type": "integer", "minimum": 1 },
+                "prewarmSlotCount": { "type": "integer", "minimum": 0 },
+                "releaseWaitingStates": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "providers": {
+                  "type": "array",
+                  "items": { "type": "object", "additionalProperties": true }
+                }
+              }
+            },
             "mutationEnvelope": { "type": "object", "additionalProperties": true },
             "turnBudget": { "type": "object", "additionalProperties": true },
             "relevantFiles": {
