@@ -599,6 +599,7 @@ exit 0
     $capture.containerShellContract.family | Should -Be 'windows-powershell'
     $capture.containerShellContract.encodedCommand | Should -BeTrue
     $capture.containerShellContract.pwshRequired | Should -BeFalse
+    $capture.containerShellContract.hostWrapperShell | Should -Be 'pwsh'
     $capture.runtimeDeterminism.observed.dockerHost | Should -Be 'npipe:////./pipe/docker_engine'
     $capture.timedOut | Should -BeFalse
     $capture.PSObject.Properties.Name | Should -Contain 'observedDockerHost'

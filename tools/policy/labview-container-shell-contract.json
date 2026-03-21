@@ -1,0 +1,19 @@
+{
+  "schema": "labview-container-shell-contract/v1",
+  "schemaVersion": "1.0.0",
+  "hostWrapperShell": "pwsh",
+  "planes": {
+    "windows": {
+      "executable": "powershell",
+      "family": "windows-powershell",
+      "encodedCommand": true,
+      "pwshRequired": false
+    },
+    "linux": {
+      "executable": "bash",
+      "family": "posix-bash",
+      "encodedCommand": false,
+      "pwshRequired": false
+    }
+  }
+}

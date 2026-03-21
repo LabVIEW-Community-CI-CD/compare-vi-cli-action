@@ -130,6 +130,11 @@ if (-not (Test-Path -LiteralPath $classifierScriptPath -PathType Leaf)) {
 }
 . $classifierScriptPath
 
+$shellContractScriptPath = Join-Path (Split-Path -Parent $PSCommandPath) 'Get-LabVIEWContainerShellContract.ps1'
+if (-not (Test-Path -LiteralPath $shellContractScriptPath -PathType Leaf)) {
+  throw ("LabVIEW container shell contract script not found: {0}" -f $shellContractScriptPath)
+}
+
 $script:PreflightExitCode = 2
 $script:TimeoutExitCode = 124
 
@@ -2022,6 +2027,8 @@ if ($StartupRetryCount -lt 0) {
   throw '-StartupRetryCount must be zero or greater.'
 }
 
+$containerShellContract = & $shellContractScriptPath -Plane 'linux'
+
 $capture = [ordered]@{
   schema         = 'ni-linux-container-compare/v1'
   generatedAt    = (Get-Date).ToUniversalTime().ToString('o')
@@ -2035,13 +2042,7 @@ $capture = [ordered]@{
   dockerServerOs = $null
   dockerContext  = $null
   observedDockerHost = $null
-  containerShellContract = [ordered]@{
-    plane = 'linux'
-    executable = 'bash'
-    family = 'posix-bash'
-    encodedCommand = $false
-    pwshRequired = $false
-  }
+  containerShellContract = $containerShellContract
   baseVi         = $null
   headVi         = $null
   reportPath     = $null
@@ -2696,10 +2697,10 @@ try {
     if ($useExistingContainer) {
       $dockerArgs += @(
         $containerName,
-        'bash',
+        [string]$containerShellContract.executable,
         $containerScriptPath
       )
-      $capture.command = ('docker exec --workdir {0} {1} bash {2}' -f $ReuseRepoContainerPath, $containerName, $containerScriptPath)
+      $capture.command = ('docker exec --workdir {0} {1} {2} {3}' -f $ReuseRepoContainerPath, $containerName, [string]$containerShellContract.executable, $containerScriptPath)
       Write-Host ("[ni-linux-container-compare] mode=docker-exec container={0} image={1} report={2} capture={3} stdout={4} stderr={5}" -f $containerName, $Image, $resolvedReportPath, $capturePath, $stdoutPath, $stderrPath) -ForegroundColor Cyan
       $runResult = Invoke-DockerExecWithTimeout `
         -DockerArgs $dockerArgs `
@@ -2709,10 +2710,10 @@ try {
     } else {
       $dockerArgs += @(
         $Image,
-        'bash',
+        [string]$containerShellContract.executable,
         $containerScriptPath
       )
-      $capture.command = ('docker run --name {0} ... {1} bash -lc <linux-compare-script>' -f $containerName, $Image)
+      $capture.command = ('docker run --name {0} ... {1} {2} <linux-compare-script>' -f $containerName, $Image, [string]$containerShellContract.executable)
       Write-Host ("[ni-linux-container-compare] mode=docker-run image={0} report={1} capture={2} stdout={3} stderr={4}" -f $Image, $resolvedReportPath, $capturePath, $stdoutPath, $stderrPath) -ForegroundColor Cyan
       $runResult = Invoke-DockerRunWithTimeout `
         -DockerArgs $dockerArgs `

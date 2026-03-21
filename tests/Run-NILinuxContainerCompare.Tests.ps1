@@ -778,6 +778,7 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
     $capture.containerShellContract.family | Should -Be 'posix-bash'
     $capture.containerShellContract.encodedCommand | Should -BeFalse
     $capture.containerShellContract.pwshRequired | Should -BeFalse
+    $capture.containerShellContract.hostWrapperShell | Should -Be 'pwsh'
     $capture.containerName | Should -Match '^ni-lnx-compare-flag-baseline-[a-f0-9]{8}$'
     $capture.command | Should -Match ('docker run --name {0}\b' -f [regex]::Escape([string]$capture.containerName))
     $capture.observedDockerHost | Should -Be 'unix:///var/run/docker.sock'

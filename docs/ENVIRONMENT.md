@@ -82,6 +82,8 @@ Notes:
 
 - Default image: `nationalinstruments/labview:2026q1-windows`.
 - Override image explicitly with `tools/Run-NIWindowsContainerCompare.ps1 -Image <tag>`.
+- The in-container shell boundary is defined by `tools/policy/labview-container-shell-contract.json`:
+  Windows uses native `powershell`, while the host-side wrapper shell remains `pwsh`.
 - Docker daemon must run in `windows` mode; `compare:docker:ni:windows:probe` fails fast when mode/image checks fail.
 - Output defaults to `tests/results/ni-windows-container/compare-report.html` with deterministic capture logs.
 - Capture JSON (`ni-windows-container-capture.json`) records machine-readable classification fields
@@ -118,6 +120,14 @@ Common remediation:
 - Docker mode mismatch: `desktop-local` now fails before image bootstrap or container probe when Docker Desktop is still on the Linux engine; switch Docker Desktop to Windows containers (`desktop-windows`) and retry.
 - Image pull failure: verify Docker Hub/GHCR connectivity and authentication, then rerun bootstrap.
 - Runtime probe failure: confirm the host can run Windows containers and that the NI tag is available.
+
+## LabVIEW container shell contract
+
+`tools/policy/labview-container-shell-contract.json` is the shared shell boundary for the NI helper planes.
+
+- Windows container helpers invoke native `powershell` inside the container and may rely on `-EncodedCommand`.
+- Linux container helpers invoke `bash` inside the container; host-side `pwsh` wrappers are outside that plane contract.
+- `tools/Get-LabVIEWContainerShellContract.ps1` is the supported accessor for helper scripts and tests.
 
 ## Tooling helpers
 
