@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const REPORT_SCHEMA = 'priority/agent-cost-turn@v1';
@@ -39,6 +40,100 @@ function normalizeReasoningEffort(value) {
 function sanitizeFileSegment(value, fallback) {
   const normalized = normalizeText(value).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
   return normalized || fallback;
+}
+
+function looksLikeLaneBranch(value) {
+  const normalized = normalizeText(value);
+  return normalized.length > 0 && normalized !== 'HEAD' && normalized.includes('/') && !/\s/.test(normalized);
+}
+
+function readJsonIfExists(filePath) {
+  const normalizedPath = normalizeText(filePath);
+  if (!normalizedPath) {
+    return null;
+  }
+  const resolvedPath = path.resolve(normalizedPath);
+  if (!fs.existsSync(resolvedPath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function getPathValue(payload, pathSegments) {
+  let current = payload;
+  for (const segment of pathSegments) {
+    if (!current || typeof current !== 'object' || !(segment in current)) {
+      return null;
+    }
+    current = current[segment];
+  }
+  return current;
+}
+
+function inferLaneBranchFromPayload(payload) {
+  const candidatePaths = [
+    ['context', 'laneBranch'],
+    ['laneBranch'],
+    ['pullRequest', 'headRefName'],
+    ['pullRequest', 'branch'],
+    ['activePullRequest', 'headRefName'],
+    ['taskPacket', 'laneBranch'],
+    ['taskPacket', 'pullRequest', 'headRefName'],
+    ['headRefName'],
+    ['headRef'],
+    ['branch']
+  ];
+
+  for (const candidatePath of candidatePaths) {
+    const candidate = normalizeText(getPathValue(payload, candidatePath));
+    if (looksLikeLaneBranch(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function inferCurrentGitBranch(spawnSyncFn = spawnSync) {
+  try {
+    const result = spawnSyncFn('git', ['branch', '--show-current'], {
+      cwd: process.cwd(),
+      encoding: 'utf8'
+    });
+    if ((result?.status ?? 1) !== 0) {
+      return null;
+    }
+    const branch = normalizeText(result?.stdout);
+    return looksLikeLaneBranch(branch) ? branch : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveLaneBranch(options, { readJsonFn = readJsonIfExists, inferCurrentGitBranchFn = inferCurrentGitBranch } = {}) {
+  const explicitLaneBranch = normalizeText(options.laneBranch);
+  if (explicitLaneBranch) {
+    return explicitLaneBranch;
+  }
+
+  for (const candidatePath of [options.sourceReceiptPath, options.sourceReportPath]) {
+    const payload = readJsonFn(candidatePath);
+    const inferredFromPayload = inferLaneBranchFromPayload(payload);
+    if (inferredFromPayload) {
+      return inferredFromPayload;
+    }
+  }
+
+  const laneIdAsBranch = normalizeText(options.laneId);
+  if (looksLikeLaneBranch(laneIdAsBranch)) {
+    return laneIdAsBranch;
+  }
+
+  return inferCurrentGitBranchFn();
 }
 
 export function parseArgs(argv = process.argv) {
@@ -213,7 +308,6 @@ export function parseArgs(argv = process.argv) {
     ['requestedModel', '--requested-model'],
     ['repository', '--repository'],
     ['laneId', '--lane-id'],
-    ['laneBranch', '--lane-branch'],
     ['sessionId', '--session-id'],
     ['turnId', '--turn-id'],
     ['agentRole', '--agent-role'],
@@ -264,7 +358,7 @@ export function parseArgs(argv = process.argv) {
   return options;
 }
 
-export function buildAgentCostTurn(options, now = new Date()) {
+export function buildAgentCostTurn(options, now = new Date(), helpers = {}) {
   const normalizedRequestedModel = normalizeText(options.requestedModel);
   const normalizedEffectiveModel = normalizeText(options.effectiveModel) || normalizedRequestedModel;
   const normalizedRequestedReasoningEffort = normalizeReasoningEffort(options.requestedReasoningEffort);
@@ -294,6 +388,7 @@ export function buildAgentCostTurn(options, now = new Date()) {
   const normalizedOperatorSteeringObservedAt = normalizeText(options.operatorSteeringObservedAt) || null;
   const normalizedOperatorSteeringNote = normalizeText(options.operatorSteeringNote) || null;
   const normalizedSteeringInvoiceTurnId = normalizeText(options.steeringInvoiceTurnId) || null;
+  const normalizedLaneBranch = resolveLaneBranch(options, helpers);
   const normalizedOperatorSteered =
     Boolean(options.operatorSteered) ||
     normalizedOperatorSteeringKind !== null ||
@@ -312,6 +407,10 @@ export function buildAgentCostTurn(options, now = new Date()) {
     normalizedOutputUsdPer1kTokens,
     normalizedUsageUnitUsd
   ].some((value) => value != null && value !== '');
+
+  if (!normalizedLaneBranch) {
+    throw new Error('Missing required option: --lane-branch <value>.');
+  }
 
   const report = {
     schema: REPORT_SCHEMA,
@@ -357,7 +456,7 @@ export function buildAgentCostTurn(options, now = new Date()) {
       repository: normalizeText(options.repository),
       issueNumber: options.issueNumber,
       laneId: normalizeText(options.laneId),
-      laneBranch: normalizeText(options.laneBranch),
+      laneBranch: normalizedLaneBranch,
       sessionId: normalizeText(options.sessionId),
       turnId: normalizeText(options.turnId),
       workerSlotId: normalizeText(options.workerSlotId) || null,
@@ -385,8 +484,8 @@ export function buildAgentCostTurn(options, now = new Date()) {
   };
 }
 
-export function runAgentCostTurn(options, now = new Date()) {
-  const result = buildAgentCostTurn(options, now);
+export function runAgentCostTurn(options, now = new Date(), helpers = {}) {
+  const result = buildAgentCostTurn(options, now, helpers);
   fs.mkdirSync(path.dirname(result.outputPath), { recursive: true });
   fs.writeFileSync(result.outputPath, `${JSON.stringify(result.report, null, 2)}\n`, 'utf8');
   return result;
@@ -404,12 +503,16 @@ function printUsage() {
   console.log('  --repository <owner/repo>');
   console.log('  --issue-number <integer>');
   console.log('  --lane-id <value>');
-  console.log('  --lane-branch <value>');
   console.log('  --session-id <value>');
   console.log('  --turn-id <value>');
   console.log('  --agent-role <live|background>');
   console.log('  --source-schema <value>');
   console.log('  --usage-observed-at <date-time>');
+  console.log('');
+  console.log('Branch attribution:');
+  console.log('  --lane-branch <value>           Optional explicit branch ref.');
+  console.log('                                  When omitted, the helper tries source receipts/reports,');
+  console.log('                                  then a branch-like lane id, then the current git branch.');
   console.log('');
   console.log('Optional model metadata:');
   console.log('  --effective-model <value>');

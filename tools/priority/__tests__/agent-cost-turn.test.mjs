@@ -37,6 +37,29 @@ test('parseArgs captures reasoning-effort metadata and derives effective default
   assert.equal(parsed.operatorSteered, false);
 });
 
+test('parseArgs does not require lane-branch when branch attribution can be inferred later', () => {
+  const parsed = parseArgs([
+    'node',
+    'agent-cost-turn.mjs',
+    '--provider-id', 'codex-cli',
+    '--provider-kind', 'local-codex',
+    '--provider-runtime', 'codex-cli',
+    '--execution-plane', 'wsl2',
+    '--requested-model', 'gpt-5.4',
+    '--repository', 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--issue-number', '1682',
+    '--lane-id', 'origin-1682',
+    '--session-id', 'session-live-1682',
+    '--turn-id', 'turn-live-1682',
+    '--agent-role', 'live',
+    '--source-schema', 'priority/manual-live-session@v1',
+    '--usage-observed-at', '2026-03-21T18:40:00.000Z'
+  ]);
+
+  assert.equal(parsed.laneBranch, null);
+  assert.equal(parsed.laneId, 'origin-1682');
+});
+
 test('buildAgentCostTurn writes a normalized receipt with reasoning effort and steering metadata', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-turn-'));
   const outputPath = path.join(tmpDir, 'turn.json');
@@ -84,6 +107,85 @@ test('buildAgentCostTurn writes a normalized receipt with reasoning effort and s
   assert.equal(result.report.steering.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.equal(result.report.usage.totalTokens, 1250);
   assert.equal(result.outputPath, outputPath);
+});
+
+test('buildAgentCostTurn infers laneBranch from source reports before falling back to the current branch', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-turn-branch-attribution-'));
+  const sourceReportPath = path.join(tmpDir, 'worker-slot.json');
+  fs.writeFileSync(
+    sourceReportPath,
+    `${JSON.stringify({
+      pullRequest: {
+        headRefName: 'issue/origin-1682-branch-attributed-cost-turns'
+      }
+    }, null, 2)}\n`,
+    'utf8'
+  );
+
+  const result = buildAgentCostTurn({
+    providerId: 'codex-cli',
+    providerKind: 'local-codex',
+    providerRuntime: 'codex-cli',
+    executionPlane: 'wsl2',
+    requestedModel: 'gpt-5.4',
+    effectiveModel: 'gpt-5.4',
+    inputTokens: 1000,
+    cachedInputTokens: 0,
+    outputTokens: 250,
+    usageUnitKind: 'turn',
+    usageUnitCount: 1,
+    exactness: 'estimated',
+    amountUsd: 0.05,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    issueNumber: 1682,
+    laneId: 'origin-1682',
+    laneBranch: null,
+    sessionId: 'session-live-1682',
+    turnId: 'turn-live-1682',
+    workerSlotId: 'worker-slot-1',
+    agentRole: 'live',
+    sourceSchema: 'priority/runtime-worker-slot@v1',
+    sourceReceiptPath: null,
+    sourceReportPath,
+    usageObservedAt: '2026-03-21T18:40:00.000Z'
+  }, new Date('2026-03-21T18:41:00.000Z'));
+
+  assert.equal(result.report.context.laneId, 'origin-1682');
+  assert.equal(result.report.context.laneBranch, 'issue/origin-1682-branch-attributed-cost-turns');
+});
+
+test('buildAgentCostTurn falls back to the current git branch when no explicit or source-derived laneBranch exists', () => {
+  const result = buildAgentCostTurn({
+    providerId: 'codex-cli',
+    providerKind: 'local-codex',
+    providerRuntime: 'codex-cli',
+    executionPlane: 'wsl2',
+    requestedModel: 'gpt-5.4',
+    effectiveModel: 'gpt-5.4',
+    inputTokens: 1000,
+    cachedInputTokens: 0,
+    outputTokens: 250,
+    usageUnitKind: 'turn',
+    usageUnitCount: 1,
+    exactness: 'estimated',
+    amountUsd: 0.05,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    issueNumber: 1682,
+    laneId: 'origin-1682',
+    laneBranch: null,
+    sessionId: 'session-live-1682',
+    turnId: 'turn-live-1682',
+    workerSlotId: 'worker-slot-1',
+    agentRole: 'live',
+    sourceSchema: 'priority/manual-live-session@v1',
+    sourceReceiptPath: null,
+    sourceReportPath: null,
+    usageObservedAt: '2026-03-21T18:40:00.000Z'
+  }, new Date('2026-03-21T18:41:00.000Z'), {
+    inferCurrentGitBranchFn: () => 'issue/origin-1682-branch-attributed-cost-turns-refresh'
+  });
+
+  assert.equal(result.report.context.laneBranch, 'issue/origin-1682-branch-attributed-cost-turns-refresh');
 });
 
 test('agent-cost-turn CLI writes a receipt directly', () => {
