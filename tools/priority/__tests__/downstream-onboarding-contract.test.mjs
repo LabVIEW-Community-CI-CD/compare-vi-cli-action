@@ -20,12 +20,19 @@ test('downstream onboarding policy defines required checklist seams', () => {
 
 test('workflow executes onboarding, success, feedback, and promotion scorecard contracts', () => {
   const workflow = read('.github/workflows/downstream-onboarding-feedback.yml');
+  assert.match(workflow, /push:\s+branches:\s+- develop/);
+  assert.match(workflow, /downstream_branch:/);
   assert.match(workflow, /GITHUB_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
   assert.match(workflow, /GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
   assert.match(workflow, /downstream-onboarding-feedback\.mjs/);
+  assert.match(workflow, /args\+=\(--branch "\$branch"\)/);
   assert.match(workflow, /downstream-onboarding-report-v1\.schema\.json/);
   assert.match(workflow, /downstream-onboarding-success-v1\.schema\.json/);
   assert.match(workflow, /downstream-onboarding-feedback-v1\.schema\.json/);
+  assert.match(workflow, /Refresh template-agent verification report/);
+  assert.match(workflow, /priority:template:agent:verify/);
+  assert.match(workflow, /template-agent-verification-report-v1\.schema\.json/);
+  assert.match(workflow, /tests\/results\/_agent\/promotion\/template-agent-verification-report\.json/);
   assert.match(workflow, /Build downstream promotion scorecard/);
   assert.match(workflow, /downstream-promotion-scorecard\.mjs/);
   assert.match(workflow, /--manifest-report tests\/results\/_agent\/promotion\/downstream-develop-promotion-manifest\.json/);
@@ -33,6 +40,7 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   assert.match(workflow, /tests\/results\/_agent\/promotion\/downstream-develop-promotion-scorecard\.json/);
   assert.match(workflow, /Append onboarding feedback summary/);
   assert.match(workflow, /execution status/);
+  assert.match(workflow, /template-agent verification status/);
   assert.match(workflow, /hashFiles\('tests\/results\/_agent\/onboarding\/downstream-onboarding\.json'\)/);
   assert.match(workflow, /hashFiles\('tests\/results\/_agent\/promotion\/downstream-develop-promotion-scorecard\.json'\)/);
 });

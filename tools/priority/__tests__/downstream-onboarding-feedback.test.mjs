@@ -5,6 +5,7 @@ import {
   DEFAULT_FEEDBACK_OUTPUT_PATH,
   DEFAULT_REPORT_PATH,
   DEFAULT_SUCCESS_OUTPUT_PATH,
+  buildOnboardingArgv,
   buildFeedbackReport,
   parseArgs
 } from '../downstream-onboarding-feedback.mjs';
@@ -16,6 +17,30 @@ test('parseArgs applies defaults for the onboarding feedback harness', () => {
   assert.equal(defaults.feedbackOutputPath, DEFAULT_FEEDBACK_OUTPUT_PATH);
   assert.equal(defaults.createHardeningIssues, false);
   assert.equal(defaults.failOnGap, false);
+  assert.equal(defaults.targetBranch, null);
+});
+
+test('buildOnboardingArgv passes the configured downstream branch through to the onboarding evaluator', () => {
+  const argv = buildOnboardingArgv({
+    downstreamRepo: 'owner/downstream',
+    targetBranch: 'downstream/develop',
+    startedAt: null,
+    parentIssue: null,
+    createHardeningIssues: false,
+    failOnGap: false,
+    reportPath: DEFAULT_REPORT_PATH
+  });
+
+  assert.deepEqual(argv, [
+    'node',
+    'downstream-onboarding.mjs',
+    '--repo',
+    'owner/downstream',
+    '--output',
+    DEFAULT_REPORT_PATH,
+    '--branch',
+    'downstream/develop'
+  ]);
 });
 
 test('buildFeedbackReport captures deterministic output existence and exit codes', () => {

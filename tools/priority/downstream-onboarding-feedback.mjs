@@ -36,6 +36,7 @@ function printUsage() {
   console.log('');
   console.log('Options:');
   console.log('  --repo <owner/repo>             Downstream repository to evaluate (required).');
+  console.log('  --branch <name>                 Branch to inspect in the downstream repository.');
   console.log('  --started-at <ISO-8601>         Optional onboarding start timestamp.');
   console.log('  --parent-issue <n>              Parent issue number for traceability.');
   console.log(`  --report <path>                 Onboarding report path (default: ${DEFAULT_REPORT_PATH}).`);
@@ -54,6 +55,7 @@ export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
     downstreamRepo: null,
+    targetBranch: null,
     startedAt: null,
     parentIssue: null,
     reportPath: DEFAULT_REPORT_PATH,
@@ -82,6 +84,7 @@ export function parseArgs(argv = process.argv) {
     }
     if (
       token === '--repo' ||
+      token === '--branch' ||
       token === '--started-at' ||
       token === '--report' ||
       token === '--success-output' ||
@@ -92,6 +95,7 @@ export function parseArgs(argv = process.argv) {
       }
       index += 1;
       if (token === '--repo') options.downstreamRepo = next;
+      if (token === '--branch') options.targetBranch = next;
       if (token === '--started-at') options.startedAt = next;
       if (token === '--report') options.reportPath = next;
       if (token === '--success-output') options.successOutputPath = next;
@@ -169,7 +173,7 @@ export function buildFeedbackReport({
   };
 }
 
-function buildOnboardingArgv(options) {
+export function buildOnboardingArgv(options) {
   const argv = [
     'node',
     'downstream-onboarding.mjs',
@@ -178,6 +182,9 @@ function buildOnboardingArgv(options) {
     '--output',
     options.reportPath
   ];
+  if (options.targetBranch) {
+    argv.push('--branch', options.targetBranch);
+  }
   if (options.startedAt) {
     argv.push('--started-at', options.startedAt);
   }
