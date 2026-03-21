@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-21T19:30:00Z",
+  "updated": "2026-03-21T20:00:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -70,6 +70,8 @@
         "docs/knowledgebase/PrintToSingleFileHtml-Provenance.md",
         "docs/knowledgebase/Offline-RealHistory-Corpus.md",
         "docs/knowledgebase/Unattended-Delivery-Daemon-Surfaces.md",
+        "docs/knowledgebase/Unattended-Delivery-Daemon-Debt-Register.md",
+        "docs/knowledgebase/Unattended-Delivery-Daemon-Capability-Expansion-Register.md",
         "docs/DOWNSTREAM_DEVELOP_PROMOTION_CONTRACT.md",
         "docs/knowledgebase/DOCKER_TOOLS_PARITY.md",
         "docs/LABVIEW_GATING.md",
