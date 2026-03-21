@@ -40,6 +40,17 @@ async function pathExists(filePath) {
   }
 }
 
+async function readJsonIfPresent(filePath) {
+  try {
+    return JSON.parse(await readFile(filePath, 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return null;
+    }
+    return null;
+  }
+}
+
 function formatGitPointerPath(targetPath) {
   return path.resolve(targetPath).replace(/\\/g, '/');
 }
@@ -481,18 +492,49 @@ export function resolveCompareviWorkerCheckoutRoot({ repoRoot, repository }) {
   return path.join(repoRoot, '.runtime-worktrees', repoKey);
 }
 
-export function resolveCompareviWorkerCheckoutPath({ repoRoot, repository, laneId }) {
+export function resolveCompareviWorkerCheckoutPath({ repoRoot, repository, laneId, slotId }) {
   const checkoutRoot = resolveCompareviWorkerCheckoutRoot({ repoRoot, repository });
+  const checkoutSegment = sanitizeSegment(slotId || laneId);
   return {
     checkoutRoot,
-    checkoutPath: path.join(checkoutRoot, sanitizeSegment(laneId))
+    checkoutPath: path.join(checkoutRoot, checkoutSegment)
   };
+}
+
+function resolveRuntimeDir({ repoRoot, options = {} }) {
+  const runtimeDir = normalizeText(options.runtimeDir);
+  if (!runtimeDir) {
+    return '';
+  }
+  return path.isAbsolute(runtimeDir) ? runtimeDir : path.join(repoRoot, runtimeDir);
+}
+
+function selectWorkerSlotId({ deliveryState, laneId }) {
+  const normalizedLaneId = normalizeText(laneId);
+  const slots = Array.isArray(deliveryState?.workerPool?.slots) ? deliveryState.workerPool.slots : [];
+  const releasedLanes = Array.isArray(deliveryState?.workerPool?.releasedLanes) ? deliveryState.workerPool.releasedLanes : [];
+  const existingSlot = slots.find((slot) => normalizeText(slot?.laneId) === normalizedLaneId);
+  if (normalizeText(existingSlot?.slotId)) {
+    return normalizeText(existingSlot.slotId);
+  }
+  const releasedSlot = releasedLanes.find(
+    (entry) => normalizeText(entry?.laneId) === normalizedLaneId && normalizeText(entry?.slotId)
+  );
+  if (normalizeText(releasedSlot?.slotId)) {
+    return normalizeText(releasedSlot.slotId);
+  }
+  const availableSlot = slots.find((slot) => normalizeText(slot?.status).toLowerCase() === 'available');
+  if (normalizeText(availableSlot?.slotId)) {
+    return normalizeText(availableSlot.slotId);
+  }
+  return 'worker-slot-1';
 }
 
 export async function prepareCompareviWorkerCheckout({
   repoRoot,
   repository,
   schedulerDecision,
+  options = {},
   platform,
   deps = {}
 }) {
@@ -501,14 +543,30 @@ export async function prepareCompareviWorkerCheckout({
     return null;
   }
 
+  const runtimeDir = resolveRuntimeDir({ repoRoot, options });
+  const deliveryStatePath = runtimeDir ? path.join(runtimeDir, 'delivery-agent-state.json') : '';
+  const deliveryState = deliveryStatePath ? await readJsonIfPresent(deliveryStatePath) : null;
+  const slotId = selectWorkerSlotId({
+    deliveryState,
+    laneId: activeLane.laneId
+  });
   const { checkoutRoot, checkoutPath } = resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository,
+    laneId: activeLane.laneId,
+    slotId
+  });
+  const legacyCheckout = resolveCompareviWorkerCheckoutPath({
     repoRoot,
     repository,
     laneId: activeLane.laneId
   });
+  const useLegacyCheckout = !(await pathExists(checkoutPath)) && slotId !== activeLane.laneId && (await pathExists(legacyCheckout.checkoutPath));
+  const resolvedCheckoutPath = useLegacyCheckout ? legacyCheckout.checkoutPath : checkoutPath;
+  const checkoutSegment = sanitizeSegment(useLegacyCheckout ? activeLane.laneId : slotId);
   const execFileFn = deps.execFileFn ?? execFileAsync;
   const gitCommonDir = await resolveGitCommonDir(execFileFn, repoRoot);
-  const gitMarkerPath = path.join(checkoutPath, '.git');
+  const gitMarkerPath = path.join(resolvedCheckoutPath, '.git');
   let worktreeStateRepair = {
     repaired: false,
     dirtyEntries: []
@@ -518,46 +576,47 @@ export async function prepareCompareviWorkerCheckout({
     try {
       await repairExistingWorktreeGitPointers({
         repoRoot,
-        checkoutPath,
-        laneSegment: activeLane.laneId,
+        checkoutPath: resolvedCheckoutPath,
+        laneSegment: checkoutSegment,
         gitCommonDir
       });
-      worktreeStateRepair = await inspectReusedWorktreeState(execFileFn, checkoutPath);
+      worktreeStateRepair = await inspectReusedWorktreeState(execFileFn, resolvedCheckoutPath);
       if (worktreeStateRepair.dirtyEntries.length > 0) {
         worktreeStateRepair = await quarantineDirtyRuntimeWorktree({
           execFileFn,
           repoRoot,
-          checkoutPath,
-          laneId: activeLane.laneId,
+          checkoutPath: resolvedCheckoutPath,
+          laneId: checkoutSegment,
           gitCommonDir,
           dirtyEntries: worktreeStateRepair.dirtyEntries
         });
       } else {
-      const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: checkoutPath }))
-        .split(/\r?\n/)
-        .map((entry) => normalizeText(entry))
-        .filter(Boolean);
+        const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: resolvedCheckoutPath }))
+          .split(/\r?\n/)
+          .map((entry) => normalizeText(entry))
+          .filter(Boolean);
         if (availableRemotes.includes('upstream')) {
-          await execFileFn('git', ['fetch', 'upstream', '--prune'], { cwd: checkoutPath });
+          await execFileFn('git', ['fetch', 'upstream', '--prune'], { cwd: resolvedCheckoutPath });
           fetchedRemotes.push('upstream');
         } else if (availableRemotes.includes('origin')) {
-          await execFileFn('git', ['fetch', 'origin', '--prune'], { cwd: checkoutPath });
+          await execFileFn('git', ['fetch', 'origin', '--prune'], { cwd: resolvedCheckoutPath });
           fetchedRemotes.push('origin');
         }
         let resolvedRef = DEFAULT_WORKER_REF;
         try {
-          await execFileFn('git', ['checkout', '--force', '--detach', DEFAULT_WORKER_REF], { cwd: checkoutPath });
+          await execFileFn('git', ['checkout', '--force', '--detach', DEFAULT_WORKER_REF], { cwd: resolvedCheckoutPath });
         } catch {
           resolvedRef = 'develop';
-          await execFileFn('git', ['checkout', '--force', '--detach', resolvedRef], { cwd: checkoutPath });
+          await execFileFn('git', ['checkout', '--force', '--detach', resolvedRef], { cwd: resolvedCheckoutPath });
         }
-        const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, checkoutPath, {
+        const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, resolvedCheckoutPath, {
           platform: deps.platform ?? platform ?? process.platform
         });
         return {
           laneId: activeLane.laneId,
+          slotId,
           checkoutRoot,
-          checkoutPath,
+          checkoutPath: resolvedCheckoutPath,
           status: 'reused',
           ref: resolvedRef,
           requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
@@ -570,8 +629,9 @@ export async function prepareCompareviWorkerCheckout({
     } catch (error) {
       return {
         laneId: activeLane.laneId,
+        slotId,
         checkoutRoot,
-        checkoutPath,
+        checkoutPath: resolvedCheckoutPath,
         status: 'blocked',
         ref: DEFAULT_WORKER_REF,
         requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
@@ -583,11 +643,12 @@ export async function prepareCompareviWorkerCheckout({
 
   }
 
-  if (await pathExists(checkoutPath)) {
+  if (await pathExists(resolvedCheckoutPath)) {
     return {
       laneId: activeLane.laneId,
+      slotId,
       checkoutRoot,
-      checkoutPath,
+      checkoutPath: resolvedCheckoutPath,
       status: 'blocked',
       ref: DEFAULT_WORKER_REF,
       requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
@@ -597,22 +658,23 @@ export async function prepareCompareviWorkerCheckout({
   }
 
   await mkdir(checkoutRoot, { recursive: true });
-  await execFileFn('git', ['worktree', 'add', '--detach', checkoutPath, DEFAULT_WORKER_REF], {
+  await execFileFn('git', ['worktree', 'add', '--detach', resolvedCheckoutPath, DEFAULT_WORKER_REF], {
     cwd: repoRoot
   });
   await repairExistingWorktreeGitPointers({
     repoRoot,
-    checkoutPath,
-    laneSegment: activeLane.laneId,
+    checkoutPath: resolvedCheckoutPath,
+    laneSegment: checkoutSegment,
     gitCommonDir
   });
-  const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, checkoutPath, {
+  const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, resolvedCheckoutPath, {
     platform: deps.platform ?? platform ?? process.platform
   });
   return {
     laneId: activeLane.laneId,
+    slotId,
     checkoutRoot,
-    checkoutPath,
+    checkoutPath: resolvedCheckoutPath,
     status: 'created',
     ref: DEFAULT_WORKER_REF,
     requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
@@ -664,6 +726,7 @@ export async function bootstrapCompareviWorkerCheckout({
     } catch (error) {
       return {
         laneId: schedulerDecision.activeLane.laneId,
+        slotId: normalizeText(preparedWorker?.slotId) || null,
         checkoutPath: preparedWorker.checkoutPath,
         status: 'blocked',
         source: 'comparevi-bootstrap',
@@ -704,6 +767,7 @@ export async function bootstrapCompareviWorkerCheckout({
     } catch (error) {
       return {
         laneId: schedulerDecision.activeLane.laneId,
+        slotId: normalizeText(preparedWorker?.slotId) || null,
         checkoutPath: preparedWorker.checkoutPath,
         status: 'blocked',
         source: 'comparevi-bootstrap',
@@ -726,6 +790,7 @@ export async function bootstrapCompareviWorkerCheckout({
   } catch (error) {
     return {
       laneId: schedulerDecision.activeLane.laneId,
+      slotId: normalizeText(preparedWorker?.slotId) || null,
       checkoutPath: preparedWorker.checkoutPath,
       status: 'blocked',
       source: 'comparevi-bootstrap',
@@ -738,6 +803,7 @@ export async function bootstrapCompareviWorkerCheckout({
 
   return {
     laneId: schedulerDecision.activeLane.laneId,
+    slotId: normalizeText(preparedWorker?.slotId) || null,
     checkoutPath: preparedWorker.checkoutPath,
     status: 'ready',
     source: 'comparevi-bootstrap',
@@ -764,6 +830,7 @@ export async function activateCompareviWorkerLane({
   if (!branch) {
     return {
       laneId,
+      slotId: normalizeText(workerReady?.slotId) || normalizeText(preparedWorker?.slotId) || null,
       checkoutPath,
       branch: null,
       forkRemote: normalizeText(activeLane?.forkRemote) || null,
@@ -788,6 +855,7 @@ export async function activateCompareviWorkerLane({
   } catch (error) {
     return {
       laneId,
+      slotId: normalizeText(workerReady?.slotId) || normalizeText(preparedWorker?.slotId) || null,
       checkoutPath,
       branch,
       forkRemote,
@@ -827,6 +895,7 @@ export async function activateCompareviWorkerLane({
 
     return {
       laneId,
+      slotId: normalizeText(workerReady?.slotId) || normalizeText(preparedWorker?.slotId) || null,
       checkoutPath,
       branch,
       forkRemote,
@@ -841,6 +910,7 @@ export async function activateCompareviWorkerLane({
   } catch (error) {
     return {
       laneId,
+      slotId: normalizeText(workerReady?.slotId) || normalizeText(preparedWorker?.slotId) || null,
       checkoutPath,
       branch,
       forkRemote,

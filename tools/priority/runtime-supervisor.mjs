@@ -51,6 +51,7 @@ import {
 import {
   buildLocalReviewLoopRequest,
   buildCanonicalDeliveryDecision,
+  buildWorkerPoolPolicySnapshot,
   DELIVERY_AGENT_POLICY_RELATIVE_PATH,
   fetchIssueExecutionGraph,
   loadDeliveryAgentPolicy,
@@ -582,6 +583,10 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
     selectedIssue: snapshot,
     policy: deliveryPolicy
   });
+  const workerPool =
+    deliveryPolicy?.workerPool && typeof deliveryPolicy.workerPool === 'object'
+      ? buildWorkerPoolPolicySnapshot(deliveryPolicy)
+      : null;
 
   return {
     source: 'comparevi-runtime',
@@ -616,6 +621,11 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
         issuePath: normalizeText(schedulerDecision?.artifacts?.issuePath) || null
       },
       lane: {
+        workerSlotId:
+          normalizeText(workerBranch?.slotId) ||
+          normalizeText(workerReady?.slotId) ||
+          normalizeText(preparedWorker?.slotId) ||
+          null,
         workerCheckoutPath:
           normalizeText(workerBranch?.checkoutPath) ||
           normalizeText(workerReady?.checkoutPath) ||
@@ -651,6 +661,7 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
         backlog: artifacts.backlogRepair ?? null,
         planeTransition,
         localReviewLoop,
+        workerPool,
         mutationEnvelope: {
           backlogAuthority: 'issues',
           implementationRemote: normalizeText(activeLane?.forkRemote) || 'origin',
@@ -658,7 +669,7 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
           readyForReviewPurpose: 'final-validation',
           allowPolicyMutations: false,
           allowReleaseAdmin: false,
-          maxActiveCodingLanes: 1
+          maxActiveCodingLanes: deliveryPolicy.maxActiveCodingLanes
         },
         turnBudget: deliveryPolicy.turnBudget,
         relevantFiles: [

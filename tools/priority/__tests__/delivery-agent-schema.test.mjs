@@ -30,6 +30,46 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
   const validate = ajv.compile(schema);
   assert.equal(validate(data), true, JSON.stringify(validate.errors, null, 2));
   assert.equal(data.copilotReviewStrategy, 'draft-only-explicit');
+  assert.equal(data.maxActiveCodingLanes, 4);
+  assert.deepEqual(data.workerPool, {
+    targetSlotCount: 4,
+    prewarmSlotCount: 1,
+    releaseWaitingStates: ['waiting-ci', 'waiting-review', 'ready-merge'],
+    providers: [
+      {
+        id: 'local-codex',
+        kind: 'local-codex',
+        executionPlane: 'local',
+        assignmentMode: 'interactive-coding',
+        enabled: true,
+        slotCount: 1
+      },
+      {
+        id: 'hosted-github-workflow',
+        kind: 'hosted-github-workflow',
+        executionPlane: 'hosted',
+        assignmentMode: 'async-validation',
+        enabled: true,
+        slotCount: 1
+      },
+      {
+        id: 'remote-copilot-lane',
+        kind: 'remote-copilot-lane',
+        executionPlane: 'remote',
+        assignmentMode: 'remote-implementation',
+        enabled: true,
+        slotCount: 1
+      },
+      {
+        id: 'local-shadow-native',
+        kind: 'local-shadow-native',
+        executionPlane: 'local-shadow',
+        assignmentMode: 'shadow-validation',
+        enabled: true,
+        slotCount: 1
+      }
+    ]
+  });
   assert.deepEqual(data.hostIsolation, {
     mode: 'hard-cutover',
     wslDistro: 'Ubuntu',
@@ -132,6 +172,10 @@ test('runtime delivery task packet schema validates canonical delivery packets',
       source: 'comparevi-runtime'
     },
     evidence: {
+      lane: {
+        workerSlotId: 'worker-slot-2',
+        workerCheckoutPath: '.runtime-worktrees/LabVIEW-Community-CI-CD--compare-vi-cli-action/worker-slot-2'
+      },
       delivery: {
         executionMode: 'canonical-delivery',
         laneLifecycle: 'coding',
@@ -176,6 +220,21 @@ test('runtime delivery task packet schema validates canonical delivery packets',
             maxCommitCount: 256
           }
         },
+        workerPool: {
+          targetSlotCount: 4,
+          prewarmSlotCount: 1,
+          releaseWaitingStates: ['waiting-ci', 'waiting-review', 'ready-merge'],
+          providers: [
+            {
+              id: 'local-codex',
+              kind: 'local-codex',
+              executionPlane: 'local',
+              assignmentMode: 'interactive-coding',
+              enabled: true,
+              slotCount: 1
+            }
+          ]
+        },
         mutationEnvelope: {
           backlogAuthority: 'issues',
           implementationRemote: 'origin',
@@ -183,7 +242,7 @@ test('runtime delivery task packet schema validates canonical delivery packets',
           readyForReviewPurpose: 'final-validation',
           allowPolicyMutations: false,
           allowReleaseAdmin: false,
-          maxActiveCodingLanes: 1
+          maxActiveCodingLanes: 4
         },
         turnBudget: {
           maxMinutes: 20,
@@ -241,7 +300,7 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
       copilotReviewStrategy: 'draft-only-explicit',
       autoSlice: true,
       autoMerge: true,
-      maxActiveCodingLanes: 1,
+      maxActiveCodingLanes: 4,
       allowPolicyMutations: false,
       allowReleaseAdmin: false,
       stopWhenNoOpenEpics: true
@@ -277,6 +336,10 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
         blockerClass: 'none'
       },
       evidence: {
+        lane: {
+          workerSlotId: 'worker-slot-2',
+          workerCheckoutPath: '.runtime-worktrees/LabVIEW-Community-CI-CD--compare-vi-cli-action/worker-slot-2'
+        },
         delivery: {
           laneLifecycle: 'ready-merge',
           planeTransition: {
@@ -414,6 +477,11 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
     state.artifacts.localReviewLoopReceiptPath,
     'tests/results/docker-tools-parity/review-loop-receipt.json'
   );
+  assert.equal(state.policy.maxActiveCodingLanes, 4);
+  assert.equal(state.workerPool.targetSlotCount, 4);
+  assert.equal(state.workerPool.providers.length, 4);
+  assert.equal(state.workerPool.availableSlotCount, 4);
+  assert.equal(state.workerPool.occupiedSlotCount, 0);
   assert.equal(state.activeLane.planeTransition.from, 'origin');
   assert.equal(state.activeLane.planeTransition.to, 'upstream');
   assert.equal(state.artifacts.planeTransition.action, 'promote');
@@ -499,6 +567,109 @@ test('delivery agent runtime state schema accepts legacy policy payloads without
     }
   };
   assert.equal(validate(state), true, JSON.stringify(validate.errors, null, 2));
+});
+
+test('buildDeliveryAgentRuntimeRecord releases the selected worker slot when the lane enters a waiting state', () => {
+  const state = buildDeliveryAgentRuntimeRecord({
+    now: new Date('2026-03-20T12:00:00.000Z'),
+    repoRoot,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: path.join(repoRoot, 'tests/results/_agent/runtime'),
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      implementationRemote: 'origin',
+      maxActiveCodingLanes: 4,
+      workerPool: {
+        targetSlotCount: 4,
+        prewarmSlotCount: 1,
+        releaseWaitingStates: ['waiting-ci', 'waiting-review', 'ready-merge'],
+        providers: [
+          {
+            id: 'local-codex',
+            kind: 'local-codex',
+            executionPlane: 'local',
+            assignmentMode: 'interactive-coding',
+            enabled: true,
+            slotCount: 1
+          },
+          {
+            id: 'hosted-github-workflow',
+            kind: 'hosted-github-workflow',
+            executionPlane: 'hosted',
+            assignmentMode: 'async-validation',
+            enabled: true,
+            slotCount: 1
+          },
+          {
+            id: 'remote-copilot-lane',
+            kind: 'remote-copilot-lane',
+            executionPlane: 'remote',
+            assignmentMode: 'remote-implementation',
+            enabled: true,
+            slotCount: 1
+          },
+          {
+            id: 'local-shadow-native',
+            kind: 'local-shadow-native',
+            executionPlane: 'local-shadow',
+            assignmentMode: 'shadow-validation',
+            enabled: true,
+            slotCount: 1
+          }
+        ]
+      }
+    },
+    schedulerDecision: {
+      outcome: 'selected',
+      activeLane: {
+        laneId: 'origin-1507',
+        issue: 1507,
+        forkRemote: 'origin',
+        branch: 'issue/origin-1507-four-worker-pool',
+        blockerClass: 'review'
+      },
+      artifacts: {
+        laneLifecycle: 'waiting-review'
+      }
+    },
+    taskPacket: {
+      laneId: 'origin-1507',
+      evidence: {
+        lane: {
+          workerSlotId: 'worker-slot-3'
+        },
+        delivery: {
+          laneLifecycle: 'waiting-review',
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+          }
+        }
+      }
+    },
+    executionReceipt: {
+      outcome: 'waiting-review',
+      details: {
+        laneLifecycle: 'waiting-review',
+        blockerClass: 'review'
+      }
+    },
+    statePath: path.join(repoRoot, 'tests/results/_agent/runtime/delivery-agent-state.json'),
+    lanePath: path.join(repoRoot, 'tests/results/_agent/runtime/delivery-agent-lanes/origin-1507.json')
+  });
+
+  assert.equal(state.workerPool.occupiedSlotCount, 0);
+  assert.equal(state.workerPool.availableSlotCount, 4);
+  assert.equal(state.workerPool.releasedLaneCount, 1);
+  assert.equal(state.workerPool.releasedLanes[0].slotId, 'worker-slot-3');
+  assert.equal(state.workerPool.releasedLanes[0].laneId, 'origin-1507');
+  assert.equal(state.workerPool.releasedLanes[0].laneLifecycle, 'waiting-review');
+  assert.equal(state.workerPool.slots[2].status, 'available');
 });
 
 test('buildDeliveryAgentRuntimeRecord fails closed when a fork lane omits required planeTransition evidence', () => {

@@ -37,6 +37,33 @@ export const DELIVERY_AGENT_LIFECYCLE_STATES = new Set([
   'complete',
   'idle'
 ]);
+const DEFAULT_WORKER_PROVIDER_BLUEPRINTS = Object.freeze([
+  Object.freeze({
+    id: 'local-codex',
+    kind: 'local-codex',
+    executionPlane: 'local',
+    assignmentMode: 'interactive-coding'
+  }),
+  Object.freeze({
+    id: 'hosted-github-workflow',
+    kind: 'hosted-github-workflow',
+    executionPlane: 'hosted',
+    assignmentMode: 'async-validation'
+  }),
+  Object.freeze({
+    id: 'remote-copilot-lane',
+    kind: 'remote-copilot-lane',
+    executionPlane: 'remote',
+    assignmentMode: 'remote-implementation'
+  }),
+  Object.freeze({
+    id: 'local-shadow-native',
+    kind: 'local-shadow-native',
+    executionPlane: 'local-shadow',
+    assignmentMode: 'shadow-validation'
+  })
+]);
+const DEFAULT_WORKER_RELEASE_WAITING_STATES = Object.freeze(['waiting-ci', 'waiting-review', 'ready-merge']);
 
 const DEFAULT_POLICY = {
   schema: DELIVERY_AGENT_POLICY_SCHEMA,
@@ -45,10 +72,20 @@ const DEFAULT_POLICY = {
   copilotReviewStrategy: 'draft-only-explicit',
   autoSlice: true,
   autoMerge: true,
-  maxActiveCodingLanes: 1,
+  maxActiveCodingLanes: 4,
   allowPolicyMutations: false,
   allowReleaseAdmin: false,
   stopWhenNoOpenEpics: true,
+  workerPool: {
+    targetSlotCount: 4,
+    prewarmSlotCount: 1,
+    releaseWaitingStates: [...DEFAULT_WORKER_RELEASE_WAITING_STATES],
+    providers: DEFAULT_WORKER_PROVIDER_BLUEPRINTS.map((provider) => ({
+      ...provider,
+      enabled: true,
+      slotCount: 1
+    }))
+  },
   hostIsolation: {
     mode: 'hard-cutover',
     wslDistro: 'Ubuntu',
@@ -332,6 +369,88 @@ function normalizeCommandList(value) {
 
 function normalizeStringList(value) {
   return Array.isArray(value) ? value.map((entry) => normalizeText(entry)).filter(Boolean) : [];
+}
+
+function buildDefaultWorkerPoolProviders(targetSlotCount) {
+  const resolvedTargetSlotCount =
+    coercePositiveInteger(targetSlotCount) ?? DEFAULT_POLICY.workerPool.targetSlotCount;
+  const providers = [];
+  for (let index = 0; index < resolvedTargetSlotCount; index += 1) {
+    const blueprint = DEFAULT_WORKER_PROVIDER_BLUEPRINTS[index % DEFAULT_WORKER_PROVIDER_BLUEPRINTS.length];
+    const cycle = Math.floor(index / DEFAULT_WORKER_PROVIDER_BLUEPRINTS.length);
+    providers.push({
+      id: cycle === 0 ? blueprint.id : `${blueprint.id}-${cycle + 1}`,
+      kind: blueprint.kind,
+      executionPlane: blueprint.executionPlane,
+      assignmentMode: blueprint.assignmentMode,
+      enabled: true,
+      slotCount: 1
+    });
+  }
+  return providers;
+}
+
+function normalizeWorkerProviderPolicy(value, { fallbackIndex = 0 } = {}) {
+  const provider = value && typeof value === 'object' ? value : {};
+  const fallbackBlueprint =
+    DEFAULT_WORKER_PROVIDER_BLUEPRINTS[fallbackIndex % DEFAULT_WORKER_PROVIDER_BLUEPRINTS.length];
+  return {
+    id: normalizeText(provider.id) || fallbackBlueprint.id,
+    kind: normalizeText(provider.kind) || fallbackBlueprint.kind,
+    executionPlane: normalizeText(provider.executionPlane) || fallbackBlueprint.executionPlane,
+    assignmentMode: normalizeText(provider.assignmentMode) || fallbackBlueprint.assignmentMode,
+    enabled: provider.enabled !== false,
+    slotCount: coercePositiveInteger(provider.slotCount) ?? 1
+  };
+}
+
+function normalizeWorkerPoolPolicy(value, { maxActiveCodingLanes = DEFAULT_POLICY.maxActiveCodingLanes } = {}) {
+  const workerPool = value && typeof value === 'object' ? value : {};
+  const requestedMaxActiveCodingLanes =
+    coercePositiveInteger(maxActiveCodingLanes) ?? DEFAULT_POLICY.maxActiveCodingLanes;
+  const providers =
+    Array.isArray(workerPool.providers) && workerPool.providers.length > 0
+      ? workerPool.providers.map((provider, index) =>
+          normalizeWorkerProviderPolicy(provider, { fallbackIndex: index })
+        )
+      : buildDefaultWorkerPoolProviders(requestedMaxActiveCodingLanes);
+  const enabledSlotCount = providers
+    .filter((provider) => provider.enabled !== false)
+    .reduce((total, provider) => total + (coercePositiveInteger(provider.slotCount) ?? 1), 0);
+  const targetSlotCount = Math.max(
+    coercePositiveInteger(workerPool.targetSlotCount) ?? requestedMaxActiveCodingLanes,
+    enabledSlotCount,
+    1
+  );
+  const releaseWaitingStates = uniqueStrings(
+    Array.isArray(workerPool.releaseWaitingStates)
+      ? workerPool.releaseWaitingStates
+      : DEFAULT_WORKER_RELEASE_WAITING_STATES
+  )
+    .map((entry) => normalizeLifecycle(entry))
+    .filter((entry) => DEFAULT_WORKER_RELEASE_WAITING_STATES.includes(entry));
+  return {
+    targetSlotCount,
+    prewarmSlotCount: Math.min(
+      coercePositiveInteger(workerPool.prewarmSlotCount) ?? Math.min(1, targetSlotCount),
+      targetSlotCount
+    ),
+    releaseWaitingStates:
+      releaseWaitingStates.length > 0 ? releaseWaitingStates : [...DEFAULT_WORKER_RELEASE_WAITING_STATES],
+    providers
+  };
+}
+
+export function buildWorkerPoolPolicySnapshot(policy = {}) {
+  const maxActiveCodingLanes =
+    coercePositiveInteger(policy?.maxActiveCodingLanes) ?? DEFAULT_POLICY.maxActiveCodingLanes;
+  const workerPool = normalizeWorkerPoolPolicy(policy?.workerPool, { maxActiveCodingLanes });
+  return {
+    targetSlotCount: workerPool.targetSlotCount,
+    prewarmSlotCount: workerPool.prewarmSlotCount,
+    releaseWaitingStates: [...workerPool.releaseWaitingStates],
+    providers: workerPool.providers.map((provider) => ({ ...provider }))
+  };
 }
 
 function commandUsesLocalCollabOrchestrator(command = []) {
@@ -1125,11 +1244,18 @@ export async function loadDeliveryAgentPolicy(repoRoot, deps = {}) {
   }
   const policyPath = resolvePath(repoRoot, deps.policyPath || DELIVERY_AGENT_POLICY_RELATIVE_PATH);
   const filePolicy = await readJsonIfPresent(policyPath);
+  const requestedMaxActiveCodingLanes =
+    coercePositiveInteger(filePolicy?.maxActiveCodingLanes) ?? DEFAULT_POLICY.maxActiveCodingLanes;
+  const workerPool = normalizeWorkerPoolPolicy(filePolicy?.workerPool, {
+    maxActiveCodingLanes: requestedMaxActiveCodingLanes
+  });
   return {
     ...DEFAULT_POLICY,
     ...(filePolicy && typeof filePolicy === 'object' ? filePolicy : {}),
     schema: DELIVERY_AGENT_POLICY_SCHEMA,
     copilotReviewStrategy: normalizeCopilotReviewStrategy(filePolicy?.copilotReviewStrategy),
+    maxActiveCodingLanes: Math.max(requestedMaxActiveCodingLanes, workerPool.targetSlotCount),
+    workerPool,
     turnBudget: {
       ...DEFAULT_POLICY.turnBudget,
       ...(filePolicy?.turnBudget && typeof filePolicy.turnBudget === 'object' ? filePolicy.turnBudget : {})
@@ -1641,6 +1767,90 @@ function normalizeLifecycle(value, fallback = 'idle') {
   return DELIVERY_AGENT_LIFECYCLE_STATES.has(normalized) ? normalized : fallback;
 }
 
+function laneLifecycleConsumesWorkerSlot(lifecycle, releaseWaitingStates = []) {
+  const normalizedLifecycle = normalizeLifecycle(lifecycle, 'idle');
+  if (releaseWaitingStates.includes(normalizedLifecycle)) {
+    return false;
+  }
+  return normalizedLifecycle === 'planning' || normalizedLifecycle === 'reshaping-backlog' || normalizedLifecycle === 'coding';
+}
+
+function buildWorkerPoolRuntimeState({ policy, laneId, issue, laneLifecycle, preferredSlotId = null }) {
+  const workerPoolPolicy = buildWorkerPoolPolicySnapshot(policy);
+  const slots = [];
+  let slotIndex = 0;
+  for (const provider of workerPoolPolicy.providers.filter((entry) => entry.enabled !== false)) {
+    const slotCount = coercePositiveInteger(provider.slotCount) ?? 1;
+    for (let providerSlot = 0; providerSlot < slotCount && slotIndex < workerPoolPolicy.targetSlotCount; providerSlot += 1) {
+      slotIndex += 1;
+      slots.push({
+        slotId: `worker-slot-${slotIndex}`,
+        providerId: provider.id,
+        providerKind: provider.kind,
+        executionPlane: provider.executionPlane,
+        assignmentMode: provider.assignmentMode,
+        status: 'available',
+        laneId: null,
+        issue: null,
+        laneLifecycle: null
+      });
+    }
+  }
+  while (slots.length < workerPoolPolicy.targetSlotCount) {
+    slots.push({
+      slotId: `worker-slot-${slots.length + 1}`,
+      providerId: null,
+      providerKind: null,
+      executionPlane: null,
+      assignmentMode: null,
+      status: 'available',
+      laneId: null,
+      issue: null,
+      laneLifecycle: null
+    });
+  }
+
+  const releasedLanes = [];
+  const preferredSlotIndex = slots.findIndex((slot) => slot.slotId === normalizeText(preferredSlotId));
+  const selectedSlotIndex = preferredSlotIndex >= 0 ? preferredSlotIndex : 0;
+  const selectedSlotId = (slots[selectedSlotIndex]?.slotId ?? normalizeText(preferredSlotId)) || null;
+  if (workerPoolPolicy.releaseWaitingStates.includes(laneLifecycle)) {
+    releasedLanes.push({
+      slotId: selectedSlotId,
+      laneId,
+      issue,
+      laneLifecycle,
+      releaseReason: 'waiting-state-released'
+    });
+  } else if (laneLifecycleConsumesWorkerSlot(laneLifecycle, workerPoolPolicy.releaseWaitingStates) && slots.length > 0) {
+    slots[selectedSlotIndex] = {
+      ...slots[selectedSlotIndex],
+      status: 'occupied',
+      laneId,
+      issue,
+      laneLifecycle
+    };
+  }
+
+  const occupiedSlotCount = slots.filter((slot) => slot.status === 'occupied').length;
+  const availableSlotCount = slots.filter((slot) => slot.status === 'available').length;
+  return {
+    targetSlotCount: workerPoolPolicy.targetSlotCount,
+    prewarmSlotCount: workerPoolPolicy.prewarmSlotCount,
+    releaseWaitingStates: [...workerPoolPolicy.releaseWaitingStates],
+    providers: workerPoolPolicy.providers.map((provider) => ({ ...provider })),
+    slots,
+    occupiedSlotCount,
+    availableSlotCount,
+    releasedLaneCount: releasedLanes.length,
+    releasedLanes,
+    utilizationRatio:
+      workerPoolPolicy.targetSlotCount > 0
+        ? Number((occupiedSlotCount / workerPoolPolicy.targetSlotCount).toFixed(4))
+        : 0
+  };
+}
+
 function normalizeOptionalObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
@@ -1862,6 +2072,25 @@ export function buildDeliveryAgentRuntimeRecord({
     schedulerDecision?.outcome === 'idle' ? 'idle' : blockerClass !== 'none' ? 'blocked' : 'planning'
   );
   const activeCodingLanes = laneLifecycle === 'coding' ? 1 : 0;
+  const workerPoolPolicy = buildWorkerPoolPolicySnapshot(policy);
+  const normalizedMaxActiveCodingLanes = Math.max(
+    coercePositiveInteger(policy?.maxActiveCodingLanes) ?? workerPoolPolicy.targetSlotCount,
+    workerPoolPolicy.targetSlotCount
+  );
+  const workerPool = buildWorkerPoolRuntimeState({
+    policy: {
+      ...policy,
+      maxActiveCodingLanes: normalizedMaxActiveCodingLanes,
+      workerPool: workerPoolPolicy
+    },
+    laneId,
+    issue,
+    laneLifecycle,
+    preferredSlotId:
+      normalizeText(taskPacket?.evidence?.lane?.workerSlotId) ||
+      normalizeText(executionReceipt?.details?.workerSlotId) ||
+      null
+  });
   const reviewMonitor =
     executionReceipt?.details?.reviewMonitor ??
     taskPacket?.evidence?.delivery?.pullRequest?.copilotReviewWorkflow ??
@@ -1893,14 +2122,16 @@ export function buildDeliveryAgentRuntimeRecord({
       copilotReviewStrategy: normalizeCopilotReviewStrategy(policy.copilotReviewStrategy),
       autoSlice: policy.autoSlice === true,
       autoMerge: policy.autoMerge === true,
-      maxActiveCodingLanes: policy.maxActiveCodingLanes,
+      maxActiveCodingLanes: normalizedMaxActiveCodingLanes,
       allowPolicyMutations: policy.allowPolicyMutations === true,
       allowReleaseAdmin: policy.allowReleaseAdmin === true,
-      stopWhenNoOpenEpics: policy.stopWhenNoOpenEpics === true
+      stopWhenNoOpenEpics: policy.stopWhenNoOpenEpics === true,
+      workerPool: workerPoolPolicy
     },
     status: laneLifecycle === 'blocked' ? 'blocked' : laneLifecycle === 'idle' ? 'idle' : 'running',
     laneLifecycle,
     activeCodingLanes,
+    workerPool,
     localReviewLoop,
     activeLane: {
       schema: DELIVERY_AGENT_LANE_STATE_SCHEMA,
