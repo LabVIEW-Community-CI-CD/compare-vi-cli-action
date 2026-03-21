@@ -382,12 +382,24 @@ export function buildDeliveryMemoryReport({
     .filter((entry) => entry.terminalDisposition === 'merged' || entry.terminalDisposition === 'closed')
     .map(finalizeEntry)
     .sort(compareEntries);
+  const durationSamples = pullRequests
+    .map((entry) => entry.effort.durationMinutes)
+    .filter((value) => Number.isFinite(value));
+  const hostedWaitEscapeCount = pullRequests.filter(
+    (entry) => entry.effort.waitingReviewTurnCount > 0 || entry.effort.waitingCiTurnCount > 0
+  ).length;
+  const meanTerminalDurationMinutes =
+    durationSamples.length > 0
+      ? Math.round((durationSamples.reduce((sum, value) => sum + value, 0) / durationSamples.length) * 10) / 10
+      : null;
 
   const summary = {
     totalTerminalPullRequestCount: pullRequests.length,
     mergedPullRequestCount: pullRequests.filter((entry) => entry.terminalDisposition === 'merged').length,
     closedPullRequestCount: pullRequests.filter((entry) => entry.terminalDisposition === 'closed').length,
+    hostedWaitEscapeCount,
     poisonedBranchClosureCount: pullRequests.filter((entry) => entry.poisonedBranch === true).length,
+    meanTerminalDurationMinutes,
     lowEffortCount: pullRequests.filter((entry) => entry.effort.level === 'low').length,
     mediumEffortCount: pullRequests.filter((entry) => entry.effort.level === 'medium').length,
     highEffortCount: pullRequests.filter((entry) => entry.effort.level === 'high').length,
