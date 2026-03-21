@@ -195,6 +195,39 @@ export function parseGitWorktreeListPorcelain(text) {
   return entries;
 }
 
+export function parseGitStatusPorcelain(text) {
+  const trackedEntries = [];
+  const untrackedEntries = [];
+  let branchName = null;
+
+  for (const rawLine of String(text ?? '').split(/\r?\n/)) {
+    const line = String(rawLine ?? '').trimEnd();
+    if (!line) continue;
+    if (line.startsWith('## ')) {
+      const parsedBranchName = line.slice(3).split('...')[0].trim();
+      branchName = parsedBranchName.startsWith('HEAD ') ? null : parsedBranchName;
+      continue;
+    }
+
+    const entry = {
+      raw: line,
+      code: line.slice(0, 2),
+      path: line.slice(3).trim()
+    };
+    if (line.startsWith('?? ')) {
+      untrackedEntries.push(entry);
+      continue;
+    }
+    trackedEntries.push(entry);
+  }
+
+  return {
+    branchName,
+    trackedEntries,
+    untrackedEntries
+  };
+}
+
 function runGitText(spawnSyncFn, cwd, args, env) {
   const result = spawnSyncFn('git', args, {
     cwd,
@@ -216,6 +249,98 @@ function isWorkBranch(branch) {
 function isDirtyWorktree({ repoRoot, env = process.env, spawnSyncFn = spawnSync } = {}) {
   const statusText = runGitText(spawnSyncFn, repoRoot, ['status', '--porcelain'], env);
   return statusText.length > 0;
+}
+
+function buildDevelopSyncRootCoordination(rootState) {
+  if (!rootState || rootState.status !== 'blocked') {
+    return null;
+  }
+
+  return {
+    required: true,
+    scope: 'primary-root',
+    reason: rootState.reason,
+    recommendedAction: 'correct-or-coordinate-root-state',
+    summary:
+      'Primary repo root is dirty; correct the root state or coordinate operator-owned changes before running priority:develop:sync.'
+  };
+}
+
+export function resolveDevelopSyncRootState({ repoRoot, env = process.env, spawnSyncFn = spawnSync } = {}) {
+  const normalizedRepoRoot = path.resolve(repoRoot);
+  let adminPaths;
+  try {
+    adminPaths = resolveGitAdminPaths({
+      cwd: normalizedRepoRoot,
+      env,
+      spawnSyncFn
+    });
+  } catch (error) {
+    return {
+      status: 'blocked',
+      reason: 'root-state-unavailable',
+      repoRoot: normalizedRepoRoot,
+      checkoutKind: 'unknown',
+      branchName: null,
+      trackedEntryCount: 0,
+      untrackedEntryCount: 0,
+      trackedEntries: [],
+      untrackedEntries: [],
+      coordinationRequired: true,
+      errorMessage: error.message
+    };
+  }
+
+  const checkoutKind =
+    path.resolve(adminPaths.gitDir) === path.resolve(adminPaths.gitCommonDir) ? 'primary-root' : 'linked-worktree';
+
+  let statusText = '';
+  try {
+    statusText = runGitText(
+      spawnSyncFn,
+      normalizedRepoRoot,
+      ['status', '--porcelain=v1', '--branch', '--untracked-files=normal'],
+      env
+    );
+  } catch (error) {
+    return {
+      status: 'blocked',
+      reason: 'git-status-failed',
+      repoRoot: normalizedRepoRoot,
+      checkoutKind,
+      branchName: null,
+      trackedEntryCount: 0,
+      untrackedEntryCount: 0,
+      trackedEntries: [],
+      untrackedEntries: [],
+      coordinationRequired: checkoutKind === 'primary-root',
+      errorMessage: error.message
+    };
+  }
+
+  const parsedStatus = parseGitStatusPorcelain(statusText);
+  const dirtyEntryCount = parsedStatus.trackedEntries.length + parsedStatus.untrackedEntries.length;
+  const blocked = checkoutKind === 'primary-root' && dirtyEntryCount > 0;
+
+  return {
+    status: blocked ? 'blocked' : 'clear',
+    reason: blocked
+      ? 'dirty-primary-root'
+      : checkoutKind === 'primary-root'
+        ? 'clean-primary-root'
+        : dirtyEntryCount > 0
+          ? 'dirty-linked-worktree'
+          : 'clean-linked-worktree',
+    repoRoot: normalizedRepoRoot,
+    checkoutKind,
+    branchName: parsedStatus.branchName,
+    trackedEntryCount: parsedStatus.trackedEntries.length,
+    untrackedEntryCount: parsedStatus.untrackedEntries.length,
+    trackedEntries: parsedStatus.trackedEntries,
+    untrackedEntries: parsedStatus.untrackedEntries,
+    coordinationRequired: blocked,
+    errorMessage: null
+  };
 }
 
 function writeJsonFile(filePath, payload) {
@@ -417,7 +542,16 @@ export function buildDevelopSyncBranchClassTrace(repoRoot) {
   };
 }
 
-function writeDevelopSyncReport({ repoRoot, reportPath, remotes, actions, status, remoteSelection = null }) {
+function writeDevelopSyncReport({
+  repoRoot,
+  reportPath,
+  remotes,
+  actions,
+  status,
+  remoteSelection = null,
+  rootState = null,
+  coordination = null
+}) {
   const report = {
     schema: 'priority/develop-sync-report@v1',
     generatedAt: new Date().toISOString(),
@@ -425,6 +559,8 @@ function writeDevelopSyncReport({ repoRoot, reportPath, remotes, actions, status
     remotes,
     remoteSelection,
     status,
+    rootState,
+    coordination,
     actions
   };
   writeJsonFile(reportPath, report);
@@ -520,7 +656,7 @@ export function runDevelopSync({
   env = process.env,
   spawnSyncFn = spawnSync
 } = {}) {
-  const executionPlan = resolveDevelopSyncExecutionRoot({ repoRoot, env, spawnSyncFn });
+  const rootState = resolveDevelopSyncRootState({ repoRoot, env, spawnSyncFn });
   const remotes = resolveForkRemoteTargets(options.forkRemote, env, { repoRoot, spawnSyncFn });
   const remoteSelection = {
     requested: options.forkRemote ?? null,
@@ -531,6 +667,51 @@ export function runDevelopSync({
   const reportPath = path.isAbsolute(options.reportPath) ? options.reportPath : path.join(repoRoot, options.reportPath);
   const reportHint = path.relative(repoRoot, reportPath).replace(/\\/g, '/');
   const branchClassTrace = buildDevelopSyncBranchClassTrace(repoRoot);
+  const coordination = buildDevelopSyncRootCoordination(rootState);
+
+  if (rootState.status === 'blocked') {
+    for (const remote of remotes) {
+      const parityReportPath = buildParityReportPath(repoRoot, remote);
+      const adminPaths = buildSyncAdminPaths({ repoRoot, remote, env, spawnSyncFn });
+      actions.push({
+        remote,
+        status: 'blocked',
+        parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/'),
+        adminPaths,
+        branchClassTrace,
+        syncMode: 'blocked',
+        syncReason: rootState.reason,
+        parityConverged: null,
+        execution: {
+          mode: 'blocked',
+          reason: rootState.reason,
+          currentBranch: rootState.branchName ?? null,
+          dirtyWorktree: rootState.trackedEntryCount + rootState.untrackedEntryCount > 0,
+          delegated: false,
+          helperRoot: null
+        },
+        rootState,
+        coordination,
+        exitCode: null,
+        error: coordination?.summary ?? 'Root workspace state requires coordination before sync.'
+      });
+    }
+    writeDevelopSyncReport({
+      repoRoot,
+      reportPath,
+      remotes,
+      remoteSelection,
+      actions,
+      status: 'blocked',
+      rootState,
+      coordination
+    });
+    throw new Error(
+      `priority:develop:sync blocked by ${rootState.reason}. report=${reportHint} action=${coordination?.recommendedAction ?? 'coordinate-root-state'}`
+    );
+  }
+
+  const executionPlan = resolveDevelopSyncExecutionRoot({ repoRoot, env, spawnSyncFn });
   const failedRemotes = [];
   let firstFailure = null;
 
@@ -589,7 +770,9 @@ export function runDevelopSync({
             remotes,
             remoteSelection,
             actions,
-            status: 'failed'
+            status: 'failed',
+            rootState,
+            coordination
           });
           throw new Error(`${error.message} report=${reportHint}`);
         }
@@ -627,7 +810,9 @@ export function runDevelopSync({
             remotes,
             remoteSelection,
             actions,
-            status: 'failed'
+            status: 'failed',
+            rootState,
+            coordination
           });
           throw new Error(`${error.message} report=${reportHint}`);
         }
@@ -663,7 +848,9 @@ export function runDevelopSync({
         remotes,
         remoteSelection,
         actions,
-        status: 'failed'
+        status: 'failed',
+        rootState,
+        coordination
       });
       throw new Error(`${error.message} report=${reportHint}`);
     }
@@ -697,7 +884,9 @@ export function runDevelopSync({
         remotes,
         remoteSelection,
         actions,
-        status: 'failed'
+        status: 'failed',
+        rootState,
+        coordination
       });
       throw new Error(`${error.message} report=${reportHint}`);
     }
@@ -709,7 +898,9 @@ export function runDevelopSync({
       remotes,
       remoteSelection,
       actions,
-      status: 'failed'
+      status: 'failed',
+      rootState,
+      coordination
     });
     if (failedRemotes.length === 1 && firstFailure) {
       throw firstFailure;
@@ -725,7 +916,9 @@ export function runDevelopSync({
     remotes,
     remoteSelection,
     actions,
-    status: 'ok'
+    status: 'ok',
+    rootState,
+    coordination
   });
   return { report, reportPath };
 }

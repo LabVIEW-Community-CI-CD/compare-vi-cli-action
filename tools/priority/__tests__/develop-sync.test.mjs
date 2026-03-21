@@ -23,6 +23,7 @@ import {
   buildSyncLockName,
   buildDevelopSyncBranchClassTrace,
   parseGitWorktreeListPorcelain,
+  resolveDevelopSyncRootState,
   resolveDevelopSyncExecutionRoot,
   runDevelopSync
 } from '../develop-sync.mjs';
@@ -67,6 +68,12 @@ function initTempGitRepo(repoDir) {
   run('git', ['add', '.gitkeep'], { cwd: repoDir });
   run('git', ['add', 'tools/policy/branch-classes.json'], { cwd: repoDir });
   run('git', ['commit', '-m', 'temp init'], { cwd: repoDir });
+}
+
+function ignoreAgentIssueResults(repoDir) {
+  const excludePath = path.join(repoDir, '.git', 'info', 'exclude');
+  mkdirSync(path.dirname(excludePath), { recursive: true });
+  writeFileSyncImmediate(excludePath, 'tests/results/_agent/issue/\n', { encoding: 'utf8', flag: 'a' });
 }
 
 function initBareRepo(repoDir) {
@@ -273,6 +280,43 @@ test('resolveDevelopSyncExecutionRoot degrades dirty work-branch syncs to ref-re
   );
 });
 
+test('resolveDevelopSyncRootState blocks dirty primary roots instead of normalizing them through develop sync', () => {
+  const repoRoot = path.join('C:', 'repo', 'quarantined-root');
+  const rootState = resolveDevelopSyncRootState({
+    repoRoot,
+    spawnSyncFn: (command, args) => {
+      if (command !== 'git') {
+        throw new Error(`Unexpected command ${command}`);
+      }
+      if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
+        return { status: 0, stdout: `${repoRoot}\n`, stderr: '' };
+      }
+      if (args[0] === 'rev-parse' && args[1] === '--git-dir') {
+        return { status: 0, stdout: `${path.join(repoRoot, '.git')}\n`, stderr: '' };
+      }
+      if (args[0] === 'rev-parse' && args[1] === '--git-common-dir') {
+        return { status: 0, stdout: `${path.join(repoRoot, '.git')}\n`, stderr: '' };
+      }
+      if (args[0] === 'status' && args[1] === '--porcelain=v1') {
+        return {
+          status: 0,
+          stdout: '## issue/origin-1704-dirty-root\n M tracked.txt\n?? dirty-note.txt\n',
+          stderr: ''
+        };
+      }
+      throw new Error(`Unexpected git args: ${args.join(' ')}`);
+    }
+  });
+
+  assert.equal(rootState.status, 'blocked');
+  assert.equal(rootState.reason, 'dirty-primary-root');
+  assert.equal(rootState.checkoutKind, 'primary-root');
+  assert.equal(rootState.branchName, 'issue/origin-1704-dirty-root');
+  assert.equal(rootState.trackedEntryCount, 1);
+  assert.equal(rootState.untrackedEntryCount, 1);
+  assert.equal(rootState.coordinationRequired, true);
+});
+
 test('buildDevelopSyncBranchClassTrace classifies upstream develop to fork develop as a mirror sync', () => {
   const trace = buildDevelopSyncBranchClassTrace(repoRoot);
 
@@ -401,6 +445,24 @@ test('runDevelopSync launches the sync script from the delegated develop helper 
     spawnSyncFn: (command, args, options) => {
       spawnCalls.push({ command, args, cwd: options.cwd });
       if (command === 'git') {
+        if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
+          if (options.cwd === issueRoot) {
+            return { status: 0, stdout: `${issueRoot}\n`, stderr: '' };
+          }
+          return { status: 0, stdout: `${helperRoot}\n`, stderr: '' };
+        }
+        if (args[0] === 'rev-parse' && args[1] === '--git-dir') {
+          if (options.cwd === issueRoot) {
+            return { status: 0, stdout: `${path.join(gitCommonDir, 'worktrees', 'issue-root')}\n`, stderr: '' };
+          }
+          return { status: 0, stdout: `${gitDir}\n`, stderr: '' };
+        }
+        if (args[0] === 'rev-parse' && args[1] === '--git-common-dir') {
+          return { status: 0, stdout: `${gitCommonDir}\n`, stderr: '' };
+        }
+        if (args[0] === 'status' && args[1] === '--porcelain=v1') {
+          return { status: 0, stdout: '## issue/origin-1412-helper\n', stderr: '' };
+        }
         if (args[0] === 'branch' && args[1] === '--show-current') {
           if (options.cwd === issueRoot) {
             return { status: 0, stdout: 'issue/origin-1412-helper\n', stderr: '' };
@@ -422,15 +484,6 @@ test('runDevelopSync launches the sync script from the delegated develop helper 
             ].join('\n'),
             stderr: ''
           };
-        }
-        if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
-          return { status: 0, stdout: `${helperRoot}\n`, stderr: '' };
-        }
-        if (args[0] === 'rev-parse' && args[1] === '--git-dir') {
-          return { status: 0, stdout: `${gitDir}\n`, stderr: '' };
-        }
-        if (args[0] === 'rev-parse' && args[1] === '--git-common-dir') {
-          return { status: 0, stdout: `${gitCommonDir}\n`, stderr: '' };
         }
         if (args[0] === 'rev-parse' && args[1] === '--git-path' && args[2] === 'config') {
           return { status: 0, stdout: `${gitConfigPath}\n`, stderr: '' };
@@ -459,14 +512,59 @@ test('runDevelopSync launches the sync script from the delegated develop helper 
   assert.ok(spawnCalls.some((entry) => entry.command === 'pwsh' && entry.cwd === helperRoot));
 });
 
-test('runDevelopSync refreshes remote develop refs from a dirty work branch without invoking the checkout-based sync script', async (t) => {
+test('runDevelopSync blocks dirty primary roots and writes an operator-coordination report before any sync attempt', async (t) => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-blocked-root-'));
+  const reportPath = path.join(tempRoot, 'develop-sync-report.json');
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  initTempGitRepo(tempRoot);
+  run('git', ['checkout', '-b', 'issue/test-root-dirty'], { cwd: tempRoot });
+  writeFileSyncImmediate(path.join(tempRoot, '.gitkeep'), 'dirty tracked\n', 'utf8');
+  writeFileSyncImmediate(path.join(tempRoot, 'dirty-untracked.txt'), 'dirty untracked\n', 'utf8');
+
+  assert.throws(
+    () =>
+      runDevelopSync({
+        repoRoot: tempRoot,
+        options: { forkRemote: 'origin', reportPath },
+        spawnSyncFn: (command, args, options = {}) => {
+          if (command === 'git') {
+            return spawnSync(command, args, {
+              ...options,
+              cwd: options.cwd ?? tempRoot,
+              encoding: 'utf8',
+              stdio: ['ignore', 'pipe', 'pipe']
+            });
+          }
+          throw new Error(`Unexpected command ${command}`);
+        }
+      }),
+    /blocked by dirty-primary-root/i
+  );
+
+  const report = readJson(reportPath);
+  assert.equal(report.status, 'blocked');
+  assert.equal(report.rootState.status, 'blocked');
+  assert.equal(report.rootState.reason, 'dirty-primary-root');
+  assert.equal(report.coordination.required, true);
+  assert.equal(report.coordination.recommendedAction, 'correct-or-coordinate-root-state');
+  assert.equal(report.actions[0].status, 'blocked');
+  assert.equal(report.actions[0].syncMode, 'blocked');
+  assert.equal(report.actions[0].syncReason, 'dirty-primary-root');
+  assert.equal(report.actions[0].execution.mode, 'blocked');
+});
+
+test('runDevelopSync refreshes remote develop refs from a dirty linked worktree without invoking the checkout-based sync script', async (t) => {
   const sandboxRoot = await mkdtemp(path.join(os.tmpdir(), 'develop-sync-dirty-ref-refresh-'));
   const upstreamBare = path.join(sandboxRoot, 'upstream.git');
   const originBare = path.join(sandboxRoot, 'origin.git');
   const seedRepo = path.join(sandboxRoot, 'seed');
   const localRepo = path.join(sandboxRoot, 'local');
+  const linkedRepo = path.join(sandboxRoot, 'issue-root');
   const reportPath = path.join(sandboxRoot, 'develop-sync-report.json');
-  const parityReportPath = path.join(localRepo, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
+  const parityReportPath = path.join(linkedRepo, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
   t.after(async () => {
     await rm(sandboxRoot, { recursive: true, force: true });
   });
@@ -483,10 +581,11 @@ test('runDevelopSync refreshes remote develop refs from a dirty work branch with
   run('git', ['config', 'user.email', 'agent@example.com'], { cwd: localRepo });
   run('git', ['config', 'user.name', 'Agent Runner'], { cwd: localRepo });
   run('git', ['remote', 'add', 'upstream', upstreamBare], { cwd: localRepo });
-  run('git', ['checkout', '-b', 'issue/test-sync-dirty'], { cwd: localRepo });
+  run('git', ['checkout', '-b', 'issue/control-root-clean'], { cwd: localRepo });
+  run('git', ['worktree', 'add', '-b', 'issue/test-sync-dirty', linkedRepo, 'origin/develop'], { cwd: localRepo });
 
-  writeFileSyncImmediate(path.join(localRepo, '.gitkeep'), 'dirty tracked\n', 'utf8');
-  writeFileSyncImmediate(path.join(localRepo, 'dirty-untracked.txt'), 'dirty untracked\n', 'utf8');
+  writeFileSyncImmediate(path.join(linkedRepo, '.gitkeep'), 'dirty tracked\n', 'utf8');
+  writeFileSyncImmediate(path.join(linkedRepo, 'dirty-untracked.txt'), 'dirty untracked\n', 'utf8');
 
   writeFileSyncImmediate(path.join(seedRepo, 'upstream-only.txt'), 'upstream only\n', 'utf8');
   run('git', ['add', 'upstream-only.txt'], { cwd: seedRepo });
@@ -495,7 +594,7 @@ test('runDevelopSync refreshes remote develop refs from a dirty work branch with
   run('git', ['push', 'upstream', 'develop'], { cwd: seedRepo });
 
   const result = runDevelopSync({
-    repoRoot: localRepo,
+    repoRoot: linkedRepo,
     options: { forkRemote: 'origin', reportPath },
     spawnSyncFn: (command, args, options) => {
       if (command === 'git') {
@@ -506,6 +605,9 @@ test('runDevelopSync refreshes remote develop refs from a dirty work branch with
   });
 
   assert.equal(result.report.status, 'ok');
+  assert.equal(result.report.rootState.status, 'clear');
+  assert.equal(result.report.rootState.reason, 'dirty-linked-worktree');
+  assert.equal(result.report.rootState.checkoutKind, 'linked-worktree');
   assert.equal(result.report.actions[0].status, 'ok');
   assert.equal(result.report.actions[0].syncMode, 'ref-refresh');
   assert.equal(result.report.actions[0].syncReason, 'dirty-work-branch');
@@ -525,13 +627,13 @@ test('runDevelopSync refreshes remote develop refs from a dirty work branch with
   assert.equal(parityReport.execution.currentBranch, 'issue/test-sync-dirty');
   assert.equal(parityReport.execution.dirtyWorktree, true);
 
-  assert.equal(run('git', ['branch', '--show-current'], { cwd: localRepo }), 'issue/test-sync-dirty');
-  const status = run('git', ['status', '--porcelain'], { cwd: localRepo });
+  assert.equal(run('git', ['branch', '--show-current'], { cwd: linkedRepo }), 'issue/test-sync-dirty');
+  const status = run('git', ['status', '--porcelain'], { cwd: linkedRepo });
   assert.match(status, /dirty-untracked\.txt/);
   assert.match(status, /\.gitkeep/);
 
-  const upstreamTrackingHead = run('git', ['rev-parse', '--verify', 'upstream/develop'], { cwd: localRepo });
-  const originTrackingHead = run('git', ['rev-parse', '--verify', 'origin/develop'], { cwd: localRepo });
+  const upstreamTrackingHead = run('git', ['rev-parse', '--verify', 'upstream/develop'], { cwd: linkedRepo });
+  const originTrackingHead = run('git', ['rev-parse', '--verify', 'origin/develop'], { cwd: linkedRepo });
   assert.equal(upstreamTrackingHead, upstreamHead);
   assert.notEqual(originTrackingHead, upstreamTrackingHead);
 });
@@ -591,6 +693,7 @@ test('runDevelopSync preserves diverged fork classification when the sync script
     await rm(tempRoot, { recursive: true, force: true });
   });
   initTempGitRepo(tempRoot);
+  ignoreAgentIssueResults(tempRoot);
 
   const parityReportPath = path.join(tempRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
   await mkdir(path.dirname(parityReportPath), { recursive: true });
@@ -1333,6 +1436,7 @@ test('runDevelopSync ignores stale parity reports when the failed invocation doe
     await rm(tempRoot, { recursive: true, force: true });
   });
   initTempGitRepo(tempRoot);
+  ignoreAgentIssueResults(tempRoot);
 
   const parityReportPath = path.join(tempRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
   await mkdir(path.dirname(parityReportPath), { recursive: true });
@@ -1397,6 +1501,7 @@ test('runDevelopSync records protected sync mode details from the parity report'
     await rm(tempRoot, { recursive: true, force: true });
   });
   initTempGitRepo(tempRoot);
+  ignoreAgentIssueResults(tempRoot);
 
   const parityReportPath = path.join(tempRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
   await mkdir(path.dirname(parityReportPath), { recursive: true });
@@ -1506,6 +1611,7 @@ test('runDevelopSync records draft remediation details from rewritten parity evi
     await rm(tempRoot, { recursive: true, force: true });
   });
   initTempGitRepo(tempRoot);
+  ignoreAgentIssueResults(tempRoot);
 
   const parityReportPath = path.join(tempRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
   await mkdir(path.dirname(parityReportPath), { recursive: true });
@@ -1737,6 +1843,7 @@ test('runDevelopSync records fork-sync mode details from the parity report', asy
     await rm(tempRoot, { recursive: true, force: true });
   });
   initTempGitRepo(tempRoot);
+  ignoreAgentIssueResults(tempRoot);
 
   const parityReportPath = path.join(tempRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
   await mkdir(path.dirname(parityReportPath), { recursive: true });
@@ -1844,6 +1951,7 @@ test('runDevelopSync fails closed when the parity report omits plane transition 
     await rm(tempRoot, { recursive: true, force: true });
   });
   initTempGitRepo(tempRoot);
+  ignoreAgentIssueResults(tempRoot);
 
   const parityReportPath = path.join(tempRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
   await mkdir(path.dirname(parityReportPath), { recursive: true });
@@ -1914,6 +2022,7 @@ test('runDevelopSync fails closed when the parity report is unreadable', async (
     await rm(tempRoot, { recursive: true, force: true });
   });
   initTempGitRepo(tempRoot);
+  ignoreAgentIssueResults(tempRoot);
 
   const parityReportPath = path.join(tempRoot, 'tests', 'results', '_agent', 'issue', 'origin-upstream-parity.json');
   await mkdir(path.dirname(parityReportPath), { recursive: true });
