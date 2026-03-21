@@ -23,6 +23,7 @@ test('template pivot gate report matches the checked-in schema', async () => {
   const queueEmptyReportPath = path.join(tmpDir, 'no-standing-priority.json');
   const releaseSummaryPath = path.join(tmpDir, 'release-summary.json');
   const handoffEntrypointStatusPath = path.join(tmpDir, 'entrypoint-status.json');
+  const templateAgentVerificationReportPath = path.join(tmpDir, 'template-agent-verification-report.json');
   const outputPath = path.join(tmpDir, 'template-pivot-gate-report.json');
 
   writeJson(policyPath, {
@@ -57,7 +58,8 @@ test('template pivot gate report matches the checked-in schema', async () => {
       defaultOutputPath: outputPath,
       queueEmptyReportPath,
       releaseSummaryPath,
-      handoffEntrypointStatusPath
+      handoffEntrypointStatusPath,
+      templateAgentVerificationReportPath
     }
   });
   writeJson(queueEmptyReportPath, {
@@ -108,6 +110,49 @@ test('template pivot gate report matches the checked-in schema', async () => {
     },
     violations: []
   });
+  writeJson(templateAgentVerificationReportPath, {
+    schema: 'priority/template-agent-verification-report@v1',
+    generatedAt: '2026-03-21T18:02:00.000Z',
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    summary: {
+      status: 'pass',
+      blockerCount: 0,
+      recommendation: 'continue-template-agent-loop'
+    },
+    iteration: {
+      label: 'post-merge #1632',
+      ref: 'issue/origin-1632-template-agent-verification-lane',
+      headSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    },
+    lane: {
+      enabled: true,
+      reservedSlotCount: 1,
+      minimumImplementationSlots: 3,
+      implementationSlotsRemaining: 3,
+      executionMode: 'hosted-first',
+      targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      consumerRailBranch: 'downstream/develop'
+    },
+    verification: {
+      provider: 'hosted-github-workflow',
+      status: 'pass',
+      durationSeconds: 240,
+      runUrl: 'https://github.com/example/run/2'
+    },
+    goals: {
+      maxVerificationLagIterations: 1,
+      maxHostedDurationMinutes: 30,
+      requireMachineReadableRecommendation: true
+    },
+    metrics: {
+      targetSlotCount: 4,
+      reservedSlotCount: 1,
+      implementationSlotsRemaining: 3,
+      durationWithinGoal: true,
+      recommendationPresent: true
+    },
+    blockers: []
+  });
 
   const { report } = await runTemplatePivotGate(
     {
@@ -115,6 +160,7 @@ test('template pivot gate report matches the checked-in schema', async () => {
       queueEmptyReportPath,
       releaseSummaryPath,
       handoffEntrypointStatusPath,
+      templateAgentVerificationReportPath,
       outputPath,
       repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
     },

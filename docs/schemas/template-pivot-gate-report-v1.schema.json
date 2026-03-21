@@ -77,7 +77,8 @@
       "required": [
         "queueEmptyReportPath",
         "releaseSummaryPath",
-        "handoffEntrypointStatusPath"
+        "handoffEntrypointStatusPath",
+        "templateAgentVerificationReportPath"
       ],
       "properties": {
         "queueEmptyReportPath": {
@@ -91,6 +92,10 @@
         "handoffEntrypointStatusPath": {
           "type": "string",
           "minLength": 1
+        },
+        "templateAgentVerificationReportPath": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -100,7 +105,8 @@
       "required": [
         "queueEmpty",
         "releaseCandidate",
-        "handoffEntrypoint"
+        "handoffEntrypoint",
+        "templateAgentVerification"
       ],
       "properties": {
         "queueEmpty": {
@@ -111,6 +117,9 @@
         },
         "handoffEntrypoint": {
           "$ref": "#/$defs/handoffEntrypointEvidence"
+        },
+        "templateAgentVerification": {
+          "$ref": "#/$defs/templateAgentVerificationEvidence"
         }
       }
     },
@@ -267,6 +276,47 @@
           "type": ["string", "null"]
         },
         "status": {
+          "type": ["string", "null"]
+        },
+        "ready": {
+          "type": "boolean"
+        }
+      }
+    },
+    "templateAgentVerificationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reportPath",
+        "exists",
+        "schema",
+        "summaryStatus",
+        "verificationStatus",
+        "targetRepository",
+        "consumerRailBranch",
+        "ready"
+      ],
+      "properties": {
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "schema": {
+          "type": ["string", "null"]
+        },
+        "summaryStatus": {
+          "type": ["string", "null"]
+        },
+        "verificationStatus": {
+          "type": ["string", "null"]
+        },
+        "targetRepository": {
+          "type": ["string", "null"]
+        },
+        "consumerRailBranch": {
           "type": ["string", "null"]
         },
         "ready": {
