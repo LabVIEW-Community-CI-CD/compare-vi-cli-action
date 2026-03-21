@@ -73,7 +73,8 @@ function buildCostRollup({
 function buildThroughputScorecard({
   totalTerminalPullRequestCount = 5,
   mergedPullRequestCount = 4,
-  hostedWaitEscapeCount = 2
+  hostedWaitEscapeCount = 2,
+  concurrentLaneActiveCount = 2
 } = {}) {
   return {
     schema: 'priority/throughput-scorecard@v1',
@@ -90,6 +91,7 @@ function buildThroughputScorecard({
       status: 'pass',
       reasons: [],
       metrics: {
+        concurrentLaneActiveCount,
         hostedWaitEscapeCount
       }
     }
@@ -116,17 +118,31 @@ test('runFundedThroughputScorecard reports operational validated throughput per 
   assert.equal(result.report.summary.recommendation, 'benchmark-operational-throughput');
   assert.equal(result.report.summary.metrics.fundedUsd, 20);
   assert.equal(result.report.summary.metrics.validatedMergedPullRequestCount, 4);
+  assert.equal(result.report.summary.metrics.closedIssueCount, 1);
+  assert.equal(result.report.summary.metrics.promotionEvidenceCount, 5);
+  assert.equal(result.report.summary.metrics.concurrentLaneActiveCount, 2);
+  assert.equal(result.report.summary.metrics.meanTerminalDurationMinutes, 12);
+  assert.equal(result.report.summary.metrics.laneMinutesAllocated, 24);
   assert.equal(result.report.summary.metrics.validatedMergedPullRequestsPerFundedUsd, 0.2);
+  assert.equal(result.report.summary.metrics.closedIssuesPerFundedUsd, 0.05);
+  assert.equal(result.report.summary.metrics.promotionEvidencePerFundedUsd, 0.25);
+  assert.equal(result.report.summary.metrics.laneMinutesAllocatedPerFundedUsd, 1.2);
   assert.equal(result.report.summary.metrics.hostedWaitEscapesPerFundedUsd, 0.1);
   assert.equal(result.report.fundingWindow.windowClass, 'operational');
   assert.deepEqual(result.report.coverage.implementedMetricCodes, [
     'validated-merged-prs-per-funded-dollar',
+    'issues-closed-per-funded-dollar',
+    'promotion-evidence-per-funded-dollar',
+    'lane-minutes-allocated-per-funded-dollar',
     'hosted-wait-escapes-per-funded-dollar',
     'heuristic-spend-drift-relative-to-invoice-turn'
   ]);
-  assert.ok(
-    result.report.coverage.deferredMetrics.some((entry) => entry.code === 'lane-minutes-allocated-per-funded-dollar')
-  );
+  assert.deepEqual(result.report.coverage.projectedMetricCodes, [
+    'issues-closed-per-funded-dollar',
+    'promotion-evidence-per-funded-dollar',
+    'lane-minutes-allocated-per-funded-dollar'
+  ]);
+  assert.deepEqual(result.report.coverage.deferredMetrics, []);
   assert.equal(fs.existsSync(outputPath), true);
 });
 
@@ -173,6 +189,9 @@ test('runFundedThroughputScorecard warns when the funding window is calibration-
   ]);
   assert.equal(result.report.fundingWindow.windowClass, 'calibration');
   assert.equal(result.report.summary.metrics.validatedMergedPullRequestsPerFundedUsd, 0.1);
+  assert.equal(result.report.summary.metrics.closedIssuesPerFundedUsd, 0.1);
+  assert.equal(result.report.summary.metrics.promotionEvidencePerFundedUsd, 0.2);
+  assert.equal(result.report.summary.metrics.laneMinutesAllocatedPerFundedUsd, 2.4);
   assert.equal(result.report.summary.metrics.heuristicUsdDelta, null);
 });
 
@@ -211,6 +230,9 @@ test('runFundedThroughputScorecard warns cleanly instead of dividing by zero whe
   assert.equal(result.report.summary.recommendation, 'observe-funded-window');
   assert.deepEqual(result.report.summary.reasons, ['no-funded-spend-observed']);
   assert.equal(result.report.summary.metrics.validatedMergedPullRequestsPerFundedUsd, null);
+  assert.equal(result.report.summary.metrics.closedIssuesPerFundedUsd, null);
+  assert.equal(result.report.summary.metrics.promotionEvidencePerFundedUsd, null);
+  assert.equal(result.report.summary.metrics.laneMinutesAllocatedPerFundedUsd, null);
   assert.equal(result.report.summary.metrics.hostedWaitEscapesPerFundedUsd, null);
 });
 
