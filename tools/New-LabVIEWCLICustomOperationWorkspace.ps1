@@ -2,7 +2,9 @@
 
 [CmdletBinding()]
 param(
-  [string]$SourceExamplePath = 'C:\Users\Public\Documents\National Instruments\LabVIEW CLI\Examples\AddTwoNumbers',
+  [ValidateSet('ni-example', 'installed-cli-operation')]
+  [string]$SourceKind = 'ni-example',
+  [string]$SourceExamplePath = '',
   [string]$DestinationPath,
   [string]$LabVIEWPathHint,
   [string]$ReceiptPath,
@@ -97,6 +99,48 @@ function Get-LabVIEWVersionHint {
   return $null
 }
 
+function Get-ScaffoldSourceDefinition {
+  param(
+    [Parameter(Mandatory)]
+    [ValidateSet('ni-example', 'installed-cli-operation')]
+    [string]$SourceKind
+  )
+
+  switch ($SourceKind) {
+    'ni-example' {
+      return [ordered]@{
+        defaultPath = 'C:\Users\Public\Documents\National Instruments\LabVIEW CLI\Examples\AddTwoNumbers'
+        requiredFiles = @(
+          'AddTwoNumbers.lvclass',
+          'AddTwoNumbers.vi',
+          'GetHelp.vi',
+          'RunOperation.vi'
+        )
+        notes = @(
+          'Scaffolded from the installed NI AddTwoNumbers example.',
+          'The destination is intentionally disposable and is not a repo-owned payload.'
+        )
+      }
+    }
+    'installed-cli-operation' {
+      return [ordered]@{
+        defaultPath = 'C:\Program Files (x86)\National Instruments\Shared\LabVIEW CLI\Operations\CreateComparisonReport'
+        requiredFiles = @(
+          'GetHelp.vi',
+          'RunOperation.vi'
+        )
+        notes = @(
+          'Scaffolded from an installed official LabVIEW CLI operation directory.',
+          'The copied files remain disposable bootstrap material and must not be committed verbatim as repo-owned payload sources.'
+        )
+      }
+    }
+    default {
+      throw "Unsupported scaffold source kind '$SourceKind'."
+    }
+  }
+}
+
 function Get-PreferredLabVIEWHint {
   param([Parameter(Mandatory)][string]$RepoRoot)
 
@@ -161,13 +205,20 @@ function Get-RelativeFileList {
 
 $repoRoot = Resolve-RepoRoot
 $customOperationResultsRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot 'tests' 'results' '_agent' 'custom-operation-scaffolds'))
+$sourceDefinition = Get-ScaffoldSourceDefinition -SourceKind $SourceKind
 
 if ([string]::IsNullOrWhiteSpace($DestinationPath)) {
   $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
   $DestinationPath = Join-Path $customOperationResultsRoot ("AddTwoNumbers-{0}" -f $timestamp)
 }
 
-$resolvedSource = Resolve-AbsolutePath -BasePath $repoRoot -PathValue $SourceExamplePath
+$effectiveSourcePath = if ([string]::IsNullOrWhiteSpace($SourceExamplePath)) {
+  [string]$sourceDefinition.defaultPath
+} else {
+  $SourceExamplePath
+}
+
+$resolvedSource = Resolve-AbsolutePath -BasePath $repoRoot -PathValue $effectiveSourcePath
 $resolvedDestination = Resolve-AbsolutePath -BasePath $repoRoot -PathValue $DestinationPath
 $resolvedCustomOperationResultsRoot = [System.IO.Path]::GetFullPath($customOperationResultsRoot)
 $resolvedLabVIEWPathHint = if ([string]::IsNullOrWhiteSpace($LabVIEWPathHint)) {
@@ -177,20 +228,15 @@ $resolvedLabVIEWPathHint = if ([string]::IsNullOrWhiteSpace($LabVIEWPathHint)) {
 }
 
 if (-not (Test-Path -LiteralPath $resolvedSource -PathType Container)) {
-  throw "LabVIEW CLI example source was not found at '$resolvedSource'."
+  throw "LabVIEW CLI scaffold source was not found at '$resolvedSource'."
 }
 
 $sourceName = Split-Path -Leaf $resolvedSource
-$sourceFiles = @(
-  'AddTwoNumbers.lvclass',
-  'AddTwoNumbers.vi',
-  'GetHelp.vi',
-  'RunOperation.vi'
-)
+$sourceFiles = @($sourceDefinition.requiredFiles)
 foreach ($requiredFile in $sourceFiles) {
   $requiredPath = Join-Path $resolvedSource $requiredFile
   if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
-    throw "LabVIEW CLI example source is incomplete; expected '$requiredFile' under '$resolvedSource'."
+    throw "LabVIEW CLI scaffold source is incomplete; expected '$requiredFile' under '$resolvedSource'."
   }
 }
 
@@ -241,6 +287,7 @@ $receipt = [ordered]@{
   schema = 'labview-cli-custom-operation-scaffold@v1'
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
   status = 'succeeded'
+  sourceKind = $SourceKind
   sourceExampleName = $sourceName
   sourceExamplePath = $resolvedSource
   destinationPath = $resolvedDestination
@@ -252,10 +299,7 @@ $receipt = [ordered]@{
   labviewVersionHint = Get-LabVIEWVersionHint -PathValue $resolvedLabVIEWPathHint
   copiedFileCount = $copiedFiles.Count
   copiedFiles = @($copiedFiles)
-  notes = @(
-    'Scaffolded from the installed NI AddTwoNumbers example.',
-    'The destination is intentionally disposable and is not a repo-owned payload.'
-  )
+  notes = @($sourceDefinition.notes)
 }
 
 $receipt | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $resolvedReceiptPath -Encoding utf8

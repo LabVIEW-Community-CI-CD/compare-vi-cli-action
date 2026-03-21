@@ -8,6 +8,7 @@
     "schema",
     "generatedAt",
     "status",
+    "sourceKind",
     "sourceExampleName",
     "sourceExamplePath",
     "destinationPath",
@@ -32,6 +33,13 @@
     "status": {
       "type": "string",
       "const": "succeeded"
+    },
+    "sourceKind": {
+      "type": "string",
+      "enum": [
+        "ni-example",
+        "installed-cli-operation"
+      ]
     },
     "sourceExampleName": {
       "type": "string",
