@@ -17,6 +17,36 @@ function Try-GetCommand {
   try { return (Get-Command -Name $Name -ErrorAction Stop) } catch { return $null }
 }
 
+function Split-OutputLines {
+  param([AllowNull()][string]$Text)
+  if ([string]::IsNullOrWhiteSpace($Text)) { return @() }
+  return @($Text -split "(`r`n|`n|`r)" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Invoke-ToolCapture {
+  param(
+    [Parameter(Mandatory)][string]$FilePath,
+    [string[]]$Arguments = @()
+  )
+
+  try {
+    $raw = & $FilePath @Arguments 2>&1
+    $exitCode = $LASTEXITCODE
+    $lines = @($raw | ForEach-Object { [string]$_ })
+    return [ordered]@{
+      exitCode = [int]$exitCode
+      lines = $lines
+      text = ($lines -join "`n")
+    }
+  } catch {
+    return [ordered]@{
+      exitCode = $null
+      lines = @([string]$_.Exception.Message)
+      text = [string]$_.Exception.Message
+    }
+  }
+}
+
 function Get-RepoSlug {
   if ($Repo) { return $Repo }
   try {
@@ -24,6 +54,97 @@ function Get-RepoSlug {
     if ($url -match 'github.com[:/](.+?)(\.git)?$') { return $Matches[1] }
   } catch {}
   return $null
+}
+
+function Get-DockerHealthSnapshot {
+  $dockerCommand = Try-GetCommand docker
+  $services = @()
+  $processes = @()
+  $currentContext = $null
+  $contexts = @()
+  $infoProbe = [ordered]@{
+    exitCode = $null
+    osType = $null
+    sample = @()
+  }
+
+  if ($IsWindows) {
+    foreach ($serviceName in @('docker', 'com.docker.service')) {
+      $svcObj = $null
+      $svcCim = $null
+      try { $svcObj = Get-Service -Name $serviceName -ErrorAction Stop } catch {}
+      try { $svcCim = Get-CimInstance Win32_Service -Filter "Name='$serviceName'" -ErrorAction Stop } catch {}
+      if ($svcObj -or $svcCim) {
+        $services += [pscustomobject]@{
+          name = $serviceName
+          found = $true
+          status = if ($svcObj) { [string]$svcObj.Status } else { $null }
+          startType = if ($svcCim) { [string]$svcCim.StartMode } else { $null }
+        }
+      } else {
+        $services += [pscustomobject]@{
+          name = $serviceName
+          found = $false
+          status = $null
+          startType = $null
+        }
+      }
+    }
+
+    $processes = @(
+      Get-Process -Name 'dockerd','com.docker.backend','com.docker.proxy','Docker Desktop' -ErrorAction SilentlyContinue |
+        Select-Object Name, Id, StartTime
+    )
+  }
+
+  if (-not $dockerCommand) {
+    return [ordered]@{
+      commandAvailable = $false
+      dockerHost = if ([string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) { $null } else { [string]$env:DOCKER_HOST }
+      currentContext = $null
+      contexts = @()
+      infoProbe = $infoProbe
+      services = $services
+      processes = $processes
+    }
+  }
+
+  $contextShow = Invoke-ToolCapture -FilePath $dockerCommand.Source -Arguments @('context', 'show')
+  if ($contextShow.lines.Count -gt 0) {
+    $currentContext = [string]($contextShow.lines | Select-Object -First 1)
+  }
+
+  $contextList = Invoke-ToolCapture -FilePath $dockerCommand.Source -Arguments @('context', 'ls', '--format', '{{json .}}')
+  foreach ($line in @($contextList.lines)) {
+    try {
+      $contexts += ($line | ConvertFrom-Json -ErrorAction Stop)
+    } catch {}
+  }
+
+  $infoProbeResult = Invoke-ToolCapture -FilePath $dockerCommand.Source -Arguments @('info', '--format', '{{.OSType}}')
+  $osType = $null
+  foreach ($line in @($infoProbeResult.lines)) {
+    $candidate = [string]$line
+    if ($candidate -match '^(windows|linux)$') {
+      $osType = $candidate.ToLowerInvariant()
+      break
+    }
+  }
+  $infoProbe = [ordered]@{
+    exitCode = $infoProbeResult.exitCode
+    osType = $osType
+    sample = @($infoProbeResult.lines | Select-Object -First 6)
+  }
+
+  return [ordered]@{
+    commandAvailable = $true
+    dockerHost = if ([string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) { $null } else { [string]$env:DOCKER_HOST }
+    currentContext = $currentContext
+    contexts = @($contexts)
+    infoProbe = $infoProbe
+    services = @($services)
+    processes = @($processes)
+  }
 }
 
 $now = Get-Date
@@ -98,6 +219,7 @@ if ($IncludeGhApi) {
 $procs = Get-Process -ErrorAction SilentlyContinue |
   Where-Object { $_.Name -in 'pwsh','LVCompare','LabVIEW' } |
   Select-Object Name,Id,StartTime,CPU,MainWindowTitle
+$docker = Get-DockerHealthSnapshot
 
 $health = [ordered]@{
   schema      = 'runner-health/v1'
@@ -105,6 +227,7 @@ $health = [ordered]@{
   env         = @{ os = $osInfo; ps = $psv; repo = $repoSlug; workspace = $workRoot }
   workspace   = @{ diskFreeGB = if ($drive) { [math]::Round($drive.Free/1GB,2) } else { $null } }
   service     = $service
+  docker      = $docker
   queue       = $queue
   processes   = $procs
 }
@@ -136,6 +259,19 @@ if ($AppendSummary -and $env:GITHUB_STEP_SUMMARY) {
     "- OS/PS: $($osInfo) / PS $($psv)"
     "- Disk free: $($health.workspace.diskFreeGB) GB"
   )
+
+  $dockerInfo = $health.docker
+  if ($dockerInfo) {
+    $lines += ("- Docker command available: {0}" -f $dockerInfo.commandAvailable)
+    $lines += ("- Docker context: {0}" -f ($(if ($dockerInfo.currentContext) { $dockerInfo.currentContext } else { '<none>' })))
+    $lines += ("- Docker OSType probe: {0}" -f ($(if ($dockerInfo.infoProbe.osType) { $dockerInfo.infoProbe.osType } else { '<unavailable>' })))
+    if ($IsWindows -and $dockerInfo.services) {
+      foreach ($dockerSvc in @($dockerInfo.services)) {
+        $statusText = if ($dockerSvc.found) { ($dockerSvc.status ?? '<unknown>') } else { 'missing' }
+        $lines += ("- Docker service `{0}`: {1}" -f $dockerSvc.name, $statusText)
+      }
+    }
+  }
 
   $queueRepoProp = $null
   if ($health.queue) {

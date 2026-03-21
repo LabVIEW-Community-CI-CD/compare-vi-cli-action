@@ -72,6 +72,8 @@ test('validate workflow Windows VI-history lane is gated by shared dispatch plan
   assert.match(workflow, /vi-history-scenarios-windows:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-windows-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true' && needs\.vi-history-scenarios-plan\.outputs\.execute_lanes == 'true' && needs\.vi-history-scenarios-windows-plan\.outputs\.available == 'true'/);
   assert.match(windowsSection, /runs-on:\s*windows-2022/);
   assert.match(windowsSection, /Print VI history Windows runtime alignment/);
+  assert.match(windowsSection, /Collect hosted Windows runner health/);
+  assert.match(windowsSection, /Collect-RunnerHealth\.ps1/);
   assert.match(windowsSection, /Project VI history Windows Docker-side evidence/);
   assert.match(windowsSection, /tools\/Write-VIHistoryLaneEvidence\.ps1/);
   assert.match(windowsSection, /Test-WindowsNI2026q1HostPreflight\.ps1/);
@@ -80,6 +82,7 @@ test('validate workflow Windows VI-history lane is gated by shared dispatch plan
   assert.match(windowsSection, /id:\s*windows-preflight/);
   assert.match(windowsSection, /Run-NIWindowsContainerCompare\.ps1/);
   assert.match(windowsSection, /if:\s*steps\.windows-preflight\.outputs\.windows_host_preflight_status == 'ready'/);
+  assert.match(windowsSection, /tests\/results\/local-parity\/windows\/_agent\/runner-health\.json/);
   assert.match(windowsSection, /ni-windows-container-stdout\.txt/);
   assert.match(windowsSection, /ni-windows-container-stderr\.txt/);
   assert.doesNotMatch(windowsSection, /Assert-RunnerLabelContract\.ps1/);
