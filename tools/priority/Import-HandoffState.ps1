@@ -230,6 +230,10 @@ if ($continuitySummary) {
       Write-Host ("  gap      : {0}s" -f (Format-NullableValue $quiet.silenceGapSeconds))
       Write-Host ("  pause    : {0}" -f (Format-BoolLabel $quiet.operatorQuietPeriodTreatedAsPause))
     }
+    if ($continuitySummary.continuity.PSObject.Properties['turnBoundary'] -and $continuitySummary.continuity.turnBoundary) {
+      Write-Host ("  boundary : {0}" -f (Format-NullableValue $continuitySummary.continuity.turnBoundary.status))
+      Write-Host ("  boundary-gap : {0}" -f (Format-BoolLabel $continuitySummary.continuity.turnBoundary.operatorTurnEndWouldCreateIdleGap))
+    }
     Write-Host ("  signals  : {0}" -f (Format-NullableValue $continuitySummary.continuity.unattendedSignalCount))
     Write-Host ("  action   : {0}" -f (Format-NullableValue $continuitySummary.continuity.recommendation))
   }
