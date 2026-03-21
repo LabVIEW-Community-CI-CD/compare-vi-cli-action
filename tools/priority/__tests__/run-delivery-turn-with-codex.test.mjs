@@ -53,7 +53,9 @@ test('buildCodexTurnPrompt includes bounded delivery context and helper surfaces
             currentProvider: {
               providerId: 'local-codex',
               currentModel: 'gpt-5.4',
+              currentReasoningEffort: 'xhigh',
               selectedModel: 'gpt-5.4',
+              selectedReasoningEffort: 'xhigh',
               action: 'stay',
               confidence: 'medium',
               reasonCodes: ['stable-current-model']
@@ -74,7 +76,7 @@ test('buildCodexTurnPrompt includes bounded delivery context and helper surfaces
   assert.match(prompt, /Selected issue: #1012/);
   assert.match(prompt, /Standing issue\/epic: #1010/);
   assert.match(prompt, /Model recommendation mode: recommend-only/);
-  assert.match(prompt, /Provider model recommendation: gpt-5\.4/);
+  assert.match(prompt, /Provider model recommendation: gpt-5\.4\/xhigh/);
   assert.match(prompt, /Recommendation reasons: stable-current-model/);
   assert.match(prompt, /priority:pr/);
   assert.match(prompt, /runtime-supervisor\.mjs/);

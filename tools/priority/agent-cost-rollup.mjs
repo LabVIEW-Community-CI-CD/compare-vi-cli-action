@@ -16,6 +16,11 @@ function normalizeText(value) {
   return String(value).trim();
 }
 
+function normalizeReasoningEffort(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return ['low', 'medium', 'high', 'xhigh'].includes(normalized) ? normalized : null;
+}
+
 function toNonNegativeNumber(value) {
   if (value == null || value === '') {
     return null;
@@ -238,6 +243,8 @@ function normalizeTurnReceipt(input) {
       executionPlane: normalizeText(payload?.provider?.executionPlane) || null,
       requestedModel: normalizeText(payload?.model?.requested) || null,
       effectiveModel: normalizeText(payload?.model?.effective) || null,
+      requestedReasoningEffort: normalizeReasoningEffort(payload?.model?.requestedReasoningEffort),
+      effectiveReasoningEffort: normalizeReasoningEffort(payload?.model?.effectiveReasoningEffort),
       usageUnitKind,
       usageUnitCount,
       inputTokens,
@@ -468,6 +475,8 @@ export function runAgentCostRollup(options) {
   const byProviderUsd = new Map();
   const byModelCount = new Map();
   const byModelUsd = new Map();
+  const byReasoningEffortCount = new Map();
+  const byReasoningEffortUsd = new Map();
   const byIssueCount = new Map();
   const byIssueUsd = new Map();
   const byLaneCount = new Map();
@@ -482,12 +491,15 @@ export function runAgentCostRollup(options) {
   const issueNumbers = new Set();
   const laneIds = new Set();
   const repositories = new Set();
+  const reasoningEfforts = new Set();
 
   for (const turn of validTurns) {
     incrementCount(byProviderCount, turn.providerId);
     addUsd(byProviderUsd, turn.providerId, turn.amountUsd);
     incrementCount(byModelCount, turn.effectiveModel);
     addUsd(byModelUsd, turn.effectiveModel, turn.amountUsd);
+    incrementCount(byReasoningEffortCount, turn.effectiveReasoningEffort || 'unspecified');
+    addUsd(byReasoningEffortUsd, turn.effectiveReasoningEffort || 'unspecified', turn.amountUsd);
     incrementCount(byIssueCount, turn.issueNumber != null ? String(turn.issueNumber) : 'unknown');
     addUsd(byIssueUsd, turn.issueNumber != null ? String(turn.issueNumber) : 'unknown', turn.amountUsd);
     incrementCount(byLaneCount, turn.laneId);
@@ -518,6 +530,9 @@ export function runAgentCostRollup(options) {
     }
     if (turn.repository) {
       repositories.add(turn.repository);
+    }
+    if (turn.effectiveReasoningEffort) {
+      reasoningEfforts.add(turn.effectiveReasoningEffort);
     }
   }
 
@@ -582,6 +597,7 @@ export function runAgentCostRollup(options) {
         issueNumbers: [...issueNumbers].sort((left, right) => left - right),
         laneIds: [...laneIds].sort(),
         repositories: [...repositories].sort(),
+        reasoningEfforts: [...reasoningEfforts].sort(),
         rateCards: [...rateCards.values()].sort((left, right) =>
           `${left.id || ''}|${left.source || ''}`.localeCompare(`${right.id || ''}|${right.source || ''}`)
         ),
@@ -603,6 +619,7 @@ export function runAgentCostRollup(options) {
     breakdown: {
       byProvider: materializeBreakdown(byProviderCount, byProviderUsd),
       byModel: materializeBreakdown(byModelCount, byModelUsd),
+      byReasoningEffort: materializeBreakdown(byReasoningEffortCount, byReasoningEffortUsd),
       byIssue: materializeBreakdown(byIssueCount, byIssueUsd),
       byLane: materializeBreakdown(byLaneCount, byLaneUsd),
       byAgentRole: materializeBreakdown(byAgentRoleCount, byAgentRoleUsd),

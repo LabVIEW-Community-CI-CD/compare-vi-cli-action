@@ -63,6 +63,7 @@ test('live-agent model selection policy fixture and generated report match the c
         agentRole: 'live',
         providerId: 'local-codex',
         effectiveModel: 'gpt-5.4',
+        effectiveReasoningEffort: 'xhigh',
         amountUsd: 11.1,
         amountKind: 'estimated'
       }

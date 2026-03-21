@@ -4701,7 +4701,9 @@ async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, execution
       COMPAREVI_LIVE_AGENT_MODEL_SELECTION_MODE: normalizeText(liveAgentModelSelection?.mode) || '',
       COMPAREVI_LIVE_AGENT_MODEL_PROVIDER_ID: normalizeText(liveAgentCurrentProvider?.providerId) || '',
       COMPAREVI_LIVE_AGENT_MODEL_CURRENT: normalizeText(liveAgentCurrentProvider?.currentModel) || '',
+      COMPAREVI_LIVE_AGENT_MODEL_CURRENT_REASONING_EFFORT: normalizeText(liveAgentCurrentProvider?.currentReasoningEffort) || '',
       COMPAREVI_LIVE_AGENT_MODEL_SELECTED: normalizeText(liveAgentCurrentProvider?.selectedModel) || '',
+      COMPAREVI_LIVE_AGENT_MODEL_SELECTED_REASONING_EFFORT: normalizeText(liveAgentCurrentProvider?.selectedReasoningEffort) || '',
       COMPAREVI_LIVE_AGENT_MODEL_ACTION: normalizeText(liveAgentCurrentProvider?.action) || '',
       COMPAREVI_LIVE_AGENT_MODEL_CONFIDENCE: normalizeText(liveAgentCurrentProvider?.confidence) || ''
     };

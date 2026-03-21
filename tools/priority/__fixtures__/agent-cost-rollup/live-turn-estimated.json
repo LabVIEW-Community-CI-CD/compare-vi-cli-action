@@ -9,7 +9,9 @@
   },
   "model": {
     "requested": "gpt-5-codex",
-    "effective": "gpt-5-codex"
+    "effective": "gpt-5-codex",
+    "requestedReasoningEffort": "xhigh",
+    "effectiveReasoningEffort": "xhigh"
   },
   "usage": {
     "inputTokens": 2400,

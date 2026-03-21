@@ -23,6 +23,7 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.ok(docsEntry.files.includes('docs/knowledgebase/Agent-Cost-Telemetry-Surfaces.md'));
   assert.ok(contractEntry.files.includes('docs/schemas/agent-cost-invoice-turn-v1.schema.json'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-invoice-turn.mjs'));
+  assert.ok(contractEntry.files.includes('tools/priority/agent-cost-turn.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-rollup.mjs'));
   assert.match(guide, /tools\/local-collab\/ledger\/local-review-ledger\.mjs/);
   assert.match(guide, /tests\/results\/_agent\/local-collab\/ledger\/receipts\/<phase>\/<head-sha>\.json/);
@@ -50,5 +51,7 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.match(guide, /docs\/schemas\/agent-cost-invoice-turn-v1\.schema\.json/);
   assert.match(guide, /tools\/priority\/agent-cost-invoice-turn\.mjs/);
   assert.match(guide, /priority:cost:invoice-turn/);
+  assert.match(guide, /priority:cost:turn/);
   assert.match(guide, /priority:cost:rollup/);
+  assert.match(guide, /xhigh/);
 });

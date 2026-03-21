@@ -112,7 +112,9 @@
         "providerKind": { "type": ["string", "null"] },
         "agentRole": { "type": "string", "minLength": 1 },
         "currentModel": { "type": "string", "minLength": 1 },
+        "currentReasoningEffort": { "type": ["string", "null"], "enum": ["low", "medium", "high", "xhigh", null] },
         "selectedModel": { "type": "string", "minLength": 1 },
+        "selectedReasoningEffort": { "type": ["string", "null"], "enum": ["low", "medium", "high", "xhigh", null] },
         "action": { "enum": ["stay", "switch", "override", "hold"] },
         "recommendationSource": { "type": "string", "minLength": 1 },
         "mode": { "enum": ["recommend-only", "enforce"] },
@@ -147,6 +149,10 @@
               "type": "array",
               "items": { "type": "string" }
             },
+            "observedReasoningEfforts": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
             "totalUsd": { "type": "number", "minimum": 0 },
             "averageUsdPerTurn": { "type": ["number", "null"], "minimum": 0 },
             "throughputStatus": { "type": "string" },
@@ -173,9 +179,10 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["model", "strength", "costTier", "notes", "score"],
+            "required": ["model", "reasoningEffort", "strength", "costTier", "notes", "score"],
             "properties": {
               "model": { "type": "string", "minLength": 1 },
+              "reasoningEffort": { "type": ["string", "null"], "enum": ["low", "medium", "high", "xhigh", null] },
               "strength": { "type": "integer", "minimum": 1 },
               "costTier": { "type": "integer", "minimum": 1 },
               "notes": { "type": ["string", "null"] },
@@ -190,10 +197,11 @@
         "stability": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["cooldownRemainingReports", "previousSelectedModel", "previousAction", "previousGeneratedAt"],
+          "required": ["cooldownRemainingReports", "previousSelectedModel", "previousSelectedReasoningEffort", "previousAction", "previousGeneratedAt"],
           "properties": {
             "cooldownRemainingReports": { "type": "integer", "minimum": 0 },
             "previousSelectedModel": { "type": ["string", "null"] },
+            "previousSelectedReasoningEffort": { "type": ["string", "null"], "enum": ["low", "medium", "high", "xhigh", null] },
             "previousAction": { "type": ["string", "null"] },
             "previousGeneratedAt": { "type": ["string", "null"] }
           }

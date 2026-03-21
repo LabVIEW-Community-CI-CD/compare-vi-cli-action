@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { buildAgentCostInvoiceTurn, parseArgs as parseInvoiceTurnArgs, runAgentCostInvoiceTurn } from '../agent-cost-invoice-turn.mjs';
+import { buildAgentCostTurn, parseArgs as parseTurnArgs, runAgentCostTurn } from '../agent-cost-turn.mjs';
 import { evaluateAgentCostRollup, parseArgs, runAgentCostRollup } from '../agent-cost-rollup.mjs';
 
 const repoRoot = path.resolve(process.cwd());
@@ -34,6 +35,34 @@ test('parseArgs accepts repeated turn reports and optional repo override', () =>
   assert.deepEqual(parsed.turnReportPaths, ['turn-a.json', 'turn-b.json']);
   assert.equal(parsed.repo, 'example/repo');
   assert.equal(parsed.failOnInvalidInputs, false);
+});
+
+test('agent cost turn helper derives effective reasoning effort and total tokens deterministically', () => {
+  const parsed = parseTurnArgs([
+    'node',
+    'agent-cost-turn.mjs',
+    '--provider-id', 'codex-cli',
+    '--provider-kind', 'local-codex',
+    '--provider-runtime', 'codex-cli',
+    '--execution-plane', 'wsl2',
+    '--requested-model', 'gpt-5.4',
+    '--requested-reasoning-effort', 'xhigh',
+    '--input-tokens', '2000',
+    '--output-tokens', '500',
+    '--repository', 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--issue-number', '1644',
+    '--lane-id', 'issue/origin-1644-reasoning-effort-model-selection-telemetry',
+    '--lane-branch', 'issue/origin-1644-reasoning-effort-model-selection-telemetry',
+    '--session-id', 'session-live-1644',
+    '--turn-id', 'turn-live-1644',
+    '--agent-role', 'live',
+    '--source-schema', 'priority/manual-live-session@v1',
+    '--usage-observed-at', '2026-03-21T19:10:30.000Z'
+  ]);
+
+  const { report } = buildAgentCostTurn(parsed, new Date('2026-03-21T19:11:00.000Z'));
+  assert.equal(report.model.effectiveReasoningEffort, 'xhigh');
+  assert.equal(report.usage.totalTokens, 2500);
 });
 
 test('invoice turn helper derives the prepaid baseline deterministically', () => {
@@ -182,10 +211,12 @@ test('runAgentCostRollup aggregates exact and estimated turn spend with provenan
   assert.equal(result.report.summary.metrics.totalInputTokens, 3600);
   assert.equal(result.report.summary.metrics.totalOutputTokens, 760);
   assert.ok(result.report.summary.provenance.sessionIds.includes('session-live-001'));
+  assert.ok(result.report.summary.provenance.reasoningEfforts.includes('xhigh'));
   assert.equal(result.report.summary.provenance.invoiceTurn.invoiceId, 'HQ1VJLMV-0027');
   assert.equal(result.report.billingWindow.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.ok(result.report.summary.provenance.repositories.includes('LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'));
   assert.ok(result.report.breakdown.byProvider.some((entry) => entry.key === 'codex-cli' && entry.totalUsd === 0.0201));
+  assert.ok(result.report.breakdown.byReasoningEffort.some((entry) => entry.key === 'xhigh' && entry.turnCount === 1));
   assert.ok(result.report.breakdown.byAgentRole.some((entry) => entry.key === 'background' && entry.turnCount === 1));
   assert.equal(fs.existsSync(outputPath), true);
 });
@@ -330,5 +361,36 @@ test('agent-cost-rollup CLI writes a rollup receipt when invoked directly', () =
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /\[agent-cost-rollup\] wrote /);
+  assert.equal(fs.existsSync(outputPath), true);
+});
+
+test('runAgentCostTurn writes a turn receipt when invoked programmatically', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-turn-programmatic-'));
+  const outputPath = path.join(tmpDir, 'turn.json');
+  const result = runAgentCostTurn(
+    {
+      providerId: 'codex-cli',
+      providerKind: 'local-codex',
+      providerRuntime: 'codex-cli',
+      executionPlane: 'wsl2',
+      requestedModel: 'gpt-5.4',
+      requestedReasoningEffort: 'xhigh',
+      inputTokens: 100,
+      outputTokens: 50,
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      issueNumber: 1644,
+      laneId: 'issue/origin-1644-reasoning-effort-model-selection-telemetry',
+      laneBranch: 'issue/origin-1644-reasoning-effort-model-selection-telemetry',
+      sessionId: 'session-live-1644',
+      turnId: 'turn-live-1644',
+      agentRole: 'live',
+      sourceSchema: 'priority/manual-live-session@v1',
+      usageObservedAt: '2026-03-21T18:40:00.000Z',
+      outputPath
+    },
+    new Date('2026-03-21T18:41:00.000Z')
+  );
+
+  assert.equal(result.report.model.effectiveReasoningEffort, 'xhigh');
   assert.equal(fs.existsSync(outputPath), true);
 });
