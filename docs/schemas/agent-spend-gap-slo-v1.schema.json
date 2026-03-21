@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/agent-spend-gap-slo-v1.schema.json",
+  "title": "Agent Spend Gap SLO Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generatedAt", "repository", "inputs", "window", "summary", "gaps"],
+  "properties": {
+    "schema": { "const": "priority/agent-spend-gap-slo@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repository": { "$ref": "#/$defs/nullableString" },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["costRollupPath", "throughputScorecardPath", "gapThresholdMinutes"],
+      "properties": {
+        "costRollupPath": { "$ref": "#/$defs/inputRef" },
+        "throughputScorecardPath": { "$ref": "#/$defs/inputRef" },
+        "gapThresholdMinutes": { "type": "number", "minimum": 0 }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firstSpendAt", "lastSpendAt", "observedMinutes"],
+      "properties": {
+        "firstSpendAt": { "$ref": "#/$defs/nullableString" },
+        "lastSpendAt": { "$ref": "#/$defs/nullableString" },
+        "observedMinutes": { "type": "number", "minimum": 0 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reasons", "metrics"],
+      "properties": {
+        "status": { "enum": ["pass", "warn"] },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "totalSpendTurns",
+            "totalGapCount",
+            "optimizationSignalGapCount",
+            "trackedGapCount",
+            "quietWindowGapCount",
+            "unexplainedGapCount",
+            "largestGapMinutes",
+            "totalGapMinutes"
+          ],
+          "properties": {
+            "totalSpendTurns": { "type": "integer", "minimum": 0 },
+            "totalGapCount": { "type": "integer", "minimum": 0 },
+            "optimizationSignalGapCount": { "type": "integer", "minimum": 0 },
+            "trackedGapCount": { "type": "integer", "minimum": 0 },
+            "quietWindowGapCount": { "type": "integer", "minimum": 0 },
+            "unexplainedGapCount": { "type": "integer", "minimum": 0 },
+            "largestGapMinutes": { "type": "number", "minimum": 0 },
+            "totalGapMinutes": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/gap" }
+    }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "inputRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "exists", "error"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nullableString" },
+        "exists": { "type": "boolean" },
+        "error": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "turnEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issueNumber",
+        "turnId",
+        "laneId",
+        "agentRole",
+        "providerId",
+        "effectiveModel",
+        "effectiveReasoningEffort",
+        "amountUsd",
+        "exactness"
+      ],
+      "properties": {
+        "issueNumber": { "type": ["integer", "null"], "minimum": 0 },
+        "turnId": { "$ref": "#/$defs/nullableString" },
+        "laneId": { "$ref": "#/$defs/nullableString" },
+        "agentRole": { "$ref": "#/$defs/nullableString" },
+        "providerId": { "$ref": "#/$defs/nullableString" },
+        "effectiveModel": { "$ref": "#/$defs/nullableString" },
+        "effectiveReasoningEffort": { "$ref": "#/$defs/nullableString" },
+        "amountUsd": { "type": "number", "minimum": 0 },
+        "exactness": { "type": "string", "enum": ["exact", "estimated"] }
+      }
+    },
+    "gapEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readyPrInventory",
+        "currentWorkerUtilizationRatio",
+        "concurrentLaneActiveCount",
+        "concurrentLaneDeferredCount",
+        "hostedWaitEscapeCount",
+        "throughputReasons"
+      ],
+      "properties": {
+        "readyPrInventory": { "type": ["integer", "null"], "minimum": 0 },
+        "currentWorkerUtilizationRatio": { "type": ["number", "null"], "minimum": 0 },
+        "concurrentLaneActiveCount": { "type": ["integer", "null"], "minimum": 0 },
+        "concurrentLaneDeferredCount": { "type": ["integer", "null"], "minimum": 0 },
+        "hostedWaitEscapeCount": { "type": ["integer", "null"], "minimum": 0 },
+        "throughputReasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startedAt",
+        "endedAt",
+        "durationMinutes",
+        "previousTurn",
+        "nextTurn",
+        "classification",
+        "trackingIssueNumber",
+        "evidence"
+      ],
+      "properties": {
+        "startedAt": { "type": "string", "format": "date-time" },
+        "endedAt": { "type": "string", "format": "date-time" },
+        "durationMinutes": { "type": "number", "minimum": 0 },
+        "previousTurn": { "$ref": "#/$defs/turnEvidence" },
+        "nextTurn": { "$ref": "#/$defs/turnEvidence" },
+        "classification": {
+          "enum": ["optimization-signal", "tracked-followup", "accepted-quiet-window", "insufficient-evidence"]
+        },
+        "trackingIssueNumber": { "type": ["integer", "null"], "minimum": 0 },
+        "evidence": { "$ref": "#/$defs/gapEvidence" }
+      }
+    }
+  }
+}
