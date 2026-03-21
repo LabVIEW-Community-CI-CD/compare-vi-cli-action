@@ -224,6 +224,45 @@ The smallest defensible first implementation is:
    - `throughput-scorecard.json`
    - `delivery-memory.json`
 
+## First Implemented Invoice-Turn Slice
+
+`#1639` now has a checked-in first invoice-turn baseline surface:
+
+- schema: `docs/schemas/agent-cost-invoice-turn-v1.schema.json`
+- schema: `docs/schemas/agent-cost-turn-v1.schema.json`
+- schema: `docs/schemas/agent-cost-rollup-v1.schema.json`
+- helper: `tools/priority/agent-cost-invoice-turn.mjs`
+- helper: `tools/priority/agent-cost-rollup.mjs`
+- sample fixtures:
+  - `tools/priority/__fixtures__/agent-cost-rollup/live-turn-estimated.json`
+  - `tools/priority/__fixtures__/agent-cost-rollup/background-turn-exact.json`
+  - `tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline.json`
+
+This first slice intentionally separates:
+
+- checked-in public example baseline
+- local-only normalized invoice receipts that can carry private operator evidence
+
+The checked-in fixture must never embed the private invoice path. Local receipts
+may carry that path under operator control for later reconciliation.
+
+Use the helpers like this:
+
+- `node tools/priority/agent-cost-invoice-turn.mjs ...`
+- `node tools/priority/agent-cost-rollup.mjs --turn-report <path> --invoice-turn <path>`
+- `node tools/npm/run-script.mjs priority:cost:invoice-turn -- ...`
+- `node tools/npm/run-script.mjs priority:cost:rollup -- ...`
+
+This is the right first boundary because it gives future agents:
+
+- a real accounting epoch (`invoice turn`)
+- per-turn and rollup receipts with explicit provenance
+- a reconciliation point for the next operator-provided invoice
+
+It is still not exact billing truth. Until provider exports are available, use
+the invoice-turn baseline plus explicit `exact` versus `estimated` provenance to
+keep the reporting honest.
+
 ## Follow-Up Seams To Keep Separate
 
 - separate rate-card contract/schema

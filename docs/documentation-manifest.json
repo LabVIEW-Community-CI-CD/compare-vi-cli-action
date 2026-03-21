@@ -118,6 +118,26 @@
       ]
     },
     {
+      "name": "Agent Cost Telemetry Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Checked-in invoice-turn, per-turn, and rollup cost telemetry contracts, fixtures, helper CLIs, and focused tests used to anchor spend reporting in repo-visible evidence.",
+      "files": [
+        "docs/knowledgebase/Agent-Cost-Telemetry-Surfaces.md",
+        "docs/schemas/agent-cost-invoice-turn-v1.schema.json",
+        "docs/schemas/agent-cost-turn-v1.schema.json",
+        "docs/schemas/agent-cost-rollup-v1.schema.json",
+        "tools/priority/__fixtures__/agent-cost-rollup/live-turn-estimated.json",
+        "tools/priority/__fixtures__/agent-cost-rollup/background-turn-exact.json",
+        "tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline.json",
+        "tools/priority/agent-cost-invoice-turn.mjs",
+        "tools/priority/agent-cost-rollup.mjs",
+        "tools/priority/__tests__/agent-cost-rollup.test.mjs",
+        "tools/priority/__tests__/agent-cost-rollup-schema.test.mjs",
+        "tools/priority/__tests__/agent-cost-telemetry-surfaces.test.mjs"
+      ]
+    },
+    {
       "name": "GitHub Templates",
       "category": "supporting",
       "status": "reference",

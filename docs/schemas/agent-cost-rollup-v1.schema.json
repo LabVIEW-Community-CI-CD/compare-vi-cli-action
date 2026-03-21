@@ -1,0 +1,310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/agent-cost-rollup-v1.schema.json",
+  "title": "Agent Cost Rollup Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generatedAt", "repository", "inputs", "turns", "summary", "billingWindow", "breakdown"],
+  "properties": {
+    "schema": { "const": "priority/agent-cost-rollup@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repository": { "type": ["string", "null"] },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["turnReportPaths", "invoiceTurnPath"],
+      "properties": {
+        "turnReportPaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inputRef" }
+        },
+        "invoiceTurnPath": {
+          "anyOf": [
+            { "$ref": "#/$defs/inputRef" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "turns": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/turnSummary" }
+    },
+    "summary": { "$ref": "#/$defs/summary" },
+    "billingWindow": {
+      "anyOf": [
+        { "$ref": "#/$defs/billingWindow" },
+        { "type": "null" }
+      ]
+    },
+    "breakdown": { "$ref": "#/$defs/breakdown" }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "inputRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "exists", "error"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "exists": { "type": "boolean" },
+        "error": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "inputPath"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "inputPath": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "turnSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePath",
+        "generatedAt",
+        "repository",
+        "issueNumber",
+        "laneId",
+        "laneBranch",
+        "sessionId",
+        "turnId",
+        "workerSlotId",
+        "agentRole",
+        "providerId",
+        "providerKind",
+        "providerRuntime",
+        "executionPlane",
+        "requestedModel",
+        "effectiveModel",
+        "usageUnitKind",
+        "usageUnitCount",
+        "inputTokens",
+        "cachedInputTokens",
+        "outputTokens",
+        "totalTokens",
+        "exactness",
+        "amountUsd",
+        "amountSource",
+        "rateCardId",
+        "rateCardSource",
+        "rateCardRetrievedAt",
+        "pricingBasis",
+        "provenance"
+      ],
+      "properties": {
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "generatedAt": { "$ref": "#/$defs/nullableString" },
+        "repository": { "$ref": "#/$defs/nullableString" },
+        "issueNumber": { "type": ["integer", "null"], "minimum": 0 },
+        "laneId": { "$ref": "#/$defs/nullableString" },
+        "laneBranch": { "$ref": "#/$defs/nullableString" },
+        "sessionId": { "$ref": "#/$defs/nullableString" },
+        "turnId": { "$ref": "#/$defs/nullableString" },
+        "workerSlotId": { "$ref": "#/$defs/nullableString" },
+        "agentRole": { "$ref": "#/$defs/nullableString" },
+        "providerId": { "$ref": "#/$defs/nullableString" },
+        "providerKind": { "$ref": "#/$defs/nullableString" },
+        "providerRuntime": { "$ref": "#/$defs/nullableString" },
+        "executionPlane": { "$ref": "#/$defs/nullableString" },
+        "requestedModel": { "$ref": "#/$defs/nullableString" },
+        "effectiveModel": { "$ref": "#/$defs/nullableString" },
+        "usageUnitKind": { "$ref": "#/$defs/nullableString" },
+        "usageUnitCount": { "type": ["number", "integer", "null"], "minimum": 0 },
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "cachedInputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
+        "totalTokens": { "type": "integer", "minimum": 0 },
+        "exactness": { "type": "string", "enum": ["exact", "estimated"] },
+        "amountUsd": { "type": "number", "minimum": 0 },
+        "amountSource": { "type": "string", "enum": ["declared-amount", "rate-card-estimate"] },
+        "rateCardId": { "$ref": "#/$defs/nullableString" },
+        "rateCardSource": { "$ref": "#/$defs/nullableString" },
+        "rateCardRetrievedAt": { "$ref": "#/$defs/nullableString" },
+        "pricingBasis": { "$ref": "#/$defs/nullableString" },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sourceSchema", "sourceReceiptPath", "sourceReportPath", "usageObservedAt"],
+          "properties": {
+            "sourceSchema": { "$ref": "#/$defs/nullableString" },
+            "sourceReceiptPath": { "$ref": "#/$defs/nullableString" },
+            "sourceReportPath": { "$ref": "#/$defs/nullableString" },
+            "usageObservedAt": { "$ref": "#/$defs/nullableString" }
+          }
+        }
+      }
+    },
+    "invoiceTurnSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePath",
+        "invoiceTurnId",
+        "invoiceId",
+        "openedAt",
+        "closedAt",
+        "creditsPurchased",
+        "unitPriceUsd",
+        "prepaidUsd",
+        "pricingBasis",
+        "sourceKind",
+        "sourcePathEvidence",
+        "operatorNote"
+      ],
+      "properties": {
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "invoiceTurnId": { "$ref": "#/$defs/nullableString" },
+        "invoiceId": { "$ref": "#/$defs/nullableString" },
+        "openedAt": { "$ref": "#/$defs/nullableString" },
+        "closedAt": { "$ref": "#/$defs/nullableString" },
+        "creditsPurchased": { "type": "number", "minimum": 0 },
+        "unitPriceUsd": { "type": "number", "minimum": 0 },
+        "prepaidUsd": { "type": "number", "minimum": 0 },
+        "pricingBasis": { "$ref": "#/$defs/nullableString" },
+        "sourceKind": { "$ref": "#/$defs/nullableString" },
+        "sourcePathEvidence": { "$ref": "#/$defs/nullableString" },
+        "operatorNote": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "recommendation", "blockerCount", "blockers", "metrics", "provenance"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "fail"] },
+        "recommendation": {
+          "type": "string",
+          "enum": ["repair-input-receipts", "repair-invoice-turn-baseline", "continue-estimated-telemetry", "exact-cost-ready"]
+        },
+        "blockerCount": { "type": "integer", "minimum": 0 },
+        "blockers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blocker" }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "totalTurns",
+            "exactTurnCount",
+            "estimatedTurnCount",
+            "totalUsd",
+            "exactUsd",
+            "estimatedUsd",
+            "totalInputTokens",
+            "totalCachedInputTokens",
+            "totalOutputTokens",
+            "totalTokens",
+            "totalUsageUnits",
+            "estimatedCreditsConsumed",
+            "creditsRemaining",
+            "estimatedPrepaidUsdRemaining",
+            "prepaidUsdConsumedRatio"
+          ],
+          "properties": {
+            "totalTurns": { "type": "integer", "minimum": 0 },
+            "exactTurnCount": { "type": "integer", "minimum": 0 },
+            "estimatedTurnCount": { "type": "integer", "minimum": 0 },
+            "totalUsd": { "type": "number", "minimum": 0 },
+            "exactUsd": { "type": "number", "minimum": 0 },
+            "estimatedUsd": { "type": "number", "minimum": 0 },
+            "totalInputTokens": { "type": "integer", "minimum": 0 },
+            "totalCachedInputTokens": { "type": "integer", "minimum": 0 },
+            "totalOutputTokens": { "type": "integer", "minimum": 0 },
+            "totalTokens": { "type": "integer", "minimum": 0 },
+            "totalUsageUnits": { "type": "number", "minimum": 0 },
+            "estimatedCreditsConsumed": { "type": ["number", "null"], "minimum": 0 },
+            "creditsRemaining": { "type": ["number", "null"], "minimum": 0 },
+            "estimatedPrepaidUsdRemaining": { "type": ["number", "null"], "minimum": 0 },
+            "prepaidUsdConsumedRatio": { "type": ["number", "null"], "minimum": 0 }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "invoiceTurn"],
+          "properties": {
+            "sessionIds": { "type": "array", "items": { "type": "string" } },
+            "issueNumbers": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+            "laneIds": { "type": "array", "items": { "type": "string" } },
+            "repositories": { "type": "array", "items": { "type": "string" } },
+            "rateCards": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "source", "retrievedAt", "pricingBasis"],
+                "properties": {
+                  "id": { "$ref": "#/$defs/nullableString" },
+                  "source": { "$ref": "#/$defs/nullableString" },
+                  "retrievedAt": { "$ref": "#/$defs/nullableString" },
+                  "pricingBasis": { "$ref": "#/$defs/nullableString" }
+                }
+              }
+            },
+            "invoiceTurn": {
+              "anyOf": [
+                { "$ref": "#/$defs/invoiceTurnSummary" },
+                { "type": "null" }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "billingWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invoiceTurnId",
+        "invoiceId",
+        "openedAt",
+        "closedAt",
+        "pricingBasis",
+        "sourceKind",
+        "sourcePathEvidence",
+        "operatorNote"
+      ],
+      "properties": {
+        "invoiceTurnId": { "$ref": "#/$defs/nullableString" },
+        "invoiceId": { "$ref": "#/$defs/nullableString" },
+        "openedAt": { "$ref": "#/$defs/nullableString" },
+        "closedAt": { "$ref": "#/$defs/nullableString" },
+        "pricingBasis": { "$ref": "#/$defs/nullableString" },
+        "sourceKind": { "$ref": "#/$defs/nullableString" },
+        "sourcePathEvidence": { "$ref": "#/$defs/nullableString" },
+        "operatorNote": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "breakdownEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "turnCount", "totalUsd"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "turnCount": { "type": "integer", "minimum": 0 },
+        "totalUsd": { "type": "number", "minimum": 0 }
+      }
+    },
+    "breakdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["byProvider", "byModel", "byIssue", "byLane", "byAgentRole", "byRepository"],
+      "properties": {
+        "byProvider": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
+        "byModel": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
+        "byIssue": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
+        "byLane": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
+        "byAgentRole": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
+        "byRepository": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } }
+      }
+    }
+  }
+}
