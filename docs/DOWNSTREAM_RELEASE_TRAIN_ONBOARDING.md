@@ -18,6 +18,9 @@ This runbook defines the controlled onboarding path for issue `#715`:
 - Feedback status report:
   - `tests/results/_agent/onboarding/downstream-onboarding-feedback.json`
   - schema: `docs/schemas/downstream-onboarding-feedback-v1.schema.json`
+- Promotion scorecard:
+  - `tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json`
+  - schema: `docs/schemas/downstream-promotion-scorecard-v1.schema.json`
 - Checklist policy:
   - `tools/policy/downstream-onboarding-checklist.json`
 
@@ -106,6 +109,17 @@ node tools/priority/downstream-onboarding-success.mjs \
   --issue-labels program,enhancement
 ```
 
+## Promotion scorecard generation
+
+Build the downstream consumer-proving scorecard from the success + feedback outputs:
+
+```bash
+node tools/npm/run-script.mjs priority:promote:downstream:scorecard -- \
+  --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json \
+  --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json \
+  --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
+```
+
 ## CI feedback loop
 
 Workflow `.github/workflows/downstream-onboarding-feedback.yml` runs this loop on manual dispatch and weekly schedule.
@@ -127,4 +141,5 @@ It now follows the shared hosted-signal contract in [`HOSTED_SIGNAL_REPORT_FIRST
 
 - exports both `GH_TOKEN` and `GITHUB_TOKEN`
 - appends a deterministic step summary from the feedback report when present
+- builds and validates the downstream promotion scorecard before artifact upload
 - keeps schema validation and artifact upload existence-aware so missing-report cascades do not mask the primary failure

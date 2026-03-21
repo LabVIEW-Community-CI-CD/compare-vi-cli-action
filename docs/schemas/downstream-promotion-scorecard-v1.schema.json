@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/downstream-promotion-scorecard-v1.schema.json",
+  "title": "Downstream Promotion Scorecard v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generatedAt", "inputs", "gates", "summary"],
+  "properties": {
+    "schema": {
+      "const": "priority/downstream-promotion-scorecard@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": ["string", "null"]
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["successReport", "feedbackReport"],
+      "properties": {
+        "successReport": { "$ref": "#/$defs/inputRef" },
+        "feedbackReport": { "$ref": "#/$defs/inputRef" }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["successReport", "feedbackReport"],
+      "properties": {
+        "successReport": { "$ref": "#/$defs/successGate" },
+        "feedbackReport": { "$ref": "#/$defs/feedbackGate" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "blockerCount", "blockers", "metrics"],
+      "properties": {
+        "status": { "enum": ["pass", "fail"] },
+        "blockerCount": { "type": "integer", "minimum": 0 },
+        "blockers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blocker" }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repositoriesEvaluated", "totalBlockers", "totalWarnings"],
+          "properties": {
+            "repositoriesEvaluated": { "type": ["integer", "null"], "minimum": 0 },
+            "totalBlockers": { "type": ["integer", "null"], "minimum": 0 },
+            "totalWarnings": { "type": ["integer", "null"], "minimum": 0 }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "inputRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "exists", "error"],
+      "properties": {
+        "path": { "type": "string" },
+        "exists": { "type": "boolean" },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "successGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "schema", "summaryStatus", "repositoriesEvaluated", "totalBlockers", "totalWarnings"],
+      "properties": {
+        "status": { "enum": ["pass", "fail", "missing"] },
+        "schema": { "type": ["string", "null"] },
+        "summaryStatus": { "type": ["string", "null"] },
+        "repositoriesEvaluated": { "type": ["integer", "null"], "minimum": 0 },
+        "totalBlockers": { "type": ["integer", "null"], "minimum": 0 },
+        "totalWarnings": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "feedbackGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "schema", "executionStatus", "evaluateExitCode", "successExitCode", "downstreamRepository"],
+      "properties": {
+        "status": { "enum": ["pass", "fail", "missing"] },
+        "schema": { "type": ["string", "null"] },
+        "executionStatus": { "type": ["string", "null"] },
+        "evaluateExitCode": { "type": ["integer", "null"], "minimum": 0 },
+        "successExitCode": { "type": ["integer", "null"], "minimum": 0 },
+        "downstreamRepository": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

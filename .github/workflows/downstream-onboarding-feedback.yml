@@ -106,6 +106,23 @@ jobs:
             --schema docs/schemas/downstream-onboarding-feedback-v1.schema.json \
             --data tests/results/_agent/onboarding/downstream-onboarding-feedback.json
 
+      - name: Build downstream promotion scorecard
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-success.json') != '' && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-feedback.json') != '' }}
+        run: |
+          set -euo pipefail
+          node tools/priority/downstream-promotion-scorecard.mjs \
+            --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json \
+            --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json \
+            --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
+
+      - name: Validate downstream promotion scorecard schema
+        if: ${{ always() && hashFiles('tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json') != '' }}
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/downstream-promotion-scorecard-v1.schema.json \
+            --data tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
+
       - name: Append onboarding feedback summary
         if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-feedback.json') != '' }}
         shell: bash
@@ -138,7 +155,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: downstream-onboarding-feedback
-          path: tests/results/_agent/onboarding/*.json
+          path: |
+            tests/results/_agent/onboarding/*.json
+            tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
           if-no-files-found: error
 
       - name: Enforce onboarding gap failure

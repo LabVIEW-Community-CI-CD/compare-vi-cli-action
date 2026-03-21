@@ -10,6 +10,9 @@ It is not a second feature-development branch.
 - Manifest generator: `tools/priority/downstream-promotion-manifest.mjs`
 - Manifest schema: `docs/schemas/downstream-promotion-manifest-v1.schema.json`
 - Default output: `tests/results/_agent/promotion/downstream-develop-promotion-manifest.json`
+- Proving scorecard generator: `tools/priority/downstream-promotion-scorecard.mjs`
+- Proving scorecard schema: `docs/schemas/downstream-promotion-scorecard-v1.schema.json`
+- Proving scorecard output: `tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json`
 
 ## Branch contract
 
@@ -42,6 +45,15 @@ Rollback and replay should reference a prior manifest instead of relying on ad h
 
 ## CLI
 
+Generate the downstream proving scorecard first:
+
+```powershell
+node tools/npm/run-script.mjs priority:promote:downstream:scorecard -- `
+  --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json `
+  --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json `
+  --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
+```
+
 Generate a manifest:
 
 ```powershell
@@ -51,7 +63,7 @@ node tools/npm/run-script.mjs priority:promote:downstream:manifest -- `
   --comparevi-history-release v1.3.24 `
   --scenario-pack-id scenario-pack@v1 `
   --cookiecutter-template-id LabviewGitHubCiTemplate@v0.1.0 `
-  --proving-scorecard-ref tests/results/_agent/throughput/throughput-scorecard.json `
+  --proving-scorecard-ref tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json `
   --actor SergioVelderrain
 ```
 

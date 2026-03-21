@@ -18,19 +18,28 @@ test('downstream promotion contract locks downstream/develop as a consumer provi
   assert.equal(policy.directDevelopment, 'unsupported');
   assert.ok(policy.requiredInputs.includes('compareviToolsRelease'));
   assert.ok(policy.requiredInputs.includes('cookiecutterTemplateIdentity'));
+  assert.equal(policy.artifacts.manifestSchema, 'docs/schemas/downstream-promotion-manifest-v1.schema.json');
+  assert.equal(policy.artifacts.provingScorecardSchema, 'docs/schemas/downstream-promotion-scorecard-v1.schema.json');
+  assert.equal(policy.artifacts.provingScorecardDefaultPath, 'tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json');
 });
 
-test('package scripts and runbook expose downstream promotion manifest generation', () => {
+test('package scripts and runbook expose downstream promotion manifest and scorecard generation', () => {
   const packageJson = JSON.parse(read('package.json'));
   assert.equal(
     packageJson.scripts['priority:promote:downstream:manifest'],
     'node tools/priority/downstream-promotion-manifest.mjs'
   );
+  assert.equal(
+    packageJson.scripts['priority:promote:downstream:scorecard'],
+    'node tools/priority/downstream-promotion-scorecard.mjs'
+  );
 
   const runbook = read('docs/DOWNSTREAM_DEVELOP_PROMOTION_CONTRACT.md');
   assert.match(runbook, /downstream\/develop/);
   assert.match(runbook, /priority:promote:downstream:manifest/);
+  assert.match(runbook, /priority:promote:downstream:scorecard/);
   assert.match(runbook, /cookiecutter/i);
   assert.match(runbook, /rollback/i);
   assert.match(runbook, /replay/i);
+  assert.match(runbook, /downstream-develop-promotion-scorecard\.json/);
 });
