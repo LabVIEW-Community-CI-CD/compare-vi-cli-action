@@ -385,6 +385,7 @@
         "occupiedSlotCount": { "type": "integer", "minimum": 0 },
         "availableSlotCount": { "type": "integer", "minimum": 0 },
         "releasedLaneCount": { "type": "integer", "minimum": 0 },
+        "liveOrchestratorLane": { "type": "string" },
         "releasedLanes": {
           "type": "array",
           "items": { "$ref": "#/$defs/releasedLane" }

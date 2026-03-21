@@ -66,6 +66,7 @@ test('buildThroughputScorecard warns when actionable work exists while the worke
   assert.deepEqual(report.summary.reasons, ['actionable-work-with-idle-worker-pool', 'merge-queue-occupancy-below-floor']);
   assert.equal(report.summary.metrics.readyPrInventory, 2);
   assert.equal(report.summary.metrics.currentWorkerUtilizationRatio, 0);
+  assert.equal(report.workerPool.liveOrchestratorLane, 'Sagan');
   assert.equal(report.mergeQueueUtilization.status, 'warn');
   assert.equal(report.mergeQueueUtilization.observed.occupancyRatio, 0);
   assert.deepEqual(report.mergeQueueUtilization.reasons, ['merge-queue-occupancy-below-floor']);
@@ -185,6 +186,7 @@ test('runThroughputScorecard writes a pass report when queue pressure and worker
   assert.equal(result.report.mergeQueueUtilization.status, 'pass');
   assert.equal(result.report.concurrentLanes.status, 'active');
   assert.equal(result.report.concurrentLanes.workerDisposition, 'retain');
+  assert.equal(result.report.workerPool.liveOrchestratorLane, 'Sagan');
   assert.equal(result.report.concurrentLanes.deferredLaneCount, 1);
   assert.equal(result.report.summary.metrics.concurrentLaneActiveCount, 2);
   assert.equal(result.report.summary.metrics.concurrentLaneDeferredCount, 1);

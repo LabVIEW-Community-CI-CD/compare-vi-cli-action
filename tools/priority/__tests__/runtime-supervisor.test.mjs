@@ -3576,6 +3576,7 @@ test('comparevi canonical execution persists a broker-managed ready-for-review r
   const persistedState = await readJson(path.join(runtimeDir, 'delivery-agent-state.json'));
   assert.equal(persistedState.status, 'running');
   assert.equal(persistedState.laneLifecycle, 'waiting-review');
+  assert.equal(persistedState.workerPool.liveOrchestratorLane, 'Sagan');
   assert.equal(persistedState.activeLane.laneId, 'origin-1012');
   assert.equal(persistedState.activeLane.prUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1015');
   assert.equal(persistedState.activeLane.blockerClass, 'review');
