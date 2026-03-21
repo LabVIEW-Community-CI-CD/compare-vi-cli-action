@@ -21,6 +21,13 @@
       {
         "id": "local-codex",
         "kind": "local-codex",
+        "capabilities": {
+          "executionPlane": "local",
+          "assignmentMode": "interactive-coding",
+          "dispatchSurface": "runtime-harness",
+          "completionMode": "sync",
+          "requiresLocalCheckout": true
+        },
         "executionPlane": "local",
         "assignmentMode": "interactive-coding",
         "dispatchSurface": "runtime-harness",
@@ -32,6 +39,13 @@
       {
         "id": "hosted-github-workflow",
         "kind": "hosted-github-workflow",
+        "capabilities": {
+          "executionPlane": "hosted",
+          "assignmentMode": "async-validation",
+          "dispatchSurface": "github-actions",
+          "completionMode": "async",
+          "requiresLocalCheckout": false
+        },
         "executionPlane": "hosted",
         "assignmentMode": "async-validation",
         "dispatchSurface": "github-actions",
@@ -43,6 +57,13 @@
       {
         "id": "remote-copilot-lane",
         "kind": "remote-copilot-lane",
+        "capabilities": {
+          "executionPlane": "remote",
+          "assignmentMode": "remote-implementation",
+          "dispatchSurface": "remote-copilot",
+          "completionMode": "async",
+          "requiresLocalCheckout": false
+        },
         "executionPlane": "remote",
         "assignmentMode": "remote-implementation",
         "dispatchSurface": "remote-copilot",
@@ -54,6 +75,13 @@
       {
         "id": "local-shadow-native",
         "kind": "local-shadow-native",
+        "capabilities": {
+          "executionPlane": "local-shadow",
+          "assignmentMode": "shadow-validation",
+          "dispatchSurface": "native-shadow",
+          "completionMode": "sync",
+          "requiresLocalCheckout": false
+        },
         "executionPlane": "local-shadow",
         "assignmentMode": "shadow-validation",
         "dispatchSurface": "native-shadow",

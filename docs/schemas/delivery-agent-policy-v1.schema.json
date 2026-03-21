@@ -44,7 +44,7 @@
           "items": {
             "type": "object",
             "additionalProperties": true,
-            "required": ["id", "kind", "executionPlane", "assignmentMode", "enabled", "slotCount"],
+            "required": ["id", "kind", "capabilities", "executionPlane", "assignmentMode", "enabled", "slotCount"],
             "properties": {
               "id": { "type": "string" },
               "kind": {
@@ -54,6 +54,35 @@
                   "remote-copilot-lane",
                   "local-shadow-native"
                 ]
+              },
+              "capabilities": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": [
+                  "executionPlane",
+                  "assignmentMode",
+                  "dispatchSurface",
+                  "completionMode",
+                  "requiresLocalCheckout"
+                ],
+                "properties": {
+                  "executionPlane": { "enum": ["local", "hosted", "remote", "local-shadow"] },
+                  "assignmentMode": {
+                    "enum": [
+                      "interactive-coding",
+                      "async-validation",
+                      "remote-implementation",
+                      "shadow-validation"
+                    ]
+                  },
+                  "dispatchSurface": {
+                    "enum": ["runtime-harness", "github-actions", "remote-copilot", "native-shadow"]
+                  },
+                  "completionMode": {
+                    "enum": ["sync", "async"]
+                  },
+                  "requiresLocalCheckout": { "type": "boolean" }
+                }
               },
               "executionPlane": { "enum": ["local", "hosted", "remote", "local-shadow"] },
               "assignmentMode": {
