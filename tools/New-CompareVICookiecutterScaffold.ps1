@@ -7,6 +7,7 @@ param(
   [string]$ContextPath,
   [string]$OutputRoot,
   [string]$ReceiptPath,
+  [string]$CookiecutterCacheRoot,
   [switch]$NoInput,
   [switch]$Force,
   [switch]$ListTemplates,
@@ -218,12 +219,7 @@ function Ensure-CookiecutterRuntime {
   }
 
   if ($needsInstall) {
-    & $venvPython -m pip install --upgrade pip *> $null
-    if ($LASTEXITCODE -ne 0) {
-      throw "Failed to upgrade pip in '$venvRoot'."
-    }
-
-    & $venvPython -m pip install ("cookiecutter=={0}" -f $CookiecutterVersion)
+    & $venvPython -m pip install --disable-pip-version-check ("cookiecutter=={0}" -f $CookiecutterVersion) *> $null
     if ($LASTEXITCODE -ne 0) {
       throw "Failed to install cookiecutter $CookiecutterVersion in '$venvRoot'."
     }
@@ -282,7 +278,7 @@ New-DirectoryIfMissing -Path $resolvedOutputRoot | Out-Null
 
 $runtime = Ensure-CookiecutterRuntime `
   -RepoRoot $repoRoot `
-  -RuntimeCacheRoot ([string]$catalog.runtimeCacheRoot) `
+  -RuntimeCacheRoot $(if ([string]::IsNullOrWhiteSpace($CookiecutterCacheRoot)) { [string]$catalog.runtimeCacheRoot } else { $CookiecutterCacheRoot }) `
   -CookiecutterVersion ([string]$catalog.cookiecutterVersion)
 
 $templateRoot = Resolve-AbsolutePath -BasePath $repoRoot -PathValue ([string]$catalog.templateRoot)

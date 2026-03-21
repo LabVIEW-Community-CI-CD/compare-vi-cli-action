@@ -1,0 +1,12 @@
+{
+  "target_slug": "bootstrap-proof-seed",
+  "target_label": "Bootstrap Proof Seed",
+  "repo_slug": "LabVIEW-Community-CI-CD/labview-icon-editor-demo",
+  "repo_url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo",
+  "license_spdx": "BSD-3-Clause",
+  "target_path": "Tooling/deployment/VIP_Pre-Install Custom Action.vi",
+  "change_kind": "modified",
+  "pinned_commit": "49d1415b3c593f24e3a1bb798211caec695735f6",
+  "public_pr_url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/pull/31",
+  "public_workflow_run_url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/actions/runs/23280819231"
+}
