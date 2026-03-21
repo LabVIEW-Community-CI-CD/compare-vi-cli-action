@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/agent-cost-private-invoice-metadata-v1.schema.json",
+  "title": "Agent Cost Private Invoice Metadata v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "sourcePath"],
+  "properties": {
+    "schema": { "const": "priority/agent-cost-private-invoice-metadata@v1" },
+    "invoiceId": { "type": ["string", "null"], "minLength": 1 },
+    "openedAt": { "type": ["string", "null"], "format": "date-time" },
+    "observedAt": { "type": ["string", "null"], "format": "date-time" },
+    "closedAt": { "type": ["string", "null"], "format": "date-time" },
+    "creditsPurchased": { "type": ["number", "null"], "minimum": 0 },
+    "unitPriceUsd": { "type": ["number", "null"], "minimum": 0 },
+    "prepaidUsd": { "type": ["number", "null"], "minimum": 0 },
+    "pricingBasis": { "type": ["string", "null"], "enum": ["prepaid-credit", "usage-billed", "hybrid", null] },
+    "sourceKind": { "type": ["string", "null"], "enum": ["operator-invoice", "billing-export", "manual-baseline", null] },
+    "sourcePath": { "type": "string", "minLength": 1 },
+    "operatorNote": { "type": ["string", "null"] },
+    "activationState": { "type": ["string", "null"], "enum": ["active", "hold", null] },
+    "fundingPurpose": { "type": ["string", "null"], "enum": ["operational", "calibration", null] }
+  }
+}

@@ -123,6 +123,7 @@
     "priority:security:intake": "node tools/priority/security-intake.mjs",
     "priority:security:gate": "node tools/priority/security-intake.mjs --route-on-breach --fail-on-breach --fail-on-skip",
     "priority:cost:invoice-turn": "node tools/priority/agent-cost-invoice-turn.mjs",
+    "priority:cost:invoice-normalize": "node tools/priority/agent-cost-invoice-normalize.mjs",
     "priority:cost:turn": "node tools/priority/agent-cost-turn.mjs",
     "priority:cost:rollup": "node tools/priority/agent-cost-rollup.mjs",
     "priority:model:select": "node tools/priority/live-agent-model-selection.mjs",

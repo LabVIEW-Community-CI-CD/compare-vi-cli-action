@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-21T00:00:00Z",
+  "updated": "2026-03-21T19:30:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -125,6 +125,7 @@
       "description": "Checked-in invoice-turn, per-turn, and rollup cost telemetry contracts, fixtures, helper CLIs, and focused tests used to anchor spend reporting in repo-visible evidence.",
       "files": [
         "docs/knowledgebase/Agent-Cost-Telemetry-Surfaces.md",
+        "docs/schemas/agent-cost-private-invoice-metadata-v1.schema.json",
         "docs/schemas/agent-cost-invoice-turn-v1.schema.json",
         "docs/schemas/agent-cost-turn-v1.schema.json",
         "docs/schemas/agent-cost-rollup-v1.schema.json",
@@ -133,9 +134,13 @@
         "tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline.json",
         "tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-next-baseline.json",
         "tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline-reconciled.json",
+        "tools/priority/__fixtures__/agent-cost-rollup/private-invoice-metadata-sample.json",
+        "tools/priority/agent-cost-invoice-normalize.mjs",
         "tools/priority/agent-cost-invoice-turn.mjs",
         "tools/priority/agent-cost-turn.mjs",
         "tools/priority/agent-cost-rollup.mjs",
+        "tools/priority/__tests__/agent-cost-invoice-normalize.test.mjs",
+        "tools/priority/__tests__/agent-cost-invoice-normalize-schema.test.mjs",
         "tools/priority/__tests__/agent-cost-turn.test.mjs",
         "tools/priority/__tests__/agent-cost-rollup.test.mjs",
         "tools/priority/__tests__/agent-cost-rollup-schema.test.mjs",
