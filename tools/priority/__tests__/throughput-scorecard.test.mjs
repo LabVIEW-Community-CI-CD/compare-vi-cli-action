@@ -193,6 +193,119 @@ test('runThroughputScorecard writes a pass report when queue pressure and worker
   assert.ok(fs.existsSync(outputPath));
 });
 
+test('runThroughputScorecard falls back to the legacy runtime-state artifact when the canonical delivery state is missing', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'throughput-scorecard-legacy-'));
+  const runtimeStatePath = path.join(tempDir, 'runtime-state.json');
+  const deliveryMemoryPath = path.join(tempDir, 'delivery-memory.json');
+  const queueReportPath = path.join(tempDir, 'queue-supervisor-report.json');
+  const concurrentLaneStatusPath = path.join(tempDir, 'concurrent-lane-status-receipt.json');
+  const utilizationPolicyPath = path.join(tempDir, 'merge-queue-utilization-target.json');
+  const outputPath = path.join(tempDir, 'throughput-scorecard.json');
+
+  fs.writeFileSync(
+    runtimeStatePath,
+    JSON.stringify({
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      workerPool: {
+        targetSlotCount: 4,
+        occupiedSlotCount: 2,
+        availableSlotCount: 2,
+        releasedLaneCount: 1,
+        utilizationRatio: 0.5
+      },
+      activeCodingLanes: 2
+    }),
+    'utf8'
+  );
+  fs.writeFileSync(
+    deliveryMemoryPath,
+    JSON.stringify({
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      summary: {
+        totalTerminalPullRequestCount: 5,
+        mergedPullRequestCount: 4,
+        closedPullRequestCount: 1,
+        hostedWaitEscapeCount: 3,
+        meanTerminalDurationMinutes: 14.2,
+        viHistorySuitePullRequestCount: 2
+      }
+    }),
+    'utf8'
+  );
+  fs.writeFileSync(
+    queueReportPath,
+    JSON.stringify({
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      inflight: 2,
+      capacity: 0,
+      effectiveMaxInflight: 2,
+      paused: false,
+      throughputController: { mode: 'healthy' },
+      governor: { mode: 'normal' },
+      readiness: {
+        readySet: [{ number: 1511 }]
+      }
+    }),
+    'utf8'
+  );
+  fs.writeFileSync(
+    concurrentLaneStatusPath,
+    JSON.stringify({
+      schema: 'priority/concurrent-lane-status-receipt@v1',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'active',
+      hostedRun: {
+        observationStatus: 'active'
+      },
+      pullRequest: {
+        observationStatus: 'queued'
+      },
+      summary: {
+        selectedBundleId: 'hosted-plus-manual-linux-docker',
+        laneCount: 3,
+        activeLaneCount: 2,
+        completedLaneCount: 0,
+        failedLaneCount: 0,
+        blockedLaneCount: 0,
+        plannedLaneCount: 0,
+        deferredLaneCount: 1,
+        manualLaneCount: 1,
+        shadowLaneCount: 0,
+        orchestratorDisposition: 'wait-hosted-run'
+      }
+    }),
+    'utf8'
+  );
+  fs.writeFileSync(
+    utilizationPolicyPath,
+    JSON.stringify({
+      schema: 'priority/merge-queue-utilization-target@v1',
+      mergeQueue: {
+        readyInventoryFloor: 1,
+        occupancyFloorRatio: 0.5,
+        occupancyTargetRatio: 1,
+        treatPausedQueueAsExempt: true
+      }
+    }),
+    'utf8'
+  );
+
+  const result = runThroughputScorecard({
+    runtimeStatePath: path.join(tempDir, 'delivery-agent-state.json'),
+    deliveryMemoryPath,
+    queueReportPath,
+    concurrentLaneStatusPath,
+    utilizationPolicyPath,
+    outputPath,
+    now: new Date('2026-03-21T03:05:00.000Z')
+  });
+
+  assert.equal(path.basename(result.inputs.runtimeState.path), 'runtime-state.json');
+  assert.equal(result.report.summary.status, 'pass');
+  assert.equal(result.report.workerPool.utilizationRatio, 0.5);
+  assert.ok(fs.existsSync(outputPath));
+});
+
 test('buildThroughputScorecard projects concurrent lane status without changing warning semantics', () => {
   const report = buildThroughputScorecard({
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',

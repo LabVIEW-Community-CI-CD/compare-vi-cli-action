@@ -525,7 +525,7 @@ export function convertRuntimeArtifactsToDeliveryState({ repo, runtimeDir, runti
       nextWakeCondition: null,
     },
     artifacts: {
-      statePath: paths.runtimeStatePath,
+      statePath: paths.deliveryStatePath,
       lanePath: paths.taskPacketPath,
     },
   };
@@ -638,6 +638,11 @@ export function resolveDeliveryStateForStatus({
       return useRuntimeIfCurrent();
     }
     diagnostics.reason = 'stale-heartbeat-daemon-dead';
+    return { state: deliveryState, diagnostics };
+  }
+
+  if (deliveryState && deliveryGeneratedAt && (!heartbeatGeneratedAt || deliveryGeneratedAt >= heartbeatGeneratedAt)) {
+    diagnostics.reason = 'delivery-state-current';
     return { state: deliveryState, diagnostics };
   }
 

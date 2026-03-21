@@ -21,7 +21,7 @@ const DEFAULT_CONTROLLER_STATE_PATH = path.join(
   'queue',
   'throughput-controller-state.json'
 );
-const DEFAULT_RUNTIME_STATE_PATH = path.join('tests', 'results', '_agent', 'runtime', 'runtime-state.json');
+const DEFAULT_RUNTIME_STATE_PATH = path.join('tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json');
 const DEFAULT_GOVERNOR_STATE_PATH = path.join('tests', 'results', '_agent', 'slo', 'ops-governor-state.json');
 const DEFAULT_SECURITY_INTAKE_REPORT_PATH = path.join(
   'tests',
@@ -1656,7 +1656,16 @@ export async function runQueueSupervisor(options = {}) {
   const nowIso = now.toISOString();
   const previousReport = await readOptionalJsonFn(path.resolve(repoRoot, args.reportPath));
   const previousControllerState = await readOptionalJsonFn(path.resolve(repoRoot, controllerStatePath));
-  const runtimeState = await readOptionalJsonFn(path.resolve(repoRoot, runtimeStatePath));
+  let runtimeState = await readOptionalJsonFn(path.resolve(repoRoot, runtimeStatePath));
+  let resolvedRuntimeStatePath = runtimeStatePath;
+  if (runtimeState == null) {
+    const legacyRuntimeStatePath = path.join(path.dirname(runtimeStatePath), 'runtime-state.json');
+    const legacyRuntimeState = await readOptionalJsonFn(path.resolve(repoRoot, legacyRuntimeStatePath));
+    if (legacyRuntimeState != null) {
+      runtimeState = legacyRuntimeState;
+      resolvedRuntimeStatePath = legacyRuntimeStatePath;
+    }
+  }
   const governorStateEnvelope = await readOptionalJsonFn(path.resolve(repoRoot, governorStatePath));
   const governorStatePayload =
     governorStateEnvelope && typeof governorStateEnvelope === 'object' && 'payload' in governorStateEnvelope
@@ -1769,7 +1778,7 @@ export async function runQueueSupervisor(options = {}) {
   });
   const workerOccupancy = buildWorkerOccupancySummary({
     runtimeState,
-    runtimeStatePath
+    runtimeStatePath: resolvedRuntimeStatePath
   });
   const queueManagedCandidates = classified.candidates.filter((candidate) => queueManagedBranches.has(candidate.baseRefName));
   const candidateByNumber = new Map(classified.candidates.map((candidate) => [candidate.number, candidate]));

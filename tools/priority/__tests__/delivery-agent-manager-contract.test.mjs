@@ -166,6 +166,7 @@ test('delivery-agent manager status synthesizes the active lane from the freshes
   assert.match(common, /derivedFromHeartbeat/);
   assert.match(common, /derivedFromRuntimeState/);
   assert.match(manager, /readJsonFile\(paths\.observerHeartbeatPath\)/);
+  assert.match(manager, /readJsonFile\(paths\.deliveryStatePath\)/);
   assert.match(manager, /readJsonFile\(paths\.runtimeStatePath\)/);
   assert.match(manager, /readJsonFile\(paths\.taskPacketPath\)/);
 });
@@ -393,7 +394,7 @@ test('delivery-agent manager status exposes observer telemetry as non-blocking s
   assert.equal(status.observer.deliveryImpact, 'none');
 });
 
-test('delivery-agent manager status prefers a fresher runtime state and task packet over stale delivery and heartbeat artifacts', async (t) => {
+test('delivery-agent manager status prefers a fresher canonical delivery state over stale heartbeat artifacts', async (t) => {
   const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-runtime-'));
   const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
   t.after(async () => {
@@ -443,6 +444,90 @@ test('delivery-agent manager status prefers a fresher runtime state and task pac
       }
     }
   });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-state.json'), {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: runtimeGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: runtimeDirPath,
+    status: 'coding',
+    laneLifecycle: 'coding',
+    activeCodingLanes: 1,
+    activeLane: {
+      schema: 'priority/delivery-agent-lane-state@v1',
+      generatedAt: runtimeGeneratedAt,
+      laneId: 'origin-962',
+      issue: 962,
+      branch: 'issue/origin-962-example',
+      forkRemote: 'origin',
+      blockerClass: 'none',
+      laneLifecycle: 'coding',
+      actionType: 'advance-standing-issue',
+      outcome: 'coding',
+      reason: 'coding',
+      retryable: false,
+      nextWakeCondition: null
+    }
+  });
+  await writeJson(path.join(runtimeDirPath, 'task-packet.json'), {
+    schema: 'priority/runtime-worker-task-packet@v1',
+    generatedAt: taskPacketGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    laneId: 'origin-962',
+    status: 'coding',
+    branch: {
+      name: 'issue/origin-962-example',
+      forkRemote: 'origin'
+    },
+    pullRequest: {
+      url: null
+    },
+    checks: {
+      blockerClass: 'none'
+    },
+    evidence: {
+      delivery: {
+        selectedActionType: 'advance-standing-issue',
+        laneLifecycle: 'coding'
+      }
+    }
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-manager-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-manager-pid@v1',
+    startedAt: managerStartedAt,
+    pid: 0
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-wsl-daemon-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-wsl-daemon-pid@v1',
+    startedAt: daemonStartedAt,
+    pid: 0
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.delivery.activeLane.issue, 962);
+  assert.equal(status.delivery.activeLane.branch, 'issue/origin-962-example');
+  assert.equal(status.delivery.laneLifecycle, 'coding');
+  assert.equal(status.delivery.activeCodingLanes, 1);
+  assert.equal(status.delivery.derivedFromRuntimeState, undefined);
+  assert.equal(status.heartbeatDiagnostics.usedHeartbeat, false);
+  assert.equal(status.heartbeatDiagnostics.usedRuntimeState, false);
+  assert.equal(status.heartbeatDiagnostics.reason, 'stale-before-current-manager');
+  assert.equal(path.basename(status.paths.deliveryStatePath), 'delivery-agent-state.json');
+});
+
+test('delivery-agent manager status falls back to legacy runtime-state.json when the canonical delivery state is missing', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-compat-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+  });
+
+  const now = Date.now();
+  const runtimeGeneratedAt = new Date(now - 30_000).toISOString();
+  const taskPacketGeneratedAt = new Date(now - 15_000).toISOString();
+  const managerStartedAt = new Date(now - 180_000).toISOString();
+  const daemonStartedAt = new Date(now - 180_000).toISOString();
+
   await writeJson(path.join(runtimeDirPath, 'runtime-state.json'), {
     schema: 'priority/runtime-supervisor-state@v1',
     generatedAt: runtimeGeneratedAt,
@@ -513,15 +598,10 @@ test('delivery-agent manager status prefers a fresher runtime state and task pac
   const status = await invokeManagerStatus(relativeRuntimeDir);
 
   assert.equal(status.delivery.activeLane.issue, 962);
-  assert.equal(status.delivery.activeLane.branch, 'issue/origin-962-example');
-  assert.equal(status.delivery.laneLifecycle, 'coding');
-  assert.equal(status.delivery.activeCodingLanes, 1);
   assert.equal(status.delivery.derivedFromRuntimeState, true);
-  assert.equal(status.heartbeatDiagnostics.usedHeartbeat, false);
   assert.equal(status.heartbeatDiagnostics.usedRuntimeState, true);
   assert.equal(status.heartbeatDiagnostics.reason, 'runtime-state-current');
-  assert.equal(path.basename(status.delivery.artifacts.statePath), 'runtime-state.json');
-  assert.equal(path.basename(status.delivery.artifacts.lanePath), 'task-packet.json');
+  assert.equal(path.basename(status.delivery.artifacts.statePath), 'delivery-agent-state.json');
 });
 
 test('delivery-agent manager status emits bounded log-tail trace events for daemon and manager logs', async (t) => {
