@@ -183,6 +183,189 @@ function digestText(value) {
   return createHash('sha256').update(String(value ?? ''), 'utf8').digest('hex');
 }
 
+export function resolveReadyValidationClearancePath({
+  repoRoot,
+  repository,
+  pullRequestNumber
+}) {
+  const repositorySlug = normalizeText(repository)
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return path.join(
+    repoRoot,
+    'tests',
+    'results',
+    '_agent',
+    'runtime',
+    'ready-validation-clearance',
+    `${repositorySlug || 'repository'}-pr-${pullRequestNumber}.json`
+  );
+}
+
+export function buildPrReadyArgs({ repository, pullRequestNumber, ready = true }) {
+  const repoSlug = normalizeText(repository);
+  const prNumber = toPositiveInteger(pullRequestNumber);
+  if (!repoSlug) {
+    throw new Error('Repository slug is required to change PR ready state.');
+  }
+  if (!prNumber) {
+    throw new Error('Pull request number is required to change PR ready state.');
+  }
+
+  return [
+    'pr',
+    'ready',
+    String(prNumber),
+    '--repo',
+    repoSlug,
+    ...(ready ? [] : ['--undo'])
+  ];
+}
+
+export function readReadyValidationClearance({
+  repoRoot,
+  repository,
+  pullRequestNumber,
+  readJsonFn = readJsonFile
+}) {
+  const receiptPath = resolveReadyValidationClearancePath({ repoRoot, repository, pullRequestNumber });
+  return {
+    receiptPath,
+    receipt: readJsonFn(receiptPath) ?? null
+  };
+}
+
+export function evaluateReadyTransitionEligibility({
+  strategy,
+  pullRequest,
+  currentHeadSha,
+  readyValidationClearance
+}) {
+  if (strategy !== 'graphql-same-owner-fork') {
+    return {
+      eligible: false,
+      status: 'not-applicable',
+      reason: 'PR ready transition only applies to same-owner fork PR creation.'
+    };
+  }
+  if (!pullRequest?.number) {
+    return {
+      eligible: false,
+      status: 'missing-pr',
+      reason: 'Pull request metadata is missing.'
+    };
+  }
+  if (pullRequest?.isDraft === false) {
+    return {
+      eligible: false,
+      status: 'already-ready',
+      reason: 'Pull request is already ready for review.'
+    };
+  }
+  if (!normalizeText(currentHeadSha)) {
+    return {
+      eligible: false,
+      status: 'missing-head',
+      reason: 'Current branch head sha is unavailable.'
+    };
+  }
+
+  const receipt = readyValidationClearance?.receipt ?? null;
+  const storedReadyHeadSha = normalizeText(receipt?.readyHeadSha);
+  const storedStatus = normalizeText(receipt?.status).toLowerCase();
+  if (!receipt || !storedReadyHeadSha) {
+    return {
+      eligible: false,
+      status: 'clearance-missing',
+      reason: 'No ready-validation clearance exists for the current head.'
+    };
+  }
+  if (storedStatus !== 'current') {
+    return {
+      eligible: false,
+      status: 'clearance-invalid',
+      reason: 'Stored ready-validation clearance is not current.'
+    };
+  }
+  if (storedReadyHeadSha !== normalizeText(currentHeadSha)) {
+    return {
+      eligible: false,
+      status: 'stale-head',
+      reason: 'Stored ready-validation clearance does not match the current head.'
+    };
+  }
+
+  return {
+    eligible: true,
+    status: 'eligible',
+    reason: 'Stored ready-validation clearance matches the current head.',
+    readyHeadSha: storedReadyHeadSha
+  };
+}
+
+export function maybePromotePullRequestToReady({
+  repoRoot,
+  upstream,
+  strategy,
+  pullRequest,
+  currentHeadSha,
+  readJsonFn = readJsonFile,
+  runFn = run
+}) {
+  const repository = buildRepositorySlug(upstream);
+  const readyValidationClearance = readReadyValidationClearance({
+    repoRoot,
+    repository,
+    pullRequestNumber: pullRequest?.number,
+    readJsonFn
+  });
+  const eligibility = evaluateReadyTransitionEligibility({
+    strategy,
+    pullRequest,
+    currentHeadSha,
+    readyValidationClearance
+  });
+  if (!eligibility.eligible) {
+    return {
+      status: eligibility.status,
+      reason: eligibility.reason,
+      receiptPath: readyValidationClearance.receiptPath,
+      readyHeadSha:
+        eligibility.readyHeadSha ?? (normalizeText(readyValidationClearance.receipt?.readyHeadSha) || null),
+      currentHeadSha: normalizeText(currentHeadSha) || null,
+      attempted: false
+    };
+  }
+
+  const args = buildPrReadyArgs({
+    repository,
+    pullRequestNumber: pullRequest.number,
+    ready: true
+  });
+  try {
+    runFn('gh', args, { cwd: repoRoot });
+    return {
+      status: 'ready',
+      reason: 'Marked the PR ready for review from stored ready-validation clearance.',
+      receiptPath: readyValidationClearance.receiptPath,
+      readyHeadSha: eligibility.readyHeadSha ?? null,
+      currentHeadSha: normalizeText(currentHeadSha) || null,
+      attempted: true,
+      helperCall: `gh ${args.join(' ')}`
+    };
+  } catch (error) {
+    return {
+      status: 'transition-failed',
+      reason: normalizeText(error?.stderr) || normalizeText(error?.message) || String(error),
+      receiptPath: readyValidationClearance.receiptPath,
+      readyHeadSha: eligibility.readyHeadSha ?? null,
+      currentHeadSha: normalizeText(currentHeadSha) || null,
+      attempted: true,
+      helperCall: `gh ${args.join(' ')}`
+    };
+  }
+}
+
 export function parseRouterIssueNumber(router) {
   if (!router || typeof router !== 'object') {
     return null;
@@ -700,6 +883,7 @@ export function createPriorityPr({
   env = process.env,
   options = {},
   readFileSyncFn = readFileSync,
+  readJsonFn = readJsonFile,
   getRepoRootFn = getRepoRoot,
   getCurrentBranchFn = detectCurrentBranch,
   getCurrentHeadShaFn = detectCurrentHeadSha,
@@ -707,6 +891,7 @@ export function createPriorityPr({
   resolveUpstreamFn = resolveUpstream,
   ensureForkRemoteFn = ensureForkRemote,
   pushBranchFn = pushBranch,
+  runFn = run,
   runGhPrCreateFn = runGhPrCreate,
   findMergedPullRequestFn = findMergedPullRequest,
   findOpenAncestorPullRequestFn = findOpenAncestorPullRequest,
@@ -874,6 +1059,22 @@ export function createPriorityPr({
     title,
     body
   });
+  const readyTransition = maybePromotePullRequestToReady({
+    repoRoot,
+    upstream,
+    strategy: prResult?.strategy ?? null,
+    pullRequest: prResult?.pullRequest ?? null,
+    currentHeadSha: headSha,
+    readJsonFn,
+    runFn
+  });
+  const pullRequest =
+    readyTransition?.status === 'ready' && prResult?.pullRequest
+      ? {
+          ...prResult.pullRequest,
+          isDraft: false
+        }
+      : prResult?.pullRequest ?? null;
 
   return {
     repoRoot,
@@ -892,8 +1093,10 @@ export function createPriorityPr({
     headRemote,
     headRepository,
     branchModel,
+    currentHeadSha: headSha,
     strategy: prResult?.strategy ?? null,
-    pullRequest: prResult?.pullRequest ?? null,
+    pullRequest,
+    readyTransition,
     reusedExistingPullRequest: prResult?.reusedExisting === true,
     stackedFollowUp: null
   };
@@ -924,7 +1127,8 @@ export function buildPriorityPrReport(result, generatedAt = new Date().toISOStri
     head: {
       remote: result.headRemote ?? null,
       repository: headRepository,
-      branch: result.branch ?? null
+      branch: result.branch ?? null,
+      currentHeadSha: result.currentHeadSha ?? null
     },
     laneIdentity: buildForkLaneIdentity({
       branch: result.branch ?? null,
@@ -957,6 +1161,17 @@ export function buildPriorityPrReport(result, generatedAt = new Date().toISOStri
     pushStatus: result.pushStatus ?? null,
     strategy: result.strategy ?? null,
     reusedExistingPullRequest: result.reusedExistingPullRequest === true,
+    readyTransition: result.readyTransition
+      ? {
+          status: result.readyTransition.status ?? null,
+          reason: result.readyTransition.reason ?? null,
+          attempted: result.readyTransition.attempted === true,
+          helperCall: result.readyTransition.helperCall ?? null,
+          receiptPath: result.readyTransition.receiptPath ?? null,
+          readyHeadSha: result.readyTransition.readyHeadSha ?? null,
+          currentHeadSha: result.readyTransition.currentHeadSha ?? null
+        }
+      : null,
     stackedFollowUp: result.stackedFollowUp
       ? {
           status: result.stackedFollowUp.status ?? null,
@@ -1016,6 +1231,9 @@ export function main(argv = process.argv) {
   const reportResult = writePriorityPrReport(result, { reportDir: options.reportDir });
   if (result?.strategy) {
     console.log(`[priority:create-pr] strategy=${result.strategy}`);
+  }
+  if (result?.readyTransition?.status) {
+    console.log(`[priority:create-pr] ready-transition=${result.readyTransition.status}`);
   }
   console.log(`[priority:create-pr] report=${reportResult.reportPath}`);
   return 0;

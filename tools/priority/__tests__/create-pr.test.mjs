@@ -18,7 +18,12 @@ import {
   buildTitle,
   buildBody,
   resolveBody,
+  buildPrReadyArgs,
   createPriorityPr,
+  evaluateReadyTransitionEligibility,
+  maybePromotePullRequestToReady,
+  readReadyValidationClearance,
+  resolveReadyValidationClearancePath,
   writePriorityPrReport
 } from '../create-pr.mjs';
 import { loadBranchClassContract } from '../lib/branch-classification.mjs';
@@ -38,6 +43,114 @@ function createPriorityPrWithNoMergedHistory(overrides = {}) {
     ...overrides
   });
 }
+
+test('buildPrReadyArgs emits gh pr ready arguments for the target repository', () => {
+  assert.deepEqual(buildPrReadyArgs({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    pullRequestNumber: 1597
+  }), [
+    'pr',
+    'ready',
+    '1597',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  ]);
+});
+
+test('resolveReadyValidationClearancePath stores clearance receipts under the runtime cache', () => {
+  assert.equal(
+    resolveReadyValidationClearancePath({
+      repoRoot: '/tmp/repo',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pullRequestNumber: 1597
+    }),
+    path.join(
+      '/tmp/repo',
+      'tests',
+      'results',
+      '_agent',
+      'runtime',
+      'ready-validation-clearance',
+      'LabVIEW-Community-CI-CD-compare-vi-cli-action-pr-1597.json'
+    )
+  );
+});
+
+test('readReadyValidationClearance loads the stored receipt and returns its path', () => {
+  const clearance = readReadyValidationClearance({
+    repoRoot: '/tmp/repo',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    pullRequestNumber: 1597,
+    readJsonFn: (filePath) => ({
+      filePath,
+      status: 'current',
+      readyHeadSha: 'cccccccccccccccccccccccccccccccccccccccc'
+    })
+  });
+
+  assert.match(clearance.receiptPath, /LabVIEW-Community-CI-CD-compare-vi-cli-action-pr-1597\.json$/);
+  assert.equal(clearance.receipt.status, 'current');
+  assert.equal(clearance.receipt.readyHeadSha, 'cccccccccccccccccccccccccccccccccccccccc');
+});
+
+test('evaluateReadyTransitionEligibility accepts current-head clearance for same-owner fork PRs', () => {
+  const result = evaluateReadyTransitionEligibility({
+    strategy: 'graphql-same-owner-fork',
+    pullRequest: {
+      number: 1597,
+      isDraft: true
+    },
+    currentHeadSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    readyValidationClearance: {
+      receipt: {
+        status: 'current',
+        readyHeadSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      }
+    }
+  });
+
+  assert.equal(result.eligible, true);
+  assert.equal(result.status, 'eligible');
+  assert.equal(result.readyHeadSha, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+});
+
+test('maybePromotePullRequestToReady invokes gh pr ready when stored clearance matches the current head', () => {
+  const calls = [];
+  const result = maybePromotePullRequestToReady({
+    repoRoot: '/tmp/repo',
+    upstream: {
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action'
+    },
+    strategy: 'graphql-same-owner-fork',
+    pullRequest: {
+      number: 1597,
+      isDraft: true
+    },
+    currentHeadSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    readJsonFn: () => ({
+      status: 'current',
+      readyHeadSha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    }),
+    runFn: (command, args, options) => {
+      calls.push({ command, args, options });
+      return '';
+    }
+  });
+
+  assert.equal(result.status, 'ready');
+  assert.equal(result.attempted, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, 'gh');
+  assert.deepEqual(calls[0].args, [
+    'pr',
+    'ready',
+    '1597',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  ]);
+  assert.equal(calls[0].options.cwd, '/tmp/repo');
+});
 
 test('parseArgs accepts explicit PR helper overrides', () => {
   const options = parseArgs([
@@ -917,6 +1030,150 @@ test('createPriorityPr preserves an already-published human-drafted PR so a late
   assert.equal(result.reusedExistingPullRequest, true);
   assert.equal(result.pullRequest.number, 963);
   assert.equal(result.pullRequest.isDraft, true);
+  assert.equal(result.readyTransition.status, 'clearance-missing');
+  assert.equal(result.readyTransition.attempted, false);
+});
+
+test('createPriorityPr auto-promotes same-owner draft PRs when stored ready-validation clearance matches the current head', () => {
+  const runCalls = [];
+  const result = createPriorityPrWithNoMergedHistory({
+    env: {},
+    options: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      issue: 1597,
+      branch: 'issue/origin-1597-auto-ready-transition',
+      base: 'develop',
+      title: 'Ready transition helper',
+      body: 'Body'
+    },
+    getRepoRootFn: () => '/tmp/repo',
+    getCurrentBranchFn: () => 'issue/000-ignored',
+    getCurrentHeadShaFn: () => 'dddddddddddddddddddddddddddddddddddddddd',
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => {
+      throw new Error('should not resolve upstream when --repo is explicit');
+    },
+    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => ({
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action-fork',
+      sameOwnerFork: true,
+      remoteName: remote
+    }),
+    pushBranchFn: () => ({
+      status: 'pushed'
+    }),
+    runFn: (command, args, options) => {
+      runCalls.push({ command, args, options });
+      return '';
+    },
+    runGhPrCreateFn: () => ({
+      strategy: 'graphql-same-owner-fork',
+      reusedExisting: true,
+      pullRequest: {
+        number: 1597,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1597',
+        isDraft: true
+      }
+    }),
+    readJsonFn: () => ({
+      status: 'current',
+      readyHeadSha: 'dddddddddddddddddddddddddddddddddddddddd'
+    }),
+    resolveStandingIssueNumberFn: () => {
+      throw new Error('should not resolve standing priority when --issue is explicit');
+    },
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
+  });
+
+  assert.equal(result.currentHeadSha, 'dddddddddddddddddddddddddddddddddddddddd');
+  assert.equal(result.pullRequest.number, 1597);
+  assert.equal(result.pullRequest.isDraft, false);
+  assert.equal(result.readyTransition.status, 'ready');
+  assert.equal(result.readyTransition.attempted, true);
+  assert.equal(runCalls.length, 1);
+  assert.equal(runCalls[0].command, 'gh');
+  assert.deepEqual(runCalls[0].args, [
+    'pr',
+    'ready',
+    '1597',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  ]);
+  assert.equal(runCalls[0].options.cwd, '/tmp/repo');
+});
+
+test('writePriorityPrReport persists ready-transition metadata for unattended resume', () => {
+  const reportDir = mkdtempSync(path.join(os.tmpdir(), 'priority-pr-ready-report-'));
+  const { report } = writePriorityPrReport(
+    {
+      repoRoot: reportDir,
+      branch: 'issue/origin-1597-auto-ready-transition',
+      base: 'develop',
+      issueNumber: 1597,
+      localIssueNumber: 1597,
+      issueUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1597',
+      localIssueUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1597',
+      issueSource: 'router',
+      mirrorOf: null,
+      headRemote: 'origin',
+      upstream: {
+        owner: 'LabVIEW-Community-CI-CD',
+        repo: 'compare-vi-cli-action'
+      },
+      headRepository: {
+        owner: 'LabVIEW-Community-CI-CD',
+        repo: 'compare-vi-cli-action-fork'
+      },
+      branchModel: {
+        contractPath: 'tools/policy/branch-classes.json',
+        contractDigest: 'abc123',
+        branchPlane: 'origin',
+        repositoryPlane: 'origin',
+        classificationRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+        laneBranchPrefix: 'issue/origin-',
+        selectedHeadRemote: 'origin',
+        selectedHeadRemoteSource: 'branch-contract',
+        requiredHeadRemote: 'origin',
+        classification: {
+          id: 'lane',
+          repositoryRole: 'fork',
+          repositoryPlane: 'origin',
+          matchedPattern: 'issue/origin-*',
+          prSourceAllowed: true,
+          prTargetAllowed: false,
+          mergePolicy: 'n/a',
+          purpose: 'Short-lived implementation branches tied to issues.'
+        }
+      },
+      pushStatus: 'pushed',
+      currentHeadSha: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+      strategy: 'graphql-same-owner-fork',
+      readyTransition: {
+        status: 'ready',
+        reason: 'Stored ready-validation clearance matches the current head.',
+        attempted: true,
+        helperCall: 'gh pr ready 1597 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        receiptPath: path.join(reportDir, 'tests', 'results', '_agent', 'runtime', 'ready-validation-clearance', 'receipt.json'),
+        readyHeadSha: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        currentHeadSha: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+      },
+      reusedExistingPullRequest: true,
+      pullRequest: {
+        number: 1597,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1597',
+        isDraft: false
+      }
+    },
+    {
+      reportDir,
+      getNow: () => '2026-03-21T12:00:00.000Z'
+    }
+  );
+
+  assert.equal(report.head.currentHeadSha, 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee');
+  assert.equal(report.readyTransition.status, 'ready');
+  assert.equal(report.readyTransition.attempted, true);
+  assert.match(report.readyTransition.helperCall, /^gh pr ready 1597/);
 });
 
 test('createPriorityPr fails closed before push when the branch already backed a merged PR', () => {
