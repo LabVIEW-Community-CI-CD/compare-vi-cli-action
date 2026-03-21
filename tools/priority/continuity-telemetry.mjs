@@ -299,22 +299,31 @@ function evaluateTurnBoundary({
   if (issueContext.mode === 'queue-empty') {
     return {
       status: 'safe-idle',
+      supervisionState: 'safe-idle',
       operatorTurnEndWouldCreateIdleGap: false,
+      operatorPromptRequiredToResume: false,
       activeLaneIssue: null,
       wakeCondition: null,
       source: 'queue-empty',
-      reason: 'standing-priority queue is explicitly empty'
+      reason: 'standing-priority queue is explicitly empty',
+      pendingActions: []
     };
   }
 
   if (issueContext.mode !== 'issue' || issueContext.issue === null) {
     return {
       status: 'stale-context',
+      supervisionState: 'stale-context',
       operatorTurnEndWouldCreateIdleGap: true,
+      operatorPromptRequiredToResume: true,
       activeLaneIssue: null,
       wakeCondition: null,
       source: 'issue-context-missing',
-      reason: 'standing lane context is missing, so end-of-turn continuity cannot be trusted'
+      reason: 'standing lane context is missing, so end-of-turn continuity cannot be trusted',
+      pendingActions: [
+        'Run bootstrap to refresh standing-priority state.',
+        'Refresh handoff surfaces before treating the lane as supervised.'
+      ]
     };
   }
 
@@ -327,17 +336,44 @@ function evaluateTurnBoundary({
   const wakeCondition = deliveryMatch ? deliveryState.nextWakeCondition
     : observerMatch ? observerHeartbeat.nextWakeCondition
       : null;
-  const reason = deliveryMatch || observerMatch
-    ? `standing issue #${issue} still has active work pending${wakeCondition ? ` and is waiting for '${wakeCondition}'` : ''}`
-    : `standing issue #${issue} remains active; ending the turn here risks an idle gap`;
+  const blockerClass = deliveryMatch ? deliveryState.blockerClass
+    : observerMatch ? observerHeartbeat.blockerClass
+      : null;
+  const prUrl = deliveryMatch ? deliveryState.prUrl
+    : observerMatch ? observerHeartbeat.prUrl
+      : null;
+  const supervisedInBackground = Boolean(wakeCondition || blockerClass || prUrl);
+  const supervisionState = supervisedInBackground ? 'supervised-background' : 'live-follow-through-required';
+  const reason = supervisedInBackground
+    ? `standing issue #${issue} still has active work pending but is already supervised${wakeCondition ? ` and waiting for '${wakeCondition}'` : blockerClass ? ` under blocker class '${blockerClass}'` : prUrl ? ' through an active PR lane' : ''}`
+    : deliveryMatch || observerMatch
+      ? `standing issue #${issue} still has active work pending and no wake condition is recorded`
+      : `standing issue #${issue} remains active; ending the turn here risks an idle gap`;
+  const pendingActions = supervisedInBackground
+    ? [
+        wakeCondition
+          ? `Resume when wake condition '${wakeCondition}' is satisfied for standing issue #${issue}.`
+          : blockerClass
+            ? `Resume when blocker class '${blockerClass}' clears for standing issue #${issue}.`
+            : prUrl
+              ? `Resume when the active PR lane changes state for standing issue #${issue}.`
+              : `Keep supervising standing issue #${issue} through the background control plane.`
+      ]
+    : [
+        `Keep the live lane active on standing issue #${issue} before ending the turn.`,
+        'Delegate or stage the next concrete follow-through step so the standing lane does not go dark.'
+      ];
 
   return {
     status: 'active-work-pending',
-    operatorTurnEndWouldCreateIdleGap: true,
+    supervisionState,
+    operatorTurnEndWouldCreateIdleGap: !supervisedInBackground,
+    operatorPromptRequiredToResume: !supervisedInBackground,
     activeLaneIssue: issue,
     wakeCondition: wakeCondition || null,
     source,
-    reason
+    reason,
+    pendingActions
   };
 }
 
@@ -451,6 +487,9 @@ function evaluateContinuity({
       ? 'keep the live lane active or hand the standing lane to a background worker before ending the turn'
       : recommendedAction;
     operatorQuietPeriodTreatedAsPause = true;
+  } else if (turnBoundary.status === 'active-work-pending' && turnBoundary.supervisionState === 'supervised-background') {
+    recommendedAction = turnBoundary.pendingActions[0] || 'continue supervising the background lane until its wake condition changes';
+    operatorQuietPeriodTreatedAsPause = false;
   }
 
   return {

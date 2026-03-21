@@ -233,7 +233,19 @@ if ($continuitySummary) {
     }
     if ($continuitySummary.continuity.PSObject.Properties['turnBoundary'] -and $continuitySummary.continuity.turnBoundary) {
       Write-Host ("  boundary : {0}" -f (Format-NullableValue $continuitySummary.continuity.turnBoundary.status))
+      if ($continuitySummary.continuity.turnBoundary.PSObject.Properties['supervisionState']) {
+        Write-Host ("  supervision : {0}" -f (Format-NullableValue $continuitySummary.continuity.turnBoundary.supervisionState))
+      }
       Write-Host ("  boundary-gap : {0}" -f (Format-BoolLabel $continuitySummary.continuity.turnBoundary.operatorTurnEndWouldCreateIdleGap))
+      if ($continuitySummary.continuity.turnBoundary.PSObject.Properties['operatorPromptRequiredToResume']) {
+        Write-Host ("  prompt-resume : {0}" -f (Format-BoolLabel $continuitySummary.continuity.turnBoundary.operatorPromptRequiredToResume))
+      }
+      if ($continuitySummary.continuity.turnBoundary.PSObject.Properties['pendingActions'] -and $continuitySummary.continuity.turnBoundary.pendingActions) {
+        $pendingActions = @($continuitySummary.continuity.turnBoundary.pendingActions | Where-Object { $_ })
+        if ($pendingActions.Count -gt 0) {
+          Write-Host ("  pending  : {0}" -f ($pendingActions -join ' | '))
+        }
+      }
     }
     Write-Host ("  signals  : {0}" -f (Format-NullableValue $continuitySummary.continuity.unattendedSignalCount))
     Write-Host ("  action   : {0}" -f (Format-NullableValue $continuitySummary.continuity.recommendation))

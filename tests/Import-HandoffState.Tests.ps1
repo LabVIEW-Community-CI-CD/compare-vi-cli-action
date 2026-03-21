@@ -73,4 +73,73 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
 
     Remove-Variable -Name PlaneTransitionHandoffSummary -Scope Global -ErrorAction SilentlyContinue
   }
+
+  It 'surfaces turn-boundary continuity supervision when present' {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $scriptPath = Join-Path $repoRoot 'tools' 'priority' 'Import-HandoffState.ps1'
+    $handoffDir = Join-Path $TestDrive 'handoff'
+    New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+
+    [ordered]@{
+      schema = 'priority/continuity-telemetry-report@v1'
+      generatedAt = '2026-03-21T20:00:00Z'
+      repoRoot = 'C:\repo'
+      status = 'maintained'
+      issueContext = [ordered]@{
+        mode = 'issue'
+        issue = 1711
+        present = $true
+        fresh = $true
+        observedAt = '2026-03-21T19:58:00Z'
+        reason = $null
+      }
+      continuity = [ordered]@{
+        status = 'maintained'
+        preservedWithoutPrompt = $true
+        promptDependency = 'low'
+        unattendedSignalCount = 4
+        quietPeriod = [ordered]@{
+          status = 'covered'
+          continuityReferenceAt = '2026-03-21T19:59:00Z'
+          silenceGapSeconds = 60
+          operatorQuietPeriodTreatedAsPause = $false
+        }
+        turnBoundary = [ordered]@{
+          status = 'active-work-pending'
+          supervisionState = 'supervised-background'
+          operatorTurnEndWouldCreateIdleGap = $false
+          operatorPromptRequiredToResume = $false
+          activeLaneIssue = 1711
+          wakeCondition = 'github-checks-finished'
+          source = 'delivery-state'
+          reason = 'standing issue #1711 is supervised in the background'
+          pendingActions = @('Resume when wake condition ''github-checks-finished'' is satisfied for standing issue #1711.')
+        }
+        recommendation = 'Resume when wake condition ''github-checks-finished'' is satisfied for standing issue #1711.'
+      }
+      sources = [ordered]@{
+        writerLease = [ordered]@{ path = 'writer.json'; exists = $true; observedAt = '2026-03-21T19:59:00Z'; ageSeconds = 60; freshnessThresholdSeconds = 1800; fresh = $true; error = $null }
+        router = [ordered]@{ path = 'router.json'; exists = $true; observedAt = '2026-03-21T19:58:00Z'; ageSeconds = 120; freshnessThresholdSeconds = 21600; fresh = $true; error = $null }
+        noStanding = [ordered]@{ path = 'no-standing.json'; exists = $false; observedAt = $null; ageSeconds = $null; freshnessThresholdSeconds = 21600; fresh = $false; error = $null }
+        handoffEntrypoint = [ordered]@{ path = 'entrypoint-status.json'; exists = $true; observedAt = '2026-03-21T19:57:00Z'; ageSeconds = 180; freshnessThresholdSeconds = 86400; fresh = $true; error = $null }
+        sessions = [ordered]@{ path = 'sessions'; exists = $true; observedAt = '2026-03-21T19:56:00Z'; ageSeconds = 240; freshnessThresholdSeconds = 604800; fresh = $true; count = 1; latestPath = 'session.json' }
+        deliveryState = [ordered]@{ path = 'delivery-agent-state.json'; exists = $true; observedAt = '2026-03-21T19:55:00Z'; ageSeconds = 300; freshnessThresholdSeconds = 21600; fresh = $true; error = $null }
+        observerHeartbeat = [ordered]@{ path = 'observer-heartbeat.json'; exists = $false; observedAt = $null; ageSeconds = $null; freshnessThresholdSeconds = 21600; fresh = $false; error = $null }
+      }
+      artifacts = [ordered]@{
+        runtimePath = 'tests/results/_agent/runtime/continuity-telemetry.json'
+        handoffPath = 'tests/results/_agent/handoff/continuity-summary.json'
+      }
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $handoffDir 'continuity-summary.json') -Encoding utf8
+
+    $output = & $scriptPath -HandoffDir $handoffDir *>&1 | Out-String
+
+    $output | Should -Match '\[handoff\] Continuity summary'
+    $output | Should -Match 'supervision\s+: supervised-background'
+    $output | Should -Match 'prompt-resume\s+: false'
+    $output | Should -Match 'pending\s+: Resume when wake condition'
+    $global:HandoffContinuitySummary.schema | Should -Be 'priority/continuity-telemetry-report@v1'
+
+    Remove-Variable -Name HandoffContinuitySummary -Scope Global -ErrorAction SilentlyContinue
+  }
 }
