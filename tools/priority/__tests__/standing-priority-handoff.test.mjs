@@ -235,6 +235,132 @@ test('handoffStandingPriority auto-selects the next actionable issue and skips c
   assert.equal(syncCount, 1);
 });
 
+test('handoffStandingPriority auto-selects an actionable coding lane over a passive platform-stale tracker', async () => {
+  const calls = [];
+  const patchCalls = [];
+  const issues = new Map([
+    [1510, { number: 1510, title: '[P1] Build a cross-repo standing-lane marketplace for autonomous worker allocation', labels: [] }],
+    [317, { number: 317, title: 'Current standing issue', labels: [{ name: 'fork-standing-priority' }] }]
+  ]);
+  let syncCount = 0;
+  const ghRunner = (args) => {
+    calls.push(args);
+    if (args[0] === 'issue' && args[1] === 'list' && args.includes('--label')) {
+      return JSON.stringify([
+        {
+          ...issues.get(317),
+          createdAt: '2026-03-10T00:00:00Z',
+          updatedAt: '2026-03-10T00:00:00Z'
+        }
+      ]);
+    }
+    if (args[0] === 'issue' && args[1] === 'list' && !args.includes('--label')) {
+      return JSON.stringify([
+        {
+          number: 1426,
+          title: 'Track stale Dependabot alerts after npm remediation on develop',
+          body: [
+            'tools/priority/security-intake.mjs now classifies the current state as platform-stale.',
+            'This follow-up tracks the remaining GitHub dependency-graph / Dependabot refresh lag until the platform state catches up.',
+            'Dependabot alerts auto-close or are otherwise reconciled by GitHub.'
+          ].join('\n'),
+          labels: [],
+          createdAt: '2026-03-01T00:00:00Z',
+          updatedAt: '2026-03-01T00:00:00Z'
+        },
+        {
+          ...issues.get(1510),
+          body: 'Actionable in-repo coding work remains.',
+          labels: [{ name: 'ci' }],
+          createdAt: '2026-03-02T00:00:00Z',
+          updatedAt: '2026-03-02T00:00:00Z'
+        },
+        {
+          ...issues.get(317),
+          title: '[P0] Current standing issue',
+          body: 'Already active',
+          createdAt: '2026-03-03T00:00:00Z',
+          updatedAt: '2026-03-03T00:00:00Z'
+        }
+      ]);
+    }
+    if (args[0] === 'issue' && args[1] === 'view') {
+      return JSON.stringify(issues.get(Number(args[2])));
+    }
+    return '';
+  };
+  const patchIssueLabelsFn = (_repoRoot, _repoSlug, issueNumber, labels) => {
+    patchCalls.push({ issueNumber, labels });
+    const issue = issues.get(issueNumber);
+    issue.labels = labels.map((label) => ({ name: label }));
+  };
+
+  await handoffStandingPriority(null, {
+    auto: true,
+    ghRunner,
+    patchIssueLabelsFn,
+    syncFn: async () => {
+      syncCount += 1;
+    },
+    leaseReleaseFn: async () => ({ status: 'released' }),
+    logger: () => {},
+    env: {
+      GITHUB_REPOSITORY: 'fork-owner/compare-vi-cli-action',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'upstream-owner/compare-vi-cli-action'
+    }
+  });
+
+  assert.deepEqual(calls, [
+    [
+      'issue',
+      'list',
+      '--repo',
+      'fork-owner/compare-vi-cli-action',
+      '--state',
+      'open',
+      '--limit',
+      '100',
+      '--json',
+      'number,title,body,labels,createdAt,updatedAt,url',
+      '--label',
+      'fork-standing-priority'
+    ],
+    [
+      'issue',
+      'list',
+      '--repo',
+      'fork-owner/compare-vi-cli-action',
+      '--state',
+      'open',
+      '--limit',
+      '100',
+      '--json',
+      'number,title,body,labels,createdAt,updatedAt,url',
+      '--label',
+      'standing-priority'
+    ],
+    [
+      'issue',
+      'list',
+      '--repo',
+      'fork-owner/compare-vi-cli-action',
+      '--state',
+      'open',
+      '--limit',
+      '100',
+      '--json',
+      'number,title,body,labels,createdAt,updatedAt,url'
+    ],
+    ['issue', 'view', '317', '--repo', 'fork-owner/compare-vi-cli-action', '--json', 'number,title,body,labels,createdAt,updatedAt,url,state'],
+    ['issue', 'view', '1510', '--repo', 'fork-owner/compare-vi-cli-action', '--json', 'number,title,body,labels,createdAt,updatedAt,url,state']
+  ]);
+  assert.deepEqual(patchCalls, [
+    { issueNumber: 317, labels: [] },
+    { issueNumber: 1510, labels: ['fork-standing-priority'] }
+  ]);
+  assert.equal(syncCount, 1);
+});
+
 test('handoffStandingPriority uses the caller gh transport to hydrate blocked rollout candidates before auto-selecting', async () => {
   const calls = [];
   const patchCalls = [];
