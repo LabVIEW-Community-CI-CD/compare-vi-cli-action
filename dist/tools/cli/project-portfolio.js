@@ -199,6 +199,17 @@ const itemFieldValuesQuerySchema = z.object({
         }).nullable(),
     }),
 });
+const projectContextCacheSchema = z.object({
+    schema: z.literal('project-portfolio-context-cache@v1'),
+    generatedAt: z.string().min(1),
+    project: z.object({
+        owner: z.string().min(1),
+        number: z.number().int().positive(),
+    }),
+    view: viewSchema,
+    fields: fieldsSchema,
+});
+const defaultContextCacheMaxAgeSeconds = 300;
 function readJsonFile(filePath) {
     return JSON.parse(readFileSync(filePath, 'utf8'));
 }
@@ -295,6 +306,82 @@ function runGhGraphql(query, variables, schema) {
 function loadJsonInput(maybeFile, schema, ghArgs) {
     const payload = maybeFile ? readJsonFile(resolvePath(maybeFile)) : runGhJson(ghArgs);
     return schema.parse(payload);
+}
+function buildProjectContextCacheReportContext(path, status, reason, maxAgeSeconds, generatedAt, ageSeconds) {
+    return {
+        path,
+        status,
+        reason,
+        maxAgeSeconds,
+        generatedAt,
+        ageSeconds,
+    };
+}
+function loadProjectContextCache(cachePath, owner, number, maxAgeSeconds) {
+    if (!existsSync(cachePath)) {
+        return {
+            cache: null,
+            reason: 'cache-missing',
+            generatedAt: null,
+            ageSeconds: null,
+        };
+    }
+    let parsed;
+    try {
+        parsed = projectContextCacheSchema.parse(readJsonFile(cachePath));
+    }
+    catch {
+        return {
+            cache: null,
+            reason: 'cache-invalid',
+            generatedAt: null,
+            ageSeconds: null,
+        };
+    }
+    if (parsed.project.owner !== owner || parsed.project.number !== number) {
+        return {
+            cache: null,
+            reason: 'project-mismatch',
+            generatedAt: parsed.generatedAt,
+            ageSeconds: null,
+        };
+    }
+    const generatedAtMs = Date.parse(parsed.generatedAt);
+    if (!Number.isFinite(generatedAtMs)) {
+        return {
+            cache: null,
+            reason: 'cache-invalid',
+            generatedAt: parsed.generatedAt,
+            ageSeconds: null,
+        };
+    }
+    const ageSeconds = Math.max(0, Math.floor((Date.now() - generatedAtMs) / 1000));
+    if (ageSeconds > maxAgeSeconds) {
+        return {
+            cache: null,
+            reason: 'cache-stale',
+            generatedAt: parsed.generatedAt,
+            ageSeconds,
+        };
+    }
+    return {
+        cache: parsed,
+        reason: null,
+        generatedAt: parsed.generatedAt,
+        ageSeconds,
+    };
+}
+function writeProjectContextCache(cachePath, owner, number, view, fields) {
+    writeJsonFile(cachePath, {
+        schema: 'project-portfolio-context-cache@v1',
+        generatedAt: new Date().toISOString(),
+        project: {
+            owner,
+            number,
+        },
+        view,
+        fields,
+    });
 }
 function fieldValue(item, name) {
     const normalizedName = name.trim().toLowerCase();
@@ -1221,10 +1308,67 @@ function compareProject(config, view, fields, items) {
 function loadProjectContext(args, config, options) {
     const owner = args.owner ?? config.owner;
     const number = args.number ?? config.number;
-    const view = loadJsonInput(args.view_file, viewSchema, ['project', 'view', String(number), '--owner', owner, '--format', 'json']);
-    const fields = loadJsonInput(args.fields_file, fieldsSchema, ['project', 'field-list', String(number), '--owner', owner, '--format', 'json']);
+    const contextCachePath = args.context_cache_file ? resolvePath(args.context_cache_file) : null;
+    const contextCacheMaxAgeSeconds = args.context_cache_max_age_seconds ?? defaultContextCacheMaxAgeSeconds;
+    const explicitContextFiles = Boolean(args.view_file || args.fields_file);
+    let view;
+    let fields;
+    let reportContext;
+    if (explicitContextFiles) {
+        view = loadJsonInput(args.view_file, viewSchema, ['project', 'view', String(number), '--owner', owner, '--format', 'json']);
+        fields = loadJsonInput(args.fields_file, fieldsSchema, ['project', 'field-list', String(number), '--owner', owner, '--format', 'json']);
+        reportContext = {
+            sources: {
+                view: args.view_file ? 'file' : 'live',
+                fields: args.fields_file ? 'file' : 'live',
+                itemList: 'skipped',
+            },
+            cache: buildProjectContextCacheReportContext(contextCachePath, contextCachePath ? 'bypassed' : 'disabled', null, contextCachePath ? contextCacheMaxAgeSeconds : null, null, null),
+        };
+    }
+    else if (contextCachePath) {
+        const cachedContext = loadProjectContextCache(contextCachePath, owner, number, contextCacheMaxAgeSeconds);
+        if (cachedContext.cache) {
+            view = cachedContext.cache.view;
+            fields = cachedContext.cache.fields;
+            reportContext = {
+                sources: {
+                    view: 'cache',
+                    fields: 'cache',
+                    itemList: 'skipped',
+                },
+                cache: buildProjectContextCacheReportContext(contextCachePath, 'used', null, contextCacheMaxAgeSeconds, cachedContext.generatedAt, cachedContext.ageSeconds),
+            };
+        }
+        else {
+            view = loadJsonInput(undefined, viewSchema, ['project', 'view', String(number), '--owner', owner, '--format', 'json']);
+            fields = loadJsonInput(undefined, fieldsSchema, ['project', 'field-list', String(number), '--owner', owner, '--format', 'json']);
+            writeProjectContextCache(contextCachePath, owner, number, view, fields);
+            reportContext = {
+                sources: {
+                    view: 'live',
+                    fields: 'live',
+                    itemList: 'skipped',
+                },
+                cache: buildProjectContextCacheReportContext(contextCachePath, 'refreshed', cachedContext.reason, contextCacheMaxAgeSeconds, cachedContext.generatedAt, cachedContext.ageSeconds),
+            };
+        }
+    }
+    else {
+        view = loadJsonInput(undefined, viewSchema, ['project', 'view', String(number), '--owner', owner, '--format', 'json']);
+        fields = loadJsonInput(undefined, fieldsSchema, ['project', 'field-list', String(number), '--owner', owner, '--format', 'json']);
+        reportContext = {
+            sources: {
+                view: 'live',
+                fields: 'live',
+                itemList: 'skipped',
+            },
+            cache: buildProjectContextCacheReportContext(null, 'disabled', null, null, null, null),
+        };
+    }
     const fieldNames = buildFieldNameMap(config);
     if (options?.includeItems === false) {
+        reportContext.sources.itemList = 'skipped';
         return {
             view,
             fields,
@@ -1233,16 +1377,19 @@ function loadProjectContext(args, config, options) {
                 items: [],
             },
             normalizedItems: [],
+            reportContext,
         };
     }
     const itemListLimit = String(Math.max(view.items.totalCount, 100));
     const itemList = loadJsonInput(args.item_file, itemListSchema, ['project', 'item-list', String(number), '--owner', owner, '--limit', itemListLimit, '--format', 'json']);
     const normalizedItems = itemList.items.map((item) => normalizeItem(item, fieldNames)).sort((a, b) => a.url.localeCompare(b.url));
+    reportContext.sources.itemList = args.item_file ? 'file' : 'live';
     return {
         view,
         fields,
         itemList,
         normalizedItems,
+        reportContext,
     };
 }
 function buildParser() {
@@ -1281,6 +1428,15 @@ function buildParser() {
     parser.add_argument('--item-file', {
         required: false,
         help: 'Optional path to a captured gh project item-list JSON payload.',
+    });
+    parser.add_argument('--context-cache-file', {
+        required: false,
+        help: 'Optional path to a reusable project context cache containing live project view and field-list payloads.',
+    });
+    parser.add_argument('--context-cache-max-age-seconds', {
+        required: false,
+        type: 'int',
+        help: `Maximum age for --context-cache-file before the helper refreshes it live (default: ${defaultContextCacheMaxAgeSeconds}).`,
     });
     parser.add_argument('--url', {
         required: false,
@@ -1411,6 +1567,7 @@ function main() {
             mode: args.mode,
             configPath,
             dryRun,
+            projectContext: context.reportContext,
             project: {
                 owner,
                 number,
@@ -1468,6 +1625,7 @@ function main() {
         generatedAt: new Date().toISOString(),
         mode: args.mode,
         configPath,
+        projectContext: context.reportContext,
         project: {
             owner,
             number,

@@ -96,7 +96,11 @@ instead of inferring the correct path from prose alone.
   post-apply verification payload instead of reloading the full board. The report still includes a projected post-apply
   snapshot plus normalized board context for built-in metadata such as `Type`, `Milestone`, `Reviewers`, linked PRs,
   parent issue, and `Sub-issues progress`, so future agents do not need a second board scrape just to reason about
-  intake state. Use this instead of ad hoc `gh project item-add` plus repeated `gh project item-edit` sequences.
+  intake state. When you are applying fields to multiple targets in sequence, pass
+  `--context-cache-file tests/results/_agent/project/portfolio-context-cache.json` so repeated runs can reuse the
+  live `project view` plus `field-list` payloads; the report records this under `projectContext.sources` and
+  `projectContext.cache`. Use this instead of ad hoc `gh project item-add` plus repeated `gh project item-edit`
+  sequences.
 
 - Canonical GitHub metadata application:
 

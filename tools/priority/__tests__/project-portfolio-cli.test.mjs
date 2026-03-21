@@ -24,6 +24,10 @@ function runCli(args, options = {}) {
   });
 }
 
+function countGhCalls(state, ...prefix) {
+  return (state.calls ?? []).filter((args) => prefix.every((token, index) => args[index] === token)).length;
+}
+
 function buildConfig({
   fieldNames = {},
   itemUrl = 'https://github.com/example/repo/issues/1',
@@ -440,6 +444,10 @@ test('project portfolio CLI emits v2 report schema for the expanded payload', as
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(await readFile(outPath, 'utf8'));
   assert.equal(report.schema, 'project-portfolio-report@v2');
+  assert.equal(report.projectContext.sources.view, 'file');
+  assert.equal(report.projectContext.sources.fields, 'file');
+  assert.equal(report.projectContext.sources.itemList, 'file');
+  assert.equal(report.projectContext.cache.status, 'disabled');
   assert.equal(report.items[0].portfolioTrack, 'Agent UX');
   assert.equal(report.items[0].type, 'Epic');
   assert.equal(report.items[0].milestone, 'Q1 Sustain');
@@ -648,6 +656,10 @@ test('project portfolio CLI apply mode adds a missing item and seeds fields from
   const fakeGhState = JSON.parse(await readFile(fakeGh.statePath, 'utf8'));
 
   assert.equal(report.schema, 'project-portfolio-apply-report@v1');
+  assert.equal(report.projectContext.sources.view, 'file');
+  assert.equal(report.projectContext.sources.fields, 'file');
+  assert.equal(report.projectContext.sources.itemList, 'file');
+  assert.equal(report.projectContext.cache.status, 'disabled');
   assert.equal(report.target.added, true);
   assert.equal(report.target.itemId, 'item-added-10');
   assert.equal(report.target.projectedItemSnapshot.status, 'Todo');
@@ -668,6 +680,168 @@ test('project portfolio CLI apply mode adds a missing item and seeds fields from
   ]);
   assert.equal(fakeGhState.updateCalls.length, 7);
   assert.ok(fakeGhState.updateCalls.every((call) => call.itemId === 'item-added-10'));
+});
+
+test('project portfolio CLI reuses cached live view and field-list across sequential apply runs', async (t) => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'project-portfolio-apply-context-cache-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  const firstTargetUrl = 'https://github.com/example/repo/issues/31';
+  const secondTargetUrl = 'https://github.com/example/repo/issues/32';
+  const configPath = path.join(tempRoot, 'config.json');
+  const outPath1 = path.join(tempRoot, 'apply-report-1.json');
+  const outPath2 = path.join(tempRoot, 'apply-report-2.json');
+  const cachePath = path.join(tempRoot, 'project-context-cache.json');
+  const fields = buildFields();
+  const state = buildFakeGhState({
+    targetUrl: firstTargetUrl,
+    resourceId: 'ISSUE_31',
+    title: 'First apply issue',
+    fields,
+    nextAddedItemId: 'item-added-31',
+  });
+  state.projectView = buildView();
+  state.projectFields = fields;
+  state.resources[secondTargetUrl] = {
+    __typename: 'Issue',
+    id: 'ISSUE_32',
+    url: secondTargetUrl,
+    title: 'Second apply issue',
+    body: null,
+    repository: {
+      nameWithOwner: 'example/repo',
+    },
+    projectItems: [],
+    closingIssuesReferences: [],
+  };
+
+  await writeJson(configPath, buildConfig({ itemUrl: firstTargetUrl }));
+  const fakeGh = await writeFakeGhHarness(tempRoot, state);
+  const buildApplyArgs = (targetUrl, outPath) => [
+    'apply',
+    '--config', configPath,
+    '--context-cache-file', cachePath,
+    '--out', outPath,
+    '--url', targetUrl,
+    '--status', 'In Progress',
+    '--program', 'Shared Infra',
+    '--phase', 'Policy',
+    '--environment-class', 'Infra',
+    '--blocking-signal', 'Scope',
+    '--evidence-state', 'Ready',
+    '--portfolio-track', 'Agent UX',
+  ];
+
+  const firstResult = runCli(buildApplyArgs(firstTargetUrl, outPath1), {
+    env: {
+      ...fakeGh.env,
+      COMPAREVI_PROJECT_PORTFOLIO_VERIFY_DELAY_MS: '0',
+    },
+  });
+  assert.equal(firstResult.status, 0, firstResult.stderr);
+
+  const firstReport = JSON.parse(await readFile(outPath1, 'utf8'));
+  assert.equal(firstReport.projectContext.sources.view, 'live');
+  assert.equal(firstReport.projectContext.sources.fields, 'live');
+  assert.equal(firstReport.projectContext.cache.status, 'refreshed');
+  assert.equal(firstReport.projectContext.cache.reason, 'cache-missing');
+
+  const intermediateState = JSON.parse(await readFile(fakeGh.statePath, 'utf8'));
+  intermediateState.nextAddedItemId = 'item-added-32';
+  await writeJson(fakeGh.statePath, intermediateState);
+
+  const secondResult = runCli(buildApplyArgs(secondTargetUrl, outPath2), {
+    env: {
+      ...fakeGh.env,
+      COMPAREVI_PROJECT_PORTFOLIO_VERIFY_DELAY_MS: '0',
+    },
+  });
+  assert.equal(secondResult.status, 0, secondResult.stderr);
+
+  const secondReport = JSON.parse(await readFile(outPath2, 'utf8'));
+  const finalState = JSON.parse(await readFile(fakeGh.statePath, 'utf8'));
+
+  assert.equal(secondReport.projectContext.sources.view, 'cache');
+  assert.equal(secondReport.projectContext.sources.fields, 'cache');
+  assert.equal(secondReport.projectContext.cache.status, 'used');
+  assert.equal(secondReport.projectContext.cache.reason, null);
+  assert.equal(countGhCalls(finalState, 'project', 'view'), 1);
+  assert.equal(countGhCalls(finalState, 'project', 'field-list'), 1);
+  assert.equal(finalState.addCalls.length, 2);
+});
+
+test('project portfolio CLI refreshes stale live context cache before apply', async (t) => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'project-portfolio-apply-context-cache-stale-'));
+  t.after(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  const targetUrl = 'https://github.com/example/repo/issues/33';
+  const configPath = path.join(tempRoot, 'config.json');
+  const outPath = path.join(tempRoot, 'apply-report.json');
+  const cachePath = path.join(tempRoot, 'project-context-cache.json');
+  const fields = buildFields();
+  const staleGeneratedAt = '2000-01-01T00:00:00.000Z';
+  const liveView = buildView();
+  liveView.title = 'Fresh live project';
+
+  await writeJson(configPath, buildConfig({ itemUrl: targetUrl }));
+  await writeJson(cachePath, {
+    schema: 'project-portfolio-context-cache@v1',
+    generatedAt: staleGeneratedAt,
+    project: {
+      owner: 'example-owner',
+      number: 7,
+    },
+    view: {
+      ...buildView(),
+      title: 'Stale cached project',
+    },
+    fields,
+  });
+
+  const fakeGh = await writeFakeGhHarness(tempRoot, {
+    ...buildFakeGhState({
+      targetUrl,
+      resourceId: 'ISSUE_33',
+      title: 'Stale cache refresh issue',
+      fields,
+      nextAddedItemId: 'item-added-33',
+    }),
+    projectView: liveView,
+    projectFields: fields,
+  });
+
+  const result = runCli([
+    'apply',
+    '--config', configPath,
+    '--context-cache-file', cachePath,
+    '--context-cache-max-age-seconds', '60',
+    '--out', outPath,
+    '--url', targetUrl,
+    '--use-config',
+  ], {
+    env: {
+      ...fakeGh.env,
+      COMPAREVI_PROJECT_PORTFOLIO_VERIFY_DELAY_MS: '0',
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(await readFile(outPath, 'utf8'));
+  const finalState = JSON.parse(await readFile(fakeGh.statePath, 'utf8'));
+  const refreshedCache = JSON.parse(await readFile(cachePath, 'utf8'));
+
+  assert.equal(report.projectContext.sources.view, 'live');
+  assert.equal(report.projectContext.sources.fields, 'live');
+  assert.equal(report.projectContext.cache.status, 'refreshed');
+  assert.equal(report.projectContext.cache.reason, 'cache-stale');
+  assert.equal(countGhCalls(finalState, 'project', 'view'), 1);
+  assert.equal(countGhCalls(finalState, 'project', 'field-list'), 1);
+  assert.equal(refreshedCache.view.title, 'Fresh live project');
+  assert.notEqual(refreshedCache.generatedAt, staleGeneratedAt);
 });
 
 test('project portfolio CLI apply mode prefers explicit values and skips add when item already exists', async (t) => {
