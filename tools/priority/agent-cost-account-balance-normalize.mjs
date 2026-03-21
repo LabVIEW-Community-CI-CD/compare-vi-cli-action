@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 export const INPUT_SCHEMA = 'priority/agent-cost-private-account-balance@v1';
 export const REPORT_SCHEMA = 'priority/agent-cost-account-balance@v1';
-export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'cost', 'agent-cost-account-balance.json');
+export const DEFAULT_OUTPUT_DIRECTORY = path.join('tests', 'results', '_agent', 'cost', 'account-balances');
 
 const CONFIDENCE_LEVELS = new Set(['low', 'medium', 'high']);
 
@@ -38,6 +38,14 @@ function normalizeDate(value) {
   return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : '';
 }
 
+function toUtcMidnightDateTime(value) {
+  const text = normalizeDate(value);
+  if (!text) {
+    return '';
+  }
+  return `${text}T00:00:00.000Z`;
+}
+
 function normalizeConfidence(value) {
   const text = normalizeText(value).toLowerCase();
   return CONFIDENCE_LEVELS.has(text) ? text : '';
@@ -52,9 +60,9 @@ function toNonNegativeInteger(value) {
 }
 
 function deriveBalanceTotals(payload) {
-  let total = toNonNegativeInteger(payload?.credits?.total ?? payload?.totalCredits);
-  let used = toNonNegativeInteger(payload?.credits?.used ?? payload?.usedCredits);
-  let remaining = toNonNegativeInteger(payload?.credits?.remaining ?? payload?.remainingCredits);
+  let total = toNonNegativeInteger(payload?.balances?.totalCredits ?? payload?.credits?.total ?? payload?.totalCredits);
+  let used = toNonNegativeInteger(payload?.balances?.usedCredits ?? payload?.credits?.used ?? payload?.usedCredits);
+  let remaining = toNonNegativeInteger(payload?.balances?.remainingCredits ?? payload?.credits?.remaining ?? payload?.remainingCredits);
 
   if (total == null && used != null && remaining != null) {
     total = used + remaining;
@@ -116,8 +124,13 @@ function validateInputPayload(payload) {
     throw new Error('Account balance payload must include plan.renewsAt.');
   }
 
-  if (!normalizeText(payload.sourcePath) && !normalizeText(payload?.provenance?.sourcePath)) {
-    throw new Error('Account balance payload must include sourcePath.');
+  if (
+    !normalizeText(payload.sourcePathEvidence) &&
+    !normalizeText(payload.sourcePath) &&
+    !normalizeText(payload?.provenance?.sourcePathEvidence) &&
+    !normalizeText(payload?.provenance?.sourcePath)
+  ) {
+    throw new Error('Account balance payload must include sourcePathEvidence.');
   }
 }
 
@@ -172,9 +185,17 @@ export function buildNormalizedAccountBalanceReceiptFromSnapshot(snapshotPayload
     throw new Error('Account balance payload snapshotAt must be a valid date-time.');
   }
 
+  const capturedAt = normalizeDateTime(snapshotPayload.capturedAt) || snapshotAt;
+  const effectiveAt = normalizeDateTime(snapshotPayload.effectiveAt) || snapshotAt;
+
   const renewsAt = normalizeDate(snapshotPayload?.plan?.renewsAt ?? snapshotPayload?.renewsAt);
   if (!renewsAt) {
     throw new Error('Account balance payload plan.renewsAt must be a valid date.');
+  }
+
+  const renewalCycleBoundaryAt = toUtcMidnightDateTime(renewsAt);
+  if (!renewalCycleBoundaryAt) {
+    throw new Error('Account balance payload plan.renewsAt must resolve to a cycle boundary.');
   }
 
   const credits = deriveBalanceTotals(snapshotPayload);
@@ -184,38 +205,68 @@ export function buildNormalizedAccountBalanceReceiptFromSnapshot(snapshotPayload
   }
 
   const confidence = normalizeConfidence(snapshotPayload?.provenance?.confidence ?? snapshotPayload.confidence) || 'high';
-  const sourcePath = normalizeText(snapshotPayload.sourcePath) || normalizeText(snapshotPayload?.provenance?.sourcePath);
+  const sourceSchema = normalizeText(snapshotPayload?.sourceSchema ?? snapshotPayload?.provenance?.sourceSchema) || INPUT_SCHEMA;
+  const sourceKind = normalizeText(snapshotPayload?.sourceKind ?? snapshotPayload?.provenance?.sourceKind) || 'operator-account-state';
+  const sourcePathEvidence =
+    normalizeText(snapshotPayload.sourcePathEvidence) ||
+    normalizeText(snapshotPayload.sourcePath) ||
+    normalizeText(snapshotPayload?.provenance?.sourcePathEvidence) ||
+    normalizeText(snapshotPayload?.provenance?.sourcePath);
+  const operatorNote =
+    normalizeText(snapshotPayload.operatorNote) ||
+    normalizeText(snapshotPayload?.provenance?.operatorNote) ||
+    'Normalized from a local private account balance snapshot.';
   const generatedAt = normalizeDateTime(options.generatedAt) || new Date().toISOString();
 
   return {
     schema: REPORT_SCHEMA,
     generatedAt,
+    effectiveAt,
     snapshotAt,
+    capturedAt,
+    renewalCycleBoundaryAt,
     plan: {
       name: normalizeText(snapshotPayload?.plan?.name) || 'business',
       renewsAt,
       daysRemaining: cycleDaysRemaining
     },
-    credits,
-    provenance: {
-      sourceSchema: normalizeText(snapshotPayload.schema) || INPUT_SCHEMA,
-      sourceKind: normalizeText(snapshotPayload?.provenance?.sourceKind) || 'operator-account-state',
-      sourcePath,
-      observedAt: normalizeDateTime(snapshotPayload?.provenance?.observedAt) || snapshotAt,
-      confidence,
-      operatorNote:
-        normalizeText(snapshotPayload?.provenance?.operatorNote) ||
-        'Normalized from a local private account balance snapshot.'
-    }
+    balances: {
+      totalCredits: credits.total,
+      usedCredits: credits.used,
+      remainingCredits: credits.remaining
+    },
+    sourceSchema,
+    sourceKind,
+    sourcePathEvidence,
+    confidence,
+    operatorNote
   };
+}
+
+function deriveDefaultOutputPath(report) {
+  const effectiveDate = normalizeDate(report?.effectiveAt) || normalizeDate(report?.capturedAt) || normalizeDate(report?.snapshotAt);
+  if (!effectiveDate) {
+    throw new Error('Normalized account balance receipts must include an effectiveAt, capturedAt, or snapshotAt date.');
+  }
+  return path.join(DEFAULT_OUTPUT_DIRECTORY, `account-balance-${effectiveDate}.json`);
 }
 
 export function runAgentCostAccountBalanceNormalize(options) {
   const snapshot = readSnapshot(options.snapshotPath);
-  const report = buildNormalizedAccountBalanceReceiptFromSnapshot(snapshot.payload, {
+  const payload = {
+    ...snapshot.payload,
+    sourcePathEvidence:
+      normalizeText(snapshot.payload?.sourcePathEvidence) ||
+      normalizeText(snapshot.payload?.sourcePath) ||
+      normalizeText(snapshot.payload?.provenance?.sourcePathEvidence) ||
+      normalizeText(snapshot.payload?.provenance?.sourcePath) ||
+      snapshot.resolved
+  };
+  const report = buildNormalizedAccountBalanceReceiptFromSnapshot(payload, {
     generatedAt: options.generatedAt
   });
-  const outputPath = path.resolve(options.outputPath || DEFAULT_OUTPUT_PATH);
+  const defaultOutputPath = deriveDefaultOutputPath(report);
+  const outputPath = path.resolve(options.outputPath || defaultOutputPath);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   return {
@@ -230,7 +281,9 @@ function printUsage() {
   console.log('');
   console.log('Options:');
   console.log(`  --snapshot <path>   Local private account balance snapshot JSON (${INPUT_SCHEMA}) (required).`);
-  console.log('  --output <path>     Optional account-balance receipt output override.');
+  console.log(
+    '  --output <path>     Optional account-balance receipt output override (defaults to tests/results/_agent/cost/account-balances/account-balance-<YYYY-MM-DD>.json).'
+  );
   console.log('  -h, --help          Show help and exit.');
 }
 

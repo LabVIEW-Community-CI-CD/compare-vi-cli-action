@@ -4,11 +4,25 @@
   "title": "Agent Cost Account Balance Snapshot v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "generatedAt", "snapshotAt", "plan", "credits", "provenance"],
+  "required": [
+    "schema",
+    "generatedAt",
+    "effectiveAt",
+    "plan",
+    "balances",
+    "sourceSchema",
+    "sourceKind",
+    "sourcePathEvidence",
+    "confidence",
+    "operatorNote"
+  ],
   "properties": {
     "schema": { "const": "priority/agent-cost-account-balance@v1" },
     "generatedAt": { "type": "string", "format": "date-time" },
+    "effectiveAt": { "type": "string", "format": "date-time" },
+    "capturedAt": { "type": "string", "format": "date-time" },
     "snapshotAt": { "type": "string", "format": "date-time" },
+    "renewalCycleBoundaryAt": { "type": "string", "format": "date-time" },
     "plan": {
       "type": "object",
       "additionalProperties": false,
@@ -19,31 +33,23 @@
         "daysRemaining": { "type": "integer", "minimum": 0 }
       }
     },
-    "credits": {
+    "balances": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["total", "used", "remaining"],
+      "required": ["totalCredits", "usedCredits", "remainingCredits"],
       "properties": {
-        "total": { "type": "integer", "minimum": 0 },
-        "used": { "type": "integer", "minimum": 0 },
-        "remaining": { "type": "integer", "minimum": 0 }
+        "totalCredits": { "type": "integer", "minimum": 0 },
+        "usedCredits": { "type": "integer", "minimum": 0 },
+        "remainingCredits": { "type": "integer", "minimum": 0 }
       }
     },
-    "provenance": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["sourceSchema", "sourceKind", "sourcePath", "observedAt", "confidence", "operatorNote"],
-      "properties": {
-        "sourceSchema": { "type": ["string", "null"], "minLength": 1 },
-        "sourceKind": {
-          "type": "string",
-          "enum": ["operator-account-state", "billing-export", "manual-baseline"]
-        },
-        "sourcePath": { "type": "string", "minLength": 1 },
-        "observedAt": { "type": "string", "format": "date-time" },
-        "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
-        "operatorNote": { "type": "string", "minLength": 1 }
-      }
-    }
+    "sourceSchema": { "type": "string", "minLength": 1 },
+    "sourceKind": {
+      "type": "string",
+      "enum": ["operator-account-state", "billing-export", "manual-baseline"]
+    },
+    "sourcePathEvidence": { "type": "string", "minLength": 1 },
+    "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+    "operatorNote": { "type": "string", "minLength": 1 }
   }
 }
