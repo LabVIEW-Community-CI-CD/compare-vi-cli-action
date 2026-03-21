@@ -828,6 +828,16 @@ if (-not $PreflightOnly) {
 
   Write-Host '[bootstrap] Summarizing safe-git reliability telemetry…'
   Invoke-SafeGitReliabilitySummary -RepoRoot $priorityHelperRepoRoot -WorkingDirectory $priorityWorkingDirectory
+
+  Write-Host '[bootstrap] Writing continuity telemetry…'
+  $continuityRuntimePath = Join-Path $priorityWorkingDirectory 'tests/results/_agent/runtime/continuity-telemetry.json'
+  $continuityHandoffPath = Join-Path $priorityWorkingDirectory 'tests/results/_agent/handoff/continuity-summary.json'
+  Invoke-NodeScriptFromRepoRoot `
+    -RepoRoot $priorityHelperRepoRoot `
+    -WorkingDirectory $priorityWorkingDirectory `
+    -ScriptRelativePath 'tools/priority/continuity-telemetry.mjs' `
+    -Arguments @('--repo-root', $priorityWorkingDirectory, '--output', $continuityRuntimePath, '--handoff-output', $continuityHandoffPath) `
+    -AllowFailure:$true
 }
 
 Write-Host '[bootstrap] Bootstrapping complete.'

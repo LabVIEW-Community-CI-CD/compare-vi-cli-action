@@ -39,6 +39,7 @@ Live repository state belongs in the machine-generated artifacts under
 - `tests/results/_agent/issue/router.json`
 - `tests/results/_agent/issue/no-standing-priority.json`
 - `tests/results/_agent/verification/docker-review-loop-summary.json`
+- `tests/results/_agent/handoff/continuity-summary.json`
 - `tests/results/_agent/handoff/entrypoint-status.json`
 - `tests/results/_agent/handoff/human-go-no-go-latest.json`
 - `tests/results/_agent/handoff/*.json`
