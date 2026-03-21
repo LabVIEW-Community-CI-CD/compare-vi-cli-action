@@ -32,9 +32,9 @@ const USAGE_LINES = [
   '  --method <merge|squash|rebase>',
   '                           Merge method override (default: repository-aware selection preferring squash)',
   '  --admin                  Explicitly use admin merge override',
-  '  --keep-branch            Keep head branch after merge',
+  '  --keep-branch            Keep head branch after merge (default cleanup is inline for direct merges and post-merge for queue-managed/--auto flows)',
   '  --dry-run                Print selected mode and merge command without executing',
-  '  --summary-path <path>    Write JSON summary payload',
+  '  --summary-path <path>    Write JSON summary payload including promotion and branchCleanup state',
   '  -h, --help               Show this message and exit'
 ];
 

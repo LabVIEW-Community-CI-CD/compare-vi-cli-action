@@ -303,6 +303,12 @@ to confirm each workflow includes both triggers.
    groups.
 4. If the run fails or new commits land, the queue ejects the entry back to the PR. Address the failure, rerun the
    relevant check (`priority:validate`, `Validate` workflow, or manual reruns), and re-enable the queue.
+   Queue-safe cleanup note: `priority:merge-sync` does not send `gh pr merge --delete-branch` on queue-managed bases.
+   Without `--keep-branch`, direct merges still use inline branch deletion, but queue-managed or retried `--auto`
+   promotions record `branchCleanup` in `tests/results/_agent/queue/merge-sync-<pr>.json` and use post-merge API
+   deletion once the merge materializes. When the PR remains queued after the current helper turn, `priority:queue:supervisor`
+   reconciles that deferred cleanup and records the outcome under `deferredBranchCleanup` in
+   `tests/results/_agent/queue/queue-supervisor-report.json`.
 5. For autonomous queueing, run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` first, then
    `--apply` when trunk health is green. The supervisor enforces required checks, dependency ordering, and queue caps.
    Use `QUEUE_AUTOPILOT_MAX_INFLIGHT` for cap tuning and keep `QUEUE_AUTOPILOT_ADAPTIVE_CAP=1`
