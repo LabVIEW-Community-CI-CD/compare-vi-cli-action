@@ -175,8 +175,8 @@ Use the artifacts in this order:
    - prints host-plane summary path, status, SHA-256, and fail-closed reason
    - preserves the missing-summary reason before the script throws
 10. `history:diagnostics:show`
-   - replays the same distinction in console form for the operator
-   - prints `[host-plane-split][summary] <path> status=<status> sha256=<sha256>` when summary provenance exists
+    - replays the same distinction in console form for the operator
+    - prints `[host-plane-split][summary] <path> status=<status> sha256=<sha256>` when summary provenance exists
 
 If any of those surfaces disagree on the selected plane or exclusivity state, stop and treat the run as not yet
 trustworthy.
