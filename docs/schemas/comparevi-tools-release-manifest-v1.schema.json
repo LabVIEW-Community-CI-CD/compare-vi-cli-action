@@ -7,6 +7,7 @@
     "schema",
     "generatedAtUtc",
     "module",
+    "versionContract",
     "source",
     "compatibility",
     "consumerContract",
@@ -49,6 +50,61 @@
           "type": "string"
         },
         "exportedFunctions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "versionContract": {
+      "type": "object",
+      "required": [
+        "schema",
+        "baseSemver",
+        "releaseVersion",
+        "stableFamilyTag",
+        "stableFamilyTagMutable",
+        "toolsIteration",
+        "authoritativeConsumerPin",
+        "authoritativeConsumerPinKind",
+        "notes"
+      ],
+      "properties": {
+        "schema": {
+          "const": "comparevi-tools/version-contract@v1"
+        },
+        "baseSemver": {
+          "type": "string"
+        },
+        "releaseVersion": {
+          "type": "string"
+        },
+        "stableFamilyTag": {
+          "type": "string"
+        },
+        "stableFamilyTagMutable": {
+          "type": "boolean"
+        },
+        "toolsIteration": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "authoritativeConsumerPin": {
+          "type": "string"
+        },
+        "authoritativeConsumerPinKind": {
+          "type": "string",
+          "enum": [
+            "release-tag",
+            "release-version"
+          ]
+        },
+        "notes": {
           "type": "array",
           "items": {
             "type": "string"
