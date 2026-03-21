@@ -344,6 +344,13 @@ timing receipt for the same workload. The budget report:
   throughput accelerator against the measured container planes
 - writes a PR-comment-ready Markdown summary next to the JSON report
 
+Treat that shadow receipt as acceleration evidence only:
+
+- the authoritative proof planes remain the Linux and Windows image-backed
+  lanes
+- host-native 32-bit stays manual and opt-in
+- hosted CI must not promote host-native 32-bit into a required proof surface
+
 Windows mirror proof also records host/image evidence under the local
 refinement and operator-session receipts:
 

@@ -16,6 +16,23 @@ Treat these four planes as distinct:
 Do not collapse them into a generic “LabVIEW 2026 host” concept. The repo contracts and artifacts are written so future
 agents can tell which plane actually produced the evidence.
 
+## Shadow policy
+
+`native-labview-2026-32` is a shadow acceleration surface, not an authoritative
+proof plane.
+
+- role: manual opt-in acceleration fallback
+- authoritative: false
+- hosted CI: forbidden
+- promotion prerequisites:
+  - `docker-desktop/linux-container-2026`
+  - `docker-desktop/windows-container-2026`
+
+That means the host-native 32-bit plane can help reduce idle time for agents or
+humans on a prepared Windows host, but it does not replace the image-backed
+Linux or Windows proof lanes. Use it only after the same scenario has an image
+proof path.
+
 ## Mutual-exclusion rule
 
 The two Docker Desktop planes are mutually exclusive:
@@ -107,6 +124,7 @@ Use the artifacts in this order:
    - should remain hash-stable for a given report payload
 3. `concurrent-lane-plan.json`
    - records the current hosted/manual/shadow lane availability
+   - projects the host-native 32-bit shadow policy into lane metadata
    - ranks safe concurrent bundles for the present host, RAM, and Docker-runtime state
    - keeps the mutually exclusive local Docker planes out of the same recommended bundle
 4. `docker-runtime-fastloop-readiness.json`
@@ -149,6 +167,7 @@ trustworthy.
 5. Use `priority:lane:concurrency:plan` before dispatching hosted Windows/Linux plus manual lanes so the plan stays
    explicit and replayable.
 6. When summarizing a run, name the exact plane identifier instead of saying “host” or “Docker” without qualification.
+7. Do not treat `native-labview-2026-32` as a release or CI authority surface; it is a shadow accelerator only.
 
 ## Related contracts
 
