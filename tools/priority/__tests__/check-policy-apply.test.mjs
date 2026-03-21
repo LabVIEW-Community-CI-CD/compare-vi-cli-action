@@ -54,7 +54,17 @@ const EXPECTED_RELEASE_CHECKS = [
   'Policy Guard (Upstream) / policy-guard'
 ];
 
-const EXPECTED_MERGE_QUEUE_PARAMS = {
+const EXPECTED_DEVELOP_MERGE_QUEUE_PARAMS = {
+  merge_method: 'SQUASH',
+  grouping_strategy: 'ALLGREEN',
+  max_entries_to_build: 20,
+  min_entries_to_merge: 1,
+  max_entries_to_merge: 20,
+  min_entries_to_merge_wait_minutes: 1,
+  check_response_timeout_minutes: 60
+};
+
+const EXPECTED_MAIN_MERGE_QUEUE_PARAMS = {
   merge_method: 'SQUASH',
   grouping_strategy: 'ALLGREEN',
   max_entries_to_build: 5,
@@ -185,7 +195,7 @@ function createAlignedRulesets(ids = { develop: 8811898, main: 8614140, release:
       name: 'develop',
       includes: ['refs/heads/develop'],
       requiredStatusChecks: EXPECTED_DEVELOP_CHECKS,
-      mergeQueue: EXPECTED_MERGE_QUEUE_PARAMS,
+      mergeQueue: EXPECTED_DEVELOP_MERGE_QUEUE_PARAMS,
       requiredLinearHistory: true,
       pullRequestRule: createPullRequestRule(),
       codeQuality: { severity: 'warnings' }
@@ -195,7 +205,7 @@ function createAlignedRulesets(ids = { develop: 8811898, main: 8614140, release:
       name: 'main',
       includes: ['refs/heads/main'],
       requiredStatusChecks: EXPECTED_MAIN_CHECKS,
-      mergeQueue: EXPECTED_MERGE_QUEUE_PARAMS,
+      mergeQueue: EXPECTED_MAIN_MERGE_QUEUE_PARAMS,
       pullRequestRule: createPullRequestRule()
     }),
     release: createRuleset({
@@ -596,8 +606,8 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   );
   const developMergeQueueRule = rulesetDevelop.rules.find((rule) => rule.type === 'merge_queue');
   assert.ok(developMergeQueueRule, 'merge_queue rule expected on develop');
-  assert.equal(developMergeQueueRule.parameters.max_entries_to_build, 5);
-  assert.equal(developMergeQueueRule.parameters.max_entries_to_merge, 5);
+  assert.equal(developMergeQueueRule.parameters.max_entries_to_build, 20);
+  assert.equal(developMergeQueueRule.parameters.max_entries_to_merge, 20);
   assert.equal(developMergeQueueRule.parameters.min_entries_to_merge_wait_minutes, 1);
   const developPullRule = rulesetDevelop.rules.find((rule) => rule.type === 'pull_request');
   assert.deepEqual(
