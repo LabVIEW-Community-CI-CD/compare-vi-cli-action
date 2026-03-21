@@ -91,6 +91,7 @@ The explicit collaboration flow between forks now lives beside the generic branc
 The contract is consumed directly by:
 
 - `priority:develop:sync`, which validates the upstream `develop` -> fork `develop` mirror transition
+- `priority:policy`, which applies the checked-in fork `develop` override so mirror rails keep `allow_force_pushes=true` and `allow_fork_syncing=false` instead of drifting back toward upstream integration settings
 - `priority:merge-sync`, which classifies the target base branch before choosing queue-aware promotion behavior
 - `tools/priority/lib/branch-classification.mjs`, which now resolves both repository role and explicit repository plane
 
