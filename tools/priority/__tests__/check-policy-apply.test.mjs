@@ -1585,6 +1585,86 @@ test('priority:policy --apply downgrades queue-managed rulesets when a fork reje
   );
 });
 
+test('priority:policy --apply keeps fork develop on the mirror-rail override for the org fork', async () => {
+  const repoUrl = 'https://api.github.com/repos/LabVIEW-Community-CI-CD/compare-vi-cli-action-fork';
+  const listUrl = `${repoUrl}/rulesets`;
+  const branchDevelopUrl = `${repoUrl}/branches/develop/protection`;
+  const branchMainUrl = `${repoUrl}/branches/main/protection`;
+  const alignedRulesets = createAlignedRulesets();
+  let developProtection = createAlignedBranchProtection(EXPECTED_DEVELOP_CHECKS);
+  let developPutPayload = null;
+
+  const fetchMock = async (url, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (method === 'GET' && url === repoUrl) {
+      return createResponse({
+        ...createAlignedRepoState(),
+        fork: true,
+        owner: { type: 'Organization', login: 'LabVIEW-Community-CI-CD' },
+        permissions: { admin: true }
+      });
+    }
+    if (method === 'GET' && url === branchDevelopUrl) {
+      return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === branchMainUrl) {
+      return createResponse(createAlignedBranchProtection(EXPECTED_MAIN_CHECKS));
+    }
+    if (method === 'PUT' && url === branchDevelopUrl) {
+      developPutPayload = JSON.parse(options.body);
+      developProtection = {
+        ...developPutPayload,
+        required_status_checks: {
+          ...developPutPayload.required_status_checks,
+          checks: (developPutPayload.required_status_checks?.contexts ?? []).map((context) => ({ context }))
+        },
+        allow_force_pushes: { enabled: Boolean(developPutPayload.allow_force_pushes) },
+        allow_fork_syncing: { enabled: Boolean(developPutPayload.allow_fork_syncing) }
+      };
+      return createResponse(developProtection);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8811898`) {
+      return createResponse(alignedRulesets.develop);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614140`) {
+      return createResponse(alignedRulesets.main);
+    }
+    if (method === 'GET' && url === `${repoUrl}/rulesets/8614172`) {
+      return createResponse(alignedRulesets.release);
+    }
+    if (method === 'GET' && url === listUrl) {
+      return createResponse(Object.values(alignedRulesets).map(toRulesetSummary));
+    }
+    throw new Error(`Unexpected request ${method} ${url}`);
+  };
+
+  const logMessages = [];
+  const errorMessages = [];
+  const code = await run({
+    argv: ['node', 'check-policy.mjs', '--apply'],
+    env: {
+      ...process.env,
+      GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+      GITHUB_TOKEN: 'fake-token'
+    },
+    fetchFn: fetchMock,
+    execSyncFn: () => {
+      throw new Error('execSync should not be called when GITHUB_REPOSITORY is set');
+    },
+    log: (msg) => logMessages.push(msg),
+    error: (msg) => errorMessages.push(msg)
+  });
+
+  assert.equal(code, 0, `apply mode should keep fork develop on the mirror override: ${errorMessages.join(' | ')}`);
+  assert.ok(developPutPayload, 'expected develop branch protection update for the org fork');
+  assert.equal(developPutPayload.allow_force_pushes, true);
+  assert.equal(developPutPayload.allow_fork_syncing, false);
+  assert.ok(
+    logMessages.some((msg) => msg.includes('Fork mirror branch policy override applied for develop.')),
+    'expected fork mirror override log'
+  );
+});
+
 test('priority:policy --apply enforces required checks after merge_queue portability downgrade', async () => {
   const repoUrl = 'https://api.github.com/repos/test-org/test-fork';
   const listUrl = `${repoUrl}/rulesets`;
