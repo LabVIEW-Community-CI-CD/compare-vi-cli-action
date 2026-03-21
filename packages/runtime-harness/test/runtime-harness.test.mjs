@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createRuntimeAdapter, parseArgs, runRuntimeSupervisor } from '../index.mjs';
@@ -152,7 +152,7 @@ test('runRuntimeSupervisor executes through an injected adapter', async () => {
     }
   );
 
-  const state = await readJson(path.join(repoRoot, 'tests', 'results', '_agent', 'runtime', 'runtime-state.json'));
+  const state = await readJson(path.join(repoRoot, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'));
   assert.equal(result.exitCode, 0);
   assert.equal(result.report.runtimeAdapter, 'test-adapter');
   assert.equal(state.runtimeAdapter, 'test-adapter');
@@ -168,4 +168,90 @@ test('runRuntimeSupervisor executes through an injected adapter', async () => {
     adapterCalls.map((entry) => entry.type),
     ['acquire', 'release']
   );
+});
+
+test('runRuntimeSupervisor reads legacy runtime-state.json explicitly and rewrites canonical delivery-agent-state.json', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-harness-legacy-state-'));
+  const runtimeRoot = path.join(repoRoot, 'tests', 'results', '_agent', 'runtime');
+  await mkdir(runtimeRoot, { recursive: true });
+  await writeFile(
+    path.join(runtimeRoot, 'runtime-state.json'),
+    `${JSON.stringify(
+      {
+        schema: 'priority/runtime-supervisor-state@v1',
+        generatedAt: '2026-03-10T14:59:00.000Z',
+        repository: 'example/repo',
+        lifecycle: {
+          status: 'idle',
+          cycle: 3,
+          startedAt: '2026-03-10T14:00:00.000Z',
+          updatedAt: '2026-03-10T14:59:00.000Z',
+          lastAction: 'status',
+          stopRequested: false
+        },
+        owner: 'agent@example',
+        activeLane: null,
+        summary: {
+          trackedLaneCount: 0,
+          blockerPresent: false
+        },
+        artifacts: {}
+      },
+      null,
+      2
+    )}\n`,
+    'utf8'
+  );
+
+  const adapter = createRuntimeAdapter({
+    name: 'test-adapter',
+    resolveRepoRoot: () => repoRoot,
+    resolveOwner: () => 'agent@example',
+    resolveRepository: () => 'example/repo',
+    acquireLease: async (leaseOptions) => ({
+      action: 'acquire',
+      status: 'acquired',
+      scope: leaseOptions.scope,
+      owner: leaseOptions.owner,
+      checkedAt: '2026-03-10T15:00:00.000Z',
+      lease: {
+        leaseId: 'lease-legacy-1',
+        owner: leaseOptions.owner
+      }
+    }),
+    releaseLease: async (leaseOptions) => ({
+      action: 'release',
+      status: 'released',
+      scope: leaseOptions.scope,
+      owner: leaseOptions.owner,
+      checkedAt: '2026-03-10T15:00:05.000Z',
+      lease: {
+        leaseId: leaseOptions.leaseId,
+        owner: leaseOptions.owner
+      }
+    })
+  });
+
+  const result = await runRuntimeSupervisor(
+    {
+      action: 'step',
+      repo: 'example/repo',
+      runtimeDir: 'tests/results/_agent/runtime',
+      lane: 'origin-978',
+      issue: 978,
+      forkRemote: 'origin',
+      owner: 'agent@example'
+    },
+    {
+      now: new Date('2026-03-10T15:00:00.000Z'),
+      adapter
+    }
+  );
+
+  const state = await readJson(path.join(runtimeRoot, 'delivery-agent-state.json'));
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.runtime.statePath, path.join(runtimeRoot, 'delivery-agent-state.json'));
+  assert.equal(state.lifecycle.cycle, 4);
+  assert.equal(state.activeLane.issue, 978);
+  assert.equal(state.artifacts.statePath, path.join(runtimeRoot, 'delivery-agent-state.json'));
 });

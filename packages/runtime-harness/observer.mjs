@@ -7,6 +7,7 @@ import {
   BLOCKER_CLASSES,
   createRuntimeAdapter,
   DEFAULT_RUNTIME_DIR,
+  DEFAULT_STATE_FILENAME,
   EXECUTION_RECEIPT_SCHEMA,
   SCHEDULER_DECISION_SCHEMA,
   TASK_PACKET_SCHEMA,
@@ -130,7 +131,7 @@ function resolveRuntimeArtifactPaths(options, repoRoot) {
   const runtimeDir = resolvePath(repoRoot, options.runtimeDir || DEFAULT_RUNTIME_DIR);
   return {
     runtimeDir,
-    statePath: path.join(runtimeDir, 'runtime-state.json'),
+    statePath: path.join(runtimeDir, DEFAULT_STATE_FILENAME),
     eventsPath: path.join(runtimeDir, 'runtime-events.ndjson'),
     stopRequestPath: path.join(runtimeDir, 'stop-request.json')
   };
