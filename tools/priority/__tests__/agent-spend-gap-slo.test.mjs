@@ -169,8 +169,19 @@ function buildCostRollup({
         totalUsd,
         actualUsdConsumed,
         heuristicUsdDelta,
-        heuristicUsdDeltaRatio
+        heuristicUsdDeltaRatio,
+        operatorSteeringEventCount: 0
       }
+    },
+    operatorSteering: {
+      metrics: {
+        totalEventCount: 0,
+        fundingWindowMatchedEventCount: 0,
+        fundingWindowUnmatchedEventCount: 0,
+        issueCount: 0,
+        latestObservedAt: null
+      },
+      events: []
     },
     turns
   };
@@ -223,6 +234,7 @@ test('runAgentSpendGapSlo classifies actionable idle gaps as optimization signal
 
   assert.equal(result.report.summary.status, 'warn');
   assert.equal(result.report.summary.metrics.totalGapCount, 1);
+  assert.equal(result.report.summary.metrics.operatorSteeringGapCount, 0);
   assert.equal(result.report.summary.metrics.optimizationSignalGapCount, 1);
   assert.equal(result.report.gaps[0].classification, 'optimization-signal');
   assert.equal(result.report.gaps[0].previousTurn.effectiveReasoningEffort, 'xhigh');
@@ -260,7 +272,77 @@ test('runAgentSpendGapSlo classifies quiet windows without raising an optimizati
 
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.summary.metrics.quietWindowGapCount, 1);
+  assert.equal(result.report.summary.metrics.operatorSteeringGapCount, 0);
   assert.equal(result.report.gaps[0].classification, 'accepted-quiet-window');
+});
+
+test('runAgentSpendGapSlo classifies gaps with operator steering evidence explicitly', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-spend-gap-slo-steering-'));
+  const costRollupPath = path.join(tempDir, 'agent-cost-rollup.json');
+  const throughputPath = path.join(tempDir, 'throughput-scorecard.json');
+
+  const costRollup = buildCostRollup({
+    turns: [
+      buildTurn({
+        turnId: 'turn-1',
+        observedAt: '2026-03-21T04:00:00.000Z'
+      }),
+      buildTurn({
+        turnId: 'turn-2',
+        observedAt: '2026-03-21T04:40:00.000Z'
+      })
+    ]
+  });
+  costRollup.summary.metrics.operatorSteeringEventCount = 1;
+  costRollup.operatorSteering = {
+    metrics: {
+      totalEventCount: 1,
+      fundingWindowMatchedEventCount: 1,
+      fundingWindowUnmatchedEventCount: 0,
+      issueCount: 1,
+      latestObservedAt: '2026-03-21T04:20:00.000Z'
+    },
+    events: [
+      {
+        sourcePath: 'tests/results/_agent/runtime/operator-steering-events/2026-03-21T04-20-00.000Z-1650.json',
+        generatedAt: '2026-03-21T04:20:00.000Z',
+        eventKey: 'continuity-resume|1650|active-work-pending|2026-03-21T04:10:00.000Z|standing-priority-rotated',
+        steeringKind: 'operator-prompt-resume',
+        triggerKind: 'continuity-failure',
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        issueNumber: 1650,
+        observedAt: '2026-03-21T04:20:00.000Z',
+        continuityReferenceAt: '2026-03-21T04:10:00.000Z',
+        activeLaneIssue: 1650,
+        operatorTurnEndWouldCreateIdleGap: true,
+        fundingWindowStatus: 'resolved',
+        fundingWindowPath: 'tests/results/_agent/cost/invoice-turns/HQ1VJLMV-0027.local.json',
+        invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
+        fundingPurpose: 'operational',
+        activationState: 'active',
+        actor: 'sveld',
+        sessionName: 'Sagan'
+      }
+    ]
+  };
+  writeJson(costRollupPath, costRollup);
+  writeJson(throughputPath, buildThroughput({}));
+
+  const result = runAgentSpendGapSlo({
+    costRollupPath,
+    throughputScorecardPath: throughputPath,
+    gapThresholdMinutes: 30,
+    now: new Date('2026-03-21T05:00:00.000Z')
+  });
+
+  assert.equal(result.report.summary.status, 'warn');
+  assert.equal(result.report.summary.metrics.totalGapCount, 1);
+  assert.equal(result.report.summary.metrics.operatorSteeringGapCount, 1);
+  assert.equal(result.report.gaps[0].classification, 'operator-steering');
+  assert.equal(result.report.gaps[0].evidence.operatorSteeringEventCount, 1);
+  assert.deepEqual(result.report.gaps[0].evidence.operatorSteeringKinds, ['operator-prompt-resume']);
+  assert.equal(result.report.fundedThroughput.metrics.operatorSteeringEventCount, 1);
+  assert.equal(result.report.summary.reasons.includes('operator-steering-gaps-observed'), true);
 });
 
 test('runAgentSpendGapSlo projects validated throughput per funded dollar from composed cost and throughput evidence', () => {
@@ -312,12 +394,14 @@ test('runAgentSpendGapSlo projects validated throughput per funded dollar from c
   assert.equal(result.report.fundedThroughput.metrics.closedIssueCount, 1);
   assert.equal(result.report.fundedThroughput.metrics.promotionEvidenceCount, 5);
   assert.equal(result.report.fundedThroughput.metrics.hostedWaitEscapeCount, 3);
+  assert.equal(result.report.fundedThroughput.metrics.operatorSteeringEventCount, 0);
   assert.equal(result.report.fundedThroughput.metrics.laneMinutesAllocated, 120);
   assert.equal(result.report.fundedThroughput.metrics.validatedPullRequestsPerFundedDollar, 0.01);
   assert.equal(result.report.fundedThroughput.metrics.closedIssuesPerFundedDollar, 0.0025);
   assert.equal(result.report.fundedThroughput.metrics.promotionEvidencePerFundedDollar, 0.0125);
   assert.equal(result.report.fundedThroughput.metrics.laneMinutesAllocatedPerFundedDollar, 0.3);
   assert.equal(result.report.fundedThroughput.metrics.hostedWaitEscapesPerFundedDollar, 0.0075);
+  assert.equal(result.report.fundedThroughput.metrics.operatorSteeringEventsPerFundedDollar, 0);
   assert.equal(result.report.fundedThroughput.provenance.sourceKind, 'composed-scorecard');
 });
 

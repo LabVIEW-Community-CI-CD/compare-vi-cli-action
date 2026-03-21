@@ -55,7 +55,38 @@ test('agent-spend-gap-slo schema validates generated report payloads', () => {
             usageObservedAt: '2026-03-21T08:45:00.000Z'
           }
         }
-      ]
+      ],
+      operatorSteering: {
+        metrics: {
+          totalEventCount: 1,
+          fundingWindowMatchedEventCount: 1,
+          fundingWindowUnmatchedEventCount: 0,
+          issueCount: 1,
+          latestObservedAt: '2026-03-21T08:20:00.000Z'
+        },
+        events: [
+          {
+            sourcePath: 'tests/results/_agent/runtime/operator-steering-events/2026-03-21T08-20-00.000Z-1650.json',
+            generatedAt: '2026-03-21T08:20:00.000Z',
+            eventKey: 'continuity-resume|1650|active-work-pending|2026-03-21T08:10:00.000Z|standing-priority-rotated',
+            steeringKind: 'operator-prompt-resume',
+            triggerKind: 'continuity-failure',
+            repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+            issueNumber: 1650,
+            observedAt: '2026-03-21T08:20:00.000Z',
+            continuityReferenceAt: '2026-03-21T08:10:00.000Z',
+            activeLaneIssue: 1650,
+            operatorTurnEndWouldCreateIdleGap: true,
+            fundingWindowStatus: 'resolved',
+            fundingWindowPath: 'tests/results/_agent/cost/invoice-turns/HQ1VJLMV-0027.local.json',
+            invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
+            fundingPurpose: 'operational',
+            activationState: 'active',
+            actor: 'sveld',
+            sessionName: 'Sagan'
+          }
+        ]
+      }
     },
     throughputScorecard: {
       schema: 'priority/throughput-scorecard@v1',
@@ -102,4 +133,5 @@ test('agent-spend-gap-slo schema validates generated report payloads', () => {
   assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
   assert.equal(report.fundedThroughput.metrics.validatedPullRequestCount, 4);
   assert.equal(report.fundedThroughput.metrics.promotionEvidenceCount, 5);
+  assert.equal(report.summary.metrics.operatorSteeringGapCount, 1);
 });
