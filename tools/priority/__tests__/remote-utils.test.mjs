@@ -22,6 +22,7 @@ import {
   extractPullRequestFromMutation,
   findExistingPullRequest,
   findMergedPullRequest,
+  findOpenAncestorPullRequest,
   isExistingPullRequestError,
   runGhPrCreate
 } from '../lib/remote-utils.mjs';
@@ -568,6 +569,108 @@ test('findMergedPullRequest resolves merged branch history before a follow-up PR
   assert.equal(calls.length, 1);
   assert.equal(calls[0][5], 'merged');
   assert.equal(pullRequest.number, 1433);
+});
+
+test('findOpenAncestorPullRequest resolves the nearest open ancestor PR on the same fork plane', () => {
+  const gitCalls = [];
+  const pullRequest = findOpenAncestorPullRequest(
+    '/tmp/repo',
+    {
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      headRepository: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+      branch: 'issue/origin-1590-concurrent-lane-throughput',
+      base: 'develop',
+      headSha: 'deadbeef'
+    },
+    {
+      runGhJsonFn: () => [
+        {
+          number: 1591,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1591',
+          state: 'OPEN',
+          headRefName: 'issue/origin-1588-concurrent-lane-status-helper',
+          baseRefName: 'develop',
+          headRefOid: 'abc123',
+          headRepositoryOwner: { login: 'LabVIEW-Community-CI-CD' },
+          mergeStateStatus: 'CLEAN'
+        },
+        {
+          number: 1580,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1580',
+          state: 'OPEN',
+          headRefName: 'issue/origin-1579-older-parent',
+          baseRefName: 'develop',
+          headRefOid: 'old111',
+          headRepositoryOwner: { login: 'LabVIEW-Community-CI-CD' },
+          mergeStateStatus: 'CLEAN'
+        },
+        {
+          number: 1700,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1700',
+          state: 'OPEN',
+          headRefName: 'issue/personal-1700-other-fork-lane',
+          baseRefName: 'develop',
+          headRefOid: 'other999',
+          headRepositoryOwner: { login: 'svelderrainruiz' },
+          mergeStateStatus: 'CLEAN'
+        }
+      ],
+      spawnSyncFn: (_command, args) => {
+        gitCalls.push(args);
+        if (args[0] === 'merge-base') {
+          const ancestor = args[2];
+          return { status: ancestor === 'abc123' || ancestor === 'old111' ? 0 : 1, stdout: '', stderr: '' };
+        }
+        if (args[0] === 'rev-list') {
+          return { status: 0, stdout: args[2].startsWith('abc123') ? '1\n' : '4\n', stderr: '' };
+        }
+        throw new Error(`Unexpected git args: ${args.join(' ')}`);
+      }
+    }
+  );
+
+  assert.equal(pullRequest.number, 1591);
+  assert.equal(pullRequest.stackDistance, 1);
+  assert.ok(gitCalls.some((args) => args[0] === 'merge-base' && args[2] === 'abc123'));
+  assert.ok(gitCalls.some((args) => args[0] === 'merge-base' && args[2] === 'old111'));
+});
+
+test('findOpenAncestorPullRequest ignores the current branch and missing ancestor SHAs', () => {
+  const pullRequest = findOpenAncestorPullRequest(
+    '/tmp/repo',
+    {
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      headRepository: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+      branch: 'issue/origin-1590-concurrent-lane-throughput',
+      base: 'develop',
+      headSha: 'deadbeef'
+    },
+    {
+      runGhJsonFn: () => [
+        {
+          number: 1590,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1590',
+          state: 'OPEN',
+          headRefName: 'issue/origin-1590-concurrent-lane-throughput',
+          baseRefName: 'develop',
+          headRefOid: 'deadbeef',
+          headRepositoryOwner: { login: 'LabVIEW-Community-CI-CD' }
+        },
+        {
+          number: 1591,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1591',
+          state: 'OPEN',
+          headRefName: 'issue/origin-1588-concurrent-lane-status-helper',
+          baseRefName: 'develop',
+          headRefOid: '',
+          headRepositoryOwner: { login: 'LabVIEW-Community-CI-CD' }
+        }
+      ],
+      spawnSyncFn: () => ({ status: 1, stdout: '', stderr: '' })
+    }
+  );
+
+  assert.equal(pullRequest, null);
 });
 
 test('isExistingPullRequestError detects duplicate-create responses', () => {

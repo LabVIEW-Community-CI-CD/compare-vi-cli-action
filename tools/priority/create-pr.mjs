@@ -18,6 +18,7 @@ import {
   pushBranch,
   runGhPrCreate,
   findMergedPullRequest,
+  findOpenAncestorPullRequest,
   parseRepositorySlug,
   buildRepositorySlug
 } from './lib/remote-utils.mjs';
@@ -144,6 +145,10 @@ export function ensurePrSourceBranch(branch) {
 
 export function detectCurrentBranch(repoRoot, runFn = run) {
   return runFn('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoRoot });
+}
+
+export function detectCurrentHeadSha(repoRoot, runFn = run) {
+  return runFn('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
 }
 
 export function readJsonFile(filePath, readFileSyncFn = readFileSync) {
@@ -697,12 +702,14 @@ export function createPriorityPr({
   readFileSyncFn = readFileSync,
   getRepoRootFn = getRepoRoot,
   getCurrentBranchFn = detectCurrentBranch,
+  getCurrentHeadShaFn = detectCurrentHeadSha,
   ensureGhCliFn = ensureGhCli,
   resolveUpstreamFn = resolveUpstream,
   ensureForkRemoteFn = ensureForkRemote,
   pushBranchFn = pushBranch,
   runGhPrCreateFn = runGhPrCreate,
   findMergedPullRequestFn = findMergedPullRequest,
+  findOpenAncestorPullRequestFn = findOpenAncestorPullRequest,
   resolveStandingIssueNumberFn = resolveStandingIssueNumberForPr,
   loadBranchClassContractFn = loadBranchClassContract
 } = {}) {
@@ -798,6 +805,7 @@ export function createPriorityPr({
   }
 
   const pushResult = pushBranchFn(repoRoot, branch, headRemote);
+  const headSha = normalizeText(getCurrentHeadShaFn(repoRoot)) || null;
   const title = options.title || buildTitle(branch, issueNumber, env);
   const body = resolveBody({
     options: {
@@ -812,6 +820,50 @@ export function createPriorityPr({
     env,
     readFileSyncFn
   });
+  const stackedBasePullRequest = findOpenAncestorPullRequestFn(repoRoot, {
+    upstream,
+    headRepository,
+    branch,
+    base,
+    headSha
+  });
+  if (stackedBasePullRequest?.number) {
+    return {
+      repoRoot,
+      branch,
+      base,
+      issueNumber,
+      localIssueNumber,
+      issueUrl: resolvedIssue?.canonicalIssueUrl ?? resolvedIssue?.issueUrl ?? null,
+      localIssueUrl: resolvedIssue?.localIssueUrl ?? null,
+      issueSource: resolvedIssue?.source ?? null,
+      mirrorOf: resolvedIssue?.mirrorOf ?? null,
+      title,
+      body,
+      pushStatus: pushResult?.status ?? null,
+      upstream,
+      headRemote,
+      headRepository,
+      branchModel,
+      strategy: 'await-base-pr',
+      pullRequest: null,
+      reusedExistingPullRequest: false,
+      stackedFollowUp: {
+        status: 'waiting-for-base-merge',
+        currentHeadSha: headSha,
+        basePullRequest: {
+          number: stackedBasePullRequest.number ?? null,
+          url: stackedBasePullRequest.url ?? null,
+          headRefName: stackedBasePullRequest.headRefName ?? null,
+          headRefOid: stackedBasePullRequest.headRefOid ?? null,
+          baseRefName: stackedBasePullRequest.baseRefName ?? null,
+          mergeStateStatus: stackedBasePullRequest.mergeStateStatus ?? null,
+          isDraft: stackedBasePullRequest.isDraft ?? null,
+          stackDistance: stackedBasePullRequest.stackDistance ?? null
+        }
+      }
+    };
+  }
 
   const prResult = runGhPrCreateFn({
     repoRoot,
@@ -842,7 +894,8 @@ export function createPriorityPr({
     branchModel,
     strategy: prResult?.strategy ?? null,
     pullRequest: prResult?.pullRequest ?? null,
-    reusedExistingPullRequest: prResult?.reusedExisting === true
+    reusedExistingPullRequest: prResult?.reusedExisting === true,
+    stackedFollowUp: null
   };
 }
 
@@ -904,6 +957,24 @@ export function buildPriorityPrReport(result, generatedAt = new Date().toISOStri
     pushStatus: result.pushStatus ?? null,
     strategy: result.strategy ?? null,
     reusedExistingPullRequest: result.reusedExistingPullRequest === true,
+    stackedFollowUp: result.stackedFollowUp
+      ? {
+          status: result.stackedFollowUp.status ?? null,
+          currentHeadSha: result.stackedFollowUp.currentHeadSha ?? null,
+          basePullRequest: result.stackedFollowUp.basePullRequest
+            ? {
+                number: result.stackedFollowUp.basePullRequest.number ?? null,
+                url: result.stackedFollowUp.basePullRequest.url ?? null,
+                headRefName: result.stackedFollowUp.basePullRequest.headRefName ?? null,
+                headRefOid: result.stackedFollowUp.basePullRequest.headRefOid ?? null,
+                baseRefName: result.stackedFollowUp.basePullRequest.baseRefName ?? null,
+                mergeStateStatus: result.stackedFollowUp.basePullRequest.mergeStateStatus ?? null,
+                isDraft: result.stackedFollowUp.basePullRequest.isDraft ?? null,
+                stackDistance: result.stackedFollowUp.basePullRequest.stackDistance ?? null
+              }
+            : null
+        }
+      : null,
     pullRequest: result.pullRequest
       ? {
           number: result.pullRequest.number ?? null,
