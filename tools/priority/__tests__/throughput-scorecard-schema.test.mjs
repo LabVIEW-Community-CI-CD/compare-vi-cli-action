@@ -55,7 +55,31 @@ test('throughput-scorecard schema validates generated report payloads', () => {
       runtimeStatePath: 'tests/results/_agent/runtime/delivery-agent-state.json',
       deliveryMemoryPath: 'tests/results/_agent/runtime/delivery-memory.json',
       queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      concurrentLaneStatusPath: 'tests/results/_agent/runtime/concurrent-lane-status-receipt.json',
       utilizationPolicyPath: 'tools/policy/merge-queue-utilization-target.json'
+    },
+    concurrentLaneStatus: {
+      schema: 'priority/concurrent-lane-status-receipt@v1',
+      status: 'active',
+      hostedRun: {
+        observationStatus: 'active'
+      },
+      pullRequest: {
+        observationStatus: 'queued'
+      },
+      summary: {
+        selectedBundleId: 'hosted-plus-manual-linux-docker',
+        laneCount: 3,
+        activeLaneCount: 2,
+        completedLaneCount: 0,
+        failedLaneCount: 0,
+        blockedLaneCount: 0,
+        plannedLaneCount: 0,
+        deferredLaneCount: 1,
+        manualLaneCount: 1,
+        shadowLaneCount: 0,
+        orchestratorDisposition: 'wait-hosted-run'
+      }
     },
     utilizationPolicy: {
       mergeQueue: {

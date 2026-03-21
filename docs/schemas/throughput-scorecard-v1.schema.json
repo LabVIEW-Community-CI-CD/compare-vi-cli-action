@@ -4,7 +4,7 @@
   "title": "Throughput Scorecard v1",
   "type": "object",
   "additionalProperties": true,
-  "required": ["schema", "generatedAt", "inputs", "workerPool", "queue", "mergeQueueUtilization", "delivery", "summary"],
+  "required": ["schema", "generatedAt", "inputs", "workerPool", "queue", "mergeQueueUtilization", "concurrentLanes", "delivery", "summary"],
   "properties": {
     "schema": {
       "const": "priority/throughput-scorecard@v1"
@@ -19,11 +19,12 @@
     "inputs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["runtimeStatePath", "deliveryMemoryPath", "queueReportPath", "utilizationPolicyPath"],
+      "required": ["runtimeStatePath", "deliveryMemoryPath", "queueReportPath", "concurrentLaneStatusPath", "utilizationPolicyPath"],
       "properties": {
         "runtimeStatePath": { "type": ["string", "null"] },
         "deliveryMemoryPath": { "type": ["string", "null"] },
         "queueReportPath": { "type": ["string", "null"] },
+        "concurrentLaneStatusPath": { "type": ["string", "null"] },
         "utilizationPolicyPath": { "type": ["string", "null"] }
       }
     },
@@ -109,6 +110,52 @@
         }
       }
     },
+    "concurrentLanes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "exists",
+        "error",
+        "status",
+        "hostedObservationStatus",
+        "pullRequestObservationStatus",
+        "orchestratorDisposition",
+        "workerDisposition",
+        "selectedBundleId",
+        "laneCount",
+        "activeLaneCount",
+        "completedLaneCount",
+        "failedLaneCount",
+        "blockedLaneCount",
+        "plannedLaneCount",
+        "deferredLaneCount",
+        "manualLaneCount",
+        "shadowLaneCount"
+      ],
+      "properties": {
+        "path": { "type": ["string", "null"] },
+        "exists": { "type": "boolean" },
+        "error": { "type": ["string", "null"] },
+        "status": { "type": "string", "minLength": 1 },
+        "hostedObservationStatus": { "type": ["string", "null"] },
+        "pullRequestObservationStatus": { "type": ["string", "null"] },
+        "orchestratorDisposition": { "type": ["string", "null"] },
+        "workerDisposition": {
+          "enum": ["release", "retain", "investigate", "unknown"]
+        },
+        "selectedBundleId": { "type": ["string", "null"] },
+        "laneCount": { "type": "integer", "minimum": 0 },
+        "activeLaneCount": { "type": "integer", "minimum": 0 },
+        "completedLaneCount": { "type": "integer", "minimum": 0 },
+        "failedLaneCount": { "type": "integer", "minimum": 0 },
+        "blockedLaneCount": { "type": "integer", "minimum": 0 },
+        "plannedLaneCount": { "type": "integer", "minimum": 0 },
+        "deferredLaneCount": { "type": "integer", "minimum": 0 },
+        "manualLaneCount": { "type": "integer", "minimum": 0 },
+        "shadowLaneCount": { "type": "integer", "minimum": 0 }
+      }
+    },
     "delivery": {
       "type": "object",
       "additionalProperties": false,
@@ -149,6 +196,8 @@
             "mergeQueueCapacity",
             "mergeQueueOccupancyRatio",
             "mergeQueueReadyInventoryFloor",
+            "concurrentLaneActiveCount",
+            "concurrentLaneDeferredCount",
             "hostedWaitEscapeCount",
             "meanTerminalDurationMinutes"
           ],
@@ -159,6 +208,8 @@
             "mergeQueueCapacity": { "type": "integer", "minimum": 0 },
             "mergeQueueOccupancyRatio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
             "mergeQueueReadyInventoryFloor": { "type": "integer", "minimum": 0 },
+            "concurrentLaneActiveCount": { "type": "integer", "minimum": 0 },
+            "concurrentLaneDeferredCount": { "type": "integer", "minimum": 0 },
             "hostedWaitEscapeCount": { "type": "integer", "minimum": 0 },
             "meanTerminalDurationMinutes": { "type": ["number", "null"], "minimum": 0 }
           }
