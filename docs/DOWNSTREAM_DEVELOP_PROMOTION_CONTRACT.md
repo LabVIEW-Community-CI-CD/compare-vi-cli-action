@@ -80,15 +80,6 @@ Rollback and replay should reference a prior manifest instead of relying on ad h
 
 ## CLI
 
-Generate the downstream proving scorecard first:
-
-```powershell
-node tools/npm/run-script.mjs priority:promote:downstream:scorecard -- `
-  --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json `
-  --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json `
-  --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
-```
-
 Generate a manifest:
 
 ```powershell
@@ -100,6 +91,16 @@ node tools/npm/run-script.mjs priority:promote:downstream:manifest -- `
   --cookiecutter-template-id LabviewGitHubCiTemplate@v0.1.0 `
   --proving-scorecard-ref tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json `
   --actor SergioVelderrain
+```
+
+Then generate the downstream proving scorecard using that manifest report:
+
+```powershell
+node tools/npm/run-script.mjs priority:promote:downstream:scorecard -- `
+  --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json `
+  --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json `
+  --manifest-report tests/results/_agent/promotion/downstream-develop-promotion-manifest.json `
+  --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
 ```
 
 The command fails closed when the required immutable inputs are missing or when the local
