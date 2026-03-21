@@ -34,6 +34,7 @@ entrypoint and machine-generated live state.
 
 - `.agent_priority_cache.json`
 - `tests/results/_agent/issue/router.json`
+- `tests/results/_agent/issue/standing-lane-reconciliation-*.json`
 - `tests/results/_agent/issue/no-standing-priority.json`
 - `tests/results/_agent/verification/docker-review-loop-summary.json`
 - `tests/results/_agent/handoff/entrypoint-status.json`

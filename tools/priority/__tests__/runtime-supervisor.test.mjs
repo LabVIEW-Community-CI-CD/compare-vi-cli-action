@@ -3538,35 +3538,20 @@ test('delivery broker finalizes merged standing issues by handing off priority a
           url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/959'
         }
       ],
-      handoffStandingPriorityFn: async (issueNumber, options) => {
-        handoffCalls.push({ issueNumber, options });
-      },
-      ghIssueFetcher: async ({ args }) => {
-        ghFetchCalls.push(args);
+      reconcileStandingAfterMergeFn: async (options) => {
+        handoffCalls.push(options);
         return {
-          number: 958,
-          title: 'Upstream demo: land released comparevi-history diagnostics in labview-icon-editor-demo',
-          body: [
-            'This issue remains open only as local blocked tracking under epic #930.',
-            'Blocked by LabVIEW-Community-CI-CD/comparevi-history#23.',
-            'Under the current standing selector, this issue is blocked tracking, not an active local standing lane.'
-          ].join('\n'),
-          updated_at: '2026-03-09T00:00:00Z',
-          html_url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/958',
-          url: 'https://api.github.com/repos/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/958',
-          labels: [],
-          assignees: [],
-          milestone: null,
-          comments: [
-            {
-              body: 'Standing-priority moved away because the remaining gap is externally blocked on comparevi-history#23 and this is no longer the top actionable coding lane.'
-            }
-          ]
+          status: 'completed',
+          nextStandingIssueNumber: 959,
+          helperCallsExecuted: [
+            'node tools/priority/reconcile-standing-after-merge.mjs --issue 1010 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --merged --pr 1014'
+          ],
+          summary: {
+            status: 'completed',
+            reason: 'standing lane reconciled after merge completion',
+            nextStandingIssueNumber: 959
+          }
         };
-      },
-      closeIssueWithCommentFn: async ({ repository, issueNumber, comment }) => {
-        closeCalls.push({ repository, issueNumber, comment });
-        return { status: 0 };
       }
     }
   });
@@ -3579,23 +3564,17 @@ test('delivery broker finalizes merged standing issues by handing off priority a
     brokerResult.details.helperCallsExecuted,
     [
       'node tools/priority/merge-sync-pr.mjs',
-      'node tools/priority/standing-priority-handoff.mjs 959',
-      'gh issue close 1010 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --comment <omitted>'
+      'node tools/priority/reconcile-standing-after-merge.mjs --issue 1010 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --merged --pr 1014'
     ]
   );
   assert.equal(handoffCalls.length, 1);
-  assert.equal(handoffCalls[0].issueNumber, 959);
-  assert.equal(ghFetchCalls.length, 0);
-  assert.equal(closeCalls.length, 1);
-  assert.equal(closeCalls[0].issueNumber, 1010);
-  assert.match(closeCalls[0].comment, /standing priority has advanced from #1010 to #959/i);
+  assert.equal(handoffCalls[0].issueNumber, 1010);
+  assert.equal(handoffCalls[0].pullRequestNumber, 1014);
 });
 
 test('delivery broker clears standing-priority immediately when a merged standing issue exhausts the queue', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-merge-finalize-'));
-  const editCalls = [];
-  const syncCalls = [];
-  const closeCalls = [];
+  const reconcileCalls = [];
   const brokerResult = await runDeliveryTurnBroker({
     repoRoot,
     taskPacket: {
@@ -3654,27 +3633,20 @@ test('delivery broker clears standing-priority immediately when a merged standin
           filesTouched: []
         }
       }),
-      listOpenIssuesFn: async () => [
-        {
-          number: 1010,
-          title: 'Containerize NILinuxCompare tests via tools image Docker contract',
-          state: 'OPEN',
-          labels: ['standing-priority'],
-          createdAt: '2026-03-11T00:00:00Z',
-          updatedAt: '2026-03-11T00:00:00Z',
-          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
-        }
-      ],
-      editIssueLabelsFn: async (options) => {
-        editCalls.push(options);
-        return { status: 0 };
-      },
-      syncStandingPriorityFn: async (options) => {
-        syncCalls.push(options);
-      },
-      closeIssueWithCommentFn: async ({ repository, issueNumber, comment }) => {
-        closeCalls.push({ repository, issueNumber, comment });
-        return { status: 0 };
+      reconcileStandingAfterMergeFn: async (options) => {
+        reconcileCalls.push(options);
+        return {
+          status: 'completed',
+          nextStandingIssueNumber: null,
+          helperCallsExecuted: [
+            'node tools/priority/reconcile-standing-after-merge.mjs --issue 1010 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --merged --pr 1014'
+          ],
+          summary: {
+            status: 'completed',
+            reason: 'standing lane reconciled after merge completion',
+            nextStandingIssueNumber: null
+          }
+        };
       }
     }
   });
@@ -3686,21 +3658,15 @@ test('delivery broker clears standing-priority immediately when a merged standin
     brokerResult.details.helperCallsExecuted,
     [
       'node tools/priority/merge-sync-pr.mjs',
-      'gh issue edit 1010 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --remove-label standing-priority',
-      'node tools/priority/sync-standing-priority.mjs',
-      'gh issue close 1010 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --comment <omitted>'
+      'node tools/priority/reconcile-standing-after-merge.mjs --issue 1010 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --merged --pr 1014'
     ]
   );
-  assert.equal(editCalls.length, 1);
-  assert.deepEqual(editCalls[0].removeLabels, ['standing-priority']);
-  assert.equal(syncCalls.length, 1);
-  assert.equal(syncCalls[0].repoRoot, repoRoot);
-  assert.equal(closeCalls.length, 1);
-  assert.match(closeCalls[0].comment, /queue is now idle/i);
+  assert.equal(reconcileCalls.length, 1);
+  assert.equal(reconcileCalls[0].issueNumber, 1010);
+  assert.equal(reconcileCalls[0].pullRequestNumber, 1014);
 });
 
-test('delivery broker still closes a merged standing issue when next-issue selection fails', async () => {
-  const closeCalls = [];
+test('delivery broker blocks merged standing reconciliation when the helper fails', async () => {
   const brokerResult = await runDeliveryTurnBroker({
     repoRoot: '/tmp/repo',
     taskPacket: {
@@ -3759,19 +3725,15 @@ test('delivery broker still closes a merged standing issue when next-issue selec
           filesTouched: []
         }
       }),
-      listOpenIssuesFn: async () => {
+      reconcileStandingAfterMergeFn: async () => {
         throw new Error('detail hydration failed');
-      },
-      closeIssueWithCommentFn: async ({ repository, issueNumber, comment }) => {
-        closeCalls.push({ repository, issueNumber, comment });
-        return { status: 0 };
       }
     }
   });
 
   assert.equal(brokerResult.status, 'blocked');
   assert.equal(brokerResult.outcome, 'merged-finalization-blocked');
-  assert.match(brokerResult.reason, /automatic standing-priority handoff is still pending/i);
+  assert.match(brokerResult.reason, /automatic standing-priority reconciliation is still pending/i);
   assert.equal(brokerResult.details.finalizedIssueNumber, null);
   assert.equal(brokerResult.details.pendingIssueNumber, 1010);
   assert.equal(brokerResult.details.nextStandingIssueNumber, null);
@@ -3779,14 +3741,9 @@ test('delivery broker still closes a merged standing issue when next-issue selec
   assert.deepEqual(brokerResult.details.helperCallsExecuted, [
     'node tools/priority/merge-sync-pr.mjs'
   ]);
-  assert.equal(closeCalls.length, 0);
 });
 
-test('delivery broker propagates handoff apply failures after selection instead of downgrading them to selection warnings', async () => {
-  const issueLabels = new Map([
-    [1010, ['standing-priority']],
-    [959, []]
-  ]);
+test('delivery broker propagates reconciliation failures after selection instead of downgrading them to selection warnings', async () => {
   const brokerResult = await runDeliveryTurnBroker({
     repoRoot: '/tmp/repo',
     taskPacket: {
@@ -3845,43 +3802,21 @@ test('delivery broker propagates handoff apply failures after selection instead 
           filesTouched: []
         }
       }),
-      listOpenIssuesFn: async () => [
-        {
-          number: 1010,
-          title: 'Containerize NILinuxCompare tests via tools image Docker contract',
-          state: 'OPEN',
-          labels: ['standing-priority'],
-          createdAt: '2026-03-11T00:00:00Z',
-          updatedAt: '2026-03-11T00:00:00Z',
-          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
-        },
-        {
-          number: 959,
-          title: 'Downstream onboarding feedback: export GH_TOKEN and avoid missing-artifact cascade failures',
-          state: 'OPEN',
-          labels: ['bug', 'ci'],
-          createdAt: '2026-03-10T00:00:00Z',
-          updatedAt: '2026-03-10T00:00:00Z',
-          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/959'
-        }
-      ],
-      handoffStandingPriorityFn: async (issueNumber) => {
-        issueLabels.set(issueNumber, ['standing-priority']);
-        throw new Error('sync failed after label mutation');
+      reconcileStandingAfterMergeFn: async () => {
+        throw new Error('reconciliation hydration failed');
       }
     }
   });
 
   assert.equal(brokerResult.status, 'blocked');
   assert.equal(brokerResult.outcome, 'merged-finalization-blocked');
-  assert.match(brokerResult.reason, /Finalization failed: sync failed after label mutation/i);
+  assert.match(brokerResult.reason, /automatic standing-priority reconciliation is still pending/i);
   assert.deepEqual(brokerResult.details.helperCallsExecuted, ['node tools/priority/merge-sync-pr.mjs']);
-  assert.deepEqual(issueLabels.get(959), ['standing-priority']);
 });
 
-test('delivery broker formats merged issue close comments without PR #null when only a PR URL is available', async () => {
+test('delivery broker forwards null PR numbers to standing reconciliation when only a PR URL is available', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-merge-comment-'));
-  const closeCalls = [];
+  const reconcileCalls = [];
   const brokerResult = await runDeliveryTurnBroker({
     repoRoot,
     taskPacket: {
@@ -3940,30 +3875,27 @@ test('delivery broker formats merged issue close comments without PR #null when 
           filesTouched: []
         }
       }),
-      listOpenIssuesFn: async () => [
-        {
-          number: 1010,
-          title: 'Containerize NILinuxCompare tests via tools image Docker contract',
-          state: 'OPEN',
-          labels: ['standing-priority'],
-          createdAt: '2026-03-11T00:00:00Z',
-          updatedAt: '2026-03-11T00:00:00Z',
-          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
-        }
-      ],
-      editIssueLabelsFn: async () => ({ status: 0 }),
-      syncStandingPriorityFn: async () => {},
-      closeIssueWithCommentFn: async ({ repository, issueNumber, comment }) => {
-        closeCalls.push({ repository, issueNumber, comment });
-        return { status: 0 };
+      reconcileStandingAfterMergeFn: async (options) => {
+        reconcileCalls.push(options);
+        return {
+          status: 'completed',
+          nextStandingIssueNumber: null,
+          helperCallsExecuted: [
+            'node tools/priority/reconcile-standing-after-merge.mjs --issue 1010 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --merged'
+          ],
+          summary: {
+            status: 'completed',
+            reason: 'standing lane reconciled after merge completion',
+            nextStandingIssueNumber: null
+          }
+        };
       }
     }
   });
 
   assert.equal(brokerResult.outcome, 'merged');
-  assert.equal(closeCalls.length, 1);
-  assert.doesNotMatch(closeCalls[0].comment, /PR #null/i);
-  assert.match(closeCalls[0].comment, /PR https:\/\/example\.invalid\/pr\/custom/i);
+  assert.equal(reconcileCalls.length, 1);
+  assert.equal(reconcileCalls[0].pullRequestNumber, null);
 });
 
 test('delivery broker classifies rate-limit failures with a retryable blocker', async () => {
