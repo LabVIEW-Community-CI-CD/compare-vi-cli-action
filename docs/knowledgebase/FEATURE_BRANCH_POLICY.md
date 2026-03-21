@@ -42,6 +42,16 @@ promotion behavior, not the branch-class source of truth.
   when it is absent before dispatching Validate. The helper refuses to push when the branch is dirty,
   when the ref resolves to a tag, or when the remote tip differs unless you also pass `--force-push-ok`
   (`VALIDATE_DISPATCH_PUSH=1` / `VALIDATE_DISPATCH_FORCE_PUSH=1` provide the same behaviour for automation).
+- Fork-backed standing lanes now carry explicit lane-identity receipts instead of forcing later workers to rediscover
+  provenance from branch names. The current identities are:
+  - `upstream-standing`: canonical upstream lane with no fork plane
+  - `fork-plane-branch`: fork execution plane with canonical upstream standing ownership
+  - `fork-standing-mirror`: fork issue explicitly mirroring an upstream standing issue
+- Recover these identities from:
+  - `tests/results/_agent/issue/priority-pr-create-<remote>-<issue>.json`
+  - `tests/results/_agent/issue/priority-validate-dispatch-<remote>-<issue>.json`
+  Use those receipts for worker reuse and remote dispatch attribution instead of inferring identity from `issue/<...>`
+  naming alone.
 
 ### CI guardrails
 - `.github/workflows/merge-history.yml` blocks merge commits on PRs (release branches excluded).

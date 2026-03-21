@@ -29,6 +29,7 @@ import {
   resolveRepositoryPlane,
   resolveRepositoryPlaneFromBranchName
 } from './lib/branch-classification.mjs';
+import { buildForkLaneIdentity } from './lib/fork-lane-identity.mjs';
 
 const ROUTER_RELATIVE_PATH = path.join('tests', 'results', '_agent', 'issue', 'router.json');
 const CACHE_RELATIVE_PATH = '.agent_priority_cache.json';
@@ -255,6 +256,11 @@ function extractIssueUrl(cache, mirrorOf = null) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function extractLocalIssueUrl(cache) {
+  const value = cache?.url ?? cache?.issue?.url;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 export function parseNoStandingReasonFromReport(report) {
   if (!report || typeof report !== 'object') {
     return null;
@@ -302,6 +308,8 @@ export function resolveStandingIssueNumberForPr(repoRoot, { readJsonFn = readJso
         localIssueNumber: null,
         issueTitle: null,
         issueUrl: null,
+        localIssueUrl: null,
+        canonicalIssueUrl: null,
         source: 'router',
         noStandingReason,
         mirrorOf: null
@@ -313,6 +321,8 @@ export function resolveStandingIssueNumberForPr(repoRoot, { readJsonFn = readJso
       localIssueNumber,
       issueTitle,
       issueUrl,
+      localIssueUrl: shouldUseCachedMetadata ? extractLocalIssueUrl(cache) : null,
+      canonicalIssueUrl: issueUrl,
       source: 'router',
       noStandingReason,
       mirrorOf
@@ -324,6 +334,8 @@ export function resolveStandingIssueNumberForPr(repoRoot, { readJsonFn = readJso
     localIssueNumber,
     issueTitle,
     issueUrl,
+    localIssueUrl: extractLocalIssueUrl(cache),
+    canonicalIssueUrl: issueUrl,
     source: 'cache',
     noStandingReason,
     mirrorOf
@@ -817,6 +829,8 @@ export function createPriorityPr({
     base,
     issueNumber,
     localIssueNumber,
+    issueUrl: resolvedIssue?.canonicalIssueUrl ?? resolvedIssue?.issueUrl ?? null,
+    localIssueUrl: resolvedIssue?.localIssueUrl ?? null,
     issueSource: resolvedIssue?.source ?? null,
     mirrorOf: resolvedIssue?.mirrorOf ?? null,
     title,
@@ -833,6 +847,13 @@ export function createPriorityPr({
 }
 
 export function buildPriorityPrReport(result, generatedAt = new Date().toISOString()) {
+  const upstreamRepository =
+    result.upstream?.owner && result.upstream?.repo ? `${result.upstream.owner}/${result.upstream.repo}` : null;
+  const headRepository =
+    result.headRepository?.owner && result.headRepository?.repo
+      ? `${result.headRepository.owner}/${result.headRepository.repo}`
+      : null;
+
   return {
     schema: 'priority/pr-create@v1',
     generatedAt,
@@ -840,20 +861,31 @@ export function buildPriorityPrReport(result, generatedAt = new Date().toISOStri
       upstreamNumber: result.issueNumber ?? null,
       localNumber: result.localIssueNumber ?? null,
       source: result.issueSource ?? null,
+      issueUrl: result.issueUrl ?? null,
+      localIssueUrl: result.localIssueUrl ?? null,
       mirrorOf: result.mirrorOf ?? null
     },
     upstream: {
-      repository:
-        result.upstream?.owner && result.upstream?.repo ? `${result.upstream.owner}/${result.upstream.repo}` : null
+      repository: upstreamRepository
     },
     head: {
       remote: result.headRemote ?? null,
-      repository:
-        result.headRepository?.owner && result.headRepository?.repo
-          ? `${result.headRepository.owner}/${result.headRepository.repo}`
-          : null,
+      repository: headRepository,
       branch: result.branch ?? null
     },
+    laneIdentity: buildForkLaneIdentity({
+      branch: result.branch ?? null,
+      issueSource: result.issueSource ?? null,
+      issueNumber: result.issueNumber ?? null,
+      issueUrl: result.issueUrl ?? null,
+      localIssueNumber: result.localIssueNumber ?? null,
+      localIssueUrl: result.localIssueUrl ?? null,
+      mirrorOf: result.mirrorOf ?? null,
+      forkRemote: result.headRemote ?? null,
+      forkRepository: headRepository,
+      upstreamRepository,
+      dispatchRepository: headRepository
+    }),
     branchModel: result.branchModel
       ? {
           contractPath: result.branchModel.contractPath ?? null,

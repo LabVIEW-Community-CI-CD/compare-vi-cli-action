@@ -210,6 +210,8 @@ test('resolveStandingIssueNumberForPr prefers router over cache', () => {
     localIssueNumber: 680,
     issueTitle: null,
     issueUrl: null,
+    localIssueUrl: null,
+    canonicalIssueUrl: null,
     source: 'router',
     noStandingReason: null,
     mirrorOf: null
@@ -248,6 +250,8 @@ test('resolveStandingIssueNumberForPr treats explicit empty router issue as auth
     localIssueNumber: null,
     issueTitle: null,
     issueUrl: null,
+    localIssueUrl: null,
+    canonicalIssueUrl: null,
     source: 'router',
     noStandingReason: 'queue-empty',
     mirrorOf: null
@@ -273,6 +277,8 @@ test('resolveStandingIssueNumberForPr falls back to cache when router is unavail
     localIssueNumber: 680,
     issueTitle: null,
     issueUrl: null,
+    localIssueUrl: null,
+    canonicalIssueUrl: null,
     source: 'cache',
     noStandingReason: null,
     mirrorOf: null
@@ -441,6 +447,8 @@ test('resolveStandingIssueNumberForPr carries cached issue metadata into the PR 
 
   assert.equal(result.issueTitle, 'priority:pr should not open automation PRs with placeholder bodies');
   assert.equal(result.issueUrl, 'https://github.com/example/repo/issues/1033');
+  assert.equal(result.localIssueUrl, 'https://github.com/example/repo/issues/1033');
+  assert.equal(result.canonicalIssueUrl, 'https://github.com/example/repo/issues/1033');
 });
 
 test('resolveStandingIssueNumberForPr drops stale cached metadata when router-selected issue does not match cache', () => {
@@ -462,6 +470,8 @@ test('resolveStandingIssueNumberForPr drops stale cached metadata when router-se
   assert.equal(result.issueNumber, 1033);
   assert.equal(result.issueTitle, null);
   assert.equal(result.issueUrl, null);
+  assert.equal(result.localIssueUrl, null);
+  assert.equal(result.canonicalIssueUrl, null);
 });
 
 test('createPriorityPr honors explicit CLI overrides and body files', () => {
@@ -661,6 +671,8 @@ test('writePriorityPrReport persists personal fork lane metadata for future resu
       base: 'develop',
       issueNumber: 969,
       localIssueNumber: 319,
+      issueUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/969',
+      localIssueUrl: 'https://github.com/svelderrainruiz/compare-vi-cli-action/issues/319',
       issueSource: 'router',
       mirrorOf: {
         number: 969,
@@ -717,7 +729,14 @@ test('writePriorityPrReport persists personal fork lane metadata for future resu
   assert.equal(report.issue.upstreamNumber, 969);
   assert.equal(report.issue.localNumber, 319);
   assert.equal(report.issue.mirrorOf.number, 969);
+  assert.equal(report.issue.issueUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/969');
+  assert.equal(report.issue.localIssueUrl, 'https://github.com/svelderrainruiz/compare-vi-cli-action/issues/319');
   assert.equal(report.head.remote, 'personal');
+  assert.equal(report.laneIdentity.kind, 'fork-standing-mirror');
+  assert.equal(report.laneIdentity.forkContext.remote, 'personal');
+  assert.equal(report.laneIdentity.forkContext.repository, 'svelderrainruiz/compare-vi-cli-action');
+  assert.equal(report.laneIdentity.forkIssue.issueNumber, 319);
+  assert.equal(report.laneIdentity.canonicalIssue.issueNumber, 969);
   assert.equal(report.head.repository, 'svelderrainruiz/compare-vi-cli-action');
   assert.equal(report.branchModel.contractPath, 'tools/policy/branch-classes.json');
   assert.equal(report.branchModel.branchPlane, 'personal');
