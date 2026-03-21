@@ -179,17 +179,18 @@ const DEFAULT_POLICY = {
   copilotReviewStrategy: 'draft-only-explicit',
   autoSlice: true,
   autoMerge: true,
-  maxActiveCodingLanes: 8,
+  maxActiveCodingLanes: 20,
   allowPolicyMutations: false,
   allowReleaseAdmin: false,
   stopWhenNoOpenEpics: true,
   capitalFabric: {
     schema: 'priority/capital-deployment-fabric@v1',
     capacityMode: 'host-ram-adaptive',
-    maxLogicalLaneCount: 8,
+    maxLogicalLaneCount: 20,
     logicalLaneAllocationFloorRatio: 0.5,
     reservedLaneCount: 1,
     hostRamBudgetPath: DEFAULT_HOST_RAM_BUDGET_PATH,
+    logicalLaneCatalog: buildDefaultLogicalLaneCatalog(),
     specialtyLanes: [
       {
         id: 'jarvis',
@@ -204,7 +205,7 @@ const DEFAULT_POLICY = {
     ]
   },
   workerPool: {
-    targetSlotCount: 8,
+    targetSlotCount: 20,
     prewarmSlotCount: 1,
     releaseWaitingStates: [...DEFAULT_WORKER_RELEASE_WAITING_STATES],
     providers: DEFAULT_WORKER_PROVIDER_BLUEPRINTS.map((provider) =>
@@ -529,6 +530,44 @@ function buildDefaultWorkerPoolProviders() {
   );
 }
 
+function buildDefaultLogicalLaneCatalog(count = 20) {
+  return Array.from({ length: Math.max(1, count) }, (_, index) => {
+    const seededOrdinal = index + 1;
+    const ordinalLabel = String(seededOrdinal).padStart(2, '0');
+    return {
+      id: `logical-lane-${ordinalLabel}`,
+      label: `Lane ${ordinalLabel}`,
+      seededOrdinal
+    };
+  });
+}
+
+function normalizeCapitalFabricLogicalLaneCatalog(value, { defaultCount = 20 } = {}) {
+  const sourceCatalog =
+    Array.isArray(value) && value.length > 0 ? value : buildDefaultLogicalLaneCatalog(defaultCount);
+  if (sourceCatalog.length > 20) {
+    throw new Error(`capitalFabric.logicalLaneCatalog cannot exceed 20 entries.`);
+  }
+  const catalog = sourceCatalog.map((entry, index) => {
+    const seededOrdinal = coercePositiveInteger(entry?.seededOrdinal) ?? index + 1;
+    const ordinalLabel = String(seededOrdinal).padStart(2, '0');
+    return {
+      id: normalizeText(entry?.id) || `logical-lane-${ordinalLabel}`,
+      label: normalizeText(entry?.label) || `Lane ${ordinalLabel}`,
+      seededOrdinal
+    };
+  });
+  const ids = new Set();
+  for (const lane of catalog) {
+    const laneKey = lane.id.toLowerCase();
+    if (ids.has(laneKey)) {
+      throw new Error(`Duplicate capitalFabric.logicalLaneCatalog id: ${lane.id}`);
+    }
+    ids.add(laneKey);
+  }
+  return catalog;
+}
+
 function normalizeWorkerProviderPolicy(value, { fallbackIndex = 0 } = {}) {
   const provider = value && typeof value === 'object' ? value : {};
   const fallbackBlueprint =
@@ -611,6 +650,15 @@ function normalizeCapitalFabricPolicy(
       DEFAULT_POLICY.maxActiveCodingLanes,
     1
   );
+  const logicalLaneCatalog = normalizeCapitalFabricLogicalLaneCatalog(
+    capitalFabric.logicalLaneCatalog ?? capitalFabric.logicalLanes,
+    { defaultCount: configuredCeiling }
+  );
+  if (logicalLaneCatalog.length > configuredCeiling) {
+    throw new Error(
+      `capitalFabric.logicalLaneCatalog has ${logicalLaneCatalog.length} entries but the logical lane ceiling is ${configuredCeiling}.`
+    );
+  }
   const reservedLaneCount = Math.min(
     coercePositiveInteger(capitalFabric.reservedLaneCount) ?? 1,
     configuredCeiling
@@ -628,7 +676,42 @@ function normalizeCapitalFabricPolicy(
     logicalLaneAllocationFloorRatio: coerceRatio(capitalFabric.logicalLaneAllocationFloorRatio, 0.5) ?? 0.5,
     reservedLaneCount,
     hostRamBudgetPath: normalizeText(capitalFabric.hostRamBudgetPath) || DEFAULT_HOST_RAM_BUDGET_PATH,
+    logicalLaneCatalog,
     specialtyLanes
+  };
+}
+
+export function summarizeLogicalLaneActivation({
+  capitalFabric = {},
+  effectiveLogicalLaneCount = null,
+  capacitySource = null
+} = {}) {
+  const fallbackCount =
+    coercePositiveInteger(capitalFabric.maxLogicalLaneCount) ??
+    coercePositiveInteger(capitalFabric.targetLogicalLaneCount) ??
+    20;
+  const logicalLaneCatalog = normalizeCapitalFabricLogicalLaneCatalog(
+    capitalFabric.logicalLaneCatalog ?? capitalFabric.logicalLanes,
+    { defaultCount: fallbackCount }
+  );
+  const seededLaneCount = logicalLaneCatalog.length;
+  const activeLaneCount = Math.max(
+    0,
+    Math.min(coercePositiveInteger(effectiveLogicalLaneCount) ?? seededLaneCount, seededLaneCount)
+  );
+  const inactiveLaneCount = Math.max(seededLaneCount - activeLaneCount, 0);
+  const catalog = logicalLaneCatalog.map((lane, index) => ({
+    ...lane,
+    activationState: index < activeLaneCount ? 'active' : 'seeded'
+  }));
+  return {
+    capacityMode: normalizeText(capitalFabric.capacityMode) || 'fixed-target',
+    capacitySource: normalizeText(capacitySource) || normalizeText(capitalFabric.capacitySource) || 'policy-ceiling',
+    effectiveLogicalLaneCount: activeLaneCount,
+    seededLaneCount,
+    activeLaneCount,
+    inactiveLaneCount,
+    catalog
   };
 }
 
@@ -651,6 +734,23 @@ function resolveCapitalFabricRuntimePolicy({
       ? Math.max(1, Math.min(capitalFabric.maxLogicalLaneCount, hostRamRecommendedParallelism))
       : capitalFabric.maxLogicalLaneCount;
   const implementationLaneBudget = Math.max(effectiveLogicalLaneCount - capitalFabric.reservedLaneCount, 0);
+  const logicalLaneActivation = summarizeLogicalLaneActivation({
+    capitalFabric: {
+      ...capitalFabric,
+      hostRamProfile: normalizeText(hostRamBudget?.selectedProfile?.id) || null,
+      hostRamRecommendedParallelism,
+      effectiveLogicalLaneCount,
+      capacitySource:
+        capitalFabric.capacityMode === 'host-ram-adaptive' && hostRamRecommendedParallelism != null
+          ? 'host-ram-budget'
+          : 'policy-ceiling'
+    },
+    effectiveLogicalLaneCount,
+    capacitySource:
+      capitalFabric.capacityMode === 'host-ram-adaptive' && hostRamRecommendedParallelism != null
+        ? 'host-ram-budget'
+        : 'policy-ceiling'
+  });
   return {
     ...capitalFabric,
     hostRamBudgetPath: toRepoRelativePath(repoRoot, capitalFabric.hostRamBudgetPath) || capitalFabric.hostRamBudgetPath,
@@ -668,7 +768,8 @@ function resolveCapitalFabricRuntimePolicy({
         lane.enabled === true
           ? Math.min(lane.maxInstanceCount, implementationLaneBudget)
           : 0
-    }))
+    })),
+    logicalLaneActivation
   };
 }
 
@@ -3150,6 +3251,7 @@ export function buildDeliveryAgentRuntimeRecord({
     hostRamBudget,
     repoRoot
   });
+  const { logicalLaneActivation, ...capitalFabricPolicy } = capitalFabric;
   const normalizedMaxActiveCodingLanes = Math.max(
     coercePositiveInteger(policy?.maxActiveCodingLanes) ?? workerPoolPolicy.targetSlotCount,
     workerPoolPolicy.targetSlotCount,
@@ -3275,13 +3377,14 @@ export function buildDeliveryAgentRuntimeRecord({
       allowPolicyMutations: policy.allowPolicyMutations === true,
       allowReleaseAdmin: policy.allowReleaseAdmin === true,
       stopWhenNoOpenEpics: policy.stopWhenNoOpenEpics === true,
-      capitalFabric,
+      capitalFabric: capitalFabricPolicy,
       workerPool: workerPoolPolicy
     },
     status: laneLifecycle === 'blocked' ? 'blocked' : laneLifecycle === 'idle' ? 'idle' : 'running',
     laneLifecycle,
     activeCodingLanes,
     workerPool,
+    logicalLaneActivation,
     localReviewLoop,
     concurrentLaneApply,
     concurrentLaneStatus,

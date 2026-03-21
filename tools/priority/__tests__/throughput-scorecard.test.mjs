@@ -72,6 +72,13 @@ test('buildThroughputScorecard warns when actionable work exists while the worke
   assert.equal(report.summary.metrics.readyPrInventory, 2);
   assert.equal(report.summary.metrics.currentWorkerUtilizationRatio, 0);
   assert.equal(report.workerPool.liveOrchestratorLane, 'Sagan');
+  assert.equal(report.logicalLaneActivation.seededLaneCount, 20);
+  assert.equal(report.logicalLaneActivation.activeLaneCount, 4);
+  assert.equal(report.logicalLaneActivation.catalog[0].activationState, 'active');
+  assert.equal(report.logicalLaneActivation.catalog[4].activationState, 'seeded');
+  assert.equal(report.summary.metrics.seededLogicalLaneCount, 20);
+  assert.equal(report.summary.metrics.activeLogicalLaneCount, 4);
+  assert.equal(report.summary.metrics.inactiveLogicalLaneCount, 16);
   assert.equal(report.summary.metrics.logicalLaneAllocationRatio, 0);
   assert.equal(report.summary.metrics.logicalLaneAllocationFloorRatio, 0.5);
   assert.equal(report.summary.metrics.effectiveLogicalLaneCount, 4);
@@ -190,6 +197,8 @@ test('runThroughputScorecard writes a pass report when queue pressure and worker
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.workerPool.utilizationRatio, 0.5);
   assert.equal(result.report.logicalLaneAllocation.effectiveLogicalLaneCount, 4);
+  assert.equal(result.report.logicalLaneActivation.seededLaneCount, 20);
+  assert.equal(result.report.logicalLaneActivation.activeLaneCount, 4);
   assert.equal(result.report.logicalLaneAllocation.allocationRatio, 0.5);
   assert.equal(result.report.delivery.hostedWaitEscapeCount, 3);
   assert.equal(result.report.queue.readySetTop[0], 1511);
@@ -662,7 +671,7 @@ test('buildThroughputScorecard derives the effective logical lane cap from the h
       policy: {
         capitalFabric: {
           capacityMode: 'host-ram-adaptive',
-          maxLogicalLaneCount: 8,
+          maxLogicalLaneCount: 20,
           logicalLaneAllocationFloorRatio: 0.5,
           reservedLaneCount: 1
         }
@@ -716,10 +725,12 @@ test('buildThroughputScorecard derives the effective logical lane cap from the h
   });
 
   assert.equal(report.logicalLaneAllocation.capacityMode, 'host-ram-adaptive');
-  assert.equal(report.logicalLaneAllocation.maxLogicalLaneCount, 8);
+  assert.equal(report.logicalLaneAllocation.maxLogicalLaneCount, 20);
   assert.equal(report.logicalLaneAllocation.effectiveLogicalLaneCount, 3);
+  assert.equal(report.logicalLaneActivation.activeLaneCount, 3);
   assert.equal(report.logicalLaneAllocation.hostRamProfile, 'windows-mirror-heavy');
   assert.equal(report.logicalLaneAllocation.hostRamRecommendedParallelism, 3);
   assert.equal(report.logicalLaneAllocation.capacitySource, 'host-ram-budget');
   assert.equal(report.summary.metrics.effectiveLogicalLaneCount, 3);
+  assert.equal(report.summary.metrics.seededLogicalLaneCount, 20);
 });

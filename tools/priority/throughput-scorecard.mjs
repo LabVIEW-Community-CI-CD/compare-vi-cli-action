@@ -6,6 +6,7 @@ import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_HOST_RAM_BUDGET_PATH } from './concurrent-lane-plan.mjs';
 import { summarizeIdleClassificationCoverage } from './concurrent-lane-status.mjs';
+import { summarizeLogicalLaneActivation } from './delivery-agent.mjs';
 
 export const REPORT_SCHEMA = 'priority/throughput-scorecard@v1';
 export const DEFAULT_RUNTIME_STATE_PATH = path.join('tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json');
@@ -315,6 +316,13 @@ export function buildThroughputScorecard({
     viHistorySuitePullRequestCount: Number(deliveryMemory?.summary?.viHistorySuitePullRequestCount ?? 0) || 0
   };
   const logicalLaneAllocation = summarizeLogicalLaneAllocation(runtimeState, hostRamBudget);
+  const logicalLaneActivation = summarizeLogicalLaneActivation({
+    capitalFabric: runtimeState?.policy?.capitalFabric && typeof runtimeState.policy.capitalFabric === 'object'
+      ? runtimeState.policy.capitalFabric
+      : {},
+    effectiveLogicalLaneCount: logicalLaneAllocation.effectiveLogicalLaneCount,
+    capacitySource: logicalLaneAllocation.capacitySource
+  });
   const mergeQueueUtilization = evaluateMergeQueueUtilization(queueSummary, utilizationPolicy);
   const concurrentLanes = summarizeConcurrentLaneStatus(
     concurrentLaneStatusInput ?? {
@@ -375,6 +383,7 @@ export function buildThroughputScorecard({
     },
     workerPool: workerPoolSummary,
     logicalLaneAllocation,
+    logicalLaneActivation,
     queue: queueSummary,
     mergeQueueUtilization,
     concurrentLanes,
@@ -392,6 +401,9 @@ export function buildThroughputScorecard({
         logicalLaneAllocationRatio: logicalLaneAllocation.allocationRatio,
         logicalLaneAllocationFloorRatio: logicalLaneAllocation.allocationFloorRatio,
         effectiveLogicalLaneCount: logicalLaneAllocation.effectiveLogicalLaneCount,
+        seededLogicalLaneCount: logicalLaneActivation.seededLaneCount,
+        activeLogicalLaneCount: logicalLaneActivation.activeLaneCount,
+        inactiveLogicalLaneCount: logicalLaneActivation.inactiveLaneCount,
         concurrentLaneActiveCount: concurrentLanes.activeLaneCount,
         concurrentLaneDeferredCount: concurrentLanes.deferredLaneCount,
         idleClassificationManagedLaneCount: concurrentLanes.idleClassificationCoverage.managedLaneCount,

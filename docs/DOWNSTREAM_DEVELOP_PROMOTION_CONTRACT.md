@@ -63,9 +63,12 @@ future agents can decide whether template verification is improving, regressing,
 or stalling.
 
 The checked-in capital-fabric policy also declares `Jarvis` as a Windows Docker
-specialty lane family. `Jarvis` can grow to multiple instances when the host RAM
-budget leaves headroom, while the first recorded responsibility stays attached
-to a named agent for stakeholder-facing traceability.
+specialty lane family. The same policy now seeds `20` logical-lane identities
+through `capitalFabric.logicalLaneCatalog`, while `logicalLaneActivation`
+reports which identities are active versus merely seeded on the current host.
+`Jarvis` can grow to multiple instances when the host RAM budget leaves
+headroom, while the first recorded responsibility stays attached to a named
+agent for stakeholder-facing traceability.
 
 The checked-in report is expected to capture the landed iteration label,
 iteration ref, and landed iteration head SHA so the evidence can be tied back
