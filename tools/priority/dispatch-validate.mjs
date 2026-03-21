@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import { run, getRepoRoot, getCurrentBranch, ensureCleanWorkingTree } from './lib/branch-utils.mjs';
 import { resolveRepoContext } from './lib/git-context.mjs';
 import { ensureGhCli, isSameRepository, normalizeForkRemoteName } from './lib/remote-utils.mjs';
+import { resolveStandingIssueNumberForPr } from './create-pr.mjs';
+import { buildForkLaneIdentity } from './lib/fork-lane-identity.mjs';
 
 const USAGE = [
   'Usage: node tools/priority/dispatch-validate.mjs [--ref <branch>] [--sample-id <id>] [--history-scenario-set <none|smoke|history-core>] [--allow-fork] [--push-missing] [--force-push-ok] [--allow-noncanonical-vi-history] [--allow-noncanonical-history-core]',
@@ -21,6 +24,7 @@ const USAGE = [
 ];
 
 const historyScenarioSetValues = new Set(['none', 'smoke', 'history-core']);
+const DEFAULT_REPORT_DIR = path.join('tests', 'results', '_agent', 'issue');
 
 function printUsage() {
   for (const line of USAGE) {
@@ -335,6 +339,7 @@ export function dispatchValidate({
   findRemoteRefFn = findRemoteRef,
   ensureRemoteHasRefFn = ensureRemoteHasRef,
   ensureCleanWorkingTreeFn = ensureCleanWorkingTree,
+  resolveStandingIssueNumberFn = resolveStandingIssueNumberForPr,
   remoteName = 'upstream'
 } = {}) {
   const {
@@ -397,6 +402,7 @@ export function dispatchValidate({
   }
 
   const branchName = localFullRef.slice('refs/heads/'.length);
+  const issueContext = resolveStandingIssueNumberFn(repoRoot);
   const dispatchTarget = resolveValidateDispatchTarget({
     repoRoot,
     context,
@@ -532,16 +538,39 @@ export function dispatchValidate({
     console.warn(`[validate] Warning: unable to query latest Validate run: ${err.message}`);
   }
 
+  const upstreamRepository = `${context.upstream.owner}/${context.upstream.repo}`;
+  const laneIdentity = buildForkLaneIdentity({
+    branch: branchName,
+    issueSource: issueContext?.source ?? null,
+    issueNumber: issueContext?.issueNumber ?? null,
+    issueUrl: issueContext?.canonicalIssueUrl ?? issueContext?.issueUrl ?? null,
+    localIssueNumber: issueContext?.localIssueNumber ?? null,
+    localIssueUrl: issueContext?.localIssueUrl ?? null,
+    mirrorOf: issueContext?.mirrorOf ?? null,
+    forkRemote: targetRemoteName !== 'upstream' ? targetRemoteName : null,
+    forkRepository: slug !== upstreamRepository ? slug : null,
+    upstreamRepository,
+    dispatchRepository: slug
+  });
+
   const message = `[validate] Dispatched Validate on ${slug} @ ${ref} (sample_id=${sampleId})` +
     (runSummary?.databaseId ? ` (run ${runSummary.databaseId})` : '');
   console.log(message);
 
   return {
     dispatched: true,
+    repoRoot,
     repo: slug,
     remote: targetRemoteName,
     ref,
     sampleId,
+    issueNumber: issueContext?.issueNumber ?? null,
+    localIssueNumber: issueContext?.localIssueNumber ?? null,
+    issueSource: issueContext?.source ?? null,
+    issueUrl: issueContext?.canonicalIssueUrl ?? issueContext?.issueUrl ?? null,
+    localIssueUrl: issueContext?.localIssueUrl ?? null,
+    mirrorOf: issueContext?.mirrorOf ?? null,
+    laneIdentity,
     historyScenarioSet,
     allowNonCanonicalViHistory,
     allowNonCanonicalHistoryCore,
@@ -549,11 +578,69 @@ export function dispatchValidate({
   };
 }
 
+export function buildValidateDispatchReport(result, generatedAt = new Date().toISOString()) {
+  return {
+    schema: 'priority/validate-dispatch@v1',
+    generatedAt,
+    issue: {
+      upstreamNumber: result.issueNumber ?? null,
+      localNumber: result.localIssueNumber ?? null,
+      source: result.issueSource ?? null,
+      issueUrl: result.issueUrl ?? null,
+      localIssueUrl: result.localIssueUrl ?? null,
+      mirrorOf: result.mirrorOf ?? null
+    },
+    target: {
+      repository: result.repo ?? null,
+      remote: result.remote ?? null,
+      ref: result.ref ?? null
+    },
+    laneIdentity: result.laneIdentity ?? null,
+    sampleId: result.sampleId ?? null,
+    historyScenarioSet: result.historyScenarioSet ?? null,
+    allowNonCanonicalViHistory: result.allowNonCanonicalViHistory === true,
+    allowNonCanonicalHistoryCore: result.allowNonCanonicalHistoryCore === true,
+    run: result.run
+      ? {
+          databaseId: result.run.databaseId ?? null,
+          headSha: result.run.headSha ?? null,
+          status: result.run.status ?? null,
+          conclusion: result.run.conclusion ?? null,
+          createdAt: result.run.createdAt ?? null
+        }
+      : null
+  };
+}
+
+export function writeValidateDispatchReport(
+  result,
+  {
+    reportDir = DEFAULT_REPORT_DIR,
+    mkdirSyncFn = mkdirSync,
+    writeFileSyncFn = writeFileSync,
+    getNow = () => new Date().toISOString()
+  } = {}
+) {
+  const repoRoot = result?.repoRoot || process.cwd();
+  const resolvedReportDir = path.isAbsolute(reportDir) ? reportDir : path.join(repoRoot, reportDir);
+  const fileIssueNumber = result?.localIssueNumber ?? result?.issueNumber ?? 'branch';
+  const fileRemote = String(result?.remote || 'upstream').replace(/[^a-z0-9._-]/gi, '-');
+  const reportPath = path.join(resolvedReportDir, `priority-validate-dispatch-${fileRemote}-${fileIssueNumber}.json`);
+  const report = buildValidateDispatchReport(result, getNow());
+  mkdirSyncFn(resolvedReportDir, { recursive: true });
+  writeFileSyncFn(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  return { report, reportPath };
+}
+
 const modulePath = path.resolve(fileURLToPath(import.meta.url));
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
 if (invokedPath && invokedPath === modulePath) {
   try {
-    dispatchValidate();
+    const result = dispatchValidate();
+    if (result?.dispatched) {
+      const reportResult = writeValidateDispatchReport(result);
+      console.log(`[validate] report=${reportResult.reportPath}`);
+    }
   } catch (err) {
     console.error(`[validate] ${err.message}`);
     process.exit(1);

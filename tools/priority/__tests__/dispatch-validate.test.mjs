@@ -1,10 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { mkdtempSync } from 'node:fs';
 import {
+  buildValidateDispatchReport,
   dispatchValidate,
   inferForkLaneRemoteFromBranch,
   parseCliOptions,
-  resolveValidateDispatchTarget
+  resolveValidateDispatchTarget,
+  writeValidateDispatchReport
 } from '../dispatch-validate.mjs';
 
 function createRunStub({
@@ -493,4 +499,93 @@ test('dispatchValidate pushes missing same-owner fork refs to the fork remote', 
         call.args.includes('LabVIEW-Community-CI-CD/compare-vi-cli-action-fork')
     )
   );
+});
+
+
+test('dispatchValidate carries fork-plane lane identity for same-owner fork lanes', () => {
+  const runStub = createRunStub({ fullRef: 'refs/heads/issue/origin-1490-validate-same-owner-fork-standing-lanes' });
+  const result = dispatchValidate({
+    argv: ['node', 'script', '--ref', 'issue/origin-1490-validate-same-owner-fork-standing-lanes'],
+    env: { VALIDATE_DISPATCH_ALLOW_FORK: '1' },
+    getRepoRootFn: () => 'repo',
+    resolveContextFn: () => ({
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      origin: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+      personal: null,
+      activeForkRemote: 'origin',
+      activeFork: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action-fork' },
+      isFork: false
+    }),
+    getCurrentBranchFn: () => 'issue/origin-1490-validate-same-owner-fork-standing-lanes',
+    findRemoteRefFn: (_repoRoot, remoteName) => {
+      if (remoteName === 'origin') {
+        return { pattern: 'refs/heads/issue/origin-1490-validate-same-owner-fork-standing-lanes', sha: 'abc1234' };
+      }
+      return null;
+    },
+    ensureRemoteHasRefFn: () => ({ pattern: 'refs/heads/issue/origin-1490-validate-same-owner-fork-standing-lanes', sha: 'abc1234' }),
+    ensureCleanWorkingTreeFn: () => {},
+    resolveStandingIssueNumberFn: () => ({
+      issueNumber: 1490,
+      localIssueNumber: 1490,
+      source: 'router',
+      issueUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1490',
+      canonicalIssueUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1490',
+      localIssueUrl: null,
+      mirrorOf: null
+    }),
+    runFn: runStub,
+    ensureGhCliFn: () => {}
+  });
+
+  assert.equal(result.laneIdentity.kind, 'fork-plane-branch');
+  assert.equal(result.laneIdentity.forkContext.remote, 'origin');
+  assert.equal(result.laneIdentity.forkContext.repository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork');
+  assert.equal(result.laneIdentity.forkIssue, null);
+  assert.equal(result.laneIdentity.canonicalIssue.issueNumber, 1490);
+});
+
+test('writeValidateDispatchReport persists fork lane provenance for future worker reuse', () => {
+  const reportDir = mkdtempSync(path.join(os.tmpdir(), 'priority-validate-report-'));
+  const result = {
+    repoRoot: reportDir,
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+    remote: 'origin',
+    ref: 'issue/origin-1490-validate-same-owner-fork-standing-lanes',
+    sampleId: 'ts-20260321-000000-abcd',
+    issueNumber: 1490,
+    localIssueNumber: 1490,
+    issueSource: 'router',
+    issueUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1490',
+    localIssueUrl: null,
+    mirrorOf: null,
+    laneIdentity: {
+      kind: 'fork-plane-branch',
+      branch: 'issue/origin-1490-validate-same-owner-fork-standing-lanes',
+      issueSource: 'router',
+      forkContext: { remote: 'origin', repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork' },
+      canonicalIssue: { repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action', issueNumber: 1490, issueUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1490' },
+      forkIssue: null,
+      mirrorOf: null
+    },
+    historyScenarioSet: 'smoke',
+    allowNonCanonicalViHistory: false,
+    allowNonCanonicalHistoryCore: false,
+    run: {
+      databaseId: 23372316293,
+      headSha: 'abc1234',
+      status: 'queued',
+      conclusion: null,
+      createdAt: '2026-03-21T05:00:00Z'
+    }
+  };
+
+  const report = buildValidateDispatchReport(result, '2026-03-21T05:10:00.000Z');
+  const persisted = writeValidateDispatchReport(result, { reportDir, getNow: () => '2026-03-21T05:10:00.000Z' });
+
+  assert.equal(report.schema, 'priority/validate-dispatch@v1');
+  assert.equal(report.laneIdentity.kind, 'fork-plane-branch');
+  assert.equal(report.target.repository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork');
+  assert.equal(path.basename(persisted.reportPath), 'priority-validate-dispatch-origin-1490.json');
+  assert.match(fs.readFileSync(persisted.reportPath, 'utf8'), /priority\/validate-dispatch@v1/);
 });
