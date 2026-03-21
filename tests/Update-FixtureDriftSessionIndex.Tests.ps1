@@ -12,7 +12,7 @@ Describe 'Update-FixtureDriftSessionIndex.ps1' -Tag 'Unit' {
     }
   }
 
-  It 'persists docker manager and runner label metadata into session-index runContext' {
+  It 'persists docker manager metadata and clears legacy runner label contract metadata' {
     $resultsDir = Join-Path $TestDrive 'results'
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
 
@@ -20,6 +20,13 @@ Describe 'Update-FixtureDriftSessionIndex.ps1' -Tag 'Unit' {
     $sessionIndex = [ordered]@{
       schema = 'session-index/v1'
       status = 'ok'
+      runContext = [ordered]@{
+        runnerLabelContract = [ordered]@{
+          requiredLabel = 'hosted-docker-windows'
+          hasRequiredLabel = $true
+          labels = @('self-hosted', 'windows', 'hosted-docker-windows')
+        }
+      }
     }
     ($sessionIndex | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $sessionIndexPath -Encoding utf8
 
@@ -39,9 +46,6 @@ Describe 'Update-FixtureDriftSessionIndex.ps1' -Tag 'Unit' {
       -ResultsDir $resultsDir `
       -ContextPath $contextPath `
       -RuntimeSnapshotPath $runtimeSnapshotPath `
-      -RequiredLabel 'hosted-docker-windows' `
-      -HasRequiredLabel:$true `
-      -RunnerLabelsCsv 'self-hosted,windows,hosted-docker-windows' `
       -ManagerStatus 'success' `
       -ManagerSummaryPath 'results/fixture-drift/docker-runtime-manager.json' `
       -WindowsImageDigest 'sha256:windows' `
@@ -56,9 +60,7 @@ Describe 'Update-FixtureDriftSessionIndex.ps1' -Tag 'Unit' {
     $updated.runContext.dockerRuntimeManager.windowsImageDigest | Should -Be 'sha256:windows'
     $updated.runContext.dockerRuntimeManager.contextArtifactPath | Should -Be $contextPath
     $updated.runContext.dockerRuntimeManager.runtimeSnapshotPath | Should -Be $runtimeSnapshotPath
-    $updated.runContext.runnerLabelContract.requiredLabel | Should -Be 'hosted-docker-windows'
-    $updated.runContext.runnerLabelContract.hasRequiredLabel | Should -BeTrue
-    @($updated.runContext.runnerLabelContract.labels) | Should -Contain 'hosted-docker-windows'
+    $updated.runContext.PSObject.Properties.Name | Should -Not -Contain 'runnerLabelContract'
   }
 
   It 'does not throw when session-index is missing and IgnoreMissingSessionIndex is enabled' {

@@ -9,9 +9,6 @@ param(
   [string]$SessionIndexPath = '',
   [string]$ContextPath = '',
   [string]$RuntimeSnapshotPath = '',
-  [string]$RequiredLabel = 'hosted-docker-windows',
-  [bool]$HasRequiredLabel = $false,
-  [string]$RunnerLabelsCsv = '',
   [string]$ManagerStatus = '',
   [string]$ManagerSummaryPath = '',
   [string]$WindowsImageDigest = '',
@@ -57,17 +54,12 @@ if (-not (Test-Path -LiteralPath $sessionPathResolved -PathType Leaf)) {
   throw ("session-index.json not found: {0}" -f $sessionPathResolved)
 }
 
-$labels = @()
-if (-not [string]::IsNullOrWhiteSpace($RunnerLabelsCsv)) {
-  $labels = @($RunnerLabelsCsv -split ',' | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-}
-
 $index = Get-Content -LiteralPath $sessionPathResolved -Raw | ConvertFrom-Json -Depth 30
 if (-not $index.PSObject.Properties['runContext'] -or $null -eq $index.runContext) {
-  $index | Add-Member -MemberType NoteProperty -Name 'runContext' -Value ([ordered]@{}) -Force
+  $index | Add-Member -MemberType NoteProperty -Name 'runContext' -Value ([pscustomobject][ordered]@{}) -Force
 }
 
-$index.runContext.dockerRuntimeManager = [ordered]@{
+$dockerRuntimeManager = [ordered]@{
   status = [string]$ManagerStatus
   summaryPath = [string]$ManagerSummaryPath
   windowsImageDigest = [string]$WindowsImageDigest
@@ -77,10 +69,17 @@ $index.runContext.dockerRuntimeManager = [ordered]@{
   contextArtifactPath = if (Test-Path -LiteralPath $contextPathResolved -PathType Leaf) { $contextPathResolved } else { '' }
   runtimeSnapshotPath = if (Test-Path -LiteralPath $runtimeSnapshotPathResolved -PathType Leaf) { $runtimeSnapshotPathResolved } else { '' }
 }
-$index.runContext.runnerLabelContract = [ordered]@{
-  requiredLabel = [string]$RequiredLabel
-  hasRequiredLabel = [bool]$HasRequiredLabel
-  labels = @($labels)
+
+if ($index.runContext -is [System.Collections.IDictionary]) {
+  $index.runContext['dockerRuntimeManager'] = $dockerRuntimeManager
+  if ($index.runContext.Contains('runnerLabelContract')) {
+    [void]$index.runContext.Remove('runnerLabelContract')
+  }
+} else {
+  $index.runContext | Add-Member -MemberType NoteProperty -Name 'dockerRuntimeManager' -Value $dockerRuntimeManager -Force
+  if ($index.runContext.PSObject.Properties['runnerLabelContract']) {
+    [void]$index.runContext.PSObject.Properties.Remove('runnerLabelContract')
+  }
 }
 
 ($index | ConvertTo-Json -Depth 30) | Set-Content -LiteralPath $sessionPathResolved -Encoding utf8
