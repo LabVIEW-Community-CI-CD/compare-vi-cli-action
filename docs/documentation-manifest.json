@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-20T19:44:05.8724152Z",
+  "updated": "2026-03-21T00:00:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -218,9 +218,14 @@
         "docs/knowledgebase/PrintToSingleFileHtml-Provenance.md",
         "docs/schemas/headless-sample-vi-corpus-targets-v1.schema.json",
         "docs/schemas/headless-sample-vi-corpus-evaluation-v1.schema.json",
+        "docs/schemas/headless-sample-vi-corpus-print-proof-v1.schema.json",
         "fixtures/headless-corpus/sample-vi-corpus.targets.json",
         "tools/Invoke-HeadlessSampleVICorpusEvaluation.ps1",
-        "tests/Invoke-HeadlessSampleVICorpusEvaluation.Tests.ps1"
+        "tools/Invoke-HeadlessSampleVICorpusPrintProof.ps1",
+        "tools/Run-NILinuxContainerCustomOperation.ps1",
+        "tests/Invoke-HeadlessSampleVICorpusEvaluation.Tests.ps1",
+        "tests/Invoke-HeadlessSampleVICorpusPrintProof.Tests.ps1",
+        "tests/Run-NILinuxContainerCustomOperation.Tests.ps1"
       ]
     },
     {
@@ -269,9 +274,11 @@
         "docs/knowledgebase/LabVIEWCLI-CustomOperation-Proof.md",
         "docs/schemas/labview-cli-custom-operation-proof-v1.schema.json",
         "tools/LabVIEWCLICustomOperationProof.psm1",
+        "tools/Run-NILinuxContainerCustomOperation.ps1",
         "tools/Run-NIWindowsContainerCustomOperation.ps1",
         "tools/Test-LabVIEWCLICustomOperationProof.ps1",
         "tests/LabVIEWCLICustomOperationProof.Tests.ps1",
+        "tests/Run-NILinuxContainerCustomOperation.Tests.ps1",
         "tests/Run-NIWindowsContainerCustomOperation.Tests.ps1"
       ]
     },

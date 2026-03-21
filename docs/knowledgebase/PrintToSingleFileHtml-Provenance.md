@@ -50,7 +50,9 @@ As of March 21, 2026, the bundle is still explicitly `source-only`:
   executable-state receipt for the checked-in bundle
 - `tools/Invoke-HeadlessSampleVICorpusPrintProof.ps1` now turns the current
   `source-only` payload state into a deterministic blocked proof receipt for the
-  sample-corpus print lane instead of relying on human interpretation
+  sample-corpus print lane instead of relying on human interpretation; when the
+  payload becomes runnable, the same wrapper now executes the Linux proof lane
+  through `tools/Run-NILinuxContainerCustomOperation.ps1`
 - `tools/New-PrintToSingleFileHtmlAuthoringWorkspace.ps1` now wraps the generic
   scaffold so this payload has a dedicated disposable authoring bootstrap
 - `tools/New-PrintToSingleFileHtmlAuthoringPacket.ps1` now turns the remaining
