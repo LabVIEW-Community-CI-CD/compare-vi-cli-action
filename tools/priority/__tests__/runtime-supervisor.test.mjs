@@ -3791,6 +3791,115 @@ test('delivery broker finalizes merged standing issues by handing off priority a
   assert.equal(handoffCalls[0].pullRequestNumber, 1014);
 });
 
+test('delivery broker clears stale standing labels from a merged issue that is not the active standing issue', async () => {
+  const closeCalls = [];
+  const labelEditCalls = [];
+  const reconcileCalls = [];
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: '/tmp/repo',
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'ready-merge',
+      objective: {
+        summary: 'Advance issue #1011'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'ready-merge',
+          standingIssue: {
+            number: 1010,
+            title: 'Containerize NILinuxCompare tests via tools image Docker contract',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
+          },
+          selectedIssue: {
+            number: 1011,
+            title: 'Refresh downstream proving rail evidence',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1011',
+            labels: [
+              'standing-priority',
+              'needs-triage'
+            ]
+          },
+          pullRequest: {
+            number: 1015,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1015',
+            readyToMerge: true
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        readyForReviewPurpose: 'final-validation',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: []
+      }),
+      mergePullRequestFn: async () => ({
+        status: 'completed',
+        outcome: 'merged',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'merge-pr',
+          laneLifecycle: 'complete',
+          blockerClass: 'none',
+          retryable: false,
+          nextWakeCondition: 'next-scheduler-cycle',
+          helperCallsExecuted: ['node tools/priority/merge-sync-pr.mjs'],
+          filesTouched: []
+        }
+      }),
+      closeIssueWithCommentFn: async (options) => {
+        closeCalls.push(options);
+        return {
+          status: 0,
+          stdout: '',
+          stderr: ''
+        };
+      },
+      editIssueLabelsFn: async (options) => {
+        labelEditCalls.push(options);
+        return {
+          status: 0,
+          stdout: '',
+          stderr: ''
+        };
+      },
+      reconcileStandingAfterMergeFn: async (options) => {
+        reconcileCalls.push(options);
+        throw new Error('reconcile should not run for a non-active standing issue');
+      }
+    }
+  });
+
+  assert.equal(brokerResult.outcome, 'merged');
+  assert.match(brokerResult.reason, /closed issue #1011/i);
+  assert.equal(brokerResult.details.finalizedIssueNumber, 1011);
+  assert.equal(brokerResult.details.nextStandingIssueNumber, null);
+  assert.deepEqual(
+    brokerResult.details.helperCallsExecuted,
+    [
+      'node tools/priority/merge-sync-pr.mjs',
+      'gh issue close 1011 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --comment <omitted>',
+      'gh issue edit 1011 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --remove-label standing-priority'
+    ]
+  );
+  assert.equal(closeCalls.length, 1);
+  assert.equal(closeCalls[0].issueNumber, 1011);
+  assert.equal(labelEditCalls.length, 1);
+  assert.equal(labelEditCalls[0].issueNumber, 1011);
+  assert.deepEqual(labelEditCalls[0].removeLabels, ['standing-priority']);
+  assert.equal(reconcileCalls.length, 0);
+});
+
 test('delivery broker clears standing-priority immediately when a merged standing issue exhausts the queue', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-merge-finalize-'));
   const reconcileCalls = [];

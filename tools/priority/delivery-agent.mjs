@@ -4200,6 +4200,14 @@ async function finalizeMergedPullRequest({ taskPacket, repoRoot, deps = {} }) {
   let nextStandingIssueNumber = null;
   let standingSelectionWarning = '';
   let reconciliationResult = null;
+  const standingPriorityLabels = resolveStandingPriorityLabels(repoRoot, repository);
+  const mergedStandingLabels = Array.from(
+    new Set(
+      normalizeLabelEntries(selectedIssue?.labels).filter((label) =>
+        standingPriorityLabels.includes(label)
+      )
+    )
+  );
   if (standingIssueNumber && standingIssueNumber === selectedIssueNumber) {
     try {
       reconciliationResult = await reconcileStandingAfterMergeForRepo({
@@ -4252,6 +4260,16 @@ async function finalizeMergedPullRequest({ taskPacket, repoRoot, deps = {} }) {
       deps
     });
     helperCallsExecuted.push(buildCloseIssueHelperCall(selectedIssueNumber, repository, { hasComment: true }));
+    if (mergedStandingLabels.length > 0) {
+      await editIssueLabels({
+        repository,
+        issueNumber: selectedIssueNumber,
+        repoRoot,
+        removeLabels: mergedStandingLabels,
+        deps
+      });
+      helperCallsExecuted.push(buildRemoveLabelHelperCall(selectedIssueNumber, repository, mergedStandingLabels));
+    }
   }
 
   return {
