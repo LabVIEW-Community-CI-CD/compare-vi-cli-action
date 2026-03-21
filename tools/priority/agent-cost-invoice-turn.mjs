@@ -51,6 +51,13 @@ export function parseArgs(argv = process.argv) {
     sourceKind: 'operator-invoice',
     sourcePath: null,
     operatorNote: null,
+    activationState: 'active',
+    fundingPurpose: 'operational',
+    actualUsdConsumed: null,
+    actualCreditsConsumed: null,
+    reconciledAt: null,
+    reconciliationSourceKind: null,
+    reconciliationNote: null,
     outputPath: null,
     help: false
   };
@@ -76,6 +83,13 @@ export function parseArgs(argv = process.argv) {
         '--source-kind',
         '--source-path',
         '--operator-note',
+        '--activation-state',
+        '--funding-purpose',
+        '--actual-usd-consumed',
+        '--actual-credits-consumed',
+        '--reconciled-at',
+        '--reconciliation-source-kind',
+        '--reconciliation-note',
         '--output'
       ].includes(token)
     ) {
@@ -94,6 +108,13 @@ export function parseArgs(argv = process.argv) {
       if (token === '--source-kind') options.sourceKind = next;
       if (token === '--source-path') options.sourcePath = next;
       if (token === '--operator-note') options.operatorNote = next;
+      if (token === '--activation-state') options.activationState = next;
+      if (token === '--funding-purpose') options.fundingPurpose = next;
+      if (token === '--actual-usd-consumed') options.actualUsdConsumed = next;
+      if (token === '--actual-credits-consumed') options.actualCreditsConsumed = next;
+      if (token === '--reconciled-at') options.reconciledAt = next;
+      if (token === '--reconciliation-source-kind') options.reconciliationSourceKind = next;
+      if (token === '--reconciliation-note') options.reconciliationNote = next;
       if (token === '--output') options.outputPath = next;
       continue;
     }
@@ -110,6 +131,8 @@ export function parseArgs(argv = process.argv) {
   options.creditsPurchased = toNonNegativeNumber(options.creditsPurchased);
   options.unitPriceUsd = toNonNegativeNumber(options.unitPriceUsd);
   options.prepaidUsd = toNonNegativeNumber(options.prepaidUsd);
+  options.actualUsdConsumed = toNonNegativeNumber(options.actualUsdConsumed);
+  options.actualCreditsConsumed = toNonNegativeNumber(options.actualCreditsConsumed);
   if (!options.help && options.creditsPurchased == null) {
     throw new Error('Missing required option: --credits-purchased <number>.');
   }
@@ -126,6 +149,30 @@ export function parseArgs(argv = process.argv) {
   }
   if (!['operator-invoice', 'billing-export', 'manual-baseline'].includes(normalizeText(options.sourceKind))) {
     throw new Error('source-kind must be operator-invoice, billing-export, or manual-baseline.');
+  }
+  if (!['active', 'hold'].includes(normalizeText(options.activationState))) {
+    throw new Error('activation-state must be active or hold.');
+  }
+  if (!['operational', 'calibration'].includes(normalizeText(options.fundingPurpose))) {
+    throw new Error('funding-purpose must be operational or calibration.');
+  }
+  if (
+    normalizeText(options.reconciliationSourceKind) &&
+    !['operator-observed', 'billing-export', 'manual-reconciliation'].includes(normalizeText(options.reconciliationSourceKind))
+  ) {
+    throw new Error('reconciliation-source-kind must be operator-observed, billing-export, or manual-reconciliation.');
+  }
+  if (
+    (options.actualUsdConsumed != null || options.actualCreditsConsumed != null) &&
+    !normalizeText(options.reconciliationSourceKind)
+  ) {
+    throw new Error('reconciliation-source-kind is required when actual reconciliation values are present.');
+  }
+  if (
+    (options.actualUsdConsumed != null || options.actualCreditsConsumed != null) &&
+    !normalizeText(options.reconciledAt)
+  ) {
+    throw new Error('reconciled-at is required when actual reconciliation values are present.');
   }
 
   return options;
@@ -154,6 +201,18 @@ export function buildAgentCostInvoiceTurn(options, now = new Date()) {
       currency: 'USD',
       prepaidUsd: options.prepaidUsd,
       pricingBasis: normalizeText(options.pricingBasis)
+    },
+    policy: {
+      activationState: normalizeText(options.activationState),
+      fundingPurpose: normalizeText(options.fundingPurpose)
+    },
+    reconciliation: {
+      status: options.actualUsdConsumed != null || options.actualCreditsConsumed != null ? 'actual-observed' : 'baseline-only',
+      actualUsdConsumed: options.actualUsdConsumed,
+      actualCreditsConsumed: options.actualCreditsConsumed,
+      reconciledAt: normalizeText(options.reconciledAt) || null,
+      sourceKind: normalizeText(options.reconciliationSourceKind) || null,
+      note: normalizeText(options.reconciliationNote) || null
     },
     provenance: {
       sourceKind: normalizeText(options.sourceKind),
@@ -189,6 +248,13 @@ function printUsage() {
   console.log('  --source-kind <kind>            operator-invoice | billing-export | manual-baseline.');
   console.log('  --source-path <path>            Optional private/local evidence path.');
   console.log('  --operator-note <text>          Optional note carried into the normalized receipt.');
+  console.log('  --activation-state <state>      active | hold (default: active).');
+  console.log('  --funding-purpose <purpose>     operational | calibration (default: operational).');
+  console.log('  --actual-usd-consumed <number>  Optional reconciled USD consumed for this invoice turn.');
+  console.log('  --actual-credits-consumed <n>   Optional reconciled credits consumed for this invoice turn.');
+  console.log('  --reconciled-at <date-time>     Required when reconciled values are present.');
+  console.log('  --reconciliation-source-kind    operator-observed | billing-export | manual-reconciliation.');
+  console.log('  --reconciliation-note <text>    Optional reconciliation note.');
   console.log('  --invoice-turn-id <value>       Optional explicit invoice turn id.');
   console.log('  --output <path>                 Output path override.');
   console.log('  -h, --help                      Show help and exit.');

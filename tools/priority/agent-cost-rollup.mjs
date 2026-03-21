@@ -8,6 +8,7 @@ export const TURN_SCHEMA = 'priority/agent-cost-turn@v1';
 export const INVOICE_TURN_SCHEMA = 'priority/agent-cost-invoice-turn@v1';
 export const REPORT_SCHEMA = 'priority/agent-cost-rollup@v1';
 export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'cost', 'agent-cost-rollup.json');
+export const DEFAULT_INVOICE_TURN_DIR = path.join('tests', 'results', '_agent', 'cost', 'invoice-turns');
 
 function normalizeText(value) {
   if (value == null) {
@@ -43,6 +44,15 @@ function roundUsd(value) {
     return null;
   }
   return Number(parsed.toFixed(6));
+}
+
+function normalizeDateTime(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? normalized : null;
 }
 
 function safeRelative(filePath) {
@@ -328,9 +338,144 @@ function normalizeInvoiceTurnReceipt(input) {
       unitPriceUsd,
       prepaidUsd,
       pricingBasis: normalizeText(payload?.billing?.pricingBasis) || null,
+      activationState: normalizeText(payload?.policy?.activationState) || 'active',
+      fundingPurpose: normalizeText(payload?.policy?.fundingPurpose) || 'operational',
+      reconciliationStatus: normalizeText(payload?.reconciliation?.status) || 'baseline-only',
+      actualUsdConsumed: toNonNegativeNumber(payload?.reconciliation?.actualUsdConsumed),
+      actualCreditsConsumed: toNonNegativeNumber(payload?.reconciliation?.actualCreditsConsumed),
+      reconciledAt: normalizeDateTime(payload?.reconciliation?.reconciledAt),
+      reconciliationSourceKind: normalizeText(payload?.reconciliation?.sourceKind) || null,
+      reconciliationNote: normalizeText(payload?.reconciliation?.note) || null,
       sourceKind: normalizeText(payload?.provenance?.sourceKind) || null,
       sourcePathEvidence: normalizeText(payload?.provenance?.sourcePath) || null,
       operatorNote: normalizeText(payload?.provenance?.operatorNote) || null
+    }
+  };
+}
+
+function discoverInvoiceTurnPaths() {
+  const invoiceDir = path.resolve(DEFAULT_INVOICE_TURN_DIR);
+  if (!fs.existsSync(invoiceDir)) {
+    return [];
+  }
+  return fs
+    .readdirSync(invoiceDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
+    .map((entry) => path.join(invoiceDir, entry.name))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function toTimestamp(value) {
+  const normalized = normalizeDateTime(value);
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function determineSelectionTimestamp(turns = []) {
+  const candidates = turns
+    .flatMap((turn) => [toTimestamp(turn?.provenance?.usageObservedAt), toTimestamp(turn?.generatedAt)])
+    .filter((value) => value != null);
+  if (candidates.length === 0) {
+    return Date.now();
+  }
+  return Math.max(...candidates);
+}
+
+function selectInvoiceTurn(invoiceTurns, turns, explicitInvoiceTurnId = null) {
+  const validInvoiceTurns = invoiceTurns.filter((entry) => entry?.status === 'valid').map((entry) => entry.invoiceTurn);
+  const autoSelectableInvoiceTurns = validInvoiceTurns.filter((entry) => normalizeText(entry.activationState) !== 'hold');
+  const selectionTimestamp = determineSelectionTimestamp(turns);
+  const selectionObservedAt = new Date(selectionTimestamp).toISOString();
+
+  if (validInvoiceTurns.length === 0) {
+    return {
+      selectedInvoiceTurn: null,
+      selection: {
+        strategy: 'none',
+        explicitInvoiceTurnId: normalizeText(explicitInvoiceTurnId) || null,
+        selectionObservedAt,
+        candidateCount: 0,
+        matchingCandidateCount: 0,
+        candidateInvoiceTurnIds: [],
+        selectedInvoiceTurnId: null
+      }
+    };
+  }
+
+  if (normalizeText(explicitInvoiceTurnId)) {
+    const selectedInvoiceTurn = validInvoiceTurns.find((entry) => entry.invoiceTurnId === normalizeText(explicitInvoiceTurnId)) ?? null;
+    return {
+      selectedInvoiceTurn,
+      selection: {
+        strategy: selectedInvoiceTurn ? 'explicit-id' : 'explicit-id-missing',
+        explicitInvoiceTurnId: normalizeText(explicitInvoiceTurnId),
+        selectionObservedAt,
+        candidateCount: validInvoiceTurns.length,
+        matchingCandidateCount: selectedInvoiceTurn ? 1 : 0,
+        candidateInvoiceTurnIds: validInvoiceTurns.map((entry) => entry.invoiceTurnId).filter(Boolean).sort(),
+        selectedInvoiceTurnId: selectedInvoiceTurn?.invoiceTurnId ?? null
+      }
+    };
+  }
+
+  if (autoSelectableInvoiceTurns.length === 0) {
+    return {
+      selectedInvoiceTurn: null,
+      selection: {
+        strategy: 'none',
+        explicitInvoiceTurnId: null,
+        selectionObservedAt,
+        candidateCount: validInvoiceTurns.length,
+        matchingCandidateCount: 0,
+        candidateInvoiceTurnIds: validInvoiceTurns.map((entry) => entry.invoiceTurnId).filter(Boolean).sort(),
+        selectedInvoiceTurnId: null
+      }
+    };
+  }
+
+  if (autoSelectableInvoiceTurns.length === 1) {
+    return {
+      selectedInvoiceTurn: autoSelectableInvoiceTurns[0],
+      selection: {
+        strategy: 'single-candidate',
+        explicitInvoiceTurnId: null,
+        selectionObservedAt,
+        candidateCount: validInvoiceTurns.length,
+        matchingCandidateCount: 1,
+        candidateInvoiceTurnIds: validInvoiceTurns.map((entry) => entry.invoiceTurnId).filter(Boolean).sort(),
+        selectedInvoiceTurnId: autoSelectableInvoiceTurns[0].invoiceTurnId ?? null
+      }
+    };
+  }
+
+  const activeCandidates = autoSelectableInvoiceTurns.filter((entry) => {
+    const openedAt = toTimestamp(entry.openedAt);
+    const closedAt = toTimestamp(entry.closedAt);
+    return openedAt != null && openedAt <= selectionTimestamp && (closedAt == null || selectionTimestamp <= closedAt);
+  });
+  const candidatesToRank = activeCandidates.length > 0 ? activeCandidates : autoSelectableInvoiceTurns;
+  const selectedInvoiceTurn = [...candidatesToRank].sort((left, right) => {
+    const leftOpenedAt = toTimestamp(left.openedAt) ?? 0;
+    const rightOpenedAt = toTimestamp(right.openedAt) ?? 0;
+    if (rightOpenedAt !== leftOpenedAt) {
+      return rightOpenedAt - leftOpenedAt;
+    }
+    return (right.invoiceTurnId || '').localeCompare(left.invoiceTurnId || '');
+  })[0] ?? null;
+
+  return {
+    selectedInvoiceTurn,
+    selection: {
+      strategy: activeCandidates.length > 0 ? 'active-window-latest-openedAt' : 'latest-openedAt-fallback',
+      explicitInvoiceTurnId: null,
+      selectionObservedAt,
+      candidateCount: validInvoiceTurns.length,
+      matchingCandidateCount: activeCandidates.length > 0 ? activeCandidates.length : validInvoiceTurns.length,
+      candidateInvoiceTurnIds: validInvoiceTurns.map((entry) => entry.invoiceTurnId).filter(Boolean).sort(),
+      selectedInvoiceTurnId: selectedInvoiceTurn?.invoiceTurnId ?? null
     }
   };
 }
@@ -359,7 +504,8 @@ export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
     turnReportPaths: [],
-    invoiceTurnPath: null,
+    invoiceTurnPaths: [],
+    invoiceTurnId: null,
     outputPath: DEFAULT_OUTPUT_PATH,
     repo: null,
     failOnInvalidInputs: true,
@@ -382,7 +528,7 @@ export function parseArgs(argv = process.argv) {
       options.failOnInvalidInputs = true;
       continue;
     }
-    if (token === '--turn-report' || token === '--invoice-turn' || token === '--output' || token === '--repo') {
+    if (token === '--turn-report' || token === '--invoice-turn' || token === '--invoice-turn-id' || token === '--output' || token === '--repo') {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
       }
@@ -390,7 +536,9 @@ export function parseArgs(argv = process.argv) {
       if (token === '--turn-report') {
         options.turnReportPaths.push(next);
       } else if (token === '--invoice-turn') {
-        options.invoiceTurnPath = next;
+        options.invoiceTurnPaths.push(next);
+      } else if (token === '--invoice-turn-id') {
+        options.invoiceTurnId = next;
       } else if (token === '--output') {
         options.outputPath = next;
       } else {
@@ -403,6 +551,9 @@ export function parseArgs(argv = process.argv) {
 
   if (!options.help && options.turnReportPaths.length === 0) {
     throw new Error('Missing required option: --turn-report <path>.');
+  }
+  if (!options.help && options.invoiceTurnPaths.length === 0) {
+    options.invoiceTurnPaths = discoverInvoiceTurnPaths();
   }
   return options;
 }
@@ -448,20 +599,37 @@ export function runAgentCostRollup(options) {
   const repo = resolveRepoSlug(options.repo);
   const turnInputs = options.turnReportPaths.map((filePath) => loadInputFile(filePath));
   const normalizedTurns = turnInputs.map((input) => normalizeTurnReceipt(input));
-  const invoiceTurnInput = options.invoiceTurnPath ? loadInputFile(options.invoiceTurnPath) : null;
-  const normalizedInvoiceTurn = normalizeInvoiceTurnReceipt(invoiceTurnInput);
+  const invoiceTurnInputs = ensureArray(options.invoiceTurnPaths).map((filePath) => loadInputFile(filePath));
+  const normalizedInvoiceTurns = invoiceTurnInputs.map((input) => normalizeInvoiceTurnReceipt(input));
   const evaluation = evaluateAgentCostRollup({ turnInputs, normalizedTurns });
   const invoiceTurnBlockers = [];
-  if (invoiceTurnInput?.exists === false) {
-    invoiceTurnBlockers.push(createBlocker('invoice-turn-missing', 'Invoice turn report is missing.', invoiceTurnInput.path));
-  } else if (invoiceTurnInput?.error) {
-    invoiceTurnBlockers.push(
-      createBlocker('invoice-turn-unreadable', `Invoice turn report could not be parsed: ${invoiceTurnInput.error}`, invoiceTurnInput.path)
-    );
+  for (const invoiceTurnInput of invoiceTurnInputs) {
+    if (invoiceTurnInput?.exists === false) {
+      invoiceTurnBlockers.push(createBlocker('invoice-turn-missing', 'Invoice turn report is missing.', invoiceTurnInput.path));
+      continue;
+    }
+    if (invoiceTurnInput?.error) {
+      invoiceTurnBlockers.push(
+        createBlocker('invoice-turn-unreadable', `Invoice turn report could not be parsed: ${invoiceTurnInput.error}`, invoiceTurnInput.path)
+      );
+    }
   }
-  invoiceTurnBlockers.push(...ensureArray(normalizedInvoiceTurn.blockers));
+  for (const normalizedInvoiceTurn of normalizedInvoiceTurns) {
+    invoiceTurnBlockers.push(...ensureArray(normalizedInvoiceTurn.blockers));
+  }
 
   const validTurns = evaluation.validTurns;
+  const invoiceTurnSelection = selectInvoiceTurn(normalizedInvoiceTurns, validTurns, options.invoiceTurnId);
+  const invoiceTurn = invoiceTurnSelection.selectedInvoiceTurn;
+  if (normalizeText(options.invoiceTurnId) && !invoiceTurn) {
+    invoiceTurnBlockers.push(
+      createBlocker(
+        'invoice-turn-selection-missing',
+        `Explicit invoice turn ${normalizeText(options.invoiceTurnId)} could not be resolved from the available receipts.`,
+        null
+      )
+    );
+  }
   const totalUsd = sum(validTurns.map((entry) => entry.amountUsd));
   const exactUsd = sum(evaluation.exactTurns.map((entry) => entry.amountUsd));
   const estimatedUsd = sum(evaluation.estimatedTurns.map((entry) => entry.amountUsd));
@@ -536,7 +704,6 @@ export function runAgentCostRollup(options) {
     }
   }
 
-  const invoiceTurn = normalizedInvoiceTurn.status === 'valid' ? normalizedInvoiceTurn.invoiceTurn : null;
   const estimatedCreditsConsumed =
     invoiceTurn && invoiceTurn.unitPriceUsd > 0 ? roundUsd(totalUsd / invoiceTurn.unitPriceUsd) : null;
   const creditsRemaining =
@@ -547,6 +714,16 @@ export function runAgentCostRollup(options) {
     invoiceTurn ? roundUsd(Math.max(invoiceTurn.prepaidUsd - totalUsd, 0)) : null;
   const prepaidUsdConsumedRatio =
     invoiceTurn && invoiceTurn.prepaidUsd > 0 ? roundUsd(totalUsd / invoiceTurn.prepaidUsd) : null;
+  const actualUsdConsumed = invoiceTurn?.actualUsdConsumed ?? null;
+  const actualCreditsConsumed = invoiceTurn?.actualCreditsConsumed ?? null;
+  const heuristicUsdDelta =
+    actualUsdConsumed != null ? roundUsd(totalUsd - actualUsdConsumed) : null;
+  const heuristicUsdDeltaRatio =
+    actualUsdConsumed != null && actualUsdConsumed > 0 ? roundUsd((totalUsd - actualUsdConsumed) / actualUsdConsumed) : null;
+  const heuristicCreditsDelta =
+    actualCreditsConsumed != null && estimatedCreditsConsumed != null
+      ? roundUsd(estimatedCreditsConsumed - actualCreditsConsumed)
+      : null;
 
   const report = {
     schema: REPORT_SCHEMA,
@@ -558,13 +735,13 @@ export function runAgentCostRollup(options) {
         exists: entry.exists,
         error: entry.error ?? null
       })),
-      invoiceTurnPath: invoiceTurnInput
-        ? {
-            path: safeRelative(invoiceTurnInput.path),
-            exists: invoiceTurnInput.exists,
-            error: invoiceTurnInput.error ?? null
-          }
-        : null
+      invoiceTurnPaths: invoiceTurnInputs.map((entry) => ({
+        path: safeRelative(entry.path),
+        exists: entry.exists,
+        error: entry.error ?? null
+      })),
+      selectedInvoiceTurnId: invoiceTurnSelection.selection.selectedInvoiceTurnId,
+      explicitInvoiceTurnId: normalizeText(options.invoiceTurnId) || null
     },
     turns: validTurns,
     summary: {
@@ -590,7 +767,12 @@ export function runAgentCostRollup(options) {
         estimatedCreditsConsumed,
         creditsRemaining,
         estimatedPrepaidUsdRemaining,
-        prepaidUsdConsumedRatio
+        prepaidUsdConsumedRatio,
+        actualUsdConsumed,
+        actualCreditsConsumed,
+        heuristicUsdDelta,
+        heuristicUsdDeltaRatio,
+        heuristicCreditsDelta
       },
       provenance: {
         sessionIds: [...sessionIds].sort(),
@@ -601,19 +783,33 @@ export function runAgentCostRollup(options) {
         rateCards: [...rateCards.values()].sort((left, right) =>
           `${left.id || ''}|${left.source || ''}`.localeCompare(`${right.id || ''}|${right.source || ''}`)
         ),
-        invoiceTurn
+        invoiceTurn,
+        invoiceTurnSelection: invoiceTurnSelection.selection,
+        invoiceTurns: normalizedInvoiceTurns
+          .filter((entry) => entry.status === 'valid')
+          .map((entry) => entry.invoiceTurn)
+          .sort((left, right) => (left.invoiceTurnId || '').localeCompare(right.invoiceTurnId || ''))
       }
     },
     billingWindow: invoiceTurn
       ? {
-          invoiceTurnId: invoiceTurn.invoiceTurnId,
-          invoiceId: invoiceTurn.invoiceId,
-          openedAt: invoiceTurn.openedAt,
-          closedAt: invoiceTurn.closedAt,
-          pricingBasis: invoiceTurn.pricingBasis,
-          sourceKind: invoiceTurn.sourceKind,
-          sourcePathEvidence: invoiceTurn.sourcePathEvidence,
-          operatorNote: invoiceTurn.operatorNote
+        invoiceTurnId: invoiceTurn.invoiceTurnId,
+        invoiceId: invoiceTurn.invoiceId,
+        openedAt: invoiceTurn.openedAt,
+        closedAt: invoiceTurn.closedAt,
+        pricingBasis: invoiceTurn.pricingBasis,
+        activationState: invoiceTurn.activationState,
+        fundingPurpose: invoiceTurn.fundingPurpose,
+        sourceKind: invoiceTurn.sourceKind,
+        sourcePathEvidence: invoiceTurn.sourcePathEvidence,
+        operatorNote: invoiceTurn.operatorNote,
+          reconciliationStatus: invoiceTurn.reconciliationStatus,
+          actualUsdConsumed: invoiceTurn.actualUsdConsumed,
+          actualCreditsConsumed: invoiceTurn.actualCreditsConsumed,
+          reconciledAt: invoiceTurn.reconciledAt,
+          reconciliationSourceKind: invoiceTurn.reconciliationSourceKind,
+          reconciliationNote: invoiceTurn.reconciliationNote,
+          selection: invoiceTurnSelection.selection
         }
       : null,
     breakdown: {
@@ -644,7 +840,8 @@ function printUsage() {
   console.log('');
   console.log('Options:');
   console.log('  --turn-report <path>            Agent cost turn receipt path (repeatable, required).');
-  console.log('  --invoice-turn <path>           Optional invoice turn baseline receipt path.');
+  console.log(`  --invoice-turn <path>           Optional invoice turn receipt path (repeatable; auto-discovers ${DEFAULT_INVOICE_TURN_DIR} when omitted).`);
+  console.log('  --invoice-turn-id <value>       Optional explicit invoice turn selection override.');
   console.log(`  --output <path>                 Output path (default: ${DEFAULT_OUTPUT_PATH}).`);
   console.log('  --repo <owner/repo>             Repository slug override.');
   console.log('  --fail-on-invalid-inputs        Exit non-zero when input receipts are invalid (default true).');

@@ -241,6 +241,8 @@ The smallest defensible first implementation is:
   - `tools/priority/__fixtures__/agent-cost-rollup/live-turn-estimated.json`
   - `tools/priority/__fixtures__/agent-cost-rollup/background-turn-exact.json`
   - `tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline.json`
+  - `tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-next-baseline.json`
+  - `tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline-reconciled.json`
 
 This first slice intentionally separates:
 
@@ -259,12 +261,33 @@ Use the helpers like this:
 - `node tools/npm/run-script.mjs priority:cost:turn -- ...`
 - `node tools/npm/run-script.mjs priority:cost:rollup -- ...`
 
+The cost layer now supports overlapping invoice turns without deleting old
+receipts:
+
+- multiple invoice-turn receipts may coexist under
+  `tests/results/_agent/cost/invoice-turns/`
+- rollups can auto-discover invoice-turn receipts when `--invoice-turn` is
+  omitted
+- rollups can choose the active invoice turn deterministically from turn timing
+  or accept an explicit `--invoice-turn-id`
+- overlapping prepaid invoices are not treated as additive outcome; the rollup
+  selects one active invoice window instead of turning `$400` plus `$500` on
+  disk into a fake `$900` result
+- invoice turns can be held out of auto-selection with
+  `policy.activationState = hold`; this is the right way to park a one-time
+  calibration funding window on disk without letting it displace the active
+  operational invoice turn
+- invoice-turn receipts may later carry actual observed USD or credits so the
+  rollup can show heuristic drift directly instead of requiring manual
+  spreadsheet comparison
+
 This is the right first boundary because it gives future agents:
 
 - a real accounting epoch (`invoice turn`)
 - per-turn and rollup receipts with explicit provenance
 - a stable place to record model reasoning-effort tiers such as `xhigh`
 - a reconciliation point for the next operator-provided invoice
+- a deterministic path from heuristic spend to actual observed USD
 
 It is still not exact billing truth. Until provider exports are available, use
 the invoice-turn baseline plus explicit `exact` versus `estimated` provenance to

@@ -28,13 +28,15 @@ test('agent cost turn fixtures and rollup report match the checked-in schemas', 
   const validateTurn = ajv.compile(turnSchema);
   const validateRollup = ajv.compile(rollupSchema);
 
-  const invoiceTurnFixture = readJson(path.join(fixtureRoot, 'invoice-turn-baseline.json'));
-  const validInvoiceTurn = validateInvoiceTurn(invoiceTurnFixture);
-  if (!validInvoiceTurn) {
-    const errors = (validateInvoiceTurn.errors || [])
-      .map((entry) => `${entry.instancePath || '(root)'} ${entry.message}`)
-      .join('\n');
-    assert.fail(`Invoice turn fixture failed schema validation:\n${errors}`);
+  for (const fixtureName of ['invoice-turn-baseline.json', 'invoice-turn-next-baseline.json', 'invoice-turn-baseline-reconciled.json']) {
+    const invoiceTurnFixture = readJson(path.join(fixtureRoot, fixtureName));
+    const validInvoiceTurn = validateInvoiceTurn(invoiceTurnFixture);
+    if (!validInvoiceTurn) {
+      const errors = (validateInvoiceTurn.errors || [])
+        .map((entry) => `${entry.instancePath || '(root)'} ${entry.message}`)
+        .join('\n');
+      assert.fail(`Invoice turn fixture ${fixtureName} failed schema validation:\n${errors}`);
+    }
   }
 
   for (const fixtureName of ['live-turn-estimated.json', 'background-turn-exact.json']) {
@@ -55,7 +57,7 @@ test('agent cost turn fixtures and rollup report match the checked-in schemas', 
       path.join(fixtureRoot, 'live-turn-estimated.json'),
       path.join(fixtureRoot, 'background-turn-exact.json')
     ],
-    invoiceTurnPath: path.join(fixtureRoot, 'invoice-turn-baseline.json'),
+    invoiceTurnPaths: [path.join(fixtureRoot, 'invoice-turn-baseline.json')],
     outputPath: path.join(tmpDir, 'agent-cost-rollup.json')
   });
 
