@@ -3,6 +3,7 @@
   "schemaVersion": "1.0.0",
   "branchClassBindings": {
     "develop": "upstream-integration",
+    "downstream/develop": "downstream-consumer-proving-rail",
     "main": "upstream-release",
     "release/*": "upstream-release-prep"
   },
@@ -18,6 +19,9 @@
       "agent-review-policy",
       "hook-parity",
       "commit-integrity"
+    ],
+    "downstream-consumer-proving-rail": [
+      "Downstream Promotion / downstream-promotion"
     ],
     "upstream-release": [
       "lint",
@@ -49,6 +53,9 @@
       "agent-review-policy",
       "hook-parity",
       "commit-integrity"
+    ],
+    "downstream/develop": [
+      "Downstream Promotion / downstream-promotion"
     ],
     "main": [
       "lint",

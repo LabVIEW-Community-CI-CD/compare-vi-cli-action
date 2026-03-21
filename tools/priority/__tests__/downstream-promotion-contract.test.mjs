@@ -43,3 +43,42 @@ test('package scripts and runbook expose downstream promotion manifest and score
   assert.match(runbook, /replay/i);
   assert.match(runbook, /downstream-develop-promotion-scorecard\.json/);
 });
+
+test('downstream promotion workflow turns the proving rail into checked-in automation', () => {
+  const workflow = read('.github/workflows/downstream-promotion.yml');
+  assert.match(workflow, /^name: Downstream Promotion$/m);
+  assert.match(workflow, /^\s{2}downstream-promotion:\s*$/m);
+  assert.match(workflow, /^\s{4}name:\s*Downstream Promotion \/ downstream-promotion\s*$/m);
+  assert.match(workflow, /source_sha:/);
+  assert.match(workflow, /comparevi_tools_release:/);
+  assert.match(workflow, /comparevi_history_release:/);
+  assert.match(workflow, /scenario_pack_id:/);
+  assert.match(workflow, /cookiecutter_template_id:/);
+  assert.match(workflow, /Run downstream onboarding feedback harness/);
+  assert.match(workflow, /downstream-onboarding-feedback\.mjs/);
+  assert.match(workflow, /Generate downstream promotion manifest/);
+  assert.match(workflow, /downstream-promotion-manifest\.mjs/);
+  assert.match(workflow, /Build downstream promotion scorecard/);
+  assert.match(workflow, /downstream-promotion-scorecard\.mjs/);
+  assert.match(workflow, /git push origin '\$\{\{ steps\.source\.outputs\.source_sha \}\}:refs\/heads\/downstream\/develop'/);
+});
+
+test('branch required checks and priority policy recognize downstream/develop as a first-class proving rail', () => {
+  const branchPolicy = JSON.parse(read('tools/policy/branch-required-checks.json'));
+  assert.equal(branchPolicy.branchClassBindings['downstream/develop'], 'downstream-consumer-proving-rail');
+  assert.deepEqual(branchPolicy.branchClassRequiredChecks['downstream-consumer-proving-rail'], [
+    'Downstream Promotion / downstream-promotion'
+  ]);
+  assert.deepEqual(branchPolicy.branches['downstream/develop'], ['Downstream Promotion / downstream-promotion']);
+
+  const priorityPolicy = JSON.parse(read('tools/priority/policy.json'));
+  assert.equal(priorityPolicy.branches['downstream/develop'].branch_class_id, 'downstream-consumer-proving-rail');
+  assert.deepEqual(priorityPolicy.branches['downstream/develop'].required_status_checks, [
+    'Downstream Promotion / downstream-promotion'
+  ]);
+  assert.equal(priorityPolicy.rulesets['downstream-develop'].branch_class_id, 'downstream-consumer-proving-rail');
+  assert.deepEqual(priorityPolicy.rulesets['downstream-develop'].includes, ['refs/heads/downstream/develop']);
+  assert.deepEqual(priorityPolicy.rulesets['downstream-develop'].required_status_checks, [
+    'Downstream Promotion / downstream-promotion'
+  ]);
+});
