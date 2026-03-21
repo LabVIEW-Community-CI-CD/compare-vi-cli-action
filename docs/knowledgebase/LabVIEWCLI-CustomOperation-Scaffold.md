@@ -25,10 +25,16 @@ This helper does not promote the NI example into the repository.
 ## Entry points
 
 - Helper: `tools/New-LabVIEWCLICustomOperationWorkspace.ps1`
+- Dedicated `PrintToSingleFileHtml` wrapper:
+  `tools/New-PrintToSingleFileHtmlAuthoringWorkspace.ps1`
 - Receipt schema:
   `docs/schemas/labview-cli-custom-operation-scaffold-v1.schema.json`
+- Dedicated wrapper receipt schema:
+  `docs/schemas/print-to-single-file-html-authoring-workspace-v1.schema.json`
 - Focused test:
   `tests/New-LabVIEWCLICustomOperationWorkspace.Tests.ps1`
+- Dedicated wrapper test:
+  `tests/New-PrintToSingleFileHtmlAuthoringWorkspace.Tests.ps1`
 
 ## Source kinds and default destinations
 
@@ -79,6 +85,13 @@ pwsh -NoLogo -NoProfile -File tools/New-LabVIEWCLICustomOperationWorkspace.ps1 `
   -Force
 ```
 
+Scaffold the dedicated disposable authoring workspace for the repo-owned
+`PrintToSingleFileHtml` payload:
+
+```powershell
+node tools/npm/run-script.mjs history:custom-operation:scaffold:print-single-file
+```
+
 ## Receipt
 
 Successful runs emit `labview-cli-custom-operation-scaffold@v1` with:
@@ -102,4 +115,5 @@ This scaffold is bootstrap only.
 
 It exists so payload-authoring lanes such as `#1619` have a deterministic,
 repeatable workspace bootstrap instead of manual copying from the NI install
-tree.
+tree. The dedicated `PrintToSingleFileHtml` wrapper from `#1621` builds on that
+generic scaffold without changing the underlying bootstrap contract.
