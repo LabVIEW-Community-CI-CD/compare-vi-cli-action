@@ -49,6 +49,7 @@ export const DELIVERY_AGENT_POLICY_SCHEMA = 'priority/delivery-agent-policy@v1';
 export const DELIVERY_AGENT_RUNTIME_STATE_SCHEMA = 'priority/delivery-agent-runtime-state@v1';
 export const DELIVERY_AGENT_LANE_STATE_SCHEMA = 'priority/delivery-agent-lane-state@v1';
 export const READY_VALIDATION_CLEARANCE_SCHEMA = 'priority/ready-validation-clearance@v1';
+export const LIVE_ORCHESTRATOR_LANE_NAME = 'Sagan';
 export const DELIVERY_AGENT_POLICY_RELATIVE_PATH = path.join('tools', 'priority', 'delivery-agent.policy.json');
 export const DELIVERY_AGENT_STATE_FILENAME = 'delivery-agent-state.json';
 export const DELIVERY_AGENT_LANES_DIRNAME = 'delivery-agent-lanes';
@@ -2310,6 +2311,7 @@ function buildWorkerPoolRuntimeState({ policy, laneId, issue, laneLifecycle, pre
     prewarmSlotCount: workerPoolPolicy.prewarmSlotCount,
     releaseWaitingStates: [...workerPoolPolicy.releaseWaitingStates],
     providers: workerPoolPolicy.providers.map((provider) => ({ ...provider })),
+    liveOrchestratorLane: LIVE_ORCHESTRATOR_LANE_NAME,
     slots,
     occupiedSlotCount,
     availableSlotCount,
