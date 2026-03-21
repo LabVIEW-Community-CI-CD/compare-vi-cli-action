@@ -24,12 +24,13 @@
     "pullRequest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["number", "url", "headRefName", "headSha", "selectorSource"],
+      "required": ["number", "url", "headRefName", "headSha", "linkedIssueNumber", "selectorSource"],
       "properties": {
         "number": { "type": ["integer", "null"], "minimum": 1 },
         "url": { "type": ["string", "null"] },
         "headRefName": { "type": ["string", "null"] },
         "headSha": { "type": ["string", "null"] },
+        "linkedIssueNumber": { "type": ["integer", "null"], "minimum": 1 },
         "selectorSource": { "type": ["string", "null"] }
       }
     },

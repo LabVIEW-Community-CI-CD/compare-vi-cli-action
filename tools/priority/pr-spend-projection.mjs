@@ -51,6 +51,23 @@ function normalizeInteger(value) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function normalizeIntegerArray(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  const seen = new Set();
+  const normalized = [];
+  for (const value of values) {
+    const integer = normalizeInteger(value);
+    if (!integer || seen.has(integer)) {
+      continue;
+    }
+    seen.add(integer);
+    normalized.push(integer);
+  }
+  return normalized;
+}
+
 function roundNumber(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -72,6 +89,15 @@ function parseRemoteUrl(url) {
   const [owner, repo] = repoPath.split('/');
   if (!owner || !repo) return null;
   return `${owner}/${repo.replace(/\.git$/i, '')}`;
+}
+
+function extractIssueNumbers(text) {
+  const normalized = normalizeText(text);
+  if (!normalized) {
+    return [];
+  }
+  const matches = [...normalized.matchAll(/#(?<number>\d+)/g)];
+  return normalizeIntegerArray(matches.map((entry) => entry.groups?.number));
 }
 
 function resolveRepoSlug(explicitRepo) {
@@ -185,10 +211,19 @@ function buildMarkdown(report) {
     `- Funding purpose: \`${invoiceTurn?.fundingPurpose ?? 'unknown'}\``,
     `- Activation state: \`${invoiceTurn?.activationState ?? 'unknown'}\``,
     `- Recommendation: \`${summary.recommendation}\``,
+    `- Selector source: \`${report.pullRequest.selectorSource ?? 'rollup-all-turns'}\``,
     '',
     '_This is intermediate PR spend evidence. It is not final billing truth and may remain estimated until reconciliation._',
     ''
   ];
+
+  if (report.pullRequest.linkedIssueNumber) {
+    lines.splice(
+      11,
+      0,
+      `- Linked issue fallback: \`#${report.pullRequest.linkedIssueNumber}\``
+    );
+  }
 
   if (topProviders.length > 0) {
     lines.push('### Provider Breakdown', '');
@@ -289,7 +324,7 @@ function resolvePullRequestContext(repo, prNumber) {
   }
   const result = spawnSync(
     'gh',
-    ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'number,url,headRefName,headRefOid'],
+    ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'number,url,headRefName,headRefOid,title,body'],
     {
       cwd: process.cwd(),
       encoding: 'utf8',
@@ -308,11 +343,16 @@ function resolvePullRequestContext(repo, prNumber) {
   }
 
   const payload = JSON.parse(result.stdout ?? '{}');
+  const linkedIssueNumbers = normalizeIntegerArray([
+    ...extractIssueNumbers(payload?.title),
+    ...extractIssueNumbers(payload?.body)
+  ]);
   return {
     number: normalizeInteger(payload?.number) ?? prNumber,
     url: normalizeOptionalText(payload?.url),
     headRefName: normalizeOptionalText(payload?.headRefName),
     headSha: normalizeOptionalText(payload?.headRefOid),
+    linkedIssueNumber: linkedIssueNumbers[0] ?? null,
     selectorSource: 'github-pr-head-ref'
   };
 }
@@ -472,7 +512,7 @@ export function evaluatePrSpendProjection({ costRollup, repo, prContext = null }
     );
   }
 
-  const selectedTurns =
+  let selectedTurns =
     prContext?.headRefName
       ? rollupTurns.filter(
           (turn) =>
@@ -480,12 +520,26 @@ export function evaluatePrSpendProjection({ costRollup, repo, prContext = null }
             normalizeText(turn?.laneBranch) === prContext.headRefName
         )
       : rollupTurns;
+  let selectorSource = prContext?.selectorSource ?? (prContext ? 'manual' : 'rollup-all-turns');
+
+  if (
+    prContext?.headRefName &&
+    selectedTurns.length === 0 &&
+    normalizeInteger(prContext?.linkedIssueNumber)
+  ) {
+    selectedTurns = rollupTurns.filter(
+      (turn) => normalizeInteger(turn?.issueNumber) === normalizeInteger(prContext.linkedIssueNumber)
+    );
+    if (selectedTurns.length > 0) {
+      selectorSource = 'github-pr-linked-issue-fallback';
+    }
+  }
 
   if (prContext?.headRefName && selectedTurns.length === 0) {
     blockers.push(
       createBlocker(
         'pr-head-ref-no-matching-turns',
-        `No cost turns matched PR head ref '${prContext.headRefName}'.`
+        `No cost turns matched PR head ref '${prContext.headRefName}' or linked issue fallback.`
       )
     );
   }
@@ -538,7 +592,8 @@ export function evaluatePrSpendProjection({ costRollup, repo, prContext = null }
       url: prContext?.url ?? null,
       headRefName: prContext?.headRefName ?? null,
       headSha: prContext?.headSha ?? null,
-      selectorSource: prContext?.selectorSource ?? (prContext ? 'manual' : 'rollup-all-turns')
+      linkedIssueNumber: normalizeInteger(prContext?.linkedIssueNumber),
+      selectorSource
     },
     summary: {
       status: blockers.length > 0 ? 'blocked' : 'pass',
