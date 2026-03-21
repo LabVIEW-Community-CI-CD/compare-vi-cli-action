@@ -135,6 +135,39 @@ function buildTurnEvidence(turn = {}) {
   };
 }
 
+function buildOperatorSteeringEvidence(operatorSteering = {}) {
+  const events = Array.isArray(operatorSteering?.events) ? operatorSteering.events : [];
+  return events.map((event) => ({
+    issueNumber: coerceNonNegativeInteger(event.issueNumber),
+    eventKey: normalizeText(event.eventKey) || null,
+    steeringKind: normalizeText(event.steeringKind) || null,
+    triggerKind: normalizeText(event.triggerKind) || null,
+    observedAt: normalizeText(event.observedAt) || normalizeText(event.generatedAt) || null,
+    invoiceTurnId: normalizeText(event.invoiceTurnId) || null
+  }));
+}
+
+function resolveOperatorSteeringEvent(event = {}) {
+  const raw = normalizeText(event?.observedAt);
+  if (!raw) return { iso: null, ms: null };
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return { iso: null, ms: null };
+  return { iso: new Date(ms).toISOString(), ms };
+}
+
+function extractGapOperatorSteeringEvidence(costRollup = null, startedAtMs = null, endedAtMs = null) {
+  const operatorSteeringEvents = buildOperatorSteeringEvidence(costRollup?.operatorSteering);
+  const matchingEvents = operatorSteeringEvents.filter((event) => {
+    const observed = resolveOperatorSteeringEvent(event);
+    return observed.ms != null && startedAtMs != null && endedAtMs != null && observed.ms >= startedAtMs && observed.ms <= endedAtMs;
+  });
+  return {
+    totalEventCount: operatorSteeringEvents.length,
+    matchingEventCount: matchingEvents.length,
+    matchingEvents
+  };
+}
+
 function extractThroughputEvidence(throughputScorecard = null) {
   const reasons = Array.isArray(throughputScorecard?.summary?.reasons)
     ? throughputScorecard.summary.reasons.map((entry) => normalizeText(entry)).filter(Boolean)
@@ -202,6 +235,10 @@ function extractFundedThroughputEvidence({ costRollup = null, throughputScorecar
     coerceNonNegativeInteger(throughputScorecard?.concurrentLanes?.activeLaneCount) ??
     coerceNonNegativeInteger(throughputScorecard?.summary?.metrics?.concurrentLaneActiveCount) ??
     0;
+  const operatorSteeringEventCount =
+    coerceNonNegativeInteger(costRollup?.operatorSteering?.metrics?.totalEventCount) ??
+    coerceNonNegativeInteger(costRollup?.summary?.metrics?.operatorSteeringEventCount) ??
+    0;
   const laneMinutesAllocated = roundMetric(activeLaneCount * Math.max(observedMinutes, 0));
 
   const perDollar = fundedUsd != null && fundedUsd > 0
@@ -227,11 +264,13 @@ function extractFundedThroughputEvidence({ costRollup = null, throughputScorecar
       promotionEvidenceCount,
       laneMinutesAllocated,
       hostedWaitEscapeCount,
+      operatorSteeringEventCount,
       validatedPullRequestsPerFundedDollar: perDollar(validatedPullRequestCount),
       closedIssuesPerFundedDollar: perDollar(closedIssueCount),
       promotionEvidencePerFundedDollar: perDollar(promotionEvidenceCount),
       laneMinutesAllocatedPerFundedDollar: perDollar(laneMinutesAllocated),
-      hostedWaitEscapesPerFundedDollar: perDollar(hostedWaitEscapeCount)
+      hostedWaitEscapesPerFundedDollar: perDollar(hostedWaitEscapeCount),
+      operatorSteeringEventsPerFundedDollar: perDollar(operatorSteeringEventCount)
     },
     provenance: {
       costRollup: normalizeInputRef(inputPaths.costRollupPath),
@@ -243,7 +282,19 @@ function extractFundedThroughputEvidence({ costRollup = null, throughputScorecar
   };
 }
 
-function classifyGap(previousTurn, nextTurn, evidence) {
+function classifyGap(previousTurn, nextTurn, evidence, operatorSteeringEvidence = null) {
+  if ((operatorSteeringEvidence?.matchingEventCount ?? 0) > 0) {
+    return {
+      classification: 'operator-steering',
+      trackingIssueNumber:
+        operatorSteeringEvidence.matchingEvents
+          .map((event) => coerceNonNegativeInteger(event.issueNumber))
+          .find((value) => value != null) ??
+        coerceNonNegativeInteger(nextTurn?.issueNumber) ??
+        coerceNonNegativeInteger(previousTurn?.issueNumber) ??
+        null
+    };
+  }
   if (!evidence.available) {
     return {
       classification: 'insufficient-evidence',
@@ -303,11 +354,11 @@ function classifyGap(previousTurn, nextTurn, evidence) {
   };
 }
 
-function buildGap(previousTurn, nextTurn, evidence) {
+function buildGap(previousTurn, nextTurn, evidence, operatorSteeringEvidence) {
   const startedAt = resolveTurnEvent(previousTurn);
   const endedAt = resolveTurnEvent(nextTurn);
   const durationMinutes = roundMetric((endedAt.ms - startedAt.ms) / 60000);
-  const classification = classifyGap(previousTurn, nextTurn, evidence);
+  const classification = classifyGap(previousTurn, nextTurn, evidence, operatorSteeringEvidence);
 
   return {
     startedAt: startedAt.iso,
@@ -323,7 +374,11 @@ function buildGap(previousTurn, nextTurn, evidence) {
       concurrentLaneActiveCount: evidence.concurrentLaneActiveCount,
       concurrentLaneDeferredCount: evidence.concurrentLaneDeferredCount,
       hostedWaitEscapeCount: evidence.hostedWaitEscapeCount,
-      throughputReasons: evidence.throughputReasons
+      throughputReasons: evidence.throughputReasons,
+      operatorSteeringEventCount: operatorSteeringEvidence?.matchingEventCount ?? 0,
+      operatorSteeringKinds: Array.from(new Set((operatorSteeringEvidence?.matchingEvents ?? []).map((event) => event.steeringKind).filter(Boolean))),
+      operatorSteeringTriggerKinds: Array.from(new Set((operatorSteeringEvidence?.matchingEvents ?? []).map((event) => event.triggerKind).filter(Boolean))),
+      operatorSteeringInvoiceTurnIds: Array.from(new Set((operatorSteeringEvidence?.matchingEvents ?? []).map((event) => event.invoiceTurnId).filter(Boolean)))
     }
   };
 }
@@ -395,13 +450,15 @@ export function buildAgentSpendGapSlo({
     const nextTurn = orderedTurns[index];
     const durationMinutes = (nextTurn.event.ms - previousTurn.event.ms) / 60000;
     if (durationMinutes >= thresholdMinutes) {
-      gaps.push(buildGap(previousTurn.turn, nextTurn.turn, throughputEvidence));
+      const operatorSteeringEvidence = extractGapOperatorSteeringEvidence(costRollup, previousTurn.event.ms, nextTurn.event.ms);
+      gaps.push(buildGap(previousTurn.turn, nextTurn.turn, throughputEvidence, operatorSteeringEvidence));
     }
   }
 
   const metrics = {
     totalSpendTurns: turns.length,
     totalGapCount: gaps.length,
+    operatorSteeringGapCount: gaps.filter((gap) => gap.classification === 'operator-steering').length,
     optimizationSignalGapCount: gaps.filter((gap) => gap.classification === 'optimization-signal').length,
     trackedGapCount: gaps.filter((gap) => gap.classification === 'tracked-followup').length,
     quietWindowGapCount: gaps.filter((gap) => gap.classification === 'accepted-quiet-window').length,
@@ -419,6 +476,9 @@ export function buildAgentSpendGapSlo({
   }
   if (metrics.totalGapCount === 0) {
     reasons.push('no-spend-gaps-observed');
+  }
+  if (metrics.operatorSteeringGapCount > 0) {
+    reasons.push('operator-steering-gaps-observed');
   }
   if (metrics.optimizationSignalGapCount > 0) {
     reasons.push('optimization-signal-gaps-observed');
@@ -467,7 +527,7 @@ export function buildAgentSpendGapSlo({
     summary: {
       status:
         reasons.some((reason) =>
-          ['cost-rollup-unavailable', 'throughput-scorecard-unavailable', 'optimization-signal-gaps-observed', 'spend-gap-evidence-incomplete', 'funded-throughput-window-unavailable'].includes(reason)
+          ['cost-rollup-unavailable', 'throughput-scorecard-unavailable', 'operator-steering-gaps-observed', 'optimization-signal-gaps-observed', 'spend-gap-evidence-incomplete', 'funded-throughput-window-unavailable'].includes(reason)
         )
           ? 'warn'
           : 'pass',

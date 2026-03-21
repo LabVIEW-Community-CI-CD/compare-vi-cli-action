@@ -8,11 +8,13 @@ export const TURN_SCHEMA = 'priority/agent-cost-turn@v1';
 export const INVOICE_TURN_SCHEMA = 'priority/agent-cost-invoice-turn@v1';
 export const USAGE_EXPORT_SCHEMA = 'priority/agent-cost-usage-export@v1';
 export const ACCOUNT_BALANCE_SCHEMA = 'priority/agent-cost-account-balance@v1';
+export const OPERATOR_STEERING_EVENT_SCHEMA = 'priority/operator-steering-event@v1';
 export const REPORT_SCHEMA = 'priority/agent-cost-rollup@v1';
 export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'cost', 'agent-cost-rollup.json');
 export const DEFAULT_INVOICE_TURN_DIR = path.join('tests', 'results', '_agent', 'cost', 'invoice-turns');
 export const DEFAULT_USAGE_EXPORT_DIR = path.join('tests', 'results', '_agent', 'cost', 'usage-exports');
 export const DEFAULT_ACCOUNT_BALANCE_DIR = path.join('tests', 'results', '_agent', 'cost', 'account-balances');
+export const DEFAULT_OPERATOR_STEERING_EVENT_DIR = path.join('tests', 'results', '_agent', 'runtime', 'operator-steering-events');
 
 function normalizeText(value) {
   if (value == null) {
@@ -543,6 +545,76 @@ function normalizeAccountBalanceReceipt(input) {
   };
 }
 
+function normalizeOperatorSteeringEventReceipt(input) {
+  if (!input) {
+    return {
+      status: 'missing',
+      blockers: []
+    };
+  }
+  const payload = input?.payload;
+  if (!payload || typeof payload !== 'object') {
+    return {
+      status: 'invalid',
+      blockers: [createBlocker('operator-steering-event-unreadable', 'Operator steering event receipt could not be read as JSON.', input.path)]
+    };
+  }
+  if (normalizeText(payload.schema) !== OPERATOR_STEERING_EVENT_SCHEMA) {
+    return {
+      status: 'invalid',
+      blockers: [
+        createBlocker(
+          'operator-steering-event-schema-mismatch',
+          `Operator steering event receipt schema must remain ${OPERATOR_STEERING_EVENT_SCHEMA}.`,
+          input.path
+        )
+      ]
+    };
+  }
+
+  const blockers = [];
+  if (!normalizeText(payload.eventKey)) {
+    blockers.push(createBlocker('operator-steering-event-key-missing', 'Operator steering event eventKey is required.', input.path));
+  }
+  if (!normalizeText(payload.steeringKind)) {
+    blockers.push(createBlocker('operator-steering-kind-missing', 'Operator steering event steeringKind is required.', input.path));
+  }
+  if (!normalizeText(payload.triggerKind)) {
+    blockers.push(createBlocker('operator-steering-trigger-kind-missing', 'Operator steering event triggerKind is required.', input.path));
+  }
+  if (blockers.length > 0) {
+    return {
+      status: 'invalid',
+      blockers
+    };
+  }
+
+  return {
+    status: 'valid',
+    blockers: [],
+    operatorSteeringEvent: {
+      sourcePath: safeRelative(input.path),
+      generatedAt: normalizeDateTime(payload.generatedAt),
+      eventKey: normalizeText(payload.eventKey),
+      steeringKind: normalizeText(payload.steeringKind) || null,
+      triggerKind: normalizeText(payload.triggerKind) || null,
+      repository: normalizeText(payload.repository) || null,
+      issueNumber: toNonNegativeInteger(payload?.issueContext?.issue),
+      observedAt: normalizeDateTime(payload?.issueContext?.observedAt) || normalizeDateTime(payload.generatedAt),
+      continuityReferenceAt: normalizeDateTime(payload?.continuity?.continuityReferenceAt),
+      activeLaneIssue: toNonNegativeInteger(payload?.continuity?.turnBoundary?.activeLaneIssue),
+      operatorTurnEndWouldCreateIdleGap: payload?.continuity?.turnBoundary?.operatorTurnEndWouldCreateIdleGap === true,
+      fundingWindowStatus: normalizeText(payload?.fundingWindow?.status) || null,
+      fundingWindowPath: normalizeText(payload?.fundingWindow?.path) || null,
+      invoiceTurnId: normalizeText(payload?.fundingWindow?.invoiceTurnId) || null,
+      fundingPurpose: normalizeText(payload?.fundingWindow?.fundingPurpose) || null,
+      activationState: normalizeText(payload?.fundingWindow?.activationState) || null,
+      actor: normalizeText(payload?.provenance?.actor) || null,
+      sessionName: normalizeText(payload?.provenance?.sessionName) || null
+    }
+  };
+}
+
 function toTimestamp(value) {
   const normalized = normalizeDateTime(value);
   if (!normalized) {
@@ -735,6 +807,7 @@ export function parseArgs(argv = process.argv) {
     invoiceTurnPaths: [],
     usageExportPaths: [],
     accountBalancePaths: [],
+    operatorSteeringEventPaths: [],
     invoiceTurnId: null,
     outputPath: DEFAULT_OUTPUT_PATH,
     repo: null,
@@ -763,6 +836,7 @@ export function parseArgs(argv = process.argv) {
       token === '--invoice-turn' ||
       token === '--usage-export' ||
       token === '--account-balance' ||
+      token === '--operator-steering-event' ||
       token === '--invoice-turn-id' ||
       token === '--output' ||
       token === '--repo'
@@ -779,6 +853,8 @@ export function parseArgs(argv = process.argv) {
         options.usageExportPaths.push(next);
       } else if (token === '--account-balance') {
         options.accountBalancePaths.push(next);
+      } else if (token === '--operator-steering-event') {
+        options.operatorSteeringEventPaths.push(next);
       } else if (token === '--invoice-turn-id') {
         options.invoiceTurnId = next;
       } else if (token === '--output') {
@@ -802,6 +878,9 @@ export function parseArgs(argv = process.argv) {
   }
   if (!options.help && options.accountBalancePaths.length === 0) {
     options.accountBalancePaths = discoverJsonPaths(DEFAULT_ACCOUNT_BALANCE_DIR);
+  }
+  if (!options.help && options.operatorSteeringEventPaths.length === 0) {
+    options.operatorSteeringEventPaths = discoverJsonPaths(DEFAULT_OPERATOR_STEERING_EVENT_DIR);
   }
   return options;
 }
@@ -853,10 +932,13 @@ export function runAgentCostRollup(options) {
   const normalizedUsageExports = usageExportInputs.map((input) => normalizeUsageExportReceipt(input));
   const accountBalanceInputs = ensureArray(options.accountBalancePaths).map((filePath) => loadInputFile(filePath));
   const normalizedAccountBalances = accountBalanceInputs.map((input) => normalizeAccountBalanceReceipt(input));
+  const operatorSteeringEventInputs = ensureArray(options.operatorSteeringEventPaths).map((filePath) => loadInputFile(filePath));
+  const normalizedOperatorSteeringEvents = operatorSteeringEventInputs.map((input) => normalizeOperatorSteeringEventReceipt(input));
   const evaluation = evaluateAgentCostRollup({ turnInputs, normalizedTurns });
   const invoiceTurnBlockers = [];
   const usageExportBlockers = [];
   const accountBalanceBlockers = [];
+  const operatorSteeringEventBlockers = [];
   for (const invoiceTurnInput of invoiceTurnInputs) {
     if (invoiceTurnInput?.exists === false) {
       invoiceTurnBlockers.push(createBlocker('invoice-turn-missing', 'Invoice turn report is missing.', invoiceTurnInput.path));
@@ -903,10 +985,41 @@ export function runAgentCostRollup(options) {
   for (const normalizedAccountBalance of normalizedAccountBalances) {
     accountBalanceBlockers.push(...ensureArray(normalizedAccountBalance.blockers));
   }
+  for (const operatorSteeringEventInput of operatorSteeringEventInputs) {
+    if (operatorSteeringEventInput?.exists === false) {
+      operatorSteeringEventBlockers.push(
+        createBlocker('operator-steering-event-missing', 'Operator steering event receipt is missing.', operatorSteeringEventInput.path)
+      );
+      continue;
+    }
+    if (operatorSteeringEventInput?.error) {
+      operatorSteeringEventBlockers.push(
+        createBlocker(
+          'operator-steering-event-unreadable',
+          `Operator steering event receipt could not be parsed: ${operatorSteeringEventInput.error}`,
+          operatorSteeringEventInput.path
+        )
+      );
+    }
+  }
+  for (const normalizedOperatorSteeringEvent of normalizedOperatorSteeringEvents) {
+    operatorSteeringEventBlockers.push(...ensureArray(normalizedOperatorSteeringEvent.blockers));
+  }
 
   const validTurns = evaluation.validTurns;
   const validUsageExports = normalizedUsageExports.filter((entry) => entry.status === 'valid').map((entry) => entry.usageExport);
   const validAccountBalances = normalizedAccountBalances.filter((entry) => entry.status === 'valid').map((entry) => entry.accountBalance);
+  const validOperatorSteeringEvents = normalizedOperatorSteeringEvents
+    .filter((entry) => entry.status === 'valid')
+    .map((entry) => entry.operatorSteeringEvent)
+    .sort((left, right) => {
+      const leftObservedAt = toTimestamp(left.observedAt) ?? toTimestamp(left.generatedAt) ?? 0;
+      const rightObservedAt = toTimestamp(right.observedAt) ?? toTimestamp(right.generatedAt) ?? 0;
+      if (rightObservedAt !== leftObservedAt) {
+        return rightObservedAt - leftObservedAt;
+      }
+      return (right.eventKey || '').localeCompare(left.eventKey || '');
+    });
   const selectedAccountBalance =
     [...validAccountBalances].sort((left, right) => {
       const leftSnapshot = toTimestamp(left.snapshotAt) ?? 0;
@@ -941,6 +1054,12 @@ export function runAgentCostRollup(options) {
   const unsteeredUsd = sum(unsteeredTurns.map((entry) => entry.amountUsd));
   const usageExportCreditsReported = sum(validUsageExports.map((entry) => entry.usageCredits));
   const usageExportQuantityReported = sum(validUsageExports.map((entry) => entry.usageQuantity));
+  const fundingWindowMatchedOperatorSteeringEvents = invoiceTurn
+    ? validOperatorSteeringEvents.filter((entry) => normalizeText(entry.invoiceTurnId) === normalizeText(invoiceTurn.invoiceTurnId))
+    : [];
+  const unmatchedFundingWindowOperatorSteeringEvents = validOperatorSteeringEvents.filter(
+    (entry) => !normalizeText(entry.invoiceTurnId) || normalizeText(entry.invoiceTurnId) !== normalizeText(invoiceTurn?.invoiceTurnId)
+  );
 
   const byProviderCount = new Map();
   const byProviderUsd = new Map();
@@ -967,6 +1086,8 @@ export function runAgentCostRollup(options) {
   const reasoningEfforts = new Set();
   const steeringKinds = new Set();
   const steeringSources = new Set();
+  const operatorSteeringTriggerKinds = new Set();
+  const operatorSteeringIssueNumbers = new Set();
 
   for (const turn of validTurns) {
     incrementCount(byProviderCount, turn.providerId);
@@ -1018,6 +1139,17 @@ export function runAgentCostRollup(options) {
       steeringSources.add(turn.steeringSource);
     }
   }
+  for (const event of validOperatorSteeringEvents) {
+    if (event.steeringKind) {
+      steeringKinds.add(event.steeringKind);
+    }
+    if (event.triggerKind) {
+      operatorSteeringTriggerKinds.add(event.triggerKind);
+    }
+    if (event.issueNumber != null) {
+      operatorSteeringIssueNumbers.add(event.issueNumber);
+    }
+  }
 
   const estimatedCreditsConsumed =
     invoiceTurn && invoiceTurn.unitPriceUsd > 0 ? roundUsd(totalUsd / invoiceTurn.unitPriceUsd) : null;
@@ -1065,23 +1197,28 @@ export function runAgentCostRollup(options) {
         exists: entry.exists,
         error: entry.error ?? null
       })),
+      operatorSteeringEventPaths: operatorSteeringEventInputs.map((entry) => ({
+        path: safeRelative(entry.path),
+        exists: entry.exists,
+        error: entry.error ?? null
+      })),
       selectedInvoiceTurnId: invoiceTurnSelection.selection.selectedInvoiceTurnId,
       explicitInvoiceTurnId: normalizeText(options.invoiceTurnId) || null
     },
     turns: validTurns,
     summary: {
       status:
-        evaluation.blockerCount + invoiceTurnBlockers.length + usageExportBlockers.length + accountBalanceBlockers.length === 0
+        evaluation.blockerCount + invoiceTurnBlockers.length + usageExportBlockers.length + accountBalanceBlockers.length + operatorSteeringEventBlockers.length === 0
           ? evaluation.status
           : 'fail',
       recommendation:
         invoiceTurnBlockers.length > 0
           ? 'repair-invoice-turn-baseline'
-          : usageExportBlockers.length + accountBalanceBlockers.length > 0
+          : usageExportBlockers.length + accountBalanceBlockers.length + operatorSteeringEventBlockers.length > 0
             ? 'repair-input-receipts'
           : evaluation.recommendation,
-      blockerCount: evaluation.blockerCount + invoiceTurnBlockers.length + usageExportBlockers.length + accountBalanceBlockers.length,
-      blockers: [...evaluation.blockers, ...invoiceTurnBlockers, ...usageExportBlockers, ...accountBalanceBlockers],
+      blockerCount: evaluation.blockerCount + invoiceTurnBlockers.length + usageExportBlockers.length + accountBalanceBlockers.length + operatorSteeringEventBlockers.length,
+      blockers: [...evaluation.blockers, ...invoiceTurnBlockers, ...usageExportBlockers, ...accountBalanceBlockers, ...operatorSteeringEventBlockers],
       metrics: {
         totalTurns: validTurns.length,
         exactTurnCount: evaluation.exactTurns.length,
@@ -1110,6 +1247,10 @@ export function runAgentCostRollup(options) {
         usageExportWindowCount: validUsageExports.length,
         usageExportCreditsReported,
         usageExportQuantityReported,
+        operatorSteeringEventCount: validOperatorSteeringEvents.length,
+        operatorSteeringFundingWindowMatchedCount: fundingWindowMatchedOperatorSteeringEvents.length,
+        operatorSteeringFundingWindowUnmatchedCount: unmatchedFundingWindowOperatorSteeringEvents.length,
+        operatorSteeringIssueCount: operatorSteeringIssueNumbers.size,
         accountBalanceTotalCredits: selectedAccountBalance?.totalCredits ?? null,
         accountBalanceUsedCredits: selectedAccountBalance?.usedCredits ?? null,
         accountBalanceRemainingCredits: selectedAccountBalance?.remainingCredits ?? null
@@ -1122,6 +1263,7 @@ export function runAgentCostRollup(options) {
         reasoningEfforts: [...reasoningEfforts].sort(),
         steeringKinds: [...steeringKinds].sort(),
         steeringSources: [...steeringSources].sort(),
+        operatorSteeringTriggerKinds: [...operatorSteeringTriggerKinds].sort(),
         rateCards: [...rateCards.values()].sort((left, right) =>
           `${left.id || ''}|${left.source || ''}`.localeCompare(`${right.id || ''}|${right.source || ''}`)
         ),
@@ -1134,7 +1276,8 @@ export function runAgentCostRollup(options) {
         usageExports: validUsageExports.sort((left, right) =>
           `${left.startDate || ''}|${left.endDate || ''}`.localeCompare(`${right.startDate || ''}|${right.endDate || ''}`)
         ),
-        accountBalance: selectedAccountBalance
+        accountBalance: selectedAccountBalance,
+        operatorSteeringEvents: validOperatorSteeringEvents
       }
     },
     billingWindow: invoiceTurn
@@ -1158,6 +1301,21 @@ export function runAgentCostRollup(options) {
           selection: invoiceTurnSelection.selection
         }
       : null,
+    operatorSteering: {
+      metrics: {
+        totalEventCount: validOperatorSteeringEvents.length,
+        fundingWindowMatchedEventCount: fundingWindowMatchedOperatorSteeringEvents.length,
+        fundingWindowUnmatchedEventCount: unmatchedFundingWindowOperatorSteeringEvents.length,
+        issueCount: operatorSteeringIssueNumbers.size,
+        latestObservedAt:
+          validOperatorSteeringEvents
+            .map((entry) => normalizeDateTime(entry.observedAt) || normalizeDateTime(entry.generatedAt))
+            .filter(Boolean)
+            .sort()
+            .at(-1) ?? null
+      },
+      events: validOperatorSteeringEvents
+    },
     breakdown: {
       byProvider: materializeBreakdown(byProviderCount, byProviderUsd),
       byModel: materializeBreakdown(byModelCount, byModelUsd),
@@ -1190,6 +1348,7 @@ function printUsage() {
   console.log(`  --invoice-turn <path>           Optional invoice turn receipt path (repeatable; auto-discovers ${DEFAULT_INVOICE_TURN_DIR} when omitted).`);
   console.log(`  --usage-export <path>           Optional usage export receipt path (repeatable; auto-discovers ${DEFAULT_USAGE_EXPORT_DIR} when omitted).`);
   console.log(`  --account-balance <path>        Optional account balance receipt path (repeatable; auto-discovers ${DEFAULT_ACCOUNT_BALANCE_DIR} when omitted).`);
+  console.log(`  --operator-steering-event <path> Optional operator steering event receipt path (repeatable; auto-discovers ${DEFAULT_OPERATOR_STEERING_EVENT_DIR} when omitted).`);
   console.log('  --invoice-turn-id <value>       Optional explicit invoice turn selection override.');
   console.log(`  --output <path>                 Output path (default: ${DEFAULT_OUTPUT_PATH}).`);
   console.log('  --repo <owner/repo>             Repository slug override.');

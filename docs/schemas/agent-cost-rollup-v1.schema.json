@@ -4,7 +4,7 @@
   "title": "Agent Cost Rollup Report v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "generatedAt", "repository", "inputs", "turns", "summary", "billingWindow", "breakdown"],
+  "required": ["schema", "generatedAt", "repository", "inputs", "turns", "summary", "billingWindow", "operatorSteering", "breakdown"],
   "properties": {
     "schema": { "const": "priority/agent-cost-rollup@v1" },
     "generatedAt": { "type": "string", "format": "date-time" },
@@ -30,6 +30,10 @@
           "type": "array",
           "items": { "$ref": "#/$defs/inputRef" }
         },
+        "operatorSteeringEventPaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inputRef" }
+        },
         "selectedInvoiceTurnId": { "$ref": "#/$defs/nullableString" },
         "explicitInvoiceTurnId": { "$ref": "#/$defs/nullableString" }
       }
@@ -45,6 +49,7 @@
         { "type": "null" }
       ]
     },
+    "operatorSteering": { "$ref": "#/$defs/operatorSteering" },
     "breakdown": { "$ref": "#/$defs/breakdown" }
   },
   "$defs": {
@@ -325,6 +330,50 @@
         "operatorNote": { "$ref": "#/$defs/nullableString" }
       }
     },
+    "operatorSteeringEventSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePath",
+        "generatedAt",
+        "eventKey",
+        "steeringKind",
+        "triggerKind",
+        "repository",
+        "issueNumber",
+        "observedAt",
+        "continuityReferenceAt",
+        "activeLaneIssue",
+        "operatorTurnEndWouldCreateIdleGap",
+        "fundingWindowStatus",
+        "fundingWindowPath",
+        "invoiceTurnId",
+        "fundingPurpose",
+        "activationState",
+        "actor",
+        "sessionName"
+      ],
+      "properties": {
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "generatedAt": { "$ref": "#/$defs/nullableString" },
+        "eventKey": { "type": "string", "minLength": 1 },
+        "steeringKind": { "$ref": "#/$defs/nullableString" },
+        "triggerKind": { "$ref": "#/$defs/nullableString" },
+        "repository": { "$ref": "#/$defs/nullableString" },
+        "issueNumber": { "type": ["integer", "null"], "minimum": 0 },
+        "observedAt": { "$ref": "#/$defs/nullableString" },
+        "continuityReferenceAt": { "$ref": "#/$defs/nullableString" },
+        "activeLaneIssue": { "type": ["integer", "null"], "minimum": 0 },
+        "operatorTurnEndWouldCreateIdleGap": { "type": "boolean" },
+        "fundingWindowStatus": { "$ref": "#/$defs/nullableString" },
+        "fundingWindowPath": { "$ref": "#/$defs/nullableString" },
+        "invoiceTurnId": { "$ref": "#/$defs/nullableString" },
+        "fundingPurpose": { "$ref": "#/$defs/nullableString" },
+        "activationState": { "$ref": "#/$defs/nullableString" },
+        "actor": { "$ref": "#/$defs/nullableString" },
+        "sessionName": { "$ref": "#/$defs/nullableString" }
+      }
+    },
     "summary": {
       "type": "object",
       "additionalProperties": false,
@@ -371,6 +420,10 @@
             "usageExportWindowCount",
             "usageExportCreditsReported",
             "usageExportQuantityReported",
+            "operatorSteeringEventCount",
+            "operatorSteeringFundingWindowMatchedCount",
+            "operatorSteeringFundingWindowUnmatchedCount",
+            "operatorSteeringIssueCount",
             "accountBalanceTotalCredits",
             "accountBalanceUsedCredits",
             "accountBalanceRemainingCredits"
@@ -403,6 +456,10 @@
             "usageExportWindowCount": { "type": "integer", "minimum": 0 },
             "usageExportCreditsReported": { "type": "number", "minimum": 0 },
             "usageExportQuantityReported": { "type": "number", "minimum": 0 },
+            "operatorSteeringEventCount": { "type": "integer", "minimum": 0 },
+            "operatorSteeringFundingWindowMatchedCount": { "type": "integer", "minimum": 0 },
+            "operatorSteeringFundingWindowUnmatchedCount": { "type": "integer", "minimum": 0 },
+            "operatorSteeringIssueCount": { "type": "integer", "minimum": 0 },
             "accountBalanceTotalCredits": { "type": ["number", "null"], "minimum": 0 },
             "accountBalanceUsedCredits": { "type": ["number", "null"], "minimum": 0 },
             "accountBalanceRemainingCredits": { "type": ["number", "null"], "minimum": 0 }
@@ -411,7 +468,7 @@
         "provenance": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "reasoningEfforts", "steeringKinds", "steeringSources", "invoiceTurn", "invoiceTurnSelection", "invoiceTurns", "usageExports", "accountBalance"],
+          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "reasoningEfforts", "steeringKinds", "steeringSources", "operatorSteeringTriggerKinds", "invoiceTurn", "invoiceTurnSelection", "invoiceTurns", "usageExports", "accountBalance", "operatorSteeringEvents"],
           "properties": {
             "sessionIds": { "type": "array", "items": { "type": "string" } },
             "issueNumbers": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
@@ -420,6 +477,7 @@
             "reasoningEfforts": { "type": "array", "items": { "type": "string" } },
             "steeringKinds": { "type": "array", "items": { "type": "string" } },
             "steeringSources": { "type": "array", "items": { "type": "string" } },
+            "operatorSteeringTriggerKinds": { "type": "array", "items": { "type": "string" } },
             "rateCards": {
               "type": "array",
               "items": {
@@ -454,6 +512,10 @@
                 { "$ref": "#/$defs/accountBalanceSummary" },
                 { "type": "null" }
               ]
+            },
+            "operatorSteeringEvents": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/operatorSteeringEventSummary" }
             }
           }
         }
@@ -499,6 +561,29 @@
         "reconciliationSourceKind": { "$ref": "#/$defs/nullableString" },
         "reconciliationNote": { "$ref": "#/$defs/nullableString" },
         "selection": { "$ref": "#/$defs/invoiceTurnSelection" }
+      }
+    },
+    "operatorSteering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metrics", "events"],
+      "properties": {
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["totalEventCount", "fundingWindowMatchedEventCount", "fundingWindowUnmatchedEventCount", "issueCount", "latestObservedAt"],
+          "properties": {
+            "totalEventCount": { "type": "integer", "minimum": 0 },
+            "fundingWindowMatchedEventCount": { "type": "integer", "minimum": 0 },
+            "fundingWindowUnmatchedEventCount": { "type": "integer", "minimum": 0 },
+            "issueCount": { "type": "integer", "minimum": 0 },
+            "latestObservedAt": { "$ref": "#/$defs/nullableString" }
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/operatorSteeringEventSummary" }
+        }
       }
     },
     "breakdownEntry": {

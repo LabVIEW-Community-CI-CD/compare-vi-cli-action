@@ -35,6 +35,8 @@ test('parseArgs accepts repeated turn reports and optional repo override', () =>
     'usage-a.json',
     '--account-balance',
     'balance-a.json',
+    '--operator-steering-event',
+    'steering-a.json',
     '--invoice-turn-id',
     'invoice-turn-2026-03-HQ1VJLMV-0027',
     '--repo',
@@ -46,6 +48,7 @@ test('parseArgs accepts repeated turn reports and optional repo override', () =>
   assert.deepEqual(parsed.invoiceTurnPaths, ['invoice-a.json', 'invoice-b.json']);
   assert.deepEqual(parsed.usageExportPaths, ['usage-a.json']);
   assert.deepEqual(parsed.accountBalancePaths, ['balance-a.json']);
+  assert.deepEqual(parsed.operatorSteeringEventPaths, ['steering-a.json']);
   assert.equal(parsed.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.equal(parsed.repo, 'example/repo');
   assert.equal(parsed.failOnInvalidInputs, false);
@@ -233,6 +236,147 @@ test('estimated turns do not let a declared zero amount mask a computable rate-c
   assert.equal(result.exitCode, 0);
   assert.equal(result.report.turns[0].amountUsd, 0.018);
   assert.equal(result.report.turns[0].amountSource, 'rate-card-estimate');
+  assert.equal(result.report.operatorSteering.metrics.totalEventCount, 0);
+});
+
+test('runAgentCostRollup ingests operator steering events into the selected funding window rollup', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-rollup-steering-'));
+  const turnPath = path.join(tmpDir, 'turn.json');
+  const invoiceTurnPath = path.join(tmpDir, 'invoice-turn.json');
+  const steeringEventPath = path.join(tmpDir, 'operator-steering.json');
+  const outputPath = path.join(tmpDir, 'agent-cost-rollup.json');
+
+  writeJson(turnPath, {
+    schema: 'priority/agent-cost-turn@v1',
+    generatedAt: '2026-03-21T19:10:00.000Z',
+    provider: {
+      id: 'codex-cli',
+      kind: 'local-codex',
+      runtime: 'codex-cli',
+      executionPlane: 'wsl2'
+    },
+    model: {
+      requested: 'gpt-5.4',
+      effective: 'gpt-5.4'
+    },
+    usage: {
+      inputTokens: 1200,
+      cachedInputTokens: 0,
+      outputTokens: 200,
+      totalTokens: 1400,
+      usageUnitKind: 'turn',
+      usageUnitCount: 1
+    },
+    billing: {
+      exactness: 'estimated',
+      amountUsd: 0.05,
+      currency: 'USD',
+      rateCard: {
+        id: 'openai-public-2026-03-01',
+        source: 'https://openai.com/api/pricing',
+        retrievedAt: '2026-03-21T18:20:00.000Z',
+        pricingBasis: 'per-1k-tokens',
+        inputUsdPer1kTokens: 0.005,
+        cachedInputUsdPer1kTokens: 0,
+        outputUsdPer1kTokens: 0.016,
+        usageUnitUsd: 0
+      }
+    },
+    context: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      issueNumber: 1718,
+      laneId: 'issue/origin-1718-operator-steering-events',
+      laneBranch: 'issue/origin-1718-operator-steering-events',
+      sessionId: 'session-live-1718',
+      turnId: 'turn-live-1718',
+      workerSlotId: 'worker-slot-sagan',
+      agentRole: 'live'
+    },
+    provenance: {
+      sourceSchema: 'priority/codex-cli-review@v1',
+      sourceReceiptPath: 'tests/results/_agent/runtime/worker-slot-sagan.json',
+      sourceReportPath: null,
+      usageObservedAt: '2026-03-21T19:10:30.000Z'
+    },
+    steering: {
+      operatorIntervened: false,
+      kind: null,
+      source: null,
+      observedAt: null,
+      note: null,
+      invoiceTurnId: null
+    }
+  });
+
+  const invoiceTurnParsed = parseInvoiceTurnArgs([
+    'node',
+    'agent-cost-invoice-turn.mjs',
+    '--invoice-id',
+    'HQ1VJLMV-0027',
+    '--opened-at',
+    '2026-03-21T10:01:07.000-07:00',
+    '--credits-purchased',
+    '10000',
+    '--unit-price-usd',
+    '0.04'
+  ]);
+  writeJson(invoiceTurnPath, buildAgentCostInvoiceTurn(invoiceTurnParsed, new Date('2026-03-21T20:00:00.000Z')).report);
+
+  writeJson(steeringEventPath, {
+    schema: 'priority/operator-steering-event@v1',
+    generatedAt: '2026-03-21T19:05:00.000Z',
+    eventKey: 'continuity-resume|1718|active-work-pending|2026-03-21T19:00:00.000Z|keep-live-lane-active',
+    steeringKind: 'operator-prompt-resume',
+    triggerKind: 'continuity-failure',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    issueContext: {
+      mode: 'standing',
+      issue: 1718,
+      observedAt: '2026-03-21T19:05:00.000Z'
+    },
+    continuity: {
+      sourcePath: 'tests/results/_agent/runtime/continuity-telemetry.json',
+      status: 'warn',
+      recommendation: 'keep-live-lane-active',
+      continuityReferenceAt: '2026-03-21T19:00:00.000Z',
+      turnBoundary: {
+        status: 'active-work-pending',
+        operatorTurnEndWouldCreateIdleGap: true,
+        activeLaneIssue: 1718,
+        wakeCondition: 'standing-priority-rotated',
+        source: 'bootstrap',
+        reason: 'Avoid live-lane idle gap.'
+      }
+    },
+    fundingWindow: {
+      status: 'resolved',
+      path: invoiceTurnPath,
+      invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
+      fundingPurpose: 'operational',
+      activationState: 'active'
+    },
+    provenance: {
+      source: 'bootstrap-resume-detection',
+      sessionName: 'Sagan',
+      actor: 'sveld'
+    }
+  });
+
+  const result = runAgentCostRollup({
+    turnReportPaths: [turnPath],
+    invoiceTurnPaths: [invoiceTurnPath],
+    operatorSteeringEventPaths: [steeringEventPath],
+    outputPath
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.summary.metrics.operatorSteeringEventCount, 1);
+  assert.equal(result.report.summary.metrics.operatorSteeringFundingWindowMatchedCount, 1);
+  assert.equal(result.report.summary.metrics.operatorSteeringIssueCount, 1);
+  assert.equal(result.report.operatorSteering.metrics.totalEventCount, 1);
+  assert.equal(result.report.operatorSteering.metrics.fundingWindowMatchedEventCount, 1);
+  assert.equal(result.report.operatorSteering.events[0].issueNumber, 1718);
+  assert.equal(result.report.summary.provenance.operatorSteeringTriggerKinds[0], 'continuity-failure');
 });
 
 test('runAgentCostRollup summarizes optional usage-export and account-balance evidence', () => {

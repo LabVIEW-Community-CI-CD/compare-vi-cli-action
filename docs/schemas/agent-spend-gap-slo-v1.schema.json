@@ -45,6 +45,7 @@
           "required": [
             "totalSpendTurns",
             "totalGapCount",
+            "operatorSteeringGapCount",
             "optimizationSignalGapCount",
             "trackedGapCount",
             "quietWindowGapCount",
@@ -55,6 +56,7 @@
           "properties": {
             "totalSpendTurns": { "type": "integer", "minimum": 0 },
             "totalGapCount": { "type": "integer", "minimum": 0 },
+            "operatorSteeringGapCount": { "type": "integer", "minimum": 0 },
             "optimizationSignalGapCount": { "type": "integer", "minimum": 0 },
             "trackedGapCount": { "type": "integer", "minimum": 0 },
             "quietWindowGapCount": { "type": "integer", "minimum": 0 },
@@ -107,11 +109,13 @@
             "promotionEvidenceCount",
             "laneMinutesAllocated",
             "hostedWaitEscapeCount",
+            "operatorSteeringEventCount",
             "validatedPullRequestsPerFundedDollar",
             "closedIssuesPerFundedDollar",
             "promotionEvidencePerFundedDollar",
             "laneMinutesAllocatedPerFundedDollar",
-            "hostedWaitEscapesPerFundedDollar"
+            "hostedWaitEscapesPerFundedDollar",
+            "operatorSteeringEventsPerFundedDollar"
           ],
           "properties": {
             "validatedPullRequestCount": { "type": "integer", "minimum": 0 },
@@ -119,11 +123,13 @@
             "promotionEvidenceCount": { "type": "integer", "minimum": 0 },
             "laneMinutesAllocated": { "type": "number", "minimum": 0 },
             "hostedWaitEscapeCount": { "type": "integer", "minimum": 0 },
+            "operatorSteeringEventCount": { "type": "integer", "minimum": 0 },
             "validatedPullRequestsPerFundedDollar": { "type": ["number", "null"], "minimum": 0 },
             "closedIssuesPerFundedDollar": { "type": ["number", "null"], "minimum": 0 },
             "promotionEvidencePerFundedDollar": { "type": ["number", "null"], "minimum": 0 },
             "laneMinutesAllocatedPerFundedDollar": { "type": ["number", "null"], "minimum": 0 },
-            "hostedWaitEscapesPerFundedDollar": { "type": ["number", "null"], "minimum": 0 }
+            "hostedWaitEscapesPerFundedDollar": { "type": ["number", "null"], "minimum": 0 },
+            "operatorSteeringEventsPerFundedDollar": { "type": ["number", "null"], "minimum": 0 }
           }
         },
         "provenance": {
@@ -194,7 +200,11 @@
         "concurrentLaneActiveCount",
         "concurrentLaneDeferredCount",
         "hostedWaitEscapeCount",
-        "throughputReasons"
+        "throughputReasons",
+        "operatorSteeringEventCount",
+        "operatorSteeringKinds",
+        "operatorSteeringTriggerKinds",
+        "operatorSteeringInvoiceTurnIds"
       ],
       "properties": {
         "readyPrInventory": { "type": ["integer", "null"], "minimum": 0 },
@@ -203,6 +213,19 @@
         "concurrentLaneDeferredCount": { "type": ["integer", "null"], "minimum": 0 },
         "hostedWaitEscapeCount": { "type": ["integer", "null"], "minimum": 0 },
         "throughputReasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "operatorSteeringEventCount": { "type": "integer", "minimum": 0 },
+        "operatorSteeringKinds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "operatorSteeringTriggerKinds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "operatorSteeringInvoiceTurnIds": {
           "type": "array",
           "items": { "type": "string" }
         }
@@ -228,7 +251,7 @@
         "previousTurn": { "$ref": "#/$defs/turnEvidence" },
         "nextTurn": { "$ref": "#/$defs/turnEvidence" },
         "classification": {
-          "enum": ["optimization-signal", "tracked-followup", "accepted-quiet-window", "insufficient-evidence"]
+          "enum": ["operator-steering", "optimization-signal", "tracked-followup", "accepted-quiet-window", "insufficient-evidence"]
         },
         "trackingIssueNumber": { "type": ["integer", "null"], "minimum": 0 },
         "evidence": { "$ref": "#/$defs/gapEvidence" }
