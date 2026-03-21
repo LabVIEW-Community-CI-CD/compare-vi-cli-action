@@ -145,6 +145,9 @@ test('mission-control envelope rejects contradictory lane and Copilot settings',
 
 test('mission-control docs advertise the canonical prompt and envelope contract together', () => {
   const prompt = loadText('PROMPT_AUTONOMY.md');
+  const consumption = loadText('docs/MISSION_CONTROL_CONSUMPTION.md');
+  const triggerProfiles = loadText('docs/MISSION_CONTROL_TRIGGER_PROFILES.md');
+  const utilizationPolicy = loadJson('tools/policy/merge-queue-utilization-target.json');
   const manifest = loadJson('docs/documentation-manifest.json');
 
   assert.match(prompt, /docs\/schemas\/mission-control-envelope-v1\.schema\.json/);
@@ -162,12 +165,18 @@ test('mission-control docs advertise the canonical prompt and envelope contract 
   assert.match(prompt, /aligned before and after each merge/i);
   assert.match(prompt, /Create worktrees from `upstream\/develop` only\./i);
   assert.match(prompt, /Maintain up to 4 proactive coding lanes when safe actionable work exists\./i);
-  assert.match(prompt, /Start filling safe lane capacity from session start\./i);
+  assert.match(prompt, /Start filling safe lane capacity from session start so the four-lane posture is the default/i);
   assert.match(prompt, /delivery-agent-state\.json/i);
   assert.match(prompt, /throughput-scorecard\.json/i);
   assert.match(prompt, /missionControl`: repo-owned law and execution invariants/i);
   assert.match(prompt, /operator\.intent` and `operator\.focus`: bounded operator input/i);
   assert.match(prompt, /operator\.overrides`: narrow, auditable exceptions/i);
+  assert.match(consumption, /proactive four-lane posture/i);
+  assert.match(consumption, /do not wait for a later operator\s+prompt/i);
+  assert.match(consumption, /throughput-scorecard\.json/i);
+  assert.match(triggerProfiles, /proactively filling safe worker-slot capacity up to the checked-in four-lane cap/i);
+  assert.match(triggerProfiles, /drive toward the checked-in four-lane cap from session start/i);
+  assert.match(JSON.stringify(utilizationPolicy.notes), /Default to the proactive four-lane worker-slot posture/);
 
   const rootEntry = manifest.entries.find((entry) => entry.name === 'Root Entry Points');
   assert.ok(rootEntry, 'Root Entry Points entry is missing from docs manifest.');

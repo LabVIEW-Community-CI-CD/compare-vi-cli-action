@@ -32,13 +32,15 @@ This document defines how future agents and operator tooling should discover, re
 3. Render the mission-control envelope from the resolved preset.
 4. Treat `missionControl` as mission-control-specific repo policy and `operator` as bounded operator input layered on top
    of that policy.
-5. Preserve the broader instruction-precedence contract:
+5. Start from the proactive four-lane posture when safe actionable work exists; do not wait for a later operator
+   prompt to fill capacity that is already available.
+6. Preserve the broader instruction-precedence contract:
    - `AGENTS.md` remains authoritative for repository-wide automation law.
    - `.github/copilot-instructions.md` remains authoritative for the local Copilot review plane.
    - phase overlays under `.github/instructions/` still control draft-review vs ready-validation behavior.
-6. Keep downstream automation fail-closed when operator input conflicts with the envelope contract, the operator input
+7. Keep downstream automation fail-closed when operator input conflicts with the envelope contract, the operator input
    catalog, the profile catalog, or the repository-wide instruction surfaces above.
-7. Audit actual lane utilization through the checked-in and emitted receipts:
+8. Audit actual lane utilization through the checked-in and emitted receipts:
    - checked-in worker-slot target: `tools/priority/delivery-agent.policy.json`
    - current slot occupancy and released waits: `tests/results/_agent/runtime/delivery-agent-state.json`
    - utilization and queue pressure summary: `tests/results/_agent/throughput/throughput-scorecard.json`

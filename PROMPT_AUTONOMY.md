@@ -84,8 +84,8 @@ Lane topology:
 - Keep exactly 1 merge-authority live lane.
 - Use the remaining 3 coding lanes for disjoint implementation, hosted follow-through, remote implementation, or
   shadow validation work.
-- Start filling safe lane capacity from session start. Do not wait for GitHub-only pauses before opening another
-  disjoint coding lane.
+- Start filling safe lane capacity from session start so the four-lane posture is the default, not a later
+  optimization. Do not wait for GitHub-only pauses before opening another disjoint coding lane.
 - The live lane is the only lane allowed to be merged directly.
 - Support lanes must stay disjoint in file scope from the live lane and from each other.
 - Waiting-only lanes must release their worker slot immediately and persist their wake condition in machine-readable
