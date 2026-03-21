@@ -2237,6 +2237,120 @@ function normalizeOptionalObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
 
+function buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt }) {
+  const concurrentLaneStatus =
+    normalizeOptionalObject(executionReceipt?.details?.concurrentLaneStatus) ??
+    normalizeOptionalObject(taskPacket?.evidence?.delivery?.concurrentLaneStatus);
+  if (!concurrentLaneStatus) {
+    return null;
+  }
+
+  const summary = normalizeOptionalObject(concurrentLaneStatus.summary);
+  const hostedRun = normalizeOptionalObject(concurrentLaneStatus.hostedRun);
+  const pullRequest = normalizeOptionalObject(concurrentLaneStatus.pullRequest);
+  const mergeQueue = normalizeOptionalObject(pullRequest?.mergeQueue);
+
+  return {
+    receiptPath: normalizeText(concurrentLaneStatus.receiptPath) || null,
+    status: normalizeText(concurrentLaneStatus.status) || null,
+    selectedBundleId: normalizeText(concurrentLaneStatus.selectedBundleId) || null,
+    hostedRun: hostedRun
+      ? {
+          observationStatus: normalizeText(hostedRun.observationStatus) || null,
+          runId: coercePositiveInteger(hostedRun.runId),
+          url: normalizeText(hostedRun.url) || null,
+          reportPath: normalizeText(hostedRun.reportPath) || null
+        }
+      : null,
+    pullRequest: pullRequest
+      ? {
+          observationStatus: normalizeText(pullRequest.observationStatus) || null,
+          number: coercePositiveInteger(pullRequest.number),
+          url: normalizeText(pullRequest.url) || null,
+          mergeQueue: mergeQueue
+            ? {
+                status: normalizeText(mergeQueue.status) || null,
+                position: coercePositiveInteger(mergeQueue.position),
+                estimatedTimeToMerge: coercePositiveInteger(mergeQueue.estimatedTimeToMerge),
+                enqueuedAt: normalizeText(mergeQueue.enqueuedAt) || null
+              }
+            : null
+        }
+      : null,
+    summary: summary
+      ? {
+          laneCount: coercePositiveInteger(summary.laneCount) ?? 0,
+          activeLaneCount: coercePositiveInteger(summary.activeLaneCount) ?? 0,
+          completedLaneCount: coercePositiveInteger(summary.completedLaneCount) ?? 0,
+          failedLaneCount: coercePositiveInteger(summary.failedLaneCount) ?? 0,
+          deferredLaneCount: coercePositiveInteger(summary.deferredLaneCount) ?? 0,
+          manualLaneCount: coercePositiveInteger(summary.manualLaneCount) ?? 0,
+          shadowLaneCount: coercePositiveInteger(summary.shadowLaneCount) ?? 0,
+          pullRequestStatus: normalizeText(summary.pullRequestStatus) || null,
+          orchestratorDisposition: normalizeText(summary.orchestratorDisposition) || null
+        }
+      : null
+  };
+}
+
+function buildConcurrentLaneWatchPlan(concurrentLaneStatus = null) {
+  const status = normalizeText(concurrentLaneStatus?.status).toLowerCase();
+  const disposition = normalizeText(concurrentLaneStatus?.summary?.orchestratorDisposition).toLowerCase();
+  if (!status && !disposition) {
+    return null;
+  }
+
+  if (status === 'failed' || disposition === 'hold-investigate') {
+    return {
+      actionType: 'watch-concurrent-lanes',
+      laneLifecycle: 'blocked',
+      blockerClass: 'helper',
+      retryable: true,
+      nextWakeCondition: 'concurrent-lane-status-repaired',
+      reason: 'Concurrent lane status receipt reported a failed or non-releasable state that needs investigation.',
+      concurrentLaneStatus
+    };
+  }
+
+  if (disposition === 'wait-hosted-run') {
+    return {
+      actionType: 'watch-concurrent-lanes',
+      laneLifecycle: 'waiting-ci',
+      blockerClass: 'ci',
+      retryable: true,
+      nextWakeCondition: 'hosted-lane-settled',
+      reason: 'Hosted concurrent lane work is still queued or running remotely.',
+      concurrentLaneStatus
+    };
+  }
+
+  if (disposition === 'release-merge-queue') {
+    return {
+      actionType: 'watch-concurrent-lanes',
+      laneLifecycle: 'waiting-ci',
+      blockerClass: 'ci',
+      retryable: true,
+      nextWakeCondition: 'merge-queue-progress',
+      reason: 'Concurrent lane state is now merge-queue bound, so the local worker slot can be released.',
+      concurrentLaneStatus
+    };
+  }
+
+  if (disposition === 'release-with-deferred-local') {
+    return {
+      actionType: 'watch-concurrent-lanes',
+      laneLifecycle: 'waiting-ci',
+      blockerClass: 'none',
+      retryable: true,
+      nextWakeCondition: 'deferred-local-lane-dispatched',
+      reason: 'Only deferred manual or shadow lane obligations remain locally, so the coding slot can be reused.',
+      concurrentLaneStatus
+    };
+  }
+
+  return null;
+}
+
 function buildRuntimeWorkerProviderSelection({ taskPacket, executionReceipt, policy, preferredSlotId = null }) {
   const selectionSource =
     normalizeOptionalObject(executionReceipt?.details?.workerProviderSelection) ??
@@ -2530,6 +2644,7 @@ export function buildDeliveryAgentRuntimeRecord({
     null;
   const localReviewLoop = buildLocalReviewLoopRuntimeState({ taskPacket, executionReceipt });
   const readyValidationClearance = buildReadyValidationClearanceRuntimeState({ taskPacket, executionReceipt });
+  const concurrentLaneStatus = buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt });
   const planeTransition = resolveDeliveryPlaneTransition({
     repoRoot,
     repository,
@@ -2565,6 +2680,7 @@ export function buildDeliveryAgentRuntimeRecord({
     planeTransition,
     localReviewLoop,
     readyValidationClearance,
+    concurrentLaneStatus,
     workerProviderSelection,
     providerDispatch
   };
@@ -2607,12 +2723,14 @@ export function buildDeliveryAgentRuntimeRecord({
     activeCodingLanes,
     workerPool,
     localReviewLoop,
+    concurrentLaneStatus,
     marketplace,
     activeLane,
     artifacts: {
       statePath,
       lanePath,
       localReviewLoopReceiptPath: normalizeText(localReviewLoop?.receiptPath) || null,
+      concurrentLaneStatusReceiptPath: normalizeText(concurrentLaneStatus?.receiptPath) || null,
       marketplaceSnapshotPath: normalizeText(marketplace?.snapshotPath) || null,
       planeTransition,
       providerDispatch
@@ -4227,6 +4345,7 @@ async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, execution
 export function planDeliveryBrokerAction(taskPacket = {}) {
   const delivery = taskPacket?.evidence?.delivery ?? {};
   const pullRequest = delivery.pullRequest ?? null;
+  const concurrentLaneStatus = normalizeOptionalObject(delivery.concurrentLaneStatus);
   const backlog = delivery.backlog ?? null;
   const lifecycle = normalizeLifecycle(delivery.laneLifecycle, taskPacket.status === 'idle' ? 'idle' : 'planning');
   if (taskPacket.status === 'idle') {
@@ -4240,6 +4359,12 @@ export function planDeliveryBrokerAction(taskPacket = {}) {
       actionType: 'reshape-backlog',
       laneLifecycle: 'reshaping-backlog'
     };
+  }
+  if (!pullRequest?.url) {
+    const concurrentLanePlan = buildConcurrentLaneWatchPlan(concurrentLaneStatus);
+    if (concurrentLanePlan) {
+      return concurrentLanePlan;
+    }
   }
   if (pullRequest?.url) {
     if (pullRequest.syncRequired === true || normalizeText(pullRequest.mergeStateStatus).toUpperCase() === 'BEHIND') {
@@ -4417,6 +4542,25 @@ export async function runDeliveryTurnBroker({
             : null,
         helperCallsExecuted: [],
         filesTouched: []
+      }
+    }, enrichedPacket);
+  }
+
+  if (planned.actionType === 'watch-concurrent-lanes') {
+    return withWorkerProviderDispatch({
+      status: planned.laneLifecycle === 'blocked' ? 'blocked' : 'completed',
+      outcome: planned.laneLifecycle,
+      reason: planned.reason,
+      source: 'delivery-agent-broker',
+      details: {
+        actionType: 'watch-concurrent-lanes',
+        laneLifecycle: planned.laneLifecycle,
+        blockerClass: planned.blockerClass,
+        retryable: planned.retryable === true,
+        nextWakeCondition: planned.nextWakeCondition,
+        helperCallsExecuted: [],
+        filesTouched: [],
+        concurrentLaneStatus: planned.concurrentLaneStatus
       }
     }, enrichedPacket);
   }
