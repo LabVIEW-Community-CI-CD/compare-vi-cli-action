@@ -107,6 +107,28 @@
         }
       }
     },
+    "templateAgentVerificationLane": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "reservedSlotCount": { "type": "integer", "minimum": 0 },
+        "minimumImplementationSlots": { "type": "integer", "minimum": 0 },
+        "executionMode": { "enum": ["hosted-first", "hosted-only", "manual-hosted"] },
+        "targetRepository": { "type": "string" },
+        "consumerRailBranch": { "type": "string" },
+        "reportPath": { "type": "string" },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "maxVerificationLagIterations": { "type": "integer", "minimum": 0 },
+            "maxHostedDurationMinutes": { "type": "integer", "minimum": 0 },
+            "requireMachineReadableRecommendation": { "type": "boolean" }
+          }
+        }
+      }
+    },
     "hostIsolation": {
       "type": "object",
       "additionalProperties": true,

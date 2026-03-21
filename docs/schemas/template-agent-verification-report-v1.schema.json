@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/template-agent-verification-report-v1.schema.json",
+  "title": "Template Agent Verification Report v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "generatedAt", "repo", "summary", "iteration", "lane", "verification", "goals", "metrics", "blockers"],
+  "properties": {
+    "schema": { "const": "priority/template-agent-verification-report@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repo": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["status", "blockerCount", "recommendation"],
+      "properties": {
+        "status": { "enum": ["pass", "blocked", "pending"] },
+        "blockerCount": { "type": "integer", "minimum": 0 },
+        "recommendation": { "type": "string" }
+      }
+    },
+    "iteration": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["label"],
+      "properties": {
+        "label": { "type": "string" },
+        "ref": { "type": ["string", "null"] },
+        "headSha": { "type": ["string", "null"] }
+      }
+    },
+    "lane": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "enabled",
+        "reservedSlotCount",
+        "minimumImplementationSlots",
+        "implementationSlotsRemaining",
+        "targetRepository"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "reservedSlotCount": { "type": "integer", "minimum": 0 },
+        "minimumImplementationSlots": { "type": "integer", "minimum": 0 },
+        "implementationSlotsRemaining": { "type": "integer", "minimum": 0 },
+        "executionMode": { "type": ["string", "null"] },
+        "targetRepository": { "type": ["string", "null"] },
+        "consumerRailBranch": { "type": ["string", "null"] }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["provider", "status"],
+      "properties": {
+        "provider": { "type": "string" },
+        "status": { "enum": ["pass", "fail", "blocked", "pending"] },
+        "durationSeconds": { "type": ["integer", "null"], "minimum": 0 },
+        "runUrl": { "type": ["string", "null"] }
+      }
+    },
+    "goals": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "maxVerificationLagIterations": { "type": ["integer", "null"], "minimum": 0 },
+        "maxHostedDurationMinutes": { "type": ["integer", "null"], "minimum": 0 },
+        "requireMachineReadableRecommendation": { "type": "boolean" }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["targetSlotCount", "reservedSlotCount", "implementationSlotsRemaining", "recommendationPresent"],
+      "properties": {
+        "targetSlotCount": { "type": "integer", "minimum": 0 },
+        "reservedSlotCount": { "type": "integer", "minimum": 0 },
+        "implementationSlotsRemaining": { "type": "integer", "minimum": 0 },
+        "durationWithinGoal": { "type": ["boolean", "null"] },
+        "recommendationPresent": { "type": "boolean" }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  }
+}
