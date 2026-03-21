@@ -1,0 +1,5 @@
+{
+  "pack_slug": "bootstrap-proof-pack",
+  "pack_description": "Hosted bootstrap proof scenario pack",
+  "plane_applicability_csv": "linux-proof,windows-mirror-proof"
+}

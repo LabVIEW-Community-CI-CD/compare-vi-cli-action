@@ -227,19 +227,26 @@
       "name": "Cookiecutter Scaffold Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Pinned cookiecutter catalog, schemas, wrapper, focused tests, and template trees for generating reviewable scenario-pack and certification corpus scaffold outputs.",
-      "files": [
-        "docs/knowledgebase/Cookiecutter-Certification-Scaffolds.md",
-        "docs/schemas/comparevi-cookiecutter-scaffold-v1.schema.json",
-        "docs/schemas/comparevi-cookiecutter-template-catalog-v1.schema.json",
-        "tests/New-CompareVICookiecutterScaffold.Tests.ps1",
-        "tools/New-CompareVICookiecutterScaffold.ps1",
-        "tools/cookiecutter/run-cookiecutter.py",
-        "tools/policy/comparevi-cookiecutter-templates.json"
-      ],
-      "include": [
-        "tools/cookiecutter/templates/**/*"
-      ]
+        "description": "Pinned cookiecutter catalog, schemas, wrapper, focused tests, and template trees for generating reviewable scenario-pack and certification corpus scaffold outputs.",
+        "files": [
+          "docs/knowledgebase/Cookiecutter-Certification-Scaffolds.md",
+          ".github/workflows/cookiecutter-bootstrap.yml",
+          "docs/schemas/comparevi-cookiecutter-bootstrap-proof-v1.schema.json",
+          "docs/schemas/comparevi-cookiecutter-scaffold-v1.schema.json",
+          "docs/schemas/comparevi-cookiecutter-template-catalog-v1.schema.json",
+          "tests/New-CompareVICookiecutterScaffold.Tests.ps1",
+          "tests/Test-CompareVICookiecutterBootstrap.Tests.ps1",
+          "tests/fixtures/cookiecutter/scenario-pack.context.json",
+          "tests/fixtures/cookiecutter/corpus-seed.context.json",
+          "tools/New-CompareVICookiecutterScaffold.ps1",
+          "tools/Test-CompareVICookiecutterBootstrap.ps1",
+          "tools/cookiecutter/run-cookiecutter.py",
+          "tools/policy/comparevi-cookiecutter-templates.json",
+          "tools/priority/__tests__/cookiecutter-bootstrap-workflow.test.mjs"
+        ],
+        "include": [
+          "tools/cookiecutter/templates/**/*"
+        ]
     },
     {
       "name": "LabVIEW CLI Custom Operation Scaffold Contracts",

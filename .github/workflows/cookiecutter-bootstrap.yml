@@ -1,0 +1,85 @@
+name: Cookiecutter Bootstrap
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - '.github/workflows/cookiecutter-bootstrap.yml'
+      - 'docs/knowledgebase/Cookiecutter-Certification-Scaffolds.md'
+      - 'docs/schemas/comparevi-cookiecutter-*.json'
+      - 'package.json'
+      - 'tests/Test-CompareVICookiecutterBootstrap.Tests.ps1'
+      - 'tests/New-CompareVICookiecutterScaffold.Tests.ps1'
+      - 'tests/fixtures/cookiecutter/*.json'
+      - 'tools/Test-CompareVICookiecutterBootstrap.ps1'
+      - 'tools/New-CompareVICookiecutterScaffold.ps1'
+      - 'tools/cookiecutter/**'
+      - 'tools/policy/comparevi-cookiecutter-templates.json'
+      - 'tools/priority/__tests__/cookiecutter-bootstrap-workflow.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cookiecutter-bootstrap.yml'
+      - 'docs/knowledgebase/Cookiecutter-Certification-Scaffolds.md'
+      - 'docs/schemas/comparevi-cookiecutter-*.json'
+      - 'package.json'
+      - 'tests/Test-CompareVICookiecutterBootstrap.Tests.ps1'
+      - 'tests/New-CompareVICookiecutterScaffold.Tests.ps1'
+      - 'tests/fixtures/cookiecutter/*.json'
+      - 'tools/Test-CompareVICookiecutterBootstrap.ps1'
+      - 'tools/New-CompareVICookiecutterScaffold.ps1'
+      - 'tools/cookiecutter/**'
+      - 'tools/policy/comparevi-cookiecutter-templates.json'
+      - 'tools/priority/__tests__/cookiecutter-bootstrap-workflow.test.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-proof:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            proof_id: linux
+          - runner: windows-latest
+            proof_id: windows
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        shell: bash
+        run: npm ci
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Run cookiecutter bootstrap proof
+        shell: pwsh
+        run: |
+          ./tools/Test-CompareVICookiecutterBootstrap.ps1 `
+            -Platform '${{ matrix.proof_id }}' `
+            -ProofRoot 'tests/results/_agent/cookiecutter-bootstrap/${{ matrix.proof_id }}' `
+            -ScaffoldOutputRoot 'tests/results/_agent/cookiecutter-scaffolds/bootstrap-proof/${{ matrix.proof_id }}'
+
+      - name: Upload cookiecutter bootstrap artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: cookiecutter-bootstrap-${{ matrix.proof_id }}
+          path: |
+            tests/results/_agent/cookiecutter-bootstrap/${{ matrix.proof_id }}
+            tests/results/_agent/cookiecutter-scaffolds/bootstrap-proof/${{ matrix.proof_id }}
+          if-no-files-found: error

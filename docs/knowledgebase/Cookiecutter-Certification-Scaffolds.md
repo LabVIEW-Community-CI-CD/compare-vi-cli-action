@@ -94,9 +94,38 @@ maintainers the most:
 - Repo-local output is constrained to the dedicated scaffold results root to
   avoid accidental pollution of git-tracked source trees.
 
+## Hosted Bootstrap Proof
+
+`#1494` promotes the local wrapper into a hosted proof surface instead of
+copying cookiecutter install logic into ad hoc workflows.
+
+Local proof entrypoint:
+
+```powershell
+node tools/npm/run-script.mjs priority:scaffold:cookiecutter:proof
+```
+
+Hosted proof workflow:
+
+- `.github/workflows/cookiecutter-bootstrap.yml`
+- runner matrix:
+  - `ubuntu-latest`
+  - `windows-latest`
+- pinned runtime bootstrap:
+  - `actions/setup-node@v6` + `npm ci`
+  - `actions/setup-python@v6` with `python-version: '3.12'`
+
+The hosted proof runs `tools/Test-CompareVICookiecutterBootstrap.ps1`, which:
+
+- exercises the shared scaffold wrapper on both hosted OS planes
+- validates the pinned `cookiecutter==2.6.0` runtime through the wrapper
+- emits a proof receipt at
+  `tests/results/_agent/cookiecutter-bootstrap/<platform>/comparevi-cookiecutter-bootstrap-proof.json`
+- uploads both proof receipts and generated scaffold outputs for review
+
 ## Natural Follow-Ons
 
 - mirror the template family into `svelderrainruiz/cookiecutter`
 - carry the same scaffold surface into `LabviewGitHubCiTemplate`
-- install the pinned cookiecutter runtime in hosted Linux and hosted Windows
-  consumer-proving lanes once the local contract settles
+- use the hosted bootstrap proof as the consumer-proving install contract for
+  Linux and Windows lanes

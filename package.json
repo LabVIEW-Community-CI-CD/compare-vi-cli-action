@@ -214,7 +214,8 @@
     "watch:pester:ps": "pwsh -NoLogo -NoProfile -File tools/Follow-PesterArtifacts.ps1 -ResultsDir tests/results -WarnSeconds 60 -HangSeconds 120",
     "watch:pester:ps:exit": "pwsh -NoLogo -NoProfile -File tools/Follow-PesterArtifacts.ps1 -ResultsDir tests/results -WarnSeconds 60 -HangSeconds 120 -NoProgressSeconds 60 -PollMs 2000 -ExitOnHang -ExitOnNoProgress",
     "priority:scaffold:cookiecutter": "pwsh -NoLogo -NoProfile -File tools/New-CompareVICookiecutterScaffold.ps1",
-    "priority:scaffold:cookiecutter:list": "pwsh -NoLogo -NoProfile -File tools/New-CompareVICookiecutterScaffold.ps1 -ListTemplates"
+    "priority:scaffold:cookiecutter:list": "pwsh -NoLogo -NoProfile -File tools/New-CompareVICookiecutterScaffold.ps1 -ListTemplates",
+    "priority:scaffold:cookiecutter:proof": "pwsh -NoLogo -NoProfile -File tools/Test-CompareVICookiecutterBootstrap.ps1"
   },
   "devDependencies": {
     "@types/argparse": "^2.0.16",

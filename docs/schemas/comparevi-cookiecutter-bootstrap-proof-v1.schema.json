@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-cookiecutter-bootstrap-proof-v1.schema.json",
+  "title": "CompareVI Cookiecutter Bootstrap Proof v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "status",
+    "platform",
+    "proofRoot",
+    "runtimeCacheRoot",
+    "scaffoldOutputRoot",
+    "cookiecutterVersion",
+    "pythonExecutable",
+    "pythonVersion",
+    "templateRuns",
+    "notes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-cookiecutter-bootstrap-proof@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "const": "succeeded"
+    },
+    "platform": {
+      "enum": ["linux", "windows"]
+    },
+    "proofRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtimeCacheRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scaffoldOutputRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cookiecutterVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pythonExecutable": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pythonVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "templateRuns": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "templateId",
+          "receiptPath",
+          "destinationPath",
+          "generatedFileCount"
+        ],
+        "properties": {
+          "templateId": {
+            "enum": ["scenario-pack", "corpus-seed"]
+          },
+          "receiptPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "destinationPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "generatedFileCount": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
