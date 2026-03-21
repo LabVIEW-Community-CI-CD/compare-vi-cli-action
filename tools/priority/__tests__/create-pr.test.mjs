@@ -19,10 +19,13 @@ import {
   buildBody,
   resolveBody,
   buildPrReadyArgs,
+  buildQueueAdmissionMergeSyncArgs,
   createPriorityPr,
   evaluateReadyTransitionEligibility,
+  maybeAdmitPullRequestToMergeQueue,
   maybePromotePullRequestToReady,
   readReadyValidationClearance,
+  resolveQueueAdmissionSummaryPath,
   resolveReadyValidationClearancePath,
   writePriorityPrReport
 } from '../create-pr.mjs';
@@ -233,6 +236,134 @@ test('maybePromotePullRequestToReady preserves the draft state and probe evidenc
   assert.equal(result.attempted, false);
   assert.equal(result.dryRunSummaryPath, '/tmp/repo/tests/results/_agent/issue/merge-sync-dry-run.json');
   assert.equal(result.reviewClearance.status, 'fail');
+});
+
+test('buildQueueAdmissionMergeSyncArgs emits merge-sync arguments for immediate queue admission', () => {
+  assert.deepEqual(buildQueueAdmissionMergeSyncArgs({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    pullRequestNumber: 1611,
+    summaryPath: '/tmp/repo/tests/results/_agent/issue/queue-admission.json'
+  }), [
+    'tools/priority/merge-sync-pr.mjs',
+    '--pr',
+    '1611',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--summary-path',
+    '/tmp/repo/tests/results/_agent/issue/queue-admission.json'
+  ]);
+});
+
+test('resolveQueueAdmissionSummaryPath stores queue-admission summaries under the issue report directory', () => {
+  assert.equal(
+    resolveQueueAdmissionSummaryPath({
+      repoRoot: '/tmp/repo',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pullRequestNumber: 1611
+    }),
+    path.join(
+      '/tmp/repo',
+      'tests',
+      'results',
+      '_agent',
+      'issue',
+      'LabVIEW-Community-CI-CD-compare-vi-cli-action-pr-1611-queue-admission.json'
+    )
+  );
+});
+
+test('maybeAdmitPullRequestToMergeQueue invokes merge-sync when the PR was just auto-readied', () => {
+  const calls = [];
+  const result = maybeAdmitPullRequestToMergeQueue({
+    repoRoot: '/tmp/repo',
+    upstream: {
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action'
+    },
+    strategy: 'graphql-same-owner-fork',
+    pullRequest: {
+      number: 1611,
+      isDraft: false
+    },
+    readyTransition: {
+      status: 'ready'
+    },
+    readJsonFn: () => ({
+      finalReason: 'merge-queue-branch-develop',
+      promotion: {
+        status: 'queued',
+        materialized: true
+      }
+    }),
+    spawnSyncFn: (command, args, options) => {
+      calls.push({ command, args, options });
+      return {
+        status: 0,
+        stdout: '',
+        stderr: ''
+      };
+    }
+  });
+
+  assert.equal(result.status, 'queued');
+  assert.equal(result.attempted, true);
+  assert.equal(result.reason, 'merge-queue-branch-develop');
+  assert.equal(
+    result.summaryPath,
+    path.join(
+      '/tmp/repo',
+      'tests',
+      'results',
+      '_agent',
+      'issue',
+      'LabVIEW-Community-CI-CD-compare-vi-cli-action-pr-1611-queue-admission.json'
+    )
+  );
+  assert.equal(result.promotion.status, 'queued');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, 'node');
+  assert.deepEqual(calls[0].args, [
+    'tools/priority/merge-sync-pr.mjs',
+    '--pr',
+    '1611',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--summary-path',
+    path.join(
+      '/tmp/repo',
+      'tests',
+      'results',
+      '_agent',
+      'issue',
+      'LabVIEW-Community-CI-CD-compare-vi-cli-action-pr-1611-queue-admission.json'
+    )
+  ]);
+  assert.equal(calls[0].options.cwd, '/tmp/repo');
+});
+
+test('maybeAdmitPullRequestToMergeQueue skips when the PR creation flow did not auto-ready the PR', () => {
+  const result = maybeAdmitPullRequestToMergeQueue({
+    repoRoot: '/tmp/repo',
+    upstream: {
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action'
+    },
+    strategy: 'graphql-same-owner-fork',
+    pullRequest: {
+      number: 1611,
+      isDraft: true
+    },
+    readyTransition: {
+      status: 'clearance-missing'
+    },
+    spawnSyncFn: () => {
+      throw new Error('merge-sync should not run when ready transition is missing');
+    }
+  });
+
+  assert.equal(result.status, 'skipped');
+  assert.equal(result.attempted, false);
+  assert.match(result.reason, /only attempted after the current PR creation flow marked the PR ready/i);
 });
 
 test('parseArgs accepts explicit PR helper overrides', () => {
@@ -1236,6 +1367,17 @@ test('createPriorityPr auto-promotes same-owner draft PRs when merge-sync dry-ru
         isDraft: true
       }
     }),
+    admitToMergeQueueFn: () => ({
+      status: 'queued',
+      reason: 'merge-queue-branch-develop',
+      attempted: true,
+      helperCall: 'node tools/priority/merge-sync-pr.mjs --pr 1610 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --summary-path /tmp/repo/tests/results/_agent/issue/queue-admission.json',
+      summaryPath: '/tmp/repo/tests/results/_agent/issue/queue-admission.json',
+      promotion: {
+        status: 'queued',
+        materialized: true
+      }
+    }),
     readJsonFn: () => null,
     resolveStandingIssueNumberFn: () => {
       throw new Error('should not resolve standing priority when --issue is explicit');
@@ -1250,6 +1392,8 @@ test('createPriorityPr auto-promotes same-owner draft PRs when merge-sync dry-ru
   assert.equal(result.readyTransition.dryRunSummaryPath, '/tmp/repo/tests/results/_agent/issue/merge-sync-dry-run.json');
   assert.equal(result.readyTransition.reviewClearance.status, 'pass');
   assert.equal(result.readyTransition.attempted, true);
+  assert.equal(result.queueAdmission.status, 'queued');
+  assert.equal(result.queueAdmission.attempted, true);
   assert.equal(runCalls.length, 1);
   assert.equal(runCalls[0].command, 'gh');
   assert.deepEqual(runCalls[0].args, [
@@ -1322,6 +1466,17 @@ test('writePriorityPrReport persists ready-transition metadata for unattended re
           reasons: ['local-review-mode-no-github-review-required']
         }
       },
+      queueAdmission: {
+        status: 'queued',
+        reason: 'merge-queue-branch-develop',
+        attempted: true,
+        helperCall: 'node tools/priority/merge-sync-pr.mjs --pr 1597 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --summary-path tests/results/_agent/issue/queue-admission.json',
+        summaryPath: path.join(reportDir, 'tests', 'results', '_agent', 'issue', 'queue-admission.json'),
+        promotion: {
+          status: 'queued',
+          materialized: true
+        }
+      },
       reusedExistingPullRequest: true,
       pullRequest: {
         number: 1597,
@@ -1341,6 +1496,11 @@ test('writePriorityPrReport persists ready-transition metadata for unattended re
   assert.match(report.readyTransition.helperCall, /^gh pr ready 1597/);
   assert.match(report.readyTransition.dryRunSummaryPath, /merge-sync-dry-run\.json$/);
   assert.equal(report.readyTransition.reviewClearance.status, 'pass');
+  assert.equal(report.queueAdmission.status, 'queued');
+  assert.equal(report.queueAdmission.attempted, true);
+  assert.match(report.queueAdmission.helperCall, /^node tools\/priority\/merge-sync-pr\.mjs --pr 1597/);
+  assert.match(report.queueAdmission.summaryPath, /queue-admission\.json$/);
+  assert.equal(report.queueAdmission.promotion.status, 'queued');
 });
 
 test('createPriorityPr fails closed before push when the branch already backed a merged PR', () => {
