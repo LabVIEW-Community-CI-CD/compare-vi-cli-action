@@ -613,6 +613,7 @@ jobs:
     needs: [certification-matrix, release, validate-cli-artifacts]
     if: ${{ always() && needs.release.result == 'success' }}
     permissions:
+      actions: read
       contents: read
       issues: write
     steps:
@@ -648,6 +649,50 @@ jobs:
         with:
           name: release-rollback-drill-health-${{ github.run_id }}
           path: tests/results/_agent/release
+
+      - name: Resolve latest downstream proving run
+        id: downstream_proving_run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          payload='{}'
+          if response="$(gh api "repos/${{ github.repository }}/actions/workflows/downstream-onboarding-feedback.yml/runs?branch=develop&status=success&per_page=20" 2>/dev/null)"; then
+            payload="$response"
+          fi
+          run_id="$(printf '%s' "$payload" | node -e "const fs = require('fs'); const payload = JSON.parse(fs.readFileSync(0, 'utf8')); const runs = Array.isArray(payload.workflow_runs) ? payload.workflow_runs : []; const selected = runs.find((run) => String(run.conclusion || '').toLowerCase() === 'success'); if (selected && selected.id) process.stdout.write(String(selected.id));")"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download downstream proving artifact
+        if: ${{ always() && steps.downstream_proving_run.outputs.run_id != '' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node tools/priority/download-run-artifact.mjs \
+            --repo "${{ github.repository }}" \
+            --run-id "${{ steps.downstream_proving_run.outputs.run_id }}" \
+            --artifact downstream-onboarding-feedback \
+            --destination-root tests/results/_agent/release/downstream-proving-artifacts \
+            --report tests/results/_agent/release/downstream-proving-artifact-download.json
+
+      - name: Resolve downstream proving artifact paths
+        id: downstream_proving_artifacts
+        if: always()
+        shell: pwsh
+        run: |
+          $searchRoot = Join-Path $PWD 'tests/results/_agent/release/downstream-proving-artifacts'
+          $scorecardPath = Join-Path $searchRoot 'downstream-develop-promotion-scorecard.json'
+          if (Test-Path -LiteralPath $searchRoot -PathType Container) {
+            $candidate = Get-ChildItem -LiteralPath $searchRoot -Recurse -Filter 'downstream-develop-promotion-scorecard.json' -File | Select-Object -First 1
+            if ($candidate) {
+              $scorecardPath = $candidate.FullName
+            }
+          }
+          "scorecard_path=$scorecardPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Assert promotion contract alignment
         shell: pwsh
@@ -800,6 +845,8 @@ jobs:
             --slo tests/results/_agent/slo/release-slo-metrics.json \
             --rollback tests/results/_agent/release/rollback-drill-health.json \
             --trust tests/results/_agent/supply-chain/release-trust-gate.json \
+            --downstream-promotion "${{ steps.downstream_proving_artifacts.outputs.scorecard_path }}" \
+            --require-downstream-proving \
             "${signed_tag_args[@]}" \
             --output tests/results/_agent/release/release-scorecard.json
 
@@ -827,6 +874,7 @@ jobs:
             tests/results/_agent/certification/release-certification-matrix.json
             tests/results/_agent/supply-chain/release-trust-gate.json
             tests/results/_agent/release/rollback-drill-health.json
+            tests/results/_agent/release/downstream-proving-artifact-download.json
             tests/results/_agent/release/release-scorecard.json
             tests/results/_agent/release/comparevi-tools-artifact.json
             tests/results/_agent/release/shared-source-resolution.json

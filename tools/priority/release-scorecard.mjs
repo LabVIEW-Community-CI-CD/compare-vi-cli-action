@@ -20,7 +20,9 @@ const HELP = [
   '  --slo <path>                   SLO metrics JSON path (required).',
   '  --rollback <path>              Rollback drill health JSON path (required).',
   '  --trust <path>                 Supply-chain trust JSON path (optional).',
+  '  --downstream-promotion <path>  Downstream promotion scorecard JSON path (optional).',
   '  --tag-ref <ref>                Tag reference for signed-tag assertions.',
+  '  --require-downstream-proving   Treat missing/failing downstream promotion scorecard as blocker.',
   '  --require-signed-tag           Treat unsigned/missing tag signature as blocker.',
   '  --fail-on-blockers             Exit non-zero when blockers exist (default true).',
   '  --no-fail-on-blockers          Emit scorecard without failing process exit.',
@@ -85,7 +87,9 @@ export function parseArgs(argv = process.argv) {
     sloPath: null,
     rollbackPath: null,
     trustPath: null,
+    downstreamPromotionPath: null,
     tagRef: null,
+    requireDownstreamProving: false,
     requireSignedTag: false,
     failOnBlockers: true,
     help: false
@@ -101,6 +105,10 @@ export function parseArgs(argv = process.argv) {
     }
     if (token === '--require-signed-tag') {
       options.requireSignedTag = true;
+      continue;
+    }
+    if (token === '--require-downstream-proving') {
+      options.requireDownstreamProving = true;
       continue;
     }
     if (token === '--fail-on-blockers') {
@@ -122,6 +130,7 @@ export function parseArgs(argv = process.argv) {
       '--slo',
       '--rollback',
       '--trust',
+      '--downstream-promotion',
       '--tag-ref'
     ]);
     if (stringFlags.has(token)) {
@@ -136,6 +145,7 @@ export function parseArgs(argv = process.argv) {
       if (token === '--slo') options.sloPath = next;
       if (token === '--rollback') options.rollbackPath = next;
       if (token === '--trust') options.trustPath = next;
+      if (token === '--downstream-promotion') options.downstreamPromotionPath = next;
       if (token === '--tag-ref') options.tagRef = next;
       continue;
     }
@@ -223,6 +233,34 @@ function statusFromTrust(payload) {
   };
 }
 
+function statusFromDownstreamPromotion(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      status: 'missing',
+      schema: null,
+      summaryStatus: null,
+      blockerCount: null,
+      downstreamRepository: null,
+      sourceCommitSha: null
+    };
+  }
+
+  const schema = asOptional(payload.schema);
+  const summaryStatus = asOptional(payload?.summary?.status);
+  const blockerCount = Number.isFinite(payload?.summary?.blockerCount) ? payload.summary.blockerCount : null;
+  const downstreamRepository = asOptional(payload?.gates?.feedbackReport?.downstreamRepository);
+  const sourceCommitSha = asOptional(payload?.summary?.provenance?.sourceCommitSha);
+
+  return {
+    status: schema === 'priority/downstream-promotion-scorecard@v1' && summaryStatus === 'pass' ? 'pass' : 'fail',
+    schema,
+    summaryStatus,
+    blockerCount,
+    downstreamRepository,
+    sourceCommitSha
+  };
+}
+
 export function evaluateReleaseScorecard(inputs) {
   const blockers = [];
   const recordBlocker = (code, message) => blockers.push({ code, message });
@@ -235,6 +273,11 @@ export function evaluateReleaseScorecard(inputs) {
   }
   if (!inputs.rollback.exists || inputs.rollback.error) {
     recordBlocker('rollback-missing', 'Rollback health artifact is missing or unreadable.');
+  }
+  if (inputs.requireDownstreamProving && (!inputs.downstreamPromotionProvided || !inputs.downstreamPromotion.exists || inputs.downstreamPromotion.error)) {
+    recordBlocker('downstream-promotion-missing', 'Downstream promotion scorecard is missing or unreadable.');
+  } else if (inputs.downstreamPromotionProvided && (!inputs.downstreamPromotion.exists || inputs.downstreamPromotion.error)) {
+    recordBlocker('downstream-promotion-missing', 'Downstream promotion scorecard is missing or unreadable.');
   }
   if (inputs.promotion.status !== 'pass') {
     recordBlocker('promotion-gate', `Promotion gate status is ${inputs.promotion.status}.`);
@@ -251,6 +294,17 @@ export function evaluateReleaseScorecard(inputs) {
   }
   if (inputs.trustProvided && inputs.trustGate.status !== 'pass') {
     recordBlocker('trust-gate', `Supply-chain trust gate status is ${inputs.trustGate.status}.`);
+  }
+  if (inputs.requireDownstreamProving && inputs.downstreamPromotionGate.status !== 'pass') {
+    recordBlocker(
+      'downstream-promotion-gate',
+      `Downstream promotion scorecard status is ${inputs.downstreamPromotionGate.status}.`
+    );
+  } else if (inputs.downstreamPromotionProvided && inputs.downstreamPromotion.exists && !inputs.downstreamPromotion.error && inputs.downstreamPromotionGate.status !== 'pass') {
+    recordBlocker(
+      'downstream-promotion-gate',
+      `Downstream promotion scorecard status is ${inputs.downstreamPromotionGate.status}.`
+    );
   }
   if (inputs.requireSignedTag && inputs.signedTag.status !== 'pass') {
     recordBlocker('signed-tag', 'Signed tag verification was required but not verified.');
@@ -282,11 +336,22 @@ export async function runReleaseScorecard(rawOptions = {}) {
   const slo = loadInputFile(options.sloPath);
   const rollback = loadInputFile(options.rollbackPath);
   const trust = asOptional(options.trustPath) ? loadInputFile(options.trustPath) : null;
+  const downstreamPromotion = asOptional(options.downstreamPromotionPath) ? loadInputFile(options.downstreamPromotionPath) : null;
 
   const promotion = statusFromLedger(ledger.payload);
   const sloGate = statusFromSlo(slo.payload);
   const rollbackGate = statusFromRollback(rollback.payload);
   const trustGate = statusFromTrust(trust?.payload);
+  const downstreamPromotionGate = downstreamPromotion
+    ? statusFromDownstreamPromotion(downstreamPromotion.payload)
+    : {
+        status: 'not-applicable',
+        schema: null,
+        summaryStatus: null,
+        blockerCount: null,
+        downstreamRepository: null,
+        sourceCommitSha: null
+      };
   const signedTag = {
     required: Boolean(options.requireSignedTag),
     ref: asOptional(options.tagRef),
@@ -303,6 +368,10 @@ export async function runReleaseScorecard(rawOptions = {}) {
     sloGate,
     rollbackGate,
     trustGate,
+    downstreamPromotion,
+    downstreamPromotionGate,
+    downstreamPromotionProvided: Boolean(downstreamPromotion),
+    requireDownstreamProving: Boolean(options.requireDownstreamProving),
     trustProvided: Boolean(trust),
     requireSignedTag: signedTag.required,
     signedTag
@@ -322,13 +391,20 @@ export async function runReleaseScorecard(rawOptions = {}) {
       ledger: { path: ledger.path, exists: ledger.exists, error: ledger.error },
       slo: { path: slo.path, exists: slo.exists, error: slo.error },
       rollback: { path: rollback.path, exists: rollback.exists, error: rollback.error },
-      trust: trust ? { path: trust.path, exists: trust.exists, error: trust.error } : null
+      trust: trust ? { path: trust.path, exists: trust.exists, error: trust.error } : null,
+      downstreamPromotion: downstreamPromotion
+        ? { path: downstreamPromotion.path, exists: downstreamPromotion.exists, error: downstreamPromotion.error }
+        : null
     },
     gates: {
       promotion,
       slo: sloGate,
       rollback: rollbackGate,
       trust: trustGate,
+      downstreamPromotion: {
+        required: Boolean(options.requireDownstreamProving),
+        ...downstreamPromotionGate
+      },
       signedTag
     },
     summary: evaluated

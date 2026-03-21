@@ -27,6 +27,7 @@ test('release scorecard schema validates generated scorecard payload', async () 
   const sloPath = path.join(tmpDir, 'slo.json');
   const rollbackPath = path.join(tmpDir, 'rollback.json');
   const trustPath = path.join(tmpDir, 'trust.json');
+  const downstreamPromotionPath = path.join(tmpDir, 'downstream-promotion.json');
   const outputPath = path.join(tmpDir, 'scorecard.json');
 
   writeJson(ledgerPath, { gate: { status: 'pass', reason: 'ok' } });
@@ -40,6 +41,21 @@ test('release scorecard schema validates generated scorecard payload', async () 
   });
   writeJson(rollbackPath, { summary: { status: 'pass', pausePromotion: false } });
   writeJson(trustPath, { summary: { status: 'pass', failureCount: 0 }, tagSignature: { verified: true, reason: 'valid' } });
+  writeJson(downstreamPromotionPath, {
+    schema: 'priority/downstream-promotion-scorecard@v1',
+    gates: {
+      feedbackReport: {
+        downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+      }
+    },
+    summary: {
+      status: 'pass',
+      blockerCount: 0,
+      provenance: {
+        sourceCommitSha: '1234567890abcdef1234567890abcdef12345678'
+      }
+    }
+  });
 
   const result = await runReleaseScorecard({
     repo: 'example/repo',
@@ -47,11 +63,13 @@ test('release scorecard schema validates generated scorecard payload', async () 
     channel: 'stable',
     version: '0.6.4',
     tagRef: 'v0.6.4',
+    requireDownstreamProving: true,
     requireSignedTag: true,
     ledgerPath,
     sloPath,
     rollbackPath,
     trustPath,
+    downstreamPromotionPath,
     outputPath
   });
 
@@ -65,4 +83,5 @@ test('release scorecard schema validates generated scorecard payload', async () 
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.gates.signedTag.status, 'pass');
   assert.equal(result.report.gates.trust.status, 'pass');
+  assert.equal(result.report.gates.downstreamPromotion.status, 'pass');
 });
