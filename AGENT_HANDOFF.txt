@@ -18,8 +18,9 @@ Live repository state belongs in the machine-generated artifacts under
    before starting a fresh implementation pass. Treat exit code `2` and
    `latestDecision.blocking = true` as a hard stop until a newer `go` exists.
 5. If a standing-priority issue exists, branch from `develop` and execute
-   against that issue. If the queue is empty, confirm with the operator before
-   creating new work.
+   against that issue. If the queue is empty and release evidence is RC-ready,
+   run `node tools/npm/run-script.mjs priority:pivot:template`; only a future
+   agent may pivot to `LabviewGitHubCiTemplate` when the report is `ready`.
 
 ## Live State Surfaces
 

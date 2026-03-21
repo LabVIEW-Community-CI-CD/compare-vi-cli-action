@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/template-pivot-gate-report-v1.schema.json",
+  "title": "Template Pivot Gate Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "targetRepository",
+    "policy",
+    "inputs",
+    "evidence",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "priority/template-pivot-gate@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targetRepository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "futureAgentOnly",
+        "operatorSteeringAllowed",
+        "requirePreciseSessionFeedback",
+        "releaseCandidateVersionPattern",
+        "releaseCandidateVersionPatternDescription"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "futureAgentOnly": {
+          "type": "boolean"
+        },
+        "operatorSteeringAllowed": {
+          "type": "boolean"
+        },
+        "requirePreciseSessionFeedback": {
+          "type": "boolean"
+        },
+        "releaseCandidateVersionPattern": {
+          "type": "string",
+          "minLength": 1
+        },
+        "releaseCandidateVersionPatternDescription": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queueEmptyReportPath",
+        "releaseSummaryPath",
+        "handoffEntrypointStatusPath"
+      ],
+      "properties": {
+        "queueEmptyReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "releaseSummaryPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "handoffEntrypointStatusPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queueEmpty",
+        "releaseCandidate",
+        "handoffEntrypoint"
+      ],
+      "properties": {
+        "queueEmpty": {
+          "$ref": "#/$defs/queueEmptyEvidence"
+        },
+        "releaseCandidate": {
+          "$ref": "#/$defs/releaseCandidateEvidence"
+        },
+        "handoffEntrypoint": {
+          "$ref": "#/$defs/handoffEntrypointEvidence"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "readyForFutureAgentPivot",
+        "pivotDecision",
+        "blockerCount",
+        "blockers"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "blocked"
+          ]
+        },
+        "readyForFutureAgentPivot": {
+          "type": "boolean"
+        },
+        "pivotDecision": {
+          "type": "string",
+          "enum": [
+            "future-agent-may-pivot",
+            "stay-in-compare-vi-cli-action"
+          ]
+        },
+        "blockerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/blocker"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "queueEmptyEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reportPath",
+        "exists",
+        "schema",
+        "reason",
+        "openIssueCount",
+        "ready"
+      ],
+      "properties": {
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "schema": {
+          "type": ["string", "null"]
+        },
+        "reason": {
+          "type": ["string", "null"]
+        },
+        "openIssueCount": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "ready": {
+          "type": "boolean"
+        }
+      }
+    },
+    "releaseCandidateEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reportPath",
+        "exists",
+        "schema",
+        "version",
+        "valid",
+        "matchesVersionPattern",
+        "ready"
+      ],
+      "properties": {
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "schema": {
+          "type": ["string", "null"]
+        },
+        "version": {
+          "type": ["string", "null"]
+        },
+        "valid": {
+          "type": ["boolean", "null"]
+        },
+        "matchesVersionPattern": {
+          "type": "boolean"
+        },
+        "ready": {
+          "type": "boolean"
+        }
+      }
+    },
+    "handoffEntrypointEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reportPath",
+        "exists",
+        "schema",
+        "status",
+        "ready"
+      ],
+      "properties": {
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "schema": {
+          "type": ["string", "null"]
+        },
+        "status": {
+          "type": ["string", "null"]
+        },
+        "ready": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

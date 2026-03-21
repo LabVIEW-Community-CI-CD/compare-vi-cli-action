@@ -1,0 +1,35 @@
+{
+  "schema": "priority/template-pivot-gate-policy@v1",
+  "schemaVersion": "1.0.0",
+  "sourceRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+  "targetRepository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
+  "targetBranch": "develop",
+  "queueEmpty": {
+    "requiredSchema": "standing-priority/no-standing@v1",
+    "requiredReason": "queue-empty",
+    "requiredOpenIssueCount": 0
+  },
+  "releaseCandidate": {
+    "requiredSchema": "agent-handoff/release-v1",
+    "requireValid": true,
+    "versionPattern": "^\\d+\\.\\d+\\.\\d+-rc\\.\\d+$",
+    "versionPatternDescription": "X.Y.Z-rc.N"
+  },
+  "handoffEntrypoint": {
+    "requiredSchema": "agent-handoff/entrypoint-status-v1",
+    "requiredStatus": "pass"
+  },
+  "decision": {
+    "futureAgentOnly": true,
+    "operatorSteeringAllowed": false,
+    "requirePreciseSessionFeedback": true
+  },
+  "artifacts": {
+    "policySchema": "docs/schemas/template-pivot-gate-policy-v1.schema.json",
+    "reportSchema": "docs/schemas/template-pivot-gate-report-v1.schema.json",
+    "defaultOutputPath": "tests/results/_agent/promotion/template-pivot-gate-report.json",
+    "queueEmptyReportPath": "tests/results/_agent/issue/no-standing-priority.json",
+    "releaseSummaryPath": "tests/results/_agent/handoff/release-summary.json",
+    "handoffEntrypointStatusPath": "tests/results/_agent/handoff/entrypoint-status.json"
+  }
+}
