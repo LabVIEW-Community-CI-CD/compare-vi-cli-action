@@ -1,0 +1,86 @@
+{
+  "schema": "priority/lane-marketplace-registry@v1",
+  "repositories": [
+    {
+      "id": "compare-vi-upstream",
+      "slug": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+      "authorityTier": "upstream-integration",
+      "laneClass": "upstream",
+      "promotionRail": "integration",
+      "standingLabels": [
+        "standing-priority"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "comparevi-history-upstream",
+      "slug": "LabVIEW-Community-CI-CD/comparevi-history",
+      "authorityTier": "shared-platform",
+      "laneClass": "consumer-platform",
+      "promotionRail": "shared-platform",
+      "standingLabels": [
+        "standing-priority"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "template-upstream",
+      "slug": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
+      "authorityTier": "consumer-proving",
+      "laneClass": "consumer-template",
+      "promotionRail": "consumer-proving",
+      "standingLabels": [
+        "standing-priority"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "compare-vi-org-fork",
+      "slug": "LabVIEW-Community-CI-CD/compare-vi-cli-action-fork",
+      "authorityTier": "org-fork-review",
+      "laneClass": "org-fork",
+      "promotionRail": "fork-review",
+      "standingLabels": [
+        "fork-standing-priority",
+        "standing-priority"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "compare-vi-personal-fork",
+      "slug": "svelderrainruiz/compare-vi-cli-action",
+      "authorityTier": "personal-authoring",
+      "laneClass": "personal-fork",
+      "promotionRail": "authoring",
+      "standingLabels": [
+        "fork-standing-priority",
+        "standing-priority"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "template-org-fork",
+      "slug": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork",
+      "authorityTier": "org-fork-review",
+      "laneClass": "org-fork",
+      "promotionRail": "consumer-proving",
+      "standingLabels": [
+        "fork-standing-priority",
+        "standing-priority"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "template-personal-fork",
+      "slug": "svelderrainruiz/LabviewGitHubCiTemplate",
+      "authorityTier": "personal-authoring",
+      "laneClass": "personal-fork",
+      "promotionRail": "authoring",
+      "standingLabels": [
+        "fork-standing-priority",
+        "standing-priority"
+      ],
+      "enabled": true
+    }
+  ]
+}
