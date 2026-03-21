@@ -50,13 +50,20 @@
         "ledger",
         "slo",
         "rollback",
-        "trust"
+        "trust",
+        "downstreamPromotion"
       ],
       "properties": {
         "ledger": { "$ref": "#/$defs/inputRef" },
         "slo": { "$ref": "#/$defs/inputRef" },
         "rollback": { "$ref": "#/$defs/inputRef" },
         "trust": {
+          "anyOf": [
+            { "$ref": "#/$defs/inputRef" },
+            { "type": "null" }
+          ]
+        },
+        "downstreamPromotion": {
           "anyOf": [
             { "$ref": "#/$defs/inputRef" },
             { "type": "null" }
@@ -72,6 +79,7 @@
         "slo",
         "rollback",
         "trust",
+        "downstreamPromotion",
         "signedTag"
       ],
       "properties": {
@@ -79,6 +87,7 @@
         "slo": { "$ref": "#/$defs/sloGate" },
         "rollback": { "$ref": "#/$defs/rollbackGate" },
         "trust": { "$ref": "#/$defs/trustGate" },
+        "downstreamPromotion": { "$ref": "#/$defs/downstreamPromotionGate" },
         "signedTag": { "$ref": "#/$defs/signedTagGate" }
       }
     },
@@ -175,6 +184,20 @@
         "failureCount": { "type": ["integer", "null"] },
         "tagVerified": { "type": ["boolean", "null"] },
         "tagReason": { "type": ["string", "null"] }
+      }
+    },
+    "downstreamPromotionGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "status", "schema", "summaryStatus", "blockerCount", "downstreamRepository", "sourceCommitSha"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pass", "fail", "missing", "not-applicable"] },
+        "schema": { "type": ["string", "null"] },
+        "summaryStatus": { "type": ["string", "null"] },
+        "blockerCount": { "type": ["integer", "null"], "minimum": 0 },
+        "downstreamRepository": { "type": ["string", "null"] },
+        "sourceCommitSha": { "type": ["string", "null"] }
       }
     },
     "signedTagGate": {

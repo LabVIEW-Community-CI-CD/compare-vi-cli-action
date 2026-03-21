@@ -30,8 +30,11 @@ test('parseArgs enforces required flags and supports signed-tag options', () => 
     'c.json',
     '--trust',
     'd.json',
+    '--downstream-promotion',
+    'downstream.json',
     '--tag-ref',
     'v0.6.4',
+    '--require-downstream-proving',
     '--require-signed-tag',
     '--no-fail-on-blockers'
   ]);
@@ -43,7 +46,9 @@ test('parseArgs enforces required flags and supports signed-tag options', () => 
   assert.equal(parsed.sloPath, 'b.json');
   assert.equal(parsed.rollbackPath, 'c.json');
   assert.equal(parsed.trustPath, 'd.json');
+  assert.equal(parsed.downstreamPromotionPath, 'downstream.json');
   assert.equal(parsed.tagRef, 'v0.6.4');
+  assert.equal(parsed.requireDownstreamProving, true);
   assert.equal(parsed.requireSignedTag, true);
   assert.equal(parsed.failOnBlockers, false);
 });
@@ -53,10 +58,14 @@ test('evaluateReleaseScorecard reports blockers deterministically', () => {
     ledger: { exists: true, error: null },
     slo: { exists: true, error: null },
     rollback: { exists: true, error: null },
+    downstreamPromotion: { exists: true, error: null },
     promotion: { status: 'pass' },
     sloGate: { status: 'pass', breachCount: 0, blockerCount: 0, source: 'promotion-gate', blockers: [] },
     rollbackGate: { status: 'pass' },
     trustGate: { status: 'pass' },
+    downstreamPromotionGate: { status: 'pass' },
+    downstreamPromotionProvided: true,
+    requireDownstreamProving: true,
     trustProvided: true,
     requireSignedTag: true,
     signedTag: { status: 'pass' }
@@ -68,10 +77,14 @@ test('evaluateReleaseScorecard reports blockers deterministically', () => {
     ledger: { exists: true, error: null },
     slo: { exists: false, error: null },
     rollback: { exists: true, error: 'bad json' },
+    downstreamPromotion: { exists: false, error: null },
     promotion: { status: 'fail' },
     sloGate: { status: 'fail', breachCount: 2, blockerCount: 1, source: 'promotion-gate', blockers: [] },
     rollbackGate: { status: 'fail' },
     trustGate: { status: 'fail' },
+    downstreamPromotionGate: { status: 'missing' },
+    downstreamPromotionProvided: true,
+    requireDownstreamProving: true,
     trustProvided: true,
     requireSignedTag: true,
     signedTag: { status: 'fail' }
@@ -81,6 +94,8 @@ test('evaluateReleaseScorecard reports blockers deterministically', () => {
   assert.ok(fail.blockers.some((entry) => entry.code === 'rollback-missing'));
   assert.ok(fail.blockers.some((entry) => entry.code === 'promotion-gate'));
   assert.ok(fail.blockers.some((entry) => entry.code === 'slo-breach'));
+  assert.ok(fail.blockers.some((entry) => entry.code === 'downstream-promotion-missing'));
+  assert.ok(fail.blockers.some((entry) => entry.code === 'downstream-promotion-gate'));
   assert.ok(fail.blockers.some((entry) => entry.code === 'signed-tag'));
 });
 
@@ -90,6 +105,7 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
   const sloPath = path.join(tmpDir, 'slo.json');
   const rollbackPath = path.join(tmpDir, 'rollback.json');
   const trustPath = path.join(tmpDir, 'trust.json');
+  const downstreamPromotionPath = path.join(tmpDir, 'downstream-promotion.json');
 
   writeJson(ledgerPath, {
     gate: { status: 'pass', reason: 'ok' }
@@ -109,6 +125,21 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
     summary: { status: 'pass', failureCount: 0 },
     tagSignature: { verified: true, reason: 'valid' }
   });
+  writeJson(downstreamPromotionPath, {
+    schema: 'priority/downstream-promotion-scorecard@v1',
+    gates: {
+      feedbackReport: {
+        downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+      }
+    },
+    summary: {
+      status: 'pass',
+      blockerCount: 0,
+      provenance: {
+        sourceCommitSha: '1234567890abcdef1234567890abcdef12345678'
+      }
+    }
+  });
 
   const passOutput = path.join(tmpDir, 'pass-scorecard.json');
   const passResult = await runReleaseScorecard({
@@ -122,12 +153,15 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
     sloPath,
     rollbackPath,
     trustPath,
+    downstreamPromotionPath,
+    requireDownstreamProving: true,
     outputPath: passOutput
   });
 
   assert.equal(passResult.exitCode, 0);
   assert.equal(passResult.report.summary.status, 'pass');
   assert.equal(passResult.report.gates.signedTag.status, 'pass');
+  assert.equal(passResult.report.gates.downstreamPromotion.status, 'pass');
   assert.equal(passResult.report.summary.blockerCount, 0);
 
   writeJson(sloPath, {
@@ -156,6 +190,7 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
   assert.equal(historicalOnly.exitCode, 0);
   assert.equal(historicalOnly.report.summary.status, 'pass');
   assert.equal(historicalOnly.report.gates.slo.status, 'pass');
+  assert.equal(historicalOnly.report.gates.downstreamPromotion.status, 'not-applicable');
 
   writeJson(sloPath, {
     breaches: [{ code: 'gate-regressions', message: 'historical debt still high' }],
@@ -176,6 +211,8 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
     sloPath,
     rollbackPath,
     trustPath,
+    downstreamPromotionPath,
+    requireDownstreamProving: true,
     outputPath: failOutput,
     failOnBlockers: true
   });
@@ -183,4 +220,36 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
   assert.equal(failResult.exitCode, 1);
   assert.equal(failResult.report.summary.status, 'fail');
   assert.ok(failResult.report.summary.blockers.some((entry) => entry.code === 'slo-breach'));
+
+  const passAgainSloPath = path.join(tmpDir, 'slo-pass.json');
+  writeJson(passAgainSloPath, {
+    breaches: [],
+    promotionGate: {
+      status: 'pass',
+      blockerCount: 0,
+      blockers: []
+    }
+  });
+  const missingDownstreamOutput = path.join(tmpDir, 'missing-downstream-scorecard.json');
+  const missingDownstreamResult = await runReleaseScorecard({
+    repo: 'example/repo',
+    stream: 'comparevi-cli',
+    channel: 'stable',
+    tagRef: 'v0.6.4',
+    requireSignedTag: true,
+    requireDownstreamProving: true,
+    ledgerPath,
+    sloPath: passAgainSloPath,
+    rollbackPath,
+    trustPath,
+    downstreamPromotionPath: path.join(tmpDir, 'missing-downstream-promotion.json'),
+    outputPath: missingDownstreamOutput,
+    failOnBlockers: true
+  });
+
+  assert.equal(missingDownstreamResult.exitCode, 1);
+  assert.equal(missingDownstreamResult.report.gates.downstreamPromotion.status, 'missing');
+  assert.ok(
+    missingDownstreamResult.report.summary.blockers.some((entry) => entry.code === 'downstream-promotion-missing')
+  );
 });
