@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/print-to-single-file-html-authoring-workspace-v1.schema.json",
+  "title": "PrintToSingleFileHtml authoring workspace",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "status",
+    "payloadBundlePath",
+    "payloadManifestPath",
+    "payloadName",
+    "declaredExecutableState",
+    "sourceKind",
+    "preferredInstalledOperation",
+    "installedOperationPath",
+    "destinationPath",
+    "scaffoldReceiptPath",
+    "notes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi/print-to-single-file-html-authoring-workspace@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "succeeded"
+      ]
+    },
+    "payloadBundlePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payloadManifestPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payloadName": {
+      "type": "string",
+      "const": "PrintToSingleFileHtml"
+    },
+    "declaredExecutableState": {
+      "type": "string",
+      "enum": [
+        "source-only",
+        "runnable"
+      ]
+    },
+    "sourceKind": {
+      "type": "string",
+      "enum": [
+        "installed-cli-operation",
+        "ni-example"
+      ]
+    },
+    "preferredInstalledOperation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "installedOperationPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "destinationPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scaffoldReceiptPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "labviewPathHint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

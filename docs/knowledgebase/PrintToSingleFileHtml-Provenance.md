@@ -45,6 +45,8 @@ As of March 21, 2026, the bundle is still explicitly `source-only`:
   proof can be attempted
 - `tools/Inspect-OperationPayloadSourceBundle.ps1` now emits the fail-closed
   executable-state receipt for the checked-in bundle
+- `tools/New-PrintToSingleFileHtmlAuthoringWorkspace.ps1` now wraps the generic
+  scaffold so this payload has a dedicated disposable authoring bootstrap
 
 ## Repo policy
 

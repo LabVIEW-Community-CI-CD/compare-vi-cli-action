@@ -52,3 +52,7 @@ Promotion remains blocked until both of these are true:
 Machine-readable provenance for this bundle lives in `payload-provenance.json`.
 Use `tools/Inspect-OperationPayloadSourceBundle.ps1` to project the current
 executable-state inspection receipt for this bundle.
+Use `tools/New-PrintToSingleFileHtmlAuthoringWorkspace.ps1` or
+`node tools/npm/run-script.mjs history:custom-operation:scaffold:print-single-file`
+to create the disposable authoring workspace from the preferred installed
+official CLI operation.
