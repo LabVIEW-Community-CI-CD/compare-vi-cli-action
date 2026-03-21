@@ -5,26 +5,31 @@ This directory is the repo-owned source bundle for the future
 added/deleted VI certification.
 
 Current status:
+
 - licensed
 - repo-owned
 - not yet executable
 - not yet promotable to corpus `operationPayload.provenanceState = accepted`
 
 Why it exists:
+
 - `aphill93/linuxContainerDemo#7` proved the pattern, but its payload provenance
   is not promotable here because that repository declares no license.
 - This repo needs a public, explicitly licensed source bundle before the
   added/deleted certification lane can promote a replacement seed.
 
 Implementation basis:
+
 - official LabVIEW `Print:VI To HTML` capability
 - `AdditionalOperationDirectory` payload shape expected by `LabVIEWCLI`
 
 This bundle does not yet check in runnable LabVIEW operation binaries such as:
+
 - `GetHelp.vi`
 - `RunOperation.vi`
 
 That is deliberate. This slice establishes:
+
 - licensing
 - provenance
 - intended payload contract
