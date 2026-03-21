@@ -10,6 +10,10 @@
   The helper enforces headless execution and writes deterministic capture
   artifacts adjacent to the report output.
 
+  The Linux LabVIEW 2026 Q1 image is driven through `bash` inside the
+  container. Host-side `pwsh` wrappers must not be treated as the in-container
+  shell contract for this plane.
+
 .PARAMETER BaseVi
   Path to the base VI. Required unless -Probe is set.
 
@@ -2031,6 +2035,13 @@ $capture = [ordered]@{
   dockerServerOs = $null
   dockerContext  = $null
   observedDockerHost = $null
+  containerShellContract = [ordered]@{
+    plane = 'linux'
+    executable = 'bash'
+    family = 'posix-bash'
+    encodedCommand = $false
+    pwshRequired = $false
+  }
   baseVi         = $null
   headVi         = $null
   reportPath     = $null
