@@ -39,6 +39,7 @@
     "history:corpus:offline": "pwsh -NoLogo -NoProfile -File tools/Invoke-OfflineRealHistoryCorpus.ps1",
     "history:corpus:evaluate": "pwsh -NoLogo -NoProfile -File tools/Invoke-OfflineRealHistoryCorpusEvaluation.ps1",
     "history:corpus:samples:evaluate": "pwsh -NoLogo -NoProfile -File tools/Invoke-HeadlessSampleVICorpusEvaluation.ps1",
+    "history:corpus:samples:proof:print-single-file": "pwsh -NoLogo -NoProfile -File tools/Invoke-HeadlessSampleVICorpusPrintProof.ps1",
     "history:custom-operation:proof": "pwsh -NoLogo -NoProfile -File tools/Test-LabVIEWCLICustomOperationProof.ps1",
     "history:custom-operation:proof:windows": "pwsh -NoLogo -NoProfile -File tools/Test-LabVIEWCLICustomOperationProof.ps1 -ExecutionPlane windows-container",
     "history:custom-operation:scaffold": "pwsh -NoLogo -NoProfile -File tools/New-LabVIEWCLICustomOperationWorkspace.ps1",
