@@ -391,7 +391,7 @@ test('buildThroughputScorecard projects concurrent lane status without changing 
   assert.equal(report.summary.metrics.concurrentLaneDeferredCount, 1);
 });
 
-test('buildThroughputScorecard warns when actionable lane demand leaves the four-slot worker pool underfilled', () => {
+test('buildThroughputScorecard warns when actionable lane demand leaves the logical worker pool underfilled', () => {
   const report = buildThroughputScorecard({
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     runtimeState: {
