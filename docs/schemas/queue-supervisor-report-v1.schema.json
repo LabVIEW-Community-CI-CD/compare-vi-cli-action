@@ -19,6 +19,7 @@
     "orderedEligible",
     "readiness",
     "governor",
+    "securityIntake",
     "retryHistory"
   ],
   "properties": {
@@ -65,7 +66,8 @@
         "eligibleCount",
         "plannedCount",
         "enqueuedCount",
-        "quarantinedCount"
+        "quarantinedCount",
+        "securityIntakeStatus"
       ],
       "properties": {
         "openCount": {
@@ -91,6 +93,9 @@
         "quarantinedCount": {
           "type": "integer",
           "minimum": 0
+        },
+        "securityIntakeStatus": {
+          "enum": ["pass", "breach", "overridden", "platform-stale", "skip", "error", null]
         }
       }
     },
@@ -220,6 +225,40 @@
         "capLimit": {
           "type": ["integer", "null"],
           "minimum": 0
+        }
+      }
+    },
+    "securityIntake": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "exists",
+        "error",
+        "status",
+        "generatedAt",
+        "sourceSchema"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": ["string", "null"]
+        },
+        "status": {
+          "enum": ["pass", "breach", "overridden", "platform-stale", "skip", "error", null]
+        },
+        "generatedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "sourceSchema": {
+          "type": ["string", "null"]
         }
       }
     },

@@ -440,6 +440,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   candidate gates, or add `--apply` for guarded autonomous enqueue mode.
   Use `--governor-state <path>` (default `tests/results/_agent/slo/ops-governor-state.json`) to
   enforce SLO governor mode-switches (`normal|stabilize|pause`) before enqueue actions.
+  The queue-supervisor report also projects the latest security-intake state and report path from
+  `tests/results/_agent/security/security-intake-report.json` (override with `--security-intake-report <path>`)
+  so the standing throughput surface can surface `pass|breach|overridden|platform-stale|skip|error` without rerouting the security workflow.
   Use `node tools/npm/run-script.mjs priority:queue:readiness` to materialize the ranked ready-set report
   (`tests/results/_agent/queue/queue-readiness-report.json`) from the latest supervisor snapshot.
   The hosted queue-supervisor workflow runs every 5 minutes and also on `workflow_run` completion for

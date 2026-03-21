@@ -22,6 +22,13 @@ const DEFAULT_CONTROLLER_STATE_PATH = path.join(
   'throughput-controller-state.json'
 );
 const DEFAULT_GOVERNOR_STATE_PATH = path.join('tests', 'results', '_agent', 'slo', 'ops-governor-state.json');
+const DEFAULT_SECURITY_INTAKE_REPORT_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'security',
+  'security-intake-report.json'
+);
 const DEFAULT_MAX_INFLIGHT = 5;
 const DEFAULT_MIN_INFLIGHT = 2;
 const DEFAULT_HEALTH_SAMPLE = 10;
@@ -52,6 +59,7 @@ const EXCLUDED_LABELS = new Set(['queue-blocked', 'do-not-queue']);
 const DEFAULT_BASE_BRANCHES = ['develop', 'main'];
 const COUPLING_VALUES = new Set(['independent', 'soft', 'hard']);
 const BURST_MODES = new Set(['auto', 'on', 'off']);
+const SECURITY_INTAKE_STATUSES = new Set(['pass', 'breach', 'overridden', 'platform-stale', 'skip', 'error']);
 const COUPLING_PRIORITY = Object.freeze({
   independent: 0,
   soft: 1,
@@ -69,6 +77,9 @@ function printUsage() {
   );
   console.log(`  --readiness-report <path> Write queue readiness JSON (default: ${DEFAULT_READINESS_REPORT_PATH}).`);
   console.log(`  --governor-state <path>   Read governor-state JSON (default: ${DEFAULT_GOVERNOR_STATE_PATH}).`);
+  console.log(
+    `  --security-intake-report <path> Read security-intake JSON (default: ${DEFAULT_SECURITY_INTAKE_REPORT_PATH}).`
+  );
   console.log(`  --max-inflight <n>     Queue target cap (default: ${DEFAULT_MAX_INFLIGHT}, env QUEUE_AUTOPILOT_MAX_INFLIGHT).`);
   console.log(`  --min-inflight <n>     Adaptive-cap floor (default: ${DEFAULT_MIN_INFLIGHT}, env QUEUE_AUTOPILOT_MIN_INFLIGHT).`);
   console.log('  --adaptive-cap         Enable adaptive inflight tuning (default, env QUEUE_AUTOPILOT_ADAPTIVE_CAP).');
@@ -242,6 +253,7 @@ export function parseArgs(argv = process.argv) {
     controllerStatePath: DEFAULT_CONTROLLER_STATE_PATH,
     readinessReportPath: DEFAULT_READINESS_REPORT_PATH,
     governorStatePath: DEFAULT_GOVERNOR_STATE_PATH,
+    securityIntakeReportPath: DEFAULT_SECURITY_INTAKE_REPORT_PATH,
     maxInflight: null,
     minInflight: null,
     adaptiveCap: null,
@@ -277,6 +289,7 @@ export function parseArgs(argv = process.argv) {
       arg === '--controller-state' ||
       arg === '--readiness-report' ||
       arg === '--governor-state' ||
+      arg === '--security-intake-report' ||
       arg === '--max-inflight' ||
       arg === '--min-inflight' ||
       arg === '--repo' ||
@@ -301,6 +314,8 @@ export function parseArgs(argv = process.argv) {
         options.readinessReportPath = next;
       } else if (arg === '--governor-state') {
         options.governorStatePath = next;
+      } else if (arg === '--security-intake-report') {
+        options.securityIntakeReportPath = next;
       } else if (arg === '--max-inflight') {
         options.maxInflight = parseIntStrict(next, { label: '--max-inflight' });
       } else if (arg === '--min-inflight') {
@@ -450,6 +465,20 @@ function normalizeGovernorMode(value) {
     return normalized;
   }
   return 'normal';
+}
+
+function projectOptionalStateEnvelope(envelope, { path: statePath, allowedStatuses = null } = {}) {
+  const payload = envelope && typeof envelope === 'object' && 'payload' in envelope ? envelope.payload : envelope;
+  const rawStatus = typeof payload?.status === 'string' ? payload.status : null;
+  return {
+    path: statePath,
+    exists:
+      envelope && typeof envelope === 'object' && 'exists' in envelope ? Boolean(envelope.exists) : Boolean(payload),
+    error: envelope && typeof envelope === 'object' && 'error' in envelope ? envelope.error : null,
+    status: allowedStatuses && !allowedStatuses.has(rawStatus) ? null : rawStatus,
+    generatedAt: normalizeIso(payload?.generatedAt),
+    sourceSchema: typeof payload?.schema === 'string' ? payload.schema : null
+  };
 }
 
 function priorityFromTitle(title = '') {
@@ -1433,6 +1462,7 @@ export async function runQueueSupervisor(options = {}) {
   const controllerStatePath = args.controllerStatePath ?? DEFAULT_CONTROLLER_STATE_PATH;
   const readinessReportPath = args.readinessReportPath ?? DEFAULT_READINESS_REPORT_PATH;
   const governorStatePath = args.governorStatePath ?? DEFAULT_GOVERNOR_STATE_PATH;
+  const securityIntakeReportPath = args.securityIntakeReportPath ?? DEFAULT_SECURITY_INTAKE_REPORT_PATH;
   const now = options.now ?? new Date();
   const runGhJsonFn = options.runGhJsonFn ?? runGhJson;
   const runCommandFn = options.runCommandFn ?? runCommand;
@@ -1508,6 +1538,11 @@ export async function runQueueSupervisor(options = {}) {
     generatedAt: normalizeIso(governorStatePayload?.generatedAt),
     sourceSchema: typeof governorStatePayload?.schema === 'string' ? governorStatePayload.schema : null
   };
+  const securityIntakeStateEnvelope = await readOptionalJsonFn(path.resolve(repoRoot, securityIntakeReportPath));
+  const securityIntake = projectOptionalStateEnvelope(securityIntakeStateEnvelope, {
+    path: securityIntakeReportPath,
+    allowedStatuses: SECURITY_INTAKE_STATUSES
+  });
   const retryHistory = pruneRetryHistory(
     previousReport?.retryHistory && typeof previousReport.retryHistory === 'object'
       ? structuredClone(previousReport.retryHistory)
@@ -1633,6 +1668,7 @@ export async function runQueueSupervisor(options = {}) {
       capApplied: governorCapApplied,
       capLimit: governorCapLimit
     },
+    securityIntake,
     inflight,
     capacity,
     health,
@@ -1657,7 +1693,8 @@ export async function runQueueSupervisor(options = {}) {
       cycleDetected: classified.cycleDetected,
       plannedCount: toProcess.length,
       enqueuedCount: 0,
-      quarantinedCount: 0
+      quarantinedCount: 0,
+      securityIntakeStatus: securityIntake.status
     },
     candidates: classified.candidates
       .map((candidate) => ({
