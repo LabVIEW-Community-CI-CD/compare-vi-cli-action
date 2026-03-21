@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { parseRemoteUrl } from './lib/remote-utils.mjs';
+import { parseRemoteUrl, runGhGraphql } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { buildQueueReadinessReport, DEFAULT_READINESS_REPORT_PATH } from './queue-readiness.mjs';
 import { hasDeferredPostMergeBranchCleanup, reconcileDeferredBranchCleanup } from './merge-sync-pr.mjs';
@@ -443,6 +443,17 @@ function normalizeOwner(value) {
   return '';
 }
 
+function parseRepositorySlug(value) {
+  const parts = String(value ?? '')
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length !== 2) {
+    throw new Error(`Invalid repository slug '${value}'. Expected owner/repo.`);
+  }
+  return { owner: parts[0], repo: parts[1] };
+}
+
 function normalizeIso(value) {
   if (!value) return null;
   const iso = new Date(value);
@@ -656,6 +667,7 @@ export function classifyOpenPullRequests({
       isDraft: Boolean(pr.isDraft),
       mergeStateStatus: String(pr.mergeStateStatus ?? '').toUpperCase(),
       mergeable: String(pr.mergeable ?? '').toUpperCase(),
+      isInMergeQueue: pr.isInMergeQueue === true,
       labels,
       autoMergeEnabled: Boolean(pr.autoMergeRequest),
       coupling: parseCoupling(pr.body ?? ''),
@@ -1412,7 +1424,86 @@ function parseQueueManagedBranches(policy, fallbackBranches) {
 }
 
 function countInflight(candidates) {
-  return candidates.filter((candidate) => candidate.autoMergeEnabled).length;
+  return candidates.filter((candidate) => isQueuedCandidate(candidate)).length;
+}
+
+function isQueuedCandidate(candidate) {
+  return candidate?.isInMergeQueue === true || candidate?.autoMergeEnabled === true;
+}
+
+function buildPullRequestQueueStateQuery(numbers) {
+  const selections = numbers
+    .map((number) => {
+      const alias = `pr_${number}`;
+      return [
+        `      ${alias}: pullRequest(number:${number}) {`,
+        '        number',
+        '        state',
+        '        mergeStateStatus',
+        '        isInMergeQueue',
+        '        autoMergeRequest {',
+        '          enabledAt',
+        '        }',
+        '      }'
+      ].join('\n');
+    })
+    .join('\n');
+
+  return [
+    'query($owner:String!, $repo:String!) {',
+    '  repository(owner:$owner, name:$repo) {',
+    selections,
+    '  }',
+    '}'
+  ].join('\n');
+}
+
+async function readPullRequestQueueStates({
+  repoRoot,
+  repository,
+  pullRequestNumbers,
+  runGhGraphqlFn = null
+} = {}) {
+  const numbers = [...new Set((pullRequestNumbers ?? []).map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0))]
+    .sort((left, right) => left - right);
+  if (numbers.length === 0) {
+    return {
+      states: new Map(),
+      attempted: false,
+      error: null
+    };
+  }
+  if (typeof runGhGraphqlFn !== 'function') {
+    return {
+      states: new Map(),
+      attempted: false,
+      error: null
+    };
+  }
+
+  const { owner, repo } = parseRepositorySlug(repository);
+  try {
+    const payload = runGhGraphqlFn(repoRoot, buildPullRequestQueueStateQuery(numbers), { owner, repo }) ?? {};
+    const repositoryNode = payload?.data?.repository ?? {};
+    const states = new Map();
+    for (const number of numbers) {
+      const node = repositoryNode[`pr_${number}`];
+      if (node?.number) {
+        states.set(Number(node.number), node);
+      }
+    }
+    return {
+      states,
+      attempted: true,
+      error: null
+    };
+  } catch (error) {
+    return {
+      states: new Map(),
+      attempted: true,
+      error: error?.message ?? String(error)
+    };
+  }
 }
 
 function reportRetryState(history, number) {
@@ -1495,6 +1586,7 @@ export async function runQueueSupervisor(options = {}) {
   const readOptionalJsonFn = options.readOptionalJsonFn ?? readOptionalJson;
   const writeReportFn = options.writeReportFn ?? writeReport;
   const reconcileDeferredBranchCleanupFn = options.reconcileDeferredBranchCleanupFn ?? reconcileDeferredBranchCleanup;
+  const runGhGraphqlFn = options.runGhGraphqlFn ?? (options.runGhJsonFn ? null : runGhGraphql);
   const repository = resolveRepositorySlug(repoRoot, args.repo);
   const repositoryOwner = String(repository).split('/')[0]?.trim().toLowerCase() ?? '';
 
@@ -1516,8 +1608,31 @@ export async function runQueueSupervisor(options = {}) {
     'number,title,body,baseRefName,headRefName,headRepositoryOwner,isCrossRepository,isDraft,updatedAt,url,labels,statusCheckRollup,mergeStateStatus,mergeable,autoMergeRequest'
   ], { cwd: repoRoot }) ?? [];
 
+  const queueManagedPrNumbers = allOpenPrs
+    .filter((pr) => queueManagedBranches.has(normalizeBaseBranch(pr.baseRefName)))
+    .map((pr) => Number(pr.number));
+  const queueStateEnrichment = await readPullRequestQueueStates({
+    repoRoot,
+    repository,
+    pullRequestNumbers: queueManagedPrNumbers,
+    runGhGraphqlFn
+  });
+  const enrichedOpenPrs = allOpenPrs.map((pr) => {
+    const queueState = queueStateEnrichment.states.get(Number(pr.number));
+    if (!queueState) {
+      return pr;
+    }
+    return {
+      ...pr,
+      state: queueState.state ?? pr.state,
+      mergeStateStatus: queueState.mergeStateStatus ?? pr.mergeStateStatus,
+      isInMergeQueue: queueState.isInMergeQueue === true,
+      autoMergeRequest: queueState.autoMergeRequest ?? pr.autoMergeRequest
+    };
+  });
+
   const classified = classifyOpenPullRequests({
-    pullRequests: allOpenPrs,
+    pullRequests: enrichedOpenPrs,
     requiredChecksByBranch,
     queueManagedBranches
   });
@@ -1596,7 +1711,7 @@ export async function runQueueSupervisor(options = {}) {
   const burst = evaluateBurstWindow({
     burstMode: args.burstMode,
     burstRefillCycles: args.burstRefillCycles,
-    pullRequests: allOpenPrs,
+    pullRequests: enrichedOpenPrs,
     previousBurst: previousReport?.burst,
     controllerMode: adaptiveInflight.mode,
     now
@@ -1659,7 +1774,7 @@ export async function runQueueSupervisor(options = {}) {
   const queueManagedCandidates = classified.candidates.filter((candidate) => queueManagedBranches.has(candidate.baseRefName));
   const candidateByNumber = new Map(classified.candidates.map((candidate) => [candidate.number, candidate]));
   const readyCandidates = queueReadiness.readySet.map((entry) => candidateByNumber.get(entry.number)).filter(Boolean);
-  const readyQueuedCount = readyCandidates.filter((candidate) => candidate.autoMergeEnabled).length;
+  const readyQueuedCount = readyCandidates.filter((candidate) => isQueuedCandidate(candidate)).length;
   const readyUnqueuedCount = Math.max(0, readyCandidates.length - readyQueuedCount);
   const queueInventory = {
     queueManagedOpenCount: queueManagedCandidates.length,
@@ -1674,7 +1789,7 @@ export async function runQueueSupervisor(options = {}) {
   const planned = queueReadiness.readySet
     .map((entry) => candidateByNumber.get(entry.number))
     .filter(Boolean)
-    .filter((candidate) => !candidate.autoMergeEnabled);
+    .filter((candidate) => !isQueuedCandidate(candidate));
   const toProcess = planned.slice(0, capacity);
 
   const report = {
@@ -1700,6 +1815,11 @@ export async function runQueueSupervisor(options = {}) {
       repositoryOwner
     },
     queueManagedBranches: [...queueManagedBranches].sort(),
+    queueStateEnrichment: {
+      attempted: queueStateEnrichment.attempted,
+      queuedStateCount: queueStateEnrichment.states.size,
+      error: queueStateEnrichment.error
+    },
     maxInflight: args.maxInflight,
     minInflight: args.minInflight,
     effectiveMaxInflight,
@@ -1765,6 +1885,7 @@ export async function runQueueSupervisor(options = {}) {
         unresolvedOpenDependencies: candidate.unresolvedOpenDependencies ?? [],
         mergeStateStatus: candidate.mergeStateStatus,
         mergeable: candidate.mergeable,
+        isInMergeQueue: candidate.isInMergeQueue,
         autoMergeEnabled: candidate.autoMergeEnabled,
         eligible: candidate.eligible,
         reasons: [...candidate.reasons].sort(),

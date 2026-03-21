@@ -1113,7 +1113,7 @@ test('runQueueSupervisor projects merge-queue occupancy and ready inventory into
           url: 'https://example.test/pr/601',
           labels: [],
           statusCheckRollup: [successCheck('lint')],
-          autoMergeRequest: { enabledAt: '2026-03-05T21:00:00Z' }
+          autoMergeRequest: null
         },
         {
           number: 602,
@@ -1181,6 +1181,34 @@ test('runQueueSupervisor projects merge-queue occupancy and ready inventory into
     throw new Error(`Unexpected gh args: ${args.join(' ')}`);
   };
 
+  const runGhGraphqlFn = (_repoRoot, _query, variables) => ({
+    data: {
+      repository: {
+        pr_601: {
+          number: 601,
+          state: 'OPEN',
+          mergeStateStatus: 'BLOCKED',
+          isInMergeQueue: true,
+          autoMergeRequest: null
+        },
+        pr_602: {
+          number: 602,
+          state: 'OPEN',
+          mergeStateStatus: 'CLEAN',
+          isInMergeQueue: false,
+          autoMergeRequest: null
+        },
+        pr_603: {
+          number: 603,
+          state: 'OPEN',
+          mergeStateStatus: 'CLEAN',
+          isInMergeQueue: false,
+          autoMergeRequest: null
+        }
+      }
+    }
+  });
+
   const readJsonFileFn = async (filePath) => {
     if (String(filePath).endsWith('branch-required-checks.json')) {
       return { branches: { develop: ['lint'] } };
@@ -1217,6 +1245,7 @@ test('runQueueSupervisor projects merge-queue occupancy and ready inventory into
     },
     now: new Date('2026-03-05T21:30:00.000Z'),
     runGhJsonFn,
+    runGhGraphqlFn,
     runCommandFn: () => ({ status: 0, stdout: '', stderr: '' }),
     readJsonFileFn,
     readOptionalJsonFn: async () => ({}),
@@ -1231,6 +1260,11 @@ test('runQueueSupervisor projects merge-queue occupancy and ready inventory into
   assert.equal(report.summary.mergeQueueOccupancy, 1);
   assert.equal(report.summary.mergeQueueTargetCapacity, 5);
   assert.equal(report.summary.mergeQueueAvailableCapacity, 4);
+  assert.deepEqual(report.queueStateEnrichment, {
+    attempted: true,
+    queuedStateCount: 3,
+    error: null
+  });
   assert.deepEqual(report.queueInventory, {
     queueManagedOpenCount: 3,
     readyPrInventory: 2,
@@ -1241,6 +1275,9 @@ test('runQueueSupervisor projects merge-queue occupancy and ready inventory into
     mergeQueueTargetCapacity: 5,
     mergeQueueAvailableCapacity: 4
   });
+  const queuedCandidate = report.candidates.find((candidate) => candidate.number === 601);
+  assert.equal(queuedCandidate.isInMergeQueue, true);
+  assert.equal(queuedCandidate.autoMergeEnabled, false);
 });
 
 test('runQueueSupervisor does not mark enqueue success when merge-sync exits 0 without durable promotion state', async () => {
