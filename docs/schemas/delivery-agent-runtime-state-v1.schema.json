@@ -47,6 +47,42 @@
       }
     },
     "workerPool": { "$ref": "#/$defs/workerPool" },
+    "logicalLaneActivation": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "capacityMode",
+        "capacitySource",
+        "effectiveLogicalLaneCount",
+        "seededLaneCount",
+        "activeLaneCount",
+        "inactiveLaneCount",
+        "catalog"
+      ],
+      "properties": {
+        "capacityMode": { "enum": ["fixed-target", "host-ram-adaptive"] },
+        "capacitySource": { "enum": ["policy-ceiling", "host-ram-budget"] },
+        "effectiveLogicalLaneCount": { "type": "integer", "minimum": 0 },
+        "seededLaneCount": { "type": "integer", "minimum": 0 },
+        "activeLaneCount": { "type": "integer", "minimum": 0 },
+        "inactiveLaneCount": { "type": "integer", "minimum": 0 },
+        "catalog": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "label", "seededOrdinal", "activationState"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "minLength": 1 },
+              "seededOrdinal": { "type": "integer", "minimum": 1 },
+              "activationState": { "enum": ["seeded", "active"] }
+            }
+          }
+        }
+      }
+    },
     "marketplace": {
       "type": ["object", "null"],
       "additionalProperties": true,

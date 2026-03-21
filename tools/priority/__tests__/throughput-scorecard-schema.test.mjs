@@ -94,4 +94,8 @@ test('throughput-scorecard schema validates generated report payloads', () => {
   });
 
   assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(report.logicalLaneActivation.seededLaneCount, 20);
+  assert.equal(report.logicalLaneActivation.activeLaneCount, 4);
+  assert.equal(report.summary.metrics.seededLogicalLaneCount, 20);
+  assert.equal(report.summary.metrics.activeLogicalLaneCount, 4);
 });

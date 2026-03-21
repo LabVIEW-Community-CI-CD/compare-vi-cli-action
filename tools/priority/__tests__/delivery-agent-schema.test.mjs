@@ -29,6 +29,18 @@ function makeAjv() {
   return ajv;
 }
 
+function buildLogicalLaneCatalog(count = 20) {
+  return Array.from({ length: count }, (_, index) => {
+    const seededOrdinal = index + 1;
+    const ordinal = String(seededOrdinal).padStart(2, '0');
+    return {
+      id: `logical-lane-${ordinal}`,
+      label: `Lane ${ordinal}`,
+      seededOrdinal
+    };
+  });
+}
+
 test('delivery-agent policy schema validates the checked-in policy contract', async () => {
   const schema = await loadSchema('docs/schemas/delivery-agent-policy-v1.schema.json');
   const data = JSON.parse(await readFile(path.join(repoRoot, 'tools/priority/delivery-agent.policy.json'), 'utf8'));
@@ -36,14 +48,15 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
   const validate = ajv.compile(schema);
   assert.equal(validate(data), true, JSON.stringify(validate.errors, null, 2));
   assert.equal(data.copilotReviewStrategy, 'draft-only-explicit');
-  assert.equal(data.maxActiveCodingLanes, 8);
+  assert.equal(data.maxActiveCodingLanes, 20);
   assert.deepEqual(data.capitalFabric, {
     schema: 'priority/capital-deployment-fabric@v1',
     capacityMode: 'host-ram-adaptive',
-    maxLogicalLaneCount: 8,
+    maxLogicalLaneCount: 20,
     logicalLaneAllocationFloorRatio: 0.5,
     reservedLaneCount: 1,
     hostRamBudgetPath: 'tests/results/_agent/runtime/host-ram-budget.json',
+    logicalLaneCatalog: buildLogicalLaneCatalog(),
     specialtyLanes: [
       {
         id: 'jarvis',
@@ -58,7 +71,7 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
     ]
   });
   assert.deepEqual(data.workerPool, {
-    targetSlotCount: 8,
+    targetSlotCount: 20,
     prewarmSlotCount: 1,
     releaseWaitingStates: ['waiting-ci', 'waiting-review', 'ready-merge'],
     providers: [
@@ -152,7 +165,7 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
   });
   assert.equal(
     data.workerPool.targetSlotCount - data.templateAgentVerificationLane.reservedSlotCount,
-    7
+    19
   );
   assert.deepEqual(data.hostIsolation, {
     mode: 'hard-cutover',
@@ -896,6 +909,15 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
   assert.equal(state.policy.maxActiveCodingLanes, 4);
   assert.equal(state.policy.capitalFabric.capacityMode, 'fixed-target');
   assert.equal(state.policy.capitalFabric.maxLogicalLaneCount, 4);
+  assert.equal(state.logicalLaneActivation.seededLaneCount, 4);
+  assert.equal(state.logicalLaneActivation.activeLaneCount, 4);
+  assert.equal(state.logicalLaneActivation.catalog.length, 4);
+  assert.deepEqual(state.logicalLaneActivation.catalog[0], {
+    id: 'logical-lane-01',
+    label: 'Lane 01',
+    seededOrdinal: 1,
+    activationState: 'active'
+  });
   assert.equal(state.policy.capitalFabric.specialtyLanes.length, 0);
   assert.equal(state.workerPool.targetSlotCount, 4);
   assert.equal(state.workerPool.configuredTargetSlotCount, 4);

@@ -83,6 +83,42 @@
         "capacitySource": { "enum": ["policy-ceiling", "host-ram-budget"] }
       }
     },
+    "logicalLaneActivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capacityMode",
+        "capacitySource",
+        "effectiveLogicalLaneCount",
+        "seededLaneCount",
+        "activeLaneCount",
+        "inactiveLaneCount",
+        "catalog"
+      ],
+      "properties": {
+        "capacityMode": { "enum": ["fixed-target", "host-ram-adaptive"] },
+        "capacitySource": { "enum": ["policy-ceiling", "host-ram-budget"] },
+        "effectiveLogicalLaneCount": { "type": "integer", "minimum": 0 },
+        "seededLaneCount": { "type": "integer", "minimum": 0 },
+        "activeLaneCount": { "type": "integer", "minimum": 0 },
+        "inactiveLaneCount": { "type": "integer", "minimum": 0 },
+        "catalog": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "label", "seededOrdinal", "activationState"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "minLength": 1 },
+              "seededOrdinal": { "type": "integer", "minimum": 1 },
+              "activationState": { "enum": ["seeded", "active"] }
+            }
+          }
+        }
+      }
+    },
     "queue": {
       "type": "object",
       "additionalProperties": false,
@@ -276,6 +312,9 @@
             "logicalLaneAllocationRatio",
             "logicalLaneAllocationFloorRatio",
             "effectiveLogicalLaneCount",
+            "seededLogicalLaneCount",
+            "activeLogicalLaneCount",
+            "inactiveLogicalLaneCount",
             "concurrentLaneActiveCount",
             "concurrentLaneDeferredCount",
             "idleClassificationManagedLaneCount",
@@ -295,6 +334,9 @@
             "logicalLaneAllocationRatio": { "type": "number", "minimum": 0, "maximum": 1 },
             "logicalLaneAllocationFloorRatio": { "type": "number", "minimum": 0, "maximum": 1 },
             "effectiveLogicalLaneCount": { "type": "integer", "minimum": 0 },
+            "seededLogicalLaneCount": { "type": "integer", "minimum": 0 },
+            "activeLogicalLaneCount": { "type": "integer", "minimum": 0 },
+            "inactiveLogicalLaneCount": { "type": "integer", "minimum": 0 },
             "concurrentLaneActiveCount": { "type": "integer", "minimum": 0 },
             "concurrentLaneDeferredCount": { "type": "integer", "minimum": 0 },
             "idleClassificationManagedLaneCount": { "type": "integer", "minimum": 0 },

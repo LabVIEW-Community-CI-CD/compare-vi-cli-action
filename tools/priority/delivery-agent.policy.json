@@ -5,17 +5,39 @@
   "copilotReviewStrategy": "draft-only-explicit",
   "autoSlice": true,
   "autoMerge": true,
-  "maxActiveCodingLanes": 8,
+  "maxActiveCodingLanes": 20,
   "allowPolicyMutations": false,
   "allowReleaseAdmin": false,
   "stopWhenNoOpenEpics": true,
   "capitalFabric": {
     "schema": "priority/capital-deployment-fabric@v1",
     "capacityMode": "host-ram-adaptive",
-    "maxLogicalLaneCount": 8,
+    "maxLogicalLaneCount": 20,
     "logicalLaneAllocationFloorRatio": 0.5,
     "reservedLaneCount": 1,
     "hostRamBudgetPath": "tests/results/_agent/runtime/host-ram-budget.json",
+    "logicalLaneCatalog": [
+      {"id": "logical-lane-01", "label": "Lane 01", "seededOrdinal": 1},
+      {"id": "logical-lane-02", "label": "Lane 02", "seededOrdinal": 2},
+      {"id": "logical-lane-03", "label": "Lane 03", "seededOrdinal": 3},
+      {"id": "logical-lane-04", "label": "Lane 04", "seededOrdinal": 4},
+      {"id": "logical-lane-05", "label": "Lane 05", "seededOrdinal": 5},
+      {"id": "logical-lane-06", "label": "Lane 06", "seededOrdinal": 6},
+      {"id": "logical-lane-07", "label": "Lane 07", "seededOrdinal": 7},
+      {"id": "logical-lane-08", "label": "Lane 08", "seededOrdinal": 8},
+      {"id": "logical-lane-09", "label": "Lane 09", "seededOrdinal": 9},
+      {"id": "logical-lane-10", "label": "Lane 10", "seededOrdinal": 10},
+      {"id": "logical-lane-11", "label": "Lane 11", "seededOrdinal": 11},
+      {"id": "logical-lane-12", "label": "Lane 12", "seededOrdinal": 12},
+      {"id": "logical-lane-13", "label": "Lane 13", "seededOrdinal": 13},
+      {"id": "logical-lane-14", "label": "Lane 14", "seededOrdinal": 14},
+      {"id": "logical-lane-15", "label": "Lane 15", "seededOrdinal": 15},
+      {"id": "logical-lane-16", "label": "Lane 16", "seededOrdinal": 16},
+      {"id": "logical-lane-17", "label": "Lane 17", "seededOrdinal": 17},
+      {"id": "logical-lane-18", "label": "Lane 18", "seededOrdinal": 18},
+      {"id": "logical-lane-19", "label": "Lane 19", "seededOrdinal": 19},
+      {"id": "logical-lane-20", "label": "Lane 20", "seededOrdinal": 20}
+    ],
     "specialtyLanes": [
       {
         "id": "jarvis",
@@ -30,7 +52,7 @@
     ]
   },
   "workerPool": {
-    "targetSlotCount": 8,
+    "targetSlotCount": 20,
     "prewarmSlotCount": 1,
     "releaseWaitingStates": [
       "waiting-ci",
