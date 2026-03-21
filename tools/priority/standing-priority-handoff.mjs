@@ -410,7 +410,14 @@ export async function handoffStandingPriority(
   }
 
   logger('[standing-handoff] Synchronising priority cache...');
-  await syncFn({ env });
+  const syncEnv =
+    resolvedRepoSlug && resolvedRepoSlug.trim()
+      ? {
+          ...(env || {}),
+          GITHUB_REPOSITORY: resolvedRepoSlug
+        }
+      : env;
+  await syncFn({ env: syncEnv });
   if (releaseLease && typeof leaseReleaseFn === 'function') {
     logger(`[standing-handoff] Releasing writer lease for scope '${leaseScope}'...`);
     try {

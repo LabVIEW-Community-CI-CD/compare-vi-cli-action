@@ -43,8 +43,10 @@ test('handoffStandingPriority normalizes fork standing labels and syncs cache', 
     return '';
   };
   let syncCount = 0;
-  const syncFn = async () => {
+  let syncArgs = null;
+  const syncFn = async (args = {}) => {
     syncCount += 1;
+    syncArgs = args;
   };
   const leaseReleaseFn = async () => {
     leaseReleaseCount += 1;
@@ -105,6 +107,8 @@ test('handoffStandingPriority normalizes fork standing labels and syncs cache', 
     { issueNumber: 315, labels: ['fork-standing-priority'] }
   ]);
   assert.equal(syncCount, 1);
+  assert.equal(syncArgs?.env?.GITHUB_REPOSITORY, 'fork-owner/compare-vi-cli-action');
+  assert.equal(syncArgs?.env?.AGENT_PRIORITY_UPSTREAM_REPOSITORY, 'upstream-owner/compare-vi-cli-action');
   assert.equal(leaseReleaseCount, 1);
 });
 
