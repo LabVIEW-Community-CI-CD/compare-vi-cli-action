@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { mkdtempSync } from 'node:fs';
-import { observeConcurrentLaneStatus, parseArgs } from '../concurrent-lane-status.mjs';
+import { classifyIdleLaneState, observeConcurrentLaneStatus, parseArgs } from '../concurrent-lane-status.mjs';
 
 function createTempDir() {
   return mkdtempSync(path.join(os.tmpdir(), 'concurrent-lane-status-'));
@@ -16,6 +16,58 @@ function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
+
+test('classifyIdleLaneState maps non-working lane signals onto the managed idle fabric states', () => {
+  assert.equal(
+    classifyIdleLaneState({ runtimeStatus: 'planned', executionPlane: 'hosted', laneClass: 'hosted-proof' })?.state,
+    'waiting-hosted'
+  );
+  assert.equal(
+    classifyIdleLaneState({ runtimeStatus: 'deferred', executionPlane: 'local', laneClass: 'manual-docker' })?.state,
+    'waiting-merge'
+  );
+  assert.equal(
+    classifyIdleLaneState({ runtimeStatus: 'blocked', executionPlane: 'local', laneClass: 'manual-docker' })?.state,
+    'blocked'
+  );
+  assert.equal(
+    classifyIdleLaneState({
+      runtimeStatus: 'deferred',
+      executionPlane: 'local',
+      laneClass: 'manual-docker',
+      availability: 'disabled',
+      reasons: ['policy-paused']
+    })?.state,
+    'policy-paused'
+  );
+  assert.equal(
+    classifyIdleLaneState({
+      runtimeStatus: 'deferred',
+      executionPlane: 'local-shadow',
+      laneClass: 'shadow-validation'
+    })?.state,
+    'prewarm'
+  );
+  assert.equal(
+    classifyIdleLaneState({
+      runtimeStatus: 'deferred',
+      executionPlane: 'local',
+      laneClass: 'manual-docker',
+      metadata: { operatorSteering: true }
+    })?.state,
+    'operator-steering'
+  );
+  assert.equal(
+    classifyIdleLaneState({
+      runtimeStatus: 'deferred',
+      executionPlane: 'local',
+      laneClass: 'manual-docker',
+      reasons: ['queue-empty']
+    })?.state,
+    'queue-empty'
+  );
+  assert.equal(classifyIdleLaneState({ runtimeStatus: 'active', executionPlane: 'hosted', laneClass: 'hosted-proof' }), null);
+});
 
 function createApplyReceipt(overrides = {}) {
   return {
@@ -173,6 +225,14 @@ test('observeConcurrentLaneStatus projects active hosted lanes and queued PR mer
   assert.equal(receipt.summary.orchestratorDisposition, 'wait-hosted-run');
   assert.equal(receipt.summary.activeLaneCount, 2);
   assert.equal(receipt.summary.deferredLaneCount, 1);
+  assert.equal(receipt.laneStatuses[0].idleClassification, null);
+  assert.equal(receipt.laneStatuses[2].idleClassification?.state, 'waiting-merge');
+  assert.equal(receipt.summary.idleClassificationCoverage.managedLaneCount, 3);
+  assert.equal(receipt.summary.idleClassificationCoverage.nonWorkingLaneCount, 1);
+  assert.equal(receipt.summary.idleClassificationCoverage.classifiedLaneCount, 1);
+  assert.equal(receipt.summary.idleClassificationCoverage.coverageRatio, 1);
+  assert.equal(receipt.summary.idleClassificationCoverage.stateCounts['waiting-hosted'], 0);
+  assert.equal(receipt.summary.idleClassificationCoverage.stateCounts['waiting-merge'], 1);
   assert.equal(receipt.pullRequest.mergeQueue.position, 2);
   assert.equal(receipt.pullRequest.checksSummary.pending, 1);
   assert.ok(receipt.laneStatuses.every((entry) => entry.id !== 'manual-linux-docker' || entry.runtimeStatus === 'deferred'));

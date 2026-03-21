@@ -133,7 +133,8 @@
         "plannedLaneCount",
         "deferredLaneCount",
         "manualLaneCount",
-        "shadowLaneCount"
+        "shadowLaneCount",
+        "idleClassificationCoverage"
       ],
       "properties": {
         "path": { "type": ["string", "null"] },
@@ -155,7 +156,48 @@
         "plannedLaneCount": { "type": "integer", "minimum": 0 },
         "deferredLaneCount": { "type": "integer", "minimum": 0 },
         "manualLaneCount": { "type": "integer", "minimum": 0 },
-        "shadowLaneCount": { "type": "integer", "minimum": 0 }
+        "shadowLaneCount": { "type": "integer", "minimum": 0 },
+        "idleClassificationCoverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "managedLaneCount",
+            "nonWorkingLaneCount",
+            "classifiedLaneCount",
+            "unclassifiedLaneCount",
+            "coverageRatio",
+            "stateCounts"
+          ],
+          "properties": {
+            "managedLaneCount": { "type": "integer", "minimum": 0 },
+            "nonWorkingLaneCount": { "type": "integer", "minimum": 0 },
+            "classifiedLaneCount": { "type": "integer", "minimum": 0 },
+            "unclassifiedLaneCount": { "type": "integer", "minimum": 0 },
+            "coverageRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "stateCounts": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "waiting-hosted",
+                "waiting-merge",
+                "policy-paused",
+                "blocked",
+                "prewarm",
+                "operator-steering",
+                "queue-empty"
+              ],
+              "properties": {
+                "waiting-hosted": { "type": "integer", "minimum": 0 },
+                "waiting-merge": { "type": "integer", "minimum": 0 },
+                "policy-paused": { "type": "integer", "minimum": 0 },
+                "blocked": { "type": "integer", "minimum": 0 },
+                "prewarm": { "type": "integer", "minimum": 0 },
+                "operator-steering": { "type": "integer", "minimum": 0 },
+                "queue-empty": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
       }
     },
     "delivery": {
@@ -200,6 +242,10 @@
             "mergeQueueReadyInventoryFloor",
             "concurrentLaneActiveCount",
             "concurrentLaneDeferredCount",
+            "idleClassificationManagedLaneCount",
+            "idleClassificationNonWorkingLaneCount",
+            "idleClassificationClassifiedLaneCount",
+            "idleClassificationCoverageRatio",
             "hostedWaitEscapeCount",
             "meanTerminalDurationMinutes"
           ],
@@ -212,6 +258,10 @@
             "mergeQueueReadyInventoryFloor": { "type": "integer", "minimum": 0 },
             "concurrentLaneActiveCount": { "type": "integer", "minimum": 0 },
             "concurrentLaneDeferredCount": { "type": "integer", "minimum": 0 },
+            "idleClassificationManagedLaneCount": { "type": "integer", "minimum": 0 },
+            "idleClassificationNonWorkingLaneCount": { "type": "integer", "minimum": 0 },
+            "idleClassificationClassifiedLaneCount": { "type": "integer", "minimum": 0 },
+            "idleClassificationCoverageRatio": { "type": "number", "minimum": 0, "maximum": 1 },
             "hostedWaitEscapeCount": { "type": "integer", "minimum": 0 },
             "meanTerminalDurationMinutes": { "type": ["number", "null"], "minimum": 0 }
           }

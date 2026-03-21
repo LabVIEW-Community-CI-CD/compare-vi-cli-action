@@ -391,6 +391,131 @@ test('buildThroughputScorecard projects concurrent lane status without changing 
   assert.equal(report.summary.metrics.concurrentLaneDeferredCount, 1);
 });
 
+test('buildThroughputScorecard surfaces idle classification coverage from the concurrent lane runtime receipt', () => {
+  const report = buildThroughputScorecard({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeState: {
+      workerPool: {
+        targetSlotCount: 4,
+        occupiedSlotCount: 2,
+        availableSlotCount: 2,
+        releasedLaneCount: 1,
+        utilizationRatio: 0.5
+      },
+      activeCodingLanes: 1
+    },
+    deliveryMemory: {
+      summary: {
+        totalTerminalPullRequestCount: 4,
+        mergedPullRequestCount: 3,
+        closedPullRequestCount: 1,
+        hostedWaitEscapeCount: 2,
+        meanTerminalDurationMinutes: 10.4,
+        viHistorySuitePullRequestCount: 1
+      }
+    },
+    queueReport: {
+      inflight: 1,
+      capacity: 2,
+      effectiveMaxInflight: 2,
+      paused: false,
+      throughputController: { mode: 'healthy' },
+      governor: { mode: 'normal' },
+      readiness: {
+        readySet: [{ number: 1511 }]
+      }
+    },
+    concurrentLaneStatus: {
+      schema: 'priority/concurrent-lane-status-receipt@v1',
+      status: 'settled',
+      hostedRun: {
+        observationStatus: 'completed'
+      },
+      pullRequest: {
+        observationStatus: 'not-requested'
+      },
+      laneStatuses: [
+        {
+          id: 'hosted-linux-proof',
+          laneClass: 'hosted-proof',
+          executionPlane: 'hosted',
+          decision: 'planned',
+          availability: 'available',
+          runtimeStatus: 'planned',
+          reasons: ['hosted-runner-independent-from-local-host'],
+          metadata: {},
+          idleClassification: {
+            state: 'waiting-hosted',
+            source: 'execution-plane',
+            signals: ['planned', 'hosted']
+          }
+        },
+        {
+          id: 'manual-linux-docker',
+          laneClass: 'manual-docker',
+          executionPlane: 'local',
+          decision: 'deferred',
+          availability: 'available',
+          runtimeStatus: 'deferred',
+          reasons: ['docker-engine-linux-observed'],
+          metadata: {},
+          idleClassification: {
+            state: 'waiting-merge',
+            source: 'execution-plane',
+            signals: ['deferred', 'local']
+          }
+        }
+      ],
+      summary: {
+        selectedBundleId: 'hosted-plus-manual-linux-docker',
+        laneCount: 2,
+        activeLaneCount: 0,
+        completedLaneCount: 0,
+        failedLaneCount: 0,
+        blockedLaneCount: 0,
+        plannedLaneCount: 1,
+        deferredLaneCount: 1,
+        manualLaneCount: 1,
+        shadowLaneCount: 0,
+        idleClassificationCoverage: {
+          managedLaneCount: 2,
+          nonWorkingLaneCount: 2,
+          classifiedLaneCount: 2,
+          unclassifiedLaneCount: 0,
+          coverageRatio: 1,
+          stateCounts: {
+            'waiting-hosted': 1,
+            'waiting-merge': 1,
+            'policy-paused': 0,
+            blocked: 0,
+            prewarm: 0,
+            'operator-steering': 0,
+            'queue-empty': 0
+          }
+        },
+        orchestratorDisposition: 'release-complete'
+      }
+    },
+    utilizationPolicy: {
+      mergeQueue: {
+        readyInventoryFloor: 1,
+        occupancyFloorRatio: 0.5,
+        occupancyTargetRatio: 1,
+        treatPausedQueueAsExempt: true
+      }
+    },
+    now: new Date('2026-03-21T03:12:00.000Z')
+  });
+
+  assert.equal(report.summary.metrics.idleClassificationManagedLaneCount, 2);
+  assert.equal(report.summary.metrics.idleClassificationNonWorkingLaneCount, 2);
+  assert.equal(report.summary.metrics.idleClassificationClassifiedLaneCount, 2);
+  assert.equal(report.summary.metrics.idleClassificationCoverageRatio, 1);
+  assert.equal(report.concurrentLanes.idleClassificationCoverage.coverageRatio, 1);
+  assert.equal(report.concurrentLanes.idleClassificationCoverage.stateCounts['waiting-hosted'], 1);
+  assert.equal(report.concurrentLanes.idleClassificationCoverage.stateCounts['waiting-merge'], 1);
+});
+
 test('buildThroughputScorecard warns when actionable lane demand leaves the four-slot worker pool underfilled', () => {
   const report = buildThroughputScorecard({
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
