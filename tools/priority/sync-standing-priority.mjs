@@ -18,6 +18,7 @@ const MODULE_FILE_PATH = fileURLToPath(import.meta.url);
 const MODULE_REPO_ROOT = path.resolve(path.dirname(MODULE_FILE_PATH), '../..');
 const NO_STANDING_REPORT_FILENAME = 'no-standing-priority.json';
 const MULTIPLE_STANDING_REPORT_FILENAME = 'multiple-standing-priority.json';
+const AUTO_PROMOTED_STANDING_REPORT_FILENAME = 'auto-promoted-standing-priority.json';
 const AUTO_SELECT_EXCLUDED_LABELS = new Set(['duplicate', 'invalid', 'wontfix']);
 
 const CLI_USAGE_LINES = [
@@ -2005,7 +2006,10 @@ export async function autoSelectStandingPriorityIssue(
     status: 'selected',
     source: `${openIssues.source || 'unknown'}+${labelResult.source || 'unknown'}`,
     repoSlug: targetSlug,
-    issue: selected
+    issue: selected,
+    openIssueCount: Array.isArray(openIssues.issues) ? openIssues.issues.length : 0,
+    candidateSource: openIssues.source || null,
+    labelAssignmentSource: labelResult.source || null
   };
 }
 
@@ -2457,6 +2461,43 @@ function writeMultipleStandingPriorityReport(resultsDir, report) {
   writeJson(reportPath, report);
 }
 
+export function buildAutoPromotedStandingPriorityReport({
+  repository,
+  checkedLabels,
+  issue,
+  candidateSource,
+  labelAssignmentSource,
+  openIssueCount = null,
+  generatedAt = new Date().toISOString()
+}) {
+  return {
+    schema: 'standing-priority/auto-promoted@v1',
+    generatedAt,
+    repository: repository || null,
+    checkedLabels: normalizeStandingPriorityLabels(checkedLabels),
+    issue: issue
+      ? {
+          number: Number.isInteger(Number(issue.number)) ? Number(issue.number) : null,
+          title: typeof issue.title === 'string' ? issue.title : null,
+          url: typeof issue.url === 'string' ? issue.url : null,
+          priority: Number.isInteger(issue.priority) ? issue.priority : null
+        }
+      : null,
+    candidateSource: candidateSource || null,
+    labelAssignmentSource: labelAssignmentSource || null,
+    openIssueCount: Number.isInteger(openIssueCount) && openIssueCount >= 0 ? openIssueCount : null,
+    message:
+      issue && Number.isInteger(Number(issue.number))
+        ? `Auto-promoted #${Number(issue.number)} into explicit \`${DEFAULT_STANDING_PRIORITY_LABEL}\` state.`
+        : `Auto-promoted the next in-scope issue into explicit \`${DEFAULT_STANDING_PRIORITY_LABEL}\` state.`
+  };
+}
+
+function writeAutoPromotedStandingPriorityReport(resultsDir, report) {
+  const reportPath = path.join(resultsDir, AUTO_PROMOTED_STANDING_REPORT_FILENAME);
+  writeJson(reportPath, report);
+}
+
 export function buildNoStandingPriorityState(
   cache,
   message,
@@ -2561,6 +2602,7 @@ export async function main(options = {}) {
   fs.mkdirSync(resultsDir, { recursive: true });
 
   let standingPriority;
+  let autoPromotedStandingReport = null;
   try {
     standingPriority = await resolveStandingPriorityNumber(repoRoot, slug, standingPriorityLabels);
   } catch (err) {
@@ -2591,6 +2633,14 @@ export async function main(options = {}) {
               label: DEFAULT_STANDING_PRIORITY_LABEL,
               source: 'auto-select'
             };
+            autoPromotedStandingReport = buildAutoPromotedStandingPriorityReport({
+              repository: autoSelect.repoSlug || slug || null,
+              checkedLabels: standingPriorityLabels,
+              issue: autoSelect.issue,
+              candidateSource: autoSelect.candidateSource,
+              labelAssignmentSource: autoSelect.labelAssignmentSource,
+              openIssueCount: autoSelect.openIssueCount
+            });
           } else if (autoSelect.status === 'empty') {
             const autoSelectOpenIssueCount =
               Number.isInteger(autoSelect.openIssueCount) && autoSelect.openIssueCount >= 0
@@ -2612,7 +2662,7 @@ export async function main(options = {}) {
 
       if (standingPriority) {
         console.log(
-          `[priority] Standing issue auto-selected: #${standingPriority.number}${
+          `[priority] Standing issue auto-promoted to explicit \`${DEFAULT_STANDING_PRIORITY_LABEL}\`: #${standingPriority.number}${
             standingPriority.repoSlug ? ` (${standingPriority.repoSlug})` : ''
           }`
         );
@@ -2690,7 +2740,7 @@ export async function main(options = {}) {
       const laneErr = createNoStandingPriorityError(undefined, laneLabels);
       if (shouldContinueAfterAutoSelectLaneEmpty(standingPriority, issueNumbers)) {
         console.warn(
-          `[priority] ${laneErr.message} Auto-select selected #${number}; continuing with resolved standing issue.`
+          `[priority] ${laneErr.message} Auto-promotion selected #${number} and applied \`${DEFAULT_STANDING_PRIORITY_LABEL}\`; continuing while standing-label visibility catches up.`
         );
       } else {
         throw laneErr;
@@ -2756,6 +2806,12 @@ export async function main(options = {}) {
   const policy = loadRoutingPolicy(repoRoot);
   const router = buildRouter(snapshot, policy);
   writeJson(path.join(resultsDir, 'router.json'), router);
+  const autoPromotedReportPath = path.join(resultsDir, AUTO_PROMOTED_STANDING_REPORT_FILENAME);
+  if (standingPriority?.source === 'auto-select' && autoPromotedStandingReport) {
+    writeAutoPromotedStandingPriorityReport(resultsDir, autoPromotedStandingReport);
+  } else if (fs.existsSync(autoPromotedReportPath)) {
+    fs.unlinkSync(autoPromotedReportPath);
+  }
   const noStandingReportPath = path.join(resultsDir, NO_STANDING_REPORT_FILENAME);
   if (fs.existsSync(noStandingReportPath)) {
     fs.unlinkSync(noStandingReportPath);
