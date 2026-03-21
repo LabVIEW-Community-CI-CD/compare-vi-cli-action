@@ -41,12 +41,12 @@ The checked-in profile catalog currently supports these canonical triggers:
   - operator preset: `continue-driving-autonomously` + `standing-priority`
   - aliases: `MC-AUTO`, `MC-DEFAULT`
   - use when the repo-owned control plane should keep the standing lane moving and rotate to the next concrete child
-    issue
+    issue while proactively filling safe worker-slot capacity up to the checked-in four-lane cap
 - `MC-LIVE`
   - profile: `finish-live-lane`
   - operator preset: `finish-live-standing-lane` + `standing-priority`
   - aliases: `MC-FINISH`
-  - use when the current standing PR should land before parked-lane expansion continues
+  - use when the current standing PR should land before additional support-lane expansion continues
 - `MC-RED`
   - profile: `stabilize-current-head-failure`
   - operator preset: `stabilize-current-head-failure` + `current-head-failure`
@@ -61,7 +61,7 @@ The checked-in profile catalog currently supports these canonical triggers:
   - profile: `prepare-parked-lane`
   - operator preset: `prepare-parked-lane` + `queue-health`
   - aliases: `MC-NEXT`, `MC-PARKED`
-  - use when the live lane is waiting on GitHub only and one disjoint parked lane should be prepared
+  - use when queue health needs another disjoint support lane prepared or refreshed while worker-slot capacity remains
 
 ## Unsupported or Ambiguous Shorthand
 
@@ -95,7 +95,7 @@ The operator input catalog bounds what each profile may request.
   - summary: rebuild queue intake before implementation work resumes
   - allowed focuses: `queue-health`, `policy-drift`, `handoff`
 - `prepare-parked-lane`
-  - summary: use live-lane wait time to cut one disjoint follow-up slice
+  - summary: use available worker-slot capacity to cut or refresh a disjoint follow-up slice
   - allowed focuses: `docs-contract`, `queue-health`, `standing-priority`
 
 ### Focuses
@@ -104,7 +104,7 @@ The operator input catalog bounds what each profile may request.
 | --- | --- | --- |
 | `standing-priority` | yes | Drive the current standing issue to merge. |
 | `current-head-failure` | yes | Fix the current-head regression before widening scope. |
-| `queue-health` | no | Restore intake, keep the queue populated, and prepare parked lanes. |
+| `queue-health` | no | Restore intake, keep the queue populated, and keep safe coding-lane capacity filled. |
 | `handoff` | no | Refresh machine-readable handoff state and continuity artifacts. |
 | `policy-drift` | no | Correct contradictions between checked-in law and runtime behavior before feature work widens. |
 | `docs-contract` | no | Tighten mission-control documentation and schema contract surfaces. |
@@ -121,7 +121,7 @@ Overrides are narrow, auditable exceptions. They do not widen the repo law.
   - meaning: temporary exception for fork-base workflow dispatch
 - `allowParkedLane`
   - value type: boolean
-  - meaning: enables or suppresses the single parked lane without changing the hard lane cap
+  - meaning: historical compatibility override that enables or suppresses additional disjoint support-lane preparation without changing the hard lane cap
 - `copilotCliUsage`
   - value type: enum (`optional`, `required`)
   - meaning: tightens local Copilot CLI use without replacing required hosted checks
@@ -134,7 +134,7 @@ Overrides are narrow, auditable exceptions. They do not widen the repo law.
 - `MC`
   - resolves to `autonomous-default`
   - applies `continue-driving-autonomously` + `standing-priority`
-  - uses no overrides
+  - uses no overrides and should drive toward the checked-in four-lane cap when safe work exists
 - `MC-QUEUE`
   - resolves through the `restore-intake` alias set
   - applies `restore-intake` + `queue-health`

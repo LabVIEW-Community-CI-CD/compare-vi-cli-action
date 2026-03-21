@@ -13,11 +13,11 @@
     },
     "lanePolicy": {
       "liveLaneCount": 1,
-      "maxActiveCodingLanes": 2,
-      "maxParkedLaneCount": 1,
-      "parkedLaneRequiresGithubWait": true,
+      "maxActiveCodingLanes": 4,
+      "maxParkedLaneCount": 3,
+      "parkedLaneRequiresGithubWait": false,
       "requireDisjointFileScopes": true,
-      "allowThirdLane": false,
+      "allowThirdLane": true,
       "mergeAuthority": "live-lane-only"
     },
     "worktreePolicy": {

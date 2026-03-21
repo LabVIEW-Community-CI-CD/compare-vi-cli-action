@@ -80,14 +80,17 @@ Mandatory session bootstrap:
    intake is explicitly restored; do not create a branch or PR first.
 
 Lane topology:
-- Maintain exactly:
-  - 1 live lane
-  - 0 or 1 parked lane
-- Never open a third coding lane.
-- The live lane is the only lane allowed to be merged.
-- The parked lane is allowed only when the live lane is waiting on hosted checks, review, or merge queue only.
-- The parked lane must be disjoint in file scope from the live lane.
-- If scopes overlap, do not parallelize.
+- Maintain up to 4 proactive coding lanes when safe actionable work exists.
+- Keep exactly 1 merge-authority live lane.
+- Use the remaining 3 coding lanes for disjoint implementation, hosted follow-through, remote implementation, or
+  shadow validation work.
+- Start filling safe lane capacity from session start. Do not wait for GitHub-only pauses before opening another
+  disjoint coding lane.
+- The live lane is the only lane allowed to be merged directly.
+- Support lanes must stay disjoint in file scope from the live lane and from each other.
+- Waiting-only lanes must release their worker slot immediately and persist their wake condition in machine-readable
+  receipts.
+- Never exceed the checked-in 4-lane cap.
 
 Worktree and branch contract:
 - Create worktrees from `upstream/develop` only.
@@ -121,18 +124,19 @@ Live-lane state machine:
    - hand off `standing-priority`:
      - `node tools/priority/standing-priority-handoff.mjs --repo LabVIEW-Community-CI-CD/compare-vi-cli-action <next-issue>`
 
-Parked-lane state machine:
-1. Only while the live lane is waiting on GitHub-only work, identify the next concrete child issue.
+Support-lane state machine:
+1. As soon as safe disjoint work exists and worker-slot capacity remains, identify the next concrete child issue.
 2. If only epics remain open:
    - create a concrete child issue first
    - link it to the governing epic with:
      - `node tools/npm/run-script.mjs priority:github:metadata:apply -- --url <epic-url> --sub-issue <issue-url>`
-3. Cut a clean parked worktree from `upstream/develop`.
+3. Cut a clean support-lane worktree from `upstream/develop`.
 4. Implement one narrow disjoint slice.
 5. Run focused validation.
 6. Push.
 7. Open a draft PR if that helps preserve continuity.
-8. Leave the parked lane ready to promote the moment the live lane merges.
+8. If the lane reaches a GitHub-only wait, review-only wait, or ready-merge state, release the worker slot and keep
+   the wake condition in receipts.
 
 Anti-idle rules:
 - A fully green PR must not sit idle.
@@ -142,6 +146,14 @@ Anti-idle rules:
 - If all child issues under an epic are closed, close the epic immediately.
 - Do not let the queue degrade into `open epics only`.
 
+Lane evidence and auditing:
+- Treat `tools/priority/delivery-agent.policy.json` as the checked-in target for worker-slot count and provider mix.
+- Treat `tests/results/_agent/runtime/delivery-agent-state.json` as the machine-readable source of current slot
+  occupancy, released waits, and provider assignments.
+- Treat `tests/results/_agent/throughput/throughput-scorecard.json` as the machine-readable source of actual worker
+  utilization, active coding-lane counts, and queue/merge-queue pressure.
+- If those receipts show idle safe capacity while actionable disjoint work exists, fill the next lane immediately.
+
 Failure taxonomy:
 - `current-head failure`:
   - fix now on the live lane
@@ -149,7 +161,7 @@ Failure taxonomy:
   - ignore unless GitHub is still enforcing it against the current head
 - `queue-only wait`:
   - keep the live lane untouched
-  - work the parked lane only
+  - keep the remaining safe lane capacity busy
 - `policy/config drift`:
   - correct the policy surface before widening feature work
 - `tracking drift`:
@@ -188,7 +200,7 @@ Stop conditions:
 Checkpoint format:
 - standing issue
 - live PR
-- parked lane
+- active coding lanes
 - current state: blocker, queued, or green
 - exact next move
 

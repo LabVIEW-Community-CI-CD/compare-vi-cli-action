@@ -69,11 +69,11 @@ test('mission-control envelope fixture matches schema', () => {
     'missing-source-of-truth',
     'user-override'
   ]);
-  assert.equal(fixture.missionControl.lanePolicy.maxActiveCodingLanes, 2);
-  assert.equal(fixture.missionControl.lanePolicy.maxParkedLaneCount, 1);
-  assert.equal(fixture.missionControl.lanePolicy.parkedLaneRequiresGithubWait, true);
+  assert.equal(fixture.missionControl.lanePolicy.maxActiveCodingLanes, 4);
+  assert.equal(fixture.missionControl.lanePolicy.maxParkedLaneCount, 3);
+  assert.equal(fixture.missionControl.lanePolicy.parkedLaneRequiresGithubWait, false);
   assert.equal(fixture.missionControl.lanePolicy.requireDisjointFileScopes, true);
-  assert.equal(fixture.missionControl.lanePolicy.allowThirdLane, false);
+  assert.equal(fixture.missionControl.lanePolicy.allowThirdLane, true);
   assert.equal(fixture.missionControl.copilotCli.hostedReplacementAllowed, false);
 });
 
@@ -82,12 +82,13 @@ test('mission-control envelope rejects contradictory lane and Copilot settings',
   const fixture = loadJson('tools/priority/__fixtures__/mission-control/mission-control-envelope.json');
 
   const contradictoryLaneEnvelope = structuredClone(fixture);
-  contradictoryLaneEnvelope.missionControl.lanePolicy.allowThirdLane = true;
-  contradictoryLaneEnvelope.missionControl.lanePolicy.parkedLaneRequiresGithubWait = false;
-  contradictoryLaneEnvelope.missionControl.lanePolicy.maxActiveCodingLanes = 3;
+  contradictoryLaneEnvelope.missionControl.lanePolicy.allowThirdLane = false;
+  contradictoryLaneEnvelope.missionControl.lanePolicy.parkedLaneRequiresGithubWait = true;
+  contradictoryLaneEnvelope.missionControl.lanePolicy.maxActiveCodingLanes = 2;
+  contradictoryLaneEnvelope.missionControl.lanePolicy.maxParkedLaneCount = 1;
 
   assert.equal(validate(contradictoryLaneEnvelope), false);
-  assert.match(JSON.stringify(validate.errors), /allowThirdLane|maxActiveCodingLanes|parkedLaneRequiresGithubWait/);
+  assert.match(JSON.stringify(validate.errors), /allowThirdLane|maxActiveCodingLanes|maxParkedLaneCount|parkedLaneRequiresGithubWait/);
 
   const contradictoryCopilotEnvelope = structuredClone(fixture);
   contradictoryCopilotEnvelope.missionControl.copilotCli.purposes = ['iteration', 'continuous-integration'];
@@ -160,6 +161,10 @@ test('mission-control docs advertise the canonical prompt and envelope contract 
   assert.match(prompt, /Keep the dirty root workspace quarantined/i);
   assert.match(prompt, /aligned before and after each merge/i);
   assert.match(prompt, /Create worktrees from `upstream\/develop` only\./i);
+  assert.match(prompt, /Maintain up to 4 proactive coding lanes when safe actionable work exists\./i);
+  assert.match(prompt, /Start filling safe lane capacity from session start\./i);
+  assert.match(prompt, /delivery-agent-state\.json/i);
+  assert.match(prompt, /throughput-scorecard\.json/i);
   assert.match(prompt, /missionControl`: repo-owned law and execution invariants/i);
   assert.match(prompt, /operator\.intent` and `operator\.focus`: bounded operator input/i);
   assert.match(prompt, /operator\.overrides`: narrow, auditable exceptions/i);
