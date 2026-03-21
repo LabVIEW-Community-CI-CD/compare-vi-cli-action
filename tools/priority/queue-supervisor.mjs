@@ -21,6 +21,7 @@ const DEFAULT_CONTROLLER_STATE_PATH = path.join(
   'queue',
   'throughput-controller-state.json'
 );
+const DEFAULT_RUNTIME_STATE_PATH = path.join('tests', 'results', '_agent', 'runtime', 'runtime-state.json');
 const DEFAULT_GOVERNOR_STATE_PATH = path.join('tests', 'results', '_agent', 'slo', 'ops-governor-state.json');
 const DEFAULT_SECURITY_INTAKE_REPORT_PATH = path.join(
   'tests',
@@ -1014,6 +1015,28 @@ function normalizeRatio(value) {
   return Number(numeric.toFixed(3));
 }
 
+function normalizeCount(value) {
+  return Math.max(0, Math.trunc(toFiniteNumber(value, 0)));
+}
+
+function buildWorkerOccupancySummary({ runtimeState, runtimeStatePath = DEFAULT_RUNTIME_STATE_PATH } = {}) {
+  const workerPool =
+    runtimeState?.workerPool && typeof runtimeState.workerPool === 'object' && !Array.isArray(runtimeState.workerPool)
+      ? runtimeState.workerPool
+      : null;
+
+  return {
+    runtimeStatePath,
+    available: Boolean(workerPool),
+    targetSlotCount: normalizeCount(workerPool?.targetSlotCount),
+    occupiedSlotCount: normalizeCount(workerPool?.occupiedSlotCount),
+    availableSlotCount: normalizeCount(workerPool?.availableSlotCount),
+    releasedLaneCount: normalizeCount(workerPool?.releasedLaneCount),
+    utilizationRatio: normalizeRatio(workerPool?.utilizationRatio),
+    activeCodingLanes: normalizeCount(runtimeState?.activeCodingLanes)
+  };
+}
+
 export function computeRetryPressure(retryHistory = {}, candidateCount = 0) {
   let failureEvents = 0;
   let activeFailurePrs = 0;
@@ -1461,6 +1484,7 @@ export async function runQueueSupervisor(options = {}) {
   const args = options.args ?? parseArgs();
   const controllerStatePath = args.controllerStatePath ?? DEFAULT_CONTROLLER_STATE_PATH;
   const readinessReportPath = args.readinessReportPath ?? DEFAULT_READINESS_REPORT_PATH;
+  const runtimeStatePath = DEFAULT_RUNTIME_STATE_PATH;
   const governorStatePath = args.governorStatePath ?? DEFAULT_GOVERNOR_STATE_PATH;
   const securityIntakeReportPath = args.securityIntakeReportPath ?? DEFAULT_SECURITY_INTAKE_REPORT_PATH;
   const now = options.now ?? new Date();
@@ -1517,6 +1541,7 @@ export async function runQueueSupervisor(options = {}) {
   const nowIso = now.toISOString();
   const previousReport = await readOptionalJsonFn(path.resolve(repoRoot, args.reportPath));
   const previousControllerState = await readOptionalJsonFn(path.resolve(repoRoot, controllerStatePath));
+  const runtimeState = await readOptionalJsonFn(path.resolve(repoRoot, runtimeStatePath));
   const governorStateEnvelope = await readOptionalJsonFn(path.resolve(repoRoot, governorStatePath));
   const governorStatePayload =
     governorStateEnvelope && typeof governorStateEnvelope === 'object' && 'payload' in governorStateEnvelope
@@ -1627,6 +1652,10 @@ export async function runQueueSupervisor(options = {}) {
     orderedEligible: classified.orderedEligible.map((candidate) => candidate.number),
     now
   });
+  const workerOccupancy = buildWorkerOccupancySummary({
+    runtimeState,
+    runtimeStatePath
+  });
   const candidateByNumber = new Map(classified.candidates.map((candidate) => [candidate.number, candidate]));
   const planned = queueReadiness.readySet
     .map((entry) => candidateByNumber.get(entry.number))
@@ -1673,6 +1702,7 @@ export async function runQueueSupervisor(options = {}) {
     capacity,
     health,
     runtimeFleet,
+    workerOccupancy,
     workflowFetchErrors,
     paused: uniquePausedReasons.length > 0,
     pausedReasons: uniquePausedReasons,

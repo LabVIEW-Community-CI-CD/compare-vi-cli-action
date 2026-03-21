@@ -18,6 +18,7 @@
     "candidates",
     "orderedEligible",
     "readiness",
+    "workerOccupancy",
     "governor",
     "securityIntake",
     "retryHistory"
@@ -169,6 +170,53 @@
               }
             }
           }
+        }
+      }
+    },
+    "workerOccupancy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtimeStatePath",
+        "available",
+        "targetSlotCount",
+        "occupiedSlotCount",
+        "availableSlotCount",
+        "releasedLaneCount",
+        "utilizationRatio",
+        "activeCodingLanes"
+      ],
+      "properties": {
+        "runtimeStatePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "targetSlotCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "occupiedSlotCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "availableSlotCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "releasedLaneCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "utilizationRatio": {
+          "type": "number",
+          "minimum": 0
+        },
+        "activeCodingLanes": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

@@ -111,9 +111,27 @@ test('queue supervisor report validates schema', async () => {
     runGhJsonFn,
     runCommandFn,
     readJsonFileFn,
-    readOptionalJsonFn: async () => ({}),
+    readOptionalJsonFn: async (filePath) => {
+      if (String(filePath).includes('runtime-state.json')) {
+        return {
+          activeCodingLanes: 1,
+          workerPool: {
+            targetSlotCount: 2,
+            occupiedSlotCount: 1,
+            availableSlotCount: 1,
+            releasedLaneCount: 0,
+            utilizationRatio: 0.5
+          }
+        };
+      }
+      return {};
+    },
     writeReportFn: async (reportPath) => reportPath
   });
+
+  assert.equal(report.workerOccupancy.available, true);
+  assert.equal(report.workerOccupancy.targetSlotCount, 2);
+  assert.equal(report.workerOccupancy.occupiedSlotCount, 1);
 
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   addFormats(ajv);
