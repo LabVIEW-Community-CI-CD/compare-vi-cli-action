@@ -107,6 +107,16 @@
     "manageDockerEngine": false,
     "allowHostEngineMutation": false
   },
+  "concurrentLaneDispatch": {
+    "historyScenarioSet": "smoke",
+    "sampleIdStrategy": "auto",
+    "sampleId": "",
+    "allowForkMode": "auto",
+    "pushMissing": true,
+    "forcePushOk": false,
+    "allowNonCanonicalViHistory": false,
+    "allowNonCanonicalHistoryCore": false
+  },
   "localReviewLoop": {
     "enabled": true,
     "reviewProviders": [

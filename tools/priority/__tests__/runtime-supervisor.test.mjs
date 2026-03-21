@@ -659,6 +659,16 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
         allowPolicyMutations: false,
         allowReleaseAdmin: false,
         stopWhenNoOpenEpics: true,
+        concurrentLaneDispatch: {
+          historyScenarioSet: 'smoke',
+          sampleIdStrategy: 'auto',
+          sampleId: '',
+          allowForkMode: 'auto',
+          pushMissing: true,
+          forcePushOk: false,
+          allowNonCanonicalViHistory: false,
+          allowNonCanonicalHistoryCore: false
+        },
         workerPool: {
           targetSlotCount: 4,
           prewarmSlotCount: 1,
@@ -5900,8 +5910,14 @@ test('delivery broker dispatches concurrent lanes and immediately projects statu
               repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
               remote: 'origin',
               ref: 'issue/origin-1604-concurrent-lane-delivery-turn',
+              sampleIdStrategy: 'auto',
               sampleId: 'ts-20260321-000000-abcd',
               historyScenarioSet: 'smoke',
+              allowFork: true,
+              pushMissing: true,
+              forcePushOk: false,
+              allowNonCanonicalViHistory: false,
+              allowNonCanonicalHistoryCore: false,
               reportPath: 'tests/results/_agent/issue/priority-validate-dispatch-origin-1604.json',
               runDatabaseId: 234567890
             }
@@ -5964,6 +5980,9 @@ test('delivery broker dispatches concurrent lanes and immediately projects statu
   assert.equal(applyCalls[0].pushMissing, true);
   assert.equal(applyCalls[0].forcePushOk, false);
   assert.equal(applyCalls[0].historyScenarioSet, 'smoke');
+  assert.equal(applyCalls[0].sampleIdStrategy, 'auto');
+  assert.equal(applyCalls[0].allowNonCanonicalViHistory, false);
+  assert.equal(applyCalls[0].allowNonCanonicalHistoryCore, false);
   assert.equal(statusCalls.length, 1);
   assert.equal(statusCalls[0].options.applyReceiptPath, applyReceiptPath);
   assert.equal(statusCalls[0].options.outputPath, statusReceiptPath);
@@ -5978,6 +5997,7 @@ test('delivery broker dispatches concurrent lanes and immediately projects statu
     brokerResult.details.concurrentLaneApply.receiptPath,
     'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json'
   );
+  assert.equal(brokerResult.details.concurrentLaneApply.validateDispatch.sampleIdStrategy, 'auto');
   assert.equal(
     brokerResult.details.concurrentLaneStatus.receiptPath,
     'tests/results/_agent/runtime/concurrent-lane-status-receipt.json'
@@ -5986,6 +6006,328 @@ test('delivery broker dispatches concurrent lanes and immediately projects statu
   assert.equal(brokerResult.details.providerDispatch.workerSlotId, 'worker-slot-2');
   assert.match(brokerResult.details.helperCallsExecuted.join('\n'), /concurrent-lane-apply\.mjs/);
   assert.match(brokerResult.details.helperCallsExecuted.join('\n'), /concurrent-lane-status\.mjs/);
+});
+
+test('delivery broker derives upstream-only concurrent lane dispatch posture from policy defaults', async () => {
+  const tempRepo = await mkdtemp(path.join(os.tmpdir(), 'delivery-concurrent-upstream-policy-'));
+  const applyCalls = [];
+
+  await runDeliveryTurnBroker({
+    repoRoot: tempRepo,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-ci',
+      branch: {
+        name: 'issue/upstream-1606-concurrent-dispatch-policy',
+        forkRemote: 'upstream'
+      },
+      objective: {
+        summary: 'Advance issue #1606'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-ci',
+          workerProviderSelection: {
+            selectedProviderId: 'hosted-github-workflow',
+            selectedProviderKind: 'hosted-github-workflow',
+            selectedExecutionPlane: 'hosted',
+            selectedAssignmentMode: 'async-validation',
+            dispatchSurface: 'github-actions',
+            completionMode: 'async',
+            selectedSlotId: 'worker-slot-1',
+            requiresLocalCheckout: false
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 4,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        concurrentLaneDispatch: {
+          historyScenarioSet: 'smoke',
+          sampleIdStrategy: 'auto',
+          sampleId: '',
+          allowForkMode: 'auto',
+          pushMissing: false,
+          forcePushOk: false,
+          allowNonCanonicalViHistory: false,
+          allowNonCanonicalHistoryCore: false
+        },
+        workerPool: {
+          targetSlotCount: 4,
+          prewarmSlotCount: 1,
+          releaseWaitingStates: ['waiting-ci', 'waiting-review', 'ready-merge'],
+          providers: [
+            {
+              id: 'hosted-github-workflow',
+              kind: 'hosted-github-workflow',
+              executionPlane: 'hosted',
+              assignmentMode: 'async-validation',
+              dispatchSurface: 'github-actions',
+              completionMode: 'async',
+              requiresLocalCheckout: false,
+              enabled: true,
+              slotCount: 1
+            }
+          ]
+        },
+        codingTurnCommand: ['node', 'mock-broker']
+      }),
+      applyConcurrentLanePlanFn: async (options) => {
+        applyCalls.push(options);
+        return {
+          receipt: {
+            schema: 'priority/concurrent-lane-apply-receipt@v1',
+            status: 'succeeded',
+            summary: { selectedBundleId: 'hosted-plus-manual-linux-docker' },
+            validateDispatch: {
+              status: 'dry-run',
+              repository: null,
+              remote: null,
+              ref: options.ref,
+              sampleIdStrategy: options.sampleIdStrategy,
+              sampleId: options.sampleId,
+              historyScenarioSet: options.historyScenarioSet,
+              allowFork: options.allowFork,
+              pushMissing: options.pushMissing,
+              forcePushOk: options.forcePushOk,
+              allowNonCanonicalViHistory: options.allowNonCanonicalViHistory,
+              allowNonCanonicalHistoryCore: options.allowNonCanonicalHistoryCore,
+              reportPath: null,
+              runDatabaseId: null,
+              error: null
+            }
+          },
+          outputPath: path.join(tempRepo, 'tests', 'results', '_agent', 'runtime', 'concurrent-lane-apply-receipt.json'),
+          error: null
+        };
+      },
+      observeConcurrentLaneStatusFn: async () => ({
+        receipt: {
+          schema: 'priority/concurrent-lane-status-receipt@v1',
+          status: 'active',
+          applyReceipt: {
+            path: 'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json',
+            schema: 'priority/concurrent-lane-apply-receipt@v1',
+            status: 'succeeded',
+            selectedBundleId: 'hosted-plus-manual-linux-docker'
+          },
+          hostedRun: {
+            observationStatus: 'active',
+            runId: null,
+            url: null,
+            reportPath: null
+          },
+          pullRequest: {
+            observationStatus: 'not-requested',
+            number: null,
+            url: null,
+            mergeQueue: {
+              status: 'not-requested',
+              position: null,
+              estimatedTimeToMerge: null,
+              enqueuedAt: null
+            }
+          },
+          summary: {
+            selectedBundleId: 'hosted-plus-manual-linux-docker',
+            laneCount: 2,
+            activeLaneCount: 1,
+            completedLaneCount: 0,
+            failedLaneCount: 0,
+            deferredLaneCount: 1,
+            manualLaneCount: 1,
+            shadowLaneCount: 0,
+            pullRequestStatus: 'not-requested',
+            orchestratorDisposition: 'wait-hosted-run'
+          }
+        },
+        outputPath: path.join(tempRepo, 'tests', 'results', '_agent', 'runtime', 'concurrent-lane-status-receipt.json')
+      })
+    }
+  });
+
+  assert.equal(applyCalls.length, 1);
+  assert.equal(applyCalls[0].allowFork, false);
+  assert.equal(applyCalls[0].pushMissing, false);
+  assert.equal(applyCalls[0].historyScenarioSet, 'smoke');
+});
+
+test('delivery broker lets task-packet concurrent lane dispatch overrides enable history-core and noncanonical certification lanes', async () => {
+  const tempRepo = await mkdtemp(path.join(os.tmpdir(), 'delivery-concurrent-noncanonical-override-'));
+  const applyCalls = [];
+
+  await runDeliveryTurnBroker({
+    repoRoot: tempRepo,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-ci',
+      branch: {
+        name: 'issue/origin-1606-concurrent-dispatch-policy',
+        forkRemote: 'origin'
+      },
+      objective: {
+        summary: 'Advance issue #1606'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-ci',
+          concurrentLaneDispatch: {
+            historyScenarioSet: 'history-core',
+            sampleIdStrategy: 'explicit',
+            sampleId: 'ts-20260321-123456-zzzz',
+            allowForkMode: 'always',
+            pushMissing: false,
+            forcePushOk: false,
+            allowNonCanonicalViHistory: true,
+            allowNonCanonicalHistoryCore: true
+          },
+          workerProviderSelection: {
+            selectedProviderId: 'hosted-github-workflow',
+            selectedProviderKind: 'hosted-github-workflow',
+            selectedExecutionPlane: 'hosted',
+            selectedAssignmentMode: 'async-validation',
+            dispatchSurface: 'github-actions',
+            completionMode: 'async',
+            selectedSlotId: 'worker-slot-1',
+            requiresLocalCheckout: false
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 4,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        concurrentLaneDispatch: {
+          historyScenarioSet: 'smoke',
+          sampleIdStrategy: 'auto',
+          sampleId: '',
+          allowForkMode: 'auto',
+          pushMissing: true,
+          forcePushOk: false,
+          allowNonCanonicalViHistory: false,
+          allowNonCanonicalHistoryCore: false
+        },
+        workerPool: {
+          targetSlotCount: 4,
+          prewarmSlotCount: 1,
+          releaseWaitingStates: ['waiting-ci', 'waiting-review', 'ready-merge'],
+          providers: [
+            {
+              id: 'hosted-github-workflow',
+              kind: 'hosted-github-workflow',
+              executionPlane: 'hosted',
+              assignmentMode: 'async-validation',
+              dispatchSurface: 'github-actions',
+              completionMode: 'async',
+              requiresLocalCheckout: false,
+              enabled: true,
+              slotCount: 1
+            }
+          ]
+        },
+        codingTurnCommand: ['node', 'mock-broker']
+      }),
+      applyConcurrentLanePlanFn: async (options) => {
+        applyCalls.push(options);
+        return {
+          receipt: {
+            schema: 'priority/concurrent-lane-apply-receipt@v1',
+            status: 'succeeded',
+            summary: { selectedBundleId: 'hosted-plus-manual-linux-docker' },
+            validateDispatch: {
+              status: 'dry-run',
+              repository: null,
+              remote: null,
+              ref: options.ref,
+              sampleIdStrategy: options.sampleIdStrategy,
+              sampleId: options.sampleId,
+              historyScenarioSet: options.historyScenarioSet,
+              allowFork: options.allowFork,
+              pushMissing: options.pushMissing,
+              forcePushOk: options.forcePushOk,
+              allowNonCanonicalViHistory: options.allowNonCanonicalViHistory,
+              allowNonCanonicalHistoryCore: options.allowNonCanonicalHistoryCore,
+              reportPath: null,
+              runDatabaseId: null,
+              error: null
+            }
+          },
+          outputPath: path.join(tempRepo, 'tests', 'results', '_agent', 'runtime', 'concurrent-lane-apply-receipt.json'),
+          error: null
+        };
+      },
+      observeConcurrentLaneStatusFn: async () => ({
+        receipt: {
+          schema: 'priority/concurrent-lane-status-receipt@v1',
+          status: 'active',
+          applyReceipt: {
+            path: 'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json',
+            schema: 'priority/concurrent-lane-apply-receipt@v1',
+            status: 'succeeded',
+            selectedBundleId: 'hosted-plus-manual-linux-docker'
+          },
+          hostedRun: {
+            observationStatus: 'active',
+            runId: null,
+            url: null,
+            reportPath: null
+          },
+          pullRequest: {
+            observationStatus: 'not-requested',
+            number: null,
+            url: null,
+            mergeQueue: {
+              status: 'not-requested',
+              position: null,
+              estimatedTimeToMerge: null,
+              enqueuedAt: null
+            }
+          },
+          summary: {
+            selectedBundleId: 'hosted-plus-manual-linux-docker',
+            laneCount: 2,
+            activeLaneCount: 1,
+            completedLaneCount: 0,
+            failedLaneCount: 0,
+            deferredLaneCount: 1,
+            manualLaneCount: 1,
+            shadowLaneCount: 0,
+            pullRequestStatus: 'not-requested',
+            orchestratorDisposition: 'wait-hosted-run'
+          }
+        },
+        outputPath: path.join(tempRepo, 'tests', 'results', '_agent', 'runtime', 'concurrent-lane-status-receipt.json')
+      })
+    }
+  });
+
+  assert.equal(applyCalls.length, 1);
+  assert.equal(applyCalls[0].historyScenarioSet, 'history-core');
+  assert.equal(applyCalls[0].sampleIdStrategy, 'explicit');
+  assert.equal(applyCalls[0].sampleId, 'ts-20260321-123456-zzzz');
+  assert.equal(applyCalls[0].allowFork, true);
+  assert.equal(applyCalls[0].pushMissing, false);
+  assert.equal(applyCalls[0].allowNonCanonicalViHistory, true);
+  assert.equal(applyCalls[0].allowNonCanonicalHistoryCore, true);
 });
 
 test('persistDeliveryAgentRuntimeState keeps deferred concurrent lane obligations visible after releasing the worker slot', async () => {

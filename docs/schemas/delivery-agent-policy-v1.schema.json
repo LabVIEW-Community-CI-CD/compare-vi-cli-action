@@ -130,6 +130,20 @@
         "allowHostEngineMutation": { "type": "boolean" }
       }
     },
+    "concurrentLaneDispatch": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "historyScenarioSet": { "enum": ["none", "smoke", "history-core"] },
+        "sampleIdStrategy": { "enum": ["auto", "explicit"] },
+        "sampleId": { "type": "string" },
+        "allowForkMode": { "enum": ["auto", "always", "never"] },
+        "pushMissing": { "type": "boolean" },
+        "forcePushOk": { "type": "boolean" },
+        "allowNonCanonicalViHistory": { "type": "boolean" },
+        "allowNonCanonicalHistoryCore": { "type": "boolean" }
+      }
+    },
     "localReviewLoop": {
       "type": "object",
       "additionalProperties": true,

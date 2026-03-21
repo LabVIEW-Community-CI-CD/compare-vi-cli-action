@@ -131,6 +131,16 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
     manageDockerEngine: false,
     allowHostEngineMutation: false
   });
+  assert.deepEqual(data.concurrentLaneDispatch, {
+    historyScenarioSet: 'smoke',
+    sampleIdStrategy: 'auto',
+    sampleId: '',
+    allowForkMode: 'auto',
+    pushMissing: true,
+    forcePushOk: false,
+    allowNonCanonicalViHistory: false,
+    allowNonCanonicalHistoryCore: false
+  });
   assert.deepEqual(data.localReviewLoop, {
     enabled: true,
     reviewProviders: ['copilot-cli'],
@@ -204,6 +214,8 @@ test('loadDeliveryAgentPolicy keeps provider capabilities independent from targe
   const policy = await loadDeliveryAgentPolicy(tempRoot);
   assert.equal(policy.workerPool.targetSlotCount, 6);
   assert.equal(policy.workerPool.providers.length, 4);
+  assert.equal(policy.concurrentLaneDispatch.historyScenarioSet, 'smoke');
+  assert.equal(policy.concurrentLaneDispatch.pushMissing, true);
   assert.deepEqual(
     policy.workerPool.providers.map((provider) => provider.id),
     ['local-codex', 'hosted-github-workflow', 'remote-copilot-lane', 'local-shadow-native']
@@ -241,6 +253,37 @@ test('loadDeliveryAgentPolicy fails closed on unsupported copilot review strateg
   await assert.rejects(
     loadDeliveryAgentPolicy(repoRoot),
     /Unsupported copilotReviewStrategy: disabled/
+  );
+});
+
+test('loadDeliveryAgentPolicy fails closed when concurrent lane dispatch requests an explicit sample id without a value', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-policy-invalid-concurrent-dispatch-'));
+  const policyDir = path.join(repoRoot, 'tools', 'priority');
+  await mkdir(policyDir, { recursive: true });
+  await writeFile(
+    path.join(policyDir, 'delivery-agent.policy.json'),
+    JSON.stringify({
+      schema: 'priority/delivery-agent-policy@v1',
+      backlogAuthority: 'issues',
+      implementationRemote: 'origin',
+      copilotReviewStrategy: 'draft-only-explicit',
+      autoSlice: true,
+      autoMerge: true,
+      maxActiveCodingLanes: 1,
+      allowPolicyMutations: false,
+      allowReleaseAdmin: false,
+      stopWhenNoOpenEpics: true,
+      concurrentLaneDispatch: {
+        sampleIdStrategy: 'explicit',
+        sampleId: ''
+      }
+    }),
+    'utf8'
+  );
+
+  await assert.rejects(
+    loadDeliveryAgentPolicy(repoRoot),
+    /concurrentLaneDispatch\.sampleId is required when sampleIdStrategy is explicit/i
   );
 });
 
