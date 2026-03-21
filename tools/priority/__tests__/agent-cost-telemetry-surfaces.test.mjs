@@ -1,0 +1,44 @@
+#!/usr/bin/env node
+
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+
+function readText(relativePath) {
+  return readFileSync(path.join(repoRoot, relativePath), 'utf8');
+}
+
+test('agent cost telemetry knowledgebase points at the checked-in precursor surfaces instead of hidden billing assumptions', () => {
+  const manifest = JSON.parse(readText('docs/documentation-manifest.json'));
+  const docsEntry = manifest.entries.find((entry) => entry.name === 'Docs Tree');
+  const guide = readText('docs/knowledgebase/Agent-Cost-Telemetry-Surfaces.md');
+
+  assert.ok(docsEntry);
+  assert.ok(docsEntry.files.includes('docs/knowledgebase/Agent-Cost-Telemetry-Surfaces.md'));
+  assert.match(guide, /tools\/local-collab\/ledger\/local-review-ledger\.mjs/);
+  assert.match(guide, /tests\/results\/_agent\/local-collab\/ledger\/receipts\/<phase>\/<head-sha>\.json/);
+  assert.match(guide, /requestedModel/);
+  assert.match(guide, /effectiveModel/);
+  assert.match(guide, /inputTokens/);
+  assert.match(guide, /cachedInputTokens/);
+  assert.match(guide, /outputTokens/);
+  assert.match(guide, /tools\/local-collab\/providers\/copilot-cli-review\.mjs/);
+  assert.match(guide, /tests\/results\/docker-tools-parity\/copilot-cli-review\/receipt\.json/);
+  assert.match(guide, /docs\/schemas\/runtime-delivery-task-packet-v1\.schema\.json/);
+  assert.match(guide, /docs\/schemas\/delivery-agent-runtime-state-v1\.schema\.json/);
+  assert.match(guide, /tests\/results\/_agent\/runtime\/delivery-agent-state\.json/);
+  assert.match(guide, /tools\/local-collab\/kpi\/rollup-local-collab-kpi\.mjs/);
+  assert.match(guide, /tests\/results\/_agent\/local-collab\/kpi\/summary\.json/);
+  assert.match(guide, /tests\/results\/_agent\/throughput\/throughput-scorecard\.json/);
+  assert.match(guide, /tests\/results\/_agent\/runtime\/delivery-memory\.json/);
+  assert.match(guide, /docs\/schemas\/mission-control-envelope-v1\.schema\.json/);
+  assert.match(guide, /docs\/schemas\/codex-state-hygiene-v1\.schema\.json/);
+  assert.match(guide, /Unsafe uses:/);
+  assert.match(guide, /exact token billing/);
+  assert.match(guide, /amountKind = exact \| estimated/);
+  assert.match(guide, /rateCardSource/);
+});
