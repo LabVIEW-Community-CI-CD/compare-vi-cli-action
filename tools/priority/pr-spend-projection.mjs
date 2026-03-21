@@ -100,6 +100,22 @@ function extractIssueNumbers(text) {
   return normalizeIntegerArray(matches.map((entry) => entry.groups?.number));
 }
 
+function parseIssueNumberFromBranch(branch) {
+  const normalized = normalizeText(branch);
+  if (!normalized.toLowerCase().startsWith('issue/')) {
+    return null;
+  }
+  const suffix = normalized.slice('issue/'.length);
+  const tokens = suffix.split('-').map((entry) => entry.trim()).filter(Boolean);
+  for (const token of tokens) {
+    const parsed = Number(token);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
 function resolveRepoSlug(explicitRepo) {
   if (normalizeText(explicitRepo).includes('/')) {
     return normalizeText(explicitRepo);
@@ -353,6 +369,7 @@ function resolvePullRequestContext(repo, prNumber) {
     headRefName: normalizeOptionalText(payload?.headRefName),
     headSha: normalizeOptionalText(payload?.headRefOid),
     linkedIssueNumber: linkedIssueNumbers[0] ?? null,
+    headRefIssueNumber: parseIssueNumberFromBranch(payload?.headRefName),
     selectorSource: 'github-pr-head-ref'
   };
 }
@@ -521,6 +538,19 @@ export function evaluatePrSpendProjection({ costRollup, repo, prContext = null }
         )
       : rollupTurns;
   let selectorSource = prContext?.selectorSource ?? (prContext ? 'manual' : 'rollup-all-turns');
+
+  if (
+    prContext?.headRefName &&
+    selectedTurns.length === 0 &&
+    normalizeInteger(prContext?.headRefIssueNumber)
+  ) {
+    selectedTurns = rollupTurns.filter(
+      (turn) => normalizeInteger(turn?.issueNumber) === normalizeInteger(prContext.headRefIssueNumber)
+    );
+    if (selectedTurns.length > 0) {
+      selectorSource = 'github-pr-head-ref-issue-fallback';
+    }
+  }
 
   if (
     prContext?.headRefName &&
