@@ -183,6 +183,98 @@ Using LabVIEW: "C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW
     ($report.scenarios | Where-Object { $_.name -eq 'explicit-help' } | Select-Object -First 1).preview.args | Should -Contain $containerLabVIEWPath
   }
 
+  It 'deduplicates copied log inventory in windows-container proof receipts' {
+    $sourcePath = New-SyntheticCustomOperationExample -RootPath (Join-Path $TestDrive 'source-example-container-dedup')
+    $resultsRoot = Join-Path $TestDrive 'results-root-container-dedup'
+    $runnerStubPath = Join-Path $TestDrive 'Stub-WindowsContainerRunner.ps1'
+    Set-Content -LiteralPath $runnerStubPath -Encoding utf8 -Value @'
+param(
+  [string]$OperationName,
+  [string]$ResultsRoot,
+  [string]$Image,
+  [int]$TimeoutSeconds,
+  [string]$LabVIEWPath = '',
+  [string]$ArgumentsJson = '',
+  [switch]$Help,
+  [switch]$Headless,
+  [switch]$LogToConsole
+)
+$resolvedResultsRoot = [System.IO.Path]::GetFullPath($ResultsRoot)
+if (-not (Test-Path -LiteralPath $resolvedResultsRoot -PathType Container)) {
+  New-Item -ItemType Directory -Path $resolvedResultsRoot -Force | Out-Null
+}
+$logsRoot = Join-Path $resolvedResultsRoot 'logs'
+New-Item -ItemType Directory -Path $logsRoot -Force | Out-Null
+$logA = Join-Path $logsRoot 'lvtemporary_a.log'
+$logB = Join-Path $logsRoot 'LabVIEWCLI-b.txt'
+Set-Content -LiteralPath $logA -Value 'Using LabVIEW: "C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe"' -Encoding utf8
+Set-Content -LiteralPath $logB -Value 'LabVIEW launched successfully' -Encoding utf8
+$capturePath = Join-Path $resolvedResultsRoot 'ni-windows-custom-operation-capture.json'
+$scenarioResult = [ordered]@{
+  status = 'succeeded'
+  timedOut = $false
+  cliPath = 'in-container'
+  requestedLabVIEWPath = if ([string]::IsNullOrWhiteSpace($LabVIEWPath)) { $null } else { $LabVIEWPath }
+  logFiles = @(
+    [ordered]@{
+      name = 'lvtemporary_a.log'
+      sourcePath = 'C:\Users\ContainerAdministrator\AppData\Local\Temp\lvtemporary_a.log'
+      destinationPath = $logA
+      lastWriteTimeUtc = '2026-03-20T00:00:00Z'
+      length = 10
+    },
+    [ordered]@{
+      name = 'lvtemporary_a.log'
+      sourcePath = 'C:\Users\ContainerAdministrator\AppData\Local\Temp\lvtemporary_a.log'
+      destinationPath = $logA
+      lastWriteTimeUtc = '2026-03-20T00:00:00Z'
+      length = 10
+    },
+    [ordered]@{
+      name = 'LabVIEWCLI-b.txt'
+      sourcePath = 'C:\Users\ContainerAdministrator\AppData\Local\Temp\LabVIEWCLI-b.txt'
+      destinationPath = $logB
+      lastWriteTimeUtc = '2026-03-20T00:00:01Z'
+      length = 20
+    },
+    [ordered]@{
+      name = 'LabVIEWCLI-b.txt'
+      sourcePath = 'C:\Users\ContainerAdministrator\AppData\Local\Temp\LabVIEWCLI-b.txt'
+      destinationPath = $logB
+      lastWriteTimeUtc = '2026-03-20T00:00:01Z'
+      length = 20
+    }
+  )
+}
+[ordered]@{
+  schema = 'ni-windows-container-custom-operation/v1'
+  status = 'ok'
+  classification = 'ok'
+  image = $Image
+  message = ''
+  scenarioResult = $scenarioResult
+  preflightPath = (Join-Path $resolvedResultsRoot 'preflight/windows-ni-2026q1-host-preflight.json')
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $capturePath -Encoding utf8
+exit 0
+'@
+
+    $output = & pwsh -NoLogo -NoProfile -File $script:ProofScript `
+      -ExecutionPlane windows-container `
+      -SourceExamplePath $sourcePath `
+      -ResultsRoot $resultsRoot `
+      -WindowsContainerLabVIEWPath 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' `
+      -WindowsContainerRunnerScriptPath $runnerStubPath `
+      -SkipSchemaValidation *>&1
+    $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+
+    $reportPath = Join-Path $resultsRoot 'labview-cli-custom-operation-proof.json'
+    $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 12
+    foreach ($scenario in @($report.scenarios)) {
+      @($scenario.logCapture.files).Count | Should -Be 2
+      @($scenario.logCapture.files | ForEach-Object { [string]$_.destinationPath } | Select-Object -Unique).Count | Should -Be 2
+    }
+  }
+
   It 'fails closed when the installed example source is missing' {
     $missingSource = Join-Path $TestDrive 'missing-example'
     $resultsRoot = Join-Path $TestDrive 'results-root'
