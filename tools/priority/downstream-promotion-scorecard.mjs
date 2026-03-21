@@ -20,6 +20,7 @@ function printUsage() {
   console.log('Options:');
   console.log('  --success-report <path>         Downstream onboarding success report JSON path (required).');
   console.log('  --feedback-report <path>        Downstream onboarding feedback report JSON path (required).');
+  console.log('  --manifest-report <path>        Downstream promotion manifest JSON path (optional).');
   console.log(`  --output <path>                 Output path (default: ${DEFAULT_OUTPUT_PATH}).`);
   console.log('  --repo <owner/repo>             Repository slug override.');
   console.log('  --fail-on-blockers              Exit non-zero when blockers exist (default true).');
@@ -89,6 +90,7 @@ export function parseArgs(argv = process.argv) {
   const options = {
     successReportPath: null,
     feedbackReportPath: null,
+    manifestReportPath: null,
     outputPath: DEFAULT_OUTPUT_PATH,
     repo: null,
     failOnBlockers: true,
@@ -111,13 +113,20 @@ export function parseArgs(argv = process.argv) {
       options.failOnBlockers = false;
       continue;
     }
-    if (token === '--success-report' || token === '--feedback-report' || token === '--output' || token === '--repo') {
+    if (
+      token === '--success-report' ||
+      token === '--feedback-report' ||
+      token === '--manifest-report' ||
+      token === '--output' ||
+      token === '--repo'
+    ) {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
       }
       index += 1;
       if (token === '--success-report') options.successReportPath = next;
       if (token === '--feedback-report') options.feedbackReportPath = next;
+      if (token === '--manifest-report') options.manifestReportPath = next;
       if (token === '--output') options.outputPath = next;
       if (token === '--repo') options.repo = next;
       continue;
@@ -189,7 +198,62 @@ function statusFromFeedbackReport(payload) {
   };
 }
 
-export function evaluateDownstreamPromotionScorecard({ successReport, feedbackReport, successGate, feedbackGate }) {
+function statusFromManifestReport(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      status: 'missing',
+      schema: null,
+      targetBranch: null,
+      targetBranchClassId: null,
+      sourceRef: null,
+      sourceCommitSha: null,
+      localSourceMatched: null,
+      compareviToolsRelease: null,
+      compareviHistoryRelease: null,
+      scenarioPackIdentity: null,
+      cookiecutterTemplateIdentity: null
+    };
+  }
+
+  const schema = normalizeText(payload.schema) || null;
+  const targetBranch = normalizeText(payload?.promotion?.targetBranch) || null;
+  const targetBranchClassId = normalizeText(payload?.promotion?.targetBranchClassId) || null;
+  const sourceRef = normalizeText(payload?.promotion?.sourceRef) || null;
+  const sourceCommitSha = normalizeText(payload?.promotion?.sourceCommitSha) || null;
+  const localSourceMatched =
+    typeof payload?.promotion?.localSourceVerification?.matched === 'boolean'
+      ? payload.promotion.localSourceVerification.matched
+      : null;
+
+  return {
+    status:
+      schema === 'priority/downstream-promotion-manifest@v1' &&
+      targetBranch === 'downstream/develop' &&
+      targetBranchClassId === 'downstream-consumer-proving-rail' &&
+      localSourceMatched === true
+        ? 'pass'
+        : 'fail',
+    schema,
+    targetBranch,
+    targetBranchClassId,
+    sourceRef,
+    sourceCommitSha,
+    localSourceMatched,
+    compareviToolsRelease: normalizeText(payload?.inputs?.compareviToolsRelease) || null,
+    compareviHistoryRelease: normalizeText(payload?.inputs?.compareviHistoryRelease) || null,
+    scenarioPackIdentity: normalizeText(payload?.inputs?.scenarioPackIdentity) || null,
+    cookiecutterTemplateIdentity: normalizeText(payload?.inputs?.cookiecutterTemplateIdentity) || null
+  };
+}
+
+export function evaluateDownstreamPromotionScorecard({
+  successReport,
+  feedbackReport,
+  manifestReport,
+  successGate,
+  feedbackGate,
+  manifestGate
+}) {
   const blockers = [];
   const recordBlocker = (code, message) => blockers.push({ code, message });
 
@@ -207,6 +271,15 @@ export function evaluateDownstreamPromotionScorecard({ successReport, feedbackRe
   }
   if (feedbackGate.status !== 'pass') {
     recordBlocker('feedback-execution', `Downstream onboarding feedback execution status is ${feedbackGate.executionStatus ?? 'missing'}.`);
+  }
+  if (manifestReport?.error) {
+    recordBlocker('manifest-report-unreadable', 'Downstream promotion manifest is unreadable.');
+  }
+  if (manifestReport?.exists && manifestGate.status !== 'pass') {
+    recordBlocker(
+      'manifest-contract',
+      `Downstream promotion manifest did not verify immutable downstream/develop proving inputs (status=${manifestGate.status}).`
+    );
   }
 
   return {
@@ -232,13 +305,17 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
 
   const successReport = loadInputFile(options.successReportPath);
   const feedbackReport = loadInputFile(options.feedbackReportPath);
+  const manifestReport = options.manifestReportPath ? loadInputFile(options.manifestReportPath) : null;
   const successGate = statusFromSuccessReport(successReport.payload);
   const feedbackGate = statusFromFeedbackReport(feedbackReport.payload);
+  const manifestGate = statusFromManifestReport(manifestReport?.payload);
   const summary = evaluateDownstreamPromotionScorecard({
     successReport,
     feedbackReport,
+    manifestReport,
     successGate,
-    feedbackGate
+    feedbackGate,
+    manifestGate
   });
 
   const report = {
@@ -255,11 +332,17 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
         path: feedbackReport.path,
         exists: feedbackReport.exists,
         error: feedbackReport.error
+      },
+      manifestReport: {
+        path: manifestReport?.path ?? null,
+        exists: manifestReport?.exists ?? false,
+        error: manifestReport?.error ?? null
       }
     },
     gates: {
       successReport: successGate,
-      feedbackReport: feedbackGate
+      feedbackReport: feedbackGate,
+      manifestReport: manifestGate
     },
     summary: {
       ...summary,
@@ -267,6 +350,14 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
         repositoriesEvaluated: successGate.repositoriesEvaluated,
         totalBlockers: successGate.totalBlockers,
         totalWarnings: successGate.totalWarnings
+      },
+      provenance: {
+        sourceRef: manifestGate.sourceRef,
+        sourceCommitSha: manifestGate.sourceCommitSha,
+        compareviToolsRelease: manifestGate.compareviToolsRelease,
+        compareviHistoryRelease: manifestGate.compareviHistoryRelease,
+        scenarioPackIdentity: manifestGate.scenarioPackIdentity,
+        cookiecutterTemplateIdentity: manifestGate.cookiecutterTemplateIdentity
       }
     }
   };
@@ -283,7 +374,12 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
       `- blockers: \`${report.summary.blockerCount}\``,
       `- repositories evaluated: \`${report.summary.metrics.repositoriesEvaluated ?? 'n/a'}\``,
       `- total blockers: \`${report.summary.metrics.totalBlockers ?? 'n/a'}\``,
-      `- total warnings: \`${report.summary.metrics.totalWarnings ?? 'n/a'}\``
+      `- total warnings: \`${report.summary.metrics.totalWarnings ?? 'n/a'}\``,
+      `- manifest status: \`${report.gates.manifestReport.status}\``,
+      `- CompareVI.Tools: \`${report.summary.provenance.compareviToolsRelease ?? 'n/a'}\``,
+      `- comparevi-history: \`${report.summary.provenance.compareviHistoryRelease ?? 'n/a'}\``,
+      `- scenario/corpus: \`${report.summary.provenance.scenarioPackIdentity ?? 'n/a'}\``,
+      `- cookiecutter template: \`${report.summary.provenance.cookiecutterTemplateIdentity ?? 'n/a'}\``
     ];
     for (const blocker of report.summary.blockers) {
       lines.push(`- ${blocker.code}: ${blocker.message}`);

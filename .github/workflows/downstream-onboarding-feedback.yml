@@ -113,6 +113,7 @@ jobs:
           node tools/priority/downstream-promotion-scorecard.mjs \
             --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json \
             --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json \
+            --manifest-report tests/results/_agent/promotion/downstream-develop-promotion-manifest.json \
             --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
 
       - name: Validate downstream promotion scorecard schema
@@ -157,6 +158,7 @@ jobs:
           name: downstream-onboarding-feedback
           path: |
             tests/results/_agent/onboarding/*.json
+            tests/results/_agent/promotion/downstream-develop-promotion-manifest.json
             tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
           if-no-files-found: error
 
