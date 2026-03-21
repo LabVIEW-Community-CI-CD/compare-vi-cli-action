@@ -16,6 +16,8 @@
     "GetHelp.vi",
     "RunOperation.vi"
   ],
+  "checkedInOperationFiles": [],
+  "executableState": "source-only",
   "currentState": "licensed-source-bundle",
   "promotionTarget": "accepted",
   "promotionBlocked": true,
@@ -23,6 +25,11 @@
     "Runnable LabVIEW operation files are not checked in yet.",
     "No public workflow run has proven this repo-owned payload on an added or deleted VI."
   ],
+  "authoringBootstrap": {
+    "issue": 1621,
+    "sourceKind": "installed-cli-operation",
+    "preferredInstalledOperation": "CreateComparisonReport"
+  },
   "notes": [
     "This bundle replaces research-only provenance with an explicit BSD-3 licensed repo-owned source surface.",
     "Do not promote a headless sample corpus target on this payload until the public proof requirement is satisfied."

@@ -8,6 +8,7 @@ Current status:
 
 - licensed
 - repo-owned
+- source-only
 - not yet executable
 - not yet promotable to corpus `operationPayload.provenanceState = accepted`
 
@@ -36,9 +37,22 @@ That is deliberate. This slice establishes:
 
 It does not claim the payload is already proven end to end.
 
+The supported authoring bootstrap for this payload is now:
+
+- installed-operation scaffold from `#1619`
+- repo-owned runnable payload authoring under `#1621`
+
+Do not commit installed NI operation files verbatim from scaffold output.
+
 Promotion remains blocked until both of these are true:
 
 1. runnable operation files are authored and checked in under this bundle
 2. at least one public workflow run proves the payload on an added or deleted VI
 
 Machine-readable provenance for this bundle lives in `payload-provenance.json`.
+Use `tools/Inspect-OperationPayloadSourceBundle.ps1` to project the current
+executable-state inspection receipt for this bundle.
+Use `tools/New-PrintToSingleFileHtmlAuthoringWorkspace.ps1` or
+`node tools/npm/run-script.mjs history:custom-operation:scaffold:print-single-file`
+to create the disposable authoring workspace from the preferred installed
+official CLI operation.
