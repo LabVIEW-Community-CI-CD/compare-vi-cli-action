@@ -407,6 +407,9 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `nationalinstruments/labview:2026q1-windows` with no repository runner dependency, and is expected to
   take materially longer to pull than the Linux lane.
   Agents can dispatch the hosted lane while continuing with the manual Linux or Windows Docker Desktop/WSL2 lanes locally.
+- `node tools/npm/run-script.mjs priority:lane:concurrency:plan` now reads the host-plane report, host RAM budget,
+  and optional Docker runtime snapshot to recommend a safe concurrent hosted/manual bundle before those lanes are
+  dispatched.
 - Machine-readable routing evidence is written to
   `tests/results/_agent/validate-scope-plan/validate-scope-plan.json` and summarized in the Validate step summary so
   reviewers can see why heavy lanes were bypassed.

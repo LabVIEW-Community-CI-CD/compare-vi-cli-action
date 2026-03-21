@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/concurrent-lane-plan-v1.schema.json",
+  "title": "Concurrent Lane Plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "inputs",
+    "host",
+    "lanes",
+    "bundles",
+    "recommendedBundle",
+    "observations",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/concurrent-lane-plan@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostedLinux", "hostedWindows", "shadowMode"],
+      "properties": {
+        "hostedLinux": { "enum": ["available", "disabled", "unavailable"] },
+        "hostedWindows": { "enum": ["available", "disabled", "unavailable"] },
+        "shadowMode": { "enum": ["auto", "disabled", "prefer"] }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dockerServerOs",
+        "dockerContext",
+        "observedDockerHost",
+        "hostRamProfile",
+        "hostRamRecommendedParallelism",
+        "native32Status",
+        "nativeParallelLabVIEWSupported"
+      ],
+      "properties": {
+        "dockerServerOs": { "enum": ["linux", "windows", "unknown"] },
+        "dockerContext": { "type": ["string", "null"] },
+        "observedDockerHost": { "type": ["string", "null"] },
+        "hostRamProfile": { "type": ["string", "null"] },
+        "hostRamRecommendedParallelism": { "type": ["integer", "null"], "minimum": 1 },
+        "native32Status": { "enum": ["ready", "partial", "missing"] },
+        "nativeParallelLabVIEWSupported": { "type": "boolean" }
+      }
+    },
+    "lanes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/lane" }
+    },
+    "bundles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/bundle" }
+    },
+    "recommendedBundle": {
+      "anyOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/bundle" }
+      ]
+    },
+    "observations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["availableLaneCount", "hostedLaneCount", "localLaneCount", "recommendedBundleId"],
+      "properties": {
+        "availableLaneCount": { "type": "integer", "minimum": 0 },
+        "hostedLaneCount": { "type": "integer", "minimum": 0 },
+        "localLaneCount": { "type": "integer", "minimum": 0 },
+        "recommendedBundleId": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "$defs": {
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "laneClass",
+        "executionPlane",
+        "resourceGroup",
+        "availability",
+        "reasons",
+        "metadata"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "laneClass": {
+          "enum": ["hosted-proof", "manual-docker", "shadow-validation"]
+        },
+        "executionPlane": {
+          "enum": ["hosted", "local", "local-shadow"]
+        },
+        "resourceGroup": { "type": "string", "minLength": 1 },
+        "availability": {
+          "enum": ["available", "disabled", "unavailable"]
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "classification", "laneIds", "reasons"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "classification": { "enum": ["recommended", "fallback"] },
+        "laneIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
