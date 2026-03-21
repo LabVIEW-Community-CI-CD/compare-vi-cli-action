@@ -7,7 +7,8 @@ import {
   collectMarketplaceSnapshot,
   loadMarketplaceRegistry,
   parseArgs,
-  rankMarketplaceEntries
+  rankMarketplaceEntries,
+  selectMarketplaceRecommendation
 } from '../lane-marketplace.mjs';
 
 test('lane-marketplace parseArgs applies defaults and accepts overrides', () => {
@@ -170,4 +171,42 @@ test('lane-marketplace collectMarketplaceSnapshot builds ranked standing and que
   assert.equal(snapshot.entries[0].repository, 'owner/upstream');
   assert.equal(snapshot.entries[0].standing.number, 41);
   assert.equal(snapshot.entries[1].reason, 'queue-empty');
+});
+
+test('lane-marketplace selectMarketplaceRecommendation skips the current repository when requested', () => {
+  const recommendation = selectMarketplaceRecommendation(
+    {
+      entries: [
+        {
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          eligible: true,
+          authorityTier: 'upstream-integration',
+          laneClass: 'upstream',
+          promotionRail: 'integration',
+          reason: 'standing-ready',
+          standingLabels: ['standing-priority'],
+          standing: { number: 1510, url: 'https://example.test/upstream/1510', title: 'Current repo lane' },
+          ranking: { order: 1 }
+        },
+        {
+          repository: 'LabVIEW-Community-CI-CD/comparevi-history',
+          eligible: true,
+          authorityTier: 'shared-platform',
+          laneClass: 'consumer-platform',
+          promotionRail: 'shared-platform',
+          reason: 'standing-ready',
+          standingLabels: ['standing-priority'],
+          standing: { number: 186, url: 'https://example.test/history/186', title: 'Shared platform lane' },
+          ranking: { order: 2 }
+        }
+      ]
+    },
+    {
+      currentRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      requireDifferentRepository: true
+    }
+  );
+
+  assert.equal(recommendation.repository, 'LabVIEW-Community-CI-CD/comparevi-history');
+  assert.equal(recommendation.issueNumber, 186);
 });

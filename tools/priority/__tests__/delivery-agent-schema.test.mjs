@@ -12,6 +12,7 @@ import {
   buildDeliveryAgentRuntimeRecord,
   buildWorkerProviderSelectionRequest,
   loadDeliveryAgentPolicy,
+  persistDeliveryAgentRuntimeState,
   selectWorkerProviderAssignment
 } from '../delivery-agent.mjs';
 import { buildDeliveryMemoryReport } from '../delivery-memory.mjs';
@@ -1033,4 +1034,96 @@ test('buildDeliveryAgentRuntimeRecord fails closed when a fork lane omits requir
       }),
     /missing planeTransition evidence/i
   );
+});
+
+test('persistDeliveryAgentRuntimeState projects a cross-repo marketplace recommendation for waiting lanes', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-marketplace-'));
+  const result = await persistDeliveryAgentRuntimeState({
+    repoRoot,
+    runtimeDir,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      implementationRemote: 'origin',
+      maxActiveCodingLanes: 4
+    },
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-1510',
+        issue: 1510,
+        forkRemote: 'origin',
+        branch: 'issue/origin-1510-cross-repo-lane-marketplace',
+        blockerClass: 'ci'
+      },
+      artifacts: {
+        laneLifecycle: 'waiting-ci'
+      }
+    },
+    taskPacket: {
+      laneId: 'origin-1510',
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-ci',
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+          }
+        }
+      }
+    },
+    executionReceipt: {
+      outcome: 'waiting-ci',
+      details: {
+        laneLifecycle: 'waiting-ci',
+        blockerClass: 'ci'
+      }
+    },
+    now: new Date('2026-03-21T05:30:00.000Z'),
+    collectMarketplaceSnapshotFn: async () => ({
+      summary: {
+        repositoryCount: 2,
+        eligibleLaneCount: 2,
+        topEligibleLane: {
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          issueNumber: 1510,
+          authorityTier: 'upstream-integration',
+          promotionRail: 'integration'
+        }
+      },
+      entries: [
+        {
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          eligible: true,
+          authorityTier: 'upstream-integration',
+          laneClass: 'upstream',
+          promotionRail: 'integration',
+          reason: 'standing-ready',
+          standingLabels: ['standing-priority'],
+          standing: { number: 1510, url: 'https://example.test/upstream/1510', title: 'Current lane' },
+          ranking: { order: 1 }
+        },
+        {
+          repository: 'LabVIEW-Community-CI-CD/comparevi-history',
+          eligible: true,
+          authorityTier: 'shared-platform',
+          laneClass: 'consumer-platform',
+          promotionRail: 'shared-platform',
+          reason: 'standing-ready',
+          standingLabels: ['standing-priority'],
+          standing: { number: 186, url: 'https://example.test/history/186', title: 'History lane' },
+          ranking: { order: 2 }
+        }
+      ]
+    }),
+    writeMarketplaceSnapshotFn: async () => path.join(runtimeDir, 'lane-marketplace-snapshot.json')
+  });
+
+  assert.equal(result.payload.marketplace.status, 'ready');
+  assert.equal(result.payload.marketplace.recommendedLane.repository, 'LabVIEW-Community-CI-CD/comparevi-history');
+  assert.equal(path.basename(result.payload.artifacts.marketplaceSnapshotPath), 'lane-marketplace-snapshot.json');
 });

@@ -18,6 +18,12 @@ import {
   resolveStandingPriorityLabels,
   selectAutoStandingPriorityCandidateForRepo
 } from './sync-standing-priority.mjs';
+import {
+  collectMarketplaceSnapshot,
+  DEFAULT_MARKETPLACE_SNAPSHOT_PATH,
+  selectMarketplaceRecommendation,
+  writeMarketplaceSnapshot
+} from './lane-marketplace.mjs';
 
 export const DELIVERY_AGENT_POLICY_SCHEMA = 'priority/delivery-agent-policy@v1';
 export const DELIVERY_AGENT_RUNTIME_STATE_SCHEMA = 'priority/delivery-agent-runtime-state@v1';
@@ -2339,7 +2345,8 @@ export function buildDeliveryAgentRuntimeRecord({
   taskPacket,
   executionReceipt,
   statePath,
-  lanePath
+  lanePath,
+  marketplace = null
 }) {
   const laneId =
     normalizeText(executionReceipt?.laneId) ||
@@ -2492,11 +2499,13 @@ export function buildDeliveryAgentRuntimeRecord({
     activeCodingLanes,
     workerPool,
     localReviewLoop,
+    marketplace,
     activeLane,
     artifacts: {
       statePath,
       lanePath,
       localReviewLoopReceiptPath: normalizeText(localReviewLoop?.receiptPath) || null,
+      marketplaceSnapshotPath: normalizeText(marketplace?.snapshotPath) || null,
       planeTransition,
       providerDispatch
     }
@@ -2511,7 +2520,10 @@ export async function persistDeliveryAgentRuntimeState({
   schedulerDecision,
   taskPacket,
   executionReceipt,
-  now = new Date()
+  now = new Date(),
+  collectMarketplaceSnapshotFn = collectMarketplaceSnapshot,
+  writeMarketplaceSnapshotFn = writeMarketplaceSnapshot,
+  selectMarketplaceRecommendationFn = selectMarketplaceRecommendation
 }) {
   await mkdir(runtimeDir, { recursive: true });
   const statePath = path.join(runtimeDir, DELIVERY_AGENT_STATE_FILENAME);
@@ -2523,7 +2535,7 @@ export async function persistDeliveryAgentRuntimeState({
   const lanesDir = path.join(runtimeDir, DELIVERY_AGENT_LANES_DIRNAME);
   await mkdir(lanesDir, { recursive: true });
   const lanePath = path.join(lanesDir, `${sanitizeSegment(laneId)}.json`);
-  const payload = buildDeliveryAgentRuntimeRecord({
+  let payload = buildDeliveryAgentRuntimeRecord({
     now,
     repoRoot,
     repository,
@@ -2535,6 +2547,59 @@ export async function persistDeliveryAgentRuntimeState({
     statePath,
     lanePath
   });
+  if (['idle', 'waiting-ci', 'waiting-review', 'ready-merge'].includes(payload.laneLifecycle)) {
+    try {
+      const snapshot = await collectMarketplaceSnapshotFn({
+        repoRoot
+      });
+      const snapshotPath = await writeMarketplaceSnapshotFn(
+        DEFAULT_MARKETPLACE_SNAPSHOT_PATH,
+        snapshot,
+        repoRoot
+      );
+      payload = buildDeliveryAgentRuntimeRecord({
+        now,
+        repoRoot,
+        repository,
+        runtimeDir,
+        policy,
+        schedulerDecision,
+        taskPacket,
+        executionReceipt,
+        statePath,
+        lanePath,
+        marketplace: {
+          status: 'ready',
+          snapshotPath,
+          summary: snapshot.summary ?? null,
+          recommendedLane: selectMarketplaceRecommendationFn(snapshot, {
+            currentRepository: repository,
+            requireDifferentRepository: true
+          })
+        }
+      });
+    } catch (error) {
+      payload = buildDeliveryAgentRuntimeRecord({
+        now,
+        repoRoot,
+        repository,
+        runtimeDir,
+        policy,
+        schedulerDecision,
+        taskPacket,
+        executionReceipt,
+        statePath,
+        lanePath,
+        marketplace: {
+          status: 'error',
+          snapshotPath: null,
+          summary: null,
+          recommendedLane: null,
+          error: normalizeText(error?.message) || String(error)
+        }
+      });
+    }
+  }
   await writeFile(statePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   await writeFile(lanePath, `${JSON.stringify(payload.activeLane, null, 2)}\n`, 'utf8');
   return {

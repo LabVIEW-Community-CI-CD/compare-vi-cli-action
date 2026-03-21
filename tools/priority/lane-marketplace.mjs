@@ -13,7 +13,13 @@ import {
 const MODULE_FILE_PATH = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(MODULE_FILE_PATH), '../..');
 const DEFAULT_REGISTRY_PATH = path.join('tools', 'priority', 'lane-marketplace.json');
-const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'marketplace', 'lane-marketplace-snapshot.json');
+export const DEFAULT_MARKETPLACE_SNAPSHOT_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'marketplace',
+  'lane-marketplace-snapshot.json'
+);
 
 const AUTHORITY_TIER_ORDER = new Map([
   ['upstream-integration', 0],
@@ -36,7 +42,7 @@ function printUsage() {
   console.log('');
   console.log('Options:');
   console.log(`  --registry <path>  Marketplace registry path (default: ${DEFAULT_REGISTRY_PATH})`);
-  console.log(`  --output <path>    Snapshot output path (default: ${DEFAULT_OUTPUT_PATH})`);
+  console.log(`  --output <path>    Snapshot output path (default: ${DEFAULT_MARKETPLACE_SNAPSHOT_PATH})`);
   console.log('  -h, --help         Show this help text and exit.');
 }
 
@@ -44,7 +50,7 @@ export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
     registryPath: DEFAULT_REGISTRY_PATH,
-    outputPath: DEFAULT_OUTPUT_PATH,
+    outputPath: DEFAULT_MARKETPLACE_SNAPSHOT_PATH,
     help: false
   };
 
@@ -313,7 +319,44 @@ export async function collectMarketplaceSnapshot(options = {}) {
   };
 }
 
-async function writeSnapshot(outputPath, snapshot, repoRoot = REPO_ROOT) {
+export function selectMarketplaceRecommendation(
+  snapshot,
+  {
+    currentRepository = null,
+    requireDifferentRepository = false
+  } = {}
+) {
+  const normalizedCurrentRepository = normalizeText(currentRepository)?.toLowerCase() || null;
+  const entries = Array.isArray(snapshot?.entries) ? snapshot.entries : [];
+  const selected = entries.find((entry) => {
+    if (entry?.eligible !== true) {
+      return false;
+    }
+    const repository = normalizeText(entry?.repository)?.toLowerCase() || null;
+    if (requireDifferentRepository && normalizedCurrentRepository && repository === normalizedCurrentRepository) {
+      return false;
+    }
+    return true;
+  });
+  if (!selected) {
+    return null;
+  }
+
+  return {
+    repository: selected.repository,
+    issueNumber: selected.standing?.number ?? null,
+    issueUrl: normalizeText(selected.standing?.url) || null,
+    issueTitle: normalizeText(selected.standing?.title) || null,
+    authorityTier: selected.authorityTier,
+    laneClass: selected.laneClass,
+    promotionRail: selected.promotionRail,
+    reason: selected.reason,
+    standingLabels: Array.isArray(selected.standingLabels) ? [...selected.standingLabels] : [],
+    ranking: selected.ranking ?? null
+  };
+}
+
+export async function writeMarketplaceSnapshot(outputPath, snapshot, repoRoot = REPO_ROOT) {
   const resolvedPath = path.resolve(repoRoot, outputPath);
   await mkdir(path.dirname(resolvedPath), { recursive: true });
   await writeFile(resolvedPath, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
@@ -331,7 +374,7 @@ export async function main(argv = process.argv) {
     repoRoot: REPO_ROOT,
     registryPath: options.registryPath
   });
-  const outputPath = await writeSnapshot(options.outputPath, snapshot, REPO_ROOT);
+  const outputPath = await writeMarketplaceSnapshot(options.outputPath, snapshot, REPO_ROOT);
   console.log(
     `[lane-marketplace] wrote ${outputPath} top=${snapshot.summary.topEligibleLane?.repository ?? 'none'} ready=${snapshot.summary.eligibleLaneCount}`
   );
