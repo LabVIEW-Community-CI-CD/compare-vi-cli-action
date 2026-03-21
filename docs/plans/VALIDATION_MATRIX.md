@@ -54,6 +54,8 @@ Audience: anyone touching `.github/workflows/**`.
   document). No additional env vars required.
 - **Expected output** – Streams `actionlint` diagnostics and audit summaries to the console. The dependency-audit lane
   writes `tests/results/_agent/security/dependency-audit-report.json` and the raw npm payload under the same directory.
+  The report also includes a deterministic `packageState.fingerprintSha256`
+  keyed from the audited `package.json` / `package-lock.json` inputs.
 - **Failure modes** – Missing binary (when `-InstallIfMissing:$false`), lint errors, or transient download failures.
   The dependency-audit lane is observe-only in this script, so vulnerability or transport findings are reported in the
   receipt without turning pre-push into a blind fail-everything audit gate. Use

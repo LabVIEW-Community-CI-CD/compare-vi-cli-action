@@ -318,6 +318,9 @@ function Invoke-DependencyAuditObservation([string]$repoRoot) {
 
   $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 20
   $result = if ($report.PSObject.Properties['result']) { [string]$report.result } else { 'unknown' }
+  $packageState = if ($report.PSObject.Properties['packageState']) { $report.packageState } else { $null }
+  $auditFingerprint = if ($packageState -and $packageState.PSObject.Properties['fingerprintSha256']) { [string]$packageState.fingerprintSha256 } else { '' }
+  $lockfileVersion = if ($packageState -and $packageState.packageLock -and $packageState.packageLock.PSObject.Properties['lockfileVersion']) { $packageState.packageLock.lockfileVersion } else { $null }
   switch ($result) {
     'pass' {
       Write-Host '[pre-push] dependency audit observation OK' -ForegroundColor Green
@@ -331,6 +334,12 @@ function Invoke-DependencyAuditObservation([string]$repoRoot) {
     default {
       Write-Host ("[pre-push] dependency audit observation produced unexpected result '{0}'" -f $result) -ForegroundColor Yellow
     }
+  }
+  if (-not [string]::IsNullOrWhiteSpace($auditFingerprint)) {
+    Write-Host ("[pre-push] dependency audit fingerprint: {0}" -f $auditFingerprint) -ForegroundColor DarkGray
+  }
+  if ($null -ne $lockfileVersion) {
+    Write-Host ("[pre-push] dependency audit lockfileVersion: {0}" -f $lockfileVersion) -ForegroundColor DarkGray
   }
   Write-Host ("[pre-push] Dependency audit report: {0}" -f $reportPath) -ForegroundColor DarkGray
 }

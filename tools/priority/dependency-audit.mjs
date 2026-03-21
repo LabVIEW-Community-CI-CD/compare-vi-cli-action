@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import process from 'node:process';
 import { spawn } from 'node:child_process';
@@ -11,6 +12,7 @@ import { createNpmLaunchSpec } from '../npm/spawn.mjs';
 export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'security', 'dependency-audit-report.json');
 export const DEFAULT_RAW_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'security', 'npm-audit.json');
 export const DEFAULT_MODE = 'observe';
+export const DEFAULT_REPO_ROOT = '.';
 export const DEFAULT_THRESHOLDS = Object.freeze({
   total: 0,
   critical: 0,
@@ -22,6 +24,7 @@ const HELP = [
   'Usage: node tools/priority/dependency-audit.mjs [options]',
   '',
   'Options:',
+  `  --repo-root <path>               (default: ${DEFAULT_REPO_ROOT})`,
   `  --output <path>                  (default: ${DEFAULT_OUTPUT_PATH})`,
   `  --raw-output <path>              (default: ${DEFAULT_RAW_OUTPUT_PATH})`,
   `  --mode observe|enforce           (default: ${DEFAULT_MODE})`,
@@ -80,6 +83,7 @@ function compareSeverity(left, right) {
 export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
+    repoRoot: DEFAULT_REPO_ROOT,
     outputPath: DEFAULT_OUTPUT_PATH,
     rawOutputPath: DEFAULT_RAW_OUTPUT_PATH,
     mode: DEFAULT_MODE,
@@ -96,6 +100,7 @@ export function parseArgs(argv = process.argv) {
     }
 
     if (
+      token === '--repo-root' ||
       token === '--output' ||
       token === '--raw-output' ||
       token === '--mode' ||
@@ -108,6 +113,7 @@ export function parseArgs(argv = process.argv) {
         throw new Error(`Missing value for ${token}.`);
       }
       index += 1;
+      if (token === '--repo-root') options.repoRoot = next;
       if (token === '--output') options.outputPath = next;
       if (token === '--raw-output') options.rawOutputPath = next;
       if (token === '--mode') options.mode = normalizeMode(next);
@@ -122,6 +128,91 @@ export function parseArgs(argv = process.argv) {
   }
 
   return options;
+}
+
+function normalizeRelativePath(filePath) {
+  return filePath.split(path.sep).join('/');
+}
+
+async function readOptionalText(filePath, readFileFn = fs.readFile) {
+  try {
+    const content = await readFileFn(filePath, 'utf8');
+    return {
+      exists: true,
+      content,
+    };
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return {
+        exists: false,
+        content: null,
+      };
+    }
+    throw error;
+  }
+}
+
+function sha256Text(content) {
+  return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+}
+
+export async function collectPackageState(
+  {
+    repoRoot = process.cwd(),
+  } = {},
+  {
+    readFileFn = fs.readFile,
+    nodeVersion = process.version,
+  } = {},
+) {
+  const resolvedRepoRoot = path.resolve(repoRoot);
+  const packageJsonPath = path.join(resolvedRepoRoot, 'package.json');
+  const packageLockPath = path.join(resolvedRepoRoot, 'package-lock.json');
+
+  const packageJson = await readOptionalText(packageJsonPath, readFileFn);
+  const packageLock = await readOptionalText(packageLockPath, readFileFn);
+
+  let packageJsonPayload = null;
+  let packageLockPayload = null;
+  if (packageJson.content) {
+    packageJsonPayload = JSON.parse(packageJson.content);
+  }
+  if (packageLock.content) {
+    packageLockPayload = JSON.parse(packageLock.content);
+  }
+
+  const packageStateFingerprintInput = {
+    nodeVersion,
+    packageName: asOptional(packageJsonPayload?.name),
+    packageVersion: asOptional(packageJsonPayload?.version),
+    packageJsonSha256: packageJson.content ? sha256Text(packageJson.content) : null,
+    packageLockSha256: packageLock.content ? sha256Text(packageLock.content) : null,
+    packageLockVersion:
+      typeof packageLockPayload?.lockfileVersion === 'number'
+        ? packageLockPayload.lockfileVersion
+        : null,
+  };
+
+  return {
+    nodeVersion,
+    packageJson: {
+      path: normalizeRelativePath(path.relative(resolvedRepoRoot, packageJsonPath) || 'package.json'),
+      exists: packageJson.exists,
+      sha256: packageStateFingerprintInput.packageJsonSha256,
+      packageName: packageStateFingerprintInput.packageName,
+      packageVersion: packageStateFingerprintInput.packageVersion,
+    },
+    packageLock: {
+      path: normalizeRelativePath(path.relative(resolvedRepoRoot, packageLockPath) || 'package-lock.json'),
+      exists: packageLock.exists,
+      sha256: packageStateFingerprintInput.packageLockSha256,
+      lockfileVersion: packageStateFingerprintInput.packageLockVersion,
+    },
+    fingerprintSha256: crypto
+      .createHash('sha256')
+      .update(JSON.stringify(packageStateFingerprintInput))
+      .digest('hex'),
+  };
 }
 
 function normalizeSeverity(value) {
@@ -311,10 +402,19 @@ export async function runDependencyAudit(
     runAuditCommandFn = runSanitizedNpmAudit,
     writeFileFn = fs.writeFile,
     mkdirFn = fs.mkdir,
+    readFileFn = fs.readFile,
     log = console.log,
     error = console.error,
   } = {},
 ) {
+  const packageState = await collectPackageState(
+    {
+      repoRoot: options.repoRoot,
+    },
+    {
+      readFileFn,
+    },
+  );
   const auditExecution = await runAuditCommandFn();
   const rawAuditPath = await writeTextFile(options.rawOutputPath, auditExecution.stdout || '', writeFileFn, mkdirFn);
 
@@ -391,6 +491,12 @@ export async function runDependencyAudit(
       stderr: asOptional(auditExecution.stderr),
       jsonParsed: executionErrors.length === 0,
     },
+    packageState: {
+      nodeVersion: packageState.nodeVersion,
+      packageJson: packageState.packageJson,
+      packageLock: packageState.packageLock,
+      fingerprintSha256: packageState.fingerprintSha256,
+    },
     thresholds: options.thresholds,
     summary,
     packages,
@@ -407,6 +513,7 @@ export async function runDependencyAudit(
 
   log(`[dependency-audit] report: ${reportPath}`);
   log(`[dependency-audit] raw: ${rawAuditPath}`);
+  log(`[dependency-audit] fingerprint=${packageState.fingerprintSha256}`);
   if (result === 'pass') {
     log('[dependency-audit] result=pass');
   } else if (result === 'warn') {

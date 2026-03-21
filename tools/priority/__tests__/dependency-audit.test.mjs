@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  collectPackageState,
   DEFAULT_MODE,
   DEFAULT_OUTPUT_PATH,
   DEFAULT_RAW_OUTPUT_PATH,
@@ -45,6 +46,8 @@ test('parseArgs supports mode, outputs, and thresholds', () => {
   const parsed = parseArgs([
     'node',
     'dependency-audit.mjs',
+    '--repo-root',
+    'repo-root',
     '--output',
     'custom-report.json',
     '--raw-output',
@@ -61,6 +64,7 @@ test('parseArgs supports mode, outputs, and thresholds', () => {
     '4',
   ]);
 
+  assert.equal(parsed.repoRoot, 'repo-root');
   assert.equal(parsed.outputPath, 'custom-report.json');
   assert.equal(parsed.rawOutputPath, 'custom-raw.json');
   assert.equal(parsed.mode, 'enforce');
@@ -147,9 +151,20 @@ test('runDependencyAudit reports clean audits as pass in observe mode', async ()
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dependency-audit-pass-'));
   const outputPath = path.join(tmpDir, 'report.json');
   const rawOutputPath = path.join(tmpDir, 'npm-audit.json');
+  fs.writeFileSync(
+    path.join(tmpDir, 'package.json'),
+    JSON.stringify({ name: 'audit-pass', version: '1.2.3' }, null, 2),
+    'utf8',
+  );
+  fs.writeFileSync(
+    path.join(tmpDir, 'package-lock.json'),
+    JSON.stringify({ name: 'audit-pass', lockfileVersion: 3 }, null, 2),
+    'utf8',
+  );
 
   const result = await runDependencyAudit(
     {
+      repoRoot: tmpDir,
       outputPath,
       rawOutputPath,
       mode: 'observe',
@@ -171,6 +186,10 @@ test('runDependencyAudit reports clean audits as pass in observe mode', async ()
 
   assert.equal(result.exitCode, 0);
   assert.equal(result.report.result, 'pass');
+  assert.equal(result.report.packageState.packageJson.packageName, 'audit-pass');
+  assert.equal(result.report.packageState.packageJson.packageVersion, '1.2.3');
+  assert.equal(result.report.packageState.packageLock.lockfileVersion, 3);
+  assert.match(result.report.packageState.fingerprintSha256, /^[0-9a-f]{64}$/);
   assert.equal(result.report.summary.total, 0);
   assert.equal(fs.existsSync(outputPath), true);
   assert.equal(fs.existsSync(rawOutputPath), true);
@@ -180,9 +199,11 @@ test('runDependencyAudit warns without failing in observe mode when thresholds a
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dependency-audit-warn-'));
   const outputPath = path.join(tmpDir, 'report.json');
   const rawOutputPath = path.join(tmpDir, 'npm-audit.json');
+  fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ name: 'audit-warn', version: '1.0.0' }), 'utf8');
 
   const result = await runDependencyAudit(
     {
+      repoRoot: tmpDir,
       outputPath,
       rawOutputPath,
       mode: 'observe',
@@ -241,9 +262,11 @@ test('runDependencyAudit warns without failing in observe mode when thresholds a
 
 test('runDependencyAudit fails in enforce mode when thresholds are breached', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dependency-audit-fail-'));
+  fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ name: 'audit-fail', version: '2.0.0' }), 'utf8');
 
   const result = await runDependencyAudit(
     {
+      repoRoot: tmpDir,
       outputPath: path.join(tmpDir, 'report.json'),
       rawOutputPath: path.join(tmpDir, 'npm-audit.json'),
       mode: 'enforce',
@@ -298,9 +321,11 @@ test('runDependencyAudit fails in enforce mode when thresholds are breached', as
 
 test('runDependencyAudit records execution errors without failing observe mode', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dependency-audit-error-'));
+  fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ name: 'audit-error', version: '3.0.0' }), 'utf8');
 
   const result = await runDependencyAudit(
     {
+      repoRoot: tmpDir,
       outputPath: path.join(tmpDir, 'report.json'),
       rawOutputPath: path.join(tmpDir, 'npm-audit.json'),
       mode: 'observe',
@@ -325,8 +350,35 @@ test('runDependencyAudit records execution errors without failing observe mode',
   assert.equal(result.report.errors.length >= 1, true);
 });
 
+test('collectPackageState fingerprints the audited package manifest and lockfile deterministically', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dependency-audit-package-state-'));
+  fs.writeFileSync(
+    path.join(tmpDir, 'package.json'),
+    JSON.stringify({ name: 'package-state', version: '9.9.9' }, null, 2),
+    'utf8',
+  );
+  fs.writeFileSync(
+    path.join(tmpDir, 'package-lock.json'),
+    JSON.stringify({ name: 'package-state', lockfileVersion: 3 }, null, 2),
+    'utf8',
+  );
+
+  const first = await collectPackageState({ repoRoot: tmpDir }, { nodeVersion: 'v24.13.1' });
+  const second = await collectPackageState({ repoRoot: tmpDir }, { nodeVersion: 'v24.13.1' });
+
+  assert.equal(first.packageJson.path, 'package.json');
+  assert.equal(first.packageLock.path, 'package-lock.json');
+  assert.equal(first.packageJson.packageName, 'package-state');
+  assert.equal(first.packageJson.packageVersion, '9.9.9');
+  assert.equal(first.packageLock.lockfileVersion, 3);
+  assert.match(first.packageJson.sha256, /^[0-9a-f]{64}$/);
+  assert.match(first.packageLock.sha256, /^[0-9a-f]{64}$/);
+  assert.equal(first.fingerprintSha256, second.fingerprintSha256);
+});
+
 test('parseArgs defaults align with the contract', () => {
   const parsed = parseArgs(['node', 'dependency-audit.mjs']);
+  assert.equal(parsed.repoRoot, '.');
   assert.equal(parsed.outputPath, DEFAULT_OUTPUT_PATH);
   assert.equal(parsed.rawOutputPath, DEFAULT_RAW_OUTPUT_PATH);
   assert.equal(parsed.mode, DEFAULT_MODE);

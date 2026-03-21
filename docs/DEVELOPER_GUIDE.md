@@ -223,6 +223,11 @@ node tools/npm/run-script.mjs priority:security:audit:gate   # explicit blocking
 ./tools/PrePush-Checks.ps1  # actionlint, dependency-audit observation, optional YAML round-trip
 ```
 
+The dependency-audit receipt now records a deterministic `packageState` block,
+including `package.json` / `package-lock.json` hashes and a
+`fingerprintSha256` so vulnerability changes can be tied back to the exact
+audited Node dependency graph.
+
 For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 
 - Single-lane strict (recommended before full loop):

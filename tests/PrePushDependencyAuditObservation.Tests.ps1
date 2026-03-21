@@ -68,6 +68,23 @@ Describe 'Pre-push dependency audit observation' -Tag 'Unit' {
           stderr = $null
           jsonParsed = $true
         }
+        packageState = @{
+          nodeVersion = 'v24.13.1'
+          packageJson = @{
+            path = 'package.json'
+            exists = $true
+            sha256 = ('a' * 64)
+            packageName = 'compare-vi-cli-action'
+            packageVersion = '0.6.3'
+          }
+          packageLock = @{
+            path = 'package-lock.json'
+            exists = $true
+            sha256 = ('b' * 64)
+            lockfileVersion = 3
+          }
+          fingerprintSha256 = ('c' * 64)
+        }
         thresholds = @{
           total = 0
           critical = 0
