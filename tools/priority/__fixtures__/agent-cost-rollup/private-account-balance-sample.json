@@ -8,16 +8,15 @@
     "name": "business",
     "renewsAt": "2026-04-15"
   },
-  "credits": {
-    "total": 27500,
-    "used": 15800,
-    "remaining": 11700
+  "balances": {
+    "totalCredits": 27500,
+    "usedCredits": 15800,
+    "remainingCredits": 11700
   },
   "provenance": {
     "sourceKind": "operator-account-state",
     "sourcePath": "C:/Users/operator/Downloads/account-balance-20260321.json",
     "observedAt": "2026-03-21T12:00:00.000Z",
-    "confidence": "high",
-    "operatorNote": "Sanitized operator-provided account balance snapshot."
+    "confidence": "high"
   }
 }

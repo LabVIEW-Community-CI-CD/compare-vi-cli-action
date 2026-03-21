@@ -60,9 +60,15 @@ function toNonNegativeInteger(value) {
 }
 
 function deriveBalanceTotals(payload) {
-  let total = toNonNegativeInteger(payload?.credits?.total ?? payload?.totalCredits);
-  let used = toNonNegativeInteger(payload?.credits?.used ?? payload?.usedCredits);
-  let remaining = toNonNegativeInteger(payload?.credits?.remaining ?? payload?.remainingCredits);
+  let total = toNonNegativeInteger(
+    payload?.balances?.totalCredits ?? payload?.credits?.total ?? payload?.totalCredits
+  );
+  let used = toNonNegativeInteger(
+    payload?.balances?.usedCredits ?? payload?.credits?.used ?? payload?.usedCredits
+  );
+  let remaining = toNonNegativeInteger(
+    payload?.balances?.remainingCredits ?? payload?.credits?.remaining ?? payload?.remainingCredits
+  );
 
   if (total == null && used != null && remaining != null) {
     total = used + remaining;
@@ -200,31 +206,35 @@ export function buildNormalizedAccountBalanceReceiptFromSnapshot(snapshotPayload
   }
 
   const confidence = normalizeConfidence(snapshotPayload?.provenance?.confidence ?? snapshotPayload.confidence) || 'high';
-  const sourcePath = normalizeText(snapshotPayload.sourcePath) || normalizeText(snapshotPayload?.provenance?.sourcePath);
+  const sourcePathEvidence = normalizeText(snapshotPayload.sourcePath) || normalizeText(snapshotPayload?.provenance?.sourcePath);
   const generatedAt = normalizeDateTime(options.generatedAt) || new Date().toISOString();
 
   return {
     schema: REPORT_SCHEMA,
     generatedAt,
+    effectiveAt,
     snapshotAt,
     capturedAt,
-    effectiveAt,
     renewalCycleBoundaryAt,
     plan: {
       name: normalizeText(snapshotPayload?.plan?.name) || 'business',
       renewsAt,
       daysRemaining: cycleDaysRemaining
     },
-    credits,
+    balances: {
+      totalCredits: credits.total,
+      usedCredits: credits.used,
+      remainingCredits: credits.remaining
+    },
+    sourceKind: normalizeText(snapshotPayload?.provenance?.sourceKind) || 'operator-account-state',
+    sourcePathEvidence,
+    operatorNote:
+      normalizeText(snapshotPayload?.provenance?.operatorNote) ||
+      'Normalized from a local private account balance snapshot.',
     provenance: {
       sourceSchema: normalizeText(snapshotPayload.schema) || INPUT_SCHEMA,
-      sourceKind: normalizeText(snapshotPayload?.provenance?.sourceKind) || 'operator-account-state',
-      sourcePath,
       observedAt: normalizeDateTime(snapshotPayload?.provenance?.observedAt) || snapshotAt,
-      confidence,
-      operatorNote:
-        normalizeText(snapshotPayload?.provenance?.operatorNote) ||
-        'Normalized from a local private account balance snapshot.'
+      confidence
     }
   };
 }

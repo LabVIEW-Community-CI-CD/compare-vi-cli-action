@@ -39,20 +39,21 @@ test('buildNormalizedAccountBalanceReceiptFromSnapshot normalizes a private acco
   const report = buildNormalizedAccountBalanceReceiptFromSnapshot(snapshot);
 
   assert.equal(report.schema, 'priority/agent-cost-account-balance@v1');
-  assert.equal(report.snapshotAt, '2026-03-21T12:00:00.000Z');
-  assert.equal(report.capturedAt, '2026-03-21T12:00:00.000Z');
   assert.equal(report.effectiveAt, '2026-03-21T12:00:00.000Z');
+  assert.equal(report.capturedAt, '2026-03-21T12:00:00.000Z');
   assert.equal(report.renewalCycleBoundaryAt, '2026-04-15T00:00:00.000Z');
   assert.equal(report.plan.name, 'business');
   assert.equal(report.plan.renewsAt, '2026-04-15');
   assert.equal(report.plan.daysRemaining, 25);
-  assert.equal(report.credits.total, 27500);
-  assert.equal(report.credits.used, 15800);
-  assert.equal(report.credits.remaining, 11700);
+  assert.equal(report.balances.totalCredits, 27500);
+  assert.equal(report.balances.usedCredits, 15800);
+  assert.equal(report.balances.remainingCredits, 11700);
   assert.equal(report.provenance.sourceSchema, 'priority/agent-cost-private-account-balance@v1');
-  assert.equal(report.provenance.sourceKind, 'operator-account-state');
   assert.equal(report.provenance.observedAt, '2026-03-21T12:00:00.000Z');
   assert.equal(report.provenance.confidence, 'high');
+  assert.equal(report.sourceKind, 'operator-account-state');
+  assert.equal(report.sourcePathEvidence, 'C:/Users/operator/Downloads/account-balance-20260321.json');
+  assert.match(report.operatorNote, /private account balance snapshot/i);
 });
 
 test('runAgentCostAccountBalanceNormalize writes a normalized account-balance receipt to the requested path', () => {
@@ -63,7 +64,7 @@ test('runAgentCostAccountBalanceNormalize writes a normalized account-balance re
     outputPath
   });
 
-  assert.equal(result.report.credits.remaining, 11700);
+  assert.equal(result.report.balances.remainingCredits, 11700);
   assert.equal(fs.existsSync(outputPath), true);
 });
 
