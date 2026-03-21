@@ -1,0 +1,535 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/vi-history-cross-plane-budget-v1.schema.json",
+  "title": "VI History Cross-Plane Performance Budget",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "budget",
+    "workload",
+    "hostPlaneReport",
+    "planes",
+    "comparisons",
+    "overall"
+  ],
+  "properties": {
+    "schema": {
+      "const": "vi-history/cross-plane-performance-budget@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "windowsVsLinuxMaxRatio",
+        "shadowAccelerationMaxRatio",
+        "windowsOverBudgetJustification"
+      ],
+      "properties": {
+        "windowsVsLinuxMaxRatio": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "shadowAccelerationMaxRatio": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "windowsOverBudgetJustification": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetPath",
+        "targetPathComparable",
+        "branchRef",
+        "baselineRef",
+        "maxPairs",
+        "maxCommitCount",
+        "comparable"
+      ],
+      "properties": {
+        "targetPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "targetPathComparable": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "branchRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "baselineRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maxPairs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "maxCommitCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "comparable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "hostPlaneReport": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema",
+        "native32Status",
+        "native64Status",
+        "parallelLabVIEWSupported"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "native32Status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "native64Status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parallelLabVIEWSupported": {
+          "type": "boolean"
+        }
+      }
+    },
+    "planes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "linux",
+        "windows",
+        "shadow32"
+      ],
+      "properties": {
+        "linux": {
+          "$ref": "#/$defs/planeMeasurement"
+        },
+        "windows": {
+          "$ref": "#/$defs/planeMeasurement"
+        },
+        "shadow32": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/planeMeasurement"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "comparisons": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "windowsVsLinux",
+        "shadowVsLinux",
+        "shadowVsWindows",
+        "shadowSummary"
+      ],
+      "properties": {
+        "windowsVsLinux": {
+          "$ref": "#/$defs/comparison"
+        },
+        "shadowVsLinux": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/comparison"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "shadowVsWindows": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/comparison"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "shadowSummary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "message",
+            "fasterThan"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "pass",
+                "warn",
+                "missing"
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "fasterThan": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "overall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "blockers",
+        "warnings"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pass",
+            "warn",
+            "fail"
+          ]
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/issue"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/issue"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema",
+        "measurementPath",
+        "measurementSchema"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "measurementPath": {
+          "type": "string"
+        },
+        "measurementSchema": {
+          "type": "string"
+        }
+      }
+    },
+    "history": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetPath",
+        "targetPathComparable",
+        "branchRef",
+        "baselineRef",
+        "maxPairs",
+        "maxCommitCount"
+      ],
+      "properties": {
+        "targetPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "targetPathComparable": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "branchRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "baselineRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maxPairs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "maxCommitCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "timings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "elapsedMilliseconds",
+        "elapsedSeconds"
+      ],
+      "properties": {
+        "elapsedMilliseconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "elapsedSeconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "workloadMismatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "reference",
+        "candidate"
+      ],
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "reference": {},
+        "candidate": {}
+      }
+    },
+    "planeMeasurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "source",
+        "runtimeProfile",
+        "runtimePlane",
+        "benchmarkSampleKind",
+        "repoRoot",
+        "resultsRoot",
+        "finalStatus",
+        "history",
+        "timings",
+        "workloadMismatch"
+      ],
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "runtimeProfile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtimePlane": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "benchmarkSampleKind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repoRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resultsRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "finalStatus": {
+          "type": "string"
+        },
+        "history": {
+          "$ref": "#/$defs/history"
+        },
+        "timings": {
+          "$ref": "#/$defs/timings"
+        },
+        "workloadMismatch": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workloadMismatch"
+          }
+        }
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "kind",
+        "baselinePlane",
+        "candidatePlane",
+        "baselineMilliseconds",
+        "candidateMilliseconds",
+        "deltaMilliseconds",
+        "candidateToBaselineRatio",
+        "thresholdRatio",
+        "withinBudget",
+        "justification",
+        "status",
+        "message"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "budget-max",
+            "accelerator"
+          ]
+        },
+        "baselinePlane": {
+          "type": "string"
+        },
+        "candidatePlane": {
+          "type": "string"
+        },
+        "baselineMilliseconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidateMilliseconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deltaMilliseconds": {
+          "type": "integer"
+        },
+        "candidateToBaselineRatio": {
+          "type": "number",
+          "minimum": 0
+        },
+        "thresholdRatio": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "withinBudget": {
+          "type": "boolean"
+        },
+        "justification": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "warn",
+            "fail"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

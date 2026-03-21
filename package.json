@@ -122,6 +122,7 @@
     "priority:promote:downstream:manifest": "node tools/priority/downstream-promotion-manifest.mjs",
     "priority:promote:downstream:scorecard": "node tools/priority/downstream-promotion-scorecard.mjs",
     "priority:diagnostics:public-linux": "node tools/priority/public-linux-diagnostics-harness.mjs",
+    "priority:vi-history:budget": "node tools/priority/vi-history-cross-plane-budget.mjs",
     "priority:develop:sync": "node tools/priority/develop-sync.mjs",
     "priority:github:metadata:apply": "tsc -p tsconfig.cli.json && node dist/tools/cli/github-metadata.js",
     "priority:policy": "node tools/priority/check-policy.mjs",
