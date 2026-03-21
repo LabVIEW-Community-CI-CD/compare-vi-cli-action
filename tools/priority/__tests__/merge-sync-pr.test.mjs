@@ -507,6 +507,25 @@ test('buildMergeArgs omits --delete-branch for auto merges so merge-queue branch
   ]);
 });
 
+test('buildMergeArgs ignores explicit inline delete requests for auto merges', () => {
+  assert.deepEqual(buildMergeArgs({
+    pr: 1017,
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    method: 'squash',
+    mode: 'auto',
+    keepBranch: false,
+    inlineDeleteBranch: true
+  }), [
+    'pr',
+    'merge',
+    '1017',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--squash',
+    '--auto'
+  ]);
+});
+
 test('deleteMergedHeadBranch treats an already-absent branch as a successful cleanup outcome', () => {
   const cleanup = deleteMergedHeadBranch({
     repoRoot,
@@ -1118,6 +1137,7 @@ test('classifyPromotionState reports queued and already-queued distinctly', () =
 
 test('runMergeSync records queued promotion state after auto merge activation materializes', async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'merge-sync-pr-queued-'));
+  const mergeArgs = [];
   const promotionStates = [
     {
       state: 'OPEN',
@@ -1172,10 +1192,22 @@ test('runMergeSync records queued promotion state after auto merge activation ma
       promotionReads += 1;
       return structuredClone(value);
     },
-    runMergeAttemptFn: () => ({ status: 0, stdout: 'queued', stderr: '' }),
+    runMergeAttemptFn: ({ args }) => {
+      mergeArgs.push(args);
+      return { status: 0, stdout: 'queued', stderr: '' };
+    },
     sleepFn: async () => {}
   });
 
+  assert.deepEqual(mergeArgs, [[
+    'pr',
+    'merge',
+    '123',
+    '--repo',
+    'owner/repo',
+    '--squash',
+    '--auto'
+  ]]);
   assert.equal(payload.promotion.status, 'queued');
   assert.equal(payload.promotion.materialized, true);
   assert.ok(payload.promotion.pollAttemptsUsed >= 1);

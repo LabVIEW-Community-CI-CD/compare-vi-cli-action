@@ -731,7 +731,9 @@ export async function evaluatePromotionReviewClearance({
 
 export function buildMergeArgs({ pr, repo, method, mode, keepBranch, inlineDeleteBranch = !keepBranch && mode !== 'auto' }) {
   const args = ['pr', 'merge', String(pr), '--repo', repo, `--${method}`];
-  if (inlineDeleteBranch) {
+  // GitHub merge queue rejects --delete-branch on queued/auto admission paths.
+  const allowInlineDeleteBranch = inlineDeleteBranch && mode !== 'auto';
+  if (allowInlineDeleteBranch) {
     args.push('--delete-branch');
   }
   if (mode === 'auto') {
