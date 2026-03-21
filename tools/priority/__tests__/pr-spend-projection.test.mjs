@@ -195,6 +195,52 @@ test('evaluatePrSpendProjection falls back to linked issue turns when branch tur
   assert.equal(report.summary.totalUsd, 0.529789);
 });
 
+test('evaluatePrSpendProjection prefers laneBranch-attributed turns before linked issue fallback when laneId is a short lane identity', () => {
+  const report = evaluatePrSpendProjection({
+    costRollup: createCostRollupFixture({
+      turns: [
+        {
+          agentRole: 'live',
+          providerId: 'codex-cli',
+          providerKind: 'local-codex',
+          effectiveModel: 'gpt-5.4',
+          effectiveReasoningEffort: 'high',
+          issueNumber: 1682,
+          laneId: 'origin-1682',
+          laneBranch: 'issue/origin-1682-branch-attributed-cost-turns',
+          amountUsd: 0.311111
+        },
+        {
+          agentRole: 'background',
+          providerId: 'codex-cli',
+          providerKind: 'local-codex',
+          effectiveModel: 'gpt-5.4-mini',
+          effectiveReasoningEffort: 'medium',
+          issueNumber: 1682,
+          laneId: 'verify/template-agent-proof-20260321',
+          laneBranch: 'verify/template-agent-proof-20260321',
+          amountUsd: 0.111111
+        }
+      ]
+    }),
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    prContext: {
+      number: 1682,
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1682',
+      headRefName: 'issue/origin-1682-branch-attributed-cost-turns',
+      headSha: 'abc123',
+      linkedIssueNumber: 1682,
+      selectorSource: 'github-pr-head-ref'
+    }
+  });
+
+  assert.equal(report.summary.status, 'pass');
+  assert.equal(report.pullRequest.selectorSource, 'github-pr-head-ref');
+  assert.equal(report.metrics.totalTurns, 1);
+  assert.equal(report.summary.totalUsd, 0.311111);
+  assert.equal(report.breakdown.lanes[0].laneId, 'origin-1682');
+});
+
 test('runPrSpendProjection writes JSON and markdown outputs and can upsert a comment via injected functions', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-spend-projection-'));
   const costRollupPath = path.join(tempDir, 'agent-cost-rollup.json');
