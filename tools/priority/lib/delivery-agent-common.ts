@@ -32,7 +32,19 @@ export const TRACE_SCHEMA = 'priority/unattended-delivery-agent-trace@v1';
 export const MAX_BUFFER = 32 * 1024 * 1024;
 
 export function resolveRepoRoot() {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  let currentDir = moduleDir;
+  while (true) {
+    if (existsSync(path.join(currentDir, 'package.json'))) {
+      return currentDir;
+    }
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      break;
+    }
+    currentDir = parentDir;
+  }
+  throw new Error(`Unable to resolve repository root from module location: ${moduleDir}`);
 }
 
 export function normalizeText(value) {
