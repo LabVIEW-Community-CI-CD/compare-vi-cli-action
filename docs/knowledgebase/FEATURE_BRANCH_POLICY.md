@@ -309,12 +309,11 @@ to confirm each workflow includes both triggers.
    deletion once the merge materializes. When the PR remains queued after the current helper turn, `priority:queue:supervisor`
    reconciles that deferred cleanup and records the outcome under `deferredBranchCleanup` in
    `tests/results/_agent/queue/queue-supervisor-report.json`.
-   When a queued `develop` PR needs a base refresh, run the dedicated helper from a clean checkout of that PR head:
-   `node tools/npm/run-script.mjs priority:queue:refresh -- --pr <number> --repo $REPO`. It dequeues the PR through
-   GraphQL, rebases the checked-out branch onto current `develop`, force-pushes with lease, re-arms queue admission via
-   `priority:merge-sync`, and writes `tests/results/_agent/queue/queue-refresh-<pr>.json`.
-   Keep the manual GraphQL dequeue + `git push --force-with-lease` + `priority:merge-sync` sequence as fallback until
-   this helper has live proof on queued refreshes.
+   When a queued `develop` PR needs to be amended, run the dedicated helper from a clean checkout of that PR head:
+   `node tools/npm/run-script.mjs priority:queue:refresh -- --pr <number> --repo $REPO`. It is the supported
+   dequeue -> amend -> requeue flow: the helper dequeues the PR through GraphQL, rebases the checked-out branch onto
+   current `develop`, force-pushes with lease, re-arms queue admission via `priority:merge-sync`, and writes
+   `tests/results/_agent/queue/queue-refresh-<pr>.json` as the machine-readable receipt.
 5. For autonomous queueing, run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` first, then
    `--apply` when trunk health is green. The supervisor enforces required checks, dependency ordering, and queue caps.
    Use `QUEUE_AUTOPILOT_MAX_INFLIGHT` for cap tuning and keep `QUEUE_AUTOPILOT_ADAPTIVE_CAP=1`
