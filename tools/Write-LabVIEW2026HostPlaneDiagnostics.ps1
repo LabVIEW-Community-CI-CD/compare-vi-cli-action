@@ -111,11 +111,13 @@ function New-HostPlaneSummaryMarkdown {
   $runner = Get-ObjectValue -Object $Report -Name 'runner'
   $native = Get-ObjectValue -Object $Report -Name 'native'
   $executionPolicy = Get-ObjectValue -Object $Report -Name 'executionPolicy'
+  $policy = Get-ObjectValue -Object $Report -Name 'policy'
   $nativePlanes = Get-ObjectValue -Object $native -Name 'planes'
   $x64Plane = Get-ObjectValue -Object $nativePlanes -Name 'x64'
   $x32Plane = Get-ObjectValue -Object $nativePlanes -Name 'x32'
   $candidateParallelPairs = Get-ObjectValue -Object $executionPolicy -Name 'candidateParallelPairs'
   $mutuallyExclusivePairSet = Get-ObjectValue -Object $executionPolicy -Name 'mutuallyExclusivePairs'
+  $shadowPolicy = Get-ObjectValue -Object $policy -Name 'hostNativeShadowPlane'
 
   $candidatePairs = if ($candidateParallelPairs) {
     Format-PlanePairList -Pairs (Get-ObjectValue -Object $candidateParallelPairs -Name 'pairs')
@@ -136,6 +138,11 @@ function New-HostPlaneSummaryMarkdown {
     ('- Native 64-bit: `{0}`' -f ([string](Get-ObjectValue -Object $x64Plane -Name 'status'))),
     ('- Native 32-bit: `{0}`' -f ([string](Get-ObjectValue -Object $x32Plane -Name 'status'))),
     ('- Parallel native support: `{0}`' -f ([string][bool](Get-ObjectValue -Object $native -Name 'parallelLabVIEWSupported'))),
+    ('- Host-native 32-bit shadow: `{0}` (manual={1}, authoritative={2}, hostedCiAllowed={3})' -f `
+        ([string](Get-ObjectValue -Object $shadowPolicy -Name 'role')), `
+        ([string](Get-ObjectValue -Object $shadowPolicy -Name 'executionMode')), `
+        ([string][bool](Get-ObjectValue -Object $shadowPolicy -Name 'authoritative')), `
+        ([string][bool](Get-ObjectValue -Object $shadowPolicy -Name 'hostedCiAllowed'))),
     ('- Candidate parallel pairs: {0}' -f $candidatePairs),
     ('- Mutually exclusive pairs: {0}' -f $mutuallyExclusivePairs)
   ) -join "`n"

@@ -23,6 +23,23 @@ test('concurrent lane plan schema validates the generated report', async () => {
       docker: {
         operatorLabels: ['linux-docker-fast-loop', 'windows-docker-fast-loop', 'dual-docker-fast-loop']
       },
+      policy: {
+        authoritativePlanes: [
+          'docker-desktop/linux-container-2026',
+          'docker-desktop/windows-container-2026'
+        ],
+        hostNativeShadowPlane: {
+          plane: 'native-labview-2026-32',
+          role: 'acceleration-surface',
+          authoritative: false,
+          executionMode: 'manual-opt-in',
+          hostedCiAllowed: false,
+          promotionPrerequisites: [
+            'docker-desktop/linux-container-2026',
+            'docker-desktop/windows-container-2026'
+          ]
+        }
+      },
       native: {
         parallelLabVIEWSupported: true,
         sharedCliAcrossNativePlanes: true,

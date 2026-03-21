@@ -61,6 +61,20 @@ function Get-HostPlaneStatus {
   return 'missing'
 }
 
+function Get-HostNativeShadowPlanePolicy {
+  return [pscustomobject][ordered]@{
+    plane = 'native-labview-2026-32'
+    role = 'acceleration-surface'
+    authoritative = $false
+    executionMode = 'manual-opt-in'
+    hostedCiAllowed = $false
+    promotionPrerequisites = @(
+      'docker-desktop/linux-container-2026',
+      'docker-desktop/windows-container-2026'
+    )
+  }
+}
+
 function New-LabVIEW2026HostPlaneRecord {
   param(
     [Parameter(Mandatory)][string]$Plane,
@@ -139,6 +153,7 @@ function Get-LabVIEW2026HostPlaneReport {
   $sharedCliAcrossNativePlanes = `
     (-not [string]::IsNullOrWhiteSpace([string]$native64.cliPath)) -and `
     ([string]::Equals([string]$native64.cliPath, [string]$native32.cliPath, [System.StringComparison]::OrdinalIgnoreCase))
+  $shadowPolicy = Get-HostNativeShadowPlanePolicy
 
   return [pscustomobject][ordered]@{
     schema = 'labview-2026-host-plane-report@v1'
@@ -158,6 +173,13 @@ function Get-LabVIEW2026HostPlaneReport {
         'windows-docker-fast-loop',
         'dual-docker-fast-loop'
       )
+    }
+    policy = [ordered]@{
+      authoritativePlanes = @(
+        'docker-desktop/linux-container-2026',
+        'docker-desktop/windows-container-2026'
+      )
+      hostNativeShadowPlane = $shadowPolicy
     }
     native = [ordered]@{
       parallelLabVIEWSupported = $nativeParallelReady

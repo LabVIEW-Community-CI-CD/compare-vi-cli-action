@@ -13,6 +13,23 @@ function createHostPlaneReport({ native32Status = 'ready', nativeParallelLabVIEW
     docker: {
       operatorLabels: ['linux-docker-fast-loop', 'windows-docker-fast-loop', 'dual-docker-fast-loop']
     },
+    policy: {
+      authoritativePlanes: [
+        'docker-desktop/linux-container-2026',
+        'docker-desktop/windows-container-2026'
+      ],
+      hostNativeShadowPlane: {
+        plane: 'native-labview-2026-32',
+        role: 'acceleration-surface',
+        authoritative: false,
+        executionMode: 'manual-opt-in',
+        hostedCiAllowed: false,
+        promotionPrerequisites: [
+          'docker-desktop/linux-container-2026',
+          'docker-desktop/windows-container-2026'
+        ]
+      }
+    },
     native: {
       parallelLabVIEWSupported: nativeParallelLabVIEWSupported,
       sharedCliAcrossNativePlanes: true,
@@ -102,6 +119,14 @@ test('buildConcurrentLanePlan falls back to hosted plus shadow when docker engin
   const shadowLane = report.lanes.find((entry) => entry.id === 'host-native-32-shadow');
   assert.equal(shadowLane.availability, 'available');
   assert.equal(shadowLane.metadata.recommendedParallelism, 1);
+  assert.equal(shadowLane.metadata.authoritative, false);
+  assert.equal(shadowLane.metadata.executionMode, 'manual-opt-in');
+  assert.equal(shadowLane.metadata.hostedCiAllowed, false);
+  assert.deepEqual(shadowLane.metadata.promotionPrerequisites, [
+    'docker-desktop/linux-container-2026',
+    'docker-desktop/windows-container-2026'
+  ]);
+  assert.ok(report.observations.includes('host-native-32-shadow-remains-non-authoritative'));
 });
 
 test('buildConcurrentLanePlan disables the shadow lane when the native 32-bit plane is unavailable', () => {

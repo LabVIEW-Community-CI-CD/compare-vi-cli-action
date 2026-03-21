@@ -139,6 +139,36 @@ function buildPairIndex(report) {
   return index;
 }
 
+function resolveShadowPlanePolicy(report = null) {
+  const policy = report?.policy?.hostNativeShadowPlane;
+  if (!policy || typeof policy !== 'object') {
+    return {
+      plane: 'native-labview-2026-32',
+      role: 'acceleration-surface',
+      authoritative: false,
+      executionMode: 'manual-opt-in',
+      hostedCiAllowed: false,
+      promotionPrerequisites: [
+        'docker-desktop/linux-container-2026',
+        'docker-desktop/windows-container-2026'
+      ]
+    };
+  }
+
+  return {
+    plane: toOptionalText(policy.plane) ?? 'native-labview-2026-32',
+    role: toOptionalText(policy.role) ?? 'acceleration-surface',
+    authoritative: policy.authoritative === true,
+    executionMode: toOptionalText(policy.executionMode) ?? 'manual-opt-in',
+    hostedCiAllowed: policy.hostedCiAllowed === true,
+    promotionPrerequisites: Array.isArray(policy.promotionPrerequisites)
+      ? policy.promotionPrerequisites
+          .map((entry) => toOptionalText(entry))
+          .filter(Boolean)
+      : []
+  };
+}
+
 function resolveDockerObservation(snapshot = null) {
   const observed = snapshot?.observed && typeof snapshot.observed === 'object' ? snapshot.observed : {};
   return {
@@ -190,6 +220,7 @@ export function buildConcurrentLanePlan({
 } = {}) {
   const pairIndex = buildPairIndex(hostPlaneReport);
   const dockerObservation = resolveDockerObservation(dockerRuntimeSnapshot);
+  const shadowPolicy = resolveShadowPlanePolicy(hostPlaneReport);
   const nativeX32Status = normalizeText(hostPlaneReport?.native?.planes?.x32?.status).toLowerCase() || 'missing';
   const nativeParallelLabVIEWSupported = hostPlaneReport?.native?.parallelLabVIEWSupported === true;
   const hostRamRecommendedParallelism =
@@ -349,7 +380,13 @@ export function buildConcurrentLanePlan({
       reasons: shadowReasons,
       metadata: {
         recommendedParallelism: hostRamRecommendedParallelism || null,
-        hostRamProfile
+        hostRamProfile,
+        plane: shadowPolicy.plane,
+        role: shadowPolicy.role,
+        authoritative: shadowPolicy.authoritative,
+        executionMode: shadowPolicy.executionMode,
+        hostedCiAllowed: shadowPolicy.hostedCiAllowed,
+        promotionPrerequisites: shadowPolicy.promotionPrerequisites
       }
     })
   );
@@ -426,6 +463,9 @@ export function buildConcurrentLanePlan({
   }
   if (shadowAllowed && localLaneIds.length > 0) {
     observations.push('shadow-lane-kept-out-of-local-docker-bundles-until-same-host-proof-exists');
+  }
+  if (!shadowPolicy.authoritative) {
+    observations.push('host-native-32-shadow-remains-non-authoritative');
   }
 
   const recommendedBundle = bundles.find((entry) => entry.classification === 'recommended') ?? null;

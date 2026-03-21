@@ -48,6 +48,14 @@ Describe 'Write-LabVIEW2026HostPlaneDiagnostics.ps1' -Tag 'Unit' {
     $report.schema | Should -Be 'labview-2026-host-plane-report@v1'
     $report.runner.hostIsRunner | Should -BeTrue
     $report.runner.runnerName | Should -Not -BeNullOrEmpty
+    $report.policy.authoritativePlanes | Should -Contain 'docker-desktop/linux-container-2026'
+    $report.policy.authoritativePlanes | Should -Contain 'docker-desktop/windows-container-2026'
+    $report.policy.hostNativeShadowPlane.plane | Should -Be 'native-labview-2026-32'
+    $report.policy.hostNativeShadowPlane.role | Should -Be 'acceleration-surface'
+    $report.policy.hostNativeShadowPlane.authoritative | Should -BeFalse
+    $report.policy.hostNativeShadowPlane.executionMode | Should -Be 'manual-opt-in'
+    $report.policy.hostNativeShadowPlane.hostedCiAllowed | Should -BeFalse
+    $report.policy.hostNativeShadowPlane.promotionPrerequisites | Should -Contain 'docker-desktop/windows-container-2026'
     $report.native.planes.x64.status | Should -Be 'ready'
     $report.native.planes.x32.status | Should -Be 'ready'
     $report.native.parallelLabVIEWSupported | Should -BeTrue
@@ -62,6 +70,9 @@ Describe 'Write-LabVIEW2026HostPlaneDiagnostics.ps1' -Tag 'Unit' {
     $summary | Should -Match '# LabVIEW 2026 Host Plane Summary'
     $summary | Should -Match '- Native 64-bit: `ready`'
     $summary | Should -Match '- Native 32-bit: `ready`'
+    $summary | Should -Match 'Host-native 32-bit shadow: `acceleration-surface`'
+    $summary | Should -Match 'authoritative=False'
+    $summary | Should -Match 'hostedCiAllowed=False'
     $summary | Should -Match 'docker-desktop/windows-container-2026 \+ native-labview-2026-64'
   }
 

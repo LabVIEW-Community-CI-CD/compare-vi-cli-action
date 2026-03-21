@@ -9,6 +9,7 @@
     "host",
     "runner",
     "docker",
+    "policy",
     "native",
     "executionPolicy"
   ],
@@ -47,6 +48,42 @@
           "type": "array",
           "items": { "type": "string" },
           "minItems": 3
+        }
+      },
+      "additionalProperties": false
+    },
+    "policy": {
+      "type": "object",
+      "required": ["authoritativePlanes", "hostNativeShadowPlane"],
+      "properties": {
+        "authoritativePlanes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 2
+        },
+        "hostNativeShadowPlane": {
+          "type": "object",
+          "required": [
+            "plane",
+            "role",
+            "authoritative",
+            "executionMode",
+            "hostedCiAllowed",
+            "promotionPrerequisites"
+          ],
+          "properties": {
+            "plane": { "const": "native-labview-2026-32" },
+            "role": { "const": "acceleration-surface" },
+            "authoritative": { "const": false },
+            "executionMode": { "const": "manual-opt-in" },
+            "hostedCiAllowed": { "const": false },
+            "promotionPrerequisites": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 2
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
