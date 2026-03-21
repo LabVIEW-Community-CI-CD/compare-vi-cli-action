@@ -26,6 +26,7 @@ alignment, and evidence ledger expectations.
   - `docs/schemas/release-rollback-drill-health-v1.schema.json`
 - Release scorecard builder: `tools/priority/release-scorecard.mjs`
 - Release scorecard schema: `docs/schemas/release-scorecard-v1.schema.json`
+- Downstream proving selection schema: `docs/schemas/downstream-proving-selection-v1.schema.json`
 
 ## Channels
 
@@ -167,6 +168,8 @@ Scorecard blockers are fail-closed when any gate regresses:
 - SLO promotion readiness gate not `pass`
 - trust gate regressions for release-tag flows
 - signed-tag requirement not met when enabled
+- downstream proving selection report missing, invalid, or not aligned to the
+  selected downstream promotion scorecard when downstream proving is required
 
 The SLO artifact now has two distinct surfaces:
 

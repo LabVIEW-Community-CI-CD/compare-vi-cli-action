@@ -27,6 +27,7 @@ test('release scorecard schema validates generated scorecard payload', async () 
   const sloPath = path.join(tmpDir, 'slo.json');
   const rollbackPath = path.join(tmpDir, 'rollback.json');
   const trustPath = path.join(tmpDir, 'trust.json');
+  const downstreamProvingSelectionPath = path.join(tmpDir, 'downstream-proving-selection.json');
   const downstreamPromotionPath = path.join(tmpDir, 'downstream-promotion.json');
   const outputPath = path.join(tmpDir, 'scorecard.json');
 
@@ -56,6 +57,47 @@ test('release scorecard schema validates generated scorecard payload', async () 
       }
     }
   });
+  writeJson(downstreamProvingSelectionPath, {
+    schema: 'priority/downstream-proving-selection@v1',
+    generatedAt: '2026-03-21T11:00:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    workflow: 'downstream-promotion.yml',
+    branch: 'develop',
+    expectedSourceSha: '1234567890abcdef1234567890abcdef12345678',
+    artifactPrefix: 'downstream-promotion-',
+    status: 'pass',
+    selected: {
+      run: {
+        id: 4201,
+        name: 'Downstream Promotion',
+        url: 'https://example.test/runs/4201',
+        headBranch: 'develop',
+        headSha: '1234567890abcdef1234567890abcdef12345678',
+        status: 'completed',
+        conclusion: 'success',
+        createdAt: '2026-03-21T10:00:00.000Z',
+        updatedAt: '2026-03-21T10:05:00.000Z'
+      },
+      artifactName: 'downstream-promotion-4201',
+      downloadStatus: 'pass',
+      downloadReportPath: path.join(tmpDir, 'download-report.json'),
+      scorecardPath: downstreamPromotionPath,
+      scorecardStatus: 'pass',
+      scorecard: {
+        status: 'pass',
+        schema: 'priority/downstream-promotion-scorecard@v1',
+        summaryStatus: 'pass',
+        sourceCommitSha: '1234567890abcdef1234567890abcdef12345678',
+        matchedExpectedSourceSha: true,
+        targetBranch: 'downstream/develop',
+        manifestStatus: 'pass',
+        blockerCount: 0,
+        downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+      },
+      scorecardError: null
+    },
+    candidates: []
+  });
 
   const result = await runReleaseScorecard({
     repo: 'example/repo',
@@ -69,6 +111,7 @@ test('release scorecard schema validates generated scorecard payload', async () 
     sloPath,
     rollbackPath,
     trustPath,
+    downstreamProvingSelectionPath,
     downstreamPromotionPath,
     outputPath
   });
@@ -83,5 +126,6 @@ test('release scorecard schema validates generated scorecard payload', async () 
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.gates.signedTag.status, 'pass');
   assert.equal(result.report.gates.trust.status, 'pass');
+  assert.equal(result.report.gates.downstreamProvingSelection.status, 'pass');
   assert.equal(result.report.gates.downstreamPromotion.status, 'pass');
 });

@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://comparevi.dev/schemas/downstream-proving-selection-v1.schema.json",
+  "title": "Downstream Proving Selection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "workflow",
+    "branch",
+    "expectedSourceSha",
+    "artifactPrefix",
+    "status",
+    "selected",
+    "candidates"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/downstream-proving-selection@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string"
+    },
+    "workflow": {
+      "type": "string"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "expectedSourceSha": {
+      "type": "string"
+    },
+    "artifactPrefix": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "fail"]
+    },
+    "selected": {
+      "anyOf": [
+        { "$ref": "#/$defs/candidate" },
+        { "type": "null" }
+      ]
+    },
+    "candidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/candidate" }
+    }
+  },
+  "$defs": {
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "url",
+        "headBranch",
+        "headSha",
+        "status",
+        "conclusion",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": ["string", "null"]
+        },
+        "url": {
+          "type": ["string", "null"]
+        },
+        "headBranch": {
+          "type": ["string", "null"]
+        },
+        "headSha": {
+          "type": ["string", "null"]
+        },
+        "status": {
+          "type": ["string", "null"]
+        },
+        "conclusion": {
+          "type": ["string", "null"]
+        },
+        "createdAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      }
+    },
+    "scorecard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "schema",
+        "summaryStatus",
+        "sourceCommitSha",
+        "matchedExpectedSourceSha",
+        "targetBranch",
+        "manifestStatus",
+        "blockerCount",
+        "downstreamRepository"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["pass", "fail"]
+        },
+        "schema": {
+          "type": ["string", "null"]
+        },
+        "summaryStatus": {
+          "type": ["string", "null"]
+        },
+        "sourceCommitSha": {
+          "type": ["string", "null"]
+        },
+        "matchedExpectedSourceSha": {
+          "type": "boolean"
+        },
+        "targetBranch": {
+          "type": ["string", "null"]
+        },
+        "manifestStatus": {
+          "type": ["string", "null"]
+        },
+        "blockerCount": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "downstreamRepository": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run",
+        "artifactName",
+        "downloadStatus",
+        "downloadReportPath",
+        "scorecardPath",
+        "scorecardStatus",
+        "scorecard",
+        "scorecardError"
+      ],
+      "properties": {
+        "run": {
+          "$ref": "#/$defs/run"
+        },
+        "artifactName": {
+          "type": "string"
+        },
+        "downloadStatus": {
+          "type": ["string", "null"]
+        },
+        "downloadReportPath": {
+          "type": "string"
+        },
+        "scorecardPath": {
+          "type": ["string", "null"]
+        },
+        "scorecardStatus": {
+          "type": "string",
+          "enum": ["pass", "fail", "missing"]
+        },
+        "scorecard": {
+          "anyOf": [
+            { "$ref": "#/$defs/scorecard" },
+            { "type": "null" }
+          ]
+        },
+        "scorecardError": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

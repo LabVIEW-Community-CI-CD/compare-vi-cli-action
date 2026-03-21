@@ -675,6 +675,19 @@ jobs:
             --destination-root tests/results/_agent/release/downstream-proving-artifacts \
             --output tests/results/_agent/release/downstream-proving-selection.json
 
+      - name: Validate downstream proving selection schema
+        if: always()
+        shell: pwsh
+        run: |
+          $selectionPath = 'tests/results/_agent/release/downstream-proving-selection.json'
+          if (-not (Test-Path -LiteralPath $selectionPath -PathType Leaf)) {
+            Write-Host "Downstream proving selection report not found at $selectionPath; release-scorecard will fail closed if proving is required."
+            exit 0
+          }
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath $selectionPath `
+            -SchemaPath docs/schemas/downstream-proving-selection-v1.schema.json
+
       - name: Assert promotion contract alignment
         shell: pwsh
         run: |
@@ -826,6 +839,7 @@ jobs:
             --slo tests/results/_agent/slo/release-slo-metrics.json \
             --rollback tests/results/_agent/release/rollback-drill-health.json \
             --trust tests/results/_agent/supply-chain/release-trust-gate.json \
+            --downstream-proving-selection tests/results/_agent/release/downstream-proving-selection.json \
             --downstream-promotion "${{ steps.downstream_proving_artifacts.outputs.downstream_proving_scorecard_path }}" \
             --require-downstream-proving \
             "${signed_tag_args[@]}" \

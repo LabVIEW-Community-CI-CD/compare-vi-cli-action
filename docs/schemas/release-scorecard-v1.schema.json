@@ -51,6 +51,7 @@
         "slo",
         "rollback",
         "trust",
+        "downstreamProvingSelection",
         "downstreamPromotion"
       ],
       "properties": {
@@ -58,6 +59,12 @@
         "slo": { "$ref": "#/$defs/inputRef" },
         "rollback": { "$ref": "#/$defs/inputRef" },
         "trust": {
+          "anyOf": [
+            { "$ref": "#/$defs/inputRef" },
+            { "type": "null" }
+          ]
+        },
+        "downstreamProvingSelection": {
           "anyOf": [
             { "$ref": "#/$defs/inputRef" },
             { "type": "null" }
@@ -79,6 +86,7 @@
         "slo",
         "rollback",
         "trust",
+        "downstreamProvingSelection",
         "downstreamPromotion",
         "signedTag"
       ],
@@ -87,6 +95,7 @@
         "slo": { "$ref": "#/$defs/sloGate" },
         "rollback": { "$ref": "#/$defs/rollbackGate" },
         "trust": { "$ref": "#/$defs/trustGate" },
+        "downstreamProvingSelection": { "$ref": "#/$defs/downstreamProvingSelectionGate" },
         "downstreamPromotion": { "$ref": "#/$defs/downstreamPromotionGate" },
         "signedTag": { "$ref": "#/$defs/signedTagGate" }
       }
@@ -184,6 +193,29 @@
         "failureCount": { "type": ["integer", "null"] },
         "tagVerified": { "type": ["boolean", "null"] },
         "tagReason": { "type": ["string", "null"] }
+      }
+    },
+    "downstreamProvingSelectionGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "status", "schema", "selectionStatus", "repository", "workflow", "branch", "expectedSourceSha", "selectedRunId", "selectedArtifactName", "selectedScorecardPath", "selectedScorecardStatus", "selectedScorecardMatchesInput", "matchedExpectedSourceSha", "selectedSourceCommitSha", "reason"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pass", "fail", "missing", "not-applicable"] },
+        "schema": { "type": ["string", "null"] },
+        "selectionStatus": { "type": ["string", "null"] },
+        "repository": { "type": ["string", "null"] },
+        "workflow": { "type": ["string", "null"] },
+        "branch": { "type": ["string", "null"] },
+        "expectedSourceSha": { "type": ["string", "null"] },
+        "selectedRunId": { "type": ["integer", "null"], "minimum": 1 },
+        "selectedArtifactName": { "type": ["string", "null"] },
+        "selectedScorecardPath": { "type": ["string", "null"] },
+        "selectedScorecardStatus": { "type": ["string", "null"] },
+        "selectedScorecardMatchesInput": { "type": ["boolean", "null"] },
+        "matchedExpectedSourceSha": { "type": ["boolean", "null"] },
+        "selectedSourceCommitSha": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] }
       }
     },
     "downstreamPromotionGate": {

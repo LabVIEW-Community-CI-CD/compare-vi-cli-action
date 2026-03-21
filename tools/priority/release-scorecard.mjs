@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { REPORT_SCHEMA as DOWNSTREAM_PROVING_SELECTION_SCHEMA } from './resolve-downstream-proving-artifact.mjs';
 
 export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'release', 'release-scorecard.json');
 
@@ -21,6 +22,7 @@ const HELP = [
   '  --rollback <path>              Rollback drill health JSON path (required).',
   '  --trust <path>                 Supply-chain trust JSON path (optional).',
   '  --downstream-promotion <path>  Downstream promotion scorecard JSON path (optional).',
+  '  --downstream-proving-selection <path> Downstream proving selection JSON path (optional).',
   '  --tag-ref <ref>                Tag reference for signed-tag assertions.',
   '  --require-downstream-proving   Treat missing/failing downstream promotion scorecard as blocker.',
   '  --require-signed-tag           Treat unsigned/missing tag signature as blocker.',
@@ -88,6 +90,7 @@ export function parseArgs(argv = process.argv) {
     rollbackPath: null,
     trustPath: null,
     downstreamPromotionPath: null,
+    downstreamProvingSelectionPath: null,
     tagRef: null,
     requireDownstreamProving: false,
     requireSignedTag: false,
@@ -131,6 +134,7 @@ export function parseArgs(argv = process.argv) {
       '--rollback',
       '--trust',
       '--downstream-promotion',
+      '--downstream-proving-selection',
       '--tag-ref'
     ]);
     if (stringFlags.has(token)) {
@@ -146,6 +150,7 @@ export function parseArgs(argv = process.argv) {
       if (token === '--rollback') options.rollbackPath = next;
       if (token === '--trust') options.trustPath = next;
       if (token === '--downstream-promotion') options.downstreamPromotionPath = next;
+      if (token === '--downstream-proving-selection') options.downstreamProvingSelectionPath = next;
       if (token === '--tag-ref') options.tagRef = next;
       continue;
     }
@@ -261,6 +266,90 @@ function statusFromDownstreamPromotion(payload) {
   };
 }
 
+function statusFromDownstreamProvingSelection(payload, downstreamPromotionPath = null) {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      status: 'missing',
+      schema: null,
+      selectionStatus: null,
+      repository: null,
+      workflow: null,
+      branch: null,
+      expectedSourceSha: null,
+      selectedRunId: null,
+      selectedArtifactName: null,
+      selectedScorecardPath: null,
+      selectedScorecardStatus: null,
+      selectedScorecardMatchesInput: null,
+      matchedExpectedSourceSha: null,
+      selectedSourceCommitSha: null,
+      reason: null
+    };
+  }
+
+  const schema = asOptional(payload.schema);
+  const selectionStatus = asOptional(payload.status);
+  const repository = asOptional(payload.repository);
+  const workflow = asOptional(payload.workflow);
+  const branch = asOptional(payload.branch);
+  const expectedSourceSha = asOptional(payload.expectedSourceSha);
+  const selectedRunId = Number.isInteger(payload?.selected?.run?.id) ? payload.selected.run.id : null;
+  const selectedArtifactName = asOptional(payload?.selected?.artifactName);
+  const selectedScorecardPath = asOptional(payload?.selected?.scorecardPath);
+  const selectedScorecardStatus = asOptional(payload?.selected?.scorecardStatus);
+  const matchedExpectedSourceSha =
+    typeof payload?.selected?.scorecard?.matchedExpectedSourceSha === 'boolean'
+      ? payload.selected.scorecard.matchedExpectedSourceSha
+      : null;
+  const selectedSourceCommitSha = asOptional(payload?.selected?.scorecard?.sourceCommitSha);
+  const normalizedDownstreamPromotionPath = asOptional(downstreamPromotionPath)
+    ? path.resolve(downstreamPromotionPath)
+    : null;
+  const normalizedSelectedScorecardPath = selectedScorecardPath ? path.resolve(selectedScorecardPath) : null;
+  const selectedScorecardMatchesInput =
+    normalizedSelectedScorecardPath && normalizedDownstreamPromotionPath
+      ? normalizedSelectedScorecardPath === normalizedDownstreamPromotionPath
+      : null;
+
+  const reasons = [];
+  if (schema !== DOWNSTREAM_PROVING_SELECTION_SCHEMA) {
+    reasons.push(`schema=${schema ?? 'missing'}`);
+  }
+  if (selectionStatus !== 'pass') {
+    reasons.push(`selectionStatus=${selectionStatus ?? 'missing'}`);
+  }
+  if (selectedRunId == null) {
+    reasons.push('selectedRunId=missing');
+  }
+  if (selectedScorecardStatus !== 'pass') {
+    reasons.push(`selectedScorecardStatus=${selectedScorecardStatus ?? 'missing'}`);
+  }
+  if (matchedExpectedSourceSha !== true) {
+    reasons.push(`matchedExpectedSourceSha=${matchedExpectedSourceSha == null ? 'missing' : matchedExpectedSourceSha}`);
+  }
+  if (selectedScorecardMatchesInput === false) {
+    reasons.push('selectedScorecardMatchesInput=false');
+  }
+
+  return {
+    status: reasons.length === 0 ? 'pass' : 'fail',
+    schema,
+    selectionStatus,
+    repository,
+    workflow,
+    branch,
+    expectedSourceSha,
+    selectedRunId,
+    selectedArtifactName,
+    selectedScorecardPath: normalizedSelectedScorecardPath,
+    selectedScorecardStatus,
+    selectedScorecardMatchesInput,
+    matchedExpectedSourceSha,
+    selectedSourceCommitSha,
+    reason: reasons.length > 0 ? reasons.join('; ') : null
+  };
+}
+
 export function evaluateReleaseScorecard(inputs) {
   const blockers = [];
   const recordBlocker = (code, message) => blockers.push({ code, message });
@@ -278,6 +367,17 @@ export function evaluateReleaseScorecard(inputs) {
     recordBlocker('downstream-promotion-missing', 'Downstream promotion scorecard is missing or unreadable.');
   } else if (inputs.downstreamPromotionProvided && (!inputs.downstreamPromotion.exists || inputs.downstreamPromotion.error)) {
     recordBlocker('downstream-promotion-missing', 'Downstream promotion scorecard is missing or unreadable.');
+  }
+  if (
+    inputs.requireDownstreamProving &&
+    (!inputs.downstreamProvingSelectionProvided || !inputs.downstreamProvingSelection.exists || inputs.downstreamProvingSelection.error)
+  ) {
+    recordBlocker('downstream-proving-selection-missing', 'Downstream proving selection report is missing or unreadable.');
+  } else if (
+    inputs.downstreamProvingSelectionProvided &&
+    (!inputs.downstreamProvingSelection.exists || inputs.downstreamProvingSelection.error)
+  ) {
+    recordBlocker('downstream-proving-selection-missing', 'Downstream proving selection report is missing or unreadable.');
   }
   if (inputs.promotion.status !== 'pass') {
     recordBlocker('promotion-gate', `Promotion gate status is ${inputs.promotion.status}.`);
@@ -304,6 +404,22 @@ export function evaluateReleaseScorecard(inputs) {
     recordBlocker(
       'downstream-promotion-gate',
       `Downstream promotion scorecard status is ${inputs.downstreamPromotionGate.status}.`
+    );
+  }
+  if (inputs.requireDownstreamProving && inputs.downstreamProvingSelectionGate.status !== 'pass') {
+    recordBlocker(
+      'downstream-proving-selection-gate',
+      `Downstream proving selection status is ${inputs.downstreamProvingSelectionGate.status}${inputs.downstreamProvingSelectionGate.reason ? ` (${inputs.downstreamProvingSelectionGate.reason})` : ''}.`
+    );
+  } else if (
+    inputs.downstreamProvingSelectionProvided &&
+    inputs.downstreamProvingSelection.exists &&
+    !inputs.downstreamProvingSelection.error &&
+    inputs.downstreamProvingSelectionGate.status !== 'pass'
+  ) {
+    recordBlocker(
+      'downstream-proving-selection-gate',
+      `Downstream proving selection status is ${inputs.downstreamProvingSelectionGate.status}${inputs.downstreamProvingSelectionGate.reason ? ` (${inputs.downstreamProvingSelectionGate.reason})` : ''}.`
     );
   }
   if (inputs.requireSignedTag && inputs.signedTag.status !== 'pass') {
@@ -337,6 +453,9 @@ export async function runReleaseScorecard(rawOptions = {}) {
   const rollback = loadInputFile(options.rollbackPath);
   const trust = asOptional(options.trustPath) ? loadInputFile(options.trustPath) : null;
   const downstreamPromotion = asOptional(options.downstreamPromotionPath) ? loadInputFile(options.downstreamPromotionPath) : null;
+  const downstreamProvingSelection = asOptional(options.downstreamProvingSelectionPath)
+    ? loadInputFile(options.downstreamProvingSelectionPath)
+    : null;
 
   const promotion = statusFromLedger(ledger.payload);
   const sloGate = statusFromSlo(slo.payload);
@@ -351,6 +470,25 @@ export async function runReleaseScorecard(rawOptions = {}) {
         blockerCount: null,
         downstreamRepository: null,
         sourceCommitSha: null
+      };
+  const downstreamProvingSelectionGate = downstreamProvingSelection
+    ? statusFromDownstreamProvingSelection(downstreamProvingSelection.payload, downstreamPromotion?.path)
+    : {
+        status: 'not-applicable',
+        schema: null,
+        selectionStatus: null,
+        repository: null,
+        workflow: null,
+        branch: null,
+        expectedSourceSha: null,
+        selectedRunId: null,
+        selectedArtifactName: null,
+        selectedScorecardPath: null,
+        selectedScorecardStatus: null,
+        selectedScorecardMatchesInput: null,
+        matchedExpectedSourceSha: null,
+        selectedSourceCommitSha: null,
+        reason: null
       };
   const signedTag = {
     required: Boolean(options.requireSignedTag),
@@ -371,6 +509,9 @@ export async function runReleaseScorecard(rawOptions = {}) {
     downstreamPromotion,
     downstreamPromotionGate,
     downstreamPromotionProvided: Boolean(downstreamPromotion),
+    downstreamProvingSelection,
+    downstreamProvingSelectionGate,
+    downstreamProvingSelectionProvided: Boolean(downstreamProvingSelection),
     requireDownstreamProving: Boolean(options.requireDownstreamProving),
     trustProvided: Boolean(trust),
     requireSignedTag: signedTag.required,
@@ -392,6 +533,13 @@ export async function runReleaseScorecard(rawOptions = {}) {
       slo: { path: slo.path, exists: slo.exists, error: slo.error },
       rollback: { path: rollback.path, exists: rollback.exists, error: rollback.error },
       trust: trust ? { path: trust.path, exists: trust.exists, error: trust.error } : null,
+      downstreamProvingSelection: downstreamProvingSelection
+        ? {
+            path: downstreamProvingSelection.path,
+            exists: downstreamProvingSelection.exists,
+            error: downstreamProvingSelection.error
+          }
+        : null,
       downstreamPromotion: downstreamPromotion
         ? { path: downstreamPromotion.path, exists: downstreamPromotion.exists, error: downstreamPromotion.error }
         : null
@@ -401,6 +549,10 @@ export async function runReleaseScorecard(rawOptions = {}) {
       slo: sloGate,
       rollback: rollbackGate,
       trust: trustGate,
+      downstreamProvingSelection: {
+        required: Boolean(options.requireDownstreamProving),
+        ...downstreamProvingSelectionGate
+      },
       downstreamPromotion: {
         required: Boolean(options.requireDownstreamProving),
         ...downstreamPromotionGate

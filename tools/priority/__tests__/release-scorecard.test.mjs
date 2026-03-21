@@ -30,6 +30,8 @@ test('parseArgs enforces required flags and supports signed-tag options', () => 
     'c.json',
     '--trust',
     'd.json',
+    '--downstream-proving-selection',
+    'selection.json',
     '--downstream-promotion',
     'downstream.json',
     '--tag-ref',
@@ -46,6 +48,7 @@ test('parseArgs enforces required flags and supports signed-tag options', () => 
   assert.equal(parsed.sloPath, 'b.json');
   assert.equal(parsed.rollbackPath, 'c.json');
   assert.equal(parsed.trustPath, 'd.json');
+  assert.equal(parsed.downstreamProvingSelectionPath, 'selection.json');
   assert.equal(parsed.downstreamPromotionPath, 'downstream.json');
   assert.equal(parsed.tagRef, 'v0.6.4');
   assert.equal(parsed.requireDownstreamProving, true);
@@ -58,12 +61,15 @@ test('evaluateReleaseScorecard reports blockers deterministically', () => {
     ledger: { exists: true, error: null },
     slo: { exists: true, error: null },
     rollback: { exists: true, error: null },
+    downstreamProvingSelection: { exists: true, error: null },
     downstreamPromotion: { exists: true, error: null },
     promotion: { status: 'pass' },
     sloGate: { status: 'pass', breachCount: 0, blockerCount: 0, source: 'promotion-gate', blockers: [] },
     rollbackGate: { status: 'pass' },
     trustGate: { status: 'pass' },
+    downstreamProvingSelectionGate: { status: 'pass', reason: null },
     downstreamPromotionGate: { status: 'pass' },
+    downstreamProvingSelectionProvided: true,
     downstreamPromotionProvided: true,
     requireDownstreamProving: true,
     trustProvided: true,
@@ -77,12 +83,15 @@ test('evaluateReleaseScorecard reports blockers deterministically', () => {
     ledger: { exists: true, error: null },
     slo: { exists: false, error: null },
     rollback: { exists: true, error: 'bad json' },
+    downstreamProvingSelection: { exists: false, error: null },
     downstreamPromotion: { exists: false, error: null },
     promotion: { status: 'fail' },
     sloGate: { status: 'fail', breachCount: 2, blockerCount: 1, source: 'promotion-gate', blockers: [] },
     rollbackGate: { status: 'fail' },
     trustGate: { status: 'fail' },
+    downstreamProvingSelectionGate: { status: 'missing', reason: 'selectionStatus=missing' },
     downstreamPromotionGate: { status: 'missing' },
+    downstreamProvingSelectionProvided: true,
     downstreamPromotionProvided: true,
     requireDownstreamProving: true,
     trustProvided: true,
@@ -94,6 +103,8 @@ test('evaluateReleaseScorecard reports blockers deterministically', () => {
   assert.ok(fail.blockers.some((entry) => entry.code === 'rollback-missing'));
   assert.ok(fail.blockers.some((entry) => entry.code === 'promotion-gate'));
   assert.ok(fail.blockers.some((entry) => entry.code === 'slo-breach'));
+  assert.ok(fail.blockers.some((entry) => entry.code === 'downstream-proving-selection-missing'));
+  assert.ok(fail.blockers.some((entry) => entry.code === 'downstream-proving-selection-gate'));
   assert.ok(fail.blockers.some((entry) => entry.code === 'downstream-promotion-missing'));
   assert.ok(fail.blockers.some((entry) => entry.code === 'downstream-promotion-gate'));
   assert.ok(fail.blockers.some((entry) => entry.code === 'signed-tag'));
@@ -105,6 +116,7 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
   const sloPath = path.join(tmpDir, 'slo.json');
   const rollbackPath = path.join(tmpDir, 'rollback.json');
   const trustPath = path.join(tmpDir, 'trust.json');
+  const downstreamProvingSelectionPath = path.join(tmpDir, 'downstream-proving-selection.json');
   const downstreamPromotionPath = path.join(tmpDir, 'downstream-promotion.json');
 
   writeJson(ledgerPath, {
@@ -140,6 +152,47 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
       }
     }
   });
+  writeJson(downstreamProvingSelectionPath, {
+    schema: 'priority/downstream-proving-selection@v1',
+    generatedAt: '2026-03-21T11:00:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    workflow: 'downstream-promotion.yml',
+    branch: 'develop',
+    expectedSourceSha: '1234567890abcdef1234567890abcdef12345678',
+    artifactPrefix: 'downstream-promotion-',
+    status: 'pass',
+    selected: {
+      run: {
+        id: 4201,
+        name: 'Downstream Promotion',
+        url: 'https://example.test/runs/4201',
+        headBranch: 'develop',
+        headSha: '1234567890abcdef1234567890abcdef12345678',
+        status: 'completed',
+        conclusion: 'success',
+        createdAt: '2026-03-21T10:00:00.000Z',
+        updatedAt: '2026-03-21T10:05:00.000Z'
+      },
+      artifactName: 'downstream-promotion-4201',
+      downloadStatus: 'pass',
+      downloadReportPath: path.join(tmpDir, 'download-report.json'),
+      scorecardPath: downstreamPromotionPath,
+      scorecardStatus: 'pass',
+      scorecard: {
+        status: 'pass',
+        schema: 'priority/downstream-promotion-scorecard@v1',
+        summaryStatus: 'pass',
+        sourceCommitSha: '1234567890abcdef1234567890abcdef12345678',
+        matchedExpectedSourceSha: true,
+        targetBranch: 'downstream/develop',
+        manifestStatus: 'pass',
+        blockerCount: 0,
+        downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+      },
+      scorecardError: null
+    },
+    candidates: []
+  });
 
   const passOutput = path.join(tmpDir, 'pass-scorecard.json');
   const passResult = await runReleaseScorecard({
@@ -153,6 +206,7 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
     sloPath,
     rollbackPath,
     trustPath,
+    downstreamProvingSelectionPath,
     downstreamPromotionPath,
     requireDownstreamProving: true,
     outputPath: passOutput
@@ -161,6 +215,9 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
   assert.equal(passResult.exitCode, 0);
   assert.equal(passResult.report.summary.status, 'pass');
   assert.equal(passResult.report.gates.signedTag.status, 'pass');
+  assert.equal(passResult.report.gates.downstreamProvingSelection.status, 'pass');
+  assert.equal(passResult.report.gates.downstreamProvingSelection.selectedRunId, 4201);
+  assert.equal(passResult.report.gates.downstreamProvingSelection.selectedScorecardMatchesInput, true);
   assert.equal(passResult.report.gates.downstreamPromotion.status, 'pass');
   assert.equal(passResult.report.summary.blockerCount, 0);
 
@@ -190,6 +247,7 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
   assert.equal(historicalOnly.exitCode, 0);
   assert.equal(historicalOnly.report.summary.status, 'pass');
   assert.equal(historicalOnly.report.gates.slo.status, 'pass');
+  assert.equal(historicalOnly.report.gates.downstreamProvingSelection.status, 'not-applicable');
   assert.equal(historicalOnly.report.gates.downstreamPromotion.status, 'not-applicable');
 
   writeJson(sloPath, {
@@ -211,6 +269,7 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
     sloPath,
     rollbackPath,
     trustPath,
+    downstreamProvingSelectionPath,
     downstreamPromotionPath,
     requireDownstreamProving: true,
     outputPath: failOutput,
@@ -242,13 +301,18 @@ test('runReleaseScorecard creates pass/fail scorecards and exit codes', async ()
     sloPath: passAgainSloPath,
     rollbackPath,
     trustPath,
+    downstreamProvingSelectionPath: path.join(tmpDir, 'missing-downstream-proving-selection.json'),
     downstreamPromotionPath: path.join(tmpDir, 'missing-downstream-promotion.json'),
     outputPath: missingDownstreamOutput,
     failOnBlockers: true
   });
 
   assert.equal(missingDownstreamResult.exitCode, 1);
+  assert.equal(missingDownstreamResult.report.gates.downstreamProvingSelection.status, 'missing');
   assert.equal(missingDownstreamResult.report.gates.downstreamPromotion.status, 'missing');
+  assert.ok(
+    missingDownstreamResult.report.summary.blockers.some((entry) => entry.code === 'downstream-proving-selection-missing')
+  );
   assert.ok(
     missingDownstreamResult.report.summary.blockers.some((entry) => entry.code === 'downstream-promotion-missing')
   );

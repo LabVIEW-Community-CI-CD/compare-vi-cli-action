@@ -121,6 +121,9 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.match(workflowRaw, /--workflow downstream-promotion\.yml/);
   assert.match(workflowRaw, /--expected-source-sha "\$\{\{\s*steps\.release_source\.outputs\.source_sha\s*\}\}"/);
   assert.match(workflowRaw, /tests\/results\/_agent\/release\/downstream-proving-selection\.json/);
+  assert.match(workflowRaw, /name: Validate downstream proving selection schema/);
+  assert.match(workflowRaw, /docs\/schemas\/downstream-proving-selection-v1\.schema\.json/);
+  assert.match(workflowRaw, /--downstream-proving-selection tests\/results\/_agent\/release\/downstream-proving-selection\.json/);
   assert.match(workflowRaw, /steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path/);
   assert.match(workflowRaw, /tools\/release-review\/Evaluate-ReleaseReviewPolicy\.ps1/);
   assert.match(workflowRaw, /tests\/results\/release-contract\/review-comment\.md/);
