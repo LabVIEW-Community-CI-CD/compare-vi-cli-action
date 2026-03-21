@@ -1,0 +1,428 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/agent-cost-usage-export-v1.schema.json",
+  "title": "Agent Cost Usage Export v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "source",
+    "account",
+    "period",
+    "summary",
+    "windows",
+    "transitions",
+    "provenance",
+    "confidence"
+  ],
+  "properties": {
+    "schema": { "const": "priority/agent-cost-usage-export@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "source": { "$ref": "#/$defs/rollupSource" },
+    "account": { "$ref": "#/$defs/account" },
+    "period": { "$ref": "#/$defs/rollupPeriod" },
+    "summary": { "$ref": "#/$defs/rollupSummary" },
+    "windows": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/windowReceipt" }
+    },
+    "transitions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/transition" }
+    },
+    "provenance": { "$ref": "#/$defs/rollupProvenance" },
+    "confidence": { "$ref": "#/$defs/rollupConfidence" }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "account": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accountId", "accountUserId", "email", "name", "publicId"],
+      "properties": {
+        "accountId": { "type": "string" },
+        "accountUserId": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "publicId": { "type": "string" }
+      }
+    },
+    "windowSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "fileName", "sha256", "header", "rowCount"],
+      "properties": {
+        "kind": { "type": "string" },
+        "path": { "$ref": "#/$defs/nullableString" },
+        "fileName": { "$ref": "#/$defs/nullableString" },
+        "sha256": { "$ref": "#/$defs/nullableString" },
+        "header": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 10,
+          "maxItems": 10
+        },
+        "rowCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "usageTypeTotal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["usageType", "rowCount", "usageCredits", "usageQuantity"],
+      "properties": {
+        "usageType": { "type": "string" },
+        "rowCount": { "type": "integer", "minimum": 1 },
+        "usageCredits": { "type": "number", "minimum": 0 },
+        "usageQuantity": { "type": "number", "minimum": 0 }
+      }
+    },
+    "windowPeriod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firstDatePartition", "lastDatePartition", "datePartitionCount"],
+      "properties": {
+        "firstDatePartition": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "lastDatePartition": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "datePartitionCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "windowSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rowCount", "usageUnits", "totalUsageCredits", "totalUsageQuantity", "usageTypes", "usageTypeTotals"],
+      "properties": {
+        "rowCount": { "type": "integer", "minimum": 1 },
+        "usageUnits": { "type": "string" },
+        "totalUsageCredits": { "type": "number", "minimum": 0 },
+        "totalUsageQuantity": { "type": "number", "minimum": 0 },
+        "usageTypes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "usageTypeTotals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/usageTypeTotal" }
+        }
+      }
+    },
+    "windowRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rowIndex",
+        "datePartition",
+        "accountId",
+        "accountUserId",
+        "email",
+        "name",
+        "publicId",
+        "usageType",
+        "usageCredits",
+        "usageQuantity",
+        "usageUnits"
+      ],
+      "properties": {
+        "rowIndex": { "type": "integer", "minimum": 1 },
+        "datePartition": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "accountId": { "type": "string" },
+        "accountUserId": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "publicId": { "type": "string" },
+        "usageType": { "type": "string" },
+        "usageCredits": { "type": "number", "minimum": 0 },
+        "usageQuantity": { "type": "number", "minimum": 0 },
+        "usageUnits": { "type": "string" }
+      }
+    },
+    "windowConfidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "basis", "rowCoverage", "accountCoverage"],
+      "properties": {
+        "level": { "enum": ["low", "medium", "high"] },
+        "basis": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "rowCoverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "accountCoverage": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "windowContinuity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "windowIndex",
+        "windowCount",
+        "previousWindowId",
+        "nextWindowId",
+        "previousWindowLastDatePartition",
+        "nextWindowFirstDatePartition",
+        "gapDaysFromPrevious",
+        "gapDaysToNext",
+        "isContiguousWithPrevious",
+        "isContiguousWithNext",
+        "isFirstWindow",
+        "isLastWindow"
+      ],
+      "properties": {
+        "windowIndex": { "type": "integer", "minimum": 1 },
+        "windowCount": { "type": "integer", "minimum": 1 },
+        "previousWindowId": { "$ref": "#/$defs/nullableString" },
+        "nextWindowId": { "$ref": "#/$defs/nullableString" },
+        "previousWindowLastDatePartition": { "$ref": "#/$defs/nullableString" },
+        "nextWindowFirstDatePartition": { "$ref": "#/$defs/nullableString" },
+        "gapDaysFromPrevious": { "type": ["integer", "null"], "minimum": 0 },
+        "gapDaysToNext": { "type": ["integer", "null"], "minimum": 0 },
+        "isContiguousWithPrevious": { "type": ["boolean", "null"] },
+        "isContiguousWithNext": { "type": ["boolean", "null"] },
+        "isFirstWindow": { "type": "boolean" },
+        "isLastWindow": { "type": "boolean" }
+      }
+    },
+    "windowProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceKind",
+        "sourcePath",
+        "sourceSha256",
+        "sourceFileName",
+        "accountId",
+        "accountUserId",
+        "publicId",
+        "email",
+        "windowId",
+        "windowIndex",
+        "windowCount"
+      ],
+      "properties": {
+        "sourceKind": { "type": "string" },
+        "sourcePath": { "$ref": "#/$defs/nullableString" },
+        "sourceSha256": { "$ref": "#/$defs/nullableString" },
+        "sourceFileName": { "$ref": "#/$defs/nullableString" },
+        "accountId": { "type": "string" },
+        "accountUserId": { "type": "string" },
+        "publicId": { "type": "string" },
+        "email": { "type": "string" },
+        "windowId": { "type": "string" },
+        "windowIndex": { "type": "integer", "minimum": 1 },
+        "windowCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "windowReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["windowId", "schema", "generatedAt", "source", "account", "period", "summary", "rows", "provenance", "confidence", "continuity"],
+      "properties": {
+        "windowId": { "type": "string", "minLength": 1 },
+        "schema": { "const": "priority/agent-cost-usage-export@v1" },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "source": { "$ref": "#/$defs/windowSource" },
+        "account": { "$ref": "#/$defs/account" },
+        "period": { "$ref": "#/$defs/windowPeriod" },
+        "summary": { "$ref": "#/$defs/windowSummary" },
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/windowRow" }
+        },
+        "provenance": { "$ref": "#/$defs/windowProvenance" },
+        "confidence": { "$ref": "#/$defs/windowConfidence" },
+        "continuity": { "$ref": "#/$defs/windowContinuity" }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fromWindowId",
+        "fromWindowIndex",
+        "toWindowId",
+        "toWindowIndex",
+        "fromLastDatePartition",
+        "toFirstDatePartition",
+        "gapDays",
+        "overlapDays",
+        "status",
+        "isContiguous"
+      ],
+      "properties": {
+        "fromWindowId": { "type": "string", "minLength": 1 },
+        "fromWindowIndex": { "type": "integer", "minimum": 1 },
+        "toWindowId": { "type": "string", "minLength": 1 },
+        "toWindowIndex": { "type": "integer", "minimum": 1 },
+        "fromLastDatePartition": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "toFirstDatePartition": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "gapDays": { "type": "integer", "minimum": 0 },
+        "overlapDays": { "type": "integer", "minimum": 0 },
+        "status": { "type": "string", "enum": ["adjacent", "gap"] },
+        "isContiguous": { "type": "boolean" }
+      }
+    },
+    "rollupSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "inputCount", "windowCount", "rowCount", "files"],
+      "properties": {
+        "kind": { "type": "string" },
+        "inputCount": { "type": "integer", "minimum": 1 },
+        "windowCount": { "type": "integer", "minimum": 1 },
+        "rowCount": { "type": "integer", "minimum": 1 },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "fileName", "sha256", "header", "rowCount", "windowId", "firstDatePartition", "lastDatePartition"],
+            "properties": {
+              "path": { "$ref": "#/$defs/nullableString" },
+              "fileName": { "$ref": "#/$defs/nullableString" },
+              "sha256": { "$ref": "#/$defs/nullableString" },
+              "header": {
+                "type": "array",
+                "items": { "type": "string" },
+                "minItems": 10,
+                "maxItems": 10
+              },
+              "rowCount": { "type": "integer", "minimum": 1 },
+              "windowId": { "type": "string", "minLength": 1 },
+              "firstDatePartition": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+              "lastDatePartition": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+            }
+          }
+        }
+      }
+    },
+    "rollupPeriod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "firstDatePartition",
+        "lastDatePartition",
+        "datePartitionCount",
+        "windowCount",
+        "transitionCount",
+        "contiguousTransitionCount",
+        "gapTransitionCount",
+        "overlapTransitionCount"
+      ],
+      "properties": {
+        "firstDatePartition": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "lastDatePartition": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "datePartitionCount": { "type": "integer", "minimum": 1 },
+        "windowCount": { "type": "integer", "minimum": 1 },
+        "transitionCount": { "type": "integer", "minimum": 0 },
+        "contiguousTransitionCount": { "type": "integer", "minimum": 0 },
+        "gapTransitionCount": { "type": "integer", "minimum": 0 },
+        "overlapTransitionCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "rollupSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "windowCount",
+        "transitionCount",
+        "contiguousTransitionCount",
+        "gapTransitionCount",
+        "overlapTransitionCount",
+        "rowCount",
+        "totalUsageCredits",
+        "totalUsageQuantity",
+        "usageUnits",
+        "usageTypes",
+        "usageTypeTotals",
+        "continuityStatus"
+      ],
+      "properties": {
+        "windowCount": { "type": "integer", "minimum": 1 },
+        "transitionCount": { "type": "integer", "minimum": 0 },
+        "contiguousTransitionCount": { "type": "integer", "minimum": 0 },
+        "gapTransitionCount": { "type": "integer", "minimum": 0 },
+        "overlapTransitionCount": { "type": "integer", "minimum": 0 },
+        "rowCount": { "type": "integer", "minimum": 1 },
+        "totalUsageCredits": { "type": "number", "minimum": 0 },
+        "totalUsageQuantity": { "type": "number", "minimum": 0 },
+        "usageUnits": { "type": "string" },
+        "usageTypes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "usageTypeTotals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/usageTypeTotal" }
+        },
+        "continuityStatus": { "type": "string", "enum": ["single-window", "contiguous", "gapped"] }
+      }
+    },
+    "rollupProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceKind",
+        "sourcePaths",
+        "sourceSha256s",
+        "sourceFileNames",
+        "accountId",
+        "accountUserId",
+        "publicId",
+        "email",
+        "windowCount",
+        "windowIds"
+      ],
+      "properties": {
+        "sourceKind": { "type": "string" },
+        "sourcePaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nullableString" }
+        },
+        "sourceSha256s": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nullableString" }
+        },
+        "sourceFileNames": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nullableString" }
+        },
+        "accountId": { "$ref": "#/$defs/nullableString" },
+        "accountUserId": { "$ref": "#/$defs/nullableString" },
+        "publicId": { "$ref": "#/$defs/nullableString" },
+        "email": { "$ref": "#/$defs/nullableString" },
+        "windowCount": { "type": "integer", "minimum": 1 },
+        "windowIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      }
+    },
+    "rollupConfidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "basis", "rowCoverage", "accountCoverage", "windowCoverage", "continuityCoverage"],
+      "properties": {
+        "level": { "enum": ["low", "medium", "high"] },
+        "basis": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "rowCoverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "accountCoverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "windowCoverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "continuityCoverage": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}
+

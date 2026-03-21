@@ -1,0 +1,7 @@
+date_partition,account_id,account_user_id,email,name,public_id,usage_type,usage_credits,usage_quantity,usage_units
+2026-03-15,acct-001,user-001,operator@example.com,Operator Example,user-example-001,codex,2003.295,40065.9,counts
+2026-03-16,acct-001,user-001,operator@example.com,Operator Example,user-example-001,codex,2018.475,40369.5,counts
+2026-03-17,acct-001,user-001,operator@example.com,Operator Example,user-example-001,codex,911.015,18220.3,counts
+2026-03-18,acct-001,user-001,operator@example.com,Operator Example,user-example-001,codex,1841.185,36823.7,counts
+2026-03-19,acct-001,user-001,operator@example.com,Operator Example,user-example-001,codex,1888.295,37765.9,counts
+2026-03-20,acct-001,user-001,operator@example.com,Operator Example,user-example-001,codex,1897.615,37952.3,counts
