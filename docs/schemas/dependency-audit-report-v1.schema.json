@@ -10,6 +10,7 @@
     "result",
     "command",
     "execution",
+    "packageState",
     "thresholds",
     "summary",
     "packages",
@@ -89,6 +90,95 @@
         },
         "jsonParsed": {
           "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "packageState": {
+      "type": "object",
+      "required": [
+        "nodeVersion",
+        "packageJson",
+        "packageLock",
+        "fingerprintSha256"
+      ],
+      "properties": {
+        "nodeVersion": {
+          "type": "string"
+        },
+        "packageJson": {
+          "type": "object",
+          "required": [
+            "path",
+            "exists",
+            "sha256",
+            "packageName",
+            "packageVersion"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "exists": {
+              "type": "boolean"
+            },
+            "sha256": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "packageName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "packageVersion": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "packageLock": {
+          "type": "object",
+          "required": [
+            "path",
+            "exists",
+            "sha256",
+            "lockfileVersion"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "exists": {
+              "type": "boolean"
+            },
+            "sha256": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "lockfileVersion": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "fingerprintSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       },
       "additionalProperties": false
