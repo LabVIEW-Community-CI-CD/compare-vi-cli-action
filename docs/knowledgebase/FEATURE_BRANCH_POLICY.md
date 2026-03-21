@@ -1,7 +1,7 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # Feature Branch Enforcement & Merge Queue
 
-| `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `agent-review-policy`, `hook-parity`, `commit-integrity`. Non-required hosted proof lanes may run alongside the queue contract, including `vi-history-scenarios-windows` on GitHub-hosted `windows-2022`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
+| `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 1-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `agent-review-policy`, `hook-parity`, `commit-integrity`. Non-required hosted proof lanes may run alongside the queue contract, including `vi-history-scenarios-windows` on GitHub-hosted `windows-2022`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
 
 ## Purpose
 
@@ -84,8 +84,8 @@ promotion behavior, not the branch-class source of truth.
 ### GitHub rulesets
 | Ruleset ID | Scope                | Highlights                                                                                   |
 |------------|----------------------|----------------------------------------------------------------------------------------------|
-| `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `agent-review-policy`, `hook-parity`, `commit-integrity`. Non-required hosted proof lanes may run alongside the queue contract, including `vi-history-scenarios-windows` on GitHub-hosted `windows-2022`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
-| `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 5-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
+| `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 1-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `agent-review-policy`, `hook-parity`, `commit-integrity`. Non-required hosted proof lanes may run alongside the queue contract, including `vi-history-scenarios-windows` on GitHub-hosted `windows-2022`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
+| `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 1-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
 | `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`. Required approving reviews: `0`. |
 
 `node tools/npm/run-script.mjs priority:policy` queries these rulesets and fails if the live configuration drifts from
@@ -266,7 +266,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   `grouping_strategy=ALLGREEN`):
   - `grouping_strategy=ALLGREEN`
   - `max_entries_to_build=5`, `min_entries_to_merge=1`, `max_entries_to_merge=5`
-  - `min_entries_to_merge_wait_minutes=5`
+  - `min_entries_to_merge_wait_minutes=1`
   - `check_response_timeout_minutes=60`
 - **Required checks**: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`.
 - **Workflow triggers**: Ensure those required checks run on both `pull_request` and `merge_group` so queued entries can merge.
@@ -309,11 +309,11 @@ to confirm each workflow includes both triggers.
    deletion once the merge materializes. When the PR remains queued after the current helper turn, `priority:queue:supervisor`
    reconciles that deferred cleanup and records the outcome under `deferredBranchCleanup` in
    `tests/results/_agent/queue/queue-supervisor-report.json`.
-   When a queued `develop` PR needs to be amended, run the dedicated helper from a clean checkout of that PR head:
-   `node tools/npm/run-script.mjs priority:queue:refresh -- --pr <number> --repo $REPO`. It is the supported
-   dequeue -> amend -> requeue flow: the helper dequeues the PR through GraphQL, rebases the checked-out branch onto
-   current `develop`, force-pushes with lease, re-arms queue admission via `priority:merge-sync`, and writes
-   `tests/results/_agent/queue/queue-refresh-<pr>.json` as the machine-readable receipt.
+   When a queued `develop` PR needs a base refresh or a safe amendment turn, run the dedicated helper from a clean checkout of that PR head:
+   `node tools/npm/run-script.mjs priority:queue:refresh -- --pr <number> --repo $REPO`. It dequeues the PR through
+   GraphQL, then either rebases the checked-out branch onto current `develop` or, with `--skip-rebase`, force-pushes
+   the already-checked-out PR head as-is for queued amendment flows. It then re-arms queue admission via
+   `priority:merge-sync` and writes `tests/results/_agent/queue/queue-refresh-<pr>.json` as the machine-readable receipt.
 5. For autonomous queueing, run `node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run` first, then
    `--apply` when trunk health is green. The supervisor enforces required checks, dependency ordering, and queue caps.
    Use `QUEUE_AUTOPILOT_MAX_INFLIGHT` for cap tuning and keep `QUEUE_AUTOPILOT_ADAPTIVE_CAP=1`

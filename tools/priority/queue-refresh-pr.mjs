@@ -22,6 +22,7 @@ const USAGE_LINES = [
   '  --pr <number>             Pull request number to refresh/amend safely (required)',
   '  --repo <owner/repo>       Target repository (defaults to upstream remote)',
   '  --head-remote <name>      Explicit remote for the PR head branch (default: infer from checkout/remotes)',
+  '  --skip-rebase             Dequeue, force-push the checked-out PR head branch as-is, and requeue without rebasing',
   '  --summary-path <path>     Write queue-refresh receipt JSON (default: tests/results/_agent/queue/queue-refresh-<pr>.json)',
   '  --merge-summary-path <path>',
   '                            Write nested merge-sync summary JSON (default: tests/results/_agent/queue/merge-sync-<pr>.json)',
@@ -70,6 +71,7 @@ export function parseArgs(argv = process.argv) {
     pr: null,
     repo: null,
     headRemote: null,
+    skipRebase: false,
     summaryPath: null,
     mergeSummaryPath: null,
     dryRun: false
@@ -83,6 +85,10 @@ export function parseArgs(argv = process.argv) {
     }
     if (arg === '--dry-run') {
       options.dryRun = true;
+      continue;
+    }
+    if (arg === '--skip-rebase') {
+      options.skipRebase = true;
       continue;
     }
     if (
@@ -416,6 +422,7 @@ function createReceipt({
       status: 'skipped',
       reason: null,
       helperCallsExecuted: [],
+      mode: null,
       baseRemoteRef: baseRefName ? `upstream/${baseRefName}` : null,
       forcePushTarget: headRemote && headRefName ? `${headRemote}:${headRefName}` : null,
       rebasedHeadSha: null
@@ -543,6 +550,12 @@ export async function runQueueRefresh(options = {}) {
 
     ensureCleanWorkingTree(repoRoot, { runGitCommandFn });
 
+    if (args.skipRebase && currentBranch !== headRefName) {
+      throw new Error(
+        `Queue amend mode requires the checked-out branch '${headRefName}', but found '${currentBranch || 'HEAD'}'.`
+      );
+    }
+
     if (args.dryRun) {
       receipt.dequeue = {
         ...receipt.dequeue,
@@ -556,7 +569,8 @@ export async function runQueueRefresh(options = {}) {
         ...receipt.refresh,
         attempted: true,
         status: 'dry-run',
-        reason: 'dry-run'
+        reason: 'dry-run',
+        mode: args.skipRebase ? 'amend' : 'rebase'
       };
       receipt.requeue = {
         ...receipt.requeue,
@@ -596,42 +610,45 @@ export async function runQueueRefresh(options = {}) {
 
     currentStep = 'refresh';
     receipt.refresh.attempted = true;
-    receipt.refresh.helperCallsExecuted.push(`git fetch upstream ${baseRefName}`);
-    const upstreamFetch = runGitCommandFn(repoRoot, ['fetch', 'upstream', baseRefName], { allowFailure: true });
-    if (upstreamFetch.status !== 0) {
-      throw new Error(formatCommandError('git', ['fetch', 'upstream', baseRefName], upstreamFetch));
-    }
-
-    receipt.refresh.helperCallsExecuted.push(`git fetch ${headRemote.remoteName} ${headRefName}`);
-    const headFetch = runGitCommandFn(repoRoot, ['fetch', headRemote.remoteName, headRefName], { allowFailure: true });
-    if (headFetch.status !== 0) {
-      throw new Error(formatCommandError('git', ['fetch', headRemote.remoteName, headRefName], headFetch));
-    }
-
-    if (currentBranch !== headRefName) {
-      receipt.refresh.helperCallsExecuted.push(`git checkout ${headRefName}`);
-      let checkout = runGitCommandFn(repoRoot, ['checkout', headRefName], { allowFailure: true });
-      if (checkout.status !== 0) {
-        receipt.refresh.helperCallsExecuted.push(
-          `git checkout -b ${headRefName} --track ${headRemote.remoteName}/${headRefName}`
-        );
-        checkout = runGitCommandFn(
-          repoRoot,
-          ['checkout', '-b', headRefName, '--track', `${headRemote.remoteName}/${headRefName}`],
-          { allowFailure: true }
-        );
+    receipt.refresh.mode = args.skipRebase ? 'amend' : 'rebase';
+    if (!args.skipRebase) {
+      receipt.refresh.helperCallsExecuted.push(`git fetch upstream ${baseRefName}`);
+      const upstreamFetch = runGitCommandFn(repoRoot, ['fetch', 'upstream', baseRefName], { allowFailure: true });
+      if (upstreamFetch.status !== 0) {
+        throw new Error(formatCommandError('git', ['fetch', 'upstream', baseRefName], upstreamFetch));
       }
-      if (checkout.status !== 0) {
-        throw new Error(formatCommandError('git', ['checkout', headRefName], checkout));
-      }
-    }
 
-    receipt.refresh.helperCallsExecuted.push(`git rebase upstream/${baseRefName}`);
-    const rebase = runGitCommandFn(repoRoot, ['rebase', `upstream/${baseRefName}`], { allowFailure: true });
-    if (rebase.status !== 0) {
-      receipt.refresh.helperCallsExecuted.push('git rebase --abort');
-      runGitCommandFn(repoRoot, ['rebase', '--abort'], { allowFailure: true });
-      throw new Error(formatCommandError('git', ['rebase', `upstream/${baseRefName}`], rebase));
+      receipt.refresh.helperCallsExecuted.push(`git fetch ${headRemote.remoteName} ${headRefName}`);
+      const headFetch = runGitCommandFn(repoRoot, ['fetch', headRemote.remoteName, headRefName], { allowFailure: true });
+      if (headFetch.status !== 0) {
+        throw new Error(formatCommandError('git', ['fetch', headRemote.remoteName, headRefName], headFetch));
+      }
+
+      if (currentBranch !== headRefName) {
+        receipt.refresh.helperCallsExecuted.push(`git checkout ${headRefName}`);
+        let checkout = runGitCommandFn(repoRoot, ['checkout', headRefName], { allowFailure: true });
+        if (checkout.status !== 0) {
+          receipt.refresh.helperCallsExecuted.push(
+            `git checkout -b ${headRefName} --track ${headRemote.remoteName}/${headRefName}`
+          );
+          checkout = runGitCommandFn(
+            repoRoot,
+            ['checkout', '-b', headRefName, '--track', `${headRemote.remoteName}/${headRefName}`],
+            { allowFailure: true }
+          );
+        }
+        if (checkout.status !== 0) {
+          throw new Error(formatCommandError('git', ['checkout', headRefName], checkout));
+        }
+      }
+
+      receipt.refresh.helperCallsExecuted.push(`git rebase upstream/${baseRefName}`);
+      const rebase = runGitCommandFn(repoRoot, ['rebase', `upstream/${baseRefName}`], { allowFailure: true });
+      if (rebase.status !== 0) {
+        receipt.refresh.helperCallsExecuted.push('git rebase --abort');
+        runGitCommandFn(repoRoot, ['rebase', '--abort'], { allowFailure: true });
+        throw new Error(formatCommandError('git', ['rebase', `upstream/${baseRefName}`], rebase));
+      }
     }
 
     const rebasedHeadSha = normalizeText(runGitCommandFn(repoRoot, ['rev-parse', 'HEAD']).stdout) || null;
@@ -645,7 +662,7 @@ export async function runQueueRefresh(options = {}) {
       );
     }
     receipt.refresh.status = 'completed';
-    receipt.refresh.reason = 'rebased-and-pushed';
+    receipt.refresh.reason = args.skipRebase ? 'amended-and-pushed' : 'rebased-and-pushed';
     receipt.refresh.rebasedHeadSha = rebasedHeadSha;
 
     currentStep = 'requeue';

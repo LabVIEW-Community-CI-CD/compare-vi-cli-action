@@ -183,11 +183,15 @@
         {
           "type": "object",
           "required": [
+            "mode",
             "baseRemoteRef",
             "forcePushTarget",
             "rebasedHeadSha"
           ],
           "properties": {
+            "mode": {
+              "enum": ["rebase", "amend", null]
+            },
             "baseRemoteRef": {
               "type": ["string", "null"]
             },
