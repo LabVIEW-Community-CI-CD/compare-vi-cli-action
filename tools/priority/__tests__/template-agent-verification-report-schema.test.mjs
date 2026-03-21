@@ -66,3 +66,22 @@ test('template-agent verification report matches the checked-in schema', () => {
   const validate = ajv.compile(schema);
   assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
 });
+
+test('checked-in template-agent verification report stays as the machine-readable pending seed', () => {
+  const report = JSON.parse(
+    fs.readFileSync(
+      path.join(repoRoot, 'tests', 'results', '_agent', 'promotion', 'template-agent-verification-report.json'),
+      'utf8'
+    )
+  );
+  const schema = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, 'docs', 'schemas', 'template-agent-verification-report-v1.schema.json'), 'utf8')
+  );
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const validate = ajv.compile(schema);
+  assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(report.summary.status, 'pending');
+  assert.equal(report.verification.status, 'pending');
+  assert.equal(report.summary.recommendation, 'wait-for-template-verification');
+});
