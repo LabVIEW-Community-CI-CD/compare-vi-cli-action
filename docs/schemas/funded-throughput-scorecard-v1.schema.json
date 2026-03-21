@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/funded-throughput-scorecard-v1.schema.json",
+  "title": "Funded Throughput Scorecard v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generatedAt", "repository", "inputs", "coverage", "fundingWindow", "summary"],
+  "properties": {
+    "schema": { "const": "priority/funded-throughput-scorecard@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repository": { "$ref": "#/$defs/nullableString" },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["costRollupPath", "throughputScorecardPath"],
+      "properties": {
+        "costRollupPath": { "$ref": "#/$defs/inputRef" },
+        "throughputScorecardPath": { "$ref": "#/$defs/inputRef" }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implementedMetricCodes", "deferredMetrics"],
+      "properties": {
+        "implementedMetricCodes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "deferredMetrics": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/deferredMetric" }
+        }
+      }
+    },
+    "fundingWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invoiceTurnId",
+        "invoiceId",
+        "openedAt",
+        "closedAt",
+        "fundingPurpose",
+        "activationState",
+        "windowClass",
+        "reconciliationStatus",
+        "selectionMode",
+        "calibrationWindowId",
+        "reconciledAt"
+      ],
+      "properties": {
+        "invoiceTurnId": { "$ref": "#/$defs/nullableString" },
+        "invoiceId": { "$ref": "#/$defs/nullableString" },
+        "openedAt": { "$ref": "#/$defs/nullableString" },
+        "closedAt": { "$ref": "#/$defs/nullableString" },
+        "fundingPurpose": { "$ref": "#/$defs/nullableString" },
+        "activationState": { "$ref": "#/$defs/nullableString" },
+        "windowClass": { "enum": ["operational", "calibration", "unknown"] },
+        "reconciliationStatus": { "$ref": "#/$defs/nullableString" },
+        "selectionMode": { "$ref": "#/$defs/nullableString" },
+        "calibrationWindowId": { "$ref": "#/$defs/nullableString" },
+        "reconciledAt": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "recommendation", "reasons", "blockerCount", "blockers", "metrics"],
+      "properties": {
+        "status": { "enum": ["pass", "warn", "fail"] },
+        "recommendation": {
+          "enum": [
+            "repair-input-receipts",
+            "continue-calibration-before-benchmarking",
+            "continue-estimated-telemetry",
+            "continue-invoice-reconciliation",
+            "observe-funded-window",
+            "increase-validated-throughput",
+            "benchmark-operational-throughput"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "blockerCount": { "type": "integer", "minimum": 0 },
+        "blockers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blocker" }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fundedUsd",
+            "exactUsd",
+            "estimatedUsd",
+            "actualUsdConsumed",
+            "validatedMergedPullRequestCount",
+            "totalTerminalPullRequestCount",
+            "hostedWaitEscapeCount",
+            "validatedMergedPullRequestsPerFundedUsd",
+            "hostedWaitEscapesPerFundedUsd",
+            "heuristicUsdDelta",
+            "heuristicUsdDeltaRatio"
+          ],
+          "properties": {
+            "fundedUsd": { "type": "number", "minimum": 0 },
+            "exactUsd": { "type": "number", "minimum": 0 },
+            "estimatedUsd": { "type": "number", "minimum": 0 },
+            "actualUsdConsumed": { "type": ["number", "null"], "minimum": 0 },
+            "validatedMergedPullRequestCount": { "type": "integer", "minimum": 0 },
+            "totalTerminalPullRequestCount": { "type": "integer", "minimum": 0 },
+            "hostedWaitEscapeCount": { "type": "integer", "minimum": 0 },
+            "validatedMergedPullRequestsPerFundedUsd": { "type": ["number", "null"], "minimum": 0 },
+            "hostedWaitEscapesPerFundedUsd": { "type": ["number", "null"], "minimum": 0 },
+            "heuristicUsdDelta": { "type": ["number", "null"] },
+            "heuristicUsdDeltaRatio": { "type": ["number", "null"] }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "inputRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "exists", "error"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nullableString" },
+        "exists": { "type": "boolean" },
+        "error": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "inputPath"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "inputPath": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "deferredMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "reason"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
