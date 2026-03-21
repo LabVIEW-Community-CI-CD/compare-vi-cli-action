@@ -56,6 +56,7 @@ test('throughput-scorecard schema validates generated report payloads', () => {
       deliveryMemoryPath: 'tests/results/_agent/runtime/delivery-memory.json',
       queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
       concurrentLaneStatusPath: 'tests/results/_agent/runtime/concurrent-lane-status-receipt.json',
+      hostRamBudgetPath: 'tests/results/_agent/runtime/host-ram-budget.json',
       utilizationPolicyPath: 'tools/policy/merge-queue-utilization-target.json'
     },
     concurrentLaneStatus: {

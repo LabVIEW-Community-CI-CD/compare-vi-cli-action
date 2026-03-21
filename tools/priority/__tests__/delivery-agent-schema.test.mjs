@@ -36,9 +36,29 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
   const validate = ajv.compile(schema);
   assert.equal(validate(data), true, JSON.stringify(validate.errors, null, 2));
   assert.equal(data.copilotReviewStrategy, 'draft-only-explicit');
-  assert.equal(data.maxActiveCodingLanes, 4);
+  assert.equal(data.maxActiveCodingLanes, 8);
+  assert.deepEqual(data.capitalFabric, {
+    schema: 'priority/capital-deployment-fabric@v1',
+    capacityMode: 'host-ram-adaptive',
+    maxLogicalLaneCount: 8,
+    logicalLaneAllocationFloorRatio: 0.5,
+    reservedLaneCount: 1,
+    hostRamBudgetPath: 'tests/results/_agent/runtime/host-ram-budget.json',
+    specialtyLanes: [
+      {
+        id: 'jarvis',
+        enabled: true,
+        primaryRecordedResponsibility: 'Sagan',
+        maxInstanceCount: 2,
+        purpose: 'windows-docker-iterative-development',
+        preferredExecutionPlane: 'local-docker-windows',
+        preferredContainerImage: 'nationalinstruments/labview:2026q1-windows',
+        allocationMode: 'opportunistic'
+      }
+    ]
+  });
   assert.deepEqual(data.workerPool, {
-    targetSlotCount: 4,
+    targetSlotCount: 8,
     prewarmSlotCount: 1,
     releaseWaitingStates: ['waiting-ci', 'waiting-review', 'ready-merge'],
     providers: [
@@ -58,7 +78,7 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
         completionMode: 'sync',
         requiresLocalCheckout: true,
         enabled: true,
-        slotCount: 1
+        slotCount: 2
       },
       {
         id: 'hosted-github-workflow',
@@ -76,7 +96,7 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
         completionMode: 'async',
         requiresLocalCheckout: false,
         enabled: true,
-        slotCount: 1
+        slotCount: 2
       },
       {
         id: 'remote-copilot-lane',
@@ -94,7 +114,7 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
         completionMode: 'async',
         requiresLocalCheckout: false,
         enabled: true,
-        slotCount: 1
+        slotCount: 2
       },
       {
         id: 'local-shadow-native',
@@ -112,7 +132,7 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
         completionMode: 'sync',
         requiresLocalCheckout: false,
         enabled: true,
-        slotCount: 1
+        slotCount: 2
       }
     ]
   });
@@ -132,7 +152,7 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
   });
   assert.equal(
     data.workerPool.targetSlotCount - data.templateAgentVerificationLane.reservedSlotCount,
-    data.templateAgentVerificationLane.minimumImplementationSlots
+    7
   );
   assert.deepEqual(data.hostIsolation, {
     mode: 'hard-cutover',
@@ -874,7 +894,11 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
     'tests/results/docker-tools-parity/review-loop-receipt.json'
   );
   assert.equal(state.policy.maxActiveCodingLanes, 4);
+  assert.equal(state.policy.capitalFabric.capacityMode, 'fixed-target');
+  assert.equal(state.policy.capitalFabric.maxLogicalLaneCount, 4);
+  assert.equal(state.policy.capitalFabric.specialtyLanes.length, 0);
   assert.equal(state.workerPool.targetSlotCount, 4);
+  assert.equal(state.workerPool.configuredTargetSlotCount, 4);
   assert.equal(state.workerPool.providers.length, 4);
   assert.equal(state.workerPool.providers[0].dispatchSurface, 'runtime-harness');
   assert.equal(state.workerPool.availableSlotCount, 4);

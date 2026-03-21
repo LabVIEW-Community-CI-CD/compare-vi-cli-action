@@ -179,12 +179,32 @@ const DEFAULT_POLICY = {
   copilotReviewStrategy: 'draft-only-explicit',
   autoSlice: true,
   autoMerge: true,
-  maxActiveCodingLanes: 4,
+  maxActiveCodingLanes: 8,
   allowPolicyMutations: false,
   allowReleaseAdmin: false,
   stopWhenNoOpenEpics: true,
+  capitalFabric: {
+    schema: 'priority/capital-deployment-fabric@v1',
+    capacityMode: 'host-ram-adaptive',
+    maxLogicalLaneCount: 8,
+    logicalLaneAllocationFloorRatio: 0.5,
+    reservedLaneCount: 1,
+    hostRamBudgetPath: DEFAULT_HOST_RAM_BUDGET_PATH,
+    specialtyLanes: [
+      {
+        id: 'jarvis',
+        enabled: true,
+        primaryRecordedResponsibility: 'Sagan',
+        maxInstanceCount: 2,
+        purpose: 'windows-docker-iterative-development',
+        preferredExecutionPlane: 'local-docker-windows',
+        preferredContainerImage: 'nationalinstruments/labview:2026q1-windows',
+        allocationMode: 'opportunistic'
+      }
+    ]
+  },
   workerPool: {
-    targetSlotCount: 4,
+    targetSlotCount: 8,
     prewarmSlotCount: 1,
     releaseWaitingStates: [...DEFAULT_WORKER_RELEASE_WAITING_STATES],
     providers: DEFAULT_WORKER_PROVIDER_BLUEPRINTS.map((provider) =>
@@ -313,6 +333,14 @@ function coercePositiveInteger(value) {
   if (value == null || value === '') return null;
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function coerceRatio(value, fallback = null) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return Math.min(parsed, 1);
 }
 
 function sanitizeSegment(value) {
@@ -550,6 +578,97 @@ function normalizeWorkerPoolPolicy(value, { maxActiveCodingLanes = DEFAULT_POLIC
     releaseWaitingStates:
       releaseWaitingStates.length > 0 ? releaseWaitingStates : [...DEFAULT_WORKER_RELEASE_WAITING_STATES],
     providers
+  };
+}
+
+function normalizeCapitalFabricSpecialtyLane(value) {
+  const lane = value && typeof value === 'object' ? value : {};
+  return {
+    id: normalizeText(lane.id) || 'specialty-lane',
+    enabled: lane.enabled !== false,
+    primaryRecordedResponsibility: normalizeText(lane.primaryRecordedResponsibility) || 'Sagan',
+    maxInstanceCount: coercePositiveInteger(lane.maxInstanceCount) ?? 1,
+    purpose: normalizeText(lane.purpose) || 'specialized-iteration-surface',
+    preferredExecutionPlane: normalizeText(lane.preferredExecutionPlane) || 'local',
+    preferredContainerImage: normalizeText(lane.preferredContainerImage) || null,
+    allocationMode: normalizeText(lane.allocationMode) || 'opportunistic'
+  };
+}
+
+function normalizeCapitalFabricPolicy(
+  value,
+  {
+    maxActiveCodingLanes = DEFAULT_POLICY.maxActiveCodingLanes,
+    workerPoolTargetSlotCount = DEFAULT_POLICY.workerPool.targetSlotCount
+  } = {}
+) {
+  const capitalFabric = value && typeof value === 'object' ? value : {};
+  const configuredCeiling = Math.max(
+    coercePositiveInteger(capitalFabric.maxLogicalLaneCount) ??
+      coercePositiveInteger(capitalFabric.targetLogicalLaneCount) ??
+      coercePositiveInteger(maxActiveCodingLanes) ??
+      coercePositiveInteger(workerPoolTargetSlotCount) ??
+      DEFAULT_POLICY.maxActiveCodingLanes,
+    1
+  );
+  const reservedLaneCount = Math.min(
+    coercePositiveInteger(capitalFabric.reservedLaneCount) ?? 1,
+    configuredCeiling
+  );
+  const specialtyLanes = Array.isArray(capitalFabric.specialtyLanes)
+    ? capitalFabric.specialtyLanes.map((entry) => normalizeCapitalFabricSpecialtyLane(entry))
+    : [];
+  return {
+    schema: normalizeText(capitalFabric.schema) || 'priority/capital-deployment-fabric@v1',
+    capacityMode:
+      normalizeText(capitalFabric.capacityMode).toLowerCase() === 'host-ram-adaptive'
+        ? 'host-ram-adaptive'
+        : 'fixed-target',
+    maxLogicalLaneCount: configuredCeiling,
+    logicalLaneAllocationFloorRatio: coerceRatio(capitalFabric.logicalLaneAllocationFloorRatio, 0.5) ?? 0.5,
+    reservedLaneCount,
+    hostRamBudgetPath: normalizeText(capitalFabric.hostRamBudgetPath) || DEFAULT_HOST_RAM_BUDGET_PATH,
+    specialtyLanes
+  };
+}
+
+function resolveCapitalFabricRuntimePolicy({
+  policy = {},
+  workerPoolPolicy = buildWorkerPoolPolicySnapshot(policy),
+  hostRamBudget = null,
+  repoRoot = null
+} = {}) {
+  const capitalFabric = normalizeCapitalFabricPolicy(policy?.capitalFabric, {
+    maxActiveCodingLanes:
+      coercePositiveInteger(policy?.maxActiveCodingLanes) ?? DEFAULT_POLICY.maxActiveCodingLanes,
+    workerPoolTargetSlotCount:
+      coercePositiveInteger(workerPoolPolicy?.targetSlotCount) ?? DEFAULT_POLICY.workerPool.targetSlotCount
+  });
+  const hostRamRecommendedParallelism =
+    coercePositiveInteger(hostRamBudget?.selectedProfile?.recommendedParallelism) ?? null;
+  const effectiveLogicalLaneCount =
+    capitalFabric.capacityMode === 'host-ram-adaptive' && hostRamRecommendedParallelism != null
+      ? Math.max(1, Math.min(capitalFabric.maxLogicalLaneCount, hostRamRecommendedParallelism))
+      : capitalFabric.maxLogicalLaneCount;
+  const implementationLaneBudget = Math.max(effectiveLogicalLaneCount - capitalFabric.reservedLaneCount, 0);
+  return {
+    ...capitalFabric,
+    hostRamBudgetPath: toRepoRelativePath(repoRoot, capitalFabric.hostRamBudgetPath) || capitalFabric.hostRamBudgetPath,
+    hostRamProfile: normalizeText(hostRamBudget?.selectedProfile?.id) || null,
+    hostRamRecommendedParallelism,
+    effectiveLogicalLaneCount,
+    implementationLaneBudget,
+    capacitySource:
+      capitalFabric.capacityMode === 'host-ram-adaptive' && hostRamRecommendedParallelism != null
+        ? 'host-ram-budget'
+        : 'policy-ceiling',
+    specialtyLanes: capitalFabric.specialtyLanes.map((lane) => ({
+      ...lane,
+      effectiveInstanceCount:
+        lane.enabled === true
+          ? Math.min(lane.maxInstanceCount, implementationLaneBudget)
+          : 0
+    }))
   };
 }
 
@@ -1709,12 +1828,21 @@ export async function loadDeliveryAgentPolicy(repoRoot, deps = {}) {
   const workerPool = normalizeWorkerPoolPolicy(filePolicy?.workerPool, {
     maxActiveCodingLanes: requestedMaxActiveCodingLanes
   });
+  const capitalFabric = normalizeCapitalFabricPolicy(filePolicy?.capitalFabric, {
+    maxActiveCodingLanes: requestedMaxActiveCodingLanes,
+    workerPoolTargetSlotCount: workerPool.targetSlotCount
+  });
   return {
     ...DEFAULT_POLICY,
     ...(filePolicy && typeof filePolicy === 'object' ? filePolicy : {}),
     schema: DELIVERY_AGENT_POLICY_SCHEMA,
     copilotReviewStrategy: normalizeCopilotReviewStrategy(filePolicy?.copilotReviewStrategy),
-    maxActiveCodingLanes: Math.max(requestedMaxActiveCodingLanes, workerPool.targetSlotCount),
+    maxActiveCodingLanes: Math.max(
+      requestedMaxActiveCodingLanes,
+      workerPool.targetSlotCount,
+      capitalFabric.maxLogicalLaneCount
+    ),
+    capitalFabric,
     workerPool,
     turnBudget: {
       ...DEFAULT_POLICY.turnBudget,
@@ -2240,13 +2368,28 @@ function laneLifecycleConsumesWorkerSlot(lifecycle, releaseWaitingStates = []) {
   return normalizedLifecycle === 'planning' || normalizedLifecycle === 'reshaping-backlog' || normalizedLifecycle === 'coding';
 }
 
-function buildWorkerPoolRuntimeState({ policy, laneId, issue, laneLifecycle, preferredSlotId = null }) {
+function buildWorkerPoolRuntimeState({
+  policy,
+  laneId,
+  issue,
+  laneLifecycle,
+  preferredSlotId = null,
+  effectiveTargetSlotCount = null
+}) {
   const workerPoolPolicy = buildWorkerPoolPolicySnapshot(policy);
+  const configuredTargetSlotCount = workerPoolPolicy.targetSlotCount;
+  const runtimeTargetSlotCount = Math.max(
+    1,
+    Math.min(
+      configuredTargetSlotCount,
+      coercePositiveInteger(effectiveTargetSlotCount) ?? configuredTargetSlotCount
+    )
+  );
   const slots = [];
   let slotIndex = 0;
   for (const provider of workerPoolPolicy.providers.filter((entry) => entry.enabled !== false)) {
     const slotCount = coercePositiveInteger(provider.slotCount) ?? 1;
-    for (let providerSlot = 0; providerSlot < slotCount && slotIndex < workerPoolPolicy.targetSlotCount; providerSlot += 1) {
+    for (let providerSlot = 0; providerSlot < slotCount && slotIndex < runtimeTargetSlotCount; providerSlot += 1) {
       slotIndex += 1;
       slots.push({
         slotId: `worker-slot-${slotIndex}`,
@@ -2264,7 +2407,7 @@ function buildWorkerPoolRuntimeState({ policy, laneId, issue, laneLifecycle, pre
       });
     }
   }
-  while (slots.length < workerPoolPolicy.targetSlotCount) {
+  while (slots.length < runtimeTargetSlotCount) {
     slots.push({
       slotId: `worker-slot-${slots.length + 1}`,
       providerId: null,
@@ -2307,7 +2450,8 @@ function buildWorkerPoolRuntimeState({ policy, laneId, issue, laneLifecycle, pre
   const occupiedSlotCount = slots.filter((slot) => slot.status === 'occupied').length;
   const availableSlotCount = slots.filter((slot) => slot.status === 'available').length;
   return {
-    targetSlotCount: workerPoolPolicy.targetSlotCount,
+    targetSlotCount: runtimeTargetSlotCount,
+    configuredTargetSlotCount,
     prewarmSlotCount: workerPoolPolicy.prewarmSlotCount,
     releaseWaitingStates: [...workerPoolPolicy.releaseWaitingStates],
     providers: workerPoolPolicy.providers.map((provider) => ({ ...provider })),
@@ -2318,8 +2462,8 @@ function buildWorkerPoolRuntimeState({ policy, laneId, issue, laneLifecycle, pre
     releasedLaneCount: releasedLanes.length,
     releasedLanes,
     utilizationRatio:
-      workerPoolPolicy.targetSlotCount > 0
-        ? Number((occupiedSlotCount / workerPoolPolicy.targetSlotCount).toFixed(4))
+      runtimeTargetSlotCount > 0
+        ? Number((occupiedSlotCount / runtimeTargetSlotCount).toFixed(4))
         : 0
   };
 }
@@ -2965,6 +3109,7 @@ export function buildDeliveryAgentRuntimeRecord({
   repository,
   runtimeDir,
   policy,
+  hostRamBudget = null,
   schedulerDecision,
   taskPacket,
   executionReceipt,
@@ -2999,9 +3144,16 @@ export function buildDeliveryAgentRuntimeRecord({
   );
   const activeCodingLanes = laneLifecycle === 'coding' ? 1 : 0;
   const workerPoolPolicy = buildWorkerPoolPolicySnapshot(policy);
+  const capitalFabric = resolveCapitalFabricRuntimePolicy({
+    policy,
+    workerPoolPolicy,
+    hostRamBudget,
+    repoRoot
+  });
   const normalizedMaxActiveCodingLanes = Math.max(
     coercePositiveInteger(policy?.maxActiveCodingLanes) ?? workerPoolPolicy.targetSlotCount,
-    workerPoolPolicy.targetSlotCount
+    workerPoolPolicy.targetSlotCount,
+    capitalFabric.maxLogicalLaneCount
   );
   const workerPool = buildWorkerPoolRuntimeState({
     policy: {
@@ -3009,6 +3161,7 @@ export function buildDeliveryAgentRuntimeRecord({
       maxActiveCodingLanes: normalizedMaxActiveCodingLanes,
       workerPool: workerPoolPolicy
     },
+    effectiveTargetSlotCount: capitalFabric.effectiveLogicalLaneCount,
     laneId,
     issue,
     laneLifecycle,
@@ -3122,6 +3275,7 @@ export function buildDeliveryAgentRuntimeRecord({
       allowPolicyMutations: policy.allowPolicyMutations === true,
       allowReleaseAdmin: policy.allowReleaseAdmin === true,
       stopWhenNoOpenEpics: policy.stopWhenNoOpenEpics === true,
+      capitalFabric,
       workerPool: workerPoolPolicy
     },
     status: laneLifecycle === 'blocked' ? 'blocked' : laneLifecycle === 'idle' ? 'idle' : 'running',
@@ -3170,12 +3324,24 @@ export async function persistDeliveryAgentRuntimeState({
   const lanesDir = path.join(runtimeDir, DELIVERY_AGENT_LANES_DIRNAME);
   await mkdir(lanesDir, { recursive: true });
   const lanePath = path.join(lanesDir, `${sanitizeSegment(laneId)}.json`);
+  const capitalFabricPolicy = normalizeCapitalFabricPolicy(policy?.capitalFabric, {
+    maxActiveCodingLanes:
+      coercePositiveInteger(policy?.maxActiveCodingLanes) ?? DEFAULT_POLICY.maxActiveCodingLanes,
+    workerPoolTargetSlotCount:
+      coercePositiveInteger(policy?.workerPool?.targetSlotCount) ?? DEFAULT_POLICY.workerPool.targetSlotCount
+  });
+  const hostRamBudgetPath = resolvePath(repoRoot, capitalFabricPolicy.hostRamBudgetPath || DEFAULT_HOST_RAM_BUDGET_PATH);
+  const hostRamBudget =
+    capitalFabricPolicy.capacityMode === 'host-ram-adaptive'
+      ? await readJsonIfPresent(hostRamBudgetPath)
+      : null;
   let payload = buildDeliveryAgentRuntimeRecord({
     now,
     repoRoot,
     repository,
     runtimeDir,
     policy,
+    hostRamBudget,
     schedulerDecision,
     taskPacket,
     executionReceipt,
@@ -3198,6 +3364,7 @@ export async function persistDeliveryAgentRuntimeState({
         repository,
         runtimeDir,
         policy,
+        hostRamBudget,
         schedulerDecision,
         taskPacket,
         executionReceipt,
@@ -3220,6 +3387,7 @@ export async function persistDeliveryAgentRuntimeState({
         repository,
         runtimeDir,
         policy,
+        hostRamBudget,
         schedulerDecision,
         taskPacket,
         executionReceipt,

@@ -14,6 +14,7 @@ test('throughput-scorecard parseArgs exposes deterministic defaults', () => {
   assert.match(options.queueReportPath, /queue-supervisor-report\.json$/);
   assert.match(options.concurrentLaneStatusPath, /concurrent-lane-status-receipt\.json$/);
   assert.match(options.utilizationPolicyPath, /merge-queue-utilization-target\.json$/);
+  assert.match(options.hostRamBudgetPath, /host-ram-budget\.json$/);
   assert.match(options.outputPath, /throughput-scorecard\.json$/);
 });
 
@@ -63,10 +64,17 @@ test('buildThroughputScorecard warns when actionable work exists while the worke
   });
 
   assert.equal(report.summary.status, 'warn');
-  assert.deepEqual(report.summary.reasons, ['actionable-work-with-idle-worker-pool', 'merge-queue-occupancy-below-floor']);
+  assert.deepEqual(report.summary.reasons, [
+    'actionable-work-with-idle-worker-pool',
+    'logical-lane-allocation-below-floor',
+    'merge-queue-occupancy-below-floor'
+  ]);
   assert.equal(report.summary.metrics.readyPrInventory, 2);
   assert.equal(report.summary.metrics.currentWorkerUtilizationRatio, 0);
   assert.equal(report.workerPool.liveOrchestratorLane, 'Sagan');
+  assert.equal(report.summary.metrics.logicalLaneAllocationRatio, 0);
+  assert.equal(report.summary.metrics.logicalLaneAllocationFloorRatio, 0.5);
+  assert.equal(report.summary.metrics.effectiveLogicalLaneCount, 4);
   assert.equal(report.mergeQueueUtilization.status, 'warn');
   assert.equal(report.mergeQueueUtilization.observed.occupancyRatio, 0);
   assert.deepEqual(report.mergeQueueUtilization.reasons, ['merge-queue-occupancy-below-floor']);
@@ -181,6 +189,8 @@ test('runThroughputScorecard writes a pass report when queue pressure and worker
 
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.workerPool.utilizationRatio, 0.5);
+  assert.equal(result.report.logicalLaneAllocation.effectiveLogicalLaneCount, 4);
+  assert.equal(result.report.logicalLaneAllocation.allocationRatio, 0.5);
   assert.equal(result.report.delivery.hostedWaitEscapeCount, 3);
   assert.equal(result.report.queue.readySetTop[0], 1511);
   assert.equal(result.report.mergeQueueUtilization.status, 'pass');
@@ -305,6 +315,7 @@ test('runThroughputScorecard falls back to the legacy runtime-state artifact whe
   assert.equal(path.basename(result.inputs.runtimeState.path), 'runtime-state.json');
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.workerPool.utilizationRatio, 0.5);
+  assert.equal(result.report.logicalLaneAllocation.effectiveLogicalLaneCount, 4);
   assert.ok(fs.existsSync(outputPath));
 });
 
@@ -389,6 +400,7 @@ test('buildThroughputScorecard projects concurrent lane status without changing 
   assert.equal(report.concurrentLanes.shadowLaneCount, 1);
   assert.equal(report.summary.metrics.concurrentLaneActiveCount, 0);
   assert.equal(report.summary.metrics.concurrentLaneDeferredCount, 1);
+  assert.equal(report.logicalLaneAllocation.floorSatisfied, true);
 });
 
 test('buildThroughputScorecard surfaces idle classification coverage from the concurrent lane runtime receipt', () => {
@@ -586,6 +598,7 @@ test('buildThroughputScorecard warns when actionable lane demand leaves the four
 
   assert.equal(report.summary.status, 'warn');
   assert.ok(report.summary.reasons.includes('actionable-work-below-worker-slot-target'));
+  assert.ok(report.summary.reasons.includes('logical-lane-allocation-below-floor'));
   assert.equal(report.workerPool.targetSlotCount, 4);
   assert.equal(report.workerPool.occupiedSlotCount, 1);
   assert.equal(report.concurrentLanes.plannedLaneCount, 2);
@@ -640,4 +653,73 @@ test('buildThroughputScorecard warns when merge-queue ready inventory drops belo
   assert.deepEqual(report.mergeQueueUtilization.reasons, ['merge-queue-ready-inventory-below-floor']);
   assert.ok(report.summary.reasons.includes('merge-queue-ready-inventory-below-floor'));
   assert.equal(report.summary.metrics.mergeQueueReadyInventoryFloor, 2);
+});
+
+test('buildThroughputScorecard derives the effective logical lane cap from the host RAM budget while preserving the configured ceiling', () => {
+  const report = buildThroughputScorecard({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeState: {
+      policy: {
+        capitalFabric: {
+          capacityMode: 'host-ram-adaptive',
+          maxLogicalLaneCount: 8,
+          logicalLaneAllocationFloorRatio: 0.5,
+          reservedLaneCount: 1
+        }
+      },
+      workerPool: {
+        targetSlotCount: 3,
+        configuredTargetSlotCount: 8,
+        occupiedSlotCount: 2,
+        availableSlotCount: 1,
+        releasedLaneCount: 0,
+        utilizationRatio: 0.6667
+      },
+      activeCodingLanes: 2
+    },
+    hostRamBudget: {
+      selectedProfile: {
+        id: 'windows-mirror-heavy',
+        recommendedParallelism: 3
+      }
+    },
+    deliveryMemory: {
+      summary: {
+        totalTerminalPullRequestCount: 4,
+        mergedPullRequestCount: 3,
+        closedPullRequestCount: 1,
+        hostedWaitEscapeCount: 1,
+        meanTerminalDurationMinutes: 10,
+        viHistorySuitePullRequestCount: 1
+      }
+    },
+    queueReport: {
+      inflight: 1,
+      capacity: 1,
+      effectiveMaxInflight: 2,
+      paused: false,
+      throughputController: { mode: 'healthy' },
+      governor: { mode: 'normal' },
+      readiness: {
+        readySet: [{ number: 1701 }, { number: 1702 }]
+      }
+    },
+    utilizationPolicy: {
+      mergeQueue: {
+        readyInventoryFloor: 1,
+        occupancyFloorRatio: 0.5,
+        occupancyTargetRatio: 1,
+        treatPausedQueueAsExempt: true
+      }
+    },
+    now: new Date('2026-03-21T03:13:00.000Z')
+  });
+
+  assert.equal(report.logicalLaneAllocation.capacityMode, 'host-ram-adaptive');
+  assert.equal(report.logicalLaneAllocation.maxLogicalLaneCount, 8);
+  assert.equal(report.logicalLaneAllocation.effectiveLogicalLaneCount, 3);
+  assert.equal(report.logicalLaneAllocation.hostRamProfile, 'windows-mirror-heavy');
+  assert.equal(report.logicalLaneAllocation.hostRamRecommendedParallelism, 3);
+  assert.equal(report.logicalLaneAllocation.capacitySource, 'host-ram-budget');
+  assert.equal(report.summary.metrics.effectiveLogicalLaneCount, 3);
 });

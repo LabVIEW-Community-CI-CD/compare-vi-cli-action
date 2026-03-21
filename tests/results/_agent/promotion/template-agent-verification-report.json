@@ -16,7 +16,7 @@
     "enabled": true,
     "reservedSlotCount": 1,
     "minimumImplementationSlots": 3,
-    "implementationSlotsRemaining": 3,
+    "implementationSlotsRemaining": 7,
     "executionMode": "hosted-first",
     "targetRepository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
     "consumerRailBranch": "downstream/develop"
@@ -33,9 +33,9 @@
     "requireMachineReadableRecommendation": true
   },
   "metrics": {
-    "targetSlotCount": 4,
+    "targetSlotCount": 8,
     "reservedSlotCount": 1,
-    "implementationSlotsRemaining": 3,
+    "implementationSlotsRemaining": 7,
     "durationWithinGoal": null,
     "recommendationPresent": true
   },

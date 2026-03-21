@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_HOST_RAM_BUDGET_PATH } from './concurrent-lane-plan.mjs';
 import { summarizeIdleClassificationCoverage } from './concurrent-lane-status.mjs';
 
 export const REPORT_SCHEMA = 'priority/throughput-scorecard@v1';
@@ -12,6 +13,7 @@ export const DEFAULT_DELIVERY_MEMORY_PATH = path.join('tests', 'results', '_agen
 export const DEFAULT_QUEUE_REPORT_PATH = path.join('tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json');
 export const DEFAULT_CONCURRENT_LANE_STATUS_PATH = path.join('tests', 'results', '_agent', 'runtime', 'concurrent-lane-status-receipt.json');
 export const DEFAULT_UTILIZATION_POLICY_PATH = path.join('tools', 'policy', 'merge-queue-utilization-target.json');
+export const DEFAULT_HOST_RAM_BUDGET_INPUT_PATH = DEFAULT_HOST_RAM_BUDGET_PATH;
 export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'throughput', 'throughput-scorecard.json');
 
 const HELP = [
@@ -23,6 +25,7 @@ const HELP = [
   `  --queue-report <path>    Queue supervisor report path (default: ${DEFAULT_QUEUE_REPORT_PATH}).`,
   `  --concurrent-lane-status <path> Concurrent lane status receipt path (default: ${DEFAULT_CONCURRENT_LANE_STATUS_PATH}).`,
   `  --utilization-policy <path> Merge-queue utilization policy path (default: ${DEFAULT_UTILIZATION_POLICY_PATH}).`,
+  `  --host-ram-budget <path> Host RAM budget path (default: ${DEFAULT_HOST_RAM_BUDGET_INPUT_PATH}).`,
   `  --output <path>          Output path (default: ${DEFAULT_OUTPUT_PATH}).`,
   '  --repo <owner/repo>      Repository slug override.',
   '  --help                   Show help.'
@@ -91,6 +94,59 @@ function coerceNonNegativeNumber(value) {
 function clampRatio(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.min(parsed, 1) : null;
+}
+
+function summarizeLogicalLaneAllocation(runtimeState = null, hostRamBudget = null) {
+  const workerPool = runtimeState?.workerPool && typeof runtimeState.workerPool === 'object' ? runtimeState.workerPool : {};
+  const capitalFabric =
+    runtimeState?.policy?.capitalFabric && typeof runtimeState.policy.capitalFabric === 'object'
+      ? runtimeState.policy.capitalFabric
+      : {};
+  const maxLogicalLaneCount =
+    Number(
+      capitalFabric.maxLogicalLaneCount ??
+      capitalFabric.targetLogicalLaneCount ??
+      workerPool.configuredTargetSlotCount ??
+      workerPool.targetSlotCount ??
+      0
+    ) || 0;
+  const reservedLaneCount = Number(capitalFabric.reservedLaneCount ?? 0) || 0;
+  const floorRatio = clampRatio(capitalFabric.logicalLaneAllocationFloorRatio ?? 0.5) ?? 0.5;
+  const hostRamRecommendedParallelism =
+    Number(
+      capitalFabric.hostRamRecommendedParallelism ??
+      hostRamBudget?.selectedProfile?.recommendedParallelism ??
+      0
+    ) || 0;
+  const capacityMode = normalizeText(capitalFabric.capacityMode) || 'fixed-target';
+  const effectiveLogicalLaneCount =
+    Number(capitalFabric.effectiveLogicalLaneCount ?? 0) ||
+    (capacityMode === 'host-ram-adaptive' && hostRamRecommendedParallelism > 0
+      ? Math.max(1, Math.min(maxLogicalLaneCount || hostRamRecommendedParallelism, hostRamRecommendedParallelism))
+      : maxLogicalLaneCount);
+  const allocatedLogicalLaneCount = Math.max(
+    Number(workerPool.occupiedSlotCount ?? 0) || 0,
+    Number(runtimeState?.activeCodingLanes ?? 0) || 0
+  );
+  const implementationLaneBudget = Math.max(effectiveLogicalLaneCount - reservedLaneCount, 0);
+  const allocationRatio =
+    effectiveLogicalLaneCount > 0
+      ? Number((Math.min(allocatedLogicalLaneCount, effectiveLogicalLaneCount) / effectiveLogicalLaneCount).toFixed(4))
+      : 0;
+  return {
+    capacityMode,
+    maxLogicalLaneCount,
+    effectiveLogicalLaneCount,
+    reservedLaneCount,
+    implementationLaneBudget,
+    allocatedLogicalLaneCount,
+    allocationRatio,
+    allocationFloorRatio: floorRatio,
+    floorSatisfied: allocationRatio >= floorRatio,
+    hostRamProfile: normalizeText(capitalFabric.hostRamProfile) || normalizeText(hostRamBudget?.selectedProfile?.id) || null,
+    hostRamRecommendedParallelism: hostRamRecommendedParallelism || null,
+    capacitySource: normalizeText(capitalFabric.capacitySource) || (hostRamRecommendedParallelism > 0 ? 'host-ram-budget' : 'policy-ceiling')
+  };
 }
 
 function evaluateMergeQueueUtilization(queueSummary, policy = null) {
@@ -183,6 +239,7 @@ export function parseArgs(argv = process.argv) {
     queueReportPath: DEFAULT_QUEUE_REPORT_PATH,
     concurrentLaneStatusPath: DEFAULT_CONCURRENT_LANE_STATUS_PATH,
     utilizationPolicyPath: DEFAULT_UTILIZATION_POLICY_PATH,
+    hostRamBudgetPath: DEFAULT_HOST_RAM_BUDGET_INPUT_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
     repo: null,
     help: false
@@ -195,7 +252,7 @@ export function parseArgs(argv = process.argv) {
       options.help = true;
       continue;
     }
-    if (['--runtime-state', '--delivery-memory', '--queue-report', '--concurrent-lane-status', '--utilization-policy', '--output', '--repo'].includes(token)) {
+    if (['--runtime-state', '--delivery-memory', '--queue-report', '--concurrent-lane-status', '--utilization-policy', '--host-ram-budget', '--output', '--repo'].includes(token)) {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
       }
@@ -205,6 +262,7 @@ export function parseArgs(argv = process.argv) {
       if (token === '--queue-report') options.queueReportPath = next;
       if (token === '--concurrent-lane-status') options.concurrentLaneStatusPath = next;
       if (token === '--utilization-policy') options.utilizationPolicyPath = next;
+      if (token === '--host-ram-budget') options.hostRamBudgetPath = next;
       if (token === '--output') options.outputPath = next;
       if (token === '--repo') options.repo = next;
       continue;
@@ -222,6 +280,7 @@ export function buildThroughputScorecard({
   queueReport = null,
   concurrentLaneStatus = null,
   concurrentLaneStatusInput = null,
+  hostRamBudget = null,
   utilizationPolicy = null,
   inputPaths = {},
   now = new Date()
@@ -255,6 +314,7 @@ export function buildThroughputScorecard({
     meanTerminalDurationMinutes: coerceNonNegativeNumber(deliveryMemory?.summary?.meanTerminalDurationMinutes),
     viHistorySuitePullRequestCount: Number(deliveryMemory?.summary?.viHistorySuitePullRequestCount ?? 0) || 0
   };
+  const logicalLaneAllocation = summarizeLogicalLaneAllocation(runtimeState, hostRamBudget);
   const mergeQueueUtilization = evaluateMergeQueueUtilization(queueSummary, utilizationPolicy);
   const concurrentLanes = summarizeConcurrentLaneStatus(
     concurrentLaneStatusInput ?? {
@@ -285,10 +345,17 @@ export function buildThroughputScorecard({
     reasons.push('queue-paused-with-ready-inventory');
   }
   if (
-    concurrentLanes.idleClassificationCoverage?.nonWorkingLaneCount > 0 &&
-    concurrentLanes.idleClassificationCoverage.coverageRatio < 1
+    concurrentLanes.idleClassificationCoverage?.nonWorkingLaneCount > 0
+    && concurrentLanes.idleClassificationCoverage.coverageRatio < 1
   ) {
     reasons.push('idle-classification-coverage-below-100');
+  }
+  if (
+    logicalLaneAllocation.effectiveLogicalLaneCount > 0
+    && logicalLaneAllocation.floorSatisfied === false
+    && actionableLaneDemand > logicalLaneAllocation.allocatedLogicalLaneCount
+  ) {
+    reasons.push('logical-lane-allocation-below-floor');
   }
   reasons.push(...mergeQueueUtilization.reasons);
 
@@ -303,9 +370,11 @@ export function buildThroughputScorecard({
       deliveryMemoryPath: inputPaths.deliveryMemoryPath ?? null,
       queueReportPath: inputPaths.queueReportPath ?? null,
       concurrentLaneStatusPath: inputPaths.concurrentLaneStatusPath ?? null,
+      hostRamBudgetPath: inputPaths.hostRamBudgetPath ?? null,
       utilizationPolicyPath: inputPaths.utilizationPolicyPath ?? null
     },
     workerPool: workerPoolSummary,
+    logicalLaneAllocation,
     queue: queueSummary,
     mergeQueueUtilization,
     concurrentLanes,
@@ -320,6 +389,9 @@ export function buildThroughputScorecard({
         mergeQueueCapacity: queueSummary.capacity,
         mergeQueueOccupancyRatio: mergeQueueUtilization.observed.occupancyRatio,
         mergeQueueReadyInventoryFloor: mergeQueueUtilization.target.readyInventoryFloor,
+        logicalLaneAllocationRatio: logicalLaneAllocation.allocationRatio,
+        logicalLaneAllocationFloorRatio: logicalLaneAllocation.allocationFloorRatio,
+        effectiveLogicalLaneCount: logicalLaneAllocation.effectiveLogicalLaneCount,
         concurrentLaneActiveCount: concurrentLanes.activeLaneCount,
         concurrentLaneDeferredCount: concurrentLanes.deferredLaneCount,
         idleClassificationManagedLaneCount: concurrentLanes.idleClassificationCoverage.managedLaneCount,
@@ -340,6 +412,7 @@ export function runThroughputScorecard({
   queueReportPath = DEFAULT_QUEUE_REPORT_PATH,
   concurrentLaneStatusPath = DEFAULT_CONCURRENT_LANE_STATUS_PATH,
   utilizationPolicyPath = DEFAULT_UTILIZATION_POLICY_PATH,
+  hostRamBudgetPath = DEFAULT_HOST_RAM_BUDGET_INPUT_PATH,
   outputPath = DEFAULT_OUTPUT_PATH,
   now = new Date()
 } = {}) {
@@ -354,6 +427,7 @@ export function runThroughputScorecard({
   const deliveryMemoryInput = loadJsonInput(deliveryMemoryPath);
   const queueReportInput = loadJsonInput(queueReportPath);
   const concurrentLaneStatusInput = loadJsonInput(concurrentLaneStatusPath);
+  const hostRamBudgetInput = loadJsonInput(hostRamBudgetPath);
   const utilizationPolicyInput = loadJsonInput(utilizationPolicyPath);
   const repository =
     normalizeText(repo) ||
@@ -370,12 +444,14 @@ export function runThroughputScorecard({
     queueReport: queueReportInput.payload,
     concurrentLaneStatus: concurrentLaneStatusInput.payload,
     concurrentLaneStatusInput,
+    hostRamBudget: hostRamBudgetInput.payload,
     utilizationPolicy: utilizationPolicyInput.payload,
     inputPaths: {
       runtimeStatePath: runtimeStateInput.path,
       deliveryMemoryPath: deliveryMemoryInput.path,
       queueReportPath: queueReportInput.path,
       concurrentLaneStatusPath: concurrentLaneStatusInput.path,
+      hostRamBudgetPath: hostRamBudgetInput.path,
       utilizationPolicyPath: utilizationPolicyInput.path
     },
     now
@@ -392,6 +468,7 @@ export function runThroughputScorecard({
       deliveryMemory: deliveryMemoryInput,
       queueReport: queueReportInput,
       concurrentLaneStatus: concurrentLaneStatusInput,
+      hostRamBudget: hostRamBudgetInput,
       utilizationPolicy: utilizationPolicyInput
     }
   };

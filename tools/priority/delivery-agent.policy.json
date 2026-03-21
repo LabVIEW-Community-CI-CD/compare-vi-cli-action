@@ -5,12 +5,32 @@
   "copilotReviewStrategy": "draft-only-explicit",
   "autoSlice": true,
   "autoMerge": true,
-  "maxActiveCodingLanes": 4,
+  "maxActiveCodingLanes": 8,
   "allowPolicyMutations": false,
   "allowReleaseAdmin": false,
   "stopWhenNoOpenEpics": true,
+  "capitalFabric": {
+    "schema": "priority/capital-deployment-fabric@v1",
+    "capacityMode": "host-ram-adaptive",
+    "maxLogicalLaneCount": 8,
+    "logicalLaneAllocationFloorRatio": 0.5,
+    "reservedLaneCount": 1,
+    "hostRamBudgetPath": "tests/results/_agent/runtime/host-ram-budget.json",
+    "specialtyLanes": [
+      {
+        "id": "jarvis",
+        "enabled": true,
+        "primaryRecordedResponsibility": "Sagan",
+        "maxInstanceCount": 2,
+        "purpose": "windows-docker-iterative-development",
+        "preferredExecutionPlane": "local-docker-windows",
+        "preferredContainerImage": "nationalinstruments/labview:2026q1-windows",
+        "allocationMode": "opportunistic"
+      }
+    ]
+  },
   "workerPool": {
-    "targetSlotCount": 4,
+    "targetSlotCount": 8,
     "prewarmSlotCount": 1,
     "releaseWaitingStates": [
       "waiting-ci",
@@ -34,7 +54,7 @@
         "completionMode": "sync",
         "requiresLocalCheckout": true,
         "enabled": true,
-        "slotCount": 1
+        "slotCount": 2
       },
       {
         "id": "hosted-github-workflow",
@@ -52,7 +72,7 @@
         "completionMode": "async",
         "requiresLocalCheckout": false,
         "enabled": true,
-        "slotCount": 1
+        "slotCount": 2
       },
       {
         "id": "remote-copilot-lane",
@@ -70,7 +90,7 @@
         "completionMode": "async",
         "requiresLocalCheckout": false,
         "enabled": true,
-        "slotCount": 1
+        "slotCount": 2
       },
       {
         "id": "local-shadow-native",
@@ -88,7 +108,7 @@
         "completionMode": "sync",
         "requiresLocalCheckout": false,
         "enabled": true,
-        "slotCount": 1
+        "slotCount": 2
       }
     ]
   },

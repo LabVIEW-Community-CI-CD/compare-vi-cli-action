@@ -40,14 +40,19 @@ At minimum that means:
 
 ## Post-iteration template verification lane
 
-One of the four delivery-agent coding lanes is reserved for post-iteration
-verification against `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`.
+One logical delivery lane is reserved for post-iteration verification against
+`LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`.
+The broader fabric may scale up to eight logical lanes, but the effective lane
+cap is derived from the host RAM budget instead of being treated as a fixed
+always-on count.
 
 - policy source: `tools/priority/delivery-agent.policy.json`
 - reservation contract:
   - `reservedSlotCount = 1`
   - `minimumImplementationSlots = 3`
   - `executionMode = hosted-first`
+  - `capitalFabric.capacityMode = host-ram-adaptive`
+  - `capitalFabric.maxLogicalLaneCount = 8`
 - machine-readable report:
   - `tests/results/_agent/promotion/template-agent-verification-report.json`
 
@@ -56,6 +61,11 @@ starving standing-priority implementation work. The reserved lane must emit
 iteration-level metrics, timing, provenance, and a follow-up recommendation so
 future agents can decide whether template verification is improving, regressing,
 or stalling.
+
+The checked-in capital-fabric policy also declares `Jarvis` as a Windows Docker
+specialty lane family. `Jarvis` can grow to multiple instances when the host RAM
+budget leaves headroom, while the first recorded responsibility stays attached
+to a named agent for stakeholder-facing traceability.
 
 The checked-in report is expected to capture the landed iteration label,
 iteration ref, and landed iteration head SHA so the evidence can be tied back
