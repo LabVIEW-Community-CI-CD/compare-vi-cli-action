@@ -33,6 +33,8 @@ function readDefaultPrTemplate(filePath, encoding) {
 function createPriorityPrWithNoMergedHistory(overrides = {}) {
   return createPriorityPr({
     findMergedPullRequestFn: () => null,
+    findOpenAncestorPullRequestFn: () => null,
+    getCurrentHeadShaFn: () => 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
     ...overrides
   });
 }
@@ -743,6 +745,128 @@ test('writePriorityPrReport persists personal fork lane metadata for future resu
   assert.equal(report.branchModel.selectedHeadRemoteSource, 'branch-contract');
   assert.equal(report.pullRequest.number, 1139);
   assert.match(nodeReadFileSync(reportPath, 'utf8'), /priority\/pr-create@v1/);
+});
+
+test('createPriorityPr records a stacked follow-up wait state when an ancestor PR is still open', () => {
+  let prCreateAttempted = false;
+  let pushedBranch = null;
+  const result = createPriorityPrWithNoMergedHistory({
+    env: {},
+    options: {},
+    readFileSyncFn: readDefaultPrTemplate,
+    getRepoRootFn: () => '/tmp/repo',
+    getCurrentBranchFn: () => 'issue/origin-1589-consume-concurrent-lane-status',
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' }),
+    ensureForkRemoteFn: (_repoRoot, _upstream, remote) => ({
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action-fork',
+      sameOwnerFork: true,
+      remoteName: remote
+    }),
+    pushBranchFn: (_repoRoot, branch, remote) => {
+      pushedBranch = `${remote}:${branch}`;
+      return { status: 'pushed' };
+    },
+    runGhPrCreateFn: () => {
+      prCreateAttempted = true;
+      return { strategy: 'gh-pr-create' };
+    },
+    findOpenAncestorPullRequestFn: () => ({
+      number: 1591,
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1591',
+      headRefName: 'issue/origin-1588-concurrent-lane-status-helper',
+      headRefOid: 'abc123',
+      baseRefName: 'develop',
+      mergeStateStatus: 'CLEAN',
+      isDraft: false,
+      stackDistance: 1
+    }),
+    resolveStandingIssueNumberFn: () => ({ issueNumber: 1589, source: 'router' }),
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
+  });
+
+  assert.equal(pushedBranch, 'origin:issue/origin-1589-consume-concurrent-lane-status');
+  assert.equal(prCreateAttempted, false);
+  assert.equal(result.strategy, 'await-base-pr');
+  assert.equal(result.pullRequest, null);
+  assert.equal(result.stackedFollowUp?.status, 'waiting-for-base-merge');
+  assert.equal(result.stackedFollowUp?.basePullRequest?.number, 1591);
+  assert.equal(result.stackedFollowUp?.basePullRequest?.headRefName, 'issue/origin-1588-concurrent-lane-status-helper');
+});
+
+test('writePriorityPrReport persists stacked follow-up wait metadata', () => {
+  const reportDir = mkdtempSync(path.join(os.tmpdir(), 'priority-pr-stacked-report-'));
+  const { report } = writePriorityPrReport(
+    {
+      repoRoot: reportDir,
+      branch: 'issue/origin-1589-consume-concurrent-lane-status',
+      base: 'develop',
+      issueNumber: 1589,
+      localIssueNumber: 1589,
+      issueUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1589',
+      localIssueUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1589',
+      issueSource: 'router',
+      mirrorOf: null,
+      headRemote: 'origin',
+      upstream: {
+        owner: 'LabVIEW-Community-CI-CD',
+        repo: 'compare-vi-cli-action'
+      },
+      headRepository: {
+        owner: 'LabVIEW-Community-CI-CD',
+        repo: 'compare-vi-cli-action-fork'
+      },
+      branchModel: {
+        contractPath: 'tools/policy/branch-classes.json',
+        contractDigest: 'abc123',
+        branchPlane: 'origin',
+        repositoryPlane: 'origin',
+        classificationRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action-fork',
+        laneBranchPrefix: 'issue/origin-',
+        selectedHeadRemote: 'origin',
+        selectedHeadRemoteSource: 'branch-contract',
+        requiredHeadRemote: 'origin',
+        classification: {
+          id: 'lane',
+          repositoryRole: 'fork',
+          repositoryPlane: 'origin',
+          matchedPattern: 'issue/origin-*',
+          prSourceAllowed: true,
+          prTargetAllowed: false,
+          mergePolicy: 'n/a',
+          purpose: 'Short-lived implementation branches tied to issues.'
+        }
+      },
+      pushStatus: 'pushed',
+      strategy: 'await-base-pr',
+      reusedExistingPullRequest: false,
+      stackedFollowUp: {
+        status: 'waiting-for-base-merge',
+        currentHeadSha: 'deadbeef',
+        basePullRequest: {
+          number: 1591,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1591',
+          headRefName: 'issue/origin-1588-concurrent-lane-status-helper',
+          headRefOid: 'abc123',
+          baseRefName: 'develop',
+          mergeStateStatus: 'CLEAN',
+          isDraft: false,
+          stackDistance: 1
+        }
+      },
+      pullRequest: null
+    },
+    {
+      reportDir,
+      getNow: () => '2026-03-21T10:30:00.000Z'
+    }
+  );
+
+  assert.equal(report.strategy, 'await-base-pr');
+  assert.equal(report.stackedFollowUp?.status, 'waiting-for-base-merge');
+  assert.equal(report.stackedFollowUp?.basePullRequest?.number, 1591);
+  assert.equal(report.pullRequest, null);
 });
 
 test('createPriorityPr preserves an already-published human-drafted PR so a later ready-for-review transition can trigger a fresh Copilot review', () => {

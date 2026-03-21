@@ -644,6 +644,105 @@ export function findMergedPullRequest(
   );
 }
 
+function isGitAncestor(repoRoot, ancestor, descendant, { spawnSyncFn = spawnSync } = {}) {
+  const result = spawnSyncFn('git', ['merge-base', '--is-ancestor', ancestor, descendant], {
+    cwd: repoRoot,
+    encoding: 'utf8'
+  });
+  return result.status === 0;
+}
+
+function getGitCommitDistance(repoRoot, ancestor, descendant, { spawnSyncFn = spawnSync } = {}) {
+  const result = spawnSyncFn('git', ['rev-list', '--count', `${ancestor}..${descendant}`], {
+    cwd: repoRoot,
+    encoding: 'utf8'
+  });
+  if (result.status !== 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const parsed = Number.parseInt(String(result.stdout ?? '').trim(), 10);
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+}
+
+export function findOpenAncestorPullRequest(
+  repoRoot,
+  { upstream, origin, headRepository, branch, base, headSha },
+  {
+    runGhJsonFn = runGhJson,
+    spawnSyncFn = spawnSync,
+    limit = 100
+  } = {}
+) {
+  const resolvedHeadRepository = headRepository ?? origin;
+  const expectedOwner = String(resolvedHeadRepository?.owner ?? '')
+    .trim()
+    .toLowerCase();
+  const normalizedHeadSha = String(headSha ?? '').trim();
+  if (!normalizedHeadSha) {
+    return null;
+  }
+
+  const pulls =
+    runGhJsonFn(
+      repoRoot,
+      [
+        'pr',
+        'list',
+        '--repo',
+        buildRepositorySlug(upstream),
+        '--state',
+        'open',
+        '--base',
+        base,
+        '--limit',
+        String(limit),
+        '--json',
+        'number,url,state,isDraft,headRefName,baseRefName,headRepositoryOwner,isCrossRepository,headRefOid,mergeStateStatus'
+      ],
+      {
+        spawnSyncFn
+      }
+    ) ?? [];
+  if (!Array.isArray(pulls) || pulls.length === 0) {
+    return null;
+  }
+
+  const candidates = pulls
+    .map((pull) => {
+      const headRefName = String(pull?.headRefName ?? '').trim();
+      const baseRefName = String(pull?.baseRefName ?? '').trim();
+      const headOwner = String(pull?.headRepositoryOwner?.login ?? '')
+        .trim()
+        .toLowerCase();
+      const candidateHeadSha = String(pull?.headRefOid ?? '').trim();
+
+      if (!headRefName || headRefName === branch || baseRefName !== base || !candidateHeadSha) {
+        return null;
+      }
+      if (expectedOwner && headOwner !== expectedOwner) {
+        return null;
+      }
+      if (!isGitAncestor(repoRoot, candidateHeadSha, normalizedHeadSha, { spawnSyncFn })) {
+        return null;
+      }
+
+      return {
+        ...pull,
+        stackDistance: getGitCommitDistance(repoRoot, candidateHeadSha, normalizedHeadSha, { spawnSyncFn })
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      if (left.stackDistance !== right.stackDistance) {
+        return left.stackDistance - right.stackDistance;
+      }
+      return Number(left.number ?? Number.MAX_SAFE_INTEGER) - Number(right.number ?? Number.MAX_SAFE_INTEGER);
+    });
+
+  return candidates[0] ?? null;
+}
+
 export function runGhPrCreate(
   { repoRoot, upstream, origin, headRepository, branch, base, title, body },
   {
