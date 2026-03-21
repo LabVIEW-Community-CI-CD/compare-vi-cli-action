@@ -152,7 +152,8 @@ These provide the denominator side of the question:
 
 - worker utilization
 - queue occupancy
-- concurrent-lane activity
+- concurrent-lane activity as a logical worker-pool model
+- live orchestrator identity (`liveOrchestratorLane`) alongside the pool summary
 - hosted wait escape count
 - terminal PR counts
 - effort levels and duration
