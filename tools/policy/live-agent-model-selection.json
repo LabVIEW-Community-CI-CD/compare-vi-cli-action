@@ -28,18 +28,28 @@
       "providerId": "local-codex",
       "agentRole": "live",
       "defaultModel": "gpt-5.4",
+      "defaultReasoningEffort": "xhigh",
       "candidateModels": [
         {
           "model": "gpt-5.4-mini",
+          "reasoningEffort": "medium",
           "strength": 1,
           "costTier": 1,
           "notes": "Lower-cost option for stable queue conditions."
         },
         {
           "model": "gpt-5.4",
+          "reasoningEffort": "high",
           "strength": 2,
           "costTier": 2,
-          "notes": "Default stronger model for RC throughput and outcome protection."
+          "notes": "Lower-cost stronger option when the full xhigh tier is not justified."
+        },
+        {
+          "model": "gpt-5.4",
+          "reasoningEffort": "xhigh",
+          "strength": 3,
+          "costTier": 3,
+          "notes": "Default RC live-agent tier for harder math and planning turns."
         }
       ]
     },
@@ -47,15 +57,18 @@
       "providerId": "remote-copilot-lane",
       "agentRole": "background",
       "defaultModel": "gpt-5.4-mini",
+      "defaultReasoningEffort": "medium",
       "candidateModels": [
         {
           "model": "gpt-5.4-mini",
+          "reasoningEffort": "medium",
           "strength": 1,
           "costTier": 1,
           "notes": "Default background implementation lane model."
         },
         {
           "model": "gpt-5.4",
+          "reasoningEffort": "high",
           "strength": 2,
           "costTier": 2,
           "notes": "Escalate when queue pressure or outcome pressure is high."

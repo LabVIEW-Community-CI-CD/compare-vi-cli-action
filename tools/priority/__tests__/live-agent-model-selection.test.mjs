@@ -26,6 +26,7 @@ function writeTelemetrySet(root, options = {}) {
   const {
     policyMode = 'recommend-only',
     currentModel = 'gpt-5.4',
+    currentReasoningEffort = 'xhigh',
     amountUsd = 12.8,
     throughputStatus = 'pass',
     throughputReasons = [],
@@ -36,7 +37,8 @@ function writeTelemetrySet(root, options = {}) {
     hostedWaitEscapeCount = 0,
     meanTerminalDurationMinutes = 14,
     previousReport = null,
-    forcedModel = null
+    forcedModel = null,
+    forcedReasoningEffort = null
   } = options;
   const policyPath = path.join(root, 'tools', 'policy', 'live-agent-model-selection.json');
   const costRollupPath = path.join(root, 'tests', 'results', '_agent', 'cost', 'agent-cost-rollup.json');
@@ -74,10 +76,13 @@ function writeTelemetrySet(root, options = {}) {
         providerId: 'local-codex',
         agentRole: 'live',
         defaultModel: 'gpt-5.4',
+        defaultReasoningEffort: 'xhigh',
         forcedModel,
+        forcedReasoningEffort,
         candidateModels: [
-          { model: 'gpt-5.4-mini', strength: 1, costTier: 1, notes: 'cheaper' },
-          { model: 'gpt-5.4', strength: 2, costTier: 2, notes: 'stronger' }
+          { model: 'gpt-5.4-mini', reasoningEffort: 'medium', strength: 1, costTier: 1, notes: 'cheaper' },
+          { model: 'gpt-5.4', reasoningEffort: 'high', strength: 2, costTier: 2, notes: 'stronger' },
+          { model: 'gpt-5.4', reasoningEffort: 'xhigh', strength: 3, costTier: 3, notes: 'strongest' }
         ]
       }
     ]
@@ -94,6 +99,7 @@ function writeTelemetrySet(root, options = {}) {
         agentRole: 'live',
         providerId: 'local-codex',
         effectiveModel: currentModel,
+        effectiveReasoningEffort: currentReasoningEffort,
         amountUsd,
         amountKind: 'estimated'
       }
@@ -166,10 +172,13 @@ function buildInlineInputs() {
         providerKind: 'local-codex',
         agentRole: 'live',
         defaultModel: 'gpt-5.4',
+        defaultReasoningEffort: 'xhigh',
         forcedModel: null,
+        forcedReasoningEffort: null,
         candidateModels: [
-          { model: 'gpt-5.4-mini', strength: 1, costTier: 1, notes: null },
-          { model: 'gpt-5.4', strength: 2, costTier: 2, notes: null }
+          { model: 'gpt-5.4-mini', reasoningEffort: 'medium', strength: 1, costTier: 1, notes: null },
+          { model: 'gpt-5.4', reasoningEffort: 'high', strength: 2, costTier: 2, notes: null },
+          { model: 'gpt-5.4', reasoningEffort: 'xhigh', strength: 3, costTier: 3, notes: null }
         ]
       }
     ]
@@ -178,7 +187,7 @@ function buildInlineInputs() {
     exists: true,
     path: path.join(process.cwd(), 'tests/results/_agent/cost/agent-cost-rollup.json'),
     payload: {
-      turns: [{ providerId: 'local-codex', agentRole: 'live', effectiveModel: 'gpt-5.4', amountUsd: 12.2 }]
+      turns: [{ providerId: 'local-codex', agentRole: 'live', effectiveModel: 'gpt-5.4', effectiveReasoningEffort: 'xhigh', amountUsd: 12.2 }]
     }
   };
   const throughputInput = {
@@ -234,6 +243,7 @@ test('runLiveAgentModelSelection stays on the current model when cost is the onl
 
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.providers[0].selectedModel, 'gpt-5.4');
+  assert.equal(result.report.providers[0].selectedReasoningEffort, 'xhigh');
   assert.equal(result.report.providers[0].action, 'stay');
   assert.ok(result.report.providers[0].reasonCodes.includes('cost-only-not-enough') || result.report.providers[0].reasonCodes.includes('stable-current-model'));
   assert.match(result.report.policyPath, /tools\/policy\/live-agent-model-selection\.json$/);
@@ -243,6 +253,7 @@ test('runLiveAgentModelSelection escalates to the stronger model when throughput
   const root = createTempTelemetryRoot();
   const { policyPath, costRollupPath, throughputPath, deliveryMemoryPath, outputPath } = writeTelemetrySet(root, {
     currentModel: 'gpt-5.4-mini',
+    currentReasoningEffort: 'medium',
     amountUsd: 3.5,
     throughputStatus: 'warn',
     throughputReasons: ['actionable-work-below-worker-slot-target'],
@@ -261,6 +272,7 @@ test('runLiveAgentModelSelection escalates to the stronger model when throughput
 
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.providers[0].selectedModel, 'gpt-5.4');
+  assert.equal(result.report.providers[0].selectedReasoningEffort, 'xhigh');
   assert.equal(result.report.providers[0].action, 'switch');
   assert.ok(result.report.providers[0].reasonCodes.includes('throughput-pressure'));
   assert.ok(result.report.providers[0].reasonCodes.includes('outcome-quality-pressure'));
@@ -271,7 +283,8 @@ test('runLiveAgentModelSelection escalates to the stronger model when throughput
 test('runLiveAgentModelSelection holds the current model when hysteresis is not cleared', () => {
   const root = createTempTelemetryRoot();
   const { policyPath, costRollupPath, throughputPath, deliveryMemoryPath, outputPath } = writeTelemetrySet(root, {
-    currentModel: 'gpt-5.4-mini',
+    currentModel: 'gpt-5.4',
+    currentReasoningEffort: 'high',
     amountUsd: 98,
     throughputStatus: 'pass',
     meanTerminalDurationMinutes: 181,
@@ -286,7 +299,8 @@ test('runLiveAgentModelSelection holds the current model when hysteresis is not 
     outputPath
   });
 
-  assert.equal(result.report.providers[0].selectedModel, 'gpt-5.4-mini');
+  assert.equal(result.report.providers[0].selectedModel, 'gpt-5.4');
+  assert.equal(result.report.providers[0].selectedReasoningEffort, 'high');
   assert.equal(result.report.providers[0].action, 'hold');
   assert.ok(result.report.providers[0].reasonCodes.includes('hysteresis-hold'));
 });
@@ -295,7 +309,9 @@ test('runLiveAgentModelSelection honors explicit forced-model overrides', () => 
   const root = createTempTelemetryRoot();
   const { policyPath, costRollupPath, throughputPath, deliveryMemoryPath, outputPath } = writeTelemetrySet(root, {
     currentModel: 'gpt-5.4-mini',
-    forcedModel: 'gpt-5.4'
+    currentReasoningEffort: 'medium',
+    forcedModel: 'gpt-5.4',
+    forcedReasoningEffort: 'xhigh'
   });
   const result = runLiveAgentModelSelection({
     policyPath,
@@ -306,6 +322,7 @@ test('runLiveAgentModelSelection honors explicit forced-model overrides', () => 
   });
 
   assert.equal(result.report.providers[0].selectedModel, 'gpt-5.4');
+  assert.equal(result.report.providers[0].selectedReasoningEffort, 'xhigh');
   assert.equal(result.report.providers[0].action, 'override');
   assert.equal(result.report.providers[0].recommendationSource, 'policy-override');
   assert.deepEqual(result.report.providers[0].reasonCodes, ['policy-override']);
@@ -353,7 +370,9 @@ test('buildLiveAgentModelSelectionProjection returns the selected provider proje
           providerKind: 'local-codex',
           agentRole: 'live',
           currentModel: 'gpt-5.4',
+          currentReasoningEffort: 'xhigh',
           selectedModel: 'gpt-5.4',
+          selectedReasoningEffort: 'xhigh',
           action: 'stay',
           confidence: 'medium',
           reasonCodes: ['stable-current-model']
@@ -368,4 +387,5 @@ test('buildLiveAgentModelSelectionProjection returns the selected provider proje
   assert.equal(projection.recommendationStatus, 'pass');
   assert.equal(projection.currentProvider.providerId, 'local-codex');
   assert.equal(projection.currentProvider.selectedModel, 'gpt-5.4');
+  assert.equal(projection.currentProvider.selectedReasoningEffort, 'xhigh');
 });

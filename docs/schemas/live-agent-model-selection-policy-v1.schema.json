@@ -86,7 +86,15 @@
           "providerKind": { "type": "string", "minLength": 1 },
           "agentRole": { "enum": ["live", "background", "any"] },
           "defaultModel": { "type": "string", "minLength": 1 },
+          "defaultReasoningEffort": {
+            "type": ["string", "null"],
+            "enum": ["low", "medium", "high", "xhigh", null]
+          },
           "forcedModel": { "type": "string", "minLength": 1 },
+          "forcedReasoningEffort": {
+            "type": ["string", "null"],
+            "enum": ["low", "medium", "high", "xhigh", null]
+          },
           "costOnlySwitchAllowed": { "type": "boolean" },
           "candidateModels": {
             "type": "array",
@@ -97,6 +105,10 @@
               "required": ["model", "strength", "costTier"],
               "properties": {
                 "model": { "type": "string", "minLength": 1 },
+                "reasoningEffort": {
+                  "type": ["string", "null"],
+                  "enum": ["low", "medium", "high", "xhigh", null]
+                },
                 "strength": { "type": "integer", "minimum": 1 },
                 "costTier": { "type": "integer", "minimum": 1 },
                 "notes": { "type": "string" }

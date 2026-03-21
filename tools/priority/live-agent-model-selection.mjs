@@ -35,6 +35,11 @@ function normalizeText(value) {
   return String(value).trim();
 }
 
+function normalizeReasoningEffort(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return ['low', 'medium', 'high', 'xhigh'].includes(normalized) ? normalized : null;
+}
+
 function toIso(value = new Date()) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
@@ -91,6 +96,11 @@ function uniqueStrings(values) {
   return [...new Set(ensureArray(values).map((entry) => normalizeText(entry)).filter(Boolean))];
 }
 
+function compareReasoningEffort(left, right) {
+  const order = ['low', 'medium', 'high', 'xhigh'];
+  return order.indexOf(normalizeReasoningEffort(left)) - order.indexOf(normalizeReasoningEffort(right));
+}
+
 function compareConfidence(left, right) {
   return CONFIDENCE_LEVELS.indexOf(normalizeText(left).toLowerCase()) - CONFIDENCE_LEVELS.indexOf(normalizeText(right).toLowerCase());
 }
@@ -143,12 +153,13 @@ function createBlocker(code, message, inputPath = null) {
   return { code, message, inputPath: inputPath ? safeRelative(inputPath) : null };
 }
 
-function normalizeCandidateModels(value, fallbackModel = '') {
+function normalizeCandidateModels(value, fallbackModel = '', fallbackReasoningEffort = null) {
   const models = ensureArray(value)
     .map((entry, index) => {
       if (typeof entry === 'string') {
         return {
           model: normalizeText(entry),
+          reasoningEffort: normalizeReasoningEffort(fallbackReasoningEffort),
           strength: index + 1,
           costTier: index + 1,
           notes: null
@@ -156,6 +167,7 @@ function normalizeCandidateModels(value, fallbackModel = '') {
       }
       return {
         model: normalizeText(entry?.model),
+        reasoningEffort: normalizeReasoningEffort(entry?.reasoningEffort),
         strength: toNonNegativeInteger(entry?.strength) ?? index + 1,
         costTier: toNonNegativeInteger(entry?.costTier) ?? index + 1,
         notes: normalizeText(entry?.notes) || null
@@ -163,7 +175,13 @@ function normalizeCandidateModels(value, fallbackModel = '') {
     })
     .filter((entry) => entry.model);
   if (models.length === 0 && normalizeText(fallbackModel)) {
-    return [{ model: normalizeText(fallbackModel), strength: 1, costTier: 1, notes: null }];
+    return [{
+      model: normalizeText(fallbackModel),
+      reasoningEffort: normalizeReasoningEffort(fallbackReasoningEffort),
+      strength: 1,
+      costTier: 1,
+      notes: null
+    }];
   }
   return models;
 }
@@ -171,13 +189,16 @@ function normalizeCandidateModels(value, fallbackModel = '') {
 function normalizePolicy(rawPolicy = {}, fallbackOutputPath = DEFAULT_OUTPUT_PATH) {
   const providers = ensureArray(rawPolicy?.providers).map((provider) => {
     const defaultModel = normalizeText(provider?.defaultModel);
-    const candidateModels = normalizeCandidateModels(provider?.candidateModels, defaultModel);
+    const defaultReasoningEffort = normalizeReasoningEffort(provider?.defaultReasoningEffort);
+    const candidateModels = normalizeCandidateModels(provider?.candidateModels, defaultModel, defaultReasoningEffort);
     return {
       providerId: normalizeText(provider?.providerId),
       providerKind: normalizeText(provider?.providerKind) || null,
       agentRole: normalizeText(provider?.agentRole).toLowerCase() || 'live',
       defaultModel: defaultModel || candidateModels[0]?.model || null,
+      defaultReasoningEffort: defaultReasoningEffort ?? candidateModels[0]?.reasoningEffort ?? null,
       forcedModel: normalizeText(provider?.forcedModel) || null,
+      forcedReasoningEffort: normalizeReasoningEffort(provider?.forcedReasoningEffort),
       candidateModels,
       costOnlySwitchAllowed: provider?.costOnlySwitchAllowed === true
     };
@@ -245,10 +266,11 @@ function getTurnEvidence(costRollupPayload, providerPolicy) {
     return true;
   });
   const observedModels = uniqueStrings(turns.map((turn) => turn?.effectiveModel));
+  const observedReasoningEfforts = uniqueStrings(turns.map((turn) => turn?.effectiveReasoningEffort));
   const turnCount = turns.length;
   const totalUsd = roundNumber(turns.reduce((sum, turn) => sum + (toNonNegativeNumber(turn?.amountUsd) ?? 0), 0)) ?? 0;
   const averageUsdPerTurn = turnCount > 0 ? roundNumber(totalUsd / turnCount) : null;
-  return { turns, observedModels, turnCount, totalUsd, averageUsdPerTurn };
+  return { turns, observedModels, observedReasoningEfforts, turnCount, totalUsd, averageUsdPerTurn };
 }
 
 function buildPressureSummary({ throughputPayload, deliveryMemoryPayload, policy }) {
@@ -310,12 +332,25 @@ function determineConfidence({ turnCount, pressureSummary, policy }) {
   return confidence;
 }
 
-function buildCandidateScore(candidate, { pressureSummary, currentModel, costTurnSummary }) {
+function buildCandidateScore(candidate, { pressureSummary, currentModel, currentReasoningEffort }) {
   const performanceSignal = pressureSummary.performancePressureReasons.length;
   const performanceWeight = performanceSignal > 0 ? 0.75 + (performanceSignal * 0.25) : 0.25;
-  const currentModelBonus = candidate.model === currentModel ? 0.25 : 0;
+  const currentModelBonus =
+    candidate.model === currentModel &&
+    normalizeReasoningEffort(candidate.reasoningEffort) === normalizeReasoningEffort(currentReasoningEffort)
+      ? 0.25
+      : 0;
   const score = (candidate.strength * performanceWeight) - (candidate.costTier * 0.5) + currentModelBonus;
   return roundNumber(score) ?? 0;
+}
+
+function getCandidateByIdentity(candidateModels, model, reasoningEffort = null) {
+  const normalizedModel = normalizeText(model);
+  const normalizedReasoningEffort = normalizeReasoningEffort(reasoningEffort);
+  return candidateModels.find((candidate) =>
+    candidate.model === normalizedModel &&
+    normalizeReasoningEffort(candidate.reasoningEffort) === normalizedReasoningEffort
+  ) ?? null;
 }
 
 function getCandidateByModel(candidateModels, model) {
@@ -326,6 +361,9 @@ function selectStrongestCandidate(candidateModels) {
   return [...candidateModels].sort((left, right) => {
     if (left.strength !== right.strength) return right.strength - left.strength;
     if (left.costTier !== right.costTier) return left.costTier - right.costTier;
+    if (compareReasoningEffort(left.reasoningEffort, right.reasoningEffort) !== 0) {
+      return compareReasoningEffort(right.reasoningEffort, left.reasoningEffort);
+    }
     return left.model.localeCompare(right.model);
   })[0] ?? null;
 }
@@ -334,6 +372,9 @@ function selectCheapestCandidate(candidateModels) {
   return [...candidateModels].sort((left, right) => {
     if (left.costTier !== right.costTier) return left.costTier - right.costTier;
     if (left.strength !== right.strength) return right.strength - left.strength;
+    if (compareReasoningEffort(left.reasoningEffort, right.reasoningEffort) !== 0) {
+      return compareReasoningEffort(left.reasoningEffort, right.reasoningEffort);
+    }
     return left.model.localeCompare(right.model);
   })[0] ?? null;
 }
@@ -349,6 +390,10 @@ function evaluateProviderRecommendation({ providerPolicy, costRollupPayload, thr
     normalizeText(previousProvider?.selectedModel) ||
     normalizeText(costTurnSummary.observedModels[0]) ||
     providerPolicy.defaultModel;
+  const currentReasoningEffort =
+    normalizeReasoningEffort(previousProvider?.selectedReasoningEffort) ||
+    normalizeReasoningEffort(costTurnSummary.observedReasoningEfforts[0]) ||
+    normalizeReasoningEffort(providerPolicy.defaultReasoningEffort);
   const pressureSummary = buildPressureSummary({ throughputPayload, deliveryMemoryPayload, policy });
   const confidence = determineConfidence({ turnCount: costTurnSummary.turnCount, pressureSummary, policy });
   const strongestCandidate = selectStrongestCandidate(providerPolicy.candidateModels);
@@ -356,37 +401,55 @@ function evaluateProviderRecommendation({ providerPolicy, costRollupPayload, thr
   const previousCooldownRemaining = toNonNegativeInteger(previousProvider?.stability?.cooldownRemainingReports) ?? 0;
   const reasonCodes = [];
   let selectedModel = currentModel;
+  let selectedReasoningEffort = currentReasoningEffort;
   let action = 'stay';
   let recommendationSource = 'current-model-hold';
 
   if (providerPolicy.forcedModel) {
-    selectedModel = providerPolicy.forcedModel;
-    action = selectedModel === currentModel ? 'stay' : 'override';
+    const forcedCandidate =
+      getCandidateByIdentity(providerPolicy.candidateModels, providerPolicy.forcedModel, providerPolicy.forcedReasoningEffort) ??
+      getCandidateByModel(providerPolicy.candidateModels, providerPolicy.forcedModel);
+    selectedModel = forcedCandidate?.model ?? providerPolicy.forcedModel;
+    selectedReasoningEffort =
+      normalizeReasoningEffort(forcedCandidate?.reasoningEffort) ??
+      normalizeReasoningEffort(providerPolicy.forcedReasoningEffort) ??
+      currentReasoningEffort;
+    action = selectedModel === currentModel && selectedReasoningEffort === currentReasoningEffort ? 'stay' : 'override';
     recommendationSource = 'policy-override';
     reasonCodes.push('policy-override');
-  } else if (!getCandidateByModel(providerPolicy.candidateModels, currentModel)) {
+  } else if (
+    !getCandidateByIdentity(providerPolicy.candidateModels, currentModel, currentReasoningEffort) &&
+    !getCandidateByModel(providerPolicy.candidateModels, currentModel)
+  ) {
     selectedModel = providerPolicy.defaultModel;
-    action = selectedModel === currentModel ? 'stay' : 'switch';
+    selectedReasoningEffort = normalizeReasoningEffort(providerPolicy.defaultReasoningEffort);
+    action = selectedModel === currentModel && selectedReasoningEffort === currentReasoningEffort ? 'stay' : 'switch';
     recommendationSource = 'policy-default';
     reasonCodes.push('current-model-not-in-policy');
   } else if (pressureSummary.performancePressure) {
-    const desiredModel = strongestCandidate?.model ?? currentModel;
-    if (desiredModel !== currentModel) {
+    const desiredCandidate = strongestCandidate ?? getCandidateByIdentity(providerPolicy.candidateModels, currentModel, currentReasoningEffort);
+    const desiredModel = desiredCandidate?.model ?? currentModel;
+    const desiredReasoningEffort =
+      normalizeReasoningEffort(desiredCandidate?.reasoningEffort) ?? currentReasoningEffort;
+    if (desiredModel !== currentModel || desiredReasoningEffort !== currentReasoningEffort) {
       if (
         previousCooldownRemaining > 0 &&
         policy.stability.performancePressureOverridesCooldown !== true
       ) {
         selectedModel = currentModel;
+        selectedReasoningEffort = currentReasoningEffort;
         action = 'hold';
         recommendationSource = 'cooldown-hold';
         reasonCodes.push('cooldown-active');
       } else if (compareConfidence(confidence, policy.evidenceWindow.confidenceThreshold) < 0) {
         selectedModel = currentModel;
+        selectedReasoningEffort = currentReasoningEffort;
         action = 'hold';
         recommendationSource = 'insufficient-evidence';
         reasonCodes.push('insufficient-confidence');
       } else {
         selectedModel = desiredModel;
+        selectedReasoningEffort = desiredReasoningEffort;
         action = 'switch';
         recommendationSource = 'telemetry-escalation';
         reasonCodes.push(...pressureSummary.performancePressureReasons);
@@ -395,7 +458,11 @@ function evaluateProviderRecommendation({ providerPolicy, costRollupPayload, thr
       reasonCodes.push('already-strongest-model');
     }
   } else {
-    if (cheapestCandidate && cheapestCandidate.model !== currentModel && policy.stability.holdCurrentOnCostOnly && providerPolicy.costOnlySwitchAllowed !== true) {
+    const cheaperIdentityAvailable =
+      cheapestCandidate &&
+      (cheapestCandidate.model !== currentModel ||
+        normalizeReasoningEffort(cheapestCandidate.reasoningEffort) !== currentReasoningEffort);
+    if (cheaperIdentityAvailable && policy.stability.holdCurrentOnCostOnly && providerPolicy.costOnlySwitchAllowed !== true) {
       reasonCodes.push('cost-only-not-enough');
     } else {
       reasonCodes.push('stable-current-model');
@@ -415,28 +482,36 @@ function evaluateProviderRecommendation({ providerPolicy, costRollupPayload, thr
   }
 
   const cooldownRemainingReports =
-    selectedModel !== currentModel
+    selectedModel !== currentModel || selectedReasoningEffort !== currentReasoningEffort
       ? policy.stability.cooldownReports
       : Math.max(previousCooldownRemaining - 1, 0);
 
   const candidateScores = providerPolicy.candidateModels.map((candidate) => ({
     model: candidate.model,
+    reasoningEffort: normalizeReasoningEffort(candidate.reasoningEffort),
     strength: candidate.strength,
     costTier: candidate.costTier,
     notes: candidate.notes,
-    score: buildCandidateScore(candidate, { pressureSummary, currentModel, costTurnSummary })
+    score: buildCandidateScore(candidate, { pressureSummary, currentModel, currentReasoningEffort })
   }));
 
-  const currentScore = candidateScores.find((candidate) => candidate.model === currentModel)?.score ?? null;
-  const selectedScore = candidateScores.find((candidate) => candidate.model === selectedModel)?.score ?? null;
+  const currentScore = candidateScores.find((candidate) =>
+    candidate.model === currentModel &&
+    normalizeReasoningEffort(candidate.reasoningEffort) === currentReasoningEffort
+  )?.score ?? null;
+  const selectedScore = candidateScores.find((candidate) =>
+    candidate.model === selectedModel &&
+    normalizeReasoningEffort(candidate.reasoningEffort) === selectedReasoningEffort
+  )?.score ?? null;
   if (
-    selectedModel !== currentModel &&
+    (selectedModel !== currentModel || selectedReasoningEffort !== currentReasoningEffort) &&
     recommendationSource === 'telemetry-escalation' &&
     currentScore != null &&
     selectedScore != null &&
     Math.abs(selectedScore - currentScore) <= policy.stability.hysteresisScoreDelta
   ) {
     selectedModel = currentModel;
+    selectedReasoningEffort = currentReasoningEffort;
     action = 'hold';
     recommendationSource = 'cooldown-hold';
     reasonCodes.push('hysteresis-hold');
@@ -447,7 +522,9 @@ function evaluateProviderRecommendation({ providerPolicy, costRollupPayload, thr
     providerKind: providerPolicy.providerKind,
     agentRole: providerPolicy.agentRole,
     currentModel,
+    currentReasoningEffort,
     selectedModel,
+    selectedReasoningEffort,
     action,
     recommendationSource,
     mode: policy.mode,
@@ -456,6 +533,7 @@ function evaluateProviderRecommendation({ providerPolicy, costRollupPayload, thr
     evidence: {
       turnCount: costTurnSummary.turnCount,
       observedModels: costTurnSummary.observedModels,
+      observedReasoningEfforts: costTurnSummary.observedReasoningEfforts,
       totalUsd: costTurnSummary.totalUsd,
       averageUsdPerTurn: costTurnSummary.averageUsdPerTurn,
       throughputStatus: pressureSummary.throughputStatus,
@@ -475,6 +553,7 @@ function evaluateProviderRecommendation({ providerPolicy, costRollupPayload, thr
     stability: {
       cooldownRemainingReports,
       previousSelectedModel: normalizeText(previousProvider?.selectedModel) || null,
+      previousSelectedReasoningEffort: normalizeReasoningEffort(previousProvider?.selectedReasoningEffort),
       previousAction: normalizeText(previousProvider?.action) || null,
       previousGeneratedAt: normalizeText(previousReport?.generatedAt) || null
     }
@@ -558,13 +637,15 @@ export function buildLiveAgentModelSelectionProjection({ policy, report, selecte
     generatedAt: normalizeText(report?.generatedAt) || null,
     blockerCount: toNonNegativeInteger(report?.summary?.blockerCount) ?? 0,
     selectedProviderId: normalizeText(selectedProviderId) || null,
-    currentProvider: currentProvider
+        currentProvider: currentProvider
       ? {
           providerId: currentProvider.providerId,
           providerKind: currentProvider.providerKind,
           agentRole: currentProvider.agentRole,
           currentModel: currentProvider.currentModel,
+          currentReasoningEffort: currentProvider.currentReasoningEffort ?? null,
           selectedModel: currentProvider.selectedModel,
+          selectedReasoningEffort: currentProvider.selectedReasoningEffort ?? null,
           action: currentProvider.action,
           confidence: currentProvider.confidence,
           reasonCodes: uniqueStrings(currentProvider.reasonCodes)
@@ -573,7 +654,9 @@ export function buildLiveAgentModelSelectionProjection({ policy, report, selecte
     providers: ensureArray(report?.providers).map((provider) => ({
       providerId: provider.providerId,
       currentModel: provider.currentModel,
+      currentReasoningEffort: provider.currentReasoningEffort ?? null,
       selectedModel: provider.selectedModel,
+      selectedReasoningEffort: provider.selectedReasoningEffort ?? null,
       action: provider.action,
       confidence: provider.confidence,
       reasonCodes: uniqueStrings(provider.reasonCodes)

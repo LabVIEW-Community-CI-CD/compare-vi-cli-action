@@ -9,7 +9,9 @@
   },
   "model": {
     "requested": "gpt-5.4",
-    "effective": "gpt-5.4"
+    "effective": "gpt-5.4",
+    "requestedReasoningEffort": "medium",
+    "effectiveReasoningEffort": "medium"
   },
   "usage": {
     "inputTokens": 1200,

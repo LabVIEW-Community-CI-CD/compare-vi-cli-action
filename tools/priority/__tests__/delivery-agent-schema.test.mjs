@@ -1274,7 +1274,9 @@ test('persistDeliveryAgentRuntimeState projects live-agent model selection into 
       providerKind: 'local-codex',
       agentRole: 'live',
       currentModel: 'gpt-5.4',
+      currentReasoningEffort: 'xhigh',
       selectedModel: 'gpt-5.4',
+      selectedReasoningEffort: 'xhigh',
       action: 'stay',
       confidence: 'medium',
       reasonCodes: ['stable-current-model']
@@ -1283,7 +1285,9 @@ test('persistDeliveryAgentRuntimeState projects live-agent model selection into 
       {
         providerId: 'local-codex',
         currentModel: 'gpt-5.4',
+        currentReasoningEffort: 'xhigh',
         selectedModel: 'gpt-5.4',
+        selectedReasoningEffort: 'xhigh',
         action: 'stay',
         confidence: 'medium',
         reasonCodes: ['stable-current-model']
@@ -1388,6 +1392,8 @@ test('persistDeliveryAgentRuntimeState projects live-agent model selection into 
 
   assert.equal(result.payload.liveAgentModelSelection.currentProvider.providerId, 'local-codex');
   assert.equal(result.payload.liveAgentModelSelection.currentProvider.selectedModel, 'gpt-5.4');
+  assert.equal(result.payload.liveAgentModelSelection.currentProvider.selectedReasoningEffort, 'xhigh');
   assert.equal(result.payload.activeLane.liveAgentModelSelection.currentProvider.providerId, 'local-codex');
   assert.equal(result.payload.activeLane.liveAgentModelSelection.currentProvider.selectedModel, 'gpt-5.4');
+  assert.equal(result.payload.activeLane.liveAgentModelSelection.currentProvider.selectedReasoningEffort, 'xhigh');
 });

@@ -29,6 +29,7 @@ The ledger already records the fields most useful for cost attribution:
 - `providerId`
 - `requestedModel`
 - `effectiveModel`
+- provider/runtime effort metadata when the source receipt captures it
 - `inputTokens`
 - `cachedInputTokens`
 - `outputTokens`
@@ -210,6 +211,8 @@ The smallest defensible first implementation is:
    - `rateCardSource`
    - `usageSourceReceiptPath`
    - `providerModelSourceReceiptPath`
+   - `requestedReasoningEffort`
+   - `effectiveReasoningEffort`
 3. generate estimates from:
    - local-collab ledger receipts
    - provider receipts such as Copilot CLI review receipts
@@ -232,6 +235,7 @@ The smallest defensible first implementation is:
 - schema: `docs/schemas/agent-cost-turn-v1.schema.json`
 - schema: `docs/schemas/agent-cost-rollup-v1.schema.json`
 - helper: `tools/priority/agent-cost-invoice-turn.mjs`
+- helper: `tools/priority/agent-cost-turn.mjs`
 - helper: `tools/priority/agent-cost-rollup.mjs`
 - sample fixtures:
   - `tools/priority/__fixtures__/agent-cost-rollup/live-turn-estimated.json`
@@ -249,14 +253,17 @@ may carry that path under operator control for later reconciliation.
 Use the helpers like this:
 
 - `node tools/priority/agent-cost-invoice-turn.mjs ...`
+- `node tools/priority/agent-cost-turn.mjs ...`
 - `node tools/priority/agent-cost-rollup.mjs --turn-report <path> --invoice-turn <path>`
 - `node tools/npm/run-script.mjs priority:cost:invoice-turn -- ...`
+- `node tools/npm/run-script.mjs priority:cost:turn -- ...`
 - `node tools/npm/run-script.mjs priority:cost:rollup -- ...`
 
 This is the right first boundary because it gives future agents:
 
 - a real accounting epoch (`invoice turn`)
 - per-turn and rollup receipts with explicit provenance
+- a stable place to record model reasoning-effort tiers such as `xhigh`
 - a reconciliation point for the next operator-provided invoice
 
 It is still not exact billing truth. Until provider exports are available, use

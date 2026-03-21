@@ -202,7 +202,7 @@ export function buildCodexTurnPrompt({ taskPacket, repoRoot, workDir }) {
     `- Max minutes: ${Number.isInteger(turnBudget.maxMinutes) ? turnBudget.maxMinutes : 20}`,
     `- Max tool calls: ${Number.isInteger(turnBudget.maxToolCalls) ? turnBudget.maxToolCalls : 12}`,
     `- Model recommendation mode: ${normalizeText(liveAgentModelSelection?.mode) || 'not-observed'}`,
-    `- Provider model recommendation: ${currentProviderSelection ? `${normalizeText(currentProviderSelection.selectedModel) || 'none'} (current=${normalizeText(currentProviderSelection.currentModel) || 'unknown'}, action=${normalizeText(currentProviderSelection.action) || 'stay'}, confidence=${normalizeText(currentProviderSelection.confidence) || 'low'})` : 'not-observed'}`,
+    `- Provider model recommendation: ${currentProviderSelection ? `${normalizeText(currentProviderSelection.selectedModel) || 'none'}${normalizeText(currentProviderSelection.selectedReasoningEffort) ? `/${normalizeText(currentProviderSelection.selectedReasoningEffort)}` : ''} (current=${normalizeText(currentProviderSelection.currentModel) || 'unknown'}${normalizeText(currentProviderSelection.currentReasoningEffort) ? `/${normalizeText(currentProviderSelection.currentReasoningEffort)}` : ''}, action=${normalizeText(currentProviderSelection.action) || 'stay'}, confidence=${normalizeText(currentProviderSelection.confidence) || 'low'})` : 'not-observed'}`,
     `- Recommendation reasons: ${recommendationReasonCodes.length > 0 ? recommendationReasonCodes.join(', ') : 'none'}`,
     '',
     'Hard rules:',

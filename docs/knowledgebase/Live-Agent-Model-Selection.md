@@ -21,7 +21,9 @@ switching models implicitly inside the daemon.
 The report records, per provider:
 
 - current model
+- current reasoning-effort tier
 - selected model
+- selected reasoning-effort tier
 - action
 - confidence
 - exact reason codes
@@ -48,6 +50,7 @@ current unattended delivery behavior.
 - default mode is `recommend-only`
 - `enforce` may exist in policy, but it stays disabled through RC
 - cost alone is not enough to switch
+- reasoning effort is part of model identity for recommendation purposes
 - queue pressure, throughput pressure, and outcome pressure can justify a
   stronger recommendation
 - hysteresis and cooldowns prevent model thrash

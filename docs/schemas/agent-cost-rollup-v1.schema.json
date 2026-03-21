@@ -83,6 +83,8 @@
         "executionPlane",
         "requestedModel",
         "effectiveModel",
+        "requestedReasoningEffort",
+        "effectiveReasoningEffort",
         "usageUnitKind",
         "usageUnitCount",
         "inputTokens",
@@ -115,6 +117,8 @@
         "executionPlane": { "$ref": "#/$defs/nullableString" },
         "requestedModel": { "$ref": "#/$defs/nullableString" },
         "effectiveModel": { "$ref": "#/$defs/nullableString" },
+        "requestedReasoningEffort": { "$ref": "#/$defs/nullableString" },
+        "effectiveReasoningEffort": { "$ref": "#/$defs/nullableString" },
         "usageUnitKind": { "$ref": "#/$defs/nullableString" },
         "usageUnitCount": { "type": ["number", "integer", "null"], "minimum": 0 },
         "inputTokens": { "type": "integer", "minimum": 0 },
@@ -229,12 +233,13 @@
         "provenance": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "invoiceTurn"],
+          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "reasoningEfforts", "invoiceTurn"],
           "properties": {
             "sessionIds": { "type": "array", "items": { "type": "string" } },
             "issueNumbers": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
             "laneIds": { "type": "array", "items": { "type": "string" } },
             "repositories": { "type": "array", "items": { "type": "string" } },
+            "reasoningEfforts": { "type": "array", "items": { "type": "string" } },
             "rateCards": {
               "type": "array",
               "items": {
@@ -296,10 +301,11 @@
     "breakdown": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["byProvider", "byModel", "byIssue", "byLane", "byAgentRole", "byRepository"],
+      "required": ["byProvider", "byModel", "byReasoningEffort", "byIssue", "byLane", "byAgentRole", "byRepository"],
       "properties": {
         "byProvider": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
         "byModel": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
+        "byReasoningEffort": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
         "byIssue": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
         "byLane": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },
         "byAgentRole": { "type": "array", "items": { "$ref": "#/$defs/breakdownEntry" } },

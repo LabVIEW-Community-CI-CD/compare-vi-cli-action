@@ -31,4 +31,5 @@ test('live-agent model selection documentation and manifest point at the checked
   assert.match(guide, /delivery-agent-state\.json/);
   assert.match(guide, /runtime-delivery-task-packet-v1\.schema\.json/);
   assert.match(guide, /cost alone is not enough to switch/i);
+  assert.match(guide, /reasoning-effort/i);
 });

@@ -28,6 +28,10 @@
     "nullableString": {
       "type": ["string", "null"]
     },
+    "nullableReasoningEffort": {
+      "type": ["string", "null"],
+      "enum": ["low", "medium", "high", "xhigh", null]
+    },
     "provider": {
       "type": "object",
       "additionalProperties": false,
@@ -45,7 +49,9 @@
       "required": ["requested", "effective"],
       "properties": {
         "requested": { "type": "string", "minLength": 1 },
-        "effective": { "type": "string", "minLength": 1 }
+        "effective": { "type": "string", "minLength": 1 },
+        "requestedReasoningEffort": { "$ref": "#/$defs/nullableReasoningEffort" },
+        "effectiveReasoningEffort": { "$ref": "#/$defs/nullableReasoningEffort" }
       }
     },
     "usage": {
