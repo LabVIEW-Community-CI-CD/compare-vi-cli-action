@@ -12,13 +12,21 @@
     "inputs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["turnReportPaths", "invoiceTurnPaths", "selectedInvoiceTurnId", "explicitInvoiceTurnId"],
+      "required": ["turnReportPaths", "invoiceTurnPaths", "usageExportPaths", "accountBalancePaths", "selectedInvoiceTurnId", "explicitInvoiceTurnId"],
       "properties": {
         "turnReportPaths": {
           "type": "array",
           "items": { "$ref": "#/$defs/inputRef" }
         },
         "invoiceTurnPaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inputRef" }
+        },
+        "usageExportPaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inputRef" }
+        },
+        "accountBalancePaths": {
           "type": "array",
           "items": { "$ref": "#/$defs/inputRef" }
         },
@@ -257,6 +265,66 @@
         "reason": { "$ref": "#/$defs/nullableString" }
       }
     },
+    "usageExportSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePath",
+        "generatedAt",
+        "startDate",
+        "endDate",
+        "rowCount",
+        "usageType",
+        "usageCredits",
+        "usageQuantity",
+        "sourceKind",
+        "sourcePathEvidence",
+        "operatorNote"
+      ],
+      "properties": {
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "generatedAt": { "$ref": "#/$defs/nullableString" },
+        "startDate": { "$ref": "#/$defs/nullableString" },
+        "endDate": { "$ref": "#/$defs/nullableString" },
+        "rowCount": { "type": ["integer", "null"], "minimum": 0 },
+        "usageType": { "$ref": "#/$defs/nullableString" },
+        "usageCredits": { "type": "number", "minimum": 0 },
+        "usageQuantity": { "type": "number", "minimum": 0 },
+        "sourceKind": { "$ref": "#/$defs/nullableString" },
+        "sourcePathEvidence": { "$ref": "#/$defs/nullableString" },
+        "operatorNote": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "accountBalanceSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePath",
+        "generatedAt",
+        "snapshotAt",
+        "planName",
+        "renewsAt",
+        "totalCredits",
+        "usedCredits",
+        "remainingCredits",
+        "sourceKind",
+        "sourcePathEvidence",
+        "operatorNote"
+      ],
+      "properties": {
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "generatedAt": { "$ref": "#/$defs/nullableString" },
+        "snapshotAt": { "$ref": "#/$defs/nullableString" },
+        "planName": { "$ref": "#/$defs/nullableString" },
+        "renewsAt": { "$ref": "#/$defs/nullableString" },
+        "totalCredits": { "type": "number", "minimum": 0 },
+        "usedCredits": { "type": "number", "minimum": 0 },
+        "remainingCredits": { "type": "number", "minimum": 0 },
+        "sourceKind": { "$ref": "#/$defs/nullableString" },
+        "sourcePathEvidence": { "$ref": "#/$defs/nullableString" },
+        "operatorNote": { "$ref": "#/$defs/nullableString" }
+      }
+    },
     "summary": {
       "type": "object",
       "additionalProperties": false,
@@ -299,7 +367,13 @@
             "actualCreditsConsumed",
             "heuristicUsdDelta",
             "heuristicUsdDeltaRatio",
-            "heuristicCreditsDelta"
+            "heuristicCreditsDelta",
+            "usageExportWindowCount",
+            "usageExportCreditsReported",
+            "usageExportQuantityReported",
+            "accountBalanceTotalCredits",
+            "accountBalanceUsedCredits",
+            "accountBalanceRemainingCredits"
           ],
           "properties": {
             "totalTurns": { "type": "integer", "minimum": 0 },
@@ -325,13 +399,19 @@
             "actualCreditsConsumed": { "type": ["number", "null"], "minimum": 0 },
             "heuristicUsdDelta": { "type": ["number", "null"] },
             "heuristicUsdDeltaRatio": { "type": ["number", "null"] },
-            "heuristicCreditsDelta": { "type": ["number", "null"] }
+            "heuristicCreditsDelta": { "type": ["number", "null"] },
+            "usageExportWindowCount": { "type": "integer", "minimum": 0 },
+            "usageExportCreditsReported": { "type": "number", "minimum": 0 },
+            "usageExportQuantityReported": { "type": "number", "minimum": 0 },
+            "accountBalanceTotalCredits": { "type": ["number", "null"], "minimum": 0 },
+            "accountBalanceUsedCredits": { "type": ["number", "null"], "minimum": 0 },
+            "accountBalanceRemainingCredits": { "type": ["number", "null"], "minimum": 0 }
           }
         },
         "provenance": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "reasoningEfforts", "steeringKinds", "steeringSources", "invoiceTurn", "invoiceTurnSelection", "invoiceTurns"],
+          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "reasoningEfforts", "steeringKinds", "steeringSources", "invoiceTurn", "invoiceTurnSelection", "invoiceTurns", "usageExports", "accountBalance"],
           "properties": {
             "sessionIds": { "type": "array", "items": { "type": "string" } },
             "issueNumbers": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
@@ -364,6 +444,16 @@
             "invoiceTurns": {
               "type": "array",
               "items": { "$ref": "#/$defs/invoiceTurnSummary" }
+            },
+            "usageExports": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/usageExportSummary" }
+            },
+            "accountBalance": {
+              "anyOf": [
+                { "$ref": "#/$defs/accountBalanceSummary" },
+                { "type": "null" }
+              ]
             }
           }
         }
