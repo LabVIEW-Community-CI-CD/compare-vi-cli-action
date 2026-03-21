@@ -66,6 +66,11 @@ with a machine-readable `pending` snapshot for the iteration. The hosted
 verification run or a manual rerun can then overwrite the same file with the
 final `pass`/`fail` result.
 
+The canonical hosted overwrite path is `.github/workflows/downstream-onboarding-feedback.yml`.
+When that workflow evaluates the policy target repository and policy consumer rail
+branch, it refreshes the same report with the hosted run URL, status, and
+duration so the reserved lane does not remain stale between local delivery turns.
+
 Generate the report with:
 
 ```powershell

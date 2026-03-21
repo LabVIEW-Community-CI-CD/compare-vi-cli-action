@@ -31,9 +31,12 @@ test('issue milestone hygiene and downstream onboarding implement the hosted rep
   assert.match(downstreamWorkflow, /GITHUB_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
   assert.match(downstreamWorkflow, /GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
   assert.match(downstreamWorkflow, /Append onboarding feedback summary/);
+  assert.match(downstreamWorkflow, /Refresh template-agent verification report/);
+  assert.match(downstreamWorkflow, /template-agent-verification-report-v1\.schema\.json/);
   assert.match(
     downstreamWorkflow,
-    /if:\s+\$\{\{\s*always\(\)\s*&&\s*hashFiles\('tests\/results\/_agent\/onboarding\/\*\.json'\)\s*!=\s*''\s*\}\}/
+    /hashFiles\('tests\/results\/_agent\/onboarding\/\*\.json'\)\s*!=\s*''/
   );
+  assert.match(downstreamWorkflow, /hashFiles\('tests\/results\/_agent\/promotion\/template-agent-verification-report\.json'\)\s*!=\s*''/);
   assert.match(downstreamWorkflow, /if-no-files-found:\s+error/);
 });
