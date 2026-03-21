@@ -15,10 +15,15 @@ function readText(relativePath) {
 test('agent cost telemetry knowledgebase points at the checked-in precursor surfaces instead of hidden billing assumptions', () => {
   const manifest = JSON.parse(readText('docs/documentation-manifest.json'));
   const docsEntry = manifest.entries.find((entry) => entry.name === 'Docs Tree');
+  const contractEntry = manifest.entries.find((entry) => entry.name === 'Agent Cost Telemetry Contracts');
   const guide = readText('docs/knowledgebase/Agent-Cost-Telemetry-Surfaces.md');
 
   assert.ok(docsEntry);
+  assert.ok(contractEntry);
   assert.ok(docsEntry.files.includes('docs/knowledgebase/Agent-Cost-Telemetry-Surfaces.md'));
+  assert.ok(contractEntry.files.includes('docs/schemas/agent-cost-invoice-turn-v1.schema.json'));
+  assert.ok(contractEntry.files.includes('tools/priority/agent-cost-invoice-turn.mjs'));
+  assert.ok(contractEntry.files.includes('tools/priority/agent-cost-rollup.mjs'));
   assert.match(guide, /tools\/local-collab\/ledger\/local-review-ledger\.mjs/);
   assert.match(guide, /tests\/results\/_agent\/local-collab\/ledger\/receipts\/<phase>\/<head-sha>\.json/);
   assert.match(guide, /requestedModel/);
@@ -41,4 +46,9 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.match(guide, /exact token billing/);
   assert.match(guide, /amountKind = exact \| estimated/);
   assert.match(guide, /rateCardSource/);
+  assert.match(guide, /First Implemented Invoice-Turn Slice/);
+  assert.match(guide, /docs\/schemas\/agent-cost-invoice-turn-v1\.schema\.json/);
+  assert.match(guide, /tools\/priority\/agent-cost-invoice-turn\.mjs/);
+  assert.match(guide, /priority:cost:invoice-turn/);
+  assert.match(guide, /priority:cost:rollup/);
 });

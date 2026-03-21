@@ -1,0 +1,53 @@
+{
+  "schema": "priority/agent-cost-turn@v1",
+  "generatedAt": "2026-03-21T18:40:00.000Z",
+  "provider": {
+    "id": "copilot-cli",
+    "kind": "remote-copilot-lane",
+    "runtime": "copilot-cli",
+    "executionPlane": "hosted-github-workflow"
+  },
+  "model": {
+    "requested": "gpt-5.4",
+    "effective": "gpt-5.4"
+  },
+  "usage": {
+    "inputTokens": 1200,
+    "cachedInputTokens": 0,
+    "outputTokens": 260,
+    "totalTokens": 1460,
+    "usageUnitKind": "review-turn",
+    "usageUnitCount": 1
+  },
+  "billing": {
+    "exactness": "exact",
+    "currency": "USD",
+    "amountUsd": 0.0425,
+    "rateCard": {
+      "id": "github-copilot-export-2026-03-21",
+      "source": "gh://copilot/billing-export/2026-03-21",
+      "retrievedAt": "2026-03-21T18:41:00.000Z",
+      "pricingBasis": "vendor-export",
+      "inputUsdPer1kTokens": null,
+      "cachedInputUsdPer1kTokens": null,
+      "outputUsdPer1kTokens": null,
+      "usageUnitUsd": null
+    }
+  },
+  "context": {
+    "repository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
+    "issueNumber": 1,
+    "laneId": "fork-standing-priority/org-template-verify",
+    "laneBranch": "issue/origin-1-template-verify",
+    "sessionId": "session-bg-002",
+    "turnId": "turn-bg-002",
+    "workerSlotId": "worker-slot-4",
+    "agentRole": "background"
+  },
+  "provenance": {
+    "sourceSchema": "priority/copilot-cli-review@v1",
+    "sourceReceiptPath": "tests/results/_hooks/pre-push-copilot-cli-review.json",
+    "sourceReportPath": "tests/results/_agent/runtime/worker-slot-4.json",
+    "usageObservedAt": "2026-03-21T18:40:30.000Z"
+  }
+}

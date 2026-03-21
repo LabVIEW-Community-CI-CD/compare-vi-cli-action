@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/agent-cost-invoice-turn-v1.schema.json",
+  "title": "Agent Cost Invoice Turn v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "invoiceTurnId",
+    "invoiceId",
+    "billingPeriod",
+    "credits",
+    "billing",
+    "provenance"
+  ],
+  "properties": {
+    "schema": { "const": "priority/agent-cost-invoice-turn@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "invoiceTurnId": { "type": "string", "minLength": 1 },
+    "invoiceId": { "type": "string", "minLength": 1 },
+    "billingPeriod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["openedAt", "closedAt"],
+      "properties": {
+        "openedAt": { "type": "string", "format": "date-time" },
+        "closedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "credits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["purchased", "unitPriceUsd"],
+      "properties": {
+        "purchased": { "type": "number", "minimum": 0 },
+        "unitPriceUsd": { "type": "number", "minimum": 0 }
+      }
+    },
+    "billing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency", "prepaidUsd", "pricingBasis"],
+      "properties": {
+        "currency": { "const": "USD" },
+        "prepaidUsd": { "type": "number", "minimum": 0 },
+        "pricingBasis": { "enum": ["prepaid-credit", "usage-billed", "hybrid"] }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceKind", "sourcePath", "operatorNote"],
+      "properties": {
+        "sourceKind": { "enum": ["operator-invoice", "billing-export", "manual-baseline"] },
+        "sourcePath": { "type": ["string", "null"] },
+        "operatorNote": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

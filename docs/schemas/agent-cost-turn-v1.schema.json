@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/agent-cost-turn-v1.schema.json",
+  "title": "Agent Cost Turn Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "provider",
+    "model",
+    "usage",
+    "billing",
+    "context",
+    "provenance"
+  ],
+  "properties": {
+    "schema": { "const": "priority/agent-cost-turn@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "provider": { "$ref": "#/$defs/provider" },
+    "model": { "$ref": "#/$defs/model" },
+    "usage": { "$ref": "#/$defs/usage" },
+    "billing": { "$ref": "#/$defs/billing" },
+    "context": { "$ref": "#/$defs/context" },
+    "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "runtime", "executionPlane"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "runtime": { "type": "string", "minLength": 1 },
+        "executionPlane": { "type": "string", "minLength": 1 }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested", "effective"],
+      "properties": {
+        "requested": { "type": "string", "minLength": 1 },
+        "effective": { "type": "string", "minLength": 1 }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputTokens", "cachedInputTokens", "outputTokens", "totalTokens", "usageUnitKind", "usageUnitCount"],
+      "properties": {
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "cachedInputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
+        "totalTokens": { "type": "integer", "minimum": 0 },
+        "usageUnitKind": { "$ref": "#/$defs/nullableString" },
+        "usageUnitCount": { "type": ["number", "integer", "null"], "minimum": 0 }
+      }
+    },
+    "rateCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "retrievedAt", "pricingBasis"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "retrievedAt": { "type": "string", "format": "date-time" },
+        "pricingBasis": { "type": "string", "minLength": 1 },
+        "inputUsdPer1kTokens": { "type": ["number", "null"], "minimum": 0 },
+        "cachedInputUsdPer1kTokens": { "type": ["number", "null"], "minimum": 0 },
+        "outputUsdPer1kTokens": { "type": ["number", "null"], "minimum": 0 },
+        "usageUnitUsd": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "billing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exactness", "currency", "amountUsd", "rateCard"],
+      "properties": {
+        "exactness": { "type": "string", "enum": ["exact", "estimated"] },
+        "currency": { "const": "USD" },
+        "amountUsd": { "type": ["number", "null"], "minimum": 0 },
+        "rateCard": {
+          "anyOf": [
+            { "$ref": "#/$defs/rateCard" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "issueNumber", "laneId", "laneBranch", "sessionId", "turnId", "workerSlotId", "agentRole"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "issueNumber": { "type": "integer", "minimum": 0 },
+        "laneId": { "type": "string", "minLength": 1 },
+        "laneBranch": { "type": "string", "minLength": 1 },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "turnId": { "type": "string", "minLength": 1 },
+        "workerSlotId": { "$ref": "#/$defs/nullableString" },
+        "agentRole": { "type": "string", "enum": ["live", "background"] }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceSchema", "sourceReceiptPath", "sourceReportPath", "usageObservedAt"],
+      "properties": {
+        "sourceSchema": { "$ref": "#/$defs/nullableString" },
+        "sourceReceiptPath": { "$ref": "#/$defs/nullableString" },
+        "sourceReportPath": { "$ref": "#/$defs/nullableString" },
+        "usageObservedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
