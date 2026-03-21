@@ -115,11 +115,11 @@ test('copilot-review-gate auth falls back to the standard host token file path',
   const { getAuthToken, listGitHubTokenFileCandidates, resolveAuthToken } = await loadModule();
 
   assert.deepEqual(
-    listGitHubTokenFileCandidates({}, 'win32'),
+    listGitHubTokenFileCandidates({}, { platform: 'win32' }),
     ['C:\\github_token.txt'],
   );
   assert.deepEqual(
-    listGitHubTokenFileCandidates({}, 'linux'),
+    listGitHubTokenFileCandidates({}, { platform: 'linux' }),
     ['/mnt/c/github_token.txt'],
   );
 

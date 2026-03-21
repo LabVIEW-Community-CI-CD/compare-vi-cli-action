@@ -10,6 +10,7 @@ import {
   resolveProjectedRequiredStatusChecks,
   resolveProjectedBranchClassId
 } from './lib/branch-required-check-projection.mjs';
+import { resolveGitHubAuthTokenCandidates } from './lib/github-auth-token.mjs';
 
 const manifestPath = new URL('./policy.json', import.meta.url);
 const branchRequiredChecksPath = new URL('../policy/branch-required-checks.json', import.meta.url);
@@ -325,46 +326,16 @@ async function resolveToken(env = process.env, { readFileFn = readFile, accessFn
 
 async function resolveTokenCandidates(
   env = process.env,
-  { readFileFn = readFile, accessFn = access } = {}
+  { readFileFn = readFile, accessFn = access, platform = process.platform } = {}
 ) {
-  const candidates = [];
-  const seen = new Set();
-  const addCandidate = (tokenValue, source) => {
-    if (!tokenValue || !tokenValue.trim()) {
-      return;
-    }
-    const token = tokenValue.trim();
-    const key = `${source}:${token}`;
-    if (seen.has(key)) {
-      return;
-    }
-    candidates.push({ token, source });
-    seen.add(key);
-  };
-
-  addCandidate(env.GH_TOKEN, 'GH_TOKEN');
-  addCandidate(env.GITHUB_TOKEN, 'GITHUB_TOKEN');
-  addCandidate(env.GH_ENTERPRISE_TOKEN, 'GH_ENTERPRISE_TOKEN');
-
-  const fileCandidates = [env.GH_TOKEN_FILE];
-  if (process.platform === 'win32') {
-    fileCandidates.push('C:\\github_token.txt');
-  }
-
-  for (const candidate of fileCandidates) {
-    if (!candidate) {
-      continue;
-    }
-    try {
-      await accessFn(candidate);
-      const fileToken = (await readFileFn(candidate, 'utf8')).trim();
-      addCandidate(fileToken, `file:${candidate}`);
-    } catch {
-      // ignore missing/invalid file
-    }
-  }
-
-  return candidates;
+  return resolveGitHubAuthTokenCandidates(env, {
+    readFileFn,
+    accessFn,
+    platform,
+    extraEnvCandidates: [
+      { name: 'GH_ENTERPRISE_TOKEN', source: 'gh-enterprise-token-env' }
+    ]
+  });
 }
 
 function isUnauthorizedAuthError(error) {
@@ -1507,7 +1478,7 @@ export async function run({
     report.forkRun = forkRun;
     const tokenCandidates = await resolveTokenCandidates(env);
     if (tokenCandidates.length === 0) {
-      throw new Error('GitHub token not found. Set GITHUB_TOKEN, GH_TOKEN, or GH_TOKEN_FILE.');
+      throw new Error('GitHub token not found. Set GITHUB_TOKEN, GH_TOKEN, GH_TOKEN_FILE, or GITHUB_TOKEN_FILE.');
     }
     let activeTokenIndex = 0;
     let activeTokenResult = tokenCandidates[activeTokenIndex];
@@ -1819,7 +1790,8 @@ export const __test = Object.freeze({
   selectRulesetIdentityCandidate,
   projectManifestRequiredStatusChecks,
   resolveProjectedRequiredStatusChecks,
-  resolveProjectedBranchClassId
+  resolveProjectedBranchClassId,
+  resolveTokenCandidates
 });
 
 const modulePath = path.resolve(fileURLToPath(import.meta.url));

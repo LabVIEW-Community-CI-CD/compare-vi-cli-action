@@ -4,6 +4,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
+import {
+  listGitHubTokenFileCandidates,
+  resolveGitHubAuthToken,
+} from './lib/github-auth-token.mjs';
+
+export { listGitHubTokenFileCandidates };
 
 export const COPILOT_REVIEW_GATE_SCHEMA = 'priority/copilot-review-gate@v1';
 export const DEFAULT_REPORT_PATH = path.join(
@@ -388,79 +394,11 @@ export function parseCliArgs(argv = process.argv) {
   return options;
 }
 
-function readGitHubTokenFile(filePath, readFileSyncFn = readFileSync) {
-  const normalizedPath = normalizeText(filePath);
-  if (!normalizedPath) {
-    return null;
-  }
-
-  try {
-    return normalizeText(readFileSyncFn(normalizedPath, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-function listGitHubTokenFileCandidateDescriptors(env = process.env, platform = process.platform) {
-  const candidates = [];
-  const pushCandidate = (pathValue, source) => {
-    const normalizedPath = normalizeText(pathValue);
-    if (!normalizedPath) {
-      return;
-    }
-    if (candidates.some((candidate) => candidate.path === normalizedPath)) {
-      return;
-    }
-    candidates.push({
-      path: normalizedPath,
-      source,
-    });
-  };
-
-  pushCandidate(env.GH_TOKEN_FILE, 'gh-token-file');
-  pushCandidate(env.GITHUB_TOKEN_FILE, 'github-token-file');
-  pushCandidate(platform === 'win32' ? 'C:\\github_token.txt' : '/mnt/c/github_token.txt', 'standard-host-token-file');
-  return candidates;
-}
-
-export function listGitHubTokenFileCandidates(env = process.env, platform = process.platform) {
-  return listGitHubTokenFileCandidateDescriptors(env, platform).map((candidate) => candidate.path);
-}
-
 export function resolveAuthToken(
   env = process.env,
   { readFileSyncFn = readFileSync, platform = process.platform } = {},
 ) {
-  const ghToken = normalizeText(env.GH_TOKEN);
-  if (ghToken) {
-    return {
-      token: ghToken,
-      source: 'gh-token-env',
-    };
-  }
-
-  const githubToken = normalizeText(env.GITHUB_TOKEN);
-  if (githubToken) {
-    return {
-      token: githubToken,
-      source: 'github-token-env',
-    };
-  }
-
-  for (const candidate of listGitHubTokenFileCandidateDescriptors(env, platform)) {
-    const token = readGitHubTokenFile(candidate.path, readFileSyncFn);
-    if (token) {
-      return {
-        token,
-        source: candidate.source,
-      };
-    }
-  }
-
-  return {
-    token: null,
-    source: null,
-  };
+  return resolveGitHubAuthToken(env, { readFileSyncFn, platform });
 }
 
 export function getAuthToken(env = process.env, { readFileSyncFn = readFileSync, platform = process.platform } = {}) {

@@ -1979,8 +1979,8 @@ test('priority:policy keeps GH_TOKEN when valid and does not fallback', async ()
   assert.ok(tokensSeen.length > 0, 'expected at least one authenticated request');
   assert.ok(tokensSeen.every((token) => token === 'gh-valid'), 'requests should remain on GH_TOKEN');
   assert.ok(
-    logMessages.some((msg) => msg.includes('auth source: GH_TOKEN')),
-    'auth source log should report GH_TOKEN'
+    logMessages.some((msg) => msg.includes('auth source: gh-token-env')),
+    'auth source log should report gh-token-env'
   );
   assert.ok(
     !logMessages.some((msg) => msg.includes('auth fallback:')),
@@ -2078,8 +2078,8 @@ test('priority:policy falls back from GH_TOKEN to GITHUB_TOKEN on 401', async ()
   assert.ok(tokensSeen.includes('gh-stale'), 'GH token should be attempted first');
   assert.ok(tokensSeen.includes('github-valid'), 'GITHUB token should be used as fallback');
   assert.ok(
-    logMessages.some((msg) => msg.includes('auth fallback: GH_TOKEN -> GITHUB_TOKEN')),
-    'fallback log should report GH_TOKEN -> GITHUB_TOKEN'
+    logMessages.some((msg) => msg.includes('auth fallback: gh-token-env -> github-token-env')),
+    'fallback log should report gh-token-env -> github-token-env'
   );
   assert.deepEqual(errorMessages, []);
 });
@@ -2107,8 +2107,8 @@ test('priority:policy skips non-apply validation when GH_TOKEN 401 has no fallba
 
   assert.equal(code, 0, 'non-apply mode should skip on auth-unavailable path');
   assert.ok(
-    logMessages.some((msg) => msg.includes('auth source: GH_TOKEN')),
-    'auth source log should report GH_TOKEN'
+    logMessages.some((msg) => msg.includes('auth source: gh-token-env')),
+    'auth source log should report gh-token-env'
   );
   assert.ok(
     logMessages.some((msg) => msg.includes('Authorization unavailable for policy check')),
@@ -2143,8 +2143,8 @@ test('priority:policy --apply fails when GH_TOKEN 401 has no fallback', async ()
   );
 
   assert.ok(
-    logMessages.some((msg) => msg.includes('auth source: GH_TOKEN')),
-    'auth source log should report GH_TOKEN'
+    logMessages.some((msg) => msg.includes('auth source: gh-token-env')),
+    'auth source log should report gh-token-env'
   );
   assert.deepEqual(errorMessages, []);
 });
@@ -2393,8 +2393,8 @@ test('priority:policy verify fails when queue-managed ruleset is missing merge_q
     'expected merge_queue missing diagnostic'
   );
   assert.ok(
-    logMessages.some((msg) => msg.includes('auth source: GITHUB_TOKEN')),
-    'expected auth source to be logged'
+    logMessages.some((msg) => msg.includes('auth source: github-token-env')),
+    'expected auth source to be logged as github-token-env'
   );
 });
 
@@ -2628,8 +2628,8 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
   );
   assert.deepEqual(errorMessages, []);
   assert.ok(
-    logMessages.some((msg) => msg.includes('auth source: GITHUB_TOKEN')),
-    'auth source log expected'
+    logMessages.some((msg) => msg.includes('auth source: github-token-env')),
+    'auth source log expected as github-token-env'
   );
 });
 
@@ -2887,8 +2887,8 @@ test('priority:policy --fail-on-skip fails when admin permission is unavailable 
     'strict-mode failure diagnostic expected for admin-skip path'
   );
   assert.ok(
-    logMessages.some((msg) => msg.includes('auth source: GITHUB_TOKEN')),
-    'auth source log expected'
+    logMessages.some((msg) => msg.includes('auth source: github-token-env')),
+    'auth source log expected as github-token-env'
   );
 });
 

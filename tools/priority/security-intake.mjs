@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { resolveGitHubAuthToken } from './lib/github-auth-token.mjs';
 
 const MS_DAY = 24 * 60 * 60 * 1000;
 export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'security', 'security-intake-report.json');
@@ -186,17 +187,22 @@ export function resolveRepositorySlug(explicitRepo) {
   throw new Error('Unable to resolve repository slug. Pass --repo or set GITHUB_REPOSITORY.');
 }
 
-export function resolveToken() {
-  for (const candidate of [process.env.GH_TOKEN, process.env.GITHUB_TOKEN]) {
-    const value = asOptional(candidate);
-    if (value) return value;
+export function resolveTokenResult(
+  env = process.env,
+  { readFileSyncFn = fs.readFileSync, platform = process.platform } = {}
+) {
+  const resolution = resolveGitHubAuthToken(env, { readFileSyncFn, platform });
+  if (resolution.token) {
+    return resolution;
   }
-  for (const candidate of [asOptional(process.env.GH_TOKEN_FILE), process.platform === 'win32' ? 'C:\\github_token.txt' : null]) {
-    if (!candidate || !fs.existsSync(candidate)) continue;
-    const value = asOptional(fs.readFileSync(candidate, 'utf8'));
-    if (value) return value;
-  }
-  throw new Error('GitHub token not found. Set GH_TOKEN/GITHUB_TOKEN (or GH_TOKEN_FILE).');
+  throw new Error('GitHub token not found. Set GH_TOKEN/GITHUB_TOKEN (or GH_TOKEN_FILE/GITHUB_TOKEN_FILE).');
+}
+
+export function resolveToken(
+  env = process.env,
+  { readFileSyncFn = fs.readFileSync, platform = process.platform } = {}
+) {
+  return resolveTokenResult(env, { readFileSyncFn, platform }).token;
 }
 
 function parseDate(value) {
@@ -604,7 +610,7 @@ export async function runSecurityIntake(rawOptions = {}, deps = {}) {
     routeLabels: normalizeLabels((rawOptions.routeLabels || DEFAULT_ROUTE_LABELS).join(','))
   };
   const resolveRepo = deps.resolveRepositorySlugFn || resolveRepositorySlug;
-  const resolveAuth = deps.resolveTokenFn || resolveToken;
+  const resolveAuth = deps.resolveTokenFn || resolveTokenResult;
   const listAlerts = deps.listDependabotAlertsFn || listDependabotAlerts;
   const routeIssue = deps.upsertRemediationIssueFn || upsertRemediationIssue;
   const writeReport = deps.writeJsonFn || writeJson;
@@ -615,6 +621,7 @@ export async function runSecurityIntake(rawOptions = {}, deps = {}) {
     schema: 'priority/security-intake@v1',
     generatedAt: now.toISOString(),
     repository,
+    authSource: null,
     flags: {
       routeOnBreach: Boolean(options.routeOnBreach),
       failOnBreach: Boolean(options.failOnBreach),
@@ -647,9 +654,18 @@ export async function runSecurityIntake(rawOptions = {}, deps = {}) {
     errors: []
   };
 
-  let token;
+  let authResolution;
   try {
-    token = resolveAuth();
+    const resolved = resolveAuth();
+    authResolution = typeof resolved === 'string'
+      ? { token: asOptional(resolved), source: null }
+      : {
+          token: asOptional(resolved?.token),
+          source: asOptional(resolved?.source)
+        };
+    if (!authResolution.token) {
+      throw new Error('GitHub token not found. Set GH_TOKEN/GITHUB_TOKEN (or GH_TOKEN_FILE/GITHUB_TOKEN_FILE).');
+    }
   } catch (error) {
     const report = { ...base, status: 'skip', errors: [toError(error, 'token-unavailable')] };
     const reportPath = writeReport(options.outputPath, report);
@@ -659,10 +675,10 @@ export async function runSecurityIntake(rawOptions = {}, deps = {}) {
 
   try {
     const fetchImpl = deps.fetchImpl;
-    const openRaw = await listAlerts({ repo: repository, token, state: 'open', maxPages: options.maxPages, fetchImpl });
-    const fixedRaw = await listAlerts({ repo: repository, token, state: 'fixed', maxPages: options.maxPages, fetchImpl });
-    const dismissedRaw = await listAlerts({ repo: repository, token, state: 'dismissed', maxPages: options.maxPages, fetchImpl });
-    const autoDismissedRaw = await listAlerts({ repo: repository, token, state: 'auto_dismissed', maxPages: options.maxPages, fetchImpl });
+    const openRaw = await listAlerts({ repo: repository, token: authResolution.token, state: 'open', maxPages: options.maxPages, fetchImpl });
+    const fixedRaw = await listAlerts({ repo: repository, token: authResolution.token, state: 'fixed', maxPages: options.maxPages, fetchImpl });
+    const dismissedRaw = await listAlerts({ repo: repository, token: authResolution.token, state: 'dismissed', maxPages: options.maxPages, fetchImpl });
+    const autoDismissedRaw = await listAlerts({ repo: repository, token: authResolution.token, state: 'auto_dismissed', maxPages: options.maxPages, fetchImpl });
     const openAlerts = openRaw.map((item) => normalizeDependabotAlert(item, now));
     const resolvedAlerts = [...fixedRaw, ...dismissedRaw, ...autoDismissedRaw].map((item) => normalizeDependabotAlert(item, now));
     const verification = analyzeLocalAlertVerification(openAlerts, { repoRoot });
@@ -680,6 +696,7 @@ export async function runSecurityIntake(rawOptions = {}, deps = {}) {
     const candidates = buildRemediationCandidates(effectiveOpenAlerts);
     const report = {
       ...base,
+      authSource: authResolution.source,
       source: { dependabot: { sampledStates: ['open', 'fixed', 'dismissed', 'auto_dismissed'], openCount: openAlerts.length, resolvedCount: resolvedAlerts.length } },
       verification,
       summary,
@@ -690,7 +707,7 @@ export async function runSecurityIntake(rawOptions = {}, deps = {}) {
     if (options.routeOnBreach && breaches.length) {
       const routed = await routeIssue({
         repo: repository,
-        token,
+        token: authResolution.token,
         report,
         titlePrefix: options.routeTitlePrefix,
         labels: options.routeLabels,

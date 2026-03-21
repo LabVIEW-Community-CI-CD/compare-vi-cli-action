@@ -246,7 +246,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
   pwsh -NoLogo -NoProfile -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage
   ```
 
-- Merge-sync and the Copilot queue gate now resolve local GitHub auth in this
+- Merge-sync, the Copilot queue gate, `security-intake`, and `check-policy` now resolve local GitHub auth in this
   order before live review lookups:
   1. `GH_TOKEN`
   2. `GITHUB_TOKEN`

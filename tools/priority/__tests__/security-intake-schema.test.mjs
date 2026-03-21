@@ -58,7 +58,7 @@ test('security intake schema validates generated report and asserts labels/flags
     {
       now,
       resolveRepositorySlugFn: () => 'example/repo',
-      resolveTokenFn: () => 'token',
+      resolveTokenFn: () => ({ token: 'token', source: 'gh-token-env' }),
       listDependabotAlertsFn: async ({ state }) => {
         if (state === 'open') return [sampleAlert()];
         return [];
@@ -82,8 +82,8 @@ test('security intake schema validates generated report and asserts labels/flags
 
   assert.equal(result.report.flags.routeOnBreach, true);
   assert.equal(result.report.flags.failOnSkip, true);
+  assert.equal(result.report.authSource, 'gh-token-env');
   assert.deepEqual(result.report.route.labels, DEFAULT_ROUTE_LABELS);
   assert.equal(result.report.route.action, 'created');
   assert.equal(result.report.remediation.candidateCount, 1);
 });
-

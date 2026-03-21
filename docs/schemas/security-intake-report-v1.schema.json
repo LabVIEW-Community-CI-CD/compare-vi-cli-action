@@ -8,6 +8,7 @@
     "schema",
     "generatedAt",
     "repository",
+    "authSource",
     "flags",
     "thresholds",
     "override",
@@ -31,6 +32,18 @@
     "repository": {
       "type": "string",
       "pattern": "^[^/]+/[^/]+$"
+    },
+    "authSource": {
+      "type": ["string", "null"],
+      "enum": [
+        null,
+        "gh-token-env",
+        "github-token-env",
+        "gh-token-file",
+        "github-token-file",
+        "standard-host-token-file",
+        "gh-enterprise-token-env"
+      ]
     },
     "flags": {
       "type": "object",
