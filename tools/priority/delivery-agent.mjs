@@ -897,6 +897,88 @@ function resolveIssueBranchName({
   return `${laneBranchPrefix}${issueNumber}-${slug}`;
 }
 
+function inspectLocalMergedLaneState({
+  issue,
+  implementationRemote,
+  repoRoot = process.cwd(),
+  branchClassContract = null,
+  loadBranchClassContractFn = loadBranchClassContract,
+  deps = {}
+}) {
+  if (typeof deps.inspectLocalMergedLaneStateFn === 'function') {
+    return deps.inspectLocalMergedLaneStateFn({
+      issue,
+      implementationRemote,
+      repoRoot,
+      branchClassContract,
+      loadBranchClassContractFn
+    });
+  }
+
+  const mergedPullRequests = Array.isArray(issue?.pullRequests)
+    ? issue.pullRequests.filter((pullRequest) => normalizeText(pullRequest?.state).toUpperCase() === 'MERGED')
+    : [];
+  if (mergedPullRequests.length === 0) {
+    return {
+      stale: false,
+      reason: 'no-merged-pr'
+    };
+  }
+
+  const branch = resolveIssueBranchName({
+    issueNumber: issue?.number,
+    title: issue?.title,
+    implementationRemote,
+    repoRoot,
+    branchClassContract,
+    loadBranchClassContractFn
+  });
+  if (!branch) {
+    return {
+      stale: false,
+      reason: 'branch-unresolved'
+    };
+  }
+
+  const spawnSyncFn = deps.spawnSyncFn ?? spawnSync;
+  const probe = spawnSyncFn('git', ['rev-list', '--left-right', '--count', `upstream/develop...${branch}`], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  if (probe.status !== 0) {
+    return {
+      stale: false,
+      reason: 'branch-probe-unavailable',
+      branch
+    };
+  }
+
+  const [behindRaw, aheadRaw] = String(probe.stdout || '')
+    .trim()
+    .split(/\s+/, 2);
+  const behindCount = Number.parseInt(behindRaw, 10);
+  const aheadCount = Number.parseInt(aheadRaw, 10);
+  if (!Number.isInteger(behindCount) || !Number.isInteger(aheadCount)) {
+    return {
+      stale: false,
+      reason: 'branch-probe-invalid',
+      branch
+    };
+  }
+
+  return {
+    stale: aheadCount === 0,
+    reason: aheadCount === 0 ? 'merged-pr-zero-diff' : 'branch-has-local-diff',
+    branch,
+    aheadCount,
+    behindCount,
+    mergedPullRequestNumbers: mergedPullRequests
+      .map((pullRequest) => coercePositiveInteger(pullRequest?.number))
+      .filter((number) => number !== null)
+  };
+}
+
 function parseRepositorySlug(repository) {
   const trimmed = normalizeText(repository);
   if (!trimmed.includes('/')) {
@@ -1213,7 +1295,8 @@ function selectCanonicalCandidate({
   implementationRemote,
   repoRoot = process.cwd(),
   branchClassContract = null,
-  loadBranchClassContractFn = loadBranchClassContract
+  loadBranchClassContractFn = loadBranchClassContract,
+  deps = {}
 }) {
   const standingIssue = issueGraph?.standingIssue ?? null;
   if (!standingIssue) {
@@ -1224,7 +1307,20 @@ function selectCanonicalCandidate({
   const openChildIssues = Array.isArray(issueGraph?.subIssues)
     ? issueGraph.subIssues.filter((issue) => normalizeText(issue.state) === 'OPEN')
     : [];
-  const actionableChildIssues = openChildIssues.filter((issue) => collectPullRequestCandidates(issue).length === 0);
+  const actionableChildIssues = openChildIssues.filter((issue) => {
+    if (collectPullRequestCandidates(issue).length > 0) {
+      return false;
+    }
+    const localLaneState = inspectLocalMergedLaneState({
+      issue,
+      implementationRemote,
+      repoRoot,
+      branchClassContract,
+      loadBranchClassContractFn,
+      deps
+    });
+    return localLaneState?.stale !== true;
+  });
   const childPullRequests = openChildIssues.flatMap((issue) => collectPullRequestCandidates(issue, standingIssue.epic === true ? standingIssue.number : null));
   const prCandidates = dedupePullRequests(
     [...openStandingPullRequests, ...childPullRequests].map((entry) => ({
@@ -1750,7 +1846,8 @@ export async function buildCanonicalDeliveryDecision({
     issueGraph: graph,
     implementationRemote,
     repoRoot,
-    loadBranchClassContractFn: deps.loadBranchClassContractFn
+    loadBranchClassContractFn: deps.loadBranchClassContractFn,
+    deps
   });
   if (!selected?.selectedIssue) {
     return null;
