@@ -616,7 +616,7 @@ test('runQueueSupervisor projects worker-slot occupancy from runtime state into 
     runCommandFn: () => ({ status: 0, stdout: '', stderr: '' }),
     readJsonFileFn,
     readOptionalJsonFn: async (filePath) => {
-      if (String(filePath).includes('runtime-state.json')) {
+      if (String(filePath).includes('delivery-agent-state.json')) {
         return {
           activeCodingLanes: 2,
           workerPool: {
@@ -634,7 +634,7 @@ test('runQueueSupervisor projects worker-slot occupancy from runtime state into 
   });
 
   assert.deepEqual(report.workerOccupancy, {
-    runtimeStatePath: path.join('tests', 'results', '_agent', 'runtime', 'runtime-state.json'),
+    runtimeStatePath: path.join('tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
     available: true,
     targetSlotCount: 4,
     occupiedSlotCount: 3,
@@ -698,7 +698,7 @@ test('runQueueSupervisor reports worker-slot occupancy as unavailable when runti
   });
 
   assert.deepEqual(report.workerOccupancy, {
-    runtimeStatePath: path.join('tests', 'results', '_agent', 'runtime', 'runtime-state.json'),
+    runtimeStatePath: path.join('tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
     available: false,
     targetSlotCount: 0,
     occupiedSlotCount: 0,
@@ -707,6 +707,78 @@ test('runQueueSupervisor reports worker-slot occupancy as unavailable when runti
     utilizationRatio: 0,
     activeCodingLanes: 0
   });
+});
+
+test('runQueueSupervisor falls back to the legacy runtime-state artifact when the canonical delivery state is missing', async () => {
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'pr' && args[1] === 'list') return [];
+    if (args[0] === 'api' && String(args[1]).includes('validate.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('policy-guard-upstream.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('fixture-drift.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('commit-integrity.yml')) return { workflow_runs: [] };
+    throw new Error(`Unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const readJsonFileFn = async (filePath) => {
+    if (String(filePath).endsWith('branch-required-checks.json')) {
+      return { branches: { develop: ['lint'] } };
+    }
+    if (String(filePath).endsWith('policy.json')) {
+      return {
+        rulesets: {
+          develop: {
+            includes: ['refs/heads/develop'],
+            merge_queue: { merge_method: 'SQUASH' }
+          }
+        }
+      };
+    }
+    throw new Error(`Unexpected read path: ${filePath}`);
+  };
+
+  const { report } = await runQueueSupervisor({
+    repoRoot: process.cwd(),
+    args: {
+      apply: false,
+      dryRun: true,
+      reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      maxInflight: 5,
+      minInflight: 1,
+      adaptiveCap: false,
+      maxQueuedRuns: 6,
+      maxInProgressRuns: 8,
+      stallThresholdMinutes: 45,
+      repo: 'owner/repo',
+      baseBranches: ['develop', 'main'],
+      healthBranch: 'develop',
+      help: false
+    },
+    now: new Date('2026-03-06T12:00:00Z'),
+    runGhJsonFn,
+    runCommandFn: () => ({ status: 0, stdout: '', stderr: '' }),
+    readJsonFileFn,
+    readOptionalJsonFn: async (filePath) => {
+      if (String(filePath).includes('runtime-state.json')) {
+        return {
+          activeCodingLanes: 1,
+          workerPool: {
+            targetSlotCount: 3,
+            occupiedSlotCount: 2,
+            availableSlotCount: 1,
+            releasedLaneCount: 1,
+            utilizationRatio: 0.667
+          }
+        };
+      }
+      return null;
+    },
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(report.workerOccupancy.available, true);
+  assert.equal(report.workerOccupancy.targetSlotCount, 3);
+  assert.equal(report.workerOccupancy.occupiedSlotCount, 2);
+  assert.equal(report.workerOccupancy.runtimeStatePath, path.join('tests', 'results', '_agent', 'runtime', 'runtime-state.json'));
 });
 
 test('runQueueSupervisor apply mode quarantines on second failure within 24h', async () => {

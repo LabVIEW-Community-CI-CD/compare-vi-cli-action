@@ -131,12 +131,13 @@ export function emitStatus(options) {
   const daemonAlive = testWslProcessAlive(options.wslDistro, getOptionalIntProperty(daemonState, 'pid'));
   const daemonStartedAt = getOptionalDateTimeProperty(daemonState, 'startedAt');
   const heartbeat = readJsonFile(paths.observerHeartbeatPath);
-  const runtimeState = readJsonFile(paths.runtimeStatePath);
   const taskPacket = readJsonFile(paths.taskPacketPath);
+  const deliveryState = readJsonFile(paths.deliveryStatePath);
+  const runtimeState = deliveryState ? null : readJsonFile(paths.runtimeStatePath);
   const resolvedDelivery = resolveDeliveryStateForStatus({
     repo: options.repo,
     runtimeDir: options.runtimeDir,
-    deliveryState: readJsonFile(paths.deliveryStatePath),
+    deliveryState,
     heartbeat,
     runtimeState,
     taskPacket,
@@ -145,7 +146,7 @@ export function emitStatus(options) {
     daemonStartedAt,
     daemonAlive,
   });
-  const deliveryState = resolvedDelivery.state;
+  const resolvedDeliveryState = resolvedDelivery.state;
   const deliveryMemory = readJsonFile(paths.deliveryMemoryPath);
   const codexStateHygiene = readJsonFile(paths.codexStateHygienePath);
   const observer = resolveObserverTelemetry(codexStateHygiene, paths.codexStateHygienePath);
@@ -183,7 +184,7 @@ export function emitStatus(options) {
       command: getOptionalProperty(daemonState, 'command'),
     },
     heartbeat,
-    delivery: deliveryState,
+    delivery: resolvedDeliveryState,
     heartbeatDiagnostics: resolvedDelivery.diagnostics,
     deliveryMemory,
     observer,

@@ -112,7 +112,7 @@ test('queue supervisor report validates schema', async () => {
     runCommandFn,
     readJsonFileFn,
     readOptionalJsonFn: async (filePath) => {
-      if (String(filePath).includes('runtime-state.json')) {
+      if (String(filePath).includes('delivery-agent-state.json')) {
         return {
           activeCodingLanes: 1,
           workerPool: {

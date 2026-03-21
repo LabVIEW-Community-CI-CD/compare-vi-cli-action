@@ -47,9 +47,10 @@ looks stale:
 ### Runtime-state naming split
 
 - `delivery-agent-state.json` is the intended primary runtime receipt.
-- `runtime-state.json` still exists as a compatibility surface in parts of the
-  manager/status path.
-- Treat this as tracked debt, not a cue to invent a third receipt family.
+- `runtime-state.json` is legacy compatibility-only and should only be used as
+  a fallback by readers that have not been migrated yet.
+- Do not write new primary state to `runtime-state.json`; treat it as tracked
+  compatibility debt, not a cue to invent a third receipt family.
 - Owner lane: `#1634`.
 
 ### Marketplace snapshot contract

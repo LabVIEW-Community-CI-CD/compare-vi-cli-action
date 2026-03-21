@@ -327,7 +327,14 @@ export function runThroughputScorecard({
   outputPath = DEFAULT_OUTPUT_PATH,
   now = new Date()
 } = {}) {
-  const runtimeStateInput = loadJsonInput(runtimeStatePath);
+  let runtimeStateInput = loadJsonInput(runtimeStatePath);
+  if (!runtimeStateInput.exists && path.basename(runtimeStatePath) === path.basename(DEFAULT_RUNTIME_STATE_PATH)) {
+    const legacyRuntimeStatePath = path.join(path.dirname(runtimeStatePath), 'runtime-state.json');
+    const legacyRuntimeStateInput = loadJsonInput(legacyRuntimeStatePath);
+    if (legacyRuntimeStateInput.exists) {
+      runtimeStateInput = legacyRuntimeStateInput;
+    }
+  }
   const deliveryMemoryInput = loadJsonInput(deliveryMemoryPath);
   const queueReportInput = loadJsonInput(queueReportPath);
   const concurrentLaneStatusInput = loadJsonInput(concurrentLaneStatusPath);

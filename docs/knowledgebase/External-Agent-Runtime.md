@@ -72,11 +72,15 @@ Recommended persistent store:
 
 Recommended repo-visible artifacts:
 
-- `tests/results/_agent/runtime/runtime-state.json`
+- `tests/results/_agent/runtime/delivery-agent-state.json`
 - `tests/results/_agent/runtime/runtime-events.ndjson`
 - `tests/results/_agent/runtime/lanes/<lane-id>.json`
 - `tests/results/_agent/runtime/turns/<timestamp>-<lane-id>.json`
 - `tests/results/_agent/runtime/last-blocker.json`
+
+Legacy readers may still encounter `tests/results/_agent/runtime/runtime-state.json`,
+but it is a compatibility fallback only and should not be used as the primary
+writer target.
 
 Each lane record should include:
 
