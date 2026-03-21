@@ -37,6 +37,7 @@ That is deliberate. This slice establishes:
 It does not claim the payload is already proven end to end.
 
 Promotion remains blocked until both of these are true:
+
 1. runnable operation files are authored and checked in under this bundle
 2. at least one public workflow run proves the payload on an added or deleted VI
 

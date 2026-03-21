@@ -76,7 +76,9 @@ The explicit collaboration flow between forks now lives beside the generic branc
 ## Operational Implications
 
 - `upstream/develop` is the only integration surface for standing work.
-- `downstream/develop` is a proving rail, not a feature branch. It should only be updated from immutable promotion manifests sourced from `upstream/develop`.
+- `downstream/develop` is a proving rail, not a feature branch. It should only
+  be updated from immutable promotion manifests sourced from
+  `upstream/develop`.
 - `origin/develop` and `personal/develop` are mirrors, not independent integration branches.
 - The personal plane is optimized for authoring; the org fork is optimized for review-oriented collaboration.
 - Lane branches may exist in forks, but they still promote into upstream protected branches.
@@ -91,7 +93,10 @@ The explicit collaboration flow between forks now lives beside the generic branc
 The contract is consumed directly by:
 
 - `priority:develop:sync`, which validates the upstream `develop` -> fork `develop` mirror transition
-- `priority:policy`, which applies the checked-in fork `develop` override so mirror rails keep `allow_force_pushes=true` and `allow_fork_syncing=false` instead of drifting back toward upstream integration settings
+- `priority:policy`, which applies the checked-in fork `develop` override so
+  mirror rails keep `allow_force_pushes=true` and
+  `allow_fork_syncing=false` instead of drifting back toward upstream
+  integration settings
 - `priority:merge-sync`, which classifies the target base branch before choosing queue-aware promotion behavior
 - `tools/priority/lib/branch-classification.mjs`, which now resolves both repository role and explicit repository plane
 

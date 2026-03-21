@@ -117,7 +117,9 @@ Default artifact path:
 
 Common remediation:
 
-- Docker mode mismatch: `desktop-local` now fails before image bootstrap or container probe when Docker Desktop is still on the Linux engine; switch Docker Desktop to Windows containers (`desktop-windows`) and retry.
+- Docker mode mismatch: `desktop-local` now fails before image bootstrap or
+  container probe when Docker Desktop is still on the Linux engine; switch
+  Docker Desktop to Windows containers (`desktop-windows`) and retry.
 - Image pull failure: verify Docker Hub/GHCR connectivity and authentication, then rerun bootstrap.
 - Runtime probe failure: confirm the host can run Windows containers and that the NI tag is available.
 
