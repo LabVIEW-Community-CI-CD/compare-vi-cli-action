@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { resolveGitAdminPaths } from './lib/git-admin-paths.mjs';
 import { resolveActiveForkRemoteName } from './lib/remote-utils.mjs';
+import { collectParity } from './report-origin-upstream-parity.mjs';
 import {
   DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
   assertAllowedTransition,
@@ -18,6 +19,7 @@ import {
 
 const DEFAULT_REPORT_PATH = path.join('tests', 'results', '_agent', 'issue', 'develop-sync-report.json');
 const SUPPORTED_FORK_REMOTES = new Set(['origin', 'personal']);
+const WORK_BRANCH_PATTERN = /^(issue\/|feature\/|release\/|hotfix\/|bugfix\/)/i;
 
 function printUsage() {
   console.log('Usage: node tools/priority/develop-sync.mjs [options]');
@@ -168,6 +170,68 @@ function runGitText(spawnSyncFn, cwd, args, env) {
   return String(result.stdout ?? '').trim();
 }
 
+function isWorkBranch(branch) {
+  return WORK_BRANCH_PATTERN.test(branch);
+}
+
+function isDirtyWorktree({ repoRoot, env = process.env, spawnSyncFn = spawnSync } = {}) {
+  const statusText = runGitText(spawnSyncFn, repoRoot, ['status', '--porcelain'], env);
+  return statusText.length > 0;
+}
+
+function writeJsonFile(filePath, payload) {
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
+function refreshDevelopTrackingRef({ repoRoot, remote, branch = 'develop', env = process.env, spawnSyncFn = spawnSync }) {
+  const trackingRef = `refs/remotes/${remote}/${branch}`;
+  const refSpec = `+refs/heads/${branch}:${trackingRef}`;
+  runGitText(spawnSyncFn, repoRoot, ['fetch', '--no-tags', remote, refSpec], env);
+}
+
+function collectRefRefreshParity({
+  repoRoot,
+  remote,
+  currentBranch,
+  parityReportPath,
+  env = process.env,
+  spawnSyncFn = spawnSync
+}) {
+  refreshDevelopTrackingRef({ repoRoot, remote: 'upstream', env, spawnSyncFn });
+  refreshDevelopTrackingRef({ repoRoot, remote, env, spawnSyncFn });
+
+  const parityReport = collectParity(
+    {
+      repoRoot,
+      baseRef: 'upstream/develop',
+      headRef: `${remote}/develop`,
+      strict: true
+    },
+    (command, args) =>
+      spawnSyncFn(command, args, {
+        cwd: repoRoot,
+        env,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
+  );
+
+  parityReport.syncResult = {
+    mode: 'ref-refresh',
+    reason: 'dirty-work-branch',
+    parityConverged: parityReport?.tipDiff?.fileCount === 0
+  };
+  parityReport.execution = {
+    mode: 'ref-refresh',
+    reason: 'dirty-work-branch',
+    currentBranch,
+    dirtyWorktree: true
+  };
+  writeJsonFile(parityReportPath, parityReport);
+  return parityReport;
+}
+
 export function resolveDevelopSyncExecutionRoot({ repoRoot, env = process.env, spawnSyncFn = spawnSync } = {}) {
   const normalizedRepoRoot = path.resolve(repoRoot);
   let currentBranch = '';
@@ -178,16 +242,22 @@ export function resolveDevelopSyncExecutionRoot({ repoRoot, env = process.env, s
       repoRoot: normalizedRepoRoot,
       executionRepoRoot: normalizedRepoRoot,
       currentBranch: null,
+      mode: 'full-sync',
+      reason: null,
+      dirtyWorktree: false,
       delegated: false,
       helperRoot: null
     };
   }
 
-  if (!/^(issue\/|feature\/|release\/|hotfix\/|bugfix\/)/i.test(currentBranch)) {
+  if (!isWorkBranch(currentBranch)) {
     return {
       repoRoot: normalizedRepoRoot,
       executionRepoRoot: normalizedRepoRoot,
       currentBranch,
+      mode: 'full-sync',
+      reason: null,
+      dirtyWorktree: false,
       delegated: false,
       helperRoot: null
     };
@@ -206,8 +276,26 @@ export function resolveDevelopSyncExecutionRoot({ repoRoot, env = process.env, s
         repoRoot: normalizedRepoRoot,
         executionRepoRoot: helperRoot,
         currentBranch,
+        mode: 'full-sync',
+        reason: null,
+        dirtyWorktree: false,
         delegated: true,
         helperRoot
+      };
+    }
+  } catch {}
+
+  try {
+    if (isDirtyWorktree({ repoRoot: normalizedRepoRoot, env, spawnSyncFn })) {
+      return {
+        repoRoot: normalizedRepoRoot,
+        executionRepoRoot: normalizedRepoRoot,
+        currentBranch,
+        mode: 'ref-refresh',
+        reason: 'dirty-work-branch',
+        dirtyWorktree: true,
+        delegated: false,
+        helperRoot: null
       };
     }
   } catch {}
@@ -216,6 +304,9 @@ export function resolveDevelopSyncExecutionRoot({ repoRoot, env = process.env, s
     repoRoot: normalizedRepoRoot,
     executionRepoRoot: normalizedRepoRoot,
     currentBranch,
+    mode: 'full-sync',
+    reason: null,
+    dirtyWorktree: false,
     delegated: false,
     helperRoot: null
   };
@@ -288,7 +379,6 @@ export function buildDevelopSyncBranchClassTrace(repoRoot) {
 }
 
 function writeDevelopSyncReport({ repoRoot, reportPath, remotes, actions, status }) {
-  mkdirSync(path.dirname(reportPath), { recursive: true });
   const report = {
     schema: 'priority/develop-sync-report@v1',
     generatedAt: new Date().toISOString(),
@@ -297,7 +387,7 @@ function writeDevelopSyncReport({ repoRoot, reportPath, remotes, actions, status
     status,
     actions
   };
-  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  writeJsonFile(reportPath, report);
   return report;
 }
 
@@ -340,6 +430,7 @@ function buildActionFromParityReport({
   adminPaths,
   branchClassTrace,
   parityReport,
+  executionPlan,
   status,
   exitCode,
   error
@@ -364,6 +455,16 @@ function buildActionFromParityReport({
       typeof parityReport?.syncResult?.parityConverged === 'boolean'
         ? parityReport.syncResult.parityConverged
         : parityReport?.tipDiff?.fileCount === 0,
+    execution: executionPlan
+      ? {
+          mode: executionPlan.mode ?? 'full-sync',
+          reason: executionPlan.reason ?? null,
+          currentBranch: executionPlan.currentBranch ?? null,
+          dirtyWorktree: executionPlan.dirtyWorktree === true,
+          delegated: executionPlan.delegated === true,
+          helperRoot: executionPlan.helperRoot ?? null
+        }
+      : null,
     protectedSync: parityReport?.syncResult?.protectedSync ?? null,
     parityRemediation: parityReport?.syncResult?.parityRemediation ?? null,
     recommendation: parityReport?.recommendation ?? null,
@@ -391,17 +492,38 @@ export function runDevelopSync({
   for (const remote of remotes) {
     const parityReportPath = buildParityReportPath(repoRoot, remote);
     const adminPaths = buildSyncAdminPaths({ repoRoot: executionPlan.executionRepoRoot, remote, env, spawnSyncFn });
-    const args = buildPwshArgs({ repoRoot: executionPlan.executionRepoRoot, remote, parityReportPath });
     if (existsSync(parityReportPath)) {
       rmSync(parityReportPath, { force: true });
     }
-    const result = spawnSyncFn('pwsh', args, {
-      cwd: executionPlan.executionRepoRoot,
-      stdio: 'inherit',
-      encoding: 'utf8'
-    });
-    if (result.status !== 0) {
-      const commandError = String(result.stderr ?? result.stdout ?? '').trim() || `pwsh exited with status ${result.status}`;
+    let result = null;
+    let commandError = null;
+    try {
+      if (executionPlan.mode === 'ref-refresh') {
+        collectRefRefreshParity({
+          repoRoot,
+          remote,
+          currentBranch: executionPlan.currentBranch,
+          parityReportPath,
+          env,
+          spawnSyncFn
+        });
+      } else {
+        const args = buildPwshArgs({ repoRoot: executionPlan.executionRepoRoot, remote, parityReportPath });
+        result = spawnSyncFn('pwsh', args, {
+          cwd: executionPlan.executionRepoRoot,
+          stdio: 'inherit',
+          encoding: 'utf8'
+        });
+        if (result.status !== 0) {
+          commandError = String(result.stderr ?? result.stdout ?? '').trim() || `pwsh exited with status ${result.status}`;
+        }
+      }
+    } catch (error) {
+      commandError = error.message;
+      result = { status: 1, stdout: '', stderr: error.message };
+    }
+    const exitCode = result?.status ?? 0;
+    if (exitCode !== 0) {
       if (existsSync(parityReportPath)) {
         let parityReport;
         try {
@@ -434,8 +556,9 @@ export function runDevelopSync({
               adminPaths,
               branchClassTrace,
               parityReport,
+              executionPlan,
               status: 'failed',
-              exitCode: result.status,
+              exitCode,
               error: commandError
             })
           );
@@ -449,7 +572,7 @@ export function runDevelopSync({
             parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/'),
             adminPaths,
             branchClassTrace,
-            exitCode: result.status,
+            exitCode,
             error: error.message
           });
           writeDevelopSyncReport({
@@ -468,7 +591,7 @@ export function runDevelopSync({
           parityReportPath: path.relative(repoRoot, parityReportPath).replace(/\\/g, '/'),
           adminPaths,
           branchClassTrace,
-          exitCode: result.status,
+          exitCode,
           error: commandError
         });
       }
@@ -505,6 +628,7 @@ export function runDevelopSync({
           adminPaths,
           branchClassTrace,
           parityReport,
+          executionPlan,
           status: 'ok',
           exitCode: 0,
           error: null
