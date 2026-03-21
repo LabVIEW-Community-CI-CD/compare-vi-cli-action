@@ -118,6 +118,13 @@ test('delivery-agent policy wires coding turns to the Codex runner', async () =>
     policy.workerPool.providers.map((provider) => provider.id),
     ['local-codex', 'hosted-github-workflow', 'remote-copilot-lane', 'local-shadow-native']
   );
+  assert.deepEqual(policy.workerPool.providers[0].capabilities, {
+    executionPlane: 'local',
+    assignmentMode: 'interactive-coding',
+    dispatchSurface: 'runtime-harness',
+    completionMode: 'sync',
+    requiresLocalCheckout: true
+  });
 });
 
 test('delivery-agent wrappers delegate to the compiled node CLI', async () => {

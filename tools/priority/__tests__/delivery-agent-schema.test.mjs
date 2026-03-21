@@ -45,6 +45,13 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
       {
         id: 'local-codex',
         kind: 'local-codex',
+        capabilities: {
+          executionPlane: 'local',
+          assignmentMode: 'interactive-coding',
+          dispatchSurface: 'runtime-harness',
+          completionMode: 'sync',
+          requiresLocalCheckout: true
+        },
         executionPlane: 'local',
         assignmentMode: 'interactive-coding',
         dispatchSurface: 'runtime-harness',
@@ -56,6 +63,13 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
       {
         id: 'hosted-github-workflow',
         kind: 'hosted-github-workflow',
+        capabilities: {
+          executionPlane: 'hosted',
+          assignmentMode: 'async-validation',
+          dispatchSurface: 'github-actions',
+          completionMode: 'async',
+          requiresLocalCheckout: false
+        },
         executionPlane: 'hosted',
         assignmentMode: 'async-validation',
         dispatchSurface: 'github-actions',
@@ -67,6 +81,13 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
       {
         id: 'remote-copilot-lane',
         kind: 'remote-copilot-lane',
+        capabilities: {
+          executionPlane: 'remote',
+          assignmentMode: 'remote-implementation',
+          dispatchSurface: 'remote-copilot',
+          completionMode: 'async',
+          requiresLocalCheckout: false
+        },
         executionPlane: 'remote',
         assignmentMode: 'remote-implementation',
         dispatchSurface: 'remote-copilot',
@@ -78,6 +99,13 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
       {
         id: 'local-shadow-native',
         kind: 'local-shadow-native',
+        capabilities: {
+          executionPlane: 'local-shadow',
+          assignmentMode: 'shadow-validation',
+          dispatchSurface: 'native-shadow',
+          completionMode: 'sync',
+          requiresLocalCheckout: false
+        },
         executionPlane: 'local-shadow',
         assignmentMode: 'shadow-validation',
         dispatchSurface: 'native-shadow',
@@ -146,6 +174,46 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
       baselineRef: '',
       maxCommitCount: 256
     }
+  });
+});
+
+test('loadDeliveryAgentPolicy keeps provider capabilities independent from target slot count when defaults are synthesized', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-policy-provider-capabilities-'));
+  const policyDir = path.join(tempRoot, 'tools', 'priority');
+  await mkdir(policyDir, { recursive: true });
+  await writeFile(
+    path.join(policyDir, 'delivery-agent.policy.json'),
+    JSON.stringify({
+      schema: 'priority/delivery-agent-policy@v1',
+      backlogAuthority: 'issues',
+      implementationRemote: 'origin',
+      copilotReviewStrategy: 'draft-only-explicit',
+      autoSlice: true,
+      autoMerge: true,
+      maxActiveCodingLanes: 6,
+      allowPolicyMutations: false,
+      allowReleaseAdmin: false,
+      stopWhenNoOpenEpics: true,
+      workerPool: {
+        targetSlotCount: 6
+      }
+    }),
+    'utf8'
+  );
+
+  const policy = await loadDeliveryAgentPolicy(tempRoot);
+  assert.equal(policy.workerPool.targetSlotCount, 6);
+  assert.equal(policy.workerPool.providers.length, 4);
+  assert.deepEqual(
+    policy.workerPool.providers.map((provider) => provider.id),
+    ['local-codex', 'hosted-github-workflow', 'remote-copilot-lane', 'local-shadow-native']
+  );
+  assert.deepEqual(policy.workerPool.providers[0].capabilities, {
+    executionPlane: 'local',
+    assignmentMode: 'interactive-coding',
+    dispatchSurface: 'runtime-harness',
+    completionMode: 'sync',
+    requiresLocalCheckout: true
   });
 });
 

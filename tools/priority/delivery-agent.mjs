@@ -98,6 +98,59 @@ const SUPPORTED_WORKER_COMPLETION_MODES = new Set(
   DEFAULT_WORKER_PROVIDER_BLUEPRINTS.map((provider) => provider.completionMode)
 );
 
+function buildWorkerProviderCapabilities(source, fallbackBlueprint) {
+  const capabilitiesSource =
+    source?.capabilities && typeof source.capabilities === 'object' ? source.capabilities : {};
+  return {
+    executionPlane: normalizeAllowedString(
+      capabilitiesSource.executionPlane ?? source?.executionPlane,
+      SUPPORTED_WORKER_EXECUTION_PLANES,
+      fallbackBlueprint.executionPlane
+    ),
+    assignmentMode: normalizeAllowedString(
+      capabilitiesSource.assignmentMode ?? source?.assignmentMode,
+      SUPPORTED_WORKER_ASSIGNMENT_MODES,
+      fallbackBlueprint.assignmentMode
+    ),
+    dispatchSurface: normalizeAllowedString(
+      capabilitiesSource.dispatchSurface ?? source?.dispatchSurface,
+      SUPPORTED_WORKER_DISPATCH_SURFACES,
+      fallbackBlueprint.dispatchSurface
+    ),
+    completionMode: normalizeAllowedString(
+      capabilitiesSource.completionMode ?? source?.completionMode,
+      SUPPORTED_WORKER_COMPLETION_MODES,
+      fallbackBlueprint.completionMode
+    ),
+    requiresLocalCheckout:
+      typeof capabilitiesSource.requiresLocalCheckout === 'boolean'
+        ? capabilitiesSource.requiresLocalCheckout
+        : typeof source?.requiresLocalCheckout === 'boolean'
+          ? source.requiresLocalCheckout
+          : fallbackBlueprint.requiresLocalCheckout
+  };
+}
+
+function buildWorkerProviderPolicyEntry(source, fallbackBlueprint, overrides = {}) {
+  const capabilities = buildWorkerProviderCapabilities(source, fallbackBlueprint);
+  return {
+    id: normalizeText(overrides.id ?? source?.id) || fallbackBlueprint.id,
+    kind: normalizeAllowedString(
+      overrides.kind ?? source?.kind,
+      SUPPORTED_WORKER_PROVIDER_KINDS,
+      fallbackBlueprint.kind
+    ),
+    capabilities,
+    executionPlane: capabilities.executionPlane,
+    assignmentMode: capabilities.assignmentMode,
+    dispatchSurface: capabilities.dispatchSurface,
+    completionMode: capabilities.completionMode,
+    requiresLocalCheckout: capabilities.requiresLocalCheckout,
+    enabled: overrides.enabled ?? source?.enabled !== false,
+    slotCount: coercePositiveInteger(overrides.slotCount ?? source?.slotCount) ?? 1
+  };
+}
+
 const DEFAULT_POLICY = {
   schema: DELIVERY_AGENT_POLICY_SCHEMA,
   backlogAuthority: 'issues',
@@ -113,11 +166,9 @@ const DEFAULT_POLICY = {
     targetSlotCount: 4,
     prewarmSlotCount: 1,
     releaseWaitingStates: [...DEFAULT_WORKER_RELEASE_WAITING_STATES],
-    providers: DEFAULT_WORKER_PROVIDER_BLUEPRINTS.map((provider) => ({
-      ...provider,
-      enabled: true,
-      slotCount: 1
-    }))
+    providers: DEFAULT_WORKER_PROVIDER_BLUEPRINTS.map((provider) =>
+      buildWorkerProviderPolicyEntry(provider, provider)
+    )
   },
   hostIsolation: {
     mode: 'hard-cutover',
@@ -413,62 +464,17 @@ function normalizeAllowedString(value, allowedValues, fallbackValue) {
   return allowedValues.has(normalized) ? normalized : fallbackValue;
 }
 
-function buildDefaultWorkerPoolProviders(targetSlotCount) {
-  const resolvedTargetSlotCount =
-    coercePositiveInteger(targetSlotCount) ?? DEFAULT_POLICY.workerPool.targetSlotCount;
-  const providers = [];
-  for (let index = 0; index < resolvedTargetSlotCount; index += 1) {
-    const blueprint = DEFAULT_WORKER_PROVIDER_BLUEPRINTS[index % DEFAULT_WORKER_PROVIDER_BLUEPRINTS.length];
-    const cycle = Math.floor(index / DEFAULT_WORKER_PROVIDER_BLUEPRINTS.length);
-    providers.push({
-      id: cycle === 0 ? blueprint.id : `${blueprint.id}-${cycle + 1}`,
-      kind: blueprint.kind,
-      executionPlane: blueprint.executionPlane,
-      assignmentMode: blueprint.assignmentMode,
-      dispatchSurface: blueprint.dispatchSurface,
-      completionMode: blueprint.completionMode,
-      requiresLocalCheckout: blueprint.requiresLocalCheckout,
-      enabled: true,
-      slotCount: 1
-    });
-  }
-  return providers;
+function buildDefaultWorkerPoolProviders() {
+  return DEFAULT_WORKER_PROVIDER_BLUEPRINTS.map((blueprint) =>
+    buildWorkerProviderPolicyEntry(blueprint, blueprint)
+  );
 }
 
 function normalizeWorkerProviderPolicy(value, { fallbackIndex = 0 } = {}) {
   const provider = value && typeof value === 'object' ? value : {};
   const fallbackBlueprint =
     DEFAULT_WORKER_PROVIDER_BLUEPRINTS[fallbackIndex % DEFAULT_WORKER_PROVIDER_BLUEPRINTS.length];
-  return {
-    id: normalizeText(provider.id) || fallbackBlueprint.id,
-    kind: normalizeAllowedString(provider.kind, SUPPORTED_WORKER_PROVIDER_KINDS, fallbackBlueprint.kind),
-    executionPlane: normalizeAllowedString(
-      provider.executionPlane,
-      SUPPORTED_WORKER_EXECUTION_PLANES,
-      fallbackBlueprint.executionPlane
-    ),
-    assignmentMode: normalizeAllowedString(
-      provider.assignmentMode,
-      SUPPORTED_WORKER_ASSIGNMENT_MODES,
-      fallbackBlueprint.assignmentMode
-    ),
-    dispatchSurface: normalizeAllowedString(
-      provider.dispatchSurface,
-      SUPPORTED_WORKER_DISPATCH_SURFACES,
-      fallbackBlueprint.dispatchSurface
-    ),
-    completionMode: normalizeAllowedString(
-      provider.completionMode,
-      SUPPORTED_WORKER_COMPLETION_MODES,
-      fallbackBlueprint.completionMode
-    ),
-    requiresLocalCheckout:
-      typeof provider.requiresLocalCheckout === 'boolean'
-        ? provider.requiresLocalCheckout
-        : fallbackBlueprint.requiresLocalCheckout,
-    enabled: provider.enabled !== false,
-    slotCount: coercePositiveInteger(provider.slotCount) ?? 1
-  };
+  return buildWorkerProviderPolicyEntry(provider, fallbackBlueprint);
 }
 
 function normalizeWorkerPoolPolicy(value, { maxActiveCodingLanes = DEFAULT_POLICY.maxActiveCodingLanes } = {}) {
@@ -524,7 +530,12 @@ export function buildWorkerPoolPolicySnapshot(policy = {}) {
     targetSlotCount: workerPool.targetSlotCount,
     prewarmSlotCount: workerPool.prewarmSlotCount,
     releaseWaitingStates: [...workerPool.releaseWaitingStates],
-    providers: workerPool.providers.map((provider) => ({ ...provider }))
+    providers: workerPool.providers.map((provider) => ({
+      ...provider,
+      capabilities: provider.capabilities && typeof provider.capabilities === 'object'
+        ? { ...provider.capabilities }
+        : null
+    }))
   };
 }
 
