@@ -175,6 +175,17 @@ export function buildCodexTurnPrompt({ taskPacket, repoRoot, workDir }) {
     : [];
   const turnBudget = taskPacket?.evidence?.delivery?.turnBudget ?? {};
   const pullRequestUrl = normalizeText(taskPacket?.pullRequest?.url || taskPacket?.evidence?.delivery?.pullRequest?.url);
+  const liveAgentModelSelection =
+    taskPacket?.evidence?.delivery?.liveAgentModelSelection && typeof taskPacket.evidence.delivery.liveAgentModelSelection === 'object'
+      ? taskPacket.evidence.delivery.liveAgentModelSelection
+      : null;
+  const currentProviderSelection =
+    liveAgentModelSelection?.currentProvider && typeof liveAgentModelSelection.currentProvider === 'object'
+      ? liveAgentModelSelection.currentProvider
+      : null;
+  const recommendationReasonCodes = Array.isArray(currentProviderSelection?.reasonCodes)
+    ? currentProviderSelection.reasonCodes.filter((entry) => normalizeText(entry))
+    : [];
 
   return [
     'You are running one unattended delivery turn for compare-vi-cli-action.',
@@ -190,6 +201,9 @@ export function buildCodexTurnPrompt({ taskPacket, repoRoot, workDir }) {
     `- Existing PR: ${pullRequestUrl || 'none'}`,
     `- Max minutes: ${Number.isInteger(turnBudget.maxMinutes) ? turnBudget.maxMinutes : 20}`,
     `- Max tool calls: ${Number.isInteger(turnBudget.maxToolCalls) ? turnBudget.maxToolCalls : 12}`,
+    `- Model recommendation mode: ${normalizeText(liveAgentModelSelection?.mode) || 'not-observed'}`,
+    `- Provider model recommendation: ${currentProviderSelection ? `${normalizeText(currentProviderSelection.selectedModel) || 'none'} (current=${normalizeText(currentProviderSelection.currentModel) || 'unknown'}, action=${normalizeText(currentProviderSelection.action) || 'stay'}, confidence=${normalizeText(currentProviderSelection.confidence) || 'low'})` : 'not-observed'}`,
+    `- Recommendation reasons: ${recommendationReasonCodes.length > 0 ? recommendationReasonCodes.join(', ') : 'none'}`,
     '',
     'Hard rules:',
     '- Work only inside the active worker checkout.',

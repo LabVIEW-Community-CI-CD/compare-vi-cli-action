@@ -62,6 +62,7 @@
         "docs/knowledgebase/CrossRepo-VIHistory.md",
         "docs/knowledgebase/Cookiecutter-Certification-Scaffolds.md",
         "docs/knowledgebase/Agent-Cost-Telemetry-Surfaces.md",
+        "docs/knowledgebase/Live-Agent-Model-Selection.md",
         "docs/knowledgebase/GitHub-Intake-Layer.md",
         "docs/knowledgebase/GitHub-Wiki-Portal-Automation-Evaluation.md",
         "docs/knowledgebase/GitHub-Wiki-Portal.md",
@@ -135,6 +136,22 @@
         "tools/priority/__tests__/agent-cost-rollup.test.mjs",
         "tools/priority/__tests__/agent-cost-rollup-schema.test.mjs",
         "tools/priority/__tests__/agent-cost-telemetry-surfaces.test.mjs"
+      ]
+    },
+    {
+      "name": "Live Agent Model Selection Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Recommendation-first live-agent model selection policy, report contracts, helper CLI, and focused tests that turn cost, throughput, and delivery-memory telemetry into explainable per-provider model guidance.",
+      "files": [
+        "docs/knowledgebase/Live-Agent-Model-Selection.md",
+        "docs/schemas/live-agent-model-selection-policy-v1.schema.json",
+        "docs/schemas/live-agent-model-selection-report-v1.schema.json",
+        "tools/policy/live-agent-model-selection.json",
+        "tools/priority/live-agent-model-selection.mjs",
+        "tools/priority/__tests__/live-agent-model-selection.test.mjs",
+        "tools/priority/__tests__/live-agent-model-selection-schema.test.mjs",
+        "tools/priority/__tests__/live-agent-model-selection-surfaces.test.mjs"
       ]
     },
     {

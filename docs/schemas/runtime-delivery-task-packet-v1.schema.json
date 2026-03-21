@@ -152,6 +152,44 @@
                 "requiresLocalCheckout": { "type": ["boolean", "null"] }
               }
             },
+            "liveAgentModelSelection": {
+              "type": ["object", "null"],
+              "additionalProperties": true,
+              "properties": {
+                "mode": { "type": ["string", "null"] },
+                "policyPath": { "type": ["string", "null"] },
+                "reportPath": { "type": ["string", "null"] },
+                "previousReportPath": { "type": ["string", "null"] },
+                "recommendationStatus": { "type": ["string", "null"] },
+                "generatedAt": { "type": ["string", "null"] },
+                "blockerCount": { "type": ["integer", "null"], "minimum": 0 },
+                "selectedProviderId": { "type": ["string", "null"] },
+                "currentProvider": {
+                  "type": ["object", "null"],
+                  "additionalProperties": true,
+                  "properties": {
+                    "providerId": { "type": ["string", "null"] },
+                    "providerKind": { "type": ["string", "null"] },
+                    "agentRole": { "type": ["string", "null"] },
+                    "currentModel": { "type": ["string", "null"] },
+                    "selectedModel": { "type": ["string", "null"] },
+                    "action": { "type": ["string", "null"] },
+                    "confidence": { "type": ["string", "null"] },
+                    "reasonCodes": {
+                      "type": ["array", "null"],
+                      "items": { "type": "string" }
+                    }
+                  }
+                },
+                "providers": {
+                  "type": ["array", "null"],
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            },
             "mutationEnvelope": { "type": "object", "additionalProperties": true },
             "turnBudget": { "type": "object", "additionalProperties": true },
             "relevantFiles": {

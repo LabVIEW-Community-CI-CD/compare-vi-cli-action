@@ -6554,3 +6554,173 @@ test('draft review clearance diagnostics report actionable current-head items', 
   const source = readFileSync(new URL('../delivery-agent.mjs', import.meta.url), 'utf8');
   assert.match(source, /reasons\.push\('actionable-current-head-items'\)/);
 });
+
+test('buildCompareviTaskPacket projects live-agent model selection for the selected provider', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'runtime-live-agent-model-selection-'));
+  const policyPath = path.join(tempDir, 'live-agent-model-selection.json');
+  const reportPath = path.join(tempDir, 'live-agent-model-selection-report.json');
+  await writeFile(
+    policyPath,
+    `${JSON.stringify({
+      schema: 'priority/live-agent-model-selection-policy@v1',
+      mode: 'recommend-only',
+      outputPath: reportPath,
+      previousReportPath: reportPath,
+      inputs: {
+        costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
+        throughputScorecardPath: 'tests/results/_agent/throughput/throughput-scorecard.json',
+        deliveryMemoryPath: 'tests/results/_agent/runtime/delivery-memory.json'
+      },
+      evidenceWindow: {
+        minLiveTurnCount: 1,
+        minTerminalPullRequests: 1,
+        confidenceThreshold: 'medium'
+      },
+      stability: {
+        cooldownReports: 1,
+        hysteresisScoreDelta: 0.5,
+        holdCurrentOnCostOnly: true,
+        performancePressureOverridesCooldown: true,
+        throughputWarnEscalates: true,
+        meanTerminalDurationWarningMinutes: 180,
+        minMergeSuccessRatio: 0.6,
+        maxHostedWaitEscapeCount: 0
+      },
+      providers: [
+        {
+          providerId: 'local-codex',
+          agentRole: 'live',
+          defaultModel: 'gpt-5.4',
+          candidateModels: [
+            { model: 'gpt-5.4-mini', strength: 1, costTier: 1, notes: 'cheaper' },
+            { model: 'gpt-5.4', strength: 2, costTier: 2, notes: 'stronger' }
+          ]
+        }
+      ]
+    }, null, 2)}\n`,
+    'utf8'
+  );
+  await writeFile(
+    reportPath,
+    `${JSON.stringify({
+      schema: 'priority/live-agent-model-selection-report@v1',
+      generatedAt: '2026-03-21T14:00:00.000Z',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      mode: 'recommend-only',
+      policyPath: 'tools/policy/live-agent-model-selection.json',
+      inputs: {
+        costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
+        throughputScorecardPath: 'tests/results/_agent/throughput/throughput-scorecard.json',
+        deliveryMemoryPath: 'tests/results/_agent/runtime/delivery-memory.json',
+        previousReportPath: 'tests/results/_agent/runtime/live-agent-model-selection.json'
+      },
+      providers: [
+        {
+          providerId: 'local-codex',
+          providerKind: 'local-codex',
+          agentRole: 'live',
+          currentModel: 'gpt-5.4',
+          selectedModel: 'gpt-5.4',
+          action: 'stay',
+          recommendationSource: 'current-model-hold',
+          mode: 'recommend-only',
+          confidence: 'medium',
+          reasonCodes: ['stable-current-model'],
+          evidence: {
+            turnCount: 3,
+            observedModels: ['gpt-5.4'],
+            totalUsd: 24,
+            averageUsdPerTurn: 8,
+            throughputStatus: 'pass',
+            throughputReasons: [],
+            queueReadyPrInventory: 2,
+            queueOccupancyRatio: 1,
+            totalTerminalPullRequestCount: 3,
+            mergedPullRequestCount: 3,
+            mergeSuccessRatio: 1,
+            hostedWaitEscapeCount: 0,
+            meanTerminalDurationMinutes: 14,
+            performancePressure: false,
+            performancePressureReasons: []
+          },
+          candidates: [
+            { model: 'gpt-5.4-mini', strength: 1, costTier: 1, notes: 'cheaper', score: 0 },
+            { model: 'gpt-5.4', strength: 2, costTier: 2, notes: 'stronger', score: 1.25 }
+          ],
+          blockers: [],
+          stability: {
+            cooldownRemainingReports: 0,
+            previousSelectedModel: 'gpt-5.4',
+            previousAction: 'stay',
+            previousGeneratedAt: '2026-03-20T14:00:00.000Z'
+          }
+        }
+      ],
+      summary: {
+        status: 'pass',
+        blockerCount: 0,
+        blockers: [],
+        recommendationCount: 1,
+        switchCount: 0,
+        overrideCount: 0,
+        holdCount: 0,
+        insufficientEvidenceCount: 0,
+        recommendationMode: 'recommend-only'
+      }
+    }, null, 2)}\n`,
+    'utf8'
+  );
+
+  const packet = await compareviRuntimeTest.buildCompareviTaskPacket({
+    repoRoot,
+    schedulerDecision: {
+      activeLane: {
+        issue: 1640,
+        branch: 'issue/origin-1640-live-agent-model-selection-telemetry',
+        forkRemote: 'origin'
+      },
+      artifacts: {
+        executionMode: 'canonical-delivery',
+        selectedActionType: 'advance-child-issue',
+        laneLifecycle: 'coding',
+        selectedIssueSnapshot: {
+          number: 1640,
+          title: 'Drive deterministic live-agent model selection from telemetry',
+          body: 'Model selection slice.',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1640'
+        },
+        standingIssueSnapshot: {
+          number: 1640,
+          title: 'Drive deterministic live-agent model selection from telemetry',
+          body: 'Model selection slice.',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1640'
+        }
+      }
+    },
+    preparedWorker: {
+      checkoutPath: '/tmp/worker',
+      providerId: 'local-codex',
+      slotId: 'worker-slot-1'
+    },
+    workerReady: {
+      checkoutPath: '/tmp/worker',
+      providerId: 'local-codex',
+      slotId: 'worker-slot-1'
+    },
+    workerBranch: {
+      branch: 'issue/origin-1640-live-agent-model-selection-telemetry',
+      checkoutPath: '/tmp/worker',
+      providerId: 'local-codex',
+      slotId: 'worker-slot-1'
+    },
+    deps: {
+      liveAgentModelSelectionPolicyPath: policyPath,
+      liveAgentModelSelectionReportPath: reportPath
+    }
+  });
+
+  assert.equal(packet.evidence.delivery.liveAgentModelSelection.mode, 'recommend-only');
+  assert.equal(packet.evidence.delivery.liveAgentModelSelection.currentProvider.providerId, 'local-codex');
+  assert.equal(packet.evidence.delivery.liveAgentModelSelection.currentProvider.selectedModel, 'gpt-5.4');
+  assert.deepEqual(packet.evidence.delivery.liveAgentModelSelection.currentProvider.reasonCodes, ['stable-current-model']);
+});

@@ -1,0 +1,66 @@
+{
+  "schema": "priority/live-agent-model-selection-policy@v1",
+  "mode": "recommend-only",
+  "outputPath": "tests/results/_agent/runtime/live-agent-model-selection.json",
+  "previousReportPath": "tests/results/_agent/runtime/live-agent-model-selection.json",
+  "inputs": {
+    "costRollupPath": "tests/results/_agent/cost/agent-cost-rollup.json",
+    "throughputScorecardPath": "tests/results/_agent/throughput/throughput-scorecard.json",
+    "deliveryMemoryPath": "tests/results/_agent/runtime/delivery-memory.json"
+  },
+  "evidenceWindow": {
+    "minLiveTurnCount": 1,
+    "minTerminalPullRequests": 1,
+    "confidenceThreshold": "medium"
+  },
+  "stability": {
+    "cooldownReports": 1,
+    "hysteresisScoreDelta": 0.5,
+    "holdCurrentOnCostOnly": true,
+    "performancePressureOverridesCooldown": true,
+    "throughputWarnEscalates": true,
+    "meanTerminalDurationWarningMinutes": 180,
+    "minMergeSuccessRatio": 0.6,
+    "maxHostedWaitEscapeCount": 0
+  },
+  "providers": [
+    {
+      "providerId": "local-codex",
+      "agentRole": "live",
+      "defaultModel": "gpt-5.4",
+      "candidateModels": [
+        {
+          "model": "gpt-5.4-mini",
+          "strength": 1,
+          "costTier": 1,
+          "notes": "Lower-cost option for stable queue conditions."
+        },
+        {
+          "model": "gpt-5.4",
+          "strength": 2,
+          "costTier": 2,
+          "notes": "Default stronger model for RC throughput and outcome protection."
+        }
+      ]
+    },
+    {
+      "providerId": "remote-copilot-lane",
+      "agentRole": "background",
+      "defaultModel": "gpt-5.4-mini",
+      "candidateModels": [
+        {
+          "model": "gpt-5.4-mini",
+          "strength": 1,
+          "costTier": 1,
+          "notes": "Default background implementation lane model."
+        },
+        {
+          "model": "gpt-5.4",
+          "strength": 2,
+          "costTier": 2,
+          "notes": "Escalate when queue pressure or outcome pressure is high."
+        }
+      ]
+    }
+  ]
+}

@@ -63,6 +63,12 @@ import {
   loadDeliveryAgentPolicy,
   persistDeliveryAgentRuntimeState
 } from './delivery-agent.mjs';
+import {
+  DEFAULT_POLICY_PATH as DEFAULT_LIVE_AGENT_MODEL_SELECTION_POLICY_PATH,
+  buildLiveAgentModelSelectionProjection,
+  loadLiveAgentModelSelectionPolicy,
+  loadLiveAgentModelSelectionReport
+} from './live-agent-model-selection.mjs';
 
 export {
   ACTIONS,
@@ -134,6 +140,29 @@ function coercePositiveInteger(value) {
     return null;
   }
   return parsed;
+}
+
+function resolveLiveAgentModelSelectionEvidence({
+  repoRoot,
+  deps = {},
+  selectedProviderId = ''
+}) {
+  const policyLoad = loadLiveAgentModelSelectionPolicy(
+    repoRoot,
+    deps.liveAgentModelSelectionPolicyPath || DEFAULT_LIVE_AGENT_MODEL_SELECTION_POLICY_PATH
+  );
+  const reportLoad = loadLiveAgentModelSelectionReport(
+    repoRoot,
+    deps.liveAgentModelSelectionReportPath || policyLoad.policy.outputPath
+  );
+  return buildLiveAgentModelSelectionProjection({
+    policy: {
+      ...policyLoad.policy,
+      __policyPath: path.relative(repoRoot, policyLoad.path).replace(/\\/g, '/')
+    },
+    report: reportLoad.report,
+    selectedProviderId
+  });
 }
 
 const CADENCE_CHECK_MARKER_REGEX = /<!--\s*cadence-check:/i;
@@ -713,6 +742,11 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
       providerId: provider.id
     })) ?? []
   });
+  const liveAgentModelSelection = resolveLiveAgentModelSelectionEvidence({
+    repoRoot,
+    deps,
+    selectedProviderId: workerProviderSelection.selectedProviderId
+  });
 
   return {
     source: 'comparevi-runtime',
@@ -794,6 +828,7 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
         concurrentLaneStatus,
         planeTransition,
         localReviewLoop,
+        liveAgentModelSelection,
         workerPool,
         workerProviderSelection,
         mutationEnvelope: {

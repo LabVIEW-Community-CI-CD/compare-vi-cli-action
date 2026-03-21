@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/live-agent-model-selection-policy-v1.schema.json",
+  "title": "Live Agent Model Selection Policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "mode",
+    "outputPath",
+    "inputs",
+    "evidenceWindow",
+    "stability",
+    "providers"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/live-agent-model-selection-policy@v1"
+    },
+    "mode": {
+      "enum": ["recommend-only", "enforce"]
+    },
+    "outputPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "previousReportPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["costRollupPath", "throughputScorecardPath", "deliveryMemoryPath"],
+      "properties": {
+        "costRollupPath": { "type": "string", "minLength": 1 },
+        "throughputScorecardPath": { "type": "string", "minLength": 1 },
+        "deliveryMemoryPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "evidenceWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minLiveTurnCount", "minTerminalPullRequests", "confidenceThreshold"],
+      "properties": {
+        "minLiveTurnCount": { "type": "integer", "minimum": 1 },
+        "minTerminalPullRequests": { "type": "integer", "minimum": 1 },
+        "confidenceThreshold": {
+          "enum": ["low", "medium", "high"]
+        }
+      }
+    },
+    "stability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cooldownReports",
+        "hysteresisScoreDelta",
+        "holdCurrentOnCostOnly",
+        "performancePressureOverridesCooldown",
+        "throughputWarnEscalates",
+        "meanTerminalDurationWarningMinutes",
+        "minMergeSuccessRatio",
+        "maxHostedWaitEscapeCount"
+      ],
+      "properties": {
+        "cooldownReports": { "type": "integer", "minimum": 0 },
+        "hysteresisScoreDelta": { "type": "number", "minimum": 0 },
+        "holdCurrentOnCostOnly": { "type": "boolean" },
+        "performancePressureOverridesCooldown": { "type": "boolean" },
+        "throughputWarnEscalates": { "type": "boolean" },
+        "meanTerminalDurationWarningMinutes": { "type": "number", "minimum": 0 },
+        "minMergeSuccessRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "maxHostedWaitEscapeCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "providers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["providerId", "agentRole", "defaultModel", "candidateModels"],
+        "properties": {
+          "providerId": { "type": "string", "minLength": 1 },
+          "providerKind": { "type": "string", "minLength": 1 },
+          "agentRole": { "enum": ["live", "background", "any"] },
+          "defaultModel": { "type": "string", "minLength": 1 },
+          "forcedModel": { "type": "string", "minLength": 1 },
+          "costOnlySwitchAllowed": { "type": "boolean" },
+          "candidateModels": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["model", "strength", "costTier"],
+              "properties": {
+                "model": { "type": "string", "minLength": 1 },
+                "strength": { "type": "integer", "minimum": 1 },
+                "costTier": { "type": "integer", "minimum": 1 },
+                "notes": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

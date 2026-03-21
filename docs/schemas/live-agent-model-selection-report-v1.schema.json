@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/live-agent-model-selection-report-v1.schema.json",
+  "title": "Live Agent Model Selection Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "mode",
+    "policyPath",
+    "inputs",
+    "providers",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/live-agent-model-selection-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": ["string", "null"]
+    },
+    "mode": {
+      "enum": ["recommend-only", "enforce"]
+    },
+    "policyPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["costRollupPath", "throughputScorecardPath", "deliveryMemoryPath"],
+      "properties": {
+        "costRollupPath": { "type": "string", "minLength": 1 },
+        "throughputScorecardPath": { "type": "string", "minLength": 1 },
+        "deliveryMemoryPath": { "type": "string", "minLength": 1 },
+        "previousReportPath": { "type": ["string", "null"] }
+      }
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/providerRecommendation"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "blockerCount",
+        "blockers",
+        "recommendationCount",
+        "switchCount",
+        "overrideCount",
+        "holdCount",
+        "insufficientEvidenceCount",
+        "recommendationMode"
+      ],
+      "properties": {
+        "status": { "enum": ["pass", "warn"] },
+        "blockerCount": { "type": "integer", "minimum": 0 },
+        "blockers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blocker" }
+        },
+        "recommendationCount": { "type": "integer", "minimum": 0 },
+        "switchCount": { "type": "integer", "minimum": 0 },
+        "overrideCount": { "type": "integer", "minimum": 0 },
+        "holdCount": { "type": "integer", "minimum": 0 },
+        "insufficientEvidenceCount": { "type": "integer", "minimum": 0 },
+        "recommendationMode": { "enum": ["recommend-only", "enforce"] }
+      }
+    }
+  },
+  "$defs": {
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "inputPath"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "inputPath": { "type": ["string", "null"] }
+      }
+    },
+    "providerRecommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerId",
+        "agentRole",
+        "currentModel",
+        "selectedModel",
+        "action",
+        "recommendationSource",
+        "mode",
+        "confidence",
+        "reasonCodes",
+        "evidence",
+        "candidates",
+        "blockers",
+        "stability"
+      ],
+      "properties": {
+        "providerId": { "type": "string", "minLength": 1 },
+        "providerKind": { "type": ["string", "null"] },
+        "agentRole": { "type": "string", "minLength": 1 },
+        "currentModel": { "type": "string", "minLength": 1 },
+        "selectedModel": { "type": "string", "minLength": 1 },
+        "action": { "enum": ["stay", "switch", "override", "hold"] },
+        "recommendationSource": { "type": "string", "minLength": 1 },
+        "mode": { "enum": ["recommend-only", "enforce"] },
+        "confidence": { "enum": ["low", "medium", "high"] },
+        "reasonCodes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "turnCount",
+            "observedModels",
+            "totalUsd",
+            "averageUsdPerTurn",
+            "throughputStatus",
+            "throughputReasons",
+            "queueReadyPrInventory",
+            "queueOccupancyRatio",
+            "totalTerminalPullRequestCount",
+            "mergedPullRequestCount",
+            "mergeSuccessRatio",
+            "hostedWaitEscapeCount",
+            "meanTerminalDurationMinutes",
+            "performancePressure",
+            "performancePressureReasons"
+          ],
+          "properties": {
+            "turnCount": { "type": "integer", "minimum": 0 },
+            "observedModels": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "totalUsd": { "type": "number", "minimum": 0 },
+            "averageUsdPerTurn": { "type": ["number", "null"], "minimum": 0 },
+            "throughputStatus": { "type": "string" },
+            "throughputReasons": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "queueReadyPrInventory": { "type": "integer", "minimum": 0 },
+            "queueOccupancyRatio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "totalTerminalPullRequestCount": { "type": "integer", "minimum": 0 },
+            "mergedPullRequestCount": { "type": "integer", "minimum": 0 },
+            "mergeSuccessRatio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "hostedWaitEscapeCount": { "type": "integer", "minimum": 0 },
+            "meanTerminalDurationMinutes": { "type": ["number", "null"], "minimum": 0 },
+            "performancePressure": { "type": "boolean" },
+            "performancePressureReasons": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["model", "strength", "costTier", "notes", "score"],
+            "properties": {
+              "model": { "type": "string", "minLength": 1 },
+              "strength": { "type": "integer", "minimum": 1 },
+              "costTier": { "type": "integer", "minimum": 1 },
+              "notes": { "type": ["string", "null"] },
+              "score": { "type": "number" }
+            }
+          }
+        },
+        "blockers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blocker" }
+        },
+        "stability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cooldownRemainingReports", "previousSelectedModel", "previousAction", "previousGeneratedAt"],
+          "properties": {
+            "cooldownRemainingReports": { "type": "integer", "minimum": 0 },
+            "previousSelectedModel": { "type": ["string", "null"] },
+            "previousAction": { "type": ["string", "null"] },
+            "previousGeneratedAt": { "type": ["string", "null"] }
+          }
+        }
+      }
+    }
+  }
+}
