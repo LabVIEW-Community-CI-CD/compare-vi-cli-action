@@ -908,7 +908,8 @@ test('buildDeliveryAgentRuntimeRecord releases the selected worker slot when the
         issue: 1507,
         forkRemote: 'origin',
         branch: 'issue/origin-1507-four-worker-pool',
-        blockerClass: 'review'
+        blockerClass: 'review',
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1507'
       },
       artifacts: {
         laneLifecycle: 'waiting-review'
@@ -956,7 +957,9 @@ test('buildDeliveryAgentRuntimeRecord releases the selected worker slot when the
       outcome: 'waiting-review',
       details: {
         laneLifecycle: 'waiting-review',
-        blockerClass: 'review'
+        blockerClass: 'review',
+        nextWakeCondition: 'review-disposition-updated',
+        pollIntervalSecondsHint: 45
       }
     },
     statePath: path.join(repoRoot, 'tests/results/_agent/runtime/delivery-agent-state.json'),
@@ -969,6 +972,15 @@ test('buildDeliveryAgentRuntimeRecord releases the selected worker slot when the
   assert.equal(state.workerPool.releasedLanes[0].slotId, 'worker-slot-2');
   assert.equal(state.workerPool.releasedLanes[0].laneId, 'origin-1507');
   assert.equal(state.workerPool.releasedLanes[0].laneLifecycle, 'waiting-review');
+  assert.equal(state.workerPool.releasedLanes[0].branch, 'issue/origin-1507-four-worker-pool');
+  assert.equal(state.workerPool.releasedLanes[0].forkRemote, 'origin');
+  assert.equal(
+    state.workerPool.releasedLanes[0].prUrl,
+    'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1507'
+  );
+  assert.equal(state.workerPool.releasedLanes[0].nextWakeCondition, 'review-disposition-updated');
+  assert.equal(state.workerPool.releasedLanes[0].pollIntervalSecondsHint, 45);
+  assert.match(state.workerPool.releasedLanes[0].releasedAt, /^2026-03-20T12:00:00.000Z$/);
   assert.equal(state.workerPool.slots[1].status, 'available');
 });
 
