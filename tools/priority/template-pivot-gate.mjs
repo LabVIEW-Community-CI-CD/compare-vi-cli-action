@@ -35,6 +35,13 @@ export const DEFAULT_HANDOFF_ENTRYPOINT_STATUS_PATH = path.join(
   'handoff',
   'entrypoint-status.json'
 );
+export const DEFAULT_TEMPLATE_AGENT_VERIFICATION_REPORT_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'promotion',
+  'template-agent-verification-report.json'
+);
 
 const HELP = [
   'Usage: node tools/priority/template-pivot-gate.mjs [options]',
@@ -44,6 +51,7 @@ const HELP = [
   `  --queue-empty-report <path>      Queue-empty issue report (default: ${DEFAULT_QUEUE_EMPTY_REPORT_PATH}).`,
   `  --release-summary <path>         Release summary artifact (default: ${DEFAULT_RELEASE_SUMMARY_PATH}).`,
   `  --handoff-entrypoint <path>      Handoff entrypoint status (default: ${DEFAULT_HANDOFF_ENTRYPOINT_STATUS_PATH}).`,
+  `  --template-agent-verification-report <path>  Template-agent verification report (default: ${DEFAULT_TEMPLATE_AGENT_VERIFICATION_REPORT_PATH}).`,
   `  --output <path>                  Report output path (default: ${DEFAULT_OUTPUT_PATH}).`,
   '  --repo <owner/repo>              Repository slug (default: env/remotes).',
   '  -h, --help                       Show help.'
@@ -143,6 +151,7 @@ export function parseArgs(argv = process.argv) {
     queueEmptyReportPath: DEFAULT_QUEUE_EMPTY_REPORT_PATH,
     releaseSummaryPath: DEFAULT_RELEASE_SUMMARY_PATH,
     handoffEntrypointStatusPath: DEFAULT_HANDOFF_ENTRYPOINT_STATUS_PATH,
+    templateAgentVerificationReportPath: DEFAULT_TEMPLATE_AGENT_VERIFICATION_REPORT_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
     repo: null,
     help: false
@@ -153,6 +162,7 @@ export function parseArgs(argv = process.argv) {
     ['--queue-empty-report', 'queueEmptyReportPath'],
     ['--release-summary', 'releaseSummaryPath'],
     ['--handoff-entrypoint', 'handoffEntrypointStatusPath'],
+    ['--template-agent-verification-report', 'templateAgentVerificationReportPath'],
     ['--output', 'outputPath'],
     ['--repo', 'repo']
   ]);
@@ -214,10 +224,16 @@ export async function runTemplatePivotGate(
       policy.artifacts?.handoffEntrypointStatusPath ||
       DEFAULT_HANDOFF_ENTRYPOINT_STATUS_PATH
   );
+  const templateAgentVerificationReportPath = path.resolve(
+    options.templateAgentVerificationReportPath ||
+      policy.artifacts?.templateAgentVerificationReportPath ||
+      DEFAULT_TEMPLATE_AGENT_VERIFICATION_REPORT_PATH
+  );
 
   const queueEmpty = readOptionalJsonFn(queueEmptyReportPath);
   const releaseSummary = readOptionalJsonFn(releaseSummaryPath);
   const handoffEntrypoint = readOptionalJsonFn(handoffEntrypointStatusPath);
+  const templateAgentVerification = readOptionalJsonFn(templateAgentVerificationReportPath);
 
   const blockers = [];
   const releaseCandidateRegex = new RegExp(policy.releaseCandidate.versionPattern);
@@ -316,12 +332,57 @@ export async function runTemplatePivotGate(
     );
   }
 
-  const ready = queueEmptyReady && releaseCandidateReady && handoffReady;
+  const targetRepository = asOptional(policy.targetRepository);
+  const templateAgentVerificationReady =
+    templateAgentVerification?.schema === 'priority/template-agent-verification-report@v1' &&
+    templateAgentVerification?.summary?.status === 'pass' &&
+    templateAgentVerification?.verification?.status === 'pass' &&
+    asOptional(templateAgentVerification?.lane?.targetRepository) === targetRepository;
+  if (!templateAgentVerification) {
+    blockers.push(
+      createBlocker(
+        'template-agent-verification-report-missing',
+        'Template-agent verification report is missing; consumer-proving health is not yet proven.'
+      )
+    );
+  } else if (templateAgentVerification.schema !== 'priority/template-agent-verification-report@v1') {
+    blockers.push(
+      createBlocker(
+        'template-agent-verification-schema-mismatch',
+        'Template-agent verification report schema must remain priority/template-agent-verification-report@v1.'
+      )
+    );
+  } else if (templateAgentVerification.summary?.status !== 'pass') {
+    blockers.push(
+      createBlocker(
+        'template-agent-verification-not-pass',
+        `Template-agent verification summary.status must be pass; received ${templateAgentVerification.summary?.status ?? 'null'}.`
+      )
+    );
+  } else if (templateAgentVerification.verification?.status !== 'pass') {
+    blockers.push(
+      createBlocker(
+        'template-agent-verification-status-not-pass',
+        `Template-agent verification status must be pass; received ${templateAgentVerification.verification?.status ?? 'null'}.`
+      )
+    );
+  } else if (asOptional(templateAgentVerification?.lane?.targetRepository) !== targetRepository) {
+    blockers.push(
+      createBlocker(
+        'template-agent-target-repository-mismatch',
+        `Template-agent verification lane target repository must be ${targetRepository ?? 'null'}; received ${
+          asOptional(templateAgentVerification?.lane?.targetRepository) ?? 'null'
+        }.`
+      )
+    );
+  }
+
+  const ready = queueEmptyReady && releaseCandidateReady && handoffReady && templateAgentVerificationReady;
   const report = {
     schema: 'priority/template-pivot-gate@v1',
     generatedAt: now.toISOString(),
     repository: repo,
-    targetRepository: policy.targetRepository,
+    targetRepository,
     policy: {
       path: toRelative(policyPath),
       sha256: sha256FileFn(policyPath),
@@ -334,7 +395,8 @@ export async function runTemplatePivotGate(
     inputs: {
       queueEmptyReportPath: toRelative(queueEmptyReportPath),
       releaseSummaryPath: toRelative(releaseSummaryPath),
-      handoffEntrypointStatusPath: toRelative(handoffEntrypointStatusPath)
+      handoffEntrypointStatusPath: toRelative(handoffEntrypointStatusPath),
+      templateAgentVerificationReportPath: toRelative(templateAgentVerificationReportPath)
     },
     evidence: {
       queueEmpty: {
@@ -360,6 +422,16 @@ export async function runTemplatePivotGate(
         schema: handoffEntrypoint?.schema ?? null,
         status: handoffEntrypoint?.status ?? null,
         ready: handoffReady
+      },
+      templateAgentVerification: {
+        reportPath: toRelative(templateAgentVerificationReportPath),
+        exists: templateAgentVerification != null,
+        schema: templateAgentVerification?.schema ?? null,
+        summaryStatus: templateAgentVerification?.summary?.status ?? null,
+        verificationStatus: templateAgentVerification?.verification?.status ?? null,
+        targetRepository: asOptional(templateAgentVerification?.lane?.targetRepository),
+        consumerRailBranch: asOptional(templateAgentVerification?.lane?.consumerRailBranch),
+        ready: templateAgentVerificationReady
       }
     },
     summary: {
