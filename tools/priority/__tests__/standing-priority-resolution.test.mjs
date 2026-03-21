@@ -12,6 +12,7 @@ import {
   autoSelectStandingPriorityIssue,
   classifyNoStandingPriorityCondition,
   buildNoStandingPriorityReport,
+  buildAutoPromotedStandingPriorityReport,
   buildMultipleStandingPriorityReport,
   buildNoStandingPriorityState,
   shouldRethrowStandingPriorityError,
@@ -1192,6 +1193,9 @@ test('autoSelectStandingPriorityIssue selects and labels next issue via injected
 
   assert.equal(result.status, 'selected');
   assert.equal(result.issue?.number, 911);
+  assert.equal(result.openIssueCount, 2);
+  assert.equal(result.candidateSource, 'gh');
+  assert.equal(result.labelAssignmentSource, 'gh');
   assert.deepEqual(calls, [911]);
 });
 
@@ -1241,6 +1245,40 @@ test('buildNoStandingPriorityReport emits deterministic schema payload', () => {
     reason: 'label-missing',
     openIssueCount: 3,
     failOnMissing: true
+  });
+});
+
+test('buildAutoPromotedStandingPriorityReport emits deterministic schema payload', () => {
+  const report = buildAutoPromotedStandingPriorityReport({
+    repository: 'owner/repo',
+    checkedLabels: ['fork-standing-priority', 'standing-priority'],
+    issue: {
+      number: 911,
+      title: '[P0] lane',
+      url: 'https://github.com/owner/repo/issues/911',
+      priority: 0
+    },
+    candidateSource: 'gh',
+    labelAssignmentSource: 'rest',
+    openIssueCount: 4,
+    generatedAt: '2026-03-21T02:30:00.000Z'
+  });
+
+  assert.deepEqual(report, {
+    schema: 'standing-priority/auto-promoted@v1',
+    generatedAt: '2026-03-21T02:30:00.000Z',
+    repository: 'owner/repo',
+    checkedLabels: ['fork-standing-priority', 'standing-priority'],
+    issue: {
+      number: 911,
+      title: '[P0] lane',
+      url: 'https://github.com/owner/repo/issues/911',
+      priority: 0
+    },
+    candidateSource: 'gh',
+    labelAssignmentSource: 'rest',
+    openIssueCount: 4,
+    message: 'Auto-promoted #911 into explicit `standing-priority` state.'
   });
 });
 
