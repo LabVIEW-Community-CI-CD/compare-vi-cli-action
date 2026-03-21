@@ -256,6 +256,10 @@ function inspectDeliveryState(repoRoot, now, thresholds) {
       schema: payload?.schema || null,
       source: preferred.exists ? 'delivery-agent-state' : (selected.exists ? 'runtime-state-compat' : 'missing'),
       status: payload?.status || payload?.lifecycle?.status || null,
+      laneLifecycle: payload?.laneLifecycle || payload?.activeLane?.laneLifecycle || payload?.activeLane?.execution?.details?.laneLifecycle || null,
+      blockerClass: payload?.activeLane?.blockerClass || payload?.activeLane?.execution?.details?.blockerClass || null,
+      nextWakeCondition: payload?.activeLane?.nextWakeCondition || payload?.activeLane?.execution?.details?.nextWakeCondition || null,
+      prUrl: payload?.activeLane?.prUrl || null,
       activeLaneIssue: payload?.activeLane?.issue ?? null
     }
   });
@@ -278,9 +282,63 @@ function inspectObserverHeartbeat(repoRoot, now, thresholds) {
     extra: {
       schema: payload?.schema || null,
       outcome: payload?.outcome || null,
+      laneLifecycle: payload?.activeLane?.execution?.details?.laneLifecycle || null,
+      blockerClass: payload?.activeLane?.blockerClass || payload?.activeLane?.execution?.details?.blockerClass || null,
+      nextWakeCondition: payload?.activeLane?.nextWakeCondition || payload?.activeLane?.execution?.details?.nextWakeCondition || null,
+      prUrl: payload?.activeLane?.prUrl || null,
       activeLaneIssue: payload?.activeLane?.issue ?? null
     }
   });
+}
+
+function evaluateTurnBoundary({
+  issueContext,
+  deliveryState,
+  observerHeartbeat
+}) {
+  if (issueContext.mode === 'queue-empty') {
+    return {
+      status: 'safe-idle',
+      operatorTurnEndWouldCreateIdleGap: false,
+      activeLaneIssue: null,
+      wakeCondition: null,
+      source: 'queue-empty',
+      reason: 'standing-priority queue is explicitly empty'
+    };
+  }
+
+  if (issueContext.mode !== 'issue' || issueContext.issue === null) {
+    return {
+      status: 'stale-context',
+      operatorTurnEndWouldCreateIdleGap: true,
+      activeLaneIssue: null,
+      wakeCondition: null,
+      source: 'issue-context-missing',
+      reason: 'standing lane context is missing, so end-of-turn continuity cannot be trusted'
+    };
+  }
+
+  const issue = issueContext.issue;
+  const deliveryMatch = deliveryState.activeLaneIssue === issue;
+  const observerMatch = observerHeartbeat.activeLaneIssue === issue;
+  const source = deliveryMatch ? 'delivery-state'
+    : observerMatch ? 'observer-heartbeat'
+      : 'issue-context';
+  const wakeCondition = deliveryMatch ? deliveryState.nextWakeCondition
+    : observerMatch ? observerHeartbeat.nextWakeCondition
+      : null;
+  const reason = deliveryMatch || observerMatch
+    ? `standing issue #${issue} still has active work pending${wakeCondition ? ` and is waiting for '${wakeCondition}'` : ''}`
+    : `standing issue #${issue} remains active; ending the turn here risks an idle gap`;
+
+  return {
+    status: 'active-work-pending',
+    operatorTurnEndWouldCreateIdleGap: true,
+    activeLaneIssue: issue,
+    wakeCondition: wakeCondition || null,
+    source,
+    reason
+  };
 }
 
 function resolveIssueContext(router, noStanding) {
@@ -373,6 +431,28 @@ function evaluateContinuity({
     operatorQuietPeriodTreatedAsPause = false;
   }
 
+  const turnBoundary = evaluateTurnBoundary({
+    issueContext,
+    deliveryState,
+    observerHeartbeat
+  });
+
+  if (turnBoundary.operatorTurnEndWouldCreateIdleGap) {
+    if (status === 'maintained') {
+      status = 'at-risk';
+    }
+    if (quietPeriodStatus === 'covered') {
+      quietPeriodStatus = 'degrading';
+    }
+    if (promptDependency === 'low') {
+      promptDependency = 'medium';
+    }
+    recommendedAction = issueContext.mode === 'issue'
+      ? 'keep the live lane active or hand the standing lane to a background worker before ending the turn'
+      : recommendedAction;
+    operatorQuietPeriodTreatedAsPause = true;
+  }
+
   return {
     status,
     preservedWithoutPrompt,
@@ -391,6 +471,7 @@ function evaluateContinuity({
       silenceGapSeconds,
       operatorQuietPeriodTreatedAsPause
     },
+    turnBoundary,
     recommendation: recommendedAction
   };
 }

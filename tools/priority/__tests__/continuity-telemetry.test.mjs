@@ -46,7 +46,7 @@ test('parseArgs captures explicit continuity output paths', () => {
   assert.equal(parsed.now, '2026-03-21T20:00:00.000Z');
 });
 
-test('buildContinuityTelemetry treats a quiet period as covered when unattended signals stay fresh', () => {
+test('buildContinuityTelemetry marks active standing work as at-risk at turn boundary even when unattended signals stay fresh', () => {
   const fixtureRoot = createRepoFixture('continuity-maintained');
   const now = new Date('2026-03-21T20:00:00.000Z');
 
@@ -108,11 +108,16 @@ test('buildContinuityTelemetry treats a quiet period as covered when unattended 
   });
 
   const { report } = buildContinuityTelemetry({ repoRoot: fixtureRoot }, now);
-  assert.equal(report.status, 'maintained');
+  assert.equal(report.status, 'at-risk');
   assert.equal(report.issueContext.mode, 'issue');
   assert.equal(report.continuity.preservedWithoutPrompt, true);
-  assert.equal(report.continuity.quietPeriod.operatorQuietPeriodTreatedAsPause, false);
-  assert.equal(report.continuity.quietPeriod.status, 'covered');
+  assert.equal(report.continuity.quietPeriod.operatorQuietPeriodTreatedAsPause, true);
+  assert.equal(report.continuity.quietPeriod.status, 'degrading');
+  assert.equal(report.continuity.turnBoundary.status, 'active-work-pending');
+  assert.equal(report.continuity.turnBoundary.operatorTurnEndWouldCreateIdleGap, true);
+  assert.equal(report.continuity.turnBoundary.activeLaneIssue, 1663);
+  assert.equal(report.continuity.turnBoundary.source, 'delivery-state');
+  assert.match(report.continuity.recommendation, /keep the live lane active/i);
 });
 
 test('buildContinuityTelemetry resolves writer leases from git-common-dir for linked worktrees', () => {
@@ -172,7 +177,10 @@ test('buildContinuityTelemetry resolves writer leases from git-common-dir for li
 
   assert.equal(report.sources.writerLease.exists, true);
   assert.equal(report.sources.writerLease.path, path.join(commonGitDir, 'agent-writer-leases', 'workspace.json'));
-  assert.equal(report.status, 'maintained');
+  assert.equal(report.status, 'at-risk');
+  assert.equal(report.continuity.turnBoundary.status, 'active-work-pending');
+  assert.equal(report.continuity.turnBoundary.source, 'issue-context');
+  assert.equal(report.continuity.turnBoundary.activeLaneIssue, 1663);
 });
 
 test('buildContinuityTelemetry preserves queue-empty continuity without inventing an issue', () => {
@@ -205,6 +213,8 @@ test('buildContinuityTelemetry preserves queue-empty continuity without inventin
   assert.equal(report.issueContext.mode, 'queue-empty');
   assert.equal(report.issueContext.issue, null);
   assert.equal(report.continuity.quietPeriod.operatorQuietPeriodTreatedAsPause, false);
+  assert.equal(report.continuity.turnBoundary.status, 'safe-idle');
+  assert.equal(report.continuity.turnBoundary.operatorTurnEndWouldCreateIdleGap, false);
 });
 
 test('buildContinuityTelemetry marks continuity stale when all unattended signals are old or missing', () => {
@@ -224,6 +234,8 @@ test('buildContinuityTelemetry marks continuity stale when all unattended signal
   assert.equal(report.status, 'stale');
   assert.equal(report.issueContext.mode, 'missing');
   assert.equal(report.continuity.quietPeriod.operatorQuietPeriodTreatedAsPause, true);
+  assert.equal(report.continuity.turnBoundary.status, 'stale-context');
+  assert.equal(report.continuity.turnBoundary.operatorTurnEndWouldCreateIdleGap, true);
   assert.equal(report.continuity.recommendation, 'run bootstrap and refresh handoff surfaces');
 });
 

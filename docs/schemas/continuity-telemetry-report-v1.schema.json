@@ -89,6 +89,7 @@
         "promptDependency",
         "unattendedSignalCount",
         "quietPeriod",
+        "turnBoundary",
         "recommendation"
       ],
       "properties": {
@@ -149,6 +150,51 @@
             },
             "operatorQuietPeriodTreatedAsPause": {
               "type": "boolean"
+            }
+          }
+        },
+        "turnBoundary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "operatorTurnEndWouldCreateIdleGap",
+            "activeLaneIssue",
+            "wakeCondition",
+            "source",
+            "reason"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "safe-idle",
+                "active-work-pending",
+                "stale-context"
+              ]
+            },
+            "operatorTurnEndWouldCreateIdleGap": {
+              "type": "boolean"
+            },
+            "activeLaneIssue": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "wakeCondition": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
             }
           }
         },

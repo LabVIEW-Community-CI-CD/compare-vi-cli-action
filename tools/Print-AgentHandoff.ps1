@@ -1361,6 +1361,10 @@ try {
     Write-Host ("  gap      : {0}s" -f (Format-NullableValue $continuity.continuity.quietPeriod.silenceGapSeconds))
     Write-Host ("  pause    : {0}" -f (Format-BoolLabel $continuity.continuity.quietPeriod.operatorQuietPeriodTreatedAsPause))
     Write-Host ("  context  : {0}" -f (Format-NullableValue $continuity.issueContext.mode))
+    if ($continuity.continuity.turnBoundary) {
+      Write-Host ("  boundary : {0}" -f (Format-NullableValue $continuity.continuity.turnBoundary.status))
+      Write-Host ("  boundary-gap : {0}" -f (Format-BoolLabel $continuity.continuity.turnBoundary.operatorTurnEndWouldCreateIdleGap))
+    }
     Write-Host ("  signals  : {0}" -f (Format-NullableValue $continuity.continuity.unattendedSignalCount))
     Write-Host ("  action   : {0}" -f (Format-NullableValue $continuity.continuity.recommendation))
 
@@ -1372,6 +1376,7 @@ try {
         ('- Quiet period: {0}  Gap: {1}s' -f (Format-NullableValue $continuity.continuity.quietPeriod.status), (Format-NullableValue $continuity.continuity.quietPeriod.silenceGapSeconds)),
         ('- Operator quiet treated as pause: {0}' -f (Format-BoolLabel $continuity.continuity.quietPeriod.operatorQuietPeriodTreatedAsPause)),
         ('- Issue context: {0}' -f (Format-NullableValue $continuity.issueContext.mode)),
+        ('- Turn boundary: {0}  Idle gap if ended now: {1}' -f (Format-NullableValue $continuity.continuity.turnBoundary.status), (Format-BoolLabel $continuity.continuity.turnBoundary.operatorTurnEndWouldCreateIdleGap)),
         ('- Unattended signals: {0}' -f (Format-NullableValue $continuity.continuity.unattendedSignalCount)),
         ('- Recommended action: {0}' -f (Format-NullableValue $continuity.continuity.recommendation))
       )
