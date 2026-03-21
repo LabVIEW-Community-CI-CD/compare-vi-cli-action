@@ -205,6 +205,7 @@ $summary = [ordered]@{
   status = 'pending'
   failureClass = 'none'
   failureMessage = ''
+  dockerHost = if ([string]::IsNullOrWhiteSpace($env:DOCKER_HOST)) { '' } else { [string]$env:DOCKER_HOST.Trim() }
   runnerEnvironment = if ([string]::IsNullOrWhiteSpace($env:RUNNER_ENVIRONMENT)) { '' } else { [string]$env:RUNNER_ENVIRONMENT }
   contexts = [ordered]@{
     start = ''
@@ -314,6 +315,9 @@ try {
     $summary.contexts.startOsType = [string]$snapshot.observed.osType
     $summary.contexts.final = [string]$snapshot.observed.context
     $summary.contexts.finalOsType = [string]$snapshot.observed.osType
+    if ($snapshot.observed.PSObject.Properties['dockerHost']) {
+      $summary.dockerHost = [string]$snapshot.observed.dockerHost
+    }
     $summary.runtimeDeterminism.status = [string]$snapshot.result.status
     $summary.runtimeDeterminism.reason = [string]$snapshot.result.reason
     $summary.runtimeDeterminism.snapshotPath = $snapshotPath
@@ -343,6 +347,7 @@ try {
 Write-GitHubOutput -Key 'windows_host_preflight_path' -Value $jsonPathResolved -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'windows_host_preflight_status' -Value ([string]$summary.status) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'windows_host_preflight_surface' -Value ([string]$summary.executionSurface) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'windows_host_preflight_docker_host' -Value ([string]$summary.dockerHost) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'windows_host_preflight_context' -Value ([string]$summary.contexts.final) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'windows_host_preflight_ostype' -Value ([string]$summary.contexts.finalOsType) -Path $GitHubOutputPath
 
@@ -353,6 +358,7 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- execution_surface: `{0}`' -f [string]$summary.executionSurface),
     ('- status: `{0}`' -f [string]$summary.status),
     ('- image: `{0}`' -f [string]$summary.image),
+    ('- docker_host: `{0}`' -f [string]$summary.dockerHost),
     ('- context: `{0}`' -f [string]$summary.contexts.final),
     ('- docker_ostype: `{0}`' -f [string]$summary.contexts.finalOsType),
     ('- runtime_provider: `{0}`' -f [string]$summary.runtimeProvider)

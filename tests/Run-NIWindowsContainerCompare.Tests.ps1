@@ -596,6 +596,7 @@ exit 0
     $capture.observedDockerHost | Should -Be 'npipe:////./pipe/docker_engine'
     $capture.runtimeDeterminism.observed.dockerHost | Should -Be 'npipe:////./pipe/docker_engine'
     $capture.timedOut | Should -BeFalse
+    $capture.PSObject.Properties.Name | Should -Contain 'observedDockerHost'
     $capture.headlessContract.required | Should -BeTrue
     $capture.headlessContract.enforcedCliHeadless | Should -BeTrue
     $capture.headlessContract.lvRteHeadlessEnv | Should -BeTrue
