@@ -33,11 +33,14 @@ function Resolve-AbsolutePath {
   return [System.IO.Path]::GetFullPath((Join-Path $BasePath $PathValue))
 }
 
-function Ensure-Directory {
+function New-DirectoryIfMissing {
+  [CmdletBinding(SupportsShouldProcess)]
   param([Parameter(Mandatory)][string]$Path)
 
   if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
-    New-Item -ItemType Directory -Path $Path -Force | Out-Null
+    if ($PSCmdlet.ShouldProcess($Path, 'Create directory')) {
+      New-Item -ItemType Directory -Path $Path -Force | Out-Null
+    }
   }
 
   return (Resolve-Path -LiteralPath $Path).Path
@@ -121,7 +124,7 @@ if ($certificationSurface -ne 'print-single-file' -or $operation -ne 'PrintToSin
   throw "Target '$TargetId' is not aligned to the PrintToSingleFileHtml proof surface."
 }
 
-$resultsRootResolved = Ensure-Directory -Path (Resolve-AbsolutePath -BasePath $repoRoot -PathValue $ResultsRoot)
+$resultsRootResolved = New-DirectoryIfMissing -Path (Resolve-AbsolutePath -BasePath $repoRoot -PathValue $ResultsRoot)
 $reportResolved = if ([string]::IsNullOrWhiteSpace($ReportPath)) {
   Join-Path $resultsRootResolved ("print-proof-{0}.json" -f $TargetId)
 } else {
@@ -132,8 +135,8 @@ $markdownResolved = if ([string]::IsNullOrWhiteSpace($MarkdownPath)) {
 } else {
   Resolve-AbsolutePath -BasePath $repoRoot -PathValue $MarkdownPath
 }
-Ensure-Directory -Path (Split-Path -Parent $reportResolved) | Out-Null
-Ensure-Directory -Path (Split-Path -Parent $markdownResolved) | Out-Null
+New-DirectoryIfMissing -Path (Split-Path -Parent $reportResolved) | Out-Null
+New-DirectoryIfMissing -Path (Split-Path -Parent $markdownResolved) | Out-Null
 
 $inspectionReportPath = Join-Path $resultsRootResolved ("payload-inspection-{0}.json" -f $TargetId)
 $inspectionMarkdownPath = Join-Path $resultsRootResolved ("payload-inspection-{0}.md" -f $TargetId)
@@ -220,8 +223,8 @@ if (-not $SkipSchemaValidation.IsPresent) {
   Invoke-SchemaValidation -RepoRoot $repoRoot -SchemaPath $proofSchemaPath -DataPath $reportResolved
 }
 
-Write-Host ("Headless sample print proof report: {0}" -f (Convert-ToRepoRelativePath -RepoRoot $repoRoot -PathValue $reportResolved))
-Write-Host ("Headless sample print proof summary: {0}" -f (Convert-ToRepoRelativePath -RepoRoot $repoRoot -PathValue $markdownResolved))
+Write-Output ("Headless sample print proof report: {0}" -f (Convert-ToRepoRelativePath -RepoRoot $repoRoot -PathValue $reportResolved))
+Write-Output ("Headless sample print proof summary: {0}" -f (Convert-ToRepoRelativePath -RepoRoot $repoRoot -PathValue $markdownResolved))
 
 if ($PassThru.IsPresent) {
   [pscustomobject]$report
