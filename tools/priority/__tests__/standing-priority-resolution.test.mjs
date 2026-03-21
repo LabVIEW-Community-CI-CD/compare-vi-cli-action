@@ -812,6 +812,31 @@ test('selectAutoStandingPriorityCandidate keeps non-demo labview-icon-editor ref
   assert.equal(selected?.number, 960);
 });
 
+test('selectAutoStandingPriorityCandidate skips passive platform-stale trackers when actionable coding lanes exist', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 1426,
+      title: 'Track stale Dependabot alerts after npm remediation on develop',
+      body: [
+        'tools/priority/security-intake.mjs now classifies the current state as platform-stale.',
+        'This follow-up tracks the remaining GitHub dependency-graph / Dependabot refresh lag until the platform state catches up.',
+        'Dependabot alerts auto-close or are otherwise reconciled by GitHub.'
+      ].join('\n'),
+      labels: [],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 1510,
+      title: '[P1] Build a cross-repo standing-lane marketplace for autonomous worker allocation',
+      body: 'Actionable in-repo coding work remains.',
+      labels: ['ci'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 1510);
+});
+
 test('selectAutoStandingPriorityCandidateForRepo skips excluded issue numbers before comment hydration', async () => {
   const selected = await selectAutoStandingPriorityCandidateForRepo('/tmp/repo', 'owner/repo', [
     {

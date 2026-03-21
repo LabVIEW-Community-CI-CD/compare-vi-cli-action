@@ -129,6 +129,22 @@ function isCadenceAlertIssue(title, body) {
   );
 }
 
+function isPassivePlatformTrackerIssue(title, body) {
+  const text = `${String(title || '')}\n${String(body || '')}`;
+  const hasPassiveTrackerTitle = /\btrack stale [\w- ]+ alerts\b/i.test(text);
+  const hasPlatformLagSignal =
+    /\bplatform-stale\b/i.test(text) ||
+    /\brefresh lag\b/i.test(text) ||
+    /\bplatform state catches up\b/i.test(text) ||
+    /\bauto-close or are otherwise reconciled by github\b/i.test(text);
+  const hasExternalOnlyTrackingSignal =
+    /\btracks the remaining github\b/i.test(text) ||
+    /\bdependency-graph\s*\/\s*dependabot\b/i.test(text) ||
+    /\buntil the platform state catches up\b/i.test(text);
+
+  return (hasPassiveTrackerTitle && hasPlatformLagSignal) || (hasPlatformLagSignal && hasExternalOnlyTrackingSignal);
+}
+
 function hasCompareviWorkflowScopeSignal(title, body) {
   const titleText = String(title || '');
   const bodyText = String(body || '');
@@ -377,6 +393,7 @@ function normalizeOpenIssueCandidate(entry) {
     umbrella: hasChildTracksSection(body),
     cadence: isCadenceAlertIssue(title, body),
     outOfScope: isOutOfScopeStandingCandidate(title, body),
+    passiveTracker: isPassivePlatformTrackerIssue(title, body),
     explicitExternalOnlyTracking,
     blocked
   };
@@ -478,11 +495,13 @@ function hasOnlyIneligibleOpenIssues(entries = [], options = {}) {
     return true;
   }
 
-  return normalized.every((entry) => entry.outOfScope || entry.blocked);
+  return normalized.every((entry) => entry.outOfScope || entry.blocked || entry.passiveTracker);
 }
 
 export function selectAutoStandingPriorityCandidate(entries = [], options = {}) {
-  const normalized = normalizeSelectableStandingCandidates(entries, options).filter((entry) => !entry.outOfScope && !entry.blocked);
+  const normalized = normalizeSelectableStandingCandidates(entries, options).filter(
+    (entry) => !entry.outOfScope && !entry.blocked && !entry.passiveTracker
+  );
   if (normalized.length === 0) {
     return null;
   }
