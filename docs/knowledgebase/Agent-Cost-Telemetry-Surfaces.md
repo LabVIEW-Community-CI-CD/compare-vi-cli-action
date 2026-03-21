@@ -331,6 +331,57 @@ It is still not exact billing truth. Until provider exports are available, use
 the invoice-turn baseline plus explicit `exact` versus `estimated` provenance to
 keep the reporting honest.
 
+## Operator Steering Attribution
+
+`#1656` extends the turn and rollup contracts so operator steering can be
+measured immediately, even while the spend layer is still partially heuristic.
+
+At the turn level:
+
+- `docs/schemas/agent-cost-turn-v1.schema.json`
+- `tools/priority/agent-cost-turn.mjs`
+
+Each turn now carries a required `steering` object with:
+
+- `operatorIntervened`
+- `kind`
+- `source`
+- `observedAt`
+- `note`
+- `invoiceTurnId`
+
+This keeps steering attributable by:
+
+- turn
+- lane
+- repository
+- invoice turn when known
+
+At the rollup level:
+
+- `docs/schemas/agent-cost-rollup-v1.schema.json`
+- `tools/priority/agent-cost-rollup.mjs`
+
+Rollups now expose:
+
+- `summary.metrics.steeredTurnCount`
+- `summary.metrics.unsteeredTurnCount`
+- `summary.metrics.steeredUsd`
+- `summary.metrics.unsteeredUsd`
+- `summary.provenance.steeringKinds`
+- `summary.provenance.steeringSources`
+- `breakdown.bySteering`
+
+Use these fields to compare:
+
+- heuristic versus actual spend
+- calibration versus operational funding windows
+- steered versus unsteered calibration runs
+
+That gives future agents a clean path to judge whether a cost or quality change
+came from the model, the operator, or a mixed session instead of blending those
+factors into one opaque number.
+
 ## Follow-Up Seams To Keep Separate
 
 - separate rate-card contract/schema

@@ -34,9 +34,10 @@ test('parseArgs captures reasoning-effort metadata and derives effective default
   assert.equal(parsed.requestedReasoningEffort, 'xhigh');
   assert.equal(parsed.effectiveReasoningEffort, 'xhigh');
   assert.equal(parsed.usageUnitCount, 1);
+  assert.equal(parsed.operatorSteered, false);
 });
 
-test('buildAgentCostTurn writes a normalized receipt with reasoning effort metadata', () => {
+test('buildAgentCostTurn writes a normalized receipt with reasoning effort and steering metadata', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-turn-'));
   const outputPath = path.join(tmpDir, 'turn.json');
   const result = buildAgentCostTurn({
@@ -67,11 +68,20 @@ test('buildAgentCostTurn writes a normalized receipt with reasoning effort metad
     sourceReceiptPath: 'tests/results/_agent/runtime/live-turn-1644.json',
     sourceReportPath: null,
     usageObservedAt: '2026-03-21T18:40:00.000Z',
+    operatorSteered: true,
+    operatorSteeringKind: 'operator-prompt',
+    operatorSteeringSource: 'operator-observed',
+    operatorSteeringObservedAt: '2026-03-21T18:39:30.000Z',
+    operatorSteeringNote: 'Operator provided extra steering for this calibration turn.',
+    steeringInvoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
     outputPath
   }, new Date('2026-03-21T18:41:00.000Z'));
 
   assert.equal(result.report.model.requestedReasoningEffort, 'xhigh');
   assert.equal(result.report.model.effectiveReasoningEffort, 'xhigh');
+  assert.equal(result.report.steering.operatorIntervened, true);
+  assert.equal(result.report.steering.kind, 'operator-prompt');
+  assert.equal(result.report.steering.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.equal(result.report.usage.totalTokens, 1250);
   assert.equal(result.outputPath, outputPath);
 });
@@ -101,6 +111,9 @@ test('agent-cost-turn CLI writes a receipt directly', () => {
       '--agent-role', 'live',
       '--source-schema', 'priority/manual-live-session@v1',
       '--usage-observed-at', '2026-03-21T18:40:00.000Z',
+      '--operator-steered',
+      '--operator-steering-kind', 'operator-prompt',
+      '--operator-steering-source', 'operator-observed',
       '--output', outputPath
     ],
     {
@@ -112,4 +125,7 @@ test('agent-cost-turn CLI writes a receipt directly', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /\[agent-cost-turn\] wrote /);
   assert.equal(fs.existsSync(outputPath), true);
+  const output = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
+  assert.equal(output.steering.operatorIntervened, true);
+  assert.equal(output.steering.kind, 'operator-prompt');
 });

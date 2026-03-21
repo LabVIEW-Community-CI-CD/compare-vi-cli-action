@@ -208,6 +208,14 @@ test('estimated turns do not let a declared zero amount mask a computable rate-c
       sourceReceiptPath: 'tests/results/_agent/runtime/worker-slot-1.json',
       sourceReportPath: null,
       usageObservedAt: '2026-03-21T19:10:30.000Z'
+    },
+    steering: {
+      operatorIntervened: false,
+      kind: null,
+      source: null,
+      observedAt: null,
+      note: null,
+      invoiceTurnId: null
     }
   });
 
@@ -251,8 +259,14 @@ test('runAgentCostRollup aggregates exact and estimated turn spend with provenan
   assert.equal(result.report.summary.metrics.heuristicUsdDelta, null);
   assert.equal(result.report.summary.metrics.totalInputTokens, 3600);
   assert.equal(result.report.summary.metrics.totalOutputTokens, 760);
+  assert.equal(result.report.summary.metrics.steeredTurnCount, 1);
+  assert.equal(result.report.summary.metrics.unsteeredTurnCount, 1);
+  assert.equal(result.report.summary.metrics.steeredUsd, 0.0201);
+  assert.equal(result.report.summary.metrics.unsteeredUsd, 0.0425);
   assert.ok(result.report.summary.provenance.sessionIds.includes('session-live-001'));
   assert.ok(result.report.summary.provenance.reasoningEfforts.includes('xhigh'));
+  assert.ok(result.report.summary.provenance.steeringKinds.includes('operator-prompt'));
+  assert.ok(result.report.summary.provenance.steeringSources.includes('operator-observed'));
   assert.equal(result.report.summary.provenance.invoiceTurn.invoiceId, 'HQ1VJLMV-0027');
   assert.equal(result.report.summary.provenance.invoiceTurn.activationState, 'active');
   assert.equal(result.report.summary.provenance.invoiceTurnSelection.strategy, 'single-candidate');
@@ -265,6 +279,7 @@ test('runAgentCostRollup aggregates exact and estimated turn spend with provenan
   assert.ok(result.report.breakdown.byProvider.some((entry) => entry.key === 'codex-cli' && entry.totalUsd === 0.0201));
   assert.ok(result.report.breakdown.byReasoningEffort.some((entry) => entry.key === 'xhigh' && entry.turnCount === 1));
   assert.ok(result.report.breakdown.byAgentRole.some((entry) => entry.key === 'background' && entry.turnCount === 1));
+  assert.ok(result.report.breakdown.bySteering.some((entry) => entry.key === 'steered' && entry.turnCount === 1));
   assert.equal(fs.existsSync(outputPath), true);
 });
 
@@ -491,6 +506,14 @@ test('runAgentCostRollup fails closed when a turn report cannot resolve cost', (
       sourceReceiptPath: 'tests/results/_agent/runtime/worker-slot-9.json',
       sourceReportPath: null,
       usageObservedAt: '2026-03-21T19:00:30.000Z'
+    },
+    steering: {
+      operatorIntervened: false,
+      kind: null,
+      source: null,
+      observedAt: null,
+      note: null,
+      invoiceTurnId: null
     }
   });
 

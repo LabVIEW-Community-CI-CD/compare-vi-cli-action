@@ -12,7 +12,8 @@
     "usage",
     "billing",
     "context",
-    "provenance"
+    "provenance",
+    "steering"
   ],
   "properties": {
     "schema": { "const": "priority/agent-cost-turn@v1" },
@@ -22,11 +23,18 @@
     "usage": { "$ref": "#/$defs/usage" },
     "billing": { "$ref": "#/$defs/billing" },
     "context": { "$ref": "#/$defs/context" },
-    "provenance": { "$ref": "#/$defs/provenance" }
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "steering": { "$ref": "#/$defs/steering" }
   },
   "$defs": {
     "nullableString": {
       "type": ["string", "null"]
+    },
+    "nullableDateTime": {
+      "anyOf": [
+        { "type": "string", "format": "date-time" },
+        { "type": "null" }
+      ]
     },
     "nullableReasoningEffort": {
       "type": ["string", "null"],
@@ -122,6 +130,19 @@
         "sourceReceiptPath": { "$ref": "#/$defs/nullableString" },
         "sourceReportPath": { "$ref": "#/$defs/nullableString" },
         "usageObservedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "steering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operatorIntervened", "kind", "source", "observedAt", "note", "invoiceTurnId"],
+      "properties": {
+        "operatorIntervened": { "type": "boolean" },
+        "kind": { "$ref": "#/$defs/nullableString" },
+        "source": { "$ref": "#/$defs/nullableString" },
+        "observedAt": { "$ref": "#/$defs/nullableDateTime" },
+        "note": { "$ref": "#/$defs/nullableString" },
+        "invoiceTurnId": { "$ref": "#/$defs/nullableString" }
       }
     }
   }

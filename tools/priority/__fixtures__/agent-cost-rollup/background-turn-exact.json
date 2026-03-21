@@ -51,5 +51,13 @@
     "sourceReceiptPath": "tests/results/_hooks/pre-push-copilot-cli-review.json",
     "sourceReportPath": "tests/results/_agent/runtime/worker-slot-4.json",
     "usageObservedAt": "2026-03-21T18:40:30.000Z"
+  },
+  "steering": {
+    "operatorIntervened": false,
+    "kind": null,
+    "source": null,
+    "observedAt": null,
+    "note": null,
+    "invoiceTurnId": null
   }
 }
