@@ -1601,6 +1601,13 @@ jobs:
       with:
         phase: J2
         results-dir: tests/results
+    - name: Collect hosted Windows runner health
+      shell: pwsh
+      run: |
+        pwsh -NoLogo -NoProfile -File tools/Collect-RunnerHealth.ps1 `
+          -ResultsDir 'tests/results/local-parity/windows' `
+          -AppendSummary `
+          -EmitJson
     - name: Prepare NI Windows image and runtime
       id: windows-preflight
       shell: pwsh
@@ -1752,4 +1759,5 @@ jobs:
           tests/results/local-parity/windows/container-export/**
           tests/results/local-parity/windows/windows-ni-2026q1-host-preflight.json
           tests/results/local-parity/windows/runtime-manager-compare-windows.json
+          tests/results/local-parity/windows/_agent/runner-health.json
         if-no-files-found: warn

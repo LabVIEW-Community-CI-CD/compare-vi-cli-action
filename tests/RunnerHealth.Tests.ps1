@@ -14,6 +14,9 @@ Describe 'Collect-RunnerHealth.ps1' {
     $j.generatedAt | Should -Not -BeNullOrEmpty
     $j.env | Should -Not -BeNullOrEmpty
     $j.service | Should -Not -BeNullOrEmpty
+    $j.docker | Should -Not -BeNullOrEmpty
+    $j.docker.PSObject.Properties.Name | Should -Contain 'commandAvailable'
+    $j.docker.PSObject.Properties.Name | Should -Contain 'infoProbe'
   }
 
   It 'appends a concise summary when GITHUB_STEP_SUMMARY is set' {
@@ -26,6 +29,7 @@ Describe 'Collect-RunnerHealth.ps1' {
       $text = Get-Content -LiteralPath $summary -Raw
       $text | Should -Match 'Runner Health'
       $text | Should -Match 'Service'
+      $text | Should -Match 'Docker'
     } finally { Remove-Item -LiteralPath $summary -Force -ErrorAction SilentlyContinue; $env:GITHUB_STEP_SUMMARY = $null }
   }
 }
