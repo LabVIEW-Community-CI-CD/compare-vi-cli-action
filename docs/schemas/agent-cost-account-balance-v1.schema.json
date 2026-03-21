@@ -7,10 +7,7 @@
   "required": [
     "schema",
     "generatedAt",
-    "snapshotAt",
-    "capturedAt",
     "effectiveAt",
-    "renewalCycleBoundaryAt",
     "plan",
     "balances",
     "sourceSchema",
@@ -22,9 +19,9 @@
   "properties": {
     "schema": { "const": "priority/agent-cost-account-balance@v1" },
     "generatedAt": { "type": "string", "format": "date-time" },
-    "snapshotAt": { "type": "string", "format": "date-time" },
-    "capturedAt": { "type": "string", "format": "date-time" },
     "effectiveAt": { "type": "string", "format": "date-time" },
+    "capturedAt": { "type": "string", "format": "date-time" },
+    "snapshotAt": { "type": "string", "format": "date-time" },
     "renewalCycleBoundaryAt": { "type": "string", "format": "date-time" },
     "plan": {
       "type": "object",

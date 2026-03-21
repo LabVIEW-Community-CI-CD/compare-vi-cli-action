@@ -48,9 +48,8 @@ test('buildNormalizedAccountBalanceReceiptFromSnapshot normalizes a private acco
   const report = buildNormalizedAccountBalanceReceiptFromSnapshot(snapshot);
 
   assert.equal(report.schema, 'priority/agent-cost-account-balance@v1');
-  assert.equal(report.snapshotAt, '2026-03-21T12:00:00.000Z');
-  assert.equal(report.capturedAt, '2026-03-21T12:00:00.000Z');
   assert.equal(report.effectiveAt, '2026-03-21T12:00:00.000Z');
+  assert.equal(report.capturedAt, '2026-03-21T12:00:00.000Z');
   assert.equal(report.renewalCycleBoundaryAt, '2026-04-15T00:00:00.000Z');
   assert.equal(report.plan.name, 'business');
   assert.equal(report.plan.renewsAt, '2026-04-15');

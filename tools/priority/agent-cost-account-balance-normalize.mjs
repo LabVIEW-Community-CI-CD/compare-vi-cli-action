@@ -221,9 +221,9 @@ export function buildNormalizedAccountBalanceReceiptFromSnapshot(snapshotPayload
   return {
     schema: REPORT_SCHEMA,
     generatedAt,
+    effectiveAt,
     snapshotAt,
     capturedAt,
-    effectiveAt,
     renewalCycleBoundaryAt,
     plan: {
       name: normalizeText(snapshotPayload?.plan?.name) || 'business',
