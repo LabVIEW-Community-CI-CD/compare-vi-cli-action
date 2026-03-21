@@ -2,8 +2,12 @@
 # LabVIEW CLI Custom Operation Scaffold
 
 This note defines the disposable workspace scaffold used to bootstrap
-repo-owned LabVIEW CLI custom operation authoring from NI's installed
-`AddTwoNumbers` example without vendoring NI example files into git.
+repo-owned LabVIEW CLI custom operation authoring from either:
+
+- NI's installed `AddTwoNumbers` example
+- installed official LabVIEW CLI operation directories
+
+without vendoring NI-owned files into git.
 
 ## Purpose
 
@@ -13,10 +17,10 @@ for a future repo-owned custom operation payload such as
 
 This helper does not promote the NI example into the repository.
 
-- It copies from the installed example tree on the host.
+- It copies from an installed NI source tree on the host.
 - It defaults the destination into `tests/results/_agent/`.
-- It emits a machine-readable receipt that records the source example path and
-  LabVIEW path/version hint used for the scaffold.
+- It emits a machine-readable receipt that records the source kind, source path,
+  and LabVIEW path/version hint used for the scaffold.
 
 ## Entry points
 
@@ -26,10 +30,20 @@ This helper does not promote the NI example into the repository.
 - Focused test:
   `tests/New-LabVIEWCLICustomOperationWorkspace.Tests.ps1`
 
-## Default source and destination
+## Source kinds and default destinations
+
+### `ni-example`
 
 - Default source:
   `C:\Users\Public\Documents\National Instruments\LabVIEW CLI\Examples\AddTwoNumbers`
+
+### `installed-cli-operation`
+
+- Default source:
+  `C:\Program Files (x86)\National Instruments\Shared\LabVIEW CLI\Operations\CreateComparisonReport`
+
+### Destination
+
 - Default destination root:
   `tests/results/_agent/custom-operation-scaffolds/`
 
@@ -55,10 +69,21 @@ pwsh -NoLogo -NoProfile -File tools/New-LabVIEWCLICustomOperationWorkspace.ps1 `
   -Force
 ```
 
+Scaffold from an installed LabVIEW CLI operation directory instead of the
+`AddTwoNumbers` example:
+
+```powershell
+pwsh -NoLogo -NoProfile -File tools/New-LabVIEWCLICustomOperationWorkspace.ps1 `
+  -SourceKind installed-cli-operation `
+  -DestinationPath tests/results/_agent/custom-operation-scaffolds/print-html-authoring `
+  -Force
+```
+
 ## Receipt
 
 Successful runs emit `labview-cli-custom-operation-scaffold@v1` with:
 
+- source kind (`ni-example` or `installed-cli-operation`)
 - source example path
 - destination path
 - destination policy (`repo-results-root` or `outside-repo`)
@@ -75,6 +100,6 @@ This scaffold is bootstrap only.
 - It does not resolve the host hang tracked in `#1472`.
 - It does not make the eventual payload promotable on its own.
 
-It exists so the payload-authoring lane tracked by `#1469` has a deterministic,
+It exists so payload-authoring lanes such as `#1619` have a deterministic,
 repeatable workspace bootstrap instead of manual copying from the NI install
 tree.

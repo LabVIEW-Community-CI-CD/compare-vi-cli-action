@@ -57,6 +57,7 @@ Describe 'New-LabVIEWCLICustomOperationWorkspace.ps1' -Tag 'Unit' {
     $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -Depth 10
     $receipt.schema | Should -Be 'labview-cli-custom-operation-scaffold@v1'
     $receipt.status | Should -Be 'succeeded'
+    $receipt.sourceKind | Should -Be 'ni-example'
     $receipt.sourceExampleName | Should -Be 'source-example'
     $receipt.sourceExists | Should -BeTrue
     $receipt.destinationExists | Should -BeTrue
@@ -79,7 +80,58 @@ Describe 'New-LabVIEWCLICustomOperationWorkspace.ps1' -Tag 'Unit' {
       -SkipSchemaValidation 2>&1
     $LASTEXITCODE | Should -Not -Be 0
 
-    (($runOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match 'example source was not found'
+    (($runOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match 'scaffold source was not found'
+  }
+
+  It 'can scaffold from an installed-cli-operation style source without requiring AddTwoNumbers artifacts' {
+    $sourcePath = Join-Path $TestDrive 'installed-operation-source'
+    New-Item -ItemType Directory -Path $sourcePath -Force | Out-Null
+    foreach ($relativePath in @(
+      'GetHelp.vi',
+      'RunOperation.vi',
+      'Utilities\\ParseArguments.vi'
+    )) {
+      $filePath = Join-Path $sourcePath $relativePath
+      $parent = Split-Path -Parent $filePath
+      if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+      }
+      Set-Content -LiteralPath $filePath -Value "placeholder for $relativePath" -Encoding utf8
+    }
+
+    $destinationPath = Join-Path $TestDrive 'results-root' 'installed-operation-workspace'
+    $receiptPath = Join-Path $TestDrive 'receipts' 'installed-operation-scaffold.json'
+
+    $runOutput = & pwsh -NoLogo -NoProfile -File $script:ScaffoldScript `
+      -SourceKind installed-cli-operation `
+      -SourceExamplePath $sourcePath `
+      -DestinationPath $destinationPath `
+      -ReceiptPath $receiptPath `
+      -SkipSchemaValidation 2>&1
+    $LASTEXITCODE | Should -Be 0 -Because (($runOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine)
+
+    $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -Depth 10
+    $receipt.sourceKind | Should -Be 'installed-cli-operation'
+    $receipt.sourceExampleName | Should -Be 'installed-operation-source'
+    $receipt.copiedFileCount | Should -Be 3
+    @($receipt.copiedFiles) | Should -Contain 'GetHelp.vi'
+    @($receipt.copiedFiles) | Should -Contain 'RunOperation.vi'
+    @($receipt.copiedFiles) | Should -Contain 'Utilities/ParseArguments.vi'
+  }
+
+  It 'fails closed when an installed-cli-operation source is missing RunOperation.vi' {
+    $sourcePath = Join-Path $TestDrive 'installed-operation-missing-run'
+    New-Item -ItemType Directory -Path $sourcePath -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $sourcePath 'GetHelp.vi') -Value 'help placeholder' -Encoding utf8
+    $destinationPath = Join-Path $TestDrive 'results-root' 'invalid-installed-operation'
+
+    $runOutput = & pwsh -NoLogo -NoProfile -File $script:ScaffoldScript `
+      -SourceKind installed-cli-operation `
+      -SourceExamplePath $sourcePath `
+      -DestinationPath $destinationPath `
+      -SkipSchemaValidation 2>&1
+    $LASTEXITCODE | Should -Not -Be 0
+    (($runOutput | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match 'expected ''RunOperation.vi'''
   }
 
   It 'fails closed when the destination already exists unless force is provided' {
