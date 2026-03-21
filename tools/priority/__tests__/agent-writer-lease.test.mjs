@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   acquireWriterLease,
+  __test,
   defaultLeaseRoot,
   defaultOwner,
   heartbeatWriterLease,
@@ -216,4 +217,46 @@ test('defaultLeaseRoot resolves git-common-dir for a linked worktree repo root o
     defaultLeaseRoot({ repoRoot: worktreeDir }),
     path.join(worktreeDir, '.git', 'agent-writer-leases')
   );
+});
+
+test('replaceFileWithRetry tolerates a transient Windows-style rename failure', async (t) => {
+  const sandboxRoot = randomTempRoot('agent-writer-lease-rename-retry');
+  await fs.mkdir(sandboxRoot, { recursive: true });
+  t.after(async () => {
+    await fs.rm(sandboxRoot, { recursive: true, force: true });
+  });
+
+  const targetPath = path.join(sandboxRoot, 'workspace.json');
+  const tempPath = path.join(sandboxRoot, 'workspace.json.tmp');
+  await fs.writeFile(targetPath, 'old\n', 'utf8');
+  await fs.writeFile(tempPath, 'new\n', 'utf8');
+
+  let renameAttempts = 0;
+  const operations = [];
+  const fsModule = {
+    async rename(source, destination) {
+      renameAttempts += 1;
+      operations.push(`rename:${renameAttempts}`);
+      if (renameAttempts === 1) {
+        const error = new Error('EPERM');
+        error.code = 'EPERM';
+        throw error;
+      }
+      return fs.rename(source, destination);
+    },
+    async rm(filePath, options) {
+      operations.push(`rm:${path.basename(filePath)}`);
+      return fs.rm(filePath, options);
+    }
+  };
+
+  await __test.replaceFileWithRetry(tempPath, targetPath, {
+    retryAttempts: 2,
+    retryWaitMs: 0,
+    fsModule
+  });
+
+  assert.equal(renameAttempts, 2);
+  assert.deepEqual(operations.slice(0, 3), ['rename:1', 'rm:workspace.json', 'rename:2']);
+  assert.equal(await fs.readFile(targetPath, 'utf8'), 'new\n');
 });
