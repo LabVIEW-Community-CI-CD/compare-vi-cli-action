@@ -50,6 +50,11 @@ export function resolveTtsxBinary(root = repoRoot) {
   return candidates.find((candidate) => existsSync(candidate)) || null;
 }
 
+export function resolveTsxCliPath(root = repoRoot) {
+  const cliPath = path.join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  return existsSync(cliPath) ? cliPath : null;
+}
+
 export function resolveExecutionMode({
   githubActions = process.env.GITHUB_ACTIONS === 'true',
   forceCompiled = process.env.COMPAREVI_FORCE_COMPILED_TS === '1',
@@ -89,9 +94,18 @@ export function buildExecutionPlan({
   fallbackDist,
   scriptArgs = [],
   mode = resolveExecutionMode(),
-  tsxBinary = resolveTtsxBinary(repoRoot)
+  tsxBinary = resolveTtsxBinary(repoRoot),
+  tsxCliPath = resolveTsxCliPath(repoRoot),
+  platform = process.platform
 }) {
   if (mode === 'tsx') {
+    if (platform === 'win32' && tsxCliPath) {
+      return {
+        mode,
+        command: process.execPath,
+        args: [tsxCliPath, '--tsconfig', project, entry, ...scriptArgs]
+      };
+    }
     return {
       mode,
       command: tsxBinary,

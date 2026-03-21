@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import {
   buildExecutionPlan,
   parseArgs,
-  resolveExecutionMode
+  resolveExecutionMode,
+  resolveTsxCliPath
 } from '../run-local-typescript.mjs';
 
 test('parseArgs preserves script arguments after --', () => {
@@ -42,7 +43,8 @@ test('buildExecutionPlan emits tsx locally and node+dist for compiled fallback',
     fallbackDist: 'dist/tools/priority/runtime-daemon.js',
     scriptArgs: ['--status'],
     mode: 'tsx',
-    tsxBinary: 'node_modules/.bin/tsx'
+    tsxBinary: 'node_modules/.bin/tsx',
+    platform: 'linux'
   });
   assert.deepEqual(tsxPlan, {
     mode: 'tsx',
@@ -61,4 +63,36 @@ test('buildExecutionPlan emits tsx locally and node+dist for compiled fallback',
   assert.equal(compiledPlan.mode, 'compiled');
   assert.equal(compiledPlan.command, process.execPath);
   assert.deepEqual(compiledPlan.args, ['dist/tools/priority/runtime-daemon.js', '--status']);
+});
+
+test('buildExecutionPlan runs the local tsx cli through node on Windows', () => {
+  const plan = buildExecutionPlan({
+    project: 'tsconfig.cli.json',
+    entry: 'tools/cli/project-portfolio.ts',
+    fallbackDist: 'dist/tools/cli/project-portfolio.js',
+    scriptArgs: ['check', '--help'],
+    mode: 'tsx',
+    tsxBinary: 'node_modules/.bin/tsx.cmd',
+    tsxCliPath: 'node_modules/tsx/dist/cli.mjs',
+    platform: 'win32'
+  });
+
+  assert.deepEqual(plan, {
+    mode: 'tsx',
+    command: process.execPath,
+    args: [
+      'node_modules/tsx/dist/cli.mjs',
+      '--tsconfig',
+      'tsconfig.cli.json',
+      'tools/cli/project-portfolio.ts',
+      'check',
+      '--help'
+    ]
+  });
+});
+
+test('resolveTsxCliPath locates the installed tsx cli entrypoint', () => {
+  const resolved = resolveTsxCliPath();
+  assert.ok(resolved);
+  assert.match(resolved, /node_modules[\\/]+tsx[\\/]+dist[\\/]+cli\.mjs$/i);
 });
