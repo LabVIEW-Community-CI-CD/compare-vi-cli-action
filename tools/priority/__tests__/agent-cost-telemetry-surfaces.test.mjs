@@ -56,6 +56,9 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.match(guide, /priority:cost:turn/);
   assert.match(guide, /priority:cost:rollup/);
   assert.match(guide, /xhigh/);
+  assert.match(guide, /Sticky Calibration Funding-Window Mode/);
+  assert.match(guide, /selection\.mode = sticky-calibration/);
+  assert.match(guide, /--selection-mode sticky-calibration --selection-reason <text>/);
   assert.match(guide, /multiple invoice-turn receipts may coexist/);
   assert.match(guide, /--invoice-turn-id/);
   assert.match(guide, /policy\.activationState = hold/);

@@ -145,6 +145,16 @@
         }
       }
     },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "calibrationWindowId", "reason"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["hold", "sticky-calibration", "ended"] },
+        "calibrationWindowId": { "$ref": "#/$defs/nullableString" },
+        "reason": { "$ref": "#/$defs/nullableString" }
+      }
+    },
     "invoiceTurnSummary": {
       "type": "object",
       "additionalProperties": false,
@@ -168,7 +178,8 @@
         "reconciliationNote",
         "sourceKind",
         "sourcePathEvidence",
-        "operatorNote"
+        "operatorNote",
+        "selection"
       ],
       "properties": {
         "sourcePath": { "type": "string", "minLength": 1 },
@@ -190,7 +201,8 @@
         "reconciliationNote": { "$ref": "#/$defs/nullableString" },
         "sourceKind": { "$ref": "#/$defs/nullableString" },
         "sourcePathEvidence": { "$ref": "#/$defs/nullableString" },
-        "operatorNote": { "$ref": "#/$defs/nullableString" }
+        "operatorNote": { "$ref": "#/$defs/nullableString" },
+        "selection": { "$ref": "#/$defs/selection" }
       }
     },
     "invoiceTurnSelection": {
@@ -203,19 +215,34 @@
         "candidateCount",
         "matchingCandidateCount",
         "candidateInvoiceTurnIds",
-        "selectedInvoiceTurnId"
+        "selectedInvoiceTurnId",
+        "mode",
+        "calibrationWindowId",
+        "reason"
       ],
       "properties": {
         "strategy": {
           "type": "string",
-          "enum": ["none", "single-candidate", "explicit-id", "explicit-id-missing", "active-window-latest-openedAt", "latest-openedAt-fallback"]
+          "enum": [
+            "none",
+            "single-candidate",
+            "explicit-id",
+            "explicit-id-missing",
+            "sticky-calibration-active",
+            "sticky-calibration-latest-openedAt",
+            "active-window-latest-openedAt",
+            "latest-openedAt-fallback"
+          ]
         },
         "explicitInvoiceTurnId": { "$ref": "#/$defs/nullableString" },
         "selectionObservedAt": { "$ref": "#/$defs/nullableString" },
         "candidateCount": { "type": "integer", "minimum": 0 },
         "matchingCandidateCount": { "type": "integer", "minimum": 0 },
         "candidateInvoiceTurnIds": { "type": "array", "items": { "type": "string" } },
-        "selectedInvoiceTurnId": { "$ref": "#/$defs/nullableString" }
+        "selectedInvoiceTurnId": { "$ref": "#/$defs/nullableString" },
+        "mode": { "type": "string", "enum": ["hold", "sticky-calibration", "ended"] },
+        "calibrationWindowId": { "$ref": "#/$defs/nullableString" },
+        "reason": { "$ref": "#/$defs/nullableString" }
       }
     },
     "summary": {

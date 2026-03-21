@@ -32,5 +32,10 @@
     "sourceKind": "operator-invoice",
     "sourcePath": null,
     "operatorNote": "Normalized example for the first invoice-turn baseline."
+  },
+  "selection": {
+    "mode": "hold",
+    "calibrationWindowId": null,
+    "reason": "Calibration has not been activated yet."
   }
 }

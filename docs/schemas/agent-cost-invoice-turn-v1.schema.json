@@ -80,6 +80,16 @@
         "sourcePath": { "type": ["string", "null"] },
         "operatorNote": { "type": ["string", "null"] }
       }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "calibrationWindowId", "reason"],
+      "properties": {
+        "mode": { "enum": ["hold", "sticky-calibration", "ended"] },
+        "calibrationWindowId": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] }
+      }
     }
   }
 }
