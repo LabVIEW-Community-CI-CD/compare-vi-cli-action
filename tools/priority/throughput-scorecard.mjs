@@ -229,7 +229,8 @@ export function buildThroughputScorecard({
     availableSlotCount: Number(workerPool.availableSlotCount ?? 0) || 0,
     releasedLaneCount: Number(workerPool.releasedLaneCount ?? 0) || 0,
     utilizationRatio: coerceNonNegativeNumber(workerPool.utilizationRatio) ?? 0,
-    activeCodingLanes: Number(runtimeState?.activeCodingLanes ?? 0) || 0
+    activeCodingLanes: Number(runtimeState?.activeCodingLanes ?? 0) || 0,
+    liveOrchestratorLane: normalizeText(workerPool.liveOrchestratorLane) || 'Sagan'
   };
   const queueSummary = {
     readyPrInventory: readySet.length,

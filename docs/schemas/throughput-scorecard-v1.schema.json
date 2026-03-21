@@ -37,7 +37,8 @@
         "availableSlotCount",
         "releasedLaneCount",
         "utilizationRatio",
-        "activeCodingLanes"
+        "activeCodingLanes",
+        "liveOrchestratorLane"
       ],
       "properties": {
         "targetSlotCount": { "type": "integer", "minimum": 0 },
@@ -45,7 +46,8 @@
         "availableSlotCount": { "type": "integer", "minimum": 0 },
         "releasedLaneCount": { "type": "integer", "minimum": 0 },
         "utilizationRatio": { "type": "number", "minimum": 0 },
-        "activeCodingLanes": { "type": "integer", "minimum": 0 }
+        "activeCodingLanes": { "type": "integer", "minimum": 0 },
+        "liveOrchestratorLane": { "type": "string" }
       }
     },
     "queue": {
