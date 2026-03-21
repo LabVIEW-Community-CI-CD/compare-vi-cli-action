@@ -1,0 +1,16 @@
+{
+  "schema": "priority/agent-cost-private-invoice-metadata@v1",
+  "invoiceId": null,
+  "openedAt": null,
+  "observedAt": "2026-03-21T10:01:07.000-07:00",
+  "closedAt": null,
+  "creditsPurchased": 10000,
+  "unitPriceUsd": null,
+  "prepaidUsd": 400,
+  "pricingBasis": "prepaid-credit",
+  "sourceKind": "operator-invoice",
+  "sourcePath": "C:/Users/operator/Downloads/Invoice-HQ1VJLMV-0027.pdf",
+  "operatorNote": "Sample local-only metadata used to normalize an invoice turn baseline.",
+  "activationState": "active",
+  "fundingPurpose": "operational"
+}

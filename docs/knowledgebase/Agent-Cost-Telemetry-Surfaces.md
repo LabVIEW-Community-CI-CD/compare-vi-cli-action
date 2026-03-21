@@ -235,6 +235,7 @@ The smallest defensible first implementation is:
 - schema: `docs/schemas/agent-cost-turn-v1.schema.json`
 - schema: `docs/schemas/agent-cost-rollup-v1.schema.json`
 - helper: `tools/priority/agent-cost-invoice-turn.mjs`
+- helper: `tools/priority/agent-cost-invoice-normalize.mjs`
 - helper: `tools/priority/agent-cost-turn.mjs`
 - helper: `tools/priority/agent-cost-rollup.mjs`
 - sample fixtures:
@@ -243,11 +244,22 @@ The smallest defensible first implementation is:
   - `tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline.json`
   - `tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-next-baseline.json`
   - `tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline-reconciled.json`
+  - `tools/priority/__fixtures__/agent-cost-rollup/private-invoice-metadata-sample.json`
 
 This first slice intentionally separates:
 
 - checked-in public example baseline
 - local-only normalized invoice receipts that can carry private operator evidence
+
+There is now a local-only normalization helper for private invoice metadata:
+
+- schema: `docs/schemas/agent-cost-private-invoice-metadata-v1.schema.json`
+- helper: `tools/priority/agent-cost-invoice-normalize.mjs`
+
+This helper intentionally does not scrape PDFs directly in the stable slice.
+Instead, it normalizes a local private metadata JSON payload into a checked-in
+invoice-turn contract. That keeps raw invoice documents out of the repository
+while still reducing manual transcription drift.
 
 The checked-in fixture must never embed the private invoice path. Local receipts
 may carry that path under operator control for later reconciliation.
@@ -255,9 +267,11 @@ may carry that path under operator control for later reconciliation.
 Use the helpers like this:
 
 - `node tools/priority/agent-cost-invoice-turn.mjs ...`
+- `node tools/priority/agent-cost-invoice-normalize.mjs --metadata <path> ...`
 - `node tools/priority/agent-cost-turn.mjs ...`
 - `node tools/priority/agent-cost-rollup.mjs --turn-report <path> --invoice-turn <path>`
 - `node tools/npm/run-script.mjs priority:cost:invoice-turn -- ...`
+- `node tools/npm/run-script.mjs priority:cost:invoice-normalize -- --metadata <path> ...`
 - `node tools/npm/run-script.mjs priority:cost:turn -- ...`
 - `node tools/npm/run-script.mjs priority:cost:rollup -- ...`
 

@@ -21,10 +21,15 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.ok(docsEntry);
   assert.ok(contractEntry);
   assert.ok(docsEntry.files.includes('docs/knowledgebase/Agent-Cost-Telemetry-Surfaces.md'));
+  assert.ok(contractEntry.files.includes('docs/schemas/agent-cost-private-invoice-metadata-v1.schema.json'));
   assert.ok(contractEntry.files.includes('docs/schemas/agent-cost-invoice-turn-v1.schema.json'));
+  assert.ok(contractEntry.files.includes('tools/priority/agent-cost-invoice-normalize.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-invoice-turn.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-turn.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-rollup.mjs'));
+  assert.ok(contractEntry.files.includes('tools/priority/__fixtures__/agent-cost-rollup/private-invoice-metadata-sample.json'));
+  assert.ok(contractEntry.files.includes('tools/priority/__tests__/agent-cost-invoice-normalize.test.mjs'));
+  assert.ok(contractEntry.files.includes('tools/priority/__tests__/agent-cost-invoice-normalize-schema.test.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-next-baseline.json'));
   assert.ok(contractEntry.files.includes('tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline-reconciled.json'));
   assert.match(guide, /tools\/local-collab\/ledger\/local-review-ledger\.mjs/);
@@ -50,8 +55,12 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.match(guide, /amountKind = exact \| estimated/);
   assert.match(guide, /rateCardSource/);
   assert.match(guide, /First Implemented Invoice-Turn Slice/);
+  assert.match(guide, /docs\/schemas\/agent-cost-private-invoice-metadata-v1\.schema\.json/);
+  assert.match(guide, /tools\/priority\/agent-cost-invoice-normalize\.mjs/);
+  assert.match(guide, /private-invoice-metadata-sample\.json/);
   assert.match(guide, /docs\/schemas\/agent-cost-invoice-turn-v1\.schema\.json/);
   assert.match(guide, /tools\/priority\/agent-cost-invoice-turn\.mjs/);
+  assert.match(guide, /priority:cost:invoice-normalize/);
   assert.match(guide, /priority:cost:invoice-turn/);
   assert.match(guide, /priority:cost:turn/);
   assert.match(guide, /priority:cost:rollup/);
