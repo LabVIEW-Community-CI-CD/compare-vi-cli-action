@@ -40,8 +40,8 @@ The checked-in profile catalog currently supports these canonical triggers:
   - profile: `autonomous-default`
   - operator preset: `continue-driving-autonomously` + `standing-priority`
   - aliases: `MC-AUTO`, `MC-DEFAULT`
-  - use when the repo-owned control plane should keep the standing lane moving and rotate to the next concrete child
-    issue while proactively filling safe worker-slot capacity up to the checked-in four-lane cap
+  - use when the repo-owned control plane should keep the standing lane moving from session start and rotate to the
+    next concrete child issue while proactively filling safe worker-slot capacity up to the checked-in four-lane cap
 - `MC-LIVE`
   - profile: `finish-live-lane`
   - operator preset: `finish-live-standing-lane` + `standing-priority`
@@ -134,7 +134,7 @@ Overrides are narrow, auditable exceptions. They do not widen the repo law.
 - `MC`
   - resolves to `autonomous-default`
   - applies `continue-driving-autonomously` + `standing-priority`
-  - uses no overrides and should drive toward the checked-in four-lane cap when safe work exists
+  - uses no overrides and should drive toward the checked-in four-lane cap from session start when safe work exists
 - `MC-QUEUE`
   - resolves through the `restore-intake` alias set
   - applies `restore-intake` + `queue-health`
