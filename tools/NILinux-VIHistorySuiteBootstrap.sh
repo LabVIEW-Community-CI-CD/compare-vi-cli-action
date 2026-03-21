@@ -1612,18 +1612,22 @@ if [ -n "${COMPAREVI_VI_HISTORY_REPO_PATH:-}" ] || [ -n "${COMPAREVI_VI_HISTORY_
   fi
 
   if [ -n "${COMPAREVI_VI_HISTORY_MAX_BRANCH_COMMITS:-}" ] && [ -z "${COMPAREVI_VI_HISTORY_BRANCH_COMMIT_COUNT:-}" ]; then
+    resolved_baseline_ref=""
     case "${COMPAREVI_VI_HISTORY_MAX_BRANCH_COMMITS}" in
       ''|*[!0-9]*)
         echo "COMPAREVI_VI_HISTORY_MAX_BRANCH_COMMITS must be an integer." 1>&2
         return 2
         ;;
     esac
-    count_range="${COMPAREVI_VI_HISTORY_SOURCE_BRANCH}"
+    count_range="${COMPAREVI_VI_HISTORY_HEAD_REF}"
     if [ -n "${resolved_baseline}" ]; then
-      if [ "${COMPAREVI_VI_HISTORY_SOURCE_BRANCH}" = "${resolved_baseline}" ]; then
-        count_range="${resolved_baseline}..${resolved_baseline}"
+      resolved_baseline_ref="$(comparevi_vi_history_resolve_ref "${resolved_baseline}")"
+    fi
+    if [ -n "${resolved_baseline_ref}" ]; then
+      if [ "${COMPAREVI_VI_HISTORY_HEAD_REF}" = "${resolved_baseline_ref}" ]; then
+        count_range="${resolved_baseline_ref}..${resolved_baseline_ref}"
       else
-        count_range="${resolved_baseline}..${COMPAREVI_VI_HISTORY_SOURCE_BRANCH}"
+        count_range="${resolved_baseline_ref}..${COMPAREVI_VI_HISTORY_HEAD_REF}"
       fi
     fi
     COMPAREVI_VI_HISTORY_BRANCH_COMMIT_COUNT="$(comparevi_vi_history_git rev-list --count --first-parent "${count_range}" 2>/dev/null | head -n 1)"

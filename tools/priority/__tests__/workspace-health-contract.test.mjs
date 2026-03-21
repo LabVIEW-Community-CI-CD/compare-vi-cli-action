@@ -119,6 +119,8 @@ test('NI Linux VI history bootstrap preserves mainline lineage semantics on erro
   assert.match(content, /\\"parentIndex\\": 1/);
   assert.match(content, /suite_status="failed"/);
   assert.doesNotMatch(content, /suite_status="error"/);
+  assert.match(content, /count_range="\$\{COMPAREVI_VI_HISTORY_HEAD_REF\}"/);
+  assert.match(content, /count_range="\$\{resolved_baseline_ref\}\.\.\$\{COMPAREVI_VI_HISTORY_HEAD_REF\}"/);
 });
 
 test('Run-NonLVChecksInDocker honors explicit containerized Pester requests without filters', () => {
