@@ -788,10 +788,13 @@ exit 0
       $receipt.windowsMirror.hostPreflight.path | Should -Be (Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json')
       $receipt.windowsMirror.compare.reportPath | Should -Be (Join-Path $resultsRoot 'windows-mirror-report.html')
       $receipt.windowsMirror.compare.capturePath | Should -Be (Join-Path $resultsRoot 'ni-windows-container-capture.json')
-    $receipt.windowsMirror.compare.runtimeSnapshotPath | Should -Be (Join-Path $resultsRoot 'windows-mirror-runtime-snapshot.json')
-    $receipt.hostRamBudget.targetProfile | Should -Be 'windows-mirror-heavy'
-    $receipt.hostRamBudget.actualParallelism | Should -Be 1
-    $receipt.windowsMirror.headlessContract.required | Should -BeTrue
+      $receipt.windowsMirror.compare.runtimeSnapshotPath | Should -Be (Join-Path $resultsRoot 'windows-mirror-runtime-snapshot.json')
+      $receipt.hostRamBudget.targetProfile | Should -Be 'windows-mirror-heavy'
+      $receipt.hostRamBudget.actualParallelism | Should -Be 1
+      $receipt.windowsMirror.hostRamBudget.targetProfile | Should -Be 'windows-mirror-heavy'
+      $receipt.windowsMirror.hostRamBudget.decisionSource | Should -Be 'host-ram-budget'
+      $receipt.windowsMirror.hostRamBudget.path | Should -Be (Join-Path $resultsRoot 'host-ram-budget.json')
+      $receipt.windowsMirror.headlessContract.required | Should -BeTrue
       $receipt.windowsMirror.headlessContract.labviewCliMode | Should -Be 'headless'
       $receipt.finalStatus | Should -Be 'succeeded'
 
@@ -809,10 +812,62 @@ exit 0
       $compareCapture.image | Should -Be 'nationalinstruments/labview:2026q1-windows'
       $compareCapture.labviewPath | Should -Be 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
       $compareCapture.runtimeSnapshotPath | Should -Be (Join-Path $resultsRoot 'windows-mirror-runtime-snapshot.json')
+
+      $hostPreflightReceipt = Get-Content -LiteralPath (Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json') -Raw | ConvertFrom-Json -Depth 10
+      $hostPreflightReceipt.hostRamBudget.targetProfile | Should -Be 'windows-mirror-heavy'
+      $hostPreflightReceipt.hostRamBudget.decisionSource | Should -Be 'host-ram-budget'
+
+      $compareCaptureReceipt = Get-Content -LiteralPath (Join-Path $resultsRoot 'ni-windows-container-capture.json') -Raw | ConvertFrom-Json -Depth 10
+      $compareCaptureReceipt.hostRamBudget.targetProfile | Should -Be 'windows-mirror-heavy'
+      $compareCaptureReceipt.hostRamBudget.actualParallelism | Should -Be 1
+
+      $runtimeSnapshotReceipt = Get-Content -LiteralPath (Join-Path $resultsRoot 'windows-mirror-runtime-snapshot.json') -Raw | ConvertFrom-Json -Depth 10
+      $runtimeSnapshotReceipt.hostRamBudget.targetProfile | Should -Be 'windows-mirror-heavy'
+      $runtimeSnapshotReceipt.hostRamBudget.path | Should -Be (Join-Path $resultsRoot 'host-ram-budget.json')
     } finally {
       Remove-Item Env:LOCAL_WINDOWS_PREFLIGHT_STUB_LOG -ErrorAction SilentlyContinue
       Remove-Item Env:LOCAL_WINDOWS_COMPARE_STUB_LOG -ErrorAction SilentlyContinue
     }
+  }
+
+  It 'projects deterministic-floor RAM budgets into windows mirror artifacts under constrained host telemetry' {
+    $work = Join-Path $TestDrive 'windows-mirror-proof-deterministic-floor'
+    $repoRoot = Join-Path $work 'repo'
+    $resultsRoot = Join-Path $repoRoot 'tests/results/local-vi-history/windows-mirror-proof'
+    New-Item -ItemType Directory -Path (Join-Path $repoRoot 'fixtures/vi-attr') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures/vi-attr/Base.vi') -Value 'base' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repoRoot 'fixtures/vi-attr/Head.vi') -Value 'head' -Encoding utf8
+
+    $preflightStub = Join-Path $work 'Test-WindowsNI2026q1HostPreflight.stub.ps1'
+    $compareStub = Join-Path $work 'Run-NIWindowsContainerCompare.stub.ps1'
+    New-WindowsPreflightStub -Path $preflightStub
+    New-WindowsCompareStub -Path $compareStub
+
+    $receipt = & $script:WrapperScript `
+      -Profile 'windows-mirror-proof' `
+      -RepoRoot $repoRoot `
+      -ResultsRoot $resultsRoot `
+      -WindowsMirrorLabVIEWPath 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' `
+      -WindowsHostPreflightScriptPath $preflightStub `
+      -WindowsCompareScriptPath $compareStub `
+      -HostRamBudgetTotalBytes 8589934592 `
+      -HostRamBudgetFreeBytes 2147483648 `
+      -HostRamBudgetCpuParallelism 8 `
+      -PassThru
+
+    $receipt.hostRamBudget.targetProfile | Should -Be 'windows-mirror-heavy'
+    $receipt.hostRamBudget.recommendedParallelism | Should -Be 1
+    $receipt.hostRamBudget.actualParallelism | Should -Be 1
+    $receipt.hostRamBudget.reason | Should -Match 'deterministic-floor'
+    $receipt.windowsMirror.hostRamBudget.reason | Should -Match 'deterministic-floor'
+
+    $compareCaptureReceipt = Get-Content -LiteralPath (Join-Path $resultsRoot 'ni-windows-container-capture.json') -Raw | ConvertFrom-Json -Depth 10
+    $compareCaptureReceipt.hostRamBudget.reason | Should -Match 'deterministic-floor'
+    $compareCaptureReceipt.hostRamBudget.recommendedParallelism | Should -Be 1
+
+    $runtimeSnapshotReceipt = Get-Content -LiteralPath (Join-Path $resultsRoot 'windows-mirror-runtime-snapshot.json') -Raw | ConvertFrom-Json -Depth 10
+    $runtimeSnapshotReceipt.hostRamBudget.reason | Should -Match 'deterministic-floor'
+    $runtimeSnapshotReceipt.hostRamBudget.actualParallelism | Should -Be 1
   }
 
   It 'rejects non-canonical images for windows-mirror-proof' {

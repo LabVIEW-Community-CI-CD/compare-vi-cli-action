@@ -204,6 +204,31 @@ function Read-JsonFileIfPresent {
   }
 }
 
+function Add-HostRamBudgetProjectionToJsonArtifact {
+  param(
+    [AllowEmptyString()][string]$Path,
+    [AllowNull()]$HostRamBudget
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path) -or $null -eq $HostRamBudget) {
+    return $null
+  }
+
+  $payload = Read-JsonFileIfPresent -Path $Path
+  if ($null -eq $payload) {
+    return $null
+  }
+
+  if ($payload -is [System.Collections.IDictionary]) {
+    $payload['hostRamBudget'] = $HostRamBudget
+  } else {
+    $payload | Add-Member -NotePropertyName 'hostRamBudget' -NotePropertyValue $HostRamBudget -Force
+  }
+
+  Write-JsonFile -Path $Path -Payload $payload
+  return $payload
+}
+
 function Select-WindowsCompareCapture {
   param(
     [AllowNull()]$InvocationResult,
@@ -510,6 +535,13 @@ if ($Profile -eq 'windows-mirror-proof') {
   }
 
   $windowsCompareCapture = Select-WindowsCompareCapture -InvocationResult $windowsCompareInvocationResult -CapturePath $capturePath
+  $windowsMirrorHostRamBudget = $hostRamBudget
+  $null = Add-HostRamBudgetProjectionToJsonArtifact -Path $hostPreflightPath -HostRamBudget $windowsMirrorHostRamBudget
+  $projectedWindowsCompareCapture = Add-HostRamBudgetProjectionToJsonArtifact -Path $capturePath -HostRamBudget $windowsMirrorHostRamBudget
+  if ($projectedWindowsCompareCapture) {
+    $windowsCompareCapture = $projectedWindowsCompareCapture
+  }
+  $null = Add-HostRamBudgetProjectionToJsonArtifact -Path $runtimeSnapshotPath -HostRamBudget $windowsMirrorHostRamBudget
   $windowsMirrorReceipt = [ordered]@{
     hostPreflight = [ordered]@{
       path = $hostPreflightPath
@@ -524,6 +556,7 @@ if ($Profile -eq 'windows-mirror-proof') {
       gateOutcome = if ($windowsCompareCapture -and $windowsCompareCapture.PSObject.Properties['gateOutcome']) { [string]$windowsCompareCapture.gateOutcome } else { '' }
       failureClass = if ($windowsCompareCapture -and $windowsCompareCapture.PSObject.Properties['failureClass']) { [string]$windowsCompareCapture.failureClass } else { '' }
     }
+    hostRamBudget = $windowsMirrorHostRamBudget
     headlessContract = [ordered]@{
       required = $true
       labviewCliMode = 'headless'
