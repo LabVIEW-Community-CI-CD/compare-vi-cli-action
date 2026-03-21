@@ -21,9 +21,11 @@ The reason is provenance, not usefulness.
 
   That PR added `Tooling/comparevi-history-canary/CanaryProbe.vi` on an
   MIT-licensed public consumer repository, and public CompareVI History
-  diagnostics succeeded on the PR head. The remaining gap is narrower: the
-  published public receipts are history-surface artifacts, not a standalone
-  `PrintToSingleFileHtml` proof, so the seed is still only provisional.
+  diagnostics succeeded on the PR head. That provisional seed now points at the
+  repo-owned BSD-3 `PrintToSingleFileHtml` source bundle tracked in this
+  repository, so the remaining gap is narrower: the published public receipts
+  are still history-surface artifacts, not a standalone `PrintToSingleFileHtml`
+  proof against the replacement payload.
 
 This repository now carries a repo-owned BSD-3 licensed source bundle for the
 replacement payload under:
@@ -71,4 +73,4 @@ the target repository metadata, and `#1467` now carries both remaining blocker
 shapes explicitly:
 
 - licensed sample still missing explicit print proof
-- explicit print proof still missing promotable licensing
+- repo-owned payload still missing runnable public proof

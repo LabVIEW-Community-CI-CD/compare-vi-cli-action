@@ -80,15 +80,16 @@ This corpus is not the pre-push gate.
 - Public evidence: PR `#29` plus successful CompareVI History diagnostics on the
   added-VI PR head
 - Blocking gap: the public run published history-surface evidence, not a
-  standalone `PrintToSingleFileHtml` proof
+  standalone `PrintToSingleFileHtml` proof against the repo-owned BSD-3
+  replacement payload
 
 These provisional seeds now separate the two remaining blockers:
 
 - `linuxcontainerdemo-newthing-print` still shows the clearest explicit public
   print proof, but it remains license-ambiguous.
 - `icon-editor-demo-canaryprobe-print` gives us a licensed added-VI sample on a
-  public consumer repo, but it still lacks explicit print-single-file
-  publication evidence.
+  public consumer repo and points at a repo-owned payload source bundle, but it
+  still lacks explicit print-single-file publication evidence.
 
 ## Render strategy rules
 
