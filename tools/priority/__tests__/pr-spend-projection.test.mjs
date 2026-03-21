@@ -195,6 +195,41 @@ test('evaluatePrSpendProjection falls back to linked issue turns when branch tur
   assert.equal(report.summary.totalUsd, 0.529789);
 });
 
+test('evaluatePrSpendProjection falls back to the PR head ref issue number when the body omits a link', () => {
+  const report = evaluatePrSpendProjection({
+    costRollup: createCostRollupFixture({
+      turns: [
+        {
+          agentRole: 'live',
+          providerId: 'codex-cli',
+          providerKind: 'local-codex',
+          effectiveModel: 'gpt-5.4',
+          effectiveReasoningEffort: 'xhigh',
+          issueNumber: 1716,
+          laneId: 'origin-1716',
+          laneBranch: 'issue/origin-1716-branch-turn-attribution-gap-worker',
+          amountUsd: 0.612345
+        }
+      ]
+    }),
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    prContext: {
+      number: 1716,
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1716',
+      headRefName: 'issue/origin-1716-branch-turn-attribution-gap',
+      headSha: 'abc123',
+      linkedIssueNumber: null,
+      headRefIssueNumber: 1716,
+      selectorSource: 'github-pr-head-ref'
+    }
+  });
+
+  assert.equal(report.summary.status, 'pass');
+  assert.equal(report.pullRequest.selectorSource, 'github-pr-head-ref-issue-fallback');
+  assert.equal(report.metrics.totalTurns, 1);
+  assert.equal(report.summary.totalUsd, 0.612345);
+});
+
 test('evaluatePrSpendProjection prefers laneBranch-attributed turns before linked issue fallback when laneId is a short lane identity', () => {
   const report = evaluatePrSpendProjection({
     costRollup: createCostRollupFixture({
