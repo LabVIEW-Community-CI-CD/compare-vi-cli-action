@@ -25,7 +25,9 @@ function printUsage() {
   console.log('Usage: node tools/priority/develop-sync.mjs [options]');
   console.log('');
   console.log('Options:');
-  console.log('  --fork-remote <origin|personal|all>  Select which fork remote to sync (default: AGENT_PRIORITY_ACTIVE_FORK_REMOTE or origin).');
+  console.log(
+    '  --fork-remote <origin|personal|all>  Select which fork remote to sync (default: all configured fork remotes, otherwise AGENT_PRIORITY_ACTIVE_FORK_REMOTE or origin).'
+  );
   console.log(`  --report <path>                      Write aggregate report JSON (default: ${DEFAULT_REPORT_PATH}).`);
   console.log('  -h, --help                           Show this help text and exit.');
 }
@@ -63,20 +65,57 @@ export function parseArgs(argv = process.argv) {
   return options;
 }
 
-export function resolveForkRemoteTargets(value, env = process.env) {
-  const selected = String(value || resolveActiveForkRemoteName(env))
+export function listConfiguredForkRemotes({
+  repoRoot = getRepoRoot(),
+  env = process.env,
+  spawnSyncFn = spawnSync
+} = {}) {
+  try {
+    const remoteText = runGitText(spawnSyncFn, repoRoot, ['remote'], env);
+    const configured = remoteText
+      .split(/\r?\n/)
+      .map((entry) => entry.trim().toLowerCase())
+      .filter((entry) => SUPPORTED_FORK_REMOTES.has(entry));
+    return [...new Set(configured)];
+  } catch {
+    return [];
+  }
+}
+
+export function resolveForkRemoteTargets(
+  value,
+  env = process.env,
+  { repoRoot = getRepoRoot(), spawnSyncFn = spawnSync } = {}
+) {
+  const explicit = String(value ?? '')
     .trim()
     .toLowerCase();
-  if (!selected || selected === 'origin') {
+  const configured = listConfiguredForkRemotes({ repoRoot, env, spawnSyncFn });
+  if (!explicit) {
+    if (configured.length > 0) {
+      return configured;
+    }
+    const fallback = String(resolveActiveForkRemoteName(env))
+      .trim()
+      .toLowerCase();
+    if (!fallback || fallback === 'origin') {
+      return ['origin'];
+    }
+    if (!SUPPORTED_FORK_REMOTES.has(fallback)) {
+      throw new Error(`Unsupported --fork-remote '${fallback}'. Expected origin, personal, or all.`);
+    }
+    return [fallback];
+  }
+  if (explicit === 'origin') {
     return ['origin'];
   }
-  if (selected === 'all') {
-    return ['origin', 'personal'];
+  if (explicit === 'all') {
+    return configured.length > 0 ? configured : ['origin', 'personal'];
   }
-  if (!SUPPORTED_FORK_REMOTES.has(selected)) {
+  if (!SUPPORTED_FORK_REMOTES.has(explicit)) {
     throw new Error(`Unsupported --fork-remote '${value}'. Expected origin, personal, or all.`);
   }
-  return [selected];
+  return [explicit];
 }
 
 export function buildParityReportPath(repoRoot, remote) {
@@ -378,12 +417,13 @@ export function buildDevelopSyncBranchClassTrace(repoRoot) {
   };
 }
 
-function writeDevelopSyncReport({ repoRoot, reportPath, remotes, actions, status }) {
+function writeDevelopSyncReport({ repoRoot, reportPath, remotes, actions, status, remoteSelection = null }) {
   const report = {
     schema: 'priority/develop-sync-report@v1',
     generatedAt: new Date().toISOString(),
     repositoryRoot: repoRoot,
     remotes,
+    remoteSelection,
     status,
     actions
   };
@@ -481,7 +521,12 @@ export function runDevelopSync({
   spawnSyncFn = spawnSync
 } = {}) {
   const executionPlan = resolveDevelopSyncExecutionRoot({ repoRoot, env, spawnSyncFn });
-  const remotes = resolveForkRemoteTargets(options.forkRemote, env);
+  const remotes = resolveForkRemoteTargets(options.forkRemote, env, { repoRoot, spawnSyncFn });
+  const remoteSelection = {
+    requested: options.forkRemote ?? null,
+    resolved: remotes,
+    summary: remotes.join(', ') || 'origin'
+  };
   const actions = [];
   const reportPath = path.isAbsolute(options.reportPath) ? options.reportPath : path.join(repoRoot, options.reportPath);
   const reportHint = path.relative(repoRoot, reportPath).replace(/\\/g, '/');
@@ -542,6 +587,7 @@ export function runDevelopSync({
             repoRoot,
             reportPath,
             remotes,
+            remoteSelection,
             actions,
             status: 'failed'
           });
@@ -579,6 +625,7 @@ export function runDevelopSync({
             repoRoot,
             reportPath,
             remotes,
+            remoteSelection,
             actions,
             status: 'failed'
           });
@@ -614,6 +661,7 @@ export function runDevelopSync({
         repoRoot,
         reportPath,
         remotes,
+        remoteSelection,
         actions,
         status: 'failed'
       });
@@ -647,6 +695,7 @@ export function runDevelopSync({
         repoRoot,
         reportPath,
         remotes,
+        remoteSelection,
         actions,
         status: 'failed'
       });
@@ -658,6 +707,7 @@ export function runDevelopSync({
       repoRoot,
       reportPath,
       remotes,
+      remoteSelection,
       actions,
       status: 'failed'
     });
@@ -673,6 +723,7 @@ export function runDevelopSync({
     repoRoot,
     reportPath,
     remotes,
+    remoteSelection,
     actions,
     status: 'ok'
   });
