@@ -7,7 +7,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { ensureGhCli } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
-import { resolveRepositorySlug } from './sync-standing-priority.mjs';
+import { resolveRepositorySlug, resolveUpstreamRepositorySlug } from './sync-standing-priority.mjs';
 
 const RECONCILIATION_SCHEMA = 'priority/standing-lane-reconciliation@v1';
 const DEFAULT_RECEIPT_DIR = path.join('tests', 'results', '_agent', 'issue');
@@ -81,6 +81,22 @@ function buildCachePath(repoRoot, explicitPath = null) {
     return path.isAbsolute(explicitPath) ? explicitPath : path.join(repoRoot, explicitPath);
   }
   return path.join(repoRoot, DEFAULT_CACHE_RELATIVE_PATH);
+}
+
+export function resolveStandingReconciliationRepositorySlug({
+  repoRoot,
+  explicitRepo = null,
+  env = process.env
+} = {}) {
+  const resolvedRepo = normalizeText(explicitRepo) || resolveRepositorySlug(repoRoot, env);
+  const upstreamRepo = resolveUpstreamRepositorySlug(repoRoot, resolvedRepo, env);
+  if (
+    upstreamRepo &&
+    normalizeText(upstreamRepo).toLowerCase() !== normalizeText(resolvedRepo).toLowerCase()
+  ) {
+    return upstreamRepo;
+  }
+  return resolvedRepo;
 }
 
 export function parseArgs(argv = process.argv) {
@@ -373,7 +389,11 @@ export async function runStandingReconciliation({
   ensureGhCliFn?.();
 
   const resolvedRepoRoot = repoRoot || getRepoRoot();
-  const repository = options.repo || resolveRepositorySlug(resolvedRepoRoot, process.env);
+  const repository = resolveStandingReconciliationRepositorySlug({
+    repoRoot: resolvedRepoRoot,
+    explicitRepo: options.repo,
+    env: process.env
+  });
   const issuePath = buildSummaryPath(resolvedRepoRoot, options.issue, options.summaryPath);
   const routerPath = buildRouterPath(resolvedRepoRoot, options.routerPath);
   const cachePath = buildCachePath(resolvedRepoRoot, options.cachePath);
