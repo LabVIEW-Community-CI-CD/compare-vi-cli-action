@@ -33,6 +33,10 @@ import { resolveRequiredLaneBranchPrefix } from './lib/runtime-lane-branch-contr
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
 import {
+  CONCURRENT_LANE_STATUS_RECEIPT_SCHEMA,
+  DEFAULT_STATUS_OUTPUT_PATH as DEFAULT_CONCURRENT_LANE_STATUS_PATH
+} from './concurrent-lane-status.mjs';
+import {
   __test as workerCheckoutTest,
   bootstrapCompareviWorkerCheckout,
   activateCompareviWorkerLane,
@@ -239,6 +243,102 @@ async function readJsonIfPresent(filePath) {
     if (error?.code === 'ENOENT') return null;
     throw error;
   }
+}
+
+function resolveCheckoutPath(repoRoot, checkoutPath) {
+  const normalized = normalizeText(checkoutPath);
+  if (!normalized) {
+    return null;
+  }
+  return path.isAbsolute(normalized) ? normalized : path.resolve(repoRoot, normalized);
+}
+
+function projectConcurrentLaneStatusReceipt(receiptPath, receipt) {
+  if (!receipt || receipt.schema !== CONCURRENT_LANE_STATUS_RECEIPT_SCHEMA) {
+    return null;
+  }
+
+  const summary = receipt.summary && typeof receipt.summary === 'object' ? receipt.summary : {};
+  const hostedRun = receipt.hostedRun && typeof receipt.hostedRun === 'object' ? receipt.hostedRun : {};
+  const pullRequest = receipt.pullRequest && typeof receipt.pullRequest === 'object' ? receipt.pullRequest : {};
+  const mergeQueue = pullRequest.mergeQueue && typeof pullRequest.mergeQueue === 'object' ? pullRequest.mergeQueue : {};
+
+  return {
+    receiptPath,
+    status: normalizeText(receipt.status) || null,
+    selectedBundleId: normalizeText(summary.selectedBundleId) || normalizeText(receipt.applyReceipt?.selectedBundleId) || null,
+    hostedRun: {
+      observationStatus: normalizeText(hostedRun.observationStatus) || null,
+      runId: coercePositiveInteger(hostedRun.runId),
+      url: normalizeText(hostedRun.url) || null,
+      reportPath: normalizeText(hostedRun.reportPath) || null
+    },
+    pullRequest: {
+      observationStatus: normalizeText(pullRequest.observationStatus) || null,
+      number: coercePositiveInteger(pullRequest.number),
+      url: normalizeText(pullRequest.url) || null,
+      mergeQueue: {
+        status: normalizeText(mergeQueue.status) || null,
+        position: coercePositiveInteger(mergeQueue.position),
+        estimatedTimeToMerge: coercePositiveInteger(mergeQueue.estimatedTimeToMerge),
+        enqueuedAt: normalizeText(mergeQueue.enqueuedAt) || null
+      }
+    },
+    summary: {
+      laneCount: coercePositiveInteger(summary.laneCount) ?? 0,
+      activeLaneCount: coercePositiveInteger(summary.activeLaneCount) ?? 0,
+      completedLaneCount: coercePositiveInteger(summary.completedLaneCount) ?? 0,
+      failedLaneCount: coercePositiveInteger(summary.failedLaneCount) ?? 0,
+      deferredLaneCount: coercePositiveInteger(summary.deferredLaneCount) ?? 0,
+      manualLaneCount: coercePositiveInteger(summary.manualLaneCount) ?? 0,
+      shadowLaneCount: coercePositiveInteger(summary.shadowLaneCount) ?? 0,
+      pullRequestStatus: normalizeText(summary.pullRequestStatus) || null,
+      orchestratorDisposition: normalizeText(summary.orchestratorDisposition) || null
+    }
+  };
+}
+
+async function resolveConcurrentLaneStatusEvidence({ repoRoot, preparedWorker, workerReady, workerBranch }) {
+  const checkoutCandidates = [
+    workerBranch?.checkoutPath,
+    workerReady?.checkoutPath,
+    preparedWorker?.checkoutPath,
+    repoRoot
+  ];
+  const visited = new Set();
+  for (const candidate of checkoutCandidates) {
+    const checkoutRoot = resolveCheckoutPath(repoRoot, candidate) ?? path.resolve(repoRoot);
+    if (!checkoutRoot || visited.has(checkoutRoot)) {
+      continue;
+    }
+    visited.add(checkoutRoot);
+    const receiptPath = path.join(checkoutRoot, DEFAULT_CONCURRENT_LANE_STATUS_PATH);
+    const receipt = await readJsonIfPresent(receiptPath);
+    const projected = projectConcurrentLaneStatusReceipt(receiptPath, receipt);
+    if (projected) {
+      return projected;
+    }
+  }
+
+  return null;
+}
+
+function deriveConcurrentLaneLifecycle(defaultLifecycle, concurrentLaneStatus) {
+  if (!concurrentLaneStatus || typeof concurrentLaneStatus !== 'object') {
+    return defaultLifecycle;
+  }
+
+  const status = normalizeText(concurrentLaneStatus.status).toLowerCase();
+  const disposition = normalizeText(concurrentLaneStatus.summary?.orchestratorDisposition).toLowerCase();
+  if (status === 'failed' || disposition === 'hold-investigate') {
+    return 'blocked';
+  }
+
+  if (['wait-hosted-run', 'release-merge-queue', 'release-with-deferred-local'].includes(disposition)) {
+    return 'waiting-ci';
+  }
+
+  return defaultLifecycle;
 }
 
 function parseRepositoryFromIssueUrl(url) {
@@ -559,7 +659,14 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
   const issueTitle = normalizeText(snapshot?.title);
   const branchName = normalizeText(workerBranch?.branch) || normalizeText(activeLane?.branch);
   const selectedActionType = normalizeText(artifacts.selectedActionType);
-  const laneLifecycle = normalizeText(artifacts.laneLifecycle) || (activeLane?.prUrl ? 'waiting-ci' : 'coding');
+  const defaultLaneLifecycle = normalizeText(artifacts.laneLifecycle) || (activeLane?.prUrl ? 'waiting-ci' : 'coding');
+  const concurrentLaneStatus = await resolveConcurrentLaneStatusEvidence({
+    repoRoot,
+    preparedWorker,
+    workerReady,
+    workerBranch
+  });
+  const laneLifecycle = deriveConcurrentLaneLifecycle(defaultLaneLifecycle, concurrentLaneStatus);
   const loadBranchClassContractFn = deps.loadBranchClassContractFn ?? loadBranchClassContract;
   const canonicalRepository =
     normalizeText(artifacts.canonicalRepository) ||
@@ -684,6 +791,7 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
         issueGraph: artifacts.issueGraph ?? null,
         pullRequest: pullRequestArtifact,
         backlog: artifacts.backlogRepair ?? null,
+        concurrentLaneStatus,
         planeTransition,
         localReviewLoop,
         workerPool,
@@ -702,6 +810,7 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
           path.join(repoRoot, 'tools', 'priority', 'runtime-supervisor.mjs'),
           path.join(repoRoot, 'tools', 'priority', 'runtime-turn-broker.mjs'),
           path.join(repoRoot, 'tools', 'priority', 'delivery-agent.policy.json'),
+          path.join(repoRoot, 'tools', 'priority', 'concurrent-lane-status.mjs'),
           path.join(repoRoot, 'tools', 'priority', 'docker-desktop-review-loop.mjs'),
           path.join(repoRoot, 'tools', 'Run-NonLVChecksInDocker.ps1')
         ]
