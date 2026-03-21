@@ -320,6 +320,9 @@ Phase 2:
 - upstream-promotion mutex
 - CI watcher wake-ups
 - blocker issue auto-creation
+- explicit fork-lane identity receipts carried by priority PR and validate-dispatch reports so workers can resume,
+  steal, or hand off work without re-deriving provenance from mutable branch names alone. Current identities are
+  `upstream-standing`, `fork-plane-branch`, and `fork-standing-mirror`.
 
 Phase 3:
 

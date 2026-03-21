@@ -201,6 +201,9 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   Lists all open issues in the current repository, excludes the currently labelled standing issue, auto-selects the
   next actionable development item deterministically, and then applies the same label normalization flow. Cadence alert
   issues are deprioritized when non-cadence development issues are available.
+- Priority PR and Validate dispatch helpers now emit fork-lane provenance receipts under `tests/results/_agent/issue/`
+  so later workers can recover the canonical issue, any mirrored fork issue, and the selected execution plane without
+  reparsing branch names. See `docs/knowledgebase/FEATURE_BRANCH_POLICY.md` for the lane-identity vocabulary.
 - Standing-priority repository resolution is owner-agnostic. Order:
   1. `GITHUB_REPOSITORY`
   2. git remotes (`upstream`, then `origin`)
