@@ -15,6 +15,9 @@ It is not a second feature-development branch.
 - Proving scorecard generator: `tools/priority/downstream-promotion-scorecard.mjs`
 - Proving scorecard schema: `docs/schemas/downstream-promotion-scorecard-v1.schema.json`
 - Proving scorecard output: `tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json`
+- Selection resolver: `tools/priority/resolve-downstream-proving-artifact.mjs`
+- Selection schema: `docs/schemas/downstream-proving-selection-v1.schema.json`
+- Selection output: `tests/results/_agent/release/downstream-proving-selection.json`
 
 ## Branch contract
 
