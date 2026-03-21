@@ -131,13 +131,19 @@ if ($Push) {
       $title = 'Normalize workflows and local Validate mirrors (#127)'
       $body = 'Automated workflow normalization and Validate task updates for #127.'
     $existingJson = gh pr view $branch --json number 2>$null
-    if ($LASTEXITCODE -eq 0 -and $existingJson) {
-      $pr = $existingJson | ConvertFrom-Json
-      gh pr edit $pr.number --title $title --body $body | Out-Host
-      if ($LASTEXITCODE -ne 0) { throw "gh pr edit failed ($LASTEXITCODE)" }
-    } else {
-      node tools/npm/run-script.mjs priority:pr -- --issue 127 --branch $branch --base develop --title $title --body $body | Out-Host
-      if ($LASTEXITCODE -ne 0) { throw "priority:pr failed ($LASTEXITCODE)" }
+    $tempBodyPath = [System.IO.Path]::GetTempFileName()
+    try {
+      Set-Content -LiteralPath $tempBodyPath -Value $body -Encoding utf8
+      if ($LASTEXITCODE -eq 0 -and $existingJson) {
+        $pr = $existingJson | ConvertFrom-Json
+        gh pr edit $pr.number --title $title --body-file $tempBodyPath | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "gh pr edit failed ($LASTEXITCODE)" }
+      } else {
+        node tools/npm/run-script.mjs priority:pr -- --issue 127 --branch $branch --base develop --title $title --body-file $tempBodyPath | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "priority:pr failed ($LASTEXITCODE)" }
+      }
+    } finally {
+      Remove-Item -LiteralPath $tempBodyPath -ErrorAction SilentlyContinue
     }
   }
 }

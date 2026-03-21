@@ -89,7 +89,7 @@ Describe 'GitHubIntake.psm1' {
     $catalog.routes.scenario | Should -Contain 'human-pr'
   }
 
-  It 'documents safe body-file issue comment guidance in the agent and intake docs' {
+  It 'documents safe body-file issue and PR comment guidance in the intake docs' {
     $agentGuide = Get-Content (Join-Path $PSScriptRoot '..' 'AGENTS.md') -Raw
     $intakeGuide = Get-Content (Join-Path $PSScriptRoot '..' 'docs' 'knowledgebase' 'GitHub-Intake-Layer.md') -Raw
     $developerGuide = Get-Content (Join-Path $PSScriptRoot '..' 'docs' 'DEVELOPER_GUIDE.md') -Raw
@@ -98,7 +98,18 @@ Describe 'GitHubIntake.psm1' {
     $agentGuide | Should -Match 'gh issue comment'
     $intakeGuide | Should -Match 'pwsh -File tools/Post-IssueComment\.ps1 -Issue 875 -BodyFile issue-comment\.md'
     $intakeGuide | Should -Match 'gh issue comment 875 --body-file issue-comment\.md'
+    $intakeGuide | Should -Match 'pwsh -File tools/Post-PullRequestComment\.ps1 -PullRequest 875 -Repo owner/repo -BodyFile pr-comment\.md'
+    $intakeGuide | Should -Match 'gh pr comment 875 --repo owner/repo --body-file pr-comment\.md'
     $developerGuide | Should -Match 'tools/Post-IssueComment\.ps1'
+    $developerGuide | Should -Match 'tools/Post-PullRequestComment\.ps1'
+  }
+
+  It 'keeps one-button PR updates on body-file transport for PowerShell-safe markdown bodies' {
+    $oneButton = Get-Content (Join-Path $PSScriptRoot '..' 'tools' 'Run-OneButtonValidate.ps1') -Raw
+
+    $oneButton | Should -Match 'gh pr edit \$pr\.number --title \$title --body-file \$tempBodyPath'
+    $oneButton | Should -Match 'priority:pr -- --issue 127 --branch \$branch --base develop --title \$title --body-file \$tempBodyPath'
+    $oneButton | Should -Not -Match 'gh pr edit \$pr\.number --title \$title --body \$body'
   }
 
   It 'resolves workflow-policy intake to the workflow-policy issue template' {
