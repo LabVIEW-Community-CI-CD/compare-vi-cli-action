@@ -1173,7 +1173,7 @@ try {
     )
 
     $capture.command = ('docker run --name {0} ... {1} powershell -NoLogo -NoProfile -EncodedCommand <base64-compare-script>' -f $containerName, $Image)
-    Write-Host ("[ni-container-compare] image={0} report={1}" -f $Image, $resolvedReportPath) -ForegroundColor Cyan
+    Write-Host ("[ni-container-compare] image={0} report={1} capture={2} stdout={3} stderr={4}" -f $Image, $resolvedReportPath, $capturePath, $stdoutPath, $stderrPath) -ForegroundColor Cyan
 
     $runResult = Invoke-DockerRunWithTimeout `
       -DockerArgs $dockerArgs `

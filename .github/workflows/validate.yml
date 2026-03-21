@@ -1322,6 +1322,15 @@ jobs:
           -SnapshotPath $snapshotPath `
           -GitHubOutputPath ''
 
+    - name: Print VI history Linux runtime alignment
+      if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
+      run: |
+        $resultsRoot = 'tests/results/local-parity/linux'
+        pwsh -NoLogo -NoProfile -File tools/Write-VIHistoryLaneEvidence.ps1 `
+          -LaneName 'vi-history-scenarios-linux-preflight' `
+          -RuntimeSnapshotPath (Join-Path $resultsRoot 'runtime-manager-preflight-linux.json') `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
     - name: Run NI Linux create comparison report (fail-fast)
       id: linux-compare
       if: needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
@@ -1358,9 +1367,21 @@ jobs:
           if ($compareExit -ne 0 -and $gateOutcome -ne 'pass') {
             exit $compareExit
           }
-        } elseif ($compareExit -ne 0) {
-          throw ("Linux compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
-        }
+          } elseif ($compareExit -ne 0) {
+            throw ("Linux compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
+          }
+
+    - name: Project VI history Linux Docker-side evidence
+      if: always() && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
+      run: |
+        $resultsRoot = 'tests/results/local-parity/linux'
+        pwsh -NoLogo -NoProfile -File tools/Write-VIHistoryLaneEvidence.ps1 `
+          -LaneName 'vi-history-scenarios-linux' `
+          -RuntimeSnapshotPath (Join-Path $resultsRoot 'runtime-manager-compare-linux.json') `
+          -CapturePath (Join-Path $resultsRoot 'ni-linux-container-capture.json') `
+          -StdOutPath (Join-Path $resultsRoot 'ni-linux-container-stdout.txt') `
+          -StdErrPath (Join-Path $resultsRoot 'ni-linux-container-stderr.txt') `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
     - name: Show Linux live Docker evidence
       if: always() && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true'
@@ -1594,6 +1615,15 @@ jobs:
           -GitHubOutputPath $env:GITHUB_OUTPUT `
           -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
+    - name: Print VI history Windows runtime alignment
+      shell: pwsh
+      run: |
+        $resultsRoot = 'tests/results/local-parity/windows'
+        pwsh -NoLogo -NoProfile -File tools/Write-VIHistoryLaneEvidence.ps1 `
+          -LaneName 'vi-history-scenarios-windows-preflight' `
+          -PreflightPath (Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json') `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
     - name: Run NI Windows create comparison report (fail-fast)
       id: windows-compare
       shell: pwsh
@@ -1633,20 +1663,19 @@ jobs:
           throw ("Windows compare failed (exit={0}) and capture file was not found at {1}" -f $compareExit, $capturePath)
         }
 
-    - name: Show Windows live Docker evidence
+    - name: Project VI history Windows Docker-side evidence
       if: always()
       shell: pwsh
       run: |
         $resultsRoot = 'tests/results/local-parity/windows'
-        $capturePath = Join-Path $resultsRoot 'ni-windows-container-capture.json'
-        if (Test-Path -LiteralPath $capturePath -PathType Leaf) {
-          pwsh -NoLogo -NoProfile -File tools/Show-NIContainerCaptureEvidence.ps1 `
-            -CapturePath $capturePath `
-            -BasePath $resultsRoot `
-            -TailLineCount 20
-        } else {
-          Write-Host ("::warning::Windows compare capture not found at {0}" -f $capturePath)
-        }
+        pwsh -NoLogo -NoProfile -File tools/Write-VIHistoryLaneEvidence.ps1 `
+          -LaneName 'vi-history-scenarios-windows' `
+          -RuntimeSnapshotPath (Join-Path $resultsRoot 'runtime-manager-compare-windows.json') `
+          -PreflightPath (Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json') `
+          -CapturePath (Join-Path $resultsRoot 'ni-windows-container-capture.json') `
+          -StdOutPath (Join-Path $resultsRoot 'ni-windows-container-stdout.txt') `
+          -StdErrPath (Join-Path $resultsRoot 'ni-windows-container-stderr.txt') `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
     - name: Validate Windows comparison report artifact contract
       if: always()

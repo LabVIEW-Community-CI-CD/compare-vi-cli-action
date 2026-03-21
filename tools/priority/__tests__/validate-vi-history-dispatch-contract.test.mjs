@@ -44,6 +44,9 @@ test('validate workflow Linux VI-history lane consumes shared dispatch-plan outp
 
   assert.match(workflow, /vi-history-scenarios-linux:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'/);
   assert.match(workflow, /Append VI history Linux lane plan/);
+  assert.match(workflow, /Print VI history Linux runtime alignment/);
+  assert.match(workflow, /Project VI history Linux Docker-side evidence/);
+  assert.match(workflow, /tools\/Write-VIHistoryLaneEvidence\.ps1/);
   assert.match(workflow, /needs\.vi-history-scenarios-plan\.outputs\.execute_lanes == 'true'/);
   assert.match(workflow, /needs\.vi-history-scenarios-plan\.outputs\.history_scenario_set/);
   assert.match(linuxSection, /Show Linux live Docker evidence/);
@@ -68,10 +71,13 @@ test('validate workflow Windows VI-history lane is gated by shared dispatch plan
 
   assert.match(workflow, /vi-history-scenarios-windows:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-windows-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true' && needs\.vi-history-scenarios-plan\.outputs\.execute_lanes == 'true' && needs\.vi-history-scenarios-windows-plan\.outputs\.available == 'true'/);
   assert.match(windowsSection, /runs-on:\s*windows-2022/);
+  assert.match(windowsSection, /Print VI history Windows runtime alignment/);
+  assert.match(windowsSection, /Project VI history Windows Docker-side evidence/);
+  assert.match(windowsSection, /tools\/Write-VIHistoryLaneEvidence\.ps1/);
   assert.match(windowsSection, /Test-WindowsNI2026q1HostPreflight\.ps1/);
   assert.match(windowsSection, /-ExecutionSurface 'github-hosted-windows'/);
   assert.match(windowsSection, /Run-NIWindowsContainerCompare\.ps1/);
-  assert.match(windowsSection, /Show Windows live Docker evidence/);
-  assert.match(windowsSection, /Show-NIContainerCaptureEvidence\.ps1/);
+  assert.match(windowsSection, /ni-windows-container-stdout\.txt/);
+  assert.match(windowsSection, /ni-windows-container-stderr\.txt/);
   assert.doesNotMatch(windowsSection, /Assert-RunnerLabelContract\.ps1/);
 });

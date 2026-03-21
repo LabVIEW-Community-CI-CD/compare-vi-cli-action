@@ -26,6 +26,7 @@ test('validate workflow pins explicit LabVIEW paths for hosted Linux and Windows
   assert.match(workflow, /NI_WINDOWS_IMAGE:\s*nationalinstruments\/labview:2026q1-windows/);
   assert.match(workflow, /NI_WINDOWS_LABVIEW_PATH:\s*C:\\Program Files\\National Instruments\\LabVIEW 2026\\LabVIEW\.exe/);
   assert.match(workflow, /Test-WindowsNI2026q1HostPreflight\.ps1/);
+  assert.match(workflow, /Write-VIHistoryLaneEvidence\.ps1/);
   assert.match(workflow, /Run-NIWindowsContainerCompare\.ps1/);
   assert.match(workflow, /-ExecutionSurface 'github-hosted-windows'/);
   assert.match(workflow, /-Image \$env:NI_WINDOWS_IMAGE/);

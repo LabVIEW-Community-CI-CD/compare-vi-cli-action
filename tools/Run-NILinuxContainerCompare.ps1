@@ -2689,7 +2689,7 @@ try {
         $containerScriptPath
       )
       $capture.command = ('docker exec --workdir {0} {1} bash {2}' -f $ReuseRepoContainerPath, $containerName, $containerScriptPath)
-      Write-Host ("[ni-linux-container-compare] mode=docker-exec container={0} image={1} report={2}" -f $containerName, $Image, $resolvedReportPath) -ForegroundColor Cyan
+      Write-Host ("[ni-linux-container-compare] mode=docker-exec container={0} image={1} report={2} capture={3} stdout={4} stderr={5}" -f $containerName, $Image, $resolvedReportPath, $capturePath, $stdoutPath, $stderrPath) -ForegroundColor Cyan
       $runResult = Invoke-DockerExecWithTimeout `
         -DockerArgs $dockerArgs `
         -Seconds $TimeoutSeconds `
@@ -2702,7 +2702,7 @@ try {
         $containerScriptPath
       )
       $capture.command = ('docker run --name {0} ... {1} bash -lc <linux-compare-script>' -f $containerName, $Image)
-      Write-Host ("[ni-linux-container-compare] mode=docker-run image={0} report={1}" -f $Image, $resolvedReportPath) -ForegroundColor Cyan
+      Write-Host ("[ni-linux-container-compare] mode=docker-run image={0} report={1} capture={2} stdout={3} stderr={4}" -f $Image, $resolvedReportPath, $capturePath, $stdoutPath, $stderrPath) -ForegroundColor Cyan
       $runResult = Invoke-DockerRunWithTimeout `
         -DockerArgs $dockerArgs `
         -Seconds $TimeoutSeconds `

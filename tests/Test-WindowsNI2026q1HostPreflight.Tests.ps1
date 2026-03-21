@@ -160,6 +160,7 @@ exit 0
     Set-Item Env:DOCKER_STUB_OSTYPE 'windows'
     Set-Item Env:DOCKER_STUB_IMAGE_EXISTS '1'
     Set-Item Env:DOCKER_STUB_INFO_JSON '{"OSType":"windows","OperatingSystem":"Windows Server 2022","Name":"github-hosted","Platform":{"Name":"Docker Engine - Community"}}'
+    Set-Item Env:DOCKER_HOST 'npipe:////./pipe/docker_engine'
 
     $resultsRoot = Join-Path $work 'results'
     $outputJsonPath = Join-Path $resultsRoot 'windows-ni-2026q1-host-preflight.json'
@@ -178,6 +179,7 @@ exit 0
     $json.executionSurface | Should -Be 'github-hosted-windows'
     $json.status | Should -Be 'ready'
     $json.runtimeProvider | Should -Be 'github-hosted-windows'
+    $json.dockerHost | Should -Be 'npipe:////./pipe/docker_engine'
     $json.contexts.final | Should -Be 'default'
     $json.contexts.finalOsType | Should -Be 'windows'
     $json.bootstrap.imagePresent | Should -BeTrue
