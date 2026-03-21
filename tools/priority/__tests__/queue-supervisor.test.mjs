@@ -49,6 +49,7 @@ test('parseArgs defaults to dry-run and supports apply mode', () => {
     assert.equal(defaults.burstRefillCycles, 3);
     assert.match(defaults.readinessReportPath, /queue-readiness-report\.json$/);
     assert.match(defaults.governorStatePath, /ops-governor-state\.json$/);
+    assert.match(defaults.securityIntakeReportPath, /security-intake-report\.json$/);
 
     const apply = parseArgs([
       'node',
@@ -67,6 +68,8 @@ test('parseArgs defaults to dry-run and supports apply mode', () => {
       '50',
       '--governor-state',
       'tests/results/_agent/slo/custom-governor-state.json',
+      '--security-intake-report',
+      'tests/results/_agent/security/custom-security-intake-report.json',
       '--burst-mode',
       'on',
       '--burst-refill-cycles',
@@ -81,6 +84,7 @@ test('parseArgs defaults to dry-run and supports apply mode', () => {
     assert.equal(apply.maxInProgressRuns, 9);
     assert.equal(apply.stallThresholdMinutes, 50);
     assert.equal(apply.governorStatePath, 'tests/results/_agent/slo/custom-governor-state.json');
+    assert.equal(apply.securityIntakeReportPath, 'tests/results/_agent/security/custom-security-intake-report.json');
     assert.equal(apply.burstMode, 'on');
     assert.equal(apply.burstRefillCycles, 4);
   } finally {
@@ -133,6 +137,111 @@ test('parseArgs reads adaptive inflight controls from environment', () => {
     if (previous.burstRefillCycles === undefined) delete process.env.QUEUE_BURST_REFILL_CYCLES;
     else process.env.QUEUE_BURST_REFILL_CYCLES = previous.burstRefillCycles;
   }
+});
+
+test('runQueueSupervisor projects latest security-intake state into the throughput report', async () => {
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'pr' && args[1] === 'list') {
+      return [
+        {
+          number: 221,
+          title: '[P1] queue-ready',
+          body: 'Coupling: independent',
+          baseRefName: 'develop',
+          headRepositoryOwner: { login: 'owner' },
+          isDraft: false,
+          mergeStateStatus: 'CLEAN',
+          mergeable: 'MERGEABLE',
+          updatedAt: '2026-03-06T11:00:00Z',
+          url: 'https://example.test/pr/221',
+          labels: [],
+          statusCheckRollup: [successCheck('lint')],
+          autoMergeRequest: null
+        }
+      ];
+    }
+    if (args[0] === 'api' && String(args[1]).includes('validate.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-06T10:40:00Z', updated_at: '2026-03-06T10:41:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('policy-guard-upstream.yml')) {
+      return {
+        workflow_runs: [
+          { conclusion: 'success', status: 'completed', created_at: '2026-03-06T10:30:00Z', updated_at: '2026-03-06T10:31:00Z' }
+        ]
+      };
+    }
+    if (args[0] === 'api' && String(args[1]).includes('fixture-drift.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('commit-integrity.yml')) return { workflow_runs: [] };
+    throw new Error(`Unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const readJsonFileFn = async (filePath) => {
+    if (String(filePath).endsWith('branch-required-checks.json')) {
+      return { branches: { develop: ['lint'] } };
+    }
+    if (String(filePath).endsWith('policy.json')) {
+      return {
+        rulesets: {
+          develop: {
+            includes: ['refs/heads/develop'],
+            merge_queue: { merge_method: 'SQUASH' }
+          }
+        }
+      };
+    }
+    throw new Error(`Unexpected read path: ${filePath}`);
+  };
+
+  const readOptionalJsonFn = async (filePath) => {
+    if (String(filePath).endsWith('security-intake-report.json')) {
+      return {
+        schema: 'priority/security-intake@v1',
+        generatedAt: '2026-03-06T11:45:00.000Z',
+        status: 'platform-stale'
+      };
+    }
+    return {};
+  };
+
+  const { report } = await runQueueSupervisor({
+    repoRoot: process.cwd(),
+    args: {
+      apply: false,
+      dryRun: true,
+      reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      controllerStatePath: 'tests/results/_agent/queue/throughput-controller-state.json',
+      readinessReportPath: 'tests/results/_agent/queue/queue-readiness-report.json',
+      governorStatePath: 'tests/results/_agent/slo/ops-governor-state.json',
+      securityIntakeReportPath: 'tests/results/_agent/security/security-intake-report.json',
+      maxInflight: 5,
+      minInflight: 1,
+      adaptiveCap: false,
+      maxQueuedRuns: 6,
+      maxInProgressRuns: 8,
+      stallThresholdMinutes: 45,
+      repo: 'owner/repo',
+      baseBranches: ['develop', 'main'],
+      healthBranch: 'develop',
+      help: false
+    },
+    now: new Date('2026-03-06T12:00:00Z'),
+    runGhJsonFn,
+    runCommandFn: () => ({ status: 0, stdout: '', stderr: '' }),
+    readJsonFileFn,
+    readOptionalJsonFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(report.securityIntake.path, 'tests/results/_agent/security/security-intake-report.json');
+  assert.equal(report.securityIntake.exists, true);
+  assert.equal(report.securityIntake.status, 'platform-stale');
+  assert.equal(report.securityIntake.generatedAt, '2026-03-06T11:45:00.000Z');
+  assert.equal(report.securityIntake.sourceSchema, 'priority/security-intake@v1');
+  assert.equal(report.summary.securityIntakeStatus, 'platform-stale');
 });
 
 test('evaluateAdaptiveInflight applies fixed/guarded/stabilize controller modes deterministically', () => {
