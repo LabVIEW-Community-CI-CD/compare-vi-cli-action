@@ -307,6 +307,127 @@ export function probeReadyTransitionViaMergeSyncDryRun({
   };
 }
 
+export function resolveQueueAdmissionSummaryPath({
+  repoRoot,
+  repository,
+  pullRequestNumber
+}) {
+  const repositorySlug = normalizeText(repository)
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return path.join(
+    repoRoot,
+    'tests',
+    'results',
+    '_agent',
+    'issue',
+    `${repositorySlug || 'repository'}-pr-${pullRequestNumber}-queue-admission.json`
+  );
+}
+
+export function buildQueueAdmissionMergeSyncArgs({ repository, pullRequestNumber, summaryPath }) {
+  const repoSlug = normalizeText(repository);
+  const prNumber = toPositiveInteger(pullRequestNumber);
+  if (!repoSlug) {
+    throw new Error('Repository slug is required to admit a PR to the merge queue.');
+  }
+  if (!prNumber) {
+    throw new Error('Pull request number is required to admit a PR to the merge queue.');
+  }
+  if (!normalizeText(summaryPath)) {
+    throw new Error('Queue-admission summary path is required to admit a PR to the merge queue.');
+  }
+  return [
+    'tools/priority/merge-sync-pr.mjs',
+    '--pr',
+    String(prNumber),
+    '--repo',
+    repoSlug,
+    '--summary-path',
+    summaryPath
+  ];
+}
+
+export function maybeAdmitPullRequestToMergeQueue({
+  repoRoot,
+  upstream,
+  strategy,
+  pullRequest,
+  readyTransition,
+  readJsonFn = readJsonFile,
+  spawnSyncFn = spawnSync
+}) {
+  if (strategy !== 'graphql-same-owner-fork') {
+    return {
+      status: 'skipped',
+      reason: 'Queue admission only applies to same-owner fork PR creation.',
+      attempted: false
+    };
+  }
+
+  if (!pullRequest?.number) {
+    return {
+      status: 'skipped',
+      reason: 'Pull request metadata is missing.',
+      attempted: false
+    };
+  }
+
+  if (normalizeText(readyTransition?.status).toLowerCase() !== 'ready') {
+    return {
+      status: 'skipped',
+      reason: 'Queue admission is only attempted after the current PR creation flow marked the PR ready for review.',
+      attempted: false
+    };
+  }
+
+  const repository = buildRepositorySlug(upstream);
+  const summaryPath = resolveQueueAdmissionSummaryPath({
+    repoRoot,
+    repository,
+    pullRequestNumber: pullRequest.number
+  });
+  const args = buildQueueAdmissionMergeSyncArgs({
+    repository,
+    pullRequestNumber: pullRequest.number,
+    summaryPath
+  });
+  const result = spawnSyncFn('node', args, {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  const summary = readJsonFn(summaryPath) ?? null;
+  const promotion = summary?.promotion ?? null;
+  const promotionStatus = normalizeText(promotion?.status).toLowerCase();
+  const durablePromotion = promotion?.materialized === true;
+  const reason =
+    normalizeText(summary?.finalReason) ||
+    normalizeText(result?.stderr) ||
+    normalizeText(result?.stdout) ||
+    (promotionStatus ? `merge-sync-${promotionStatus}` : `merge-sync-exit-${result?.status ?? 'unknown'}`);
+
+  if (result?.status === 0 && durablePromotion) {
+    return {
+      status: promotionStatus || 'queued',
+      reason,
+      attempted: true,
+      helperCall: `node ${args.join(' ')}`,
+      summaryPath,
+      promotion
+    };
+  }
+
+  return {
+    status: 'admission-failed',
+    reason,
+    attempted: true,
+    helperCall: `node ${args.join(' ')}`,
+    summaryPath,
+    promotion
+  };
+}
+
 export function readReadyValidationClearance({
   repoRoot,
   repository,
@@ -1032,6 +1153,7 @@ export function createPriorityPr({
   runFn = run,
   runGhPrCreateFn = runGhPrCreate,
   runReadyProbeFn = probeReadyTransitionViaMergeSyncDryRun,
+  admitToMergeQueueFn = maybeAdmitPullRequestToMergeQueue,
   findMergedPullRequestFn = findMergedPullRequest,
   findOpenAncestorPullRequestFn = findOpenAncestorPullRequest,
   resolveStandingIssueNumberFn = resolveStandingIssueNumberForPr,
@@ -1215,6 +1337,14 @@ export function createPriorityPr({
           isDraft: false
         }
       : prResult?.pullRequest ?? null;
+  const queueAdmission = admitToMergeQueueFn({
+    repoRoot,
+    upstream,
+    strategy: prResult?.strategy ?? null,
+    pullRequest,
+    readyTransition,
+    readJsonFn
+  });
 
   return {
     repoRoot,
@@ -1237,6 +1367,7 @@ export function createPriorityPr({
     strategy: prResult?.strategy ?? null,
     pullRequest,
     readyTransition,
+    queueAdmission,
     reusedExistingPullRequest: prResult?.reusedExisting === true,
     stackedFollowUp: null
   };
@@ -1314,6 +1445,16 @@ export function buildPriorityPrReport(result, generatedAt = new Date().toISOStri
           reviewClearance: result.readyTransition.reviewClearance ?? null
         }
       : null,
+    queueAdmission: result.queueAdmission
+      ? {
+          status: result.queueAdmission.status ?? null,
+          reason: result.queueAdmission.reason ?? null,
+          attempted: result.queueAdmission.attempted === true,
+          helperCall: result.queueAdmission.helperCall ?? null,
+          summaryPath: result.queueAdmission.summaryPath ?? null,
+          promotion: result.queueAdmission.promotion ?? null
+        }
+      : null,
     stackedFollowUp: result.stackedFollowUp
       ? {
           status: result.stackedFollowUp.status ?? null,
@@ -1376,6 +1517,9 @@ export function main(argv = process.argv) {
   }
   if (result?.readyTransition?.status) {
     console.log(`[priority:create-pr] ready-transition=${result.readyTransition.status}`);
+  }
+  if (result?.queueAdmission?.status) {
+    console.log(`[priority:create-pr] queue-admission=${result.queueAdmission.status}`);
   }
   console.log(`[priority:create-pr] report=${reportResult.reportPath}`);
   return 0;
