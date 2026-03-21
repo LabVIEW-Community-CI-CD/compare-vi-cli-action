@@ -15,6 +15,15 @@ import {
 
 const repoRoot = path.resolve(process.cwd());
 const fixtureRoot = path.join(repoRoot, 'tools', 'priority', '__fixtures__', 'agent-cost-rollup');
+const canonicalOutputPath = path.join(
+  repoRoot,
+  'tests',
+  'results',
+  '_agent',
+  'cost',
+  'account-balances',
+  'account-balance-2026-03-21.json'
+);
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -40,16 +49,22 @@ test('buildNormalizedAccountBalanceReceiptFromSnapshot normalizes a private acco
 
   assert.equal(report.schema, 'priority/agent-cost-account-balance@v1');
   assert.equal(report.snapshotAt, '2026-03-21T12:00:00.000Z');
+  assert.equal(report.capturedAt, '2026-03-21T12:00:00.000Z');
+  assert.equal(report.effectiveAt, '2026-03-21T12:00:00.000Z');
+  assert.equal(report.renewalCycleBoundaryAt, '2026-04-15T00:00:00.000Z');
   assert.equal(report.plan.name, 'business');
   assert.equal(report.plan.renewsAt, '2026-04-15');
   assert.equal(report.plan.daysRemaining, 25);
-  assert.equal(report.credits.total, 27500);
-  assert.equal(report.credits.used, 15800);
-  assert.equal(report.credits.remaining, 11700);
-  assert.equal(report.provenance.sourceSchema, 'priority/agent-cost-private-account-balance@v1');
-  assert.equal(report.provenance.sourceKind, 'operator-account-state');
-  assert.equal(report.provenance.observedAt, '2026-03-21T12:00:00.000Z');
-  assert.equal(report.provenance.confidence, 'high');
+  assert.deepEqual(report.balances, {
+    totalCredits: 27500,
+    usedCredits: 15800,
+    remainingCredits: 11700
+  });
+  assert.equal(report.sourceSchema, 'priority/agent-cost-private-account-balance@v1');
+  assert.equal(report.sourceKind, 'operator-account-state');
+  assert.equal(report.sourcePathEvidence, 'tools/priority/__fixtures__/agent-cost-rollup/private-account-balance-sample.json');
+  assert.equal(report.confidence, 'high');
+  assert.equal(report.operatorNote, 'Sanitized operator-provided account balance snapshot.');
 });
 
 test('runAgentCostAccountBalanceNormalize writes a normalized account-balance receipt to the requested path', () => {
@@ -60,8 +75,29 @@ test('runAgentCostAccountBalanceNormalize writes a normalized account-balance re
     outputPath
   });
 
-  assert.equal(result.report.credits.remaining, 11700);
+  assert.deepEqual(result.report.balances, {
+    totalCredits: 27500,
+    usedCredits: 15800,
+    remainingCredits: 11700
+  });
   assert.equal(fs.existsSync(outputPath), true);
+});
+
+test('runAgentCostAccountBalanceNormalize auto-discovers the canonical account-balance output path when none is provided', () => {
+  if (fs.existsSync(canonicalOutputPath)) {
+    fs.rmSync(canonicalOutputPath, { force: true });
+  }
+
+  try {
+    const result = runAgentCostAccountBalanceNormalize({
+      snapshotPath: path.join(fixtureRoot, 'private-account-balance-sample.json')
+    });
+
+    assert.equal(result.outputPath, canonicalOutputPath);
+    assert.equal(fs.existsSync(canonicalOutputPath), true);
+  } finally {
+    fs.rmSync(canonicalOutputPath, { force: true });
+  }
 });
 
 test('agent-cost-account-balance-normalize CLI writes a receipt directly', () => {
