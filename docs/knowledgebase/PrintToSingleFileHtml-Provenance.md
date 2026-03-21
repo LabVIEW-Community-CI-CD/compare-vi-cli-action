@@ -21,10 +21,10 @@ The reason is provenance, not usefulness.
 
   That PR added `Tooling/comparevi-history-canary/CanaryProbe.vi` on an
   MIT-licensed public consumer repository, and public CompareVI History
-  diagnostics succeeded on the PR head. That provisional seed now points at the
-  repo-owned BSD-3 `PrintToSingleFileHtml` source bundle tracked in this
-  repository, so the remaining gap is narrower: the published public receipts
-  are still history-surface artifacts, not a standalone `PrintToSingleFileHtml`
+  diagnostics succeeded on the pinned PR head commit
+  `91516373bf6c95e1d3cee2ee97452bc9d08f4ed7`. This is the best licensed
+  added-VI corpus seed we have, but the published receipts are still
+  history-surface artifacts rather than a standalone `PrintToSingleFileHtml`
   proof against the replacement payload.
 
 This repository now carries a repo-owned BSD-3 licensed source bundle for the
@@ -46,6 +46,8 @@ As of March 21, 2026, the bundle is still explicitly `source-only`:
   CLI operation directories
 - `#1621` tracks the repo-owned authoring step that must land before public
   proof can be attempted
+- `#1726` tracks the remaining public standalone proof gap for the licensed
+  added-VI candidate
 - `tools/Inspect-OperationPayloadSourceBundle.ps1` now emits the fail-closed
   executable-state receipt for the checked-in bundle
 - `tools/Invoke-HeadlessSampleVICorpusPrintProof.ps1` now turns the current
