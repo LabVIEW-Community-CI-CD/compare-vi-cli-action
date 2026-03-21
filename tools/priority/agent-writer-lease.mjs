@@ -14,6 +14,8 @@ const DEFAULT_SCOPE = 'workspace';
 const DEFAULT_STALE_SECONDS = 900;
 const DEFAULT_WAIT_MS = 250;
 const DEFAULT_MAX_ATTEMPTS = 0;
+const DEFAULT_RENAME_RETRY_ATTEMPTS = 5;
+const DEFAULT_RENAME_RETRY_WAIT_MS = 50;
 
 const STATUS = Object.freeze({
   acquired: 'acquired',
@@ -104,6 +106,36 @@ async function readLease(filePath) {
   }
 }
 
+function isRetryableLeaseReplaceError(error) {
+  return ['EPERM', 'EACCES', 'EBUSY', 'EEXIST'].includes(error?.code);
+}
+
+async function replaceFileWithRetry(tempPath, filePath, {
+  retryAttempts = DEFAULT_RENAME_RETRY_ATTEMPTS,
+  retryWaitMs = DEFAULT_RENAME_RETRY_WAIT_MS,
+  fsModule = fs
+} = {}) {
+  let attempt = 0;
+  while (true) {
+    try {
+      await fsModule.rename(tempPath, filePath);
+      return;
+    } catch (error) {
+      if (!isRetryableLeaseReplaceError(error)) {
+        throw error;
+      }
+      if (attempt >= retryAttempts) {
+        throw error;
+      }
+      await fsModule.rm(filePath, { force: true });
+      attempt += 1;
+      if (retryWaitMs > 0) {
+        await sleep(retryWaitMs);
+      }
+    }
+  }
+}
+
 async function writeJsonAtomic(filePath, payload, { createOnly = false } = {}) {
   await ensureParentDir(filePath);
   const body = `${JSON.stringify(payload, null, 2)}\n`;
@@ -113,7 +145,11 @@ async function writeJsonAtomic(filePath, payload, { createOnly = false } = {}) {
   }
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   await fs.writeFile(tempPath, body, { encoding: 'utf8' });
-  await fs.rename(tempPath, filePath);
+  try {
+    await replaceFileWithRetry(tempPath, filePath);
+  } finally {
+    await fs.rm(tempPath, { force: true });
+  }
 }
 
 function buildBaseResult(action, scope, leasePath, owner) {
@@ -470,7 +506,9 @@ export async function runCli(argv = process.argv.slice(2)) {
 
 export const __test = {
   leaseAgeSeconds,
-  parseArgs
+  parseArgs,
+  isRetryableLeaseReplaceError,
+  replaceFileWithRetry
 };
 
 const modulePath = path.resolve(fileURLToPath(import.meta.url));
