@@ -2,10 +2,14 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { parseArgs, runStandingReconciliation } from '../reconcile-standing-after-merge.mjs';
+import {
+  parseArgs,
+  resolveStandingReconciliationRepositorySlug,
+  runStandingReconciliation
+} from '../reconcile-standing-after-merge.mjs';
 
 test('parseArgs accepts merge reconciliation controls', () => {
   const parsed = parseArgs([
@@ -37,6 +41,26 @@ test('parseArgs accepts merge reconciliation controls', () => {
     dryRun: false,
     help: false
   });
+});
+
+test('resolveStandingReconciliationRepositorySlug prefers the upstream standing repo for fork worktrees', async (t) => {
+  const repoRoot = await mkdtemp(path.join(tmpdir(), 'standing-reconcile-root-'));
+  t.after(() => rm(repoRoot, { recursive: true, force: true }));
+
+  await mkdir(path.join(repoRoot, '.git'), { recursive: true });
+  await writeFile(
+    path.join(repoRoot, '.git', 'config'),
+    '[remote "origin"]\n  url = https://github.com/svelderrainruiz/compare-vi-cli-action.git\n[remote "upstream"]\n  url = https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action.git\n',
+    'utf8'
+  );
+
+  const repository = resolveStandingReconciliationRepositorySlug({
+    repoRoot,
+    explicitRepo: 'svelderrainruiz/compare-vi-cli-action',
+    env: { GITHUB_REPOSITORY: 'svelderrainruiz/compare-vi-cli-action' }
+  });
+
+  assert.equal(repository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
 });
 
 test('runStandingReconciliation closes the standing issue and refreshes the router cache after merge completion', async (t) => {
@@ -110,4 +134,77 @@ test('runStandingReconciliation closes the standing issue and refreshes the rout
   assert.equal(syncCalls.length, 1);
   assert.equal(writes.length, 1);
   assert.match(String(writes[0].filePath), /standing-lane-reconciliation-1010\.json$/);
+});
+
+test('runStandingReconciliation prefers the upstream standing repo when bootstrap forwards a fork slug', async (t) => {
+  const repoRoot = await mkdtemp(path.join(tmpdir(), 'standing-reconcile-fork-'));
+  t.after(() => rm(repoRoot, { recursive: true, force: true }));
+
+  await mkdir(path.join(repoRoot, '.git'), { recursive: true });
+  await writeFile(
+    path.join(repoRoot, '.git', 'config'),
+    '[remote "origin"]\n  url = https://github.com/svelderrainruiz/compare-vi-cli-action.git\n[remote "upstream"]\n  url = https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action.git\n',
+    'utf8'
+  );
+
+  const seenRepos = {
+    issueView: [],
+    labelRemoval: [],
+    closeIssue: [],
+    sync: []
+  };
+
+  const receipt = await runStandingReconciliation({
+    repoRoot,
+    argv: [
+      'node',
+      'tools/priority/reconcile-standing-after-merge.mjs',
+      '--issue',
+      '1663',
+      '--repo',
+      'svelderrainruiz/compare-vi-cli-action',
+      '--pr',
+      '1662',
+      '--merged'
+    ],
+    ensureGhCliFn: () => {},
+    readIssueViewFn: async (options) => {
+      seenRepos.issueView.push(options.repo);
+      return {
+        number: 1663,
+        state: 'OPEN',
+        title: 'Standing priority issue',
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1663',
+        labels: [{ name: 'standing-priority' }]
+      };
+    },
+    removeStandingLabelsFn: async (options) => {
+      seenRepos.labelRemoval.push(options.repo);
+      return { status: 0 };
+    },
+    closeIssueWithCommentFn: async (options) => {
+      seenRepos.closeIssue.push(options.repo);
+      return { status: 0 };
+    },
+    syncStandingPriorityFn: async (options) => {
+      seenRepos.sync.push(options.repo);
+      return { status: 0 };
+    },
+    readJsonFn: async (filePath) => {
+      if (String(filePath).endsWith('router.json')) {
+        return { schema: 'agent/priority-router@v1', issue: 1658, updatedAt: '2026-03-21T00:00:00Z', actions: [] };
+      }
+      if (String(filePath).endsWith('.agent_priority_cache.json')) {
+        return { number: 1658 };
+      }
+      return null;
+    },
+    writeJsonFn: async (filePath, payload) => filePath && payload
+  });
+
+  assert.equal(receipt.repo, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.deepEqual(seenRepos.issueView, ['LabVIEW-Community-CI-CD/compare-vi-cli-action']);
+  assert.deepEqual(seenRepos.labelRemoval, ['LabVIEW-Community-CI-CD/compare-vi-cli-action']);
+  assert.deepEqual(seenRepos.closeIssue, ['LabVIEW-Community-CI-CD/compare-vi-cli-action']);
+  assert.deepEqual(seenRepos.sync, ['LabVIEW-Community-CI-CD/compare-vi-cli-action']);
 });
