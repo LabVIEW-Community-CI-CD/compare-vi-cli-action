@@ -111,6 +111,14 @@ jobs:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         fetch-depth: 0
+    - name: Hydrate pull request base commit for VI history
+      if: github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        set -euo pipefail
+        git remote add upstream-base "https://github.com/${{ github.event.pull_request.base.repo.full_name }}"
+        git fetch --no-tags upstream-base "+refs/heads/${{ github.event.pull_request.base.ref }}:refs/remotes/upstream-base/${{ github.event.pull_request.base.ref }}"
+        git rev-parse --verify --quiet "${{ github.event.pull_request.base.sha }}^{commit}"
     - name: Prepare fixture copies (base/head)
       id: prep
       shell: pwsh
@@ -165,4 +173,3 @@ jobs:
         name: fixture-drift-ni-linux-container
         path: results/fixture-drift/ni-linux-container/**
         if-no-files-found: warn
-

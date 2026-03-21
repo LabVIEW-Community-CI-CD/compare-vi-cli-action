@@ -42,6 +42,9 @@ test('fixture-drift hosted Linux lane passes explicit linux container LabVIEW pa
   assert.match(workflow, /-Image \$env:NI_LINUX_IMAGE/);
   assert.match(workflow, /-LabVIEWPath \$env:NI_LINUX_LABVIEW_PATH/);
   assert.match(workflow, /Invoke-NILinuxReviewSuite\.ps1/);
+  assert.match(workflow, /Hydrate pull request base commit for VI history/);
+  assert.match(workflow, /git remote add upstream-base "https:\/\/github\.com\/\$\{\{ github\.event\.pull_request\.base\.repo\.full_name \}\}"/);
+  assert.match(workflow, /git fetch --no-tags upstream-base "\+refs\/heads\/\$\{\{ github\.event\.pull_request\.base\.ref \}\}:refs\/remotes\/upstream-base\/\$\{\{ github\.event\.pull_request\.base\.ref \}\}"/);
   assert.match(workflow, /-HistoryTargetPath 'fixtures\/vi-attr\/Head\.vi'/);
   assert.match(workflow, /\$historyBranchRef = '\$\{\{ github\.sha \}\}'/);
   assert.match(workflow, /\$\{\{ github\.event\.pull_request\.head\.sha \}\}/);

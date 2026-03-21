@@ -69,6 +69,18 @@ test('PR-code workflows use explicit PR-head checkout expressions', () => {
   }
 });
 
+test('fixture-drift hydrates the pull-request base commit before hosted VI history review runs', () => {
+  const workflow = readText('.github/workflows/fixture-drift.yml');
+  assert.match(workflow, /name:\s*Hydrate pull request base commit for VI history/);
+  assert.match(workflow, /if:\s*github\.event_name == 'pull_request'/);
+  assert.match(workflow, /git remote add upstream-base "https:\/\/github\.com\/\$\{\{\s*github\.event\.pull_request\.base\.repo\.full_name\s*\}\}"/);
+  assert.match(
+    workflow,
+    /git fetch --no-tags upstream-base "\+refs\/heads\/\$\{\{\s*github\.event\.pull_request\.base\.ref\s*\}\}:refs\/remotes\/upstream-base\/\$\{\{\s*github\.event\.pull_request\.base\.ref\s*\}\}"/
+  );
+  assert.match(workflow, /git rev-parse --verify --quiet "\$\{\{\s*github\.event\.pull_request\.base\.sha\s*\}\}\^\{commit\}"/);
+});
+
 test('policy workflows keep explicit base-safe or mixed checkout expressions', () => {
   const agentReview = readText('.github/workflows/agent-review-policy.yml');
   assert.match(agentReview, /uses:\s+actions\/checkout@v5/);
