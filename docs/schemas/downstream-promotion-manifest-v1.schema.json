@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/downstream-promotion-manifest-v1.schema.json",
+  "title": "Downstream Promotion Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "contract",
+    "promotion",
+    "inputs",
+    "lineage"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "priority/downstream-promotion-manifest@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        }
+      }
+    },
+    "promotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceRef",
+        "sourceCommitSha",
+        "targetBranch",
+        "targetBranchClassId",
+        "actor",
+        "provingScorecardRef",
+        "localSourceVerification"
+      ],
+      "properties": {
+        "sourceRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceCommitSha": {
+          "type": "string",
+          "minLength": 7
+        },
+        "targetBranch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetBranchClassId": {
+          "type": "string",
+          "const": "downstream-consumer-proving-rail"
+        },
+        "actor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provingScorecardRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "localSourceVerification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "attempted",
+            "matched"
+          ],
+          "properties": {
+            "attempted": {
+              "type": "boolean"
+            },
+            "matched": {
+              "type": "boolean"
+            },
+            "resolvedCommitSha": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compareviToolsRelease",
+        "compareviHistoryRelease",
+        "scenarioPackIdentity",
+        "cookiecutterTemplateIdentity"
+      ],
+      "properties": {
+        "compareviToolsRelease": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compareviHistoryRelease": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenarioPackIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cookiecutterTemplateIdentity": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promotionKind",
+        "replayOfManifest",
+        "rollbackOfManifest"
+      ],
+      "properties": {
+        "promotionKind": {
+          "type": "string",
+          "enum": [
+            "promote",
+            "replay",
+            "rollback"
+          ]
+        },
+        "replayOfManifest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rollbackOfManifest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}
