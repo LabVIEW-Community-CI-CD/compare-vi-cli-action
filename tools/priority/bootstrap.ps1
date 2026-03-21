@@ -764,6 +764,32 @@ if (-not $PreflightOnly) {
     -ScriptRelativePath 'tools/priority/sync-standing-priority.mjs' `
     -RequiredPackages @('undici') `
     -Arguments @('--fail-on-missing', '--fail-on-multiple', '--auto-select-next')
+  $routerPath = Join-Path $priorityWorkingDirectory 'tests/results/_agent/issue/router.json'
+  $routerIssue = $null
+  if (Test-Path -LiteralPath $routerPath -PathType Leaf) {
+    try {
+      $routerSnapshot = Get-Content -LiteralPath $routerPath -Raw | ConvertFrom-Json
+      if ($routerSnapshot -and $routerSnapshot.PSObject.Properties['issue']) {
+        $routerIssue = [int]$routerSnapshot.issue
+      }
+    } catch {
+      Write-Warning "[bootstrap] Unable to parse router snapshot at $routerPath; standing reconciliation backstop skipped."
+    }
+  }
+  if ($routerIssue) {
+    Write-Host ("[bootstrap] Reconciling standing lane after merge completion for issue #{0}…" -f $routerIssue)
+    $reconcileArgs = @('--issue', [string]$routerIssue)
+    if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY)) {
+      $reconcileArgs = @('--repo', $env:GITHUB_REPOSITORY) + $reconcileArgs
+    }
+    Invoke-NodeScriptFromRepoRoot `
+      -RepoRoot $priorityHelperRepoRoot `
+      -WorkingDirectory $priorityWorkingDirectory `
+      -ScriptRelativePath 'tools/priority/reconcile-standing-after-merge.mjs' `
+      -RequiredPackages @('undici') `
+      -Arguments $reconcileArgs `
+      -AllowFailure:$true
+  }
   Write-Host '[bootstrap] Projecting session-index-v2 promotion decision into issue reporting…'
   Invoke-NodeScriptFromRepoRoot `
     -RepoRoot $priorityHelperRepoRoot `

@@ -726,36 +726,35 @@ test('runDeliveryTurnBroker keeps priority sync stdout chatter out of merge rece
   assert.equal(brokerResult.details.finalizedIssueNumber, 959);
   assert.deepEqual(brokerResult.details.helperCallsExecuted, [
     'node tools/priority/merge-sync-pr.mjs',
-    'gh issue edit 959 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --remove-label standing-priority',
-    'node tools/priority/sync-standing-priority.mjs',
-    'gh issue close 959 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --comment <omitted>'
+    'node tools/priority/reconcile-standing-after-merge.mjs --issue 959'
   ]);
   assert.deepEqual(commandLog, [
     {
       command: 'node',
-      args: ['tools/priority/merge-sync-pr.mjs', '--pr', '1017', '--repo', 'LabVIEW-Community-CI-CD/compare-vi-cli-action'],
-      cwd: repoRoot
-    },
-    {
-      command: 'gh',
-      args: ['issue', 'edit', '959', '--repo', 'LabVIEW-Community-CI-CD/compare-vi-cli-action', '--remove-label', 'standing-priority'],
+      args: [
+        'tools/priority/merge-sync-pr.mjs',
+        '--pr',
+        '1017',
+        '--repo',
+        'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        '--summary-path',
+        path.join(repoRoot, 'tests', 'results', '_agent', 'queue', 'merge-sync-1017.json')
+      ],
       cwd: repoRoot
     },
     {
       command: 'node',
-      args: ['tools/priority/sync-standing-priority.mjs'],
-      cwd: repoRoot
-    },
-    {
-      command: 'gh',
       args: [
-        'issue',
-        'close',
+        'tools/priority/reconcile-standing-after-merge.mjs',
+        '--issue',
         '959',
         '--repo',
         'LabVIEW-Community-CI-CD/compare-vi-cli-action',
-        '--comment',
-        'Completed by PR #1017 (https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1017). No next standing-priority issue is currently labeled, so the queue is now idle until a new issue is promoted.'
+        '--merged',
+        '--pr',
+        '1017',
+        '--merge-summary-path',
+        path.join(repoRoot, 'tests', 'results', '_agent', 'queue', 'merge-sync-1017.json')
       ],
       cwd: repoRoot
     }

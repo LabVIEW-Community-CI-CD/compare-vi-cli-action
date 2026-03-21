@@ -196,14 +196,17 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   `tests/results/_agent/issue/github-metadata-apply-report.json` and verifies the post-apply state against the
   projected target state. Use this when the issue/PR metadata itself is the source of truth; use the project helper
   only for board fields.
-- `node tools/priority/standing-priority-handoff.mjs [--repo <owner/repo>] [--dry-run] <next-issue>`  
+- `node tools/priority/standing-priority-handoff.mjs [--repo <owner/repo>] [--dry-run] <next-issue>`
   Normalizes the current repository lane back to exactly one standing issue, using the repo-aware label set
   (`fork-standing-priority` first on fork lanes, `standing-priority` on upstream), removes legacy standing labels from
   non-target issues, and re-runs the cache sync (`tools/priority/sync-standing-priority.mjs`).
-- `node tools/priority/standing-priority-handoff.mjs [--repo <owner/repo>] [--dry-run] --auto`  
+- `node tools/priority/standing-priority-handoff.mjs [--repo <owner/repo>] [--dry-run] --auto`
   Lists all open issues in the current repository, excludes the currently labelled standing issue, auto-selects the
   next actionable development item deterministically, and then applies the same label normalization flow. Cadence alert
   issues are deprioritized when non-cadence development issues are available.
+- `node tools/priority/reconcile-standing-after-merge.mjs --issue <number> [--merged] [--repo <owner/repo>] ...`
+  Reconciles the just-merged standing lane by removing stale standing labels, closing or commenting the issue with the
+  merge completion note, refreshing the standing router/cache, and recording the worker-slot release evidence.
 - Priority PR and Validate dispatch helpers now emit fork-lane provenance receipts under `tests/results/_agent/issue/`
   so later workers can recover the canonical issue, any mirrored fork issue, and the selected execution plane without
   reparsing branch names. See `docs/knowledgebase/FEATURE_BRANCH_POLICY.md` for the lane-identity vocabulary.

@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/standing-lane-reconciliation-v1.schema.json",
+  "title": "Standing Lane Reconciliation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repo",
+    "issue",
+    "merged",
+    "dryRun",
+    "mergeSummaryPath",
+    "standingIssue",
+    "routerRefresh",
+    "workerSlotRelease",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/standing-lane-reconciliation@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repo": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "issue": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "pr": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "merged": {
+      "type": "boolean"
+    },
+    "dryRun": {
+      "type": "boolean"
+    },
+    "mergeSummaryPath": {
+      "type": ["string", "null"]
+    },
+    "standingIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "state",
+        "labelsBefore",
+        "labelsRemoved",
+        "closeStatus"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "state": {
+          "type": ["string", "null"]
+        },
+        "labelsBefore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "labelsRemoved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "closeStatus": {
+          "type": ["string", "null"]
+        },
+        "closeComment": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "routerRefresh": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempted",
+        "status",
+        "routerPath",
+        "cachePath",
+        "nextStandingIssueNumber",
+        "helperCallsExecuted"
+      ],
+      "properties": {
+        "attempted": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": ["skipped", "dry-run", "completed", "failed"]
+        },
+        "routerPath": {
+          "type": ["string", "null"]
+        },
+        "cachePath": {
+          "type": ["string", "null"]
+        },
+        "nextStandingIssueNumber": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "helperCallsExecuted": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "workerSlotRelease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempted",
+        "status",
+        "workerSlotId",
+        "laneId",
+        "laneLifecycle",
+        "helperCallsExecuted"
+      ],
+      "properties": {
+        "attempted": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": ["skipped", "dry-run", "released", "failed"]
+        },
+        "workerSlotId": {
+          "type": ["string", "null"]
+        },
+        "laneId": {
+          "type": ["string", "null"]
+        },
+        "laneLifecycle": {
+          "type": ["string", "null"]
+        },
+        "helperCallsExecuted": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "nextStandingIssueNumber"
+      ],
+      "properties": {
+        "status": {
+          "enum": ["completed", "skipped", "dry-run", "failed"]
+        },
+        "reason": {
+          "type": ["string", "null"]
+        },
+        "nextStandingIssueNumber": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

@@ -24,6 +24,10 @@ test('bootstrap routes standing-priority helper scripts through the resolved hel
   );
   assert.match(
     content,
+    /\$reconcileArgs = @\('--issue', \[string\]\$routerIssue\)[\s\S]*Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/reconcile-standing-after-merge\.mjs'[\s\S]*-RequiredPackages @\('undici'\)[\s\S]*-Arguments \$reconcileArgs/
+  );
+  assert.match(
+    content,
     /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/project-session-index-v2-promotion-decision\.mjs'[\s\S]*-RequiredPackages @\('ajv', 'ajv-formats'\)[\s\S]*-AllowFailure:\$true/
   );
   assert.match(
