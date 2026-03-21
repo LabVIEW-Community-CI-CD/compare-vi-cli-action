@@ -1094,6 +1094,34 @@ function prLifecyclePriority(status) {
   }
 }
 
+function canOffloadPullRequestForWorkSteal(status = {}) {
+  const lifecycle = normalizeText(status?.laneLifecycle).toLowerCase();
+  if (lifecycle === 'waiting-review') {
+    return true;
+  }
+  if (lifecycle === 'waiting-ci' && status?.syncRequired !== true) {
+    return true;
+  }
+  return false;
+}
+
+function summarizeOffloadedPullRequestCandidate(candidate = null) {
+  if (!candidate?.pullRequest) {
+    return null;
+  }
+  return {
+    issueNumber: candidate.issue?.number ?? null,
+    epicNumber: candidate.epicNumber ?? null,
+    pullRequestNumber: candidate.pullRequest.number ?? null,
+    pullRequestUrl: normalizeText(candidate.pullRequest.url) || null,
+    branch: normalizeText(candidate.pullRequest.headRefName) || null,
+    laneLifecycle: normalizeText(candidate.prStatus?.laneLifecycle) || null,
+    blockerClass: normalizeText(candidate.prStatus?.blockerClass) || null,
+    nextWakeCondition: normalizeText(candidate.prStatus?.nextWakeCondition) || null,
+    pollIntervalSecondsHint: coercePositiveInteger(candidate.prStatus?.pollIntervalSecondsHint) ?? null
+  };
+}
+
 function dedupePullRequests(pullRequests = []) {
   const byNumber = new Map();
   for (const pr of pullRequests) {
@@ -1179,6 +1207,7 @@ function selectCanonicalCandidate({
   const openChildIssues = Array.isArray(issueGraph?.subIssues)
     ? issueGraph.subIssues.filter((issue) => normalizeText(issue.state) === 'OPEN')
     : [];
+  const actionableChildIssues = openChildIssues.filter((issue) => collectPullRequestCandidates(issue).length === 0);
   const childPullRequests = openChildIssues.flatMap((issue) => collectPullRequestCandidates(issue, standingIssue.epic === true ? standingIssue.number : null));
   const prCandidates = dedupePullRequests(
     [...openStandingPullRequests, ...childPullRequests].map((entry) => ({
@@ -1193,8 +1222,11 @@ function selectCanonicalCandidate({
       return compareIssueRank(left.issue, right.issue);
     });
 
-  if (prCandidates.length > 0) {
-    const selected = prCandidates[0];
+  const selectedChild = actionableChildIssues.length > 0 ? selectBestIssueCandidate(actionableChildIssues) : null;
+  const selectedPullRequestCandidate = prCandidates[0] ?? null;
+
+  if (selectedPullRequestCandidate && !(selectedChild && canOffloadPullRequestForWorkSteal(selectedPullRequestCandidate.prStatus))) {
+    const selected = selectedPullRequestCandidate;
     return {
       actionType: 'existing-pr-unblock',
       laneLifecycle: selected.prStatus.laneLifecycle,
@@ -1215,8 +1247,7 @@ function selectCanonicalCandidate({
     };
   }
 
-  if (openChildIssues.length > 0) {
-    const selectedChild = selectBestIssueCandidate(openChildIssues);
+  if (selectedChild) {
     return {
       actionType: 'advance-child-issue',
       laneLifecycle: 'coding',
@@ -1224,6 +1255,7 @@ function selectCanonicalCandidate({
       epicNumber: standingIssue.epic === true ? standingIssue.number : null,
       pullRequest: null,
       pullRequestStatus: null,
+      offloadedPullRequest: summarizeOffloadedPullRequestCandidate(selectedPullRequestCandidate),
       branch: resolveIssueBranchName({
         issueNumber: selectedChild.number,
         title: selectedChild.title,
@@ -1745,7 +1777,9 @@ export async function buildCanonicalDeliveryDecision({
     selected.actionType === 'existing-pr-unblock'
       ? `standing issue #${standingIssue.number} prioritizes existing PR #${pullRequest.number} for issue #${selectedIssue.number}`
       : selected.actionType === 'advance-child-issue'
-        ? `standing epic #${standingIssue.number} selects child issue #${selectedIssue.number}`
+        ? selected.offloadedPullRequest?.pullRequestNumber
+          ? `standing epic #${standingIssue.number} work-steals onto child issue #${selectedIssue.number} while PR #${selected.offloadedPullRequest.pullRequestNumber} waits for ${selected.offloadedPullRequest.nextWakeCondition || 'external progress'}`
+          : `standing epic #${standingIssue.number} selects child issue #${selectedIssue.number}`
         : selected.actionType === 'reshape-backlog'
           ? `standing epic #${standingIssue.number} requires child-slice repair before coding`
           : `standing issue #${selectedIssue.number}`;
@@ -1812,7 +1846,8 @@ export async function buildCanonicalDeliveryDecision({
                 blockerClass: pullRequestStatus?.blockerClass ?? 'none'
               },
               readyToMerge: pullRequestStatus?.readyToMerge === true
-            }
+            },
+      offloadedPullRequest: selected.offloadedPullRequest ?? null
     }
   };
 }
@@ -2387,6 +2422,53 @@ export function buildDeliveryAgentRuntimeRecord({
     schedulerDecision,
     taskPacket
   });
+  const activeLane = {
+    schema: DELIVERY_AGENT_LANE_STATE_SCHEMA,
+    generatedAt: toIso(now),
+    laneId,
+    issue,
+    epic,
+    branch:
+      normalizeText(taskPacket?.branch?.name) ||
+      normalizeText(schedulerDecision?.activeLane?.branch) ||
+      null,
+    forkRemote:
+      normalizeText(taskPacket?.branch?.forkRemote) ||
+      normalizeText(schedulerDecision?.activeLane?.forkRemote) ||
+      null,
+    prUrl,
+    blockerClass,
+    laneLifecycle,
+    actionType: normalizeText(executionReceipt?.details?.actionType) || normalizeText(schedulerDecision?.artifacts?.selectedActionType) || null,
+    outcome: normalizeText(executionReceipt?.outcome) || null,
+    reason: normalizeText(executionReceipt?.reason) || null,
+    retryable: executionReceipt?.details?.retryable === true,
+    nextWakeCondition: normalizeText(executionReceipt?.details?.nextWakeCondition) || null,
+    reviewPhase: normalizeText(executionReceipt?.details?.reviewPhase) || null,
+    pollIntervalSecondsHint,
+    reviewMonitor,
+    planeTransition,
+    localReviewLoop,
+    readyValidationClearance,
+    workerProviderSelection,
+    providerDispatch
+  };
+  if (workerPoolPolicy.releaseWaitingStates.includes(laneLifecycle) && workerPool.releasedLanes.length > 0) {
+    workerPool.releasedLanes = workerPool.releasedLanes.map((releasedLane, index) =>
+      index === 0
+        ? {
+            ...releasedLane,
+            branch: activeLane.branch,
+            forkRemote: activeLane.forkRemote,
+            prUrl: activeLane.prUrl,
+            blockerClass: activeLane.blockerClass,
+            nextWakeCondition: activeLane.nextWakeCondition,
+            pollIntervalSecondsHint: activeLane.pollIntervalSecondsHint,
+            releasedAt: toIso(now)
+          }
+        : releasedLane
+    );
+  }
   return {
     schema: DELIVERY_AGENT_RUNTIME_STATE_SCHEMA,
     generatedAt: toIso(now),
@@ -2410,37 +2492,7 @@ export function buildDeliveryAgentRuntimeRecord({
     activeCodingLanes,
     workerPool,
     localReviewLoop,
-    activeLane: {
-      schema: DELIVERY_AGENT_LANE_STATE_SCHEMA,
-      generatedAt: toIso(now),
-      laneId,
-      issue,
-      epic,
-      branch:
-        normalizeText(taskPacket?.branch?.name) ||
-        normalizeText(schedulerDecision?.activeLane?.branch) ||
-        null,
-      forkRemote:
-        normalizeText(taskPacket?.branch?.forkRemote) ||
-        normalizeText(schedulerDecision?.activeLane?.forkRemote) ||
-        null,
-      prUrl,
-      blockerClass,
-      laneLifecycle,
-      actionType: normalizeText(executionReceipt?.details?.actionType) || normalizeText(schedulerDecision?.artifacts?.selectedActionType) || null,
-      outcome: normalizeText(executionReceipt?.outcome) || null,
-      reason: normalizeText(executionReceipt?.reason) || null,
-      retryable: executionReceipt?.details?.retryable === true,
-      nextWakeCondition: normalizeText(executionReceipt?.details?.nextWakeCondition) || null,
-      reviewPhase: normalizeText(executionReceipt?.details?.reviewPhase) || null,
-      pollIntervalSecondsHint,
-      reviewMonitor,
-      planeTransition,
-      localReviewLoop,
-      readyValidationClearance,
-      workerProviderSelection,
-      providerDispatch
-    },
+    activeLane,
     artifacts: {
       statePath,
       lanePath,
