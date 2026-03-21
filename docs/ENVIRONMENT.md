@@ -92,6 +92,9 @@ Notes:
   `vi-history-scenarios-windows`. It runs on GitHub-hosted `windows-2022`, bootstraps
   `nationalinstruments/labview:2026q1-windows`, and uses the same canonical in-container LabVIEW path:
   `C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe`.
+- If the GitHub-hosted runner cannot expose a usable Docker Windows daemon, the lane now records
+  `status = unavailable` in the preflight artifact and skips the heavy compare instead of blocking
+  unrelated integration work.
 - Expect the hosted Windows image pull to be materially slower than the Linux lane.
   Agents can dispatch the hosted lane while manually running the Linux or Windows Docker Desktop/WSL2 lanes on this host.
 - Use `node tools/npm/run-script.mjs priority:lane:concurrency:plan` to turn the current host-plane,

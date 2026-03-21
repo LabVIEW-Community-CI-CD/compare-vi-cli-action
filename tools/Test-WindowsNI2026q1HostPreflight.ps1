@@ -21,6 +21,7 @@ param(
   [string]$ResultsDir = 'tests/results/local-parity',
   [ValidateSet('desktop-local', 'github-hosted-windows')]
   [string]$ExecutionSurface = 'desktop-local',
+  [switch]$AllowUnavailable,
   [string]$OutputJsonPath = '',
   [string]$GitHubOutputPath = $env:GITHUB_OUTPUT,
   [string]$StepSummaryPath = $env:GITHUB_STEP_SUMMARY
@@ -60,6 +61,16 @@ function Resolve-PathWithinRepo {
   )
 
   return [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $RelativePath))
+}
+
+function Test-IsHostedRuntimeUnavailableMessage {
+  param([Parameter(Mandatory)][string]$Message)
+
+  if ($Message -match 'docker-info-command-failed') { return $true }
+  if ($Message -match 'observed Docker OSType is empty') { return $true }
+  if ($Message -match 'docker API at npipe:////\./pipe/docker_engine') { return $true }
+  if ($Message -match 'The system cannot find the file specified') { return $true }
+  return $false
 }
 
 function Invoke-DockerCommand {
@@ -246,6 +257,8 @@ $summary = [ordered]@{
   }
 }
 
+$snapshotPath = ''
+
 try {
   if ($ExecutionSurface -eq 'desktop-local') {
     $summary.runtimeProvider = 'docker-desktop'
@@ -335,17 +348,73 @@ try {
     $summary.status = 'ready'
   }
 } catch {
-  $summary.status = 'failure'
-  $summary.failureClass = 'preflight-failed'
-  $summary.failureMessage = [string]$_.Exception.Message
-  ($summary | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $jsonPathResolved -Encoding utf8
-  throw
+  $failureMessage = [string]$_.Exception.Message
+  $handledUnavailable = $false
+  if ($snapshotPath -and (Test-Path -LiteralPath $snapshotPath -PathType Leaf)) {
+    try {
+      $failureSnapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json -Depth 20
+      if ($failureSnapshot.PSObject.Properties['observed']) {
+        if ($failureSnapshot.observed.PSObject.Properties['context']) {
+          $summary.contexts.start = [string]$failureSnapshot.observed.context
+          $summary.contexts.final = [string]$failureSnapshot.observed.context
+        }
+        if ($failureSnapshot.observed.PSObject.Properties['osType']) {
+          $summary.contexts.startOsType = [string]$failureSnapshot.observed.osType
+          $summary.contexts.finalOsType = [string]$failureSnapshot.observed.osType
+        }
+        if ($failureSnapshot.observed.PSObject.Properties['dockerHost']) {
+          $summary.dockerHost = [string]$failureSnapshot.observed.dockerHost
+        }
+      }
+      if ($failureSnapshot.PSObject.Properties['result']) {
+        if ($failureSnapshot.result.PSObject.Properties['status']) {
+          $summary.runtimeDeterminism.status = [string]$failureSnapshot.result.status
+        }
+        if ($failureSnapshot.result.PSObject.Properties['reason']) {
+          $summary.runtimeDeterminism.reason = [string]$failureSnapshot.result.reason
+          if (-not [string]::IsNullOrWhiteSpace([string]$failureSnapshot.result.reason)) {
+            $failureMessage = "{0} {1}" -f $failureMessage, [string]$failureSnapshot.result.reason
+          }
+        }
+        if ($failureSnapshot.result.PSObject.Properties['failureClass']) {
+          $summary.runtimeDeterminism.failureClass = [string]$failureSnapshot.result.failureClass
+        }
+      }
+      $summary.runtimeDeterminism.snapshotPath = $snapshotPath
+    } catch {
+      # Keep the original wrapper error when snapshot hydration fails.
+    }
+  }
+
+  if ($AllowUnavailable -and
+      $ExecutionSurface -eq 'github-hosted-windows' -and
+      (Test-IsHostedRuntimeUnavailableMessage -Message $failureMessage)) {
+    $summary.status = 'unavailable'
+    $summary.failureClass = 'docker-runtime-unavailable'
+    $summary.failureMessage = $failureMessage
+    $summary.runtimeDeterminism.status = 'unavailable'
+    $summary.runtimeDeterminism.reason = 'docker-daemon-unavailable'
+    $summary.runtimeDeterminism.failureClass = 'docker-runtime-unavailable'
+    if ($snapshotPath -and -not [string]::IsNullOrWhiteSpace($snapshotPath)) {
+      $summary.runtimeDeterminism.snapshotPath = $snapshotPath
+    }
+    $handledUnavailable = $true
+  }
+
+  if (-not $handledUnavailable) {
+    $summary.status = 'failure'
+    $summary.failureClass = 'preflight-failed'
+    $summary.failureMessage = $failureMessage
+    ($summary | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $jsonPathResolved -Encoding utf8
+    throw
+  }
 }
 
 ($summary | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $jsonPathResolved -Encoding utf8
 
 Write-GitHubOutput -Key 'windows_host_preflight_path' -Value $jsonPathResolved -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'windows_host_preflight_status' -Value ([string]$summary.status) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'windows_host_preflight_failure_class' -Value ([string]$summary.failureClass) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'windows_host_preflight_surface' -Value ([string]$summary.executionSurface) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'windows_host_preflight_docker_host' -Value ([string]$summary.dockerHost) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'windows_host_preflight_context' -Value ([string]$summary.contexts.final) -Path $GitHubOutputPath

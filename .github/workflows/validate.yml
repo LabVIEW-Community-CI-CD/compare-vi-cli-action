@@ -1602,6 +1602,7 @@ jobs:
         phase: J2
         results-dir: tests/results
     - name: Prepare NI Windows image and runtime
+      id: windows-preflight
       shell: pwsh
       run: |
         $resultsRoot = 'tests/results/local-parity/windows'
@@ -1611,6 +1612,7 @@ jobs:
           -Image $env:NI_WINDOWS_IMAGE `
           -ResultsDir $resultsRoot `
           -ExecutionSurface 'github-hosted-windows' `
+          -AllowUnavailable `
           -OutputJsonPath $summaryPath `
           -GitHubOutputPath $env:GITHUB_OUTPUT `
           -StepSummaryPath $env:GITHUB_STEP_SUMMARY
@@ -1626,6 +1628,7 @@ jobs:
 
     - name: Run NI Windows create comparison report (fail-fast)
       id: windows-compare
+      if: steps.windows-preflight.outputs.windows_host_preflight_status == 'ready'
       shell: pwsh
       run: |
         $resultsRoot = 'tests/results/local-parity/windows'
@@ -1728,6 +1731,12 @@ jobs:
         if (-not $reportExists) {
           Write-Host ("::warning::Windows comparison report not found at {0}" -f $reportPath)
         }
+
+    - name: Summarize skipped hosted Windows compare
+      if: always() && steps.windows-preflight.outputs.windows_host_preflight_status != 'ready'
+      shell: pwsh
+      run: |
+        Write-Host ("::notice::Skipping hosted Windows compare because preflight status was {0} ({1})." -f '${{ steps.windows-preflight.outputs.windows_host_preflight_status }}', '${{ steps.windows-preflight.outputs.windows_host_preflight_failure_class }}')
 
     - name: Upload VI history scenario artifacts (Windows lane)
       if: always()
