@@ -25,6 +25,15 @@ The reason is provenance, not usefulness.
   published public receipts are history-surface artifacts, not a standalone
   `PrintToSingleFileHtml` proof, so the seed is still only provisional.
 
+This repository now carries a repo-owned BSD-3 licensed source bundle for the
+replacement payload under:
+
+- `fixtures/headless-corpus/operation-payloads/PrintToSingleFileHtml/`
+
+That source bundle fixes the payload-license gap, but it does not by itself
+promote the payload to `accepted`. Public proof is still required before any
+sample target should claim `operationPayload.provenanceState = accepted`.
+
 ## Repo policy
 
 - Do not vendor or mirror unlicensed `AdditionalOperationDirectory` payloads.
@@ -45,6 +54,7 @@ The reason is provenance, not usefulness.
 2. `accepted`
 - sample repository is public and licensed
 - payload provenance is public and licensed
+- repo-owned payload source or binaries are checked in with explicit license
 - payload metadata is tracked in the sample corpus catalog
 - at least one successful public workflow run exists
 
