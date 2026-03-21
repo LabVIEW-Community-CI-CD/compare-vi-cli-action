@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { summarizeIdleClassificationCoverage } from './concurrent-lane-status.mjs';
 
 export const REPORT_SCHEMA = 'priority/throughput-scorecard@v1';
 export const DEFAULT_RUNTIME_STATE_PATH = path.join('tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json');
@@ -135,6 +136,9 @@ function evaluateMergeQueueUtilization(queueSummary, policy = null) {
 function summarizeConcurrentLaneStatus(input = null) {
   const payload = input?.payload && typeof input.payload === 'object' ? input.payload : null;
   const summary = payload?.summary && typeof payload.summary === 'object' ? payload.summary : {};
+  const idleClassificationCoverage = summary?.idleClassificationCoverage && typeof summary.idleClassificationCoverage === 'object'
+    ? summary.idleClassificationCoverage
+    : summarizeIdleClassificationCoverage(Array.isArray(payload?.laneStatuses) ? payload.laneStatuses : []);
   const orchestratorDisposition = normalizeText(summary.orchestratorDisposition) || null;
   let workerDisposition = 'unknown';
   if (orchestratorDisposition === 'wait-hosted-run') {
@@ -166,7 +170,8 @@ function summarizeConcurrentLaneStatus(input = null) {
     plannedLaneCount: Number(summary.plannedLaneCount ?? 0) || 0,
     deferredLaneCount: Number(summary.deferredLaneCount ?? 0) || 0,
     manualLaneCount: Number(summary.manualLaneCount ?? 0) || 0,
-    shadowLaneCount: Number(summary.shadowLaneCount ?? 0) || 0
+    shadowLaneCount: Number(summary.shadowLaneCount ?? 0) || 0,
+    idleClassificationCoverage
   };
 }
 
@@ -279,6 +284,12 @@ export function buildThroughputScorecard({
   if (queueSummary.readyPrInventory > 0 && queueSummary.paused) {
     reasons.push('queue-paused-with-ready-inventory');
   }
+  if (
+    concurrentLanes.idleClassificationCoverage?.nonWorkingLaneCount > 0 &&
+    concurrentLanes.idleClassificationCoverage.coverageRatio < 1
+  ) {
+    reasons.push('idle-classification-coverage-below-100');
+  }
   reasons.push(...mergeQueueUtilization.reasons);
 
   const status = reasons.length > 0 ? 'warn' : 'pass';
@@ -311,6 +322,10 @@ export function buildThroughputScorecard({
         mergeQueueReadyInventoryFloor: mergeQueueUtilization.target.readyInventoryFloor,
         concurrentLaneActiveCount: concurrentLanes.activeLaneCount,
         concurrentLaneDeferredCount: concurrentLanes.deferredLaneCount,
+        idleClassificationManagedLaneCount: concurrentLanes.idleClassificationCoverage.managedLaneCount,
+        idleClassificationNonWorkingLaneCount: concurrentLanes.idleClassificationCoverage.nonWorkingLaneCount,
+        idleClassificationClassifiedLaneCount: concurrentLanes.idleClassificationCoverage.classifiedLaneCount,
+        idleClassificationCoverageRatio: concurrentLanes.idleClassificationCoverage.coverageRatio,
         hostedWaitEscapeCount: deliverySummary.hostedWaitEscapeCount,
         meanTerminalDurationMinutes: deliverySummary.meanTerminalDurationMinutes
       }

@@ -187,6 +187,154 @@ function determineReceiptStatus({ applyReceipt, hostedObservationStatus, pullReq
   return 'settled';
 }
 
+const IDLE_CLASSIFICATION_STATES = Object.freeze([
+  'waiting-hosted',
+  'waiting-merge',
+  'policy-paused',
+  'blocked',
+  'prewarm',
+  'operator-steering',
+  'queue-empty'
+]);
+
+function normalizeReasonList(reasons = []) {
+  return Array.isArray(reasons)
+    ? reasons.map((reason) => normalizeLower(reason)).filter(Boolean)
+    : [];
+}
+
+function normalizeIdleClassification(classification) {
+  const state = normalizeLower(classification?.state);
+  if (!IDLE_CLASSIFICATION_STATES.includes(state)) {
+    return null;
+  }
+  return {
+    state,
+    source: toOptionalText(classification?.source) || 'derived',
+    signals: Array.isArray(classification?.signals)
+      ? classification.signals.map((signal) => toOptionalText(signal)).filter(Boolean)
+      : []
+  };
+}
+
+export function classifyIdleLaneState(lane = {}) {
+  const runtimeStatus = normalizeLower(lane.runtimeStatus);
+  if (!runtimeStatus || runtimeStatus === 'active' || runtimeStatus === 'completed') {
+    return null;
+  }
+
+  const decision = normalizeLower(lane.decision);
+  const executionPlane = normalizeLower(lane.executionPlane);
+  const availability = normalizeLower(lane.availability);
+  const reasons = normalizeReasonList(lane.reasons);
+  const metadata = lane?.metadata && typeof lane.metadata === 'object' ? lane.metadata : {};
+  const signals = [...new Set([runtimeStatus, decision, executionPlane, availability, ...reasons])].filter(Boolean);
+
+  if (
+    runtimeStatus === 'blocked' ||
+    decision === 'blocked' ||
+    metadata.blocked === true ||
+    reasons.some((reason) => reason.includes('blocked'))
+  ) {
+    return {
+      state: 'blocked',
+      source: runtimeStatus === 'blocked' || decision === 'blocked' ? 'decision' : 'reason',
+      signals
+    };
+  }
+
+  if (
+    metadata.operatorSteering === true ||
+    metadata.operatorSteered === true ||
+    reasons.some((reason) => reason.includes('operator-steering') || reason.includes('operator steering') || reason.includes('steering'))
+  ) {
+    return {
+      state: 'operator-steering',
+      source: metadata.operatorSteering === true || metadata.operatorSteered === true ? 'metadata' : 'reason',
+      signals
+    };
+  }
+
+  if (
+    metadata.policyPaused === true ||
+    availability === 'disabled' ||
+    reasons.some((reason) => reason.includes('policy-paused') || (reason.includes('policy') && reason.includes('paused')))
+  ) {
+    return {
+      state: 'policy-paused',
+      source: metadata.policyPaused === true || availability === 'disabled' ? 'metadata' : 'reason',
+      signals
+    };
+  }
+
+  if (
+    metadata.prewarm === true ||
+    lane.laneClass === 'shadow-validation' ||
+    reasons.some((reason) => reason.includes('prewarm') || reason.includes('warm-up') || reason.includes('warmup'))
+  ) {
+    return {
+      state: 'prewarm',
+      source: metadata.prewarm === true || lane.laneClass === 'shadow-validation' ? 'metadata' : 'reason',
+      signals
+    };
+  }
+
+  if (
+    metadata.queueEmpty === true ||
+    reasons.some((reason) => reason.includes('queue-empty') || reason.includes('no-open-issues') || reason.includes('no-eligible'))
+  ) {
+    return {
+      state: 'queue-empty',
+      source: metadata.queueEmpty === true ? 'metadata' : 'reason',
+      signals
+    };
+  }
+
+  if (executionPlane === 'hosted' || lane.laneClass === 'hosted-proof') {
+    return {
+      state: 'waiting-hosted',
+      source: 'execution-plane',
+      signals
+    };
+  }
+
+  return {
+    state: 'waiting-merge',
+    source: 'execution-plane',
+    signals
+  };
+}
+
+export function summarizeIdleClassificationCoverage(laneStatuses = []) {
+  const nonWorkingLaneStatuses = Array.isArray(laneStatuses)
+    ? laneStatuses.filter((entry) => {
+        const runtimeStatus = normalizeLower(entry?.runtimeStatus);
+        return runtimeStatus && runtimeStatus !== 'active' && runtimeStatus !== 'completed';
+      })
+    : [];
+  const classifiedLaneStatuses = nonWorkingLaneStatuses.filter(
+    (entry) => normalizeIdleClassification(entry?.idleClassification) !== null
+  );
+  const stateCounts = Object.fromEntries(IDLE_CLASSIFICATION_STATES.map((state) => [state, 0]));
+  for (const entry of classifiedLaneStatuses) {
+    const state = normalizeLower(entry?.idleClassification?.state);
+    if (state in stateCounts) {
+      stateCounts[state] += 1;
+    }
+  }
+  const nonWorkingLaneCount = nonWorkingLaneStatuses.length;
+  const classifiedLaneCount = classifiedLaneStatuses.length;
+  const unclassifiedLaneCount = Math.max(nonWorkingLaneCount - classifiedLaneCount, 0);
+  return {
+    managedLaneCount: Array.isArray(laneStatuses) ? laneStatuses.length : 0,
+    nonWorkingLaneCount,
+    classifiedLaneCount,
+    unclassifiedLaneCount,
+    coverageRatio: nonWorkingLaneCount > 0 ? classifiedLaneCount / nonWorkingLaneCount : 1,
+    stateCounts
+  };
+}
+
 function determineOrchestratorDisposition({ receiptStatus, hostedObservationStatus, pullRequestObservationStatus, deferredLaneCount }) {
   if (receiptStatus === 'failed') {
     return 'hold-investigate';
@@ -555,6 +703,11 @@ export function buildConcurrentLaneStatusReceipt({
   const failedLaneCount = laneStatuses.filter((entry) => entry.runtimeStatus === 'failed').length;
   const blockedLaneCount = laneStatuses.filter((entry) => entry.runtimeStatus === 'blocked').length;
   const plannedLaneCount = laneStatuses.filter((entry) => entry.runtimeStatus === 'planned').length;
+  const enrichedLaneStatuses = laneStatuses.map((entry) => ({
+    ...entry,
+    idleClassification: classifyIdleLaneState(entry)
+  }));
+  const idleClassificationCoverage = summarizeIdleClassificationCoverage(enrichedLaneStatuses);
 
   return {
     schema: CONCURRENT_LANE_STATUS_RECEIPT_SCHEMA,
@@ -569,7 +722,7 @@ export function buildConcurrentLaneStatusReceipt({
     },
     hostedRun,
     pullRequest,
-    laneStatuses,
+    laneStatuses: enrichedLaneStatuses,
     observationErrors,
     summary: {
       selectedBundleId: toOptionalText(applyReceipt?.summary?.selectedBundleId),
@@ -583,6 +736,7 @@ export function buildConcurrentLaneStatusReceipt({
       manualLaneCount: laneStatuses.filter((entry) => entry.executionPlane === 'local').length,
       shadowLaneCount: laneStatuses.filter((entry) => entry.executionPlane === 'local-shadow').length,
       pullRequestStatus: pullRequest?.observationStatus ?? 'not-requested',
+      idleClassificationCoverage,
       orchestratorDisposition: determineOrchestratorDisposition({
         receiptStatus: status,
         hostedObservationStatus: hostedRun?.observationStatus ?? 'not-required',
