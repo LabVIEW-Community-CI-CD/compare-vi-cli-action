@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Operator steering event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "eventKey",
+    "steeringKind",
+    "triggerKind",
+    "repository",
+    "issueContext",
+    "continuity",
+    "fundingWindow",
+    "provenance"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/operator-steering-event@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "eventKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "steeringKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "triggerKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repository": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "issueContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "issue",
+        "observedAt"
+      ],
+      "properties": {
+        "mode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issue": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "observedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "continuity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePath",
+        "status",
+        "recommendation",
+        "continuityReferenceAt",
+        "turnBoundary"
+      ],
+      "properties": {
+        "sourcePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recommendation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "continuityReferenceAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "turnBoundary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "operatorTurnEndWouldCreateIdleGap",
+            "activeLaneIssue",
+            "wakeCondition",
+            "source",
+            "reason"
+          ],
+          "properties": {
+            "status": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "operatorTurnEndWouldCreateIdleGap": {
+              "type": "boolean"
+            },
+            "activeLaneIssue": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "wakeCondition": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "fundingWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "path",
+        "invoiceTurnId",
+        "fundingPurpose",
+        "activationState"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "missing",
+            "invalid",
+            "resolved"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "invoiceTurnId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fundingPurpose": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "activationState": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "sessionName",
+        "actor"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "actor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

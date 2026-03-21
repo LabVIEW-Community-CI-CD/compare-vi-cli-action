@@ -43,6 +43,7 @@ $testSummary = Read-HandoffJson -Name 'test-summary.json'
 $dockerReviewLoopSummary = Read-HandoffJson -Name 'docker-review-loop-summary.json'
 $entrypointStatus = Read-HandoffJson -Name 'entrypoint-status.json'
 $continuitySummary = Read-HandoffJson -Name 'continuity-summary.json'
+$operatorSteeringEvent = Read-HandoffJson -Name 'operator-steering-event.json'
 
 if ($issueSummary) {
   Write-Host '[handoff] Standing priority snapshot' -ForegroundColor Cyan
@@ -238,4 +239,17 @@ if ($continuitySummary) {
     Write-Host ("  action   : {0}" -f (Format-NullableValue $continuitySummary.continuity.recommendation))
   }
   Set-Variable -Name HandoffContinuitySummary -Scope Global -Value $continuitySummary -Force
+}
+
+if ($operatorSteeringEvent) {
+  Write-Host '[handoff] Operator steering event' -ForegroundColor Cyan
+  Write-Host ("  steering : {0}" -f (Format-NullableValue $operatorSteeringEvent.steeringKind))
+  Write-Host ("  trigger  : {0}" -f (Format-NullableValue $operatorSteeringEvent.triggerKind))
+  if ($operatorSteeringEvent.PSObject.Properties['issueContext'] -and $operatorSteeringEvent.issueContext) {
+    Write-Host ("  issue    : {0}" -f (Format-NullableValue $operatorSteeringEvent.issueContext.issue))
+  }
+  if ($operatorSteeringEvent.PSObject.Properties['fundingWindow'] -and $operatorSteeringEvent.fundingWindow) {
+    Write-Host ("  funding  : {0}" -f (Format-NullableValue $operatorSteeringEvent.fundingWindow.invoiceTurnId))
+  }
+  Set-Variable -Name HandoffOperatorSteeringEvent -Scope Global -Value $operatorSteeringEvent -Force
 }
