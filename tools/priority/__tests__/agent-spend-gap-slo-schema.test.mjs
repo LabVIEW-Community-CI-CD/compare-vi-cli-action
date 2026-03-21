@@ -59,6 +59,18 @@ test('agent-spend-gap-slo schema validates generated report payloads', () => {
     },
     throughputScorecard: {
       schema: 'priority/throughput-scorecard@v1',
+      concurrentLanes: {
+        activeLaneCount: 0,
+        deferredLaneCount: 0
+      },
+      delivery: {
+        totalTerminalPullRequestCount: 5,
+        mergedPullRequestCount: 4,
+        closedPullRequestCount: 1,
+        hostedWaitEscapeCount: 0,
+        meanTerminalDurationMinutes: 12,
+        viHistorySuitePullRequestCount: 1
+      },
       summary: {
         status: 'warn',
         reasons: ['actionable-work-with-idle-worker-pool'],
@@ -88,4 +100,6 @@ test('agent-spend-gap-slo schema validates generated report payloads', () => {
   });
 
   assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(report.fundedThroughput.metrics.validatedPullRequestCount, 4);
+  assert.equal(report.fundedThroughput.metrics.promotionEvidenceCount, 5);
 });

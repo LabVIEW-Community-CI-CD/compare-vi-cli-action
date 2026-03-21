@@ -4,7 +4,7 @@
   "title": "Agent Spend Gap SLO Report v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "generatedAt", "repository", "inputs", "window", "summary", "gaps"],
+  "required": ["schema", "generatedAt", "repository", "inputs", "window", "summary", "fundedThroughput", "gaps"],
   "properties": {
     "schema": { "const": "priority/agent-spend-gap-slo@v1" },
     "generatedAt": { "type": "string", "format": "date-time" },
@@ -61,6 +61,81 @@
             "unexplainedGapCount": { "type": "integer", "minimum": 0 },
             "largestGapMinutes": { "type": "number", "minimum": 0 },
             "totalGapMinutes": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "fundedThroughput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fundingWindow", "metrics", "provenance"],
+      "properties": {
+        "fundingWindow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "invoiceTurnId",
+            "mode",
+            "calibrationWindowId",
+            "activationState",
+            "fundingPurpose",
+            "kind",
+            "prepaidUsd",
+            "actualUsdConsumed",
+            "heuristicUsdDelta",
+            "heuristicUsdDeltaRatio"
+          ],
+          "properties": {
+            "invoiceTurnId": { "$ref": "#/$defs/nullableString" },
+            "mode": { "$ref": "#/$defs/nullableString" },
+            "calibrationWindowId": { "$ref": "#/$defs/nullableString" },
+            "activationState": { "$ref": "#/$defs/nullableString" },
+            "fundingPurpose": { "$ref": "#/$defs/nullableString" },
+            "kind": { "type": "string", "enum": ["operational", "calibration"] },
+            "prepaidUsd": { "type": ["number", "null"], "minimum": 0 },
+            "actualUsdConsumed": { "type": ["number", "null"], "minimum": 0 },
+            "heuristicUsdDelta": { "type": ["number", "null"] },
+            "heuristicUsdDeltaRatio": { "type": ["number", "null"] }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "validatedPullRequestCount",
+            "closedIssueCount",
+            "promotionEvidenceCount",
+            "laneMinutesAllocated",
+            "hostedWaitEscapeCount",
+            "validatedPullRequestsPerFundedDollar",
+            "closedIssuesPerFundedDollar",
+            "promotionEvidencePerFundedDollar",
+            "laneMinutesAllocatedPerFundedDollar",
+            "hostedWaitEscapesPerFundedDollar"
+          ],
+          "properties": {
+            "validatedPullRequestCount": { "type": "integer", "minimum": 0 },
+            "closedIssueCount": { "type": "integer", "minimum": 0 },
+            "promotionEvidenceCount": { "type": "integer", "minimum": 0 },
+            "laneMinutesAllocated": { "type": "number", "minimum": 0 },
+            "hostedWaitEscapeCount": { "type": "integer", "minimum": 0 },
+            "validatedPullRequestsPerFundedDollar": { "type": ["number", "null"], "minimum": 0 },
+            "closedIssuesPerFundedDollar": { "type": ["number", "null"], "minimum": 0 },
+            "promotionEvidencePerFundedDollar": { "type": ["number", "null"], "minimum": 0 },
+            "laneMinutesAllocatedPerFundedDollar": { "type": ["number", "null"], "minimum": 0 },
+            "hostedWaitEscapesPerFundedDollar": { "type": ["number", "null"], "minimum": 0 }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["costRollup", "throughputScorecard", "sourceKind", "sourcePathEvidence", "operatorNote"],
+          "properties": {
+            "costRollup": { "$ref": "#/$defs/inputRef" },
+            "throughputScorecard": { "$ref": "#/$defs/inputRef" },
+            "sourceKind": { "type": "string", "minLength": 1 },
+            "sourcePathEvidence": { "type": "string", "minLength": 1 },
+            "operatorNote": { "type": "string", "minLength": 1 }
           }
         }
       }
