@@ -19,7 +19,7 @@ const USAGE_LINES = [
   'Usage: node tools/priority/queue-refresh-pr.mjs --pr <number> [options]',
   '',
   'Options:',
-  '  --pr <number>             Pull request number to refresh (required)',
+  '  --pr <number>             Pull request number to refresh/amend safely (required)',
   '  --repo <owner/repo>       Target repository (defaults to upstream remote)',
   '  --head-remote <name>      Explicit remote for the PR head branch (default: infer from checkout/remotes)',
   '  --summary-path <path>     Write queue-refresh receipt JSON (default: tests/results/_agent/queue/queue-refresh-<pr>.json)',
@@ -30,6 +30,8 @@ const USAGE_LINES = [
 ];
 
 function printUsage() {
+  console.log('Safe helper for queued-branch amendment and merge-queue requeue.');
+  console.log('');
   for (const line of USAGE_LINES) {
     console.log(line);
   }
