@@ -163,8 +163,8 @@ test('buildMergeQueueContinuityAssessment compares the current develop merge que
   assert.equal(report.recommendation, 'retain-grouped-pending-telemetry');
   assert.equal(report.evidenceLevel, 'policy-only');
   assert.equal(report.current.branch, 'develop');
-  assert.equal(report.current.mergeQueue.max_entries_to_build, 5);
-  assert.equal(report.current.mergeQueue.max_entries_to_merge, 5);
+  assert.equal(report.current.mergeQueue.max_entries_to_build, 20);
+  assert.equal(report.current.mergeQueue.max_entries_to_merge, 20);
   assert.equal(report.proposed.mergeQueue.max_entries_to_build, 1);
   assert.equal(report.proposed.mergeQueue.max_entries_to_merge, 1);
   assert.equal(report.comparison.queueOccupancy.expectedDirection, 'lower-batch-size');

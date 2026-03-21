@@ -2476,7 +2476,16 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     allow_fork_syncing: { enabled: false }
   };
 
-  const mergeQueueParams = {
+  const developMergeQueueParams = {
+    merge_method: 'SQUASH',
+    grouping_strategy: 'ALLGREEN',
+    max_entries_to_build: 20,
+    min_entries_to_merge: 1,
+    max_entries_to_merge: 20,
+    min_entries_to_merge_wait_minutes: 1,
+    check_response_timeout_minutes: 60
+  };
+  const mainMergeQueueParams = {
     merge_method: 'SQUASH',
     grouping_strategy: 'ALLGREEN',
     max_entries_to_build: 5,
@@ -2493,7 +2502,7 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     conditions: { ref_name: { include: ['refs/heads/develop'], exclude: [] } },
     rules: [
       { type: 'required_linear_history' },
-      { type: 'merge_queue', parameters: mergeQueueParams },
+      { type: 'merge_queue', parameters: developMergeQueueParams },
       {
         type: 'required_status_checks',
         parameters: {
@@ -2526,7 +2535,7 @@ test('priority:policy verify uses queue-managed rulesets as required-check sourc
     target: 'branch',
     conditions: { ref_name: { include: ['refs/heads/main'], exclude: [] } },
     rules: [
-      { type: 'merge_queue', parameters: mergeQueueParams },
+      { type: 'merge_queue', parameters: mainMergeQueueParams },
       {
         type: 'required_status_checks',
         parameters: {
