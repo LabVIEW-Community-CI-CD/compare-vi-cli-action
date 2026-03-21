@@ -6,9 +6,13 @@ import { execSync } from 'node:child_process';
 
 export const TURN_SCHEMA = 'priority/agent-cost-turn@v1';
 export const INVOICE_TURN_SCHEMA = 'priority/agent-cost-invoice-turn@v1';
+export const USAGE_EXPORT_SCHEMA = 'priority/agent-cost-usage-export@v1';
+export const ACCOUNT_BALANCE_SCHEMA = 'priority/agent-cost-account-balance@v1';
 export const REPORT_SCHEMA = 'priority/agent-cost-rollup@v1';
 export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'cost', 'agent-cost-rollup.json');
 export const DEFAULT_INVOICE_TURN_DIR = path.join('tests', 'results', '_agent', 'cost', 'invoice-turns');
+export const DEFAULT_USAGE_EXPORT_DIR = path.join('tests', 'results', '_agent', 'cost', 'usage-exports');
+export const DEFAULT_ACCOUNT_BALANCE_DIR = path.join('tests', 'results', '_agent', 'cost', 'account-balances');
 
 function normalizeText(value) {
   if (value == null) {
@@ -381,6 +385,164 @@ function discoverInvoiceTurnPaths() {
     .sort((left, right) => left.localeCompare(right));
 }
 
+function discoverJsonPaths(directoryPath) {
+  const resolvedDirectory = path.resolve(directoryPath);
+  if (!fs.existsSync(resolvedDirectory)) {
+    return [];
+  }
+  return fs
+    .readdirSync(resolvedDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
+    .map((entry) => path.join(resolvedDirectory, entry.name))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function normalizeUsageExportReceipt(input) {
+  if (!input) {
+    return {
+      status: 'missing',
+      blockers: []
+    };
+  }
+  const payload = input?.payload;
+  if (!payload || typeof payload !== 'object') {
+    return {
+      status: 'invalid',
+      blockers: [createBlocker('usage-export-unreadable', 'Usage export receipt could not be read as JSON.', input.path)]
+    };
+  }
+  if (normalizeText(payload.schema) !== USAGE_EXPORT_SCHEMA) {
+    return {
+      status: 'invalid',
+      blockers: [
+        createBlocker(
+          'usage-export-schema-mismatch',
+          `Usage export receipt schema must remain ${USAGE_EXPORT_SCHEMA}.`,
+          input.path
+        )
+      ]
+    };
+  }
+
+  const startDate = normalizeText(payload?.reportWindow?.startDate) || null;
+  const endDate = normalizeText(payload?.reportWindow?.endDate) || null;
+  const rowCount = toNonNegativeInteger(payload?.reportWindow?.rowCount);
+  const usageCredits = toNonNegativeNumber(payload?.totals?.usageCredits);
+  const usageQuantity = toNonNegativeNumber(payload?.totals?.usageQuantity);
+  const blockers = [];
+  if (!startDate) {
+    blockers.push(createBlocker('usage-export-start-date-missing', 'Usage export reportWindow.startDate is required.', input.path));
+  }
+  if (!endDate) {
+    blockers.push(createBlocker('usage-export-end-date-missing', 'Usage export reportWindow.endDate is required.', input.path));
+  }
+  if (usageCredits == null) {
+    blockers.push(createBlocker('usage-export-credits-missing', 'Usage export totals.usageCredits is required.', input.path));
+  }
+  if (usageQuantity == null) {
+    blockers.push(createBlocker('usage-export-quantity-missing', 'Usage export totals.usageQuantity is required.', input.path));
+  }
+  if (blockers.length > 0) {
+    return {
+      status: 'invalid',
+      blockers
+    };
+  }
+
+  return {
+    status: 'valid',
+    blockers: [],
+    usageExport: {
+      sourcePath: safeRelative(input.path),
+      generatedAt: normalizeDateTime(payload?.generatedAt),
+      startDate,
+      endDate,
+      rowCount,
+      usageType: normalizeText(payload?.usageType) || null,
+      usageCredits,
+      usageQuantity,
+      sourceKind: normalizeText(payload?.sourceKind) || normalizeText(payload?.provenance?.sourceKind) || null,
+      sourcePathEvidence: normalizeText(payload?.sourcePathEvidence) || normalizeText(payload?.provenance?.sourcePath) || null,
+      operatorNote: normalizeText(payload?.operatorNote) || normalizeText(payload?.provenance?.operatorNote) || null
+    }
+  };
+}
+
+function normalizeAccountBalanceReceipt(input) {
+  if (!input) {
+    return {
+      status: 'missing',
+      blockers: []
+    };
+  }
+  const payload = input?.payload;
+  if (!payload || typeof payload !== 'object') {
+    return {
+      status: 'invalid',
+      blockers: [createBlocker('account-balance-unreadable', 'Account balance receipt could not be read as JSON.', input.path)]
+    };
+  }
+  if (normalizeText(payload.schema) !== ACCOUNT_BALANCE_SCHEMA) {
+    return {
+      status: 'invalid',
+      blockers: [
+        createBlocker(
+          'account-balance-schema-mismatch',
+          `Account balance receipt schema must remain ${ACCOUNT_BALANCE_SCHEMA}.`,
+          input.path
+        )
+      ]
+    };
+  }
+
+  const snapshotAt = normalizeDateTime(payload?.effectiveAt) || normalizeDateTime(payload?.capturedAt);
+  const renewsAt = normalizeDateTime(payload?.plan?.renewsAt);
+  const totalCredits = toNonNegativeNumber(payload?.balances?.totalCredits);
+  const usedCredits = toNonNegativeNumber(payload?.balances?.usedCredits);
+  const remainingCredits = toNonNegativeNumber(payload?.balances?.remainingCredits);
+  const blockers = [];
+  if (!snapshotAt) {
+    blockers.push(
+      createBlocker('account-balance-snapshot-missing', 'Account balance effectiveAt or capturedAt is required.', input.path)
+    );
+  }
+  if (totalCredits == null) {
+    blockers.push(createBlocker('account-balance-total-missing', 'Account balance balances.totalCredits is required.', input.path));
+  }
+  if (usedCredits == null) {
+    blockers.push(createBlocker('account-balance-used-missing', 'Account balance balances.usedCredits is required.', input.path));
+  }
+  if (remainingCredits == null) {
+    blockers.push(
+      createBlocker('account-balance-remaining-missing', 'Account balance balances.remainingCredits is required.', input.path)
+    );
+  }
+  if (blockers.length > 0) {
+    return {
+      status: 'invalid',
+      blockers
+    };
+  }
+
+  return {
+    status: 'valid',
+    blockers: [],
+    accountBalance: {
+      sourcePath: safeRelative(input.path),
+      generatedAt: normalizeDateTime(payload?.generatedAt),
+      snapshotAt,
+      planName: normalizeText(payload?.plan?.name) || null,
+      renewsAt,
+      totalCredits,
+      usedCredits,
+      remainingCredits,
+      sourceKind: normalizeText(payload?.sourceKind) || normalizeText(payload?.provenance?.sourceKind) || null,
+      sourcePathEvidence: normalizeText(payload?.sourcePathEvidence) || normalizeText(payload?.provenance?.sourcePath) || null,
+      operatorNote: normalizeText(payload?.operatorNote) || normalizeText(payload?.provenance?.operatorNote) || null
+    }
+  };
+}
+
 function toTimestamp(value) {
   const normalized = normalizeDateTime(value);
   if (!normalized) {
@@ -571,6 +733,8 @@ export function parseArgs(argv = process.argv) {
   const options = {
     turnReportPaths: [],
     invoiceTurnPaths: [],
+    usageExportPaths: [],
+    accountBalancePaths: [],
     invoiceTurnId: null,
     outputPath: DEFAULT_OUTPUT_PATH,
     repo: null,
@@ -594,7 +758,15 @@ export function parseArgs(argv = process.argv) {
       options.failOnInvalidInputs = true;
       continue;
     }
-    if (token === '--turn-report' || token === '--invoice-turn' || token === '--invoice-turn-id' || token === '--output' || token === '--repo') {
+    if (
+      token === '--turn-report' ||
+      token === '--invoice-turn' ||
+      token === '--usage-export' ||
+      token === '--account-balance' ||
+      token === '--invoice-turn-id' ||
+      token === '--output' ||
+      token === '--repo'
+    ) {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
       }
@@ -603,6 +775,10 @@ export function parseArgs(argv = process.argv) {
         options.turnReportPaths.push(next);
       } else if (token === '--invoice-turn') {
         options.invoiceTurnPaths.push(next);
+      } else if (token === '--usage-export') {
+        options.usageExportPaths.push(next);
+      } else if (token === '--account-balance') {
+        options.accountBalancePaths.push(next);
       } else if (token === '--invoice-turn-id') {
         options.invoiceTurnId = next;
       } else if (token === '--output') {
@@ -620,6 +796,12 @@ export function parseArgs(argv = process.argv) {
   }
   if (!options.help && options.invoiceTurnPaths.length === 0) {
     options.invoiceTurnPaths = discoverInvoiceTurnPaths();
+  }
+  if (!options.help && options.usageExportPaths.length === 0) {
+    options.usageExportPaths = discoverJsonPaths(DEFAULT_USAGE_EXPORT_DIR);
+  }
+  if (!options.help && options.accountBalancePaths.length === 0) {
+    options.accountBalancePaths = discoverJsonPaths(DEFAULT_ACCOUNT_BALANCE_DIR);
   }
   return options;
 }
@@ -667,8 +849,14 @@ export function runAgentCostRollup(options) {
   const normalizedTurns = turnInputs.map((input) => normalizeTurnReceipt(input));
   const invoiceTurnInputs = ensureArray(options.invoiceTurnPaths).map((filePath) => loadInputFile(filePath));
   const normalizedInvoiceTurns = invoiceTurnInputs.map((input) => normalizeInvoiceTurnReceipt(input));
+  const usageExportInputs = ensureArray(options.usageExportPaths).map((filePath) => loadInputFile(filePath));
+  const normalizedUsageExports = usageExportInputs.map((input) => normalizeUsageExportReceipt(input));
+  const accountBalanceInputs = ensureArray(options.accountBalancePaths).map((filePath) => loadInputFile(filePath));
+  const normalizedAccountBalances = accountBalanceInputs.map((input) => normalizeAccountBalanceReceipt(input));
   const evaluation = evaluateAgentCostRollup({ turnInputs, normalizedTurns });
   const invoiceTurnBlockers = [];
+  const usageExportBlockers = [];
+  const accountBalanceBlockers = [];
   for (const invoiceTurnInput of invoiceTurnInputs) {
     if (invoiceTurnInput?.exists === false) {
       invoiceTurnBlockers.push(createBlocker('invoice-turn-missing', 'Invoice turn report is missing.', invoiceTurnInput.path));
@@ -683,8 +871,51 @@ export function runAgentCostRollup(options) {
   for (const normalizedInvoiceTurn of normalizedInvoiceTurns) {
     invoiceTurnBlockers.push(...ensureArray(normalizedInvoiceTurn.blockers));
   }
+  for (const usageExportInput of usageExportInputs) {
+    if (usageExportInput?.exists === false) {
+      usageExportBlockers.push(createBlocker('usage-export-missing', 'Usage export receipt is missing.', usageExportInput.path));
+      continue;
+    }
+    if (usageExportInput?.error) {
+      usageExportBlockers.push(
+        createBlocker('usage-export-unreadable', `Usage export receipt could not be parsed: ${usageExportInput.error}`, usageExportInput.path)
+      );
+    }
+  }
+  for (const normalizedUsageExport of normalizedUsageExports) {
+    usageExportBlockers.push(...ensureArray(normalizedUsageExport.blockers));
+  }
+  for (const accountBalanceInput of accountBalanceInputs) {
+    if (accountBalanceInput?.exists === false) {
+      accountBalanceBlockers.push(createBlocker('account-balance-missing', 'Account balance receipt is missing.', accountBalanceInput.path));
+      continue;
+    }
+    if (accountBalanceInput?.error) {
+      accountBalanceBlockers.push(
+        createBlocker(
+          'account-balance-unreadable',
+          `Account balance receipt could not be parsed: ${accountBalanceInput.error}`,
+          accountBalanceInput.path
+        )
+      );
+    }
+  }
+  for (const normalizedAccountBalance of normalizedAccountBalances) {
+    accountBalanceBlockers.push(...ensureArray(normalizedAccountBalance.blockers));
+  }
 
   const validTurns = evaluation.validTurns;
+  const validUsageExports = normalizedUsageExports.filter((entry) => entry.status === 'valid').map((entry) => entry.usageExport);
+  const validAccountBalances = normalizedAccountBalances.filter((entry) => entry.status === 'valid').map((entry) => entry.accountBalance);
+  const selectedAccountBalance =
+    [...validAccountBalances].sort((left, right) => {
+      const leftSnapshot = toTimestamp(left.snapshotAt) ?? 0;
+      const rightSnapshot = toTimestamp(right.snapshotAt) ?? 0;
+      if (rightSnapshot !== leftSnapshot) {
+        return rightSnapshot - leftSnapshot;
+      }
+      return (right.sourcePath || '').localeCompare(left.sourcePath || '');
+    })[0] ?? null;
   const invoiceTurnSelection = selectInvoiceTurn(normalizedInvoiceTurns, validTurns, options.invoiceTurnId);
   const invoiceTurn = invoiceTurnSelection.selectedInvoiceTurn;
   if (normalizeText(options.invoiceTurnId) && !invoiceTurn) {
@@ -708,6 +939,8 @@ export function runAgentCostRollup(options) {
   const unsteeredTurns = validTurns.filter((entry) => entry.operatorIntervened !== true);
   const steeredUsd = sum(steeredTurns.map((entry) => entry.amountUsd));
   const unsteeredUsd = sum(unsteeredTurns.map((entry) => entry.amountUsd));
+  const usageExportCreditsReported = sum(validUsageExports.map((entry) => entry.usageCredits));
+  const usageExportQuantityReported = sum(validUsageExports.map((entry) => entry.usageQuantity));
 
   const byProviderCount = new Map();
   const byProviderUsd = new Map();
@@ -822,18 +1055,33 @@ export function runAgentCostRollup(options) {
         exists: entry.exists,
         error: entry.error ?? null
       })),
+      usageExportPaths: usageExportInputs.map((entry) => ({
+        path: safeRelative(entry.path),
+        exists: entry.exists,
+        error: entry.error ?? null
+      })),
+      accountBalancePaths: accountBalanceInputs.map((entry) => ({
+        path: safeRelative(entry.path),
+        exists: entry.exists,
+        error: entry.error ?? null
+      })),
       selectedInvoiceTurnId: invoiceTurnSelection.selection.selectedInvoiceTurnId,
       explicitInvoiceTurnId: normalizeText(options.invoiceTurnId) || null
     },
     turns: validTurns,
     summary: {
-      status: evaluation.blockerCount + invoiceTurnBlockers.length === 0 ? evaluation.status : 'fail',
+      status:
+        evaluation.blockerCount + invoiceTurnBlockers.length + usageExportBlockers.length + accountBalanceBlockers.length === 0
+          ? evaluation.status
+          : 'fail',
       recommendation:
         invoiceTurnBlockers.length > 0
           ? 'repair-invoice-turn-baseline'
+          : usageExportBlockers.length + accountBalanceBlockers.length > 0
+            ? 'repair-input-receipts'
           : evaluation.recommendation,
-      blockerCount: evaluation.blockerCount + invoiceTurnBlockers.length,
-      blockers: [...evaluation.blockers, ...invoiceTurnBlockers],
+      blockerCount: evaluation.blockerCount + invoiceTurnBlockers.length + usageExportBlockers.length + accountBalanceBlockers.length,
+      blockers: [...evaluation.blockers, ...invoiceTurnBlockers, ...usageExportBlockers, ...accountBalanceBlockers],
       metrics: {
         totalTurns: validTurns.length,
         exactTurnCount: evaluation.exactTurns.length,
@@ -858,7 +1106,13 @@ export function runAgentCostRollup(options) {
         actualCreditsConsumed,
         heuristicUsdDelta,
         heuristicUsdDeltaRatio,
-        heuristicCreditsDelta
+        heuristicCreditsDelta,
+        usageExportWindowCount: validUsageExports.length,
+        usageExportCreditsReported,
+        usageExportQuantityReported,
+        accountBalanceTotalCredits: selectedAccountBalance?.totalCredits ?? null,
+        accountBalanceUsedCredits: selectedAccountBalance?.usedCredits ?? null,
+        accountBalanceRemainingCredits: selectedAccountBalance?.remainingCredits ?? null
       },
       provenance: {
         sessionIds: [...sessionIds].sort(),
@@ -876,7 +1130,11 @@ export function runAgentCostRollup(options) {
         invoiceTurns: normalizedInvoiceTurns
           .filter((entry) => entry.status === 'valid')
           .map((entry) => entry.invoiceTurn)
-          .sort((left, right) => (left.invoiceTurnId || '').localeCompare(right.invoiceTurnId || ''))
+          .sort((left, right) => (left.invoiceTurnId || '').localeCompare(right.invoiceTurnId || '')),
+        usageExports: validUsageExports.sort((left, right) =>
+          `${left.startDate || ''}|${left.endDate || ''}`.localeCompare(`${right.startDate || ''}|${right.endDate || ''}`)
+        ),
+        accountBalance: selectedAccountBalance
       }
     },
     billingWindow: invoiceTurn
@@ -930,6 +1188,8 @@ function printUsage() {
   console.log('Options:');
   console.log('  --turn-report <path>            Agent cost turn receipt path (repeatable, required).');
   console.log(`  --invoice-turn <path>           Optional invoice turn receipt path (repeatable; auto-discovers ${DEFAULT_INVOICE_TURN_DIR} when omitted).`);
+  console.log(`  --usage-export <path>           Optional usage export receipt path (repeatable; auto-discovers ${DEFAULT_USAGE_EXPORT_DIR} when omitted).`);
+  console.log(`  --account-balance <path>        Optional account balance receipt path (repeatable; auto-discovers ${DEFAULT_ACCOUNT_BALANCE_DIR} when omitted).`);
   console.log('  --invoice-turn-id <value>       Optional explicit invoice turn selection override.');
   console.log(`  --output <path>                 Output path (default: ${DEFAULT_OUTPUT_PATH}).`);
   console.log('  --repo <owner/repo>             Repository slug override.');

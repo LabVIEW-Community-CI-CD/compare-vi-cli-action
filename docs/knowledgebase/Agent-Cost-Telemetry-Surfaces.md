@@ -391,3 +391,38 @@ factors into one opaque number.
 
 Those should stay follow-up lanes. The first slice should stay anchored to
 existing repo-visible receipts.
+
+## Account-Backed Calibration Evidence
+
+`#1671` extends the roll-up layer so it can consume optional normalized account
+evidence without replacing invoice turns:
+
+- usage-export receipts under `tests/results/_agent/cost/usage-exports/`
+- account-balance receipts under `tests/results/_agent/cost/account-balances/`
+
+The roll-up now accepts:
+
+- `--usage-export <path>`
+- `--account-balance <path>`
+
+When those flags are omitted, the roll-up auto-discovers JSON receipts from the
+default directories above. Valid receipts are summarized into:
+
+- `summary.metrics.usageExportWindowCount`
+- `summary.metrics.usageExportCreditsReported`
+- `summary.metrics.usageExportQuantityReported`
+- `summary.metrics.accountBalanceTotalCredits`
+- `summary.metrics.accountBalanceUsedCredits`
+- `summary.metrics.accountBalanceRemainingCredits`
+- `summary.provenance.usageExports`
+- `summary.provenance.accountBalance`
+
+This keeps the calibration layer honest:
+
+- invoice turns still define the selected funding window
+- usage exports provide account-window usage evidence
+- account balance snapshots provide current-plan total/used/remaining evidence
+
+These evidence receipts are optional. Missing directories do not fail the roll-
+up, but unreadable or schema-mismatched receipts do surface as blockers once
+they are present.

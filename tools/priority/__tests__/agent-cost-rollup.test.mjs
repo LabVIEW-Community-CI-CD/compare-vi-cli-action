@@ -31,6 +31,10 @@ test('parseArgs accepts repeated turn reports and optional repo override', () =>
     'invoice-a.json',
     '--invoice-turn',
     'invoice-b.json',
+    '--usage-export',
+    'usage-a.json',
+    '--account-balance',
+    'balance-a.json',
     '--invoice-turn-id',
     'invoice-turn-2026-03-HQ1VJLMV-0027',
     '--repo',
@@ -40,6 +44,8 @@ test('parseArgs accepts repeated turn reports and optional repo override', () =>
 
   assert.deepEqual(parsed.turnReportPaths, ['turn-a.json', 'turn-b.json']);
   assert.deepEqual(parsed.invoiceTurnPaths, ['invoice-a.json', 'invoice-b.json']);
+  assert.deepEqual(parsed.usageExportPaths, ['usage-a.json']);
+  assert.deepEqual(parsed.accountBalancePaths, ['balance-a.json']);
   assert.equal(parsed.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.equal(parsed.repo, 'example/repo');
   assert.equal(parsed.failOnInvalidInputs, false);
@@ -227,6 +233,68 @@ test('estimated turns do not let a declared zero amount mask a computable rate-c
   assert.equal(result.exitCode, 0);
   assert.equal(result.report.turns[0].amountUsd, 0.018);
   assert.equal(result.report.turns[0].amountSource, 'rate-card-estimate');
+});
+
+test('runAgentCostRollup summarizes optional usage-export and account-balance evidence', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-cost-rollup-account-evidence-'));
+  const outputPath = path.join(tmpDir, 'agent-cost-rollup.json');
+  const usageExportPath = path.join(tmpDir, 'usage-export.json');
+  const accountBalancePath = path.join(tmpDir, 'account-balance.json');
+
+  writeJson(usageExportPath, {
+    schema: 'priority/agent-cost-usage-export@v1',
+    generatedAt: '2026-03-21T20:20:00.000Z',
+    reportWindow: {
+      startDate: '2026-03-15',
+      endDate: '2026-03-20',
+      rowCount: 6
+    },
+    usageType: 'codex',
+    totals: {
+      usageCredits: 10559.88,
+      usageQuantity: 211197.6
+    },
+    sourceKind: 'operator-usage-export',
+    sourcePathEvidence: 'LabVIEW Open-Source Initiative Credit Usage Report (Mar 15 - Apr 15).csv',
+    operatorNote: 'Current partial usage window.'
+  });
+
+  writeJson(accountBalancePath, {
+    schema: 'priority/agent-cost-account-balance@v1',
+    generatedAt: '2026-03-21T20:21:00.000Z',
+    effectiveAt: '2026-03-21T20:21:00.000Z',
+    plan: {
+      name: 'Business',
+      renewsAt: '2026-04-15T00:00:00.000Z'
+    },
+    balances: {
+      totalCredits: 27500,
+      usedCredits: 15800,
+      remainingCredits: 11700
+    },
+    sourceKind: 'operator-account-balance',
+    sourcePathEvidence: 'Business plan account snapshot',
+    operatorNote: 'Current account balance snapshot.'
+  });
+
+  const result = runAgentCostRollup({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    turnReportPaths: [
+      path.join(fixtureRoot, 'live-turn-estimated.json'),
+      path.join(fixtureRoot, 'background-turn-exact.json')
+    ],
+    invoiceTurnPaths: [path.join(fixtureRoot, 'invoice-turn-baseline.json')],
+    usageExportPaths: [usageExportPath],
+    accountBalancePaths: [accountBalancePath],
+    outputPath
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.summary.metrics.usageExportWindowCount, 1);
+  assert.equal(result.report.summary.metrics.usageExportCreditsReported, 10559.88);
+  assert.equal(result.report.summary.metrics.accountBalanceRemainingCredits, 11700);
+  assert.equal(result.report.summary.provenance.usageExports.length, 1);
+  assert.equal(result.report.summary.provenance.accountBalance?.planName, 'Business');
 });
 
 test('runAgentCostRollup aggregates exact and estimated turn spend with provenance', () => {
