@@ -123,9 +123,9 @@
       "merge_queue": {
         "merge_method": "SQUASH",
         "grouping_strategy": "ALLGREEN",
-        "max_entries_to_build": 5,
+        "max_entries_to_build": 20,
         "min_entries_to_merge": 1,
-        "max_entries_to_merge": 5,
+        "max_entries_to_merge": 20,
         "min_entries_to_merge_wait_minutes": 1,
         "check_response_timeout_minutes": 60
       },
