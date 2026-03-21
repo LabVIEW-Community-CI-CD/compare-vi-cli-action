@@ -773,6 +773,11 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
     $capture.image | Should -Be 'nationalinstruments/labview:2026q1-linux'
     $capture.flags | Should -Contain '-noattr'
     $capture.flags | Should -Contain '-Headless'
+    $capture.containerShellContract.plane | Should -Be 'linux'
+    $capture.containerShellContract.executable | Should -Be 'bash'
+    $capture.containerShellContract.family | Should -Be 'posix-bash'
+    $capture.containerShellContract.encodedCommand | Should -BeFalse
+    $capture.containerShellContract.pwshRequired | Should -BeFalse
     $capture.containerName | Should -Match '^ni-lnx-compare-flag-baseline-[a-f0-9]{8}$'
     $capture.command | Should -Match ('docker run --name {0}\b' -f [regex]::Escape([string]$capture.containerName))
     $capture.observedDockerHost | Should -Be 'unix:///var/run/docker.sock'
@@ -789,6 +794,8 @@ exec "__PWSH__" -NoLogo -NoProfile -File "${script_dir}/docker.ps1" "$@"
     $records = & $script:ReadDockerStubLog -Path (Join-Path $work 'docker-log.ndjson')
     $cpRecords = @($records | Where-Object { $_.args[0] -eq 'cp' })
     $rmRecords = @($records | Where-Object { $_.args[0] -eq 'rm' -and $_.args[1] -eq '-f' })
+    $capture.command | Should -Match '\bbash\b'
+    $capture.command | Should -Not -Match '\bpwsh\b'
     $cpRecords.Count | Should -BeGreaterThan 0
     $rmRecords.Count | Should -Be 1
     $rmRecords[0].args[2] | Should -Be $capture.containerName

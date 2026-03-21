@@ -9,6 +9,9 @@
   (or a caller-supplied image). The helper writes deterministic capture
   artifacts adjacent to the report output.
 
+  The Windows LabVIEW 2026 Q1 image exposes native Windows PowerShell inside
+  the container. This helper must not assume `pwsh` exists in that plane.
+
 .PARAMETER BaseVi
   Path to the base VI. Required unless -Probe is set.
 
@@ -941,6 +944,13 @@ $capture = [ordered]@{
   dockerServerOs= $null
   dockerContext = $null
   observedDockerHost = $null
+  containerShellContract = [ordered]@{
+    plane = 'windows'
+    executable = 'powershell'
+    family = 'windows-powershell'
+    encodedCommand = $true
+    pwshRequired = $false
+  }
   baseVi        = $null
   headVi        = $null
   reportPath    = $null

@@ -594,6 +594,11 @@ exit 0
     $capture.flags | Should -Contain '-noattr'
     $capture.flags | Should -Contain '-Headless'
     $capture.observedDockerHost | Should -Be 'npipe:////./pipe/docker_engine'
+    $capture.containerShellContract.plane | Should -Be 'windows'
+    $capture.containerShellContract.executable | Should -Be 'powershell'
+    $capture.containerShellContract.family | Should -Be 'windows-powershell'
+    $capture.containerShellContract.encodedCommand | Should -BeTrue
+    $capture.containerShellContract.pwshRequired | Should -BeFalse
     $capture.runtimeDeterminism.observed.dockerHost | Should -Be 'npipe:////./pipe/docker_engine'
     $capture.timedOut | Should -BeFalse
     $capture.PSObject.Properties.Name | Should -Contain 'observedDockerHost'
@@ -622,6 +627,8 @@ exit 0
     $rmRecords = @($records | Where-Object { $_.args[0] -eq 'rm' -and $_.args[1] -eq '-f' })
     $runRecord | Should -Not -BeNullOrEmpty
     $runArgs = @($runRecord[0].args | ForEach-Object { [string]$_ })
+    $runArgs | Should -Contain 'powershell'
+    $runArgs | Should -Not -Contain 'pwsh'
     $reportTypeEnvArg = $null
     for ($i = 0; $i -lt ($runArgs.Count - 1); $i++) {
       if ($runArgs[$i] -eq '--env' -and $runArgs[$i + 1].StartsWith('COMPARE_REPORT_TYPE=')) {
