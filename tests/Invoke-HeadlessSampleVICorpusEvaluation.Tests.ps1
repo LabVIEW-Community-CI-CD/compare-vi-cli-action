@@ -53,14 +53,15 @@ Describe 'Invoke-HeadlessSampleVICorpusEvaluation.ps1' -Tag 'Unit' {
     $licensedCandidate | Should -Not -BeNullOrEmpty
     $licensedCandidate.status | Should -Be 'warning'
     $licensedCandidate.certificationSurface | Should -Be 'print-single-file'
-    $licensedCandidate.operationPayloadMode | Should -Be 'builtin'
+    $licensedCandidate.operationPayloadMode | Should -Be 'additional-operation-directory'
     $licensedCandidate.operationPayloadProvenanceState | Should -Be 'research-only'
     $licensedCandidate.checks.licenseDeclared | Should -BeTrue
     $licensedCandidate.checks.successfulWorkflowEvidence | Should -BeTrue
     $licensedCandidate.checks.operationPayloadTracked | Should -BeTrue
+    $licensedCandidate.checks.operationPayloadSourceValid | Should -BeTrue
     $licensedCandidate.checks.operationPayloadLicenseDeclared | Should -BeTrue
     $licensedCandidate.checks.operationPayloadPromotable | Should -BeFalse
-    (($licensedCandidate.notes | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match 'Builtin operation payload metadata must still be marked accepted before promotion'
+    (($licensedCandidate.notes | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match 'Custom operation payload is not promotable for accepted certification use'
   }
 
   It 'fails closed when an accepted seed loses its declared license' {

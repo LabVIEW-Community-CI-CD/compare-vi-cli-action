@@ -155,11 +155,14 @@
         "evidenceClass": "change-kind-print"
       },
       "operationPayload": {
-        "mode": "builtin",
+        "mode": "additional-operation-directory",
         "provenanceState": "research-only",
+        "sourceRepositorySlug": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+        "sourceRepositoryUrl": "https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action",
+        "sourceLicenseSpdx": "BSD-3-Clause",
         "notes": [
-          "The candidate is intentionally tracked against the builtin PrintToSingleFileHtml surface rather than an external AdditionalOperationDirectory payload.",
-          "Public evidence for this licensed sample currently proves added-VI discovery and history publication only, so builtin print metadata stays research-only until a standalone print proof run exists."
+          "The candidate now points at the repo-owned BSD-3 PrintToSingleFileHtml source bundle under fixtures/headless-corpus/operation-payloads/PrintToSingleFileHtml/.",
+          "Public evidence for this licensed sample currently proves added-VI discovery and history publication only, so the repo-owned replacement payload stays research-only until runnable operation files and a standalone print proof run exist."
         ]
       },
       "publicEvidence": [
@@ -177,7 +180,7 @@
         }
       ],
       "notes": [
-        "This target narrows the remaining blocker from sample licensing to print-surface evidence: the sample repository is licensed and pinned, but the public proof still needs an explicit PrintToSingleFileHtml run.",
+        "This target narrows the remaining blocker from sample licensing to runnable print-surface evidence: the sample repository is licensed and pinned, and the replacement payload provenance is repo-owned, but the public proof still needs an explicit PrintToSingleFileHtml run.",
         "Keep this seed provisional until a public workflow publishes print-single-file receipts for the same or an equivalent licensed added/deleted VI."
       ]
     },
