@@ -15,6 +15,7 @@ It is not a second feature-development branch.
 - Proving scorecard generator: `tools/priority/downstream-promotion-scorecard.mjs`
 - Proving scorecard schema: `docs/schemas/downstream-promotion-scorecard-v1.schema.json`
 - Proving scorecard output: `tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json`
+- Template-agent verification lane report: `tests/results/_agent/promotion/template-agent-verification-report.json`
 - Selection resolver: `tools/priority/resolve-downstream-proving-artifact.mjs`
 - Selection schema: `docs/schemas/downstream-proving-selection-v1.schema.json`
 - Selection output: `tests/results/_agent/release/downstream-proving-selection.json`
@@ -36,6 +37,35 @@ At minimum that means:
 - cookiecutter/template identity
 - proving scorecard reference
 - actor and timestamp
+
+## Post-iteration template verification lane
+
+One of the four delivery-agent coding lanes is reserved for post-iteration
+verification against `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`.
+
+- policy source: `tools/priority/delivery-agent.policy.json`
+- reservation contract:
+  - `reservedSlotCount = 1`
+  - `minimumImplementationSlots = 3`
+  - `executionMode = hosted-first`
+- machine-readable report:
+  - `tests/results/_agent/promotion/template-agent-verification-report.json`
+
+The goal is to keep a continuous template-consumer feedback loop alive without
+starving standing-priority implementation work. The reserved lane must emit
+iteration-level metrics, timing, provenance, and a follow-up recommendation so
+future agents can decide whether template verification is improving, regressing,
+or stalling.
+
+Generate the report with:
+
+```powershell
+node tools/npm/run-script.mjs priority:template:agent:verify -- `
+  --iteration-label "post-merge #1635" `
+  --verification-status pass `
+  --duration-seconds 240 `
+  --run-url https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/actions/runs/123456789
+```
 
 ## Replay and rollback
 

@@ -33,15 +33,24 @@ test('package scripts and runbook expose downstream promotion manifest and score
     packageJson.scripts['priority:promote:downstream:scorecard'],
     'node tools/priority/downstream-promotion-scorecard.mjs'
   );
+  assert.equal(
+    packageJson.scripts['priority:template:agent:verify'],
+    'node tools/priority/template-agent-verification-report.mjs'
+  );
 
   const runbook = read('docs/DOWNSTREAM_DEVELOP_PROMOTION_CONTRACT.md');
   assert.match(runbook, /downstream\/develop/);
   assert.match(runbook, /priority:promote:downstream:manifest/);
   assert.match(runbook, /priority:promote:downstream:scorecard/);
+  assert.match(runbook, /priority:template:agent:verify/);
   assert.match(runbook, /cookiecutter/i);
   assert.match(runbook, /rollback/i);
   assert.match(runbook, /replay/i);
   assert.match(runbook, /downstream-develop-promotion-scorecard\.json/);
+  assert.match(runbook, /template-agent-verification-report\.json/);
+  assert.match(runbook, /reservedSlotCount = 1/);
+  assert.match(runbook, /minimumImplementationSlots = 3/);
+  assert.match(runbook, /hosted-first/);
   assert.match(runbook, /Release consumption/);
   assert.match(runbook, /downstream-promotion\.yml/);
 });

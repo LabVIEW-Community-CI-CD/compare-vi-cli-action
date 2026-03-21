@@ -211,6 +211,19 @@
       ]
     },
     {
+      "name": "Template Agent Verification Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Reserved template-agent verification lane policy, machine-readable report contract, generator, and focused tests for the hosted-first LabviewGitHubCiTemplate feedback loop.",
+      "files": [
+        "docs/schemas/template-agent-verification-report-v1.schema.json",
+        "tools/priority/delivery-agent.policy.json",
+        "tools/priority/template-agent-verification-report.mjs",
+        "tools/priority/__tests__/template-agent-verification-report.test.mjs",
+        "tools/priority/__tests__/template-agent-verification-report-schema.test.mjs"
+      ]
+    },
+    {
       "name": "Headless Sample Corpus Contracts",
       "category": "supporting",
       "status": "reference",
