@@ -84,6 +84,7 @@ This corpus is not the pre-push gate.
 - Public evidence: PR `#29`
   (`LabVIEW-Community-CI-CD/labview-icon-editor-demo@91516373bf6c95e1d3cee2ee97452bc9d08f4ed7`)
   plus successful CompareVI History diagnostics on the added-VI PR head
+- Public artifact: `comparevi-history-pr-diagnostics-23225926010`
 - Blocking gap: the public run published history-surface evidence, not a
   standalone `PrintToSingleFileHtml` proof against the repo-owned BSD-3
   replacement payload

@@ -26,6 +26,11 @@ The reason is provenance, not usefulness.
   added-VI corpus seed we have, but the published receipts are still
   history-surface artifacts rather than a standalone `PrintToSingleFileHtml`
   proof against the replacement payload.
+  `91516373bf6c95e1d3cee2ee97452bc9d08f4ed7`. The public artifact for that run
+  is `comparevi-history-pr-diagnostics-23225926010`. This is the best licensed
+  added-VI corpus seed we have, but the published receipts are still
+  history-surface artifacts rather than a standalone `PrintToSingleFileHtml`
+  proof against the replacement payload.
 
 This repository now carries a repo-owned BSD-3 licensed source bundle for the
 replacement payload under:

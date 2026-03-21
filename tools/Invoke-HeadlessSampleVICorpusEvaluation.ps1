@@ -328,6 +328,14 @@ foreach ($target in @($catalog.targets)) {
     }
   }
 
+  if ($surface -eq 'print-single-file') {
+    foreach ($targetNote in @(Get-StringArray -Value $target.notes)) {
+      if (-not $notes.Contains($targetNote)) {
+        $notes.Add($targetNote) | Out-Null
+      }
+    }
+  }
+
   if ($admissionState -eq 'accepted' -and $policy.acceptedTargetsRequirePublicGithubEvidence -and $successfulWorkflowEvidenceCount -lt 1) {
     $notes.Add('Accepted targets require at least one successful workflow-run evidence URL.') | Out-Null
   }
