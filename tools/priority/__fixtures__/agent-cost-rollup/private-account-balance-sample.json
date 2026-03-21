@@ -1,0 +1,20 @@
+{
+  "schema": "priority/agent-cost-private-account-balance@v1",
+  "snapshotAt": "2026-03-21T12:00:00.000Z",
+  "plan": {
+    "name": "business",
+    "renewsAt": "2026-04-15"
+  },
+  "credits": {
+    "total": 27500,
+    "used": 15800,
+    "remaining": 11700
+  },
+  "provenance": {
+    "sourceKind": "operator-account-state",
+    "sourcePath": "C:/Users/operator/Downloads/account-balance-20260321.json",
+    "observedAt": "2026-03-21T12:00:00.000Z",
+    "confidence": "high",
+    "operatorNote": "Sanitized operator-provided account balance snapshot."
+  }
+}

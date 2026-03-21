@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/agent-cost-account-balance-v1.schema.json",
+  "title": "Agent Cost Account Balance Snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generatedAt", "snapshotAt", "plan", "credits", "provenance"],
+  "properties": {
+    "schema": { "const": "priority/agent-cost-account-balance@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "snapshotAt": { "type": "string", "format": "date-time" },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "renewsAt", "daysRemaining"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "renewsAt": { "type": "string", "format": "date" },
+        "daysRemaining": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "credits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "used", "remaining"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "used": { "type": "integer", "minimum": 0 },
+        "remaining": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceSchema", "sourceKind", "sourcePath", "observedAt", "confidence", "operatorNote"],
+      "properties": {
+        "sourceSchema": { "type": ["string", "null"], "minLength": 1 },
+        "sourceKind": {
+          "type": "string",
+          "enum": ["operator-account-state", "billing-export", "manual-baseline"]
+        },
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "observedAt": { "type": "string", "format": "date-time" },
+        "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+        "operatorNote": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
