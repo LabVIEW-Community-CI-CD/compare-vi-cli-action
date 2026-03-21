@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/pr-spend-projection-v1.schema.json",
+  "title": "PR Spend Projection Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "pullRequest",
+    "summary",
+    "metrics",
+    "provenance",
+    "breakdown",
+    "commentPost",
+    "source",
+    "blockers"
+  ],
+  "properties": {
+    "schema": { "const": "priority/pr-spend-projection@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repository": { "type": ["string", "null"] },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "url", "headRefName", "headSha", "linkedIssueNumber", "selectorSource"],
+      "properties": {
+        "number": { "type": ["integer", "null"], "minimum": 1 },
+        "url": { "type": ["string", "null"] },
+        "headRefName": { "type": ["string", "null"] },
+        "headSha": { "type": ["string", "null"] },
+        "linkedIssueNumber": { "type": ["integer", "null"], "minimum": 1 },
+        "selectorSource": { "type": ["string", "null"] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "blockerCount", "recommendation", "billingTruth", "totalUsd", "exactUsd", "estimatedUsd"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "blocked"] },
+        "blockerCount": { "type": "integer", "minimum": 0 },
+        "recommendation": { "type": "string", "minLength": 1 },
+        "billingTruth": { "type": "string", "enum": ["exact-only", "mixed", "estimated-only"] },
+        "totalUsd": { "type": "number", "minimum": 0 },
+        "exactUsd": { "type": "number", "minimum": 0 },
+        "estimatedUsd": { "type": "number", "minimum": 0 }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalTurns",
+        "liveTurnCount",
+        "backgroundTurnCount",
+        "exactTurnCount",
+        "estimatedTurnCount",
+        "totalTokens",
+        "estimatedCreditsConsumed",
+        "actualCreditsConsumed",
+        "actualUsdConsumed"
+      ],
+      "properties": {
+        "totalTurns": { "type": "integer", "minimum": 0 },
+        "liveTurnCount": { "type": "integer", "minimum": 0 },
+        "backgroundTurnCount": { "type": "integer", "minimum": 0 },
+        "exactTurnCount": { "type": "integer", "minimum": 0 },
+        "estimatedTurnCount": { "type": "integer", "minimum": 0 },
+        "totalTokens": { "type": "integer", "minimum": 0 },
+        "estimatedCreditsConsumed": { "type": ["number", "null"], "minimum": 0 },
+        "actualCreditsConsumed": { "type": ["number", "null"], "minimum": 0 },
+        "actualUsdConsumed": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "costRollupGeneratedAt",
+        "costRollupStatus",
+        "costRollupRecommendation",
+        "invoiceTurn",
+        "invoiceTurnSelection",
+        "rateCards"
+      ],
+      "properties": {
+        "costRollupGeneratedAt": { "type": ["string", "null"] },
+        "costRollupStatus": { "type": ["string", "null"] },
+        "costRollupRecommendation": { "type": ["string", "null"] },
+        "invoiceTurn": { "type": ["object", "null"] },
+        "invoiceTurnSelection": { "type": ["object", "null"] },
+        "rateCards": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      }
+    },
+    "breakdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agentRoles", "providers", "models", "issues", "lanes"],
+      "properties": {
+        "agentRoles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/breakdownEntry" }
+        },
+        "providers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/breakdownEntry" }
+        },
+        "models": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/breakdownEntry" }
+        },
+        "issues": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/breakdownEntry" }
+        },
+        "lanes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/breakdownEntry" }
+        }
+      }
+    },
+    "commentPost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested", "posted", "mode", "actorLogin", "postedAt"],
+      "properties": {
+        "requested": { "type": "boolean" },
+        "posted": { "type": "boolean" },
+        "mode": { "type": ["string", "null"] },
+        "actorLogin": { "type": ["string", "null"] },
+        "postedAt": { "type": ["string", "null"] }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["costRollupPath", "markdownPath"],
+      "properties": {
+        "costRollupPath": { "type": ["string", "null"] },
+        "markdownPath": { "type": ["string", "null"] }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "breakdownEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["key", "turnCount", "amountUsd"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "turnCount": { "type": "integer", "minimum": 0 },
+        "amountUsd": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

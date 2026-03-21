@@ -131,6 +131,7 @@
         "docs/schemas/agent-cost-invoice-turn-v1.schema.json",
         "docs/schemas/agent-cost-turn-v1.schema.json",
         "docs/schemas/agent-cost-rollup-v1.schema.json",
+        "docs/schemas/pr-spend-projection-v1.schema.json",
         "tools/priority/__fixtures__/agent-cost-rollup/live-turn-estimated.json",
         "tools/priority/__fixtures__/agent-cost-rollup/background-turn-exact.json",
         "tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline.json",
@@ -141,11 +142,14 @@
         "tools/priority/agent-cost-invoice-turn.mjs",
         "tools/priority/agent-cost-turn.mjs",
         "tools/priority/agent-cost-rollup.mjs",
+        "tools/priority/pr-spend-projection.mjs",
         "tools/priority/__tests__/agent-cost-invoice-normalize.test.mjs",
         "tools/priority/__tests__/agent-cost-invoice-normalize-schema.test.mjs",
         "tools/priority/__tests__/agent-cost-turn.test.mjs",
         "tools/priority/__tests__/agent-cost-rollup.test.mjs",
         "tools/priority/__tests__/agent-cost-rollup-schema.test.mjs",
+        "tools/priority/__tests__/pr-spend-projection.test.mjs",
+        "tools/priority/__tests__/pr-spend-projection-schema.test.mjs",
         "tools/priority/__tests__/agent-cost-telemetry-surfaces.test.mjs"
       ]
     },
