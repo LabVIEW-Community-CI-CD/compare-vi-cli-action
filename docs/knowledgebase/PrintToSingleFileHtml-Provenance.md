@@ -6,15 +6,24 @@ pre-push requirement.
 
 The reason is provenance, not usefulness.
 
-## Current finding
+## Current findings
 
-The best public added/deleted VI example we have today is
-`aphill93/linuxContainerDemo#7`.
+- The clearest explicit public `PrintToSingleFileHtml` proof we have today is
+  still `aphill93/linuxContainerDemo#7`.
 
-That proof uses a custom `AdditionalOperationDirectory` payload under
-`VICompareTooling/PrintToSingleFileHtml`. The sample is technically useful, but
-the repository does not currently declare a license, so the payload cannot be
-treated as promotable certification input.
+  That proof uses a custom `AdditionalOperationDirectory` payload under
+  `VICompareTooling/PrintToSingleFileHtml`. The sample is technically useful,
+  but the repository does not currently declare a license, so the payload
+  cannot be treated as promotable certification input.
+
+- A licensed added-VI sample candidate now exists on
+  `LabVIEW-Community-CI-CD/labview-icon-editor-demo#29`.
+
+  That PR added `Tooling/comparevi-history-canary/CanaryProbe.vi` on an
+  MIT-licensed public consumer repository, and public CompareVI History
+  diagnostics succeeded on the PR head. The remaining gap is narrower: the
+  published public receipts are history-surface artifacts, not a standalone
+  `PrintToSingleFileHtml` proof, so the seed is still only provisional.
 
 ## Repo policy
 
@@ -48,4 +57,8 @@ That distinction matters for added/deleted VI rendering because the current
 the default compare path.
 
 The headless sample corpus therefore tracks `operationPayload` separately from
-the target repository metadata.
+the target repository metadata, and `#1467` now carries both remaining blocker
+shapes explicitly:
+
+- licensed sample still missing explicit print proof
+- explicit print proof still missing promotable licensing

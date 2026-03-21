@@ -71,9 +71,24 @@ This corpus is not the pre-push gate.
 - Public evidence: PR `#7` plus successful Linux compare/headless runs
 - Blocking gap: the repository currently declares no license
 
-That provisional seed is intentionally kept out of accepted certification until
-there is either explicit licensing or a replacement seed from a licensed public
-repository.
+2. `icon-editor-demo-canaryprobe-print`
+- Repo: `LabVIEW-Community-CI-CD/labview-icon-editor-demo`
+- License: `MIT`
+- Surface: `print-single-file`
+- Plane: `linux-proof`
+- Change kind: `added`
+- Public evidence: PR `#29` plus successful CompareVI History diagnostics on the
+  added-VI PR head
+- Blocking gap: the public run published history-surface evidence, not a
+  standalone `PrintToSingleFileHtml` proof
+
+These provisional seeds now separate the two remaining blockers:
+
+- `linuxcontainerdemo-newthing-print` still shows the clearest explicit public
+  print proof, but it remains license-ambiguous.
+- `icon-editor-demo-canaryprobe-print` gives us a licensed added-VI sample on a
+  public consumer repo, but it still lacks explicit print-single-file
+  publication evidence.
 
 ## Render strategy rules
 
