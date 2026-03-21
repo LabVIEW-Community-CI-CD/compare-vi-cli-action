@@ -315,6 +315,9 @@ to confirm each workflow includes both triggers.
    (`QUEUE_AUTOPILOT_MIN_INFLIGHT` floor) so enqueue pressure self-throttles under runtime saturation.
    Hosted cadence runs every 5 minutes, with immediate `--apply` runs triggered by
    `Validate` / `Policy Guard (Upstream)` completions on `develop`.
+   `tests/results/_agent/queue/queue-supervisor-report.json` also carries `workerOccupancy`, sourced from
+   `tests/results/_agent/runtime/runtime-state.json`, so standing throughput reports can distinguish worker-slot
+   saturation from merge-queue occupancy.
 6. Treat merge-queue utilization as a throughput target, not only as a branch-protection setting. The checked-in
    contract lives in `tools/policy/merge-queue-utilization-target.json`, and the measurable scorecard is:
 
