@@ -4,7 +4,7 @@
   "title": "Throughput Scorecard v1",
   "type": "object",
   "additionalProperties": true,
-  "required": ["schema", "generatedAt", "inputs", "workerPool", "queue", "mergeQueueUtilization", "concurrentLanes", "delivery", "summary"],
+  "required": ["schema", "generatedAt", "inputs", "workerPool", "logicalLaneAllocation", "queue", "mergeQueueUtilization", "concurrentLanes", "delivery", "summary"],
   "properties": {
     "schema": {
       "const": "priority/throughput-scorecard@v1"
@@ -19,12 +19,13 @@
     "inputs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["runtimeStatePath", "deliveryMemoryPath", "queueReportPath", "concurrentLaneStatusPath", "utilizationPolicyPath"],
+      "required": ["runtimeStatePath", "deliveryMemoryPath", "queueReportPath", "concurrentLaneStatusPath", "hostRamBudgetPath", "utilizationPolicyPath"],
       "properties": {
         "runtimeStatePath": { "type": ["string", "null"] },
         "deliveryMemoryPath": { "type": ["string", "null"] },
         "queueReportPath": { "type": ["string", "null"] },
         "concurrentLaneStatusPath": { "type": ["string", "null"] },
+        "hostRamBudgetPath": { "type": ["string", "null"] },
         "utilizationPolicyPath": { "type": ["string", "null"] }
       }
     },
@@ -48,6 +49,38 @@
         "utilizationRatio": { "type": "number", "minimum": 0 },
         "activeCodingLanes": { "type": "integer", "minimum": 0 },
         "liveOrchestratorLane": { "type": "string" }
+      }
+    },
+    "logicalLaneAllocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capacityMode",
+        "maxLogicalLaneCount",
+        "effectiveLogicalLaneCount",
+        "reservedLaneCount",
+        "implementationLaneBudget",
+        "allocatedLogicalLaneCount",
+        "allocationRatio",
+        "allocationFloorRatio",
+        "floorSatisfied",
+        "hostRamProfile",
+        "hostRamRecommendedParallelism",
+        "capacitySource"
+      ],
+      "properties": {
+        "capacityMode": { "enum": ["fixed-target", "host-ram-adaptive"] },
+        "maxLogicalLaneCount": { "type": "integer", "minimum": 0 },
+        "effectiveLogicalLaneCount": { "type": "integer", "minimum": 0 },
+        "reservedLaneCount": { "type": "integer", "minimum": 0 },
+        "implementationLaneBudget": { "type": "integer", "minimum": 0 },
+        "allocatedLogicalLaneCount": { "type": "integer", "minimum": 0 },
+        "allocationRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "allocationFloorRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "floorSatisfied": { "type": "boolean" },
+        "hostRamProfile": { "type": ["string", "null"] },
+        "hostRamRecommendedParallelism": { "type": ["integer", "null"], "minimum": 1 },
+        "capacitySource": { "enum": ["policy-ceiling", "host-ram-budget"] }
       }
     },
     "queue": {
@@ -240,6 +273,9 @@
             "mergeQueueCapacity",
             "mergeQueueOccupancyRatio",
             "mergeQueueReadyInventoryFloor",
+            "logicalLaneAllocationRatio",
+            "logicalLaneAllocationFloorRatio",
+            "effectiveLogicalLaneCount",
             "concurrentLaneActiveCount",
             "concurrentLaneDeferredCount",
             "idleClassificationManagedLaneCount",
@@ -256,6 +292,9 @@
             "mergeQueueCapacity": { "type": "integer", "minimum": 0 },
             "mergeQueueOccupancyRatio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
             "mergeQueueReadyInventoryFloor": { "type": "integer", "minimum": 0 },
+            "logicalLaneAllocationRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "logicalLaneAllocationFloorRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "effectiveLogicalLaneCount": { "type": "integer", "minimum": 0 },
             "concurrentLaneActiveCount": { "type": "integer", "minimum": 0 },
             "concurrentLaneDeferredCount": { "type": "integer", "minimum": 0 },
             "idleClassificationManagedLaneCount": { "type": "integer", "minimum": 0 },

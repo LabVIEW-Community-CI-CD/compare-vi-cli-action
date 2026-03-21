@@ -126,8 +126,13 @@ test('package scripts expose delivery-agent commands and keep unattended aliases
 test('delivery-agent policy wires coding turns to the Codex runner', async () => {
   const policy = JSON.parse(await readText('tools/priority/delivery-agent.policy.json'));
   assert.deepEqual(policy.codingTurnCommand, ['node', 'dist/tools/priority/run-delivery-turn-with-codex.js']);
-  assert.equal(policy.maxActiveCodingLanes, 4);
-  assert.equal(policy.workerPool.targetSlotCount, 4);
+  assert.equal(policy.maxActiveCodingLanes, 8);
+  assert.equal(policy.capitalFabric.capacityMode, 'host-ram-adaptive');
+  assert.equal(policy.capitalFabric.maxLogicalLaneCount, 8);
+  assert.equal(policy.capitalFabric.specialtyLanes[0].id, 'jarvis');
+  assert.equal(policy.capitalFabric.specialtyLanes[0].primaryRecordedResponsibility, 'Sagan');
+  assert.equal(policy.capitalFabric.specialtyLanes[0].maxInstanceCount, 2);
+  assert.equal(policy.workerPool.targetSlotCount, 8);
   assert.deepEqual(
     policy.workerPool.providers.map((provider) => provider.id),
     ['local-codex', 'hosted-github-workflow', 'remote-copilot-lane', 'local-shadow-native']

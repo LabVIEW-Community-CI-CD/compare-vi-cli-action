@@ -27,6 +27,36 @@
     "allowPolicyMutations": { "type": "boolean" },
     "allowReleaseAdmin": { "type": "boolean" },
     "stopWhenNoOpenEpics": { "type": "boolean" },
+    "capitalFabric": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "schema": { "const": "priority/capital-deployment-fabric@v1" },
+        "capacityMode": { "enum": ["fixed-target", "host-ram-adaptive"] },
+        "maxLogicalLaneCount": { "type": "integer", "minimum": 1 },
+        "logicalLaneAllocationFloorRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "reservedLaneCount": { "type": "integer", "minimum": 0 },
+        "hostRamBudgetPath": { "type": "string" },
+        "specialtyLanes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["id", "enabled", "purpose", "preferredExecutionPlane", "allocationMode"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "enabled": { "type": "boolean" },
+              "primaryRecordedResponsibility": { "type": "string", "minLength": 1 },
+              "maxInstanceCount": { "type": "integer", "minimum": 1 },
+              "purpose": { "type": "string", "minLength": 1 },
+              "preferredExecutionPlane": { "type": "string", "minLength": 1 },
+              "preferredContainerImage": { "type": "string", "minLength": 1 },
+              "allocationMode": { "enum": ["opportunistic", "reserved", "manual-only"] }
+            }
+          }
+        }
+      }
+    },
     "workerPool": {
       "type": "object",
       "additionalProperties": true,
