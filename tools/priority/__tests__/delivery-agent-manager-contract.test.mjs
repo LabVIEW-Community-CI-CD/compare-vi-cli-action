@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile as execFileCb } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -26,6 +26,20 @@ async function copyRepoFile(relativePath, tempRoot) {
   await mkdir(path.dirname(destinationPath), { recursive: true });
   await copyFile(path.join(repoRoot, relativePath), destinationPath);
   return destinationPath;
+}
+
+async function makeLinkedWorktree(prefix) {
+  const sandboxRoot = await mkdtemp(path.join(os.tmpdir(), prefix));
+  const repoDir = path.join(sandboxRoot, 'repo');
+  const worktreeDir = path.join(sandboxRoot, 'worktree');
+  await execFile('git', ['init', '--initial-branch=develop', repoDir]);
+  await execFile('git', ['config', 'user.email', 'codex@example.test'], { cwd: repoDir });
+  await execFile('git', ['config', 'user.name', 'Codex Test'], { cwd: repoDir });
+  await writeFile(path.join(repoDir, 'tracked.txt'), 'baseline\n', 'utf8');
+  await execFile('git', ['add', 'tracked.txt'], { cwd: repoDir });
+  await execFile('git', ['commit', '-m', 'init'], { cwd: repoDir });
+  await execFile('git', ['worktree', 'add', '-b', 'issue/origin-linked', worktreeDir, 'develop'], { cwd: repoDir });
+  return { sandboxRoot, repoDir, worktreeDir };
 }
 
 async function writeFakeDeliveryAgentBuildScript(tempRoot) {
@@ -513,6 +527,40 @@ test('delivery-agent manager status prefers a fresher canonical delivery state o
   assert.equal(status.heartbeatDiagnostics.usedRuntimeState, false);
   assert.equal(status.heartbeatDiagnostics.reason, 'stale-before-current-manager');
   assert.equal(path.basename(status.paths.deliveryStatePath), 'delivery-agent-state.json');
+});
+
+test('delivery-agent status resolves the active worktree root when run from a linked worktree checkout', async (t) => {
+  const buildResult = await execFile(process.execPath, ['tools/npm/run-script.mjs', 'build'], { cwd: repoRoot });
+  assert.equal(buildResult.stderr, '');
+  const { sandboxRoot, worktreeDir } = await makeLinkedWorktree('delivery-agent-status-worktree-root-');
+  t.after(async () => {
+    await rm(sandboxRoot, { recursive: true, force: true });
+  });
+
+  await cp(path.join(repoRoot, 'package.json'), path.join(worktreeDir, 'package.json'));
+  await mkdir(path.join(worktreeDir, 'dist', 'tools'), { recursive: true });
+  await cp(path.join(repoRoot, 'dist', 'tools', 'priority'), path.join(worktreeDir, 'dist', 'tools', 'priority'), { recursive: true });
+
+  const { stdout } = await execFile(
+    process.execPath,
+    [path.join(worktreeDir, 'dist', 'tools', 'priority', 'delivery-agent.js'), 'status', '--runtime-dir', 'tests/results/_agent/runtime'],
+    {
+      cwd: worktreeDir,
+      encoding: 'utf8',
+    },
+  );
+
+  const report = JSON.parse(stdout);
+  assert.equal(
+    report.paths.managerStatePath,
+    path.join(worktreeDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-manager-state.json'),
+  );
+  assert.equal(
+    report.paths.daemonLogPath,
+    path.join(worktreeDir, 'tests', 'results', '_agent', 'runtime', 'runtime-daemon-wsl.log'),
+  );
+  assert.equal(path.dirname(report.paths.managerStatePath), path.join(worktreeDir, 'tests', 'results', '_agent', 'runtime'));
+  assert.ok(report.paths.managerTracePath.startsWith(worktreeDir));
 });
 
 test('delivery-agent manager status falls back to legacy runtime-state.json when the canonical delivery state is missing', async (t) => {
