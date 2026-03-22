@@ -147,6 +147,18 @@ export function loadTemplateContext(options = {}) {
   return {};
 }
 
+export function resolveContainerUser(platform = os.platform(), currentProcess = process) {
+  if (platform === 'win32') {
+    return null;
+  }
+
+  if (typeof currentProcess?.getuid !== 'function' || typeof currentProcess?.getgid !== 'function') {
+    return null;
+  }
+
+  return `${currentProcess.getuid()}:${currentProcess.getgid()}`;
+}
+
 export function buildCookiecutterPythonScript({
   templateRepositoryUrl,
   templateDirectory,
@@ -199,6 +211,7 @@ export function buildCookiecutterPythonScript({
 export function buildTemplateCookiecutterContainerPlan(options = {}, deps = {}) {
   const policy = loadTemplateDependencyPolicy(options.policyPath ?? DEFAULT_POLICY_PATH);
   const platform = deps.platform ?? os.platform();
+  const currentProcess = deps.currentProcess ?? process;
   const now = deps.now ?? new Date();
   const uniqueSuffixFn = deps.uniqueSuffixFn ?? (() => crypto.randomBytes(3).toString('hex'));
   const uniqueSuffix = uniqueSuffixFn();
@@ -223,6 +236,7 @@ export function buildTemplateCookiecutterContainerPlan(options = {}, deps = {}) 
   const templateRepositoryUrl = policy.templateRepositoryUrl;
   const checkout = policy.rendering?.checkout ?? policy.templateReleaseRef;
   const containerImage = options.containerImage ?? policy.container?.image;
+  const containerUser = resolveContainerUser(platform, currentProcess);
 
   if (!templateRepositoryUrl) {
     throw new Error('Template dependency policy is missing templateRepositoryUrl.');
@@ -246,7 +260,14 @@ export function buildTemplateCookiecutterContainerPlan(options = {}, deps = {}) 
     'run',
     '--rm',
     '--name',
-    containerName,
+    containerName
+  ];
+
+  if (containerUser) {
+    dockerArgs.push('--user', containerUser);
+  }
+
+  dockerArgs.push(
     '--volume',
     `${hostWorkspaceRoot}:${DEFAULT_CONTAINER_MOUNT_ROOT}`,
     '--workdir',
@@ -265,7 +286,7 @@ export function buildTemplateCookiecutterContainerPlan(options = {}, deps = {}) 
     'python3',
     '-c',
     script.script
-  ];
+  );
 
   return {
     policyPath: options.policyPath ?? DEFAULT_POLICY_PATH,
@@ -283,6 +304,7 @@ export function buildTemplateCookiecutterContainerPlan(options = {}, deps = {}) 
     checkout,
     containerImage,
     context,
+    containerUser,
     dockerArgs,
     command: 'docker',
     now: now.toISOString(),
@@ -333,6 +355,7 @@ export function runTemplateCookiecutterContainer(options = {}, deps = {}) {
       containerName: plan.containerName,
       containerWorkspaceRoot: plan.containerWorkspaceRoot,
       containerOutputRoot: plan.containerOutputRoot,
+      containerUser: plan.containerUser,
       contextSource,
       contextFilePath: options.contextFilePath ?? defaultContextPath,
       contextKeys: Object.keys(plan.context).sort(),

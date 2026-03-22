@@ -11,6 +11,7 @@ import {
   buildCookiecutterPythonScript,
   buildTemplateCookiecutterContainerPlan,
   parseArgs,
+  resolveContainerUser,
   runTemplateCookiecutterContainer,
   slugifySegment
 } from '../template-cookiecutter-container.mjs';
@@ -98,6 +99,7 @@ test('build helpers produce deterministic container and workspace identities', (
   assert.match(planA.containerWorkspaceRoot, /\/workspace\/issue-origin-1743-template-cookiecutter-conveyor\/run-1743$/);
   assert.match(planA.dockerArgs.join(' '), /from cookiecutter\.main import cookiecutter/);
   assert.match(planA.dockerArgs.join(' '), /checkout = "v0\.1\.0"/);
+  assert.equal(planA.containerUser, null);
   assert.notEqual(planA.containerName, planB.containerName);
   assert.notEqual(planA.hostRunRoot, planB.hostRunRoot);
 });
@@ -120,6 +122,39 @@ test('build helpers default to the checked-in deterministic template context', (
   assert.equal(plan.policy.rendering.defaultContextPath, 'tests/fixtures/cookiecutter/template-context.json');
   assert.equal(plan.context.repo_slug, 'comparevi-template-consumer');
   assert.equal(plan.context.github_owner, 'LabVIEW-Community-CI-CD');
+});
+
+test('resolveContainerUser maps POSIX hosts and skips Windows hosts', () => {
+  assert.equal(resolveContainerUser('win32', { getuid: () => 1001, getgid: () => 121 }), null);
+  assert.equal(resolveContainerUser('linux', { getuid: () => 1001, getgid: () => 121 }), '1001:121');
+  assert.equal(resolveContainerUser('linux', {}), null);
+});
+
+test('build helpers project host uid/gid onto POSIX docker runs', () => {
+  const plan = buildTemplateCookiecutterContainerPlan(
+    {
+      policyPath: path.join(process.cwd(), 'tools', 'policy', 'template-dependency.json'),
+      workspaceRoot: '/tmp/comparevi-template-consumers',
+      laneId: 'cookiecutter-bootstrap-linux',
+      runId: 'run-1743',
+      context: {
+        template_name: 'LabviewGitHubCiTemplate',
+        version: 'v0.1.0'
+      }
+    },
+    {
+      now: new Date('2026-03-21T19:00:00.000Z'),
+      uniqueSuffixFn: () => 'abc123',
+      platform: 'linux',
+      currentProcess: {
+        getuid: () => 1001,
+        getgid: () => 121
+      }
+    }
+  );
+
+  assert.equal(plan.containerUser, '1001:121');
+  assert.match(plan.dockerArgs.join(' '), /--user 1001:121/);
 });
 
 test('buildCookiecutterPythonScript wires the pinned checkout and deterministic context', () => {
@@ -196,6 +231,7 @@ test('runTemplateCookiecutterContainer writes a receipt and captures the spawned
   assert.equal(receipt.status, 'pass');
   assert.equal(receipt.policy.effectiveContainerImage, 'comparevi-tools:cookiecutter');
   assert.equal(receipt.result.projectDir, '/workspace/issue-origin-1743-template-cookiecutter-conveyor/run-1743/output/LabviewGitHubCiTemplate');
+  assert.equal(receipt.run.containerUser, null);
   assert.equal(fs.existsSync(outputPath), true);
   const persisted = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
   assert.equal(persisted.run.uniqueWorkspaceRoot, true);
