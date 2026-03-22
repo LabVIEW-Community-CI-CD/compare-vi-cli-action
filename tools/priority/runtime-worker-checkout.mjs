@@ -26,6 +26,25 @@ function normalizeText(value) {
   return String(value).trim();
 }
 
+function parseIssueNumberFromBranch(branch) {
+  const normalized = normalizeText(branch);
+  if (!normalized.toLowerCase().startsWith('issue/')) {
+    return null;
+  }
+  const suffix = normalized.slice('issue/'.length);
+  const tokens = suffix.split('-').map((entry) => entry.trim()).filter(Boolean);
+  for (const token of tokens) {
+    if (!/^\d+$/.test(token)) {
+      continue;
+    }
+    const issueNumber = Number.parseInt(token, 10);
+    if (issueNumber > 0) {
+      return issueNumber;
+    }
+  }
+  return null;
+}
+
 function sanitizeSegment(value) {
   const segment =
     String(value ?? '')
@@ -523,6 +542,70 @@ async function gitRefExists(execFileFn, cwd, ref) {
   }
 }
 
+async function gitTargetExists(execFileFn, cwd, target) {
+  try {
+    await execFileFn('git', ['rev-parse', '--verify', '--quiet', `${target}^{commit}`], { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveCompareviWorkerBaseRef(execFileFn, cwd, { availableRemotes = null } = {}) {
+  const remotes = Array.isArray(availableRemotes)
+    ? availableRemotes
+    : (await tryReadGitStdout(execFileFn, ['remote'], { cwd }))
+      .split(/\r?\n/)
+      .map((entry) => normalizeText(entry))
+      .filter(Boolean);
+  const candidates = [];
+  const seen = new Set();
+
+  for (const remote of ATTACHABLE_REMOTES) {
+    if (!remotes.includes(remote)) {
+      continue;
+    }
+    const candidate = `${remote}/${DEFAULT_BASE_REF_NAME}`;
+    if (seen.has(candidate)) {
+      continue;
+    }
+    seen.add(candidate);
+    candidates.push(candidate);
+  }
+
+  for (const candidate of [DEFAULT_BASE_REF_NAME, 'HEAD']) {
+    if (seen.has(candidate)) {
+      continue;
+    }
+    seen.add(candidate);
+    candidates.push(candidate);
+  }
+
+  for (const candidate of candidates) {
+    if (await gitTargetExists(execFileFn, cwd, candidate)) {
+      return candidate;
+    }
+  }
+
+  return DEFAULT_WORKER_REF;
+}
+
+async function resolveAuthoritativeStandingBaseRef(execFileFn, repoRoot, schedulerDecision, { availableRemotes = null } = {}) {
+  const currentBranch = normalizeText(await tryReadGitStdout(execFileFn, ['branch', '--show-current'], { cwd: repoRoot }));
+  const activeIssue =
+    Number.isInteger(schedulerDecision?.activeLane?.issue) && schedulerDecision.activeLane.issue > 0
+      ? schedulerDecision.activeLane.issue
+      : Number.isInteger(schedulerDecision?.stepOptions?.issue) && schedulerDecision.stepOptions.issue > 0
+        ? schedulerDecision.stepOptions.issue
+        : null;
+  if (currentBranch && activeIssue && parseIssueNumberFromBranch(currentBranch) === activeIssue) {
+    if (await gitTargetExists(execFileFn, repoRoot, currentBranch)) {
+      return currentBranch;
+    }
+  }
+  return resolveCompareviWorkerBaseRef(execFileFn, repoRoot, { availableRemotes });
+}
+
 async function normalizeGitHubRemotePushUrls(execFileFn, checkoutPath, { platform = process.platform } = {}) {
   if (normalizeText(platform).toLowerCase() !== 'linux') {
     return [];
@@ -762,13 +845,10 @@ export async function prepareCompareviWorkerCheckout({
           await fetchAttachableRemote(execFileFn, resolvedCheckoutPath, 'origin');
           fetchedRemotes.push('origin');
         }
-        let resolvedRef = DEFAULT_WORKER_REF;
-        try {
-          await execFileFn('git', ['checkout', '--force', '--detach', DEFAULT_WORKER_REF], { cwd: resolvedCheckoutPath });
-        } catch {
-          resolvedRef = 'develop';
-          await execFileFn('git', ['checkout', '--force', '--detach', resolvedRef], { cwd: resolvedCheckoutPath });
-        }
+        const resolvedRef = await resolveAuthoritativeStandingBaseRef(execFileFn, repoRoot, schedulerDecision, {
+          availableRemotes
+        });
+        await execFileFn('git', ['checkout', '--force', '--detach', resolvedRef], { cwd: resolvedCheckoutPath });
         const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, resolvedCheckoutPath, {
           platform: deps.platform ?? platform ?? process.platform
         });
@@ -828,8 +908,23 @@ export async function prepareCompareviWorkerCheckout({
     };
   }
 
+  const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: repoRoot }))
+    .split(/\r?\n/)
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+  const fetchedRemotes = [];
+  for (const remote of ATTACHABLE_REMOTES) {
+    if (!availableRemotes.includes(remote)) {
+      continue;
+    }
+    await fetchAttachableRemote(execFileFn, repoRoot, remote);
+    fetchedRemotes.push(remote);
+  }
+  const resolvedBaseRef = await resolveAuthoritativeStandingBaseRef(execFileFn, repoRoot, schedulerDecision, {
+    availableRemotes
+  });
   await mkdir(checkoutRoot, { recursive: true });
-  await execFileFn('git', ['worktree', 'add', '--detach', resolvedCheckoutPath, DEFAULT_WORKER_REF], {
+  await execFileFn('git', ['worktree', 'add', '--detach', resolvedCheckoutPath, resolvedBaseRef], {
     cwd: repoRoot
   });
   await repairExistingWorktreeGitPointers({
@@ -852,9 +947,10 @@ export async function prepareCompareviWorkerCheckout({
     checkoutPath: resolvedCheckoutPath,
     checkoutRootPolicy,
     status: 'created',
-    ref: DEFAULT_WORKER_REF,
+    ref: resolvedBaseRef,
     requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
     source: 'comparevi-worktree',
+    fetchedRemotes,
     pushRemotesNormalized,
     worktreeStateRepair
   };
@@ -927,10 +1023,13 @@ export async function bootstrapCompareviWorkerCheckout({
       const currentBranch = await tryReadGitStdout(execFileFn, ['branch', '--show-current'], {
         cwd: preparedWorker.checkoutPath
       });
+      const baseRef = normalizeText(preparedWorker?.ref) || await resolveCompareviWorkerBaseRef(execFileFn, preparedWorker.checkoutPath, {
+        availableRemotes
+      });
       if (currentBranch !== branch) {
         const trackingRef = `${forkRemote}/${branch}`;
         const trackingExists = await gitRefExists(execFileFn, preparedWorker.checkoutPath, `refs/remotes/${trackingRef}`);
-        const checkoutTarget = trackingExists ? trackingRef : DEFAULT_WORKER_REF;
+        const checkoutTarget = trackingExists ? trackingRef : baseRef;
         await execFileFn('git', ['checkout', '--force', '-B', branch, checkoutTarget], {
           cwd: preparedWorker.checkoutPath
         });
@@ -1047,6 +1146,9 @@ export async function activateCompareviWorkerLane({
     .split(/\r?\n/)
     .map((entry) => normalizeText(entry))
     .filter(Boolean);
+  const baseRef = normalizeText(preparedWorker?.ref) || await resolveCompareviWorkerBaseRef(execFileFn, checkoutPath, {
+    availableRemotes
+  });
   const fetchedRemotes = [];
   try {
     for (const remote of ATTACHABLE_REMOTES) {
@@ -1060,7 +1162,7 @@ export async function activateCompareviWorkerLane({
     const trackingRef = `${forkRemote}/${branch}`;
     const trackingExists = await gitRefExists(execFileFn, checkoutPath, `refs/remotes/${trackingRef}`);
     if (currentBranch !== branch) {
-      const checkoutTarget = trackingExists ? trackingRef : DEFAULT_WORKER_REF;
+      const checkoutTarget = trackingExists ? trackingRef : baseRef;
       // Runtime worktrees are ephemeral execution sandboxes; force checkout so
       // local bootstrap edits in detached refs cannot block lane activation.
       await execFileFn('git', ['checkout', '--force', '-B', branch, checkoutTarget], { cwd: checkoutPath });
@@ -1078,7 +1180,7 @@ export async function activateCompareviWorkerLane({
       status: currentBranch === branch ? 'reused' : trackingExists ? 'attached' : 'created',
       source: 'comparevi-branch',
       reason: null,
-      baseRef: DEFAULT_WORKER_REF,
+      baseRef,
       trackingRef: trackingExists ? trackingRef : null,
       fetchedRemotes,
       readyAt: workerReady?.readyAt ?? null
@@ -1093,7 +1195,7 @@ export async function activateCompareviWorkerLane({
       status: 'blocked',
       source: 'comparevi-branch',
       reason: formatExecError(error),
-      baseRef: DEFAULT_WORKER_REF,
+      baseRef,
       trackingRef: `${forkRemote}/${branch}`,
       fetchedRemotes
     };
@@ -1111,6 +1213,7 @@ export const __test = {
   normalizeGitHubRemotePushUrls,
   repairRegisteredWorktreeGitPointers,
   repairExistingWorktreeGitPointers,
+  resolveCompareviWorkerBaseRef,
   tryResolveCheckoutGitFromAdminPointer,
   resolveGitHubSshPushUrl
 };
