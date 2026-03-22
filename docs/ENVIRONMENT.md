@@ -101,7 +101,11 @@ Notes:
   Agents can dispatch the hosted lane while manually running the Linux or Windows Docker Desktop/WSL2 lanes on this host.
 - Use `node tools/npm/run-script.mjs priority:lane:concurrency:plan` to turn the current host-plane,
   host-RAM, and Docker-runtime receipts into a recommended concurrent hosted/manual lane bundle before
-  dispatching work.
+  dispatching work. The plan now emits a `dockerRuntimeCutover` contract so you can tell whether a Linux-based
+  Docker daemon is already reusable (`pinned-wsl2-linux-daemon` or `desktop-linux-engine`) or still needs an
+  explicit engine cutover before you rely on it from unknown operator state. The same contract also records the
+  restore mode (`wsl-shutdown`, `desktop-engine-switch-to-windows`, `none`, or `manual`) so operators can see the
+  cleanup step alongside the cutover step.
 
 ### NI 2026 q1 host bootstrap preflight
 

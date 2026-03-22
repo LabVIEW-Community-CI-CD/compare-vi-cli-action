@@ -43,6 +43,9 @@ test('single-host runbook points to the authoritative commands and artifacts', (
   assert.match(runbook, /### Docker Fast Loop Summary/);
   assert.match(runbook, /Host Plane Summary Reason/);
   assert.match(runbook, /docker-fast-loop-proof-host-plane-summary-path/);
+  assert.match(runbook, /dockerRuntimeCutover/);
+  assert.match(runbook, /pinned-wsl2-linux-daemon|desktop-linux-engine/);
+  assert.match(runbook, /wsl-shutdown|desktop-engine-switch-to-windows/);
   assert.match(runbook, /\[host-plane-split\]\[summary\].*status=<status>.*sha256=<sha256>/);
 });
 
