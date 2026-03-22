@@ -55,12 +55,23 @@ export function resolveTsxCliPath(root = repoRoot) {
   return existsSync(cliPath) ? cliPath : null;
 }
 
+export function isMountedWindowsWorktreeInWsl({
+  platform = process.platform,
+  workingDirectory = process.cwd(),
+} = {}) {
+  if (platform !== 'linux') {
+    return false;
+  }
+  return /^\/mnt\/[a-z](\/|$)/i.test(workingDirectory);
+}
+
 export function resolveExecutionMode({
   githubActions = process.env.GITHUB_ACTIONS === 'true',
   forceCompiled = process.env.COMPAREVI_FORCE_COMPILED_TS === '1',
-  tsxBinary = resolveTtsxBinary(repoRoot)
+  tsxBinary = resolveTtsxBinary(repoRoot),
+  mountedWindowsWorktreeInWsl = isMountedWindowsWorktreeInWsl()
 } = {}) {
-  if (!githubActions && !forceCompiled && tsxBinary) {
+  if (!githubActions && !forceCompiled && !mountedWindowsWorktreeInWsl && tsxBinary) {
     return 'tsx';
   }
   return 'compiled';

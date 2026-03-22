@@ -21,7 +21,11 @@ cd "$COMPAREVI_RUNTIME_DAEMON_CWD"
 
 args=(
   node
-  dist/tools/priority/runtime-daemon.js
+  tools/npm/run-local-typescript.mjs
+  --project tsconfig.json
+  --entry tools/priority/runtime-daemon.ts
+  --fallback-dist dist/tools/priority/runtime-daemon.js
+  --
   --repo "$COMPAREVI_RUNTIME_DAEMON_REPO"
   --runtime-dir "$COMPAREVI_RUNTIME_DAEMON_RUNTIME_DIR"
   --lease-root "$COMPAREVI_RUNTIME_DAEMON_LEASE_ROOT"

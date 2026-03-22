@@ -232,6 +232,19 @@ test('delivery-agent manager launches the detached loop through run-local-typesc
   assert.doesNotMatch(manager, /const distScriptPath = path\.join\(repoRoot, 'dist', 'tools', 'priority', 'delivery-agent\.js'\);/);
 });
 
+test('runtime daemon WSL launcher prefers run-local-typescript instead of a dist-only node entry', async () => {
+  const manager = await readText('tools/priority/lib/delivery-agent-manager.ts');
+  const launcher = await readText('tools/priority/bash/start-runtime-daemon.sh');
+
+  assert.match(launcher, /tools\/npm\/run-local-typescript\.mjs/);
+  assert.match(launcher, /--entry tools\/priority\/runtime-daemon\.ts/);
+  assert.match(launcher, /--fallback-dist dist\/tools\/priority\/runtime-daemon\.js/);
+  assert.doesNotMatch(launcher, /args=\(\s*node\s+dist\/tools\/priority\/runtime-daemon\.js/s);
+  assert.match(manager, /'tools\/npm\/run-local-typescript\.mjs'/);
+  assert.match(manager, /'--entry',\s*'tools\/priority\/runtime-daemon\.ts'/);
+  assert.match(manager, /'--fallback-dist',\s*'dist\/tools\/priority\/runtime-daemon\.js'/);
+});
+
 test('delivery-agent manager status ignores stale heartbeat state from before the current manager start', async (t) => {
   const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-stale-'));
   const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
