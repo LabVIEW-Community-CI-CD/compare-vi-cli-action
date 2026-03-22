@@ -44,6 +44,7 @@ import {
   loadLiveAgentModelSelectionPolicy,
   loadLiveAgentModelSelectionReport
 } from './live-agent-model-selection.mjs';
+import { DEFAULT_STORAGE_ROOT_POLICY, normalizeStorageRootsPolicy } from './lib/storage-root-policy.mjs';
 
 export const DELIVERY_AGENT_POLICY_SCHEMA = 'priority/delivery-agent-policy@v1';
 export const DELIVERY_AGENT_RUNTIME_STATE_SCHEMA = 'priority/delivery-agent-runtime-state@v1';
@@ -203,6 +204,14 @@ const DEFAULT_POLICY = {
         allocationMode: 'opportunistic'
       }
     ]
+  },
+  storageRoots: {
+    worktrees: {
+      ...DEFAULT_STORAGE_ROOT_POLICY.worktrees
+    },
+    artifacts: {
+      ...DEFAULT_STORAGE_ROOT_POLICY.artifacts
+    }
   },
   workerPool: {
     targetSlotCount: 20,
@@ -1961,6 +1970,7 @@ export async function loadDeliveryAgentPolicy(repoRoot, deps = {}) {
       ...DEFAULT_POLICY.dockerRuntime,
       ...(filePolicy?.dockerRuntime && typeof filePolicy.dockerRuntime === 'object' ? filePolicy.dockerRuntime : {})
     },
+    storageRoots: normalizeStorageRootsPolicy(filePolicy?.storageRoots),
     concurrentLaneDispatch: normalizeConcurrentLaneDispatchPolicy(filePolicy?.concurrentLaneDispatch),
     localReviewLoop: normalizeLocalReviewLoopPolicy(filePolicy?.localReviewLoop),
     codingTurnCommand: normalizeCommandList(filePolicy?.codingTurnCommand)

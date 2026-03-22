@@ -20,7 +20,7 @@ function printUsage() {
   console.log('  --run-id <id>               Workflow run id to download from.');
   console.log('  --artifact <name>           Artifact name to download (repeatable).');
   console.log('  --all                       Download every non-expired artifact from the run.');
-  console.log(`  --destination-root <path>   Destination root (default: ${DEFAULT_DESTINATION_ROOT}).`);
+  console.log(`  --destination-root <path>   Destination root (default: policy/env-managed from ${DEFAULT_DESTINATION_ROOT}).`);
   console.log(`  --report <path>             Output report path (default: ${DEFAULT_REPORT_PATH}).`);
   console.log('  --step-summary <path>       Override the GitHub step summary output path.');
   console.log('  -h, --help                  Show help.');
@@ -43,6 +43,7 @@ export function parseArgs(argv = process.argv, env = process.env) {
     artifactNames: [],
     downloadAll: false,
     destinationRoot: DEFAULT_DESTINATION_ROOT,
+    destinationRootExplicit: false,
     reportPath: DEFAULT_REPORT_PATH,
     stepSummaryPath: normalizeText(env.GITHUB_STEP_SUMMARY),
     stepSummaryExplicit: false,
@@ -80,7 +81,10 @@ export function parseArgs(argv = process.argv, env = process.env) {
         }
         options.artifactNames.push(artifactName);
       }
-      if (token === '--destination-root') options.destinationRoot = next;
+      if (token === '--destination-root') {
+        options.destinationRoot = next;
+        options.destinationRootExplicit = true;
+      }
       if (token === '--report') options.reportPath = next;
       if (token === '--step-summary') {
         options.stepSummaryPath = next;
@@ -187,6 +191,7 @@ export function buildStepSummaryLines({ options, result }) {
     `- repository: \`${options.repo}\``,
     `- run id: \`${options.runId}\``,
     `- report: \`${result.reportPath}\``,
+    `- destination root: \`${result.report.destinationRoot}\``,
     `- requested: \`${report.summary.requestedArtifactCount}\``,
     `- available: \`${report.summary.availableArtifactCount}\``,
     `- downloaded: \`${report.summary.downloadedCount}\``,
@@ -242,8 +247,11 @@ export async function main(
     runId: options.runId,
     artifactNames: options.artifactNames,
     downloadAll: options.downloadAll,
+    repoRoot: process.cwd(),
     destinationRoot: options.destinationRoot,
+    destinationRootExplicit: options.destinationRootExplicit,
     reportPath: options.reportPath,
+    env,
   });
 
   let projectionFailure = false;

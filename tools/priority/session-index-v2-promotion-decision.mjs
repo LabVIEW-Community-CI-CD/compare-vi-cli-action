@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { downloadNamedArtifacts } from './lib/run-artifact-download.mjs';
+import { loadStorageRootsPolicy, resolveArtifactDestinationRoot } from './lib/storage-root-policy.mjs';
 import {
   loadBranchRequiredChecksPolicy,
   resolveProjectedRequiredStatusChecks,
@@ -71,7 +72,7 @@ function printUsage() {
   console.log(`  --required-check <name>        Required-check context to evaluate (default: ${DEFAULT_REQUIRED_CHECK}).`);
   console.log(`  --enforce-variable <name>      Repository variable to inspect (default: ${DEFAULT_ENFORCE_VARIABLE}).`);
   console.log(`  --policy <path>                Branch-required-check policy path (default: ${DEFAULT_POLICY_PATH}).`);
-  console.log(`  --destination-root <path>      Artifact download root (default: ${DEFAULT_DESTINATION_ROOT}).`);
+  console.log(`  --destination-root <path>      Artifact download root (default: policy/env-managed from ${DEFAULT_DESTINATION_ROOT}).`);
   console.log(`  --download-report <path>       Artifact download report path (default: ${DEFAULT_DOWNLOAD_REPORT_PATH}).`);
   console.log(`  --out <path>                   Output report path (default: ${DEFAULT_REPORT_PATH}).`);
   console.log('  -h, --help                     Show help.');
@@ -853,6 +854,7 @@ export function parseArgs(argv = process.argv, environment = process.env, repoRo
     enforceVariableName: DEFAULT_ENFORCE_VARIABLE,
     policyPath: DEFAULT_POLICY_PATH,
     destinationRoot: DEFAULT_DESTINATION_ROOT,
+    destinationRootExplicit: false,
     downloadReportPath: DEFAULT_DOWNLOAD_REPORT_PATH,
     reportPath: DEFAULT_REPORT_PATH,
   };
@@ -889,7 +891,10 @@ export function parseArgs(argv = process.argv, environment = process.env, repoRo
       if (token === '--required-check') options.requiredCheckName = normalizeText(next);
       if (token === '--enforce-variable') options.enforceVariableName = normalizeText(next);
       if (token === '--policy') options.policyPath = next;
-      if (token === '--destination-root') options.destinationRoot = next;
+      if (token === '--destination-root') {
+        options.destinationRoot = next;
+        options.destinationRootExplicit = true;
+      }
       if (token === '--download-report') options.downloadReportPath = next;
       if (token === '--out') options.reportPath = next;
       continue;
@@ -1193,8 +1198,15 @@ export async function runSessionIndexV2PromotionDecision({
       return { exitCode: report.status === 'fail' ? 1 : 0, report, reportPath };
     }
 
-    const downloadDestinationRoot = path.join(options.destinationRoot, String(selectedRun.run.id));
-    const resolvedDownloadDestinationRoot = resolveRepoPath(repoRoot, downloadDestinationRoot);
+    const rootSelection = resolveArtifactDestinationRoot({
+      repoRoot,
+      destinationRoot: options.destinationRoot,
+      destinationRootExplicit: options.destinationRootExplicit,
+      policy: loadStorageRootsPolicy(repoRoot),
+      env,
+    });
+    const downloadDestinationRoot = path.join(rootSelection.destinationRoot, String(selectedRun.run.id));
+    const resolvedDownloadDestinationRoot = path.resolve(downloadDestinationRoot);
     fs.rmSync(resolvedDownloadDestinationRoot, { recursive: true, force: true });
     report.artifact.destinationRoot = resolvedDownloadDestinationRoot;
 
@@ -1202,9 +1214,12 @@ export async function runSessionIndexV2PromotionDecision({
       repository: options.repo,
       runId: String(selectedRun.run.id),
       artifactNames: [options.artifactName],
+      repoRoot,
       destinationRoot: resolvedDownloadDestinationRoot,
+      destinationRootExplicit: true,
       reportPath: resolveRepoPath(repoRoot, options.downloadReportPath),
       now,
+      env,
     });
     report.artifact.downloadReportPath = resolveRepoPath(repoRoot, downloadResult.reportPath ?? options.downloadReportPath);
 

@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { loadStorageRootsPolicy, resolveArtifactDestinationRoot } from './storage-root-policy.mjs';
 
 export const REPORT_SCHEMA = 'priority/run-artifact-download@v1';
 export const DEFAULT_DESTINATION_ROOT = path.join('tests', 'results', '_agent', 'reviews', 'run-artifacts');
@@ -220,9 +221,13 @@ export function downloadNamedArtifacts({
   runId,
   artifactNames,
   downloadAll = false,
+  repoRoot = process.cwd(),
   destinationRoot = DEFAULT_DESTINATION_ROOT,
+  destinationRootExplicit = false,
+  storageRootsPolicy = null,
   reportPath = DEFAULT_REPORT_PATH,
   now = new Date(),
+  env = process.env,
   runGhJsonFn = runGhJson,
   runProcessFn = runProcess,
 }) {
@@ -236,7 +241,8 @@ export function downloadNamedArtifacts({
     status: 'pass',
     repository: normalizedRepository,
     runId: normalizedRunId,
-    destinationRoot,
+    destinationRoot: null,
+    destinationRootPolicy: null,
     requestedArtifacts,
     discovery: {
       status: 'pass',
@@ -255,6 +261,16 @@ export function downloadNamedArtifacts({
     },
     errors: [],
   };
+
+  const resolvedDestinationRoot = resolveArtifactDestinationRoot({
+    repoRoot,
+    destinationRoot,
+    destinationRootExplicit,
+    policy: storageRootsPolicy ?? loadStorageRootsPolicy(repoRoot),
+    env
+  });
+  report.destinationRoot = resolvedDestinationRoot.destinationRoot;
+  report.destinationRootPolicy = resolvedDestinationRoot.destinationRootPolicy;
 
   const invalidRequestErrors = [];
   if (!normalizedRepository) {
@@ -321,7 +337,7 @@ export function downloadNamedArtifacts({
 
   for (const artifactName of requestedArtifacts) {
     const artifact = artifactsByName.get(artifactName) ?? null;
-    const destination = path.join(destinationRoot, sanitizeArtifactDestinationSegment(artifactName));
+    const destination = path.join(report.destinationRoot, sanitizeArtifactDestinationSegment(artifactName));
     const commandArgs = [
       'run',
       'download',

@@ -12,6 +12,7 @@
     "repository",
     "runId",
     "destinationRoot",
+    "destinationRootPolicy",
     "requestedArtifacts",
     "discovery",
     "downloads",
@@ -43,6 +44,28 @@
     },
     "destinationRoot": {
       "type": "string"
+    },
+    "destinationRootPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "source", "baseRoot", "relativeRoot", "usesExternalRoot"],
+      "properties": {
+        "strategy": {
+          "enum": ["explicit", "environment", "policy-preferred-root", "repo-default"]
+        },
+        "source": {
+          "type": "string"
+        },
+        "baseRoot": {
+          "type": "string"
+        },
+        "relativeRoot": {
+          "type": ["string", "null"]
+        },
+        "usesExternalRoot": {
+          "type": "boolean"
+        }
+      }
     },
     "requestedArtifacts": {
       "type": "array",

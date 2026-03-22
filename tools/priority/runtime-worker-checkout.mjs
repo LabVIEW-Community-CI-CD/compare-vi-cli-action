@@ -12,6 +12,7 @@ import {
   loadDeliveryAgentPolicy,
   selectWorkerProviderAssignment
 } from './delivery-agent.mjs';
+import { resolveStorageBaseRoot } from './lib/storage-root-policy.mjs';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_WORKER_REF = 'upstream/develop';
@@ -561,13 +562,69 @@ export function resolveCompareviWorkerCheckoutRoot({ repoRoot, repository }) {
   return path.join(repoRoot, '.runtime-worktrees', repoKey);
 }
 
-export function resolveCompareviWorkerCheckoutPath({ repoRoot, repository, laneId, slotId }) {
-  const checkoutRoot = resolveCompareviWorkerCheckoutRoot({ repoRoot, repository });
+function buildCheckoutRootPolicy({ repoRoot, repoKey, selectedRoot = null }) {
+  if (selectedRoot) {
+    return {
+      ...selectedRoot,
+      relativeRoot: repoKey
+    };
+  }
+  return {
+    strategy: 'repo-default',
+    source: 'repo-default-runtime-worktree-root',
+    baseRoot: path.join(repoRoot, '.runtime-worktrees'),
+    relativeRoot: repoKey,
+    usesExternalRoot: false
+  };
+}
+
+export function resolveCompareviWorkerCheckoutLocation({
+  repoRoot,
+  repository,
+  laneId,
+  slotId,
+  storageRootsPolicy,
+  env = process.env
+}) {
+  const rawRepoKey = normalizeText(repository)?.replace(/\//g, '--') || path.basename(repoRoot);
+  const repoKey = sanitizeSegment(rawRepoKey);
   const checkoutSegment = sanitizeSegment(slotId || laneId);
+  const selectedRoot = resolveStorageBaseRoot({
+    repoRoot,
+    kind: 'worktrees',
+    policy: storageRootsPolicy,
+    env
+  });
+  const checkoutRootPolicy = buildCheckoutRootPolicy({
+    repoRoot,
+    repoKey,
+    selectedRoot
+  });
+  const checkoutRoot = path.join(checkoutRootPolicy.baseRoot, repoKey);
   return {
     checkoutRoot,
-    checkoutPath: path.join(checkoutRoot, checkoutSegment)
+    checkoutPath: path.join(checkoutRoot, checkoutSegment),
+    checkoutRootPolicy
   };
+}
+
+export function resolveCompareviWorkerCheckoutPath({
+  repoRoot,
+  repository,
+  laneId,
+  slotId,
+  storageRootsPolicy,
+  env = process.env
+}) {
+  const { checkoutRoot, checkoutPath } = resolveCompareviWorkerCheckoutLocation({
+    repoRoot,
+    repository,
+    laneId,
+    slotId,
+    storageRootsPolicy,
+    env
+  });
+  return { checkoutRoot, checkoutPath };
 }
 
 function resolveRuntimeDir({ repoRoot, options = {} }) {
@@ -649,16 +706,20 @@ export async function prepareCompareviWorkerCheckout({
     laneId: activeLane.laneId,
     selectedProviderId: providerSelection.selectedProviderId
   });
-  const { checkoutRoot, checkoutPath } = resolveCompareviWorkerCheckoutPath({
+  const { checkoutRoot, checkoutPath, checkoutRootPolicy } = resolveCompareviWorkerCheckoutLocation({
     repoRoot,
     repository,
     laneId: activeLane.laneId,
-    slotId
+    slotId,
+    storageRootsPolicy: deliveryPolicy?.storageRoots,
+    env: deps.env ?? process.env
   });
-  const legacyCheckout = resolveCompareviWorkerCheckoutPath({
+  const legacyCheckout = resolveCompareviWorkerCheckoutLocation({
     repoRoot,
     repository,
-    laneId: activeLane.laneId
+    laneId: activeLane.laneId,
+    storageRootsPolicy: deliveryPolicy?.storageRoots,
+    env: deps.env ?? process.env
   });
   const useLegacyCheckout = !(await pathExists(checkoutPath)) && slotId !== activeLane.laneId && (await pathExists(legacyCheckout.checkoutPath));
   const resolvedCheckoutPath = useLegacyCheckout ? legacyCheckout.checkoutPath : checkoutPath;
@@ -720,6 +781,7 @@ export async function prepareCompareviWorkerCheckout({
           assignmentMode: providerSelection.selectedAssignmentMode,
           checkoutRoot,
           checkoutPath: resolvedCheckoutPath,
+          checkoutRootPolicy,
           status: 'reused',
           ref: resolvedRef,
           requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
@@ -739,6 +801,7 @@ export async function prepareCompareviWorkerCheckout({
         assignmentMode: providerSelection.selectedAssignmentMode,
         checkoutRoot,
         checkoutPath: resolvedCheckoutPath,
+        checkoutRootPolicy,
         status: 'blocked',
         ref: DEFAULT_WORKER_REF,
         requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
@@ -756,6 +819,7 @@ export async function prepareCompareviWorkerCheckout({
       slotId,
       checkoutRoot,
       checkoutPath: resolvedCheckoutPath,
+      checkoutRootPolicy,
       status: 'blocked',
       ref: DEFAULT_WORKER_REF,
       requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
@@ -786,6 +850,7 @@ export async function prepareCompareviWorkerCheckout({
     assignmentMode: providerSelection.selectedAssignmentMode,
     checkoutRoot,
     checkoutPath: resolvedCheckoutPath,
+    checkoutRootPolicy,
     status: 'created',
     ref: DEFAULT_WORKER_REF,
     requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,

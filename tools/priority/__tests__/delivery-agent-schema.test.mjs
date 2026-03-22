@@ -70,6 +70,16 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
       }
     ]
   });
+  assert.deepEqual(data.storageRoots, {
+    worktrees: {
+      envVar: 'COMPAREVI_BURST_WORKTREE_ROOT',
+      preferredRoots: ['E:\\comparevi-lanes']
+    },
+    artifacts: {
+      envVar: 'COMPAREVI_BURST_ARTIFACT_ROOT',
+      preferredRoots: ['E:\\comparevi-artifacts']
+    }
+  });
   assert.deepEqual(data.workerPool, {
     targetSlotCount: 20,
     prewarmSlotCount: 1,
@@ -477,7 +487,15 @@ test('runtime delivery task packet schema validates canonical delivery packets',
       lane: {
         workerSlotId: 'worker-slot-2',
         workerProviderId: 'local-codex',
-        workerCheckoutPath: '.runtime-worktrees/LabVIEW-Community-CI-CD--compare-vi-cli-action/worker-slot-2'
+        workerCheckoutRoot: 'E:\\comparevi-lanes\\LabVIEW-Community-CI-CD--compare-vi-cli-action',
+        workerCheckoutRootPolicy: {
+          strategy: 'policy-preferred-root',
+          source: 'delivery-agent.policy.json#storageRoots.worktrees.preferredRoots[0]',
+          baseRoot: 'E:\\comparevi-lanes',
+          relativeRoot: 'LabVIEW-Community-CI-CD--compare-vi-cli-action',
+          usesExternalRoot: true
+        },
+        workerCheckoutPath: 'E:\\comparevi-lanes\\LabVIEW-Community-CI-CD--compare-vi-cli-action\\worker-slot-2'
       },
       delivery: {
         executionMode: 'canonical-delivery',
@@ -721,6 +739,14 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
         lane: {
           workerSlotId: 'worker-slot-2',
           workerProviderId: 'hosted-github-workflow',
+          workerCheckoutRoot: path.join(repoRoot, '.runtime-worktrees', 'LabVIEW-Community-CI-CD--compare-vi-cli-action'),
+          workerCheckoutRootPolicy: {
+            strategy: 'repo-default',
+            source: 'repo-default-runtime-worktree-root',
+            baseRoot: path.join(repoRoot, '.runtime-worktrees'),
+            relativeRoot: 'LabVIEW-Community-CI-CD--compare-vi-cli-action',
+            usesExternalRoot: false
+          },
           workerCheckoutPath: '.runtime-worktrees/LabVIEW-Community-CI-CD--compare-vi-cli-action/worker-slot-2'
         },
         delivery: {

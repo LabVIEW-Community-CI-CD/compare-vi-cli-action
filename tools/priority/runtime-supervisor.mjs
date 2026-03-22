@@ -42,6 +42,7 @@ import {
   activateCompareviWorkerLane,
   prepareCompareviWorkerCheckout,
   repairRegisteredWorktreeGitPointers,
+  resolveCompareviWorkerCheckoutLocation,
   resolveCompareviWorkerCheckoutPath
 } from './runtime-worker-checkout.mjs';
 import {
@@ -796,6 +797,16 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
           normalizeText(preparedWorker?.providerId) ||
           workerProviderSelection.selectedProviderId ||
           null,
+        workerCheckoutRoot:
+          normalizeText(workerBranch?.checkoutRoot) ||
+          normalizeText(workerReady?.checkoutRoot) ||
+          normalizeText(preparedWorker?.checkoutRoot) ||
+          null,
+        workerCheckoutRootPolicy:
+          workerBranch?.checkoutRootPolicy ??
+          workerReady?.checkoutRootPolicy ??
+          preparedWorker?.checkoutRootPolicy ??
+          null,
         workerCheckoutPath:
           normalizeText(workerBranch?.checkoutPath) ||
           normalizeText(workerReady?.checkoutPath) ||
@@ -1328,6 +1339,7 @@ export const compareviRuntimeTest = {
   prepareCompareviWorkerCheckout,
   repairRegisteredWorktreeGitPointers,
   resolveCompareviIssueBranchName,
+  resolveCompareviWorkerCheckoutLocation,
   resolveCompareviWorkerCheckoutPath,
   resolveForkRemoteForRepository
 };

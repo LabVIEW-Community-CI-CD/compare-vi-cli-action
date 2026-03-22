@@ -591,6 +591,14 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
       }
     },
     preparedWorker: {
+      checkoutRoot: path.join('E:', 'comparevi-lanes', 'LabVIEW-Community-CI-CD--compare-vi-cli-action'),
+      checkoutRootPolicy: {
+        strategy: 'policy-preferred-root',
+        source: 'delivery-agent.policy.json#storageRoots.worktrees.preferredRoots[0]',
+        baseRoot: path.join('E:', 'comparevi-lanes'),
+        relativeRoot: 'LabVIEW-Community-CI-CD--compare-vi-cli-action',
+        usesExternalRoot: true
+      },
       checkoutPath,
       slotId: 'worker-slot-2'
     },
@@ -717,6 +725,17 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
   assert.equal(packet.evidence.delivery.concurrentLaneStatus.summary.orchestratorDisposition, 'wait-hosted-run');
   assert.equal(packet.evidence.delivery.concurrentLaneStatus.summary.deferredLaneCount, 1);
   assert.equal(packet.evidence.delivery.workerProviderSelection.selectedAssignmentMode, 'async-validation');
+  assert.equal(
+    packet.evidence.lane.workerCheckoutRoot,
+    path.join('E:', 'comparevi-lanes', 'LabVIEW-Community-CI-CD--compare-vi-cli-action')
+  );
+  assert.deepEqual(packet.evidence.lane.workerCheckoutRootPolicy, {
+    strategy: 'policy-preferred-root',
+    source: 'delivery-agent.policy.json#storageRoots.worktrees.preferredRoots[0]',
+    baseRoot: path.join('E:', 'comparevi-lanes'),
+    relativeRoot: 'LabVIEW-Community-CI-CD--compare-vi-cli-action',
+    usesExternalRoot: true
+  });
 });
 
 test('buildCompareviTaskPacket fails closed when the branch class contract has no matching plane transition', async () => {

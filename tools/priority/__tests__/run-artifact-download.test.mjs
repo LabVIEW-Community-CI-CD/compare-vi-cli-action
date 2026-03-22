@@ -62,11 +62,79 @@ test('downloadNamedArtifacts downloads requested artifacts and records relative 
   });
 
   assert.equal(result.report.status, 'pass');
+  assert.equal(result.report.destinationRoot, path.join(tmpDir, 'artifacts'));
+  assert.deepEqual(result.report.destinationRootPolicy, {
+    strategy: 'explicit',
+    source: 'explicit-destination-root',
+    baseRoot: path.join(tmpDir, 'artifacts'),
+    relativeRoot: null,
+    usesExternalRoot: true,
+  });
   assert.equal(result.report.summary.downloadedCount, 1);
   assert.equal(result.report.summary.failedCount, 0);
   assert.equal(result.report.downloads[0].status, 'downloaded');
   assert.deepEqual(result.report.downloads[0].files, ['copilot-review-signal.json']);
   assert.ok(fs.existsSync(reportPath));
+});
+
+test('downloadNamedArtifacts resolves relative artifact roots through the deterministic external artifact root policy', async (t) => {
+  const { downloadNamedArtifacts } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-external-root-'));
+  const externalRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'comparevi-external-artifacts-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(externalRoot, { recursive: true, force: true }));
+  const result = downloadNamedArtifacts({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runId: '22872590273',
+    artifactNames: ['copilot-review-signal-965'],
+    repoRoot: tmpDir,
+    destinationRoot: path.join('tests', 'results', '_agent', 'reviews', 'run-artifacts'),
+    reportPath: path.join(tmpDir, 'report.json'),
+    storageRootsPolicy: {
+      artifacts: {
+        envVar: 'COMPAREVI_BURST_ARTIFACT_ROOT',
+        preferredRoots: ['E:\\comparevi-artifacts'],
+      },
+    },
+    env: {
+      COMPAREVI_BURST_ARTIFACT_ROOT: externalRoot,
+    },
+    runGhJsonFn() {
+      return {
+        artifacts: [
+          {
+            id: 5837347732,
+            name: 'copilot-review-signal-965',
+            size_in_bytes: 735,
+            expired: false,
+          },
+        ],
+      };
+    },
+    runProcessFn(_command, args) {
+      const destinationIndex = args.indexOf('-D');
+      const destination = args[destinationIndex + 1];
+      writeFile(path.join(destination, 'copilot-review-signal.json'), '{}\n');
+      return { status: 0, stdout: '', stderr: '', error: null };
+    },
+  });
+
+  assert.equal(result.report.status, 'pass');
+  assert.equal(
+    result.report.destinationRoot,
+    path.join(externalRoot, 'tests', 'results', '_agent', 'reviews', 'run-artifacts'),
+  );
+  assert.deepEqual(result.report.destinationRootPolicy, {
+    strategy: 'environment',
+    source: 'COMPAREVI_BURST_ARTIFACT_ROOT',
+    baseRoot: externalRoot,
+    relativeRoot: path.join('tests', 'results', '_agent', 'reviews', 'run-artifacts'),
+    usesExternalRoot: true,
+  });
+  assert.equal(
+    result.report.downloads[0].destination,
+    path.join(externalRoot, 'tests', 'results', '_agent', 'reviews', 'run-artifacts', 'copilot-review-signal-965'),
+  );
 });
 
 test('downloadNamedArtifacts classifies policy wrapper rejections explicitly', async (t) => {
