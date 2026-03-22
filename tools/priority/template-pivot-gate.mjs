@@ -144,6 +144,19 @@ function createBlocker(code, message) {
   return { code, message };
 }
 
+function normalizeTemplateDependency(value) {
+  return {
+    repository: asOptional(value?.repository),
+    version: asOptional(value?.version),
+    ref: asOptional(value?.ref),
+    cookiecutterVersion: asOptional(value?.cookiecutterVersion)
+  };
+}
+
+function allFieldsPresent(object, fields) {
+  return fields.every((field) => asOptional(object?.[field]) != null);
+}
+
 export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
@@ -237,6 +250,35 @@ export async function runTemplatePivotGate(
 
   const blockers = [];
   const releaseCandidateRegex = new RegExp(policy.releaseCandidate.versionPattern);
+  const policyTemplateDependency = normalizeTemplateDependency(policy.templateDependency);
+  const templateDependencyFields = ['repository', 'version', 'ref', 'cookiecutterVersion'];
+  const templateDependencyPolicyReady = allFieldsPresent(policyTemplateDependency, templateDependencyFields);
+  const templateAgentVerificationTemplateDependency = normalizeTemplateDependency(
+    templateAgentVerification?.provenance?.templateDependency
+  );
+  const templateAgentVerificationExecution = {
+    executionPlane: asOptional(templateAgentVerification?.provenance?.execution?.executionPlane),
+    containerImage: asOptional(templateAgentVerification?.provenance?.execution?.containerImage),
+    generatedConsumerWorkspaceRoot: asOptional(
+      templateAgentVerification?.provenance?.execution?.generatedConsumerWorkspaceRoot
+    ),
+    laneId: asOptional(templateAgentVerification?.provenance?.execution?.laneId),
+    agentId: asOptional(templateAgentVerification?.provenance?.execution?.agentId),
+    fundingWindowId: asOptional(templateAgentVerification?.provenance?.execution?.fundingWindowId)
+  };
+  const templateAgentVerificationExecutionReady = allFieldsPresent(templateAgentVerificationExecution, [
+    'executionPlane',
+    'containerImage',
+    'generatedConsumerWorkspaceRoot',
+    'laneId',
+    'agentId',
+    'fundingWindowId'
+  ]);
+  const templateAgentVerificationTemplateDependencyReady =
+    templateDependencyPolicyReady &&
+    templateDependencyFields.every(
+      (field) => templateAgentVerificationTemplateDependency[field] === policyTemplateDependency[field]
+    );
 
   const queueEmptyReady =
     queueEmpty?.schema === policy.queueEmpty.requiredSchema &&
@@ -337,7 +379,9 @@ export async function runTemplatePivotGate(
     templateAgentVerification?.schema === 'priority/template-agent-verification-report@v1' &&
     templateAgentVerification?.summary?.status === 'pass' &&
     templateAgentVerification?.verification?.status === 'pass' &&
-    asOptional(templateAgentVerification?.lane?.targetRepository) === targetRepository;
+    asOptional(templateAgentVerification?.lane?.targetRepository) === targetRepository &&
+    templateAgentVerificationTemplateDependencyReady &&
+    templateAgentVerificationExecutionReady;
   if (!templateAgentVerification) {
     blockers.push(
       createBlocker(
@@ -375,6 +419,58 @@ export async function runTemplatePivotGate(
         }.`
       )
     );
+  } else if (!templateDependencyPolicyReady) {
+    blockers.push(
+      createBlocker(
+        'template-dependency-policy-missing',
+        'Template pivot gate policy must pin the template dependency repository, version, ref, and cookiecutter version.'
+      )
+    );
+  } else if (templateAgentVerificationTemplateDependency.repository !== policyTemplateDependency.repository) {
+    blockers.push(
+      createBlocker(
+        'template-dependency-repository-mismatch',
+        `Template dependency repository must be ${policyTemplateDependency.repository}; received ${
+          templateAgentVerificationTemplateDependency.repository ?? 'null'
+        }.`
+      )
+    );
+  } else if (templateAgentVerificationTemplateDependency.version !== policyTemplateDependency.version) {
+    blockers.push(
+      createBlocker(
+        'template-dependency-version-mismatch',
+        `Template dependency version must be ${policyTemplateDependency.version}; received ${
+          templateAgentVerificationTemplateDependency.version ?? 'null'
+        }.`
+      )
+    );
+  } else if (templateAgentVerificationTemplateDependency.ref !== policyTemplateDependency.ref) {
+    blockers.push(
+      createBlocker(
+        'template-dependency-ref-mismatch',
+        `Template dependency ref must be ${policyTemplateDependency.ref}; received ${
+          templateAgentVerificationTemplateDependency.ref ?? 'null'
+        }.`
+      )
+    );
+  } else if (
+    templateAgentVerificationTemplateDependency.cookiecutterVersion !== policyTemplateDependency.cookiecutterVersion
+  ) {
+    blockers.push(
+      createBlocker(
+        'template-dependency-cookiecutter-version-mismatch',
+        `Template dependency cookiecutter version must be ${policyTemplateDependency.cookiecutterVersion}; received ${
+          templateAgentVerificationTemplateDependency.cookiecutterVersion ?? 'null'
+        }.`
+      )
+    );
+  } else if (!templateAgentVerificationExecutionReady) {
+    blockers.push(
+      createBlocker(
+        'template-agent-execution-provenance-incomplete',
+        'Template-agent verification report must include execution-plane, container-image, consumer-workspace-root, lane-id, agent-id, and funding-window provenance.'
+      )
+    );
   }
 
   const ready = queueEmptyReady && releaseCandidateReady && handoffReady && templateAgentVerificationReady;
@@ -389,6 +485,12 @@ export async function runTemplatePivotGate(
       futureAgentOnly: policy.decision.futureAgentOnly,
       operatorSteeringAllowed: policy.decision.operatorSteeringAllowed,
       requirePreciseSessionFeedback: policy.decision.requirePreciseSessionFeedback,
+      templateDependency: {
+        repository: policyTemplateDependency.repository,
+        version: policyTemplateDependency.version,
+        ref: policyTemplateDependency.ref,
+        cookiecutterVersion: policyTemplateDependency.cookiecutterVersion
+      },
       releaseCandidateVersionPattern: policy.releaseCandidate.versionPattern,
       releaseCandidateVersionPatternDescription: policy.releaseCandidate.versionPatternDescription
     },
@@ -431,6 +533,22 @@ export async function runTemplatePivotGate(
         verificationStatus: templateAgentVerification?.verification?.status ?? null,
         targetRepository: asOptional(templateAgentVerification?.lane?.targetRepository),
         consumerRailBranch: asOptional(templateAgentVerification?.lane?.consumerRailBranch),
+        templateDependency: {
+          repository: templateAgentVerificationTemplateDependency.repository,
+          version: templateAgentVerificationTemplateDependency.version,
+          ref: templateAgentVerificationTemplateDependency.ref,
+          cookiecutterVersion: templateAgentVerificationTemplateDependency.cookiecutterVersion,
+          matchesPolicy: templateAgentVerificationTemplateDependencyReady
+        },
+        execution: {
+          executionPlane: templateAgentVerificationExecution.executionPlane,
+          containerImage: templateAgentVerificationExecution.containerImage,
+          generatedConsumerWorkspaceRoot: templateAgentVerificationExecution.generatedConsumerWorkspaceRoot,
+          laneId: templateAgentVerificationExecution.laneId,
+          agentId: templateAgentVerificationExecution.agentId,
+          fundingWindowId: templateAgentVerificationExecution.fundingWindowId,
+          complete: templateAgentVerificationExecutionReady
+        },
         ready: templateAgentVerificationReady
       }
     },

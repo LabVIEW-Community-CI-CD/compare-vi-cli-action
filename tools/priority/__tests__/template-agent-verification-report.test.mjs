@@ -27,7 +27,27 @@ test('parseArgs captures template-agent verification report inputs', () => {
     '--duration-seconds',
     '240',
     '--run-url',
-    'https://github.com/example/run/1'
+    'https://github.com/example/run/1',
+    '--template-repo',
+    'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+    '--template-version',
+    'v0.1.0',
+    '--template-ref',
+    'v0.1.0',
+    '--cookiecutter-version',
+    '2.7.1',
+    '--execution-plane',
+    'linux-tools-image',
+    '--container-image',
+    'ghcr.io/labview-community-ci-cd/comparevi-tools:v0.1.0',
+    '--generated-consumer-workspace-root',
+    'E:\\comparevi-template-consumers\\run-1',
+    '--lane-id',
+    'lane-template-verify',
+    '--agent-id',
+    'darwin',
+    '--funding-window-id',
+    'HQ1VJLMV-0027'
   ]);
 
   assert.equal(options.iterationLabel, 'post-merge #1635');
@@ -35,6 +55,10 @@ test('parseArgs captures template-agent verification report inputs', () => {
   assert.equal(options.verificationStatus, 'pass');
   assert.equal(options.durationSeconds, 240);
   assert.equal(options.runUrl, 'https://github.com/example/run/1');
+  assert.match(options.templatePolicyPath, /tools[\\/]policy[\\/]template-dependency\.json$/);
+  assert.equal(options.templateVersion, 'v0.1.0');
+  assert.equal(options.cookiecutterVersion, '2.7.1');
+  assert.equal(options.executionPlane, 'linux-tools-image');
   assert.equal(options.outputPath, DEFAULT_OUTPUT_PATH);
 });
 
@@ -82,7 +106,16 @@ test('evaluateTemplateAgentVerificationReport passes when the reserved hosted la
     durationSeconds: 240,
     provider: 'hosted-github-workflow',
     runUrl: 'https://github.com/example/run/1',
-    templateRepo: null
+    templateRepo: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+    templateVersion: 'v0.1.0',
+    templateRef: 'v0.1.0',
+    cookiecutterVersion: '2.7.1',
+    executionPlane: 'linux-tools-image',
+    containerImage: 'ghcr.io/labview-community-ci-cd/comparevi-tools:v0.1.0',
+    generatedConsumerWorkspaceRoot: 'E:\\comparevi-template-consumers\\run-1',
+    laneId: 'lane-template-verify',
+    agentId: 'darwin',
+    fundingWindowId: 'HQ1VJLMV-0027'
   });
 
   assert.equal(report.summary.status, 'pass');
@@ -91,6 +124,10 @@ test('evaluateTemplateAgentVerificationReport passes when the reserved hosted la
   assert.equal(report.lane.implementationSlotsRemaining, 3);
   assert.equal(report.metrics.durationWithinGoal, true);
   assert.equal(report.blockers.length, 0);
+  assert.equal(report.provenance.templateDependency.repository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(report.provenance.templateDependency.version, 'v0.1.0');
+  assert.equal(report.provenance.templateDependency.cookiecutterVersion, '2.7.1');
+  assert.equal(report.provenance.execution.agentId, 'darwin');
 });
 
 test('evaluateTemplateAgentVerificationReport blocks when the landed iteration head SHA is missing', () => {
@@ -122,7 +159,7 @@ test('evaluateTemplateAgentVerificationReport blocks when the landed iteration h
     durationSeconds: 240,
     provider: 'hosted-github-workflow',
     runUrl: 'https://github.com/example/run/1',
-    templateRepo: null
+    templateRepo: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
   });
 
   assert.equal(report.summary.status, 'blocked');
@@ -180,6 +217,63 @@ test('runTemplateAgentVerificationReport blocks when reserved capacity is missin
   assert.equal(report.summary.status, 'blocked');
   assert.match(report.blockers[0].code, /lane-not-reserved|implementation-capacity-too-low/);
   assert.equal(fs.existsSync(outputPath), true);
+});
+
+test('runTemplateAgentVerificationReport defaults pinned template provenance from the checked-in policy', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'template-agent-verification-provenance-'));
+  const policyPath = path.join(tempDir, 'delivery-agent.policy.json');
+  const outputPath = path.join(tempDir, 'template-agent-verification-report.json');
+  fs.writeFileSync(
+    policyPath,
+    JSON.stringify({
+      schema: 'priority/delivery-agent-policy@v1',
+      workerPool: {
+        targetSlotCount: 8
+      },
+      templateAgentVerificationLane: {
+        enabled: true,
+        reservedSlotCount: 1,
+        minimumImplementationSlots: 3,
+        executionMode: 'hosted-first',
+        targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        consumerRailBranch: 'downstream/develop',
+        metrics: {
+          maxVerificationLagIterations: 1,
+          maxHostedDurationMinutes: 30,
+          requireMachineReadableRecommendation: true
+        }
+      }
+    }),
+    'utf8'
+  );
+
+  const { report } = runTemplateAgentVerificationReport(
+    {
+      policyPath,
+      outputPath,
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      iterationLabel: 'post-merge #1635',
+      iterationRef: 'issue/origin-1632-template-agent-verification-lane',
+      iterationHeadSha: 'abc123',
+      verificationStatus: 'pending',
+      durationSeconds: null,
+      provider: 'hosted-github-workflow',
+      runUrl: null,
+      templateRepo: null,
+      failOnBlockers: false
+    },
+    {
+      resolveRepoSlugFn: (explicitRepo) => explicitRepo
+    }
+  );
+
+  assert.equal(report.provenance.templateDependency.repository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(report.provenance.templateDependency.version, 'v0.1.0');
+  assert.equal(report.provenance.templateDependency.ref, 'v0.1.0');
+  assert.equal(report.provenance.templateDependency.cookiecutterVersion, '2.7.1');
+  assert.equal(report.provenance.execution.executionPlane, 'linux-tools-image');
+  assert.equal(report.provenance.execution.containerImage, 'ghcr.io/labview-community-ci-cd/comparevi-tools:latest');
+  assert.equal(report.provenance.execution.generatedConsumerWorkspaceRoot, null);
 });
 
 test('CLI entrypoint writes the template-agent verification report on Windows path resolution', () => {

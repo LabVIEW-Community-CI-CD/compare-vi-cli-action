@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 export const REPORT_SCHEMA = 'priority/template-agent-verification-report@v1';
 export const DEFAULT_POLICY_PATH = path.join('tools', 'priority', 'delivery-agent.policy.json');
+export const DEFAULT_TEMPLATE_POLICY_PATH = path.join('tools', 'policy', 'template-dependency.json');
 export const DEFAULT_OUTPUT_PATH = path.join(
   'tests',
   'results',
@@ -20,6 +21,7 @@ function printUsage() {
   console.log('');
   console.log('Options:');
   console.log(`  --policy <path>                 Policy path (default: ${DEFAULT_POLICY_PATH}).`);
+  console.log(`  --template-policy <path>        Template dependency policy path (default: ${DEFAULT_TEMPLATE_POLICY_PATH}).`);
   console.log(`  --output <path>                 Output path (default: ${DEFAULT_OUTPUT_PATH}).`);
   console.log('  --repo <owner/repo>             Repository slug override.');
   console.log('  --iteration-label <value>       Human-readable iteration label (required).');
@@ -30,6 +32,16 @@ function printUsage() {
   console.log('  --provider <id>                 Verification provider id (default: hosted-github-workflow).');
   console.log('  --run-url <url>                 Hosted workflow or run URL.');
   console.log('  --template-repo <owner/repo>    Override target template repository.');
+  console.log('  --template-version <value>      Template release/version provenance.');
+  console.log('  --template-ref <value>          Template release/tag/ref provenance.');
+  console.log('  --cookiecutter-version <value>  Cookiecutter runtime provenance.');
+  console.log('  --execution-plane <value>       Execution plane provenance.');
+  console.log('  --container-image <value>       Container image provenance.');
+  console.log('  --generated-consumer-workspace-root <path>');
+  console.log('                                  Generated consumer workspace root provenance.');
+  console.log('  --lane-id <value>               Logical lane id provenance.');
+  console.log('  --agent-id <value>              Agent id provenance.');
+  console.log('  --funding-window-id <value>     Funding window provenance.');
   console.log('  --fail-on-blockers              Exit non-zero when blockers exist (default true).');
   console.log('  --no-fail-on-blockers           Emit report without failing process exit.');
   console.log('  -h, --help                      Show this message and exit.');
@@ -100,6 +112,7 @@ export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
     policyPath: DEFAULT_POLICY_PATH,
+    templatePolicyPath: DEFAULT_TEMPLATE_POLICY_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
     repo: null,
     iterationLabel: null,
@@ -110,6 +123,15 @@ export function parseArgs(argv = process.argv) {
     provider: 'hosted-github-workflow',
     runUrl: null,
     templateRepo: null,
+    templateVersion: null,
+    templateRef: null,
+    cookiecutterVersion: null,
+    executionPlane: null,
+    containerImage: null,
+    generatedConsumerWorkspaceRoot: null,
+    laneId: null,
+    agentId: null,
+    fundingWindowId: null,
     failOnBlockers: true,
     help: false
   };
@@ -133,6 +155,7 @@ export function parseArgs(argv = process.argv) {
     if (
       [
         '--policy',
+        '--template-policy',
         '--output',
         '--repo',
         '--iteration-label',
@@ -142,7 +165,16 @@ export function parseArgs(argv = process.argv) {
         '--duration-seconds',
         '--provider',
         '--run-url',
-        '--template-repo'
+        '--template-repo',
+        '--template-version',
+        '--template-ref',
+        '--cookiecutter-version',
+        '--execution-plane',
+        '--container-image',
+        '--generated-consumer-workspace-root',
+        '--lane-id',
+        '--agent-id',
+        '--funding-window-id'
       ].includes(token)
     ) {
       if (!next || next.startsWith('-')) {
@@ -150,6 +182,7 @@ export function parseArgs(argv = process.argv) {
       }
       index += 1;
       if (token === '--policy') options.policyPath = next;
+      if (token === '--template-policy') options.templatePolicyPath = next;
       if (token === '--output') options.outputPath = next;
       if (token === '--repo') options.repo = next;
       if (token === '--iteration-label') options.iterationLabel = next;
@@ -160,6 +193,15 @@ export function parseArgs(argv = process.argv) {
       if (token === '--provider') options.provider = next;
       if (token === '--run-url') options.runUrl = next;
       if (token === '--template-repo') options.templateRepo = next;
+      if (token === '--template-version') options.templateVersion = next;
+      if (token === '--template-ref') options.templateRef = next;
+      if (token === '--cookiecutter-version') options.cookiecutterVersion = next;
+      if (token === '--execution-plane') options.executionPlane = next;
+      if (token === '--container-image') options.containerImage = next;
+      if (token === '--generated-consumer-workspace-root') options.generatedConsumerWorkspaceRoot = next;
+      if (token === '--lane-id') options.laneId = next;
+      if (token === '--agent-id') options.agentId = next;
+      if (token === '--funding-window-id') options.fundingWindowId = next;
       continue;
     }
 
@@ -194,7 +236,16 @@ export function evaluateTemplateAgentVerificationReport({
   durationSeconds,
   provider,
   runUrl,
-  templateRepo
+  templateRepo,
+  templateVersion,
+  templateRef,
+  cookiecutterVersion,
+  executionPlane,
+  containerImage,
+  generatedConsumerWorkspaceRoot,
+  laneId,
+  agentId,
+  fundingWindowId
 }) {
   const blockers = [];
   if (policy?.schema !== 'priority/delivery-agent-policy@v1') {
@@ -285,6 +336,22 @@ export function evaluateTemplateAgentVerificationReport({
       durationSeconds,
       runUrl: asOptional(runUrl)
     },
+    provenance: {
+      templateDependency: {
+        repository: asOptional(templateRepo) ?? asOptional(lane.targetRepository),
+        version: asOptional(templateVersion),
+        ref: asOptional(templateRef),
+        cookiecutterVersion: asOptional(cookiecutterVersion)
+      },
+      execution: {
+        executionPlane: asOptional(executionPlane),
+        containerImage: asOptional(containerImage),
+        generatedConsumerWorkspaceRoot: asOptional(generatedConsumerWorkspaceRoot),
+        laneId: asOptional(laneId),
+        agentId: asOptional(agentId),
+        fundingWindowId: asOptional(fundingWindowId)
+      }
+    },
     goals: {
       maxVerificationLagIterations: toNonNegativeInteger(lane?.metrics?.maxVerificationLagIterations),
       maxHostedDurationMinutes: durationGoalMinutes,
@@ -310,6 +377,14 @@ export function runTemplateAgentVerificationReport(
     throw new Error('Unable to determine repository slug.');
   }
 
+  const templatePolicy = readJsonFn(options.templatePolicyPath || DEFAULT_TEMPLATE_POLICY_PATH);
+  const templateRepository = asOptional(options.templateRepo) ?? asOptional(templatePolicy?.templateRepositorySlug);
+  const templateVersion = asOptional(options.templateVersion) ?? asOptional(templatePolicy?.templateReleaseRef);
+  const templateRef = asOptional(options.templateRef) ?? asOptional(templatePolicy?.rendering?.checkout);
+  const cookiecutterVersion = asOptional(options.cookiecutterVersion) ?? asOptional(templatePolicy?.cookiecutterVersion);
+  const executionPlane = asOptional(options.executionPlane) ?? asOptional(templatePolicy?.container?.executionPlane);
+  const containerImage = asOptional(options.containerImage) ?? asOptional(templatePolicy?.container?.image);
+
   const report = evaluateTemplateAgentVerificationReport({
     policy: readJsonFn(options.policyPath || DEFAULT_POLICY_PATH),
     repo,
@@ -320,7 +395,16 @@ export function runTemplateAgentVerificationReport(
     durationSeconds: options.durationSeconds,
     provider: options.provider,
     runUrl: options.runUrl,
-    templateRepo: options.templateRepo
+    templateRepo: templateRepository,
+    templateVersion,
+    templateRef,
+    cookiecutterVersion,
+    executionPlane,
+    containerImage,
+    generatedConsumerWorkspaceRoot: options.generatedConsumerWorkspaceRoot,
+    laneId: options.laneId,
+    agentId: options.agentId,
+    fundingWindowId: options.fundingWindowId
   });
 
   const outputPath = writeJsonFn(options.outputPath || DEFAULT_OUTPUT_PATH, report);

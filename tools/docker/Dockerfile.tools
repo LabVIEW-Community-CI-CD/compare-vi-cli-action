@@ -89,6 +89,9 @@ RUN npm install -g markdownlint-cli2@0.21.0 markdownlint-cli@0.31.1 \
  && ln -sf /usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-x64/bin/markdownlint-cli2 /usr/local/bin/markdownlint-cli2
 
 # Python retained for workflow-maintenance tooling and test surfaces
+RUN python3 -m pip install --disable-pip-version-check --no-cache-dir --break-system-packages cookiecutter==2.7.1 \
+ && cookiecutter --version
+
 COPY tools/workflows/requirements.txt /tmp/tools-workflows-requirements.txt
 RUN python3 -m venv "${COMPAREVI_WORKFLOW_ENCLAVE_HOME}" \
     && "${COMPAREVI_WORKFLOW_ENCLAVE_HOME}/bin/python" -m pip install --disable-pip-version-check --upgrade pip \

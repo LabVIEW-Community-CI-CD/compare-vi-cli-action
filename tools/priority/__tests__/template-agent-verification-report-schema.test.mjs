@@ -50,7 +50,16 @@ test('template-agent verification report matches the checked-in schema', () => {
       durationSeconds: 240,
       provider: 'hosted-github-workflow',
       runUrl: 'https://github.com/example/run/1',
-      templateRepo: null,
+      templateRepo: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      templateVersion: 'v0.1.0',
+      templateRef: 'v0.1.0',
+      cookiecutterVersion: '2.7.1',
+      executionPlane: 'linux-tools-image',
+      containerImage: 'ghcr.io/labview-community-ci-cd/comparevi-tools:v0.1.0',
+      generatedConsumerWorkspaceRoot: 'E:\\comparevi-template-consumers\\run-1',
+      laneId: 'lane-template-verify',
+      agentId: 'darwin',
+      fundingWindowId: 'HQ1VJLMV-0027',
       failOnBlockers: true
     },
     {
@@ -65,6 +74,8 @@ test('template-agent verification report matches the checked-in schema', () => {
   addFormats(ajv);
   const validate = ajv.compile(schema);
   assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(report.provenance.templateDependency.version, 'v0.1.0');
+  assert.equal(report.provenance.execution.executionPlane, 'linux-tools-image');
 });
 
 test('checked-in template-agent verification report stays as the machine-readable pending seed', () => {
@@ -84,4 +95,7 @@ test('checked-in template-agent verification report stays as the machine-readabl
   assert.equal(report.summary.status, 'pending');
   assert.equal(report.verification.status, 'pending');
   assert.equal(report.summary.recommendation, 'wait-for-template-verification');
+  assert.equal(report.provenance.templateDependency.repository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(report.provenance.templateDependency.version, null);
+  assert.equal(report.provenance.execution.agentId, null);
 });

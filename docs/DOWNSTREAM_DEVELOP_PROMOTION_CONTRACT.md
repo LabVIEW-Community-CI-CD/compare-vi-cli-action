@@ -35,6 +35,8 @@ At minimum that means:
 - `comparevi-history` release identity
 - scenario-pack or corpus identity
 - cookiecutter/template identity
+- pinned `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate@v0.1.0` release
+- pinned `cookiecutter==2.7.1` runtime for hosted conveyor proofs
 - proving scorecard reference
 - actor and timestamp
 
@@ -55,6 +57,20 @@ always-on count.
   - `capitalFabric.maxLogicalLaneCount = 8`
 - machine-readable report:
   - `tests/results/_agent/promotion/template-agent-verification-report.json`
+
+The reserved lane renders the pinned template dependency through the hosted
+tools-image container on Ubuntu, then verifies the same pinned release on
+Windows as the mirrored consumer-proof plane. The released template
+dependency is treated as a conveyor-belt input, not a floating branch:
+
+- template repository: `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`
+- template ref: `v0.1.0`
+- cookiecutter runtime: `2.7.1`
+- Ubuntu execution plane: `ghcr.io/labview-community-ci-cd/comparevi-tools:latest`
+- consumer render root:
+  - `tests/results/_agent/cookiecutter-bootstrap/<platform>/pinned-template-render`
+- dependency receipt:
+  - `tests/results/_agent/cookiecutter-bootstrap/<platform>/pinned-template-dependency.json`
 
 The goal is to keep a continuous template-consumer feedback loop alive without
 starving standing-priority implementation work. The reserved lane must emit
@@ -143,6 +159,7 @@ The workflow:
 
 - verifies that the requested `source_sha` still matches `upstream/develop`
 - runs downstream onboarding feedback against the requested consumer repository
+- records the pinned template dependency receipt for the conveyor belt
 - emits `downstream-develop-promotion-manifest.json`
 - emits `downstream-develop-promotion-scorecard.json`
 - advances `downstream/develop` only when the downstream promotion scorecard passes

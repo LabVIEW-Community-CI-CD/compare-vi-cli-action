@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/cookiecutter-bootstrap.yml'
       - 'docs/knowledgebase/Cookiecutter-Certification-Scaffolds.md'
+      - 'docs/documentation-manifest.json'
       - 'docs/schemas/comparevi-cookiecutter-*.json'
       - 'package.json'
       - 'tests/Test-CompareVICookiecutterBootstrap.Tests.ps1'
@@ -21,6 +22,7 @@ on:
     paths:
       - '.github/workflows/cookiecutter-bootstrap.yml'
       - 'docs/knowledgebase/Cookiecutter-Certification-Scaffolds.md'
+      - 'docs/documentation-manifest.json'
       - 'docs/schemas/comparevi-cookiecutter-*.json'
       - 'package.json'
       - 'tests/Test-CompareVICookiecutterBootstrap.Tests.ps1'
@@ -64,10 +66,123 @@ jobs:
         shell: bash
         run: npm ci
 
+      - name: Resolve pinned template dependency policy
+        id: template-policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('fs');
+          const policy = JSON.parse(fs.readFileSync('tools/policy/template-dependency.json', 'utf8'));
+          console.log(`repository=${policy.templateRepositorySlug}`);
+          console.log(`ref=${policy.templateReleaseRef}`);
+          console.log(`cookiecutter_version=${policy.cookiecutterVersion}`);
+          console.log(`container_image=${policy.container.image}`);
+          console.log(`execution_plane=${policy.container.executionPlane}`);
+          console.log(`default_context_path=${policy.rendering.defaultContextPath}`);
+          NODE
+
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+
+      - name: Build local tools image for cookiecutter conveyor
+        if: ${{ matrix.runner == 'ubuntu-latest' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build -f tools/docker/Dockerfile.tools -t comparevi-tools:cookiecutter .
+
+      - name: Render pinned template dependency in the tools container
+        if: ${{ matrix.runner == 'ubuntu-latest' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof_root="tests/results/_agent/cookiecutter-bootstrap/${{ matrix.proof_id }}"
+          mkdir -p "$proof_root"
+          node tools/npm/run-script.mjs priority:template:render:container -- \
+            --workspace-root "$GITHUB_WORKSPACE/$proof_root/container-workspaces" \
+            --lane-id "cookiecutter-bootstrap-${{ matrix.proof_id }}" \
+            --run-id "${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.proof_id }}" \
+            --container-image comparevi-tools:cookiecutter \
+            --output "$proof_root/template-cookiecutter-container.json"
+          generated_root="$(node -e "const fs=require('fs'); const receipt=JSON.parse(fs.readFileSync('$proof_root/template-cookiecutter-container.json','utf8')); if (!receipt.result.projectDir) { process.exit(1); } process.stdout.write(receipt.result.projectDir);")"
+          test -n "$generated_root"
+          test -f "$generated_root/README.md"
+          test -f "$generated_root/.github/workflows/validate.yml"
+          grep -q 'Hosted Linux consumer lane' "$generated_root/.github/workflows/validate.yml"
+          grep -q 'Hosted Windows consumer lane' "$generated_root/.github/workflows/validate.yml"
+          cat > "$proof_root/pinned-template-dependency.json" <<JSON
+          {
+            "schema": "priority/template-dependency@v1",
+            "repository": "${{ steps.template-policy.outputs.repository }}",
+            "ref": "${{ steps.template-policy.outputs.ref }}",
+            "cookiecutterVersion": "${{ steps.template-policy.outputs.cookiecutter_version }}",
+            "executionPlane": "hosted-ubuntu-container",
+            "containerImage": "comparevi-tools:cookiecutter",
+            "renderOutputRoot": "$generated_root"
+          }
+JSON
+
+      - name: Verify pinned template dependency on Windows
+        if: ${{ matrix.runner == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          $proofRoot = "tests/results/_agent/cookiecutter-bootstrap/${{ matrix.proof_id }}"
+          $renderRoot = Join-Path $proofRoot 'pinned-template-render'
+          New-Item -ItemType Directory -Force -Path $renderRoot | Out-Null
+          $context = Get-Content -LiteralPath '${{ steps.template-policy.outputs.default_context_path }}' -Raw | ConvertFrom-Json
+          python -m pip install --quiet "cookiecutter==${{ steps.template-policy.outputs.cookiecutter_version }}"
+          python -m cookiecutter "https://github.com/${{ steps.template-policy.outputs.repository }}.git" `
+            --checkout "${{ steps.template-policy.outputs.ref }}" `
+            --no-input `
+            --output-dir $renderRoot `
+            project_name="$($context.project_name)" `
+            repo_slug="$($context.repo_slug)" `
+            github_owner="$($context.github_owner)" `
+            default_branch="$($context.default_branch)" `
+            license_holder="$($context.license_holder)" `
+            copyright_year="$($context.copyright_year)"
+          $generatedRoot = Get-ChildItem -Directory $renderRoot | Select-Object -First 1
+          if (-not $generatedRoot) {
+            throw 'Cookiecutter did not generate an output directory.'
+          }
+          $required = @(
+            'AGENTS.md',
+            'README.md',
+            'LICENSE',
+            '.gitignore',
+            'docs/COMPAREVI_PLATFORM_INTEGRATION.md',
+            'docs/CONSUMER_PROVING_RAIL.md',
+            '.github/ISSUE_TEMPLATE/config.yml',
+            '.github/ISSUE_TEMPLATE/work-item.yml',
+            '.github/workflows/validate.yml'
+          )
+          foreach ($relativePath in $required) {
+            $candidate = Join-Path $generatedRoot.FullName $relativePath
+            if (-not (Test-Path -LiteralPath $candidate)) {
+              throw "Missing rendered file: $relativePath"
+            }
+          }
+          $workflowPath = Join-Path $generatedRoot.FullName '.github/workflows/validate.yml'
+          $workflowContent = Get-Content -LiteralPath $workflowPath -Raw
+          foreach ($snippet in @('feature/*', 'hotfix/*', 'release/*', 'Hosted Linux consumer lane', 'Hosted Windows consumer lane')) {
+            if ($workflowContent -notlike "*$snippet*") {
+              throw "Generated workflow is missing required snippet: $snippet"
+            }
+          }
+          @(
+            [ordered]@{
+              schema = 'priority/template-dependency@v1'
+              repository = '${{ steps.template-policy.outputs.repository }}'
+              ref = '${{ steps.template-policy.outputs.ref }}'
+              cookiecutterVersion = '${{ steps.template-policy.outputs.cookiecutter_version }}'
+              executionPlane = 'hosted-windows-verification'
+              containerImage = $null
+              renderOutputRoot = $generatedRoot.FullName
+            }
+          ) | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 (Join-Path $proofRoot 'pinned-template-dependency.json')
 
       - name: Run cookiecutter bootstrap proof
         shell: pwsh
@@ -85,4 +200,78 @@ jobs:
           path: |
             tests/results/_agent/cookiecutter-bootstrap/${{ matrix.proof_id }}
             tests/results/_agent/cookiecutter-scaffolds/bootstrap-proof/${{ matrix.proof_id }}
+          if-no-files-found: error
+
+  template-agent-verification:
+    name: Template Agent Verification / template-agent-verification
+    runs-on: ubuntu-latest
+    needs: bootstrap-proof
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download Linux bootstrap artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: cookiecutter-bootstrap-linux
+          path: tests/results/_agent/cookiecutter-bootstrap/linux
+
+      - name: Download Windows bootstrap artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: cookiecutter-bootstrap-windows
+          path: tests/results/_agent/cookiecutter-bootstrap/windows
+
+      - name: Resolve pinned template dependency policy
+        id: template-policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('fs');
+          const policy = JSON.parse(fs.readFileSync('tools/policy/template-dependency.json', 'utf8'));
+          console.log(`repository=${policy.templateRepositorySlug}`);
+          console.log(`ref=${policy.templateReleaseRef}`);
+          console.log(`cookiecutter_version=${policy.cookiecutterVersion}`);
+          console.log(`container_image=${policy.container.image}`);
+          NODE
+
+      - name: Write template agent verification report
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated_root="$(node -e "const fs=require('fs'); const receipt=JSON.parse(fs.readFileSync('tests/results/_agent/cookiecutter-bootstrap/linux/template-cookiecutter-container.json','utf8')); if (!receipt.result.projectDir) { process.exit(1); } process.stdout.write(receipt.result.projectDir);")"
+          node tools/npm/run-script.mjs priority:template:agent:verify -- \
+            --iteration-label "cookiecutter-bootstrap-${GITHUB_RUN_ID}" \
+            --iteration-ref "${GITHUB_REF_NAME:-${GITHUB_SHA}}" \
+            --iteration-head-sha "${GITHUB_SHA}" \
+            --verification-status pass \
+            --provider hosted-github-workflow \
+            --run-url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --template-repo "${{ steps.template-policy.outputs.repository }}" \
+            --template-version "${{ steps.template-policy.outputs.ref }}" \
+            --template-ref "${{ steps.template-policy.outputs.ref }}" \
+            --cookiecutter-version "${{ steps.template-policy.outputs.cookiecutter_version }}" \
+            --execution-plane hosted-ubuntu-container \
+            --container-image comparevi-tools:cookiecutter \
+            --generated-consumer-workspace-root "$generated_root" \
+            --lane-id logical-lane-template-verification \
+            --agent-id Darwin \
+            --funding-window-id heuristic-default
+
+      - name: Upload template verification report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: template-agent-verification-${{ github.run_id }}
+          path: tests/results/_agent/promotion/template-agent-verification-report.json
           if-no-files-found: error

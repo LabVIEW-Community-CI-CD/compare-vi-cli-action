@@ -32,6 +32,12 @@ test('template pivot gate report matches the checked-in schema', async () => {
     sourceRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
     targetBranch: 'develop',
+    templateDependency: {
+      repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      version: 'v0.1.0',
+      ref: 'v0.1.0',
+      cookiecutterVersion: '2.7.1'
+    },
     queueEmpty: {
       requiredSchema: 'standing-priority/no-standing@v1',
       requiredReason: 'queue-empty',
@@ -138,6 +144,22 @@ test('template pivot gate report matches the checked-in schema', async () => {
       status: 'pass',
       durationSeconds: 240,
       runUrl: 'https://github.com/example/run/2'
+    },
+    provenance: {
+      templateDependency: {
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        version: 'v0.1.0',
+        ref: 'v0.1.0',
+        cookiecutterVersion: '2.7.1'
+      },
+      execution: {
+        executionPlane: 'linux-tools-image',
+        containerImage: 'ghcr.io/labview-community-ci-cd/comparevi-tools:v0.1.0',
+        generatedConsumerWorkspaceRoot: 'E:\\comparevi-template-consumers\\run-1',
+        laneId: 'lane-template-verify',
+        agentId: 'darwin',
+        fundingWindowId: 'HQ1VJLMV-0027'
+      }
     },
     goals: {
       maxVerificationLagIterations: 1,

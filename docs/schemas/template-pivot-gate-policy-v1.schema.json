@@ -13,6 +13,7 @@
     "queueEmpty",
     "releaseCandidate",
     "handoffEntrypoint",
+    "templateDependency",
     "decision",
     "artifacts"
   ],
@@ -100,6 +101,34 @@
           "minLength": 1
         },
         "requiredStatus": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "templateDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "version",
+        "ref",
+        "cookiecutterVersion"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cookiecutterVersion": {
           "type": "string",
           "minLength": 1
         }
