@@ -42,7 +42,7 @@ test('projectSessionIndexV2PromotionDecision routes the helper into the standing
           selection: {
             mode: 'latest-completed-run',
             status: 'fail',
-            failureClass: 'run-not-found',
+            failureClass: 'current-head-run-pending',
           },
           sourceRun: null,
           artifact: {
@@ -50,7 +50,7 @@ test('projectSessionIndexV2PromotionDecision routes the helper into the standing
             destinationRoot: path.join(repoRoot, DEFAULT_DESTINATION_ROOT),
           },
           decision: {
-            state: 'missing-evidence',
+            state: 'fresh-head-awaiting-validate',
             summary: 'No completed current-head Validate run exists yet.',
           },
         },
@@ -74,12 +74,12 @@ test('projectSessionIndexV2PromotionDecision routes the helper into the standing
     'LabVIEW-Community-CI-CD/compare-vi-cli-action',
   ]);
   assert.equal(result.exitCode, 0);
-  assert.equal(result.snapshot.state, 'missing-evidence');
+  assert.equal(result.snapshot.state, 'fresh-head-awaiting-validate');
   assert.equal(result.snapshot.status, 'fail');
   assert.equal(result.snapshot.path, 'tests/results/_agent/issue/session-index-v2-promotion-decision.json');
   assert.equal(result.snapshot.downloadReportPath, 'tests/results/_agent/issue/session-index-v2-promotion-decision-download.json');
   assert.equal(result.snapshot.artifactRoot, 'tests/results/_agent/issue/session-index-v2-promotion-decision-artifacts');
-  assert.match(logs.join('\n'), /state=missing-evidence status=fail run=none/);
+  assert.match(logs.join('\n'), /state=fresh-head-awaiting-validate status=fail run=none/);
 });
 
 test('projectSessionIndexV2PromotionDecision records a projection error when the helper throws', async () => {
