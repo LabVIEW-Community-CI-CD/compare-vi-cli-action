@@ -176,12 +176,13 @@
           "kind": "workflow-run",
           "url": "https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/actions/runs/23225926010",
           "status": "success",
-          "note": "CompareVI History pull-request diagnostics succeeded on the added-VI PR head and recorded CanaryProbe.vi as an added target, but the published receipts remained history-surface artifacts rather than standalone print-single-file proof."
+          "note": "CompareVI History pull-request diagnostics succeeded on the added-VI PR head and recorded CanaryProbe.vi as an added target; the public artifact was the history diagnostics bundle `comparevi-history-pr-diagnostics-23225926010`, not a standalone print-single-file receipt."
         }
       ],
       "notes": [
         "This target narrows the remaining blocker from sample licensing to runnable print-surface evidence: the sample repository is licensed and pinned, and the replacement payload provenance is repo-owned, but the public proof still needs an explicit PrintToSingleFileHtml run.",
-        "Keep this seed provisional until a public workflow publishes print-single-file receipts for the same or an equivalent licensed added/deleted VI."
+        "Track the remaining external proof gap in #1726 until a public workflow publishes print-single-file receipts for the same or an equivalent licensed added/deleted VI.",
+        "Public history diagnostics artifact: comparevi-history-pr-diagnostics-23225926010."
       ]
     },
     {
