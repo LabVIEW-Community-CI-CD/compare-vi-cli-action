@@ -18,6 +18,8 @@
     "payloadInspectionMarkdownPath",
     "payloadDeclaredExecutableState",
     "payloadObservedExecutableState",
+    "payloadFinalizationContractPath",
+    "payloadFinalizationContractAvailable",
     "runnerPath",
     "targetRepositoryPath",
     "targetRepositoryMaterialized",
@@ -84,6 +86,15 @@
     "payloadObservedExecutableState": {
       "type": "string",
       "minLength": 1
+    },
+    "payloadFinalizationContractPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "payloadFinalizationContractAvailable": {
+      "type": "boolean"
     },
     "runnerPath": {
       "type": "string",

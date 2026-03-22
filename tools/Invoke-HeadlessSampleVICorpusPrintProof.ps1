@@ -10,6 +10,7 @@ param(
   [string]$MarkdownPath = '',
   [string]$InspectionScriptPath = '',
   [string]$RunnerScriptPath = '',
+  [string]$PayloadFinalizationContractPath = 'docs/schemas/operation-payload-authoring-finalization-v1.schema.json',
   [string]$TargetRepositoryPath = '',
   [switch]$SkipSchemaValidation,
   [switch]$PassThru
@@ -242,6 +243,15 @@ if ($LASTEXITCODE -ne 0) {
 $inspectionReport = Get-Content -LiteralPath $inspectionReportPath -Raw | ConvertFrom-Json -Depth 20
 $observedExecutableState = [string]$inspectionReport.observedExecutableState
 $declaredExecutableState = [string]$inspectionReport.declaredExecutableState
+$payloadFinalizationContractResolved = $null
+$payloadFinalizationContractAvailable = $false
+if (-not [string]::IsNullOrWhiteSpace($PayloadFinalizationContractPath)) {
+  $payloadFinalizationContractCandidate = Resolve-AbsolutePath -BasePath $repoRoot -PathValue $PayloadFinalizationContractPath
+  if (Test-Path -LiteralPath $payloadFinalizationContractCandidate -PathType Leaf) {
+    $payloadFinalizationContractResolved = $payloadFinalizationContractCandidate
+    $payloadFinalizationContractAvailable = $true
+  }
+}
 
 $runnerScriptResolved = Resolve-ScriptPath -RepoRoot $repoRoot -PathValue $RunnerScriptPath -DefaultRelativePath 'tools/Run-NILinuxContainerCustomOperation.ps1'
 $targetRepositoryResolved = $null
@@ -260,6 +270,9 @@ $notes = New-Object System.Collections.Generic.List[string]
 if ($finalStatus -eq 'blocked') {
   $notes.Add('Proof execution was not attempted because the repo-owned payload bundle is still source-only.') | Out-Null
   $notes.Add('This is the intended fail-closed state until runnable repo-owned payload files land.') | Out-Null
+  if ($payloadFinalizationContractAvailable) {
+    $notes.Add(("Finalization contract reference available at {0} for the repo-owned payload handoff." -f (Convert-ToRepoRelativePath -RepoRoot $repoRoot -PathValue $payloadFinalizationContractResolved))) | Out-Null
+  }
 } else {
   if ([string]::IsNullOrWhiteSpace($TargetRepositoryPath)) {
     $targetRepositoryResolved = Materialize-PinnedRepository `
@@ -334,6 +347,8 @@ $report = [ordered]@{
   payloadInspectionMarkdownPath = Convert-ToRepoRelativePath -RepoRoot $repoRoot -PathValue $inspectionMarkdownPath
   payloadDeclaredExecutableState = $declaredExecutableState
   payloadObservedExecutableState = $observedExecutableState
+  payloadFinalizationContractPath = if ($payloadFinalizationContractResolved) { Convert-ToRepoRelativePath -RepoRoot $repoRoot -PathValue $payloadFinalizationContractResolved } else { $null }
+  payloadFinalizationContractAvailable = [bool]$payloadFinalizationContractAvailable
   runnerPath = Convert-ToRepoRelativePath -RepoRoot $repoRoot -PathValue $runnerScriptResolved
   targetRepositoryPath = if ($targetRepositoryResolved) { Convert-ToRepoRelativePath -RepoRoot $repoRoot -PathValue $targetRepositoryResolved } else { $null }
   targetRepositoryMaterialized = [bool]$targetRepositoryMaterialized
@@ -369,6 +384,9 @@ if ($blockingReason) {
 $markdownLines += ('- Runner: `{0}`' -f $report.runnerPath)
 if ($report.targetRepositoryPath) {
   $markdownLines += ('- Target Repository Path: `{0}`' -f $report.targetRepositoryPath)
+}
+if ($report.payloadFinalizationContractPath) {
+  $markdownLines += ('- Payload Finalization Contract: `{0}`' -f $report.payloadFinalizationContractPath)
 }
 if ($report.renderedOutputPath) {
   $markdownLines += ('- Rendered Output Path: `{0}`' -f $report.renderedOutputPath)
