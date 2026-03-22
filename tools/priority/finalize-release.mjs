@@ -8,7 +8,9 @@ import {
   ensureValidIdentifier,
   ensureCleanWorkingTree,
   ensureBranchExists,
-  getRepoRoot
+  getRepoRoot,
+  getCurrentCheckoutTarget,
+  checkoutDetachedRef
 } from './lib/branch-utils.mjs';
 import {
   ensureGhCli,
@@ -323,10 +325,12 @@ async function main() {
   run('git', ['fetch', 'origin'], { cwd: repoRoot });
   run('git', ['fetch', 'upstream'], { cwd: repoRoot });
 
-  const originalBranch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoRoot });
+  const originalCheckout = getCurrentCheckoutTarget((command, args, options = {}) =>
+    run(command, args, { cwd: repoRoot, ...options })
+  );
 
   let finalizeMetadata = null;
-  let restoreBranch = true;
+  let restoreCheckout = true;
   let forcePushMain = false;
 
   try {
@@ -344,7 +348,7 @@ async function main() {
       throw new Error(`Release surface versions are out of sync: ${surfaceEvaluation.issues.join(' ')}`);
     }
 
-    run('git', ['checkout', '-B', 'main', 'upstream/main'], { cwd: repoRoot });
+    checkoutDetachedRef('upstream/main', { cwd: repoRoot });
     try {
       run('git', ['merge', '--ff-only', releaseBranch], { cwd: repoRoot });
     } catch (error) {
@@ -374,14 +378,14 @@ async function main() {
     }
     if (forcePushMain) {
       try {
-        run('git', ['push', '--force-with-lease', 'upstream', 'main'], {
+        run('git', ['push', '--force-with-lease', 'upstream', 'HEAD:main'], {
           cwd: repoRoot
         });
       } catch {
         throw new Error('Failed to push main with --force-with-lease. Resolve the push error above.');
       }
     } else {
-      pushToRemote(repoRoot, 'upstream', 'main');
+      pushToRemote(repoRoot, 'upstream', 'HEAD:main');
     }
     const mainCommit = run('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
 
@@ -400,12 +404,12 @@ async function main() {
       throw new Error('gh release create failed. Review the output above.');
     }
 
-    run('git', ['checkout', '-B', 'develop', 'upstream/develop'], { cwd: repoRoot });
-    const mergeBase = run('git', ['merge-base', 'develop', releaseBranch], { cwd: repoRoot });
+    checkoutDetachedRef('upstream/develop', { cwd: repoRoot });
+    const mergeBase = run('git', ['merge-base', 'HEAD', releaseBranch], { cwd: repoRoot });
     if (mergeBase !== releaseCommit) {
       run('git', ['merge', '--ff-only', releaseBranch], { cwd: repoRoot });
     }
-    pushToRemote(repoRoot, 'upstream', 'develop');
+    pushToRemote(repoRoot, 'upstream', 'HEAD:develop');
     const developCommit = run('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
 
     finalizeMetadata = {
@@ -425,21 +429,21 @@ async function main() {
       completedAt: new Date().toISOString()
     };
 
-    if (originalBranch) {
+    if (originalCheckout) {
       try {
-        run('git', ['checkout', originalBranch], { cwd: repoRoot });
+        run('git', ['checkout', originalCheckout], { cwd: repoRoot });
       } catch (error) {
-        console.warn(`[release:finalize] warning: failed to restore ${originalBranch}: ${error.message}`);
+        console.warn(`[release:finalize] warning: failed to restore ${originalCheckout}: ${error.message}`);
       }
     }
 
-    restoreBranch = false;
+    restoreCheckout = false;
   } finally {
-    if (restoreBranch && originalBranch) {
+    if (restoreCheckout && originalCheckout) {
       try {
-        run('git', ['checkout', originalBranch], { cwd: repoRoot });
+        run('git', ['checkout', originalCheckout], { cwd: repoRoot });
       } catch (error) {
-        console.warn(`[release:finalize] warning: failed to restore ${originalBranch}: ${error.message}`);
+        console.warn(`[release:finalize] warning: failed to restore ${originalCheckout}: ${error.message}`);
       }
     }
   }

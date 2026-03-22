@@ -130,6 +130,7 @@ async function setupTemporaryRepo(t) {
 
 test('dry-run helpers create metadata and restore branch context', async (t) => {
   const repoDir = await setupTemporaryRepo(t);
+  const attachedDevelopDir = path.join(path.dirname(repoDir), 'attached-develop');
 
   const releaseCreate = path.join(repoDir, 'tools', 'priority', 'create-release-branch.dryrun.mjs');
   const releaseFinalize = path.join(repoDir, 'tools', 'priority', 'finalize-release.dryrun.mjs');
@@ -145,6 +146,7 @@ test('dry-run helpers create metadata and restore branch context', async (t) => 
   assert.equal(helpBranches, '');
 
   const version = 'v0.0.0-test';
+  run('git', ['worktree', 'add', attachedDevelopDir, dryrunBaseBranch], { cwd: repoDir });
   run('node', [releaseCreate, version], { cwd: repoDir });
   const postCreateBranch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir });
   assert.equal(postCreateBranch, dryrunFeatureBranch);
@@ -169,6 +171,7 @@ test('dry-run helpers create metadata and restore branch context', async (t) => 
   assert.equal(releaseFinalizeMetadata.releaseBranch, `release/${version}`);
   assert.equal(releaseFinalizeMetadata.dryRun, true);
   assert.ok(Date.parse(releaseFinalizeMetadata.generatedAt));
+  run('git', ['worktree', 'remove', '--force', attachedDevelopDir], { cwd: repoDir });
 
   const featureSlug = 'my-feature';
   run('node', [featureCreate, featureSlug], { cwd: repoDir });
