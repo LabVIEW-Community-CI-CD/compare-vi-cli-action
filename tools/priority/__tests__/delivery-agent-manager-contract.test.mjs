@@ -714,6 +714,138 @@ test('delivery-agent manager status falls back to legacy runtime-state.json when
   assert.equal(path.basename(status.delivery.artifacts.statePath), 'delivery-agent-state.json');
 });
 
+test('delivery-agent manager status preserves concurrent lane apply provenance and worker checkout identity from runtime fallback artifacts', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-concurrent-apply-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+  });
+
+  const now = Date.now();
+  const runtimeGeneratedAt = new Date(now - 30_000).toISOString();
+  const taskPacketGeneratedAt = new Date(now - 15_000).toISOString();
+  const managerStartedAt = new Date(now - 180_000).toISOString();
+  const daemonStartedAt = new Date(now - 180_000).toISOString();
+
+  await writeJson(path.join(runtimeDirPath, 'runtime-state.json'), {
+    schema: 'priority/runtime-supervisor-state@v1',
+    generatedAt: runtimeGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    lifecycle: {
+      status: 'waiting-ci',
+      lastAction: 'step',
+    },
+    activeLane: {
+      laneId: 'origin-1604',
+      issue: 1604,
+      branch: 'issue/origin-1604-concurrent-lane-delivery-turn',
+      forkRemote: 'origin',
+      blockerClass: 'none',
+    },
+  });
+  await writeJson(path.join(runtimeDirPath, 'task-packet.json'), {
+    schema: 'priority/runtime-worker-task-packet@v1',
+    generatedAt: taskPacketGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    laneId: 'origin-1604',
+    status: 'waiting-ci',
+    branch: {
+      name: 'issue/origin-1604-concurrent-lane-delivery-turn',
+      forkRemote: 'origin',
+    },
+    pullRequest: {
+      url: null,
+    },
+    checks: {
+      blockerClass: 'none',
+    },
+    evidence: {
+      lane: {
+        workerSlotId: 'worker-slot-2',
+        workerCheckoutRoot: path.join('E:', 'comparevi-lanes', 'LabVIEW-Community-CI-CD--compare-vi-cli-action'),
+        workerCheckoutRootPolicy: {
+          strategy: 'policy-preferred-root',
+          source: 'delivery-agent.policy.json#storageRoots.worktrees.preferredRoots[0]',
+          baseRoot: path.join('E:', 'comparevi-lanes'),
+          relativeRoot: 'LabVIEW-Community-CI-CD--compare-vi-cli-action',
+          usesExternalRoot: true,
+        },
+        workerCheckoutPath: path.join(
+          'E:',
+          'comparevi-lanes',
+          'LabVIEW-Community-CI-CD--compare-vi-cli-action',
+          'worker-slot-2'
+        ),
+      },
+      delivery: {
+        selectedActionType: 'advance-child-issue',
+        laneLifecycle: 'waiting-ci',
+        concurrentLaneApply: {
+          receiptPath: 'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json',
+          status: 'succeeded',
+          selectedBundleId: 'hosted-plus-manual-linux-docker',
+          validateDispatch: {
+            status: 'dispatched',
+            repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+            remote: 'origin',
+            ref: 'issue/origin-1604-concurrent-lane-delivery-turn',
+            sampleIdStrategy: 'auto',
+            sampleId: 'ts-20260321-000000-abcd',
+            historyScenarioSet: 'smoke',
+            allowFork: true,
+            pushMissing: true,
+            forcePushOk: false,
+            allowNonCanonicalViHistory: false,
+            allowNonCanonicalHistoryCore: false,
+            reportPath: 'tests/results/_agent/issue/priority-validate-dispatch-origin-1604.json',
+            runDatabaseId: 234567890,
+          },
+        },
+      },
+    },
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-manager-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-manager-pid@v1',
+    startedAt: managerStartedAt,
+    pid: 0,
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-wsl-daemon-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-wsl-daemon-pid@v1',
+    startedAt: daemonStartedAt,
+    pid: 0,
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.delivery.derivedFromRuntimeState, true);
+  assert.equal(status.delivery.concurrentLaneApply.receiptPath, 'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json');
+  assert.equal(status.delivery.concurrentLaneApply.validateDispatch.runDatabaseId, 234567890);
+  assert.equal(
+    status.delivery.artifacts.concurrentLaneApplyReceiptPath,
+    'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json'
+  );
+  assert.equal(
+    status.delivery.activeLane.concurrentLaneApply.receiptPath,
+    'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json'
+  );
+  assert.equal(status.delivery.activeLane.workerSlotId, 'worker-slot-2');
+  assert.equal(
+    status.delivery.activeLane.workerCheckoutRoot,
+    path.join('E:', 'comparevi-lanes', 'LabVIEW-Community-CI-CD--compare-vi-cli-action')
+  );
+  assert.equal(
+    status.delivery.activeLane.workerCheckoutPath,
+    path.join('E:', 'comparevi-lanes', 'LabVIEW-Community-CI-CD--compare-vi-cli-action', 'worker-slot-2')
+  );
+  assert.deepEqual(status.delivery.activeLane.workerCheckoutRootPolicy, {
+    strategy: 'policy-preferred-root',
+    source: 'delivery-agent.policy.json#storageRoots.worktrees.preferredRoots[0]',
+    baseRoot: path.join('E:', 'comparevi-lanes'),
+    relativeRoot: 'LabVIEW-Community-CI-CD--compare-vi-cli-action',
+    usesExternalRoot: true,
+  });
+});
+
 test('delivery-agent manager status emits bounded log-tail trace events for daemon and manager logs', async (t) => {
   const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-log-tail-'));
   const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);

@@ -484,6 +484,62 @@ export function convertToDeliveryLifecycle(value, fallback = 'planning', blocked
   return blocked ? 'blocked' : fallback;
 }
 
+function projectConcurrentLaneApply(concurrentLaneApply) {
+  if (!concurrentLaneApply || typeof concurrentLaneApply !== 'object') {
+    return null;
+  }
+  const validateDispatch = getOptionalProperty(concurrentLaneApply, 'validateDispatch');
+  return {
+    receiptPath: getOptionalStringProperty(concurrentLaneApply, 'receiptPath'),
+    status: getOptionalStringProperty(concurrentLaneApply, 'status'),
+    selectedBundleId: getOptionalStringProperty(concurrentLaneApply, 'selectedBundleId'),
+    validateDispatch:
+      validateDispatch && typeof validateDispatch === 'object'
+        ? {
+            status: getOptionalStringProperty(validateDispatch, 'status'),
+            repository: getOptionalStringProperty(validateDispatch, 'repository'),
+            remote: getOptionalStringProperty(validateDispatch, 'remote'),
+            ref: getOptionalStringProperty(validateDispatch, 'ref'),
+            sampleIdStrategy: getOptionalStringProperty(validateDispatch, 'sampleIdStrategy'),
+            sampleId: getOptionalStringProperty(validateDispatch, 'sampleId'),
+            historyScenarioSet: getOptionalStringProperty(validateDispatch, 'historyScenarioSet'),
+            allowFork: getOptionalProperty(validateDispatch, 'allowFork') === true,
+            pushMissing: getOptionalProperty(validateDispatch, 'pushMissing') === true,
+            forcePushOk: getOptionalProperty(validateDispatch, 'forcePushOk') === true,
+            allowNonCanonicalViHistory: getOptionalProperty(validateDispatch, 'allowNonCanonicalViHistory') === true,
+            allowNonCanonicalHistoryCore: getOptionalProperty(validateDispatch, 'allowNonCanonicalHistoryCore') === true,
+            reportPath: getOptionalStringProperty(validateDispatch, 'reportPath'),
+            runDatabaseId: getOptionalIntProperty(validateDispatch, 'runDatabaseId') || null,
+            error: getOptionalStringProperty(validateDispatch, 'error'),
+          }
+        : null,
+  };
+}
+
+function projectWorkerCheckoutIdentity(taskPacket, activeLane) {
+  const laneEvidence = getOptionalProperty(getOptionalProperty(taskPacket, 'evidence'), 'lane');
+  const providerDispatch = getOptionalProperty(activeLane, 'providerDispatch');
+  const worker = getOptionalProperty(activeLane, 'worker');
+  const workerReady = getOptionalProperty(activeLane, 'workerReady');
+  const workerBranch = getOptionalProperty(activeLane, 'workerBranch');
+  const taskBranch = getOptionalProperty(taskPacket, 'branch');
+  return {
+    workerSlotId:
+      getOptionalStringProperty(laneEvidence, 'workerSlotId') ||
+      getOptionalStringProperty(providerDispatch, 'workerSlotId'),
+    workerCheckoutRoot:
+      getOptionalStringProperty(laneEvidence, 'workerCheckoutRoot') ||
+      getOptionalStringProperty(worker, 'checkoutRoot'),
+    workerCheckoutRootPolicy: getOptionalProperty(laneEvidence, 'workerCheckoutRootPolicy'),
+    workerCheckoutPath:
+      getOptionalStringProperty(laneEvidence, 'workerCheckoutPath') ||
+      getOptionalStringProperty(worker, 'checkoutPath') ||
+      getOptionalStringProperty(workerReady, 'checkoutPath') ||
+      getOptionalStringProperty(workerBranch, 'checkoutPath') ||
+      getOptionalStringProperty(taskBranch, 'checkoutPath'),
+  };
+}
+
 export function convertRuntimeArtifactsToDeliveryState({ repo, runtimeDir, runtimeState, taskPacket, paths }) {
   if (!runtimeState?.activeLane) {
     return null;
@@ -509,6 +565,10 @@ export function convertRuntimeArtifactsToDeliveryState({ repo, runtimeDir, runti
 
   const runtimeLifecycle = getOptionalStringProperty(getOptionalProperty(runtimeState, 'lifecycle'), 'status');
   const runtimeDelivery = getOptionalProperty(getOptionalProperty(effectiveTaskPacket, 'evidence'), 'delivery');
+  const concurrentLaneApply =
+    projectConcurrentLaneApply(getOptionalProperty(activeLane, 'concurrentLaneApply')) ??
+    projectConcurrentLaneApply(getOptionalProperty(runtimeDelivery, 'concurrentLaneApply'));
+  const workerCheckoutIdentity = projectWorkerCheckoutIdentity(effectiveTaskPacket, activeLane);
   let taskLifecycle = getOptionalStringProperty(effectiveTaskPacket, 'status');
   if (!taskLifecycle) {
     taskLifecycle = getOptionalStringProperty(runtimeDelivery, 'laneLifecycle');
@@ -535,6 +595,7 @@ export function convertRuntimeArtifactsToDeliveryState({ repo, runtimeDir, runti
     laneLifecycle,
     activeCodingLanes: laneLifecycle === 'coding' ? 1 : 0,
     derivedFromRuntimeState: true,
+    concurrentLaneApply,
     activeLane: {
       schema: 'priority/delivery-agent-lane-state@v1',
       generatedAt: iso,
@@ -559,10 +620,16 @@ export function convertRuntimeArtifactsToDeliveryState({ repo, runtimeDir, runti
       reason: getOptionalStringProperty(getOptionalProperty(runtimeState, 'lifecycle'), 'status'),
       retryable: false,
       nextWakeCondition: null,
+      concurrentLaneApply,
+      workerSlotId: workerCheckoutIdentity.workerSlotId,
+      workerCheckoutRoot: workerCheckoutIdentity.workerCheckoutRoot,
+      workerCheckoutRootPolicy: workerCheckoutIdentity.workerCheckoutRootPolicy,
+      workerCheckoutPath: workerCheckoutIdentity.workerCheckoutPath,
     },
     artifacts: {
       statePath: paths.deliveryStatePath,
       lanePath: paths.taskPacketPath,
+      concurrentLaneApplyReceiptPath: concurrentLaneApply?.receiptPath || null,
     },
   };
 }
@@ -699,6 +766,12 @@ export function resolveDeliveryStateForStatus({
 
   const laneId = getOptionalStringProperty(heartbeatLane, 'laneId');
   const heartbeatTaskPacket = getOptionalProperty(heartbeatLane, 'taskPacket');
+  const heartbeatDelivery = getOptionalProperty(getOptionalProperty(heartbeatTaskPacket, 'evidence'), 'delivery');
+  const concurrentLaneApply =
+    projectConcurrentLaneApply(getOptionalProperty(heartbeatLane, 'concurrentLaneApply')) ??
+    projectConcurrentLaneApply(getOptionalProperty(getOptionalProperty(getOptionalProperty(heartbeatLane, 'execution'), 'details'), 'concurrentLaneApply')) ??
+    projectConcurrentLaneApply(getOptionalProperty(heartbeatDelivery, 'concurrentLaneApply'));
+  const workerCheckoutIdentity = projectWorkerCheckoutIdentity(heartbeatTaskPacket, heartbeatLane);
   const taskStatus = getOptionalStringProperty(heartbeatTaskPacket, 'status');
   const runtimeOutcome = getOptionalStringProperty(heartbeat, 'outcome');
   const laneLifecycle = /blocked|failed/i.test(runtimeOutcome || '')
@@ -719,6 +792,7 @@ export function resolveDeliveryStateForStatus({
       laneLifecycle,
       activeCodingLanes: laneLifecycle === 'coding' ? 1 : 0,
       derivedFromHeartbeat: true,
+      concurrentLaneApply,
       activeLane: {
         schema: 'priority/delivery-agent-lane-state@v1',
         generatedAt: heartbeatGeneratedAt ? heartbeatGeneratedAt.toISOString() : toIso(),
@@ -735,10 +809,16 @@ export function resolveDeliveryStateForStatus({
         reason: runtimeOutcome,
         retryable: false,
         nextWakeCondition: null,
+        concurrentLaneApply,
+        workerSlotId: workerCheckoutIdentity.workerSlotId,
+        workerCheckoutRoot: workerCheckoutIdentity.workerCheckoutRoot,
+        workerCheckoutRootPolicy: workerCheckoutIdentity.workerCheckoutRootPolicy,
+        workerCheckoutPath: workerCheckoutIdentity.workerCheckoutPath,
       },
       artifacts: {
         statePath: paths.deliveryStatePath,
         lanePath,
+        concurrentLaneApplyReceiptPath: concurrentLaneApply?.receiptPath || null,
       },
     },
     diagnostics,
