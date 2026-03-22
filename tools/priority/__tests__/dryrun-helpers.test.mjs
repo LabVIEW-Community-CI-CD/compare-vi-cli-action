@@ -194,4 +194,25 @@ test('dry-run helpers create metadata and restore branch context', async (t) => 
   assert.equal(featureFinalizeMetadata.branch, `feature/${featureSlug}`);
   assert.equal(featureFinalizeMetadata.dryRun, true);
   assert.ok(Date.parse(featureFinalizeMetadata.generatedAt));
+
+  run('git', ['worktree', 'add', attachedDevelopDir, dryrunBaseBranch], { cwd: repoDir });
+  const attachedFeatureSlug = 'attached-worktree-feature';
+  run('node', [featureCreate, attachedFeatureSlug], { cwd: repoDir });
+  const featureBranchAfterAttachedCreate = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir });
+  assert.equal(featureBranchAfterAttachedCreate, dryrunFeatureBranch);
+
+  const attachedFeatureMetadataPath = path.join(
+    repoDir,
+    'tests',
+    'results',
+    '_agent',
+    'feature',
+    `feature-${attachedFeatureSlug}-dryrun.json`
+  );
+  const attachedFeatureMetadata = JSON.parse(await readFile(attachedFeatureMetadataPath, 'utf8'));
+  assert.equal(attachedFeatureMetadata.branch, `feature/${attachedFeatureSlug}`);
+  assert.equal(attachedFeatureMetadata.baseBranch, dryrunBaseBranch);
+  assert.equal(attachedFeatureMetadata.dryRun, true);
+  assert.ok(Date.parse(attachedFeatureMetadata.createdAt));
+  run('git', ['worktree', 'remove', '--force', attachedDevelopDir], { cwd: repoDir });
 });
