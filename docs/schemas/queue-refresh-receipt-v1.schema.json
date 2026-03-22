@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": [
     "schema",
+    "operation",
     "generatedAt",
     "repo",
     "pr",
@@ -24,6 +25,9 @@
   "properties": {
     "schema": {
       "const": "priority/queue-refresh-receipt@v1"
+    },
+    "operation": {
+      "const": "dequeue-update-requeue"
     },
     "generatedAt": {
       "type": "string",

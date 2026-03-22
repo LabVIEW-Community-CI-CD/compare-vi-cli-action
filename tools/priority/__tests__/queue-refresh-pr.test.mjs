@@ -82,6 +82,80 @@ test('parseArgs accepts queue refresh receipt and merge-summary flags', () => {
   });
 });
 
+test('queue refresh receipt advertises the dequeue-update-requeue operation', async () => {
+  let queueReads = 0;
+
+  const { receipt } = await runQueueRefresh({
+    repoRoot: process.cwd(),
+    args: {
+      pr: 1568,
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      headRemote: null,
+      summaryPath: 'memory://queue-refresh-1568.json',
+      mergeSummaryPath: 'memory://merge-sync-1568.json',
+      dryRun: false
+    },
+    ensureGhCliFn: () => {},
+    readPolicyFn: async () => buildQueuePolicy(),
+    readPullRequestViewFn: async () => ({
+      id: 'PR_test_1568',
+      number: 1568,
+      state: 'OPEN',
+      isDraft: false,
+      mergeStateStatus: 'CLEAN',
+      mergeable: 'MERGEABLE',
+      baseRefName: 'develop',
+      url: 'https://example.test/pr/1568',
+      headRefName: 'issue/origin-1568-queue-refresh-helper',
+      headRefOid: '1234567890abcdef1234567890abcdef12345678',
+      headRepository: {
+        name: 'compare-vi-cli-action-fork'
+      },
+      headRepositoryOwner: {
+        login: 'LabVIEW-Community-CI-CD'
+      },
+      isCrossRepository: true,
+      autoMergeRequest: null
+    }),
+    readPullRequestQueueStateFn: async () => {
+      queueReads += 1;
+      return {
+        state: 'OPEN',
+        mergeStateStatus: 'CLEAN',
+        isInMergeQueue: queueReads === 1,
+        mergedAt: null,
+        autoMergeRequest: null
+      };
+    },
+    dequeuePullRequestFn: async () => ({}),
+    runGitCommandFn: (_root, args) => {
+      if (args[0] === 'status') return { status: 0, stdout: '', stderr: '' };
+      if (args[0] === 'fetch') return { status: 0, stdout: '', stderr: '' };
+      if (args[0] === 'rebase' && args[1] === 'upstream/develop') return { status: 0, stdout: '', stderr: '' };
+      if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+        return { status: 0, stdout: 'abcdefabcdefabcdefabcdefabcdefabcdefabcd\n', stderr: '' };
+      }
+      if (args[0] === 'push') return { status: 0, stdout: '', stderr: '' };
+      throw new Error(`Unexpected git args: ${args.join(' ')}`);
+    },
+    readCurrentBranchFn: () => 'issue/origin-1568-queue-refresh-helper',
+    readTrackingRemoteFn: () => 'origin',
+    resolveHeadRemoteNameFn: () => ({ remoteName: 'origin', source: 'test' }),
+    runMergeSyncFn: async () => ({
+      promotion: {
+        status: 'queued',
+        materialized: true
+      },
+      finalMode: 'auto',
+      finalReason: 'merge-state-blocked'
+    }),
+    sleepFn: async () => {},
+    writeReceiptFn: async (receiptPath) => receiptPath
+  });
+
+  assert.equal(receipt.operation, 'dequeue-update-requeue');
+});
+
 test('runQueueRefresh skips non-queued PRs without dequeueing, rebasing, or requeueing', async () => {
   let dequeueCalled = false;
   let mergeSyncCalled = false;

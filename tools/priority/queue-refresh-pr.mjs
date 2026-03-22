@@ -31,7 +31,7 @@ const USAGE_LINES = [
 ];
 
 function printUsage() {
-  console.log('Safe helper for queued-branch amendment and merge-queue requeue.');
+  console.log('Safe helper for queued PR dequeue-update-requeue and merge-queue requeue.');
   console.log('');
   for (const line of USAGE_LINES) {
     console.log(line);
@@ -395,6 +395,7 @@ function createReceipt({
 }) {
   return {
     schema: RECEIPT_SCHEMA,
+    operation: 'dequeue-update-requeue',
     generatedAt: new Date().toISOString(),
     repo,
     pr,
