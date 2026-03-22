@@ -218,6 +218,35 @@ function isDirtyWorktree({ repoRoot, env = process.env, spawnSyncFn = spawnSync 
   return statusText.length > 0;
 }
 
+function findDevelopHelperRoot({
+  repoRoot,
+  requireClean = false,
+  env = process.env,
+  spawnSyncFn = spawnSync
+} = {}) {
+  const worktreeText = runGitText(spawnSyncFn, repoRoot, ['worktree', 'list', '--porcelain'], env);
+  const helpers = parseGitWorktreeListPorcelain(worktreeText)
+    .map((entry) => ({
+      ...entry,
+      path: path.resolve(entry.path)
+    }))
+    .filter((entry) => entry.path !== repoRoot && entry.branchRef === 'refs/heads/develop');
+
+  if (!requireClean) {
+    return helpers[0]?.path ?? null;
+  }
+
+  for (const helper of helpers) {
+    try {
+      if (!isDirtyWorktree({ repoRoot: helper.path, env, spawnSyncFn })) {
+        return helper.path;
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
 function writeJsonFile(filePath, payload) {
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
@@ -289,6 +318,31 @@ export function resolveDevelopSyncExecutionRoot({ repoRoot, env = process.env, s
     };
   }
 
+  if (currentBranch === 'develop') {
+    try {
+      if (isDirtyWorktree({ repoRoot: normalizedRepoRoot, env, spawnSyncFn })) {
+        const helperRoot = findDevelopHelperRoot({
+          repoRoot: normalizedRepoRoot,
+          requireClean: true,
+          env,
+          spawnSyncFn
+        });
+        if (helperRoot) {
+          return {
+            repoRoot: normalizedRepoRoot,
+            executionRepoRoot: helperRoot,
+            currentBranch,
+            mode: 'full-sync',
+            reason: 'dirty-develop-root-helper',
+            dirtyWorktree: true,
+            delegated: true,
+            helperRoot
+          };
+        }
+      }
+    } catch {}
+  }
+
   if (!isWorkBranch(currentBranch)) {
     return {
       repoRoot: normalizedRepoRoot,
@@ -303,13 +357,7 @@ export function resolveDevelopSyncExecutionRoot({ repoRoot, env = process.env, s
   }
 
   try {
-    const worktreeText = runGitText(spawnSyncFn, normalizedRepoRoot, ['worktree', 'list', '--porcelain'], env);
-    const helperRoot = parseGitWorktreeListPorcelain(worktreeText)
-      .map((entry) => ({
-        ...entry,
-        path: path.resolve(entry.path)
-      }))
-      .find((entry) => entry.path !== normalizedRepoRoot && entry.branchRef === 'refs/heads/develop')?.path;
+    const helperRoot = findDevelopHelperRoot({ repoRoot: normalizedRepoRoot, env, spawnSyncFn });
     if (helperRoot) {
       return {
         repoRoot: normalizedRepoRoot,
