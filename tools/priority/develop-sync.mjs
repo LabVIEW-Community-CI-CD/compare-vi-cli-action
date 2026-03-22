@@ -247,6 +247,19 @@ function findDevelopHelperRoot({
   return null;
 }
 
+function hasDevelopHelperRoot({
+  repoRoot,
+  env = process.env,
+  spawnSyncFn = spawnSync
+} = {}) {
+  return findDevelopHelperRoot({
+    repoRoot,
+    requireClean: false,
+    env,
+    spawnSyncFn
+  }) !== null;
+}
+
 function writeJsonFile(filePath, payload) {
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
@@ -357,7 +370,12 @@ export function resolveDevelopSyncExecutionRoot({ repoRoot, env = process.env, s
   }
 
   try {
-    const helperRoot = findDevelopHelperRoot({ repoRoot: normalizedRepoRoot, env, spawnSyncFn });
+    const helperRoot = findDevelopHelperRoot({
+      repoRoot: normalizedRepoRoot,
+      requireClean: true,
+      env,
+      spawnSyncFn
+    });
     if (helperRoot) {
       return {
         repoRoot: normalizedRepoRoot,
@@ -368,6 +386,18 @@ export function resolveDevelopSyncExecutionRoot({ repoRoot, env = process.env, s
         dirtyWorktree: false,
         delegated: true,
         helperRoot
+      };
+    }
+    if (hasDevelopHelperRoot({ repoRoot: normalizedRepoRoot, env, spawnSyncFn })) {
+      return {
+        repoRoot: normalizedRepoRoot,
+        executionRepoRoot: normalizedRepoRoot,
+        currentBranch,
+        mode: 'ref-refresh',
+        reason: 'dirty-develop-helper',
+        dirtyWorktree: false,
+        delegated: false,
+        helperRoot: null
       };
     }
   } catch {}
