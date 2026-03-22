@@ -540,6 +540,21 @@ function Get-GitStatusPorcelain {
   return @($result.Output)
 }
 
+function Test-GitWorktreeClean {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$WorktreeRoot
+  )
+
+  $resolvedWorktreeRoot = (Resolve-Path -LiteralPath $WorktreeRoot).Path
+  $result = Invoke-GitCommand -Arguments @('-C', $resolvedWorktreeRoot, 'status', '--porcelain') -AllowFailure
+  if ($result.ExitCode -ne 0) {
+    return $false
+  }
+
+  return (@($result.Output)).Count -eq 0
+}
+
 function Test-GitBranchExists {
   param([Parameter(Mandatory=$true)][string]$Name)
   Invoke-GitCommand -Arguments @('show-ref','--verify','--quiet',"refs/heads/$Name") -AllowFailure | Out-Null
@@ -562,7 +577,7 @@ function Get-DevelopWorktreeRoots {
     return @()
   }
 
-  $roots = New-Object System.Collections.Generic.List[string]
+  $roots = New-Object System.Collections.Generic.List[object]
   $currentWorktreePath = $null
 
   foreach ($line in @($result.Output)) {
@@ -573,7 +588,16 @@ function Get-DevelopWorktreeRoots {
     }
 
     if ($text -eq 'branch refs/heads/develop' -and -not [string]::IsNullOrWhiteSpace($currentWorktreePath)) {
-      $roots.Add($currentWorktreePath)
+      $isClean = $false
+      try {
+        $isClean = Test-GitWorktreeClean -WorktreeRoot $currentWorktreePath
+      } catch {
+        $isClean = $false
+      }
+      $roots.Add([pscustomobject]@{
+        Root = $currentWorktreePath
+        IsClean = $isClean
+      })
       continue
     }
 
@@ -582,7 +606,17 @@ function Get-DevelopWorktreeRoots {
     }
   }
 
-  return @($roots | Select-Object -Unique)
+  return @(
+    $roots |
+      Group-Object -Property Root |
+      ForEach-Object {
+        $first = $_.Group | Select-Object -First 1
+        [pscustomobject]@{
+          Root = $first.Root
+          IsClean = [bool]($first.IsClean)
+        }
+      }
+  )
 }
 
 function Resolve-PriorityHelperRepoRoot {
@@ -781,7 +815,7 @@ if (-not $PreflightOnly) {
     -WorkingDirectory $priorityWorkingDirectory `
     -ScriptRelativePath 'tools/priority/sync-standing-priority.mjs' `
     -RequiredPackages @('undici') `
-    -Arguments @('--fail-on-missing', '--fail-on-multiple', '--auto-select-next')
+    -Arguments @('--fail-on-missing', '--fail-on-multiple', '--auto-select-next', '--materialize-cache')
   $routerPath = Join-Path $priorityWorkingDirectory 'tests/results/_agent/issue/router.json'
   $routerIssue = $null
   if (Test-Path -LiteralPath $routerPath -PathType Leaf) {
