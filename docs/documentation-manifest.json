@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-22T17:55:00Z",
+  "updated": "2026-03-22T22:45:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -187,6 +187,7 @@
         "docs/schemas/wake-adjudication-report-v1.schema.json",
         "docs/schemas/wake-investment-accounting-policy-v1.schema.json",
         "docs/schemas/wake-investment-accounting-report-v1.schema.json",
+        "docs/schemas/wake-lifecycle-report-v1.schema.json",
         "docs/schemas/wake-work-synthesis-policy-v1.schema.json",
         "docs/schemas/wake-work-synthesis-report-v1.schema.json",
         ".github/workflows/downstream-onboarding-feedback.yml",
@@ -196,6 +197,7 @@
         "tools/priority/monitoring-work-injection.mjs",
         "tools/priority/wake-adjudication.mjs",
         "tools/priority/wake-investment-accounting.mjs",
+        "tools/priority/wake-lifecycle.mjs",
         "tools/priority/wake-work-synthesis.mjs",
         "tools/priority/__tests__/monitoring-work-injection.test.mjs",
         "tools/priority/__tests__/monitoring-work-injection-schema.test.mjs",
@@ -203,6 +205,8 @@
         "tools/priority/__tests__/wake-adjudication-schema.test.mjs",
         "tools/priority/__tests__/wake-investment-accounting.test.mjs",
         "tools/priority/__tests__/wake-investment-accounting-schema.test.mjs",
+        "tools/priority/__tests__/wake-lifecycle.test.mjs",
+        "tools/priority/__tests__/wake-lifecycle-schema.test.mjs",
         "tools/priority/__tests__/wake-work-synthesis.test.mjs",
         "tools/priority/__tests__/wake-work-synthesis-schema.test.mjs",
         "tools/priority/__tests__/downstream-onboarding-contract.test.mjs"
