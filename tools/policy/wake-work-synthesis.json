@@ -1,0 +1,31 @@
+{
+  "schema": "priority/wake-work-synthesis-policy@v1",
+  "compareRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+  "classificationDefaults": {
+    "stale-artifact": {
+      "decision": "suppress",
+      "workKind": "suppression"
+    },
+    "environment-only": {
+      "decision": "monitor",
+      "workKind": "monitoring"
+    },
+    "branch-target-drift": {
+      "decision": "compare-governance-work",
+      "workKind": "drift-correction"
+    },
+    "platform-permission-gap": {
+      "decision": "compare-governance-work",
+      "workKind": "governance"
+    },
+    "live-defect": {
+      "decision": "template-work",
+      "workKind": "defect"
+    }
+  },
+  "liveDefectRouting": {
+    "compareRepositoryDecision": "compare-governance-work",
+    "consumerProvingDecision": "consumer-proving-drift",
+    "fallbackDecision": "investment-work"
+  }
+}
