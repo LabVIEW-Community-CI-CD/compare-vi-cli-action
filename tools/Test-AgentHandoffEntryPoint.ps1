@@ -36,6 +36,7 @@ $requiredArtifacts = @(
   'tests/results/_agent/verification/docker-review-loop-summary.json',
   'tests/results/_agent/handoff/continuity-summary.json',
   'tests/results/_agent/handoff/entrypoint-status.json',
+  'tests/results/_agent/handoff/monitoring-mode.json',
   'tests/results/_agent/handoff/*.json',
   'tests/results/_agent/sessions/*.json'
 )
@@ -46,6 +47,7 @@ $commandCatalog = [ordered]@{
   printHandoff = 'pwsh -NoLogo -NoProfile -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim'
   projectPortfolio = 'node tools/npm/run-script.mjs priority:project:portfolio:check'
   developSync = 'node tools/npm/run-script.mjs priority:develop:sync'
+  monitoringMode = 'node tools/npm/run-script.mjs priority:monitoring:mode'
 }
 
 $artifactCatalog = [ordered]@{
@@ -55,6 +57,7 @@ $artifactCatalog = [ordered]@{
   dockerReviewLoopSummary = 'tests/results/_agent/verification/docker-review-loop-summary.json'
   continuitySummary = 'tests/results/_agent/handoff/continuity-summary.json'
   entrypointStatus = 'tests/results/_agent/handoff/entrypoint-status.json'
+  monitoringMode = 'tests/results/_agent/handoff/monitoring-mode.json'
   handoffGlob = 'tests/results/_agent/handoff/*.json'
   sessionGlob = 'tests/results/_agent/sessions/*.json'
 }

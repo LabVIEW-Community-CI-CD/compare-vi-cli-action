@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/template-monitoring-policy-v1.schema.json",
+  "title": "Template Monitoring Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "compareRepository",
+    "pivotTargetRepository",
+    "canonicalTemplate",
+    "consumerForks",
+    "unsupportedPaths",
+    "wakeConditions"
+  ],
+  "properties": {
+    "schema": { "const": "priority/template-monitoring-policy@v1" },
+    "compareRepository": { "type": "string", "minLength": 1 },
+    "pivotTargetRepository": { "type": "string", "minLength": 1 },
+    "canonicalTemplate": { "$ref": "#/$defs/repositoryMonitorPolicy" },
+    "consumerForks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/repositoryMonitorPolicy" }
+    },
+    "unsupportedPaths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "message"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "wakeConditions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "repositoryMonitorPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "repository", "branch", "openIssuesMustEqual"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "minLength": 1 },
+        "branch": { "type": "string", "minLength": 1 },
+        "openIssuesMustEqual": { "type": "integer", "minimum": 0 },
+        "mustMatchCanonicalBranch": { "type": "boolean" },
+        "supportedProof": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["workflowFile", "event", "requiredConclusion"],
+          "properties": {
+            "workflowFile": { "type": "string", "minLength": 1 },
+            "event": { "type": "string", "minLength": 1 },
+            "requiredConclusion": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  }
+}

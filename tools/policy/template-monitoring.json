@@ -1,0 +1,53 @@
+{
+  "schema": "priority/template-monitoring-policy@v1",
+  "compareRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+  "pivotTargetRepository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
+  "canonicalTemplate": {
+    "role": "canonical-template",
+    "repository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
+    "branch": "develop",
+    "openIssuesMustEqual": 0,
+    "mustMatchCanonicalBranch": false,
+    "supportedProof": null
+  },
+  "consumerForks": [
+    {
+      "role": "org-consumer-fork",
+      "repository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork",
+      "branch": "develop",
+      "openIssuesMustEqual": 0,
+      "mustMatchCanonicalBranch": true,
+      "supportedProof": {
+        "workflowFile": "template-smoke.yml",
+        "event": "workflow_dispatch",
+        "requiredConclusion": "success"
+      }
+    },
+    {
+      "role": "personal-consumer-fork",
+      "repository": "svelderrainruiz/LabviewGitHubCiTemplate",
+      "branch": "develop",
+      "openIssuesMustEqual": 0,
+      "mustMatchCanonicalBranch": true,
+      "supportedProof": {
+        "workflowFile": "template-smoke.yml",
+        "event": "workflow_dispatch",
+        "requiredConclusion": "success"
+      }
+    }
+  ],
+  "unsupportedPaths": [
+    {
+      "name": "fork-local-pr-validation",
+      "message": "Fork-local pull request validation remains intentionally unsupported and must not reopen template work by itself."
+    }
+  ],
+  "wakeConditions": [
+    "compare-queue-not-empty",
+    "compare-continuity-not-safe-idle",
+    "compare-template-pivot-not-ready",
+    "template-canonical-open-issues",
+    "template-consumer-fork-drift",
+    "template-supported-workflow-dispatch-regressed"
+  ]
+}

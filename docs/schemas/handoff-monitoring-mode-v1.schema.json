@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/handoff-monitoring-mode-v1.schema.json",
+  "title": "Handoff Monitoring Mode Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "policy",
+    "compare",
+    "templateMonitoring",
+    "wakeConditions",
+    "summary"
+  ],
+  "properties": {
+    "schema": { "const": "agent-handoff/monitoring-mode-v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repository": { "type": "string", "minLength": 1 },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "compareRepository", "pivotTargetRepository", "wakeConditions"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "compareRepository": { "type": "string", "minLength": 1 },
+        "pivotTargetRepository": { "type": "string", "minLength": 1 },
+        "wakeConditions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "compare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["queueState", "continuity", "pivotGate", "readyForMonitoring"],
+      "properties": {
+        "queueState": { "$ref": "#/$defs/compareState" },
+        "continuity": { "$ref": "#/$defs/compareState" },
+        "pivotGate": { "$ref": "#/$defs/compareState" },
+        "readyForMonitoring": { "type": "boolean" }
+      }
+    },
+    "templateMonitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "repositories"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "fail", "unknown"] },
+        "repositories": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/repositoryMonitor" }
+        },
+        "unsupportedPaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/unsupportedPath" }
+        }
+      }
+    },
+    "wakeConditions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/wakeCondition" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "futureAgentAction", "wakeConditionCount", "triggeredWakeConditions"],
+      "properties": {
+        "status": { "type": "string", "enum": ["active", "blocked"] },
+        "futureAgentAction": {
+          "type": "string",
+          "enum": ["future-agent-may-pivot", "reopen-template-monitoring-work", "stay-in-compare-monitoring"]
+        },
+        "wakeConditionCount": { "type": "integer", "minimum": 0 },
+        "triggeredWakeConditions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "compareState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reportPath", "ready", "status"],
+      "properties": {
+        "reportPath": { "type": "string", "minLength": 1 },
+        "ready": { "type": "boolean" },
+        "status": { "type": "string", "minLength": 1 },
+        "detail": { "type": ["string", "null"] }
+      }
+    },
+    "repositoryMonitor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "repository", "monitoringStatus", "openIssues"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "minLength": 1 },
+        "monitoringStatus": { "type": "string", "enum": ["pass", "fail", "unknown"] },
+        "openIssues": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "count"],
+          "properties": {
+            "status": { "type": "string", "enum": ["pass", "fail", "unknown"] },
+            "count": { "type": ["integer", "null"], "minimum": 0 }
+          }
+        },
+        "branchAlignment": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["status", "branch"],
+          "properties": {
+            "status": { "type": "string", "enum": ["pass", "fail", "unknown"] },
+            "branch": { "type": "string", "minLength": 1 },
+            "headSha": { "type": ["string", "null"] },
+            "canonicalHeadSha": { "type": ["string", "null"] }
+          }
+        },
+        "supportedProof": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["status", "workflowFile", "event"],
+          "properties": {
+            "status": { "type": "string", "enum": ["pass", "fail", "unknown"] },
+            "workflowFile": { "type": "string", "minLength": 1 },
+            "event": { "type": "string", "minLength": 1 },
+            "requiredConclusion": { "type": ["string", "null"] },
+            "runUrl": { "type": ["string", "null"] },
+            "headSha": { "type": ["string", "null"] },
+            "conclusion": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "unsupportedPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status", "message"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "const": "unsupported" },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    },
+    "wakeCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "triggered", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "triggered": { "type": "boolean" },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

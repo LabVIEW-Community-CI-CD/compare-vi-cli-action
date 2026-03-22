@@ -142,4 +142,49 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
 
     Remove-Variable -Name HandoffContinuitySummary -Scope Global -ErrorAction SilentlyContinue
   }
+  It 'surfaces monitoring-mode state when present' {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $scriptPath = Join-Path $repoRoot 'tools' 'priority' 'Import-HandoffState.ps1'
+    $handoffDir = Join-Path $TestDrive 'handoff'
+    New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+
+    [ordered]@{
+      schema = 'agent-handoff/monitoring-mode-v1'
+      generatedAt = '2026-03-22T13:00:00Z'
+      repository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+      policy = [ordered]@{
+        path = 'tools/policy/template-monitoring.json'
+        compareRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+        pivotTargetRepository = 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+        wakeConditions = @('compare-queue-not-empty')
+      }
+      compare = [ordered]@{
+        queueState = [ordered]@{ reportPath = 'tests/results/_agent/issue/no-standing-priority.json'; ready = $true; status = 'queue-empty'; detail = 'queue-empty' }
+        continuity = [ordered]@{ reportPath = 'tests/results/_agent/handoff/continuity-summary.json'; ready = $true; status = 'maintained'; detail = 'safe-idle' }
+        pivotGate = [ordered]@{ reportPath = 'tests/results/_agent/promotion/template-pivot-gate-report.json'; ready = $true; status = 'ready'; detail = 'future-agent-may-pivot' }
+        readyForMonitoring = $true
+      }
+      templateMonitoring = [ordered]@{
+        status = 'pass'
+        repositories = @()
+        unsupportedPaths = @()
+      }
+      wakeConditions = @()
+      summary = [ordered]@{
+        status = 'active'
+        futureAgentAction = 'future-agent-may-pivot'
+        wakeConditionCount = 0
+        triggeredWakeConditions = @()
+      }
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $handoffDir 'monitoring-mode.json') -Encoding utf8
+
+    $output = & $scriptPath -HandoffDir $handoffDir *>&1 | Out-String
+
+    $output | Should -Match '\[handoff\] Monitoring mode'
+    $output | Should -Match 'action\s+: future-agent-may-pivot'
+    $output | Should -Match 'template\s+: pass'
+    $global:HandoffMonitoringMode.schema | Should -Be 'agent-handoff/monitoring-mode-v1'
+
+    Remove-Variable -Name HandoffMonitoringMode -Scope Global -ErrorAction SilentlyContinue
+  }
 }

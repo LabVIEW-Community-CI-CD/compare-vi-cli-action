@@ -18,9 +18,10 @@ Live repository state belongs in the machine-generated artifacts under
    before starting a fresh implementation pass. Treat exit code `2` and
    `latestDecision.blocking = true` as a hard stop until a newer `go` exists.
 5. If a standing-priority issue exists, branch from `develop` and execute
-   against that issue. If the queue is empty and release evidence is RC-ready,
-   run `node tools/npm/run-script.mjs priority:pivot:template`; only a future
-   agent may pivot to `LabviewGitHubCiTemplate` when the report is `ready`.
+   against that issue. If the queue is empty, do not create new compare work.
+   When `tests/results/_agent/handoff/monitoring-mode.json` reports
+   `future-agent-may-pivot`, the next future agent may switch to canonical
+   `LabviewGitHubCiTemplate` without operator steering.
 
 ## Live State Surfaces
 
@@ -32,6 +33,8 @@ Live repository state belongs in the machine-generated artifacts under
   `node tools/npm/run-script.mjs priority:project:portfolio:check`
 - Develop sync:
   `node tools/npm/run-script.mjs priority:develop:sync`
+- Monitoring mode:
+  `node tools/npm/run-script.mjs priority:monitoring:mode`
 
 ## Current-State Artifacts
 
@@ -41,6 +44,7 @@ Live repository state belongs in the machine-generated artifacts under
 - `tests/results/_agent/verification/docker-review-loop-summary.json`
 - `tests/results/_agent/handoff/continuity-summary.json`
 - `tests/results/_agent/handoff/entrypoint-status.json`
+- `tests/results/_agent/handoff/monitoring-mode.json`
 - `tests/results/_agent/handoff/human-go-no-go-latest.json`
 - `tests/results/_agent/handoff/*.json`
 - `tests/results/_agent/sessions/*.json`
@@ -50,6 +54,7 @@ Live repository state belongs in the machine-generated artifacts under
 - Repo docs, issue bodies, labels, and policy files remain the source of truth.
 - The project board is visibility only.
 - Treat `queue-empty` as a valid idle state; do not invent a null issue context.
+- Treat `queue-empty + safe-idle + pivot-ready` as an explicit monitoring state.
 - Prefer sanitized repo helpers (`node tools/npm/run-script.mjs ...`) over raw
   `npm`.
 

@@ -18,6 +18,9 @@ entrypoint and machine-generated live state.
 - It refreshes `tests/results/_agent/runtime/continuity-telemetry.json` and the
   mirrored handoff summary `tests/results/_agent/handoff/continuity-summary.json`
   so operator quiet periods can be measured without being mistaken for a reset.
+- It refreshes `tests/results/_agent/handoff/monitoring-mode.json`, which is the
+  machine-readable receipt for compare safe-idle monitoring and future-agent
+  template pivot readiness.
 - It also refreshes the standing-priority summary, router copy, watcher
   telemetry, Docker/Desktop verification summary mirror, and session capsule
   surfaces under `tests/results/_agent/`.
@@ -43,6 +46,7 @@ entrypoint and machine-generated live state.
 - `tests/results/_agent/runtime/continuity-telemetry.json`
 - `tests/results/_agent/handoff/continuity-summary.json`
 - `tests/results/_agent/handoff/entrypoint-status.json`
+- `tests/results/_agent/handoff/monitoring-mode.json`
 - `tests/results/_agent/handoff/docker-review-loop-summary.json`
 - `tests/results/_agent/handoff/*.json`
 - `tests/results/_agent/sessions/*.json`
@@ -52,6 +56,28 @@ entrypoint and machine-generated live state.
 - `queue-empty` is a valid first-class idle state.
 - In that mode, handoff tools should report `issue: none (queue empty)` instead
   of inventing a null issue context or failing on stale numeric snapshots.
+- When compare is `queue-empty`, continuity is `maintained` with a `safe-idle`
+  turn boundary, and `priority:pivot:template` is `ready`, that is a supported
+  handoff state rather than a prompt for operator confirmation.
+- In that state, future agents may pivot to canonical
+  `LabviewGitHubCiTemplate` from repo evidence alone.
+
+## Monitoring Mode
+
+- `tests/results/_agent/handoff/monitoring-mode.json` is the handoff receipt for
+  event-driven monitoring mode.
+- It summarizes:
+  - compare queue state
+  - continuity state
+  - template pivot readiness
+  - wake conditions that should reopen compare or template work
+  - supported downstream monitoring for canonical template and consumer forks
+- Template-side monitoring remains passive:
+  - canonical template open-issue health
+  - fork `develop` alignment to canonical template
+  - latest supported `workflow_dispatch` `template-smoke` proof on each fork
+- Unsupported fork-local PR validation remains documented but must not reopen
+  work by itself.
 
 ## Maintenance Rule
 
