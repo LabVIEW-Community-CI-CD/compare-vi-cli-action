@@ -24,6 +24,9 @@ This runbook defines the controlled onboarding path for issue `#715`:
 - Monitoring work injection report:
   - `tests/results/_agent/issue/monitoring-work-injection.json`
   - schema: `docs/schemas/monitoring-work-injection-report-v1.schema.json`
+- Wake lifecycle report:
+  - `tests/results/_agent/issue/wake-lifecycle.json`
+  - schema: `docs/schemas/wake-lifecycle-report-v1.schema.json`
 - Promotion scorecard:
   - `tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json`
   - schema: `docs/schemas/downstream-promotion-scorecard-v1.schema.json`
@@ -210,6 +213,42 @@ The monitoring injection report distinguishes:
 - `external-route` when the supported wake belongs outside compare
 - `policy-blocked` when an actionable compare wake exists but policy does not
   yet map it to a standing work lane
+
+## Wake lifecycle receipt
+
+Stitch the wake into one machine-readable state machine after adjudication,
+synthesis, accounting, and monitoring injection have all been recorded:
+
+```bash
+node tools/npm/run-script.mjs priority:wake:lifecycle -- \
+  --wake-adjudication tests/results/_agent/issue/wake-adjudication.json \
+  --wake-work-synthesis tests/results/_agent/issue/wake-work-synthesis.json \
+  --wake-investment-accounting tests/results/_agent/capital/wake-investment-accounting.json \
+  --monitoring-work-injection tests/results/_agent/issue/monitoring-work-injection.json \
+  --output tests/results/_agent/issue/wake-lifecycle.json
+```
+
+The lifecycle receipt makes the autonomous governor readable in one place. It
+records the full path:
+
+- `reported`
+- `revalidated`
+- `authoritative`
+- `synthesized`
+- `accounted`
+- `monitoring-work-injection`
+
+and then projects one terminal state, such as:
+
+- `suppressed`
+- `monitoring`
+- `external-route`
+- `compare-work`
+- `template-work`
+- `retired`
+
+That lets future agents and downstream governance surfaces reason from one
+receipt instead of inferring the final state from four separate reports.
 
 Optional aggregated hardening issue creation:
 

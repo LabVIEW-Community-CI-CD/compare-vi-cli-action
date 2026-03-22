@@ -1,0 +1,522 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/wake-lifecycle-report-v1.schema.json",
+  "title": "Wake Lifecycle Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "inputs",
+    "wake",
+    "stages",
+    "transitions",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/wake-lifecycle-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wakeAdjudicationPath",
+        "wakeWorkSynthesisPath",
+        "wakeInvestmentAccountingPath",
+        "monitoringWorkInjectionPath"
+      ],
+      "properties": {
+        "wakeAdjudicationPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wakeWorkSynthesisPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wakeInvestmentAccountingPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "monitoringWorkInjectionPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "wake": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "nextAction",
+        "recommendedOwnerRepository",
+        "reason"
+      ],
+      "properties": {
+        "classification": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextAction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recommendedOwnerRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "stages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reported",
+        "revalidated",
+        "authoritative",
+        "synthesized",
+        "accounted",
+        "monitoringWorkInjection"
+      ],
+      "properties": {
+        "reported": {
+          "$ref": "#/$defs/branchStage"
+        },
+        "revalidated": {
+          "$ref": "#/$defs/branchStage"
+        },
+        "authoritative": {
+          "$ref": "#/$defs/authoritativeStage"
+        },
+        "synthesized": {
+          "$ref": "#/$defs/synthesizedStage"
+        },
+        "accounted": {
+          "$ref": "#/$defs/accountedStage"
+        },
+        "monitoringWorkInjection": {
+          "$ref": "#/$defs/monitoringStage"
+        }
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/transition"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currentStage",
+        "terminalState",
+        "wakeClassification",
+        "decision",
+        "monitoringStatus",
+        "issueNumber",
+        "issueUrl",
+        "authoritativeTier",
+        "blockedLowerTierEvidence",
+        "replayMatched",
+        "replayAuthorityCompatible"
+      ],
+      "properties": {
+        "currentStage": {
+          "const": "monitoring-work-injection"
+        },
+        "terminalState": {
+          "type": "string",
+          "enum": [
+            "suppressed",
+            "monitoring",
+            "external-route",
+            "compare-work",
+            "template-work",
+            "retired"
+          ]
+        },
+        "wakeClassification": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "monitoringStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issueNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "issueUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authoritativeTier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blockedLowerTierEvidence": {
+          "type": "boolean"
+        },
+        "replayMatched": {
+          "type": "boolean"
+        },
+        "replayAuthorityCompatible": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "branchStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "repository",
+        "targetBranch",
+        "defaultBranch",
+        "generatedAt"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "reported",
+            "revalidated"
+          ]
+        },
+        "repository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "targetBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "defaultBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "generatedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "authoritativeStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "selectedTier",
+        "repository",
+        "targetBranch",
+        "defaultBranch",
+        "generatedAt",
+        "source",
+        "blockedLowerTier",
+        "contradictionFields"
+      ],
+      "properties": {
+        "state": {
+          "const": "authoritative"
+        },
+        "selectedTier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "targetBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "defaultBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "generatedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blockedLowerTier": {
+          "type": "boolean"
+        },
+        "contradictionFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "synthesizedStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "decision",
+        "status",
+        "workKind",
+        "recommendedOwnerRepository",
+        "routingAuthorityTier",
+        "blockedLowerTierEvidence",
+        "reason"
+      ],
+      "properties": {
+        "state": {
+          "const": "synthesized"
+        },
+        "decision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workKind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recommendedOwnerRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "routingAuthorityTier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blockedLowerTierEvidence": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "accountedStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "accountingBucket",
+        "status",
+        "paybackStatus",
+        "currentObservedCostUsd"
+      ],
+      "properties": {
+        "state": {
+          "const": "accounted"
+        },
+        "accountingBucket": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "paybackStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "currentObservedCostUsd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "monitoringStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "status",
+        "triggerId",
+        "issueNumber",
+        "issueUrl",
+        "replayMatchedBy",
+        "replayMatchedEntryCount",
+        "replayAuthorityCompatible",
+        "replayAuthorityMismatchReason"
+      ],
+      "properties": {
+        "state": {
+          "const": "monitoring-work-injection"
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "triggerId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issueNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "issueUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replayMatchedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replayMatchedEntryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "replayAuthorityCompatible": {
+          "type": "boolean"
+        },
+        "replayAuthorityMismatchReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage",
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": [
+            "reported",
+            "revalidated",
+            "authoritative",
+            "synthesized",
+            "accounted",
+            "monitoring-work-injection"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "contradicted"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
