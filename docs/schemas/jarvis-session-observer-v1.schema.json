@@ -251,6 +251,7 @@
             "canReuseLinuxDaemon",
             "readyForLinuxDaemon",
             "requiresOperatorCutover",
+            "requiredActions",
             "reason"
           ],
           "properties": {
@@ -269,6 +270,12 @@
             "canReuseLinuxDaemon": { "type": "boolean" },
             "readyForLinuxDaemon": { "type": "boolean" },
             "requiresOperatorCutover": { "type": "boolean" },
+            "requiredActions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "reason": { "type": "string" }
           }
         },

@@ -224,6 +224,10 @@ function buildDaemonCutoverAssessment(jarvisPolicy, hostRuntime) {
   const observedContext = toOptionalText(hostRuntime?.wslDocker?.context) ?? toOptionalText(hostRuntime?.windowsDocker?.context);
   const observedOsType = toOptionalText(hostRuntime?.wslDocker?.osType) ?? toOptionalText(hostRuntime?.windowsDocker?.osType);
   const hostStatus = normalizeLower(hostRuntime?.status);
+  const runningRunnerServices = Array.isArray(hostRuntime?.runnerServices?.running) ? hostRuntime.runnerServices.running : [];
+  const runnerServiceCount = runningRunnerServices.length;
+
+  const buildRequiredActions = (...actions) => actions.filter((action) => normalizeText(action).length > 0);
 
   if (runtimeProvider !== 'native-wsl') {
     return {
@@ -239,6 +243,7 @@ function buildDaemonCutoverAssessment(jarvisPolicy, hostRuntime) {
       canReuseLinuxDaemon: false,
       readyForLinuxDaemon: false,
       requiresOperatorCutover: false,
+      requiredActions: [],
       reason: 'Delivery policy does not require native-wsl daemon reuse.'
     };
   }
@@ -257,6 +262,7 @@ function buildDaemonCutoverAssessment(jarvisPolicy, hostRuntime) {
       canReuseLinuxDaemon: true,
       readyForLinuxDaemon: true,
       requiresOperatorCutover: false,
+      requiredActions: [],
       reason: 'Pinned WSL Docker host resolves to a distro-owned Linux daemon.'
     };
   }
@@ -275,6 +281,14 @@ function buildDaemonCutoverAssessment(jarvisPolicy, hostRuntime) {
       canReuseLinuxDaemon: false,
       readyForLinuxDaemon: false,
       requiresOperatorCutover: true,
+      requiredActions: buildRequiredActions(
+        runnerServiceCount > 0
+          ? `Stop or explicitly govern the ${runnerServiceCount} running actions.runner.* service${runnerServiceCount === 1 ? '' : 's'} on this host.`
+          : 'Verify the host has no unmanaged actions.runner.* services running.',
+        'Switch WSL Docker to a distro-owned Linux daemon before reusing the daemon-first Linux plane.',
+        'Rerun priority:delivery:host:signal.',
+        'Rerun priority:jarvis:status.'
+      ),
       reason: 'WSL Docker still resolves to Docker Desktop; cut over to a distro-owned Linux daemon before reusing the daemon-first Linux plane.'
     };
   }
@@ -293,6 +307,11 @@ function buildDaemonCutoverAssessment(jarvisPolicy, hostRuntime) {
       canReuseLinuxDaemon: false,
       readyForLinuxDaemon: false,
       requiresOperatorCutover: false,
+      requiredActions: buildRequiredActions(
+        'Reconcile the WSL Docker daemon fingerprint.',
+        'Rerun priority:delivery:host:signal.',
+        'Rerun priority:jarvis:status.'
+      ),
       reason: 'WSL Docker daemon fingerprint drifted and must be reconciled before Linux daemon reuse.'
     };
   }
@@ -311,6 +330,13 @@ function buildDaemonCutoverAssessment(jarvisPolicy, hostRuntime) {
       canReuseLinuxDaemon: false,
       readyForLinuxDaemon: false,
       requiresOperatorCutover: false,
+      requiredActions: buildRequiredActions(
+        runnerServiceCount > 0
+          ? `Stop or explicitly govern the ${runnerServiceCount} running actions.runner.* service${runnerServiceCount === 1 ? '' : 's'} on this host.`
+          : 'Verify the host has no unmanaged actions.runner.* services running.',
+        'Rerun priority:delivery:host:signal.',
+        'Rerun priority:jarvis:status.'
+      ),
       reason: 'Runner-service isolation is still required before Linux daemon reuse.'
     };
   }
@@ -328,6 +354,10 @@ function buildDaemonCutoverAssessment(jarvisPolicy, hostRuntime) {
     canReuseLinuxDaemon: false,
     readyForLinuxDaemon: false,
     requiresOperatorCutover: false,
+    requiredActions: buildRequiredActions(
+      'Re-run priority:delivery:host:signal to capture the current host state.',
+      'Re-run priority:jarvis:status to re-evaluate daemon cutover readiness.'
+    ),
     reason: 'Jarvis could not determine whether the Linux daemon plane is reusable.'
   };
 }
@@ -506,6 +536,12 @@ function printHumanSummary(report) {
       `expectedDockerHost=${report.daemon.daemonCutover.expectedDockerHost ?? '<none>'} ` +
       `observedDockerHost=${report.daemon.daemonCutover.observedDockerHost ?? '<none>'}`
   );
+  if (Array.isArray(report.daemon.daemonCutover.requiredActions) && report.daemon.daemonCutover.requiredActions.length > 0) {
+    lines.push('Required actions:');
+    for (const action of report.daemon.daemonCutover.requiredActions) {
+      lines.push(`- ${action}`);
+    }
+  }
   if (report.sessions.length > 0) {
     lines.push('Sessions:');
     for (const session of report.sessions) {
