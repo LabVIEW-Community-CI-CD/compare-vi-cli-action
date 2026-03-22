@@ -19,12 +19,12 @@ test('template dependency policy pins the template repository release and cookie
   assert.equal(policy.schema, 'priority/template-dependency@v1');
   assert.equal(policy.schemaVersion, '1.0.0');
   assert.equal(policy.templateRepositorySlug, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
-  assert.equal(policy.templateReleaseRef, 'v0.1.0');
+  assert.equal(policy.templateReleaseRef, 'v0.1.1');
   assert.equal(policy.cookiecutterVersion, '2.7.1');
   assert.equal(policy.container.runtime, 'docker');
   assert.equal(policy.container.image, 'ghcr.io/labview-community-ci-cd/comparevi-tools:latest');
   assert.equal(policy.container.executionPlane, 'linux-tools-image');
-  assert.equal(policy.rendering.checkout, 'v0.1.0');
+  assert.equal(policy.rendering.checkout, 'v0.1.1');
   assert.equal(policy.rendering.defaultContextPath, 'tests/fixtures/cookiecutter/template-context.json');
   assert.equal(policy.rendering.deterministicInput, true);
   assert.equal(policy.rendering.noInput, true);
@@ -42,10 +42,10 @@ test('template dependency policy validates against the checked-in schema', () =>
   assert.equal(schema.$id, 'https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/template-dependency-v1.schema.json');
   assert.equal(schema.properties.schema.const, 'priority/template-dependency@v1');
   assert.equal(schema.properties.templateRepositorySlug.const, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
-  assert.equal(schema.properties.templateReleaseRef.const, 'v0.1.0');
+  assert.equal(schema.properties.templateReleaseRef.const, 'v0.1.1');
   assert.equal(schema.properties.cookiecutterVersion.const, '2.7.1');
   assert.equal(schema.properties.container.properties.runtime.const, 'docker');
-  assert.equal(schema.properties.rendering.properties.checkout.const, 'v0.1.0');
+  assert.equal(schema.properties.rendering.properties.checkout.const, 'v0.1.1');
   assert.equal(
     schema.properties.rendering.properties.defaultContextPath.const,
     'tests/fixtures/cookiecutter/template-context.json'

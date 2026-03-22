@@ -34,8 +34,8 @@ test('template pivot gate report matches the checked-in schema', async () => {
     targetBranch: 'develop',
     templateDependency: {
       repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-      version: 'v0.1.0',
-      ref: 'v0.1.0',
+      version: 'v0.1.1',
+      ref: 'v0.1.1',
       cookiecutterVersion: '2.7.1'
     },
     queueEmpty: {
@@ -148,8 +148,8 @@ test('template pivot gate report matches the checked-in schema', async () => {
     provenance: {
       templateDependency: {
         repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-        version: 'v0.1.0',
-        ref: 'v0.1.0',
+        version: 'v0.1.1',
+        ref: 'v0.1.1',
         cookiecutterVersion: '2.7.1'
       },
       execution: {

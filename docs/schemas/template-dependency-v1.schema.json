@@ -38,7 +38,7 @@
     },
     "templateReleaseRef": {
       "type": "string",
-      "const": "v0.1.0"
+      "const": "v0.1.1"
     },
     "templateDirectory": {
       "anyOf": [
@@ -109,7 +109,7 @@
       "properties": {
         "checkout": {
           "type": "string",
-          "const": "v0.1.0"
+          "const": "v0.1.1"
         },
         "defaultContextPath": {
           "type": "string",

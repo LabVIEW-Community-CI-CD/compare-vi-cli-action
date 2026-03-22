@@ -51,8 +51,8 @@ test('template-agent verification report matches the checked-in schema', () => {
       provider: 'hosted-github-workflow',
       runUrl: 'https://github.com/example/run/1',
       templateRepo: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-      templateVersion: 'v0.1.0',
-      templateRef: 'v0.1.0',
+      templateVersion: 'v0.1.1',
+      templateRef: 'v0.1.1',
       cookiecutterVersion: '2.7.1',
       executionPlane: 'linux-tools-image',
       containerImage: 'ghcr.io/labview-community-ci-cd/comparevi-tools:v0.1.0',
@@ -74,7 +74,7 @@ test('template-agent verification report matches the checked-in schema', () => {
   addFormats(ajv);
   const validate = ajv.compile(schema);
   assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
-  assert.equal(report.provenance.templateDependency.version, 'v0.1.0');
+  assert.equal(report.provenance.templateDependency.version, 'v0.1.1');
   assert.equal(report.provenance.execution.executionPlane, 'linux-tools-image');
 });
 

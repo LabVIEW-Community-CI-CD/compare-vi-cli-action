@@ -83,8 +83,8 @@ test('template agent verification sync schema validates generated sync payload',
     provenance: {
       templateDependency: {
         repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-        version: 'v0.1.0',
-        ref: 'v0.1.0',
+        version: 'v0.1.1',
+        ref: 'v0.1.1',
         cookiecutterVersion: '2.7.1'
       }
     }

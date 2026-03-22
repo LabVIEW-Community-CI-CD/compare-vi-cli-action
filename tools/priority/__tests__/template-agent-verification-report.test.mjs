@@ -31,9 +31,9 @@ test('parseArgs captures template-agent verification report inputs', () => {
     '--template-repo',
     'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
     '--template-version',
-    'v0.1.0',
+    'v0.1.1',
     '--template-ref',
-    'v0.1.0',
+    'v0.1.1',
     '--cookiecutter-version',
     '2.7.1',
     '--execution-plane',
@@ -56,7 +56,7 @@ test('parseArgs captures template-agent verification report inputs', () => {
   assert.equal(options.durationSeconds, 240);
   assert.equal(options.runUrl, 'https://github.com/example/run/1');
   assert.match(options.templatePolicyPath, /tools[\\/]policy[\\/]template-dependency\.json$/);
-  assert.equal(options.templateVersion, 'v0.1.0');
+  assert.equal(options.templateVersion, 'v0.1.1');
   assert.equal(options.cookiecutterVersion, '2.7.1');
   assert.equal(options.executionPlane, 'linux-tools-image');
   assert.equal(options.outputPath, DEFAULT_OUTPUT_PATH);
@@ -107,8 +107,8 @@ test('evaluateTemplateAgentVerificationReport passes when the reserved hosted la
     provider: 'hosted-github-workflow',
     runUrl: 'https://github.com/example/run/1',
     templateRepo: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-    templateVersion: 'v0.1.0',
-    templateRef: 'v0.1.0',
+    templateVersion: 'v0.1.1',
+    templateRef: 'v0.1.1',
     cookiecutterVersion: '2.7.1',
     executionPlane: 'linux-tools-image',
     containerImage: 'ghcr.io/labview-community-ci-cd/comparevi-tools:v0.1.0',
@@ -125,7 +125,7 @@ test('evaluateTemplateAgentVerificationReport passes when the reserved hosted la
   assert.equal(report.metrics.durationWithinGoal, true);
   assert.equal(report.blockers.length, 0);
   assert.equal(report.provenance.templateDependency.repository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
-  assert.equal(report.provenance.templateDependency.version, 'v0.1.0');
+  assert.equal(report.provenance.templateDependency.version, 'v0.1.1');
   assert.equal(report.provenance.templateDependency.cookiecutterVersion, '2.7.1');
   assert.equal(report.provenance.execution.agentId, 'darwin');
 });
@@ -268,8 +268,8 @@ test('runTemplateAgentVerificationReport defaults pinned template provenance fro
   );
 
   assert.equal(report.provenance.templateDependency.repository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
-  assert.equal(report.provenance.templateDependency.version, 'v0.1.0');
-  assert.equal(report.provenance.templateDependency.ref, 'v0.1.0');
+  assert.equal(report.provenance.templateDependency.version, 'v0.1.1');
+  assert.equal(report.provenance.templateDependency.ref, 'v0.1.1');
   assert.equal(report.provenance.templateDependency.cookiecutterVersion, '2.7.1');
   assert.equal(report.provenance.execution.executionPlane, 'linux-tools-image');
   assert.equal(report.provenance.execution.containerImage, 'ghcr.io/labview-community-ci-cd/comparevi-tools:latest');

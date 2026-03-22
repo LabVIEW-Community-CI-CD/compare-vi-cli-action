@@ -126,7 +126,7 @@ The hosted proof runs `tools/Test-CompareVICookiecutterBootstrap.ps1`, which:
 The hosted conveyor now has a second, template-consumer proof lane:
 
 - pinned template dependency:
-  - `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate@v0.1.0`
+  - `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate@v0.1.1`
 - checked-in deterministic context:
   - `tests/fixtures/cookiecutter/template-context.json`
 - hosted Ubuntu execution plane:
@@ -154,6 +154,6 @@ the same pinned dependency provenance.
 ## Natural Follow-Ons
 
 - mirror the template family into `svelderrainruiz/cookiecutter`
-- carry the same scaffold surface into `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate@v0.1.0`
+- carry the same scaffold surface into `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate@v0.1.1`
 - use the hosted bootstrap proof as the consumer-proving install contract for
   Linux and Windows lanes
