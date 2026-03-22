@@ -28,13 +28,18 @@ test('unattended delivery daemon knowledgebase is checked in and points to the b
   assert.match(guide, /priority:delivery:agent:stop/);
   assert.match(guide, /priority:runtime:daemon/);
   assert.match(guide, /priority:runtime:daemon:docker/);
+  assert.match(guide, /priority:jarvis:status/);
   assert.match(guide, /delivery-agent-state\.json/);
   assert.match(guide, /delivery-agent-lanes\/<lane-id>\.json/);
   assert.match(guide, /delivery-memory\.json/);
+  assert.match(guide, /jarvis-session-observer\.json/);
   assert.match(guide, /observer-heartbeat\.json/);
   assert.match(guide, /task-packet\.json/);
   assert.match(guide, /codex-state-hygiene\.json/);
   assert.match(guide, /lane-marketplace-snapshot\.json/);
+  assert.match(guide, /daemon-host-signal\.json/);
+  assert.match(guide, /docker-daemon-engine\.json/);
+  assert.match(guide, /native-wsl/);
   assert.match(guide, /Unattended-Delivery-Daemon-Debt-Register\.md/);
   assert.match(guide, /Unattended-Delivery-Daemon-Capability-Expansion-Register\.md/);
   assert.match(guide, /runtime-daemon\.mjs/);
