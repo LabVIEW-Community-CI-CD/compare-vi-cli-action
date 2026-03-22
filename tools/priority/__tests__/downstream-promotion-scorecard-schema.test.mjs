@@ -70,7 +70,8 @@ test('downstream promotion scorecard schema validates generated report payload',
     },
     verification: {
       provider: 'hosted-github-workflow',
-      status: 'pass'
+      status: 'pass',
+      runUrl: 'https://github.com/example/repo/actions/runs/1'
     },
     provenance: {
       templateDependency: {
@@ -136,5 +137,6 @@ test('downstream promotion scorecard schema validates generated report payload',
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.gates.feedbackReport.status, 'pass');
   assert.equal(result.report.gates.templateAgentVerificationReport.status, 'pass');
+  assert.equal(result.report.gates.templateAgentVerificationReport.sourceCommitMatched, true);
   assert.equal(result.report.gates.manifestReport.status, 'pass');
 });
