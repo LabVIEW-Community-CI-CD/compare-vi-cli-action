@@ -14,12 +14,13 @@ let GH_AUTH_TOKEN_CACHE;
 let WARNED_NO_GITHUB_TOKEN_FOR_REST = false;
 const DEFAULT_STANDING_PRIORITY_LABEL = 'standing-priority';
 const FORK_STANDING_PRIORITY_LABEL = 'fork-standing-priority';
+const STANDING_EXCLUDED_LABEL = 'standing-excluded';
 const MODULE_FILE_PATH = fileURLToPath(import.meta.url);
 const MODULE_REPO_ROOT = path.resolve(path.dirname(MODULE_FILE_PATH), '../..');
 const NO_STANDING_REPORT_FILENAME = 'no-standing-priority.json';
 const MULTIPLE_STANDING_REPORT_FILENAME = 'multiple-standing-priority.json';
 const AUTO_PROMOTED_STANDING_REPORT_FILENAME = 'auto-promoted-standing-priority.json';
-const AUTO_SELECT_EXCLUDED_LABELS = new Set(['duplicate', 'invalid', 'wontfix']);
+const AUTO_SELECT_EXCLUDED_LABELS = new Set(['duplicate', 'invalid', 'wontfix', STANDING_EXCLUDED_LABEL]);
 
 const CLI_USAGE_LINES = [
   'Usage: node tools/priority/sync-standing-priority.mjs [options]',
@@ -362,6 +363,7 @@ function normalizeOpenIssueCandidate(entry) {
   }
 
   const labels = normalizeList((entry.labels || []).map((label) => label?.name || label));
+  const standingExcluded = labels.includes(STANDING_EXCLUDED_LABEL);
   const excluded = labels.some((label) => AUTO_SELECT_EXCLUDED_LABELS.has(String(label).toLowerCase()));
 
   const title = typeof entry.title === 'string' ? entry.title.trim() : '';
@@ -389,6 +391,7 @@ function normalizeOpenIssueCandidate(entry) {
     updatedAt: entry.updatedAt || entry.updated_at || null,
     url: entry.html_url || entry.url || null,
     priority: parsePriorityOrdinal(title),
+    standingExcluded,
     excluded,
     epic: isEpicTitle(title),
     umbrella: hasChildTracksSection(body),
@@ -487,8 +490,12 @@ export function hasOnlyBlockedConcreteIssuesBehindFallbackParent(entries = [], o
 }
 
 function hasOnlyIneligibleOpenIssues(entries = [], options = {}) {
-  const normalized = normalizeSelectableStandingCandidates(entries, options);
-  if (normalized.length === 0) {
+  const normalizedAll = Array.isArray(entries)
+    ? entries
+        .map((entry) => normalizeOpenIssueCandidate(entry))
+        .filter(Boolean)
+    : [];
+  if (normalizedAll.length === 0) {
     return false;
   }
 
@@ -496,7 +503,11 @@ function hasOnlyIneligibleOpenIssues(entries = [], options = {}) {
     return true;
   }
 
-  return normalized.every((entry) => entry.outOfScope || entry.blocked || entry.passiveTracker);
+  return normalizedAll.every(
+    (entry) =>
+      entry.standingExcluded ||
+      (!entry.excluded && (entry.outOfScope || entry.blocked || entry.passiveTracker))
+  );
 }
 
 export function selectAutoStandingPriorityCandidate(entries = [], options = {}) {
