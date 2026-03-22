@@ -24,6 +24,7 @@ import {
   normalizeText,
   readJsonFile,
   readLogTail,
+  resolveHostSignalForStatus,
   resolveDeliveryStateForStatus,
   resolveGitDirPath,
   resolveObserverTelemetry,
@@ -151,7 +152,11 @@ export function emitStatus(options) {
   const codexStateHygiene = readJsonFile(paths.codexStateHygienePath);
   const observer = resolveObserverTelemetry(codexStateHygiene, paths.codexStateHygienePath);
   const workspaceQuarantine = getOptionalProperty(options, 'workspaceQuarantine') || resolveWorkspaceQuarantine(repoRoot);
-  const hostSignal = readJsonFile(paths.hostSignalPath);
+  const hostSignalResolution = resolveHostSignalForStatus({
+    hostSignal: readJsonFile(paths.hostSignalPath),
+    managerStartedAt,
+  });
+  const hostSignal = hostSignalResolution.hostSignal;
   const hostIsolation = readJsonFile(paths.hostIsolationPath);
   const wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
   const daemonLogTail = readLogTail(paths.daemonLogPath);
@@ -191,6 +196,7 @@ export function emitStatus(options) {
     workspaceQuarantine,
     codexStateHygiene,
     hostSignal,
+    hostSignalDiagnostics: hostSignalResolution.diagnostics,
     hostIsolation,
     wslNativeDocker,
     logTail: {
@@ -239,6 +245,8 @@ export function emitStatus(options) {
       daemonLogLineCount: daemonLogTail.length,
       managerStdoutLineCount: managerLogTail.length,
       managerStderrLineCount: managerErrorLogTail.length,
+      hostSignalReason: hostSignalResolution.diagnostics.reason,
+      hostSignalUsed: Boolean(hostSignalResolution.diagnostics.usedHostSignal),
     },
   });
   return report;

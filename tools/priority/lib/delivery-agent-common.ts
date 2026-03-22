@@ -241,6 +241,30 @@ export function resolveObserverTelemetry(codexStateHygiene, reportPath) {
   return fallback;
 }
 
+export function resolveHostSignalForStatus({ hostSignal, managerStartedAt = null }) {
+  const hostSignalGeneratedAt = getOptionalDateTimeProperty(hostSignal, 'generatedAt');
+  const diagnostics = {
+    usedHostSignal: false,
+    reason: 'host-signal-missing',
+    hostSignalGeneratedAt: hostSignalGeneratedAt ? hostSignalGeneratedAt.toISOString() : null,
+    managerStartedAt: managerStartedAt ? managerStartedAt.toISOString() : null,
+    hostSignalRepository: getOptionalStringProperty(hostSignal, 'repository'),
+  };
+
+  if (!hostSignal) {
+    return { hostSignal: null, diagnostics };
+  }
+
+  if (managerStartedAt && hostSignalGeneratedAt && hostSignalGeneratedAt < managerStartedAt) {
+    diagnostics.reason = 'stale-before-current-manager';
+    return { hostSignal: null, diagnostics };
+  }
+
+  diagnostics.usedHostSignal = true;
+  diagnostics.reason = 'host-signal-current';
+  return { hostSignal, diagnostics };
+}
+
 export function getArtifactPaths(repoRoot, runtimeDir) {
   const runtimeDirPath = resolvePath(repoRoot, runtimeDir);
   return {
