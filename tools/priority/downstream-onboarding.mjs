@@ -192,6 +192,31 @@ export function resolveRepositorySlug(explicitRepo) {
   throw new Error('Unable to resolve repository slug. Set GITHUB_REPOSITORY or pass --upstream-repo.');
 }
 
+export function resolveBranchResolution({
+  requestedBranchOverride,
+  repositoryDefaultBranch,
+  fallbackBranch = 'develop'
+} = {}) {
+  const normalizedRequestedBranch = requestedBranchOverride ? String(requestedBranchOverride).trim() : null;
+  const normalizedRepositoryDefaultBranch = repositoryDefaultBranch ? String(repositoryDefaultBranch).trim() : null;
+  const normalizedFallbackBranch = fallbackBranch ? String(fallbackBranch).trim() : 'develop';
+
+  const evaluatedBranch =
+    normalizedRequestedBranch || normalizedRepositoryDefaultBranch || normalizedFallbackBranch;
+  const source = normalizedRequestedBranch
+    ? 'explicit-override'
+    : normalizedRepositoryDefaultBranch
+      ? 'live-repository-default-branch'
+      : 'fallback-default-branch';
+
+  return {
+    requestedBranchOverride: normalizedRequestedBranch,
+    repositoryDefaultBranch: normalizedRepositoryDefaultBranch,
+    evaluatedBranch,
+    source
+  };
+}
+
 export function resolveToken() {
   for (const value of [process.env.GH_TOKEN, process.env.GITHUB_TOKEN]) {
     if (value && value.trim()) {
@@ -572,6 +597,8 @@ export function evaluateChecklist(policy, context) {
       context.repository?.ok ? 'repository-visible' : context.repository?.error || 'repository-unavailable',
       {
         defaultBranch: context.repository?.defaultBranch ?? null,
+        evaluatedBranch: context.repository?.evaluatedBranch ?? null,
+        branchResolutionSource: context.repository?.branchResolutionSource ?? null,
         htmlUrl: context.repository?.htmlUrl ?? null
       }
     )
@@ -808,10 +835,16 @@ export function buildInfrastructureFailureReport({
   error,
   stage = 'runtime'
 }) {
+  const branchResolution = resolveBranchResolution({
+    requestedBranchOverride: options.targetBranch,
+    repositoryDefaultBranch: null
+  });
   const repositoryContext = {
     ok: false,
     error: error?.message || String(error),
-    defaultBranch: options.targetBranch || 'develop',
+    defaultBranch: branchResolution.repositoryDefaultBranch,
+    evaluatedBranch: branchResolution.evaluatedBranch,
+    branchResolutionSource: branchResolution.source,
     htmlUrl: null
   };
   const environments = {
@@ -848,7 +881,8 @@ export function buildInfrastructureFailureReport({
     upstreamRepository,
     actionRepository,
     downstreamRepository,
-    targetBranch: repositoryContext.defaultBranch,
+    targetBranch: branchResolution.evaluatedBranch,
+    branchResolution,
     pilot: {
       startedAt: options.startedAt ?? null,
       parentIssue: options.parentIssue ?? null
@@ -1021,7 +1055,9 @@ export async function main(argv = process.argv) {
     const repositoryContext = {
       ok: false,
       error: null,
-      defaultBranch: options.targetBranch || null,
+      defaultBranch: null,
+      evaluatedBranch: null,
+      branchResolutionSource: null,
       htmlUrl: null
     };
 
@@ -1043,17 +1079,23 @@ export async function main(argv = process.argv) {
     };
 
     const repoMetadata = await fetchRepositoryMetadata(downstreamRepository, token);
+    const branchResolution = resolveBranchResolution({
+      requestedBranchOverride: options.targetBranch,
+      repositoryDefaultBranch: repoMetadata?.default_branch || null
+    });
     repositoryContext.ok = true;
-    repositoryContext.defaultBranch = options.targetBranch || repoMetadata?.default_branch || 'develop';
+    repositoryContext.defaultBranch = branchResolution.repositoryDefaultBranch;
+    repositoryContext.evaluatedBranch = branchResolution.evaluatedBranch;
+    repositoryContext.branchResolutionSource = branchResolution.source;
     repositoryContext.htmlUrl = repoMetadata?.html_url || null;
     repositoryContext.private = repoMetadata?.private === true;
 
-    workflowEntries = await fetchWorkflowEntries(downstreamRepository, repositoryContext.defaultBranch, token);
+    workflowEntries = await fetchWorkflowEntries(downstreamRepository, branchResolution.evaluatedBranch, token);
     for (const entry of workflowEntries) {
       const content = await fetchWorkflowContent(
         downstreamRepository,
         entry.path,
-        repositoryContext.defaultBranch,
+        branchResolution.evaluatedBranch,
         token
       );
       if (!content) continue;
@@ -1070,7 +1112,7 @@ export async function main(argv = process.argv) {
       const runs = await fetchWorkflowRuns(
         downstreamRepository,
         workflowPath,
-        repositoryContext.defaultBranch,
+        branchResolution.evaluatedBranch,
         options.lookbackRuns,
         token
       );
@@ -1080,7 +1122,7 @@ export async function main(argv = process.argv) {
     environments = await fetchEnvironmentStatus(downstreamRepository, token, policy.requiredEnvironments);
     branchProtection = await fetchBranchProtectionStatus(
       downstreamRepository,
-      repositoryContext.defaultBranch,
+      branchResolution.evaluatedBranch,
       token,
       policy.requiredBranchChecks
     );
@@ -1109,7 +1151,8 @@ export async function main(argv = process.argv) {
       upstreamRepository,
       actionRepository,
       downstreamRepository,
-      targetBranch: repositoryContext.defaultBranch || options.targetBranch || 'develop',
+      targetBranch: branchResolution.evaluatedBranch,
+      branchResolution,
       pilot: {
         startedAt: options.startedAt ?? null,
         parentIssue: options.parentIssue ?? null

@@ -5,6 +5,7 @@ import {
   DEFAULT_OUTPUT_PATH,
   DEFAULT_POLICY_PATH,
   parseArgs,
+  resolveBranchResolution,
   extractActionReferencesFromWorkflow,
   classifyActionReference,
   evaluateChecklist,
@@ -65,6 +66,34 @@ test('parseArgs applies defaults and parses explicit values', () => {
   assert.deepEqual(parsed.issueLabels, ['program', 'enhancement']);
   assert.equal(parsed.issuePrefix, '[onboarding-x]');
   assert.equal(parsed.failOnGap, true);
+});
+
+test('resolveBranchResolution distinguishes explicit overrides from live repository defaults', () => {
+  assert.deepEqual(
+    resolveBranchResolution({
+      requestedBranchOverride: 'downstream/develop',
+      repositoryDefaultBranch: 'develop'
+    }),
+    {
+      requestedBranchOverride: 'downstream/develop',
+      repositoryDefaultBranch: 'develop',
+      evaluatedBranch: 'downstream/develop',
+      source: 'explicit-override'
+    }
+  );
+
+  assert.deepEqual(
+    resolveBranchResolution({
+      requestedBranchOverride: null,
+      repositoryDefaultBranch: 'develop'
+    }),
+    {
+      requestedBranchOverride: null,
+      repositoryDefaultBranch: 'develop',
+      evaluatedBranch: 'develop',
+      source: 'live-repository-default-branch'
+    }
+  );
 });
 
 test('extractActionReferencesFromWorkflow finds compare-vi uses entries', () => {
@@ -264,6 +293,9 @@ test('buildInfrastructureFailureReport produces a schema-valid fail envelope', (
   assert.equal(report.schema, 'priority/downstream-onboarding-report@v1');
   assert.equal(report.summary.status, 'fail');
   assert.equal(report.repository.ok, false);
+  assert.equal(report.repository.defaultBranch, null);
+  assert.equal(report.repository.evaluatedBranch, 'develop');
+  assert.equal(report.branchResolution.source, 'explicit-override');
   assert.equal(report.infrastructureFailure.stage, 'runtime');
   assert.match(report.infrastructureFailure.message, /GitHub token not found/);
   assert.equal(report.hardeningBacklog.length > 0, true);

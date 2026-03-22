@@ -58,6 +58,16 @@ What it evaluates:
 - protected production environment presence
 - visibility of policy-required branch checks
 
+Branch provenance matters here:
+
+- `upstream/develop` is the compare producer lineage ref
+- `develop` is the canonical live branch for the current template repo
+- `downstream/develop` is the consumer-proving rail when the conveyor chooses to maintain one
+
+The onboarding report now records all three branch concepts separately so a
+future wake can distinguish live repo truth from compare-side proving-rail
+policy instead of collapsing them into one branch string.
+
 ## Pilot stabilization loop
 
 Repeat the onboarding run after each remediation cycle:
@@ -188,6 +198,7 @@ It now follows the shared hosted-signal contract in [`HOSTED_SIGNAL_REPORT_FIRST
 
 - exports both `GH_TOKEN` and `GITHUB_TOKEN`
 - appends a deterministic step summary from the feedback report when present
+- records requested branch override, resolved live default branch, evaluated branch, and policy consumer rail branch separately
 - emits a wake adjudication artifact so stale downstream branch/provenance signals can be suppressed before reopening work
 - builds and validates the downstream promotion scorecard before artifact upload
 - projects immutable downstream promotion manifest inputs into the scorecard when the manifest artifact is present

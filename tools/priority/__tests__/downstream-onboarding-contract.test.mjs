@@ -30,6 +30,11 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   assert.match(workflow, /tools\/policy\/template-dependency\.json/);
   assert.match(workflow, /Resolve immutable upstream source/);
   assert.match(workflow, /git fetch --no-tags origin '\+refs\/heads\/develop:refs\/remotes\/upstream\/develop'/);
+  assert.match(workflow, /policy_consumer_rail_branch/);
+  assert.match(workflow, /resolved_branch_override/);
+  assert.match(workflow, /resolved_branch_source/);
+  assert.match(workflow, /branch="\$\{DOWNSTREAM_BRANCH\}"/);
+  assert.doesNotMatch(workflow, /branch="\$\{policy_consumer_rail_branch/);
   assert.match(workflow, /downstream-onboarding-feedback\.mjs/);
   assert.match(workflow, /args\+=\(--branch "\$branch"\)/);
   assert.match(workflow, /--issue-repo "\$issue_repo"/);
@@ -42,6 +47,10 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   assert.match(workflow, /tests\/results\/_agent\/issue\/wake-adjudication\.json/);
   assert.match(workflow, /Refresh template-agent verification report/);
   assert.match(workflow, /priority:template:agent:verify/);
+  assert.doesNotMatch(
+    workflow,
+    /resolved_branch == steps\.feedback\.outputs\.policy_template_branch/
+  );
   assert.match(workflow, /Generate downstream promotion manifest/);
   assert.match(workflow, /downstream-promotion-manifest\.mjs/);
   assert.match(workflow, /--source-sha '\$\{\{ steps\.source\.outputs\.source_sha \}\}'/);
@@ -62,6 +71,11 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
     workflow.indexOf('Generate downstream promotion manifest') < workflow.indexOf('Build downstream promotion scorecard')
   );
   assert.match(workflow, /Append onboarding feedback summary/);
+  assert.match(workflow, /requested branch override/);
+  assert.match(workflow, /branch resolution source/);
+  assert.match(workflow, /evaluated branch/);
+  assert.match(workflow, /repository default branch/);
+  assert.match(workflow, /policy consumer rail branch/);
   assert.match(workflow, /execution status/);
   assert.match(workflow, /wake adjudication/);
   assert.match(workflow, /template-agent verification status/);

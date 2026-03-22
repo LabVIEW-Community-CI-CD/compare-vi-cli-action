@@ -23,6 +23,7 @@
       "type": "object",
       "required": [
         "downstreamRepository",
+        "targetBranchOverride",
         "startedAt",
         "parentIssue",
         "createHardeningIssues",
@@ -32,6 +33,13 @@
         "downstreamRepository": {
           "type": "string",
           "pattern": "^[^/]+/[^/]+$"
+        },
+        "targetBranchOverride": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
         },
         "startedAt": {
           "type": [
