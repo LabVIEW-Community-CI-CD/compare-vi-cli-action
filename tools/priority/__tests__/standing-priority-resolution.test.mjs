@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -15,11 +15,14 @@ import {
   buildNoStandingPriorityReport,
   buildAutoPromotedStandingPriorityReport,
   buildMultipleStandingPriorityReport,
+  buildStandingPriorityDriftReport,
   buildNoStandingPriorityState,
   shouldRethrowStandingPriorityError,
   shouldContinueAfterAutoSelectLaneEmpty,
   determinePrioritySyncExitCode,
   isStandingPriorityCacheCandidate,
+  splitStandingPriorityIssueRecords,
+  reconcileStandingPriorityDrift,
   resolveStandingPriorityLabels,
   resolveStandingPriorityRepositorySlug,
   resolveStandingPriorityFromSources,
@@ -75,6 +78,17 @@ test('isStandingPriorityCacheCandidate requires OPEN state and matching standing
       number: 42,
       state: 'OPEN',
       labels: ['bug']
+    }),
+    false
+  );
+});
+
+test('isStandingPriorityCacheCandidate rejects open standing issues that also carry standing-excluded', () => {
+  assert.equal(
+    isStandingPriorityCacheCandidate({
+      number: 42,
+      state: 'OPEN',
+      labels: ['standing-priority', 'standing-excluded']
     }),
     false
   );
@@ -2371,6 +2385,143 @@ test('buildMultipleStandingPriorityReport emits deterministic schema payload', (
     message: 'Multiple open standing-priority issues found',
     failOnMultiple: true
   });
+});
+
+test('splitStandingPriorityIssueRecords hard-blocks standing-excluded entries from effective standing ownership', () => {
+  const result = splitStandingPriorityIssueRecords(
+    [
+      {
+        number: 1426,
+        title: 'Monitoring debt',
+        labels: ['standing-priority', 'standing-excluded'],
+        url: 'https://github.com/owner/repo/issues/1426'
+      },
+      {
+        number: 1689,
+        title: 'Cleanup lane',
+        labels: ['standing-priority'],
+        url: 'https://github.com/owner/repo/issues/1689'
+      }
+    ],
+    ['standing-priority']
+  );
+
+  assert.deepEqual(
+    result.eligible.map((issue) => issue.number),
+    [1689]
+  );
+  assert.deepEqual(
+    result.drifted.map((issue) => issue.number),
+    [1426]
+  );
+});
+
+test('buildStandingPriorityDriftReport emits deterministic cleanup receipt payload', () => {
+  const report = buildStandingPriorityDriftReport({
+    repository: 'owner/repo',
+    labels: ['standing-priority'],
+    corrected: true,
+    issues: [
+      {
+        number: 1426,
+        title: 'Monitoring debt',
+        url: 'https://github.com/owner/repo/issues/1426',
+        labels: ['standing-priority', 'standing-excluded'],
+        removedLabels: ['standing-priority'],
+        remainingLabels: ['standing-excluded'],
+        correctionSource: 'gh'
+      }
+    ],
+    generatedAt: '2026-03-22T16:00:00.000Z'
+  });
+
+  assert.deepEqual(report, {
+    schema: 'standing-priority/drift@v1',
+    generatedAt: '2026-03-22T16:00:00.000Z',
+    repository: 'owner/repo',
+    labels: ['standing-priority'],
+    corrected: true,
+    issues: [
+      {
+        number: 1426,
+        title: 'Monitoring debt',
+        url: 'https://github.com/owner/repo/issues/1426',
+        labels: ['standing-excluded', 'standing-priority'],
+        removedLabels: ['standing-priority'],
+        remainingLabels: ['standing-excluded'],
+        correctionSource: 'gh'
+      }
+    ],
+    message: 'Corrected stale standing-priority labels on standing-excluded issue(s): #1426.'
+  });
+});
+
+test('resolveStandingPriorityForRepo ignores standing-excluded drift and returns the eligible standing issue', async () => {
+  const result = await resolveStandingPriorityForRepo(
+    '/tmp/repo',
+    'owner/repo',
+    ['standing-priority'],
+    {
+      runGhList: async () => ({
+        status: 0,
+        stdout: JSON.stringify([
+          {
+            number: 1426,
+            title: 'Monitoring debt',
+            labels: ['standing-priority', 'standing-excluded']
+          },
+          {
+            number: 1689,
+            title: 'Cleanup lane',
+            labels: ['standing-priority']
+          }
+        ])
+      }),
+      runRestLookup: async () => ({ status: 'unavailable', error: 'not-used' }),
+      warn: () => {}
+    }
+  );
+
+  assert.equal(result.found?.number, 1689);
+  assert.deepEqual(result.ghOutcome?.driftIssueNumbers, [1426]);
+});
+
+test('reconcileStandingPriorityDrift removes stale standing labels from standing-excluded issues and writes a receipt', async (t) => {
+  const repoRoot = await mkdtemp(path.join(tmpdir(), 'standing-drift-'));
+  t.after(() => rm(repoRoot, { recursive: true, force: true }));
+  const resultsDir = path.join(repoRoot, 'tests', 'results', '_agent', 'issue');
+  await mkdir(resultsDir, { recursive: true });
+
+  const removals = [];
+  const result = await reconcileStandingPriorityDrift(repoRoot, 'owner/repo', ['standing-priority'], {
+    resultsDir,
+    runGhListAll: async () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 1426,
+          title: 'Monitoring debt',
+          labels: ['standing-priority', 'standing-excluded'],
+          url: 'https://github.com/owner/repo/issues/1426'
+        }
+      ])
+    }),
+    runGhRemoveLabels: async ({ issueNumber, removeLabels }) => {
+      removals.push({ issueNumber, removeLabels });
+      return { status: 0, stdout: '', stderr: '' };
+    },
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'corrected');
+  assert.deepEqual(removals, [{ issueNumber: 1426, removeLabels: ['standing-priority'] }]);
+
+  const report = JSON.parse(
+    await readFile(path.join(resultsDir, 'standing-priority-drift.json'), 'utf8')
+  );
+  assert.equal(report.schema, 'standing-priority/drift@v1');
+  assert.equal(report.corrected, true);
+  assert.deepEqual(report.issues.map((issue) => issue.number), [1426]);
 });
 
 

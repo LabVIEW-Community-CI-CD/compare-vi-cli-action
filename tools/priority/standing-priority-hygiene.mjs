@@ -4,6 +4,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+const STANDING_EXCLUDED_LABEL = 'standing-excluded';
+
 function sh(cmd, args, opts = {}) {
   return spawnSync(cmd, args, { encoding: 'utf8', shell: false, ...opts });
 }
@@ -35,7 +37,8 @@ export function shouldRemoveStandingPriorityLabel(issue, label = 'standing-prior
   const state = String(issue?.state || '')
     .trim()
     .toUpperCase();
-  return state === 'CLOSED' && issueHasLabel(issue, label);
+  if (!issueHasLabel(issue, label)) return false;
+  return state === 'CLOSED' || (state === 'OPEN' && issueHasLabel(issue, STANDING_EXCLUDED_LABEL));
 }
 
 export function parseCliArgs(argv = process.argv.slice(2)) {
@@ -85,7 +88,7 @@ function printHelp() {
   console.log(`Usage:
   node tools/priority/standing-priority-hygiene.mjs --issue <number> [--label <name>] [--dry-run]
 
-Removes the standing-priority label from a closed issue when present.`);
+Removes the standing-priority label from a closed issue, or from an open issue that is explicitly marked standing-excluded.`);
 }
 
 export async function runHygiene(options = {}) {
@@ -112,7 +115,7 @@ export async function runHygiene(options = {}) {
 
   if (dryRun) {
     console.log(
-      `[standing-hygiene] Dry-run: would remove label '${label}' from closed issue #${issue.number}.`
+      `[standing-hygiene] Dry-run: would remove label '${label}' from issue #${issue.number}.`
     );
     return { removed: false, issue, dryRun: true };
   }
@@ -151,4 +154,3 @@ if (invokedPath && invokedPath === modulePath) {
     }
   })();
 }
-
