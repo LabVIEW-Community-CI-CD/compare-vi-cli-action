@@ -48,7 +48,7 @@ Describe 'Bootstrap develop checkout decision' -Tag 'Unit' {
       Get-BootstrapHelperRootDecision `
         -CurrentBranch 'issue/1276-bootstrap-helper-root' `
         -CurrentRepoRoot 'C:\repo\issue-1276' `
-        -DevelopWorktreeRoots @('C:\repo\develop-root')
+        -DevelopWorktreeRoots @([pscustomobject]@{ Root = 'C:\repo\develop-root'; IsClean = $true })
     }
 
     $decision.Action | Should -Be 'delegate-develop-worktree'
@@ -60,7 +60,7 @@ Describe 'Bootstrap develop checkout decision' -Tag 'Unit' {
       Get-BootstrapHelperRootDecision `
         -CurrentBranch 'develop' `
         -CurrentRepoRoot 'C:\repo\develop-root' `
-        -DevelopWorktreeRoots @('C:\repo\develop-root')
+        -DevelopWorktreeRoots @([pscustomobject]@{ Root = 'C:\repo\develop-root'; IsClean = $true })
     }
 
     $decision.Action | Should -Be 'use-current-root'
@@ -77,5 +77,52 @@ Describe 'Bootstrap develop checkout decision' -Tag 'Unit' {
 
     $decision.Action | Should -Be 'use-current-root'
     $decision.HelperRoot | Should -Be 'C:\repo\issue-1276'
+  }
+
+  It 'skips dirty develop helpers when a clean helper is available' {
+    $decision = & $script:DecisionModule {
+      Get-BootstrapHelperRootDecision `
+        -CurrentBranch 'issue/1744-router-refresh' `
+        -CurrentRepoRoot 'C:\repo\issue-1744' `
+        -DevelopWorktreeRoots @(
+          [pscustomobject]@{ Root = 'C:\repo\develop-dirty'; IsClean = $false },
+          [pscustomobject]@{ Root = 'C:\repo\develop-clean'; IsClean = $true }
+        )
+    }
+
+    $decision.Action | Should -Be 'delegate-develop-worktree'
+    $decision.HelperRoot | Should -Be 'C:\repo\develop-clean'
+    $decision.Message | Should -Match 'clean develop helper checkout'
+  }
+
+  It 'falls back to the caller checkout when only dirty develop helpers exist' {
+    $decision = & $script:DecisionModule {
+      Get-BootstrapHelperRootDecision `
+        -CurrentBranch 'issue/1744-router-refresh' `
+        -CurrentRepoRoot 'C:\repo\issue-1744' `
+        -DevelopWorktreeRoots @(
+          [pscustomobject]@{ Root = 'C:\repo\develop-dirty'; IsClean = $false }
+        )
+    }
+
+    $decision.Action | Should -Be 'use-current-root'
+    $decision.HelperRoot | Should -Be 'C:\repo\issue-1744'
+    $decision.Message | Should -Match 'only dirty develop helper'
+  }
+
+  It 'delegates away from a dirty develop root when a clean helper exists' {
+    $decision = & $script:DecisionModule {
+      Get-BootstrapHelperRootDecision `
+        -CurrentBranch 'develop' `
+        -CurrentRepoRoot 'C:\repo\develop-dirty' `
+        -DevelopWorktreeRoots @(
+          [pscustomobject]@{ Root = 'C:\repo\develop-dirty'; IsClean = $false },
+          [pscustomobject]@{ Root = 'C:\repo\develop-clean'; IsClean = $true }
+        )
+    }
+
+    $decision.Action | Should -Be 'delegate-clean-develop-worktree'
+    $decision.HelperRoot | Should -Be 'C:\repo\develop-clean'
+    $decision.Message | Should -Match 'dirty; using clean develop helper'
   }
 }

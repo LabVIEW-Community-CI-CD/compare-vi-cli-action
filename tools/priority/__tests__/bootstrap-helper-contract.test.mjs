@@ -20,7 +20,7 @@ test('bootstrap routes standing-priority helper scripts through the resolved hel
   assert.match(content, /function Test-SemVerRepoRootOverrideSupport/);
   assert.match(
     content,
-    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/sync-standing-priority\.mjs'[\s\S]*-RequiredPackages @\('undici'\)[\s\S]*--fail-on-missing[\s\S]*--auto-select-next/
+    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/sync-standing-priority\.mjs'[\s\S]*-RequiredPackages @\('undici'\)[\s\S]*--fail-on-missing[\s\S]*--auto-select-next[\s\S]*--materialize-cache/
   );
   assert.match(
     content,
