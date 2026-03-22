@@ -158,6 +158,52 @@ async function invokeMonitoringWorkInjection({
   }
 }
 
+export function resolvePostRepairHostConflict({
+  repairedHostSignal,
+  collectedHostSignal,
+}) {
+  const repairedStatus = getOptionalStringProperty(repairedHostSignal, 'status');
+  const repairedProvider = getOptionalStringProperty(repairedHostSignal, 'provider');
+  const repairedFingerprint = getOptionalStringProperty(repairedHostSignal, 'daemonFingerprint');
+  const collectedStatus = getOptionalStringProperty(collectedHostSignal, 'status');
+  const collectedProvider = getOptionalStringProperty(collectedHostSignal, 'provider');
+  const collectedFingerprint = getOptionalStringProperty(collectedHostSignal, 'daemonFingerprint');
+
+  const routedRunnerConflict =
+    repairedStatus === 'native-wsl' &&
+    repairedProvider === 'native-wsl' &&
+    collectedStatus === 'runner-conflict' &&
+    collectedProvider === 'native-wsl' &&
+    Boolean(repairedFingerprint) &&
+    repairedFingerprint === collectedFingerprint;
+
+  if (routedRunnerConflict) {
+    return {
+      status: 'routed-runner-conflict',
+      blockedByHostConflict: false,
+      effectiveHostSignal: repairedHostSignal,
+      reason: 'native-daemon-repair-succeeded-runner-services-remain-observed',
+      repairedStatus,
+      collectedStatus,
+      repairedFingerprint,
+      collectedFingerprint,
+    };
+  }
+
+  const effectiveHostSignal = collectedHostSignal || repairedHostSignal || null;
+  const effectiveStatus = getOptionalStringProperty(effectiveHostSignal, 'status');
+  return {
+    status: effectiveStatus === 'native-wsl' ? 'clear' : 'blocked',
+    blockedByHostConflict: effectiveStatus !== 'native-wsl',
+    effectiveHostSignal,
+    reason: effectiveStatus === 'native-wsl' ? 'host-runtime-native-wsl' : 'post-repair-conflict-persisted',
+    repairedStatus,
+    collectedStatus,
+    repairedFingerprint,
+    collectedFingerprint,
+  };
+}
+
 export function startWslRuntimeDaemon({
   repoRoot,
   runtimeDir,
@@ -490,6 +536,8 @@ export async function runManagerLoop(options) {
   });
   let wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
   let monitoringWorkInjection = null;
+  let hostConflictResolution = null;
+  let blockedByHostConflict = false;
 
   try {
     await runPrereqsCommand({ ...options, repoRoot });
@@ -595,8 +643,9 @@ export async function runManagerLoop(options) {
         });
       }
 
-      let blockedByHostConflict = false;
+      blockedByHostConflict = false;
       monitoringWorkInjection = null;
+      hostConflictResolution = null;
       if (hostSignal.status !== 'native-wsl') {
         if (daemonAlive) {
           stopWslRuntimeDaemon({ distro: options.wslDistro, unitName: daemonUnitName, processId: activeDaemonPid });
@@ -672,6 +721,7 @@ export async function runManagerLoop(options) {
         }
 
         if (!repairError) {
+          const repairedHostSignal = hostSignal;
           const postRepairFingerprint = hostSignal?.daemonFingerprint ? String(hostSignal.daemonFingerprint) : null;
           const collected = invokeDeliveryHostSignal({
             mode: 'collect',
@@ -681,8 +731,40 @@ export async function runManagerLoop(options) {
             previousFingerprint: postRepairFingerprint,
             allowRunnerServices: false,
           });
-          hostSignal = collected.report;
           hostIsolation = collected.isolation;
+          hostConflictResolution = resolvePostRepairHostConflict({
+            repairedHostSignal,
+            collectedHostSignal: collected.report,
+          });
+          hostSignal = hostConflictResolution.effectiveHostSignal;
+          writeJsonFile(paths.hostSignalPath, hostSignal);
+          if (hostConflictResolution.status === 'routed-runner-conflict') {
+            hostIsolation = updateHostIsolationState({
+              path: paths.hostIsolationPath,
+              repo: options.repo,
+              runtimeDir: options.runtimeDir,
+              distro: options.wslDistro,
+              hostSignalPath: paths.hostSignalPath,
+              lastEventType: 'runner-conflict-routed',
+              lastEventDetail: hostConflictResolution.reason,
+              hostSignal,
+            });
+            writeManagerTrace({
+              repo: options.repo,
+              runtimeDir: options.runtimeDir,
+              distro: options.wslDistro,
+              tracePath: paths.managerTracePath,
+              eventType: 'runner-conflict-routed',
+              detail: {
+                cycle,
+                reason: hostConflictResolution.reason,
+                repairedStatus: hostConflictResolution.repairedStatus,
+                collectedStatus: hostConflictResolution.collectedStatus,
+                repairedFingerprint: hostConflictResolution.repairedFingerprint,
+                collectedFingerprint: hostConflictResolution.collectedFingerprint,
+              },
+            });
+          }
         }
         blockedByHostConflict = hostSignal.status !== 'native-wsl';
         if (blockedByHostConflict) {
@@ -798,6 +880,7 @@ export async function runManagerLoop(options) {
         hostIsolation,
         wslNativeDocker,
         monitoringWorkInjection,
+        hostConflictResolution,
         observer: observerTelemetry,
         codexStateHygiene,
         deliveryMemory,
@@ -821,6 +904,7 @@ export async function runManagerLoop(options) {
         hostIsolation,
         wslNativeDocker,
         monitoringWorkInjection,
+        hostConflictResolution,
         observer: observerTelemetry,
         codexStateHygiene,
         deliveryMemory,
@@ -881,26 +965,29 @@ export async function runManagerLoop(options) {
       });
     }
     wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
-    writeJsonFile(paths.managerStatePath, {
-      schema: MANAGER_STATE_SCHEMA,
-      generatedAt: toIso(),
+      writeJsonFile(paths.managerStatePath, {
+        schema: MANAGER_STATE_SCHEMA,
+        generatedAt: toIso(),
       repo: options.repo,
       runtimeDir: options.runtimeDir,
       distro: options.wslDistro,
       cycle,
       daemon: { pid: activeDaemonPid, alive: testWslProcessAlive(options.wslDistro, activeDaemonPid) },
-      hostSignal,
-      hostIsolation,
-      wslNativeDocker,
-      codexStateHygiene,
-      deliveryMemory,
-      deliveryMemoryPath: paths.deliveryMemoryPath,
+        hostSignal,
+        hostIsolation,
+        wslNativeDocker,
+        monitoringWorkInjection,
+        hostConflictResolution,
+        codexStateHygiene,
+        deliveryMemory,
+        deliveryMemoryPath: paths.deliveryMemoryPath,
       hostSignalPath: paths.hostSignalPath,
-      hostIsolationPath: paths.hostIsolationPath,
-      hostTracePath: paths.hostTracePath,
-      managerTracePath: paths.managerTracePath,
-      wslNativeDockerPath: paths.wslNativeDockerPath,
-      outcome: 'stopped',
-    });
+        hostIsolationPath: paths.hostIsolationPath,
+        hostTracePath: paths.hostTracePath,
+        managerTracePath: paths.managerTracePath,
+        wslNativeDockerPath: paths.wslNativeDockerPath,
+        blockedByHostRuntimeConflict: blockedByHostConflict,
+        outcome: 'stopped',
+      });
   }
 }
