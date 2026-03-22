@@ -60,6 +60,9 @@ As of March 21, 2026, the bundle is still explicitly `source-only`:
   sample-corpus print lane instead of relying on human interpretation; when the
   payload becomes runnable, the same wrapper now executes the Linux proof lane
   through `tools/Run-NILinuxContainerCustomOperation.ps1`
+- When a finalization contract is available, the proof receipt now records the
+  referenced contract path so future payload finalization helpers can be tied to
+  the same deterministic proof lane without inventing a new receipt shape
 - `tools/New-PrintToSingleFileHtmlAuthoringWorkspace.ps1` now wraps the generic
   scaffold so this payload has a dedicated disposable authoring bootstrap
 - `tools/New-PrintToSingleFileHtmlAuthoringPacket.ps1` now turns the remaining

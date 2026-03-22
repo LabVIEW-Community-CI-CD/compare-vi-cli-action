@@ -84,11 +84,21 @@ $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ReportPath -Encodi
 '# Inspection summary' | Set-Content -LiteralPath $MarkdownPath -Encoding utf8
 '@ | Set-Content -LiteralPath $inspectionStub -Encoding utf8
 
+    $finalizationContractPath = Join-Path $TestDrive 'operation-payload-authoring-finalization.json'
+    @'
+{
+  "schema": "operation-payload-authoring-finalization@v1",
+  "status": "succeeded",
+  "notes": ["Synthetic finalization contract for proof-lane tests."]
+}
+'@ | Set-Content -LiteralPath $finalizationContractPath -Encoding utf8
+
     $resultsRoot = Join-Path $TestDrive 'results'
     $output = & pwsh -NoLogo -NoProfile -File $script:ProofScript `
       -CatalogPath $catalogPath `
       -TargetId 'print-target' `
       -PayloadBundlePath 'fixtures/headless-corpus/operation-payloads/PrintToSingleFileHtml' `
+      -PayloadFinalizationContractPath $finalizationContractPath `
       -ResultsRoot $resultsRoot `
       -InspectionScriptPath $inspectionStub `
       -SkipSchemaValidation *>&1
@@ -101,6 +111,9 @@ $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ReportPath -Encodi
     $report.blockingReason | Should -Be 'payload-source-only'
     $report.executionAttempted | Should -BeFalse
     $report.payloadObservedExecutableState | Should -Be 'source-only'
+    $report.payloadFinalizationContractAvailable | Should -BeTrue
+    $report.payloadFinalizationContractPath | Should -Match 'operation-payload-authoring-finalization\.json$'
+    (($report.notes | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match 'Finalization contract reference available'
   }
 
   It 'executes the Linux custom-operation runner once the payload bundle is runnable' {
@@ -237,6 +250,7 @@ $renderedOutputPath = Join-Path $resultsRootResolved 'print-output.html'
     $report.blockingReason | Should -BeNullOrEmpty
     $report.executionAttempted | Should -BeTrue
     $report.payloadObservedExecutableState | Should -Be 'runnable'
+    $report.payloadFinalizationContractAvailable | Should -BeFalse
     $report.executionStatus | Should -Be 'succeeded'
     $report.executionExitCode | Should -Be 0
     $report.executionCapturePath | Should -Match 'ni-linux-custom-operation-capture\.json$'
