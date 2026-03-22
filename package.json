@@ -87,6 +87,7 @@
     "priority:monitoring:mode": "node tools/priority/handoff-monitoring-mode.mjs",
     "priority:monitoring:inject-work": "node tools/priority/monitoring-work-injection.mjs",
     "priority:wake:adjudicate": "node tools/priority/wake-adjudication.mjs",
+    "priority:wake:accounting": "node tools/priority/wake-investment-accounting.mjs",
     "priority:wake:synthesize": "node tools/priority/wake-work-synthesis.mjs",
     "priority:handoff-tests": "node tools/priority/run-handoff-tests.mjs",
     "priority:health-snapshot": "pwsh -NoLogo -NoProfile -File tools/priority/Write-HealthSnapshot.ps1",

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/wake-investment-accounting-policy-v1.schema.json",
+  "title": "Wake Investment Accounting Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "compareRepository",
+    "benchmarkMetricPreference",
+    "allowObservedIssueFallback",
+    "decisionAccounting",
+    "paybackTriggers"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/wake-investment-accounting-policy@v1"
+    },
+    "compareRepository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "benchmarkMetricPreference": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/benchmarkMetricCode"
+      }
+    },
+    "allowObservedIssueFallback": {
+      "type": "boolean"
+    },
+    "decisionAccounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "suppress",
+        "monitor",
+        "compare-governance-work",
+        "template-work",
+        "consumer-proving-drift",
+        "investment-work"
+      ],
+      "properties": {
+        "suppress": { "$ref": "#/$defs/decisionAccounting" },
+        "monitor": { "$ref": "#/$defs/decisionAccounting" },
+        "compare-governance-work": { "$ref": "#/$defs/decisionAccounting" },
+        "template-work": { "$ref": "#/$defs/decisionAccounting" },
+        "consumer-proving-drift": { "$ref": "#/$defs/decisionAccounting" },
+        "investment-work": { "$ref": "#/$defs/decisionAccounting" }
+      }
+    },
+    "paybackTriggers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classificationEligibility",
+        "allowSuppressionTrigger",
+        "allowOwnerRepositoryMismatchTrigger"
+      ],
+      "properties": {
+        "classificationEligibility": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/wakeClassification"
+          }
+        },
+        "allowSuppressionTrigger": {
+          "type": "boolean"
+        },
+        "allowOwnerRepositoryMismatchTrigger": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "benchmarkMetricCode": {
+      "type": "string",
+      "enum": [
+        "rollingAverageUsdPerIssue",
+        "currentActiveWindowAverageUsdPerIssue",
+        "latestTrailingOperationalWindowAverageUsdPerIssue"
+      ]
+    },
+    "wakeClassification": {
+      "type": "string",
+      "enum": [
+        "live-defect",
+        "stale-artifact",
+        "branch-target-drift",
+        "platform-permission-gap",
+        "environment-only"
+      ]
+    },
+    "accountingBucket": {
+      "type": "string",
+      "enum": [
+        "suppressed-wake",
+        "monitoring-wake",
+        "compare-governance-work",
+        "template-work",
+        "consumer-proving-drift",
+        "investment-work"
+      ]
+    },
+    "avoidedCostProxy": {
+      "type": "string",
+      "enum": [
+        "none",
+        "issue-benchmark"
+      ]
+    },
+    "decisionAccounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accountingBucket",
+        "avoidedCostProxy"
+      ],
+      "properties": {
+        "accountingBucket": { "$ref": "#/$defs/accountingBucket" },
+        "avoidedCostProxy": { "$ref": "#/$defs/avoidedCostProxy" }
+      }
+    }
+  }
+}

@@ -1,0 +1,534 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/wake-investment-accounting-report-v1.schema.json",
+  "title": "Wake Investment Accounting Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "policy",
+    "inputs",
+    "wake",
+    "billingWindow",
+    "costBenchmark",
+    "observedIssueCost",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/wake-investment-accounting-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "compareRepository",
+        "benchmarkMetricPreference",
+        "allowObservedIssueFallback"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compareRepository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "benchmarkMetricPreference": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/benchmarkMetricCode"
+          }
+        },
+        "allowObservedIssueFallback": {
+          "type": "boolean"
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wakeAdjudicationReportPath",
+        "wakeWorkSynthesisReportPath",
+        "averageIssueCostScorecardPath",
+        "costRollupPath"
+      ],
+      "properties": {
+        "wakeAdjudicationReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wakeWorkSynthesisReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "averageIssueCostScorecardPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "costRollupPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "wake": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "decision",
+        "workKind",
+        "status",
+        "reason",
+        "recommendedOwnerRepository",
+        "suppressIssueInjection",
+        "suppressDownstreamIssueInjection",
+        "suppressTemplateIssueInjection"
+      ],
+      "properties": {
+        "classification": { "$ref": "#/$defs/wakeClassification" },
+        "decision": { "$ref": "#/$defs/decision" },
+        "workKind": { "$ref": "#/$defs/workKind" },
+        "status": {
+          "type": "string",
+          "enum": [
+            "suppressed",
+            "monitoring",
+            "actionable"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommendedOwnerRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suppressIssueInjection": {
+          "type": "boolean"
+        },
+        "suppressDownstreamIssueInjection": {
+          "type": "boolean"
+        },
+        "suppressTemplateIssueInjection": {
+          "type": "boolean"
+        }
+      }
+    },
+    "billingWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invoiceTurnId",
+        "fundingPurpose",
+        "activationState",
+        "reconciliationStatus"
+      ],
+      "properties": {
+        "invoiceTurnId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fundingPurpose": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "activationState": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reconciliationStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "costBenchmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectedMetricCode",
+        "benchmarkSourceKind",
+        "selectedBenchmarkUsd",
+        "rollingAverageUsdPerIssue",
+        "currentActiveWindowAverageUsdPerIssue",
+        "latestTrailingOperationalWindowAverageUsdPerIssue"
+      ],
+      "properties": {
+        "selectedMetricCode": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "rollingAverageUsdPerIssue",
+            "currentActiveWindowAverageUsdPerIssue",
+            "latestTrailingOperationalWindowAverageUsdPerIssue",
+            "observedIssueUsdFallback",
+            null
+          ]
+        },
+        "benchmarkSourceKind": {
+          "type": "string",
+          "enum": [
+            "scorecard-metric",
+            "observed-issue-fallback",
+            "missing"
+          ]
+        },
+        "selectedBenchmarkUsd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rollingAverageUsdPerIssue": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "currentActiveWindowAverageUsdPerIssue": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "latestTrailingOperationalWindowAverageUsdPerIssue": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "observedIssueCost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issueNumber",
+        "stateBucket",
+        "totalUsd",
+        "exactUsd",
+        "estimatedUsd",
+        "turnCount",
+        "firstTurnAt",
+        "lastTurnAt",
+        "fundingWindowIds",
+        "exactnessState"
+      ],
+      "properties": {
+        "issueNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "stateBucket": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "totalUsd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "exactUsd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "estimatedUsd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "turnCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "firstTurnAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "lastTurnAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "fundingWindowIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "exactnessState": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "estimated",
+            "mixed",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accountingBucket",
+        "status",
+        "recommendation",
+        "reasons",
+        "blockerCount",
+        "blockers",
+        "accountingConfidence",
+        "paybackStatus",
+        "paybackTriggerCodes",
+        "metrics"
+      ],
+      "properties": {
+        "accountingBucket": { "$ref": "#/$defs/accountingBucket" },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn",
+            "fail"
+          ]
+        },
+        "recommendation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "blockerCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/blocker"
+          }
+        },
+        "accountingConfidence": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "insufficient"
+          ]
+        },
+        "paybackStatus": {
+          "type": "string",
+          "enum": [
+            "positive",
+            "neutral",
+            "negative",
+            "unresolved"
+          ]
+        },
+        "paybackTriggerCodes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "benchmarkIssueUsd",
+            "observedWakeIssueUsd",
+            "observedToBenchmarkRatio",
+            "avoidedIssueBenchmarkUsd",
+            "netPaybackUsd",
+            "exactObservedUsd",
+            "estimatedObservedUsd",
+            "issueTurnCount"
+          ],
+          "properties": {
+            "benchmarkIssueUsd": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "observedWakeIssueUsd": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "observedToBenchmarkRatio": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "avoidedIssueBenchmarkUsd": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "netPaybackUsd": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "exactObservedUsd": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "estimatedObservedUsd": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "issueTurnCount": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "benchmarkMetricCode": {
+      "type": "string",
+      "enum": [
+        "rollingAverageUsdPerIssue",
+        "currentActiveWindowAverageUsdPerIssue",
+        "latestTrailingOperationalWindowAverageUsdPerIssue"
+      ]
+    },
+    "wakeClassification": {
+      "type": "string",
+      "enum": [
+        "live-defect",
+        "stale-artifact",
+        "branch-target-drift",
+        "platform-permission-gap",
+        "environment-only"
+      ]
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "suppress",
+        "monitor",
+        "compare-governance-work",
+        "template-work",
+        "consumer-proving-drift",
+        "investment-work"
+      ]
+    },
+    "workKind": {
+      "type": "string",
+      "enum": [
+        "suppression",
+        "monitoring",
+        "governance",
+        "defect",
+        "drift-correction",
+        "investment"
+      ]
+    },
+    "accountingBucket": {
+      "type": "string",
+      "enum": [
+        "suppressed-wake",
+        "monitoring-wake",
+        "compare-governance-work",
+        "template-work",
+        "consumer-proving-drift",
+        "investment-work"
+      ]
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "inputPath"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

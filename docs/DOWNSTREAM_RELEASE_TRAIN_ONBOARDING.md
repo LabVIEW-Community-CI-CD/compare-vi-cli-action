@@ -153,6 +153,25 @@ alone. The adjudication report carries both the originally reported branch truth
 and the revalidated live branch truth so the next issue-injection decision can
 route from evidence instead of raw failure status.
 
+## Wake synthesis and investment accounting
+
+Once a wake is adjudicated, turn it into repo-aware work-routing and then price
+that work against the current issue-cost benchmark:
+
+```bash
+node tools/npm/run-script.mjs priority:wake:synthesize
+node tools/npm/run-script.mjs priority:wake:accounting
+```
+
+The synthesis report decides whether the wake belongs to compare governance,
+template work, consumer-proving drift, suppression, or monitoring. The
+investment accounting report then records:
+
+- the selected issue-cost benchmark
+- the current observed wake-handling cost
+- any avoided misrouting cost proxy when the wake was suppressed or re-routed
+- the current payback posture for the governance slice
+
 Optional aggregated hardening issue creation:
 
 ```bash

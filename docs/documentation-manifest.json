@@ -179,7 +179,7 @@
       "name": "Wake Adjudication Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Wake adjudication and wake-work synthesis schemas, CLIs, hosted downstream-onboarding integration, checked-in policy, and focused tests that replay reported downstream onboarding failures against live GitHub state and then turn them into repo-aware work-routing decisions.",
+      "description": "Wake adjudication, wake-work synthesis, and wake-investment accounting schemas, CLIs, hosted downstream-onboarding integration, checked-in policy, and focused tests that replay reported downstream onboarding failures against live GitHub state, turn them into repo-aware work-routing decisions, and then price the resulting governance work against the current issue-cost benchmark.",
       "files": [
         "docs/DOWNSTREAM_RELEASE_TRAIN_ONBOARDING.md",
         "docs/schemas/wake-adjudication-report-v1.schema.json",
