@@ -63,3 +63,18 @@ test('writeJson writes when file is missing or changed', async (t) => {
   assert.equal(shouldWriteJsonFile(filePath, second), true);
   assert.equal(writeJson(filePath, second), true);
 });
+
+test('writeJson force option refreshes router-style artifacts even when payload is unchanged', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'priority-json-force-write-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const filePath = path.join(root, 'router.json');
+  const payload = { schema: 'agent/priority-router@v1', issue: 1743, actions: [] };
+
+  await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+
+  assert.equal(writeJson(filePath, payload), false);
+  assert.equal(writeJson(filePath, payload, { force: true }), true);
+
+  const saved = await readFile(filePath, 'utf8');
+  assert.equal(saved, `${JSON.stringify(payload, null, 2)}\n`);
+});
