@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { appendDecisionLedgerEntry, DEFAULT_LEDGER_PATH } from './decision-ledger.mjs';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(MODULE_DIR, '..', '..');
@@ -52,6 +54,7 @@ export const DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH = path.join(
   'capital',
   'wake-investment-accounting.json'
 );
+export const DEFAULT_DECISION_LEDGER_PATH = DEFAULT_LEDGER_PATH;
 
 function asOptional(value) {
   if (value == null) {
@@ -95,6 +98,35 @@ function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
   fs.writeFileSync(resolvedPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   return resolvedPath;
+}
+
+function computeMonitoringDecisionFingerprint({
+  repository,
+  wakeEvidence,
+  selectedRule,
+  resolvedDedupeMarker,
+  summary
+}) {
+  const hash = createHash('sha256');
+  hash.update(
+    JSON.stringify({
+      repository: asOptional(repository),
+      classification: wakeEvidence?.classification || null,
+      decision: wakeEvidence?.decision || null,
+      status: wakeEvidence?.status || null,
+      nextAction: wakeEvidence?.nextAction || null,
+      recommendedOwnerRepository: wakeEvidence?.recommendedOwnerRepository || null,
+      accountingBucket: wakeEvidence?.accountingBucket || null,
+      accountingStatus: wakeEvidence?.accountingStatus || null,
+      paybackStatus: wakeEvidence?.paybackStatus || null,
+      selectedRuleId: asOptional(selectedRule?.id),
+      resolvedDedupeMarker: asOptional(resolvedDedupeMarker),
+      summaryStatus: asOptional(summary?.status),
+      triggerId: asOptional(summary?.triggerId),
+      issueNumber: Number.isInteger(summary?.issueNumber) ? summary.issueNumber : null
+    })
+  );
+  return `monitoring-work-injection:${hash.digest('hex')}`;
 }
 
 function parseRemoteUrl(url) {
@@ -458,6 +490,7 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
   const repoRoot = path.resolve(options.repoRoot || DEFAULT_REPO_ROOT);
   const policyPath = path.resolve(repoRoot, options.policyPath || DEFAULT_POLICY_PATH);
   const outputPath = path.resolve(repoRoot, options.outputPath || DEFAULT_OUTPUT_PATH);
+  const ledgerPath = path.resolve(repoRoot, options.ledgerPath || DEFAULT_DECISION_LEDGER_PATH);
   const queueEmptyReportPath = path.resolve(repoRoot, options.queueEmptyReportPath || DEFAULT_QUEUE_EMPTY_REPORT_PATH);
   const monitoringModePath = path.resolve(repoRoot, options.monitoringModePath || DEFAULT_MONITORING_MODE_PATH);
   const hostSignalPath = path.resolve(repoRoot, options.hostSignalPath || DEFAULT_HOST_SIGNAL_PATH);
@@ -488,6 +521,7 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
     : null;
   const wakeEvidence = createWakeEvidence(wakeAdjudication, wakeWorkSynthesis, wakeInvestmentAccounting);
   const helperCallsExecuted = [];
+  const appendLedger = options.appendLedger !== false;
   const queueEligible =
     !policy.requireQueueEmpty ||
     (queueEmptyReport?.schema === 'standing-priority/no-standing@v1' && queueEmptyReport?.reason === 'queue-empty');
@@ -563,10 +597,25 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
     }
   }
 
+  const eventFingerprint = computeMonitoringDecisionFingerprint({
+    repository,
+    wakeEvidence,
+    selectedRule,
+    resolvedDedupeMarker,
+    summary
+  });
   const report = {
     schema: 'priority/monitoring-work-injection-report@v1',
     generatedAt: new Date().toISOString(),
     repository,
+    event: {
+      category: 'monitoring-work-injection',
+      fingerprint: eventFingerprint,
+      dedupeMarker: resolvedDedupeMarker,
+      triggerId: asOptional(summary.triggerId),
+      terminalStatus: asOptional(summary.status),
+      issueNumber: Number.isInteger(summary.issueNumber) ? summary.issueNumber : null
+    },
     policy: {
       path: path.relative(repoRoot, policyPath).replace(/\\/g, '/'),
       requireQueueEmpty: policy.requireQueueEmpty,
@@ -639,14 +688,51 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
           }
         }
       : null,
+    decisionLedger: {
+      path: path.relative(repoRoot, ledgerPath).replace(/\\/g, '/'),
+      appended: false,
+      source: 'monitoring-work-injection',
+      sequence: null,
+      decisionDigest: null,
+      fingerprint: eventFingerprint,
+      error: null
+    },
     summary,
     helperCallsExecuted
   };
 
   const writtenPath = writeJson(outputPath, report);
+  if (appendLedger) {
+    try {
+      const appendFn = deps.appendDecisionLedgerEntryFn ?? appendDecisionLedgerEntry;
+      const appended = await appendFn({
+        decisionPath: writtenPath,
+        ledgerPath,
+        source: 'monitoring-work-injection'
+      });
+      report.decisionLedger = {
+        path: path.relative(repoRoot, appended.ledgerPath).replace(/\\/g, '/'),
+        appended: true,
+        source: 'monitoring-work-injection',
+        sequence: Number.isInteger(appended.entry?.sequence) ? appended.entry.sequence : null,
+        decisionDigest: asOptional(appended.entry?.decisionDigest),
+        fingerprint: asOptional(appended.entry?.fingerprint) || eventFingerprint,
+        error: null
+      };
+      writeJson(outputPath, report);
+    } catch (error) {
+      report.decisionLedger = {
+        ...report.decisionLedger,
+        error: error?.message || String(error)
+      };
+      writeJson(outputPath, report);
+    }
+  }
+
   return {
     report,
     outputPath: writtenPath,
+    ledgerPath: report.decisionLedger.appended ? path.resolve(repoRoot, report.decisionLedger.path) : null,
     issueNumber: summary.issueNumber,
     issueUrl: summary.issueUrl
   };
@@ -663,8 +749,10 @@ export function parseArgs(argv = process.argv) {
     wakeAdjudicationPath: DEFAULT_WAKE_ADJUDICATION_PATH,
     wakeWorkSynthesisPath: DEFAULT_WAKE_WORK_SYNTHESIS_PATH,
     wakeInvestmentAccountingPath: DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH,
+    ledgerPath: DEFAULT_DECISION_LEDGER_PATH,
     repository: null,
-    apply: true
+    apply: true,
+    appendLedger: true
   };
   for (let index = 2; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -692,6 +780,10 @@ export function parseArgs(argv = process.argv) {
       args.apply = false;
     } else if (arg === '--apply') {
       args.apply = true;
+    } else if (arg === '--ledger') {
+      args.ledgerPath = argv[++index];
+    } else if (arg === '--skip-ledger') {
+      args.appendLedger = false;
     } else if (arg === '--help' || arg === '-h') {
       args.help = true;
     } else {
@@ -705,7 +797,7 @@ async function main(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
     console.log(
-      'Usage: node tools/priority/monitoring-work-injection.mjs [--dry-run] [--repo <owner/repo>] [--wake-adjudication <path>] [--wake-work-synthesis <path>] [--wake-investment-accounting <path>]'
+      'Usage: node tools/priority/monitoring-work-injection.mjs [--dry-run] [--repo <owner/repo>] [--wake-adjudication <path>] [--wake-work-synthesis <path>] [--wake-investment-accounting <path>] [--ledger <path>] [--skip-ledger]'
     );
     return 0;
   }

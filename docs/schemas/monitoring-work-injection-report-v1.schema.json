@@ -8,10 +8,12 @@
     "schema",
     "generatedAt",
     "repository",
+    "event",
     "policy",
     "inputs",
     "evidence",
     "selectedRule",
+    "decisionLedger",
     "summary",
     "helperCallsExecuted"
   ],
@@ -28,6 +30,9 @@
         "string",
         "null"
       ]
+    },
+    "event": {
+      "$ref": "#/$defs/event"
     },
     "policy": {
       "type": "object",
@@ -154,6 +159,9 @@
         }
       ]
     },
+    "decisionLedger": {
+      "$ref": "#/$defs/decisionLedger"
+    },
     "summary": {
       "$ref": "#/$defs/summary"
     },
@@ -166,6 +174,52 @@
     }
   },
   "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "fingerprint",
+        "dedupeMarker",
+        "triggerId",
+        "terminalStatus",
+        "issueNumber"
+      ],
+      "properties": {
+        "category": {
+          "const": "monitoring-work-injection"
+        },
+        "fingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dedupeMarker": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "triggerId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "terminalStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issueNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      }
+    },
     "queueEmpty": {
       "type": "object",
       "additionalProperties": false,
@@ -431,6 +485,54 @@
               ]
             }
           }
+        }
+      }
+    },
+    "decisionLedger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "appended",
+        "source",
+        "sequence",
+        "decisionDigest",
+        "fingerprint",
+        "error"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "appended": {
+          "type": "boolean"
+        },
+        "source": {
+          "const": "monitoring-work-injection"
+        },
+        "sequence": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "decisionDigest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     },

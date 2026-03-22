@@ -746,6 +746,9 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
       if (normalizeText(injection?.outputPath)) {
         artifactPaths.monitoringWorkInjectionPath = injection.outputPath;
       }
+      if (normalizeText(injection?.ledgerPath)) {
+        artifactPaths.monitoringDecisionLedgerPath = injection.ledgerPath;
+      }
       if (Number.isInteger(injection?.issueNumber)) {
         const issueSnapshot = await fetchIssue(injection.issueNumber, repoRoot, targetRepository, {
           ghIssueFetcher: deps.ghIssueFetcher,

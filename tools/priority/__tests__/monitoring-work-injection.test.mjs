@@ -209,6 +209,9 @@ test('runMonitoringWorkInjection creates an issue when runner-conflict fires in 
   assert.equal(report.summary.status, 'created-issue');
   assert.equal(report.summary.issueNumber, 123);
   assert.equal(report.summary.triggerId, 'runner-conflict');
+  assert.equal(report.event.category, 'monitoring-work-injection');
+  assert.equal(report.decisionLedger.appended, true);
+  assert.ok(Number.isInteger(report.decisionLedger.sequence));
   assert.ok(ghCalls.some((entry) => entry.startsWith('issue create')));
 });
 
@@ -376,6 +379,67 @@ test('runMonitoringWorkInjection suppresses stale wakes instead of injecting new
   assert.equal(report.summary.status, 'suppressed-wake');
   assert.equal(report.summary.injected, false);
   assert.equal(report.summary.issueNumber, null);
+  assert.equal(report.decisionLedger.appended, true);
+  assert.ok(Number.isInteger(report.decisionLedger.sequence));
+});
+
+test('runMonitoringWorkInjection writes replayable ledger context for external-route wakes', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-ledger-'));
+  const {
+    policyPath,
+    queuePath,
+    monitoringPath,
+    hostSignalPath,
+    wakeAdjudicationPath,
+    wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath
+  } = createInputs(tmpDir);
+  writeJson(wakeWorkSynthesisPath, {
+    schema: 'priority/wake-work-synthesis-report@v1',
+    wake: {
+      classification: 'live-defect',
+      nextAction: 'repair-template-smoke'
+    },
+    summary: {
+      decision: 'template-work',
+      status: 'actionable',
+      recommendedOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      reason: 'Supported template proof regressed.'
+    }
+  });
+  writeJson(hostSignalPath, {
+    schema: 'priority/delivery-agent-host-signal@v1',
+    status: 'ready',
+    provider: 'native-wsl',
+    daemonFingerprint: 'abc123'
+  });
+
+  const { report, ledgerPath } = await runMonitoringWorkInjection({
+    repoRoot: tmpDir,
+    policyPath,
+    queueEmptyReportPath: queuePath,
+    monitoringModePath: monitoringPath,
+    hostSignalPath,
+    wakeAdjudicationPath,
+    wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  }, {
+    runGhJsonFn: () => {
+      throw new Error('external routes must not query compare issue injection state');
+    },
+    runGhFn: () => {
+      throw new Error('external routes must not edit or create compare issues');
+    }
+  });
+
+  const ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
+  assert.equal(report.summary.status, 'external-route');
+  assert.equal(report.decisionLedger.appended, true);
+  assert.equal(ledger.entryCount, 1);
+  assert.equal(ledger.entries[0].source, 'monitoring-work-injection');
+  assert.equal(ledger.entries[0].fingerprint, report.event.fingerprint);
+  assert.equal(ledger.entries[0].decision.summary.status, 'external-route');
 });
 
 test('runMonitoringWorkInjection keeps external template work out of compare issue injection', async () => {
