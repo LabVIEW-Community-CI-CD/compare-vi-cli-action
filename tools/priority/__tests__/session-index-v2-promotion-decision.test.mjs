@@ -1510,7 +1510,8 @@ test('runSessionIndexV2PromotionDecision reports missing-evidence when the curre
 
   assert.equal(result.exitCode, 0);
   assert.equal(result.report.sourceRun, null);
-  assert.equal(result.report.decision.state, 'missing-evidence');
+  assert.equal(result.report.selection.failureClass, 'current-head-run-pending');
+  assert.equal(result.report.decision.state, 'fresh-head-awaiting-validate');
   assert.equal(result.report.status, 'warn');
 });
 

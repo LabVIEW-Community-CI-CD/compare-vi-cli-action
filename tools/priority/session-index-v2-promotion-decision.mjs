@@ -1027,11 +1027,14 @@ async function resolveSelectedRun(options, runGhJsonFn, getBranchHeadShaFn = def
       options.branch,
     );
     if (!run) {
+      const branchHasCompletedRuns = collectedRuns.length > 0;
       return {
         status: 'fail',
         selectionMode: 'latest-completed-run',
-        failureClass: 'run-not-found',
-        errorMessage: `No completed ${options.workflow} runs found for branch '${options.branch}' at head '${branchHeadSha}' in ${options.repo} after scanning ${WORKFLOW_RUNS_PAGE_SIZE * WORKFLOW_RUNS_MAX_PAGES} runs.`,
+        failureClass: branchHasCompletedRuns ? 'current-head-run-pending' : 'run-not-found',
+        errorMessage: branchHasCompletedRuns
+          ? `No completed ${options.workflow} runs found yet for branch '${options.branch}' at current head '${branchHeadSha}' in ${options.repo} after scanning ${WORKFLOW_RUNS_PAGE_SIZE * WORKFLOW_RUNS_MAX_PAGES} runs.`
+          : `No completed ${options.workflow} runs found for branch '${options.branch}' at head '${branchHeadSha}' in ${options.repo} after scanning ${WORKFLOW_RUNS_PAGE_SIZE * WORKFLOW_RUNS_MAX_PAGES} runs.`,
         run: null,
       };
     }
@@ -1186,13 +1189,27 @@ export async function runSessionIndexV2PromotionDecision({
     );
 
     if (selectedRun.status !== 'pass' || !selectedRun.run?.id) {
-      report.evidence.status = selectedRun.failureClass === 'run-not-found' ? 'missing' : 'invalid';
+      report.evidence.status =
+        selectedRun.failureClass === 'run-not-found' || selectedRun.failureClass === 'current-head-run-pending'
+          ? 'missing'
+          : 'invalid';
       report.evidence.errors.push(selectedRun.errorMessage ?? 'Failed to resolve a workflow run.');
       report.decision = evaluatePromotionDecision({
         evidence: report.evidence,
         policy: report.policy,
         requiredCheckName: options.requiredCheckName,
       });
+      if (
+        selectedRun.failureClass === 'current-head-run-pending' &&
+        report.decision.state === 'missing-evidence' &&
+        report.decision.status === 'warn'
+      ) {
+        report.decision = {
+          ...report.decision,
+          state: 'fresh-head-awaiting-validate',
+          summary: 'The current branch head has not produced a completed Validate run yet, so promotion evidence is temporarily pending.'
+        };
+      }
       report.status = report.decision.status;
       const reportPath = await writeReportFn(options.reportPath, report);
       return { exitCode: report.status === 'fail' ? 1 : 0, report, reportPath };
