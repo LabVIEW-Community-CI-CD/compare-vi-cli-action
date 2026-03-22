@@ -1,0 +1,44 @@
+{
+  "schema": "priority/wake-investment-accounting-policy@v1",
+  "compareRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+  "benchmarkMetricPreference": [
+    "rollingAverageUsdPerIssue",
+    "currentActiveWindowAverageUsdPerIssue",
+    "latestTrailingOperationalWindowAverageUsdPerIssue"
+  ],
+  "allowObservedIssueFallback": true,
+  "decisionAccounting": {
+    "suppress": {
+      "accountingBucket": "suppressed-wake",
+      "avoidedCostProxy": "issue-benchmark"
+    },
+    "monitor": {
+      "accountingBucket": "monitoring-wake",
+      "avoidedCostProxy": "none"
+    },
+    "compare-governance-work": {
+      "accountingBucket": "compare-governance-work",
+      "avoidedCostProxy": "issue-benchmark"
+    },
+    "template-work": {
+      "accountingBucket": "template-work",
+      "avoidedCostProxy": "none"
+    },
+    "consumer-proving-drift": {
+      "accountingBucket": "consumer-proving-drift",
+      "avoidedCostProxy": "issue-benchmark"
+    },
+    "investment-work": {
+      "accountingBucket": "investment-work",
+      "avoidedCostProxy": "none"
+    }
+  },
+  "paybackTriggers": {
+    "classificationEligibility": [
+      "stale-artifact",
+      "branch-target-drift"
+    ],
+    "allowSuppressionTrigger": true,
+    "allowOwnerRepositoryMismatchTrigger": true
+  }
+}
