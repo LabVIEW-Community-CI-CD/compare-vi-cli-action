@@ -148,7 +148,7 @@ test('observeJarvisSessionObserver projects an active manual Windows Docker sess
       error: null
     },
     runnerServices: {
-      running: [],
+      running: ['actions.runner.compare-vi-cli-action.develop.1', 'actions.runner.compare-vi-cli-action.develop.2'],
       stopped: []
     }
   });
@@ -213,6 +213,7 @@ test('observeJarvisSessionObserver projects an active manual Windows Docker sess
   assert.equal(report.summary.totalSessionCount, 1);
   assert.equal(report.daemon.daemonCutover.status, 'ready');
   assert.equal(report.daemon.daemonCutover.readyForLinuxDaemon, true);
+  assert.deepEqual(report.daemon.daemonCutover.requiredActions, []);
   assert.equal(report.sessions[0].source, 'concurrent-lane-status');
   assert.equal(report.sessions[0].dockerContext, 'desktop-windows');
   assert.equal(report.sessions[0].dockerServerOs, 'windows');
@@ -288,7 +289,7 @@ test('observeJarvisSessionObserver blocks when native-wsl daemon cutover is stil
       error: null
     },
     runnerServices: {
-      running: [],
+      running: ['actions.runner.compare-vi-cli-action.develop.1', 'actions.runner.compare-vi-cli-action.develop.2'],
       stopped: []
     }
   });
@@ -305,5 +306,11 @@ test('observeJarvisSessionObserver blocks when native-wsl daemon cutover is stil
   assert.equal(report.summary.activeSessionCount, 0);
   assert.equal(report.daemon.daemonCutover.status, 'cutover-required');
   assert.equal(report.daemon.daemonCutover.requiresOperatorCutover, true);
+  assert.deepEqual(report.daemon.daemonCutover.requiredActions, [
+    'Stop or explicitly govern the 2 running actions.runner.* services on this host.',
+    'Switch WSL Docker to a distro-owned Linux daemon before reusing the daemon-first Linux plane.',
+    'Rerun priority:delivery:host:signal.',
+    'Rerun priority:jarvis:status.'
+  ]);
   assert.match(report.daemon.daemonCutover.reason, /cut over to a distro-owned Linux daemon/i);
 });
