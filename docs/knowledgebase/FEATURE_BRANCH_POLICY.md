@@ -95,6 +95,10 @@ promotion behavior, not the branch-class source of truth.
 "Automatic request Copilot review" setting is still a manual settings-page verification point because GitHub's REST
 ruleset/branch-protection APIs do not expose that toggle directly.
 
+Fork release exception:
+- `forkProfile.rulesets.8614172.enabled = false` keeps fork `release/*` rulesets disabled by contract.
+- Reason: fork release branches are disposable automation maintenance lanes, so follow-up RC repair pushes must not be blocked by PR-only or required-check ruleset enforcement.
+
 ## Prescriptive Protection Settings
 
 Keep GitHub’s live protections in lockstep with the repository contract below. Any delta should either be reverted or

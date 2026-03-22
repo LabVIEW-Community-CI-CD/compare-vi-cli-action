@@ -232,6 +232,28 @@ function applyBranchExpectationOverrides(branches, overrides) {
   return branches;
 }
 
+function mergeRulesetExpectationOverrides(baseExpectation, overrideExpectation) {
+  if (!overrideExpectation || typeof overrideExpectation !== 'object') {
+    return baseExpectation;
+  }
+  return {
+    ...(baseExpectation ?? {}),
+    ...overrideExpectation
+  };
+}
+
+function applyRulesetExpectationOverrides(rulesets, overrides) {
+  if (!rulesets || typeof rulesets !== 'object' || !overrides || typeof overrides !== 'object') {
+    return rulesets;
+  }
+
+  for (const [rulesetId, overrideExpectation] of Object.entries(overrides)) {
+    rulesets[rulesetId] = mergeRulesetExpectationOverrides(rulesets[rulesetId], overrideExpectation);
+  }
+
+  return rulesets;
+}
+
 function buildEffectiveManifest(manifest, repoData, repositorySlug) {
   const effectiveManifest = structuredClone(manifest ?? {});
   const repoProfile = resolveManifestRepoProfile(effectiveManifest, repositorySlug);
@@ -241,10 +263,18 @@ function buildEffectiveManifest(manifest, repoData, repositorySlug) {
       effectiveManifest.branches,
       effectiveManifest?.forkProfile?.branches
     );
+    applyRulesetExpectationOverrides(
+      effectiveManifest.rulesets,
+      effectiveManifest?.forkProfile?.rulesets
+    );
   }
 
   if (repoProfile?.branchOverrides && typeof repoProfile.branchOverrides === 'object') {
     applyBranchExpectationOverrides(effectiveManifest.branches, repoProfile.branchOverrides);
+  }
+
+  if (repoProfile?.rulesetOverrides && typeof repoProfile.rulesetOverrides === 'object') {
+    applyRulesetExpectationOverrides(effectiveManifest.rulesets, repoProfile.rulesetOverrides);
   }
 
   return effectiveManifest;
@@ -736,6 +766,30 @@ function comparePullRequestRule(expected, actualRule) {
   return diffs;
 }
 
+function normalizeRulesetExpectation(expected) {
+  if (expected === undefined) {
+    return { mode: 'present', expectations: {} };
+  }
+  if (expected === null || expected === false) {
+    return { mode: 'disabled', expectations: {} };
+  }
+  if (typeof expected !== 'object' || Array.isArray(expected)) {
+    return { mode: 'present', expectations: {} };
+  }
+
+  const expectations = structuredClone(expected);
+  const enabled = hasOwnProperty(expectations, 'enabled') ? Boolean(expectations.enabled) : true;
+  delete expectations.enabled;
+  return {
+    mode: enabled ? 'present' : 'disabled',
+    expectations
+  };
+}
+
+function isRulesetDisabledExpectation(expected) {
+  return normalizeRulesetExpectation(expected).mode === 'disabled';
+}
+
 function normalizeOptionalRuleExpectation(expected) {
   if (expected === undefined) {
     return { mode: 'ignore', parameters: null };
@@ -810,6 +864,18 @@ function prefixRulesetDiffs(id, diffs = []) {
 }
 
 function compareRuleset(id, expected, actual) {
+  const normalized = normalizeRulesetExpectation(expected);
+  if (normalized.mode === 'disabled') {
+    if (!actual) {
+      return [];
+    }
+    const actualEnforcement = actual.enforcement ?? 'active';
+    return actualEnforcement === 'disabled'
+      ? []
+      : [`ruleset ${id}: expected disabled, actual enforcement ${actualEnforcement}`];
+  }
+
+  expected = normalized.expectations;
   if (!actual) {
     return [`ruleset ${id}: not found`];
   }
@@ -1063,10 +1129,12 @@ function updateOptionalParameterizedRule(rules, type, expected, actualRule) {
 }
 
 function buildRulesetPayload(expectations, actual = null) {
+  const normalized = normalizeRulesetExpectation(expectations);
+  expectations = normalized.expectations;
   const updated = {
     name: actual?.name ?? expectations.name ?? 'ruleset',
     target: actual?.target ?? expectations.target ?? 'branch',
-    enforcement: actual?.enforcement ?? 'active',
+    enforcement: normalized.mode === 'disabled' ? 'disabled' : (actual?.enforcement ?? 'active'),
     conditions: structuredClone(actual?.conditions ?? {}),
     bypass_actors: sanitizeBypassActors(actual?.bypass_actors),
     rules: structuredClone(actual?.rules ?? [])
@@ -1077,6 +1145,17 @@ function buildRulesetPayload(expectations, actual = null) {
       updated.conditions.ref_name = { include: [], exclude: [] };
     }
     updated.conditions.ref_name.include = expectations.includes;
+  }
+
+  if (normalized.mode === 'disabled') {
+    return {
+      name: updated.name,
+      target: updated.target,
+      enforcement: updated.enforcement,
+      conditions: updated.conditions,
+      bypass_actors: updated.bypass_actors,
+      rules: updated.rules
+    };
   }
 
   const existingQueueRule = updated.rules.find((rule) => rule?.type === 'merge_queue');
@@ -1142,6 +1221,10 @@ async function applyRuleset(repoUrl, token, id, expectations, actual, fetchFn, l
 }
 
 async function createRuleset(repoUrl, token, expectations, fetchFn, logFn = console.log) {
+  if (isRulesetDisabledExpectation(expectations)) {
+    logFn(`[policy] ruleset ${expectations?.name ?? 'unknown'}: expected disabled; skipping create.`);
+    return null;
+  }
   const rulesetUrl = `${repoUrl}/rulesets`;
   const payload = buildRulesetPayload(expectations);
   const created = await requestJson(rulesetUrl, token, { method: 'POST', body: payload, fetchFn });
@@ -1342,6 +1425,9 @@ function evaluateDiffs(manifest, state, options = {}) {
         continue;
       }
       if (entry.error) {
+        if (isNotFoundError(entry.error) && isRulesetDisabledExpectation(entry.expectations)) {
+          continue;
+        }
         rulesetDiffs.push(
           `ruleset ${entry.id}: failed to load -> ${entry.error.message}`
         );
@@ -1655,7 +1741,7 @@ export async function run({
         }
 
         const needsUpdate = entry.error
-          ? isNotFoundError(entry.error)
+          ? (isNotFoundError(entry.error) && !isRulesetDisabledExpectation(entry.expectations))
           : compareRuleset(entry.resolvedId ?? entry.id, entry.expectations, entry.ruleset).length > 0;
         if (!needsUpdate) {
           continue;

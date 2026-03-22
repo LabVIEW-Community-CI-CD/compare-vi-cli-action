@@ -19,6 +19,11 @@
         "allow_force_pushes": true,
         "allow_fork_syncing": false
       }
+    },
+    "rulesets": {
+      "8614172": {
+        "enabled": false
+      }
     }
   },
   "branches": {
