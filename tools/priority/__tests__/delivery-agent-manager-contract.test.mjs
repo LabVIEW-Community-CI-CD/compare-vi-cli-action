@@ -102,6 +102,18 @@ test('package scripts expose delivery-agent commands and keep unattended aliases
     'node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/delivery-host-signal.ts --fallback-dist dist/tools/priority/delivery-host-signal.js'
   );
   assert.equal(
+    packageJson.scripts['priority:delivery:host:collect'],
+    'node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/delivery-host-signal.ts --fallback-dist dist/tools/priority/delivery-host-signal.js -- --mode collect'
+  );
+  assert.equal(
+    packageJson.scripts['priority:delivery:host:isolate'],
+    'node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/delivery-host-signal.ts --fallback-dist dist/tools/priority/delivery-host-signal.js -- --mode isolate'
+  );
+  assert.equal(
+    packageJson.scripts['priority:delivery:host:restore'],
+    'node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/delivery-host-signal.ts --fallback-dist dist/tools/priority/delivery-host-signal.js -- --mode restore'
+  );
+  assert.equal(
     packageJson.scripts['priority:delivery:agent:ensure'],
     'node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/delivery-agent.ts --fallback-dist dist/tools/priority/delivery-agent.js -- ensure --sleep-mode'
   );
