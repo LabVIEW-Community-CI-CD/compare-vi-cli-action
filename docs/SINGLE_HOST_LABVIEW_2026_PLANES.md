@@ -69,7 +69,11 @@ Use these commands as the checked-in operator surfaces:
    - `node tools/npm/run-script.mjs priority:lane:concurrency:status`
    - Use this after apply when you need the current hosted workflow status,
      merge-queue observation, and explicit deferred manual/shadow obligations
-     in one receipt.
+     in one receipt. The status receipt now also carries the plan provenance
+     fields (`plan.path`, `plan.schema`, `plan.source`,
+     `plan.recommendedBundleId`, `plan.selectedBundleId`) so agents can trace
+     the recommendation that led to the applied bundle without leaving the
+     checked-in report chain.
 5. Fast Docker Desktop lane loops:
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope linux -StepTimeoutSeconds 600`
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope windows -StepTimeoutSeconds 600`
