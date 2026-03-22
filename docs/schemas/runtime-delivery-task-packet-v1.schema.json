@@ -37,6 +37,21 @@
           "properties": {
             "workerSlotId": { "type": ["string", "null"] },
             "workerProviderId": { "type": ["string", "null"] },
+            "workerCheckoutRoot": { "type": ["string", "null"] },
+            "workerCheckoutRootPolicy": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "properties": {
+                "strategy": {
+                  "enum": ["explicit", "environment", "policy-preferred-root", "repo-default"]
+                },
+                "source": { "type": "string" },
+                "baseRoot": { "type": "string" },
+                "relativeRoot": { "type": ["string", "null"] },
+                "usesExternalRoot": { "type": "boolean" }
+              },
+              "required": ["strategy", "source", "baseRoot", "relativeRoot", "usesExternalRoot"]
+            },
             "workerCheckoutPath": { "type": ["string", "null"] }
           },
           "allOf": [

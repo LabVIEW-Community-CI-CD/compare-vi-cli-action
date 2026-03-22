@@ -12,6 +12,26 @@ async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, 'utf8'));
 }
 
+const REPO_LOCAL_STORAGE_ROOTS_POLICY = Object.freeze({
+  worktrees: {
+    envVar: 'COMPAREVI_BURST_WORKTREE_ROOT',
+    preferredRoots: ['.runtime-worktrees']
+  }
+});
+
+function makeRepoLocalDeliveryPolicyFn() {
+  return ({ defaultPolicy }) => ({
+    ...defaultPolicy,
+    storageRoots: {
+      ...defaultPolicy.storageRoots,
+      worktrees: {
+        ...defaultPolicy.storageRoots.worktrees,
+        preferredRoots: ['.runtime-worktrees']
+      }
+    }
+  });
+}
+
 function makeLeaseDeps() {
   const calls = [];
   return {
@@ -165,6 +185,7 @@ test('runtime-daemon wrapper defaults to the comparevi adapter', async () => {
     },
     {
       platform: 'linux',
+      loadDeliveryAgentPolicyFn: makeRepoLocalDeliveryPolicyFn(),
       resolveRepoRootFn: () => repoRoot,
       loadBranchClassContractFn: () => makeRuntimeBranchContract(),
       nowFactory: () => new Date(Date.UTC(2026, 2, 10, 17, 0, tick++)),
@@ -237,6 +258,7 @@ test('runtime-daemon wrapper schedules from the comparevi standing-priority cach
     },
     {
       platform: 'linux',
+      loadDeliveryAgentPolicyFn: makeRepoLocalDeliveryPolicyFn(),
       resolveRepoRootFn: () => repoRoot,
       loadBranchClassContractFn: () => makeRuntimeBranchContract(),
       resolveStandingPriorityForRepoFn: async () => ({
@@ -283,7 +305,8 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
   const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
     repoRoot,
     repository: 'example/repo',
-    laneId: 'personal-995'
+    laneId: 'personal-995',
+    storageRootsPolicy: REPO_LOCAL_STORAGE_ROOTS_POLICY
   });
   const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', 'personal-995');
   await mkdir(checkoutPath, { recursive: true });
@@ -302,6 +325,7 @@ test('comparevi worker checkout allocator refreshes and reuses an existing lane 
       stepOptions: {}
     },
     deps: {
+      loadDeliveryAgentPolicyFn: makeRepoLocalDeliveryPolicyFn(),
       platform: 'linux',
       execFileFn: async (command, args, options) => {
         calls.push({ command, args, options });
@@ -687,7 +711,8 @@ test('comparevi worker checkout allocator reuses runtime worktrees from a clean 
   const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
     repoRoot,
     repository: 'example/repo',
-    laneId
+    laneId,
+    storageRootsPolicy: REPO_LOCAL_STORAGE_ROOTS_POLICY
   });
   const worktreeAdminDir = path.join(commonRepoRoot, '.git', 'worktrees', laneId);
 
@@ -706,6 +731,7 @@ test('comparevi worker checkout allocator reuses runtime worktrees from a clean 
       stepOptions: {}
     },
     deps: {
+      loadDeliveryAgentPolicyFn: makeRepoLocalDeliveryPolicyFn(),
       platform: 'linux',
       execFileFn: async (command, args) => {
         if (command !== 'git') {
@@ -750,11 +776,41 @@ test('comparevi worker checkout path sanitizes traversal-only segments and keeps
   const { checkoutRoot, checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
     repoRoot,
     repository: '',
-    laneId: '..'
+    laneId: '..',
+    storageRootsPolicy: REPO_LOCAL_STORAGE_ROOTS_POLICY
   });
 
   assert.equal(checkoutRoot, path.join(repoRoot, '.runtime-worktrees', path.basename(repoRoot)));
   assert.equal(checkoutPath, path.join(checkoutRoot, 'runtime'));
+});
+
+test('comparevi worker checkout location honors deterministic external burst roots from environment and policy', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-external-root-'));
+  const externalRoot = path.join(os.tmpdir(), 'comparevi-external-lanes');
+  const { checkoutRoot, checkoutPath, checkoutRootPolicy } = compareviRuntimeTest.resolveCompareviWorkerCheckoutLocation({
+    repoRoot,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    laneId: 'origin-1727',
+    storageRootsPolicy: {
+      worktrees: {
+        envVar: 'COMPAREVI_BURST_WORKTREE_ROOT',
+        preferredRoots: ['E:\\comparevi-lanes']
+      }
+    },
+    env: {
+      COMPAREVI_BURST_WORKTREE_ROOT: externalRoot
+    }
+  });
+
+  assert.equal(checkoutRoot, path.join(externalRoot, 'LabVIEW-Community-CI-CD--compare-vi-cli-action'));
+  assert.equal(checkoutPath, path.join(checkoutRoot, 'origin-1727'));
+  assert.deepEqual(checkoutRootPolicy, {
+    strategy: 'environment',
+    source: 'COMPAREVI_BURST_WORKTREE_ROOT',
+    baseRoot: externalRoot,
+    relativeRoot: 'LabVIEW-Community-CI-CD--compare-vi-cli-action',
+    usesExternalRoot: true
+  });
 });
 
 test('comparevi worker path containment helper treats the root itself as within scope', () => {

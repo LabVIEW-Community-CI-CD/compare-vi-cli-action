@@ -71,6 +71,18 @@
         }
       }
     },
+    "storageRoots": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "worktrees": {
+          "$ref": "#/$defs/storageRootEntry"
+        },
+        "artifacts": {
+          "$ref": "#/$defs/storageRootEntry"
+        }
+      }
+    },
     "workerPool": {
       "type": "object",
       "additionalProperties": true,
@@ -305,6 +317,19 @@
     "codingTurnCommand": {
       "type": "array",
       "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "storageRootEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "envVar": { "type": "string", "minLength": 1 },
+        "preferredRoots": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
     }
   }
 }

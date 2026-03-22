@@ -51,6 +51,16 @@
       }
     ]
   },
+  "storageRoots": {
+    "worktrees": {
+      "envVar": "COMPAREVI_BURST_WORKTREE_ROOT",
+      "preferredRoots": ["E:\\comparevi-lanes"]
+    },
+    "artifacts": {
+      "envVar": "COMPAREVI_BURST_ARTIFACT_ROOT",
+      "preferredRoots": ["E:\\comparevi-artifacts"]
+    }
+  },
   "workerPool": {
     "targetSlotCount": 20,
     "prewarmSlotCount": 1,

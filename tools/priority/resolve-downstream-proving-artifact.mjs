@@ -5,6 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { downloadNamedArtifacts } from './lib/run-artifact-download.mjs';
+import { loadStorageRootsPolicy, resolveArtifactDestinationRoot } from './lib/storage-root-policy.mjs';
 
 export const REPORT_SCHEMA = 'priority/downstream-proving-selection@v1';
 export const DEFAULT_WORKFLOW = 'downstream-promotion.yml';
@@ -60,7 +61,7 @@ function printUsage(log = console.log) {
     `  --branch <name>                 Workflow run branch filter (default: ${DEFAULT_BRANCH}).`,
     '  --expected-source-sha <sha>     Required source commit sha to match in the scorecard provenance.',
     `  --artifact-prefix <prefix>      Artifact prefix (default: ${DEFAULT_ARTIFACT_PREFIX}).`,
-    `  --destination-root <path>       Destination root (default: ${DEFAULT_DESTINATION_ROOT}).`,
+    `  --destination-root <path>       Destination root (default: policy/env-managed from ${DEFAULT_DESTINATION_ROOT}).`,
     `  --output <path>                 Selection report path (default: ${DEFAULT_REPORT_PATH}).`,
     '  -h, --help                      Show help.'
   ].forEach((line) => log(line));
@@ -76,6 +77,7 @@ export function parseArgs(argv = process.argv, env = process.env) {
     expectedSourceSha: null,
     artifactPrefix: DEFAULT_ARTIFACT_PREFIX,
     destinationRoot: DEFAULT_DESTINATION_ROOT,
+    destinationRootExplicit: false,
     outputPath: DEFAULT_REPORT_PATH
   };
 
@@ -104,7 +106,10 @@ export function parseArgs(argv = process.argv, env = process.env) {
       if (token === '--branch') options.branch = normalizeText(next);
       if (token === '--expected-source-sha') options.expectedSourceSha = normalizeText(next);
       if (token === '--artifact-prefix') options.artifactPrefix = normalizeText(next);
-      if (token === '--destination-root') options.destinationRoot = next;
+      if (token === '--destination-root') {
+        options.destinationRoot = next;
+        options.destinationRootExplicit = true;
+      }
       if (token === '--output') options.outputPath = next;
       continue;
     }
@@ -270,7 +275,8 @@ export async function runResolveDownstreamProvingArtifact(
   {
     now = new Date(),
     runGhJsonFn,
-    downloadNamedArtifactsFn = downloadNamedArtifacts
+    downloadNamedArtifactsFn = downloadNamedArtifacts,
+    env = process.env
   } = {}
 ) {
   const options = {
@@ -279,6 +285,7 @@ export async function runResolveDownstreamProvingArtifact(
     branch: normalizeText(rawOptions.branch) || DEFAULT_BRANCH,
     artifactPrefix: normalizeText(rawOptions.artifactPrefix) || DEFAULT_ARTIFACT_PREFIX,
     destinationRoot: rawOptions.destinationRoot || DEFAULT_DESTINATION_ROOT,
+    destinationRootExplicit: rawOptions.destinationRootExplicit === true,
     outputPath: rawOptions.outputPath || DEFAULT_REPORT_PATH
   };
 
@@ -288,6 +295,13 @@ export async function runResolveDownstreamProvingArtifact(
 
   const candidates = [];
   let selected = null;
+  const rootSelection = resolveArtifactDestinationRoot({
+    repoRoot: process.cwd(),
+    destinationRoot: options.destinationRoot,
+    destinationRootExplicit: options.destinationRootExplicit,
+    policy: loadStorageRootsPolicy(process.cwd()),
+    env
+  });
 
   for (let page = 1; page <= WORKFLOW_RUNS_MAX_PAGES; page += 1) {
     const payload = await runGhJsonFn([
@@ -306,13 +320,15 @@ export async function runResolveDownstreamProvingArtifact(
         continue;
       }
       const artifactName = `${options.artifactPrefix}${run.id}`;
-      const candidateRoot = path.join(options.destinationRoot, String(run.id));
+      const candidateRoot = path.join(rootSelection.destinationRoot, String(run.id));
       const downloadReportPath = path.join(candidateRoot, 'download-report.json');
       const downloadResult = await downloadNamedArtifactsFn({
         repository: options.repo,
         runId: String(run.id),
         artifactNames: [artifactName],
+        repoRoot: process.cwd(),
         destinationRoot: candidateRoot,
+        destinationRootExplicit: true,
         reportPath: downloadReportPath
       });
       const scorecardPath = findArtifactFile(candidateRoot, 'downstream-develop-promotion-scorecard.json');

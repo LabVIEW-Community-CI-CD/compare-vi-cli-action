@@ -54,7 +54,7 @@ function printUsage() {
   console.log('  --run-id <id>                    Explicit workflow run id to resolve.');
   console.log('  --ref <branch>                   Optional head branch filter when selecting the latest run.');
   console.log('  --fail-on-nogo                   Exit non-zero when the resolved decision is nogo.');
-  console.log(`  --destination-root <path>        Download destination root (default: ${DEFAULT_DESTINATION_ROOT}).`);
+  console.log(`  --destination-root <path>        Download destination root (default: policy/env-managed from ${DEFAULT_DESTINATION_ROOT}).`);
   console.log(`  --download-report <path>         Artifact download report path (default: ${DEFAULT_DOWNLOAD_REPORT_PATH}).`);
   console.log(`  --out <path>                     Summary report path (default: ${DEFAULT_REPORT_PATH}).`);
   console.log('  -h, --help                       Show help.');
@@ -243,6 +243,7 @@ export function parseArgs(argv = process.argv, environment = process.env, repoRo
     ref: null,
     failOnNogo: false,
     destinationRoot: DEFAULT_DESTINATION_ROOT,
+    destinationRootExplicit: false,
     downloadReportPath: DEFAULT_DOWNLOAD_REPORT_PATH,
     reportPath: DEFAULT_REPORT_PATH,
   };
@@ -277,7 +278,10 @@ export function parseArgs(argv = process.argv, environment = process.env, repoRo
       if (token === '--artifact') options.artifactName = normalizeText(next);
       if (token === '--run-id') options.runId = normalizeText(next);
       if (token === '--ref') options.ref = normalizeText(next);
-      if (token === '--destination-root') options.destinationRoot = next;
+      if (token === '--destination-root') {
+        options.destinationRoot = next;
+        options.destinationRootExplicit = true;
+      }
       if (token === '--download-report') options.downloadReportPath = next;
       if (token === '--out') options.reportPath = next;
       continue;
@@ -378,9 +382,12 @@ export async function runHumanGoNoGoLatest({
     repository: options.repo,
     runId: String(selectedRun.id),
     artifactNames: [options.artifactName],
+    repoRoot,
     destinationRoot: options.destinationRoot,
+    destinationRootExplicit: options.destinationRootExplicit,
     reportPath: options.downloadReportPath,
     now,
+    env: environment,
   });
   if (downloadResult.report.status !== 'pass') {
     throw new Error(downloadResult.report.errors?.[0] ?? 'Artifact download failed.');

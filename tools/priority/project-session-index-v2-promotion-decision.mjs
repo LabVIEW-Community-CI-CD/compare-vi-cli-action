@@ -40,6 +40,18 @@ function toRepoRelative(repoRoot, targetPath) {
   return path.relative(repoRoot, targetPath).replace(/\\/g, '/');
 }
 
+function toRepoRelativeOrAbsolute(repoRoot, targetPath) {
+  if (!targetPath) {
+    return null;
+  }
+  const resolvedTargetPath = path.resolve(targetPath);
+  const relativePath = path.relative(repoRoot, resolvedTargetPath);
+  if (relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))) {
+    return relativePath.replace(/\\/g, '/');
+  }
+  return resolvedTargetPath;
+}
+
 export function clearProjectionOutputs(repoRoot) {
   for (const relativePath of [DEFAULT_REPORT_PATH, DEFAULT_DOWNLOAD_REPORT_PATH, DEFAULT_DESTINATION_ROOT]) {
     fs.rmSync(path.join(repoRoot, relativePath), { recursive: true, force: true });
@@ -104,10 +116,10 @@ export function buildProjectionSnapshot({
 }) {
   const relativeReportPath = reportPath ? toRepoRelative(repoRoot, reportPath) : toRepoRelative(repoRoot, path.join(repoRoot, DEFAULT_REPORT_PATH));
   const relativeDownloadReportPath = report?.artifact?.downloadReportPath
-    ? toRepoRelative(repoRoot, report.artifact.downloadReportPath)
+    ? toRepoRelativeOrAbsolute(repoRoot, report.artifact.downloadReportPath)
     : toRepoRelative(repoRoot, path.join(repoRoot, DEFAULT_DOWNLOAD_REPORT_PATH));
   const relativeArtifactRoot = report?.artifact?.destinationRoot
-    ? toRepoRelative(repoRoot, report.artifact.destinationRoot)
+    ? toRepoRelativeOrAbsolute(repoRoot, report.artifact.destinationRoot)
     : toRepoRelative(repoRoot, path.join(repoRoot, DEFAULT_DESTINATION_ROOT));
 
   if (!report) {
