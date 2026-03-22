@@ -9,8 +9,9 @@ import {
   ensureValidIdentifier,
   ensureCleanWorkingTree,
   ensureBranchDoesNotExist,
-  getCurrentBranch,
-  getRepoRoot
+  getCurrentCheckoutTarget,
+  getRepoRoot,
+  checkoutDetachedRef
 } from './lib/branch-utils.mjs';
 
 const USAGE_LINES = [
@@ -34,21 +35,23 @@ async function main() {
   ensureCleanWorkingTree(run, 'Working tree not clean. Commit or stash changes before running the dry-run helper.');
   ensureBranchDoesNotExist(branch);
 
-  const originalBranch = getCurrentBranch();
+  const originalCheckout = getCurrentCheckoutTarget();
 
   let baseCommit;
   let restoreBranch = false;
   try {
-    run('git', ['checkout', '-B', 'develop', 'upstream/develop']);
+    checkoutDetachedRef('upstream/develop');
     run('git', ['checkout', '-b', branch]);
     baseCommit = run('git', ['rev-parse', 'HEAD']);
     restoreBranch = true;
   } finally {
-    if (restoreBranch && originalBranch) {
+    if (restoreBranch && originalCheckout) {
       try {
-        run('git', ['checkout', originalBranch]);
+        run('git', ['checkout', originalCheckout]);
       } catch (restoreError) {
-        console.warn(`[feature:branch:dry] warning: failed to restore branch ${originalBranch}: ${restoreError.message}`);
+        console.warn(
+          `[feature:branch:dry] warning: failed to restore checkout ${originalCheckout}: ${restoreError.message}`
+        );
       }
     }
   }
