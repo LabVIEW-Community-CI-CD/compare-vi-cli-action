@@ -10,6 +10,7 @@
     "repository",
     "status",
     "applyReceipt",
+    "plan",
     "hostedRun",
     "pullRequest",
     "laneStatuses",
@@ -42,6 +43,28 @@
           "type": ["string", "null"]
         },
         "status": {
+          "type": ["string", "null"]
+        },
+        "selectedBundleId": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schema", "source", "recommendedBundleId", "selectedBundleId"],
+      "properties": {
+        "path": {
+          "type": ["string", "null"]
+        },
+        "schema": {
+          "type": ["string", "null"]
+        },
+        "source": {
+          "type": ["string", "null"]
+        },
+        "recommendedBundleId": {
           "type": ["string", "null"]
         },
         "selectedBundleId": {

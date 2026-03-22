@@ -220,6 +220,11 @@ test('observeConcurrentLaneStatus projects active hosted lanes and queued PR mer
   );
 
   assert.equal(receipt.status, 'active');
+  assert.equal(receipt.plan.path, 'tests/results/_agent/runtime/concurrent-lane-plan.json');
+  assert.equal(receipt.plan.schema, 'priority/concurrent-lane-plan@v1');
+  assert.equal(receipt.plan.source, 'file');
+  assert.equal(receipt.plan.recommendedBundleId, 'hosted-plus-manual-linux-docker');
+  assert.equal(receipt.plan.selectedBundleId, 'hosted-plus-manual-linux-docker');
   assert.equal(receipt.hostedRun.observationStatus, 'active');
   assert.equal(receipt.pullRequest.observationStatus, 'queued');
   assert.equal(receipt.summary.orchestratorDisposition, 'wait-hosted-run');
@@ -348,6 +353,11 @@ test('observeConcurrentLaneStatus settles completed hosted runs and keeps deferr
   );
 
   assert.equal(receipt.status, 'settled');
+  assert.equal(receipt.plan.path, 'tests/results/_agent/runtime/concurrent-lane-plan.json');
+  assert.equal(receipt.plan.schema, 'priority/concurrent-lane-plan@v1');
+  assert.equal(receipt.plan.source, 'file');
+  assert.equal(receipt.plan.recommendedBundleId, 'hosted-plus-host-native-32-shadow');
+  assert.equal(receipt.plan.selectedBundleId, 'hosted-plus-host-native-32-shadow');
   assert.equal(receipt.hostedRun.observationStatus, 'completed');
   assert.equal(receipt.pullRequest.observationStatus, 'not-requested');
   assert.equal(receipt.summary.shadowLaneCount, 1);
