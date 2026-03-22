@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import {
   COMMENT_MARKER,
   DEFAULT_COST_ROLLUP_PATH,
+  DEFAULT_MATERIALIZATION_REPORT_PATH,
   DEFAULT_MARKDOWN_OUTPUT_PATH,
   DEFAULT_OUTPUT_PATH,
   evaluatePrSpendProjection,
@@ -321,6 +322,167 @@ test('runPrSpendProjection writes JSON and markdown outputs and can upsert a com
   assert.match(posted.body, new RegExp(COMMENT_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
+test('runPrSpendProjection materializes a missing cost rollup before projection', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-spend-projection-materialize-'));
+  const costRollupPath = path.join(tempDir, 'missing-agent-cost-rollup.json');
+  const outputPath = path.join(tempDir, 'pr-spend-projection.json');
+  const markdownOutputPath = path.join(tempDir, 'pr-spend-projection.md');
+  const materializationReportPath = path.join(tempDir, 'agent-cost-rollup-materialization.json');
+
+  const result = runPrSpendProjection(
+    {
+      costRollupPath,
+      outputPath,
+      markdownOutputPath,
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      prNumber: 1772,
+      postComment: false
+    },
+    {
+      resolveRepoSlugFn: (explicitRepo) => explicitRepo,
+      resolvePullRequestContextFn: () => ({
+        number: 1772,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1772',
+        headRefName: 'issue/origin-1770-template-verification-authority',
+        headSha: 'abc123',
+        headRefIssueNumber: 1770,
+        linkedIssueNumber: null,
+        selectorSource: 'github-pr-head-ref'
+      }),
+      materializeAgentCostRollupFn: ({ costRollupPath: requestedPath, outputPath: requestedOutputPath }) => {
+        fs.writeFileSync(
+          requestedPath,
+          `${JSON.stringify(
+            createCostRollupFixture({
+              turns: [
+                {
+                  agentRole: 'live',
+                  providerId: 'codex-cli',
+                  providerKind: 'local-codex',
+                  effectiveModel: 'gpt-5.4',
+                  effectiveReasoningEffort: 'xhigh',
+                  issueNumber: 1770,
+                  laneId: 'issue/origin-1770-template-verification-authority',
+                  laneBranch: 'issue/origin-1770-template-verification-authority',
+                  amountUsd: 0.0201
+                }
+              ]
+            }),
+            null,
+            2
+          )}\n`,
+          'utf8'
+        );
+        fs.writeFileSync(
+          requestedOutputPath,
+          `${JSON.stringify(
+            {
+              schema: 'priority/agent-cost-rollup-materialization@v1',
+              generatedAt: '2026-03-22T06:00:00.000Z',
+              summary: {
+                status: 'pass'
+              }
+            },
+            null,
+            2
+          )}\n`,
+          'utf8'
+        );
+        return {
+          outputPath: materializationReportPath,
+          costRollupPath: requestedPath
+        };
+      }
+    }
+  );
+
+  assert.equal(result.report.summary.status, 'pass');
+  assert.equal(result.report.source.costRollupMaterialized, true);
+  assert.equal(result.report.source.costRollupMaterializationReportPath, path.relative(repoRoot, materializationReportPath).replace(/\\/g, '/'));
+  assert.match(fs.readFileSync(markdownOutputPath, 'utf8'), /materialized-current-lane/);
+});
+
+test('runPrSpendProjection rematerializes when an existing rollup has no matching turns for the PR', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-spend-projection-rematerialize-'));
+  const costRollupPath = path.join(tempDir, 'agent-cost-rollup.json');
+  const outputPath = path.join(tempDir, 'pr-spend-projection.json');
+  const markdownOutputPath = path.join(tempDir, 'pr-spend-projection.md');
+
+  fs.writeFileSync(costRollupPath, `${JSON.stringify(createCostRollupFixture(), null, 2)}\n`, 'utf8');
+
+  const result = runPrSpendProjection(
+    {
+      costRollupPath,
+      outputPath,
+      markdownOutputPath,
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      prNumber: 1772,
+      postComment: false
+    },
+    {
+      resolveRepoSlugFn: (explicitRepo) => explicitRepo,
+      resolvePullRequestContextFn: () => ({
+        number: 1772,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1772',
+        headRefName: 'issue/origin-1770-template-verification-authority',
+        headSha: 'abc123',
+        headRefIssueNumber: 1770,
+        linkedIssueNumber: 1770,
+        selectorSource: 'github-pr-head-ref'
+      }),
+      materializeAgentCostRollupFn: ({ costRollupPath: requestedPath, outputPath: requestedOutputPath }) => {
+        fs.writeFileSync(
+          requestedPath,
+          `${JSON.stringify(
+            createCostRollupFixture({
+              turns: [
+                {
+                  agentRole: 'live',
+                  providerId: 'codex-cli',
+                  providerKind: 'local-codex',
+                  effectiveModel: 'gpt-5.4',
+                  effectiveReasoningEffort: 'xhigh',
+                  issueNumber: 1770,
+                  laneId: 'issue/origin-1770-template-verification-authority',
+                  laneBranch: 'issue/origin-1770-template-verification-authority',
+                  amountUsd: 0.0201
+                }
+              ]
+            }),
+            null,
+            2
+          )}\n`,
+          'utf8'
+        );
+        fs.writeFileSync(
+          requestedOutputPath,
+          `${JSON.stringify(
+            {
+              schema: 'priority/agent-cost-rollup-materialization@v1',
+              generatedAt: '2026-03-22T06:00:00.000Z',
+              summary: {
+                status: 'pass'
+              }
+            },
+            null,
+            2
+          )}\n`,
+          'utf8'
+        );
+        return {
+          outputPath: requestedOutputPath,
+          costRollupPath: requestedPath
+        };
+      }
+    }
+  );
+
+  assert.equal(result.report.summary.status, 'pass');
+  assert.equal(result.report.source.costRollupMaterialized, true);
+  assert.equal(result.report.summary.totalUsd, 0.0201);
+  assert.match(fs.readFileSync(markdownOutputPath, 'utf8'), /materialized-current-lane/);
+});
+
 test('CLI entrypoint writes the PR spend projection report on Windows path resolution', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-spend-projection-cli-'));
   const costRollupPath = path.join(tempDir, 'agent-cost-rollup.json');
@@ -354,6 +516,7 @@ test('CLI entrypoint writes the PR spend projection report on Windows path resol
 
 test('defaults remain anchored to the checked-in agent cost paths', () => {
   assert.match(DEFAULT_COST_ROLLUP_PATH, /agent-cost-rollup\.json$/);
+  assert.match(DEFAULT_MATERIALIZATION_REPORT_PATH, /agent-cost-rollup-materialization\.json$/);
   assert.match(DEFAULT_OUTPUT_PATH, /pr-spend-projection\.json$/);
   assert.match(DEFAULT_MARKDOWN_OUTPUT_PATH, /pr-spend-projection\.md$/);
 });

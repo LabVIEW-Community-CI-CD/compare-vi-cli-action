@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.dev/compare-vi-cli-action/agent-cost-rollup-materialization-report-v1.schema.json",
+  "title": "Agent Cost Rollup Materialization Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generatedAt", "repository", "issueNumber", "laneId", "laneBranch", "inputs", "syncedReceipts", "heuristicTurn", "costRollup", "summary"],
+  "properties": {
+    "schema": { "const": "priority/agent-cost-rollup-materialization@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repository": { "type": "string", "minLength": 1 },
+    "issueNumber": { "type": "integer", "minimum": 1 },
+    "laneId": { "type": "string", "minLength": 1 },
+    "laneBranch": { "type": "string", "minLength": 1 },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyPath", "liveAgentModelSelectionPolicyPath", "operatorSteeringEventPath"],
+      "properties": {
+        "policyPath": { "type": "string", "minLength": 1 },
+        "liveAgentModelSelectionPolicyPath": { "type": "string", "minLength": 1 },
+        "operatorSteeringEventPath": { "type": ["string", "null"] }
+      }
+    },
+    "syncedReceipts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invoiceTurns", "usageExports", "accountBalances"],
+      "properties": {
+        "invoiceTurns": { "$ref": "#/$defs/syncedReceiptGroup" },
+        "usageExports": { "$ref": "#/$defs/syncedReceiptGroup" },
+        "accountBalances": { "$ref": "#/$defs/syncedReceiptGroup" }
+      }
+    },
+    "heuristicTurn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "providerId", "providerKind", "providerRuntime", "executionPlane", "requestedModel", "effectiveModel", "requestedReasoningEffort", "effectiveReasoningEffort", "usage", "billing", "usageObservedAt", "sourceSchema"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "providerId": { "type": "string", "minLength": 1 },
+        "providerKind": { "type": "string", "minLength": 1 },
+        "providerRuntime": { "type": "string", "minLength": 1 },
+        "executionPlane": { "type": "string", "minLength": 1 },
+        "requestedModel": { "type": "string", "minLength": 1 },
+        "effectiveModel": { "type": "string", "minLength": 1 },
+        "requestedReasoningEffort": { "type": "string", "minLength": 1 },
+        "effectiveReasoningEffort": { "type": "string", "minLength": 1 },
+        "usageObservedAt": { "type": "string", "format": "date-time" },
+        "sourceSchema": { "type": "string", "minLength": 1 },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["inputTokens", "cachedInputTokens", "outputTokens", "totalTokens", "usageUnitKind", "usageUnitCount"],
+          "properties": {
+            "inputTokens": { "type": "integer", "minimum": 0 },
+            "cachedInputTokens": { "type": "integer", "minimum": 0 },
+            "outputTokens": { "type": "integer", "minimum": 0 },
+            "totalTokens": { "type": "integer", "minimum": 0 },
+            "usageUnitKind": { "type": "string", "minLength": 1 },
+            "usageUnitCount": { "type": "number", "minimum": 0 }
+          }
+        },
+        "billing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["exactness", "rateCard"],
+          "properties": {
+            "exactness": { "type": "string", "enum": ["exact", "estimated"] },
+            "rateCard": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "source", "pricingBasis", "inputUsdPer1kTokens", "cachedInputUsdPer1kTokens", "outputUsdPer1kTokens"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "source": { "type": "string", "minLength": 1 },
+                "pricingBasis": { "type": "string", "minLength": 1 },
+                "inputUsdPer1kTokens": { "type": "number", "minimum": 0 },
+                "cachedInputUsdPer1kTokens": { "type": "number", "minimum": 0 },
+                "outputUsdPer1kTokens": { "type": "number", "minimum": 0 },
+                "usageUnitUsd": { "type": ["number", "null"], "minimum": 0 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "costRollup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "status", "blockerCount"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "minLength": 1 },
+        "blockerCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "recommendation", "materializedRollup", "materializedHeuristicTurn", "blockerCount", "blockers"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "blocked"] },
+        "recommendation": { "type": "string", "minLength": 1 },
+        "materializedRollup": { "type": "boolean" },
+        "materializedHeuristicTurn": { "type": "boolean" },
+        "blockerCount": { "type": "integer", "minimum": 0 },
+        "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } }
+      }
+    }
+  },
+  "$defs": {
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "path": { "type": ["string", "null"] }
+      }
+    },
+    "syncedReceiptGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["destinationDir", "discoveredCount", "materializedCount", "files"],
+      "properties": {
+        "destinationDir": { "type": "string", "minLength": 1 },
+        "discoveredCount": { "type": "integer", "minimum": 0 },
+        "materializedCount": { "type": "integer", "minimum": 0 },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["fileName", "sourcePath", "destinationPath"],
+            "properties": {
+              "fileName": { "type": "string", "minLength": 1 },
+              "sourcePath": { "type": "string", "minLength": 1 },
+              "destinationPath": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}
