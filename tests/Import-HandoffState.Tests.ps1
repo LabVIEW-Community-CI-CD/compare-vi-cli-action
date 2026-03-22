@@ -259,4 +259,62 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
 
     Remove-Variable -Name HandoffAutonomousGovernorSummary -Scope Global -ErrorAction SilentlyContinue
   }
+
+  It 'surfaces governor portfolio summary when present' {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $scriptPath = Join-Path $repoRoot 'tools' 'priority' 'Import-HandoffState.ps1'
+    $handoffDir = Join-Path $TestDrive 'handoff'
+    New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+
+    [ordered]@{
+      schema = 'priority/autonomous-governor-portfolio-summary-report@v1'
+      generatedAt = '2026-03-22T23:15:00Z'
+      repository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+      inputs = [ordered]@{
+        compareGovernorSummaryPath = 'tests/results/_agent/handoff/autonomous-governor-summary.json'
+        monitoringModePath = 'tests/results/_agent/handoff/monitoring-mode.json'
+        repoGraphTruthPath = 'tests/results/_agent/handoff/downstream-repo-graph-truth.json'
+      }
+      compare = [ordered]@{
+        repository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+        queueState = 'not-queue-empty'
+        continuityStatus = 'at-risk'
+        monitoringStatus = 'blocked'
+        futureAgentAction = 'stay-in-compare-monitoring'
+        governorMode = 'compare-governance-work'
+        nextAction = 'continue-compare-governance-work'
+      }
+      portfolio = [ordered]@{
+        repositoryCount = 4
+        repositories = @()
+        unsupportedPaths = @()
+      }
+      summary = [ordered]@{
+        status = 'active'
+        governorMode = 'compare-governance-work'
+        currentOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+        nextOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+        nextAction = 'continue-compare-governance-work'
+        ownerDecisionSource = 'compare-governor-summary'
+        templateMonitoringStatus = 'pass'
+        supportedProofStatus = 'pass'
+        repoGraphStatus = 'pass'
+        portfolioWakeConditionCount = 3
+        triggeredWakeConditions = @(
+          'compare-queue-not-empty',
+          'compare-continuity-not-safe-idle',
+          'compare-template-pivot-not-ready'
+        )
+      }
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $handoffDir 'autonomous-governor-portfolio-summary.json') -Encoding utf8
+
+    $output = & $scriptPath -HandoffDir $handoffDir *>&1 | Out-String
+
+    $output | Should -Match '\[handoff\] Governor portfolio summary'
+    $output | Should -Match 'mode\s+: compare-governance-work'
+    $output | Should -Match 'proof\s+: pass'
+    $global:HandoffAutonomousGovernorPortfolioSummary.schema | Should -Be 'priority/autonomous-governor-portfolio-summary-report@v1'
+
+    Remove-Variable -Name HandoffAutonomousGovernorPortfolioSummary -Scope Global -ErrorAction SilentlyContinue
+  }
 }

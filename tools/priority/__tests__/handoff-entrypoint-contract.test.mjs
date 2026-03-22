@@ -31,6 +31,7 @@ test('AGENT_HANDOFF stays bounded and points agents to live state artifacts', ()
   assert.match(handoff, /tests\/results\/_agent\/handoff\/entrypoint-status\.json/);
   assert.match(handoff, /tests\/results\/_agent\/handoff\/monitoring-mode\.json/);
   assert.match(handoff, /tests\/results\/_agent\/handoff\/autonomous-governor-summary\.json/);
+  assert.match(handoff, /tests\/results\/_agent\/handoff\/autonomous-governor-portfolio-summary\.json/);
   assert.match(handoff, /tests\/results\/_agent\/handoff\/\*\.json/);
   assert.match(handoff, /tests\/results\/_agent\/sessions\/\*\.json/);
   assert.doesNotMatch(handoff, /^## 20\d{2}-\d{2}-\d{2}$/m);
@@ -63,12 +64,16 @@ test('handoff entrypoint contract is wired into automation and operator docs', (
   assert.match(printHandoff, /monitoring-mode\.json/);
   assert.match(printHandoff, /autonomous-governor-summary\.mjs/);
   assert.match(printHandoff, /autonomous-governor-summary\.json/);
+  assert.match(printHandoff, /autonomous-governor-portfolio-summary\.mjs/);
+  assert.match(printHandoff, /autonomous-governor-portfolio-summary\.json/);
   assert.match(printHandoff, /docker-review-loop-summary\.json/);
   assert.match(importHandoff, /entrypoint-status\.json/);
   assert.match(importHandoff, /continuity-summary\.json/);
   assert.match(importHandoff, /monitoring-mode\.json/);
   assert.match(importHandoff, /autonomous-governor-summary\.json/);
+  assert.match(importHandoff, /autonomous-governor-portfolio-summary\.json/);
   assert.match(importHandoff, /\[handoff\] Autonomous governor summary/);
+  assert.match(importHandoff, /\[handoff\] Governor portfolio summary/);
   assert.match(importHandoff, /\[handoff\] Monitoring mode/);
   assert.match(importHandoff, /\[handoff\] Continuity summary/);
   assert.match(importHandoff, /docker-review-loop-summary\.json/);
@@ -79,6 +84,7 @@ test('handoff entrypoint contract is wired into automation and operator docs', (
   assert.match(agents, /docker-review-loop-summary\.json/);
   assert.match(agents, /continuity-summary\.json/);
   assert.match(agents, /autonomous-governor-summary\.json/);
+  assert.match(agents, /autonomous-governor-portfolio-summary\.json/);
   assert.match(developerGuide, /handoff:entrypoint:check/);
   assert.match(developerGuide, /priority:handoff/);
   assert.match(developerGuide, /machine-readable index/i);
@@ -87,6 +93,7 @@ test('handoff entrypoint contract is wired into automation and operator docs', (
   assert.match(handoffGuide, /continuity-summary\.json/);
   assert.match(handoffGuide, /monitoring-mode\.json/);
   assert.match(handoffGuide, /autonomous-governor-summary\.json/);
+  assert.match(handoffGuide, /autonomous-governor-portfolio-summary\.json/);
   assert.match(handoffGuide, /docker-review-loop-summary\.json/);
   assert.match(handoffGuide, /priority:handoff/);
   assert.match(handoffGuide, /queue-empty/);

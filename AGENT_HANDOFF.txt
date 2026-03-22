@@ -22,8 +22,10 @@ Live repository state belongs in the machine-generated artifacts under
    When `tests/results/_agent/handoff/monitoring-mode.json` reports
    `future-agent-may-pivot`, the next future agent may switch to canonical
    `LabviewGitHubCiTemplate` without operator steering. Use
-   `tests/results/_agent/handoff/autonomous-governor-summary.json` as the
-   top-level receipt for what owns the next move.
+   `tests/results/_agent/handoff/autonomous-governor-summary.json` for the
+   current repo owner decision and
+   `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`
+   for the cross-repo owner decision.
 
 ## Live State Surfaces
 
@@ -39,6 +41,8 @@ Live repository state belongs in the machine-generated artifacts under
   `node tools/npm/run-script.mjs priority:monitoring:mode`
 - Governor summary:
   `node tools/npm/run-script.mjs priority:governor:summary`
+- Governor portfolio:
+  `node tools/npm/run-script.mjs priority:governor:portfolio`
 
 ## Current-State Artifacts
 
@@ -50,6 +54,7 @@ Live repository state belongs in the machine-generated artifacts under
 - `tests/results/_agent/handoff/entrypoint-status.json`
 - `tests/results/_agent/handoff/monitoring-mode.json`
 - `tests/results/_agent/handoff/autonomous-governor-summary.json`
+- `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`
 - `tests/results/_agent/handoff/human-go-no-go-latest.json`
 - `tests/results/_agent/handoff/*.json`
 - `tests/results/_agent/sessions/*.json`

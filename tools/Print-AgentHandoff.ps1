@@ -1294,6 +1294,7 @@ try {
   $templatePivotGateScript = Join-Path $repoRoot 'tools' 'priority' 'template-pivot-gate.mjs'
   $monitoringModeScript = Join-Path $repoRoot 'tools' 'priority' 'handoff-monitoring-mode.mjs'
   $governorSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-summary.mjs'
+  $governorPortfolioSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-portfolio-summary.mjs'
   $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
   if ($nodeCmd) {
     $promotionDir = Join-Path $ResultsRoot '_agent/promotion'
@@ -1311,6 +1312,7 @@ try {
     $repoGraphTruthPath = Join-Path $handoffDir 'downstream-repo-graph-truth.json'
     $monitoringModePath = Join-Path $handoffDir 'monitoring-mode.json'
     $governorSummaryPath = Join-Path $handoffDir 'autonomous-governor-summary.json'
+    $governorPortfolioSummaryPath = Join-Path $handoffDir 'autonomous-governor-portfolio-summary.json'
 
     if (Test-Path -LiteralPath $repoGraphTruthScript -PathType Leaf) {
       & $nodeCmd.Source $repoGraphTruthScript `
@@ -1351,6 +1353,15 @@ try {
         --continuity-summary $continuitySummaryPath `
         --monitoring-mode $monitoringModePath `
         --output $governorSummaryPath | Out-Host
+    }
+
+    if (Test-Path -LiteralPath $governorPortfolioSummaryScript -PathType Leaf) {
+      & $nodeCmd.Source $governorPortfolioSummaryScript `
+        --repo-root $repoRoot `
+        --compare-governor-summary $governorSummaryPath `
+        --monitoring-mode $monitoringModePath `
+        --repo-graph-truth $repoGraphTruthPath `
+        --output $governorPortfolioSummaryPath | Out-Host
     }
   }
 } catch {
@@ -1527,6 +1538,40 @@ try {
   }
 } catch {
   Write-Warning ("Failed to display autonomous governor summary: {0}" -f $_.Exception.Message)
+}
+
+try {
+  $governorPortfolioSummaryPath = Join-Path $ResultsRoot '_agent/handoff/autonomous-governor-portfolio-summary.json'
+  if (Test-Path -LiteralPath $governorPortfolioSummaryPath -PathType Leaf) {
+    $portfolio = Get-Content -LiteralPath $governorPortfolioSummaryPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    Write-Host ''
+    Write-Host '[Governor Portfolio]' -ForegroundColor Cyan
+    Write-Host ("  mode     : {0}" -f (Format-NullableValue $portfolio.summary.governorMode))
+    Write-Host ("  owner    : {0}" -f (Format-NullableValue $portfolio.summary.currentOwnerRepository))
+    Write-Host ("  next     : {0}" -f (Format-NullableValue $portfolio.summary.nextAction))
+    Write-Host ("  template : {0}" -f (Format-NullableValue $portfolio.summary.templateMonitoringStatus))
+    Write-Host ("  proof    : {0}" -f (Format-NullableValue $portfolio.summary.supportedProofStatus))
+    if ($portfolio.summary.nextOwnerRepository) {
+      Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $portfolio.summary.nextOwnerRepository))
+    }
+    if ($env:GITHUB_STEP_SUMMARY) {
+      $portfolioLines = @(
+        '### Governor Portfolio',
+        '',
+        ('- Mode: {0}' -f (Format-NullableValue $portfolio.summary.governorMode)),
+        ('- Current owner: {0}' -f (Format-NullableValue $portfolio.summary.currentOwnerRepository)),
+        ('- Next action: {0}' -f (Format-NullableValue $portfolio.summary.nextAction)),
+        ('- Template monitoring: {0}' -f (Format-NullableValue $portfolio.summary.templateMonitoringStatus)),
+        ('- Supported proof: {0}' -f (Format-NullableValue $portfolio.summary.supportedProofStatus))
+      )
+      if ($portfolio.summary.nextOwnerRepository) {
+        $portfolioLines += ('- Next owner: {0}' -f (Format-NullableValue $portfolio.summary.nextOwnerRepository))
+      }
+      ($portfolioLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+    }
+  }
+} catch {
+  Write-Warning ("Failed to display governor portfolio summary: {0}" -f $_.Exception.Message)
 }
 
 try {
