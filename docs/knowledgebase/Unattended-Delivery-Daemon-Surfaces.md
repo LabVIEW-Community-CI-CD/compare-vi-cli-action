@@ -58,6 +58,11 @@ use the emitted `daemonCutover.requiredActions` as the operator loop:
 6. Treat the plane as reusable only when the observer reports
    `daemonCutover.status = ready`.
 
+Manager behavior note:
+- when prerequisite repair re-establishes a stable native WSL daemon, the
+  manager may route a leftover `runner-conflict` into an observed, non-blocking
+  state for the current cycle instead of reopening the same host-runtime block.
+
 ## Canonical Receipt Read Order
 
 When a daemon lane needs diagnosis, read receipts in this order:
