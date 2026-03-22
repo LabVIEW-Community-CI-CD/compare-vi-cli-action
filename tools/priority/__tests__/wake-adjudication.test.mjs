@@ -22,6 +22,7 @@ function writeJson(filePath, payload) {
 function createOnboardingReport({
   targetBranch,
   defaultBranch = targetBranch,
+  branchResolutionSource = 'live-repository-default-branch',
   requiredFailures = [],
   warnings = [],
   referencedWorkflowCount = 0,
@@ -88,8 +89,16 @@ function createOnboardingReport({
       ok: true,
       error: null,
       defaultBranch,
+      evaluatedBranch: targetBranch,
+      branchResolutionSource,
       htmlUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
       private: false
+    },
+    branchResolution: {
+      requestedBranchOverride: null,
+      repositoryDefaultBranch: defaultBranch,
+      evaluatedBranch: targetBranch,
+      source: branchResolutionSource
     },
     workflowDiscovery: {
       scannedWorkflowCount: referencedWorkflowCount > 0 ? 1 : 0,
@@ -219,6 +228,11 @@ test('runWakeAdjudication classifies stale downstream failures as branch-target-
   assert.equal(report.summary.suppressIssueInjection, true);
   assert.equal(report.summary.recommendedOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.delta.targetBranchChanged, true);
+  assert.equal(report.authority.routing.selectedTier, 'authoritative');
+  assert.equal(report.authority.routing.blockedLowerTier, true);
+  assert.deepEqual(report.authority.routing.contradictionFields.sort(), ['defaultBranch', 'targetBranch']);
+  assert.equal(report.authority.authoritative.targetBranch, 'develop');
+  assert.equal(report.authority.authoritative.source, 'live-repository-default-branch');
   assert.deepEqual(report.delta.clearedRequiredFailureIds.sort(), [
     'certified-reference-pinned',
     'successful-consumption-run',
@@ -262,6 +276,7 @@ test('runWakeAdjudication classifies surviving required failures as live-defect'
   assert.equal(report.summary.classification, 'live-defect');
   assert.equal(report.summary.suppressIssueInjection, false);
   assert.equal(report.summary.recommendedOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(report.authority.routing.blockedLowerTier, false);
   assert.deepEqual(report.delta.persistentRequiredFailureIds, ['workflow-reference-present']);
 });
 

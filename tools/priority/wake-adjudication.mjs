@@ -146,6 +146,7 @@ function toObservation(reportPath, report, overrides = {}) {
     downstreamRepository: normalizeText(report?.downstreamRepository),
     targetBranch: normalizeText(report?.targetBranch),
     defaultBranch: asOptional(report?.repository?.defaultBranch),
+    branchResolutionSource: asOptional(report?.branchResolution?.source) || asOptional(report?.repository?.branchResolutionSource),
     summaryStatus: normalizeText(report?.summary?.status) || 'fail',
     requiredFailCount: Number.isInteger(report?.summary?.requiredFailCount) ? report.summary.requiredFailCount : requiredFailures.length,
     warningCount: Number.isInteger(report?.summary?.warnCount) ? report.summary.warnCount : warnings.length,
@@ -158,6 +159,53 @@ function toObservation(reportPath, report, overrides = {}) {
     requiredFailures,
     warnings,
     ...overrides
+  };
+}
+
+function createAuthorityTier(tier, observation, source) {
+  return {
+    tier,
+    repository: normalizeText(observation?.downstreamRepository),
+    targetBranch: normalizeText(observation?.targetBranch),
+    defaultBranch: asOptional(observation?.defaultBranch),
+    generatedAt: asOptional(observation?.generatedAt),
+    branchResolutionSource: asOptional(observation?.branchResolutionSource),
+    source
+  };
+}
+
+function createAuthorityModel(reported, revalidated) {
+  const contradictionFields = [];
+  if (normalizeText(reported?.targetBranch) !== normalizeText(revalidated?.targetBranch)) {
+    contradictionFields.push('targetBranch');
+  }
+  if (normalizeText(reported?.defaultBranch) !== normalizeText(revalidated?.defaultBranch)) {
+    contradictionFields.push('defaultBranch');
+  }
+
+  let authoritativeSource = 'live-replay';
+  if (normalizeText(revalidated?.branchResolutionSource) === 'live-repository-default-branch') {
+    authoritativeSource = 'live-repository-default-branch';
+  } else if (normalizeText(revalidated?.branchResolutionSource) === 'explicit-override') {
+    authoritativeSource = 'explicit-override';
+  } else if (normalizeText(revalidated?.branchResolutionSource) === 'fallback-default-branch') {
+    authoritativeSource = 'fallback-default-branch';
+  }
+
+  return {
+    reported: createAuthorityTier('reported', reported, 'reported-artifact'),
+    revalidated: createAuthorityTier('revalidated', revalidated, 'live-replay'),
+    authoritative: createAuthorityTier('authoritative', revalidated, authoritativeSource),
+    routing: {
+      preferredTier: 'authoritative',
+      selectedTier: 'authoritative',
+      contradictionFields,
+      blockedLowerTier: contradictionFields.length > 0,
+      reason:
+        contradictionFields.length > 0
+          ? 'Higher-authority live replay contradicted the reported wake, so routing must ignore lower-authority branch truth.'
+          : 'Higher-authority live replay confirmed the wake, so routing may proceed from authoritative evidence.'
+    }
   };
 }
 
@@ -328,6 +376,7 @@ export async function runWakeAdjudication(options = {}, deps = {}) {
   });
   const failureDiff = diffIds(reported.requiredFailures, revalidated.requiredFailures);
   const summary = classifyWake({ reported, revalidated, reportedReport });
+  const authority = createAuthorityModel(reported, revalidated);
 
   const report = {
     schema: 'priority/wake-adjudication-report@v1',
@@ -335,6 +384,7 @@ export async function runWakeAdjudication(options = {}, deps = {}) {
     wakeKind: 'downstream-onboarding',
     reported,
     revalidated,
+    authority,
     delta: {
       targetBranchChanged: normalizeText(reported.targetBranch) !== normalizeText(revalidated.targetBranch),
       defaultBranchChanged: normalizeText(reported.defaultBranch) !== normalizeText(revalidated.defaultBranch),

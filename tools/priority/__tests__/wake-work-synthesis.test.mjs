@@ -178,6 +178,7 @@ function createWakeReport({
       downstreamRepository: reportedRepository,
       targetBranch: reportedBranch,
       defaultBranch: reportedBranch,
+      branchResolutionSource: 'fallback-default-branch',
       summaryStatus: classification === 'live-defect' ? 'fail' : 'warn',
       requiredFailCount: classification === 'live-defect' ? 1 : 0,
       warningCount: classification === 'environment-only' ? 1 : 0,
@@ -192,6 +193,7 @@ function createWakeReport({
       downstreamRepository: revalidatedRepository,
       targetBranch: revalidatedBranch,
       defaultBranch: revalidatedBranch,
+      branchResolutionSource: 'live-repository-default-branch',
       summaryStatus: classification === 'live-defect' ? 'fail' : classification === 'environment-only' ? 'warn' : 'pass',
       requiredFailCount: classification === 'live-defect' ? 1 : 0,
       warningCount: classification === 'environment-only' ? 1 : 0,
@@ -201,6 +203,45 @@ function createWakeReport({
       warnings: [],
       reran: true,
       exitCode: 0
+    },
+    authority: {
+      reported: {
+        tier: 'reported',
+        repository: reportedRepository,
+        targetBranch: reportedBranch,
+        defaultBranch: reportedBranch,
+        generatedAt: '2026-03-22T00:00:00.000Z',
+        branchResolutionSource: 'fallback-default-branch',
+        source: 'reported-artifact'
+      },
+      revalidated: {
+        tier: 'revalidated',
+        repository: revalidatedRepository,
+        targetBranch: revalidatedBranch,
+        defaultBranch: revalidatedBranch,
+        generatedAt: '2026-03-22T00:01:00.000Z',
+        branchResolutionSource: 'live-repository-default-branch',
+        source: 'live-replay'
+      },
+      authoritative: {
+        tier: 'authoritative',
+        repository: revalidatedRepository,
+        targetBranch: revalidatedBranch,
+        defaultBranch: revalidatedBranch,
+        generatedAt: '2026-03-22T00:01:00.000Z',
+        branchResolutionSource: 'live-repository-default-branch',
+        source: 'live-repository-default-branch'
+      },
+      routing: {
+        preferredTier: 'authoritative',
+        selectedTier: 'authoritative',
+        contradictionFields: reportedBranch !== revalidatedBranch ? ['targetBranch', 'defaultBranch'] : [],
+        blockedLowerTier: reportedBranch !== revalidatedBranch,
+        reason:
+          reportedBranch !== revalidatedBranch
+            ? 'Higher-authority live replay contradicted the reported wake, so routing must ignore lower-authority branch truth.'
+            : 'Higher-authority live replay confirmed the wake, so routing may proceed from authoritative evidence.'
+      }
     },
     delta: {
       targetBranchChanged: reportedBranch !== revalidatedBranch,
@@ -265,8 +306,11 @@ test('synthesizeWakeWork routes branch-target drift into compare governance work
   assert.equal(report.summary.decision, 'compare-governance-work');
   assert.equal(report.summary.workKind, 'drift-correction');
   assert.equal(report.summary.recommendedOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(report.authority.selectedTier, 'authoritative');
+  assert.equal(report.authority.blockedLowerTier, true);
+  assert.equal(report.roles.authoritativeRoleMatches[0].repository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.summary.issueRouting.compareGovernanceWork, true);
-  assert.equal(report.roles.governingRole.role, 'consumer-proving-rail');
+  assert.equal(report.roles.governingRole.role, 'producer-lineage');
 });
 
 test('synthesizeWakeWork routes canonical live defects into template work', () => {
@@ -282,6 +326,7 @@ test('synthesizeWakeWork routes canonical live defects into template work', () =
 
   assert.equal(report.summary.decision, 'template-work');
   assert.equal(report.summary.workKind, 'defect');
+  assert.equal(report.summary.routingAuthorityTier, 'authoritative');
   assert.equal(report.summary.issueRouting.templateWork, true);
 });
 
@@ -300,6 +345,7 @@ test('synthesizeWakeWork routes consumer-fork live defects into consumer proving
 
   assert.equal(report.summary.decision, 'consumer-proving-drift');
   assert.equal(report.summary.workKind, 'drift-correction');
+  assert.equal(report.summary.routingAuthorityTier, 'authoritative');
   assert.equal(report.summary.issueRouting.consumerProvingDriftWork, true);
 });
 

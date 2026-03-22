@@ -11,6 +11,7 @@
     "policy",
     "inputs",
     "wake",
+    "authority",
     "roles",
     "summary"
   ],
@@ -119,12 +120,62 @@
         }
       }
     },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectedTier",
+        "blockedLowerTier",
+        "contradictionFields",
+        "repository",
+        "branch",
+        "source"
+      ],
+      "properties": {
+        "selectedTier": {
+          "type": "string",
+          "enum": [
+            "authoritative",
+            "revalidated"
+          ]
+        },
+        "blockedLowerTier": {
+          "type": "boolean"
+        },
+        "contradictionFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "repository": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "roles": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "reportedRoleMatches",
         "revalidatedRoleMatches",
+        "authoritativeRoleMatches",
         "governingRole"
       ],
       "properties": {
@@ -133,6 +184,10 @@
           "items": { "$ref": "#/$defs/roleMatch" }
         },
         "revalidatedRoleMatches": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/roleMatch" }
+        },
+        "authoritativeRoleMatches": {
           "type": "array",
           "items": { "$ref": "#/$defs/roleMatch" }
         },
@@ -153,7 +208,9 @@
         "workKind",
         "recommendedOwnerRepository",
         "reason",
-        "issueRouting"
+        "issueRouting",
+        "routingAuthorityTier",
+        "blockedLowerTierEvidence"
       ],
       "properties": {
         "decision": { "$ref": "#/$defs/decision" },
@@ -199,6 +256,16 @@
               "type": "boolean"
             }
           }
+        },
+        "routingAuthorityTier": {
+          "type": "string",
+          "enum": [
+            "authoritative",
+            "revalidated"
+          ]
+        },
+        "blockedLowerTierEvidence": {
+          "type": "boolean"
         }
       }
     }
