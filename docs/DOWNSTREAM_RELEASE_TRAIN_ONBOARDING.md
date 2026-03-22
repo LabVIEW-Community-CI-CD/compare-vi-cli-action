@@ -69,9 +69,16 @@ node tools/priority/downstream-onboarding.mjs \
   --repo <owner/downstream-repo> \
   --parent-issue 715 \
   --create-hardening-issues \
+  --issue-repo LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate \
   --issue-prefix "[onboarding]" \
   --issue-labels program,enhancement
 ```
+
+The hosted feedback workflow now exposes `consumer_issue_repo` so hardening issues can be routed explicitly to the
+consumer repository instead of falling back to the upstream action repository. The repo-level fallback variable is
+`DOWNSTREAM_CONSUMER_ISSUE_REPO`. When `--create-hardening-issues` is enabled, the consumer issue target must resolve
+to the intended downstream repo, for example `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`, or the workflow
+fails closed.
 
 ## Success report generation
 
@@ -138,6 +145,8 @@ node tools/npm/run-script.mjs priority:onboard:feedback -- \
 
 The hosted workflow exports `GH_TOKEN`, attempts to leave behind a valid onboarding report even on infrastructure
 failures, validates all report schemas that were produced, and uploads the resulting JSON artifacts for auditability.
+When hardening issues are requested, it also forwards the explicit consumer issue target into the onboarding helper
+surface so follow-up issues are opened in the consumer repository, not the upstream action repository.
 It now follows the shared hosted-signal contract in [`HOSTED_SIGNAL_REPORT_FIRST_CONTRACT.md`](HOSTED_SIGNAL_REPORT_FIRST_CONTRACT.md):
 
 - exports both `GH_TOKEN` and `GITHUB_TOKEN`

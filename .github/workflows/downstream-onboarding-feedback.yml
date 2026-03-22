@@ -16,6 +16,11 @@ on:
         required: false
         default: ''
         type: string
+      consumer_issue_repo:
+        description: 'Consumer repository slug (owner/repo) for hardening issues'
+        required: false
+        default: ''
+        type: string
       started_at:
         description: 'Optional onboarding start timestamp (ISO-8601 UTC)'
         required: false
@@ -47,6 +52,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       DOWNSTREAM_REPO: ${{ inputs.downstream_repo }}
       DOWNSTREAM_BRANCH: ${{ inputs.downstream_branch }}
+      DOWNSTREAM_CONSUMER_ISSUE_REPO: ${{ inputs.consumer_issue_repo || vars.DOWNSTREAM_CONSUMER_ISSUE_REPO }}
       DOWNSTREAM_STARTED_AT: ${{ inputs.started_at }}
       DOWNSTREAM_CREATE_ISSUES: ${{ inputs.create_hardening_issues || 'false' }}
       DOWNSTREAM_FAIL_ON_GAP: ${{ inputs.fail_on_gap || 'false' }}
@@ -139,6 +145,12 @@ jobs:
             args+=(--started-at "${DOWNSTREAM_STARTED_AT}")
           fi
           if [ "${DOWNSTREAM_CREATE_ISSUES}" = "true" ]; then
+            issue_repo="${DOWNSTREAM_CONSUMER_ISSUE_REPO}"
+            if [ -z "$issue_repo" ]; then
+              echo "Consumer hardening issue target is not configured. Set workflow input consumer_issue_repo or repo variable DOWNSTREAM_CONSUMER_ISSUE_REPO." >&2
+              exit 1
+            fi
+            args+=(--issue-repo "$issue_repo")
             args+=(--create-hardening-issues)
           fi
           if [ "${DOWNSTREAM_FAIL_ON_GAP}" = "true" ]; then
