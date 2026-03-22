@@ -2745,12 +2745,30 @@ function buildConcurrentLaneWatchPlan(concurrentLaneStatus = null) {
   return null;
 }
 
+function buildConcurrentLaneApplyWatchPlan(concurrentLaneApply = null) {
+  const status = normalizeText(concurrentLaneApply?.status).toLowerCase();
+  if (!['succeeded', 'noop'].includes(status)) {
+    return null;
+  }
+
+  return {
+    actionType: 'watch-concurrent-lanes',
+    laneLifecycle: 'waiting-ci',
+    blockerClass: 'ci',
+    retryable: true,
+    nextWakeCondition: 'concurrent-lane-status-updated',
+    reason: 'Concurrent lane apply receipt exists, so the broker is waiting for status projection before considering redispatch.',
+    concurrentLaneApply
+  };
+}
+
 function shouldDispatchConcurrentLanes(taskPacket = {}) {
   const delivery = taskPacket?.evidence?.delivery ?? {};
   const pullRequest = normalizeOptionalObject(delivery.pullRequest);
+  const concurrentLaneApply = normalizeOptionalObject(delivery.concurrentLaneApply);
   const concurrentLaneStatus = normalizeOptionalObject(delivery.concurrentLaneStatus);
   const providerSelection = buildTaskPacketProviderSelection(taskPacket);
-  if (pullRequest?.url || concurrentLaneStatus) {
+  if (pullRequest?.url || concurrentLaneApply || concurrentLaneStatus) {
     return false;
   }
   if (!providerSelection) {
@@ -5091,6 +5109,7 @@ async function invokeCodingTurnCommand({ taskPacket, policy, repoRoot, execution
 export function planDeliveryBrokerAction(taskPacket = {}) {
   const delivery = taskPacket?.evidence?.delivery ?? {};
   const pullRequest = delivery.pullRequest ?? null;
+  const concurrentLaneApply = normalizeOptionalObject(delivery.concurrentLaneApply);
   const concurrentLaneStatus = normalizeOptionalObject(delivery.concurrentLaneStatus);
   const backlog = delivery.backlog ?? null;
   const lifecycle = normalizeLifecycle(delivery.laneLifecycle, taskPacket.status === 'idle' ? 'idle' : 'planning');
@@ -5113,7 +5132,8 @@ export function planDeliveryBrokerAction(taskPacket = {}) {
     };
   }
   if (!pullRequest?.url) {
-    const concurrentLanePlan = buildConcurrentLaneWatchPlan(concurrentLaneStatus);
+    const concurrentLanePlan =
+      buildConcurrentLaneWatchPlan(concurrentLaneStatus) ?? buildConcurrentLaneApplyWatchPlan(concurrentLaneApply);
     if (concurrentLanePlan) {
       return concurrentLanePlan;
     }
@@ -5312,6 +5332,7 @@ export async function runDeliveryTurnBroker({
         nextWakeCondition: planned.nextWakeCondition,
         helperCallsExecuted: [],
         filesTouched: [],
+        concurrentLaneApply: planned.concurrentLaneApply ?? null,
         concurrentLaneStatus: planned.concurrentLaneStatus
       }
     }, enrichedPacket);

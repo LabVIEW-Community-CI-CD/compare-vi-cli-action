@@ -738,6 +738,216 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
   });
 });
 
+test('buildCompareviTaskPacket projects concurrent lane apply receipts from the worker checkout and keeps the slot in waiting-ci until status is projected', async () => {
+  const repoRootTemp = await mkdtemp(path.join(os.tmpdir(), 'comparevi-concurrent-apply-packet-'));
+  const checkoutPath = path.join(repoRootTemp, 'worker');
+  const receiptPath = path.join(
+    checkoutPath,
+    'tests',
+    'results',
+    '_agent',
+    'runtime',
+    'concurrent-lane-apply-receipt.json'
+  );
+  await mkdir(path.dirname(receiptPath), { recursive: true });
+  await writeFile(
+    receiptPath,
+    `${JSON.stringify(
+      {
+        schema: 'priority/concurrent-lane-apply-receipt@v1',
+        generatedAt: '2026-03-21T10:00:00.000Z',
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        status: 'succeeded',
+        summary: {
+          selectedBundleId: 'hosted-plus-manual-linux-docker'
+        },
+        validateDispatch: {
+          status: 'dispatched',
+          repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          remote: 'origin',
+          ref: 'issue/origin-1604-concurrent-lane-delivery-turn',
+          sampleIdStrategy: 'auto',
+          sampleId: 'ts-20260321-000000-abcd',
+          historyScenarioSet: 'smoke',
+          allowFork: true,
+          pushMissing: true,
+          forcePushOk: false,
+          allowNonCanonicalViHistory: false,
+          allowNonCanonicalHistoryCore: false,
+          reportPath: 'tests/results/_agent/issue/priority-validate-dispatch-origin-1604.json',
+          runDatabaseId: 234567890
+        }
+      },
+      null,
+      2
+    )}\n`,
+    'utf8'
+  );
+
+  const packet = await compareviRuntimeTest.buildCompareviTaskPacket({
+    repoRoot: repoRootTemp,
+    schedulerDecision: {
+      activeLane: {
+        issue: 1604,
+        branch: 'issue/origin-1604-concurrent-lane-delivery-turn',
+        forkRemote: 'origin'
+      },
+      artifacts: {
+        executionMode: 'canonical-delivery',
+        selectedActionType: 'advance-child-issue',
+        laneLifecycle: 'coding',
+        selectedIssueSnapshot: {
+          number: 1604,
+          title: 'Dispatch concurrent lane plans from unattended delivery turns',
+          body: 'child',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1604'
+        },
+        standingIssueSnapshot: {
+          number: 1482,
+          title: 'Add concurrent hosted/manual VI History lane orchestration to reduce agent idle time',
+          body: 'epic',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1482'
+        }
+      }
+    },
+    preparedWorker: {
+      checkoutRoot: path.join('E:', 'comparevi-lanes', 'LabVIEW-Community-CI-CD--compare-vi-cli-action'),
+      checkoutRootPolicy: {
+        strategy: 'policy-preferred-root',
+        source: 'delivery-agent.policy.json#storageRoots.worktrees.preferredRoots[0]',
+        baseRoot: path.join('E:', 'comparevi-lanes'),
+        relativeRoot: 'LabVIEW-Community-CI-CD--compare-vi-cli-action',
+        usesExternalRoot: true
+      },
+      checkoutPath,
+      slotId: 'worker-slot-2'
+    },
+    workerReady: {
+      checkoutPath,
+      slotId: 'worker-slot-2'
+    },
+    workerBranch: {
+      branch: 'issue/origin-1604-concurrent-lane-delivery-turn',
+      checkoutPath,
+      slotId: 'worker-slot-2'
+    },
+    deps: {
+      loadBranchClassContractFn: () => ({
+        schema: 'branch-classes/v1',
+        upstreamRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        repositoryPlanes: [
+          {
+            id: 'origin',
+            repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action-fork'],
+            laneBranchPrefix: 'issue/origin-'
+          },
+          {
+            id: 'upstream',
+            repositories: ['LabVIEW-Community-CI-CD/compare-vi-cli-action'],
+            laneBranchPrefix: 'issue/'
+          }
+        ],
+        classes: [
+          {
+            id: 'lane',
+            repositoryRoles: ['fork'],
+            branchPatterns: ['issue/*'],
+            purpose: 'lane',
+            prSourceAllowed: true,
+            prTargetAllowed: false,
+            mergePolicy: 'n/a'
+          }
+        ],
+        allowedTransitions: [
+          {
+            from: 'lane',
+            action: 'promote',
+            to: 'upstream-integration',
+            via: 'pull-request'
+          }
+        ],
+        planeTransitions: [
+          {
+            from: 'origin',
+            action: 'promote',
+            to: 'upstream',
+            via: 'pull-request',
+            branchClass: 'lane'
+          }
+        ]
+      }),
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 4,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        concurrentLaneDispatch: {
+          historyScenarioSet: 'smoke',
+          sampleIdStrategy: 'auto',
+          sampleId: '',
+          allowForkMode: 'auto',
+          pushMissing: true,
+          forcePushOk: false,
+          allowNonCanonicalViHistory: false,
+          allowNonCanonicalHistoryCore: false
+        },
+        workerPool: {
+          targetSlotCount: 4,
+          prewarmSlotCount: 1,
+          releaseWaitingStates: ['waiting-ci', 'waiting-review', 'ready-merge'],
+          providers: [
+            {
+              id: 'local-codex',
+              kind: 'local-codex',
+              executionPlane: 'local',
+              assignmentMode: 'interactive-coding',
+              dispatchSurface: 'runtime-harness',
+              completionMode: 'sync',
+              requiresLocalCheckout: true,
+              enabled: true,
+              slotCount: 1
+            },
+            {
+              id: 'hosted-github-workflow',
+              kind: 'hosted-github-workflow',
+              executionPlane: 'hosted',
+              assignmentMode: 'async-validation',
+              dispatchSurface: 'github-actions',
+              completionMode: 'async',
+              requiresLocalCheckout: false,
+              enabled: true,
+              slotCount: 1
+            }
+          ]
+        },
+        localReviewLoop: {
+          enabled: true,
+          receiptPath: 'tests/results/docker-tools-parity/review-loop-receipt.json',
+          command: ['node', 'tools/priority/docker-desktop-review-loop.mjs']
+        },
+        turnBudget: {
+          maxMinutes: 20,
+          maxToolCalls: 12
+        },
+        codingTurnCommand: ['node', 'mock-broker']
+      })
+    }
+  });
+
+  assert.equal(packet.status, 'waiting-ci');
+  assert.equal(packet.evidence.delivery.laneLifecycle, 'waiting-ci');
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus, null);
+  assert.equal(packet.evidence.delivery.concurrentLaneApply.selectedBundleId, 'hosted-plus-manual-linux-docker');
+  assert.equal(packet.evidence.delivery.concurrentLaneApply.validateDispatch.runDatabaseId, 234567890);
+  assert.equal(packet.evidence.delivery.workerProviderSelection.selectedAssignmentMode, 'async-validation');
+});
+
 test('buildCompareviTaskPacket fails closed when the branch class contract has no matching plane transition', async () => {
   await assert.rejects(
     compareviRuntimeTest.buildCompareviTaskPacket({
@@ -3043,6 +3253,45 @@ test('planDeliveryBrokerAction dispatches concurrent lanes when async validation
     actionType: 'dispatch-concurrent-lanes',
     laneLifecycle: 'waiting-ci'
   });
+});
+
+test('planDeliveryBrokerAction watches concurrent lane apply receipts when status projection is still pending', () => {
+  const planned = planDeliveryBrokerAction({
+    status: 'waiting-ci',
+    evidence: {
+      delivery: {
+        laneLifecycle: 'waiting-ci',
+        workerProviderSelection: {
+          source: 'test',
+          laneLifecycle: 'waiting-ci',
+          selectedActionType: 'advance-child-issue',
+          requiredAssignmentMode: 'async-validation',
+          selectedProviderId: 'hosted-github-workflow',
+          selectedProviderKind: 'hosted-github-workflow',
+          selectedExecutionPlane: 'hosted',
+          selectedAssignmentMode: 'async-validation',
+          dispatchSurface: 'github-actions',
+          completionMode: 'async',
+          selectedSlotId: 'worker-slot-2',
+          requiresLocalCheckout: false
+        },
+        concurrentLaneApply: {
+          receiptPath: 'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json',
+          status: 'succeeded',
+          selectedBundleId: 'hosted-plus-manual-linux-docker',
+          validateDispatch: {
+            runDatabaseId: 234567890
+          }
+        }
+      }
+    }
+  });
+
+  assert.equal(planned.actionType, 'watch-concurrent-lanes');
+  assert.equal(planned.laneLifecycle, 'waiting-ci');
+  assert.equal(planned.blockerClass, 'ci');
+  assert.equal(planned.nextWakeCondition, 'concurrent-lane-status-updated');
+  assert.equal(planned.concurrentLaneApply.receiptPath, 'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json');
 });
 
 test('fetchIssueExecutionGraph normalizes status rollup contexts from GraphQL payloads', async () => {
@@ -6086,6 +6335,123 @@ test('delivery broker watches concurrent lane status receipts when hosted work i
   assert.equal(brokerResult.details.laneLifecycle, 'waiting-ci');
   assert.equal(brokerResult.details.blockerClass, 'ci');
   assert.equal(brokerResult.details.nextWakeCondition, 'hosted-lane-settled');
+  assert.equal(brokerResult.details.providerDispatch.completionStatus, 'waiting');
+  assert.equal(brokerResult.details.providerDispatch.workerSlotId, 'worker-slot-2');
+});
+
+test('delivery broker watches concurrent lane apply receipts instead of redispatching when status is not yet projected', async () => {
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-ci',
+      objective: {
+        summary: 'Advance issue #1604'
+      },
+      evidence: {
+        lane: {
+          workerSlotId: 'worker-slot-2'
+        },
+        delivery: {
+          laneLifecycle: 'waiting-ci',
+          workerProviderSelection: {
+            source: 'test',
+            laneLifecycle: 'waiting-ci',
+            selectedActionType: 'advance-child-issue',
+            requiredAssignmentMode: 'async-validation',
+            selectedProviderId: 'hosted-github-workflow',
+            selectedProviderKind: 'hosted-github-workflow',
+            selectedExecutionPlane: 'hosted',
+            selectedAssignmentMode: 'async-validation',
+            dispatchSurface: 'github-actions',
+            completionMode: 'async',
+            selectedSlotId: 'worker-slot-2',
+            requiresLocalCheckout: false
+          },
+          concurrentLaneApply: {
+            receiptPath: 'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json',
+            status: 'succeeded',
+            selectedBundleId: 'hosted-plus-manual-linux-docker',
+            validateDispatch: {
+              status: 'dispatched',
+              repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+              remote: 'origin',
+              ref: 'issue/origin-1604-concurrent-lane-delivery-turn',
+              sampleIdStrategy: 'auto',
+              sampleId: 'ts-20260321-000000-abcd',
+              historyScenarioSet: 'smoke',
+              allowFork: true,
+              pushMissing: true,
+              forcePushOk: false,
+              allowNonCanonicalViHistory: false,
+              allowNonCanonicalHistoryCore: false,
+              reportPath: 'tests/results/_agent/issue/priority-validate-dispatch-origin-1604.json',
+              runDatabaseId: 234567890
+            }
+          },
+          mutationEnvelope: {
+            copilotReviewStrategy: 'draft-only-explicit',
+            maxActiveCodingLanes: 4
+          },
+          turnBudget: {
+            maxMinutes: 20,
+            maxToolCalls: 12
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 4,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        workerPool: {
+          targetSlotCount: 4,
+          prewarmSlotCount: 1,
+          releaseWaitingStates: ['waiting-ci', 'waiting-review', 'ready-merge'],
+          providers: [
+            {
+              id: 'hosted-github-workflow',
+              kind: 'hosted-github-workflow',
+              executionPlane: 'hosted',
+              assignmentMode: 'async-validation',
+              dispatchSurface: 'github-actions',
+              completionMode: 'async',
+              requiresLocalCheckout: false,
+              enabled: true,
+              slotCount: 1
+            }
+          ]
+        },
+        turnBudget: {
+          maxMinutes: 20,
+          maxToolCalls: 12
+        },
+        codingTurnCommand: ['node', 'mock-broker']
+      }),
+      applyConcurrentLanePlanFn: async () => {
+        throw new Error('applyConcurrentLanePlanFn should not be called when an apply receipt already exists');
+      }
+    }
+  });
+
+  assert.equal(brokerResult.status, 'completed');
+  assert.equal(brokerResult.outcome, 'waiting-ci');
+  assert.equal(brokerResult.details.actionType, 'watch-concurrent-lanes');
+  assert.equal(brokerResult.details.laneLifecycle, 'waiting-ci');
+  assert.equal(brokerResult.details.blockerClass, 'ci');
+  assert.equal(brokerResult.details.nextWakeCondition, 'concurrent-lane-status-updated');
+  assert.equal(
+    brokerResult.details.concurrentLaneApply.receiptPath,
+    'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json'
+  );
   assert.equal(brokerResult.details.providerDispatch.completionStatus, 'waiting');
   assert.equal(brokerResult.details.providerDispatch.workerSlotId, 'worker-slot-2');
 });

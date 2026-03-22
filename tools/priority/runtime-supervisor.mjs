@@ -33,6 +33,10 @@ import { resolveRequiredLaneBranchPrefix } from './lib/runtime-lane-branch-contr
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { handoffStandingPriority } from './standing-priority-handoff.mjs';
 import {
+  CONCURRENT_LANE_APPLY_RECEIPT_SCHEMA,
+  DEFAULT_OUTPUT_PATH as DEFAULT_CONCURRENT_LANE_APPLY_PATH
+} from './concurrent-lane-apply.mjs';
+import {
   CONCURRENT_LANE_STATUS_RECEIPT_SCHEMA,
   DEFAULT_STATUS_OUTPUT_PATH as DEFAULT_CONCURRENT_LANE_STATUS_PATH
 } from './concurrent-lane-status.mjs';
@@ -287,6 +291,64 @@ function resolveCheckoutPath(repoRoot, checkoutPath) {
   return path.isAbsolute(normalized) ? normalized : path.resolve(repoRoot, normalized);
 }
 
+function projectConcurrentLaneApplyReceipt(receiptPath, receipt) {
+  if (!receipt || receipt.schema !== CONCURRENT_LANE_APPLY_RECEIPT_SCHEMA) {
+    return null;
+  }
+
+  const summary = receipt.summary && typeof receipt.summary === 'object' ? receipt.summary : {};
+  const validateDispatch =
+    receipt.validateDispatch && typeof receipt.validateDispatch === 'object' ? receipt.validateDispatch : {};
+
+  return {
+    receiptPath,
+    status: normalizeText(receipt.status) || null,
+    selectedBundleId: normalizeText(summary.selectedBundleId) || null,
+    validateDispatch: {
+      status: normalizeText(validateDispatch.status) || null,
+      repository: normalizeText(validateDispatch.repository) || null,
+      remote: normalizeText(validateDispatch.remote) || null,
+      ref: normalizeText(validateDispatch.ref) || null,
+      sampleIdStrategy: normalizeText(validateDispatch.sampleIdStrategy) || null,
+      sampleId: normalizeText(validateDispatch.sampleId) || null,
+      historyScenarioSet: normalizeText(validateDispatch.historyScenarioSet) || null,
+      allowFork: validateDispatch.allowFork === true,
+      pushMissing: validateDispatch.pushMissing === true,
+      forcePushOk: validateDispatch.forcePushOk === true,
+      allowNonCanonicalViHistory: validateDispatch.allowNonCanonicalViHistory === true,
+      allowNonCanonicalHistoryCore: validateDispatch.allowNonCanonicalHistoryCore === true,
+      reportPath: normalizeText(validateDispatch.reportPath) || null,
+      runDatabaseId: coercePositiveInteger(validateDispatch.runDatabaseId),
+      error: normalizeText(validateDispatch.error) || null
+    }
+  };
+}
+
+async function resolveConcurrentLaneApplyEvidence({ repoRoot, preparedWorker, workerReady, workerBranch }) {
+  const checkoutCandidates = [
+    workerBranch?.checkoutPath,
+    workerReady?.checkoutPath,
+    preparedWorker?.checkoutPath,
+    repoRoot
+  ];
+  const visited = new Set();
+  for (const candidate of checkoutCandidates) {
+    const checkoutRoot = resolveCheckoutPath(repoRoot, candidate) ?? path.resolve(repoRoot);
+    if (!checkoutRoot || visited.has(checkoutRoot)) {
+      continue;
+    }
+    visited.add(checkoutRoot);
+    const receiptPath = path.join(checkoutRoot, DEFAULT_CONCURRENT_LANE_APPLY_PATH);
+    const receipt = await readJsonIfPresent(receiptPath);
+    const projected = projectConcurrentLaneApplyReceipt(receiptPath, receipt);
+    if (projected) {
+      return projected;
+    }
+  }
+
+  return null;
+}
+
 function projectConcurrentLaneStatusReceipt(receiptPath, receipt) {
   if (!receipt || receipt.schema !== CONCURRENT_LANE_STATUS_RECEIPT_SCHEMA) {
     return null;
@@ -357,8 +419,12 @@ async function resolveConcurrentLaneStatusEvidence({ repoRoot, preparedWorker, w
   return null;
 }
 
-function deriveConcurrentLaneLifecycle(defaultLifecycle, concurrentLaneStatus) {
+function deriveConcurrentLaneLifecycle(defaultLifecycle, concurrentLaneApply, concurrentLaneStatus) {
   if (!concurrentLaneStatus || typeof concurrentLaneStatus !== 'object') {
+    const applyStatus = normalizeText(concurrentLaneApply?.status).toLowerCase();
+    if (['succeeded', 'noop'].includes(applyStatus)) {
+      return 'waiting-ci';
+    }
     return defaultLifecycle;
   }
 
@@ -694,13 +760,19 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
   const branchName = normalizeText(workerBranch?.branch) || normalizeText(activeLane?.branch);
   const selectedActionType = normalizeText(artifacts.selectedActionType);
   const defaultLaneLifecycle = normalizeText(artifacts.laneLifecycle) || (activeLane?.prUrl ? 'waiting-ci' : 'coding');
+  const concurrentLaneApply = await resolveConcurrentLaneApplyEvidence({
+    repoRoot,
+    preparedWorker,
+    workerReady,
+    workerBranch
+  });
   const concurrentLaneStatus = await resolveConcurrentLaneStatusEvidence({
     repoRoot,
     preparedWorker,
     workerReady,
     workerBranch
   });
-  const laneLifecycle = deriveConcurrentLaneLifecycle(defaultLaneLifecycle, concurrentLaneStatus);
+  const laneLifecycle = deriveConcurrentLaneLifecycle(defaultLaneLifecycle, concurrentLaneApply, concurrentLaneStatus);
   const loadBranchClassContractFn = deps.loadBranchClassContractFn ?? loadBranchClassContract;
   const canonicalRepository =
     normalizeText(artifacts.canonicalRepository) ||
@@ -840,6 +912,7 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
         issueGraph: artifacts.issueGraph ?? null,
         pullRequest: pullRequestArtifact,
         backlog: artifacts.backlogRepair ?? null,
+        concurrentLaneApply,
         concurrentLaneStatus,
         planeTransition,
         localReviewLoop,
