@@ -253,13 +253,17 @@ function statusFromManifestReport(payload) {
   };
 }
 
-function statusFromTemplateAgentVerificationReport(payload) {
+function statusFromTemplateAgentVerificationReport(payload, manifestGate = null) {
   if (!payload || typeof payload !== 'object') {
     return {
       status: 'missing',
       schema: null,
       summaryStatus: null,
       verificationStatus: null,
+      iterationHeadSha: null,
+      verificationProvider: null,
+      verificationRunUrl: null,
+      sourceCommitMatched: null,
       targetRepository: null,
       consumerRailBranch: null,
       templateRepository: null,
@@ -272,6 +276,12 @@ function statusFromTemplateAgentVerificationReport(payload) {
   const schema = normalizeText(payload.schema) || null;
   const summaryStatus = normalizeText(payload?.summary?.status) || null;
   const verificationStatus = normalizeText(payload?.verification?.status) || null;
+  const iterationHeadSha = normalizeText(payload?.iteration?.headSha) || null;
+  const verificationProvider = normalizeText(payload?.verification?.provider) || null;
+  const verificationRunUrl = normalizeText(payload?.verification?.runUrl) || null;
+  const sourceCommitSha = normalizeText(manifestGate?.sourceCommitSha) || null;
+  const sourceCommitMatched =
+    iterationHeadSha && sourceCommitSha ? iterationHeadSha === sourceCommitSha : null;
   const targetRepository = normalizeText(payload?.lane?.targetRepository) || null;
   const consumerRailBranch = normalizeText(payload?.lane?.consumerRailBranch) || null;
   const templateRepository = normalizeText(payload?.provenance?.templateDependency?.repository) || null;
@@ -284,6 +294,9 @@ function statusFromTemplateAgentVerificationReport(payload) {
       schema === 'priority/template-agent-verification-report@v1' &&
       summaryStatus === 'pass' &&
       verificationStatus === 'pass' &&
+      verificationProvider === 'hosted-github-workflow' &&
+      verificationRunUrl != null &&
+      sourceCommitMatched === true &&
       targetRepository === 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate' &&
       consumerRailBranch === 'downstream/develop'
         ? 'pass'
@@ -291,6 +304,10 @@ function statusFromTemplateAgentVerificationReport(payload) {
     schema,
     summaryStatus,
     verificationStatus,
+    iterationHeadSha,
+    verificationProvider,
+    verificationRunUrl,
+    sourceCommitMatched,
     targetRepository,
     consumerRailBranch,
     templateRepository,
@@ -339,6 +356,26 @@ export function evaluateDownstreamPromotionScorecard({
       'template-agent-verification-contract',
       `Template-agent verification report did not verify the pinned consumer rail evidence (status=${templateAgentVerificationGate.status}).`
     );
+    if (templateAgentVerificationGate.sourceCommitMatched === false) {
+      recordBlocker(
+        'template-agent-verification-source-mismatch',
+        'Template-agent verification evidence does not match the promoted source commit.'
+      );
+    } else if (templateAgentVerificationGate.sourceCommitMatched == null) {
+      recordBlocker(
+        'template-agent-verification-source-unproven',
+        'Template-agent verification evidence cannot prove the promoted source commit.'
+      );
+    }
+    if (
+      templateAgentVerificationGate.verificationProvider !== 'hosted-github-workflow' ||
+      !templateAgentVerificationGate.verificationRunUrl
+    ) {
+      recordBlocker(
+        'template-agent-verification-hosted-provenance',
+        'Template-agent verification evidence must come from a hosted workflow run with a recorded run URL.'
+      );
+    }
   }
   if (manifestReport?.error) {
     recordBlocker('manifest-report-unreadable', 'Downstream promotion manifest is unreadable.');
@@ -377,8 +414,11 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
   const manifestReport = options.manifestReportPath ? loadInputFile(options.manifestReportPath) : null;
   const successGate = statusFromSuccessReport(successReport.payload);
   const feedbackGate = statusFromFeedbackReport(feedbackReport.payload);
-  const templateAgentVerificationGate = statusFromTemplateAgentVerificationReport(templateAgentVerificationReport.payload);
   const manifestGate = statusFromManifestReport(manifestReport?.payload);
+  const templateAgentVerificationGate = statusFromTemplateAgentVerificationReport(
+    templateAgentVerificationReport.payload,
+    manifestGate
+  );
   const summary = evaluateDownstreamPromotionScorecard({
     successReport,
     feedbackReport,
@@ -458,6 +498,8 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
       `- total blockers: \`${report.summary.metrics.totalBlockers ?? 'n/a'}\``,
       `- total warnings: \`${report.summary.metrics.totalWarnings ?? 'n/a'}\``,
       `- template verification status: \`${report.gates.templateAgentVerificationReport.status}\``,
+      `- template verification provider: \`${report.gates.templateAgentVerificationReport.verificationProvider ?? 'n/a'}\``,
+      `- template verification source commit matched: \`${report.gates.templateAgentVerificationReport.sourceCommitMatched ?? 'n/a'}\``,
       `- template consumer rail branch: \`${report.gates.templateAgentVerificationReport.consumerRailBranch ?? 'n/a'}\``,
       `- manifest status: \`${report.gates.manifestReport.status}\``,
       `- CompareVI.Tools: \`${report.summary.provenance.compareviToolsRelease ?? 'n/a'}\``,
