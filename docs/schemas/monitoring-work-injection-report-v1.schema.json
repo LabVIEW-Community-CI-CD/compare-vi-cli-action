@@ -13,6 +13,7 @@
     "inputs",
     "evidence",
     "selectedRule",
+    "replay",
     "decisionLedger",
     "summary",
     "helperCallsExecuted"
@@ -158,6 +159,9 @@
           "type": "null"
         }
       ]
+    },
+    "replay": {
+      "$ref": "#/$defs/replay"
     },
     "decisionLedger": {
       "$ref": "#/$defs/decisionLedger"
@@ -527,6 +531,94 @@
         "fingerprint": {
           "type": "string",
           "minLength": 1
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "replay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "available",
+        "matchedEntryCount",
+        "matchedBy",
+        "latestMatchingSequence",
+        "latestMatchingStatus",
+        "latestMatchingIssueNumber",
+        "latestMatchingIssueUrl",
+        "latestMatchingDecisionDigest",
+        "suppressionApplied",
+        "reusedExistingIssue",
+        "ambiguous",
+        "error"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "matchedEntryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "matchedBy": {
+          "type": "string",
+          "enum": [
+            "none",
+            "fingerprint",
+            "dedupe-marker",
+            "fingerprint+dedupe-marker"
+          ]
+        },
+        "latestMatchingSequence": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "latestMatchingStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latestMatchingIssueNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "latestMatchingIssueUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latestMatchingDecisionDigest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suppressionApplied": {
+          "type": "boolean"
+        },
+        "reusedExistingIssue": {
+          "type": "boolean"
+        },
+        "ambiguous": {
+          "type": "boolean"
         },
         "error": {
           "type": [
