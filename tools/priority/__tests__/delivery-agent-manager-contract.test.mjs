@@ -213,6 +213,15 @@ test('delivery-agent manager status synthesizes the active lane from the freshes
   assert.match(manager, /readJsonFile\(paths\.taskPacketPath\)/);
 });
 
+test('delivery-agent manager injects monitoring work before sleeping on host-runtime-conflict', async () => {
+  const manager = await readText('tools/priority/lib/delivery-agent-manager.ts');
+
+  assert.match(manager, /runMonitoringWorkInjection/);
+  assert.match(manager, /eventType:\s*'monitoring-work-injection'/);
+  assert.match(manager, /eventType:\s*'monitoring-work-injection-failed'/);
+  assert.match(manager, /if \(blockedByHostConflict\)\s*\{\s*monitoringWorkInjection = await invokeMonitoringWorkInjection/s);
+});
+
 test('delivery-agent manager status ignores stale heartbeat state from before the current manager start', async (t) => {
   const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-stale-'));
   const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);

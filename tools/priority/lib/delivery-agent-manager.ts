@@ -4,6 +4,7 @@ import { closeSync, mkdirSync, openSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { spawn } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { refreshDeliveryMemory } from '../delivery-memory.js';
 import {
   DAEMON_PID_SCHEMA,
@@ -62,6 +63,70 @@ async function invokeDeliveryMemory({ repoRoot, repo, runtimeDir, outPath }) {
       reason: 'tool-failed',
       reportPath: outPath,
       message: error?.message || String(error),
+    };
+  }
+}
+
+async function invokeMonitoringWorkInjection({
+  cycle,
+  repoRoot,
+  repo,
+  runtimeDir,
+  distro,
+  tracePath,
+}) {
+  try {
+    const monitoringWorkInjectionModulePath = path.join(repoRoot, 'tools', 'priority', 'monitoring-work-injection.mjs');
+    const {
+      DEFAULT_OUTPUT_PATH: defaultMonitoringWorkInjectionOutputPath,
+      runMonitoringWorkInjection,
+    } = await import(pathToFileURL(monitoringWorkInjectionModulePath).href);
+    const injection = await runMonitoringWorkInjection({
+      repoRoot,
+      repository: repo,
+      outputPath: defaultMonitoringWorkInjectionOutputPath,
+    });
+    const summary = injection?.report?.summary ?? {};
+    writeManagerTrace({
+      repo,
+      runtimeDir,
+      distro,
+      tracePath,
+      eventType: 'monitoring-work-injection',
+      detail: {
+        cycle,
+        status: summary.status || 'unknown',
+        triggerId: summary.triggerId || null,
+        issueNumber: Number.isInteger(summary.issueNumber) ? summary.issueNumber : null,
+        issueUrl: summary.issueUrl || null,
+        outputPath: injection?.outputPath || null,
+      },
+    });
+    return {
+      status: summary.status || 'unknown',
+      triggerId: summary.triggerId || null,
+      issueNumber: Number.isInteger(summary.issueNumber) ? summary.issueNumber : null,
+      issueUrl: summary.issueUrl || null,
+      outputPath: injection?.outputPath || null,
+      error: null,
+    };
+  } catch (error) {
+    const message = error?.message || String(error);
+    writeManagerTrace({
+      repo,
+      runtimeDir,
+      distro,
+      tracePath,
+      eventType: 'monitoring-work-injection-failed',
+      detail: { cycle, message },
+    });
+    return {
+      status: 'error',
+      triggerId: null,
+      issueNumber: null,
+      issueUrl: null,
+      outputPath: null,
+      error: message,
     };
   }
 }
@@ -413,6 +478,7 @@ export async function runManagerLoop(options) {
     hostSignal,
   });
   let wslNativeDocker = readJsonFile(paths.wslNativeDockerPath);
+  let monitoringWorkInjection = null;
 
   try {
     await runPrereqsCommand({ ...options, repoRoot });
@@ -519,6 +585,7 @@ export async function runManagerLoop(options) {
       }
 
       let blockedByHostConflict = false;
+      monitoringWorkInjection = null;
       if (hostSignal.status !== 'native-wsl') {
         if (daemonAlive) {
           stopWslRuntimeDaemon({ distro: options.wslDistro, unitName: daemonUnitName, processId: activeDaemonPid });
@@ -607,6 +674,16 @@ export async function runManagerLoop(options) {
           hostIsolation = collected.isolation;
         }
         blockedByHostConflict = hostSignal.status !== 'native-wsl';
+        if (blockedByHostConflict) {
+          monitoringWorkInjection = await invokeMonitoringWorkInjection({
+            cycle,
+            repoRoot,
+            repo: options.repo,
+            runtimeDir: options.runtimeDir,
+            distro: options.wslDistro,
+            tracePath: paths.managerTracePath,
+          });
+        }
       }
 
       if (!blockedByHostConflict && !daemonAlive) {
@@ -709,6 +786,7 @@ export async function runManagerLoop(options) {
         hostSignal,
         hostIsolation,
         wslNativeDocker,
+        monitoringWorkInjection,
         observer: observerTelemetry,
         codexStateHygiene,
         deliveryMemory,
@@ -731,6 +809,7 @@ export async function runManagerLoop(options) {
         hostSignal,
         hostIsolation,
         wslNativeDocker,
+        monitoringWorkInjection,
         observer: observerTelemetry,
         codexStateHygiene,
         deliveryMemory,
