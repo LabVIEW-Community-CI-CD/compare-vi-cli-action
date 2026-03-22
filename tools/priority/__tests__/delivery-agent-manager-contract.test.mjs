@@ -267,6 +267,40 @@ test('delivery-agent manager status ignores stale heartbeat state from before th
   assert.match(traceText, /"eventType":"status"/);
 });
 
+test('delivery-agent manager status ignores stale host-signal artifacts from before the current manager start', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-host-signal-stale-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+  });
+
+  const now = Date.now();
+  const hostSignalGeneratedAt = new Date(now - 60_000).toISOString();
+  const managerStartedAt = new Date(now - 10_000).toISOString();
+
+  await writeJson(path.join(runtimeDirPath, 'daemon-host-signal.json'), {
+    schema: 'priority/delivery-agent-host-signal@v1',
+    generatedAt: hostSignalGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    status: 'native-wsl',
+    provider: 'native-wsl',
+    daemonFingerprint: 'stale-host-signal-fingerprint',
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-manager-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-manager-pid@v1',
+    startedAt: managerStartedAt,
+    pid: 0
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.hostSignal, null);
+  assert.equal(status.hostSignalDiagnostics.usedHostSignal, false);
+  assert.equal(status.hostSignalDiagnostics.reason, 'stale-before-current-manager');
+  assert.equal(status.hostSignalDiagnostics.hostSignalGeneratedAt, hostSignalGeneratedAt);
+  assert.equal(status.hostSignalDiagnostics.managerStartedAt, managerStartedAt);
+});
+
 test('Manage-UnattendedDeliveryAgent suppresses fallback build chatter before JSON status output', async (t) => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-wrapper-status-'));
   t.after(async () => {
