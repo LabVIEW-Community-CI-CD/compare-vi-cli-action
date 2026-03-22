@@ -214,6 +214,11 @@ test('resolveDevelopSyncExecutionRoot delegates work-branch syncs to an existing
           stderr: ''
         };
       }
+      if (args[0] === 'status' && args[1] === '--porcelain') {
+        if (options.cwd === helperRoot) {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+      }
       throw new Error(`Unexpected git args: ${args.join(' ')}`);
     }
   });
@@ -224,7 +229,70 @@ test('resolveDevelopSyncExecutionRoot delegates work-branch syncs to an existing
   assert.equal(plan.delegated, true);
   assert.deepEqual(
     calls.map((entry) => entry.args.join(' ')),
-    ['branch --show-current', 'worktree list --porcelain']
+    ['branch --show-current', 'worktree list --porcelain', 'status --porcelain']
+  );
+});
+
+test('resolveDevelopSyncExecutionRoot degrades clean work-branch syncs to ref-refresh when the only attached develop helper is dirty', () => {
+  const repoRoot = path.join('C:', 'repo', 'issue-root');
+  const helperRoot = path.join('C:', 'repo', 'develop-root');
+  const calls = [];
+  const plan = resolveDevelopSyncExecutionRoot({
+    repoRoot,
+    spawnSyncFn: (command, args, options) => {
+      calls.push({ command, args, cwd: options.cwd });
+      if (command !== 'git') {
+        throw new Error(`Unexpected command ${command}`);
+      }
+      if (args[0] === 'branch' && args[1] === '--show-current') {
+        return { status: 0, stdout: 'issue/origin-1751-sync-helper\n', stderr: '' };
+      }
+      if (args[0] === 'worktree' && args[1] === 'list') {
+        return {
+          status: 0,
+          stdout: [
+            `worktree ${repoRoot}`,
+            'HEAD 1111111111111111111111111111111111111111',
+            'branch refs/heads/issue/origin-1751-sync-helper',
+            '',
+            `worktree ${helperRoot}`,
+            'HEAD 2222222222222222222222222222222222222222',
+            'branch refs/heads/develop',
+            ''
+          ].join('\n'),
+          stderr: ''
+        };
+      }
+      if (args[0] === 'status' && args[1] === '--porcelain') {
+        if (options.cwd === helperRoot) {
+          return { status: 0, stdout: ' M tests/results/_agent/promotion/template-agent-verification-report.json\n', stderr: '' };
+        }
+        if (options.cwd === repoRoot) {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+      }
+      throw new Error(`Unexpected git args: ${args.join(' ')}`);
+    }
+  });
+
+  assert.equal(plan.executionRepoRoot, repoRoot);
+  assert.equal(plan.currentBranch, 'issue/origin-1751-sync-helper');
+  assert.equal(plan.mode, 'ref-refresh');
+  assert.equal(plan.reason, 'dirty-develop-helper');
+  assert.equal(plan.dirtyWorktree, false);
+  assert.equal(plan.delegated, false);
+  assert.equal(plan.helperRoot, null);
+  assert.deepEqual(
+    calls.map((entry) => ({
+      args: entry.args.join(' '),
+      cwd: entry.cwd
+    })),
+    [
+      { args: 'branch --show-current', cwd: repoRoot },
+      { args: 'worktree list --porcelain', cwd: repoRoot },
+      { args: 'status --porcelain', cwd: helperRoot },
+      { args: 'worktree list --porcelain', cwd: repoRoot }
+    ]
   );
 });
 
@@ -269,7 +337,7 @@ test('resolveDevelopSyncExecutionRoot degrades dirty work-branch syncs to ref-re
   assert.equal(plan.helperRoot, null);
   assert.deepEqual(
     calls.map((entry) => entry.args.join(' ')),
-    ['branch --show-current', 'worktree list --porcelain', 'status --porcelain']
+    ['branch --show-current', 'worktree list --porcelain', 'worktree list --porcelain', 'status --porcelain']
   );
 });
 
@@ -485,6 +553,11 @@ test('runDevelopSync launches the sync script from the delegated develop helper 
             ].join('\n'),
             stderr: ''
           };
+        }
+        if (args[0] === 'status' && args[1] === '--porcelain') {
+          if (options.cwd === helperRoot) {
+            return { status: 0, stdout: '', stderr: '' };
+          }
         }
         if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
           return { status: 0, stdout: `${helperRoot}\n`, stderr: '' };
