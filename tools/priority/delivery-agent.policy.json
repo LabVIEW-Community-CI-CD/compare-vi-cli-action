@@ -248,6 +248,12 @@
   },
   "codingTurnCommand": [
     "node",
+    "tools/npm/run-local-typescript.mjs",
+    "--project",
+    "tsconfig.json",
+    "--entry",
+    "tools/priority/run-delivery-turn-with-codex.ts",
+    "--fallback-dist",
     "dist/tools/priority/run-delivery-turn-with-codex.js"
   ]
 }

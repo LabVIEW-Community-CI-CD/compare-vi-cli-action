@@ -137,7 +137,16 @@ test('package scripts expose delivery-agent commands and keep unattended aliases
 
 test('delivery-agent policy wires coding turns to the Codex runner', async () => {
   const policy = JSON.parse(await readText('tools/priority/delivery-agent.policy.json'));
-  assert.deepEqual(policy.codingTurnCommand, ['node', 'dist/tools/priority/run-delivery-turn-with-codex.js']);
+  assert.deepEqual(policy.codingTurnCommand, [
+    'node',
+    'tools/npm/run-local-typescript.mjs',
+    '--project',
+    'tsconfig.json',
+    '--entry',
+    'tools/priority/run-delivery-turn-with-codex.ts',
+    '--fallback-dist',
+    'dist/tools/priority/run-delivery-turn-with-codex.js'
+  ]);
   assert.equal(policy.maxActiveCodingLanes, 20);
   assert.equal(policy.capitalFabric.capacityMode, 'host-ram-adaptive');
   assert.equal(policy.capitalFabric.maxLogicalLaneCount, 20);

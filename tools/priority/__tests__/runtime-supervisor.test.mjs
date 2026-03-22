@@ -4732,7 +4732,7 @@ test('delivery broker appends a passed local Docker/Desktop review loop to codin
           blockerClass: 'review',
           retryable: true,
           nextWakeCondition: 'copilot-review-workflow-completed',
-          helperCallsExecuted: ['node dist/tools/priority/run-delivery-turn-with-codex.js'],
+          helperCallsExecuted: ['node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/run-delivery-turn-with-codex.ts --fallback-dist dist/tools/priority/run-delivery-turn-with-codex.js'],
           filesTouched: ['docs/knowledgebase/DOCKER_TOOLS_PARITY.md']
         }
       }),
@@ -4872,7 +4872,7 @@ test('delivery broker reuses a current clean Docker/Desktop review loop receipt 
           blockerClass: 'review',
           retryable: true,
           nextWakeCondition: 'copilot-review-workflow-completed',
-          helperCallsExecuted: ['node dist/tools/priority/run-delivery-turn-with-codex.js'],
+          helperCallsExecuted: ['node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/run-delivery-turn-with-codex.ts --fallback-dist dist/tools/priority/run-delivery-turn-with-codex.js'],
           filesTouched: ['docs/knowledgebase/DOCKER_TOOLS_PARITY.md']
         }
       }),
@@ -5996,7 +5996,7 @@ test('delivery broker reruns the local review loop when the current-head receipt
           blockerClass: 'review',
           retryable: true,
           nextWakeCondition: 'copilot-review-workflow-completed',
-          helperCallsExecuted: ['node dist/tools/priority/run-delivery-turn-with-codex.js'],
+          helperCallsExecuted: ['node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/run-delivery-turn-with-codex.ts --fallback-dist dist/tools/priority/run-delivery-turn-with-codex.js'],
           filesTouched: ['docs/knowledgebase/DOCKER_TOOLS_PARITY.md']
         }
       }),
@@ -6121,7 +6121,7 @@ test('delivery broker fails closed when the requested local Docker/Desktop revie
           blockerClass: 'none',
           retryable: true,
           nextWakeCondition: 'scheduler-rescan',
-          helperCallsExecuted: ['node dist/tools/priority/run-delivery-turn-with-codex.js'],
+          helperCallsExecuted: ['node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/run-delivery-turn-with-codex.ts --fallback-dist dist/tools/priority/run-delivery-turn-with-codex.js'],
           filesTouched: ['tools/priority/delivery-agent.mjs']
         }
       }),
@@ -6215,7 +6215,7 @@ test('delivery broker fails closed when the local review loop returns non-JSON s
           blockerClass: 'none',
           retryable: true,
           nextWakeCondition: 'scheduler-rescan',
-          helperCallsExecuted: ['node dist/tools/priority/run-delivery-turn-with-codex.js'],
+          helperCallsExecuted: ['node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/run-delivery-turn-with-codex.ts --fallback-dist dist/tools/priority/run-delivery-turn-with-codex.js'],
           filesTouched: ['tools/priority/delivery-agent.mjs']
         }
       }),
@@ -6295,7 +6295,7 @@ test('delivery broker fails closed when the local review loop receipt path escap
           blockerClass: 'none',
           retryable: true,
           nextWakeCondition: 'scheduler-rescan',
-          helperCallsExecuted: ['node dist/tools/priority/run-delivery-turn-with-codex.js'],
+          helperCallsExecuted: ['node tools/npm/run-local-typescript.mjs --project tsconfig.json --entry tools/priority/run-delivery-turn-with-codex.ts --fallback-dist dist/tools/priority/run-delivery-turn-with-codex.js'],
           filesTouched: ['tools/priority/delivery-agent.mjs']
         }
       }),
