@@ -43,6 +43,21 @@ Describe 'Bootstrap develop checkout decision' -Tag 'Unit' {
     $decision.Action | Should -Be 'checkout-develop'
   }
 
+  It 'keeps detached HEAD when develop is already attached elsewhere' {
+    $decision = & $script:DecisionModule {
+      Get-DevelopCheckoutDecision `
+        -CurrentBranch 'HEAD' `
+        -IsDirty:$false `
+        -HasDevelop:$true `
+        -RemoteDevelopRef $null `
+        -AttachedDevelopWorktreeRoots @([pscustomobject]@{ Root = 'C:\repo\develop-helper'; IsClean = $true })
+    }
+
+    $decision.Action | Should -Be 'skip-detached-develop-attached'
+    $decision.Message | Should -Match 'develop attached'
+    $decision.Message | Should -Match 'develop-helper'
+  }
+
   It 'delegates standing-priority helpers to a develop worktree when bootstrapping from a work branch' {
     $decision = & $script:DecisionModule {
       Get-BootstrapHelperRootDecision `
