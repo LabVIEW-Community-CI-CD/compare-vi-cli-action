@@ -1,0 +1,310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/wake-work-synthesis-report-v1.schema.json",
+  "title": "Wake Work Synthesis Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "policy",
+    "inputs",
+    "wake",
+    "roles",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/wake-work-synthesis-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "compareRepository"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compareRepository": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wakeAdjudicationReportPath",
+        "repoGraphTruthPath"
+      ],
+      "properties": {
+        "wakeAdjudicationReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repoGraphTruthPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "wake": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "status",
+        "recommendedOwnerRepository",
+        "nextAction",
+        "reason",
+        "suppressIssueInjection",
+        "suppressDownstreamIssueInjection",
+        "suppressTemplateIssueInjection"
+      ],
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": [
+            "live-defect",
+            "stale-artifact",
+            "branch-target-drift",
+            "platform-permission-gap",
+            "environment-only"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "actionable",
+            "suppressed",
+            "monitoring"
+          ]
+        },
+        "recommendedOwnerRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextAction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "suppressIssueInjection": {
+          "type": "boolean"
+        },
+        "suppressDownstreamIssueInjection": {
+          "type": "boolean"
+        },
+        "suppressTemplateIssueInjection": {
+          "type": "boolean"
+        }
+      }
+    },
+    "roles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reportedRoleMatches",
+        "revalidatedRoleMatches",
+        "governingRole"
+      ],
+      "properties": {
+        "reportedRoleMatches": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/roleMatch" }
+        },
+        "revalidatedRoleMatches": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/roleMatch" }
+        },
+        "governingRole": {
+          "anyOf": [
+            { "$ref": "#/$defs/roleMatch" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "status",
+        "workKind",
+        "recommendedOwnerRepository",
+        "reason",
+        "issueRouting"
+      ],
+      "properties": {
+        "decision": { "$ref": "#/$defs/decision" },
+        "status": {
+          "type": "string",
+          "enum": [
+            "suppressed",
+            "monitoring",
+            "actionable"
+          ]
+        },
+        "workKind": { "$ref": "#/$defs/workKind" },
+        "recommendedOwnerRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issueRouting": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "compareGovernanceWork",
+            "templateWork",
+            "consumerProvingDriftWork",
+            "investmentWork"
+          ],
+          "properties": {
+            "compareGovernanceWork": {
+              "type": "boolean"
+            },
+            "templateWork": {
+              "type": "boolean"
+            },
+            "consumerProvingDriftWork": {
+              "type": "boolean"
+            },
+            "investmentWork": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "decision": {
+      "type": "string",
+      "enum": [
+        "suppress",
+        "monitor",
+        "compare-governance-work",
+        "template-work",
+        "consumer-proving-drift",
+        "investment-work"
+      ]
+    },
+    "workKind": {
+      "type": "string",
+      "enum": [
+        "suppression",
+        "monitoring",
+        "governance",
+        "defect",
+        "drift-correction",
+        "investment"
+      ]
+    },
+    "roleMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repositoryId",
+        "repository",
+        "repositoryKind",
+        "repositoryStatus",
+        "roleId",
+        "role",
+        "branch",
+        "required",
+        "roleStatus",
+        "relationshipStatus"
+      ],
+      "properties": {
+        "repositoryId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repositoryKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repositoryStatus": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "unknown"
+          ]
+        },
+        "roleId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "localRefAlias": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "roleStatus": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "missing",
+            "unknown"
+          ]
+        },
+        "relationshipStatus": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "pass",
+            "fail",
+            "unknown",
+            null
+          ]
+        }
+      }
+    }
+  }
+}

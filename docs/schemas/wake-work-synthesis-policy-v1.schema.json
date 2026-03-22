@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/wake-work-synthesis-policy-v1.schema.json",
+  "title": "Wake Work Synthesis Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "compareRepository",
+    "classificationDefaults",
+    "liveDefectRouting"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/wake-work-synthesis-policy@v1"
+    },
+    "compareRepository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "classificationDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stale-artifact",
+        "environment-only",
+        "branch-target-drift",
+        "platform-permission-gap",
+        "live-defect"
+      ],
+      "properties": {
+        "stale-artifact": { "$ref": "#/$defs/classificationDefault" },
+        "environment-only": { "$ref": "#/$defs/classificationDefault" },
+        "branch-target-drift": { "$ref": "#/$defs/classificationDefault" },
+        "platform-permission-gap": { "$ref": "#/$defs/classificationDefault" },
+        "live-defect": { "$ref": "#/$defs/classificationDefault" }
+      }
+    },
+    "liveDefectRouting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compareRepositoryDecision",
+        "consumerProvingDecision",
+        "fallbackDecision"
+      ],
+      "properties": {
+        "compareRepositoryDecision": { "$ref": "#/$defs/decision" },
+        "consumerProvingDecision": { "$ref": "#/$defs/decision" },
+        "fallbackDecision": { "$ref": "#/$defs/decision" }
+      }
+    }
+  },
+  "$defs": {
+    "classificationDefault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "workKind"
+      ],
+      "properties": {
+        "decision": { "$ref": "#/$defs/decision" },
+        "workKind": { "$ref": "#/$defs/workKind" }
+      }
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "suppress",
+        "monitor",
+        "compare-governance-work",
+        "template-work",
+        "consumer-proving-drift",
+        "investment-work"
+      ]
+    },
+    "workKind": {
+      "type": "string",
+      "enum": [
+        "suppression",
+        "monitoring",
+        "governance",
+        "defect",
+        "drift-correction",
+        "investment"
+      ]
+    }
+  }
+}
