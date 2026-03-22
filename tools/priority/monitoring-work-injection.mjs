@@ -31,6 +31,27 @@ export const DEFAULT_HOST_SIGNAL_PATH = path.join(
   'runtime',
   'daemon-host-signal.json'
 );
+export const DEFAULT_WAKE_ADJUDICATION_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'issue',
+  'wake-adjudication.json'
+);
+export const DEFAULT_WAKE_WORK_SYNTHESIS_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'issue',
+  'wake-work-synthesis.json'
+);
+export const DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'capital',
+  'wake-investment-accounting.json'
+);
 
 function asOptional(value) {
   if (value == null) {
@@ -46,6 +67,27 @@ function readOptionalJson(filePath) {
     return null;
   }
   return JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+}
+
+function ensureWakeAdjudicationReport(payload, filePath) {
+  if (payload?.schema !== 'priority/wake-adjudication-report@v1') {
+    throw new Error(`Expected wake adjudication report at ${filePath}.`);
+  }
+  return payload;
+}
+
+function ensureWakeWorkSynthesisReport(payload, filePath) {
+  if (payload?.schema !== 'priority/wake-work-synthesis-report@v1') {
+    throw new Error(`Expected wake work synthesis report at ${filePath}.`);
+  }
+  return payload;
+}
+
+function ensureWakeInvestmentAccountingReport(payload, filePath) {
+  if (payload?.schema !== 'priority/wake-investment-accounting-report@v1') {
+    throw new Error(`Expected wake investment accounting report at ${filePath}.`);
+  }
+  return payload;
 }
 
 function writeJson(filePath, payload) {
@@ -157,11 +199,18 @@ function normalizeRule(rule) {
   return {
     id: asOptional(rule?.id),
     when: {
-      hostSignalStatus: asOptional(rule?.when?.hostSignalStatus)
+      hostSignalStatus: asOptional(rule?.when?.hostSignalStatus),
+      wakeClassification: asOptional(rule?.when?.wakeClassification),
+      wakeDecision: asOptional(rule?.when?.wakeDecision),
+      wakeStatus: asOptional(rule?.when?.wakeStatus),
+      recommendedOwnerRepository: asOptional(rule?.when?.recommendedOwnerRepository),
+      wakeAccountingBucket: asOptional(rule?.when?.wakeAccountingBucket),
+      wakeAccountingStatus: asOptional(rule?.when?.wakeAccountingStatus)
     },
     issue: {
       title: asOptional(rule?.issue?.title),
       dedupeMarker: asOptional(rule?.issue?.dedupeMarker),
+      dedupeDimension: asOptional(rule?.issue?.dedupeDimension),
       labels,
       bodyLines: Array.isArray(rule?.issue?.bodyLines)
         ? rule.issue.bodyLines.map((entry) => String(entry))
@@ -183,7 +232,65 @@ function loadPolicy(policyPath) {
   };
 }
 
-function ruleMatches(rule, monitoringMode, hostSignal) {
+function sanitizeMarkerSegment(value) {
+  const normalized = asOptional(value);
+  if (!normalized) {
+    return 'unknown';
+  }
+  return normalized.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
+}
+
+function createWakeEvidence(wakeAdjudication, wakeWorkSynthesis, wakeInvestmentAccounting) {
+  return {
+    classification:
+      asOptional(wakeAdjudication?.summary?.classification) || asOptional(wakeWorkSynthesis?.wake?.classification),
+    decision: asOptional(wakeWorkSynthesis?.summary?.decision),
+    status: asOptional(wakeWorkSynthesis?.summary?.status),
+    nextAction: asOptional(wakeAdjudication?.summary?.nextAction) || asOptional(wakeWorkSynthesis?.wake?.nextAction),
+    recommendedOwnerRepository:
+      asOptional(wakeWorkSynthesis?.summary?.recommendedOwnerRepository) ||
+      asOptional(wakeAdjudication?.summary?.recommendedOwnerRepository),
+    reason: asOptional(wakeWorkSynthesis?.summary?.reason) || asOptional(wakeAdjudication?.summary?.reason),
+    suppressIssueInjection:
+      wakeAdjudication?.summary?.suppressIssueInjection === true ||
+      wakeWorkSynthesis?.wake?.suppressIssueInjection === true,
+    suppressTemplateIssueInjection:
+      wakeAdjudication?.summary?.suppressTemplateIssueInjection === true ||
+      wakeWorkSynthesis?.wake?.suppressTemplateIssueInjection === true,
+    suppressDownstreamIssueInjection:
+      wakeAdjudication?.summary?.suppressDownstreamIssueInjection === true ||
+      wakeWorkSynthesis?.wake?.suppressDownstreamIssueInjection === true,
+    accountingBucket: asOptional(wakeInvestmentAccounting?.summary?.accountingBucket),
+    accountingStatus: asOptional(wakeInvestmentAccounting?.summary?.status),
+    paybackStatus: asOptional(wakeInvestmentAccounting?.summary?.paybackStatus)
+  };
+}
+
+function resolveDedupeMarker(rule, wakeEvidence) {
+  const baseMarker = asOptional(rule?.issue?.dedupeMarker);
+  if (!baseMarker) {
+    return null;
+  }
+  const dimension = asOptional(rule?.issue?.dedupeDimension);
+  if (!dimension) {
+    return baseMarker;
+  }
+  let suffix = null;
+  if (dimension === 'classification') {
+    suffix = wakeEvidence.classification;
+  } else if (dimension === 'decision') {
+    suffix = wakeEvidence.decision;
+  } else if (dimension === 'next-action') {
+    suffix = wakeEvidence.nextAction;
+  } else if (dimension === 'recommended-owner-repository') {
+    suffix = wakeEvidence.recommendedOwnerRepository;
+  } else if (dimension === 'accounting-bucket') {
+    suffix = wakeEvidence.accountingBucket;
+  }
+  return `${baseMarker}:${sanitizeMarkerSegment(suffix)}`;
+}
+
+function ruleMatches(rule, monitoringMode, hostSignal, wakeEvidence) {
   if (!rule?.id || !rule.issue?.title || !rule.issue?.dedupeMarker) {
     return false;
   }
@@ -193,10 +300,31 @@ function ruleMatches(rule, monitoringMode, hostSignal) {
   if (rule.when.hostSignalStatus && asOptional(hostSignal?.status) !== rule.when.hostSignalStatus) {
     return false;
   }
+  if (rule.when.wakeClassification && wakeEvidence.classification !== rule.when.wakeClassification) {
+    return false;
+  }
+  if (rule.when.wakeDecision && wakeEvidence.decision !== rule.when.wakeDecision) {
+    return false;
+  }
+  if (rule.when.wakeStatus && wakeEvidence.status !== rule.when.wakeStatus) {
+    return false;
+  }
+  if (
+    rule.when.recommendedOwnerRepository &&
+    wakeEvidence.recommendedOwnerRepository !== rule.when.recommendedOwnerRepository
+  ) {
+    return false;
+  }
+  if (rule.when.wakeAccountingBucket && wakeEvidence.accountingBucket !== rule.when.wakeAccountingBucket) {
+    return false;
+  }
+  if (rule.when.wakeAccountingStatus && wakeEvidence.accountingStatus !== rule.when.wakeAccountingStatus) {
+    return false;
+  }
   return true;
 }
 
-function renderIssueBody(rule, monitoringMode, hostSignal, queueEmptyReport) {
+function renderIssueBody(rule, monitoringMode, hostSignal, queueEmptyReport, wakeEvidence, resolvedDedupeMarker) {
   const lines = [...(Array.isArray(rule.issue.bodyLines) ? rule.issue.bodyLines : [])];
   lines.push('');
   lines.push(`- monitoring-mode: ${asOptional(monitoringMode?.summary?.status) || 'unknown'}`);
@@ -204,13 +332,88 @@ function renderIssueBody(rule, monitoringMode, hostSignal, queueEmptyReport) {
   lines.push(`- queue-state: ${asOptional(queueEmptyReport?.reason) || 'unknown'}`);
   lines.push(`- host-signal-status: ${asOptional(hostSignal?.status) || 'unknown'}`);
   lines.push(`- host-signal-provider: ${asOptional(hostSignal?.provider) || 'unknown'}`);
+  lines.push(`- wake-classification: ${wakeEvidence.classification || 'unknown'}`);
+  lines.push(`- wake-decision: ${wakeEvidence.decision || 'unknown'}`);
+  lines.push(`- wake-status: ${wakeEvidence.status || 'unknown'}`);
+  lines.push(`- wake-next-action: ${wakeEvidence.nextAction || 'unknown'}`);
+  lines.push(`- wake-owner-repository: ${wakeEvidence.recommendedOwnerRepository || 'unknown'}`);
+  lines.push(`- wake-accounting-bucket: ${wakeEvidence.accountingBucket || 'unknown'}`);
+  lines.push(`- wake-accounting-status: ${wakeEvidence.accountingStatus || 'unknown'}`);
+  lines.push(`- wake-payback-status: ${wakeEvidence.paybackStatus || 'unknown'}`);
+  if (wakeEvidence.reason) {
+    lines.push(`- wake-reason: ${wakeEvidence.reason}`);
+  }
   lines.push('');
-  lines.push(`<!-- ${rule.issue.dedupeMarker} -->`);
+  lines.push(`<!-- ${resolvedDedupeMarker} -->`);
   return `${lines.join('\n').trim()}\n`;
 }
 
-function findExistingInjectedIssue(openIssues, rule) {
-  return openIssues.find((issue) => issue.body.includes(`<!-- ${rule.issue.dedupeMarker} -->`));
+function findExistingInjectedIssue(openIssues, resolvedDedupeMarker) {
+  return openIssues.find((issue) => issue.body.includes(`<!-- ${resolvedDedupeMarker} -->`));
+}
+
+function buildFallbackSummary(wakeEvidence, repository) {
+  if (wakeEvidence.status === 'suppressed' || wakeEvidence.decision === 'suppress') {
+    return {
+      status: 'suppressed-wake',
+      injected: false,
+      reason:
+        wakeEvidence.reason ||
+        'The monitoring wake was suppressed after live revalidation, so no new standing issue should be injected.',
+      issueNumber: null,
+      issueUrl: null,
+      triggerId: null
+    };
+  }
+  if (wakeEvidence.status === 'monitoring' || wakeEvidence.decision === 'monitor') {
+    return {
+      status: 'monitoring-only',
+      injected: false,
+      reason:
+        wakeEvidence.reason ||
+        'The monitoring wake remains observational only, so no standing issue should be injected.',
+      issueNumber: null,
+      issueUrl: null,
+      triggerId: null
+    };
+  }
+  if (
+    wakeEvidence.status === 'actionable' &&
+    wakeEvidence.recommendedOwnerRepository &&
+    repository &&
+    wakeEvidence.recommendedOwnerRepository !== repository
+  ) {
+    return {
+      status: 'external-route',
+      injected: false,
+      reason:
+        wakeEvidence.reason ||
+        `The monitoring wake is actionable but belongs to ${wakeEvidence.recommendedOwnerRepository}, not ${repository}.`,
+      issueNumber: null,
+      issueUrl: null,
+      triggerId: null
+    };
+  }
+  if (wakeEvidence.status === 'actionable' && (wakeEvidence.recommendedOwnerRepository === repository || !wakeEvidence.recommendedOwnerRepository)) {
+    return {
+      status: 'policy-blocked',
+      injected: false,
+      reason:
+        wakeEvidence.reason ||
+        'The monitoring wake is actionable for this repository but no policy rule mapped it to injected work.',
+      issueNumber: null,
+      issueUrl: null,
+      triggerId: null
+    };
+  }
+  return {
+    status: 'no-trigger',
+    injected: false,
+    reason: 'No policy-approved monitoring wake condition requires issue injection.',
+    issueNumber: null,
+    issueUrl: null,
+    triggerId: null
+  };
 }
 
 function ensureIssueLabels(repository, issueNumber, desiredLabels, currentLabels, runGhFn) {
@@ -258,6 +461,12 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
   const queueEmptyReportPath = path.resolve(repoRoot, options.queueEmptyReportPath || DEFAULT_QUEUE_EMPTY_REPORT_PATH);
   const monitoringModePath = path.resolve(repoRoot, options.monitoringModePath || DEFAULT_MONITORING_MODE_PATH);
   const hostSignalPath = path.resolve(repoRoot, options.hostSignalPath || DEFAULT_HOST_SIGNAL_PATH);
+  const wakeAdjudicationPath = path.resolve(repoRoot, options.wakeAdjudicationPath || DEFAULT_WAKE_ADJUDICATION_PATH);
+  const wakeWorkSynthesisPath = path.resolve(repoRoot, options.wakeWorkSynthesisPath || DEFAULT_WAKE_WORK_SYNTHESIS_PATH);
+  const wakeInvestmentAccountingPath = path.resolve(
+    repoRoot,
+    options.wakeInvestmentAccountingPath || DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH
+  );
   const apply = options.apply !== false;
   const policy = loadPolicy(policyPath);
   const repository =
@@ -267,25 +476,39 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
   const queueEmptyReport = readOptionalJson(queueEmptyReportPath);
   const monitoringMode = readOptionalJson(monitoringModePath);
   const hostSignal = readOptionalJson(hostSignalPath);
+  const rawWakeAdjudication = readOptionalJson(wakeAdjudicationPath);
+  const rawWakeWorkSynthesis = readOptionalJson(wakeWorkSynthesisPath);
+  const rawWakeInvestmentAccounting = readOptionalJson(wakeInvestmentAccountingPath);
+  const wakeAdjudication = rawWakeAdjudication ? ensureWakeAdjudicationReport(rawWakeAdjudication, wakeAdjudicationPath) : null;
+  const wakeWorkSynthesis = rawWakeWorkSynthesis
+    ? ensureWakeWorkSynthesisReport(rawWakeWorkSynthesis, wakeWorkSynthesisPath)
+    : null;
+  const wakeInvestmentAccounting = rawWakeInvestmentAccounting
+    ? ensureWakeInvestmentAccountingReport(rawWakeInvestmentAccounting, wakeInvestmentAccountingPath)
+    : null;
+  const wakeEvidence = createWakeEvidence(wakeAdjudication, wakeWorkSynthesis, wakeInvestmentAccounting);
   const helperCallsExecuted = [];
+  const queueEligible =
+    !policy.requireQueueEmpty ||
+    (queueEmptyReport?.schema === 'standing-priority/no-standing@v1' && queueEmptyReport?.reason === 'queue-empty');
 
   let selectedRule = null;
-  if (
-    (!policy.requireQueueEmpty ||
-      (queueEmptyReport?.schema === 'standing-priority/no-standing@v1' && queueEmptyReport?.reason === 'queue-empty')) &&
-    repository
-  ) {
-    selectedRule = policy.rules.find((rule) => ruleMatches(rule, monitoringMode, hostSignal)) ?? null;
+  if (queueEligible && repository) {
+    selectedRule = policy.rules.find((rule) => ruleMatches(rule, monitoringMode, hostSignal, wakeEvidence)) ?? null;
   }
+  const resolvedDedupeMarker = selectedRule ? resolveDedupeMarker(selectedRule, wakeEvidence) : null;
 
-  let summary = {
-    status: 'no-trigger',
-    injected: false,
-    reason: 'No policy-approved monitoring wake condition requires issue injection.',
-    issueNumber: null,
-    issueUrl: null,
-    triggerId: null
-  };
+  let summary = buildFallbackSummary(wakeEvidence, repository);
+  if (!queueEligible) {
+    summary = {
+      status: 'no-trigger',
+      injected: false,
+      reason: 'No policy-approved monitoring wake condition requires issue injection.',
+      issueNumber: null,
+      issueUrl: null,
+      triggerId: null
+    };
+  }
 
   if (selectedRule) {
     const runGhJsonFn = deps.runGhJsonFn ?? ((args) => runGhJson(args, deps.spawnSyncFn));
@@ -303,7 +526,7 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
       'number,title,url,body,labels'
     ]) || [])
       .map(normalizeIssue);
-    const existingIssue = findExistingInjectedIssue(openIssues, selectedRule);
+    const existingIssue = findExistingInjectedIssue(openIssues, resolvedDedupeMarker);
     if (existingIssue) {
       helperCallsExecuted.push(
         ...ensureIssueLabels(repository, existingIssue.number, selectedRule.issue.labels, existingIssue.labels, runGhFn)
@@ -326,7 +549,7 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
         triggerId: selectedRule.id
       };
     } else {
-      const body = renderIssueBody(selectedRule, monitoringMode, hostSignal, queueEmptyReport);
+      const body = renderIssueBody(selectedRule, monitoringMode, hostSignal, queueEmptyReport, wakeEvidence, resolvedDedupeMarker);
       const createResult = createIssue(repository, selectedRule, body, runGhFn);
       helperCallsExecuted.push(...createResult.helperCallsExecuted);
       summary = {
@@ -352,7 +575,10 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
     inputs: {
       queueEmptyReportPath: path.relative(repoRoot, queueEmptyReportPath).replace(/\\/g, '/'),
       monitoringModePath: path.relative(repoRoot, monitoringModePath).replace(/\\/g, '/'),
-      hostSignalPath: path.relative(repoRoot, hostSignalPath).replace(/\\/g, '/')
+      hostSignalPath: path.relative(repoRoot, hostSignalPath).replace(/\\/g, '/'),
+      wakeAdjudicationPath: path.relative(repoRoot, wakeAdjudicationPath).replace(/\\/g, '/'),
+      wakeWorkSynthesisPath: path.relative(repoRoot, wakeWorkSynthesisPath).replace(/\\/g, '/'),
+      wakeInvestmentAccountingPath: path.relative(repoRoot, wakeInvestmentAccountingPath).replace(/\\/g, '/')
     },
     evidence: {
       queueEmpty: queueEmptyReport
@@ -377,6 +603,21 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
             provider: asOptional(hostSignal.provider),
             daemonFingerprint: asOptional(hostSignal.daemonFingerprint)
           }
+        : null,
+      wake: wakeAdjudication || wakeWorkSynthesis || wakeInvestmentAccounting
+        ? {
+            classification: wakeEvidence.classification,
+            decision: wakeEvidence.decision,
+            status: wakeEvidence.status,
+            nextAction: wakeEvidence.nextAction,
+            recommendedOwnerRepository: wakeEvidence.recommendedOwnerRepository,
+            suppressIssueInjection: wakeEvidence.suppressIssueInjection,
+            suppressTemplateIssueInjection: wakeEvidence.suppressTemplateIssueInjection,
+            suppressDownstreamIssueInjection: wakeEvidence.suppressDownstreamIssueInjection,
+            accountingBucket: wakeEvidence.accountingBucket,
+            accountingStatus: wakeEvidence.accountingStatus,
+            paybackStatus: wakeEvidence.paybackStatus
+          }
         : null
     },
     selectedRule: selectedRule
@@ -385,9 +626,16 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
           requireMonitoringMode: selectedRule.requireMonitoringMode,
           issueTitle: selectedRule.issue.title,
           dedupeMarker: selectedRule.issue.dedupeMarker,
+          resolvedDedupeMarker,
           labels: selectedRule.issue.labels,
           conditions: {
-            hostSignalStatus: selectedRule.when.hostSignalStatus
+            hostSignalStatus: selectedRule.when.hostSignalStatus,
+            wakeClassification: selectedRule.when.wakeClassification,
+            wakeDecision: selectedRule.when.wakeDecision,
+            wakeStatus: selectedRule.when.wakeStatus,
+            recommendedOwnerRepository: selectedRule.when.recommendedOwnerRepository,
+            wakeAccountingBucket: selectedRule.when.wakeAccountingBucket,
+            wakeAccountingStatus: selectedRule.when.wakeAccountingStatus
           }
         }
       : null,
@@ -412,6 +660,9 @@ export function parseArgs(argv = process.argv) {
     queueEmptyReportPath: DEFAULT_QUEUE_EMPTY_REPORT_PATH,
     monitoringModePath: DEFAULT_MONITORING_MODE_PATH,
     hostSignalPath: DEFAULT_HOST_SIGNAL_PATH,
+    wakeAdjudicationPath: DEFAULT_WAKE_ADJUDICATION_PATH,
+    wakeWorkSynthesisPath: DEFAULT_WAKE_WORK_SYNTHESIS_PATH,
+    wakeInvestmentAccountingPath: DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH,
     repository: null,
     apply: true
   };
@@ -429,6 +680,12 @@ export function parseArgs(argv = process.argv) {
       args.monitoringModePath = argv[++index];
     } else if (arg === '--host-signal') {
       args.hostSignalPath = argv[++index];
+    } else if (arg === '--wake-adjudication') {
+      args.wakeAdjudicationPath = argv[++index];
+    } else if (arg === '--wake-work-synthesis') {
+      args.wakeWorkSynthesisPath = argv[++index];
+    } else if (arg === '--wake-investment-accounting') {
+      args.wakeInvestmentAccountingPath = argv[++index];
     } else if (arg === '--repo') {
       args.repository = argv[++index];
     } else if (arg === '--dry-run') {
@@ -447,7 +704,9 @@ export function parseArgs(argv = process.argv) {
 async function main(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
-    console.log('Usage: node tools/priority/monitoring-work-injection.mjs [--dry-run] [--repo <owner/repo>]');
+    console.log(
+      'Usage: node tools/priority/monitoring-work-injection.mjs [--dry-run] [--repo <owner/repo>] [--wake-adjudication <path>] [--wake-work-synthesis <path>] [--wake-investment-accounting <path>]'
+    );
     return 0;
   }
   const { report, outputPath } = await runMonitoringWorkInjection(args);

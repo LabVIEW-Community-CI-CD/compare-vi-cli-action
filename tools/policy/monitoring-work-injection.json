@@ -4,6 +4,36 @@
   "requireQueueEmpty": true,
   "rules": [
     {
+      "id": "compare-governance-wake",
+      "requireMonitoringMode": "active",
+      "when": {
+        "wakeDecision": "compare-governance-work",
+        "wakeStatus": "actionable",
+        "recommendedOwnerRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action"
+      },
+      "issue": {
+        "title": "[governance]: reconcile monitoring wake drift in compare control plane",
+        "dedupeMarker": "monitoring-work-injector:compare-governance-wake",
+        "dedupeDimension": "next-action",
+        "labels": [
+          "standing-priority",
+          "governance"
+        ],
+        "bodyLines": [
+          "## Summary",
+          "The autonomous monitoring loop revalidated a wake, adjudicated it, and routed it back to compare-side governance work.",
+          "",
+          "## Why this was injected",
+          "This issue exists because the wake survived live replay, synthesized into compare governance work, and should be resolved inside compare rather than reopening downstream or template work blindly.",
+          "",
+          "## Required outcome",
+          "- preserve live revalidation before issue injection",
+          "- keep template monitoring passive unless supported proof actually regresses",
+          "- leave a machine-readable receipt showing why the loop injected compare work"
+        ]
+      }
+    },
+    {
       "id": "runner-conflict",
       "requireMonitoringMode": "active",
       "when": {
