@@ -104,6 +104,7 @@
     "priority:validation:proof": "node tools/npm/run-script.mjs build && node tools/priority/validation-approval-proof.mjs",
     "priority:merge-sync": "node tools/priority/merge-sync-pr.mjs",
     "priority:queue:refresh": "node tools/priority/queue-refresh-pr.mjs",
+    "priority:queue:update": "node tools/priority/queue-refresh-pr.mjs",
     "priority:event:ingest": "node tools/priority/event-ingest.mjs",
     "priority:decision:ledger": "node tools/priority/decision-ledger.mjs",
     "priority:commit-integrity": "node tools/priority/commit-integrity.mjs",
