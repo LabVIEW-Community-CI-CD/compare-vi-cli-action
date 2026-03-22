@@ -93,6 +93,7 @@ COPY tools/workflows/requirements.txt /tmp/tools-workflows-requirements.txt
 RUN python3 -m venv "${COMPAREVI_WORKFLOW_ENCLAVE_HOME}" \
     && "${COMPAREVI_WORKFLOW_ENCLAVE_HOME}/bin/python" -m pip install --disable-pip-version-check --upgrade pip \
     && "${COMPAREVI_WORKFLOW_ENCLAVE_HOME}/bin/python" -m pip install --disable-pip-version-check --requirement /tmp/tools-workflows-requirements.txt \
+    && python3 -m pip install --break-system-packages --no-cache-dir cookiecutter==2.7.1 \
     && sha256sum /tmp/tools-workflows-requirements.txt | cut -d' ' -f1 > "${COMPAREVI_WORKFLOW_ENCLAVE_HOME}/.requirements.sha256"
 
 # Install actionlint (pinned)
