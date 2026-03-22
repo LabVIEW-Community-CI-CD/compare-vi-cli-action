@@ -29,12 +29,16 @@ This helper does not promote the NI example into the repository.
   `tools/New-PrintToSingleFileHtmlAuthoringWorkspace.ps1`
 - Native-authoring packet wrapper:
   `tools/New-PrintToSingleFileHtmlAuthoringPacket.ps1`
+- Payload finalization helper:
+  `tools/Finalize-OperationPayloadSourceBundle.ps1`
 - Receipt schema:
   `docs/schemas/labview-cli-custom-operation-scaffold-v1.schema.json`
 - Dedicated wrapper receipt schema:
   `docs/schemas/print-to-single-file-html-authoring-workspace-v1.schema.json`
 - Native-authoring packet receipt schema:
   `docs/schemas/print-to-single-file-html-authoring-packet-v1.schema.json`
+- Payload finalization receipt schema:
+  `docs/schemas/operation-payload-authoring-finalization-v1.schema.json`
 - Focused test:
   `tests/New-LabVIEWCLICustomOperationWorkspace.Tests.ps1`
 - Dedicated wrapper test:
@@ -107,6 +111,13 @@ x86 path, an authoring checklist, and a convenience launch script:
 node tools/npm/run-script.mjs history:custom-operation:authoring-packet:print-single-file
 ```
 
+Finalize the repo-owned payload metadata after native authoring has copied real
+LabVIEW binary files into the payload bundle:
+
+```powershell
+node tools/npm/run-script.mjs history:custom-operation:finalize:print-single-file
+```
+
 ## Receipt
 
 Successful runs emit `labview-cli-custom-operation-scaffold@v1` with:
@@ -134,4 +145,6 @@ tree. The dedicated `PrintToSingleFileHtml` wrappers from `#1621` build on that
 generic scaffold without changing the underlying bootstrap contract: the
 workspace wrapper bootstraps disposable files, and the native-authoring packet
 turns the remaining gap into an explicit LabVIEW authoring handoff instead of a
-hidden assumption.
+hidden assumption. The finalization helper then closes the bookkeeping gap after
+that native authoring step by updating the payload bundle metadata only when the
+checked-in files inspect as real LabVIEW binaries.

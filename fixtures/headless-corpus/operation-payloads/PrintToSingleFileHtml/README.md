@@ -56,6 +56,10 @@ binary artifacts, not placeholder text files.
 Machine-readable provenance for this bundle lives in `payload-provenance.json`.
 Use `tools/Inspect-OperationPayloadSourceBundle.ps1` to project the current
 executable-state inspection receipt for this bundle.
+Use `tools/Finalize-OperationPayloadSourceBundle.ps1 -BundlePath fixtures/headless-corpus/operation-payloads/PrintToSingleFileHtml`
+after native authoring copies repo-owned LabVIEW binary files into this bundle;
+that helper updates `checkedInOperationFiles`, flips `executableState` to
+`runnable`, and keeps public proof as the remaining blocker.
 Use `tools/New-PrintToSingleFileHtmlAuthoringWorkspace.ps1` or
 `node tools/npm/run-script.mjs history:custom-operation:scaffold:print-single-file`
 to create the disposable authoring workspace from the preferred installed

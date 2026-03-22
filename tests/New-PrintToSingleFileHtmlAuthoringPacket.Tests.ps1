@@ -112,6 +112,7 @@ $receipt | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $ReceiptPath -Enc
     $checklistPath | Should -Exist
     $launchScriptPath | Should -Exist
     (Get-Content -LiteralPath $checklistPath -Raw) | Should -Match 'Open Operations\.lvproj in LabVIEW 2026 x86'
+    (Get-Content -LiteralPath $checklistPath -Raw) | Should -Match 'Finalize-OperationPayloadSourceBundle\.ps1'
     (Get-Content -LiteralPath $launchScriptPath -Raw) | Should -Match 'Start-Process -FilePath \$labviewPath'
   }
 }
