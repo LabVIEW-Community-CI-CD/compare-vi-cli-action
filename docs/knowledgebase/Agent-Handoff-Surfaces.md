@@ -21,6 +21,9 @@ entrypoint and machine-generated live state.
 - It refreshes `tests/results/_agent/handoff/monitoring-mode.json`, which is the
   machine-readable receipt for compare safe-idle monitoring and future-agent
   template pivot readiness.
+- It refreshes `tests/results/_agent/handoff/downstream-repo-graph-truth.json`,
+  which is the machine-readable repo/branch-role map for producer lineage,
+  canonical development, and consumer proving across the supervised repos.
 - It also refreshes the standing-priority summary, router copy, watcher
   telemetry, Docker/Desktop verification summary mirror, and session capsule
   surfaces under `tests/results/_agent/`.
@@ -47,6 +50,7 @@ entrypoint and machine-generated live state.
 - `tests/results/_agent/handoff/continuity-summary.json`
 - `tests/results/_agent/handoff/entrypoint-status.json`
 - `tests/results/_agent/handoff/monitoring-mode.json`
+- `tests/results/_agent/handoff/downstream-repo-graph-truth.json`
 - `tests/results/_agent/handoff/docker-review-loop-summary.json`
 - `tests/results/_agent/handoff/*.json`
 - `tests/results/_agent/sessions/*.json`
@@ -66,10 +70,13 @@ entrypoint and machine-generated live state.
 
 - `tests/results/_agent/handoff/monitoring-mode.json` is the handoff receipt for
   event-driven monitoring mode.
+- `tests/results/_agent/handoff/downstream-repo-graph-truth.json` is the
+  canonical branch-role truth surface for downstream supervision.
 - It summarizes:
   - compare queue state
   - continuity state
   - template pivot readiness
+  - repo graph truth for producer lineage, canonical development, and consumer proving
   - wake conditions that should reopen compare or template work
   - supported downstream monitoring for canonical template and consumer forks
 - Template-side monitoring remains passive:

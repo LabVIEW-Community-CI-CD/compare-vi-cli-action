@@ -21,11 +21,12 @@
     "policy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "compareRepository", "pivotTargetRepository", "wakeConditions"],
+      "required": ["path", "compareRepository", "pivotTargetRepository", "repoGraphPolicyPath", "wakeConditions"],
       "properties": {
         "path": { "type": "string", "minLength": 1 },
         "compareRepository": { "type": "string", "minLength": 1 },
         "pivotTargetRepository": { "type": "string", "minLength": 1 },
+        "repoGraphPolicyPath": { "type": ["string", "null"] },
         "wakeConditions": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
@@ -43,6 +44,7 @@
         "readyForMonitoring": { "type": "boolean" }
       }
     },
+    "repoGraph": { "$ref": "#/$defs/compareState" },
     "templateMonitoring": {
       "type": "object",
       "additionalProperties": false,

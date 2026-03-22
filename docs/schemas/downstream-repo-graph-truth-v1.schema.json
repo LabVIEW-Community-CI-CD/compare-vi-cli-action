@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/downstream-repo-graph-truth-v1.schema.json",
+  "title": "Downstream Repo Graph Truth Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "policy",
+    "repositories",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/downstream-repo-graph-truth@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "compareRepository"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compareRepository": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "repositories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/repository"
+      },
+      "minItems": 1
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "repositoryCount",
+        "roleCount",
+        "requiredMissingRoleCount",
+        "optionalMissingRoleCount",
+        "alignmentFailureCount",
+        "unknownRoleCount"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "unknown"
+          ]
+        },
+        "repositoryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "roleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredMissingRoleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "optionalMissingRoleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "alignmentFailureCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unknownRoleCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "$defs": {
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "repository",
+        "kind",
+        "status",
+        "roles",
+        "summary"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "unknown"
+          ]
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/role"
+          },
+          "minItems": 1
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requiredMissingRoleCount",
+            "optionalMissingRoleCount",
+            "alignmentFailureCount",
+            "unknownRoleCount"
+          ],
+          "properties": {
+            "requiredMissingRoleCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "optionalMissingRoleCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "alignmentFailureCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unknownRoleCount": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "role",
+        "branch",
+        "required",
+        "status",
+        "branchExists"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "localRefAlias": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "missing",
+            "unknown"
+          ]
+        },
+        "branchExists": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "headSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "relationship": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "tracksRoleId",
+            "status"
+          ],
+          "properties": {
+            "tracksRoleId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "fail",
+                "unknown"
+              ]
+            },
+            "trackedHeadSha": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

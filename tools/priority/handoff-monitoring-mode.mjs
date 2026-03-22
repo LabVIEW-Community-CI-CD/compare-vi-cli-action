@@ -9,6 +9,13 @@ const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(MODULE_DIR, '..', '..');
 export const DEFAULT_POLICY_PATH = path.join('tools', 'policy', 'template-monitoring.json');
 export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'handoff', 'monitoring-mode.json');
+export const DEFAULT_REPO_GRAPH_TRUTH_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'handoff',
+  'downstream-repo-graph-truth.json'
+);
 export const DEFAULT_QUEUE_EMPTY_REPORT_PATH = path.join(
   'tests',
   'results',
@@ -281,6 +288,7 @@ export function parseArgs(argv = process.argv) {
     repoRoot: DEFAULT_REPO_ROOT,
     policyPath: DEFAULT_POLICY_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
+    repoGraphTruthPath: DEFAULT_REPO_GRAPH_TRUTH_PATH,
     queueEmptyReportPath: DEFAULT_QUEUE_EMPTY_REPORT_PATH,
     continuitySummaryPath: DEFAULT_CONTINUITY_SUMMARY_PATH,
     templatePivotGatePath: DEFAULT_TEMPLATE_PIVOT_GATE_PATH,
@@ -292,6 +300,7 @@ export function parseArgs(argv = process.argv) {
     ['--repo-root', 'repoRoot'],
     ['--policy', 'policyPath'],
     ['--output', 'outputPath'],
+    ['--repo-graph-truth', 'repoGraphTruthPath'],
     ['--queue-empty-report', 'queueEmptyReportPath'],
     ['--continuity-summary', 'continuitySummaryPath'],
     ['--template-pivot-gate', 'templatePivotGatePath'],
@@ -326,6 +335,7 @@ function printHelp() {
     'Options:',
     `  --repo-root <path>          Repository root override (default: ${DEFAULT_REPO_ROOT}).`,
     `  --policy <path>             Monitoring policy path (default: ${DEFAULT_POLICY_PATH}).`,
+    `  --repo-graph-truth <path>   Repo graph truth report (default: ${DEFAULT_REPO_GRAPH_TRUTH_PATH}).`,
     `  --queue-empty-report <path> Queue-empty report (default: ${DEFAULT_QUEUE_EMPTY_REPORT_PATH}).`,
     `  --continuity-summary <path> Continuity summary (default: ${DEFAULT_CONTINUITY_SUMMARY_PATH}).`,
     `  --template-pivot-gate <path> Template pivot gate report (default: ${DEFAULT_TEMPLATE_PIVOT_GATE_PATH}).`,
@@ -355,10 +365,12 @@ export async function runHandoffMonitoringMode(
   }
 
   const queueEmptyReportPath = path.resolve(repoRoot, options.queueEmptyReportPath || DEFAULT_QUEUE_EMPTY_REPORT_PATH);
+  const repoGraphTruthPath = path.resolve(repoRoot, options.repoGraphTruthPath || DEFAULT_REPO_GRAPH_TRUTH_PATH);
   const continuitySummaryPath = path.resolve(repoRoot, options.continuitySummaryPath || DEFAULT_CONTINUITY_SUMMARY_PATH);
   const templatePivotGatePath = path.resolve(repoRoot, options.templatePivotGatePath || DEFAULT_TEMPLATE_PIVOT_GATE_PATH);
 
   const queueEmpty = readOptionalJsonFn(queueEmptyReportPath);
+  const repoGraphTruth = readOptionalJsonFn(repoGraphTruthPath);
   const continuity = readOptionalJsonFn(continuitySummaryPath);
   const templatePivotGate = readOptionalJsonFn(templatePivotGatePath);
 
@@ -446,6 +458,7 @@ export async function runHandoffMonitoringMode(
       path: toRelative(policyPath),
       compareRepository: policy.compareRepository,
       pivotTargetRepository: policy.pivotTargetRepository,
+      repoGraphPolicyPath: policy.repoGraphPolicyPath ?? null,
       wakeConditions: policy.wakeConditions
     },
     compare: {
@@ -468,6 +481,20 @@ export async function runHandoffMonitoringMode(
         detail: templatePivotGate?.summary?.pivotDecision ?? null
       },
       readyForMonitoring: compareReadyForMonitoring
+    },
+    repoGraph: {
+      reportPath: toRelative(repoGraphTruthPath),
+      ready:
+        repoGraphTruth?.schema === 'priority/downstream-repo-graph-truth@v1' &&
+        repoGraphTruth?.summary?.status === 'pass',
+      status:
+        repoGraphTruth?.schema === 'priority/downstream-repo-graph-truth@v1'
+          ? repoGraphTruth?.summary?.status ?? 'unknown'
+          : 'missing',
+      detail:
+        repoGraphTruth?.schema === 'priority/downstream-repo-graph-truth@v1'
+          ? `roles=${repoGraphTruth?.summary?.roleCount ?? 0}`
+          : null
     },
     templateMonitoring: {
       status: templateMonitoringStatus,

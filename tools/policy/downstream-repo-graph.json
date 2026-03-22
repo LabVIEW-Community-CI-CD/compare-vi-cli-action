@@ -1,0 +1,82 @@
+{
+  "schema": "priority/downstream-repo-graph-policy@v1",
+  "compareRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+  "repositories": [
+    {
+      "id": "compare",
+      "repository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
+      "kind": "supervisor",
+      "roles": [
+        {
+          "id": "compare-producer-lineage",
+          "role": "producer-lineage",
+          "branch": "develop",
+          "localRefAlias": "upstream/develop",
+          "required": true
+        },
+        {
+          "id": "compare-consumer-proving-source",
+          "role": "consumer-proving-source",
+          "branch": "develop",
+          "localRefAlias": "upstream/develop",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "canonical-template",
+      "repository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
+      "kind": "canonical-template",
+      "roles": [
+        {
+          "id": "template-canonical-development",
+          "role": "canonical-development",
+          "branch": "develop",
+          "required": true
+        },
+        {
+          "id": "template-consumer-proving-rail",
+          "role": "consumer-proving-rail",
+          "branch": "downstream/develop",
+          "required": false,
+          "tracksRoleId": "compare-consumer-proving-source"
+        },
+        {
+          "id": "template-upstream-producer-lineage",
+          "role": "upstream-producer-lineage",
+          "branch": "upstream/develop",
+          "required": false,
+          "tracksRoleId": "compare-producer-lineage"
+        }
+      ]
+    },
+    {
+      "id": "org-consumer-fork",
+      "repository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork",
+      "kind": "consumer-fork",
+      "roles": [
+        {
+          "id": "org-fork-canonical-development",
+          "role": "canonical-development-mirror",
+          "branch": "develop",
+          "required": true,
+          "tracksRoleId": "template-canonical-development"
+        }
+      ]
+    },
+    {
+      "id": "personal-consumer-fork",
+      "repository": "svelderrainruiz/LabviewGitHubCiTemplate",
+      "kind": "consumer-fork",
+      "roles": [
+        {
+          "id": "personal-fork-canonical-development",
+          "role": "canonical-development-mirror",
+          "branch": "develop",
+          "required": true,
+          "tracksRoleId": "template-canonical-development"
+        }
+      ]
+    }
+  ]
+}
