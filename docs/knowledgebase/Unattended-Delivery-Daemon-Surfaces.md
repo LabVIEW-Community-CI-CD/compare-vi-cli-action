@@ -28,6 +28,21 @@ the Windows Docker specialty lane family. It emits
 active Jarvis sessions, and tails the daemon logs that matter for fast operator
 triage.
 
+When `priority:jarvis:status` reports `daemonCutover.status = cutover-required`,
+use the emitted `daemonCutover.requiredActions` as the operator loop:
+
+1. Read `tests/results/_agent/runtime/daemon-host-signal.json` first to confirm
+   whether the host still presents as `desktop-backed`.
+2. Read `tests/results/_agent/runtime/jarvis-session-observer.json` next to see
+   the concrete cutover actions, including any `actions.runner.*` service
+   isolation guidance.
+3. Stop or govern the listed `actions.runner.*` services if they are still
+   present on the host.
+4. Rerun `priority:delivery:host:signal`.
+5. Rerun `priority:jarvis:status`.
+6. Treat the plane as reusable only when the observer reports
+   `daemonCutover.status = ready`.
+
 ## Canonical Receipt Read Order
 
 When a daemon lane needs diagnosis, read receipts in this order:
