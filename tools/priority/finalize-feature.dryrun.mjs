@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import {
@@ -39,6 +39,7 @@ async function main() {
   console.log('[dry-run] merge via PR (squash)');
 
   const dir = path.join(root, 'tests', 'results', '_agent', 'feature');
+  await mkdir(dir, { recursive: true });
   const payload = {
     schema: 'feature/finalize-dryrun@v1',
     branch,
