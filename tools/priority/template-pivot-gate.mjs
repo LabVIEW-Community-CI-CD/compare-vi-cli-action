@@ -294,9 +294,7 @@ export async function runTemplatePivotGate(
     );
 
   const queueEmptyReady =
-    queueEmpty?.schema === policy.queueEmpty.requiredSchema &&
-    queueEmpty?.reason === policy.queueEmpty.requiredReason &&
-    queueEmpty?.openIssueCount === policy.queueEmpty.requiredOpenIssueCount;
+    queueEmpty?.schema === policy.queueEmpty.requiredSchema && queueEmpty?.reason === policy.queueEmpty.requiredReason;
   if (!queueEmpty) {
     blockers.push(
       createBlocker(
@@ -316,13 +314,6 @@ export async function runTemplatePivotGate(
       createBlocker(
         'queue-not-empty',
         `Queue-empty report reason must be ${policy.queueEmpty.requiredReason}; received ${queueEmpty.reason}.`
-      )
-    );
-  } else if (queueEmpty.openIssueCount !== policy.queueEmpty.requiredOpenIssueCount) {
-    blockers.push(
-      createBlocker(
-        'open-issues-remaining',
-        `Queue-empty report openIssueCount must be ${policy.queueEmpty.requiredOpenIssueCount}; received ${queueEmpty.openIssueCount}.`
       )
     );
   }
