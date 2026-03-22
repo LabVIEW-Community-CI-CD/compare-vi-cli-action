@@ -184,6 +184,43 @@ jobs:
             --schema docs/schemas/downstream-onboarding-feedback-v1.schema.json \
             --data tests/results/_agent/onboarding/downstream-onboarding-feedback.json
 
+      - name: Refresh template-agent verification report
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="fail"
+          if [ "${{ steps.feedback.outcome }}" = "success" ]; then
+            status="pass"
+          fi
+          iteration_label="downstream-promotion ${GITHUB_RUN_ID}"
+          iteration_ref="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${{ steps.source.outputs.source_sha }}"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          args=(
+            priority:template:agent:verify
+            --
+            --iteration-label "$iteration_label"
+            --iteration-ref "$iteration_ref"
+            --iteration-head-sha "${{ steps.source.outputs.source_sha }}"
+            --verification-status "$status"
+            --provider hosted-github-workflow
+            --run-url "$run_url"
+            --no-fail-on-blockers
+          )
+          if [ -n "${{ steps.feedback.outputs.duration_seconds }}" ]; then
+            args+=(--duration-seconds "${{ steps.feedback.outputs.duration_seconds }}")
+          fi
+          node tools/npm/run-script.mjs "${args[@]}"
+
+      - name: Validate template-agent verification report schema
+        if: ${{ always() && hashFiles('tests/results/_agent/promotion/template-agent-verification-report.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/template-agent-verification-report-v1.schema.json \
+            --data tests/results/_agent/promotion/template-agent-verification-report.json
+
       - name: Generate downstream promotion manifest
         if: ${{ always() }}
         shell: bash
@@ -216,6 +253,7 @@ jobs:
           node tools/priority/downstream-promotion-scorecard.mjs \
             --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json \
             --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json \
+            --template-agent-verification-report tests/results/_agent/promotion/template-agent-verification-report.json \
             --manifest-report tests/results/_agent/promotion/downstream-develop-promotion-manifest.json \
             --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
 

@@ -35,6 +35,7 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   assert.match(workflow, /tests\/results\/_agent\/promotion\/template-agent-verification-report\.json/);
   assert.match(workflow, /Build downstream promotion scorecard/);
   assert.match(workflow, /downstream-promotion-scorecard\.mjs/);
+  assert.match(workflow, /--template-agent-verification-report tests\/results\/_agent\/promotion\/template-agent-verification-report\.json/);
   assert.match(workflow, /--manifest-report tests\/results\/_agent\/promotion\/downstream-develop-promotion-manifest\.json/);
   assert.match(workflow, /downstream-promotion-scorecard-v1\.schema\.json/);
   assert.match(workflow, /tests\/results\/_agent\/promotion\/downstream-develop-promotion-scorecard\.json/);

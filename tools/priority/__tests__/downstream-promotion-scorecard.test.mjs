@@ -20,6 +20,8 @@ test('parseArgs enforces required downstream promotion scorecard inputs', () => 
     'success.json',
     '--feedback-report',
     'feedback.json',
+    '--template-agent-verification-report',
+    'template-agent-verification-report.json',
     '--manifest-report',
     'manifest.json',
     '--repo',
@@ -29,6 +31,7 @@ test('parseArgs enforces required downstream promotion scorecard inputs', () => 
 
   assert.equal(parsed.successReportPath, 'success.json');
   assert.equal(parsed.feedbackReportPath, 'feedback.json');
+  assert.equal(parsed.templateAgentVerificationReportPath, 'template-agent-verification-report.json');
   assert.equal(parsed.manifestReportPath, 'manifest.json');
   assert.equal(parsed.repo, 'example/repo');
   assert.equal(parsed.failOnBlockers, false);
@@ -38,9 +41,11 @@ test('evaluateDownstreamPromotionScorecard reports blockers deterministically', 
   const pass = evaluateDownstreamPromotionScorecard({
     successReport: { exists: true, error: null },
     feedbackReport: { exists: true, error: null },
+    templateAgentVerificationReport: { exists: true, error: null },
     manifestReport: { exists: false, error: null },
     successGate: { status: 'pass', totalBlockers: 0 },
     feedbackGate: { status: 'pass', executionStatus: 'pass' },
+    templateAgentVerificationGate: { status: 'pass', verificationStatus: 'pass' },
     manifestGate: { status: 'missing' }
   });
   assert.equal(pass.status, 'pass');
@@ -49,9 +54,11 @@ test('evaluateDownstreamPromotionScorecard reports blockers deterministically', 
   const fail = evaluateDownstreamPromotionScorecard({
     successReport: { exists: false, error: null },
     feedbackReport: { exists: true, error: 'bad json' },
+    templateAgentVerificationReport: { exists: false, error: null },
     manifestReport: { exists: true, error: 'bad json' },
     successGate: { status: 'fail', totalBlockers: 2 },
     feedbackGate: { status: 'fail', executionStatus: 'fail' },
+    templateAgentVerificationGate: { status: 'fail', verificationStatus: 'blocked' },
     manifestGate: { status: 'fail' }
   });
 
@@ -60,6 +67,8 @@ test('evaluateDownstreamPromotionScorecard reports blockers deterministically', 
   assert.ok(fail.blockers.some((entry) => entry.code === 'feedback-report-missing'));
   assert.ok(fail.blockers.some((entry) => entry.code === 'downstream-blockers'));
   assert.ok(fail.blockers.some((entry) => entry.code === 'feedback-execution'));
+  assert.ok(fail.blockers.some((entry) => entry.code === 'template-agent-verification-report-missing'));
+  assert.ok(fail.blockers.some((entry) => entry.code === 'template-agent-verification-contract'));
   assert.ok(fail.blockers.some((entry) => entry.code === 'manifest-report-unreadable'));
   assert.ok(fail.blockers.some((entry) => entry.code === 'manifest-contract'));
 });
@@ -68,6 +77,7 @@ test('runDownstreamPromotionScorecard projects manifest provenance when present'
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-promotion-scorecard-'));
   const successReportPath = path.join(tmpDir, 'downstream-onboarding-success.json');
   const feedbackReportPath = path.join(tmpDir, 'downstream-onboarding-feedback.json');
+  const templateAgentVerificationReportPath = path.join(tmpDir, 'template-agent-verification-report.json');
   const manifestReportPath = path.join(tmpDir, 'downstream-develop-promotion-manifest.json');
   const outputPath = path.join(tmpDir, 'downstream-develop-promotion-scorecard.json');
 
@@ -90,6 +100,54 @@ test('runDownstreamPromotionScorecard projects manifest provenance when present'
       evaluateExitCode: 0,
       successExitCode: 0
     }
+  });
+  writeJson(templateAgentVerificationReportPath, {
+    schema: 'priority/template-agent-verification-report@v1',
+    summary: {
+      status: 'pass',
+      blockerCount: 0,
+      recommendation: 'continue-template-agent-loop'
+    },
+    iteration: {
+      label: 'post-merge develop',
+      headSha: '1234567890abcdef1234567890abcdef12345678'
+    },
+    lane: {
+      enabled: true,
+      reservedSlotCount: 1,
+      minimumImplementationSlots: 3,
+      implementationSlotsRemaining: 3,
+      targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      consumerRailBranch: 'downstream/develop'
+    },
+    verification: {
+      provider: 'hosted-github-workflow',
+      status: 'pass'
+    },
+    provenance: {
+      templateDependency: {
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        version: 'v0.1.0',
+        ref: 'v0.1.0',
+        cookiecutterVersion: '2.7.1'
+      },
+      execution: {
+        executionPlane: 'linux-tools-image',
+        containerImage: 'ghcr.io/labview-community-ci-cd/comparevi-tools:latest',
+        generatedConsumerWorkspaceRoot: 'E:/comparevi-template-consumers/example',
+        laneId: 'logical-lane-template-verification',
+        agentId: 'darwin',
+        fundingWindowId: 'invoice-turn-2026-03-HQ1VJLMV-0027'
+      }
+    },
+    goals: {},
+    metrics: {
+      targetSlotCount: 8,
+      reservedSlotCount: 1,
+      implementationSlotsRemaining: 3,
+      recommendationPresent: true
+    },
+    blockers: []
   });
   writeJson(manifestReportPath, {
     schema: 'priority/downstream-promotion-manifest@v1',
@@ -115,6 +173,7 @@ test('runDownstreamPromotionScorecard projects manifest provenance when present'
     repo: 'example/repo',
     successReportPath,
     feedbackReportPath,
+    templateAgentVerificationReportPath,
     manifestReportPath,
     outputPath
   });
@@ -122,16 +181,22 @@ test('runDownstreamPromotionScorecard projects manifest provenance when present'
   assert.equal(result.exitCode, 0);
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.gates.successReport.summaryStatus, 'warn');
+  assert.equal(result.report.gates.templateAgentVerificationReport.status, 'pass');
   assert.equal(result.report.gates.manifestReport.status, 'pass');
   assert.equal(result.report.summary.metrics.totalWarnings, 3);
   assert.equal(result.report.summary.provenance.compareviToolsRelease, 'v0.6.3-tools.14');
   assert.equal(result.report.summary.provenance.cookiecutterTemplateIdentity, 'LabviewGitHubCiTemplate@v0.1.0');
+  assert.equal(
+    result.report.summary.provenance.templateVerificationRepository,
+    'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+  );
 });
 
 test('runDownstreamPromotionScorecard fails closed when onboarding blockers remain', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-promotion-scorecard-fail-'));
   const successReportPath = path.join(tmpDir, 'downstream-onboarding-success.json');
   const feedbackReportPath = path.join(tmpDir, 'downstream-onboarding-feedback.json');
+  const templateAgentVerificationReportPath = path.join(tmpDir, 'template-agent-verification-report.json');
 
   writeJson(successReportPath, {
     schema: 'priority/downstream-onboarding-success@v1',
@@ -153,14 +218,64 @@ test('runDownstreamPromotionScorecard fails closed when onboarding blockers rema
       successExitCode: 0
     }
   });
+  writeJson(templateAgentVerificationReportPath, {
+    schema: 'priority/template-agent-verification-report@v1',
+    summary: {
+      status: 'blocked',
+      blockerCount: 1,
+      recommendation: 'repair-template-lane'
+    },
+    iteration: {
+      label: 'post-merge develop',
+      headSha: '1234567890abcdef1234567890abcdef12345678'
+    },
+    lane: {
+      enabled: true,
+      reservedSlotCount: 1,
+      minimumImplementationSlots: 3,
+      implementationSlotsRemaining: 3,
+      targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      consumerRailBranch: 'downstream/develop'
+    },
+    verification: {
+      provider: 'hosted-github-workflow',
+      status: 'blocked'
+    },
+    provenance: {
+      templateDependency: {
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        version: 'v0.1.0',
+        ref: 'v0.1.0',
+        cookiecutterVersion: '2.7.1'
+      },
+      execution: {
+        executionPlane: 'linux-tools-image',
+        containerImage: 'ghcr.io/labview-community-ci-cd/comparevi-tools:latest',
+        generatedConsumerWorkspaceRoot: 'E:/comparevi-template-consumers/example',
+        laneId: 'logical-lane-template-verification',
+        agentId: 'darwin',
+        fundingWindowId: 'invoice-turn-2026-03-HQ1VJLMV-0027'
+      }
+    },
+    goals: {},
+    metrics: {
+      targetSlotCount: 8,
+      reservedSlotCount: 1,
+      implementationSlotsRemaining: 3,
+      recommendationPresent: true
+    },
+    blockers: [{ code: 'template-blocked', message: 'Hosted verification did not pass.' }]
+  });
 
   const result = runDownstreamPromotionScorecard({
     successReportPath,
     feedbackReportPath,
+    templateAgentVerificationReportPath,
     failOnBlockers: true
   });
 
   assert.equal(result.exitCode, 1);
   assert.equal(result.report.summary.status, 'fail');
   assert.ok(result.report.summary.blockers.some((entry) => entry.code === 'downstream-blockers'));
+  assert.ok(result.report.summary.blockers.some((entry) => entry.code === 'template-agent-verification-contract'));
 });

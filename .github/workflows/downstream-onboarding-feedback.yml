@@ -188,6 +188,7 @@ jobs:
           node tools/priority/downstream-promotion-scorecard.mjs \
             --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json \
             --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json \
+            --template-agent-verification-report tests/results/_agent/promotion/template-agent-verification-report.json \
             --manifest-report tests/results/_agent/promotion/downstream-develop-promotion-manifest.json \
             --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
 

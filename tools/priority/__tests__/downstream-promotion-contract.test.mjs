@@ -44,6 +44,7 @@ test('package scripts and runbook expose downstream promotion manifest and score
   assert.match(runbook, /priority:promote:downstream:scorecard/);
   assert.match(runbook, /--manifest-report tests\/results\/_agent\/promotion\/downstream-develop-promotion-manifest\.json/);
   assert.match(runbook, /priority:template:agent:verify/);
+  assert.match(runbook, /--template-agent-verification-report tests\/results\/_agent\/promotion\/template-agent-verification-report\.json/);
   assert.match(runbook, /--iteration-head-sha/);
   assert.match(runbook, /cookiecutter/i);
   assert.match(runbook, /rollback/i);
@@ -77,10 +78,14 @@ test('downstream promotion workflow turns the proving rail into checked-in autom
   assert.match(workflow, /template-dependency\.json/);
   assert.match(workflow, /Run downstream onboarding feedback harness/);
   assert.match(workflow, /downstream-onboarding-feedback\.mjs/);
+  assert.match(workflow, /Refresh template-agent verification report/);
+  assert.match(workflow, /priority:template:agent:verify/);
+  assert.match(workflow, /template-agent-verification-report-v1\.schema\.json/);
   assert.match(workflow, /Generate downstream promotion manifest/);
   assert.match(workflow, /downstream-promotion-manifest\.mjs/);
   assert.match(workflow, /Build downstream promotion scorecard/);
   assert.match(workflow, /downstream-promotion-scorecard\.mjs/);
+  assert.match(workflow, /--template-agent-verification-report tests\/results\/_agent\/promotion\/template-agent-verification-report\.json/);
   assert.ok(
     workflow.indexOf('Generate downstream promotion manifest') < workflow.indexOf('Build downstream promotion scorecard')
   );

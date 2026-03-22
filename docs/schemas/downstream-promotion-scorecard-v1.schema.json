@@ -19,20 +19,22 @@
     "inputs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["successReport", "feedbackReport", "manifestReport"],
+      "required": ["successReport", "feedbackReport", "templateAgentVerificationReport", "manifestReport"],
       "properties": {
         "successReport": { "$ref": "#/$defs/inputRef" },
         "feedbackReport": { "$ref": "#/$defs/inputRef" },
+        "templateAgentVerificationReport": { "$ref": "#/$defs/inputRef" },
         "manifestReport": { "$ref": "#/$defs/inputRefNullablePath" }
       }
     },
     "gates": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["successReport", "feedbackReport", "manifestReport"],
+      "required": ["successReport", "feedbackReport", "templateAgentVerificationReport", "manifestReport"],
       "properties": {
         "successReport": { "$ref": "#/$defs/successGate" },
         "feedbackReport": { "$ref": "#/$defs/feedbackGate" },
+        "templateAgentVerificationReport": { "$ref": "#/$defs/templateAgentVerificationGate" },
         "manifestReport": { "$ref": "#/$defs/manifestGate" }
       }
     },
@@ -66,7 +68,11 @@
             "compareviToolsRelease",
             "compareviHistoryRelease",
             "scenarioPackIdentity",
-            "cookiecutterTemplateIdentity"
+            "cookiecutterTemplateIdentity",
+            "templateVerificationRepository",
+            "templateVerificationVersion",
+            "templateVerificationRef",
+            "templateVerificationConsumerRailBranch"
           ],
           "properties": {
             "sourceRef": { "type": ["string", "null"] },
@@ -74,7 +80,11 @@
             "compareviToolsRelease": { "type": ["string", "null"] },
             "compareviHistoryRelease": { "type": ["string", "null"] },
             "scenarioPackIdentity": { "type": ["string", "null"] },
-            "cookiecutterTemplateIdentity": { "type": ["string", "null"] }
+            "cookiecutterTemplateIdentity": { "type": ["string", "null"] },
+            "templateVerificationRepository": { "type": ["string", "null"] },
+            "templateVerificationVersion": { "type": ["string", "null"] },
+            "templateVerificationRef": { "type": ["string", "null"] },
+            "templateVerificationConsumerRailBranch": { "type": ["string", "null"] }
           }
         }
       }
@@ -134,6 +144,34 @@
         "evaluateExitCode": { "type": ["integer", "null"], "minimum": 0 },
         "successExitCode": { "type": ["integer", "null"], "minimum": 0 },
         "downstreamRepository": { "type": ["string", "null"] }
+      }
+    },
+    "templateAgentVerificationGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "schema",
+        "summaryStatus",
+        "verificationStatus",
+        "targetRepository",
+        "consumerRailBranch",
+        "templateRepository",
+        "templateVersion",
+        "templateRef",
+        "cookiecutterVersion"
+      ],
+      "properties": {
+        "status": { "enum": ["pass", "fail", "missing"] },
+        "schema": { "type": ["string", "null"] },
+        "summaryStatus": { "type": ["string", "null"] },
+        "verificationStatus": { "type": ["string", "null"] },
+        "targetRepository": { "type": ["string", "null"] },
+        "consumerRailBranch": { "type": ["string", "null"] },
+        "templateRepository": { "type": ["string", "null"] },
+        "templateVersion": { "type": ["string", "null"] },
+        "templateRef": { "type": ["string", "null"] },
+        "cookiecutterVersion": { "type": ["string", "null"] }
       }
     },
     "manifestGate": {
