@@ -215,6 +215,7 @@ function normalizeIssue(issue) {
     number: Number.isInteger(issue?.number) ? issue.number : null,
     title: asOptional(issue?.title),
     url: asOptional(issue?.url),
+    state: asOptional(issue?.state),
     body: asOptional(issue?.body) || '',
     labels: Array.isArray(issue?.labels)
       ? issue.labels
@@ -296,6 +297,190 @@ function createWakeEvidence(wakeAdjudication, wakeWorkSynthesis, wakeInvestmentA
     accountingStatus: asOptional(wakeInvestmentAccounting?.summary?.status),
     paybackStatus: asOptional(wakeInvestmentAccounting?.summary?.paybackStatus)
   };
+}
+
+function readDecisionLedger(filePath) {
+  const resolvedPath = path.resolve(filePath);
+  if (!fs.existsSync(resolvedPath)) {
+    return {
+      schema: 'ops-decision-ledger@v1',
+      generatedAt: null,
+      entryCount: 0,
+      entries: []
+    };
+  }
+
+  const payload = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+  if (payload?.schema !== 'ops-decision-ledger@v1' || !Array.isArray(payload?.entries)) {
+    throw new Error(`Expected decision ledger report at ${filePath}.`);
+  }
+  return payload;
+}
+
+function collectReplayMatches(ledger, { fingerprint, dedupeMarker } = {}) {
+  const entries = Array.isArray(ledger?.entries) ? ledger.entries : [];
+  const normalizedFingerprint = asOptional(fingerprint);
+  const normalizedDedupeMarker = asOptional(dedupeMarker);
+  const matchesByFingerprint = normalizedFingerprint
+    ? entries.filter((entry) => asOptional(entry?.fingerprint) === normalizedFingerprint)
+    : [];
+  const matchesByDedupeMarker = normalizedDedupeMarker
+    ? entries.filter((entry) => asOptional(entry?.decision?.event?.dedupeMarker) === normalizedDedupeMarker)
+    : [];
+  const combinedMatches = [...new Map(
+    [...matchesByFingerprint, ...matchesByDedupeMarker]
+      .map((entry) => [entry.sequence, entry])
+  ).values()].sort((left, right) => left.sequence - right.sequence);
+  const latest = combinedMatches.at(-1) || null;
+  const matchingIssueNumbers = new Set(
+    matchesByDedupeMarker
+      .map((entry) => {
+        const status = asOptional(entry?.decision?.summary?.status);
+        if (!['created-issue', 'existing-issue'].includes(status)) {
+          return null;
+        }
+        return Number.isInteger(entry?.decision?.summary?.issueNumber) ? entry.decision.summary.issueNumber : null;
+      })
+      .filter((value) => value != null)
+  );
+
+  return {
+    matchedEntries: combinedMatches,
+    matchedEntryCount: combinedMatches.length,
+    matchedBy:
+      matchesByFingerprint.length > 0 && matchesByDedupeMarker.length > 0
+        ? 'fingerprint+dedupe-marker'
+        : matchesByFingerprint.length > 0
+          ? 'fingerprint'
+          : matchesByDedupeMarker.length > 0
+            ? 'dedupe-marker'
+            : 'none',
+    latestMatchingSequence: Number.isInteger(latest?.sequence) ? latest.sequence : null,
+    latestMatchingStatus: asOptional(latest?.decision?.summary?.status),
+    latestMatchingIssueNumber: Number.isInteger(latest?.decision?.summary?.issueNumber)
+      ? latest.decision.summary.issueNumber
+      : null,
+    latestMatchingIssueUrl: asOptional(latest?.decision?.summary?.issueUrl),
+    latestMatchingDecisionDigest: asOptional(latest?.decisionDigest),
+    ambiguous: matchingIssueNumbers.size > 1
+  };
+}
+
+function buildReplayContext({
+  repoRoot,
+  ledgerPath,
+  fingerprint,
+  dedupeMarker
+}) {
+  const report = {
+    path: path.relative(repoRoot, ledgerPath).replace(/\\/g, '/'),
+    available: true,
+    matchedEntryCount: 0,
+    matchedBy: 'none',
+    latestMatchingSequence: null,
+    latestMatchingStatus: null,
+    latestMatchingIssueNumber: null,
+    latestMatchingIssueUrl: null,
+    latestMatchingDecisionDigest: null,
+    suppressionApplied: false,
+    reusedExistingIssue: false,
+    ambiguous: false,
+    error: null
+  };
+
+  try {
+    const ledger = readDecisionLedger(ledgerPath);
+    const matches = collectReplayMatches(ledger, { fingerprint, dedupeMarker });
+    return {
+      ...report,
+      matchedEntryCount: matches.matchedEntryCount,
+      matchedBy: matches.matchedBy,
+      latestMatchingSequence: matches.latestMatchingSequence,
+      latestMatchingStatus: matches.latestMatchingStatus,
+      latestMatchingIssueNumber: matches.latestMatchingIssueNumber,
+      latestMatchingIssueUrl: matches.latestMatchingIssueUrl,
+      latestMatchingDecisionDigest: matches.latestMatchingDecisionDigest,
+      ambiguous: matches.ambiguous
+    };
+  } catch (error) {
+    return {
+      ...report,
+      available: false,
+      error: error?.message || String(error)
+    };
+  }
+}
+
+function shouldSuppressRepeatedFallback(replay, summary) {
+  if (!replay?.available || replay?.ambiguous || replay?.matchedEntryCount <= 0) {
+    return false;
+  }
+  if (!['suppressed-wake', 'monitoring-only', 'external-route', 'policy-blocked'].includes(summary?.status)) {
+    return false;
+  }
+  return replay.latestMatchingStatus === summary.status;
+}
+
+function buildReplaySuppressedReason(reason, replay) {
+  const baseReason = asOptional(reason) || 'Monitoring wake replay matched prior program memory.';
+  if (!Number.isInteger(replay?.latestMatchingSequence)) {
+    return `${baseReason} Replay memory matched prior program memory and suppressed blind reinjection.`;
+  }
+  return `${baseReason} Replay memory matched sequence ${replay.latestMatchingSequence} and suppressed blind reinjection.`;
+}
+
+function buildReplayPolicyBlockedReason(replay) {
+  if (!replay?.available && replay?.error) {
+    return `Decision memory is unreadable at ${replay.path}: ${replay.error}`;
+  }
+  if (replay?.ambiguous) {
+    return `Decision memory is ambiguous at ${replay.path}: multiple prior issue routes matched the same wake marker.`;
+  }
+  return 'Decision memory could not be used to safely route the monitoring wake.';
+}
+
+function tryReuseIssueFromReplay({
+  repository,
+  replay,
+  resolvedDedupeMarker,
+  desiredLabels,
+  runGhJsonFn,
+  runGhFn
+}) {
+  if (!replay?.available || replay?.ambiguous) {
+    return { issue: null, helperCallsExecuted: [] };
+  }
+  if (!['created-issue', 'existing-issue'].includes(replay.latestMatchingStatus)) {
+    return { issue: null, helperCallsExecuted: [] };
+  }
+  if (!Number.isInteger(replay.latestMatchingIssueNumber)) {
+    return { issue: null, helperCallsExecuted: [] };
+  }
+
+  try {
+    const issue = normalizeIssue(runGhJsonFn([
+      'issue',
+      'view',
+      String(replay.latestMatchingIssueNumber),
+      '--repo',
+      repository,
+      '--json',
+      'number,title,url,body,labels,state'
+    ]));
+    if (issue.state !== 'OPEN') {
+      return { issue: null, helperCallsExecuted: [] };
+    }
+    if (!issue.body.includes(`<!-- ${resolvedDedupeMarker} -->`)) {
+      return { issue: null, helperCallsExecuted: [] };
+    }
+    const helperCallsExecuted = ensureIssueLabels(repository, issue.number, desiredLabels, issue.labels, runGhFn);
+    return {
+      issue,
+      helperCallsExecuted
+    };
+  } catch {
+    return { issue: null, helperCallsExecuted: [] };
+  }
 }
 
 function resolveDedupeMarker(rule, wakeEvidence) {
@@ -544,31 +729,88 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
     };
   }
 
+  let eventFingerprint = computeMonitoringDecisionFingerprint({
+    repository,
+    wakeEvidence,
+    selectedRule,
+    resolvedDedupeMarker,
+    summary
+  });
+  const replay = buildReplayContext({
+    repoRoot,
+    ledgerPath,
+    fingerprint: eventFingerprint,
+    dedupeMarker: resolvedDedupeMarker
+  });
+
+  if (shouldSuppressRepeatedFallback(replay, summary)) {
+    summary = {
+      ...summary,
+      reason: buildReplaySuppressedReason(summary.reason, replay)
+    };
+    eventFingerprint = computeMonitoringDecisionFingerprint({
+      repository,
+      wakeEvidence,
+      selectedRule,
+      resolvedDedupeMarker,
+      summary
+    });
+    replay.suppressionApplied = true;
+  }
+
   if (selectedRule) {
+    if (!replay.available || replay.ambiguous) {
+      summary = {
+        status: 'policy-blocked',
+        injected: false,
+        reason: buildReplayPolicyBlockedReason(replay),
+        issueNumber: null,
+        issueUrl: null,
+        triggerId: selectedRule.id
+      };
+    } else {
     const runGhJsonFn = deps.runGhJsonFn ?? ((args) => runGhJson(args, deps.spawnSyncFn));
     const runGhFn = deps.runGhFn ?? ((args) => runGh(args, deps.spawnSyncFn));
-    const openIssues = (runGhJsonFn([
-      'issue',
-      'list',
-      '--repo',
+    const replayIssueResult = tryReuseIssueFromReplay({
       repository,
-      '--state',
-      'open',
-      '--limit',
-      '200',
-      '--json',
-      'number,title,url,body,labels'
-    ]) || [])
-      .map(normalizeIssue);
-    const existingIssue = findExistingInjectedIssue(openIssues, resolvedDedupeMarker);
+      replay,
+      resolvedDedupeMarker,
+      desiredLabels: selectedRule.issue.labels,
+      runGhJsonFn,
+      runGhFn
+    });
+    helperCallsExecuted.push(...replayIssueResult.helperCallsExecuted);
+    replay.reusedExistingIssue = replayIssueResult.issue != null;
+    let existingIssue = replayIssueResult.issue;
+    const existingIssueLabelsReconciled = replayIssueResult.issue != null;
+    if (!existingIssue) {
+      const openIssues = (runGhJsonFn([
+        'issue',
+        'list',
+        '--repo',
+        repository,
+        '--state',
+        'open',
+        '--limit',
+        '200',
+        '--json',
+        'number,title,url,body,labels,state'
+      ]) || [])
+        .map(normalizeIssue);
+      existingIssue = findExistingInjectedIssue(openIssues, resolvedDedupeMarker);
+    }
     if (existingIssue) {
-      helperCallsExecuted.push(
-        ...ensureIssueLabels(repository, existingIssue.number, selectedRule.issue.labels, existingIssue.labels, runGhFn)
-      );
+      if (!existingIssueLabelsReconciled) {
+        helperCallsExecuted.push(
+          ...ensureIssueLabels(repository, existingIssue.number, selectedRule.issue.labels, existingIssue.labels, runGhFn)
+        );
+      }
       summary = {
         status: 'existing-issue',
         injected: true,
-        reason: `Monitoring wake condition ${selectedRule.id} already maps to open issue #${existingIssue.number}.`,
+        reason: replay.reusedExistingIssue
+          ? `Monitoring wake condition ${selectedRule.id} already maps to open issue #${existingIssue.number}; replay memory reused the prior route.`
+          : `Monitoring wake condition ${selectedRule.id} already maps to open issue #${existingIssue.number}.`,
         issueNumber: existingIssue.number,
         issueUrl: existingIssue.url,
         triggerId: selectedRule.id
@@ -595,9 +837,9 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
         triggerId: selectedRule.id
       };
     }
+    }
   }
-
-  const eventFingerprint = computeMonitoringDecisionFingerprint({
+  eventFingerprint = computeMonitoringDecisionFingerprint({
     repository,
     wakeEvidence,
     selectedRule,
@@ -688,6 +930,7 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
           }
         }
       : null,
+    replay,
     decisionLedger: {
       path: path.relative(repoRoot, ledgerPath).replace(/\\/g, '/'),
       appended: false,

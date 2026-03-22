@@ -383,6 +383,78 @@ test('runMonitoringWorkInjection suppresses stale wakes instead of injecting new
   assert.ok(Number.isInteger(report.decisionLedger.sequence));
 });
 
+test('runMonitoringWorkInjection consults replay memory before repeating a suppressed wake', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-suppressed-replay-'));
+  const {
+    policyPath,
+    queuePath,
+    monitoringPath,
+    hostSignalPath,
+    wakeAdjudicationPath,
+    wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath
+  } = createInputs(tmpDir);
+  writeJson(wakeWorkSynthesisPath, {
+    schema: 'priority/wake-work-synthesis-report@v1',
+    wake: {
+      classification: 'stale-artifact',
+      nextAction: 'none',
+      suppressIssueInjection: true,
+      suppressDownstreamIssueInjection: true,
+      suppressTemplateIssueInjection: true
+    },
+    summary: {
+      decision: 'suppress',
+      status: 'suppressed',
+      recommendedOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      reason: 'Reported wake is stale after replay.'
+    }
+  });
+  writeJson(hostSignalPath, {
+    schema: 'priority/delivery-agent-host-signal@v1',
+    status: 'ready',
+    provider: 'native-wsl',
+    daemonFingerprint: 'abc123'
+  });
+
+  await runMonitoringWorkInjection({
+    repoRoot: tmpDir,
+    policyPath,
+    queueEmptyReportPath: queuePath,
+    monitoringModePath: monitoringPath,
+    hostSignalPath,
+    wakeAdjudicationPath,
+    wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  });
+
+  const { report } = await runMonitoringWorkInjection({
+    repoRoot: tmpDir,
+    policyPath,
+    queueEmptyReportPath: queuePath,
+    monitoringModePath: monitoringPath,
+    hostSignalPath,
+    wakeAdjudicationPath,
+    wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  }, {
+    runGhJsonFn: () => {
+      throw new Error('suppressed wakes must stay local to replay memory');
+    },
+    runGhFn: () => {
+      throw new Error('suppressed wakes must not inject work');
+    }
+  });
+
+  assert.equal(report.summary.status, 'suppressed-wake');
+  assert.equal(report.replay.matchedEntryCount, 1);
+  assert.equal(report.replay.matchedBy, 'fingerprint');
+  assert.equal(report.replay.suppressionApplied, true);
+  assert.match(report.summary.reason, /Replay memory matched sequence \d+/);
+});
+
 test('runMonitoringWorkInjection writes replayable ledger context for external-route wakes', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-ledger-'));
   const {
@@ -495,4 +567,145 @@ test('runMonitoringWorkInjection keeps external template work out of compare iss
   assert.equal(report.summary.status, 'external-route');
   assert.equal(report.summary.injected, false);
   assert.equal(report.summary.issueNumber, null);
+});
+
+test('runMonitoringWorkInjection reuses a prior created issue from replay memory before listing open issues', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-replay-existing-'));
+  const {
+    policyPath,
+    queuePath,
+    monitoringPath,
+    hostSignalPath,
+    wakeAdjudicationPath,
+    wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath
+  } = createInputs(tmpDir, { includeWakeEvidence: false });
+  const firstRunGhCalls = [];
+
+  await runMonitoringWorkInjection(
+    {
+      repoRoot: tmpDir,
+      policyPath,
+      queueEmptyReportPath: queuePath,
+      monitoringModePath: monitoringPath,
+      hostSignalPath,
+      wakeAdjudicationPath,
+      wakeWorkSynthesisPath,
+      wakeInvestmentAccountingPath,
+      repository: 'owner/repo'
+    },
+    {
+      runGhJsonFn: (args) => {
+        firstRunGhCalls.push(args.join(' '));
+        if (args[0] === 'issue' && args[1] === 'list') {
+          return [];
+        }
+        throw new Error(`unexpected gh json args: ${args.join(' ')}`);
+      },
+      runGhFn: (args) => {
+        firstRunGhCalls.push(args.join(' '));
+        if (args[0] === 'issue' && args[1] === 'create') {
+          return {
+            stdout: 'https://github.com/owner/repo/issues/123\n'
+          };
+        }
+        throw new Error(`unexpected gh args: ${args.join(' ')}`);
+      }
+    }
+  );
+
+  const secondRunGhCalls = [];
+  const { report } = await runMonitoringWorkInjection(
+    {
+      repoRoot: tmpDir,
+      policyPath,
+      queueEmptyReportPath: queuePath,
+      monitoringModePath: monitoringPath,
+      hostSignalPath,
+      wakeAdjudicationPath,
+      wakeWorkSynthesisPath,
+      wakeInvestmentAccountingPath,
+      repository: 'owner/repo'
+    },
+    {
+      runGhJsonFn: (args) => {
+        secondRunGhCalls.push(args.join(' '));
+        if (args[0] === 'issue' && args[1] === 'view') {
+          return {
+            number: 123,
+            title: '[monitoring]: reconcile runner-conflict blocking autonomous loop',
+            url: 'https://github.com/owner/repo/issues/123',
+            state: 'OPEN',
+            body: '<!-- monitoring-work-injector:runner-conflict -->',
+            labels: [{ name: 'governance' }]
+          };
+        }
+        if (args[0] === 'issue' && args[1] === 'list') {
+          throw new Error('replay-backed issue reuse should not fall back to issue list');
+        }
+        throw new Error(`unexpected gh json args: ${args.join(' ')}`);
+      },
+      runGhFn: (args) => {
+        secondRunGhCalls.push(args.join(' '));
+        if (args[0] === 'issue' && args[1] === 'edit') {
+          return { stdout: '' };
+        }
+        throw new Error(`unexpected gh args: ${args.join(' ')}`);
+      }
+    }
+  );
+
+  assert.ok(firstRunGhCalls.some((entry) => entry.startsWith('issue create')));
+  assert.equal(report.summary.status, 'existing-issue');
+  assert.equal(report.summary.issueNumber, 123);
+  assert.equal(report.replay.matchedBy, 'dedupe-marker');
+  assert.equal(report.replay.latestMatchingStatus, 'created-issue');
+  assert.equal(report.replay.reusedExistingIssue, true);
+  assert.ok(secondRunGhCalls.some((entry) => entry.startsWith('issue view 123')));
+  assert.ok(secondRunGhCalls.some((entry) => entry.includes('--add-label standing-priority')));
+});
+
+test('runMonitoringWorkInjection fails closed when decision memory is unreadable for an actionable wake', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-ledger-invalid-'));
+  const {
+    policyPath,
+    queuePath,
+    monitoringPath,
+    hostSignalPath,
+    wakeAdjudicationPath,
+    wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath
+  } = createInputs(tmpDir, { includeWakeEvidence: false });
+  const ledgerPath = path.join(tmpDir, 'tests', 'results', '_agent', 'ops', 'ops-decision-ledger.json');
+  fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
+  fs.writeFileSync(ledgerPath, '{not-valid-json}', 'utf8');
+
+  const { report } = await runMonitoringWorkInjection(
+    {
+      repoRoot: tmpDir,
+      policyPath,
+      queueEmptyReportPath: queuePath,
+      monitoringModePath: monitoringPath,
+      hostSignalPath,
+      wakeAdjudicationPath,
+      wakeWorkSynthesisPath,
+      wakeInvestmentAccountingPath,
+      ledgerPath,
+      repository: 'owner/repo'
+    },
+    {
+      runGhJsonFn: () => {
+        throw new Error('unreadable decision memory must fail closed before GitHub queries');
+      },
+      runGhFn: () => {
+        throw new Error('unreadable decision memory must fail closed before issue mutation');
+      }
+    }
+  );
+
+  assert.equal(report.summary.status, 'policy-blocked');
+  assert.equal(report.summary.injected, false);
+  assert.equal(report.replay.available, false);
+  assert.match(report.summary.reason, /Decision memory is unreadable/);
+  assert.ok(report.replay.error);
 });
