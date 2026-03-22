@@ -10,6 +10,7 @@ import {
   selectAutoStandingPriorityCandidate,
   selectAutoStandingPriorityCandidateForRepo,
   autoSelectStandingPriorityIssue,
+  resolveAutoSelectExcludedIssueNumbers,
   classifyNoStandingPriorityCondition,
   buildNoStandingPriorityReport,
   buildAutoPromotedStandingPriorityReport,
@@ -369,6 +370,16 @@ test('selectAutoStandingPriorityCandidate skips excluded standing issues and dep
 
   assert.equal(selected?.number, 315);
   assert.equal(selected?.cadence, false);
+});
+
+test('resolveAutoSelectExcludedIssueNumbers unions prior standing numbers from cache and router state', () => {
+  const result = resolveAutoSelectExcludedIssueNumbers(
+    { number: 1497 },
+    { issue: 1482 },
+    [1497, 1725]
+  );
+
+  assert.deepEqual(result, [1482, 1497, 1725]);
 });
 
 test('selectAutoStandingPriorityCandidate keeps comparevi demo rollout issues in scope', () => {
@@ -1197,6 +1208,32 @@ test('autoSelectStandingPriorityIssue selects and labels next issue via injected
   assert.equal(result.candidateSource, 'gh');
   assert.equal(result.labelAssignmentSource, 'gh');
   assert.deepEqual(calls, [911]);
+});
+
+test('autoSelectStandingPriorityIssue respects excluded previous standing issues', async () => {
+  const calls = [];
+  const result = await autoSelectStandingPriorityIssue('/tmp/repo', 'owner/repo', {
+    targetSlug: 'owner/repo',
+    excludeIssueNumbers: [1497],
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        { number: 1497, title: '[P0] Previous standing umbrella', labels: [{ name: 'governance' }], createdAt: '2026-03-06T09:00:00Z' },
+        { number: 1482, title: '[P1] Next actionable lane', labels: [{ name: 'ci' }], createdAt: '2026-03-06T10:00:00Z' }
+      ])
+    }),
+    runGhAddLabel: ({ issueNumber }) => {
+      calls.push(issueNumber);
+      return { status: 0, stdout: '' };
+    },
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    runRestAddLabel: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'selected');
+  assert.equal(result.issue?.number, 1482);
+  assert.deepEqual(calls, [1482]);
 });
 
 test('autoSelectStandingPriorityIssue reports empty when only out-of-scope demo issues remain', async () => {
