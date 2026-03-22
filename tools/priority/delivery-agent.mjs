@@ -4502,13 +4502,36 @@ async function finalizeMergedPullRequest({ taskPacket, repoRoot, deps = {} }) {
   let standingSelectionWarning = '';
   let reconciliationResult = null;
   const standingPriorityLabels = resolveStandingPriorityLabels(repoRoot, repository);
-  const mergedStandingLabels = Array.from(
+  const mergedIssueLabelEntries = normalizeLabelEntries(selectedIssue?.labels);
+  let mergedStandingLabels = Array.from(
     new Set(
-      normalizeLabelEntries(selectedIssue?.labels).filter((label) =>
+      mergedIssueLabelEntries.filter((label) =>
         standingPriorityLabels.includes(label)
       )
     )
   );
+  if (standingIssueNumber !== selectedIssueNumber && mergedStandingLabels.length === 0) {
+    try {
+      const fetchedIssue = await (typeof deps.fetchIssueFn === 'function'
+        ? deps.fetchIssueFn(selectedIssueNumber, repoRoot, repository, {
+            ghIssueFetcher: deps.ghIssueFetcher,
+            restIssueFetcher: deps.restIssueFetcher
+          })
+        : fetchIssue(selectedIssueNumber, repoRoot, repository, {
+            ghIssueFetcher: deps.ghIssueFetcher,
+            restIssueFetcher: deps.restIssueFetcher
+          }));
+      mergedStandingLabels = Array.from(
+        new Set(
+          normalizeLabelEntries(fetchedIssue?.labels).filter((label) =>
+            standingPriorityLabels.includes(label)
+          )
+        )
+      );
+    } catch {
+      // Keep finalization non-blocking when live issue hydration is unavailable.
+    }
+  }
   if (standingIssueNumber && standingIssueNumber === selectedIssueNumber) {
     try {
       reconciliationResult = await reconcileStandingAfterMergeForRepo({
