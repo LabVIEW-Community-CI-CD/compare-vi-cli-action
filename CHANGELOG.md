@@ -38,6 +38,30 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   expectations between backend releases in this repo and facade releases in
   `comparevi-history`.
 
+## [v0.6.4-rc.1] - 2026-03-22
+
+### Changed
+
+- Hosted-first release readiness now evaluates the live `release/*` required
+  contexts that actually gate the RC pull request: `lint`,
+  `pester / normalize`, `smoke-gate`,
+  `Policy Guard (Upstream) / policy-guard`, and `commit-integrity`.
+- Release finalize now relies on hosted `validate.yml` and
+  `fixture-drift.yml` evidence instead of retired self-hosted compare lanes
+  when proving release-branch readiness.
+- Release and feature dry-run helpers, detached bootstrap handling, and linked
+  worktree safety were hardened so RC cuts can proceed deterministically from
+  clean helper lanes.
+
+### Added
+
+- Release candidate helper docs and archived notes for `v0.6.4-rc.1`, keeping
+  the PR notes, tag checklist, and archived release notes aligned with the
+  shipped RC surfaces.
+- Hosted-first template conveyor proof remains pinned to
+  `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate@v0.1.1`, so downstream
+  proving stays coupled to an immutable template dependency during the RC cut.
+
 ## [v0.6.0] - 2025-11-02
 
 ### Added

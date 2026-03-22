@@ -47,10 +47,17 @@ test('fixture-drift hosted Linux lane passes explicit linux container LabVIEW pa
   assert.match(workflow, /git fetch --no-tags upstream-base "\+refs\/heads\/\$\{\{ github\.event\.pull_request\.base\.ref \}\}:refs\/remotes\/upstream-base\/\$\{\{ github\.event\.pull_request\.base\.ref \}\}"/);
   assert.match(workflow, /-HistoryTargetPath 'fixtures\/vi-attr\/Head\.vi'/);
   assert.match(workflow, /\$historyBranchRef = '\$\{\{ github\.sha \}\}'/);
+  assert.match(workflow, /\$historyMaxCommitCount = 64/);
   assert.match(workflow, /\$\{\{ github\.event\.pull_request\.head\.sha \}\}/);
   assert.match(workflow, /\$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
+  assert.match(
+    workflow,
+    /if \('\$\{\{ github\.event\.pull_request\.base\.ref \}\}' -eq 'main' -and '\$\{\{ github\.head_ref \}\}'\.StartsWith\('release\/'\)\)/
+  );
+  assert.match(workflow, /\$historyBaselineRef = \('\{0\}~\{1\}' -f \$historyBranchRef, \$historyMaxCommitCount\)/);
   assert.match(workflow, /-HistoryBranchRef \$historyBranchRef/);
   assert.match(workflow, /-HistoryBaselineRef \$historyBaselineRef/);
+  assert.match(workflow, /-HistoryMaxCommitCount \$historyMaxCommitCount/);
   assert.match(workflow, /path: results\/fixture-drift\/ni-linux-container\/\*\*/);
 
   assert.doesNotMatch(workflow, /hosted-docker-windows/);

@@ -142,11 +142,16 @@ jobs:
       run: |
         $ErrorActionPreference = 'Stop'
         $outDir = 'results/fixture-drift/ni-linux-container'
+        $historyMaxCommitCount = 64
         $historyBranchRef = '${{ github.sha }}'
         $historyBaselineRef = ''
         if ('${{ github.event_name }}' -eq 'pull_request') {
           $historyBranchRef = '${{ github.event.pull_request.head.sha }}'
           $historyBaselineRef = '${{ github.event.pull_request.base.sha }}'
+          if ('${{ github.event.pull_request.base.ref }}' -eq 'main' -and '${{ github.head_ref }}'.StartsWith('release/')) {
+            $historyBaselineRef = ('{0}~{1}' -f $historyBranchRef, $historyMaxCommitCount)
+            Write-Host ("[fixture-drift] using rolling VI history baseline for release PR: {0}" -f $historyBaselineRef)
+          }
         }
         New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
@@ -159,6 +164,7 @@ jobs:
           -HistoryTargetPath 'fixtures/vi-attr/Head.vi' `
           -HistoryBranchRef $historyBranchRef `
           -HistoryBaselineRef $historyBaselineRef `
+          -HistoryMaxCommitCount $historyMaxCommitCount `
           -TimeoutSeconds 240 `
           -HeartbeatSeconds 15 `
           -RuntimeEngineReadyTimeoutSeconds 120 `
