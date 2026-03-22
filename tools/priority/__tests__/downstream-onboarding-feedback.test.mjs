@@ -47,6 +47,7 @@ test('buildFeedbackReport captures deterministic output existence and exit codes
   const report = buildFeedbackReport({
     options: {
       downstreamRepo: 'owner/downstream',
+      targetBranch: 'downstream/develop',
       startedAt: '2026-03-09T19:16:18Z',
       parentIssue: 715,
       createHardeningIssues: true,
@@ -63,6 +64,7 @@ test('buildFeedbackReport captures deterministic output existence and exit codes
 
   assert.equal(report.schema, 'priority/downstream-onboarding-feedback@v1');
   assert.equal(report.inputs.downstreamRepository, 'owner/downstream');
+  assert.equal(report.inputs.targetBranchOverride, 'downstream/develop');
   assert.equal(report.outputs.onboardingReportExists, true);
   assert.equal(report.outputs.successReportExists, true);
   assert.equal(report.execution.evaluateExitCode, 1);

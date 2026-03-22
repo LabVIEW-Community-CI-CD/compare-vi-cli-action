@@ -10,6 +10,8 @@
     "actionRepository",
     "downstreamRepository",
     "targetBranch",
+    "branchResolution",
+    "repository",
     "checklist",
     "metrics",
     "summary",
@@ -40,6 +42,44 @@
       "type": "string",
       "minLength": 1
     },
+    "branchResolution": {
+      "type": "object",
+      "required": [
+        "requestedBranchOverride",
+        "repositoryDefaultBranch",
+        "evaluatedBranch",
+        "source"
+      ],
+      "properties": {
+        "requestedBranchOverride": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "repositoryDefaultBranch": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "evaluatedBranch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "explicit-override",
+            "live-repository-default-branch",
+            "fallback-default-branch"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "pilot": {
       "type": "object",
       "properties": {
@@ -59,6 +99,54 @@
         }
       },
       "additionalProperties": false
+    },
+    "repository": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "defaultBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evaluatedBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "branchResolutionSource": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "explicit-override",
+            "live-repository-default-branch",
+            "fallback-default-branch",
+            null
+          ]
+        },
+        "htmlUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "private": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
     },
     "checklist": {
       "type": "array",

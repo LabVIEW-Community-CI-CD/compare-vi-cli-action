@@ -154,6 +154,7 @@ export function buildFeedbackReport({
     generatedAt,
     inputs: {
       downstreamRepository: options.downstreamRepo,
+      targetBranchOverride: options.targetBranch ?? null,
       startedAt: options.startedAt ?? null,
       parentIssue: options.parentIssue ?? null,
       createHardeningIssues: options.createHardeningIssues,

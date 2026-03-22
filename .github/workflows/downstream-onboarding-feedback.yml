@@ -116,20 +116,22 @@ jobs:
           NODE
           )
           policy_repo="${policy_values[0]}"
-          policy_branch="${policy_values[1]}"
+          policy_consumer_rail_branch="${policy_values[1]}"
           repo="${DOWNSTREAM_REPO}"
           if [ -z "$repo" ]; then
             repo="${policy_repo:-${DOWNSTREAM_PILOT_REPO:-$GITHUB_REPOSITORY}}"
           fi
           branch="${DOWNSTREAM_BRANCH}"
+          branch_source="explicit-override"
           if [ -z "$branch" ]; then
-            branch="${policy_branch:-}"
+            branch_source="live-repository-default-branch"
           fi
           {
             printf 'policy_template_repo=%s\n' "$policy_repo"
-            printf 'policy_template_branch=%s\n' "$policy_branch"
+            printf 'policy_consumer_rail_branch=%s\n' "$policy_consumer_rail_branch"
             printf 'resolved_repo=%s\n' "$repo"
-            printf 'resolved_branch=%s\n' "$branch"
+            printf 'resolved_branch_override=%s\n' "$branch"
+            printf 'resolved_branch_source=%s\n' "$branch_source"
           } >> "$GITHUB_OUTPUT"
           args=(
             --repo "$repo"
@@ -165,7 +167,7 @@ jobs:
           exit "$status"
 
       - name: Refresh template-agent verification report
-        if: ${{ always() && steps.feedback.outputs.resolved_repo == steps.feedback.outputs.policy_template_repo && steps.feedback.outputs.resolved_branch == steps.feedback.outputs.policy_template_branch }}
+        if: ${{ always() && steps.feedback.outputs.resolved_repo == steps.feedback.outputs.policy_template_repo }}
         shell: bash
         run: |
           set -euo pipefail
@@ -288,24 +290,34 @@ jobs:
         shell: bash
         env:
           RESOLVED_REPO: ${{ steps.feedback.outputs.resolved_repo }}
-          RESOLVED_BRANCH: ${{ steps.feedback.outputs.resolved_branch }}
+          POLICY_CONSUMER_RAIL_BRANCH: ${{ steps.feedback.outputs.policy_consumer_rail_branch }}
+          RESOLVED_BRANCH_OVERRIDE: ${{ steps.feedback.outputs.resolved_branch_override }}
+          RESOLVED_BRANCH_SOURCE: ${{ steps.feedback.outputs.resolved_branch_source }}
         run: |
           node <<'NODE'
           const fs = require('fs');
           const reportPath = 'tests/results/_agent/onboarding/downstream-onboarding-feedback.json';
+          const onboardingReportPath = 'tests/results/_agent/onboarding/downstream-onboarding.json';
           const templateVerificationReportPath = 'tests/results/_agent/promotion/template-agent-verification-report.json';
           const hasFeedbackReport = fs.existsSync(reportPath);
+          const hasOnboardingReport = fs.existsSync(onboardingReportPath);
           const hasTemplateVerificationReport = fs.existsSync(templateVerificationReportPath);
-          if (!hasFeedbackReport && !hasTemplateVerificationReport) {
-            console.log('downstream onboarding feedback and template-agent verification reports missing');
+          if (!hasFeedbackReport && !hasOnboardingReport && !hasTemplateVerificationReport) {
+            console.log('downstream onboarding and template-agent verification reports missing');
             process.exit(0);
           }
           const feedbackReport = hasFeedbackReport ? JSON.parse(fs.readFileSync(reportPath, 'utf8')) : null;
+          const onboardingReport = hasOnboardingReport ? JSON.parse(fs.readFileSync(onboardingReportPath, 'utf8')) : null;
           const lines = [
             '## Downstream Onboarding Feedback',
             `- downstream repository: \`${process.env.RESOLVED_REPO || feedbackReport?.inputs?.downstreamRepository || 'unknown'}\``,
-            `- downstream branch: \`${process.env.RESOLVED_BRANCH || 'default'}\``,
+            `- requested branch override: \`${process.env.RESOLVED_BRANCH_OVERRIDE || feedbackReport?.inputs?.targetBranchOverride || 'default'}\``,
+            `- branch resolution source: \`${onboardingReport?.branchResolution?.source || process.env.RESOLVED_BRANCH_SOURCE || 'unknown'}\``,
+            `- evaluated branch: \`${onboardingReport?.branchResolution?.evaluatedBranch || onboardingReport?.targetBranch || 'unknown'}\``,
+            `- repository default branch: \`${onboardingReport?.branchResolution?.repositoryDefaultBranch || onboardingReport?.repository?.defaultBranch || 'unknown'}\``,
+            `- policy consumer rail branch: \`${process.env.POLICY_CONSUMER_RAIL_BRANCH || 'unknown'}\``,
             `- feedback report present: \`${hasFeedbackReport}\``,
+            `- onboarding report present: \`${hasOnboardingReport}\``,
             `- template-agent verification report present: \`${hasTemplateVerificationReport}\``
           ];
           if (hasFeedbackReport) {
