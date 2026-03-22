@@ -139,10 +139,12 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["costRollupPath", "markdownPath"],
+      "required": ["costRollupPath", "markdownPath", "costRollupMaterialized", "costRollupMaterializationReportPath"],
       "properties": {
         "costRollupPath": { "type": ["string", "null"] },
-        "markdownPath": { "type": ["string", "null"] }
+        "markdownPath": { "type": ["string", "null"] },
+        "costRollupMaterialized": { "type": "boolean" },
+        "costRollupMaterializationReportPath": { "type": ["string", "null"] }
       }
     },
     "blockers": {

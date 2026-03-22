@@ -5,12 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { runMaterializeAgentCostRollup } from './materialize-agent-cost-rollup.mjs';
 
 export const REPORT_SCHEMA = 'priority/pr-spend-projection@v1';
 export const COST_ROLLUP_SCHEMA = 'priority/agent-cost-rollup@v1';
 export const DEFAULT_COST_ROLLUP_PATH = path.join('tests', 'results', '_agent', 'cost', 'agent-cost-rollup.json');
 export const DEFAULT_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'cost', 'pr-spend-projection.json');
 export const DEFAULT_MARKDOWN_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'cost', 'pr-spend-projection.md');
+export const DEFAULT_MATERIALIZATION_REPORT_PATH = path.join('tests', 'results', '_agent', 'cost', 'agent-cost-rollup-materialization.json');
 export const COMMENT_MARKER = '<!-- priority:pr-spend-projection -->';
 
 const HELP = [
@@ -226,11 +228,12 @@ function buildMarkdown(report) {
     `- Invoice turn: \`${invoiceTurn?.invoiceTurnId ?? 'none'}\``,
     `- Funding purpose: \`${invoiceTurn?.fundingPurpose ?? 'unknown'}\``,
     `- Activation state: \`${invoiceTurn?.activationState ?? 'unknown'}\``,
-    `- Recommendation: \`${summary.recommendation}\``,
-    `- Selector source: \`${report.pullRequest.selectorSource ?? 'rollup-all-turns'}\``,
-    '',
-    '_This is intermediate PR spend evidence. It is not final billing truth and may remain estimated until reconciliation._',
-    ''
+  `- Recommendation: \`${summary.recommendation}\``,
+  `- Selector source: \`${report.pullRequest.selectorSource ?? 'rollup-all-turns'}\``,
+  `- Cost rollup source: \`${report.source.costRollupMaterialized ? 'materialized-current-lane' : 'existing-rollup'}\``,
+  '',
+  '_This is intermediate PR spend evidence. It is not final billing truth and may remain estimated until reconciliation._',
+  ''
   ];
 
   if (report.pullRequest.linkedIssueNumber) {
@@ -671,7 +674,9 @@ export function evaluatePrSpendProjection({ costRollup, repo, prContext = null }
     },
     source: {
       costRollupPath: null,
-      markdownPath: null
+      markdownPath: null,
+      costRollupMaterialized: false,
+      costRollupMaterializationReportPath: null
     },
     blockers
   };
@@ -688,7 +693,8 @@ export function runPrSpendProjection(
     writeTextFn = writeText,
     upsertCommentFn = upsertPullRequestComment,
     lookupCurrentLoginFn = lookupCurrentLogin,
-    resolvePullRequestContextFn = resolvePullRequestContext
+    resolvePullRequestContextFn = resolvePullRequestContext,
+    materializeAgentCostRollupFn = runMaterializeAgentCostRollup
   } = {}
 ) {
   const repo = resolveRepoSlugFn(options.repo);
@@ -696,15 +702,54 @@ export function runPrSpendProjection(
     throw new Error('Unable to determine repository slug.');
   }
 
-  const costRollup = readJsonFn(options.costRollupPath || DEFAULT_COST_ROLLUP_PATH);
   const prContext = options.prNumber ? resolvePullRequestContextFn(repo, options.prNumber) : null;
-  const report = evaluatePrSpendProjection({
+  const requestedCostRollupPath = options.costRollupPath || DEFAULT_COST_ROLLUP_PATH;
+  let resolvedCostRollupPath = path.resolve(requestedCostRollupPath);
+  let materializationReportPath = null;
+  let costRollupMaterialized = false;
+  const materializeCostRollup = () => {
+    const materializationResult = materializeAgentCostRollupFn({
+      repoRoot: process.cwd(),
+      repo,
+      issueNumber: prContext?.headRefIssueNumber ?? prContext?.linkedIssueNumber ?? null,
+      laneId: prContext?.headRefName ?? null,
+      laneBranch: prContext?.headRefName ?? null,
+      costRollupPath: requestedCostRollupPath,
+      outputPath: DEFAULT_MATERIALIZATION_REPORT_PATH
+    });
+    materializationReportPath = materializationResult?.outputPath ?? null;
+    resolvedCostRollupPath = path.resolve(materializationResult?.costRollupPath ?? requestedCostRollupPath);
+    costRollupMaterialized = true;
+  };
+
+  if (!fs.existsSync(resolvedCostRollupPath)) {
+    materializeCostRollup();
+  }
+
+  let costRollup = readJsonFn(resolvedCostRollupPath);
+  let report = evaluatePrSpendProjection({
     costRollup,
     repo,
     prContext
   });
 
-  report.source.costRollupPath = safeRelative(options.costRollupPath || DEFAULT_COST_ROLLUP_PATH);
+  if (
+    !costRollupMaterialized &&
+    report.blockers.some((entry) => normalizeText(entry?.code) === 'pr-head-ref-no-matching-turns') &&
+    prContext?.headRefName
+  ) {
+    materializeCostRollup();
+    costRollup = readJsonFn(resolvedCostRollupPath);
+    report = evaluatePrSpendProjection({
+      costRollup,
+      repo,
+      prContext
+    });
+  }
+
+  report.source.costRollupPath = safeRelative(resolvedCostRollupPath);
+  report.source.costRollupMaterialized = costRollupMaterialized;
+  report.source.costRollupMaterializationReportPath = materializationReportPath ? safeRelative(materializationReportPath) : null;
   const markdown = buildMarkdown(report);
   const markdownPath = writeTextFn(options.markdownOutputPath || DEFAULT_MARKDOWN_OUTPUT_PATH, markdown);
   report.source.markdownPath = safeRelative(markdownPath);

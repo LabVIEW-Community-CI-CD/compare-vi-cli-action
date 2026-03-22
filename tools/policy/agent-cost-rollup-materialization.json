@@ -1,0 +1,35 @@
+{
+  "schema": "priority/agent-cost-rollup-materialization-policy@v1",
+  "costRollupPath": "tests/results/_agent/cost/agent-cost-rollup.json",
+  "materializationReportPath": "tests/results/_agent/cost/agent-cost-rollup-materialization.json",
+  "turnsDir": "tests/results/_agent/cost/turns",
+  "heuristicTurnFileName": "current-lane-heuristic.json",
+  "operatorSteeringEventPath": "tests/results/_agent/runtime/operator-steering-event.json",
+  "repoFamilyPrefix": "compare-vi-cli-action",
+  "discoveryRoots": [
+    "E:\\comparevi-lanes",
+    "C:\\dev"
+  ],
+  "liveLaneHeuristic": {
+    "providerId": "local-codex",
+    "providerKind": "local-codex",
+    "providerRuntime": "codex-cli",
+    "executionPlane": "local",
+    "usage": {
+      "inputTokens": 2400,
+      "cachedInputTokens": 600,
+      "outputTokens": 500,
+      "usageUnitKind": "turn",
+      "usageUnitCount": 1
+    },
+    "rateCard": {
+      "id": "openai-public-2026-03-01",
+      "source": "https://openai.com/api/pricing",
+      "pricingBasis": "per-1k-tokens",
+      "inputUsdPer1kTokens": 0.005,
+      "cachedInputUsdPer1kTokens": 0.001,
+      "outputUsdPer1kTokens": 0.015,
+      "usageUnitUsd": null
+    }
+  }
+}
