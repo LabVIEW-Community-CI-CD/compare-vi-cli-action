@@ -70,10 +70,18 @@ test('concurrent lane plan schema validates the generated report', async () => {
     },
     dockerRuntimeSnapshot: {
       schema: 'docker-runtime-determinism@v1',
+      expected: {
+        provider: 'desktop',
+        osType: 'linux',
+        context: 'desktop-linux',
+        dockerHost: 'unix:///var/run/docker.sock',
+        manageDockerEngine: true,
+        allowHostEngineMutation: false
+      },
       observed: {
-        osType: 'windows',
-        context: 'desktop-windows',
-        dockerHost: 'npipe:////./pipe/docker_engine'
+        osType: 'linux',
+        context: 'desktop-linux',
+        dockerHost: 'unix:///var/run/docker.sock'
       },
       result: {
         status: 'ok'
@@ -85,4 +93,7 @@ test('concurrent lane plan schema validates the generated report', async () => {
   addFormats(ajv);
   const validate = ajv.compile(schema);
   assert.equal(validate(report), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(report.dockerRuntimeCutover.schema, 'priority/docker-runtime-cutover-contract@v1');
+  assert.equal(report.summary.dockerCutoverMode, 'desktop-linux-engine');
+  assert.equal(report.summary.dockerCutoverRestoreMode, 'none');
 });

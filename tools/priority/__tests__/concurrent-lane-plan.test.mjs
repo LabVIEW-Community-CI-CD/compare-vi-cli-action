@@ -68,24 +68,52 @@ function createHostRamBudget(recommendedParallelism = 2) {
   };
 }
 
+function createDockerRuntimeSnapshot({
+  provider = 'desktop',
+  expectedOsType = 'linux',
+  expectedContext = 'desktop-linux',
+  expectedDockerHost = 'unix:///var/run/docker.sock',
+  observedOsType = 'linux',
+  observedContext = 'desktop-linux',
+  observedDockerHost = 'unix:///var/run/docker.sock',
+  status = 'ok'
+} = {}) {
+  return {
+    schema: 'docker-runtime-determinism@v1',
+    expected: {
+      provider,
+      osType: expectedOsType,
+      context: expectedContext,
+      dockerHost: expectedDockerHost,
+      manageDockerEngine: true,
+      allowHostEngineMutation: false
+    },
+    observed: {
+      osType: observedOsType,
+      context: observedContext,
+      dockerHost: observedDockerHost
+    },
+    result: {
+      status
+    }
+  };
+}
+
 test('buildConcurrentLanePlan prefers hosted lanes plus the current local docker lane', () => {
   const report = buildConcurrentLanePlan({
     hostPlaneReport: createHostPlaneReport(),
     hostRamBudget: createHostRamBudget(),
-    dockerRuntimeSnapshot: {
-      schema: 'docker-runtime-determinism@v1',
-      observed: {
-        osType: 'linux',
-        context: 'desktop-linux',
-        dockerHost: 'unix:///var/run/docker.sock'
-      },
-      result: {
-        status: 'ok'
-      }
-    }
+    dockerRuntimeSnapshot: createDockerRuntimeSnapshot()
   });
 
   assert.equal(report.host.dockerServerOs, 'linux');
+  assert.equal(report.dockerRuntimeCutover.schema, 'priority/docker-runtime-cutover-contract@v1');
+  assert.equal(report.dockerRuntimeCutover.cutoverMode, 'desktop-linux-engine');
+  assert.equal(report.dockerRuntimeCutover.canReuseLinuxDaemon, true);
+  assert.equal(report.dockerRuntimeCutover.restoreMode, 'none');
+  assert.equal(report.summary.dockerCutoverMode, 'desktop-linux-engine');
+  assert.equal(report.summary.dockerCutoverReusable, true);
+  assert.equal(report.summary.dockerCutoverRestoreMode, 'none');
   assert.equal(report.summary.recommendedBundleId, 'hosted-plus-manual-linux-docker');
   assert.deepEqual(report.recommendedBundle.laneIds, [
     'hosted-linux-proof',
@@ -100,6 +128,33 @@ test('buildConcurrentLanePlan prefers hosted lanes plus the current local docker
     report.observations.includes('local-docker-linux-and-windows-remain-mutually-exclusive'),
     'expected explicit mutual-exclusion observation'
   );
+});
+
+test('buildConcurrentLanePlan records the pinned WSL2 Linux cutover contract when the runtime snapshot is native-wsl', () => {
+  const report = buildConcurrentLanePlan({
+    hostPlaneReport: createHostPlaneReport(),
+    hostRamBudget: createHostRamBudget(),
+    dockerRuntimeSnapshot: createDockerRuntimeSnapshot({
+      provider: 'native-wsl',
+      expectedOsType: 'linux',
+      expectedContext: '',
+      expectedDockerHost: 'unix:///var/run/docker.sock',
+      observedOsType: 'linux',
+      observedContext: '',
+      observedDockerHost: 'unix:///var/run/docker.sock'
+    })
+  });
+
+  assert.equal(report.dockerRuntimeCutover.cutoverMode, 'pinned-wsl2-linux-daemon');
+  assert.equal(report.dockerRuntimeCutover.canReuseLinuxDaemon, true);
+  assert.equal(report.dockerRuntimeCutover.requiresHostMutation, false);
+  assert.equal(report.dockerRuntimeCutover.requiresWslShutdown, false);
+  assert.equal(report.dockerRuntimeCutover.restoreMode, 'wsl-shutdown');
+  assert.equal(report.dockerRuntimeCutover.restoreRequired, true);
+  assert.equal(report.summary.dockerCutoverMode, 'pinned-wsl2-linux-daemon');
+  assert.equal(report.summary.dockerCutoverReusable, true);
+  assert.equal(report.summary.dockerCutoverRestoreMode, 'wsl-shutdown');
+  assert.equal(report.summary.recommendedBundleId, 'hosted-plus-manual-linux-docker');
 });
 
 test('buildConcurrentLanePlan falls back to hosted plus shadow when docker engine evidence is unavailable', () => {

@@ -179,6 +179,100 @@ function resolveDockerObservation(snapshot = null) {
   };
 }
 
+function resolveDockerCutoverContract(snapshot = null) {
+  const expected = snapshot?.expected && typeof snapshot.expected === 'object' ? snapshot.expected : {};
+  const observed = snapshot?.observed && typeof snapshot.observed === 'object' ? snapshot.observed : {};
+  const resultStatus = toOptionalText(snapshot?.result?.status) ?? 'missing';
+  const runtimeProvider = normalizeText(expected.provider).toLowerCase() || 'unknown';
+  const expectedOsType = normalizeDockerServerOs(expected.osType);
+  const observedOsType = normalizeDockerServerOs(observed.osType);
+  const expectedDockerHost = toOptionalText(expected.dockerHost);
+  const observedDockerHost = toOptionalText(observed.dockerHost);
+  const hostMutationAllowed = expected.allowHostEngineMutation === true;
+  const manageDockerEngine = expected.manageDockerEngine !== false;
+  const observedContext = toOptionalText(observed.context);
+  const cutoverMode = (() => {
+    if (runtimeProvider === 'native-wsl') {
+      return 'pinned-wsl2-linux-daemon';
+    }
+    if (runtimeProvider !== 'desktop') {
+      return 'unknown';
+    }
+    if (observedOsType === 'linux') {
+      return 'desktop-linux-engine';
+    }
+    if (observedOsType === 'windows' && manageDockerEngine) {
+      return 'desktop-engine-switch-to-linux';
+    }
+    if (observedOsType === 'windows') {
+      return 'desktop-windows-engine';
+    }
+    return 'unknown';
+  })();
+  const restoreMode = (() => {
+    if (cutoverMode === 'pinned-wsl2-linux-daemon') {
+      return 'wsl-shutdown';
+    }
+    if (cutoverMode === 'desktop-engine-switch-to-linux') {
+      return 'desktop-engine-switch-to-windows';
+    }
+    if (cutoverMode === 'desktop-linux-engine') {
+      return 'none';
+    }
+    if (cutoverMode === 'desktop-windows-engine') {
+      return 'manual';
+    }
+    return 'unknown';
+  })();
+  const canReuseLinuxDaemon =
+    resultStatus === 'ok' &&
+    ((runtimeProvider === 'native-wsl' && observedOsType === 'linux' && (!expectedDockerHost || expectedDockerHost === observedDockerHost)) ||
+      (runtimeProvider === 'desktop' && observedOsType === 'linux'));
+  const requiresHostMutation =
+    runtimeProvider === 'desktop' && observedOsType === 'windows' && manageDockerEngine && hostMutationAllowed;
+  const requiresWslShutdown =
+    runtimeProvider === 'desktop' && observedOsType === 'windows' && expectedOsType === 'linux' && hostMutationAllowed;
+  const reason = (() => {
+    if (canReuseLinuxDaemon) {
+      return runtimeProvider === 'native-wsl'
+        ? 'Pinned WSL2 Linux daemon is reusable as-is for concurrent hosted/manual planning.'
+        : 'Docker Desktop is already on the Linux engine, so the local Linux daemon is reusable as-is.';
+    }
+    if (runtimeProvider === 'native-wsl') {
+      return 'Pinned WSL2 Linux daemon contract is present, but the runtime snapshot is not yet green enough to reuse safely.';
+    }
+    if (runtimeProvider !== 'desktop') {
+      return 'Docker runtime provider is unknown, so the Linux-engine cutover contract cannot be asserted yet.';
+    }
+    if (observedOsType === 'windows') {
+      return hostMutationAllowed
+        ? 'Desktop is on the Windows engine; Linux reuse requires an explicit engine cutover and possible WSL shutdown.'
+        : 'Desktop is on the Windows engine, but host mutation is not allowed for this run.';
+    }
+    if (observedOsType === 'linux') {
+      return 'Linux engine is observed, but the runtime snapshot did not report a reusable green cutover contract.';
+    }
+    return 'Docker engine cutover contract is unavailable from the current runtime snapshot.';
+  })();
+
+  return {
+    schema: 'priority/docker-runtime-cutover-contract@v1',
+    runtimeProvider,
+    expectedOsType,
+    observedOsType,
+    expectedDockerHost,
+    observedDockerHost,
+    observedContext,
+    cutoverMode,
+    canReuseLinuxDaemon,
+    requiresHostMutation,
+    requiresWslShutdown,
+    restoreMode,
+    restoreRequired: restoreMode !== 'none' && restoreMode !== 'unknown',
+    reason
+  };
+}
+
 function buildLane({
   id,
   laneClass,
@@ -220,6 +314,7 @@ export function buildConcurrentLanePlan({
 } = {}) {
   const pairIndex = buildPairIndex(hostPlaneReport);
   const dockerObservation = resolveDockerObservation(dockerRuntimeSnapshot);
+  const dockerCutoverContract = resolveDockerCutoverContract(dockerRuntimeSnapshot);
   const shadowPolicy = resolveShadowPlanePolicy(hostPlaneReport);
   const nativeX32Status = normalizeText(hostPlaneReport?.native?.planes?.x32?.status).toLowerCase() || 'missing';
   const nativeParallelLabVIEWSupported = hostPlaneReport?.native?.parallelLabVIEWSupported === true;
@@ -488,6 +583,7 @@ export function buildConcurrentLanePlan({
       native32Status: nativeX32Status,
       nativeParallelLabVIEWSupported
     },
+    dockerRuntimeCutover: dockerCutoverContract,
     lanes,
     bundles,
     recommendedBundle,
@@ -496,6 +592,9 @@ export function buildConcurrentLanePlan({
       availableLaneCount: lanes.filter((entry) => entry.availability === 'available').length,
       hostedLaneCount: hostedLaneIds.length,
       localLaneCount: localLaneIds.length + (shadowAllowed ? 1 : 0),
+      dockerCutoverMode: dockerCutoverContract.cutoverMode,
+      dockerCutoverReusable: dockerCutoverContract.canReuseLinuxDaemon,
+      dockerCutoverRestoreMode: dockerCutoverContract.restoreMode,
       recommendedBundleId: recommendedBundle?.id ?? null
     }
   };

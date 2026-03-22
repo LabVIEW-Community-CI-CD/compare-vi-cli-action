@@ -188,7 +188,11 @@ trustworthy.
 3. Do not infer the active Docker plane from filenames alone; rely on the readiness envelope and replay helper.
 4. Do not infer the active native plane from a generic LabVIEW path; use the host-plane report.
 5. Use `priority:lane:concurrency:plan` before dispatching hosted Windows/Linux plus manual lanes so the plan stays
-   explicit and replayable.
+   explicit and replayable. The resulting report now includes `dockerRuntimeCutover`, which tells you whether the
+   current Docker state is already reusable as a Linux daemon (`pinned-wsl2-linux-daemon` or `desktop-linux-engine`)
+   or whether the host still needs an explicit cutover before you can safely reuse it from unknown operator state.
+   The same contract also carries the restore mode (`wsl-shutdown`, `desktop-engine-switch-to-windows`, `none`, or
+   `manual`) so the cleanup path stays machine-readable.
 6. Use `priority:lane:concurrency:apply` when you need the plan projected into a machine-readable execution receipt
    instead of leaving the launched hosted lanes and deferred manual/shadow lanes implicit.
 7. Use `priority:lane:concurrency:status` when you need to answer whether the applied hosted lane is still active,
