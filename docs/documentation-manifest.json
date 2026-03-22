@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-22T22:45:00Z",
+  "updated": "2026-03-22T23:10:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -316,6 +316,7 @@
           "docs/schemas/template-agent-verification-sync-report-v1.schema.json",
           "docs/schemas/downstream-repo-graph-policy-v1.schema.json",
           "docs/schemas/downstream-repo-graph-truth-v1.schema.json",
+          "docs/schemas/autonomous-governor-summary-report-v1.schema.json",
           "docs/schemas/template-monitoring-policy-v1.schema.json",
           "docs/schemas/template-pivot-gate-policy-v1.schema.json",
           "docs/schemas/template-pivot-gate-report-v1.schema.json",
@@ -325,8 +326,11 @@
           "tools/policy/template-monitoring.json",
           "tools/policy/template-pivot-gate.json",
           "tools/priority/delivery-agent.policy.json",
+          "tools/priority/autonomous-governor-summary.mjs",
           "tools/priority/downstream-repo-graph-truth.mjs",
           "tools/priority/handoff-monitoring-mode.mjs",
+          "tools/priority/__tests__/autonomous-governor-summary.test.mjs",
+          "tools/priority/__tests__/autonomous-governor-summary-schema.test.mjs",
           "tools/priority/__tests__/downstream-repo-graph-truth.test.mjs",
           "tools/priority/__tests__/downstream-repo-graph-truth-schema.test.mjs",
           "tools/priority/template-agent-verification-report.mjs",

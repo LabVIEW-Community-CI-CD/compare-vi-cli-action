@@ -187,4 +187,76 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
 
     Remove-Variable -Name HandoffMonitoringMode -Scope Global -ErrorAction SilentlyContinue
   }
+
+  It 'surfaces autonomous governor summary when present' {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $scriptPath = Join-Path $repoRoot 'tools' 'priority' 'Import-HandoffState.ps1'
+    $handoffDir = Join-Path $TestDrive 'handoff'
+    New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+
+    [ordered]@{
+      schema = 'priority/autonomous-governor-summary-report@v1'
+      generatedAt = '2026-03-22T22:59:00Z'
+      repository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+      inputs = [ordered]@{
+        queueEmptyReportPath = 'tests/results/_agent/issue/no-standing-priority.json'
+        continuitySummaryPath = 'tests/results/_agent/handoff/continuity-summary.json'
+        monitoringModePath = 'tests/results/_agent/handoff/monitoring-mode.json'
+        wakeLifecyclePath = 'tests/results/_agent/issue/wake-lifecycle.json'
+        wakeInvestmentAccountingPath = 'tests/results/_agent/capital/wake-investment-accounting.json'
+      }
+      compare = [ordered]@{
+        queueState = [ordered]@{ status = 'queue-empty'; reason = 'queue-empty'; openIssueCount = 11; ready = $true }
+        continuity = [ordered]@{ status = 'maintained'; turnBoundary = 'safe-idle'; supervisionState = 'safe-idle'; operatorPromptRequiredToResume = $false }
+        monitoringMode = [ordered]@{ status = 'active'; futureAgentAction = 'future-agent-may-pivot'; wakeConditionCount = 0 }
+      }
+      wake = [ordered]@{
+        terminalState = 'compare-work'
+        currentStage = 'monitoring-work-injection'
+        classification = 'branch-target-drift'
+        decision = 'compare-governance-work'
+        monitoringStatus = 'would-create-issue'
+        authoritativeTier = 'authoritative'
+        blockedLowerTierEvidence = $true
+        replayMatched = $false
+        replayAuthorityCompatible = $false
+        issueNumber = $null
+        issueUrl = $null
+        recommendedOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+      }
+      funding = [ordered]@{
+        accountingBucket = 'compare-governance-work'
+        status = 'warn'
+        paybackStatus = 'neutral'
+        recommendation = 'continue-estimated-telemetry'
+        invoiceTurnId = 'invoice-turn-2026-03-HQ1VJLMV-0027'
+        fundingPurpose = 'operational'
+        activationState = 'active'
+        benchmarkIssueUsd = 0.0201
+        observedWakeIssueUsd = 0.0201
+        netPaybackUsd = 0
+      }
+      summary = [ordered]@{
+        governorMode = 'compare-governance-work'
+        currentOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+        nextOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+        nextAction = 'continue-compare-governance-work'
+        signalQuality = 'validated-governance-work'
+        queueState = 'queue-empty'
+        continuityStatus = 'maintained'
+        wakeTerminalState = 'compare-work'
+        monitoringStatus = 'active'
+        futureAgentAction = 'future-agent-may-pivot'
+      }
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $handoffDir 'autonomous-governor-summary.json') -Encoding utf8
+
+    $output = & $scriptPath -HandoffDir $handoffDir *>&1 | Out-String
+
+    $output | Should -Match '\[handoff\] Autonomous governor summary'
+    $output | Should -Match 'mode\s+: compare-governance-work'
+    $output | Should -Match 'next\s+: continue-compare-governance-work'
+    $global:HandoffAutonomousGovernorSummary.schema | Should -Be 'priority/autonomous-governor-summary-report@v1'
+
+    Remove-Variable -Name HandoffAutonomousGovernorSummary -Scope Global -ErrorAction SilentlyContinue
+  }
 }

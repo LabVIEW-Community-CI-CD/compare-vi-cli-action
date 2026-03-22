@@ -44,6 +44,7 @@ $dockerReviewLoopSummary = Read-HandoffJson -Name 'docker-review-loop-summary.js
 $entrypointStatus = Read-HandoffJson -Name 'entrypoint-status.json'
 $continuitySummary = Read-HandoffJson -Name 'continuity-summary.json'
 $monitoringMode = Read-HandoffJson -Name 'monitoring-mode.json'
+$governorSummary = Read-HandoffJson -Name 'autonomous-governor-summary.json'
 $operatorSteeringEvent = Read-HandoffJson -Name 'operator-steering-event.json'
 
 if ($issueSummary) {
@@ -267,6 +268,21 @@ if ($monitoringMode) {
     }
   }
   Set-Variable -Name HandoffMonitoringMode -Scope Global -Value $monitoringMode -Force
+}
+if ($governorSummary) {
+  Write-Host '[handoff] Autonomous governor summary' -ForegroundColor Cyan
+  Write-Host ("  mode     : {0}" -f (Format-NullableValue $governorSummary.summary.governorMode))
+  Write-Host ("  owner    : {0}" -f (Format-NullableValue $governorSummary.summary.currentOwnerRepository))
+  Write-Host ("  next     : {0}" -f (Format-NullableValue $governorSummary.summary.nextAction))
+  Write-Host ("  queue    : {0}" -f (Format-NullableValue $governorSummary.summary.queueState))
+  Write-Host ("  signal   : {0}" -f (Format-NullableValue $governorSummary.summary.signalQuality))
+  if ($governorSummary.summary.nextOwnerRepository) {
+    Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governorSummary.summary.nextOwnerRepository))
+  }
+  if ($governorSummary.summary.wakeTerminalState) {
+    Write-Host ("  wake     : {0}" -f (Format-NullableValue $governorSummary.summary.wakeTerminalState))
+  }
+  Set-Variable -Name HandoffAutonomousGovernorSummary -Scope Global -Value $governorSummary -Force
 }
 if ($operatorSteeringEvent) {
   Write-Host '[handoff] Operator steering event' -ForegroundColor Cyan

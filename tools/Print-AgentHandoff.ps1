@@ -1293,6 +1293,7 @@ try {
   $templateVerificationSyncScript = Join-Path $repoRoot 'tools' 'priority' 'sync-template-agent-verification-report.mjs'
   $templatePivotGateScript = Join-Path $repoRoot 'tools' 'priority' 'template-pivot-gate.mjs'
   $monitoringModeScript = Join-Path $repoRoot 'tools' 'priority' 'handoff-monitoring-mode.mjs'
+  $governorSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-summary.mjs'
   $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
   if ($nodeCmd) {
     $promotionDir = Join-Path $ResultsRoot '_agent/promotion'
@@ -1309,6 +1310,7 @@ try {
     $continuitySummaryPath = Join-Path $ResultsRoot '_agent/handoff/continuity-summary.json'
     $repoGraphTruthPath = Join-Path $handoffDir 'downstream-repo-graph-truth.json'
     $monitoringModePath = Join-Path $handoffDir 'monitoring-mode.json'
+    $governorSummaryPath = Join-Path $handoffDir 'autonomous-governor-summary.json'
 
     if (Test-Path -LiteralPath $repoGraphTruthScript -PathType Leaf) {
       & $nodeCmd.Source $repoGraphTruthScript `
@@ -1340,6 +1342,15 @@ try {
         --continuity-summary $continuitySummaryPath `
         --template-pivot-gate $templatePivotGatePath `
         --output $monitoringModePath | Out-Host
+    }
+
+    if (Test-Path -LiteralPath $governorSummaryScript -PathType Leaf) {
+      & $nodeCmd.Source $governorSummaryScript `
+        --repo-root $repoRoot `
+        --queue-empty-report $queueEmptyReportPath `
+        --continuity-summary $continuitySummaryPath `
+        --monitoring-mode $monitoringModePath `
+        --output $governorSummaryPath | Out-Host
     }
   }
 } catch {
@@ -1482,6 +1493,40 @@ try {
   }
 } catch {
   Write-Warning ("Failed to display monitoring-mode summary: {0}" -f $_.Exception.Message)
+}
+
+try {
+  $governorSummaryPath = Join-Path $ResultsRoot '_agent/handoff/autonomous-governor-summary.json'
+  if (Test-Path -LiteralPath $governorSummaryPath -PathType Leaf) {
+    $governor = Get-Content -LiteralPath $governorSummaryPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    Write-Host ''
+    Write-Host '[Autonomous Governor]' -ForegroundColor Cyan
+    Write-Host ("  mode     : {0}" -f (Format-NullableValue $governor.summary.governorMode))
+    Write-Host ("  owner    : {0}" -f (Format-NullableValue $governor.summary.currentOwnerRepository))
+    Write-Host ("  next     : {0}" -f (Format-NullableValue $governor.summary.nextAction))
+    Write-Host ("  signal   : {0}" -f (Format-NullableValue $governor.summary.signalQuality))
+    Write-Host ("  queue    : {0}" -f (Format-NullableValue $governor.summary.queueState))
+    if ($governor.summary.nextOwnerRepository) {
+      Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governor.summary.nextOwnerRepository))
+    }
+    if ($env:GITHUB_STEP_SUMMARY) {
+      $governorLines = @(
+        '### Autonomous Governor',
+        '',
+        ('- Mode: {0}' -f (Format-NullableValue $governor.summary.governorMode)),
+        ('- Current owner: {0}' -f (Format-NullableValue $governor.summary.currentOwnerRepository)),
+        ('- Next action: {0}' -f (Format-NullableValue $governor.summary.nextAction)),
+        ('- Signal quality: {0}' -f (Format-NullableValue $governor.summary.signalQuality)),
+        ('- Queue state: {0}' -f (Format-NullableValue $governor.summary.queueState))
+      )
+      if ($governor.summary.nextOwnerRepository) {
+        $governorLines += ('- Next owner: {0}' -f (Format-NullableValue $governor.summary.nextOwnerRepository))
+      }
+      ($governorLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+    }
+  }
+} catch {
+  Write-Warning ("Failed to display autonomous governor summary: {0}" -f $_.Exception.Message)
 }
 
 try {

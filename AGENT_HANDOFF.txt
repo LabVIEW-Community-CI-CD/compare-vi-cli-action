@@ -21,7 +21,9 @@ Live repository state belongs in the machine-generated artifacts under
    against that issue. If the queue is empty, do not create new compare work.
    When `tests/results/_agent/handoff/monitoring-mode.json` reports
    `future-agent-may-pivot`, the next future agent may switch to canonical
-   `LabviewGitHubCiTemplate` without operator steering.
+   `LabviewGitHubCiTemplate` without operator steering. Use
+   `tests/results/_agent/handoff/autonomous-governor-summary.json` as the
+   top-level receipt for what owns the next move.
 
 ## Live State Surfaces
 
@@ -35,6 +37,8 @@ Live repository state belongs in the machine-generated artifacts under
   `node tools/npm/run-script.mjs priority:develop:sync`
 - Monitoring mode:
   `node tools/npm/run-script.mjs priority:monitoring:mode`
+- Governor summary:
+  `node tools/npm/run-script.mjs priority:governor:summary`
 
 ## Current-State Artifacts
 
@@ -45,6 +49,7 @@ Live repository state belongs in the machine-generated artifacts under
 - `tests/results/_agent/handoff/continuity-summary.json`
 - `tests/results/_agent/handoff/entrypoint-status.json`
 - `tests/results/_agent/handoff/monitoring-mode.json`
+- `tests/results/_agent/handoff/autonomous-governor-summary.json`
 - `tests/results/_agent/handoff/human-go-no-go-latest.json`
 - `tests/results/_agent/handoff/*.json`
 - `tests/results/_agent/sessions/*.json`

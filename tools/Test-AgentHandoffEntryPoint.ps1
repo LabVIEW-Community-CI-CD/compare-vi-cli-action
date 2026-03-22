@@ -48,6 +48,7 @@ $commandCatalog = [ordered]@{
   projectPortfolio = 'node tools/npm/run-script.mjs priority:project:portfolio:check'
   developSync = 'node tools/npm/run-script.mjs priority:develop:sync'
   monitoringMode = 'node tools/npm/run-script.mjs priority:monitoring:mode'
+  governorSummary = 'node tools/npm/run-script.mjs priority:governor:summary'
 }
 
 $artifactCatalog = [ordered]@{
@@ -58,6 +59,7 @@ $artifactCatalog = [ordered]@{
   continuitySummary = 'tests/results/_agent/handoff/continuity-summary.json'
   entrypointStatus = 'tests/results/_agent/handoff/entrypoint-status.json'
   monitoringMode = 'tests/results/_agent/handoff/monitoring-mode.json'
+  autonomousGovernorSummary = 'tests/results/_agent/handoff/autonomous-governor-summary.json'
   handoffGlob = 'tests/results/_agent/handoff/*.json'
   sessionGlob = 'tests/results/_agent/sessions/*.json'
 }
