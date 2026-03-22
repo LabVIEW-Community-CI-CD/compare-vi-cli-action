@@ -6,6 +6,8 @@ import test from 'node:test';
 
 import { runMonitoringWorkInjection } from '../monitoring-work-injection.mjs';
 
+const STALE_TEST_NOW = '2026-03-22T16:30:00.000Z';
+
 function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
@@ -16,6 +18,12 @@ function createPolicy() {
     schema: 'priority/monitoring-work-injection-policy@v1',
     compareRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     requireQueueEmpty: true,
+    freshness: {
+      hostSignalMaxAgeMinutes: 120,
+      wakeAdjudicationMaxAgeMinutes: 120,
+      wakeWorkSynthesisMaxAgeMinutes: 120,
+      wakeInvestmentAccountingMaxAgeMinutes: 120
+    },
     rules: [
       {
         id: 'compare-governance-wake',
@@ -74,6 +82,7 @@ function createInputs(tmpDir, { includeWakeEvidence = true } = {}) {
   });
   writeJson(hostSignalPath, {
     schema: 'priority/delivery-agent-host-signal@v1',
+    generatedAt: '2099-01-01T00:00:00.000Z',
     status: 'runner-conflict',
     provider: 'native-wsl',
     daemonFingerprint: 'abc123'
@@ -81,6 +90,7 @@ function createInputs(tmpDir, { includeWakeEvidence = true } = {}) {
   if (includeWakeEvidence) {
     writeJson(wakeAdjudicationPath, {
       schema: 'priority/wake-adjudication-report@v1',
+      generatedAt: '2099-01-01T00:01:00.000Z',
       summary: {
         classification: 'branch-target-drift',
         status: 'suppressed',
@@ -94,6 +104,7 @@ function createInputs(tmpDir, { includeWakeEvidence = true } = {}) {
     });
     writeJson(wakeWorkSynthesisPath, {
       schema: 'priority/wake-work-synthesis-report@v1',
+      generatedAt: '2099-01-01T00:02:00.000Z',
       wake: {
         classification: 'branch-target-drift',
         nextAction: 'reconcile-downstream-branch-target-provenance',
@@ -110,6 +121,7 @@ function createInputs(tmpDir, { includeWakeEvidence = true } = {}) {
     });
     writeJson(wakeInvestmentAccountingPath, {
       schema: 'priority/wake-investment-accounting-report@v1',
+      generatedAt: '2099-01-01T00:03:00.000Z',
       summary: {
         accountingBucket: 'compare-governance-work',
         status: 'warn',
@@ -708,4 +720,60 @@ test('runMonitoringWorkInjection fails closed when decision memory is unreadable
   assert.equal(report.replay.available, false);
   assert.match(report.summary.reason, /Decision memory is unreadable/);
   assert.ok(report.replay.error);
+});
+
+test('runMonitoringWorkInjection fails closed when required live wake evidence is stale', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-stale-evidence-'));
+  const {
+    policyPath,
+    queuePath,
+    monitoringPath,
+    hostSignalPath,
+    wakeAdjudicationPath,
+    wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath
+  } = createInputs(tmpDir);
+  writeJson(wakeAdjudicationPath, {
+    schema: 'priority/wake-adjudication-report@v1',
+    generatedAt: '2026-03-20T10:00:00.000Z',
+    summary: {
+      classification: 'branch-target-drift',
+      status: 'suppressed',
+      nextAction: 'reconcile-downstream-branch-target-provenance',
+      recommendedOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      suppressIssueInjection: true,
+      suppressDownstreamIssueInjection: true,
+      suppressTemplateIssueInjection: true,
+      reason: 'Reported branch drift cleared during live replay.'
+    }
+  });
+
+  const { report } = await runMonitoringWorkInjection(
+    {
+      repoRoot: tmpDir,
+      policyPath,
+      queueEmptyReportPath: queuePath,
+      monitoringModePath: monitoringPath,
+      hostSignalPath,
+      wakeAdjudicationPath,
+      wakeWorkSynthesisPath,
+      wakeInvestmentAccountingPath,
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      now: STALE_TEST_NOW
+    },
+    {
+      runGhJsonFn: () => {
+        throw new Error('stale evidence must fail closed before GitHub queries');
+      },
+      runGhFn: () => {
+        throw new Error('stale evidence must fail closed before issue mutation');
+      }
+    }
+  );
+
+  assert.equal(report.summary.status, 'policy-blocked');
+  assert.equal(report.freshness.status, 'blocked');
+  assert.ok(report.freshness.blockingSources.includes('wakeAdjudication'));
+  assert.equal(report.freshness.sources.wakeAdjudication.status, 'stale');
+  assert.match(report.summary.reason, /Required live wake evidence is not fresh enough/);
 });

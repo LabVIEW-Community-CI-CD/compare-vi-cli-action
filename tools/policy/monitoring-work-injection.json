@@ -2,6 +2,12 @@
   "schema": "priority/monitoring-work-injection-policy@v1",
   "compareRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
   "requireQueueEmpty": true,
+  "freshness": {
+    "hostSignalMaxAgeMinutes": 60,
+    "wakeAdjudicationMaxAgeMinutes": 120,
+    "wakeWorkSynthesisMaxAgeMinutes": 120,
+    "wakeInvestmentAccountingMaxAgeMinutes": 120
+  },
   "rules": [
     {
       "id": "compare-governance-wake",

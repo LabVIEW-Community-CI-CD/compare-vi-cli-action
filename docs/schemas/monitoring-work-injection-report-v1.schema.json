@@ -13,6 +13,7 @@
     "inputs",
     "evidence",
     "selectedRule",
+    "freshness",
     "replay",
     "decisionLedger",
     "summary",
@@ -41,6 +42,7 @@
       "required": [
         "path",
         "requireQueueEmpty",
+        "freshness",
         "ruleIds"
       ],
       "properties": {
@@ -50,6 +52,9 @@
         },
         "requireQueueEmpty": {
           "type": "boolean"
+        },
+        "freshness": {
+          "$ref": "#/$defs/freshnessPolicy"
         },
         "ruleIds": {
           "type": "array",
@@ -159,6 +164,9 @@
           "type": "null"
         }
       ]
+    },
+    "freshness": {
+      "$ref": "#/$defs/freshnessReport"
     },
     "replay": {
       "$ref": "#/$defs/replay"
@@ -537,6 +545,174 @@
             "string",
             "null"
           ]
+        }
+      }
+    },
+    "freshnessPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostSignalMaxAgeMinutes",
+        "wakeAdjudicationMaxAgeMinutes",
+        "wakeWorkSynthesisMaxAgeMinutes",
+        "wakeInvestmentAccountingMaxAgeMinutes"
+      ],
+      "properties": {
+        "hostSignalMaxAgeMinutes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "wakeAdjudicationMaxAgeMinutes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "wakeWorkSynthesisMaxAgeMinutes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "wakeInvestmentAccountingMaxAgeMinutes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      }
+    },
+    "freshnessSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "required",
+        "available",
+        "generatedAt",
+        "ageMinutes",
+        "maxAgeMinutes",
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "generatedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ageMinutes": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "maxAgeMinutes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "fresh",
+            "stale",
+            "missing",
+            "invalid-timestamp",
+            "not-required",
+            "not-configured"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "freshnessReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiredSources",
+        "blockingSources",
+        "status",
+        "sources"
+      ],
+      "properties": {
+        "requiredSources": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "hostSignal",
+              "wakeAdjudication",
+              "wakeWorkSynthesis",
+              "wakeInvestmentAccounting"
+            ]
+          }
+        },
+        "blockingSources": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "hostSignal",
+              "wakeAdjudication",
+              "wakeWorkSynthesis",
+              "wakeInvestmentAccounting"
+            ]
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "blocked"
+          ]
+        },
+        "sources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "hostSignal",
+            "wakeAdjudication",
+            "wakeWorkSynthesis",
+            "wakeInvestmentAccounting"
+          ],
+          "properties": {
+            "hostSignal": {
+              "$ref": "#/$defs/freshnessSource"
+            },
+            "wakeAdjudication": {
+              "$ref": "#/$defs/freshnessSource"
+            },
+            "wakeWorkSynthesis": {
+              "$ref": "#/$defs/freshnessSource"
+            },
+            "wakeInvestmentAccounting": {
+              "$ref": "#/$defs/freshnessSource"
+            }
+          }
         }
       }
     },

@@ -261,6 +261,20 @@ function loadPolicy(policyPath) {
   return {
     ...policy,
     requireQueueEmpty: policy.requireQueueEmpty !== false,
+    freshness: {
+      hostSignalMaxAgeMinutes: Number.isInteger(policy?.freshness?.hostSignalMaxAgeMinutes)
+        ? policy.freshness.hostSignalMaxAgeMinutes
+        : null,
+      wakeAdjudicationMaxAgeMinutes: Number.isInteger(policy?.freshness?.wakeAdjudicationMaxAgeMinutes)
+        ? policy.freshness.wakeAdjudicationMaxAgeMinutes
+        : null,
+      wakeWorkSynthesisMaxAgeMinutes: Number.isInteger(policy?.freshness?.wakeWorkSynthesisMaxAgeMinutes)
+        ? policy.freshness.wakeWorkSynthesisMaxAgeMinutes
+        : null,
+      wakeInvestmentAccountingMaxAgeMinutes: Number.isInteger(policy?.freshness?.wakeInvestmentAccountingMaxAgeMinutes)
+        ? policy.freshness.wakeInvestmentAccountingMaxAgeMinutes
+        : null
+    },
     rules: Array.isArray(policy.rules) ? policy.rules.map(normalizeRule) : []
   };
 }
@@ -297,6 +311,166 @@ function createWakeEvidence(wakeAdjudication, wakeWorkSynthesis, wakeInvestmentA
     accountingStatus: asOptional(wakeInvestmentAccounting?.summary?.status),
     paybackStatus: asOptional(wakeInvestmentAccounting?.summary?.paybackStatus)
   };
+}
+
+function parseTimestamp(value) {
+  const normalized = asOptional(value);
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function ruleUsesWakeEvidence(rule) {
+  return Boolean(
+    rule?.when?.wakeClassification ||
+      rule?.when?.wakeDecision ||
+      rule?.when?.wakeStatus ||
+      rule?.when?.recommendedOwnerRepository ||
+      rule?.when?.wakeAccountingBucket ||
+      rule?.when?.wakeAccountingStatus
+  );
+}
+
+function buildFreshnessEntry({
+  repoRoot,
+  reportPath,
+  payload,
+  maxAgeMinutes,
+  required,
+  now
+}) {
+  const resolvedPath = path.resolve(reportPath);
+  const generatedAt = asOptional(payload?.generatedAt);
+  const timestamp = parseTimestamp(generatedAt);
+  const report = {
+    path: path.relative(repoRoot, resolvedPath).replace(/\\/g, '/'),
+    required,
+    available: payload != null,
+    generatedAt,
+    ageMinutes: null,
+    maxAgeMinutes,
+    status: 'not-required',
+    reason: 'This evidence source was not required for the selected rule.'
+  };
+
+  if (!required) {
+    return report;
+  }
+  if (maxAgeMinutes == null) {
+    return {
+      ...report,
+      status: 'not-configured',
+      reason: 'Freshness policy is not configured for this required evidence source.'
+    };
+  }
+  if (payload == null) {
+    return {
+      ...report,
+      status: 'missing',
+      reason: 'Required live evidence is missing.'
+    };
+  }
+  if (!generatedAt || Number.isNaN(timestamp)) {
+    return {
+      ...report,
+      status: 'invalid-timestamp',
+      reason: 'Required live evidence does not expose a valid generatedAt timestamp.'
+    };
+  }
+
+  const ageMinutes = Math.max(0, (now.getTime() - timestamp) / 60000);
+  if (ageMinutes > maxAgeMinutes) {
+    return {
+      ...report,
+      ageMinutes,
+      status: 'stale',
+      reason: `Required live evidence is ${ageMinutes.toFixed(2)} minutes old, above the ${maxAgeMinutes}-minute freshness window.`
+    };
+  }
+  return {
+    ...report,
+    ageMinutes,
+    status: 'fresh',
+    reason: `Required live evidence is ${ageMinutes.toFixed(2)} minutes old and within the ${maxAgeMinutes}-minute freshness window.`
+  };
+}
+
+function buildFreshnessContext({
+  repoRoot,
+  policy,
+  selectedRule,
+  hostSignalPath,
+  hostSignal,
+  wakeAdjudicationPath,
+  wakeAdjudication,
+  wakeWorkSynthesisPath,
+  wakeWorkSynthesis,
+  wakeInvestmentAccountingPath,
+  wakeInvestmentAccounting,
+  now
+}) {
+  const requiresHostSignal = Boolean(selectedRule?.when?.hostSignalStatus);
+  const requiresWakeEvidence = ruleUsesWakeEvidence(selectedRule);
+  const requiresWakeAccounting = Boolean(
+    selectedRule?.when?.wakeAccountingBucket || selectedRule?.when?.wakeAccountingStatus
+  );
+
+  const sources = {
+    hostSignal: buildFreshnessEntry({
+      repoRoot,
+      reportPath: hostSignalPath,
+      payload: hostSignal,
+      maxAgeMinutes: policy.freshness.hostSignalMaxAgeMinutes,
+      required: requiresHostSignal,
+      now
+    }),
+    wakeAdjudication: buildFreshnessEntry({
+      repoRoot,
+      reportPath: wakeAdjudicationPath,
+      payload: wakeAdjudication,
+      maxAgeMinutes: policy.freshness.wakeAdjudicationMaxAgeMinutes,
+      required: requiresWakeEvidence,
+      now
+    }),
+    wakeWorkSynthesis: buildFreshnessEntry({
+      repoRoot,
+      reportPath: wakeWorkSynthesisPath,
+      payload: wakeWorkSynthesis,
+      maxAgeMinutes: policy.freshness.wakeWorkSynthesisMaxAgeMinutes,
+      required: requiresWakeEvidence,
+      now
+    }),
+    wakeInvestmentAccounting: buildFreshnessEntry({
+      repoRoot,
+      reportPath: wakeInvestmentAccountingPath,
+      payload: wakeInvestmentAccounting,
+      maxAgeMinutes: policy.freshness.wakeInvestmentAccountingMaxAgeMinutes,
+      required: requiresWakeAccounting,
+      now
+    })
+  };
+
+  const requiredSources = Object.entries(sources)
+    .filter(([, entry]) => entry.required)
+    .map(([key]) => key);
+  const blockingSources = Object.entries(sources)
+    .filter(([, entry]) => entry.required && entry.status !== 'fresh')
+    .map(([key]) => key);
+
+  return {
+    requiredSources,
+    blockingSources,
+    status: blockingSources.length > 0 ? 'blocked' : 'pass',
+    sources
+  };
+}
+
+function buildFreshnessBlockedReason(freshness) {
+  const details = freshness.blockingSources
+    .map((key) => `${key}: ${freshness.sources[key]?.reason || 'freshness requirement not met'}`);
+  return `Required live wake evidence is not fresh enough for issue injection (${details.join('; ')}).`;
 }
 
 function readDecisionLedger(filePath) {
@@ -673,6 +847,7 @@ function createIssue(repository, rule, body, runGhFn) {
 
 export async function runMonitoringWorkInjection(options = {}, deps = {}) {
   const repoRoot = path.resolve(options.repoRoot || DEFAULT_REPO_ROOT);
+  const now = new Date(options.now || Date.now());
   const policyPath = path.resolve(repoRoot, options.policyPath || DEFAULT_POLICY_PATH);
   const outputPath = path.resolve(repoRoot, options.outputPath || DEFAULT_OUTPUT_PATH);
   const ledgerPath = path.resolve(repoRoot, options.ledgerPath || DEFAULT_DECISION_LEDGER_PATH);
@@ -716,6 +891,20 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
     selectedRule = policy.rules.find((rule) => ruleMatches(rule, monitoringMode, hostSignal, wakeEvidence)) ?? null;
   }
   const resolvedDedupeMarker = selectedRule ? resolveDedupeMarker(selectedRule, wakeEvidence) : null;
+  const freshness = buildFreshnessContext({
+    repoRoot,
+    policy,
+    selectedRule,
+    hostSignalPath,
+    hostSignal,
+    wakeAdjudicationPath,
+    wakeAdjudication,
+    wakeWorkSynthesisPath,
+    wakeWorkSynthesis,
+    wakeInvestmentAccountingPath,
+    wakeInvestmentAccounting,
+    now
+  });
 
   let summary = buildFallbackSummary(wakeEvidence, repository);
   if (!queueEligible) {
@@ -759,7 +948,16 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
   }
 
   if (selectedRule) {
-    if (!replay.available || replay.ambiguous) {
+    if (freshness.blockingSources.length > 0) {
+      summary = {
+        status: 'policy-blocked',
+        injected: false,
+        reason: buildFreshnessBlockedReason(freshness),
+        issueNumber: null,
+        issueUrl: null,
+        triggerId: selectedRule.id
+      };
+    } else if (!replay.available || replay.ambiguous) {
       summary = {
         status: 'policy-blocked',
         injected: false,
@@ -848,7 +1046,7 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
   });
   const report = {
     schema: 'priority/monitoring-work-injection-report@v1',
-    generatedAt: new Date().toISOString(),
+    generatedAt: now.toISOString(),
     repository,
     event: {
       category: 'monitoring-work-injection',
@@ -861,6 +1059,7 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
     policy: {
       path: path.relative(repoRoot, policyPath).replace(/\\/g, '/'),
       requireQueueEmpty: policy.requireQueueEmpty,
+      freshness: policy.freshness,
       ruleIds: policy.rules.map((rule) => rule.id)
     },
     inputs: {
@@ -930,6 +1129,7 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
           }
         }
       : null,
+    freshness,
     replay,
     decisionLedger: {
       path: path.relative(repoRoot, ledgerPath).replace(/\\/g, '/'),
