@@ -181,6 +181,9 @@ test('dry-run helpers create metadata and restore branch context', async (t) => 
   run('node', [featureCreate, featureSlug], { cwd: repoDir });
   const featureBranchAfterCreate = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir });
   assert.equal(featureBranchAfterCreate, dryrunFeatureBranch);
+  run('node', [featureCreate, featureSlug], { cwd: repoDir });
+  const featureBranchListAfterRerun = run('git', ['branch', '--list', `feature/${featureSlug}`], { cwd: repoDir });
+  assert.ok(featureBranchListAfterRerun.includes(`feature/${featureSlug}`));
 
   const featureMetadataPath = path.join(repoDir, 'tests', 'results', '_agent', 'feature', `feature-${featureSlug}-dryrun.json`);
   const featureMetadata = JSON.parse(await readFile(featureMetadataPath, 'utf8'));
@@ -189,6 +192,7 @@ test('dry-run helpers create metadata and restore branch context', async (t) => 
   assert.equal(featureMetadata.dryRun, true);
   assert.ok(Date.parse(featureMetadata.createdAt));
 
+  await rm(path.join(repoDir, 'tests', 'results', '_agent', 'feature'), { recursive: true, force: true });
   run('node', [featureFinalize, featureSlug], { cwd: repoDir });
   const featureBranchAfterFinalize = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir });
   assert.equal(featureBranchAfterFinalize, dryrunFeatureBranch);
