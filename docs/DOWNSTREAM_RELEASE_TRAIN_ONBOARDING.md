@@ -21,6 +21,9 @@ This runbook defines the controlled onboarding path for issue `#715`:
 - Wake adjudication report:
   - `tests/results/_agent/issue/wake-adjudication.json`
   - schema: `docs/schemas/wake-adjudication-report-v1.schema.json`
+- Monitoring work injection report:
+  - `tests/results/_agent/issue/monitoring-work-injection.json`
+  - schema: `docs/schemas/monitoring-work-injection-report-v1.schema.json`
 - Promotion scorecard:
   - `tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json`
   - schema: `docs/schemas/downstream-promotion-scorecard-v1.schema.json`
@@ -171,6 +174,29 @@ investment accounting report then records:
 - the current observed wake-handling cost
 - any avoided misrouting cost proxy when the wake was suppressed or re-routed
 - the current payback posture for the governance slice
+
+## Monitoring work injection
+
+When compare is in `queue-empty` monitoring mode, the loop can use live wake
+evidence to decide whether it should inject compare governance work, stay
+suppressed, or route the wake outside compare without reopening the wrong repo:
+
+```bash
+node tools/npm/run-script.mjs priority:monitoring:inject-work -- \
+  --wake-adjudication tests/results/_agent/issue/wake-adjudication.json \
+  --wake-work-synthesis tests/results/_agent/issue/wake-work-synthesis.json \
+  --wake-investment-accounting tests/results/_agent/capital/wake-investment-accounting.json \
+  --output tests/results/_agent/issue/monitoring-work-injection.json
+```
+
+The monitoring injection report distinguishes:
+
+- `created-issue` or `existing-issue` for compare-side self-healing work
+- `suppressed-wake` when live replay cleared the wake
+- `monitoring-only` when the signal should remain observational
+- `external-route` when the supported wake belongs outside compare
+- `policy-blocked` when an actionable compare wake exists but policy does not
+  yet map it to a standing work lane
 
 Optional aggregated hardening issue creation:
 
