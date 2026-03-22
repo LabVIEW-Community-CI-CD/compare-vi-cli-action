@@ -193,10 +193,11 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   artifact root came from an explicit CLI path, `COMPAREVI_BURST_ARTIFACT_ROOT`, the checked-in preferred external
   root, or the repo-local fallback.
 - Burst-lane root policy lives in `tools/priority/delivery-agent.policy.json` under `storageRoots`.
-  `COMPAREVI_BURST_WORKTREE_ROOT` and `COMPAREVI_BURST_ARTIFACT_ROOT` override the checked-in preferred roots
-  (`E:\comparevi-lanes` and `E:\comparevi-artifacts`) when the host exposes different deterministic spill locations.
-  Runtime task packets now project `evidence.lane.workerCheckoutRoot` and `workerCheckoutRootPolicy` so later helpers
-  can recover the exact burst-lane root choice instead of relying on operator memory.
+  The checked-in preferred roots are `E:\comparevi-lanes` for worktrees and `E:\comparevi-artifacts` for artifacts.
+  `COMPAREVI_BURST_WORKTREE_ROOT` and `COMPAREVI_BURST_ARTIFACT_ROOT` override those defaults when the host exposes
+  a different deterministic spill location. Runtime task packets now project
+  `evidence.lane.workerCheckoutRoot` and `workerCheckoutRootPolicy` so later helpers can recover the exact burst-lane
+  root choice instead of relying on operator memory.
 - `node tools/npm/run-script.mjs priority:github:metadata:apply -- --url <issue-or-pr-url> ...`  
   Applies canonical GitHub metadata directly on the issue or PR: issue type, milestone, assignees, requested
   reviewers, parent issue, and sub-issue linkage. The helper writes

@@ -137,6 +137,58 @@ test('downloadNamedArtifacts resolves relative artifact roots through the determ
   );
 });
 
+test('downloadNamedArtifacts prefers the checked-in E: artifact root when no override is present', async (t) => {
+  const { downloadNamedArtifacts } = await loadModule();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-policy-root-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  const result = downloadNamedArtifacts({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runId: '22872590273',
+    artifactNames: ['copilot-review-signal-965'],
+    repoRoot: tmpDir,
+    destinationRoot: path.join('tests', 'results', '_agent', 'reviews', 'run-artifacts'),
+    reportPath: path.join(tmpDir, 'report.json'),
+    storageRootsPolicy: {
+      artifacts: {
+        envVar: 'COMPAREVI_BURST_ARTIFACT_ROOT',
+        preferredRoots: ['E:\\comparevi-artifacts'],
+      },
+    },
+    env: {},
+    runGhJsonFn() {
+      return {
+        artifacts: [
+          {
+            id: 5837347732,
+            name: 'copilot-review-signal-965',
+            size_in_bytes: 735,
+            expired: false,
+          },
+        ],
+      };
+    },
+    runProcessFn(_command, args) {
+      const destinationIndex = args.indexOf('-D');
+      const destination = args[destinationIndex + 1];
+      writeFile(path.join(destination, 'copilot-review-signal.json'), '{}\n');
+      return { status: 0, stdout: '', stderr: '', error: null };
+    },
+  });
+
+  assert.equal(result.report.status, 'pass');
+  assert.equal(
+    result.report.destinationRoot,
+    path.join('E:\\comparevi-artifacts', 'tests', 'results', '_agent', 'reviews', 'run-artifacts'),
+  );
+  assert.deepEqual(result.report.destinationRootPolicy, {
+    strategy: 'policy-preferred-root',
+    source: 'delivery-agent.policy.json#storageRoots.artifacts.preferredRoots[0]',
+    baseRoot: 'E:\\comparevi-artifacts',
+    relativeRoot: path.join('tests', 'results', '_agent', 'reviews', 'run-artifacts'),
+    usesExternalRoot: true,
+  });
+});
+
 test('downloadNamedArtifacts classifies policy wrapper rejections explicitly', async (t) => {
   const { downloadNamedArtifacts } = await loadModule();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-artifact-download-policy-'));
