@@ -136,7 +136,17 @@ test('monitoring work injection report matches schema', async () => {
       decision: 'compare-governance-work',
       status: 'actionable',
       recommendedOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
-      reason: 'Wake belongs to compare governance.'
+      reason: 'Wake belongs to compare governance.',
+      routingAuthorityTier: 'authoritative',
+      blockedLowerTierEvidence: true
+    },
+    authority: {
+      selectedTier: 'authoritative',
+      blockedLowerTier: true,
+      contradictionFields: ['targetBranch', 'defaultBranch'],
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      branch: 'develop',
+      source: 'live-replay'
     }
   });
   writeJson(wakeInvestmentAccountingPath, {

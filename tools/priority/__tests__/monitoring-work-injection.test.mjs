@@ -116,7 +116,17 @@ function createInputs(tmpDir, { includeWakeEvidence = true } = {}) {
         decision: 'compare-governance-work',
         status: 'actionable',
         recommendedOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
-        reason: 'Wake belongs to compare governance.'
+        reason: 'Wake belongs to compare governance.',
+        routingAuthorityTier: 'authoritative',
+        blockedLowerTierEvidence: true
+      },
+      authority: {
+        selectedTier: 'authoritative',
+        blockedLowerTier: true,
+        contradictionFields: ['targetBranch', 'defaultBranch'],
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        branch: 'develop',
+        source: 'live-replay'
       }
     });
     writeJson(wakeInvestmentAccountingPath, {
@@ -465,6 +475,114 @@ test('runMonitoringWorkInjection consults replay memory before repeating a suppr
   assert.equal(report.replay.matchedBy, 'fingerprint');
   assert.equal(report.replay.suppressionApplied, true);
   assert.match(report.summary.reason, /Replay memory matched sequence \d+/);
+});
+
+test('runMonitoringWorkInjection blocks replay reuse when authority context strengthened', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-authority-replay-'));
+  const {
+    policyPath,
+    queuePath,
+    monitoringPath,
+    hostSignalPath,
+    wakeAdjudicationPath,
+    wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath
+  } = createInputs(tmpDir);
+  const ledgerPath = path.join(tmpDir, 'tests', 'results', '_agent', 'ops', 'ops-decision-ledger.json');
+  writeJson(ledgerPath, {
+    schema: 'ops-decision-ledger@v1',
+    generatedAt: '2099-01-01T00:10:00.000Z',
+    entryCount: 1,
+    entries: [
+      {
+        sequence: 1,
+        appendedAt: '2099-01-01T00:10:00.000Z',
+        source: 'monitoring-work-injection',
+        decisionDigest: 'prior-decision',
+        fingerprint: 'prior-fingerprint',
+        decision: {
+          event: {
+            dedupeMarker: 'monitoring-work-injector:compare-governance-wake:reconcile-downstream-branch-target-provenance'
+          },
+          summary: {
+            status: 'existing-issue',
+            issueNumber: 88,
+            issueUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/88'
+          },
+          evidence: {
+            wake: {
+              classification: 'branch-target-drift',
+              decision: 'compare-governance-work',
+              status: 'actionable',
+              nextAction: 'reconcile-downstream-branch-target-provenance',
+              recommendedOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+              suppressIssueInjection: true,
+              suppressTemplateIssueInjection: true,
+              suppressDownstreamIssueInjection: true,
+              accountingBucket: 'compare-governance-work',
+              accountingStatus: 'warn',
+              paybackStatus: 'neutral',
+              authorityTier: 'revalidated',
+              authorityBlockedLowerTier: false,
+              authorityContradictionFields: [],
+              authorityRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+              authorityBranch: 'develop',
+              authoritySource: 'live-replay'
+            }
+          }
+        }
+      }
+    ]
+  });
+
+  const ghCalls = [];
+  const { report } = await runMonitoringWorkInjection(
+    {
+      repoRoot: tmpDir,
+      policyPath,
+      queueEmptyReportPath: queuePath,
+      monitoringModePath: monitoringPath,
+      hostSignalPath,
+      wakeAdjudicationPath,
+      wakeWorkSynthesisPath,
+      wakeInvestmentAccountingPath,
+      ledgerPath,
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    {
+      runGhJsonFn: (args) => {
+        ghCalls.push(args.join(' '));
+        if (args[0] === 'issue' && args[1] === 'list') {
+          return [
+            {
+              number: 88,
+              title: '[governance]: reconcile monitoring wake drift in compare control plane',
+              url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/88',
+              body: '<!-- monitoring-work-injector:compare-governance-wake:reconcile-downstream-branch-target-provenance -->',
+              labels: [{ name: 'standing-priority' }, { name: 'governance' }],
+              state: 'OPEN'
+            }
+          ];
+        }
+        if (args[0] === 'issue' && args[1] === 'view') {
+          throw new Error('authority-mismatched replay must not use direct issue-view reuse');
+        }
+        throw new Error(`unexpected gh json args: ${args.join(' ')}`);
+      },
+      runGhFn: (args) => {
+        ghCalls.push(args.join(' '));
+        throw new Error(`unexpected gh args: ${args.join(' ')}`);
+      }
+    }
+  );
+
+  assert.equal(report.summary.status, 'existing-issue');
+  assert.equal(report.summary.issueNumber, 88);
+  assert.equal(report.replay.authorityCompatible, false);
+  assert.equal(report.replay.authorityMismatchReason, 'authority-context-changed');
+  assert.equal(report.replay.reusedExistingIssue, false);
+  assert.ok(!ghCalls.some((entry) => entry.startsWith('issue view')));
+  assert.ok(!report.summary.reason.includes('replay memory reused'));
 });
 
 test('runMonitoringWorkInjection writes replayable ledger context for external-route wakes', async () => {
