@@ -46,12 +46,10 @@ const EXPECTED_MAIN_CHECKS = [
 
 const EXPECTED_RELEASE_CHECKS = [
   'lint',
-  'pester',
-  'publish',
-  'vi-binary-check',
-  'vi-compare',
-  'mock-cli',
-  'Policy Guard (Upstream) / policy-guard'
+  'pester / normalize',
+  'smoke-gate',
+  'Policy Guard (Upstream) / policy-guard',
+  'commit-integrity'
 ];
 
 const EXPECTED_DEVELOP_MERGE_QUEUE_PARAMS = {
@@ -254,12 +252,10 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
   ];
   const expectedReleaseChecks = [
     'lint',
-    'pester',
-    'publish',
-    'vi-binary-check',
-    'vi-compare',
-    'mock-cli',
-    'Policy Guard (Upstream) / policy-guard'
+    'pester / normalize',
+    'smoke-gate',
+    'Policy Guard (Upstream) / policy-guard',
+    'commit-integrity'
   ];
 
   const repoUrl = 'https://api.github.com/repos/test-org/test-repo';
@@ -403,12 +399,10 @@ test('priority:policy --apply updates rulesets for develop/main/release', async 
           do_not_enforce_on_create: false,
           required_status_checks: [
             { context: 'lint', integration_id: 15368 },
-            { context: 'pester', integration_id: 15368 },
-            { context: 'publish', integration_id: 15368 },
-            { context: 'vi-binary-check', integration_id: 15368 },
-            { context: 'vi-compare', integration_id: 15368 },
-            { context: 'mock-cli', integration_id: 15368 },
-            { context: 'Policy Guard (Upstream) / policy-guard' }
+            { context: 'pester / normalize', integration_id: 15368 },
+            { context: 'smoke-gate', integration_id: 15368 },
+            { context: 'Policy Guard (Upstream) / policy-guard' },
+            { context: 'commit-integrity' }
           ]
         }
       }

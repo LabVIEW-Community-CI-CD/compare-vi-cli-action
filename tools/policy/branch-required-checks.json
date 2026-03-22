@@ -33,12 +33,10 @@
     ],
     "upstream-release-prep": [
       "lint",
-      "pester",
-      "publish",
-      "vi-binary-check",
-      "vi-compare",
-      "mock-cli",
-      "Policy Guard (Upstream) / policy-guard"
+      "pester / normalize",
+      "smoke-gate",
+      "Policy Guard (Upstream) / policy-guard",
+      "commit-integrity"
     ]
   },
   "branches": {
@@ -67,12 +65,10 @@
     ],
     "release/*": [
       "lint",
-      "pester",
-      "publish",
-      "vi-binary-check",
-      "vi-compare",
-      "mock-cli",
-      "Policy Guard (Upstream) / policy-guard"
+      "pester / normalize",
+      "smoke-gate",
+      "Policy Guard (Upstream) / policy-guard",
+      "commit-integrity"
     ]
   },
   "observed": {

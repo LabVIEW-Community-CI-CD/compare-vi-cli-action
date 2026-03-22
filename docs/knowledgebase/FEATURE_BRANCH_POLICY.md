@@ -86,7 +86,7 @@ promotion behavior, not the branch-class source of truth.
 |------------|----------------------|----------------------------------------------------------------------------------------------|
 | `develop` (live id may drift) | `refs/heads/develop` | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=20 entries, 1-minute quiet window). Required checks: `lint`, `fixtures`, `session-index`, `issue-snapshot`, `semver`, `Policy Guard (Upstream) / policy-guard`, `vi-history-scenarios-linux`, `agent-review-policy`, `hook-parity`, `commit-integrity`. Non-required hosted proof lanes may run alongside the queue contract, including `vi-history-scenarios-windows` on GitHub-hosted `windows-2022`. Copilot review settings are no longer enforced through policy; draft/ready review semantics are repo-owned and validated by `agent-review-policy`. |
 | `8614140`  | `refs/heads/main`    | Merge queue enabled (`merge_method=SQUASH`, `grouping=ALLGREEN`, build queue <=5 entries, 1-minute quiet window). Required checks: `lint`, `pester`, `vi-binary-check`, `vi-compare`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
-| `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`. Required approving reviews: `0`. |
+| `8614172`  | `refs/heads/release/*` | No merge queue; protects against force-push/deletion. Required checks: `lint`, `pester / normalize`, `smoke-gate`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`. Required approving reviews: `0`. |
 
 `node tools/npm/run-script.mjs priority:policy` queries these rulesets and fails if the live configuration drifts from
 `tools/priority/policy.json`; run it whenever you adjust protections.
@@ -280,7 +280,7 @@ checked into `tools/priority/policy.json` so `priority:policy` stays authoritati
 
 ### `release/*`
 - **Ruleset**: `8614172` (scope `refs/heads/release/*`).
-- **Required checks**: `lint`, `pester`, `publish`, `vi-binary-check`, `vi-compare`, `mock-cli`, `Policy Guard (Upstream) / policy-guard`.
+- **Required checks**: `lint`, `pester / normalize`, `smoke-gate`, `Policy Guard (Upstream) / policy-guard`, `commit-integrity`.
 - **Approvals**: 0 required reviews; stale review dismissal remains enabled.
 - **Merge queue**: intentionally disabled; rely on manual review + required checks.
 - **Maintenance tip**: revisit after each release cycle to ensure the workflow matrix still emits the expected check

@@ -4,11 +4,10 @@ import process from 'node:process';
 import {
   run,
   parseSingleValueArg,
-  ensureValidIdentifier,
   ensureBranchExists,
   getRepoRoot
 } from './lib/branch-utils.mjs';
-import { writeReleaseMetadata } from './lib/release-utils.mjs';
+import { normalizeVersionInput, writeReleaseMetadata } from './lib/release-utils.mjs';
 
 const USAGE_LINES = [
   'Usage: node tools/npm/run-script.mjs release:finalize:dry -- <version>',
@@ -35,13 +34,13 @@ function resolveFirstExistingRef(refs) {
 }
 
 async function main() {
-  const version = parseSingleValueArg(process.argv, {
+  const versionInput = parseSingleValueArg(process.argv, {
     usageLines: USAGE_LINES,
     valueLabel: '<version>'
   });
-  ensureValidIdentifier(version, { label: 'version' });
+  const { tag, semver } = normalizeVersionInput(versionInput);
 
-  const branch = `release/${version}`;
+  const branch = `release/${tag}`;
   ensureBranchExists(branch);
 
   const root = getRepoRoot();
@@ -52,13 +51,14 @@ async function main() {
 
   console.log(`[dry-run] would fast-forward main to ${releaseCommit} (current ${mainBase.ref} ${mainBase.sha})`);
   console.log('[dry-run] git push upstream main');
-  console.log(`[dry-run] gh release create --draft ${version}`);
+  console.log(`[dry-run] gh release create --draft ${tag}`);
   console.log(`[dry-run] would fast-forward develop to ${releaseCommit} (current ${developBase.ref} ${developBase.sha})`);
   console.log('[dry-run] git push upstream develop');
 
   const metadata = {
     schema: 'release/finalize-dryrun@v1',
-    version,
+    version: tag,
+    semver,
     releaseBranch: branch,
     releaseCommit,
     mainBase: mainBase.sha,
@@ -68,7 +68,7 @@ async function main() {
     dryRun: true,
     generatedAt: new Date().toISOString()
   };
-  const metadataPath = await writeReleaseMetadata(root, version, 'finalize-dryrun', metadata);
+  const metadataPath = await writeReleaseMetadata(root, tag, 'finalize-dryrun', metadata);
   console.log(`[dry-run] wrote finalize dry-run metadata -> ${metadataPath}`);
 }
 

@@ -59,12 +59,10 @@
     ],
     "release/*": [
       "lint",
-      "pester",
-      "publish",
-      "vi-binary-check",
-      "vi-compare",
-      "mock-cli",
-      "Policy Guard (Upstream) / policy-guard"
+      "pester / normalize",
+      "smoke-gate",
+      "Policy Guard (Upstream) / policy-guard",
+      "commit-integrity"
     ]
   },
   "required_status_checks_ref": {

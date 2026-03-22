@@ -145,21 +145,23 @@ test('dry-run helpers create metadata and restore branch context', async (t) => 
   const helpBranches = run('git', ['branch', '--list', 'release/--help'], { cwd: repoDir });
   assert.equal(helpBranches, '');
 
-  const version = 'v0.0.0-test';
+  const version = '0.0.0-test';
+  const taggedVersion = `v${version}`;
   run('git', ['worktree', 'add', attachedDevelopDir, dryrunBaseBranch], { cwd: repoDir });
   run('node', [releaseCreate, version], { cwd: repoDir });
   const postCreateBranch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir });
   assert.equal(postCreateBranch, dryrunFeatureBranch);
-  const releaseBranchList = run('git', ['branch', '--list', `release/${version}`], { cwd: repoDir });
-  assert.ok(releaseBranchList.includes(`release/${version}`));
+  const releaseBranchList = run('git', ['branch', '--list', `release/${taggedVersion}`], { cwd: repoDir });
+  assert.ok(releaseBranchList.includes(`release/${taggedVersion}`));
   run('node', [releaseCreate, version], { cwd: repoDir });
-  const releaseBranchListAfterRerun = run('git', ['branch', '--list', `release/${version}`], { cwd: repoDir });
-  assert.ok(releaseBranchListAfterRerun.includes(`release/${version}`));
+  const releaseBranchListAfterRerun = run('git', ['branch', '--list', `release/${taggedVersion}`], { cwd: repoDir });
+  assert.ok(releaseBranchListAfterRerun.includes(`release/${taggedVersion}`));
 
-  const releaseMetadataPath = path.join(repoDir, 'tests', 'results', '_agent', 'release', `release-${version}-dryrun.json`);
+  const releaseMetadataPath = path.join(repoDir, 'tests', 'results', '_agent', 'release', `release-${taggedVersion}-dryrun.json`);
   const releaseMetadata = JSON.parse(await readFile(releaseMetadataPath, 'utf8'));
-  assert.equal(releaseMetadata.branch, `release/${version}`);
-  assert.equal(releaseMetadata.version, version);
+  assert.equal(releaseMetadata.branch, `release/${taggedVersion}`);
+  assert.equal(releaseMetadata.version, taggedVersion);
+  assert.equal(releaseMetadata.semver, version);
   assert.equal(releaseMetadata.baseBranch, dryrunBaseBranch);
   assert.equal(releaseMetadata.dryRun, true);
   assert.ok(Date.parse(releaseMetadata.createdAt));
@@ -169,10 +171,18 @@ test('dry-run helpers create metadata and restore branch context', async (t) => 
   const finalizeBranch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoDir });
   assert.equal(finalizeBranch, dryrunFeatureBranch);
 
-  const releaseFinalizePath = path.join(repoDir, 'tests', 'results', '_agent', 'release', `release-${version}-finalize-dryrun.json`);
+  const releaseFinalizePath = path.join(
+    repoDir,
+    'tests',
+    'results',
+    '_agent',
+    'release',
+    `release-${taggedVersion}-finalize-dryrun.json`
+  );
   const releaseFinalizeMetadata = JSON.parse(await readFile(releaseFinalizePath, 'utf8'));
-  assert.equal(releaseFinalizeMetadata.version, version);
-  assert.equal(releaseFinalizeMetadata.releaseBranch, `release/${version}`);
+  assert.equal(releaseFinalizeMetadata.version, taggedVersion);
+  assert.equal(releaseFinalizeMetadata.semver, version);
+  assert.equal(releaseFinalizeMetadata.releaseBranch, `release/${taggedVersion}`);
   assert.equal(releaseFinalizeMetadata.dryRun, true);
   assert.ok(Date.parse(releaseFinalizeMetadata.generatedAt));
   run('git', ['worktree', 'remove', '--force', attachedDevelopDir], { cwd: repoDir });

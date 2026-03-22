@@ -26,6 +26,51 @@ function contextsMatch(requiredContext, actualContext) {
   return requiredAliases.some((alias) => actualAliases.includes(alias));
 }
 
+function scoreMatchingCheck(check) {
+  const status = String(check?.status ?? '')
+    .trim()
+    .toUpperCase();
+  const conclusion = String(check?.conclusion ?? '')
+    .trim()
+    .toUpperCase();
+
+  if (status === 'COMPLETED' && conclusion === 'SUCCESS') {
+    return 400;
+  }
+  if (status === 'COMPLETED' && conclusion && conclusion !== 'SUCCESS') {
+    return 300;
+  }
+  if (status === 'IN_PROGRESS') {
+    return 200;
+  }
+  if (status === 'QUEUED') {
+    return 100;
+  }
+  return 0;
+}
+
+function selectBestMatchingCheck(requiredContext, checks = []) {
+  const matches = (Array.isArray(checks) ? checks : []).filter((check) =>
+    contextsMatch(requiredContext, check?.name)
+  );
+  if (matches.length === 0) {
+    return null;
+  }
+
+  return matches
+    .map((check, index) => ({
+      check,
+      index,
+      score: scoreMatchingCheck(check)
+    }))
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      return left.index - right.index;
+    })[0].check;
+}
+
 export function loadReleaseRequiredChecks(
   repoRoot,
   policyRelativePath = path.join('tools', 'policy', 'branch-required-checks.json')
@@ -51,7 +96,7 @@ export function evaluateRequiredReleaseChecks(requiredChecks, statusCheckRollup 
   const unresolved = [];
 
   for (const required of requiredChecks) {
-    const match = checks.find((check) => contextsMatch(required, check?.name));
+    const match = selectBestMatchingCheck(required, checks);
     if (!match) {
       missing.push(required);
       continue;

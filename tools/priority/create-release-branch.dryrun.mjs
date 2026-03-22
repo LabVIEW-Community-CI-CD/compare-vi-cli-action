@@ -6,12 +6,12 @@ import process from 'node:process';
 import {
   run,
   parseSingleValueArg,
-  ensureValidIdentifier,
   ensureCleanWorkingTree,
   getCurrentCheckoutTarget,
   getRepoRoot,
   checkoutDetachedRef
 } from './lib/branch-utils.mjs';
+import { normalizeVersionInput } from './lib/release-utils.mjs';
 
 const USAGE_LINES = [
   'Usage: node tools/npm/run-script.mjs release:branch:dry -- <version>',
@@ -23,13 +23,13 @@ const USAGE_LINES = [
 ];
 
 async function main() {
-  const version = parseSingleValueArg(process.argv, {
+  const versionInput = parseSingleValueArg(process.argv, {
     usageLines: USAGE_LINES,
     valueLabel: '<version>'
   });
-  ensureValidIdentifier(version, { label: 'version' });
+  const { tag, semver } = normalizeVersionInput(versionInput);
 
-  const branch = `release/${version}`;
+  const branch = `release/${tag}`;
   const root = getRepoRoot();
   ensureCleanWorkingTree(run, 'Working tree not clean. Commit or stash changes before running the dry-run helper.');
 
@@ -60,13 +60,14 @@ async function main() {
   const payload = {
     schema: 'release/branch-dryrun@v1',
     branch,
-    version,
+    version: tag,
+    semver,
     baseBranch: 'develop',
     baseCommit,
     dryRun: true,
     createdAt: new Date().toISOString()
   };
-  const file = path.join(dir, `release-${version}-dryrun.json`);
+  const file = path.join(dir, `release-${tag}-dryrun.json`);
   await writeFile(file, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 
   console.log(`[dry-run] created ${branch} at ${baseCommit}`);

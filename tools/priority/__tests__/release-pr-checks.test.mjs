@@ -40,6 +40,25 @@ test('evaluateRequiredReleaseChecks accepts prefixed workflow check names', () =
   assert.deepEqual(evaluation, { missing: [], unresolved: [] });
 });
 
+test('evaluateRequiredReleaseChecks prefers a successful duplicate context over a skipped duplicate', () => {
+  const evaluation = evaluateRequiredReleaseChecks(
+    ['Policy Guard (Upstream) / policy-guard'],
+    [
+      {
+        name: 'Policy Guard (Upstream) / policy-guard',
+        status: 'COMPLETED',
+        conclusion: 'SKIPPED'
+      },
+      {
+        name: 'Policy Guard (Upstream) / policy-guard',
+        status: 'COMPLETED',
+        conclusion: 'SUCCESS'
+      }
+    ]
+  );
+  assert.deepEqual(evaluation, { missing: [], unresolved: [] });
+});
+
 test('evaluateRequiredReleaseChecks reports missing and unresolved contexts', () => {
   const evaluation = evaluateRequiredReleaseChecks(
     ['lint', 'pester', 'session-index'],
