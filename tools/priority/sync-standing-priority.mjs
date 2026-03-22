@@ -2675,7 +2675,7 @@ export async function main(options = {}) {
           noStandingReason,
           noStandingOpenIssueCount
         );
-        writeJson(path.join(resultsDir, 'router.json'), clearedRouter);
+        writeJson(path.join(resultsDir, 'router.json'), clearedRouter, { force: true });
 
         if (
           shouldPersistCacheUpdate(cache, clearedCache, {
@@ -2805,7 +2805,7 @@ export async function main(options = {}) {
 
   const policy = loadRoutingPolicy(repoRoot);
   const router = buildRouter(snapshot, policy);
-  writeJson(path.join(resultsDir, 'router.json'), router);
+  writeJson(path.join(resultsDir, 'router.json'), router, { force: true });
   const autoPromotedReportPath = path.join(resultsDir, AUTO_PROMOTED_STANDING_REPORT_FILENAME);
   if (standingPriority?.source === 'auto-select' && autoPromotedStandingReport) {
     writeAutoPromotedStandingPriorityReport(resultsDir, autoPromotedStandingReport);
