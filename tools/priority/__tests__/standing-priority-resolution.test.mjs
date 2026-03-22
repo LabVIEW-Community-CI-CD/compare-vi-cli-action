@@ -566,6 +566,30 @@ test('selectAutoStandingPriorityCandidate skips explicitly blocked rollout track
   assert.equal(selected?.number, 951);
 });
 
+test('selectAutoStandingPriorityCandidate skips standing-excluded outcome lanes', () => {
+  const selected = selectAutoStandingPriorityCandidate([
+    {
+      number: 1467,
+      title: 'Add a licensed added/deleted sample VI seed for PrintToSingleFileHtml certification',
+      body: [
+        'The current remaining blockers are narrowed to #1624 and #1726.',
+        'Parent lane: #1407'
+      ].join('\n'),
+      labels: ['enhancement', 'ci', 'standing-excluded'],
+      createdAt: '2026-03-01T00:00:00Z'
+    },
+    {
+      number: 1781,
+      title: '[P1] exclude open outcome lanes from standing auto-selection',
+      body: 'Remaining in-repo control-plane fix.',
+      labels: ['ci', 'governance'],
+      createdAt: '2026-03-02T00:00:00Z'
+    }
+  ]);
+
+  assert.equal(selected?.number, 1781);
+});
+
 test('selectAutoStandingPriorityCandidate keeps rollout trackers eligible when blocker wording is historical or negated', () => {
   const selected = selectAutoStandingPriorityCandidate([
     {
@@ -2244,6 +2268,31 @@ test('classifyNoStandingPriorityCondition keeps excluded-label queues as label-m
   assert.equal(result.repository, 'owner/repo');
   assert.equal(result.openIssueCount, 1);
   assert.match(result.message, /none carry the checked standing-priority labels/i);
+});
+
+test('classifyNoStandingPriorityCondition treats standing-excluded-only queues as queue-empty', async () => {
+  const result = await classifyNoStandingPriorityCondition('/tmp/repo', 'owner/repo', ['standing-priority'], {
+    targetSlug: 'owner/repo',
+    runGhList: () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          number: 1467,
+          title: 'Add a licensed added/deleted sample VI seed for PrintToSingleFileHtml certification',
+          body: 'The current remaining blockers are narrowed to #1624 and #1726.',
+          labels: ['standing-excluded']
+        }
+      ])
+    }),
+    runRestList: async () => ({ status: 'error', error: 'not-used' }),
+    warn: () => {}
+  });
+
+  assert.equal(result.status, 'classified');
+  assert.equal(result.reason, 'queue-empty');
+  assert.equal(result.repository, 'owner/repo');
+  assert.equal(result.openIssueCount, 1);
+  assert.match(result.message, /no eligible in-scope open issues remain/i);
 });
 
 test('classifyNoStandingPriorityCondition keeps excluded blocked rollout queues as label-missing', async () => {

@@ -13,6 +13,11 @@
       "color": "0E8A16"
     },
     {
+      "name": "standing-excluded",
+      "description": "Open issue is intentionally kept out of standing-priority auto-selection",
+      "color": "C5DEF5"
+    },
+    {
       "name": "queue-blocked",
       "description": "Queue candidate blocked and awaiting remediation",
       "color": "D93F0B"
