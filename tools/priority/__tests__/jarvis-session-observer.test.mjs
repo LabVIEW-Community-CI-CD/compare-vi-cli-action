@@ -211,6 +211,8 @@ test('observeJarvisSessionObserver projects an active manual Windows Docker sess
   assert.equal(report.status, 'active');
   assert.equal(report.summary.activeSessionCount, 1);
   assert.equal(report.summary.totalSessionCount, 1);
+  assert.equal(report.hostRuntime.source, 'daemon-host-signal');
+  assert.equal(report.hostRuntime.diagnostics.managerStateAvailable, false);
   assert.equal(report.daemon.daemonCutover.status, 'ready');
   assert.equal(report.daemon.daemonCutover.readyForLinuxDaemon, true);
   assert.deepEqual(report.daemon.daemonCutover.requiredActions, []);
@@ -313,4 +315,125 @@ test('observeJarvisSessionObserver blocks when native-wsl daemon cutover is stil
     'Rerun priority:jarvis:status.'
   ]);
   assert.match(report.daemon.daemonCutover.reason, /cut over to a distro-owned Linux daemon/i);
+});
+
+test('observeJarvisSessionObserver honors manager state when stale host-signal evidence was rejected', async () => {
+  const repoRoot = createTempDir();
+  const runtimeDir = path.join(repoRoot, 'tests', 'results', '_agent', 'runtime');
+  writeJson(path.join(repoRoot, 'tools', 'priority', 'delivery-agent.policy.json'), {
+    schema: 'priority/delivery-agent-policy@v1',
+    capitalFabric: {
+      specialtyLanes: [
+        {
+          id: 'jarvis',
+          enabled: true,
+          primaryRecordedResponsibility: 'Sagan',
+          maxInstanceCount: 2,
+          preferredExecutionPlane: 'local-docker-windows',
+          preferredContainerImage: 'nationalinstruments/labview:2026q1-windows'
+        }
+      ]
+    },
+    dockerRuntime: {
+      provider: 'native-wsl',
+      dockerHost: 'unix:///var/run/docker.sock',
+      expectedOsType: 'linux',
+      expectedContext: '',
+      manageDockerEngine: false,
+      allowHostEngineMutation: false
+    }
+  });
+  writeJson(path.join(runtimeDir, 'delivery-agent-state.json'), {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: '2026-03-21T01:00:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+  });
+  writeJson(path.join(runtimeDir, 'delivery-agent-manager-state.json'), {
+    schema: 'priority/unattended-delivery-agent-manager-report@v1',
+    generatedAt: '2026-03-21T01:20:00.000Z',
+    hostSignal: null,
+    hostSignalDiagnostics: {
+      usedHostSignal: false,
+      reason: 'stale-before-current-manager',
+      hostSignalGeneratedAt: '2026-03-21T01:00:00.000Z',
+      managerStartedAt: '2026-03-21T01:15:00.000Z',
+      hostSignalRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    hostIsolation: {
+      lastStatus: 'native-wsl',
+      lastAction: 'collect',
+      preemptedServices: [],
+      counters: {
+        runnerPreemptionCount: 0
+      }
+    }
+  });
+  writeJson(path.join(runtimeDir, 'daemon-host-signal.json'), {
+    schema: 'priority/delivery-agent-host-signal@v1',
+    generatedAt: '2026-03-21T01:10:00.000Z',
+    status: 'native-wsl',
+    provider: 'native-wsl',
+    daemonFingerprint: 'stale-host-signal-fingerprint',
+    previousFingerprint: 'stale-host-signal-fingerprint',
+    fingerprintChanged: false,
+    reasons: [],
+    windowsDocker: {
+      available: true,
+      context: 'desktop-windows',
+      osType: 'windows',
+      operatingSystem: 'Docker Desktop',
+      serverName: 'docker-desktop',
+      platformName: 'Docker Desktop',
+      serverVersion: '29.2.0',
+      labels: [],
+      error: null
+    },
+    wslDocker: {
+      distro: 'Ubuntu',
+      dockerHost: 'unix:///var/run/docker.sock',
+      available: true,
+      socketPath: '/var/run/docker.sock',
+      socketPresent: true,
+      socketOwner: 'root:docker',
+      socketMode: '660',
+      systemdState: 'running',
+      serviceState: 'active',
+      context: 'default',
+      osType: 'linux',
+      operatingSystem: 'Ubuntu 24.04.2 LTS',
+      serverName: 'ubuntu-native',
+      platformName: 'Docker Engine - Community',
+      serverVersion: '28.1.1',
+      labels: [],
+      isDockerDesktop: false,
+      error: null
+    },
+    runnerServices: {
+      running: [],
+      stopped: []
+    }
+  });
+
+  const { report } = await observeJarvisSessionObserver({
+    repoRoot,
+    runtimeDir,
+    policyPath: path.join(repoRoot, 'tools', 'priority', 'delivery-agent.policy.json'),
+    outputPath: path.join(runtimeDir, 'jarvis-session-observer.json'),
+    tailLines: 2
+  });
+
+  assert.equal(report.hostRuntime.source, 'delivery-agent-manager-state');
+  assert.equal(report.hostRuntime.status, 'unknown');
+  assert.equal(report.hostRuntime.provider, null);
+  assert.equal(report.hostRuntime.diagnostics.managerStateAvailable, true);
+  assert.equal(report.hostRuntime.diagnostics.hostSignalDiagnostics.usedHostSignal, false);
+  assert.equal(report.hostRuntime.diagnostics.hostSignalDiagnostics.reason, 'stale-before-current-manager');
+  assert.equal(report.daemon.daemonCutover.status, 'unknown');
+  assert.match(report.daemon.daemonCutover.reason, /could not determine whether the Linux daemon plane is reusable/i);
+  assert.ok(
+    report.warnings.includes(
+      'delivery-agent manager rejected daemon-host-signal.json (stale-before-current-manager).'
+    )
+  );
+  assert.equal(report.artifacts.managerStatePath, path.join(runtimeDir, 'delivery-agent-manager-state.json'));
 });

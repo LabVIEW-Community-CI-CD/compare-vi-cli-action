@@ -122,6 +122,7 @@
       "required": [
         "status",
         "provider",
+        "source",
         "reasons",
         "daemonFingerprint",
         "previousFingerprint",
@@ -129,11 +130,16 @@
         "windowsDocker",
         "wslDocker",
         "runnerServices",
-        "isolation"
+        "isolation",
+        "diagnostics"
       ],
       "properties": {
         "status": { "type": "string" },
         "provider": { "type": ["string", "null"] },
+        "source": {
+          "type": "string",
+          "enum": ["delivery-agent-manager-state", "daemon-host-signal", "unavailable"]
+        },
         "reasons": { "type": "array", "items": { "type": "string" } },
         "daemonFingerprint": { "type": ["string", "null"] },
         "previousFingerprint": { "type": ["string", "null"] },
@@ -162,6 +168,33 @@
             "lastAction": { "type": ["string", "null"] },
             "preemptedServices": { "type": "array", "items": { "type": "string" } },
             "counters": { "type": "object" }
+          }
+        },
+        "diagnostics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["managerStateAvailable", "managerGeneratedAt", "hostSignalDiagnostics"],
+          "properties": {
+            "managerStateAvailable": { "type": "boolean" },
+            "managerGeneratedAt": { "type": ["string", "null"], "format": "date-time" },
+            "hostSignalDiagnostics": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "usedHostSignal",
+                "reason",
+                "hostSignalGeneratedAt",
+                "managerStartedAt",
+                "hostSignalRepository"
+              ],
+              "properties": {
+                "usedHostSignal": { "type": "boolean" },
+                "reason": { "type": ["string", "null"] },
+                "hostSignalGeneratedAt": { "type": ["string", "null"], "format": "date-time" },
+                "managerStartedAt": { "type": ["string", "null"], "format": "date-time" },
+                "hostSignalRepository": { "type": ["string", "null"] }
+              }
+            }
           }
         }
       }
@@ -361,6 +394,7 @@
         "runtimeDir",
         "deliveryStatePath",
         "concurrentLaneStatusPath",
+        "managerStatePath",
         "hostSignalPath",
         "hostIsolationPath",
         "observerHeartbeatPath",
@@ -374,6 +408,7 @@
         "runtimeDir": { "type": "string" },
         "deliveryStatePath": { "type": "string" },
         "concurrentLaneStatusPath": { "type": "string" },
+        "managerStatePath": { "type": "string" },
         "hostSignalPath": { "type": "string" },
         "hostIsolationPath": { "type": "string" },
         "observerHeartbeatPath": { "type": "string" },

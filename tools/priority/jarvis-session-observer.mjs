@@ -160,13 +160,29 @@ function normalizeJarvisPolicy(policy = {}, runtimeState = {}) {
   };
 }
 
-function normalizeHostSignal(hostSignal = null, hostIsolation = null) {
+function normalizeHostSignalDiagnostics(diagnostics = null) {
+  return {
+    usedHostSignal: diagnostics?.usedHostSignal === true,
+    reason: toOptionalText(diagnostics?.reason),
+    hostSignalGeneratedAt: toOptionalText(diagnostics?.hostSignalGeneratedAt),
+    managerStartedAt: toOptionalText(diagnostics?.managerStartedAt),
+    hostSignalRepository: toOptionalText(diagnostics?.hostSignalRepository)
+  };
+}
+
+function normalizeHostSignal(hostSignal = null, hostIsolation = null, options = {}) {
   const reasons = Array.isArray(hostSignal?.reasons)
     ? hostSignal.reasons.map((entry) => normalizeText(entry)).filter(Boolean)
     : [];
+  const diagnostics = {
+    managerStateAvailable: options.managerStateAvailable === true,
+    managerGeneratedAt: toOptionalText(options.managerGeneratedAt),
+    hostSignalDiagnostics: normalizeHostSignalDiagnostics(options.hostSignalDiagnostics)
+  };
   return {
     status: toOptionalText(hostSignal?.status) ?? 'unknown',
     provider: toOptionalText(hostSignal?.provider),
+    source: toOptionalText(options.source) ?? 'unavailable',
     reasons,
     daemonFingerprint: toOptionalText(hostSignal?.daemonFingerprint),
     previousFingerprint: toOptionalText(hostSignal?.previousFingerprint),
@@ -211,8 +227,52 @@ function normalizeHostSignal(hostSignal = null, hostIsolation = null) {
       lastAction: toOptionalText(hostIsolation?.lastAction),
       preemptedServices: Array.isArray(hostIsolation?.preemptedServices) ? hostIsolation.preemptedServices : [],
       counters: hostIsolation?.counters ?? {}
-    }
+    },
+    diagnostics
   };
+}
+
+function resolveHostRuntimeEvidence(managerState, hostSignal, hostIsolation, warnings) {
+  const managerStateAvailable = Boolean(managerState);
+  const managerGeneratedAt = toOptionalText(managerState?.generatedAt);
+  const managerHostSignalDiagnostics = managerState?.hostSignalDiagnostics ?? null;
+  const managerHostSignal = managerState && Object.hasOwn(managerState, 'hostSignal')
+    ? managerState.hostSignal
+    : null;
+  const managerHostIsolation = managerState && Object.hasOwn(managerState, 'hostIsolation')
+    ? managerState.hostIsolation
+    : hostIsolation;
+  const normalizedManagerDiagnostics = normalizeHostSignalDiagnostics(managerHostSignalDiagnostics);
+
+  if (managerStateAvailable && normalizedManagerDiagnostics.usedHostSignal === false) {
+    if (normalizedManagerDiagnostics.reason) {
+      warnings.push(
+        `delivery-agent manager rejected daemon-host-signal.json (${normalizedManagerDiagnostics.reason}).`
+      );
+    }
+    return normalizeHostSignal(null, managerHostIsolation, {
+      source: 'delivery-agent-manager-state',
+      managerStateAvailable,
+      managerGeneratedAt,
+      hostSignalDiagnostics: managerHostSignalDiagnostics
+    });
+  }
+
+  if (managerHostSignal) {
+    return normalizeHostSignal(managerHostSignal, managerHostIsolation, {
+      source: 'delivery-agent-manager-state',
+      managerStateAvailable,
+      managerGeneratedAt,
+      hostSignalDiagnostics: managerHostSignalDiagnostics
+    });
+  }
+
+  return normalizeHostSignal(hostSignal, hostIsolation, {
+    source: hostSignal ? 'daemon-host-signal' : 'unavailable',
+    managerStateAvailable,
+    managerGeneratedAt,
+    hostSignalDiagnostics: managerHostSignalDiagnostics
+  });
 }
 
 function buildDaemonCutoverAssessment(jarvisPolicy, hostRuntime) {
@@ -505,6 +565,7 @@ function createWatchPaths(paths) {
     paths.deliveryStatePath,
     paths.concurrentLaneStatusPath,
     paths.deliveryMemoryPath,
+    paths.managerStatePath,
     paths.hostSignalPath,
     paths.hostIsolationPath,
     paths.observerHeartbeatPath,
@@ -590,6 +651,7 @@ export async function buildJarvisSessionObserverReport({
     deliveryStatePath: path.join(resolvedRuntimeDir, 'delivery-agent-state.json'),
     concurrentLaneStatusPath: path.join(resolvedRuntimeDir, 'concurrent-lane-status-receipt.json'),
     deliveryMemoryPath: path.join(resolvedRuntimeDir, 'delivery-memory.json'),
+    managerStatePath: path.join(resolvedRuntimeDir, 'delivery-agent-manager-state.json'),
     hostSignalPath: path.join(resolvedRuntimeDir, 'daemon-host-signal.json'),
     hostIsolationPath: path.join(resolvedRuntimeDir, 'delivery-agent-host-isolation.json'),
     observerHeartbeatPath: path.join(resolvedRuntimeDir, 'observer-heartbeat.json'),
@@ -604,6 +666,7 @@ export async function buildJarvisSessionObserverReport({
     runtimeState,
     concurrentLaneStatus,
     deliveryMemory,
+    managerState,
     hostSignal,
     hostIsolation,
     observerHeartbeat,
@@ -616,6 +679,7 @@ export async function buildJarvisSessionObserverReport({
     readJsonIfPresent(paths.deliveryStatePath),
     readJsonIfPresent(paths.concurrentLaneStatusPath),
     readJsonIfPresent(paths.deliveryMemoryPath),
+    readJsonIfPresent(paths.managerStatePath),
     readJsonIfPresent(paths.hostSignalPath),
     readJsonIfPresent(paths.hostIsolationPath),
     readJsonIfPresent(paths.observerHeartbeatPath),
@@ -631,7 +695,7 @@ export async function buildJarvisSessionObserverReport({
   if (!runtimeState) warnings.push('delivery-agent-state.json is missing.');
 
   const jarvisPolicy = normalizeJarvisPolicy(policy ?? {}, runtimeState ?? {});
-  const hostRuntime = normalizeHostSignal(hostSignal, hostIsolation);
+  const hostRuntime = resolveHostRuntimeEvidence(managerState, hostSignal, hostIsolation, warnings);
   const daemonCutover = buildDaemonCutoverAssessment(jarvisPolicy, hostRuntime);
   const concurrentSessions = collectConcurrentLaneSessions(concurrentLaneStatus ?? {}, jarvisPolicy);
   const runtimeFallbackSession = buildRuntimeFallbackSession(runtimeState ?? {}, hostRuntime, jarvisPolicy);
@@ -699,6 +763,7 @@ export async function buildJarvisSessionObserverReport({
       runtimeDir: resolvedRuntimeDir,
       deliveryStatePath: paths.deliveryStatePath,
       concurrentLaneStatusPath: paths.concurrentLaneStatusPath,
+      managerStatePath: paths.managerStatePath,
       hostSignalPath: paths.hostSignalPath,
       hostIsolationPath: paths.hostIsolationPath,
       observerHeartbeatPath: paths.observerHeartbeatPath,
