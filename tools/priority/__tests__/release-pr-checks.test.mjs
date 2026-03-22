@@ -6,7 +6,9 @@ import path from 'node:path';
 import {
   loadReleaseRequiredChecks,
   evaluateRequiredReleaseChecks,
-  assertRequiredReleaseChecksClean
+  assertRequiredReleaseChecksClean,
+  evaluateReleasePrMergeReadiness,
+  assertReleasePrMergeReady
 } from '../lib/release-pr-checks.mjs';
 
 test('loadReleaseRequiredChecks reads release/* contexts from policy file', async (t) => {
@@ -59,5 +61,37 @@ test('assertRequiredReleaseChecksClean throws when required checks are not satis
         [{ name: 'Validate / lint', status: 'COMPLETED', conclusion: 'SUCCESS' }]
       ),
     /not satisfied/i
+  );
+});
+
+test('evaluateReleasePrMergeReadiness allows BLOCKED release PRs when mergeable and not overridden by topology', () => {
+  const evaluation = evaluateReleasePrMergeReadiness({
+    mergeStateStatus: 'BLOCKED',
+    mergeable: 'MERGEABLE'
+  });
+  assert.equal(evaluation.allowed, true);
+  assert.equal(evaluation.reason, null);
+});
+
+test('evaluateReleasePrMergeReadiness rejects conflicting or behind release PR states', () => {
+  assert.equal(
+    evaluateReleasePrMergeReadiness({ mergeStateStatus: 'BLOCKED', mergeable: 'CONFLICTING' }).allowed,
+    false
+  );
+  assert.equal(
+    evaluateReleasePrMergeReadiness({ mergeStateStatus: 'BEHIND', mergeable: 'MERGEABLE' }).allowed,
+    false
+  );
+});
+
+test('assertReleasePrMergeReady honors allow-dirty override', () => {
+  assert.doesNotThrow(() =>
+    assertReleasePrMergeReady(
+      {
+        mergeStateStatus: 'DIRTY',
+        mergeable: 'CONFLICTING'
+      },
+      { allowDirty: true }
+    )
   );
 });

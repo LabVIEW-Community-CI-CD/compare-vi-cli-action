@@ -90,3 +90,60 @@ export function assertRequiredReleaseChecksClean(requiredChecks, statusCheckRoll
 
   throw new Error(`Release PR required checks are not satisfied: ${parts.join('; ')}`);
 }
+
+const BLOCKING_RELEASE_MERGE_STATES = new Set(['DIRTY', 'BEHIND', 'UNKNOWN', 'UNSTABLE']);
+const BLOCKING_RELEASE_MERGEABLE_STATES = new Set(['CONFLICTING', 'UNMERGEABLE']);
+
+export function evaluateReleasePrMergeReadiness(prView = {}, { allowDirty = false } = {}) {
+  const mergeStateStatus = String(prView?.mergeStateStatus ?? '')
+    .trim()
+    .toUpperCase();
+  const mergeable = String(prView?.mergeable ?? '')
+    .trim()
+    .toUpperCase();
+
+  if (allowDirty) {
+    return {
+      allowed: true,
+      mergeStateStatus: mergeStateStatus || null,
+      mergeable: mergeable || null,
+      reason: 'allow-dirty-override'
+    };
+  }
+
+  if (BLOCKING_RELEASE_MERGEABLE_STATES.has(mergeable)) {
+    return {
+      allowed: false,
+      mergeStateStatus: mergeStateStatus || null,
+      mergeable,
+      reason: `mergeable=${mergeable}`
+    };
+  }
+
+  if (BLOCKING_RELEASE_MERGE_STATES.has(mergeStateStatus)) {
+    return {
+      allowed: false,
+      mergeStateStatus,
+      mergeable: mergeable || null,
+      reason: `mergeStateStatus=${mergeStateStatus}`
+    };
+  }
+
+  return {
+    allowed: true,
+    mergeStateStatus: mergeStateStatus || null,
+    mergeable: mergeable || null,
+    reason: null
+  };
+}
+
+export function assertReleasePrMergeReady(prView = {}, { allowDirty = false } = {}) {
+  const evaluation = evaluateReleasePrMergeReadiness(prView, { allowDirty });
+  if (evaluation.allowed) {
+    return evaluation;
+  }
+
+  throw new Error(
+    `Release PR merge state is not admissible (${evaluation.reason}). Resolve the release branch topology/check state or set RELEASE_FINALIZE_ALLOW_DIRTY=1.`
+  );
+}

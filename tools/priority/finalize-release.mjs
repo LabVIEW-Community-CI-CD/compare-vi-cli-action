@@ -32,7 +32,8 @@ import {
 import { collectBlockingCompareEvidence } from './lib/release-compare-evidence.mjs';
 import {
   loadReleaseRequiredChecks,
-  assertRequiredReleaseChecksClean
+  assertRequiredReleaseChecksClean,
+  assertReleasePrMergeReady
 } from './lib/release-pr-checks.mjs';
 import { collectStandingPriorityParityGate } from './lib/release-priority-parity.mjs';
 import {
@@ -68,7 +69,7 @@ function ensureReleasePrReady(repoRoot, branch, requiredChecks = []) {
 
   const prView = spawnSync(
     'gh',
-    ['pr', 'view', branch, '--json', 'number,state,mergeStateStatus,statusCheckRollup,url'],
+    ['pr', 'view', branch, '--json', 'number,state,mergeStateStatus,mergeable,statusCheckRollup,url'],
     {
       cwd: repoRoot,
       encoding: 'utf8',
@@ -113,6 +114,7 @@ function ensureReleasePrReady(repoRoot, branch, requiredChecks = []) {
             number: merged.number ?? null,
             url: merged.url ?? null,
             mergeStateStatus: 'MERGED',
+            mergeable: null,
             checks: summarizeStatusChecks([])
           };
         }
@@ -146,15 +148,10 @@ function ensureReleasePrReady(repoRoot, branch, requiredChecks = []) {
   }
 
   const mergeStateStatus = info.mergeStateStatus ?? null;
-  if (
-    mergeStateStatus &&
-    mergeStateStatus !== 'CLEAN' &&
-    process.env.RELEASE_FINALIZE_ALLOW_DIRTY !== '1'
-  ) {
-    throw new Error(
-      `Release PR merge state is ${mergeStateStatus}. Resolve pending checks or set RELEASE_FINALIZE_ALLOW_DIRTY=1.`
-    );
-  }
+  const mergeable = info.mergeable ?? null;
+  assertReleasePrMergeReady(info, {
+    allowDirty: process.env.RELEASE_FINALIZE_ALLOW_DIRTY === '1'
+  });
 
   let requiredEvaluation = null;
   if (process.env.RELEASE_FINALIZE_ALLOW_DIRTY !== '1') {
@@ -170,6 +167,7 @@ function ensureReleasePrReady(repoRoot, branch, requiredChecks = []) {
     number: info.number ?? null,
     url: info.url ?? null,
     mergeStateStatus,
+    mergeable,
     checks: summarizeStatusChecks(info.statusCheckRollup ?? []),
     requiredChecks: requiredEvaluation
   };
