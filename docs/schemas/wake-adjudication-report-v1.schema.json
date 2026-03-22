@@ -9,6 +9,7 @@
     "wakeKind",
     "reported",
     "revalidated",
+    "authority",
     "delta",
     "summary"
   ],
@@ -30,6 +31,62 @@
     },
     "revalidated": {
       "$ref": "#/definitions/revalidatedObservation"
+    },
+    "authority": {
+      "type": "object",
+      "required": [
+        "reported",
+        "revalidated",
+        "authoritative",
+        "routing"
+      ],
+      "properties": {
+        "reported": {
+          "$ref": "#/definitions/authorityTier"
+        },
+        "revalidated": {
+          "$ref": "#/definitions/authorityTier"
+        },
+        "authoritative": {
+          "$ref": "#/definitions/authorityTier"
+        },
+        "routing": {
+          "type": "object",
+          "required": [
+            "preferredTier",
+            "selectedTier",
+            "contradictionFields",
+            "blockedLowerTier",
+            "reason"
+          ],
+          "properties": {
+            "preferredTier": {
+              "type": "string",
+              "enum": [
+                "authoritative"
+              ]
+            },
+            "selectedTier": {
+              "type": "string",
+              "enum": [
+                "authoritative"
+              ]
+            },
+            "contradictionFields": {
+              "$ref": "#/definitions/idArray"
+            },
+            "blockedLowerTier": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     },
     "delta": {
       "type": "object",
@@ -167,6 +224,7 @@
         "downstreamRepository",
         "targetBranch",
         "defaultBranch",
+        "branchResolutionSource",
         "summaryStatus",
         "requiredFailCount",
         "warningCount",
@@ -199,6 +257,18 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "branchResolutionSource": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "explicit-override",
+            "live-repository-default-branch",
+            "fallback-default-branch",
+            null
           ]
         },
         "summaryStatus": {
@@ -247,6 +317,7 @@
         "downstreamRepository",
         "targetBranch",
         "defaultBranch",
+        "branchResolutionSource",
         "summaryStatus",
         "requiredFailCount",
         "warningCount",
@@ -281,6 +352,18 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "branchResolutionSource": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "explicit-override",
+            "live-repository-default-branch",
+            "fallback-default-branch",
+            null
           ]
         },
         "summaryStatus": {
@@ -327,6 +410,66 @@
             "integer",
             "null"
           ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "authorityTier": {
+      "type": "object",
+      "required": [
+        "tier",
+        "repository",
+        "targetBranch",
+        "defaultBranch",
+        "generatedAt",
+        "branchResolutionSource",
+        "source"
+      ],
+      "properties": {
+        "tier": {
+          "type": "string",
+          "enum": [
+            "reported",
+            "revalidated",
+            "authoritative"
+          ]
+        },
+        "repository": {
+          "type": "string",
+          "pattern": "^[^/]+/[^/]+$"
+        },
+        "targetBranch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaultBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "generatedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "branchResolutionSource": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "explicit-override",
+            "live-repository-default-branch",
+            "fallback-default-branch",
+            null
+          ]
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false

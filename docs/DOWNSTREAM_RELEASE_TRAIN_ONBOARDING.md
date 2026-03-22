@@ -156,6 +156,15 @@ alone. The adjudication report carries both the originally reported branch truth
 and the revalidated live branch truth so the next issue-injection decision can
 route from evidence instead of raw failure status.
 
+The adjudication report now also projects authority tiers:
+
+- `reported`: the originally failed hosted artifact
+- `revalidated`: the live replay result
+- `authoritative`: the branch truth selected for routing after comparing the two
+
+When higher-authority live replay contradicts the reported wake, lower-tier
+reported branch truth is explicitly blocked from routing.
+
 ## Wake synthesis and investment accounting
 
 Once a wake is adjudicated, turn it into repo-aware work-routing and then price
@@ -174,6 +183,10 @@ investment accounting report then records:
 - the current observed wake-handling cost
 - any avoided misrouting cost proxy when the wake was suppressed or re-routed
 - the current payback posture for the governance slice
+
+The synthesis report now records which authority tier drove routing and whether
+lower-tier evidence was blocked because a higher-authority contradiction was
+present.
 
 ## Monitoring work injection
 

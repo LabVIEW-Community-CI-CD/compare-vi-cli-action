@@ -49,6 +49,7 @@ test('wake work synthesis report matches schema', async () => {
       downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
       targetBranch: 'develop',
       defaultBranch: 'develop',
+      branchResolutionSource: 'fallback-default-branch',
       summaryStatus: 'fail',
       requiredFailCount: 1,
       warningCount: 0,
@@ -63,6 +64,7 @@ test('wake work synthesis report matches schema', async () => {
       downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
       targetBranch: 'develop',
       defaultBranch: 'develop',
+      branchResolutionSource: 'live-repository-default-branch',
       summaryStatus: 'fail',
       requiredFailCount: 1,
       warningCount: 0,
@@ -72,6 +74,42 @@ test('wake work synthesis report matches schema', async () => {
       warnings: [],
       reran: true,
       exitCode: 0
+    },
+    authority: {
+      reported: {
+        tier: 'reported',
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        targetBranch: 'develop',
+        defaultBranch: 'develop',
+        generatedAt: '2026-03-22T00:00:00.000Z',
+        branchResolutionSource: 'fallback-default-branch',
+        source: 'reported-artifact'
+      },
+      revalidated: {
+        tier: 'revalidated',
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        targetBranch: 'develop',
+        defaultBranch: 'develop',
+        generatedAt: '2026-03-22T00:01:00.000Z',
+        branchResolutionSource: 'live-repository-default-branch',
+        source: 'live-replay'
+      },
+      authoritative: {
+        tier: 'authoritative',
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        targetBranch: 'develop',
+        defaultBranch: 'develop',
+        generatedAt: '2026-03-22T00:01:00.000Z',
+        branchResolutionSource: 'live-repository-default-branch',
+        source: 'live-repository-default-branch'
+      },
+      routing: {
+        preferredTier: 'authoritative',
+        selectedTier: 'authoritative',
+        contradictionFields: [],
+        blockedLowerTier: false,
+        reason: 'Higher-authority live replay confirmed the wake, so routing may proceed from authoritative evidence.'
+      }
     },
     delta: {
       targetBranchChanged: false,

@@ -15,7 +15,13 @@ function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 
-function createOnboardingReport({ targetBranch, requiredFailures = [], warnings = [] }) {
+function createOnboardingReport({
+  targetBranch,
+  defaultBranch = targetBranch,
+  branchResolutionSource = 'live-repository-default-branch',
+  requiredFailures = [],
+  warnings = []
+}) {
   return {
     schema: 'priority/downstream-onboarding-report@v1',
     generatedAt: '2026-03-22T15:29:00.000Z',
@@ -26,9 +32,17 @@ function createOnboardingReport({ targetBranch, requiredFailures = [], warnings 
     repository: {
       ok: true,
       error: null,
-      defaultBranch: targetBranch,
+      defaultBranch,
+      evaluatedBranch: targetBranch,
+      branchResolutionSource,
       htmlUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
       private: false
+    },
+    branchResolution: {
+      requestedBranchOverride: null,
+      repositoryDefaultBranch: defaultBranch,
+      evaluatedBranch: targetBranch,
+      source: branchResolutionSource
     },
     workflowDiscovery: {
       scannedWorkflowCount: 1,

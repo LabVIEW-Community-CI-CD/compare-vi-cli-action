@@ -263,8 +263,35 @@ function determineOwnerRepository(policy, decision, wakeSummary, governingRole) 
   return asOptional(wakeSummary.recommendedOwnerRepository) || asOptional(governingRole?.repository);
 }
 
+function deriveAuthorityContext(wakeReport) {
+  const authority = wakeReport.authority || {};
+  const routing = authority.routing || {};
+  const authoritative = authority.authoritative || {};
+  const repository =
+    asOptional(wakeReport.summary?.recommendedOwnerRepository) ||
+    asOptional(authoritative.repository) ||
+    asOptional(wakeReport.revalidated?.downstreamRepository) ||
+    asOptional(wakeReport.reported?.downstreamRepository);
+  const branch =
+    normalizeText(authoritative.targetBranch) ||
+    normalizeText(wakeReport.revalidated?.targetBranch) ||
+    normalizeText(wakeReport.reported?.targetBranch);
+
+  return {
+    selectedTier: asOptional(routing.selectedTier) || 'revalidated',
+    blockedLowerTier: routing.blockedLowerTier === true,
+    contradictionFields: Array.isArray(routing.contradictionFields)
+      ? routing.contradictionFields.map((entry) => normalizeText(entry)).filter(Boolean)
+      : [],
+    repository,
+    branch: branch || null,
+    source: asOptional(authoritative.source) || 'wake-adjudication'
+  };
+}
+
 export function synthesizeWakeWork(policy, wakeReport, repoGraphTruth) {
   const wakeSummary = wakeReport.summary;
+  const authority = deriveAuthorityContext(wakeReport);
   const reportedRoleMatches = buildRoleMatches(
     repoGraphTruth,
     wakeReport.reported?.downstreamRepository,
@@ -275,13 +302,15 @@ export function synthesizeWakeWork(policy, wakeReport, repoGraphTruth) {
     wakeReport.revalidated?.downstreamRepository,
     wakeReport.revalidated?.targetBranch
   );
+  const authoritativeRoleMatches =
+    authority.repository && authority.branch ? buildRoleMatches(repoGraphTruth, authority.repository, authority.branch) : [];
 
   const compareRepository = normalizeText(policy.compareRepository);
   const governingRole =
-    (wakeSummary.classification === 'branch-target-drift' ? selectRole(reportedRoleMatches) : null) ||
+    selectRole(authoritativeRoleMatches) ||
     selectRole(revalidatedRoleMatches) ||
     selectFallbackRole(repoGraphTruth, wakeSummary.recommendedOwnerRepository) ||
-    selectRole(reportedRoleMatches);
+    (!authority.blockedLowerTier ? selectRole(reportedRoleMatches) : null);
 
   let decision = policy.classificationDefaults[wakeSummary.classification]?.decision;
   if (!decision) {
@@ -315,8 +344,10 @@ export function synthesizeWakeWork(policy, wakeReport, repoGraphTruth) {
     roles: {
       reportedRoleMatches,
       revalidatedRoleMatches,
+      authoritativeRoleMatches,
       governingRole: governingRole ?? null
     },
+    authority,
     summary: {
       decision,
       status,
@@ -326,7 +357,9 @@ export function synthesizeWakeWork(policy, wakeReport, repoGraphTruth) {
         decision === 'investment-work'
           ? `${normalizeText(wakeSummary.reason)} No live repo-graph role matched the wake, so the next work should improve the control plane instead of reopening the wrong repo.`
           : normalizeText(wakeSummary.reason),
-      issueRouting: createIssueRouting(decision)
+      issueRouting: createIssueRouting(decision),
+      routingAuthorityTier: authority.selectedTier,
+      blockedLowerTierEvidence: authority.blockedLowerTier
     }
   };
 }
