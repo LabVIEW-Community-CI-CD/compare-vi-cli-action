@@ -13,6 +13,9 @@ Use these checked-in commands first instead of reaching for ad hoc
 - `node tools/npm/run-script.mjs priority:delivery:agent:ensure`
 - `node tools/npm/run-script.mjs priority:delivery:agent:status`
 - `node tools/npm/run-script.mjs priority:delivery:agent:stop`
+- `node tools/npm/run-script.mjs priority:delivery:host:collect`
+- `node tools/npm/run-script.mjs priority:delivery:host:isolate`
+- `node tools/npm/run-script.mjs priority:delivery:host:restore`
 - `node tools/npm/run-script.mjs priority:runtime:daemon`
 - `node tools/npm/run-script.mjs priority:runtime:daemon:docker`
 - `node tools/npm/run-script.mjs priority:runtime:daemon:docker:status`
@@ -21,6 +24,16 @@ Use these checked-in commands first instead of reaching for ad hoc
 Prefer `priority:delivery:agent:status` as the first read. That surface already
 normalizes manager state, heartbeat fallback, and lane/runtime evidence into one
 bounded status payload.
+
+Use the explicit host aliases instead of passing raw `--mode` flags when the
+operator loop needs host-runtime coordination:
+
+- `priority:delivery:host:collect` refreshes `daemon-host-signal.json` and
+  `delivery-agent-host-isolation.json`
+- `priority:delivery:host:isolate` preempts only the runner services that were
+  actually running at the start of the call
+- `priority:delivery:host:restore` starts back only services previously
+  preempted by the isolate step
 
 Use `priority:jarvis:status` when Sagan needs a bounded live watch surface for
 the Windows Docker specialty lane family. It emits
@@ -38,7 +51,9 @@ use the emitted `daemonCutover.requiredActions` as the operator loop:
    isolation guidance.
 3. Stop or govern the listed `actions.runner.*` services if they are still
    present on the host.
-4. Rerun `priority:delivery:host:signal`.
+4. Run `priority:delivery:host:collect` to refresh the host receipts, or
+   `priority:delivery:host:isolate` / `priority:delivery:host:restore` when the
+   runner-service step needs to be enacted explicitly.
 5. Rerun `priority:jarvis:status`.
 6. Treat the plane as reusable only when the observer reports
    `daemonCutover.status = ready`.
