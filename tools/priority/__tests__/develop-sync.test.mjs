@@ -273,6 +273,69 @@ test('resolveDevelopSyncExecutionRoot degrades dirty work-branch syncs to ref-re
   );
 });
 
+test('resolveDevelopSyncExecutionRoot delegates dirty develop roots to a clean helper develop worktree', () => {
+  const repoRoot = path.join('C:', 'repo', 'dirty-develop-root');
+  const helperRoot = path.join('C:', 'repo', 'clean-develop-helper');
+  const calls = [];
+  const plan = resolveDevelopSyncExecutionRoot({
+    repoRoot,
+    spawnSyncFn: (command, args, options) => {
+      calls.push({ command, args, cwd: options.cwd });
+      if (command !== 'git') {
+        throw new Error(`Unexpected command ${command}`);
+      }
+      if (args[0] === 'branch' && args[1] === '--show-current') {
+        return { status: 0, stdout: 'develop\n', stderr: '' };
+      }
+      if (args[0] === 'status' && args[1] === '--porcelain') {
+        if (options.cwd === repoRoot) {
+          return { status: 0, stdout: ' M tests/results/_agent/issue/router.json\n?? dirty-note.txt\n', stderr: '' };
+        }
+        if (options.cwd === helperRoot) {
+          return { status: 0, stdout: '', stderr: '' };
+        }
+      }
+      if (args[0] === 'worktree' && args[1] === 'list') {
+        return {
+          status: 0,
+          stdout: [
+            `worktree ${repoRoot}`,
+            'HEAD 1111111111111111111111111111111111111111',
+            'branch refs/heads/develop',
+            '',
+            `worktree ${helperRoot}`,
+            'HEAD 2222222222222222222222222222222222222222',
+            'branch refs/heads/develop',
+            ''
+          ].join('\n'),
+          stderr: ''
+        };
+      }
+      throw new Error(`Unexpected git args: ${args.join(' ')}`);
+    }
+  });
+
+  assert.equal(plan.currentBranch, 'develop');
+  assert.equal(plan.executionRepoRoot, helperRoot);
+  assert.equal(plan.mode, 'full-sync');
+  assert.equal(plan.reason, 'dirty-develop-root-helper');
+  assert.equal(plan.dirtyWorktree, true);
+  assert.equal(plan.delegated, true);
+  assert.equal(plan.helperRoot, helperRoot);
+  assert.deepEqual(
+    calls.map((entry) => ({
+      args: entry.args.join(' '),
+      cwd: entry.cwd
+    })),
+    [
+      { args: 'branch --show-current', cwd: repoRoot },
+      { args: 'status --porcelain', cwd: repoRoot },
+      { args: 'worktree list --porcelain', cwd: repoRoot },
+      { args: 'status --porcelain', cwd: helperRoot }
+    ]
+  );
+});
+
 test('buildDevelopSyncBranchClassTrace classifies upstream develop to fork develop as a mirror sync', () => {
   const trace = buildDevelopSyncBranchClassTrace(repoRoot);
 
