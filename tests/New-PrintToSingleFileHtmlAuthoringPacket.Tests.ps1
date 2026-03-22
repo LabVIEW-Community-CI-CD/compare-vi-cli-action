@@ -106,12 +106,18 @@ $receipt | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $ReceiptPath -Enc
     $receipt.launchScriptPath | Should -Match 'Open-PrintToSingleFileHtmlAuthoringWorkspace\.ps1$'
     $receipt.checklistPath | Should -Match 'AUTHORING_CHECKLIST\.md$'
     (($receipt.notes | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match 'native LabVIEW authoring handoff'
+    (($receipt.notes | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match '#1617'
+    (($receipt.notes | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match '#1726'
+    (($receipt.notes | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match '#1467'
 
     $checklistPath = Join-Path $packetRoot 'AUTHORING_CHECKLIST.md'
     $launchScriptPath = Join-Path $packetRoot 'Open-PrintToSingleFileHtmlAuthoringWorkspace.ps1'
     $checklistPath | Should -Exist
     $launchScriptPath | Should -Exist
     (Get-Content -LiteralPath $checklistPath -Raw) | Should -Match 'Open Operations\.lvproj in LabVIEW 2026 x86'
+    (Get-Content -LiteralPath $checklistPath -Raw) | Should -Match '#1617'
+    (Get-Content -LiteralPath $checklistPath -Raw) | Should -Match '#1726'
+    (Get-Content -LiteralPath $checklistPath -Raw) | Should -Match '#1467'
     (Get-Content -LiteralPath $launchScriptPath -Raw) | Should -Match 'Start-Process -FilePath \$labviewPath'
   }
 }
