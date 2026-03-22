@@ -54,6 +54,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -63,6 +65,35 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Resolve pinned template dependency policy
+        id: template-policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('fs');
+          const policy = JSON.parse(fs.readFileSync('tools/policy/template-dependency.json', 'utf8'));
+          console.log(`repository=${policy.templateRepositorySlug}`);
+          console.log(`ref=${policy.templateReleaseRef}`);
+          console.log(`cookiecutter_version=${policy.cookiecutterVersion}`);
+          console.log(`execution_plane=${policy.container.executionPlane}`);
+          NODE
+
+      - name: Resolve immutable upstream source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin '+refs/heads/develop:refs/remotes/upstream/develop'
+          resolved="$(git rev-parse upstream/develop)"
+          if [ "$resolved" != "$GITHUB_SHA" ]; then
+            echo "Workflow head does not match upstream/develop."
+            echo "resolved=$resolved"
+            echo "head=$GITHUB_SHA"
+            exit 1
+          fi
+          echo "source_sha=$resolved" >> "$GITHUB_OUTPUT"
 
       - name: Run downstream onboarding feedback harness
         id: feedback
@@ -149,6 +180,29 @@ jobs:
           fi
           node tools/npm/run-script.mjs "${args[@]}"
 
+      - name: Generate downstream promotion manifest
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/priority/downstream-promotion-manifest.mjs \
+            --source-sha '${{ steps.source.outputs.source_sha }}' \
+            --comparevi-tools-release 'develop@${{ steps.source.outputs.source_sha }}' \
+            --comparevi-history-release 'not-evaluated:onboarding-feedback' \
+            --scenario-pack-id 'downstream-onboarding-feedback@v1' \
+            --cookiecutter-template-id '${{ steps.template-policy.outputs.repository }}@${{ steps.template-policy.outputs.ref }}' \
+            --proving-scorecard-ref tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json \
+            --actor '${{ github.actor }}' \
+            --output tests/results/_agent/promotion/downstream-develop-promotion-manifest.json
+
+      - name: Validate downstream promotion manifest schema
+        if: ${{ always() && hashFiles('tests/results/_agent/promotion/downstream-develop-promotion-manifest.json') != '' }}
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/downstream-promotion-manifest-v1.schema.json \
+            --data tests/results/_agent/promotion/downstream-develop-promotion-manifest.json
+
       - name: Validate onboarding report schema
         if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding.json') != '' }}
         run: |
@@ -182,7 +236,7 @@ jobs:
             --data tests/results/_agent/promotion/template-agent-verification-report.json
 
       - name: Build downstream promotion scorecard
-        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-success.json') != '' && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-feedback.json') != '' }}
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-success.json') != '' && hashFiles('tests/results/_agent/onboarding/downstream-onboarding-feedback.json') != '' && hashFiles('tests/results/_agent/promotion/downstream-develop-promotion-manifest.json') != '' }}
         run: |
           set -euo pipefail
           node tools/priority/downstream-promotion-scorecard.mjs \

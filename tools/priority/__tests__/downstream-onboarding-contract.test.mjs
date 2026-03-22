@@ -24,6 +24,10 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   assert.match(workflow, /downstream_branch:/);
   assert.match(workflow, /GITHUB_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
   assert.match(workflow, /GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
+  assert.match(workflow, /Resolve pinned template dependency policy/);
+  assert.match(workflow, /tools\/policy\/template-dependency\.json/);
+  assert.match(workflow, /Resolve immutable upstream source/);
+  assert.match(workflow, /git fetch --no-tags origin '\+refs\/heads\/develop:refs\/remotes\/upstream\/develop'/);
   assert.match(workflow, /downstream-onboarding-feedback\.mjs/);
   assert.match(workflow, /args\+=\(--branch "\$branch"\)/);
   assert.match(workflow, /downstream-onboarding-report-v1\.schema\.json/);
@@ -31,6 +35,14 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   assert.match(workflow, /downstream-onboarding-feedback-v1\.schema\.json/);
   assert.match(workflow, /Refresh template-agent verification report/);
   assert.match(workflow, /priority:template:agent:verify/);
+  assert.match(workflow, /Generate downstream promotion manifest/);
+  assert.match(workflow, /downstream-promotion-manifest\.mjs/);
+  assert.match(workflow, /--source-sha '\$\{\{ steps\.source\.outputs\.source_sha \}\}'/);
+  assert.match(workflow, /--comparevi-tools-release 'develop@\$\{\{ steps\.source\.outputs\.source_sha \}\}'/);
+  assert.match(workflow, /--comparevi-history-release 'not-evaluated:onboarding-feedback'/);
+  assert.match(workflow, /--scenario-pack-id 'downstream-onboarding-feedback@v1'/);
+  assert.match(workflow, /--cookiecutter-template-id '\$\{\{ steps\.template-policy\.outputs\.repository \}\}@\$\{\{ steps\.template-policy\.outputs\.ref \}\}'/);
+  assert.match(workflow, /downstream-promotion-manifest-v1\.schema\.json/);
   assert.match(workflow, /template-agent-verification-report-v1\.schema\.json/);
   assert.match(workflow, /tests\/results\/_agent\/promotion\/template-agent-verification-report\.json/);
   assert.match(workflow, /Build downstream promotion scorecard/);
@@ -39,10 +51,14 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   assert.match(workflow, /--manifest-report tests\/results\/_agent\/promotion\/downstream-develop-promotion-manifest\.json/);
   assert.match(workflow, /downstream-promotion-scorecard-v1\.schema\.json/);
   assert.match(workflow, /tests\/results\/_agent\/promotion\/downstream-develop-promotion-scorecard\.json/);
+  assert.ok(
+    workflow.indexOf('Generate downstream promotion manifest') < workflow.indexOf('Build downstream promotion scorecard')
+  );
   assert.match(workflow, /Append onboarding feedback summary/);
   assert.match(workflow, /execution status/);
   assert.match(workflow, /template-agent verification status/);
   assert.match(workflow, /hashFiles\('tests\/results\/_agent\/onboarding\/downstream-onboarding\.json'\)/);
+  assert.match(workflow, /hashFiles\('tests\/results\/_agent\/promotion\/downstream-develop-promotion-manifest\.json'\)/);
   assert.match(workflow, /hashFiles\('tests\/results\/_agent\/promotion\/downstream-develop-promotion-scorecard\.json'\)/);
 });
 
