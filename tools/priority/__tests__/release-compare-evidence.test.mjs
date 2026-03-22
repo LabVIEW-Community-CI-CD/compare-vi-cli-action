@@ -7,7 +7,7 @@ test('collectBlockingCompareEvidence requires both compare workflows to be green
   const ghJsonFn = async (args) => {
     calls.push(args.join(' '));
     const cmd = args.join(' ');
-    if (cmd.includes('run list') && cmd.includes('vi-compare-refs.yml')) {
+    if (cmd.includes('run list') && cmd.includes('validate.yml')) {
       return [
         {
           databaseId: 101,
@@ -19,7 +19,7 @@ test('collectBlockingCompareEvidence requires both compare workflows to be green
         }
       ];
     }
-    if (cmd.includes('run list') && cmd.includes('vi-staging-smoke.yml')) {
+    if (cmd.includes('run list') && cmd.includes('fixture-drift.yml')) {
       return [
         {
           databaseId: 102,
@@ -32,10 +32,10 @@ test('collectBlockingCompareEvidence requires both compare workflows to be green
       ];
     }
     if (cmd.includes('run view 101')) {
-      return { url: 'https://example.com/runs/101', artifacts: [{ name: 'vi-compare-manifest', sizeInBytes: 1234 }] };
+      return { url: 'https://example.com/runs/101', artifacts: [{ name: 'validate-issue-snapshot', sizeInBytes: 1234 }] };
     }
     if (cmd.includes('run view 102')) {
-      return { url: 'https://example.com/runs/102', artifacts: [{ name: 'vi-stage-smoke', sizeInBytes: 5678 }] };
+      return { url: 'https://example.com/runs/102', artifacts: [{ name: 'fixture-drift-results', sizeInBytes: 5678 }] };
     }
     throw new Error(`Unexpected gh args: ${cmd}`);
   };
@@ -47,14 +47,14 @@ test('collectBlockingCompareEvidence requires both compare workflows to be green
   });
 
   assert.equal(evidence.length, 2);
-  assert.equal(evidence[0].workflow, 'vi-compare-refs.yml');
-  assert.equal(evidence[1].workflow, 'vi-staging-smoke.yml');
+  assert.equal(evidence[0].workflow, 'validate.yml');
+  assert.equal(evidence[1].workflow, 'fixture-drift.yml');
   assert.equal(calls.length, 4);
 });
 
 test('collectBlockingCompareEvidence fails when a workflow run is missing', async () => {
   const ghJsonFn = async (args) => {
-    if (args.includes('vi-compare-refs.yml')) {
+    if (args.includes('validate.yml')) {
       return [];
     }
     return [];
@@ -73,7 +73,7 @@ test('collectBlockingCompareEvidence fails when a workflow run is missing', asyn
 
 test('collectBlockingCompareEvidence fails when a workflow is not successful', async () => {
   const ghJsonFn = async (args) => {
-    if (args.includes('vi-compare-refs.yml')) {
+    if (args.includes('validate.yml')) {
       return [
         {
           databaseId: 101,
@@ -98,7 +98,7 @@ test('collectBlockingCompareEvidence fails when a workflow is not successful', a
 
 test('collectBlockingCompareEvidence fails when artifacts are missing', async () => {
   const ghJsonFn = async (args) => {
-    if (args.includes('vi-compare-refs.yml')) {
+    if (args.includes('validate.yml')) {
       return [
         {
           databaseId: 101,

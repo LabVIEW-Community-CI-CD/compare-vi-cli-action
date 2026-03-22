@@ -379,7 +379,7 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   - runs `tools/Detect-RogueLV.ps1` and blocks if rogue LabVIEW/LVCompare processes are detected.
   - set `RELEASE_FINALIZE_SKIP_HYGIENE=1` only for emergency operator overrides.
 - `release:finalize` also blocks when pre-tag compare evidence is incomplete:
-  - requires latest successful `vi-compare-refs.yml` and `vi-staging-smoke.yml` runs for the release branch.
+  - requires latest successful `validate.yml` and `fixture-drift.yml` runs for the release branch, with artifacts attached.
   - requires both runs to publish artifacts (manifest/staging bundles) before tag cut.
   - set `RELEASE_FINALIZE_SKIP_COMPARE_EVIDENCE=1` only for emergency operator overrides.
 - `release:finalize` validates required release PR contexts from `tools/policy/branch-required-checks.json`

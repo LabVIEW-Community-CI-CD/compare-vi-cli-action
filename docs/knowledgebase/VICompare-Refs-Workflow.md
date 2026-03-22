@@ -9,9 +9,11 @@
   alongside per-mode manifests inside `<results>/<mode-slug>/`.
 - Artifacts only include detailed LVCompare output when a difference is detected; runs with no diffs upload the lightweight
   manifest and JSON summaries.
-- Pre-tag release readiness treats both compare evidence lanes as blocking: the latest
-  `vi-compare-refs.yml` and `vi-staging-smoke.yml` runs must both be green and publish artifacts before
+- Pre-tag release readiness now uses the hosted release-branch evidence lanes: the latest
+  `validate.yml` and `fixture-drift.yml` runs must both be green and publish artifacts before
   `release:finalize` can proceed.
+- The manual self-hosted `vi-compare-refs.yml` and `vi-staging-smoke.yml` workflows remain available for
+  focused Windows/LVCompare investigation, but they are no longer the blocking release gate.
 
 ## Pull request staging helper
 
@@ -346,4 +348,3 @@ gh workflow run vi-compare-refs.yml `
       missing coverage.
 - [ ] Documentation and helper usage notes stay in sync with the bucket terminology (Functional behavior, UI / visual,
       Metadata) and explain how to add new fixtures or buckets.
-

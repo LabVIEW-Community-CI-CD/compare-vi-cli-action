@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 const DEFAULT_WORKFLOWS = [
-  { file: 'vi-compare-refs.yml', key: 'vi-compare-refs' },
-  { file: 'vi-staging-smoke.yml', key: 'vi-staging-smoke' }
+  { file: 'validate.yml', key: 'validate' },
+  { file: 'fixture-drift.yml', key: 'fixture-drift' }
 ];
 
 export async function collectBlockingCompareEvidence({

@@ -9,7 +9,7 @@ is live.
 
 - [ ] Work from the release branch (`release/v0.5.2-rc1`, or latest RC) and ensure it contains all changes targeted for
       0.5.2 (history suite, branch guard, release tooling updates).
-- [ ] CI is green on the RC branch (Validate, fixtures, session-index, `vi-compare-refs`, `vi-staging-smoke`, and any
+- [ ] CI is green on the RC branch (Validate, Fixture Drift Validation, Cookiecutter Bootstrap, and any
       integration workflows).
 - [ ] Release PR required contexts are all `COMPLETED/SUCCESS` before finalize: `lint`, `pester / normalize`,
       `smoke-gate`, `Policy Guard (Upstream) / policy-guard`, and `commit-integrity`.
@@ -77,8 +77,8 @@ Suggested outline:
 1. Summary: history suite telemetry, branch-policy guard + release automation, auto-publish refs, Docker parity helper.
 2. Upgrade notes: history manifests + Dev Dashboard samples, release tooling scripts (`tools/priority/*`), branch guard
    expectations for `develop`.
-3. Validation snapshot: mention required checks (Validate, fixtures, session-index, `vi-compare-refs`,
-   `vi-staging-smoke`) and guard outcomes.
+3. Validation snapshot: mention required checks (Validate, Fixture Drift Validation,
+   Cookiecutter Bootstrap) and guard outcomes.
 4. Known issues / follow-ups: monitor history ingestion dashboards, finalize release branch merger back to `develop`.
 5. Rollback: link to `ROLLBACK_PLAN.md`.
 
