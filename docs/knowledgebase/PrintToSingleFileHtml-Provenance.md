@@ -69,6 +69,11 @@ As of March 21, 2026, the bundle is still explicitly `source-only`:
   gap into an explicit native-authoring packet with the installed
   `Operations.lvproj`, `Toolkit-Operations.lvproj`, LabVIEW 2026 x86 path, an
   authoring checklist, and a launch helper
+- `tools/Finalize-OperationPayloadSourceBundle.ps1` now gives the native
+  authoring handoff a deterministic completion step: once repo-owned LabVIEW
+  binary files are checked in, the helper updates `checkedInOperationFiles`,
+  flips the declared executable state to `runnable`, and leaves public proof as
+  the remaining blocker instead of requiring manual manifest editing
 
 ## Repo policy
 
