@@ -33,6 +33,7 @@ test('cookiecutter bootstrap workflow provisions hosted Linux and Windows proof 
   assert.match(workflow, /tools\/docker\/Dockerfile\.tools/);
   assert.match(workflow, /--container-image comparevi-tools:cookiecutter/);
   assert.match(workflow, /template-cookiecutter-container\.json/);
+  assert.match(workflow, /hostProjectDir \|\| receipt\.result\.projectDir/);
   assert.match(workflow, /templateRepositorySlug/);
   assert.match(workflow, /tools\/policy\/template-dependency\.json/);
   assert.match(workflow, /tools\/policy\/template-\*\.json/);

@@ -12,6 +12,7 @@ import {
   buildTemplateCookiecutterContainerPlan,
   parseArgs,
   resolveContainerUser,
+  resolveHostProjectDir,
   runTemplateCookiecutterContainer,
   slugifySegment
 } from '../template-cookiecutter-container.mjs';
@@ -180,6 +181,34 @@ test('buildCookiecutterPythonScript wires the pinned checkout and deterministic 
   assert.equal(script.contextJson.includes('template-cookiecutter-v1'), true);
 });
 
+test('resolveHostProjectDir maps container project paths back onto the host output root', () => {
+  const plan = buildTemplateCookiecutterContainerPlan(
+    {
+      policyPath: path.join(process.cwd(), 'tools', 'policy', 'template-dependency.json'),
+      workspaceRoot: '/tmp/comparevi-template-consumers',
+      laneId: 'cookiecutter-bootstrap-linux',
+      runId: 'run-1743'
+    },
+    {
+      now: new Date('2026-03-21T19:00:00.000Z'),
+      uniqueSuffixFn: () => 'abc123',
+      platform: 'linux',
+      currentProcess: {
+        getuid: () => 1001,
+        getgid: () => 121
+      }
+    }
+  );
+
+  assert.equal(
+    resolveHostProjectDir(
+      plan,
+      '/workspace/cookiecutter-bootstrap-linux/run-1743/output/comparevi-template-consumer'
+    ),
+    '/tmp/comparevi-template-consumers/cookiecutter-bootstrap-linux/run-1743/output/comparevi-template-consumer'
+  );
+});
+
 test('runTemplateCookiecutterContainer writes a receipt and captures the spawned docker command', () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'template-cookiecutter-container-'));
   const outputPath = path.join(tempRoot, 'receipt.json');
@@ -235,6 +264,10 @@ test('runTemplateCookiecutterContainer writes a receipt and captures the spawned
   assert.equal(receipt.status, 'pass');
   assert.equal(receipt.policy.effectiveContainerImage, 'comparevi-tools:cookiecutter');
   assert.equal(receipt.result.projectDir, '/workspace/issue-origin-1743-template-cookiecutter-conveyor/run-1743/output/LabviewGitHubCiTemplate');
+  assert.equal(
+    receipt.result.hostProjectDir,
+    'C:\\comparevi-template-consumers\\issue-origin-1743-template-cookiecutter-conveyor\\run-1743\\output\\LabviewGitHubCiTemplate'
+  );
   assert.equal(receipt.run.containerUser, null);
   assert.equal(receipt.run.containerHomeRoot, '/workspace/issue-origin-1743-template-cookiecutter-conveyor/run-1743/.home');
   assert.equal(fs.existsSync(outputPath), true);

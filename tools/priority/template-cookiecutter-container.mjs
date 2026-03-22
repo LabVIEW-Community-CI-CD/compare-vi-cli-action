@@ -208,6 +208,29 @@ export function buildCookiecutterPythonScript({
   };
 }
 
+export function resolveHostProjectDir(plan, containerProjectDir) {
+  if (!containerProjectDir) {
+    return null;
+  }
+
+  const hostPlatformPath = plan.platformPath ?? getPlatformPath(plan.platform);
+
+  const normalizedContainerProjectDir = String(containerProjectDir).replace(/\\/g, '/');
+  const normalizedContainerOutputRoot = String(plan.containerOutputRoot).replace(/\\/g, '/');
+
+  if (normalizedContainerProjectDir === normalizedContainerOutputRoot) {
+    return plan.hostOutputRoot;
+  }
+
+  if (normalizedContainerProjectDir.startsWith(`${normalizedContainerOutputRoot}/`)) {
+    const relativeProjectDir = normalizedContainerProjectDir.slice(normalizedContainerOutputRoot.length + 1);
+    return hostPlatformPath.join(plan.hostOutputRoot, ...relativeProjectDir.split('/').filter(Boolean));
+  }
+
+  const projectLeaf = path.posix.basename(normalizedContainerProjectDir);
+  return hostPlatformPath.join(plan.hostOutputRoot, projectLeaf);
+}
+
 export function buildTemplateCookiecutterContainerPlan(options = {}, deps = {}) {
   const policy = loadTemplateDependencyPolicy(options.policyPath ?? DEFAULT_POLICY_PATH);
   const platform = deps.platform ?? os.platform();
@@ -293,6 +316,8 @@ export function buildTemplateCookiecutterContainerPlan(options = {}, deps = {}) 
   );
 
   return {
+    platform,
+    platformPath,
     policyPath: options.policyPath ?? DEFAULT_POLICY_PATH,
     policy,
     laneId,
@@ -380,6 +405,7 @@ export function runTemplateCookiecutterContainer(options = {}, deps = {}) {
     result: {
       exitCode: null,
       projectDir: null,
+      hostProjectDir: null,
       stdout: null,
       stderr: null
     }
@@ -410,9 +436,11 @@ export function runTemplateCookiecutterContainer(options = {}, deps = {}) {
   }
 
   receipt.status = result.status === 0 ? 'pass' : 'failed';
+  const containerProjectDir = childReceipt?.project_dir ?? childReceipt?.projectDir ?? null;
   receipt.result = {
     exitCode: result.status,
-    projectDir: childReceipt?.project_dir ?? childReceipt?.projectDir ?? null,
+    projectDir: containerProjectDir,
+    hostProjectDir: resolveHostProjectDir(plan, containerProjectDir),
     stdout: stdout || null,
     stderr: stderr || null
   };

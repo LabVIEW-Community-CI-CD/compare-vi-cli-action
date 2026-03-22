@@ -119,7 +119,7 @@ jobs:
             --run-id "${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.proof_id }}" \
             --container-image comparevi-tools:cookiecutter \
             --output "$proof_root/template-cookiecutter-container.json"
-          generated_root="$(node -e "const fs=require('fs'); const receipt=JSON.parse(fs.readFileSync('$proof_root/template-cookiecutter-container.json','utf8')); if (!receipt.result.projectDir) { process.exit(1); } process.stdout.write(receipt.result.projectDir);")"
+          generated_root="$(node -e "const fs=require('fs'); const receipt=JSON.parse(fs.readFileSync('$proof_root/template-cookiecutter-container.json','utf8')); const generatedRoot = receipt.result.hostProjectDir || receipt.result.projectDir; if (!generatedRoot) { process.exit(1); } process.stdout.write(generatedRoot);")"
           test -n "$generated_root"
           test -f "$generated_root/README.md"
           test -f "$generated_root/.github/workflows/validate.yml"
@@ -261,7 +261,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          generated_root="$(node -e "const fs=require('fs'); const receipt=JSON.parse(fs.readFileSync('tests/results/_agent/cookiecutter-bootstrap/linux/template-cookiecutter-container.json','utf8')); if (!receipt.result.projectDir) { process.exit(1); } process.stdout.write(receipt.result.projectDir);")"
+          generated_root="$(node -e "const fs=require('fs'); const receipt=JSON.parse(fs.readFileSync('tests/results/_agent/cookiecutter-bootstrap/linux/template-cookiecutter-container.json','utf8')); const generatedRoot = receipt.result.hostProjectDir || receipt.result.projectDir; if (!generatedRoot) { process.exit(1); } process.stdout.write(generatedRoot);")"
           node tools/npm/run-script.mjs priority:template:agent:verify -- \
             --iteration-label "cookiecutter-bootstrap-${GITHUB_RUN_ID}" \
             --iteration-ref "${GITHUB_REF_NAME:-${GITHUB_SHA}}" \
