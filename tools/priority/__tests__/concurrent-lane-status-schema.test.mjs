@@ -107,4 +107,8 @@ test('concurrent lane status schema validates the generated receipt', async () =
   addFormats(ajv);
   const validate = ajv.compile(schema);
   assert.equal(validate(receipt), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(receipt.plan.schema, 'priority/concurrent-lane-plan@v1');
+  assert.equal(receipt.plan.source, 'file');
+  assert.equal(receipt.plan.recommendedBundleId, 'hosted-only-proof');
+  assert.equal(receipt.plan.selectedBundleId, 'hosted-only-proof');
 });

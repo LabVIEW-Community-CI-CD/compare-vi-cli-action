@@ -720,6 +720,13 @@ export function buildConcurrentLaneStatusReceipt({
       status: toOptionalText(applyReceipt?.status),
       selectedBundleId: toOptionalText(applyReceipt?.summary?.selectedBundleId)
     },
+    plan: {
+      path: toOptionalText(applyReceipt?.plan?.path),
+      schema: toOptionalText(applyReceipt?.plan?.schema),
+      source: toOptionalText(applyReceipt?.plan?.source),
+      recommendedBundleId: toOptionalText(applyReceipt?.plan?.recommendedBundleId),
+      selectedBundleId: toOptionalText(applyReceipt?.plan?.selectedBundle?.id)
+    },
     hostedRun,
     pullRequest,
     laneStatuses: enrichedLaneStatuses,

@@ -14,6 +14,13 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   - `./Invoke-PesterTests.ps1 -IntegrationMode include`
 - **Helpers**
   - `tools/Dev-Dashboard.ps1`
+  - `priority:lane:concurrency:plan`, `priority:lane:concurrency:apply`,
+    and `priority:lane:concurrency:status` form the additive planning loop for
+    concurrent hosted/manual orchestration. The plan receipt records the
+    selected bundle, apply carries the dispatch decision forward, and status
+    now projects the plan path plus provenance so reviewers can trace the
+    exact recommended-versus-selected bundle pair without leaving checked-in
+    artifacts.
 - **Icon editor scope boundary**
   - Icon editor development is no longer in scope for this repository.
   - The active icon editor codebase and runbooks live in
