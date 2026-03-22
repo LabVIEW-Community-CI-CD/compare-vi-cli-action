@@ -31,11 +31,11 @@ test('collectBlockingCompareEvidence requires both compare workflows to be green
         }
       ];
     }
-    if (cmd.includes('run view 101')) {
-      return { url: 'https://example.com/runs/101', artifacts: [{ name: 'validate-issue-snapshot', sizeInBytes: 1234 }] };
+    if (cmd.includes('api repos/owner/repo/actions/runs/101/artifacts')) {
+      return { artifacts: [{ name: 'validate-issue-snapshot', sizeInBytes: 1234 }] };
     }
-    if (cmd.includes('run view 102')) {
-      return { url: 'https://example.com/runs/102', artifacts: [{ name: 'fixture-drift-results', sizeInBytes: 5678 }] };
+    if (cmd.includes('api repos/owner/repo/actions/runs/102/artifacts')) {
+      return { artifacts: [{ name: 'fixture-drift-results', sizeInBytes: 5678 }] };
     }
     throw new Error(`Unexpected gh args: ${cmd}`);
   };
@@ -107,7 +107,7 @@ test('collectBlockingCompareEvidence fails when artifacts are missing', async ()
         }
       ];
     }
-    if (args.includes('run view')) {
+    if (args[0] === 'api') {
       return { artifacts: [] };
     }
     return [];

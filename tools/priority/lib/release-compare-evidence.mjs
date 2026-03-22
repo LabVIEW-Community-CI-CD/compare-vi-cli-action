@@ -56,17 +56,12 @@ export async function collectBlockingCompareEvidence({
       throw new Error(`Compare evidence workflow ${workflow.file} returned invalid run id.`);
     }
 
-    const runView = await ghJsonFn([
-      'run',
-      'view',
-      String(runId),
-      '--repo',
-      repoSlug,
-      '--json',
-      'artifacts,url'
+    const artifactListing = await ghJsonFn([
+      'api',
+      `repos/${repoSlug}/actions/runs/${runId}/artifacts`
     ]);
 
-    const artifacts = Array.isArray(runView?.artifacts) ? runView.artifacts : [];
+    const artifacts = Array.isArray(artifactListing?.artifacts) ? artifactListing.artifacts : [];
     if (artifacts.length === 0) {
       throw new Error(`Compare evidence workflow ${workflow.file} has no artifacts attached.`);
     }
@@ -75,7 +70,7 @@ export async function collectBlockingCompareEvidence({
       key: workflow.key,
       workflow: workflow.file,
       runId,
-      runUrl: runView?.url ?? latest.url ?? null,
+      runUrl: latest.url ?? null,
       headBranch: latest.headBranch ?? null,
       createdAt: latest.createdAt ?? null,
       artifacts: artifacts.map((artifact) => ({
