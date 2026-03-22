@@ -278,6 +278,91 @@ function resolveCompareviIssueBranchName({
   return `${laneBranchPrefix}${issueNumber}-${slug}`;
 }
 
+function parseIssueNumberFromLaneBranch(branch) {
+  const normalized = normalizeText(branch);
+  if (!normalized.toLowerCase().startsWith('issue/')) {
+    return null;
+  }
+
+  const suffix = normalized.slice('issue/'.length);
+  const tokens = suffix
+    .split('-')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  for (const token of tokens) {
+    if (!/^\d+$/.test(token)) {
+      continue;
+    }
+    const issueNumber = Number.parseInt(token, 10);
+    if (issueNumber > 0) {
+      return issueNumber;
+    }
+  }
+
+  return null;
+}
+
+function resolveForkRemoteFromLaneBranch(branch) {
+  const normalized = normalizeText(branch).toLowerCase();
+  if (!normalized.startsWith('issue/')) {
+    return null;
+  }
+  if (normalized.startsWith('issue/origin-')) {
+    return 'origin';
+  }
+  if (normalized.startsWith('issue/personal-')) {
+    return 'personal';
+  }
+  return 'upstream';
+}
+
+async function tryReadGitStdout(execFileFn, args, options = {}) {
+  try {
+    const result = await execFileFn('git', args, options);
+    return normalizeText(result?.stdout);
+  } catch {
+    return '';
+  }
+}
+
+async function applyAuthoritativeLaneBranchOverride({ repoRoot, decision, deps = {} }) {
+  if (!decision || decision.outcome !== 'selected') {
+    return decision;
+  }
+
+  const issueNumber = coercePositiveInteger(decision?.stepOptions?.issue);
+  if (!issueNumber) {
+    return decision;
+  }
+
+  const execFileFn = deps.execFileFn ?? execFileAsync;
+  const currentBranch = await tryReadGitStdout(execFileFn, ['branch', '--show-current'], { cwd: repoRoot });
+  if (!currentBranch || parseIssueNumberFromLaneBranch(currentBranch) !== issueNumber) {
+    return decision;
+  }
+
+  const forkRemote = resolveForkRemoteFromLaneBranch(currentBranch);
+  if (!forkRemote) {
+    return decision;
+  }
+
+  return {
+    ...decision,
+    stepOptions: {
+      ...(decision.stepOptions ?? {}),
+      lane: `${forkRemote}-${issueNumber}`,
+      forkRemote,
+      branch: currentBranch
+    },
+    artifacts: {
+      ...(decision.artifacts ?? {}),
+      authoritativeCurrentBranch: currentBranch,
+      authoritativeCurrentBranchSource: 'repo-root-current-branch',
+      authoritativeCurrentForkRemote: forkRemote
+    }
+  };
+}
+
 async function readJsonIfPresent(filePath) {
   try {
     return JSON.parse(await readFile(filePath, 'utf8'));
@@ -595,14 +680,18 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
           issueNumber: standingLookup.found.number,
           deps
         });
-        return buildCanonicalDeliveryDecision({
+        return applyAuthoritativeLaneBranchOverride({
           repoRoot,
-          issueSnapshot: snapshotWithRepo,
-          issueGraph,
-          upstreamRepository,
-          targetRepository,
-          policy: deliveryPolicy,
-          source: 'comparevi-standing-priority-live',
+          decision: await buildCanonicalDeliveryDecision({
+            repoRoot,
+            issueSnapshot: snapshotWithRepo,
+            issueGraph,
+            upstreamRepository,
+            targetRepository,
+            policy: deliveryPolicy,
+            source: 'comparevi-standing-priority-live',
+            deps
+          }),
           deps
         });
       } catch {
@@ -610,18 +699,22 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
         // cannot be resolved in this cycle.
       }
     }
-    return buildSchedulerDecisionFromSnapshot({
-      snapshot: snapshotWithRepo,
+    return applyAuthoritativeLaneBranchOverride({
       repoRoot,
-      upstreamRepository,
-      implementationRemote: deliveryPolicy.implementationRemote,
-      branchClassContract: deps.branchClassContract ?? null,
-      loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract,
-      source: 'comparevi-standing-priority-live',
-      artifactPaths: {
-        standingLabel: standingLookup.found.label || null,
-        liveRepository: targetRepository
-      }
+      decision: buildSchedulerDecisionFromSnapshot({
+        snapshot: snapshotWithRepo,
+        repoRoot,
+        upstreamRepository,
+        implementationRemote: deliveryPolicy.implementationRemote,
+        branchClassContract: deps.branchClassContract ?? null,
+        loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract,
+        source: 'comparevi-standing-priority-live',
+        artifactPaths: {
+          standingLabel: standingLookup.found.label || null,
+          liveRepository: targetRepository
+        }
+      }),
+      deps
     });
   }
 
@@ -659,23 +752,27 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
           restIssueFetcher: deps.restIssueFetcher
         });
         const mirrorOf = parseUpstreamIssuePointerFromBody(issueSnapshot.body);
-        return buildSchedulerDecisionFromSnapshot({
-          snapshot: {
-            ...issueSnapshot,
-            repository: targetRepository,
-            mirrorOf
-          },
+        return applyAuthoritativeLaneBranchOverride({
           repoRoot,
-          upstreamRepository,
-          implementationRemote: deliveryPolicy.implementationRemote,
-          branchClassContract: deps.branchClassContract ?? null,
-          loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract,
-          source: 'comparevi-monitoring-work-injection',
-          artifactPaths: {
-            ...artifactPaths,
-            monitoringInjectedIssueNumber: injection.issueNumber,
-            monitoringInjectedIssueUrl: normalizeText(injection.issueUrl) || null
-          }
+          decision: buildSchedulerDecisionFromSnapshot({
+            snapshot: {
+              ...issueSnapshot,
+              repository: targetRepository,
+              mirrorOf
+            },
+            repoRoot,
+            upstreamRepository,
+            implementationRemote: deliveryPolicy.implementationRemote,
+            branchClassContract: deps.branchClassContract ?? null,
+            loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract,
+            source: 'comparevi-monitoring-work-injection',
+            artifactPaths: {
+              ...artifactPaths,
+              monitoringInjectedIssueNumber: injection.issueNumber,
+              monitoringInjectedIssueUrl: normalizeText(injection.issueUrl) || null
+            }
+          }),
+          deps
         });
       }
     }
@@ -721,17 +818,21 @@ async function planCompareviRuntimeStep({ repoRoot, env, explicitStepOptions, op
   const cachePath = path.join(repoRoot, PRIORITY_CACHE_FILENAME);
   const cacheSnapshot = await readJsonIfPresent(cachePath);
   if (cacheSnapshot) {
-    return buildSchedulerDecisionFromSnapshot({
-      snapshot: cacheSnapshot,
+    return applyAuthoritativeLaneBranchOverride({
       repoRoot,
-      upstreamRepository,
-      implementationRemote: deliveryPolicy.implementationRemote,
-      branchClassContract: deps.branchClassContract ?? null,
-      loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract,
-      source: 'comparevi-standing-priority-cache',
-      artifactPaths: {
-        cachePath
-      }
+      decision: buildSchedulerDecisionFromSnapshot({
+        snapshot: cacheSnapshot,
+        repoRoot,
+        upstreamRepository,
+        implementationRemote: deliveryPolicy.implementationRemote,
+        branchClassContract: deps.branchClassContract ?? null,
+        loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract,
+        source: 'comparevi-standing-priority-cache',
+        artifactPaths: {
+          cachePath
+        }
+      }),
+      deps
     });
   }
 
@@ -750,18 +851,22 @@ async function planCompareviRuntimeStep({ repoRoot, env, explicitStepOptions, op
 
   const issuePath = path.join(repoRoot, PRIORITY_ISSUE_DIR, `${router.issue}.json`);
   const issueSnapshot = await readJsonIfPresent(issuePath);
-  return buildSchedulerDecisionFromSnapshot({
-    snapshot: issueSnapshot,
+  return applyAuthoritativeLaneBranchOverride({
     repoRoot,
-    upstreamRepository,
-    implementationRemote: deliveryPolicy.implementationRemote,
-    branchClassContract: deps.branchClassContract ?? null,
-    loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract,
-    source: 'comparevi-standing-priority-router',
-    artifactPaths: {
-      routerPath,
-      issuePath
-    }
+    decision: buildSchedulerDecisionFromSnapshot({
+      snapshot: issueSnapshot,
+      repoRoot,
+      upstreamRepository,
+      implementationRemote: deliveryPolicy.implementationRemote,
+      branchClassContract: deps.branchClassContract ?? null,
+      loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract,
+      source: 'comparevi-standing-priority-router',
+      artifactPaths: {
+        routerPath,
+        issuePath
+      }
+    }),
+    deps
   });
 }
 
