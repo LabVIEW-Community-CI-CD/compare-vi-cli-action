@@ -8,6 +8,7 @@
     "schema",
     "compareRepository",
     "requireQueueEmpty",
+    "freshness",
     "rules"
   ],
   "properties": {
@@ -20,6 +21,34 @@
     },
     "requireQueueEmpty": {
       "type": "boolean"
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostSignalMaxAgeMinutes",
+        "wakeAdjudicationMaxAgeMinutes",
+        "wakeWorkSynthesisMaxAgeMinutes",
+        "wakeInvestmentAccountingMaxAgeMinutes"
+      ],
+      "properties": {
+        "hostSignalMaxAgeMinutes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "wakeAdjudicationMaxAgeMinutes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "wakeWorkSynthesisMaxAgeMinutes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "wakeInvestmentAccountingMaxAgeMinutes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
     },
     "rules": {
       "type": "array",

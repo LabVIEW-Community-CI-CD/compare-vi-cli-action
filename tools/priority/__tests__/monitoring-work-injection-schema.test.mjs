@@ -63,6 +63,12 @@ test('monitoring work injection report matches schema', async () => {
     schema: 'priority/monitoring-work-injection-policy@v1',
     compareRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     requireQueueEmpty: true,
+    freshness: {
+      hostSignalMaxAgeMinutes: 120,
+      wakeAdjudicationMaxAgeMinutes: 120,
+      wakeWorkSynthesisMaxAgeMinutes: 120,
+      wakeInvestmentAccountingMaxAgeMinutes: 120
+    },
     rules: [
       {
         id: 'compare-governance-wake',
@@ -97,12 +103,14 @@ test('monitoring work injection report matches schema', async () => {
   });
   writeJson(hostSignalPath, {
     schema: 'priority/delivery-agent-host-signal@v1',
+    generatedAt: '2099-01-01T00:00:00.000Z',
     status: 'ready',
     provider: 'native-wsl',
     daemonFingerprint: 'daemon-123'
   });
   writeJson(wakeAdjudicationPath, {
     schema: 'priority/wake-adjudication-report@v1',
+    generatedAt: '2099-01-01T00:01:00.000Z',
     summary: {
       classification: 'branch-target-drift',
       status: 'suppressed',
@@ -116,6 +124,7 @@ test('monitoring work injection report matches schema', async () => {
   });
   writeJson(wakeWorkSynthesisPath, {
     schema: 'priority/wake-work-synthesis-report@v1',
+    generatedAt: '2099-01-01T00:02:00.000Z',
     wake: {
       classification: 'branch-target-drift',
       nextAction: 'reconcile-downstream-branch-target-provenance',
@@ -132,6 +141,7 @@ test('monitoring work injection report matches schema', async () => {
   });
   writeJson(wakeInvestmentAccountingPath, {
     schema: 'priority/wake-investment-accounting-report@v1',
+    generatedAt: '2099-01-01T00:03:00.000Z',
     summary: {
       accountingBucket: 'compare-governance-work',
       status: 'warn',
