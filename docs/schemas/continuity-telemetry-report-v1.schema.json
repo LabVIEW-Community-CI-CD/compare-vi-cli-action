@@ -158,11 +158,14 @@
           "additionalProperties": false,
           "required": [
             "status",
+            "supervisionState",
             "operatorTurnEndWouldCreateIdleGap",
+            "operatorPromptRequiredToResume",
             "activeLaneIssue",
             "wakeCondition",
             "source",
-            "reason"
+            "reason",
+            "pendingActions"
           ],
           "properties": {
             "status": {
@@ -173,7 +176,19 @@
                 "stale-context"
               ]
             },
+            "supervisionState": {
+              "type": "string",
+              "enum": [
+                "safe-idle",
+                "supervised-background",
+                "live-follow-through-required",
+                "stale-context"
+              ]
+            },
             "operatorTurnEndWouldCreateIdleGap": {
+              "type": "boolean"
+            },
+            "operatorPromptRequiredToResume": {
               "type": "boolean"
             },
             "activeLaneIssue": {
@@ -195,6 +210,13 @@
             "reason": {
               "type": "string",
               "minLength": 1
+            },
+            "pendingActions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           }
         },
