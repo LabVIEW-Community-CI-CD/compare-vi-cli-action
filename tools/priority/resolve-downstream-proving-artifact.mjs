@@ -225,6 +225,48 @@ function classifyScorecard(scorecard, expectedSourceSha) {
   };
 }
 
+function classifyTemplateAgentVerificationReport(report, expectedSourceSha) {
+  const schema = normalizeText(report?.schema);
+  const summaryStatus = normalizeLower(report?.summary?.status);
+  const verificationStatus = normalizeLower(report?.verification?.status);
+  const verificationProvider = normalizeText(report?.verification?.provider);
+  const verificationRunUrl = normalizeText(report?.verification?.runUrl);
+  const iterationHeadSha = normalizeText(report?.iteration?.headSha);
+  const matchedExpectedSourceSha = iterationHeadSha === normalizeText(expectedSourceSha);
+  const targetRepository = normalizeText(report?.lane?.targetRepository);
+  const consumerRailBranch = normalizeText(report?.lane?.consumerRailBranch);
+  const templateRepository = normalizeText(report?.provenance?.templateDependency?.repository);
+  const templateVersion = normalizeText(report?.provenance?.templateDependency?.version);
+  const templateRef = normalizeText(report?.provenance?.templateDependency?.ref);
+  const cookiecutterVersion = normalizeText(report?.provenance?.templateDependency?.cookiecutterVersion);
+  const pass =
+    schema === 'priority/template-agent-verification-report@v1' &&
+    summaryStatus === 'pass' &&
+    verificationStatus === 'pass' &&
+    verificationProvider === 'hosted-github-workflow' &&
+    verificationRunUrl != null &&
+    matchedExpectedSourceSha &&
+    targetRepository === 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate' &&
+    consumerRailBranch === 'downstream/develop';
+
+  return {
+    status: pass ? 'pass' : 'fail',
+    schema,
+    summaryStatus,
+    verificationStatus,
+    verificationProvider,
+    verificationRunUrl,
+    iterationHeadSha,
+    matchedExpectedSourceSha,
+    targetRepository,
+    consumerRailBranch,
+    templateRepository,
+    templateVersion,
+    templateRef,
+    cookiecutterVersion
+  };
+}
+
 function buildGitHubOutputs(result) {
   return [
     ['downstream_proving_selection_status', result.status],
@@ -332,9 +374,13 @@ export async function runResolveDownstreamProvingArtifact(
         reportPath: downloadReportPath
       });
       const scorecardPath = findArtifactFile(candidateRoot, 'downstream-develop-promotion-scorecard.json');
+      const templateAgentVerificationReportPath = findArtifactFile(candidateRoot, 'template-agent-verification-report.json');
       let scorecard = null;
       let scorecardGate = null;
       let scorecardError = null;
+      let templateAgentVerificationReport = null;
+      let templateAgentVerificationGate = null;
+      let templateAgentVerificationError = null;
       if (scorecardPath) {
         try {
           scorecard = readJson(scorecardPath);
@@ -343,16 +389,34 @@ export async function runResolveDownstreamProvingArtifact(
           scorecardError = error instanceof Error ? error.message : String(error);
         }
       }
+      if (templateAgentVerificationReportPath) {
+        try {
+          templateAgentVerificationReport = readJson(templateAgentVerificationReportPath);
+          templateAgentVerificationGate = classifyTemplateAgentVerificationReport(
+            templateAgentVerificationReport,
+            options.expectedSourceSha
+          );
+        } catch (error) {
+          templateAgentVerificationError = error instanceof Error ? error.message : String(error);
+        }
+      }
 
       const candidate = {
         run,
         artifactName,
+        artifactRoot: path.resolve(candidateRoot),
         downloadStatus: downloadResult.report.status,
         downloadReportPath: downloadResult.reportPath,
         scorecardPath: scorecardPath ? path.resolve(scorecardPath) : null,
         scorecardStatus: scorecardGate?.status ?? 'missing',
         scorecard: scorecardGate,
-        scorecardError
+        scorecardError,
+        templateAgentVerificationReportPath: templateAgentVerificationReportPath
+          ? path.resolve(templateAgentVerificationReportPath)
+          : null,
+        templateAgentVerificationStatus: templateAgentVerificationGate?.status ?? 'missing',
+        templateAgentVerification: templateAgentVerificationGate,
+        templateAgentVerificationError
       };
       candidates.push(candidate);
 

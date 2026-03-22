@@ -849,6 +849,12 @@ if (-not $PreflightOnly) {
     -ScriptRelativePath 'tools/priority/project-session-index-v2-promotion-decision.mjs' `
     -RequiredPackages @('ajv', 'ajv-formats') `
     -AllowFailure:$true
+  Write-Host '[bootstrap] Syncing authoritative template verification evidence into the local overlay report…'
+  Invoke-NodeScriptFromRepoRoot `
+    -RepoRoot $priorityHelperRepoRoot `
+    -WorkingDirectory $priorityWorkingDirectory `
+    -ScriptRelativePath 'tools/priority/sync-template-agent-verification-report.mjs' `
+    -AllowFailure:$true
   Write-Host '[bootstrap] Showing router plan…'
   $routerPath = Join-Path $priorityWorkingDirectory 'tests/results/_agent/issue/router.json'
   if (Test-Path -LiteralPath $routerPath -PathType Leaf) {
