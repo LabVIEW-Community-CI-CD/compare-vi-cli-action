@@ -8,7 +8,6 @@ import {
   parseSingleValueArg,
   ensureValidIdentifier,
   ensureCleanWorkingTree,
-  ensureBranchDoesNotExist,
   getCurrentCheckoutTarget,
   getRepoRoot,
   checkoutDetachedRef
@@ -33,18 +32,15 @@ async function main() {
   const branch = `release/${version}`;
   const root = getRepoRoot();
   ensureCleanWorkingTree(run, 'Working tree not clean. Commit or stash changes before running the dry-run helper.');
-  ensureBranchDoesNotExist(branch);
 
   const originalCheckout = getCurrentCheckoutTarget();
   let baseCommit;
-  let restoreBranch = false;
   try {
     checkoutDetachedRef('upstream/develop');
-    run('git', ['checkout', '-b', branch]);
     baseCommit = run('git', ['rev-parse', 'HEAD']);
-    restoreBranch = true;
+    run('git', ['branch', '-f', branch, 'HEAD']);
   } finally {
-    if (restoreBranch && originalCheckout) {
+    if (originalCheckout) {
       try {
         run('git', ['checkout', originalCheckout]);
       } catch (restoreError) {

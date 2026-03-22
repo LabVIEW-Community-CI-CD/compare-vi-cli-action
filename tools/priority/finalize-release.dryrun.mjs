@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-import { writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import process from 'node:process';
 import {
   run,
@@ -10,6 +8,7 @@ import {
   ensureBranchExists,
   getRepoRoot
 } from './lib/branch-utils.mjs';
+import { writeReleaseMetadata } from './lib/release-utils.mjs';
 
 const USAGE_LINES = [
   'Usage: node tools/npm/run-script.mjs release:finalize:dry -- <version>',
@@ -57,7 +56,6 @@ async function main() {
   console.log(`[dry-run] would fast-forward develop to ${releaseCommit} (current ${developBase.ref} ${developBase.sha})`);
   console.log('[dry-run] git push upstream develop');
 
-  const dir = path.join(root, 'tests', 'results', '_agent', 'release');
   const metadata = {
     schema: 'release/finalize-dryrun@v1',
     version,
@@ -70,8 +68,8 @@ async function main() {
     dryRun: true,
     generatedAt: new Date().toISOString()
   };
-  await writeFile(path.join(dir, `release-${version}-finalize-dryrun.json`), `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
-  console.log('[dry-run] wrote finalize dry-run metadata');
+  const metadataPath = await writeReleaseMetadata(root, version, 'finalize-dryrun', metadata);
+  console.log(`[dry-run] wrote finalize dry-run metadata -> ${metadataPath}`);
 }
 
 main().catch((error) => {
