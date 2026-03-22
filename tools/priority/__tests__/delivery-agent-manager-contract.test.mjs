@@ -410,8 +410,60 @@ test('delivery-agent manager status derives from a fresh heartbeat when no deliv
       branch: 'issue/origin-959-example',
       forkRemote: 'origin',
       blockerClass: 'none',
+      worker: {
+        laneId: 'origin-959',
+        checkoutPath: '/tmp/worker-checkout',
+        checkoutRoot: '/tmp/runtime-root',
+        status: 'reused',
+        ref: 'upstream/develop',
+        requestedBranch: 'issue/origin-959-example'
+      },
+      workerReady: {
+        laneId: 'origin-959',
+        checkoutPath: '/tmp/worker-checkout',
+        status: 'ready'
+      },
+      workerBranch: {
+        laneId: 'origin-959',
+        checkoutPath: '/tmp/worker-checkout',
+        branch: 'issue/origin-959-example',
+        status: 'reused',
+        trackingRef: 'origin/issue/origin-959-example'
+      },
       taskPacket: {
-        status: 'coding'
+        status: 'coding',
+        branch: {
+          name: 'issue/origin-959-example',
+          forkRemote: 'origin',
+          checkoutPath: '/tmp/worker-checkout'
+        },
+        evidence: {
+          lane: {
+            workerSlotId: 'worker-slot-2',
+            workerCheckoutRoot: '/tmp/runtime-root',
+            workerCheckoutRootPolicy: 'external-root',
+            workerCheckoutPath: '/tmp/worker-checkout'
+          },
+          delivery: {
+            concurrentLaneApply: {
+              receiptPath: 'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json',
+              status: 'succeeded',
+              selectedBundleId: 'hosted-plus-manual-linux-docker',
+              validateDispatch: {
+                status: 'dispatched',
+                repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+                remote: 'origin',
+                ref: 'issue/origin-959-example',
+                sampleIdStrategy: 'auto',
+                sampleId: 'ts-20260321-000000-abcd',
+                historyScenarioSet: 'smoke',
+                reportPath: 'tests/results/_agent/issue/priority-validate-dispatch-origin-959.json',
+                runDatabaseId: 234567890,
+                error: null
+              }
+            }
+          }
+        }
       }
     }
   });
@@ -427,6 +479,18 @@ test('delivery-agent manager status derives from a fresh heartbeat when no deliv
   assert.equal(status.delivery.derivedFromHeartbeat, true);
   assert.equal(status.heartbeatDiagnostics.usedHeartbeat, true);
   assert.equal(status.heartbeatDiagnostics.reason, 'fresh-heartbeat');
+  assert.equal(
+    status.delivery.concurrentLaneApply.receiptPath,
+    'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json'
+  );
+  assert.equal(status.delivery.activeLane.concurrentLaneApply.validateDispatch.runDatabaseId, 234567890);
+  assert.equal(status.delivery.activeLane.workerSlotId, 'worker-slot-2');
+  assert.equal(status.delivery.activeLane.workerCheckoutRoot, '/tmp/runtime-root');
+  assert.equal(status.delivery.activeLane.workerCheckoutPath, '/tmp/worker-checkout');
+  assert.equal(
+    status.delivery.artifacts.concurrentLaneApplyReceiptPath,
+    'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json'
+  );
   assert.ok(Array.isArray(status.logTail.daemon));
 });
 
@@ -679,7 +743,8 @@ test('delivery-agent manager status falls back to legacy runtime-state.json when
     status: 'coding',
     branch: {
       name: 'issue/origin-962-example',
-      forkRemote: 'origin'
+      forkRemote: 'origin',
+      checkoutPath: '/tmp/runtime-worker'
     },
     pullRequest: {
       url: null
@@ -688,9 +753,32 @@ test('delivery-agent manager status falls back to legacy runtime-state.json when
       blockerClass: 'none'
     },
     evidence: {
+      lane: {
+        workerSlotId: 'worker-slot-2',
+        workerCheckoutRoot: '/tmp/runtime-root',
+        workerCheckoutRootPolicy: 'external-root',
+        workerCheckoutPath: '/tmp/runtime-worker'
+      },
       delivery: {
         selectedActionType: 'advance-standing-issue',
-        laneLifecycle: 'coding'
+        laneLifecycle: 'coding',
+        concurrentLaneApply: {
+          receiptPath: 'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json',
+          status: 'succeeded',
+          selectedBundleId: 'hosted-plus-manual-linux-docker',
+          validateDispatch: {
+            status: 'dispatched',
+            repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+            remote: 'origin',
+            ref: 'issue/origin-962-example',
+            sampleIdStrategy: 'auto',
+            sampleId: 'ts-20260321-000000-abcd',
+            historyScenarioSet: 'smoke',
+            reportPath: 'tests/results/_agent/issue/priority-validate-dispatch-origin-962.json',
+            runDatabaseId: 234567891,
+            error: null
+          }
+        }
       }
     }
   });
@@ -711,6 +799,16 @@ test('delivery-agent manager status falls back to legacy runtime-state.json when
   assert.equal(status.delivery.derivedFromRuntimeState, true);
   assert.equal(status.heartbeatDiagnostics.usedRuntimeState, true);
   assert.equal(status.heartbeatDiagnostics.reason, 'runtime-state-current');
+  assert.equal(
+    status.delivery.concurrentLaneApply.receiptPath,
+    'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json'
+  );
+  assert.equal(status.delivery.activeLane.workerSlotId, 'worker-slot-2');
+  assert.equal(status.delivery.activeLane.workerCheckoutPath, '/tmp/runtime-worker');
+  assert.equal(
+    status.delivery.artifacts.concurrentLaneApplyReceiptPath,
+    'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json'
+  );
   assert.equal(path.basename(status.delivery.artifacts.statePath), 'delivery-agent-state.json');
 });
 
