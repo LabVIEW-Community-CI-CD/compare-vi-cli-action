@@ -239,6 +239,23 @@ jobs:
             --schema docs/schemas/downstream-onboarding-feedback-v1.schema.json \
             --data tests/results/_agent/onboarding/downstream-onboarding-feedback.json
 
+      - name: Adjudicate downstream wake against live branch truth
+        if: ${{ always() && hashFiles('tests/results/_agent/onboarding/downstream-onboarding.json') != '' }}
+        run: |
+          set -euo pipefail
+          node tools/priority/wake-adjudication.mjs \
+            --reported tests/results/_agent/onboarding/downstream-onboarding.json \
+            --revalidated-output tests/results/_agent/onboarding/downstream-onboarding-revalidated.json \
+            --output tests/results/_agent/issue/wake-adjudication.json
+
+      - name: Validate wake adjudication report schema
+        if: ${{ always() && hashFiles('tests/results/_agent/issue/wake-adjudication.json') != '' }}
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/wake-adjudication-report-v1.schema.json \
+            --data tests/results/_agent/issue/wake-adjudication.json
+
       - name: Validate template-agent verification report schema
         if: ${{ always() && hashFiles('tests/results/_agent/promotion/template-agent-verification-report.json') != '' }}
         run: |
@@ -300,6 +317,12 @@ jobs:
           } else {
             lines.push('- execution status: `feedback-report-missing`');
           }
+          const wakeAdjudicationPath = 'tests/results/_agent/issue/wake-adjudication.json';
+          if (fs.existsSync(wakeAdjudicationPath)) {
+            const wakeAdjudication = JSON.parse(fs.readFileSync(wakeAdjudicationPath, 'utf8'));
+            lines.push(`- wake adjudication: \`${wakeAdjudication.summary?.classification ?? 'unknown'}\``);
+            lines.push(`- wake action: \`${wakeAdjudication.summary?.nextAction ?? 'unknown'}\``);
+          }
           if (fs.existsSync(templateVerificationReportPath)) {
             const templateVerification = JSON.parse(fs.readFileSync(templateVerificationReportPath, 'utf8'));
             lines.push(
@@ -319,6 +342,7 @@ jobs:
           name: downstream-onboarding-feedback
           path: |
             tests/results/_agent/onboarding/*.json
+            tests/results/_agent/issue/wake-adjudication.json
             tests/results/_agent/promotion/downstream-develop-promotion-manifest.json
             tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
             tests/results/_agent/promotion/template-agent-verification-report.json

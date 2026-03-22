@@ -18,6 +18,9 @@ This runbook defines the controlled onboarding path for issue `#715`:
 - Feedback status report:
   - `tests/results/_agent/onboarding/downstream-onboarding-feedback.json`
   - schema: `docs/schemas/downstream-onboarding-feedback-v1.schema.json`
+- Wake adjudication report:
+  - `tests/results/_agent/issue/wake-adjudication.json`
+  - schema: `docs/schemas/wake-adjudication-report-v1.schema.json`
 - Promotion scorecard:
   - `tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json`
   - schema: `docs/schemas/downstream-promotion-scorecard-v1.schema.json`
@@ -106,6 +109,40 @@ The success report includes:
 - aggregated pain points ranked by frequency and severity
 - normalized hardening backlog for follow-up planning
 
+## Wake adjudication
+
+When a downstream onboarding signal fails, replay it against current live GitHub
+state before reopening work:
+
+```bash
+node tools/npm/run-script.mjs priority:wake:adjudicate -- \
+  --reported tests/results/_agent/onboarding/downstream-onboarding.json \
+  --revalidated-output tests/results/_agent/onboarding/downstream-onboarding-revalidated.json \
+  --output tests/results/_agent/issue/wake-adjudication.json
+```
+
+Equivalent direct script invocation:
+
+```bash
+node tools/priority/wake-adjudication.mjs \
+  --reported tests/results/_agent/onboarding/downstream-onboarding.json \
+  --revalidated-output tests/results/_agent/onboarding/downstream-onboarding-revalidated.json \
+  --output tests/results/_agent/issue/wake-adjudication.json
+```
+
+The adjudicator classifies the wake as one of:
+
+- `live-defect`
+- `stale-artifact`
+- `branch-target-drift`
+- `platform-permission-gap`
+- `environment-only`
+
+This keeps the loop from minting downstream issues from stale hosted artifacts
+alone. The adjudication report carries both the originally reported branch truth
+and the revalidated live branch truth so the next issue-injection decision can
+route from evidence instead of raw failure status.
+
 Optional aggregated hardening issue creation:
 
 ```bash
@@ -151,6 +188,7 @@ It now follows the shared hosted-signal contract in [`HOSTED_SIGNAL_REPORT_FIRST
 
 - exports both `GH_TOKEN` and `GITHUB_TOKEN`
 - appends a deterministic step summary from the feedback report when present
+- emits a wake adjudication artifact so stale downstream branch/provenance signals can be suppressed before reopening work
 - builds and validates the downstream promotion scorecard before artifact upload
 - projects immutable downstream promotion manifest inputs into the scorecard when the manifest artifact is present
 - keeps schema validation and artifact upload existence-aware so missing-report cascades do not mask the primary failure
