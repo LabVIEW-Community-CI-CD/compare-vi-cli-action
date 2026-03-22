@@ -1,0 +1,460 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-cicd.github.io/compare-vi-cli-action/schemas/jarvis-session-observer-v1.schema.json",
+  "title": "Jarvis Session Observer Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "status",
+    "summary",
+    "jarvisPolicy",
+    "hostRuntime",
+    "daemon",
+    "sessions",
+    "warnings",
+    "artifacts"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/jarvis-session-observer@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": ["string", "null"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "idle", "blocked", "unknown"]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "specialtyLaneId",
+        "primaryRecordedResponsibility",
+        "configuredSessionCapacity",
+        "effectiveSessionCapacity",
+        "activeSessionCount",
+        "queuedSessionCount",
+        "blockedSessionCount",
+        "deferredSessionCount",
+        "totalSessionCount",
+        "daemonCutoverStatus",
+        "readyForLinuxDaemon",
+        "requiresOperatorCutover"
+      ],
+      "properties": {
+        "specialtyLaneId": { "type": "string" },
+        "primaryRecordedResponsibility": { "type": ["string", "null"] },
+        "configuredSessionCapacity": { "type": "integer", "minimum": 1 },
+        "effectiveSessionCapacity": { "type": "integer", "minimum": 1 },
+        "activeSessionCount": { "type": "integer", "minimum": 0 },
+        "queuedSessionCount": { "type": "integer", "minimum": 0 },
+        "blockedSessionCount": { "type": "integer", "minimum": 0 },
+        "deferredSessionCount": { "type": "integer", "minimum": 0 },
+        "totalSessionCount": { "type": "integer", "minimum": 0 },
+        "daemonCutoverStatus": {
+          "type": "string",
+          "enum": ["ready", "cutover-required", "drifted", "runner-conflict", "not-required", "unknown"]
+        },
+        "readyForLinuxDaemon": { "type": "boolean" },
+        "requiresOperatorCutover": { "type": "boolean" }
+      }
+    },
+    "jarvisPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "specialtyLaneId",
+        "enabled",
+        "primaryRecordedResponsibility",
+        "purpose",
+        "allocationMode",
+        "preferredExecutionPlane",
+        "preferredContainerImage",
+        "configuredSessionCapacity",
+        "effectiveSessionCapacity",
+        "effectiveLogicalLaneCount",
+        "dockerRuntimePolicy"
+      ],
+      "properties": {
+        "specialtyLaneId": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "primaryRecordedResponsibility": { "type": ["string", "null"] },
+        "purpose": { "type": ["string", "null"] },
+        "allocationMode": { "type": ["string", "null"] },
+        "preferredExecutionPlane": { "type": ["string", "null"] },
+        "preferredContainerImage": { "type": ["string", "null"] },
+        "configuredSessionCapacity": { "type": "integer", "minimum": 1 },
+        "effectiveSessionCapacity": { "type": "integer", "minimum": 1 },
+        "effectiveLogicalLaneCount": { "type": "integer", "minimum": 1 },
+        "dockerRuntimePolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider",
+            "expectedDockerHost",
+            "expectedOsType",
+            "expectedContext",
+            "manageDockerEngine",
+            "allowHostEngineMutation"
+          ],
+          "properties": {
+            "provider": { "type": ["string", "null"] },
+            "expectedDockerHost": { "type": ["string", "null"] },
+            "expectedOsType": { "type": ["string", "null"] },
+            "expectedContext": { "type": ["string", "null"] },
+            "manageDockerEngine": { "type": "boolean" },
+            "allowHostEngineMutation": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "hostRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "provider",
+        "reasons",
+        "daemonFingerprint",
+        "previousFingerprint",
+        "fingerprintChanged",
+        "windowsDocker",
+        "wslDocker",
+        "runnerServices",
+        "isolation"
+      ],
+      "properties": {
+        "status": { "type": "string" },
+        "provider": { "type": ["string", "null"] },
+        "reasons": { "type": "array", "items": { "type": "string" } },
+        "daemonFingerprint": { "type": ["string", "null"] },
+        "previousFingerprint": { "type": ["string", "null"] },
+        "fingerprintChanged": { "type": "boolean" },
+        "windowsDocker": {
+          "$ref": "#/$defs/dockerSignal"
+        },
+        "wslDocker": {
+          "$ref": "#/$defs/wslDockerSignal"
+        },
+        "runnerServices": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["running", "stopped"],
+          "properties": {
+            "running": { "type": "array", "items": { "type": "string" } },
+            "stopped": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "isolation": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["lastStatus", "lastAction", "preemptedServices", "counters"],
+          "properties": {
+            "lastStatus": { "type": ["string", "null"] },
+            "lastAction": { "type": ["string", "null"] },
+            "preemptedServices": { "type": "array", "items": { "type": "string" } },
+            "counters": { "type": "object" }
+          }
+        }
+      }
+    },
+    "daemon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observerHeartbeat",
+        "wslDaemon",
+        "dockerDaemonEngine",
+        "daemonCutover",
+        "deliveryMemory",
+        "logs"
+      ],
+      "properties": {
+        "observerHeartbeat": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["exists", "generatedAt", "outcome", "cyclesCompleted", "activeLaneId", "activeIssue", "stopRequested"],
+          "properties": {
+            "exists": { "type": "boolean" },
+            "generatedAt": { "type": ["string", "null"], "format": "date-time" },
+            "outcome": { "type": ["string", "null"] },
+            "cyclesCompleted": { "type": "integer", "minimum": 0 },
+            "activeLaneId": { "type": ["string", "null"] },
+            "activeIssue": { "type": ["integer", "null"], "minimum": 1 },
+            "stopRequested": { "type": "boolean" }
+          }
+        },
+        "wslDaemon": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["exists", "pid", "generatedAt", "running", "unitName", "distro"],
+          "properties": {
+            "exists": { "type": "boolean" },
+            "pid": { "type": ["integer", "null"], "minimum": 1 },
+            "generatedAt": { "type": ["string", "null"], "format": "date-time" },
+            "running": { "type": "boolean" },
+            "unitName": { "type": ["string", "null"] },
+            "distro": { "type": ["string", "null"] }
+          }
+        },
+        "dockerDaemonEngine": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "exists",
+            "generatedAt",
+            "requiredOs",
+            "lockPath",
+            "lockAcquired",
+            "dockerCommand",
+            "observedOs",
+            "previousContext",
+            "activeContext",
+            "contextMode",
+            "contextSwitched"
+          ],
+          "properties": {
+            "exists": { "type": "boolean" },
+            "generatedAt": { "type": ["string", "null"], "format": "date-time" },
+            "requiredOs": { "type": ["string", "null"] },
+            "lockPath": { "type": ["string", "null"] },
+            "lockAcquired": { "type": "boolean" },
+            "dockerCommand": { "type": ["string", "null"] },
+            "observedOs": { "type": ["string", "null"] },
+            "previousContext": { "type": ["string", "null"] },
+            "activeContext": { "type": ["string", "null"] },
+            "contextMode": { "type": ["string", "null"] },
+            "contextSwitched": { "type": "boolean" }
+          }
+        },
+        "daemonCutover": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema",
+            "status",
+            "runtimeProvider",
+            "expectedDockerHost",
+            "observedDockerHost",
+            "expectedContext",
+            "observedContext",
+            "expectedOsType",
+            "observedOsType",
+            "canReuseLinuxDaemon",
+            "readyForLinuxDaemon",
+            "requiresOperatorCutover",
+            "reason"
+          ],
+          "properties": {
+            "schema": { "const": "priority/jarvis-daemon-cutover-assessment@v1" },
+            "status": {
+              "type": "string",
+              "enum": ["ready", "cutover-required", "drifted", "runner-conflict", "not-required", "unknown"]
+            },
+            "runtimeProvider": { "type": ["string", "null"] },
+            "expectedDockerHost": { "type": ["string", "null"] },
+            "observedDockerHost": { "type": ["string", "null"] },
+            "expectedContext": { "type": ["string", "null"] },
+            "observedContext": { "type": ["string", "null"] },
+            "expectedOsType": { "type": ["string", "null"] },
+            "observedOsType": { "type": ["string", "null"] },
+            "canReuseLinuxDaemon": { "type": "boolean" },
+            "readyForLinuxDaemon": { "type": "boolean" },
+            "requiresOperatorCutover": { "type": "boolean" },
+            "reason": { "type": "string" }
+          }
+        },
+        "deliveryMemory": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["exists", "generatedAt", "workerPoolTarget"],
+          "properties": {
+            "exists": { "type": "boolean" },
+            "generatedAt": { "type": ["string", "null"], "format": "date-time" },
+            "workerPoolTarget": { "type": ["integer", "null"], "minimum": 1 }
+          }
+        },
+        "logs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runtimeDaemonWsl", "dockerDaemon"],
+          "properties": {
+            "runtimeDaemonWsl": { "$ref": "#/$defs/logTail" },
+            "dockerDaemon": { "$ref": "#/$defs/logTail" }
+          }
+        }
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "sessionId",
+          "logicalLaneId",
+          "issue",
+          "phase",
+          "laneId",
+          "laneClass",
+          "executionPlane",
+          "resourceGroup",
+          "branchRef",
+          "dockerContext",
+          "dockerServerOs",
+          "preferredContainerImage",
+          "primaryRecordedResponsibility",
+          "reason"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": ["concurrent-lane-status", "runtime-state-active-lane"]
+          },
+          "sessionId": { "type": "string" },
+          "logicalLaneId": { "type": ["string", "null"] },
+          "issue": { "type": ["integer", "null"], "minimum": 1 },
+          "phase": {
+            "type": "string",
+            "enum": ["active", "queued", "blocked", "deferred", "idle", "unknown"]
+          },
+          "laneId": { "type": ["string", "null"] },
+          "laneClass": { "type": ["string", "null"] },
+          "executionPlane": { "type": ["string", "null"] },
+          "resourceGroup": { "type": ["string", "null"] },
+          "branchRef": { "type": ["string", "null"] },
+          "dockerContext": { "type": ["string", "null"] },
+          "dockerServerOs": { "type": ["string", "null"] },
+          "preferredContainerImage": { "type": ["string", "null"] },
+          "primaryRecordedResponsibility": { "type": ["string", "null"] },
+          "reason": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receiptPath",
+        "watchPaths",
+        "policyPath",
+        "runtimeDir",
+        "deliveryStatePath",
+        "concurrentLaneStatusPath",
+        "hostSignalPath",
+        "hostIsolationPath",
+        "observerHeartbeatPath",
+        "wslDaemonPidPath",
+        "dockerDaemonEnginePath"
+      ],
+      "properties": {
+        "receiptPath": { "type": "string" },
+        "watchPaths": { "type": "array", "items": { "type": "string" } },
+        "policyPath": { "type": "string" },
+        "runtimeDir": { "type": "string" },
+        "deliveryStatePath": { "type": "string" },
+        "concurrentLaneStatusPath": { "type": "string" },
+        "hostSignalPath": { "type": "string" },
+        "hostIsolationPath": { "type": "string" },
+        "observerHeartbeatPath": { "type": "string" },
+        "wslDaemonPidPath": { "type": "string" },
+        "dockerDaemonEnginePath": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "dockerSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "context",
+        "osType",
+        "operatingSystem",
+        "serverName",
+        "platformName",
+        "serverVersion",
+        "labels",
+        "error"
+      ],
+      "properties": {
+        "available": { "type": "boolean" },
+        "context": { "type": ["string", "null"] },
+        "osType": { "type": ["string", "null"] },
+        "operatingSystem": { "type": ["string", "null"] },
+        "serverName": { "type": ["string", "null"] },
+        "platformName": { "type": ["string", "null"] },
+        "serverVersion": { "type": ["string", "null"] },
+        "labels": { "type": "array", "items": { "type": "string" } },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "wslDockerSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "distro",
+        "dockerHost",
+        "available",
+        "socketPath",
+        "socketPresent",
+        "socketOwner",
+        "socketMode",
+        "systemdState",
+        "serviceState",
+        "context",
+        "osType",
+        "operatingSystem",
+        "serverName",
+        "platformName",
+        "serverVersion",
+        "labels",
+        "isDockerDesktop",
+        "error"
+      ],
+      "properties": {
+        "distro": { "type": ["string", "null"] },
+        "dockerHost": { "type": ["string", "null"] },
+        "available": { "type": "boolean" },
+        "socketPath": { "type": ["string", "null"] },
+        "socketPresent": { "type": "boolean" },
+        "socketOwner": { "type": ["string", "null"] },
+        "socketMode": { "type": ["string", "null"] },
+        "systemdState": { "type": ["string", "null"] },
+        "serviceState": { "type": ["string", "null"] },
+        "context": { "type": ["string", "null"] },
+        "osType": { "type": ["string", "null"] },
+        "operatingSystem": { "type": ["string", "null"] },
+        "serverName": { "type": ["string", "null"] },
+        "platformName": { "type": ["string", "null"] },
+        "serverVersion": { "type": ["string", "null"] },
+        "labels": { "type": "array", "items": { "type": "string" } },
+        "isDockerDesktop": { "type": "boolean" },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "logTail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "lineCount", "lines"],
+      "properties": {
+        "path": { "type": "string" },
+        "lineCount": { "type": "integer", "minimum": 0 },
+        "lines": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

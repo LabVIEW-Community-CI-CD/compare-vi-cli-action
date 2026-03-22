@@ -16,10 +16,17 @@ Use these checked-in commands first instead of reaching for ad hoc
 - `node tools/npm/run-script.mjs priority:runtime:daemon`
 - `node tools/npm/run-script.mjs priority:runtime:daemon:docker`
 - `node tools/npm/run-script.mjs priority:runtime:daemon:docker:status`
+- `node tools/npm/run-script.mjs priority:jarvis:status`
 
 Prefer `priority:delivery:agent:status` as the first read. That surface already
 normalizes manager state, heartbeat fallback, and lane/runtime evidence into one
 bounded status payload.
+
+Use `priority:jarvis:status` when Sagan needs a bounded live watch surface for
+the Windows Docker specialty lane family. It emits
+`tests/results/_agent/runtime/jarvis-session-observer.json`, summarizes any
+active Jarvis sessions, and tails the daemon logs that matter for fast operator
+triage.
 
 ## Canonical Receipt Read Order
 
@@ -28,10 +35,11 @@ When a daemon lane needs diagnosis, read receipts in this order:
 1. `tests/results/_agent/runtime/delivery-agent-state.json`
 2. `tests/results/_agent/runtime/delivery-agent-lanes/<lane-id>.json`
 3. `tests/results/_agent/runtime/delivery-memory.json`
-4. `tests/results/_agent/runtime/observer-heartbeat.json`
-5. `tests/results/_agent/runtime/task-packet.json`
-6. `tests/results/_agent/runtime/codex-state-hygiene.json`
-7. `tests/results/_agent/marketplace/lane-marketplace-snapshot.json`
+4. `tests/results/_agent/runtime/jarvis-session-observer.json`
+5. `tests/results/_agent/runtime/observer-heartbeat.json`
+6. `tests/results/_agent/runtime/task-packet.json`
+7. `tests/results/_agent/runtime/codex-state-hygiene.json`
+8. `tests/results/_agent/marketplace/lane-marketplace-snapshot.json`
 
 Secondary control-plane receipts worth checking only when the main runtime view
 looks stale:
@@ -41,6 +49,13 @@ looks stale:
 - `tests/results/_agent/runtime/delivery-agent-manager-stop.json`
 - `tests/results/_agent/runtime/delivery-agent-wsl-daemon-pid.json`
 - `tests/results/_agent/runtime/daemon-host-signal.json`
+- `tests/results/_agent/runtime/docker-daemon-engine.json`
+
+When delivery policy expects `dockerRuntime.provider = native-wsl`,
+`daemon-host-signal.json` is the authority for whether the Linux daemon-first
+plane is reusable. If it reports `desktop-backed`, WSL still resolves to Docker
+Desktop and a distro-owned Linux daemon cutover is required before reusing the
+daemon-first Linux plane.
 
 ## Audit Registers
 

@@ -91,6 +91,7 @@
     "priority:lane:concurrency:plan": "node tools/priority/concurrent-lane-plan.mjs",
     "priority:lane:concurrency:apply": "node tools/priority/concurrent-lane-apply.mjs",
     "priority:lane:concurrency:status": "node tools/priority/concurrent-lane-status.mjs",
+    "priority:jarvis:status": "node tools/priority/jarvis-session-observer.mjs",
     "priority:human-go-no-go:latest": "node tools/priority/human-go-no-go-latest.mjs",
     "priority:queue:supervisor": "node tools/priority/queue-supervisor.mjs",
     "priority:queue:readiness": "node tools/priority/queue-readiness.mjs",
