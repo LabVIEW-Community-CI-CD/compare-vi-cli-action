@@ -67,6 +67,10 @@ Manager behavior note:
   outcome instead of treating the missing PID as a raw startup failure. This
   includes clean `idle-stop` exits and other structured outcomes such as
   `worker-ready-blocked`.
+- when a current-source daemon launch runs inside WSL from a Windows-mounted
+  worktree such as `/mnt/e/...`, `tools/npm/run-local-typescript.mjs` forces
+  compiled fallback instead of `tsx` so the daemon does not depend on
+  Windows-installed `esbuild` binaries.
 
 ## Canonical Receipt Read Order
 

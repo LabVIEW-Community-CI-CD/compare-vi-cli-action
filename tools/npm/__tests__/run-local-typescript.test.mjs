@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildExecutionPlan,
+  isMountedWindowsWorktreeInWsl,
   parseArgs,
   resolveExecutionMode,
   resolveTsxCliPath
@@ -34,6 +35,32 @@ test('resolveExecutionMode prefers tsx locally and compiled mode in hosted envir
   assert.equal(resolveExecutionMode({ githubActions: true, forceCompiled: false, tsxBinary: 'node_modules/.bin/tsx' }), 'compiled');
   assert.equal(resolveExecutionMode({ githubActions: false, forceCompiled: true, tsxBinary: 'node_modules/.bin/tsx' }), 'compiled');
   assert.equal(resolveExecutionMode({ githubActions: false, forceCompiled: false, tsxBinary: null }), 'compiled');
+});
+
+test('resolveExecutionMode forces compiled mode for WSL-mounted Windows worktrees', () => {
+  assert.equal(
+    isMountedWindowsWorktreeInWsl({
+      platform: 'linux',
+      workingDirectory: '/mnt/e/comparevi-lanes/1827-runtime-daemon-launch',
+    }),
+    true,
+  );
+  assert.equal(
+    resolveExecutionMode({
+      githubActions: false,
+      forceCompiled: false,
+      tsxBinary: 'node_modules/.bin/tsx',
+      mountedWindowsWorktreeInWsl: true,
+    }),
+    'compiled',
+  );
+  assert.equal(
+    isMountedWindowsWorktreeInWsl({
+      platform: 'linux',
+      workingDirectory: '/home/codex/repo',
+    }),
+    false,
+  );
 });
 
 test('buildExecutionPlan emits tsx locally and node+dist for compiled fallback', () => {
