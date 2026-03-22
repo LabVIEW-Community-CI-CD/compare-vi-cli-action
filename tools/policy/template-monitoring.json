@@ -48,6 +48,7 @@
     "compare-template-pivot-not-ready",
     "template-canonical-open-issues",
     "template-consumer-fork-drift",
-    "template-supported-workflow-dispatch-regressed"
+    "template-supported-workflow-dispatch-regressed",
+    "template-monitoring-unverified"
   ]
 }

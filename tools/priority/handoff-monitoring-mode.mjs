@@ -163,7 +163,7 @@ function probeBranchSha(repository, branch, runGhJsonFn) {
   }
 }
 
-function probeSupportedRun(repository, proofPolicy, branch, runGhJsonFn) {
+function probeSupportedRun(repository, proofPolicy, branch, runGhJsonFn, expectedHeadSha = null) {
   if (!proofPolicy) {
     return null;
   }
@@ -197,13 +197,22 @@ function probeSupportedRun(repository, proofPolicy, branch, runGhJsonFn) {
       };
     }
     const success = latestRun.conclusion === proofPolicy.requiredConclusion;
+    const runHeadSha = asOptional(latestRun.headSha);
+    const freshnessStatus = expectedHeadSha
+      ? runHeadSha
+        ? runHeadSha === expectedHeadSha
+          ? 'pass'
+          : 'fail'
+        : 'unknown'
+      : 'pass';
+    const status = !success ? 'fail' : freshnessStatus === 'fail' ? 'fail' : freshnessStatus === 'unknown' ? 'unknown' : 'pass';
     return {
-      status: success ? 'pass' : 'fail',
+      status,
       workflowFile: proofPolicy.workflowFile,
       event: proofPolicy.event,
       requiredConclusion: proofPolicy.requiredConclusion,
       runUrl: asOptional(latestRun.url),
-      headSha: asOptional(latestRun.headSha),
+      headSha: runHeadSha,
       conclusion: asOptional(latestRun.conclusion)
     };
   } catch {
@@ -241,7 +250,7 @@ function evaluateRepositoryMonitor(entry, canonicalHeadSha, runGhJsonFn) {
         canonicalHeadSha: canonicalHeadSha ?? null
       }
     : null;
-  const supportedProof = probeSupportedRun(entry.repository, entry.supportedProof ?? null, entry.branch, runGhJsonFn);
+  const supportedProof = probeSupportedRun(entry.repository, entry.supportedProof ?? null, entry.branch, runGhJsonFn, branchProbe.headSha);
   const statuses = [
     openIssuesStatus,
     branchAlignment?.status ?? 'pass',
@@ -407,20 +416,27 @@ export async function runHandoffMonitoringMode(
       'template-supported-workflow-dispatch-regressed',
       forkMonitors.some((entry) => entry.supportedProof?.status === 'fail'),
       'Wake template work when a supported workflow_dispatch template-smoke proof regresses on a consumer fork.'
+    ),
+    createWakeCondition(
+      'template-monitoring-unverified',
+      templateMonitoringStatus === 'unknown',
+      'Keep compare in monitoring mode until template monitoring can be verified fail-closed.'
     )
   ];
 
   const compareReadyForMonitoring = queueEmptyReady && continuityReady && pivotReady;
   const triggeredWakeConditions = wakeConditions.filter((entry) => entry.triggered).map((entry) => entry.code);
-  const futureAgentAction = !compareReadyForMonitoring
+  const templateMonitoringRegressed = triggeredWakeConditions.some((code) =>
+    code === 'template-canonical-open-issues' ||
+    code === 'template-consumer-fork-drift' ||
+    code === 'template-supported-workflow-dispatch-regressed'
+  );
+  const futureAgentAction = !compareReadyForMonitoring || templateMonitoringStatus === 'unknown'
     ? 'stay-in-compare-monitoring'
-    : triggeredWakeConditions.some((code) =>
-        code === 'template-canonical-open-issues' ||
-        code === 'template-consumer-fork-drift' ||
-        code === 'template-supported-workflow-dispatch-regressed'
-      )
+    : templateMonitoringRegressed
       ? 'reopen-template-monitoring-work'
       : 'future-agent-may-pivot';
+  const summaryStatus = futureAgentAction === 'future-agent-may-pivot' ? 'active' : 'blocked';
 
   const report = {
     schema: 'agent-handoff/monitoring-mode-v1',
@@ -464,7 +480,7 @@ export async function runHandoffMonitoringMode(
     },
     wakeConditions,
     summary: {
-      status: compareReadyForMonitoring ? 'active' : 'blocked',
+      status: summaryStatus,
       futureAgentAction,
       wakeConditionCount: triggeredWakeConditions.length,
       triggeredWakeConditions
