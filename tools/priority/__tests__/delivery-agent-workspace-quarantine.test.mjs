@@ -62,6 +62,7 @@ async function makeLinkedWorktree(prefix) {
 }
 
 async function copyDistCliTree(tempRoot) {
+  await cp(path.join(repoRoot, 'package.json'), path.join(tempRoot, 'package.json'));
   const destinationRoot = path.join(tempRoot, 'dist', 'tools', 'priority');
   await cp(distRoot, destinationRoot, { recursive: true });
   return path.join(destinationRoot, 'delivery-agent.js');
@@ -374,4 +375,47 @@ test('repairRepoGitWorktreeConfig leaves a valid linked-worktree config untouche
     stdio: ['ignore', 'pipe', 'ignore'],
   }).trim();
   assert.equal(persisted, worktreeDir);
+});
+
+test('runWslDeliveryPrereqs uses a neutral host cwd for linked worktrees', async (t) => {
+  const [, , prereqs] = await loadModules();
+  const { runWslDeliveryPrereqs } = prereqs;
+  const { sandboxRoot, worktreeDir } = await makeLinkedWorktree('delivery-agent-prereqs-linked-worktree-');
+  const neutralHostCwd = path.join(sandboxRoot, 'neutral-host-cwd');
+  t.after(async () => {
+    await rm(sandboxRoot, { recursive: true, force: true });
+  });
+
+  await mkdir(neutralHostCwd, { recursive: true });
+
+  const calls = [];
+  const report = runWslDeliveryPrereqs({
+    repoRoot: worktreeDir,
+    distro: 'Ubuntu',
+    nodeVersion: 'v24.13.1',
+    pwshVersion: '7.5.4',
+    codexVersion: '1.0.0-test',
+    ghPath: process.execPath,
+    gitUserName: 'Codex Test',
+    gitUserEmail: 'codex@example.test',
+    hostWorkingDirectory: neutralHostCwd,
+    commandRunner(command, args, options) {
+      calls.push({ command, args, options });
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          schema: 'priority/wsl-delivery-prereqs@v1',
+          codexPath: '/home/codex/.local/bin/codex',
+        }),
+        stderr: '',
+      };
+    },
+  });
+
+  assert.equal(report.schema, 'priority/wsl-delivery-prereqs@v1');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, 'wsl.exe');
+  assert.equal(path.resolve(calls[0].options.cwd), path.resolve(neutralHostCwd));
+  assert.notEqual(path.resolve(calls[0].options.cwd), path.resolve(worktreeDir));
+  assert.ok(calls[0].args.includes('bash'));
 });

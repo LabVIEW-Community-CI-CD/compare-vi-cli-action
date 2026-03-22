@@ -19,6 +19,10 @@ import {
   writeJsonFile,
 } from './delivery-agent-common.js';
 
+export function resolveNeutralWslHostCwd(repoRoot, hostWorkingDirectory = null) {
+  return path.resolve(hostWorkingDirectory || process.env.USERPROFILE || process.env.HOME || repoRoot || process.cwd());
+}
+
 export function invokeDeliveryHostSignal({ mode, repoRoot, distro, paths, previousFingerprint = null, allowRunnerServices = false, resetFingerprintBaseline = false }) {
   return runDeliveryHostSignal({
     mode,
@@ -84,8 +88,10 @@ export function runNodeJsonScript(scriptPath, args, fallbackPayload) {
   }
 }
 
-export function getWslDefaultUser(distro) {
-  const result = runCommand('wsl.exe', ['-d', distro, '--', 'bash', '-lc', 'id -un']);
+export function getWslDefaultUser(distro, options = {}) {
+  const commandRunner = options.commandRunner || runCommand;
+  const neutralHostCwd = resolveNeutralWslHostCwd(options.repoRoot || null, options.hostWorkingDirectory);
+  const result = commandRunner('wsl.exe', ['-d', distro, '--', 'bash', '-lc', 'id -un'], { cwd: neutralHostCwd });
   if (result.status !== 0) {
     throw new Error(`Unable to resolve the default WSL user for distro '${distro}'.`);
   }
@@ -96,10 +102,15 @@ export function getWslDefaultUser(distro) {
   return user;
 }
 
-export function ensureNativeWslDocker({ repoRoot, distro, targetUser, paths }) {
+export function ensureNativeWslDocker({ repoRoot, distro, targetUser, paths, commandRunner = runCommand, hostWorkingDirectory = null }) {
   const scriptPath = path.join(repoRoot, 'tools', 'priority', 'bash', 'ensure-native-wsl-docker.sh');
   const scriptPathWsl = convertToWslPath(scriptPath);
-  const output = runCommand('wsl.exe', ['-d', distro, '-u', 'root', '--', 'env', `COMPAREVI_WSL_TARGET_USER=${targetUser}`, 'bash', scriptPathWsl]);
+  const neutralHostCwd = resolveNeutralWslHostCwd(repoRoot, hostWorkingDirectory);
+  const output = commandRunner(
+    'wsl.exe',
+    ['-d', distro, '-u', 'root', '--', 'env', `COMPAREVI_WSL_TARGET_USER=${targetUser}`, 'bash', scriptPathWsl],
+    { cwd: neutralHostCwd },
+  );
   if (output.status !== 0) {
     throw new Error(`Native WSL Docker bootstrap failed for distro '${distro}': ${normalizeText(output.stderr || output.stdout)}`);
   }
@@ -146,10 +157,22 @@ export function getCodexRequestedVersion() {
   return normalizeText(result.stdout) || 'latest';
 }
 
-export function runWslDeliveryPrereqs({ repoRoot, distro, nodeVersion, pwshVersion, codexVersion, ghPath, gitUserName, gitUserEmail }) {
+export function runWslDeliveryPrereqs({
+  repoRoot,
+  distro,
+  nodeVersion,
+  pwshVersion,
+  codexVersion,
+  ghPath,
+  gitUserName,
+  gitUserEmail,
+  commandRunner = runCommand,
+  hostWorkingDirectory = null,
+}) {
   const scriptPath = path.join(repoRoot, 'tools', 'priority', 'bash', 'ensure-wsl-delivery-prereqs.sh');
   const scriptPathWsl = convertToWslPath(scriptPath);
   const codexHomePath = convertToWslPath(path.join(process.env.USERPROFILE || process.env.HOME || repoRoot, '.codex'));
+  const neutralHostCwd = resolveNeutralWslHostCwd(repoRoot, hostWorkingDirectory);
   const envArgs = [
     `COMPAREVI_WSL_NODE_VERSION=${nodeVersion}`,
     `COMPAREVI_WSL_GH_EXE=${convertToWslPath(ghPath)}`,
@@ -159,7 +182,7 @@ export function runWslDeliveryPrereqs({ repoRoot, distro, nodeVersion, pwshVersi
     `COMPAREVI_WSL_GIT_USER_NAME=${gitUserName}`,
     `COMPAREVI_WSL_GIT_USER_EMAIL=${gitUserEmail}`,
   ];
-  const result = runCommand('wsl.exe', ['-d', distro, '--', 'env', ...envArgs, 'bash', scriptPathWsl]);
+  const result = commandRunner('wsl.exe', ['-d', distro, '--', 'env', ...envArgs, 'bash', scriptPathWsl], { cwd: neutralHostCwd });
   if (result.status !== 0) {
     throw new Error(`WSL delivery prerequisite bootstrap failed for distro '${distro}': ${normalizeText(result.stderr || result.stdout)}`);
   }
@@ -247,13 +270,20 @@ export async function runPrereqsCommand(options) {
   const repoRoot = options.repoRoot || resolveRepoRoot();
   const reportPath = path.isAbsolute(options.reportPath) ? options.reportPath : path.join(repoRoot, options.reportPath || DEFAULTS.reportPath);
   const paths = getArtifactPaths(repoRoot, options.runtimeDir || DEFAULTS.runtimeDir);
+  const neutralHostCwd = resolveNeutralWslHostCwd(repoRoot);
   const ghPath = resolveCommandPath('gh');
   const gitUserName = getGlobalGitConfig('user.name');
   const gitUserEmail = getGlobalGitConfig('user.email');
   const codexVersion = getCodexRequestedVersion();
   const repoHygiene = runRepoHygiene({ ...options, repoRoot });
-  const wslDefaultUser = getWslDefaultUser(options.wslDistro);
-  const wslNativeDocker = ensureNativeWslDocker({ repoRoot, distro: options.wslDistro, targetUser: wslDefaultUser, paths });
+  const wslDefaultUser = getWslDefaultUser(options.wslDistro, { repoRoot, hostWorkingDirectory: neutralHostCwd });
+  const wslNativeDocker = ensureNativeWslDocker({
+    repoRoot,
+    distro: options.wslDistro,
+    targetUser: wslDefaultUser,
+    paths,
+    hostWorkingDirectory: neutralHostCwd,
+  });
   const hostSignal = invokeDeliveryHostSignal({
     mode: 'collect',
     repoRoot,
@@ -272,6 +302,7 @@ export async function runPrereqsCommand(options) {
     ghPath,
     gitUserName,
     gitUserEmail,
+    hostWorkingDirectory: neutralHostCwd,
   });
   const report = {
     ...prereqReport,
