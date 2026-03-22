@@ -7,7 +7,8 @@ function Get-DevelopCheckoutDecision {
     [AllowNull()][string]$CurrentBranch,
     [bool]$IsDirty,
     [bool]$HasDevelop,
-    [AllowNull()][hashtable]$RemoteDevelopRef
+    [AllowNull()][hashtable]$RemoteDevelopRef,
+    [AllowNull()][object[]]$AttachedDevelopWorktreeRoots
   )
 
   if ([string]::IsNullOrWhiteSpace($CurrentBranch)) {
@@ -70,6 +71,27 @@ function Get-DevelopCheckoutDecision {
       Message = "[bootstrap] Creating local develop from $($RemoteDevelopRef.Ref)."
       Remote = $RemoteDevelopRef.Remote
       Ref = $RemoteDevelopRef.Ref
+    }
+  }
+
+  $normalizedAttachedDevelopRoots = @(
+    @(
+      foreach ($root in @($AttachedDevelopWorktreeRoots)) {
+        $normalizedCandidate = Normalize-BootstrapHelperCandidate -Candidate $root
+        if ($null -ne $normalizedCandidate) {
+          $normalizedCandidate.Root
+        }
+      }
+    ) | Select-Object -Unique
+  )
+
+  if ($CurrentBranch -eq 'HEAD' -and $normalizedAttachedDevelopRoots.Count -gt 0) {
+    $attachedRoot = $normalizedAttachedDevelopRoots[0]
+    return [pscustomobject]@{
+      Action = 'skip-detached-develop-attached'
+      Message = "[bootstrap] Detached HEAD already has develop attached at '$attachedRoot'; keeping the detached checkout."
+      Remote = $null
+      Ref = $null
     }
   }
 

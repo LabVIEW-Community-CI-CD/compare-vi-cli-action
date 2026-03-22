@@ -648,6 +648,7 @@ function Ensure-DevelopBranch {
   $isDirty = $false
   $hasDevelop = $false
   $remoteRef = $null
+  $developWorktreeRoots = @()
 
   if ($current -in @('main', 'master', 'HEAD')) {
     $dirty = @(Get-GitStatusPorcelain)
@@ -655,13 +656,20 @@ function Ensure-DevelopBranch {
 
     if (-not $isDirty) {
       $hasDevelop = Test-GitBranchExists -Name 'develop'
-      if (-not $hasDevelop) {
+      if ($hasDevelop) {
+        $developWorktreeRoots = @(Get-DevelopWorktreeRoots)
+      } else {
         $remoteRef = Resolve-RemoteDevelopRef
       }
     }
   }
 
-  $decision = Get-DevelopCheckoutDecision -CurrentBranch $current -IsDirty:$isDirty -HasDevelop:$hasDevelop -RemoteDevelopRef $remoteRef
+  $decision = Get-DevelopCheckoutDecision `
+    -CurrentBranch $current `
+    -IsDirty:$isDirty `
+    -HasDevelop:$hasDevelop `
+    -RemoteDevelopRef $remoteRef `
+    -AttachedDevelopWorktreeRoots $developWorktreeRoots
 
   switch ($decision.Action) {
     'noop-already-develop' {
@@ -685,6 +693,10 @@ function Ensure-DevelopBranch {
     }
     'skip-no-remote-develop' {
       Write-Warning $decision.Message
+      return
+    }
+    'skip-detached-develop-attached' {
+      Write-Host $decision.Message
       return
     }
     'create-develop-from-remote' {
