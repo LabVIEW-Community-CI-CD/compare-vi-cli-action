@@ -4169,6 +4169,107 @@ test('delivery broker clears stale standing labels from a merged issue that is n
   assert.equal(reconcileCalls.length, 0);
 });
 
+test('delivery broker rehydrates stale standing labels from live issue state before finalizing a non-active merged issue', async () => {
+  const closeCalls = [];
+  const labelEditCalls = [];
+  const fetchIssueCalls = [];
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot: '/tmp/repo',
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'ready-merge',
+      objective: {
+        summary: 'Advance issue #1011'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'ready-merge',
+          standingIssue: {
+            number: 1010,
+            title: 'Containerize NILinuxCompare tests via tools image Docker contract',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1010'
+          },
+          selectedIssue: {
+            number: 1011,
+            title: 'Refresh downstream proving rail evidence',
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1011',
+            labels: ['needs-triage']
+          },
+          pullRequest: {
+            number: 1015,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1015',
+            readyToMerge: true
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'draft-only-explicit',
+        readyForReviewPurpose: 'final-validation',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: []
+      }),
+      mergePullRequestFn: async () => ({
+        status: 'completed',
+        outcome: 'merged',
+        source: 'delivery-agent-broker',
+        details: {
+          actionType: 'merge-pr',
+          laneLifecycle: 'complete',
+          blockerClass: 'none',
+          retryable: false,
+          nextWakeCondition: 'next-scheduler-cycle',
+          helperCallsExecuted: ['node tools/priority/merge-sync-pr.mjs'],
+          filesTouched: []
+        }
+      }),
+      fetchIssueFn: async (number, repoRoot, repository, options) => {
+        fetchIssueCalls.push({ number, repoRoot, repository, options });
+        return {
+          number,
+          title: 'Refresh downstream proving rail evidence',
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1011',
+          state: 'OPEN',
+          labels: ['standing-priority', 'needs-triage']
+        };
+      },
+      closeIssueWithCommentFn: async (options) => {
+        closeCalls.push(options);
+        return {
+          status: 0,
+          stdout: '',
+          stderr: ''
+        };
+      },
+      editIssueLabelsFn: async (options) => {
+        labelEditCalls.push(options);
+        return {
+          status: 0,
+          stdout: '',
+          stderr: ''
+        };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.outcome, 'merged');
+  assert.equal(fetchIssueCalls.length, 1);
+  assert.equal(fetchIssueCalls[0].number, 1011);
+  assert.equal(fetchIssueCalls[0].repository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(closeCalls.length, 1);
+  assert.equal(labelEditCalls.length, 1);
+  assert.deepEqual(labelEditCalls[0].removeLabels, ['standing-priority']);
+});
+
 test('delivery broker clears standing-priority immediately when a merged standing issue exhausts the queue', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-merge-finalize-'));
   const reconcileCalls = [];
