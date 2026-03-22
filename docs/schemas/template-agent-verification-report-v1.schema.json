@@ -4,7 +4,19 @@
   "title": "Template Agent Verification Report v1",
   "type": "object",
   "additionalProperties": true,
-  "required": ["schema", "generatedAt", "repo", "summary", "iteration", "lane", "verification", "goals", "metrics", "blockers"],
+  "required": [
+    "schema",
+    "generatedAt",
+    "repo",
+    "summary",
+    "iteration",
+    "lane",
+    "verification",
+    "provenance",
+    "goals",
+    "metrics",
+    "blockers"
+  ],
   "properties": {
     "schema": { "const": "priority/template-agent-verification-report@v1" },
     "generatedAt": { "type": "string", "format": "date-time" },
@@ -58,6 +70,44 @@
         "status": { "enum": ["pass", "fail", "blocked", "pending"] },
         "durationSeconds": { "type": ["integer", "null"], "minimum": 0 },
         "runUrl": { "type": ["string", "null"] }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["templateDependency", "execution"],
+      "properties": {
+        "templateDependency": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "version", "ref", "cookiecutterVersion"],
+          "properties": {
+            "repository": { "type": ["string", "null"] },
+            "version": { "type": ["string", "null"] },
+            "ref": { "type": ["string", "null"] },
+            "cookiecutterVersion": { "type": ["string", "null"] }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "executionPlane",
+            "containerImage",
+            "generatedConsumerWorkspaceRoot",
+            "laneId",
+            "agentId",
+            "fundingWindowId"
+          ],
+          "properties": {
+            "executionPlane": { "type": ["string", "null"] },
+            "containerImage": { "type": ["string", "null"] },
+            "generatedConsumerWorkspaceRoot": { "type": ["string", "null"] },
+            "laneId": { "type": ["string", "null"] },
+            "agentId": { "type": ["string", "null"] },
+            "fundingWindowId": { "type": ["string", "null"] }
+          }
+        }
       }
     },
     "goals": {

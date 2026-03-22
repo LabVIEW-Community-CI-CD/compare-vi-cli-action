@@ -1,0 +1,26 @@
+{
+  "$schema": "../../docs/schemas/template-dependency-v1.schema.json",
+  "schema": "priority/template-dependency@v1",
+  "schemaVersion": "1.0.0",
+  "templateRepositorySlug": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
+  "templateRepositoryUrl": "https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate.git",
+  "templateReleaseRef": "v0.1.0",
+  "templateDirectory": null,
+  "cookiecutterVersion": "2.7.1",
+  "container": {
+    "runtime": "docker",
+    "image": "ghcr.io/labview-community-ci-cd/comparevi-tools:latest",
+    "executionPlane": "linux-tools-image"
+  },
+  "workspaceRoots": {
+    "win32": "E:\\comparevi-template-consumers",
+    "posix": "/tmp/comparevi-template-consumers"
+  },
+  "rendering": {
+    "checkout": "v0.1.0",
+    "defaultContextPath": "tests/fixtures/cookiecutter/template-context.json",
+    "deterministicInput": true,
+    "noInput": true,
+    "uniqueContainerNamePrefix": "comparevi-template"
+  }
+}

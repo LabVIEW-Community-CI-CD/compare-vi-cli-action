@@ -81,6 +81,37 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Resolve pinned template dependency policy
+        id: template-policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('fs');
+          const policy = JSON.parse(fs.readFileSync('tools/policy/template-dependency.json', 'utf8'));
+          console.log(`repository=${policy.templateRepositorySlug}`);
+          console.log(`ref=${policy.templateReleaseRef}`);
+          console.log(`cookiecutter_version=${policy.cookiecutterVersion}`);
+          console.log(`execution_plane=${policy.container.executionPlane}`);
+          NODE
+
+      - name: Record pinned template dependency
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tests/results/_agent/promotion
+          cat > tests/results/_agent/promotion/template-dependency.json <<JSON
+          {
+            "schema": "priority/template-dependency@v1",
+            "repository": "${{ steps.template-policy.outputs.repository }}",
+            "ref": "${{ steps.template-policy.outputs.ref }}",
+            "cookiecutterVersion": "${{ steps.template-policy.outputs.cookiecutter_version }}",
+            "executionPlane": "${{ steps.template-policy.outputs.execution_plane }}",
+            "renderMode": "consumer-proving"
+          }
+          JSON
+
       - name: Resolve immutable upstream source
         id: source
         shell: bash
@@ -227,7 +258,9 @@ jobs:
             '## Downstream Promotion',
             `- source sha: \`${process.env.SOURCE_SHA}\``,
             `- push requested: \`${process.env.PUSH_DOWNSTREAM}\``,
-            `- downstream repo: \`${process.env.RESOLVED_REPO}\``
+            `- downstream repo: \`${process.env.RESOLVED_REPO}\``,
+            `- pinned template dependency: \`${process.env.TEMPLATE_DEPENDENCY_REPO}@${process.env.TEMPLATE_DEPENDENCY_REF}\``,
+            `- cookiecutter version: \`${process.env.COOKIECUTTER_VERSION}\``
           ];
           const scorecardPath = 'tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json';
           if (fs.existsSync(scorecardPath)) {
@@ -247,6 +280,9 @@ jobs:
           SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
           PUSH_DOWNSTREAM: ${{ inputs.push_downstream }}
           RESOLVED_REPO: ${{ inputs.downstream_repo || vars.DOWNSTREAM_PILOT_REPO || github.repository }}
+          TEMPLATE_DEPENDENCY_REPO: ${{ steps.template-policy.outputs.repository }}
+          TEMPLATE_DEPENDENCY_REF: ${{ steps.template-policy.outputs.ref }}
+          COOKIECUTTER_VERSION: ${{ steps.template-policy.outputs.cookiecutter_version }}
 
       - name: Upload downstream promotion artifacts
         if: ${{ always() && hashFiles('tests/results/_agent/onboarding/*.json', 'tests/results/_agent/promotion/*.json') != '' }}

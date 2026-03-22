@@ -4,6 +4,12 @@
   "sourceRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
   "targetRepository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
   "targetBranch": "develop",
+  "templateDependency": {
+    "repository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
+    "version": "v0.1.0",
+    "ref": "v0.1.0",
+    "cookiecutterVersion": "2.7.1"
+  },
   "queueEmpty": {
     "requiredSchema": "standing-priority/no-standing@v1",
     "requiredReason": "queue-empty",

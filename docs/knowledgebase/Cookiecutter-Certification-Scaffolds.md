@@ -118,14 +118,42 @@ Hosted proof workflow:
 The hosted proof runs `tools/Test-CompareVICookiecutterBootstrap.ps1`, which:
 
 - exercises the shared scaffold wrapper on both hosted OS planes
-- validates the pinned `cookiecutter==2.6.0` runtime through the wrapper
+- validates the pinned `cookiecutter==2.7.1` runtime through the wrapper
 - emits a proof receipt at
   `tests/results/_agent/cookiecutter-bootstrap/<platform>/comparevi-cookiecutter-bootstrap-proof.json`
 - uploads both proof receipts and generated scaffold outputs for review
 
+The hosted conveyor now has a second, template-consumer proof lane:
+
+- pinned template dependency:
+  - `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate@v0.1.0`
+- checked-in deterministic context:
+  - `tests/fixtures/cookiecutter/template-context.json`
+- hosted Ubuntu execution plane:
+  - `ghcr.io/labview-community-ci-cd/comparevi-tools:latest`
+- helper entrypoint:
+  - `node tools/npm/run-script.mjs priority:template:render:container`
+- deterministic render mode:
+  - `priority:template:render:container` reads `tools/policy/template-dependency.json`
+  - the helper uses the pinned template dependency, pinned `cookiecutter==2.7.1`,
+    and the checked-in deterministic template context
+- generated consumer output root:
+  - `tests/results/_agent/cookiecutter-bootstrap/<platform>/pinned-template-render`
+- dependency receipt:
+  - `tests/results/_agent/cookiecutter-bootstrap/<platform>/pinned-template-dependency.json`
+- verification report:
+  - `tests/results/_agent/promotion/template-agent-verification-report.json`
+
+Hosted Ubuntu renders the pinned template dependency inside the tools image.
+Hosted Windows verifies the same pinned release host-native so the conveyor belt
+has both a container-backed render plane and a mirrored verification plane. A
+follow-on hosted verification job then emits the machine-readable template-agent
+verification report so downstream proving and the template pivot gate consume
+the same pinned dependency provenance.
+
 ## Natural Follow-Ons
 
 - mirror the template family into `svelderrainruiz/cookiecutter`
-- carry the same scaffold surface into `LabviewGitHubCiTemplate`
+- carry the same scaffold surface into `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate@v0.1.0`
 - use the hosted bootstrap proof as the consumer-proving install contract for
   Linux and Windows lanes

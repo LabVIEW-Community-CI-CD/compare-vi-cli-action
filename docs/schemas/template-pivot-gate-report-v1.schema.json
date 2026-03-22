@@ -40,6 +40,7 @@
         "futureAgentOnly",
         "operatorSteeringAllowed",
         "requirePreciseSessionFeedback",
+        "templateDependency",
         "releaseCandidateVersionPattern",
         "releaseCandidateVersionPatternDescription"
       ],
@@ -60,6 +61,34 @@
         },
         "requirePreciseSessionFeedback": {
           "type": "boolean"
+        },
+        "templateDependency": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "version",
+            "ref",
+            "cookiecutterVersion"
+          ],
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cookiecutterVersion": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
         "releaseCandidateVersionPattern": {
           "type": "string",
@@ -294,6 +323,8 @@
         "verificationStatus",
         "targetRepository",
         "consumerRailBranch",
+        "templateDependency",
+        "execution",
         "ready"
       ],
       "properties": {
@@ -318,6 +349,70 @@
         },
         "consumerRailBranch": {
           "type": ["string", "null"]
+        },
+        "templateDependency": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "version",
+            "ref",
+            "cookiecutterVersion",
+            "matchesPolicy"
+          ],
+          "properties": {
+            "repository": {
+              "type": ["string", "null"]
+            },
+            "version": {
+              "type": ["string", "null"]
+            },
+            "ref": {
+              "type": ["string", "null"]
+            },
+            "cookiecutterVersion": {
+              "type": ["string", "null"]
+            },
+            "matchesPolicy": {
+              "type": "boolean"
+            }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "executionPlane",
+            "containerImage",
+            "generatedConsumerWorkspaceRoot",
+            "laneId",
+            "agentId",
+            "fundingWindowId",
+            "complete"
+          ],
+          "properties": {
+            "executionPlane": {
+              "type": ["string", "null"]
+            },
+            "containerImage": {
+              "type": ["string", "null"]
+            },
+            "generatedConsumerWorkspaceRoot": {
+              "type": ["string", "null"]
+            },
+            "laneId": {
+              "type": ["string", "null"]
+            },
+            "agentId": {
+              "type": ["string", "null"]
+            },
+            "fundingWindowId": {
+              "type": ["string", "null"]
+            },
+            "complete": {
+              "type": "boolean"
+            }
+          }
         },
         "ready": {
           "type": "boolean"

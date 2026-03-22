@@ -54,6 +54,9 @@ test('package scripts and runbook expose downstream promotion manifest and score
   assert.match(runbook, /reservedSlotCount = 1/);
   assert.match(runbook, /minimumImplementationSlots = 3/);
   assert.match(runbook, /hosted-first/);
+  assert.match(runbook, /LabVIEW-Community-CI-CD\/LabviewGitHubCiTemplate@v0\.1\.0/);
+  assert.match(runbook, /cookiecutter==2\.7\.1/);
+  assert.match(runbook, /ghcr\.io\/labview-community-ci-cd\/comparevi-tools:latest/);
   assert.match(runbook, /Release consumption/);
   assert.match(runbook, /downstream-promotion\.yml/);
 });
@@ -68,6 +71,10 @@ test('downstream promotion workflow turns the proving rail into checked-in autom
   assert.match(workflow, /comparevi_history_release:/);
   assert.match(workflow, /scenario_pack_id:/);
   assert.match(workflow, /cookiecutter_template_id:/);
+  assert.match(workflow, /Resolve pinned template dependency policy/);
+  assert.match(workflow, /tools\/policy\/template-dependency\.json/);
+  assert.match(workflow, /Record pinned template dependency/);
+  assert.match(workflow, /template-dependency\.json/);
   assert.match(workflow, /Run downstream onboarding feedback harness/);
   assert.match(workflow, /downstream-onboarding-feedback\.mjs/);
   assert.match(workflow, /Generate downstream promotion manifest/);

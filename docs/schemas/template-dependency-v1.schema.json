@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/template-dependency-v1.schema.json",
+  "title": "Template Dependency Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "templateRepositorySlug",
+    "templateRepositoryUrl",
+    "templateReleaseRef",
+    "templateDirectory",
+    "cookiecutterVersion",
+    "container",
+    "workspaceRoots",
+    "rendering"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schema": {
+      "const": "priority/template-dependency@v1"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "templateRepositorySlug": {
+      "type": "string",
+      "const": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate"
+    },
+    "templateRepositoryUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://github\\.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate\\.git$"
+    },
+    "templateReleaseRef": {
+      "type": "string",
+      "const": "v0.1.0"
+    },
+    "templateDirectory": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "cookiecutterVersion": {
+      "type": "string",
+      "const": "2.7.1"
+    },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime",
+        "image",
+        "executionPlane"
+      ],
+      "properties": {
+        "runtime": {
+          "type": "string",
+          "const": "docker"
+        },
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "executionPlane": {
+          "type": "string",
+          "const": "linux-tools-image"
+        }
+      }
+    },
+    "workspaceRoots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "win32",
+        "posix"
+      ],
+      "properties": {
+        "win32": {
+          "type": "string",
+          "pattern": "^[A-Za-z]:\\\\.+"
+        },
+        "posix": {
+          "type": "string",
+          "pattern": "^/.+"
+        }
+      }
+    },
+    "rendering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkout",
+        "defaultContextPath",
+        "deterministicInput",
+        "noInput",
+        "uniqueContainerNamePrefix"
+      ],
+      "properties": {
+        "checkout": {
+          "type": "string",
+          "const": "v0.1.0"
+        },
+        "defaultContextPath": {
+          "type": "string",
+          "const": "tests/fixtures/cookiecutter/template-context.json"
+        },
+        "deterministicInput": {
+          "type": "boolean",
+          "const": true
+        },
+        "noInput": {
+          "type": "boolean",
+          "const": true
+        },
+        "uniqueContainerNamePrefix": {
+          "type": "string",
+          "const": "comparevi-template"
+        }
+      }
+    }
+  }
+}

@@ -27,6 +27,22 @@
     "durationSeconds": null,
     "runUrl": null
   },
+  "provenance": {
+    "templateDependency": {
+      "repository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
+      "version": null,
+      "ref": null,
+      "cookiecutterVersion": null
+    },
+    "execution": {
+      "executionPlane": null,
+      "containerImage": null,
+      "generatedConsumerWorkspaceRoot": null,
+      "laneId": null,
+      "agentId": null,
+      "fundingWindowId": null
+    }
+  },
   "goals": {
     "maxVerificationLagIterations": 1,
     "maxHostedDurationMinutes": 30,

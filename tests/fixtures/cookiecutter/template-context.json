@@ -1,0 +1,8 @@
+{
+  "project_name": "CompareVI Template Consumer",
+  "repo_slug": "comparevi-template-consumer",
+  "github_owner": "LabVIEW-Community-CI-CD",
+  "default_branch": "develop",
+  "license_holder": "LabVIEW Community CI/CD",
+  "copyright_year": "2026"
+}
