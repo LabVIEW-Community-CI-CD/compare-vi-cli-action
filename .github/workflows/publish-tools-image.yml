@@ -92,6 +92,21 @@ jobs:
             org.opencontainers.image.version=${{ steps.context.outputs.version }}
             org.opencontainers.image.title=comparevi-tools
 
+      - name: Verify cookiecutter conveyor surface in published tools image
+        shell: bash
+        env:
+          COOKIECUTTER_VERSION: '2.7.1'
+        run: |
+          set -euo pipefail
+          image="${{ steps.context.outputs.image_name }}:${{ steps.context.outputs.version }}"
+          docker pull "$image"
+          output="$(docker run --rm "$image" cookiecutter --version)"
+          printf '%s\n' "$output"
+          if [[ "$output" != *"$COOKIECUTTER_VERSION"* ]]; then
+            echo "Expected cookiecutter ${COOKIECUTTER_VERSION} in ${image}, got: ${output}" >&2
+            exit 1
+          fi
+
       - name: Write release summary artifact
         shell: bash
         run: |
@@ -161,4 +176,3 @@ jobs:
             tests/results/promotion-contract/publish-tools-ledger.json
             tests/results/_agent/slo/publish-tools-slo-metrics.json
           if-no-files-found: error
-

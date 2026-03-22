@@ -57,6 +57,16 @@ test('publish-tools-image workflow resolves context through the dedicated helper
   assert.match(workflow, /node tools\/priority\/resolve-tools-image-publish-context\.mjs/);
   assert.match(workflow, /steps\.context\.outputs\.stable_family_version/);
   assert.match(workflow, /steps\.context\.outputs\.is_tools_tag/);
+  assert.match(workflow, /docker pull "\$image"/);
+  assert.match(workflow, /cookiecutter --version/);
+  assert.match(workflow, /COOKIECUTTER_VERSION:\s*'2\.7\.1'/);
+});
+
+test('publish-tools-image Dockerfile pins cookiecutter 2.7.1 for the conveyor surface', () => {
+  const dockerfilePath = path.join(repoRoot, 'tools', 'docker', 'Dockerfile.tools');
+  const dockerfile = readFileSync(dockerfilePath, 'utf8');
+
+  assert.match(dockerfile, /cookiecutter==2\.7\.1/);
 });
 
 test('release workflow explicitly dispatches publish-tools-image with actions write permission', () => {
