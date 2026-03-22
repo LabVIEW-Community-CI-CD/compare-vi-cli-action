@@ -61,8 +61,8 @@ Describe 'Invoke-HeadlessSampleVICorpusEvaluation.ps1' -Tag 'Unit' {
     $licensedCandidate.checks.operationPayloadSourceValid | Should -BeTrue
     $licensedCandidate.checks.operationPayloadLicenseDeclared | Should -BeTrue
     $licensedCandidate.checks.operationPayloadPromotable | Should -BeFalse
-    @($licensedCandidate.publicEvidence | Where-Object { [string]$_.kind -eq 'pull-request' -and [string]$_.url -eq 'https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/pull/29' } | Measure-Object).Count | Should -Be 1
-    @($licensedCandidate.publicEvidence | Where-Object { [string]$_.kind -eq 'workflow-run' -and [string]$_.url -eq 'https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/actions/runs/23225926010' } | Measure-Object).Count | Should -Be 1
+    $licensedCandidate.publicEvidenceCount | Should -Be 2
+    $licensedCandidate.successfulWorkflowEvidenceCount | Should -Be 1
     (($licensedCandidate.notes | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) | Should -Match 'Custom operation payload is not promotable for accepted certification use'
 
     $markdown = Get-Content -LiteralPath $markdownPath -Raw

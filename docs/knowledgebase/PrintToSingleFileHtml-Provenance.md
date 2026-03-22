@@ -23,14 +23,10 @@ The reason is provenance, not usefulness.
   MIT-licensed public consumer repository, and public CompareVI History
   diagnostics succeeded on the pinned PR head commit
   `91516373bf6c95e1d3cee2ee97452bc9d08f4ed7`. This is the best licensed
-  added-VI corpus seed we have, but the published receipts are still
-  history-surface artifacts rather than a standalone `PrintToSingleFileHtml`
-  proof against the replacement payload.
-  `91516373bf6c95e1d3cee2ee97452bc9d08f4ed7`. The public artifact for that run
-  is `comparevi-history-pr-diagnostics-23225926010`. This is the best licensed
-  added-VI corpus seed we have, but the published receipts are still
-  history-surface artifacts rather than a standalone `PrintToSingleFileHtml`
-  proof against the replacement payload.
+  added-VI corpus seed we have. The public artifact for that run is
+  `comparevi-history-pr-diagnostics-23225926010`, but the published receipts
+  are still history-surface artifacts rather than a standalone
+  `PrintToSingleFileHtml` proof against the replacement payload.
 
 This repository now carries a repo-owned BSD-3 licensed source bundle for the
 replacement payload under:
@@ -69,6 +65,11 @@ As of March 21, 2026, the bundle is still explicitly `source-only`:
   gap into an explicit native-authoring packet with the installed
   `Operations.lvproj`, `Toolkit-Operations.lvproj`, LabVIEW 2026 x86 path, an
   authoring checklist, and a launch helper
+- `tools/Finalize-OperationPayloadSourceBundle.ps1` now gives the native
+  authoring handoff a deterministic completion step: once repo-owned LabVIEW
+  binary files are checked in, the helper updates `checkedInOperationFiles`,
+  flips the declared executable state to `runnable`, and leaves public proof as
+  the remaining blocker instead of requiring manual manifest editing
 
 ## Repo policy
 

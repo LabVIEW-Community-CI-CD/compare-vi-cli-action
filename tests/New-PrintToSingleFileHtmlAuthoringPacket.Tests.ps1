@@ -118,6 +118,7 @@ $receipt | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $ReceiptPath -Enc
     (Get-Content -LiteralPath $checklistPath -Raw) | Should -Match '#1617'
     (Get-Content -LiteralPath $checklistPath -Raw) | Should -Match '#1726'
     (Get-Content -LiteralPath $checklistPath -Raw) | Should -Match '#1467'
+    (Get-Content -LiteralPath $checklistPath -Raw) | Should -Match 'Finalize-OperationPayloadSourceBundle\.ps1'
     (Get-Content -LiteralPath $launchScriptPath -Raw) | Should -Match 'Start-Process -FilePath \$labviewPath'
   }
 }

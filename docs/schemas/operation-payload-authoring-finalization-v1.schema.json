@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/operation-payload-authoring-finalization-v1.schema.json",
+  "title": "Operation payload authoring finalization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "status",
+    "bundlePath",
+    "manifestPath",
+    "inspectionReportPath",
+    "inspectionMarkdownPath",
+    "manifestUpdated",
+    "beforeDeclaredExecutableState",
+    "observedExecutableState",
+    "afterDeclaredExecutableState",
+    "beforeCurrentState",
+    "afterCurrentState",
+    "checkedInOperationFilesBefore",
+    "checkedInOperationFilesAfter",
+    "promotionBlocked",
+    "blockingReasons",
+    "notes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi/operation-payload-authoring-finalization@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "blocked",
+        "succeeded"
+      ]
+    },
+    "bundlePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manifestPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inspectionReportPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inspectionMarkdownPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manifestUpdated": {
+      "type": "boolean"
+    },
+    "beforeDeclaredExecutableState": {
+      "type": "string",
+      "enum": [
+        "source-only",
+        "runnable"
+      ]
+    },
+    "observedExecutableState": {
+      "type": "string",
+      "enum": [
+        "source-only",
+        "runnable"
+      ]
+    },
+    "afterDeclaredExecutableState": {
+      "type": "string",
+      "enum": [
+        "source-only",
+        "runnable"
+      ]
+    },
+    "beforeCurrentState": {
+      "type": "string",
+      "minLength": 1
+    },
+    "afterCurrentState": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checkedInOperationFilesBefore": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "checkedInOperationFilesAfter": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "promotionBlocked": {
+      "type": "boolean"
+    },
+    "blockingReasons": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}
