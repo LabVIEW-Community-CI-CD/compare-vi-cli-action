@@ -853,6 +853,28 @@ function readJson(file) {
   }
 }
 
+export function resolveAutoSelectExcludedIssueNumbers(cache = {}, router = null, existing = []) {
+  const excluded = new Set(
+    Array.isArray(existing)
+      ? existing
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0)
+      : []
+  );
+
+  const cacheNumber = Number(cache?.number);
+  if (Number.isInteger(cacheNumber) && cacheNumber > 0) {
+    excluded.add(cacheNumber);
+  }
+
+  const routerIssue = Number(router?.issue);
+  if (Number.isInteger(routerIssue) && routerIssue > 0) {
+    excluded.add(routerIssue);
+  }
+
+  return Array.from(excluded).sort((left, right) => left - right);
+}
+
 export function shouldWriteJsonFile(file, nextObject) {
   const currentObject = readJson(file);
   if (currentObject == null) {
@@ -2600,6 +2622,7 @@ export async function main(options = {}) {
   const cache = readJson(cachePath) || {};
   const resultsDir = path.join(repoRoot, 'tests', 'results', '_agent', 'issue');
   fs.mkdirSync(resultsDir, { recursive: true });
+  const existingRouter = readJson(path.join(resultsDir, 'router.json')) || {};
 
   let standingPriority;
   let autoPromotedStandingReport = null;
@@ -2623,8 +2646,14 @@ export async function main(options = {}) {
       }
       if (autoSelectNext) {
         if (noStandingReason !== 'queue-empty') {
+          const autoSelectExcludedIssueNumbers = resolveAutoSelectExcludedIssueNumbers(
+            cache,
+            existingRouter,
+            options.excludeIssueNumbers
+          );
           const autoSelect = await autoSelectStandingPriorityIssue(repoRoot, slug, {
-            env: options.env || process.env
+            env: options.env || process.env,
+            excludeIssueNumbers: autoSelectExcludedIssueNumbers
           });
           if (autoSelect.status === 'selected' && autoSelect.issue?.number) {
             standingPriority = {
