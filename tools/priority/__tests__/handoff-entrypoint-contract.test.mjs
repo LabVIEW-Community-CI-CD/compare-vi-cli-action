@@ -29,6 +29,7 @@ test('AGENT_HANDOFF stays bounded and points agents to live state artifacts', ()
   assert.match(handoff, /tests\/results\/_agent\/verification\/docker-review-loop-summary\.json/);
   assert.match(handoff, /tests\/results\/_agent\/handoff\/continuity-summary\.json/);
   assert.match(handoff, /tests\/results\/_agent\/handoff\/entrypoint-status\.json/);
+  assert.match(handoff, /tests\/results\/_agent\/handoff\/monitoring-mode\.json/);
   assert.match(handoff, /tests\/results\/_agent\/handoff\/\*\.json/);
   assert.match(handoff, /tests\/results\/_agent\/sessions\/\*\.json/);
   assert.doesNotMatch(handoff, /^## 20\d{2}-\d{2}-\d{2}$/m);
@@ -57,9 +58,13 @@ test('handoff entrypoint contract is wired into automation and operator docs', (
   assert.match(printHandoff, /-ResultsRoot \$ResultsRoot -Quiet/);
   assert.match(printHandoff, /continuity-telemetry\.mjs/);
   assert.match(printHandoff, /continuity-summary\.json/);
+  assert.match(printHandoff, /handoff-monitoring-mode\.mjs/);
+  assert.match(printHandoff, /monitoring-mode\.json/);
   assert.match(printHandoff, /docker-review-loop-summary\.json/);
   assert.match(importHandoff, /entrypoint-status\.json/);
   assert.match(importHandoff, /continuity-summary\.json/);
+  assert.match(importHandoff, /monitoring-mode\.json/);
+  assert.match(importHandoff, /\[handoff\] Monitoring mode/);
   assert.match(importHandoff, /\[handoff\] Continuity summary/);
   assert.match(importHandoff, /docker-review-loop-summary\.json/);
   assert.match(importHandoff, /\[handoff\] Entrypoint index/);
@@ -74,7 +79,9 @@ test('handoff entrypoint contract is wired into automation and operator docs', (
   assert.match(handoffGuide, /AGENT_HANDOFF\.txt/);
   assert.match(handoffGuide, /entrypoint-status\.json/);
   assert.match(handoffGuide, /continuity-summary\.json/);
+  assert.match(handoffGuide, /monitoring-mode\.json/);
   assert.match(handoffGuide, /docker-review-loop-summary\.json/);
   assert.match(handoffGuide, /priority:handoff/);
   assert.match(handoffGuide, /queue-empty/);
+  assert.match(handoffGuide, /future agents may pivot/i);
 });

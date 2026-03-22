@@ -43,6 +43,7 @@ $testSummary = Read-HandoffJson -Name 'test-summary.json'
 $dockerReviewLoopSummary = Read-HandoffJson -Name 'docker-review-loop-summary.json'
 $entrypointStatus = Read-HandoffJson -Name 'entrypoint-status.json'
 $continuitySummary = Read-HandoffJson -Name 'continuity-summary.json'
+$monitoringMode = Read-HandoffJson -Name 'monitoring-mode.json'
 $operatorSteeringEvent = Read-HandoffJson -Name 'operator-steering-event.json'
 
 if ($issueSummary) {
@@ -253,6 +254,20 @@ if ($continuitySummary) {
   Set-Variable -Name HandoffContinuitySummary -Scope Global -Value $continuitySummary -Force
 }
 
+if ($monitoringMode) {
+  Write-Host '[handoff] Monitoring mode' -ForegroundColor Cyan
+  Write-Host ("  status   : {0}" -f (Format-NullableValue $monitoringMode.summary.status))
+  Write-Host ("  action   : {0}" -f (Format-NullableValue $monitoringMode.summary.futureAgentAction))
+  Write-Host ("  compare  : queue={0} continuity={1} pivot={2}" -f (Format-NullableValue $monitoringMode.compare.queueState.status), (Format-NullableValue $monitoringMode.compare.continuity.status), (Format-NullableValue $monitoringMode.compare.pivotGate.status))
+  Write-Host ("  template : {0}" -f (Format-NullableValue $monitoringMode.templateMonitoring.status))
+  if ($monitoringMode.summary.triggeredWakeConditions) {
+    $triggered = @($monitoringMode.summary.triggeredWakeConditions | Where-Object { $_ })
+    if ($triggered.Count -gt 0) {
+      Write-Host ("  wake     : {0}" -f ($triggered -join ', '))
+    }
+  }
+  Set-Variable -Name HandoffMonitoringMode -Scope Global -Value $monitoringMode -Force
+}
 if ($operatorSteeringEvent) {
   Write-Host '[handoff] Operator steering event' -ForegroundColor Cyan
   Write-Host ("  steering : {0}" -f (Format-NullableValue $operatorSteeringEvent.steeringKind))

@@ -1289,6 +1289,55 @@ try {
 }
 
 try {
+  $templateVerificationSyncScript = Join-Path $repoRoot 'tools' 'priority' 'sync-template-agent-verification-report.mjs'
+  $templatePivotGateScript = Join-Path $repoRoot 'tools' 'priority' 'template-pivot-gate.mjs'
+  $monitoringModeScript = Join-Path $repoRoot 'tools' 'priority' 'handoff-monitoring-mode.mjs'
+  $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+  if ($nodeCmd) {
+    $promotionDir = Join-Path $ResultsRoot '_agent/promotion'
+    $handoffDir = Join-Path $ResultsRoot '_agent/handoff'
+    New-Item -ItemType Directory -Force -Path $promotionDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+
+    $templateVerificationSeedPath = Join-Path $promotionDir 'template-agent-verification-report.json'
+    $templateVerificationOverlayPath = Join-Path $promotionDir 'template-agent-verification-report.local.json'
+    $templateVerificationSyncPath = Join-Path $promotionDir 'template-agent-verification-sync.json'
+    $templatePivotGatePath = Join-Path $promotionDir 'template-pivot-gate-report.json'
+    $queueEmptyReportPath = Join-Path $repoRoot 'tests/results/_agent/issue/no-standing-priority.json'
+    $entrypointStatusPath = Join-Path $ResultsRoot '_agent/handoff/entrypoint-status.json'
+    $continuitySummaryPath = Join-Path $ResultsRoot '_agent/handoff/continuity-summary.json'
+    $monitoringModePath = Join-Path $handoffDir 'monitoring-mode.json'
+
+    if (Test-Path -LiteralPath $templateVerificationSyncScript -PathType Leaf) {
+      & $nodeCmd.Source $templateVerificationSyncScript `
+        --repo-root $repoRoot `
+        --local-report $templateVerificationSeedPath `
+        --local-overlay-report $templateVerificationOverlayPath `
+        --output $templateVerificationSyncPath | Out-Host
+    }
+
+    if (Test-Path -LiteralPath $templatePivotGateScript -PathType Leaf) {
+      & $nodeCmd.Source $templatePivotGateScript `
+        --queue-empty-report $queueEmptyReportPath `
+        --handoff-entrypoint $entrypointStatusPath `
+        --template-agent-verification-report $templateVerificationSeedPath `
+        --output $templatePivotGatePath | Out-Host
+    }
+
+    if (Test-Path -LiteralPath $monitoringModeScript -PathType Leaf) {
+      & $nodeCmd.Source $monitoringModeScript `
+        --repo-root $repoRoot `
+        --queue-empty-report $queueEmptyReportPath `
+        --continuity-summary $continuitySummaryPath `
+        --template-pivot-gate $templatePivotGatePath `
+        --output $monitoringModePath | Out-Host
+    }
+  }
+} catch {
+  Write-Warning ("Failed to refresh monitoring-mode handoff state: {0}" -f $_.Exception.Message)
+}
+
+try {
   $priorityContext = Ensure-StandingPriorityContext -RepoRoot (Resolve-Path '.').Path -ResultsRoot $ResultsRoot
   if ($priorityContext) {
     Write-Host ''
@@ -1385,6 +1434,45 @@ try {
   }
 } catch {
   Write-Warning ("Failed to display continuity summary: {0}" -f $_.Exception.Message)
+}
+
+try {
+  $monitoringModePath = Join-Path $ResultsRoot '_agent/handoff/monitoring-mode.json'
+  if (Test-Path -LiteralPath $monitoringModePath -PathType Leaf) {
+    $monitoring = Get-Content -LiteralPath $monitoringModePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    $triggeredWakeConditions = @()
+    if ($monitoring.summary.triggeredWakeConditions) {
+      $triggeredWakeConditions = @($monitoring.summary.triggeredWakeConditions | Where-Object { $_ })
+    }
+    Write-Host ''
+    Write-Host '[Monitoring Mode]' -ForegroundColor Cyan
+    Write-Host ("  status   : {0}" -f (Format-NullableValue $monitoring.summary.status))
+    Write-Host ("  action   : {0}" -f (Format-NullableValue $monitoring.summary.futureAgentAction))
+    Write-Host ("  queue    : {0}" -f (Format-NullableValue $monitoring.compare.queueState.status))
+    Write-Host ("  continuity : {0}" -f (Format-NullableValue $monitoring.compare.continuity.status))
+    Write-Host ("  pivot    : {0}" -f (Format-NullableValue $monitoring.compare.pivotGate.status))
+    Write-Host ("  template : {0}" -f (Format-NullableValue $monitoring.templateMonitoring.status))
+    if ($triggeredWakeConditions.Count -gt 0) {
+      Write-Host ("  wake     : {0}" -f ($triggeredWakeConditions -join ', '))
+    }
+
+    if ($env:GITHUB_STEP_SUMMARY) {
+      $monitoringLines = @(
+        '### Monitoring Mode',
+        '',
+        ('- Status: {0}' -f (Format-NullableValue $monitoring.summary.status)),
+        ('- Future-agent action: {0}' -f (Format-NullableValue $monitoring.summary.futureAgentAction)),
+        ('- Compare: queue={0} continuity={1} pivot={2}' -f (Format-NullableValue $monitoring.compare.queueState.status), (Format-NullableValue $monitoring.compare.continuity.status), (Format-NullableValue $monitoring.compare.pivotGate.status)),
+        ('- Template monitoring: {0}' -f (Format-NullableValue $monitoring.templateMonitoring.status))
+      )
+      if ($triggeredWakeConditions.Count -gt 0) {
+        $monitoringLines += ('- Triggered wake conditions: {0}' -f ($triggeredWakeConditions -join ', '))
+      }
+      ($monitoringLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+    }
+  }
+} catch {
+  Write-Warning ("Failed to display monitoring-mode summary: {0}" -f $_.Exception.Message)
 }
 
 try {
