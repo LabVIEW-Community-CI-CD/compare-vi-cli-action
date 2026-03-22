@@ -250,7 +250,8 @@ $renderedOutputPath = Join-Path $resultsRootResolved 'print-output.html'
     $report.blockingReason | Should -BeNullOrEmpty
     $report.executionAttempted | Should -BeTrue
     $report.payloadObservedExecutableState | Should -Be 'runnable'
-    $report.payloadFinalizationContractAvailable | Should -BeFalse
+    $report.payloadFinalizationContractAvailable | Should -BeTrue
+    $report.payloadFinalizationContractPath | Should -Match 'operation-payload-authoring-finalization-v1\.schema\.json$'
     $report.executionStatus | Should -Be 'succeeded'
     $report.executionExitCode | Should -Be 0
     $report.executionCapturePath | Should -Match 'ni-linux-custom-operation-capture\.json$'
