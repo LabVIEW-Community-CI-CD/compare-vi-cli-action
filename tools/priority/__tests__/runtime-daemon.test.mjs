@@ -813,6 +813,32 @@ test('comparevi worker checkout location honors deterministic external burst roo
   });
 });
 
+test('comparevi worker checkout location prefers the checked-in E: burst root when no override is present', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-policy-root-'));
+  const { checkoutRoot, checkoutPath, checkoutRootPolicy } = compareviRuntimeTest.resolveCompareviWorkerCheckoutLocation({
+    repoRoot,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    laneId: 'origin-1727',
+    storageRootsPolicy: {
+      worktrees: {
+        envVar: 'COMPAREVI_BURST_WORKTREE_ROOT',
+        preferredRoots: ['E:\\comparevi-lanes']
+      }
+    },
+    env: {}
+  });
+
+  assert.equal(checkoutRoot, path.join('E:\\comparevi-lanes', 'LabVIEW-Community-CI-CD--compare-vi-cli-action'));
+  assert.equal(checkoutPath, path.join(checkoutRoot, 'origin-1727'));
+  assert.deepEqual(checkoutRootPolicy, {
+    strategy: 'policy-preferred-root',
+    source: 'delivery-agent.policy.json#storageRoots.worktrees.preferredRoots[0]',
+    baseRoot: 'E:\\comparevi-lanes',
+    relativeRoot: 'LabVIEW-Community-CI-CD--compare-vi-cli-action',
+    usesExternalRoot: true
+  });
+});
+
 test('comparevi worker path containment helper treats the root itself as within scope', () => {
   const runtimeRoot = path.join('C:', 'repo', '.runtime-worktrees');
   assert.equal(compareviRuntimeTest.isPathWithin(runtimeRoot, runtimeRoot), true);
