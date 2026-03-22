@@ -7466,8 +7466,62 @@ test('buildCompareviTaskPacket projects live-agent model selection for the selec
     }
   });
 
-  assert.equal(packet.evidence.delivery.liveAgentModelSelection.mode, 'recommend-only');
-  assert.equal(packet.evidence.delivery.liveAgentModelSelection.currentProvider.providerId, 'local-codex');
-  assert.equal(packet.evidence.delivery.liveAgentModelSelection.currentProvider.selectedModel, 'gpt-5.4');
-  assert.deepEqual(packet.evidence.delivery.liveAgentModelSelection.currentProvider.reasonCodes, ['stable-current-model']);
+assert.equal(packet.evidence.delivery.liveAgentModelSelection.mode, 'recommend-only');
+assert.equal(packet.evidence.delivery.liveAgentModelSelection.currentProvider.providerId, 'local-codex');
+assert.equal(packet.evidence.delivery.liveAgentModelSelection.currentProvider.selectedModel, 'gpt-5.4');
+assert.deepEqual(packet.evidence.delivery.liveAgentModelSelection.currentProvider.reasonCodes, ['stable-current-model']);
+});
+
+test('comparevi planner keeps the current matching standing branch as the authoritative lane branch', async () => {
+  const decision = await compareviRuntimeTest.planCompareviRuntimeStep({
+    repoRoot: '/tmp/repo',
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    explicitStepOptions: {},
+    deps: {
+      loadBranchClassContractFn: () => makeLaneBranchClassContract(),
+      execFileFn: async (command, args) => {
+        if (command === 'git' && args[0] === 'branch' && args[1] === '--show-current') {
+          return {
+            stdout: 'issue/upstream-1830-authoritative-worker-branch-head\n',
+            stderr: ''
+          };
+        }
+        return { stdout: '', stderr: '' };
+      },
+      resolveStandingPriorityForRepoFn: async () => ({
+        found: {
+          number: 1830,
+          label: 'standing-priority',
+          repoSlug: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          source: 'gh'
+        }
+      }),
+      ghIssueFetcher: async () => ({
+        number: 1830,
+        title: '[delivery]: resolve worker checkout to authoritative standing branch head',
+        state: 'open',
+        updatedAt: '2026-03-22T00:00:00Z',
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1830',
+        labels: [{ name: 'standing-priority' }],
+        assignees: [],
+        milestone: null,
+        comments: 0,
+        body: 'Body'
+      }),
+      restIssueFetcher: async () => null
+    }
+  });
+
+  assert.equal(decision.source, 'comparevi-standing-priority-live');
+  assert.equal(decision.stepOptions.issue, 1830);
+  assert.equal(decision.stepOptions.branch, 'issue/upstream-1830-authoritative-worker-branch-head');
+  assert.equal(decision.stepOptions.forkRemote, 'upstream');
+  assert.equal(decision.stepOptions.lane, 'upstream-1830');
+  assert.equal(decision.artifacts.authoritativeCurrentBranch, 'issue/upstream-1830-authoritative-worker-branch-head');
+  assert.equal(decision.artifacts.authoritativeCurrentBranchSource, 'repo-root-current-branch');
 });
