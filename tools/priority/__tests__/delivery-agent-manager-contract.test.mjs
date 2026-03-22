@@ -222,6 +222,16 @@ test('delivery-agent manager injects monitoring work before sleeping on host-run
   assert.match(manager, /if \(blockedByHostConflict\)\s*\{\s*monitoringWorkInjection = await invokeMonitoringWorkInjection/s);
 });
 
+test('delivery-agent manager launches the detached loop through run-local-typescript instead of a stale dist path', async () => {
+  const manager = await readText('tools/priority/lib/delivery-agent-manager.ts');
+
+  assert.match(manager, /buildManagerChildCommand/);
+  assert.match(manager, /tools', 'npm', 'run-local-typescript\.mjs/);
+  assert.match(manager, /'--entry',\s*'tools\/priority\/delivery-agent\.ts'/);
+  assert.match(manager, /'--fallback-dist',\s*'dist\/tools\/priority\/delivery-agent\.js'/);
+  assert.doesNotMatch(manager, /const distScriptPath = path\.join\(repoRoot, 'dist', 'tools', 'priority', 'delivery-agent\.js'\);/);
+});
+
 test('delivery-agent manager status ignores stale heartbeat state from before the current manager start', async (t) => {
   const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-stale-'));
   const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);

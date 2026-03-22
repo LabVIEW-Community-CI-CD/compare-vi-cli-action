@@ -67,6 +67,33 @@ async function invokeDeliveryMemory({ repoRoot, repo, runtimeDir, outPath }) {
   }
 }
 
+function buildManagerChildCommand({ repoRoot, options }) {
+  const localTypescriptRunnerPath = path.join(repoRoot, 'tools', 'npm', 'run-local-typescript.mjs');
+  return [
+    localTypescriptRunnerPath,
+    '--project',
+    'tsconfig.json',
+    '--entry',
+    'tools/priority/delivery-agent.ts',
+    '--fallback-dist',
+    'dist/tools/priority/delivery-agent.js',
+    '--',
+    'run',
+    '--repo',
+    options.repo,
+    '--runtime-dir',
+    options.runtimeDir,
+    '--daemon-poll-interval-seconds',
+    String(options.daemonPollIntervalSeconds),
+    '--cycle-interval-seconds',
+    String(options.cycleIntervalSeconds),
+    '--max-cycles',
+    String(options.maxCycles),
+    '--wsl-distro',
+    options.wslDistro,
+  ];
+}
+
 async function invokeMonitoringWorkInjection({
   cycle,
   repoRoot,
@@ -357,23 +384,7 @@ export async function ensureManagerCommand(options, dependencies = {}) {
   mkdirSync(path.dirname(paths.runnerLogPath), { recursive: true });
   const stdoutFd = openSync(paths.runnerLogPath, 'a');
   const stderrFd = openSync(paths.runnerErrorPath, 'a');
-  const distScriptPath = path.join(repoRoot, 'dist', 'tools', 'priority', 'delivery-agent.js');
-  const childArgs = [
-    distScriptPath,
-    'run',
-    '--repo',
-    options.repo,
-    '--runtime-dir',
-    options.runtimeDir,
-    '--daemon-poll-interval-seconds',
-    String(options.daemonPollIntervalSeconds),
-    '--cycle-interval-seconds',
-    String(options.cycleIntervalSeconds),
-    '--max-cycles',
-    String(options.maxCycles),
-    '--wsl-distro',
-    options.wslDistro,
-  ];
+  const childArgs = buildManagerChildCommand({ repoRoot, options });
   if (options.stopWhenNoOpenIssues || options.sleepMode) {
     childArgs.push('--stop-when-no-open-issues');
   }
