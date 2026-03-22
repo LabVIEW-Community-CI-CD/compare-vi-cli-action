@@ -85,6 +85,7 @@
     "priority:branch:rename": "node tools/priority/rename-issue-branch.mjs",
     "priority:handoff": "pwsh -NoLogo -NoProfile -File tools/priority/Import-HandoffState.ps1",
     "priority:monitoring:mode": "node tools/priority/handoff-monitoring-mode.mjs",
+    "priority:monitoring:inject-work": "node tools/priority/monitoring-work-injection.mjs",
     "priority:handoff-tests": "node tools/priority/run-handoff-tests.mjs",
     "priority:health-snapshot": "pwsh -NoLogo -NoProfile -File tools/priority/Write-HealthSnapshot.ps1",
     "priority:lease": "node tools/priority/agent-writer-lease.mjs",
