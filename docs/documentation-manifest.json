@@ -273,7 +273,7 @@
       "name": "Template Agent Verification Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Reserved template-agent verification lane policy, machine-readable report contract, generator, and focused tests for the hosted-first LabviewGitHubCiTemplate feedback loop, including the pinned LabviewGitHubCiTemplate@v0.1.0 consumer dependency and hosted container-backed verification plane.",
+      "description": "Reserved template-agent verification lane policy, machine-readable report contract, generator, and focused tests for the hosted-first LabviewGitHubCiTemplate feedback loop, including the pinned LabviewGitHubCiTemplate@v0.1.1 consumer dependency and hosted container-backed verification plane.",
         "files": [
           "docs/schemas/template-agent-verification-report-v1.schema.json",
           "docs/schemas/template-agent-verification-sync-report-v1.schema.json",
@@ -317,7 +317,7 @@
       "name": "Cookiecutter Scaffold Contracts",
       "category": "supporting",
       "status": "reference",
-        "description": "Pinned cookiecutter catalog, schemas, wrapper, focused tests, and template trees for generating reviewable scenario-pack and certification corpus scaffold outputs against the released LabviewGitHubCiTemplate@v0.1.0 dependency with a hosted container-backed render conveyor.",
+        "description": "Pinned cookiecutter catalog, schemas, wrapper, focused tests, and template trees for generating reviewable scenario-pack and certification corpus scaffold outputs against the released LabviewGitHubCiTemplate@v0.1.1 dependency with a hosted container-backed render conveyor.",
         "files": [
           "docs/knowledgebase/Cookiecutter-Certification-Scaffolds.md",
           ".github/workflows/cookiecutter-bootstrap.yml",

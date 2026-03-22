@@ -64,7 +64,7 @@ test('build helpers produce deterministic container and workspace identities', (
       runId: 'run-1743',
       context: {
         template_name: 'LabviewGitHubCiTemplate',
-        version: 'v0.1.0'
+        version: 'v0.1.1'
       }
     },
     {
@@ -81,7 +81,7 @@ test('build helpers produce deterministic container and workspace identities', (
       runId: 'run-1743b',
       context: {
         template_name: 'LabviewGitHubCiTemplate',
-        version: 'v0.1.0'
+        version: 'v0.1.1'
       }
     },
     {
@@ -92,7 +92,7 @@ test('build helpers produce deterministic container and workspace identities', (
   );
 
   assert.equal(planA.policy.schema, 'priority/template-dependency@v1');
-  assert.equal(planA.checkout, 'v0.1.0');
+  assert.equal(planA.checkout, 'v0.1.1');
   assert.equal(planA.containerImage, policy.container.image);
   assert.equal(planA.policy.effectiveContainerImage, undefined);
   assert.match(planA.containerName, /^comparevi-template-issue-origin-1743-template-cookiecutter-conveyor-run-1743$/);
@@ -101,7 +101,7 @@ test('build helpers produce deterministic container and workspace identities', (
   assert.match(planA.containerWorkspaceRoot, /\/workspace\/issue-origin-1743-template-cookiecutter-conveyor\/run-1743$/);
   assert.match(planA.containerHomeRoot, /\/workspace\/issue-origin-1743-template-cookiecutter-conveyor\/run-1743\/\.home$/);
   assert.match(planA.dockerArgs.join(' '), /from cookiecutter\.main import cookiecutter/);
-  assert.match(planA.dockerArgs.join(' '), /checkout = "v0\.1\.0"/);
+  assert.match(planA.dockerArgs.join(' '), /checkout = "v0\.1\.1"/);
   assert.match(planA.dockerArgs.join(' '), /HOME=\/workspace\/issue-origin-1743-template-cookiecutter-conveyor\/run-1743\/\.home/);
   assert.equal(planA.containerUser, null);
   assert.notEqual(planA.containerName, planB.containerName);
@@ -143,7 +143,7 @@ test('build helpers project host uid/gid onto POSIX docker runs', () => {
       runId: 'run-1743',
       context: {
         template_name: 'LabviewGitHubCiTemplate',
-        version: 'v0.1.0'
+        version: 'v0.1.1'
       }
     },
     {
@@ -166,7 +166,7 @@ test('buildCookiecutterPythonScript wires the pinned checkout and deterministic 
   const script = buildCookiecutterPythonScript({
     templateRepositoryUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate.git',
     templateDirectory: null,
-    checkout: 'v0.1.0',
+    checkout: 'v0.1.1',
     outputDir: '/workspace/template-cookiecutter/run-1/output',
     context: {
       pack_slug: 'template-cookiecutter',
@@ -175,7 +175,7 @@ test('buildCookiecutterPythonScript wires the pinned checkout and deterministic 
   });
 
   assert.match(script.script, /from cookiecutter\.main import cookiecutter/);
-  assert.match(script.script, /checkout = "v0\.1\.0"/);
+  assert.match(script.script, /checkout = "v0\.1\.1"/);
   assert.match(script.script, /"overwrite_if_exists": True/);
   assert.match(script.script, /COMPAREVI_TEMPLATE_EXTRA_CONTEXT_JSON/);
   assert.equal(script.contextJson.includes('template-cookiecutter-v1'), true);
@@ -257,7 +257,7 @@ test('runTemplateCookiecutterContainer writes a receipt and captures the spawned
   assert.equal(calls[0].command, 'docker');
   assert.match(calls[0].args.join(' '), /--name comparevi-template-issue-origin-1743-template-cookiecutter-conveyor-run-1743/);
   assert.match(calls[0].args.join(' '), /comparevi-tools:cookiecutter/);
-  assert.match(calls[0].args.join(' '), /COMPAREVI_TEMPLATE_CHECKOUT=v0\.1\.0/);
+  assert.match(calls[0].args.join(' '), /COMPAREVI_TEMPLATE_CHECKOUT=v0\.1\.1/);
   assert.match(calls[0].args.join(' '), /COMPAREVI_TEMPLATE_EXTRA_CONTEXT_JSON=/);
   assert.match(calls[0].args.join(' '), /python3/);
   assert.match(calls[0].args.join(' '), /from cookiecutter\.main import cookiecutter/);
@@ -276,7 +276,7 @@ test('runTemplateCookiecutterContainer writes a receipt and captures the spawned
   assert.equal(persisted.run.uniqueContainerName, true);
   assert.equal(persisted.run.contextSource, 'file');
   assert.equal(persisted.run.contextFilePath, contextFilePath);
-  assert.equal(plan.checkout, 'v0.1.0');
+  assert.equal(plan.checkout, 'v0.1.1');
 });
 
 test('dry-run mode writes a receipt without invoking docker', () => {

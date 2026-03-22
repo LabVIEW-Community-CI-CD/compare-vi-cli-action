@@ -148,8 +148,8 @@ test('runResolveDownstreamProvingArtifact selects the first pass scorecard that 
           provenance: {
             templateDependency: {
               repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-              version: 'v0.1.0',
-              ref: 'v0.1.0',
+              version: 'v0.1.1',
+              ref: 'v0.1.1',
               cookiecutterVersion: '2.7.1'
             }
           }
@@ -255,8 +255,8 @@ test('runResolveDownstreamProvingArtifact fails closed when no downloaded scorec
           provenance: {
             templateDependency: {
               repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-              version: 'v0.1.0',
-              ref: 'v0.1.0',
+              version: 'v0.1.1',
+              ref: 'v0.1.1',
               cookiecutterVersion: '2.7.1'
             }
           }

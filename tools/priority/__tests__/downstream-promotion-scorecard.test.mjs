@@ -142,8 +142,8 @@ test('runDownstreamPromotionScorecard projects manifest provenance when present'
     provenance: {
       templateDependency: {
         repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-        version: 'v0.1.0',
-        ref: 'v0.1.0',
+        version: 'v0.1.1',
+        ref: 'v0.1.1',
         cookiecutterVersion: '2.7.1'
       },
       execution: {
@@ -180,7 +180,7 @@ test('runDownstreamPromotionScorecard projects manifest provenance when present'
       compareviToolsRelease: 'v0.6.3-tools.14',
       compareviHistoryRelease: 'v1.3.24',
       scenarioPackIdentity: 'scenario-pack@v1',
-      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.0'
+      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.1'
     }
   });
 
@@ -201,7 +201,7 @@ test('runDownstreamPromotionScorecard projects manifest provenance when present'
   assert.equal(result.report.gates.manifestReport.status, 'pass');
   assert.equal(result.report.summary.metrics.totalWarnings, 3);
   assert.equal(result.report.summary.provenance.compareviToolsRelease, 'v0.6.3-tools.14');
-  assert.equal(result.report.summary.provenance.cookiecutterTemplateIdentity, 'LabviewGitHubCiTemplate@v0.1.0');
+  assert.equal(result.report.summary.provenance.cookiecutterTemplateIdentity, 'LabviewGitHubCiTemplate@v0.1.1');
   assert.equal(
     result.report.summary.provenance.templateVerificationRepository,
     'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
@@ -260,8 +260,8 @@ test('runDownstreamPromotionScorecard fails closed when onboarding blockers rema
     provenance: {
       templateDependency: {
         repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-        version: 'v0.1.0',
-        ref: 'v0.1.0',
+        version: 'v0.1.1',
+        ref: 'v0.1.1',
         cookiecutterVersion: '2.7.1'
       },
       execution: {
@@ -332,8 +332,8 @@ test('runDownstreamPromotionScorecard fails closed when template verification he
     provenance: {
       templateDependency: {
         repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-        version: 'v0.1.0',
-        ref: 'v0.1.0',
+        version: 'v0.1.1',
+        ref: 'v0.1.1',
         cookiecutterVersion: '2.7.1'
       },
       execution: {}
@@ -356,7 +356,7 @@ test('runDownstreamPromotionScorecard fails closed when template verification he
       targetBranchClassId: 'downstream-consumer-proving-rail',
       localSourceVerification: { attempted: true, matched: true }
     },
-    inputs: { cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.0' }
+    inputs: { cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.1' }
   });
 
   const result = runDownstreamPromotionScorecard({
@@ -408,8 +408,8 @@ test('runDownstreamPromotionScorecard fails closed when template verification la
     provenance: {
       templateDependency: {
         repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-        version: 'v0.1.0',
-        ref: 'v0.1.0',
+        version: 'v0.1.1',
+        ref: 'v0.1.1',
         cookiecutterVersion: '2.7.1'
       },
       execution: {}
@@ -432,7 +432,7 @@ test('runDownstreamPromotionScorecard fails closed when template verification la
       targetBranchClassId: 'downstream-consumer-proving-rail',
       localSourceVerification: { attempted: true, matched: true }
     },
-    inputs: { cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.0' }
+    inputs: { cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.1' }
   });
 
   const result = runDownstreamPromotionScorecard({

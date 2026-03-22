@@ -36,7 +36,7 @@ test('downstream promotion manifest validates its schema', async () => {
       compareviToolsRelease: 'v0.6.3-tools.14',
       compareviHistoryRelease: 'v1.3.24',
       scenarioPackIdentity: 'scenario-pack@v1',
-      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.0',
+      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.1',
       provingScorecardRef: 'tests/results/_agent/throughput/throughput-scorecard.json',
       actor: 'SergioVelderrain',
       promotionKind: 'replay',

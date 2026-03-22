@@ -36,7 +36,7 @@ At minimum that means:
 - `comparevi-history` release identity
 - scenario-pack or corpus identity
 - cookiecutter/template identity
-- pinned `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate@v0.1.0` release
+- pinned `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate@v0.1.1` release
 - pinned `cookiecutter==2.7.1` runtime for hosted conveyor proofs
 - proving scorecard reference
 - actor and timestamp
@@ -69,7 +69,7 @@ Windows as the mirrored consumer-proof plane. The released template
 dependency is treated as a conveyor-belt input, not a floating branch:
 
 - template repository: `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`
-- template ref: `v0.1.0`
+- template ref: `v0.1.1`
 - cookiecutter runtime: `2.7.1`
 - Ubuntu execution plane: `ghcr.io/labview-community-ci-cd/comparevi-tools:latest`
 - consumer render root:
@@ -144,7 +144,7 @@ node tools/npm/run-script.mjs priority:promote:downstream:manifest -- `
   --comparevi-tools-release v0.6.3-tools.14 `
   --comparevi-history-release v1.3.24 `
   --scenario-pack-id scenario-pack@v1 `
-  --cookiecutter-template-id LabviewGitHubCiTemplate@v0.1.0 `
+  --cookiecutter-template-id LabviewGitHubCiTemplate@v0.1.1 `
   --proving-scorecard-ref tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json `
   --actor SergioVelderrain
 ```

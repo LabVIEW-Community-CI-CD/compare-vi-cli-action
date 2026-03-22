@@ -76,8 +76,8 @@ test('downstream promotion scorecard schema validates generated report payload',
     provenance: {
       templateDependency: {
         repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-        version: 'v0.1.0',
-        ref: 'v0.1.0',
+        version: 'v0.1.1',
+        ref: 'v0.1.1',
         cookiecutterVersion: '2.7.1'
       },
       execution: {
@@ -114,7 +114,7 @@ test('downstream promotion scorecard schema validates generated report payload',
       compareviToolsRelease: 'v0.6.3-tools.14',
       compareviHistoryRelease: 'v1.3.24',
       scenarioPackIdentity: 'scenario-pack@v1',
-      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.0'
+      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.1'
     }
   });
 

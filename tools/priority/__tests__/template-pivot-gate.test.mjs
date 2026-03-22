@@ -48,8 +48,8 @@ test('runTemplatePivotGate reports ready only when queue-empty, rc release, and 
     targetBranch: 'develop',
     templateDependency: {
       repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-      version: 'v0.1.0',
-      ref: 'v0.1.0',
+      version: 'v0.1.1',
+      ref: 'v0.1.1',
       cookiecutterVersion: '2.7.1'
     },
     queueEmpty: {
@@ -161,8 +161,8 @@ test('runTemplatePivotGate reports ready only when queue-empty, rc release, and 
     provenance: {
       templateDependency: {
         repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-        version: 'v0.1.0',
-        ref: 'v0.1.0',
+        version: 'v0.1.1',
+        ref: 'v0.1.1',
         cookiecutterVersion: '2.7.1'
       },
       execution: {
@@ -235,8 +235,8 @@ test('runTemplatePivotGate prefers a local authoritative template verification o
     targetBranch: 'develop',
     templateDependency: {
       repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-      version: 'v0.1.0',
-      ref: 'v0.1.0',
+      version: 'v0.1.1',
+      ref: 'v0.1.1',
       cookiecutterVersion: '2.7.1'
     },
     queueEmpty: {
@@ -381,8 +381,8 @@ test('runTemplatePivotGate prefers a local authoritative template verification o
     provenance: {
       templateDependency: {
         repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-        version: 'v0.1.0',
-        ref: 'v0.1.0',
+        version: 'v0.1.1',
+        ref: 'v0.1.1',
         cookiecutterVersion: '2.7.1'
       },
       execution: {
@@ -442,8 +442,8 @@ test('runTemplatePivotGate fails closed when the queue is not proven empty or re
     targetBranch: 'develop',
     templateDependency: {
       repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-      version: 'v0.1.0',
-      ref: 'v0.1.0',
+      version: 'v0.1.1',
+      ref: 'v0.1.1',
       cookiecutterVersion: '2.7.1'
     },
     queueEmpty: {
@@ -724,8 +724,8 @@ test('runTemplatePivotGate fails closed when the verification report does not ma
     targetBranch: 'develop',
     templateDependency: {
       repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-      version: 'v0.1.0',
-      ref: 'v0.1.0',
+      version: 'v0.1.1',
+      ref: 'v0.1.1',
       cookiecutterVersion: '2.7.1'
     },
     queueEmpty: {
@@ -838,7 +838,7 @@ test('runTemplatePivotGate fails closed when the verification report does not ma
     provenance: {
       templateDependency: {
         repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-        version: 'v0.1.1',
+        version: 'v0.1.0',
         ref: 'v0.1.0',
         cookiecutterVersion: '2.7.1'
       },

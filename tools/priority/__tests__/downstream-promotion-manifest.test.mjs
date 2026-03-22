@@ -28,7 +28,7 @@ test('parseArgs enforces immutable input flags for downstream promotion manifest
     '--scenario-pack-id',
     'scenario-pack@v1',
     '--cookiecutter-template-id',
-    'LabviewGitHubCiTemplate@v0.1.0',
+    'LabviewGitHubCiTemplate@v0.1.1',
     '--proving-scorecard-ref',
     'tests/results/_agent/throughput/throughput-scorecard.json',
     '--actor',
@@ -39,7 +39,7 @@ test('parseArgs enforces immutable input flags for downstream promotion manifest
   assert.equal(parsed.outputPath, DEFAULT_OUTPUT_PATH);
   assert.equal(parsed.promotionKind, 'promote');
   assert.equal(parsed.compareviToolsRelease, 'v0.6.3-tools.14');
-  assert.equal(parsed.cookiecutterTemplateIdentity, 'LabviewGitHubCiTemplate@v0.1.0');
+  assert.equal(parsed.cookiecutterTemplateIdentity, 'LabviewGitHubCiTemplate@v0.1.1');
 });
 
 test('parseArgs fails closed when replay and rollback lineage flags do not match promotion kind', () => {
@@ -57,7 +57,7 @@ test('parseArgs fails closed when replay and rollback lineage flags do not match
         '--scenario-pack-id',
         'scenario-pack@v1',
         '--cookiecutter-template-id',
-        'LabviewGitHubCiTemplate@v0.1.0',
+        'LabviewGitHubCiTemplate@v0.1.1',
         '--proving-scorecard-ref',
         'tests/results/_agent/throughput/throughput-scorecard.json',
         '--actor',
@@ -87,7 +87,7 @@ test('runDownstreamPromotionManifest writes a deterministic immutable manifest',
       compareviToolsRelease: 'v0.6.3-tools.14',
       compareviHistoryRelease: 'v1.3.24',
       scenarioPackIdentity: 'scenario-pack@v1',
-      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.0',
+      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.1',
       provingScorecardRef: 'tests/results/_agent/throughput/throughput-scorecard.json',
       actor: 'SergioVelderrain',
       promotionKind: 'promote',
@@ -132,7 +132,7 @@ test('runDownstreamPromotionManifest fails closed when local upstream/develop do
           compareviToolsRelease: 'v0.6.3-tools.14',
           compareviHistoryRelease: 'v1.3.24',
           scenarioPackIdentity: 'scenario-pack@v1',
-          cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.0',
+          cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.1',
           provingScorecardRef: 'tests/results/_agent/throughput/throughput-scorecard.json',
           actor: 'SergioVelderrain',
           promotionKind: 'promote',
