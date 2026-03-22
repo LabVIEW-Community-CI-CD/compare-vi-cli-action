@@ -52,6 +52,10 @@ test('cookiecutter bootstrap workflow provisions hosted Linux and Windows proof 
   assert.match(workflow, /Template Agent Verification \/ template-agent-verification/);
   assert.match(workflow, /priority:template:agent:verify/);
   assert.match(workflow, /template-agent-verification-report\.json/);
+  assert.match(workflow, /name:\s*cookiecutter-bootstrap-linux[\s\S]*path:\s*tests\/results\/_agent/);
+  assert.match(workflow, /name:\s*cookiecutter-bootstrap-windows[\s\S]*path:\s*tests\/results\/_agent/);
+  assert.match(workflow, /receipt\.run\.runToken/);
+  assert.match(workflow, /container-workspaces/);
 });
 
 test('package and runbook surfaces advertise the cookiecutter bootstrap proof', () => {

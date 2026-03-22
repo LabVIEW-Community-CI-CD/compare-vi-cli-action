@@ -235,13 +235,13 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           name: cookiecutter-bootstrap-linux
-          path: tests/results/_agent/cookiecutter-bootstrap/linux
+          path: tests/results/_agent
 
       - name: Download Windows bootstrap artifact
         uses: actions/download-artifact@v5
         with:
           name: cookiecutter-bootstrap-windows
-          path: tests/results/_agent/cookiecutter-bootstrap/windows
+          path: tests/results/_agent
 
       - name: Resolve pinned template dependency policy
         id: template-policy
@@ -261,7 +261,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          generated_root="$(node -e "const fs=require('fs'); const receipt=JSON.parse(fs.readFileSync('tests/results/_agent/cookiecutter-bootstrap/linux/template-cookiecutter-container.json','utf8')); const generatedRoot = receipt.result.hostProjectDir || receipt.result.projectDir; if (!generatedRoot) { process.exit(1); } process.stdout.write(generatedRoot);")"
+          generated_root="$(node -e "const fs=require('fs'); const path=require('path'); const receipt=JSON.parse(fs.readFileSync('tests/results/_agent/cookiecutter-bootstrap/linux/template-cookiecutter-container.json','utf8')); let generatedRoot = receipt.result.hostProjectDir || receipt.result.projectDir; const projectDir = receipt.result.projectDir; const containerOutputRoot = receipt.run.containerOutputRoot; if (projectDir && containerOutputRoot && projectDir.startsWith(containerOutputRoot + '/')) { const relativeProjectDir = projectDir.slice(containerOutputRoot.length + 1).split('/').filter(Boolean); generatedRoot = path.join('tests','results','_agent','cookiecutter-bootstrap','linux','container-workspaces', receipt.run.laneId, receipt.run.runToken, 'output', ...relativeProjectDir); } if (!generatedRoot) { process.exit(1); } process.stdout.write(generatedRoot);")"
           node tools/npm/run-script.mjs priority:template:agent:verify -- \
             --iteration-label "cookiecutter-bootstrap-${GITHUB_RUN_ID}" \
             --iteration-ref "${GITHUB_REF_NAME:-${GITHUB_SHA}}" \
