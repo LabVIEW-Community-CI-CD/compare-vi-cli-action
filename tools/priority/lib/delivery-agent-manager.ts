@@ -204,6 +204,104 @@ export function resolvePostRepairHostConflict({
   };
 }
 
+export function resolveDaemonStartFailure({
+  error,
+  stopOnIdle,
+  heartbeat,
+  report,
+  notBefore,
+}) {
+  const message = error?.message || String(error);
+  const isPidMissing = message.includes('WSL runtime daemon did not return a valid PID');
+  const heartbeatOutcome = getOptionalStringProperty(heartbeat, 'outcome');
+  const reportOutcome = getOptionalStringProperty(report, 'outcome');
+  const heartbeatGeneratedAt = getOptionalDateTimeProperty(heartbeat, 'generatedAt');
+  const reportGeneratedAt = getOptionalDateTimeProperty(report, 'generatedAt');
+  const notBeforeAt =
+    notBefore instanceof Date
+      ? notBefore
+      : typeof notBefore === 'string'
+        ? getOptionalDateTimeProperty({ notBefore }, 'notBefore')
+        : null;
+  const heartbeatFresh = !notBeforeAt || Boolean(heartbeatGeneratedAt && heartbeatGeneratedAt >= notBeforeAt);
+  const reportFresh = !notBeforeAt || Boolean(reportGeneratedAt && reportGeneratedAt >= notBeforeAt);
+
+  let observerOutcome = null;
+  let observerOutcomeSource = null;
+  if (reportOutcome && reportFresh) {
+    observerOutcome = reportOutcome;
+    observerOutcomeSource = 'report';
+  } else if (heartbeatOutcome && heartbeatFresh) {
+    observerOutcome = heartbeatOutcome;
+    observerOutcomeSource = 'heartbeat';
+  }
+
+  if (isPidMissing && observerOutcomeSource) {
+    return {
+      status: 'routed-observer-outcome',
+      reason: observerOutcome === 'idle-stop'
+        ? 'daemon-exited-cleanly-before-pid-observed'
+        : 'daemon-emitted-structured-outcome-before-pid-observed',
+      message,
+      stopOnIdle: Boolean(stopOnIdle),
+      observerOutcome,
+      observerOutcomeSource,
+      heartbeatOutcome,
+      reportOutcome,
+      heartbeatFresh,
+      reportFresh,
+    };
+  }
+
+  return {
+    status: 'unhandled',
+    reason: isPidMissing ? 'daemon-pid-missing-without-fresh-idle-stop-proof' : 'daemon-start-failed',
+    message,
+    stopOnIdle: Boolean(stopOnIdle),
+    observerOutcome: null,
+    observerOutcomeSource: null,
+    heartbeatOutcome,
+    reportOutcome,
+    heartbeatFresh,
+    reportFresh,
+  };
+}
+
+export function buildWslRuntimeDaemonEnvironment({
+  repoRoot,
+  runtimeDir,
+  daemonPollIntervalSeconds,
+  leaseOwner,
+  leaseRootWsl,
+  daemonLogPath,
+  repo,
+  stopOnIdle,
+  gitDirPath = resolveGitDirPath(repoRoot),
+}) {
+  const repoRootWsl = convertToWslPath(repoRoot);
+  const daemonLogPathWsl = convertToWslPath(daemonLogPath);
+  const gitDirWsl = convertToWslPath(gitDirPath);
+  return {
+    GIT_DIR: gitDirWsl,
+    GIT_WORK_TREE: repoRootWsl,
+    COMPAREVI_RUNTIME_DAEMON_LOG: daemonLogPathWsl,
+    COMPAREVI_RUNTIME_DAEMON_CWD: repoRootWsl,
+    COMPAREVI_RUNTIME_DAEMON_REPO: repo,
+    COMPAREVI_RUNTIME_DAEMON_RUNTIME_DIR: runtimeDir,
+    COMPAREVI_RUNTIME_DAEMON_LEASE_ROOT: leaseRootWsl,
+    COMPAREVI_RUNTIME_DAEMON_POLL_INTERVAL: String(daemonPollIntervalSeconds),
+    AGENT_WRITER_LEASE_OWNER: leaseOwner,
+    DOCKER_HOST: DEFAULTS.dockerHost,
+    COMPAREVI_DOCKER_RUNTIME_PROVIDER: 'native-wsl',
+    COMPAREVI_DOCKER_EXPECTED_CONTEXT: '',
+    COMPAREVI_RUNTIME_DAEMON_STOP_ON_IDLE: stopOnIdle ? 'true' : 'false',
+  };
+}
+
+export function buildWslRuntimeDaemonSetenvArgs(environment) {
+  return Object.entries(environment).map(([key, value]) => `--setenv=${key}=${value}`);
+}
+
 export function startWslRuntimeDaemon({
   repoRoot,
   runtimeDir,
@@ -218,24 +316,29 @@ export function startWslRuntimeDaemon({
 }) {
   const launchScriptPath = path.join(repoRoot, 'tools', 'priority', 'bash', 'start-runtime-daemon.sh');
   const launchScriptPathWsl = convertToWslPath(launchScriptPath);
-  const repoRootWsl = convertToWslPath(repoRoot);
-  const daemonLogPathWsl = convertToWslPath(daemonLogPath);
-  const envAssignments = [
-    `COMPAREVI_RUNTIME_DAEMON_LOG=${shellQuote(daemonLogPathWsl)}`,
-    `COMPAREVI_RUNTIME_DAEMON_CWD=${shellQuote(repoRootWsl)}`,
-    `COMPAREVI_RUNTIME_DAEMON_REPO=${shellQuote(repo)}`,
-    `COMPAREVI_RUNTIME_DAEMON_RUNTIME_DIR=${shellQuote(runtimeDir)}`,
-    `COMPAREVI_RUNTIME_DAEMON_LEASE_ROOT=${shellQuote(leaseRootWsl)}`,
-    `COMPAREVI_RUNTIME_DAEMON_POLL_INTERVAL=${shellQuote(String(daemonPollIntervalSeconds))}`,
-    `AGENT_WRITER_LEASE_OWNER=${shellQuote(leaseOwner)}`,
-    `DOCKER_HOST=${shellQuote(DEFAULTS.dockerHost)}`,
-    `COMPAREVI_DOCKER_RUNTIME_PROVIDER=${shellQuote('native-wsl')}`,
-    `COMPAREVI_DOCKER_EXPECTED_CONTEXT=${shellQuote('')}`,
-    `COMPAREVI_RUNTIME_DAEMON_STOP_ON_IDLE=${shellQuote(stopOnIdle ? 'true' : 'false')}`,
-  ].join(' ');
+  const environment = buildWslRuntimeDaemonEnvironment({
+    repoRoot,
+    runtimeDir,
+    daemonPollIntervalSeconds,
+    leaseOwner,
+    leaseRootWsl,
+    daemonLogPath,
+    repo,
+    stopOnIdle,
+  });
+  const systemdArgs = [
+    '--user',
+    '--unit',
+    unitName,
+    '--collect',
+    '--quiet',
+    ...buildWslRuntimeDaemonSetenvArgs(environment),
+    'bash',
+    launchScriptPathWsl,
+  ].map((value) => shellQuote(value)).join(' ');
 
   runCommand('wsl.exe', ['-d', distro, '--', 'bash', '-lc', `systemctl --user reset-failed ${shellQuote(`${unitName}.service`)} >/dev/null 2>&1 || true`]);
-  const startCommand = `${envAssignments} systemd-run --user --unit ${shellQuote(unitName)} --collect --quiet bash ${shellQuote(launchScriptPathWsl)} >/dev/null && systemctl --user show ${shellQuote(`${unitName}.service`)} -p MainPID --value`;
+  const startCommand = `systemd-run ${systemdArgs} >/dev/null && systemctl --user show ${shellQuote(`${unitName}.service`)} -p MainPID --value`;
   const result = runCommand('wsl.exe', ['-d', distro, '--', 'bash', '-lc', startCommand]);
   if (result.status !== 0) {
     throw new Error(`Failed to start WSL runtime daemon in distro '${distro}': ${normalizeText(result.stderr || result.stdout)}`);
@@ -579,6 +682,7 @@ export async function runManagerLoop(options) {
       }
 
       cycle += 1;
+      const cycleStartedAt = new Date();
       const pidState = readJsonFile(paths.wslDaemonPidPath);
       activeDaemonPid = getOptionalIntProperty(pidState, 'pid');
       let daemonAlive = testWslProcessAlive(options.wslDistro, activeDaemonPid);
@@ -780,49 +884,95 @@ export async function runManagerLoop(options) {
       }
 
       if (!blockedByHostConflict && !daemonAlive) {
-        activeDaemonPid = startWslRuntimeDaemon({
-          repoRoot,
-          runtimeDir: options.runtimeDir,
-          distro: options.wslDistro,
-          daemonPollIntervalSeconds: options.daemonPollIntervalSeconds,
-          leaseOwner,
-          leaseRootWsl,
-          daemonLogPath: paths.daemonLogPath,
-          repo: options.repo,
-          unitName: daemonUnitName,
-          stopOnIdle: options.stopWhenNoOpenIssues || options.sleepMode,
-        });
-        writeJsonFile(paths.wslDaemonPidPath, {
-          schema: DAEMON_PID_SCHEMA,
-          startedAt: toIso(),
-          pid: activeDaemonPid,
-          unit: `${daemonUnitName}.service`,
-          repo: options.repo,
-          distro: options.wslDistro,
-          command: [
-            'node',
-            'dist/tools/priority/runtime-daemon.js',
-            '--repo',
-            options.repo,
-            '--runtime-dir',
-            options.runtimeDir,
-            '--lease-root',
+        try {
+          activeDaemonPid = startWslRuntimeDaemon({
+            repoRoot,
+            runtimeDir: options.runtimeDir,
+            distro: options.wslDistro,
+            daemonPollIntervalSeconds: options.daemonPollIntervalSeconds,
+            leaseOwner,
             leaseRootWsl,
-            '--poll-interval-seconds',
-            String(options.daemonPollIntervalSeconds),
-            '--execute-turn',
-          ],
-        });
-        await sleep(3000);
-        daemonAlive = testWslProcessAlive(options.wslDistro, activeDaemonPid);
-        writeManagerTrace({
-          repo: options.repo,
-          runtimeDir: options.runtimeDir,
-          distro: options.wslDistro,
-          tracePath: paths.managerTracePath,
-          eventType: 'daemon-started',
-          detail: { cycle, daemonPid: activeDaemonPid, daemonAlive },
-        });
+            daemonLogPath: paths.daemonLogPath,
+            repo: options.repo,
+            unitName: daemonUnitName,
+            stopOnIdle: options.stopWhenNoOpenIssues || options.sleepMode,
+          });
+          writeJsonFile(paths.wslDaemonPidPath, {
+            schema: DAEMON_PID_SCHEMA,
+            startedAt: toIso(),
+            pid: activeDaemonPid,
+            unit: `${daemonUnitName}.service`,
+            repo: options.repo,
+            distro: options.wslDistro,
+            command: [
+              'node',
+              'dist/tools/priority/runtime-daemon.js',
+              '--repo',
+              options.repo,
+              '--runtime-dir',
+              options.runtimeDir,
+              '--lease-root',
+              leaseRootWsl,
+              '--poll-interval-seconds',
+              String(options.daemonPollIntervalSeconds),
+              '--execute-turn',
+            ],
+          });
+          await sleep(3000);
+          daemonAlive = testWslProcessAlive(options.wslDistro, activeDaemonPid);
+          writeManagerTrace({
+            repo: options.repo,
+            runtimeDir: options.runtimeDir,
+            distro: options.wslDistro,
+            tracePath: paths.managerTracePath,
+            eventType: 'daemon-started',
+            detail: { cycle, daemonPid: activeDaemonPid, daemonAlive },
+          });
+        } catch (error) {
+          // Stop-on-idle turns may exit cleanly before systemd exposes a stable MainPID.
+          await sleep(1000);
+          const daemonStartHeartbeat = readJsonFile(paths.observerHeartbeatPath);
+          const daemonStartReport = readJsonFile(paths.observerReportPath);
+          const daemonStartResolution = resolveDaemonStartFailure({
+            error,
+            stopOnIdle: options.stopWhenNoOpenIssues || options.sleepMode,
+            heartbeat: daemonStartHeartbeat,
+            report: daemonStartReport,
+            notBefore: cycleStartedAt,
+          });
+          if (daemonStartResolution.status !== 'routed-observer-outcome') {
+            throw error;
+          }
+          hostIsolation = updateHostIsolationState({
+            path: paths.hostIsolationPath,
+            repo: options.repo,
+            runtimeDir: options.runtimeDir,
+            distro: options.wslDistro,
+            hostSignalPath: paths.hostSignalPath,
+            lastEventType: 'daemon-observer-outcome-routed',
+            lastEventDetail: `source=${daemonStartResolution.observerOutcomeSource}; outcome=${daemonStartResolution.observerOutcome}`,
+            hostSignal,
+          });
+          activeDaemonPid = 0;
+          daemonAlive = false;
+          writeManagerTrace({
+            repo: options.repo,
+            runtimeDir: options.runtimeDir,
+            distro: options.wslDistro,
+            tracePath: paths.managerTracePath,
+            eventType: 'daemon-observer-outcome-routed',
+            detail: {
+              cycle,
+              reason: daemonStartResolution.reason,
+              observerOutcome: daemonStartResolution.observerOutcome,
+              observerOutcomeSource: daemonStartResolution.observerOutcomeSource,
+              heartbeatOutcome: daemonStartResolution.heartbeatOutcome,
+              reportOutcome: daemonStartResolution.reportOutcome,
+              heartbeatFresh: daemonStartResolution.heartbeatFresh,
+              reportFresh: daemonStartResolution.reportFresh,
+            },
+          });
+        }
       }
 
       deliveryMemory = await invokeDeliveryMemory({

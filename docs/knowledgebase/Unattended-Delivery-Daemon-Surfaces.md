@@ -62,6 +62,11 @@ Manager behavior note:
 - when prerequisite repair re-establishes a stable native WSL daemon, the
   manager may route a leftover `runner-conflict` into an observed, non-blocking
   state for the current cycle instead of reopening the same host-runtime block.
+- when the runtime daemon exits before `systemd` exposes a stable `MainPID`,
+  the manager may route the cycle through a fresh observer heartbeat/report
+  outcome instead of treating the missing PID as a raw startup failure. This
+  includes clean `idle-stop` exits and other structured outcomes such as
+  `worker-ready-blocked`.
 
 ## Canonical Receipt Read Order
 
