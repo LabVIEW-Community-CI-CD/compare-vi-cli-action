@@ -38,6 +38,7 @@ test('agent-review-policy validates local-only review promotion state from pull_
     /name: Evaluate Copilot queue gate\s+if: >[\s\S]*github\.event_name == 'pull_request_target'[\s\S]*github\.event_name == 'merge_group'/,
   );
   assert.match(workflow, /delivery-agent\.policy\.json/);
+  assert.doesNotMatch(workflow, /require\('\.\/tools\/priority\/delivery-agent\.policy\.json'\)/);
   assert.match(workflow, /"--copilot-review-strategy" "\$review_strategy"/);
   assert.match(workflow, /"--poll-attempts" "60"/);
   assert.match(workflow, /"--poll-delay-ms" "10000"/);

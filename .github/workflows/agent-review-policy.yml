@@ -42,7 +42,7 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       shell: bash
       run: |
-        review_strategy="$(node -p "require('./tools/priority/delivery-agent.policy.json').copilotReviewStrategy || 'github-review-required'")"
+        review_strategy="$(node -e "const fs=require('fs'); const path=require('path'); const policyPath=path.join(process.cwd(),'tools','priority','delivery-agent.policy.json'); const policy=JSON.parse(fs.readFileSync(policyPath,'utf8')); process.stdout.write(policy.copilotReviewStrategy || 'github-review-required');")"
         args=(
           "tools/priority/copilot-review-gate.mjs"
           "--event-name" "${{ github.event_name }}"
