@@ -24,12 +24,15 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   assert.match(workflow, /downstream_branch:/);
   assert.match(workflow, /GITHUB_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
   assert.match(workflow, /GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
+  assert.match(workflow, /consumer_issue_repo:/);
+  assert.match(workflow, /DOWNSTREAM_CONSUMER_ISSUE_REPO:/);
   assert.match(workflow, /Resolve pinned template dependency policy/);
   assert.match(workflow, /tools\/policy\/template-dependency\.json/);
   assert.match(workflow, /Resolve immutable upstream source/);
   assert.match(workflow, /git fetch --no-tags origin '\+refs\/heads\/develop:refs\/remotes\/upstream\/develop'/);
   assert.match(workflow, /downstream-onboarding-feedback\.mjs/);
   assert.match(workflow, /args\+=\(--branch "\$branch"\)/);
+  assert.match(workflow, /--issue-repo "\$issue_repo"/);
   assert.match(workflow, /downstream-onboarding-report-v1\.schema\.json/);
   assert.match(workflow, /downstream-onboarding-success-v1\.schema\.json/);
   assert.match(workflow, /downstream-onboarding-feedback-v1\.schema\.json/);
@@ -75,5 +78,15 @@ test('runbook and package scripts expose downstream onboarding and promotion com
   assert.match(runbook, /priority:onboard:success/);
   assert.match(runbook, /priority:promote:downstream:scorecard/);
   assert.match(runbook, /downstream-develop-promotion-scorecard\.json/);
+  assert.match(runbook, /--issue-repo LabVIEW-Community-CI-CD\/LabviewGitHubCiTemplate/);
+  assert.match(runbook, /consumer_issue_repo/);
+  assert.match(runbook, /fails closed/);
   assert.match(runbook, /HOSTED_SIGNAL_REPORT_FIRST_CONTRACT\.md/);
+});
+
+test('documentation manifest includes the downstream onboarding runbook', () => {
+  const manifest = JSON.parse(read('docs/documentation-manifest.json'));
+  const docsEntry = manifest.entries.find((entry) => entry.name === 'Docs Tree');
+  assert.ok(docsEntry);
+  assert.ok(docsEntry.files.includes('docs/DOWNSTREAM_RELEASE_TRAIN_ONBOARDING.md'));
 });
