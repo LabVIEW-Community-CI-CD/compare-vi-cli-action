@@ -102,8 +102,21 @@ export function getCurrentBranch(runFn = run) {
   return runFn('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
 }
 
+export function getCurrentCheckoutTarget(runFn = run) {
+  const branch = getCurrentBranch(runFn);
+  if (branch && branch !== 'HEAD') {
+    return branch;
+  }
+
+  return runFn('git', ['rev-parse', 'HEAD']);
+}
+
 export function getRepoRoot(runFn = run) {
   return runFn('git', ['rev-parse', '--show-toplevel']);
+}
+
+export function checkoutDetachedRef(ref, { cwd, runFn = run } = {}) {
+  return runFn('git', ['checkout', '--detach', ref], { cwd });
 }
 
 function printUsage(lines) {

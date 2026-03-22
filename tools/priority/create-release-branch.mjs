@@ -7,7 +7,9 @@ import {
   ensureValidIdentifier,
   ensureCleanWorkingTree,
   ensureBranchDoesNotExist,
-  getRepoRoot
+  getRepoRoot,
+  getCurrentCheckoutTarget,
+  checkoutDetachedRef
 } from './lib/branch-utils.mjs';
 import {
   ensureGhCli,
@@ -111,12 +113,14 @@ async function main() {
   let releaseCommit = null;
   let previousVersion = null;
   let prInfo = null;
-  const originalBranch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoRoot });
+  const originalCheckout = getCurrentCheckoutTarget((command, args, options = {}) =>
+    run(command, args, { cwd: repoRoot, ...options })
+  );
   let restoreOnFailure = true;
 
   try {
     run('git', ['fetch', 'upstream'], { cwd: repoRoot });
-    run('git', ['checkout', '-B', 'develop', 'upstream/develop'], { cwd: repoRoot });
+    checkoutDetachedRef('upstream/develop', { cwd: repoRoot });
     const baseCommit = run('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
     run('git', ['checkout', '-b', branch], { cwd: repoRoot });
 
@@ -162,11 +166,11 @@ async function main() {
     restoreOnFailure = false;
     console.log(`[release:branch] Branch ${branch} pushed. PR opened against main.`);
   } finally {
-    if (restoreOnFailure && originalBranch) {
+    if (restoreOnFailure && originalCheckout) {
       try {
-        run('git', ['checkout', originalBranch], { cwd: repoRoot });
+        run('git', ['checkout', originalCheckout], { cwd: repoRoot });
       } catch (restoreError) {
-        console.warn(`[release:branch] warning: failed to restore ${originalBranch}: ${restoreError.message}`);
+        console.warn(`[release:branch] warning: failed to restore ${originalCheckout}: ${restoreError.message}`);
       }
     }
   }
