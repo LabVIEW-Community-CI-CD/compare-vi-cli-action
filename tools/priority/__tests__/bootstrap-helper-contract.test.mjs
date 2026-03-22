@@ -32,6 +32,10 @@ test('bootstrap routes standing-priority helper scripts through the resolved hel
   );
   assert.match(
     content,
+    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/sync-template-agent-verification-report\.mjs'[\s\S]*-AllowFailure:\$true/
+  );
+  assert.match(
+    content,
     /\$semverOutcome = Invoke-SemVerCheck -RepoRoot \$priorityHelperRepoRoot -WorkingDirectory \$priorityWorkingDirectory/
   );
   assert.match(

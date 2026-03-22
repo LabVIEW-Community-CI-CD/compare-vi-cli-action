@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/template-agent-verification-sync-report-v1.schema.json",
+  "title": "Template Agent Verification Sync Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repoRoot",
+    "repository",
+    "branch",
+    "workflow",
+    "expectedSourceSha",
+    "policyPath",
+    "localCanonicalReportPath",
+    "localOverlayReportPath",
+    "authoritativeReportPath",
+    "provingSelectionReportPath",
+    "localReport",
+    "localOverlayReport",
+    "authorityReport",
+    "hostedAuthorityReport",
+    "provingSelectionStatus",
+    "provingSelectionError",
+    "selection"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/template-agent-verification-sync-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repoRoot": {
+      "type": "string"
+    },
+    "repository": {
+      "type": ["string", "null"]
+    },
+    "branch": {
+      "type": "string"
+    },
+    "workflow": {
+      "type": "string"
+    },
+    "expectedSourceSha": {
+      "type": ["string", "null"]
+    },
+    "policyPath": {
+      "type": "string"
+    },
+    "localCanonicalReportPath": {
+      "type": "string"
+    },
+    "localOverlayReportPath": {
+      "type": "string"
+    },
+    "authoritativeReportPath": {
+      "type": "string"
+    },
+    "provingSelectionReportPath": {
+      "type": "string"
+    },
+    "authorityRootSelection": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "localReport": {
+      "$ref": "#/$defs/reportRef"
+    },
+    "localOverlayReport": {
+      "$ref": "#/$defs/reportRef"
+    },
+    "authorityReport": {
+      "$ref": "#/$defs/reportRef"
+    },
+    "hostedAuthorityReport": {
+      "$ref": "#/$defs/reportRef"
+    },
+    "provingSelectionStatus": {
+      "type": "string",
+      "enum": ["pass", "fail", "missing", "error"]
+    },
+    "provingSelectionError": {
+      "type": ["string", "null"]
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "reason",
+        "selectedPath",
+        "synchronizedLocalOverlay",
+        "synchronizedAuthorityCache"
+      ],
+      "properties": {
+        "source": {
+          "enum": [
+            "hosted-authority",
+            "authority",
+            "none"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "selectedPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "synchronizedLocalOverlay": {
+          "type": "boolean"
+        },
+        "synchronizedAuthorityCache": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "reportRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "exists",
+        "parseError",
+        "schema",
+        "summaryStatus",
+        "verificationStatus",
+        "generatedAt",
+        "generatedAtMs",
+        "templateRepository",
+        "templateVersion",
+        "templateRef",
+        "cookiecutterVersion",
+        "runUrl",
+        "provider",
+        "valid"
+      ],
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "parseError": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summaryStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "verificationStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "generatedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "generatedAtMs": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "templateRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "templateVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "templateRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cookiecutterVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "valid": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

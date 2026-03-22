@@ -20,6 +20,10 @@ test('package scripts expose the pinned template conveyor entrypoints', () => {
     'node tools/priority/template-agent-verification-report.mjs'
   );
   assert.equal(
+    packageJson.scripts['priority:template:verify:sync'],
+    'node tools/priority/sync-template-agent-verification-report.mjs'
+  );
+  assert.equal(
     packageJson.scripts['priority:pivot:template'],
     'node tools/priority/template-pivot-gate.mjs'
   );

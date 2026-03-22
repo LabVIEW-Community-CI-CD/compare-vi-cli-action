@@ -152,6 +152,7 @@
     "targetRepository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
     "consumerRailBranch": "downstream/develop",
     "reportPath": "tests/results/_agent/promotion/template-agent-verification-report.json",
+    "authoritativeReportPath": "template-verification/template-agent-verification-report.json",
     "metrics": {
       "maxVerificationLagIterations": 1,
       "maxHostedDurationMinutes": 30,

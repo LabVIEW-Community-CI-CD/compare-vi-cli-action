@@ -102,6 +102,7 @@ test('runResolveDownstreamProvingArtifact selects the first pass scorecard that 
       },
       async downloadNamedArtifactsFn({ runId, destinationRoot, reportPath }) {
         const scorecardPath = path.join(destinationRoot, 'downstream-develop-promotion-scorecard.json');
+        const templateAgentVerificationReportPath = path.join(destinationRoot, 'template-agent-verification-report.json');
         const sourceCommitSha = runId === '201'
           ? 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
           : expectedSourceSha;
@@ -124,6 +125,35 @@ test('runResolveDownstreamProvingArtifact selects the first pass scorecard that 
             }
           }
         });
+        writeJson(templateAgentVerificationReportPath, {
+          schema: 'priority/template-agent-verification-report@v1',
+          summary: {
+            status: 'pass',
+            blockerCount: 0,
+            recommendation: 'continue-template-agent-loop'
+          },
+          iteration: {
+            label: 'downstream promotion',
+            headSha: sourceCommitSha
+          },
+          lane: {
+            targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+            consumerRailBranch: 'downstream/develop'
+          },
+          verification: {
+            provider: 'hosted-github-workflow',
+            status: 'pass',
+            runUrl: `https://example.test/runs/${runId}`
+          },
+          provenance: {
+            templateDependency: {
+              repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+              version: 'v0.1.0',
+              ref: 'v0.1.0',
+              cookiecutterVersion: '2.7.1'
+            }
+          }
+        });
         writeJson(reportPath, {
           schema: 'run-artifact-download@v1',
           status: 'pass'
@@ -140,8 +170,14 @@ test('runResolveDownstreamProvingArtifact selects the first pass scorecard that 
 
   assert.equal(result.status, 'pass');
   assert.equal(result.selected.run.id, 202);
+  assert.equal(result.selected.templateAgentVerificationStatus, 'pass');
   assert.equal(result.selected.scorecardStatus, 'pass');
   assert.equal(result.selected.scorecard.sourceCommitSha, expectedSourceSha);
+  assert.equal(
+    path.basename(result.selected.templateAgentVerificationReportPath),
+    'template-agent-verification-report.json'
+  );
+  assert.equal(result.selected.templateAgentVerification.matchedExpectedSourceSha, true);
   assert.equal(result.report.selected.run.id, 202);
   assert.equal(result.report.selected.scorecard.matchedExpectedSourceSha, true);
   assert.ok(fs.existsSync(result.reportPath));
@@ -196,6 +232,35 @@ test('runResolveDownstreamProvingArtifact fails closed when no downloaded scorec
             }
           }
         });
+        writeJson(path.join(destinationRoot, 'template-agent-verification-report.json'), {
+          schema: 'priority/template-agent-verification-report@v1',
+          summary: {
+            status: 'pass',
+            blockerCount: 0,
+            recommendation: 'continue-template-agent-loop'
+          },
+          iteration: {
+            label: 'downstream promotion',
+            headSha: 'dddddddddddddddddddddddddddddddddddddddd'
+          },
+          lane: {
+            targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+            consumerRailBranch: 'downstream/develop'
+          },
+          verification: {
+            provider: 'hosted-github-workflow',
+            status: 'pass',
+            runUrl: 'https://example.test/runs/301'
+          },
+          provenance: {
+            templateDependency: {
+              repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+              version: 'v0.1.0',
+              ref: 'v0.1.0',
+              cookiecutterVersion: '2.7.1'
+            }
+          }
+        });
         writeJson(reportPath, {
           schema: 'run-artifact-download@v1',
           status: 'pass'
@@ -215,4 +280,5 @@ test('runResolveDownstreamProvingArtifact fails closed when no downloaded scorec
   assert.equal(result.report.selected, null);
   assert.equal(result.report.candidates.length, 1);
   assert.equal(result.report.candidates[0].scorecard.matchedExpectedSourceSha, false);
+  assert.equal(result.report.candidates[0].templateAgentVerification.matchedExpectedSourceSha, false);
 });

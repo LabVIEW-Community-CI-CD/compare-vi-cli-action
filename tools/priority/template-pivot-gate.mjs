@@ -144,6 +144,16 @@ function createBlocker(code, message) {
   return { code, message };
 }
 
+function resolvePreferredTemplateAgentVerificationReportPath(filePath) {
+  const resolved = path.resolve(filePath);
+  const parsed = path.parse(resolved);
+  const localOverlayPath = path.join(parsed.dir, `${parsed.name}.local${parsed.ext}`);
+  if (fs.existsSync(localOverlayPath)) {
+    return localOverlayPath;
+  }
+  return resolved;
+}
+
 function normalizeTemplateDependency(value) {
   return {
     repository: asOptional(value?.repository),
@@ -237,10 +247,13 @@ export async function runTemplatePivotGate(
       policy.artifacts?.handoffEntrypointStatusPath ||
       DEFAULT_HANDOFF_ENTRYPOINT_STATUS_PATH
   );
-  const templateAgentVerificationReportPath = path.resolve(
+  const requestedTemplateAgentVerificationReportPath = path.resolve(
     options.templateAgentVerificationReportPath ||
       policy.artifacts?.templateAgentVerificationReportPath ||
       DEFAULT_TEMPLATE_AGENT_VERIFICATION_REPORT_PATH
+  );
+  const templateAgentVerificationReportPath = resolvePreferredTemplateAgentVerificationReportPath(
+    requestedTemplateAgentVerificationReportPath
   );
 
   const queueEmpty = readOptionalJsonFn(queueEmptyReportPath);

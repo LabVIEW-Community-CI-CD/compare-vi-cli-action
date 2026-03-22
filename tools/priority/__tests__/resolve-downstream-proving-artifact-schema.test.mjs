@@ -54,6 +54,7 @@ test('downstream proving selection schema validates generated selection payload'
       },
       async downloadNamedArtifactsFn({ destinationRoot, reportPath }) {
         const scorecardPath = path.join(destinationRoot, 'downstream-develop-promotion-scorecard.json');
+        const templateAgentVerificationReportPath = path.join(destinationRoot, 'template-agent-verification-report.json');
         writeJson(scorecardPath, {
           schema: 'priority/downstream-promotion-scorecard@v1',
           gates: {
@@ -70,6 +71,35 @@ test('downstream proving selection schema validates generated selection payload'
             blockerCount: 0,
             provenance: {
               sourceCommitSha: expectedSourceSha
+            }
+          }
+        });
+        writeJson(templateAgentVerificationReportPath, {
+          schema: 'priority/template-agent-verification-report@v1',
+          summary: {
+            status: 'pass',
+            blockerCount: 0,
+            recommendation: 'continue-template-agent-loop'
+          },
+          iteration: {
+            label: 'downstream promotion',
+            headSha: expectedSourceSha
+          },
+          lane: {
+            targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+            consumerRailBranch: 'downstream/develop'
+          },
+          verification: {
+            provider: 'hosted-github-workflow',
+            status: 'pass',
+            runUrl: 'https://example.test/runs/202'
+          },
+          provenance: {
+            templateDependency: {
+              repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+              version: 'v0.1.0',
+              ref: 'v0.1.0',
+              cookiecutterVersion: '2.7.1'
             }
           }
         });

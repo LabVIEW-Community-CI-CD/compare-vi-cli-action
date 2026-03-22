@@ -148,24 +148,97 @@
         }
       }
     },
+    "templateAgentVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "schema",
+        "summaryStatus",
+        "verificationStatus",
+        "verificationProvider",
+        "verificationRunUrl",
+        "iterationHeadSha",
+        "matchedExpectedSourceSha",
+        "targetRepository",
+        "consumerRailBranch",
+        "templateRepository",
+        "templateVersion",
+        "templateRef",
+        "cookiecutterVersion"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["pass", "fail"]
+        },
+        "schema": {
+          "type": ["string", "null"]
+        },
+        "summaryStatus": {
+          "type": ["string", "null"]
+        },
+        "verificationStatus": {
+          "type": ["string", "null"]
+        },
+        "verificationProvider": {
+          "type": ["string", "null"]
+        },
+        "verificationRunUrl": {
+          "type": ["string", "null"]
+        },
+        "iterationHeadSha": {
+          "type": ["string", "null"]
+        },
+        "matchedExpectedSourceSha": {
+          "type": "boolean"
+        },
+        "targetRepository": {
+          "type": ["string", "null"]
+        },
+        "consumerRailBranch": {
+          "type": ["string", "null"]
+        },
+        "templateRepository": {
+          "type": ["string", "null"]
+        },
+        "templateVersion": {
+          "type": ["string", "null"]
+        },
+        "templateRef": {
+          "type": ["string", "null"]
+        },
+        "cookiecutterVersion": {
+          "type": ["string", "null"]
+        }
+      }
+    },
     "candidate": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "run",
         "artifactName",
+        "artifactRoot",
         "downloadStatus",
         "downloadReportPath",
         "scorecardPath",
         "scorecardStatus",
         "scorecard",
-        "scorecardError"
+        "scorecardError",
+        "templateAgentVerificationReportPath",
+        "templateAgentVerificationStatus",
+        "templateAgentVerification",
+        "templateAgentVerificationError"
       ],
       "properties": {
         "run": {
           "$ref": "#/$defs/run"
         },
         "artifactName": {
+          "type": "string"
+        },
+        "artifactRoot": {
           "type": "string"
         },
         "downloadStatus": {
@@ -188,6 +261,22 @@
           ]
         },
         "scorecardError": {
+          "type": ["string", "null"]
+        },
+        "templateAgentVerificationReportPath": {
+          "type": ["string", "null"]
+        },
+        "templateAgentVerificationStatus": {
+          "type": "string",
+          "enum": ["pass", "fail", "missing"]
+        },
+        "templateAgentVerification": {
+          "anyOf": [
+            { "$ref": "#/$defs/templateAgentVerification" },
+            { "type": "null" }
+          ]
+        },
+        "templateAgentVerificationError": {
           "type": ["string", "null"]
         }
       }
