@@ -21,6 +21,9 @@ entrypoint and machine-generated live state.
 - It refreshes `tests/results/_agent/handoff/monitoring-mode.json`, which is the
   machine-readable receipt for compare safe-idle monitoring and future-agent
   template pivot readiness.
+- It refreshes `tests/results/_agent/handoff/autonomous-governor-summary.json`,
+  which is the top-level machine-readable rollup for the autonomous governor's
+  current mode, wake disposition, funding-quality posture, and next owner.
 - It refreshes `tests/results/_agent/handoff/downstream-repo-graph-truth.json`,
   which is the machine-readable repo/branch-role map for producer lineage,
   canonical development, and consumer proving across the supervised repos.
@@ -50,6 +53,7 @@ entrypoint and machine-generated live state.
 - `tests/results/_agent/handoff/continuity-summary.json`
 - `tests/results/_agent/handoff/entrypoint-status.json`
 - `tests/results/_agent/handoff/monitoring-mode.json`
+- `tests/results/_agent/handoff/autonomous-governor-summary.json`
 - `tests/results/_agent/handoff/downstream-repo-graph-truth.json`
 - `tests/results/_agent/handoff/docker-review-loop-summary.json`
 - `tests/results/_agent/handoff/*.json`
@@ -70,12 +74,17 @@ entrypoint and machine-generated live state.
 
 - `tests/results/_agent/handoff/monitoring-mode.json` is the handoff receipt for
   event-driven monitoring mode.
+- `tests/results/_agent/handoff/autonomous-governor-summary.json` is the
+  top-level operating summary for the autonomous governor.
 - `tests/results/_agent/handoff/downstream-repo-graph-truth.json` is the
   canonical branch-role truth surface for downstream supervision.
 - It summarizes:
   - compare queue state
   - continuity state
   - template pivot readiness
+  - current governor mode and next owner
+  - latest wake lifecycle terminal state
+  - funding-quality posture for the latest wake
   - repo graph truth for producer lineage, canonical development, and consumer proving
   - wake conditions that should reopen compare or template work
   - supported downstream monitoring for canonical template and consumer forks

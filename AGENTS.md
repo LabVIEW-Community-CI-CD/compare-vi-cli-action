@@ -101,6 +101,8 @@ Keep it short, stable, and helper-oriented. Deep runbooks belong in checked-in d
 - `node tools/npm/run-script.mjs handoff:entrypoint:check` refreshes the machine-readable index at `tests/results/_agent/handoff/entrypoint-status.json`.
 - `node tools/npm/run-script.mjs priority:handoff` prints that machine-readable index and
   `tests/results/_agent/verification/docker-review-loop-summary.json`.
+- `node tools/npm/run-script.mjs priority:governor:summary` refreshes the top-level operating receipt at
+  `tests/results/_agent/handoff/autonomous-governor-summary.json`.
 - `node tools/npm/run-script.mjs priority:continuity` refreshes the continuity receipts at
   `tests/results/_agent/runtime/continuity-telemetry.json` and
   `tests/results/_agent/handoff/continuity-summary.json`.
@@ -110,6 +112,7 @@ Keep it short, stable, and helper-oriented. Deep runbooks belong in checked-in d
   - `.agent_priority_cache.json`
   - `tests/results/_agent/issue/router.json`
   - `tests/results/_agent/issue/no-standing-priority.json`
+  - `tests/results/_agent/handoff/autonomous-governor-summary.json`
   - `tests/results/_agent/handoff/continuity-summary.json`
   - `tests/results/_agent/handoff/entrypoint-status.json`
   - `tests/results/_agent/runtime/`

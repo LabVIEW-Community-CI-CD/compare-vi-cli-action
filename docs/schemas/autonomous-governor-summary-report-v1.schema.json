@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/autonomous-governor-summary-report-v1.schema.json",
+  "title": "Autonomous Governor Summary Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "inputs",
+    "compare",
+    "wake",
+    "funding",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/autonomous-governor-summary-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queueEmptyReportPath",
+        "continuitySummaryPath",
+        "monitoringModePath",
+        "wakeLifecyclePath",
+        "wakeInvestmentAccountingPath"
+      ],
+      "properties": {
+        "queueEmptyReportPath": { "type": "string", "minLength": 1 },
+        "continuitySummaryPath": { "type": "string", "minLength": 1 },
+        "monitoringModePath": { "type": "string", "minLength": 1 },
+        "wakeLifecyclePath": { "type": "string", "minLength": 1 },
+        "wakeInvestmentAccountingPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "compare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queueState",
+        "continuity",
+        "monitoringMode"
+      ],
+      "properties": {
+        "queueState": { "$ref": "#/$defs/queueState" },
+        "continuity": { "$ref": "#/$defs/continuity" },
+        "monitoringMode": { "$ref": "#/$defs/monitoringMode" }
+      }
+    },
+    "wake": {
+      "$ref": "#/$defs/wake"
+    },
+    "funding": {
+      "$ref": "#/$defs/funding"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    }
+  },
+  "$defs": {
+    "queueState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "openIssueCount",
+        "ready"
+      ],
+      "properties": {
+        "status": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] },
+        "openIssueCount": { "type": ["integer", "null"], "minimum": 0 },
+        "ready": { "type": "boolean" }
+      }
+    },
+    "continuity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "turnBoundary",
+        "supervisionState",
+        "operatorPromptRequiredToResume"
+      ],
+      "properties": {
+        "status": { "type": ["string", "null"] },
+        "turnBoundary": { "type": ["string", "null"] },
+        "supervisionState": { "type": ["string", "null"] },
+        "operatorPromptRequiredToResume": { "type": "boolean" }
+      }
+    },
+    "monitoringMode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "futureAgentAction",
+        "wakeConditionCount"
+      ],
+      "properties": {
+        "status": { "type": ["string", "null"] },
+        "futureAgentAction": { "type": ["string", "null"] },
+        "wakeConditionCount": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "wake": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "terminalState",
+        "currentStage",
+        "classification",
+        "decision",
+        "monitoringStatus",
+        "authoritativeTier",
+        "blockedLowerTierEvidence",
+        "replayMatched",
+        "replayAuthorityCompatible",
+        "issueNumber",
+        "issueUrl",
+        "recommendedOwnerRepository"
+      ],
+      "properties": {
+        "terminalState": { "type": ["string", "null"] },
+        "currentStage": { "type": ["string", "null"] },
+        "classification": { "type": ["string", "null"] },
+        "decision": { "type": ["string", "null"] },
+        "monitoringStatus": { "type": ["string", "null"] },
+        "authoritativeTier": { "type": ["string", "null"] },
+        "blockedLowerTierEvidence": { "type": "boolean" },
+        "replayMatched": { "type": "boolean" },
+        "replayAuthorityCompatible": { "type": ["boolean", "null"] },
+        "issueNumber": { "type": ["integer", "null"], "minimum": 1 },
+        "issueUrl": { "type": ["string", "null"] },
+        "recommendedOwnerRepository": { "type": ["string", "null"] }
+      }
+    },
+    "funding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accountingBucket",
+        "status",
+        "paybackStatus",
+        "recommendation",
+        "invoiceTurnId",
+        "fundingPurpose",
+        "activationState",
+        "benchmarkIssueUsd",
+        "observedWakeIssueUsd",
+        "netPaybackUsd"
+      ],
+      "properties": {
+        "accountingBucket": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] },
+        "paybackStatus": { "type": ["string", "null"] },
+        "recommendation": { "type": ["string", "null"] },
+        "invoiceTurnId": { "type": ["string", "null"] },
+        "fundingPurpose": { "type": ["string", "null"] },
+        "activationState": { "type": ["string", "null"] },
+        "benchmarkIssueUsd": { "type": ["number", "null"] },
+        "observedWakeIssueUsd": { "type": ["number", "null"] },
+        "netPaybackUsd": { "type": ["number", "null"] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "governorMode",
+        "currentOwnerRepository",
+        "nextOwnerRepository",
+        "nextAction",
+        "signalQuality",
+        "queueState",
+        "continuityStatus",
+        "wakeTerminalState",
+        "monitoringStatus",
+        "futureAgentAction"
+      ],
+      "properties": {
+        "governorMode": {
+          "type": "string",
+          "enum": [
+            "monitoring-active",
+            "compare-governance-work",
+            "template-work",
+            "external-route",
+            "suppressed",
+            "monitoring",
+            "retired",
+            "attention-required"
+          ]
+        },
+        "currentOwnerRepository": { "type": ["string", "null"] },
+        "nextOwnerRepository": { "type": ["string", "null"] },
+        "nextAction": { "type": ["string", "null"] },
+        "signalQuality": {
+          "type": "string",
+          "enum": [
+            "validated-governance-work",
+            "actionable-governance-work",
+            "validated-template-work",
+            "routed-external-signal",
+            "noise-contained",
+            "idle-monitoring",
+            "unknown"
+          ]
+        },
+        "queueState": { "type": ["string", "null"] },
+        "continuityStatus": { "type": ["string", "null"] },
+        "wakeTerminalState": { "type": ["string", "null"] },
+        "monitoringStatus": { "type": ["string", "null"] },
+        "futureAgentAction": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
