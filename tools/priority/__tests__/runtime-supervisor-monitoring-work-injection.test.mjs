@@ -49,7 +49,8 @@ test('planCompareviRuntimeStep injects monitoring work when queue-empty and a wa
       runMonitoringWorkInjectionFn: async () => ({
         issueNumber: 1805,
         issueUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1805',
-        outputPath: '/tmp/repo/tests/results/_agent/issue/monitoring-work-injection.json'
+        outputPath: '/tmp/repo/tests/results/_agent/issue/monitoring-work-injection.json',
+        ledgerPath: '/tmp/repo/tests/results/_agent/ops/ops-decision-ledger.json'
       }),
       classifyNoStandingPriorityConditionFn: async () => ({
         status: 'classified',
@@ -77,4 +78,5 @@ test('planCompareviRuntimeStep injects monitoring work when queue-empty and a wa
   assert.equal(decision.outcome, 'selected');
   assert.equal(decision.stepOptions.issue, 1805);
   assert.equal(decision.artifacts.monitoringWorkInjectionPath, '/tmp/repo/tests/results/_agent/issue/monitoring-work-injection.json');
+  assert.equal(decision.artifacts.monitoringDecisionLedgerPath, '/tmp/repo/tests/results/_agent/ops/ops-decision-ledger.json');
 });
