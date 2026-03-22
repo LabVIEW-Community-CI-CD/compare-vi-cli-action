@@ -143,12 +143,16 @@ Then generate the downstream proving scorecard using that manifest report:
 node tools/npm/run-script.mjs priority:promote:downstream:scorecard -- `
   --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json `
   --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json `
+  --template-agent-verification-report tests/results/_agent/promotion/template-agent-verification-report.json `
   --manifest-report tests/results/_agent/promotion/downstream-develop-promotion-manifest.json `
   --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
 ```
 
 The command fails closed when the required immutable inputs are missing or when the local
 `upstream/develop` ref resolves to a different commit than the requested source SHA.
+It also fails closed when the latest template-agent verification report is missing,
+unreadable, non-pass, or drifted away from
+`LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` on `downstream/develop`.
 
 ## Hosted promotion workflow
 

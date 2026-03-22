@@ -20,6 +20,7 @@ function printUsage() {
   console.log('Options:');
   console.log('  --success-report <path>         Downstream onboarding success report JSON path (required).');
   console.log('  --feedback-report <path>        Downstream onboarding feedback report JSON path (required).');
+  console.log('  --template-agent-verification-report <path>  Template-agent verification report JSON path (required).');
   console.log('  --manifest-report <path>        Downstream promotion manifest JSON path (optional).');
   console.log(`  --output <path>                 Output path (default: ${DEFAULT_OUTPUT_PATH}).`);
   console.log('  --repo <owner/repo>             Repository slug override.');
@@ -90,6 +91,7 @@ export function parseArgs(argv = process.argv) {
   const options = {
     successReportPath: null,
     feedbackReportPath: null,
+    templateAgentVerificationReportPath: null,
     manifestReportPath: null,
     outputPath: DEFAULT_OUTPUT_PATH,
     repo: null,
@@ -116,6 +118,7 @@ export function parseArgs(argv = process.argv) {
     if (
       token === '--success-report' ||
       token === '--feedback-report' ||
+      token === '--template-agent-verification-report' ||
       token === '--manifest-report' ||
       token === '--output' ||
       token === '--repo'
@@ -126,6 +129,7 @@ export function parseArgs(argv = process.argv) {
       index += 1;
       if (token === '--success-report') options.successReportPath = next;
       if (token === '--feedback-report') options.feedbackReportPath = next;
+      if (token === '--template-agent-verification-report') options.templateAgentVerificationReportPath = next;
       if (token === '--manifest-report') options.manifestReportPath = next;
       if (token === '--output') options.outputPath = next;
       if (token === '--repo') options.repo = next;
@@ -139,6 +143,9 @@ export function parseArgs(argv = process.argv) {
   }
   if (!options.help && !normalizeText(options.feedbackReportPath)) {
     throw new Error('Missing required option: --feedback-report <path>.');
+  }
+  if (!options.help && !normalizeText(options.templateAgentVerificationReportPath)) {
+    throw new Error('Missing required option: --template-agent-verification-report <path>.');
   }
   return options;
 }
@@ -246,12 +253,61 @@ function statusFromManifestReport(payload) {
   };
 }
 
+function statusFromTemplateAgentVerificationReport(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      status: 'missing',
+      schema: null,
+      summaryStatus: null,
+      verificationStatus: null,
+      targetRepository: null,
+      consumerRailBranch: null,
+      templateRepository: null,
+      templateVersion: null,
+      templateRef: null,
+      cookiecutterVersion: null
+    };
+  }
+
+  const schema = normalizeText(payload.schema) || null;
+  const summaryStatus = normalizeText(payload?.summary?.status) || null;
+  const verificationStatus = normalizeText(payload?.verification?.status) || null;
+  const targetRepository = normalizeText(payload?.lane?.targetRepository) || null;
+  const consumerRailBranch = normalizeText(payload?.lane?.consumerRailBranch) || null;
+  const templateRepository = normalizeText(payload?.provenance?.templateDependency?.repository) || null;
+  const templateVersion = normalizeText(payload?.provenance?.templateDependency?.version) || null;
+  const templateRef = normalizeText(payload?.provenance?.templateDependency?.ref) || null;
+  const cookiecutterVersion = normalizeText(payload?.provenance?.templateDependency?.cookiecutterVersion) || null;
+
+  return {
+    status:
+      schema === 'priority/template-agent-verification-report@v1' &&
+      summaryStatus === 'pass' &&
+      verificationStatus === 'pass' &&
+      targetRepository === 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate' &&
+      consumerRailBranch === 'downstream/develop'
+        ? 'pass'
+        : 'fail',
+    schema,
+    summaryStatus,
+    verificationStatus,
+    targetRepository,
+    consumerRailBranch,
+    templateRepository,
+    templateVersion,
+    templateRef,
+    cookiecutterVersion
+  };
+}
+
 export function evaluateDownstreamPromotionScorecard({
   successReport,
   feedbackReport,
+  templateAgentVerificationReport,
   manifestReport,
   successGate,
   feedbackGate,
+  templateAgentVerificationGate,
   manifestGate
 }) {
   const blockers = [];
@@ -263,6 +319,12 @@ export function evaluateDownstreamPromotionScorecard({
   if (!feedbackReport.exists || feedbackReport.error) {
     recordBlocker('feedback-report-missing', 'Downstream onboarding feedback report is missing or unreadable.');
   }
+  if (!templateAgentVerificationReport.exists || templateAgentVerificationReport.error) {
+    recordBlocker(
+      'template-agent-verification-report-missing',
+      'Template-agent verification report is missing or unreadable.'
+    );
+  }
   if (successGate.status !== 'pass') {
     recordBlocker(
       'downstream-blockers',
@@ -271,6 +333,12 @@ export function evaluateDownstreamPromotionScorecard({
   }
   if (feedbackGate.status !== 'pass') {
     recordBlocker('feedback-execution', `Downstream onboarding feedback execution status is ${feedbackGate.executionStatus ?? 'missing'}.`);
+  }
+  if (templateAgentVerificationGate.status !== 'pass') {
+    recordBlocker(
+      'template-agent-verification-contract',
+      `Template-agent verification report did not verify the pinned consumer rail evidence (status=${templateAgentVerificationGate.status}).`
+    );
   }
   if (manifestReport?.error) {
     recordBlocker('manifest-report-unreadable', 'Downstream promotion manifest is unreadable.');
@@ -305,16 +373,20 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
 
   const successReport = loadInputFile(options.successReportPath);
   const feedbackReport = loadInputFile(options.feedbackReportPath);
+  const templateAgentVerificationReport = loadInputFile(options.templateAgentVerificationReportPath);
   const manifestReport = options.manifestReportPath ? loadInputFile(options.manifestReportPath) : null;
   const successGate = statusFromSuccessReport(successReport.payload);
   const feedbackGate = statusFromFeedbackReport(feedbackReport.payload);
+  const templateAgentVerificationGate = statusFromTemplateAgentVerificationReport(templateAgentVerificationReport.payload);
   const manifestGate = statusFromManifestReport(manifestReport?.payload);
   const summary = evaluateDownstreamPromotionScorecard({
     successReport,
     feedbackReport,
+    templateAgentVerificationReport,
     manifestReport,
     successGate,
     feedbackGate,
+    templateAgentVerificationGate,
     manifestGate
   });
 
@@ -333,6 +405,11 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
         exists: feedbackReport.exists,
         error: feedbackReport.error
       },
+      templateAgentVerificationReport: {
+        path: templateAgentVerificationReport.path,
+        exists: templateAgentVerificationReport.exists,
+        error: templateAgentVerificationReport.error
+      },
       manifestReport: {
         path: manifestReport?.path ?? null,
         exists: manifestReport?.exists ?? false,
@@ -342,6 +419,7 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
     gates: {
       successReport: successGate,
       feedbackReport: feedbackGate,
+      templateAgentVerificationReport: templateAgentVerificationGate,
       manifestReport: manifestGate
     },
     summary: {
@@ -357,7 +435,11 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
         compareviToolsRelease: manifestGate.compareviToolsRelease,
         compareviHistoryRelease: manifestGate.compareviHistoryRelease,
         scenarioPackIdentity: manifestGate.scenarioPackIdentity,
-        cookiecutterTemplateIdentity: manifestGate.cookiecutterTemplateIdentity
+        cookiecutterTemplateIdentity: manifestGate.cookiecutterTemplateIdentity,
+        templateVerificationRepository: templateAgentVerificationGate.templateRepository,
+        templateVerificationVersion: templateAgentVerificationGate.templateVersion,
+        templateVerificationRef: templateAgentVerificationGate.templateRef,
+        templateVerificationConsumerRailBranch: templateAgentVerificationGate.consumerRailBranch
       }
     }
   };
@@ -375,6 +457,8 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
       `- repositories evaluated: \`${report.summary.metrics.repositoriesEvaluated ?? 'n/a'}\``,
       `- total blockers: \`${report.summary.metrics.totalBlockers ?? 'n/a'}\``,
       `- total warnings: \`${report.summary.metrics.totalWarnings ?? 'n/a'}\``,
+      `- template verification status: \`${report.gates.templateAgentVerificationReport.status}\``,
+      `- template consumer rail branch: \`${report.gates.templateAgentVerificationReport.consumerRailBranch ?? 'n/a'}\``,
       `- manifest status: \`${report.gates.manifestReport.status}\``,
       `- CompareVI.Tools: \`${report.summary.provenance.compareviToolsRelease ?? 'n/a'}\``,
       `- comparevi-history: \`${report.summary.provenance.compareviHistoryRelease ?? 'n/a'}\``,

@@ -25,6 +25,7 @@ test('downstream promotion scorecard schema validates generated report payload',
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-promotion-scorecard-schema-'));
   const successReportPath = path.join(tmpDir, 'downstream-onboarding-success.json');
   const feedbackReportPath = path.join(tmpDir, 'downstream-onboarding-feedback.json');
+  const templateAgentVerificationReportPath = path.join(tmpDir, 'template-agent-verification-report.json');
   const manifestReportPath = path.join(tmpDir, 'downstream-develop-promotion-manifest.json');
   const outputPath = path.join(tmpDir, 'scorecard.json');
 
@@ -47,6 +48,54 @@ test('downstream promotion scorecard schema validates generated report payload',
       evaluateExitCode: 0,
       successExitCode: 0
     }
+  });
+  writeJson(templateAgentVerificationReportPath, {
+    schema: 'priority/template-agent-verification-report@v1',
+    summary: {
+      status: 'pass',
+      blockerCount: 0,
+      recommendation: 'continue-template-agent-loop'
+    },
+    iteration: {
+      label: 'post-merge develop',
+      headSha: '1234567890abcdef1234567890abcdef12345678'
+    },
+    lane: {
+      enabled: true,
+      reservedSlotCount: 1,
+      minimumImplementationSlots: 3,
+      implementationSlotsRemaining: 3,
+      targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      consumerRailBranch: 'downstream/develop'
+    },
+    verification: {
+      provider: 'hosted-github-workflow',
+      status: 'pass'
+    },
+    provenance: {
+      templateDependency: {
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        version: 'v0.1.0',
+        ref: 'v0.1.0',
+        cookiecutterVersion: '2.7.1'
+      },
+      execution: {
+        executionPlane: 'linux-tools-image',
+        containerImage: 'ghcr.io/labview-community-ci-cd/comparevi-tools:latest',
+        generatedConsumerWorkspaceRoot: 'E:/comparevi-template-consumers/example',
+        laneId: 'logical-lane-template-verification',
+        agentId: 'darwin',
+        fundingWindowId: 'invoice-turn-2026-03-HQ1VJLMV-0027'
+      }
+    },
+    goals: {},
+    metrics: {
+      targetSlotCount: 8,
+      reservedSlotCount: 1,
+      implementationSlotsRemaining: 3,
+      recommendationPresent: true
+    },
+    blockers: []
   });
   writeJson(manifestReportPath, {
     schema: 'priority/downstream-promotion-manifest@v1',
@@ -72,6 +121,7 @@ test('downstream promotion scorecard schema validates generated report payload',
     repo: 'example/repo',
     successReportPath,
     feedbackReportPath,
+    templateAgentVerificationReportPath,
     manifestReportPath,
     outputPath
   });
@@ -85,5 +135,6 @@ test('downstream promotion scorecard schema validates generated report payload',
 
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.gates.feedbackReport.status, 'pass');
+  assert.equal(result.report.gates.templateAgentVerificationReport.status, 'pass');
   assert.equal(result.report.gates.manifestReport.status, 'pass');
 });
