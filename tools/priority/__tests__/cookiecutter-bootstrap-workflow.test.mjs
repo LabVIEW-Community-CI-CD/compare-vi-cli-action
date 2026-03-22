@@ -18,6 +18,7 @@ test('cookiecutter bootstrap workflow provisions hosted Linux and Windows proof 
   assert.match(workflow, /runner:\s*ubuntu-latest/);
   assert.match(workflow, /runner:\s*windows-latest/);
   assert.match(workflow, /docs\/documentation-manifest\.json/);
+  assert.match(workflow, /docs\/schemas\/template-\*\.json/);
   assert.match(workflow, /uses:\s*actions\/setup-node@v6/);
   assert.match(workflow, /node-version:\s*24/);
   assert.match(workflow, /run:\s*npm ci/);
@@ -29,10 +30,15 @@ test('cookiecutter bootstrap workflow provisions hosted Linux and Windows proof 
   assert.match(workflow, /Render pinned template dependency in the tools container/);
   assert.match(workflow, /Verify pinned template dependency on Windows/);
   assert.match(workflow, /priority:template:render:container/);
+  assert.match(workflow, /tools\/docker\/Dockerfile\.tools/);
   assert.match(workflow, /--container-image comparevi-tools:cookiecutter/);
   assert.match(workflow, /template-cookiecutter-container\.json/);
   assert.match(workflow, /templateRepositorySlug/);
   assert.match(workflow, /tools\/policy\/template-dependency\.json/);
+  assert.match(workflow, /tools\/policy\/template-\*\.json/);
+  assert.match(workflow, /tools\/priority\/template-\*\.mjs/);
+  assert.match(workflow, /tools\/priority\/__tests__\/template-\*\.test\.mjs/);
+  assert.match(workflow, /tools\/priority\/__tests__\/template-\*-schema\.test\.mjs/);
   assert.match(workflow, /container_image/);
   assert.match(workflow, /cookiecutter_version/);
   assert.match(workflow, /default_context_path/);
