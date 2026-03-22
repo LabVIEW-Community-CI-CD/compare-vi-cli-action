@@ -176,6 +176,21 @@
       ]
     },
     {
+      "name": "Wake Adjudication Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Wake adjudication schema, CLI, hosted downstream-onboarding integration, and focused tests that replay reported downstream onboarding failures against live GitHub state before reopening work.",
+      "files": [
+        "docs/DOWNSTREAM_RELEASE_TRAIN_ONBOARDING.md",
+        "docs/schemas/wake-adjudication-report-v1.schema.json",
+        ".github/workflows/downstream-onboarding-feedback.yml",
+        "tools/priority/wake-adjudication.mjs",
+        "tools/priority/__tests__/wake-adjudication.test.mjs",
+        "tools/priority/__tests__/wake-adjudication-schema.test.mjs",
+        "tools/priority/__tests__/downstream-onboarding-contract.test.mjs"
+      ]
+    },
+    {
       "name": "GitHub Templates",
       "category": "supporting",
       "status": "reference",

@@ -1,0 +1,336 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://labview-community-ci-cd.github.io/schemas/wake-adjudication-report-v1.schema.json",
+  "title": "Wake Adjudication Report v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAt",
+    "wakeKind",
+    "reported",
+    "revalidated",
+    "delta",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "priority/wake-adjudication-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "wakeKind": {
+      "type": "string",
+      "const": "downstream-onboarding"
+    },
+    "reported": {
+      "$ref": "#/definitions/observation"
+    },
+    "revalidated": {
+      "$ref": "#/definitions/revalidatedObservation"
+    },
+    "delta": {
+      "type": "object",
+      "required": [
+        "targetBranchChanged",
+        "defaultBranchChanged",
+        "workflowReferenceCountDelta",
+        "successfulRunCountDelta",
+        "reportedRequiredFailureIds",
+        "revalidatedRequiredFailureIds",
+        "clearedRequiredFailureIds",
+        "persistentRequiredFailureIds",
+        "newRequiredFailureIds"
+      ],
+      "properties": {
+        "targetBranchChanged": {
+          "type": "boolean"
+        },
+        "defaultBranchChanged": {
+          "type": "boolean"
+        },
+        "workflowReferenceCountDelta": {
+          "type": "integer"
+        },
+        "successfulRunCountDelta": {
+          "type": "integer"
+        },
+        "reportedRequiredFailureIds": {
+          "$ref": "#/definitions/idArray"
+        },
+        "revalidatedRequiredFailureIds": {
+          "$ref": "#/definitions/idArray"
+        },
+        "clearedRequiredFailureIds": {
+          "$ref": "#/definitions/idArray"
+        },
+        "persistentRequiredFailureIds": {
+          "$ref": "#/definitions/idArray"
+        },
+        "newRequiredFailureIds": {
+          "$ref": "#/definitions/idArray"
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "classification",
+        "status",
+        "suppressIssueInjection",
+        "suppressDownstreamIssueInjection",
+        "suppressTemplateIssueInjection",
+        "recommendedOwnerRepository",
+        "nextAction",
+        "reason"
+      ],
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": [
+            "live-defect",
+            "stale-artifact",
+            "branch-target-drift",
+            "platform-permission-gap",
+            "environment-only"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "actionable",
+            "suppressed",
+            "monitoring"
+          ]
+        },
+        "suppressIssueInjection": {
+          "type": "boolean"
+        },
+        "suppressDownstreamIssueInjection": {
+          "type": "boolean"
+        },
+        "suppressTemplateIssueInjection": {
+          "type": "boolean"
+        },
+        "recommendedOwnerRepository": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[^/]+/[^/]+$"
+        },
+        "nextAction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "idArray": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "checklistEntry": {
+      "type": "object",
+      "required": [
+        "id",
+        "reason"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "observation": {
+      "type": "object",
+      "required": [
+        "path",
+        "downstreamRepository",
+        "targetBranch",
+        "defaultBranch",
+        "summaryStatus",
+        "requiredFailCount",
+        "warningCount",
+        "workflowReferenceCount",
+        "successfulRunCount",
+        "requiredFailures",
+        "warnings"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "downstreamRepository": {
+          "type": "string",
+          "pattern": "^[^/]+/[^/]+$"
+        },
+        "targetBranch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaultBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summaryStatus": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn",
+            "fail"
+          ]
+        },
+        "requiredFailCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warningCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "workflowReferenceCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "successfulRunCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredFailures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/checklistEntry"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/checklistEntry"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "revalidatedObservation": {
+      "type": "object",
+      "required": [
+        "path",
+        "downstreamRepository",
+        "targetBranch",
+        "defaultBranch",
+        "summaryStatus",
+        "requiredFailCount",
+        "warningCount",
+        "workflowReferenceCount",
+        "successfulRunCount",
+        "requiredFailures",
+        "warnings",
+        "reran",
+        "exitCode"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "downstreamRepository": {
+          "type": "string",
+          "pattern": "^[^/]+/[^/]+$"
+        },
+        "targetBranch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaultBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summaryStatus": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn",
+            "fail"
+          ]
+        },
+        "requiredFailCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warningCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "workflowReferenceCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "successfulRunCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredFailures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/checklistEntry"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/checklistEntry"
+          }
+        },
+        "reran": {
+          "type": "boolean"
+        },
+        "exitCode": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

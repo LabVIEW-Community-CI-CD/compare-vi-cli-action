@@ -36,6 +36,10 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   assert.match(workflow, /downstream-onboarding-report-v1\.schema\.json/);
   assert.match(workflow, /downstream-onboarding-success-v1\.schema\.json/);
   assert.match(workflow, /downstream-onboarding-feedback-v1\.schema\.json/);
+  assert.match(workflow, /Adjudicate downstream wake against live branch truth/);
+  assert.match(workflow, /wake-adjudication\.mjs/);
+  assert.match(workflow, /wake-adjudication-report-v1\.schema\.json/);
+  assert.match(workflow, /tests\/results\/_agent\/issue\/wake-adjudication\.json/);
   assert.match(workflow, /Refresh template-agent verification report/);
   assert.match(workflow, /priority:template:agent:verify/);
   assert.match(workflow, /Generate downstream promotion manifest/);
@@ -59,8 +63,10 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   );
   assert.match(workflow, /Append onboarding feedback summary/);
   assert.match(workflow, /execution status/);
+  assert.match(workflow, /wake adjudication/);
   assert.match(workflow, /template-agent verification status/);
   assert.match(workflow, /hashFiles\('tests\/results\/_agent\/onboarding\/downstream-onboarding\.json'\)/);
+  assert.match(workflow, /hashFiles\('tests\/results\/_agent\/issue\/wake-adjudication\.json'\)/);
   assert.match(workflow, /hashFiles\('tests\/results\/_agent\/promotion\/downstream-develop-promotion-manifest\.json'\)/);
   assert.match(workflow, /hashFiles\('tests\/results\/_agent\/promotion\/downstream-develop-promotion-scorecard\.json'\)/);
 });
@@ -70,14 +76,17 @@ test('runbook and package scripts expose downstream onboarding and promotion com
   assert.equal(packageJson.scripts['priority:onboard:downstream'], 'node tools/priority/downstream-onboarding.mjs');
   assert.equal(packageJson.scripts['priority:onboard:feedback'], 'node tools/priority/downstream-onboarding-feedback.mjs');
   assert.equal(packageJson.scripts['priority:onboard:success'], 'node tools/priority/downstream-onboarding-success.mjs');
+  assert.equal(packageJson.scripts['priority:wake:adjudicate'], 'node tools/priority/wake-adjudication.mjs');
   assert.equal(packageJson.scripts['priority:promote:downstream:scorecard'], 'node tools/priority/downstream-promotion-scorecard.mjs');
 
   const runbook = read('docs/DOWNSTREAM_RELEASE_TRAIN_ONBOARDING.md');
   assert.match(runbook, /priority:onboard:downstream/);
   assert.match(runbook, /priority:onboard:feedback/);
   assert.match(runbook, /priority:onboard:success/);
+  assert.match(runbook, /priority:wake:adjudicate/);
   assert.match(runbook, /priority:promote:downstream:scorecard/);
   assert.match(runbook, /downstream-develop-promotion-scorecard\.json/);
+  assert.match(runbook, /wake-adjudication\.json/);
   assert.match(runbook, /--issue-repo LabVIEW-Community-CI-CD\/LabviewGitHubCiTemplate/);
   assert.match(runbook, /consumer_issue_repo/);
   assert.match(runbook, /fails closed/);
