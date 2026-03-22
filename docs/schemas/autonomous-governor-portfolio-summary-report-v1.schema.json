@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/autonomous-governor-portfolio-summary-report-v1.schema.json",
+  "title": "Autonomous Governor Portfolio Summary Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "inputs",
+    "compare",
+    "portfolio",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/autonomous-governor-portfolio-summary-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": ["string", "null"]
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compareGovernorSummaryPath",
+        "monitoringModePath",
+        "repoGraphTruthPath"
+      ],
+      "properties": {
+        "compareGovernorSummaryPath": { "type": "string" },
+        "monitoringModePath": { "type": "string" },
+        "repoGraphTruthPath": { "type": "string" }
+      }
+    },
+    "compare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "queueState",
+        "continuityStatus",
+        "monitoringStatus",
+        "futureAgentAction",
+        "governorMode",
+        "nextAction"
+      ],
+      "properties": {
+        "repository": { "type": ["string", "null"] },
+        "queueState": { "type": ["string", "null"] },
+        "continuityStatus": { "type": ["string", "null"] },
+        "monitoringStatus": { "type": ["string", "null"] },
+        "futureAgentAction": { "type": ["string", "null"] },
+        "governorMode": { "type": ["string", "null"] },
+        "nextAction": { "type": ["string", "null"] }
+      }
+    },
+    "portfolio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryCount", "repositories", "unsupportedPaths"],
+      "properties": {
+        "repositoryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repositories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "repository",
+              "kind",
+              "roleTruthStatus",
+              "roleCount",
+              "summary",
+              "monitoring",
+              "compare",
+              "triggeredWakeConditions"
+            ],
+            "properties": {
+              "id": { "type": "string" },
+              "repository": { "type": "string" },
+              "kind": { "type": "string" },
+              "roleTruthStatus": { "type": "string" },
+              "roleCount": { "type": "integer", "minimum": 0 },
+              "summary": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "requiredMissingRoleCount",
+                  "optionalMissingRoleCount",
+                  "alignmentFailureCount",
+                  "unknownRoleCount"
+                ],
+                "properties": {
+                  "requiredMissingRoleCount": { "type": ["integer", "null"] },
+                  "optionalMissingRoleCount": { "type": ["integer", "null"] },
+                  "alignmentFailureCount": { "type": ["integer", "null"] },
+                  "unknownRoleCount": { "type": ["integer", "null"] }
+                }
+              },
+              "monitoring": {
+                "type": ["object", "null"],
+                "additionalProperties": false,
+                "required": [
+                  "status",
+                  "openIssuesStatus",
+                  "openIssueCount",
+                  "branchAlignmentStatus",
+                  "branchHeadSha",
+                  "canonicalHeadSha",
+                  "supportedProofStatus",
+                  "supportedProofRunUrl",
+                  "supportedProofConclusion"
+                ],
+                "properties": {
+                  "status": { "type": "string" },
+                  "openIssuesStatus": { "type": "string" },
+                  "openIssueCount": { "type": ["integer", "null"] },
+                  "branchAlignmentStatus": { "type": ["string", "null"] },
+                  "branchHeadSha": { "type": ["string", "null"] },
+                  "canonicalHeadSha": { "type": ["string", "null"] },
+                  "supportedProofStatus": { "type": ["string", "null"] },
+                  "supportedProofRunUrl": { "type": ["string", "null"] },
+                  "supportedProofConclusion": { "type": ["string", "null"] }
+                }
+              },
+              "compare": {
+                "type": ["object", "null"],
+                "additionalProperties": false,
+                "required": [
+                  "queueState",
+                  "continuityStatus",
+                  "monitoringStatus",
+                  "futureAgentAction",
+                  "governorMode",
+                  "nextAction"
+                ],
+                "properties": {
+                  "queueState": { "type": ["string", "null"] },
+                  "continuityStatus": { "type": ["string", "null"] },
+                  "monitoringStatus": { "type": ["string", "null"] },
+                  "futureAgentAction": { "type": ["string", "null"] },
+                  "governorMode": { "type": ["string", "null"] },
+                  "nextAction": { "type": ["string", "null"] }
+                }
+              },
+              "triggeredWakeConditions": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+        "unsupportedPaths": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "status", "message"],
+            "properties": {
+              "name": { "type": ["string", "null"] },
+              "status": { "type": "string" },
+              "message": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "governorMode",
+        "currentOwnerRepository",
+        "nextOwnerRepository",
+        "nextAction",
+        "ownerDecisionSource",
+        "templateMonitoringStatus",
+        "supportedProofStatus",
+        "repoGraphStatus",
+        "portfolioWakeConditionCount",
+        "triggeredWakeConditions"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["active", "monitoring"]
+        },
+        "governorMode": { "type": "string" },
+        "currentOwnerRepository": { "type": ["string", "null"] },
+        "nextOwnerRepository": { "type": ["string", "null"] },
+        "nextAction": { "type": "string" },
+        "ownerDecisionSource": { "type": "string" },
+        "templateMonitoringStatus": { "type": "string" },
+        "supportedProofStatus": { "type": "string" },
+        "repoGraphStatus": { "type": ["string", "null"] },
+        "portfolioWakeConditionCount": { "type": "integer", "minimum": 0 },
+        "triggeredWakeConditions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

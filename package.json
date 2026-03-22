@@ -86,6 +86,7 @@
     "priority:handoff": "pwsh -NoLogo -NoProfile -File tools/priority/Import-HandoffState.ps1",
     "priority:monitoring:mode": "node tools/priority/handoff-monitoring-mode.mjs",
     "priority:governor:summary": "node tools/priority/autonomous-governor-summary.mjs",
+    "priority:governor:portfolio": "node tools/priority/autonomous-governor-portfolio-summary.mjs",
     "priority:monitoring:inject-work": "node tools/priority/monitoring-work-injection.mjs",
     "priority:wake:adjudicate": "node tools/priority/wake-adjudication.mjs",
     "priority:wake:accounting": "node tools/priority/wake-investment-accounting.mjs",
