@@ -134,4 +134,5 @@ tree. The dedicated `PrintToSingleFileHtml` wrappers from `#1621` build on that
 generic scaffold without changing the underlying bootstrap contract: the
 workspace wrapper bootstraps disposable files, and the native-authoring packet
 turns the remaining gap into an explicit LabVIEW authoring handoff instead of a
-hidden assumption.
+hidden assumption. That handoff is the concrete prerequisite for the standing
+public proof lanes in `#1617`, `#1726`, and `#1467`.

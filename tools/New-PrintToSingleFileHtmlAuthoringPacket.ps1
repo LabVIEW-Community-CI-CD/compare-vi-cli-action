@@ -213,6 +213,9 @@ $checklistContent = (@(
   '6. Rerun tools/Inspect-OperationPayloadSourceBundle.ps1 so the bundle no',
   '   longer reports source-only.',
   '',
+  'This packet unblocks #1617, #1726, and #1467 by turning the installed CLI',
+  'operation trees into a repo-owned authoring handoff for the public proof lane.',
+  '',
   'Reference:',
   '',
   '- https://www.ni.com/docs/en-AS/bundle/labview/page/creating-custom-command-line-operations.html'
@@ -273,6 +276,7 @@ $receipt = [ordered]@{
   checklistPath = Convert-ToRepoRelativePath -RepoRoot $repoRoot -PathValue $checklistResolved
   notes = @(
     'This packet turns the remaining gap into an explicit native LabVIEW authoring handoff.',
+    'That handoff is the installed-CLI bootstrap path for #1617, #1726, and #1467.',
     'The generated launch script is a convenience wrapper and does not make the payload repo-owned on its own.',
     'Do not commit installed NI files verbatim; only commit newly authored repo-owned payload files.'
   )
