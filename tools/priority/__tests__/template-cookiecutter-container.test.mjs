@@ -96,9 +96,12 @@ test('build helpers produce deterministic container and workspace identities', (
   assert.equal(planA.policy.effectiveContainerImage, undefined);
   assert.match(planA.containerName, /^comparevi-template-issue-origin-1743-template-cookiecutter-conveyor-run-1743$/);
   assert.match(planA.hostRunRoot, /issue-origin-1743-template-cookiecutter-conveyor[\\/]+run-1743$/);
+  assert.match(planA.hostHomeRoot, /issue-origin-1743-template-cookiecutter-conveyor[\\/]+run-1743[\\/]+\.home$/);
   assert.match(planA.containerWorkspaceRoot, /\/workspace\/issue-origin-1743-template-cookiecutter-conveyor\/run-1743$/);
+  assert.match(planA.containerHomeRoot, /\/workspace\/issue-origin-1743-template-cookiecutter-conveyor\/run-1743\/\.home$/);
   assert.match(planA.dockerArgs.join(' '), /from cookiecutter\.main import cookiecutter/);
   assert.match(planA.dockerArgs.join(' '), /checkout = "v0\.1\.0"/);
+  assert.match(planA.dockerArgs.join(' '), /HOME=\/workspace\/issue-origin-1743-template-cookiecutter-conveyor\/run-1743\/\.home/);
   assert.equal(planA.containerUser, null);
   assert.notEqual(planA.containerName, planB.containerName);
   assert.notEqual(planA.hostRunRoot, planB.hostRunRoot);
@@ -155,6 +158,7 @@ test('build helpers project host uid/gid onto POSIX docker runs', () => {
 
   assert.equal(plan.containerUser, '1001:121');
   assert.match(plan.dockerArgs.join(' '), /--user 1001:121/);
+  assert.match(plan.dockerArgs.join(' '), /HOME=\/workspace\/cookiecutter-bootstrap-linux\/run-1743\/\.home/);
 });
 
 test('buildCookiecutterPythonScript wires the pinned checkout and deterministic context', () => {
@@ -232,6 +236,7 @@ test('runTemplateCookiecutterContainer writes a receipt and captures the spawned
   assert.equal(receipt.policy.effectiveContainerImage, 'comparevi-tools:cookiecutter');
   assert.equal(receipt.result.projectDir, '/workspace/issue-origin-1743-template-cookiecutter-conveyor/run-1743/output/LabviewGitHubCiTemplate');
   assert.equal(receipt.run.containerUser, null);
+  assert.equal(receipt.run.containerHomeRoot, '/workspace/issue-origin-1743-template-cookiecutter-conveyor/run-1743/.home');
   assert.equal(fs.existsSync(outputPath), true);
   const persisted = JSON.parse(fs.readFileSync(outputPath, 'utf8'));
   assert.equal(persisted.run.uniqueWorkspaceRoot, true);

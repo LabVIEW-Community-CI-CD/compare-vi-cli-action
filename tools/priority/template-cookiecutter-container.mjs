@@ -221,8 +221,10 @@ export function buildTemplateCookiecutterContainerPlan(options = {}, deps = {}) 
   const laneSlug = slugifySegment(laneId);
   const hostWorkspaceRoot = resolveWorkspaceRoot(policy, platform, options.workspaceRoot);
   const hostRunRoot = platformPath.join(hostWorkspaceRoot, laneSlug, runToken);
+  const hostHomeRoot = platformPath.join(hostRunRoot, '.home');
   const hostOutputRoot = platformPath.join(hostRunRoot, 'output');
   const containerWorkspaceRoot = path.posix.join(DEFAULT_CONTAINER_MOUNT_ROOT, laneSlug, runToken);
+  const containerHomeRoot = path.posix.join(containerWorkspaceRoot, '.home');
   const containerOutputRoot = path.posix.join(containerWorkspaceRoot, 'output');
   const templateDirectory = options.templateDirectory ?? policy.templateDirectory ?? null;
   const defaultContextFilePath = policy.rendering?.defaultContextPath
@@ -277,6 +279,8 @@ export function buildTemplateCookiecutterContainerPlan(options = {}, deps = {}) 
     '--env',
     `COMPAREVI_TEMPLATE_OUTPUT_DIR=${containerOutputRoot}`,
     '--env',
+    `HOME=${containerHomeRoot}`,
+    '--env',
     `COMPAREVI_TEMPLATE_EXTRA_CONTEXT_JSON=${script.contextJson}`,
     '--env',
     `COMPAREVI_TEMPLATE_DIRECTORY=${templateDirectory ?? ''}`,
@@ -295,9 +299,11 @@ export function buildTemplateCookiecutterContainerPlan(options = {}, deps = {}) 
     runToken,
     hostWorkspaceRoot,
     hostRunRoot,
+    hostHomeRoot,
     hostOutputRoot,
     containerName,
     containerWorkspaceRoot,
+    containerHomeRoot,
     containerOutputRoot,
     templateRepositoryUrl,
     templateDirectory,
@@ -317,6 +323,7 @@ export function buildTemplateCookiecutterContainerPlan(options = {}, deps = {}) 
 export function runTemplateCookiecutterContainer(options = {}, deps = {}) {
   const plan = buildTemplateCookiecutterContainerPlan(options, deps);
   fs.mkdirSync(plan.hostOutputRoot, { recursive: true });
+  fs.mkdirSync(plan.hostHomeRoot, { recursive: true });
   const defaultContextPath = plan.policy.rendering?.defaultContextPath ?? null;
   const contextSource = options.context
     ? 'inline'
@@ -351,9 +358,11 @@ export function runTemplateCookiecutterContainer(options = {}, deps = {}) {
       runToken: plan.runToken,
       hostWorkspaceRoot: plan.hostWorkspaceRoot,
       hostRunRoot: plan.hostRunRoot,
+      hostHomeRoot: plan.hostHomeRoot,
       hostOutputRoot: plan.hostOutputRoot,
       containerName: plan.containerName,
       containerWorkspaceRoot: plan.containerWorkspaceRoot,
+      containerHomeRoot: plan.containerHomeRoot,
       containerOutputRoot: plan.containerOutputRoot,
       containerUser: plan.containerUser,
       contextSource,
