@@ -8,6 +8,7 @@
     "schema",
     "compareRepository",
     "pivotTargetRepository",
+    "repoGraphPolicyPath",
     "canonicalTemplate",
     "consumerForks",
     "unsupportedPaths",
@@ -17,6 +18,7 @@
     "schema": { "const": "priority/template-monitoring-policy@v1" },
     "compareRepository": { "type": "string", "minLength": 1 },
     "pivotTargetRepository": { "type": "string", "minLength": 1 },
+    "repoGraphPolicyPath": { "type": "string", "minLength": 1 },
     "canonicalTemplate": { "$ref": "#/$defs/repositoryMonitorPolicy" },
     "consumerForks": {
       "type": "array",

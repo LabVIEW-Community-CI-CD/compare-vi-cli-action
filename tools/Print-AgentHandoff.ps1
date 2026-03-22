@@ -1289,6 +1289,7 @@ try {
 }
 
 try {
+  $repoGraphTruthScript = Join-Path $repoRoot 'tools' 'priority' 'downstream-repo-graph-truth.mjs'
   $templateVerificationSyncScript = Join-Path $repoRoot 'tools' 'priority' 'sync-template-agent-verification-report.mjs'
   $templatePivotGateScript = Join-Path $repoRoot 'tools' 'priority' 'template-pivot-gate.mjs'
   $monitoringModeScript = Join-Path $repoRoot 'tools' 'priority' 'handoff-monitoring-mode.mjs'
@@ -1306,7 +1307,14 @@ try {
     $queueEmptyReportPath = Join-Path $repoRoot 'tests/results/_agent/issue/no-standing-priority.json'
     $entrypointStatusPath = Join-Path $ResultsRoot '_agent/handoff/entrypoint-status.json'
     $continuitySummaryPath = Join-Path $ResultsRoot '_agent/handoff/continuity-summary.json'
+    $repoGraphTruthPath = Join-Path $handoffDir 'downstream-repo-graph-truth.json'
     $monitoringModePath = Join-Path $handoffDir 'monitoring-mode.json'
+
+    if (Test-Path -LiteralPath $repoGraphTruthScript -PathType Leaf) {
+      & $nodeCmd.Source $repoGraphTruthScript `
+        --repo-root $repoRoot `
+        --output $repoGraphTruthPath | Out-Host
+    }
 
     if (Test-Path -LiteralPath $templateVerificationSyncScript -PathType Leaf) {
       & $nodeCmd.Source $templateVerificationSyncScript `
@@ -1327,6 +1335,7 @@ try {
     if (Test-Path -LiteralPath $monitoringModeScript -PathType Leaf) {
       & $nodeCmd.Source $monitoringModeScript `
         --repo-root $repoRoot `
+        --repo-graph-truth $repoGraphTruthPath `
         --queue-empty-report $queueEmptyReportPath `
         --continuity-summary $continuitySummaryPath `
         --template-pivot-gate $templatePivotGatePath `

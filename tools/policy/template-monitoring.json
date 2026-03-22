@@ -2,6 +2,7 @@
   "schema": "priority/template-monitoring-policy@v1",
   "compareRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
   "pivotTargetRepository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
+  "repoGraphPolicyPath": "tools/policy/downstream-repo-graph.json",
   "canonicalTemplate": {
     "role": "canonical-template",
     "repository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate",
