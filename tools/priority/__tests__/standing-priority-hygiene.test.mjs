@@ -14,11 +14,18 @@ test('issueHasLabel matches label names across string/object labels', () => {
   assert.equal(issueHasLabel({ labels: [{ name: 'enhancement' }] }), false);
 });
 
-test('shouldRemoveStandingPriorityLabel requires closed state and standing label', () => {
+test('shouldRemoveStandingPriorityLabel removes closed standing issues and open standing-excluded drift', () => {
   assert.equal(
     shouldRemoveStandingPriorityLabel({
       state: 'closed',
       labels: [{ name: 'standing-priority' }]
+    }),
+    true
+  );
+  assert.equal(
+    shouldRemoveStandingPriorityLabel({
+      state: 'open',
+      labels: [{ name: 'standing-priority' }, { name: 'standing-excluded' }]
     }),
     true
   );
@@ -48,4 +55,3 @@ test('parseCliArgs reads issue, label and dry-run options', () => {
 test('parseCliArgs rejects missing issue', () => {
   assert.throws(() => parseCliArgs([]), /Missing required --issue/);
 });
-
