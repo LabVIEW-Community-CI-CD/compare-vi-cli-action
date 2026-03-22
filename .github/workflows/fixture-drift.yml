@@ -139,16 +139,23 @@ jobs:
     - name: NI Linux review suite artifacts
       id: ni_linux_review_suite
       shell: pwsh
+      env:
+        FIXTURE_EVENT_NAME: ${{ github.event_name }}
+        FIXTURE_GITHUB_SHA: ${{ github.sha }}
+        FIXTURE_PR_HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}
+        FIXTURE_PR_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+        FIXTURE_PR_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || '' }}
+        FIXTURE_HEAD_REF: ${{ github.head_ref }}
       run: |
         $ErrorActionPreference = 'Stop'
         $outDir = 'results/fixture-drift/ni-linux-container'
         $historyMaxCommitCount = 64
-        $historyBranchRef = '${{ github.sha }}'
+        $historyBranchRef = $env:FIXTURE_GITHUB_SHA
         $historyBaselineRef = ''
-        if ('${{ github.event_name }}' -eq 'pull_request') {
-          $historyBranchRef = '${{ github.event.pull_request.head.sha }}'
-          $historyBaselineRef = '${{ github.event.pull_request.base.sha }}'
-          if ('${{ github.event.pull_request.base.ref }}' -eq 'main' -and '${{ github.head_ref }}'.StartsWith('release/')) {
+        if ($env:FIXTURE_EVENT_NAME -eq 'pull_request') {
+          $historyBranchRef = $env:FIXTURE_PR_HEAD_SHA
+          $historyBaselineRef = $env:FIXTURE_PR_BASE_SHA
+          if ($env:FIXTURE_PR_BASE_REF -eq 'main' -and $env:FIXTURE_HEAD_REF.StartsWith('release/')) {
             $historyBaselineRef = ('{0}~{1}' -f $historyBranchRef, $historyMaxCommitCount)
             Write-Host ("[fixture-drift] using rolling VI history baseline for release PR: {0}" -f $historyBaselineRef)
           }

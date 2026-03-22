@@ -46,13 +46,18 @@ test('fixture-drift hosted Linux lane passes explicit linux container LabVIEW pa
   assert.match(workflow, /git remote add upstream-base "https:\/\/github\.com\/\$\{\{ github\.event\.pull_request\.base\.repo\.full_name \}\}"/);
   assert.match(workflow, /git fetch --no-tags upstream-base "\+refs\/heads\/\$\{\{ github\.event\.pull_request\.base\.ref \}\}:refs\/remotes\/upstream-base\/\$\{\{ github\.event\.pull_request\.base\.ref \}\}"/);
   assert.match(workflow, /-HistoryTargetPath 'fixtures\/vi-attr\/Head\.vi'/);
-  assert.match(workflow, /\$historyBranchRef = '\$\{\{ github\.sha \}\}'/);
+  assert.match(workflow, /FIXTURE_GITHUB_SHA:\s*\$\{\{\s*github\.sha\s*\}\}/);
+  assert.match(workflow, /FIXTURE_PR_HEAD_SHA:\s*\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.sha \|\| ''\s*\}\}/);
+  assert.match(workflow, /FIXTURE_PR_BASE_SHA:\s*\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.base\.sha \|\| ''\s*\}\}/);
+  assert.match(workflow, /FIXTURE_PR_BASE_REF:\s*\$\{\{\s*github\.event_name == 'pull_request' && github\.event\.pull_request\.base\.ref \|\| ''\s*\}\}/);
+  assert.match(workflow, /FIXTURE_HEAD_REF:\s*\$\{\{\s*github\.head_ref\s*\}\}/);
+  assert.match(workflow, /\$historyBranchRef = \$env:FIXTURE_GITHUB_SHA/);
   assert.match(workflow, /\$historyMaxCommitCount = 64/);
-  assert.match(workflow, /\$\{\{ github\.event\.pull_request\.head\.sha \}\}/);
-  assert.match(workflow, /\$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
+  assert.match(workflow, /\$historyBranchRef = \$env:FIXTURE_PR_HEAD_SHA/);
+  assert.match(workflow, /\$historyBaselineRef = \$env:FIXTURE_PR_BASE_SHA/);
   assert.match(
     workflow,
-    /if \('\$\{\{ github\.event\.pull_request\.base\.ref \}\}' -eq 'main' -and '\$\{\{ github\.head_ref \}\}'\.StartsWith\('release\/'\)\)/
+    /if \(\$env:FIXTURE_PR_BASE_REF -eq 'main' -and \$env:FIXTURE_HEAD_REF\.StartsWith\('release\/'\)\)/
   );
   assert.match(workflow, /\$historyBaselineRef = \('\{0\}~\{1\}' -f \$historyBranchRef, \$historyMaxCommitCount\)/);
   assert.match(workflow, /-HistoryBranchRef \$historyBranchRef/);
