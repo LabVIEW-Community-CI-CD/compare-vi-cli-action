@@ -78,6 +78,10 @@ import {
   DEFAULT_OUTPUT_PATH as DEFAULT_TEMPLATE_AGENT_VERIFICATION_REPORT_PATH,
   runTemplateAgentVerificationReport
 } from './template-agent-verification-report.mjs';
+import {
+  DEFAULT_OUTPUT_PATH as DEFAULT_MONITORING_WORK_INJECTION_PATH,
+  runMonitoringWorkInjection
+} from './monitoring-work-injection.mjs';
 
 export {
   ACTIONS,
@@ -633,16 +637,53 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
     }
   );
   if (classification?.status === 'classified') {
+    const artifactPaths = {
+      liveRepository: targetRepository,
+      noStandingReason: classification.reason,
+      openIssueCount: classification.openIssueCount,
+      standingLabels: standingPriorityLabels
+    };
+    if (classification.reason === 'queue-empty') {
+      const runMonitoringWorkInjectionFn = deps.runMonitoringWorkInjectionFn ?? runMonitoringWorkInjection;
+      const injection = await runMonitoringWorkInjectionFn({
+        repoRoot,
+        repository: targetRepository,
+        outputPath: deps.monitoringWorkInjectionOutputPath ?? DEFAULT_MONITORING_WORK_INJECTION_PATH
+      });
+      if (normalizeText(injection?.outputPath)) {
+        artifactPaths.monitoringWorkInjectionPath = injection.outputPath;
+      }
+      if (Number.isInteger(injection?.issueNumber)) {
+        const issueSnapshot = await fetchIssue(injection.issueNumber, repoRoot, targetRepository, {
+          ghIssueFetcher: deps.ghIssueFetcher,
+          restIssueFetcher: deps.restIssueFetcher
+        });
+        const mirrorOf = parseUpstreamIssuePointerFromBody(issueSnapshot.body);
+        return buildSchedulerDecisionFromSnapshot({
+          snapshot: {
+            ...issueSnapshot,
+            repository: targetRepository,
+            mirrorOf
+          },
+          repoRoot,
+          upstreamRepository,
+          implementationRemote: deliveryPolicy.implementationRemote,
+          branchClassContract: deps.branchClassContract ?? null,
+          loadBranchClassContractFn: deps.loadBranchClassContractFn ?? loadBranchClassContract,
+          source: 'comparevi-monitoring-work-injection',
+          artifactPaths: {
+            ...artifactPaths,
+            monitoringInjectedIssueNumber: injection.issueNumber,
+            monitoringInjectedIssueUrl: normalizeText(injection.issueUrl) || null
+          }
+        });
+      }
+    }
     return {
       source: 'comparevi-standing-priority-live',
       outcome: 'idle',
       reason: classification.message,
-      artifacts: {
-        liveRepository: targetRepository,
-        noStandingReason: classification.reason,
-        openIssueCount: classification.openIssueCount,
-        standingLabels: standingPriorityLabels
-      }
+      artifacts: artifactPaths
     };
   }
 
