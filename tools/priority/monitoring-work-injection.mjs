@@ -119,6 +119,7 @@ function computeMonitoringDecisionFingerprint({
       accountingBucket: wakeEvidence?.accountingBucket || null,
       accountingStatus: wakeEvidence?.accountingStatus || null,
       paybackStatus: wakeEvidence?.paybackStatus || null,
+      authorityReplayKey: buildAuthorityReplayKey(wakeEvidence),
       selectedRuleId: asOptional(selectedRule?.id),
       resolvedDedupeMarker: asOptional(resolvedDedupeMarker),
       summaryStatus: asOptional(summary?.status),
@@ -127,6 +128,23 @@ function computeMonitoringDecisionFingerprint({
     })
   );
   return `monitoring-work-injection:${hash.digest('hex')}`;
+}
+
+function buildAuthorityReplayKey(wakeEvidence) {
+  const authorityTier = asOptional(wakeEvidence?.authorityTier);
+  if (!authorityTier) {
+    return null;
+  }
+  return JSON.stringify({
+    tier: authorityTier,
+    blockedLowerTier: wakeEvidence?.authorityBlockedLowerTier === true,
+    contradictionFields: Array.isArray(wakeEvidence?.authorityContradictionFields)
+      ? wakeEvidence.authorityContradictionFields.map((entry) => String(entry)).sort()
+      : [],
+    repository: asOptional(wakeEvidence?.authorityRepository),
+    branch: asOptional(wakeEvidence?.authorityBranch),
+    source: asOptional(wakeEvidence?.authoritySource)
+  });
 }
 
 function parseRemoteUrl(url) {
@@ -288,6 +306,19 @@ function sanitizeMarkerSegment(value) {
 }
 
 function createWakeEvidence(wakeAdjudication, wakeWorkSynthesis, wakeInvestmentAccounting) {
+  const authorityTier =
+    asOptional(wakeWorkSynthesis?.summary?.routingAuthorityTier) ||
+    asOptional(wakeWorkSynthesis?.authority?.selectedTier) ||
+    asOptional(wakeAdjudication?.authority?.routing?.selectedTier);
+  const authorityBlockedLowerTier =
+    wakeWorkSynthesis?.summary?.blockedLowerTierEvidence === true ||
+    wakeWorkSynthesis?.authority?.blockedLowerTier === true ||
+    wakeAdjudication?.authority?.routing?.blockedLowerTier === true;
+  const authorityContradictionFields = Array.isArray(wakeWorkSynthesis?.authority?.contradictionFields)
+    ? wakeWorkSynthesis.authority.contradictionFields
+    : Array.isArray(wakeAdjudication?.authority?.routing?.contradictionFields)
+      ? wakeAdjudication.authority.routing.contradictionFields
+      : [];
   return {
     classification:
       asOptional(wakeAdjudication?.summary?.classification) || asOptional(wakeWorkSynthesis?.wake?.classification),
@@ -309,7 +340,19 @@ function createWakeEvidence(wakeAdjudication, wakeWorkSynthesis, wakeInvestmentA
       wakeWorkSynthesis?.wake?.suppressDownstreamIssueInjection === true,
     accountingBucket: asOptional(wakeInvestmentAccounting?.summary?.accountingBucket),
     accountingStatus: asOptional(wakeInvestmentAccounting?.summary?.status),
-    paybackStatus: asOptional(wakeInvestmentAccounting?.summary?.paybackStatus)
+    paybackStatus: asOptional(wakeInvestmentAccounting?.summary?.paybackStatus),
+    authorityTier,
+    authorityBlockedLowerTier,
+    authorityContradictionFields: authorityContradictionFields.map((entry) => asOptional(entry)).filter(Boolean),
+    authorityRepository:
+      asOptional(wakeWorkSynthesis?.authority?.repository) ||
+      asOptional(wakeAdjudication?.authority?.authoritative?.repository),
+    authorityBranch:
+      asOptional(wakeWorkSynthesis?.authority?.branch) ||
+      asOptional(wakeAdjudication?.authority?.authoritative?.targetBranch),
+    authoritySource:
+      asOptional(wakeWorkSynthesis?.authority?.source) ||
+      asOptional(wakeAdjudication?.authority?.authoritative?.source)
   };
 }
 
@@ -491,7 +534,11 @@ function readDecisionLedger(filePath) {
   return payload;
 }
 
-function collectReplayMatches(ledger, { fingerprint, dedupeMarker } = {}) {
+function extractLedgerWakeEvidence(entry) {
+  return entry?.decision?.evidence?.wake || null;
+}
+
+function collectReplayMatches(ledger, { fingerprint, dedupeMarker, currentAuthorityReplayKey } = {}) {
   const entries = Array.isArray(ledger?.entries) ? ledger.entries : [];
   const normalizedFingerprint = asOptional(fingerprint);
   const normalizedDedupeMarker = asOptional(dedupeMarker);
@@ -506,6 +553,18 @@ function collectReplayMatches(ledger, { fingerprint, dedupeMarker } = {}) {
       .map((entry) => [entry.sequence, entry])
   ).values()].sort((left, right) => left.sequence - right.sequence);
   const latest = combinedMatches.at(-1) || null;
+  const latestAuthorityReplayKey = buildAuthorityReplayKey(extractLedgerWakeEvidence(latest));
+  let authorityCompatible = true;
+  let authorityMismatchReason = null;
+  if (asOptional(currentAuthorityReplayKey)) {
+    if (!asOptional(latestAuthorityReplayKey)) {
+      authorityCompatible = false;
+      authorityMismatchReason = 'prior-decision-missing-authority-context';
+    } else if (latestAuthorityReplayKey !== currentAuthorityReplayKey) {
+      authorityCompatible = false;
+      authorityMismatchReason = 'authority-context-changed';
+    }
+  }
   const matchingIssueNumbers = new Set(
     matchesByDedupeMarker
       .map((entry) => {
@@ -536,6 +595,9 @@ function collectReplayMatches(ledger, { fingerprint, dedupeMarker } = {}) {
       : null,
     latestMatchingIssueUrl: asOptional(latest?.decision?.summary?.issueUrl),
     latestMatchingDecisionDigest: asOptional(latest?.decisionDigest),
+    latestMatchingAuthorityReplayKey: asOptional(latestAuthorityReplayKey),
+    authorityCompatible,
+    authorityMismatchReason,
     ambiguous: matchingIssueNumbers.size > 1
   };
 }
@@ -544,7 +606,8 @@ function buildReplayContext({
   repoRoot,
   ledgerPath,
   fingerprint,
-  dedupeMarker
+  dedupeMarker,
+  currentAuthorityReplayKey
 }) {
   const report = {
     path: path.relative(repoRoot, ledgerPath).replace(/\\/g, '/'),
@@ -556,6 +619,9 @@ function buildReplayContext({
     latestMatchingIssueNumber: null,
     latestMatchingIssueUrl: null,
     latestMatchingDecisionDigest: null,
+    latestMatchingAuthorityReplayKey: null,
+    authorityCompatible: true,
+    authorityMismatchReason: null,
     suppressionApplied: false,
     reusedExistingIssue: false,
     ambiguous: false,
@@ -564,7 +630,7 @@ function buildReplayContext({
 
   try {
     const ledger = readDecisionLedger(ledgerPath);
-    const matches = collectReplayMatches(ledger, { fingerprint, dedupeMarker });
+    const matches = collectReplayMatches(ledger, { fingerprint, dedupeMarker, currentAuthorityReplayKey });
     return {
       ...report,
       matchedEntryCount: matches.matchedEntryCount,
@@ -574,6 +640,9 @@ function buildReplayContext({
       latestMatchingIssueNumber: matches.latestMatchingIssueNumber,
       latestMatchingIssueUrl: matches.latestMatchingIssueUrl,
       latestMatchingDecisionDigest: matches.latestMatchingDecisionDigest,
+      latestMatchingAuthorityReplayKey: matches.latestMatchingAuthorityReplayKey,
+      authorityCompatible: matches.authorityCompatible,
+      authorityMismatchReason: matches.authorityMismatchReason,
       ambiguous: matches.ambiguous
     };
   } catch (error) {
@@ -586,7 +655,7 @@ function buildReplayContext({
 }
 
 function shouldSuppressRepeatedFallback(replay, summary) {
-  if (!replay?.available || replay?.ambiguous || replay?.matchedEntryCount <= 0) {
+  if (!replay?.available || replay?.ambiguous || replay?.matchedEntryCount <= 0 || replay?.authorityCompatible === false) {
     return false;
   }
   if (!['suppressed-wake', 'monitoring-only', 'external-route', 'policy-blocked'].includes(summary?.status)) {
@@ -610,6 +679,9 @@ function buildReplayPolicyBlockedReason(replay) {
   if (replay?.ambiguous) {
     return `Decision memory is ambiguous at ${replay.path}: multiple prior issue routes matched the same wake marker.`;
   }
+  if (replay?.authorityCompatible === false) {
+    return `Decision memory authority context no longer matches the live wake at ${replay.path}: ${replay.authorityMismatchReason}.`;
+  }
   return 'Decision memory could not be used to safely route the monitoring wake.';
 }
 
@@ -621,7 +693,7 @@ function tryReuseIssueFromReplay({
   runGhJsonFn,
   runGhFn
 }) {
-  if (!replay?.available || replay?.ambiguous) {
+  if (!replay?.available || replay?.ambiguous || replay?.authorityCompatible === false) {
     return { issue: null, helperCallsExecuted: [] };
   }
   if (!['created-issue', 'existing-issue'].includes(replay.latestMatchingStatus)) {
@@ -929,7 +1001,8 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
     repoRoot,
     ledgerPath,
     fingerprint: eventFingerprint,
-    dedupeMarker: resolvedDedupeMarker
+    dedupeMarker: resolvedDedupeMarker,
+    currentAuthorityReplayKey: buildAuthorityReplayKey(wakeEvidence)
   });
 
   if (shouldSuppressRepeatedFallback(replay, summary)) {
@@ -1106,7 +1179,13 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
             suppressDownstreamIssueInjection: wakeEvidence.suppressDownstreamIssueInjection,
             accountingBucket: wakeEvidence.accountingBucket,
             accountingStatus: wakeEvidence.accountingStatus,
-            paybackStatus: wakeEvidence.paybackStatus
+            paybackStatus: wakeEvidence.paybackStatus,
+            authorityTier: wakeEvidence.authorityTier,
+            authorityBlockedLowerTier: wakeEvidence.authorityBlockedLowerTier,
+            authorityContradictionFields: wakeEvidence.authorityContradictionFields,
+            authorityRepository: wakeEvidence.authorityRepository,
+            authorityBranch: wakeEvidence.authorityBranch,
+            authoritySource: wakeEvidence.authoritySource
           }
         : null
     },

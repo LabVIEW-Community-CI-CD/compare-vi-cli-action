@@ -335,7 +335,13 @@
         "suppressDownstreamIssueInjection",
         "accountingBucket",
         "accountingStatus",
-        "paybackStatus"
+        "paybackStatus",
+        "authorityTier",
+        "authorityBlockedLowerTier",
+        "authorityContradictionFields",
+        "authorityRepository",
+        "authorityBranch",
+        "authoritySource"
       ],
       "properties": {
         "classification": {
@@ -390,6 +396,40 @@
           ]
         },
         "paybackStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authorityTier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authorityBlockedLowerTier": {
+          "type": "boolean"
+        },
+        "authorityContradictionFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "authorityRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authorityBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authoritySource": {
           "type": [
             "string",
             "null"
@@ -729,6 +769,9 @@
         "latestMatchingIssueNumber",
         "latestMatchingIssueUrl",
         "latestMatchingDecisionDigest",
+        "latestMatchingAuthorityReplayKey",
+        "authorityCompatible",
+        "authorityMismatchReason",
         "suppressionApplied",
         "reusedExistingIssue",
         "ambiguous",
@@ -782,6 +825,21 @@
           ]
         },
         "latestMatchingDecisionDigest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latestMatchingAuthorityReplayKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authorityCompatible": {
+          "type": "boolean"
+        },
+        "authorityMismatchReason": {
           "type": [
             "string",
             "null"
