@@ -42,6 +42,13 @@ function createCompareGovernorSummary(overrides = {}) {
         status: 'blocked',
         futureAgentAction: 'stay-in-compare-monitoring',
         wakeConditionCount: 3
+      },
+      releaseSigningReadiness: {
+        status: 'warn',
+        codePathState: 'ready',
+        signingCapabilityState: 'missing',
+        publicationState: 'unobserved',
+        externalBlocker: 'workflow-signing-secret-missing'
       }
     },
     wake: {
@@ -84,7 +91,10 @@ function createCompareGovernorSummary(overrides = {}) {
       queueHandoffStatus: 'checks-pending',
       queueHandoffNextWakeCondition: 'checks-green',
       queueHandoffPrUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
-      queueAuthoritySource: 'delivery-runtime'
+      queueAuthoritySource: 'delivery-runtime',
+      releaseSigningStatus: 'warn',
+      releaseSigningExternalBlocker: 'workflow-signing-secret-missing',
+      releasePublicationState: 'unobserved'
     },
     ...overrides
   };
@@ -306,9 +316,30 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.summary.queueHandoffStatus, 'checks-pending');
   assert.equal(report.summary.queueHandoffNextWakeCondition, 'checks-green');
   assert.equal(report.summary.queueAuthoritySource, 'delivery-runtime');
+  assert.equal(report.summary.viHistoryDistributorDependencyStatus, 'blocked');
+  assert.equal(
+    report.summary.viHistoryDistributorDependencyExternalBlocker,
+    'workflow-signing-secret-missing'
+  );
+  assert.equal(report.summary.viHistoryDistributorDependencyPublicationState, 'unobserved');
   assert.equal(report.compare.queueHandoffPrUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
   assert.equal(report.compare.queueAuthoritySource, 'delivery-runtime');
   assert.equal(report.portfolio.repositoryCount, 4);
+  assert.deepEqual(report.portfolio.dependencies, [
+    {
+      id: 'vi-history-producer-native-distributor',
+      status: 'blocked',
+      ownerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      dependentRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      requiredCapability: 'vi-history',
+      source: 'compare-release-signing-readiness',
+      releaseSigningStatus: 'warn',
+      releasePublicationState: 'unobserved',
+      signingCapabilityState: 'missing',
+      externalBlocker: 'workflow-signing-secret-missing',
+      detail: 'awaiting-compare-release-signing-blocker-clear'
+    }
+  ]);
   assert.deepEqual(report.portfolio.repositories.find((entry) => entry.id === 'compare').triggeredWakeConditions, [
     'compare-queue-not-empty',
     'compare-continuity-not-safe-idle',
@@ -424,4 +455,178 @@ test('runAutonomousGovernorPortfolioSummary routes ownership to canonical templa
     report.portfolio.repositories.find((entry) => entry.id === 'canonical-template').triggeredWakeConditions,
     ['template-canonical-open-issues']
   );
+});
+
+test('runAutonomousGovernorPortfolioSummary keeps next owner on compare while vi-history distributor dependency is blocked', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-portfolio-vi-history-blocked-'));
+  const compareSummary = createCompareGovernorSummary({
+    compare: {
+      queueState: { status: 'queue-empty', reason: 'queue-empty', openIssueCount: 0, ready: true },
+      continuity: {
+        status: 'maintained',
+        turnBoundary: 'safe-idle',
+        supervisionState: 'idle-monitoring',
+        operatorPromptRequiredToResume: false
+      },
+      monitoringMode: {
+        status: 'active',
+        futureAgentAction: 'future-agent-may-pivot',
+        wakeConditionCount: 0
+      },
+      releaseSigningReadiness: {
+        status: 'warn',
+        codePathState: 'ready',
+        signingCapabilityState: 'missing',
+        publicationState: 'unobserved',
+        externalBlocker: 'workflow-signing-secret-missing'
+      }
+    },
+    wake: {
+      terminalState: 'monitoring',
+      currentStage: 'monitoring',
+      classification: null,
+      decision: null,
+      monitoringStatus: 'active',
+      authoritativeTier: null,
+      blockedLowerTierEvidence: false,
+      replayMatched: false,
+      replayAuthorityCompatible: null,
+      issueNumber: null,
+      issueUrl: null,
+      recommendedOwnerRepository: null
+    },
+    summary: {
+      governorMode: 'monitoring-active',
+      currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      nextAction: 'future-agent-may-pivot',
+      signalQuality: 'idle-monitoring',
+      queueState: 'queue-empty',
+      continuityStatus: 'maintained',
+      wakeTerminalState: 'monitoring',
+      monitoringStatus: 'active',
+      futureAgentAction: 'future-agent-may-pivot',
+      queueHandoffStatus: 'none',
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: 'none',
+      releaseSigningStatus: 'warn',
+      releaseSigningExternalBlocker: 'workflow-signing-secret-missing',
+      releasePublicationState: 'unobserved'
+    }
+  });
+  const monitoringMode = createMonitoringMode({
+    compare: {
+      queueState: { reportPath: 'tests/results/_agent/issue/no-standing-priority.json', ready: true, status: 'queue-empty', detail: 'queue-empty' },
+      continuity: { reportPath: 'tests/results/_agent/handoff/continuity-summary.json', ready: true, status: 'maintained', detail: 'safe-idle' },
+      pivotGate: { reportPath: 'tests/results/_agent/promotion/template-pivot-gate-report.json', ready: true, status: 'ready', detail: 'future-agent-may-pivot' },
+      readyForMonitoring: true
+    },
+    summary: {
+      status: 'active',
+      futureAgentAction: 'future-agent-may-pivot',
+      wakeConditionCount: 0,
+      triggeredWakeConditions: []
+    }
+  });
+
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'autonomous-governor-summary.json'), compareSummary);
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), monitoringMode);
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'downstream-repo-graph-truth.json'), createRepoGraphTruth());
+
+  const { report } = await runAutonomousGovernorPortfolioSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.summary.governorMode, 'monitoring-active');
+  assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(report.summary.nextAction, 'complete-compare-vi-history-producer-release');
+  assert.equal(report.summary.ownerDecisionSource, 'compare-vi-history-distributor-dependency');
+  assert.equal(report.summary.viHistoryDistributorDependencyStatus, 'blocked');
+});
+
+test('runAutonomousGovernorPortfolioSummary flips next owner to template once vi-history distributor dependency is ready', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-portfolio-vi-history-ready-'));
+  const compareSummary = createCompareGovernorSummary({
+    compare: {
+      queueState: { status: 'queue-empty', reason: 'queue-empty', openIssueCount: 0, ready: true },
+      continuity: {
+        status: 'maintained',
+        turnBoundary: 'safe-idle',
+        supervisionState: 'idle-monitoring',
+        operatorPromptRequiredToResume: false
+      },
+      monitoringMode: {
+        status: 'active',
+        futureAgentAction: 'future-agent-may-pivot',
+        wakeConditionCount: 0
+      },
+      releaseSigningReadiness: {
+        status: 'pass',
+        codePathState: 'ready',
+        signingCapabilityState: 'ready',
+        publicationState: 'producer-native-ready',
+        externalBlocker: null
+      }
+    },
+    wake: {
+      terminalState: 'monitoring',
+      currentStage: 'monitoring',
+      classification: null,
+      decision: null,
+      monitoringStatus: 'active',
+      authoritativeTier: null,
+      blockedLowerTierEvidence: false,
+      replayMatched: false,
+      replayAuthorityCompatible: null,
+      issueNumber: null,
+      issueUrl: null,
+      recommendedOwnerRepository: null
+    },
+    summary: {
+      governorMode: 'monitoring-active',
+      currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      nextAction: 'future-agent-may-pivot',
+      signalQuality: 'idle-monitoring',
+      queueState: 'queue-empty',
+      continuityStatus: 'maintained',
+      wakeTerminalState: 'monitoring',
+      monitoringStatus: 'active',
+      futureAgentAction: 'future-agent-may-pivot',
+      queueHandoffStatus: 'none',
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: 'none',
+      releaseSigningStatus: 'pass',
+      releaseSigningExternalBlocker: null,
+      releasePublicationState: 'producer-native-ready'
+    }
+  });
+  const monitoringMode = createMonitoringMode({
+    compare: {
+      queueState: { reportPath: 'tests/results/_agent/issue/no-standing-priority.json', ready: true, status: 'queue-empty', detail: 'queue-empty' },
+      continuity: { reportPath: 'tests/results/_agent/handoff/continuity-summary.json', ready: true, status: 'maintained', detail: 'safe-idle' },
+      pivotGate: { reportPath: 'tests/results/_agent/promotion/template-pivot-gate-report.json', ready: true, status: 'ready', detail: 'future-agent-may-pivot' },
+      readyForMonitoring: true
+    },
+    summary: {
+      status: 'active',
+      futureAgentAction: 'future-agent-may-pivot',
+      wakeConditionCount: 0,
+      triggeredWakeConditions: []
+    }
+  });
+
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'autonomous-governor-summary.json'), compareSummary);
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), monitoringMode);
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'downstream-repo-graph-truth.json'), createRepoGraphTruth());
+
+  const { report } = await runAutonomousGovernorPortfolioSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.summary.governorMode, 'monitoring-active');
+  assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(report.summary.nextAction, 'future-agent-may-pivot');
+  assert.equal(report.summary.ownerDecisionSource, 'compare-monitoring-mode');
+  assert.equal(report.summary.viHistoryDistributorDependencyStatus, 'ready');
 });

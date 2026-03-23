@@ -122,6 +122,11 @@ That keeps the producer/distributor boundary clean:
 - generated repositories consume the pinned release surface instead of
   vendoring compare internals
 
+The autonomous governor portfolio also treats that producer/distributor link as
+an explicit dependency. Compare remains the current owner until the signed
+producer-native `CompareVI.Tools` release is ready, and only then does the
+portfolio hand off the next-owner route to `LabviewGitHubCiTemplate`.
+
 For hosted GitHub runner diagnostics, use the same extracted bundle root as
 `COMPAREVI_SCRIPTS_ROOT` and resolve the NI Linux runner from
 `tools/Run-NILinuxContainerCompare.ps1`. Keep its adjacent support scripts

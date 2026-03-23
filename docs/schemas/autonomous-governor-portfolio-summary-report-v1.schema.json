@@ -70,7 +70,7 @@
     "portfolio": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repositoryCount", "repositories", "unsupportedPaths"],
+      "required": ["repositoryCount", "repositories", "dependencies", "unsupportedPaths"],
       "properties": {
         "repositoryCount": {
           "type": "integer",
@@ -175,6 +175,39 @@
             }
           }
         },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "status",
+              "ownerRepository",
+              "dependentRepository",
+              "requiredCapability",
+              "source",
+              "releaseSigningStatus",
+              "releasePublicationState",
+              "signingCapabilityState",
+              "externalBlocker",
+              "detail"
+            ],
+            "properties": {
+              "id": { "type": "string" },
+              "status": { "type": "string", "enum": ["ready", "blocked", "unknown"] },
+              "ownerRepository": { "type": ["string", "null"] },
+              "dependentRepository": { "type": ["string", "null"] },
+              "requiredCapability": { "type": "string" },
+              "source": { "type": "string" },
+              "releaseSigningStatus": { "type": ["string", "null"] },
+              "releasePublicationState": { "type": ["string", "null"] },
+              "signingCapabilityState": { "type": ["string", "null"] },
+              "externalBlocker": { "type": ["string", "null"] },
+              "detail": { "type": "string" }
+            }
+          }
+        },
         "unsupportedPaths": {
           "type": "array",
           "items": {
@@ -207,6 +240,10 @@
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
         "queueAuthoritySource",
+        "viHistoryDistributorDependencyStatus",
+        "viHistoryDistributorDependencyTargetRepository",
+        "viHistoryDistributorDependencyExternalBlocker",
+        "viHistoryDistributorDependencyPublicationState",
         "portfolioWakeConditionCount",
         "triggeredWakeConditions"
       ],
@@ -227,6 +264,10 @@
         "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
         "queueHandoffPrUrl": { "type": ["string", "null"] },
         "queueAuthoritySource": { "type": ["string", "null"] },
+        "viHistoryDistributorDependencyStatus": { "type": "string", "enum": ["ready", "blocked", "unknown"] },
+        "viHistoryDistributorDependencyTargetRepository": { "type": ["string", "null"] },
+        "viHistoryDistributorDependencyExternalBlocker": { "type": ["string", "null"] },
+        "viHistoryDistributorDependencyPublicationState": { "type": ["string", "null"] },
         "portfolioWakeConditionCount": { "type": "integer", "minimum": 0 },
         "triggeredWakeConditions": {
           "type": "array",

@@ -140,6 +140,50 @@ function createWakeConditionsByRepository(triggeredWakeConditions) {
   };
 }
 
+function deriveViHistoryDistributorDependency(compareGovernorSummary, monitoringMode) {
+  const compareRepository =
+    asOptional(compareGovernorSummary?.summary?.currentOwnerRepository) ||
+    asOptional(monitoringMode?.policy?.compareRepository) ||
+    asOptional(compareGovernorSummary?.repository);
+  const dependentRepository = asOptional(monitoringMode?.policy?.pivotTargetRepository);
+  const releaseSigningReadiness = compareGovernorSummary?.compare?.releaseSigningReadiness;
+  const releaseSigningStatus =
+    asOptional(compareGovernorSummary?.summary?.releaseSigningStatus) || asOptional(releaseSigningReadiness?.status);
+  const releasePublicationState =
+    asOptional(compareGovernorSummary?.summary?.releasePublicationState) ||
+    asOptional(releaseSigningReadiness?.publicationState);
+  const signingCapabilityState = asOptional(releaseSigningReadiness?.signingCapabilityState);
+  const externalBlocker =
+    asOptional(compareGovernorSummary?.summary?.releaseSigningExternalBlocker) ||
+    asOptional(releaseSigningReadiness?.externalBlocker);
+
+  let status = 'unknown';
+  let detail = 'missing-release-signing-readiness';
+  if (releasePublicationState === 'producer-native-ready') {
+    status = 'ready';
+    detail = 'producer-native-release-ready';
+  } else if (releaseSigningStatus || releasePublicationState || signingCapabilityState || externalBlocker) {
+    status = 'blocked';
+    detail = externalBlocker
+      ? 'awaiting-compare-release-signing-blocker-clear'
+      : 'awaiting-producer-native-release-publication';
+  }
+
+  return {
+    id: 'vi-history-producer-native-distributor',
+    status,
+    ownerRepository: compareRepository,
+    dependentRepository,
+    requiredCapability: 'vi-history',
+    source: 'compare-release-signing-readiness',
+    releaseSigningStatus,
+    releasePublicationState,
+    signingCapabilityState,
+    externalBlocker,
+    detail
+  };
+}
+
 function derivePortfolioMode(compareGovernorSummary, monitoringMode) {
   const compareMode = asOptional(compareGovernorSummary?.summary?.governorMode);
   const futureAgentAction = asOptional(monitoringMode?.summary?.futureAgentAction);
@@ -151,7 +195,7 @@ function derivePortfolioMode(compareGovernorSummary, monitoringMode) {
   return compareMode || 'attention-required';
 }
 
-function deriveOwners(compareGovernorSummary, monitoringMode, portfolioMode) {
+function deriveOwners(compareGovernorSummary, monitoringMode, portfolioMode, viHistoryDistributorDependency) {
   const compareRepository =
     asOptional(compareGovernorSummary?.summary?.currentOwnerRepository) ||
     asOptional(monitoringMode?.policy?.compareRepository) ||
@@ -170,6 +214,22 @@ function deriveOwners(compareGovernorSummary, monitoringMode, portfolioMode) {
   }
 
   if (portfolioMode === 'monitoring-active') {
+    if (
+      futureAgentAction === 'future-agent-may-pivot' &&
+      viHistoryDistributorDependency?.status !== 'ready' &&
+      viHistoryDistributorDependency?.dependentRepository === pivotTargetRepository
+    ) {
+      return {
+        currentOwnerRepository: compareRepository,
+        nextOwnerRepository: compareRepository,
+        nextAction:
+          viHistoryDistributorDependency.status === 'unknown'
+            ? 'refresh-compare-vi-history-distributor-dependency'
+            : 'complete-compare-vi-history-producer-release',
+        ownerDecisionSource: 'compare-vi-history-distributor-dependency'
+      };
+    }
+
     return {
       currentOwnerRepository: compareRepository,
       nextOwnerRepository: futureAgentAction === 'future-agent-may-pivot' ? pivotTargetRepository : compareRepository,
@@ -295,7 +355,13 @@ function buildReport({
   now
 }) {
   const portfolioMode = derivePortfolioMode(compareGovernorSummary, monitoringMode);
-  const ownerDecision = deriveOwners(compareGovernorSummary, monitoringMode, portfolioMode);
+  const viHistoryDistributorDependency = deriveViHistoryDistributorDependency(compareGovernorSummary, monitoringMode);
+  const ownerDecision = deriveOwners(
+    compareGovernorSummary,
+    monitoringMode,
+    portfolioMode,
+    viHistoryDistributorDependency
+  );
   const repositoryEntries = deriveRepositoryEntries(repoGraphTruth, monitoringMode, compareGovernorSummary);
   const templateMonitoringStatus = deriveTemplateMonitoringStatus(repositoryEntries);
   const supportedProofStatus = deriveSupportedProofStatus(repositoryEntries);
@@ -329,6 +395,7 @@ function buildReport({
     portfolio: {
       repositoryCount: repositoryEntries.length,
       repositories: repositoryEntries,
+      dependencies: [viHistoryDistributorDependency],
       unsupportedPaths: Array.isArray(monitoringMode?.templateMonitoring?.unsupportedPaths)
         ? monitoringMode.templateMonitoring.unsupportedPaths.map((entry) => ({
             name: asOptional(entry?.name),
@@ -351,6 +418,10 @@ function buildReport({
       queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
       queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl),
       queueAuthoritySource: asOptional(compareGovernorSummary?.summary?.queueAuthoritySource),
+      viHistoryDistributorDependencyStatus: viHistoryDistributorDependency.status,
+      viHistoryDistributorDependencyTargetRepository: viHistoryDistributorDependency.dependentRepository,
+      viHistoryDistributorDependencyExternalBlocker: viHistoryDistributorDependency.externalBlocker,
+      viHistoryDistributorDependencyPublicationState: viHistoryDistributorDependency.releasePublicationState,
       portfolioWakeConditionCount: triggeredWakeConditions.length,
       triggeredWakeConditions
     }

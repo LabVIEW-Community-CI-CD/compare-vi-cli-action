@@ -94,11 +94,13 @@ entrypoint and machine-generated live state.
   - merge-queue-owned PR waits, including the next wake condition and PR URL
   - template pivot readiness
   - current governor mode and next owner
-- latest wake lifecycle terminal state
-- funding-quality posture for the latest wake
-- release-signing readiness, including explicit external blockers when workflow
-  signing material is absent
-- cross-repo owner and next-owner decisions
+  - `vi-history` distributor dependency status between compare and the
+    canonical template
+  - latest wake lifecycle terminal state
+  - funding-quality posture for the latest wake
+  - release-signing readiness, including explicit external blockers when workflow
+    signing material is absent
+  - cross-repo owner and next-owner decisions
   - repo graph truth for producer lineage, canonical development, and consumer proving
   - wake conditions that should reopen compare or template work
   - supported downstream monitoring for canonical template and consumer forks

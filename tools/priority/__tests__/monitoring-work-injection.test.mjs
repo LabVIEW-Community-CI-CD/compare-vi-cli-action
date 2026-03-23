@@ -64,7 +64,10 @@ function createGovernorPortfolioSummary({
   governorMode = 'compare-governance-work',
   nextAction = 'continue-compare-governance-work',
   ownerDecisionSource = 'compare-governor-summary',
-  status = 'active'
+  status = 'active',
+  viHistoryDistributorDependencyStatus = 'unknown',
+  viHistoryDistributorDependencyExternalBlocker = null,
+  viHistoryDistributorDependencyPublicationState = null
 } = {}) {
   return {
     schema: 'priority/autonomous-governor-portfolio-summary-report@v1',
@@ -81,11 +84,30 @@ function createGovernorPortfolioSummary({
       monitoringStatus: 'active',
       futureAgentAction: 'future-agent-may-pivot',
       governorMode,
-      nextAction
+      nextAction,
+      queueHandoffStatus: null,
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: null
     },
     portfolio: {
       repositoryCount: 4,
       repositories: [],
+      dependencies: [
+        {
+          id: 'vi-history-producer-native-distributor',
+          status: viHistoryDistributorDependencyStatus,
+          ownerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          dependentRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          requiredCapability: 'vi-history',
+          source: 'compare-release-signing-readiness',
+          releaseSigningStatus: null,
+          releasePublicationState: viHistoryDistributorDependencyPublicationState,
+          signingCapabilityState: null,
+          externalBlocker: viHistoryDistributorDependencyExternalBlocker,
+          detail: 'fixture'
+        }
+      ],
       unsupportedPaths: []
     },
     summary: {
@@ -98,6 +120,14 @@ function createGovernorPortfolioSummary({
       templateMonitoringStatus: 'pass',
       supportedProofStatus: 'pass',
       repoGraphStatus: 'pass',
+      queueHandoffStatus: null,
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: null,
+      viHistoryDistributorDependencyStatus,
+      viHistoryDistributorDependencyTargetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      viHistoryDistributorDependencyExternalBlocker,
+      viHistoryDistributorDependencyPublicationState,
       portfolioWakeConditionCount: 0,
       triggeredWakeConditions: []
     }
