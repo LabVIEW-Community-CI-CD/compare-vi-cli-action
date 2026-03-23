@@ -476,8 +476,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
     Auto mode activates on release windows, open `release/*` PRs, or `release-burst` labels, and backs off for
     30 minutes whenever the throughput controller enters `stabilize`.
   For queue-aware release proposals, run `node tools/npm/run-script.mjs priority:release:conductor -- --dry-run`.
-  Apply mode requires `RELEASE_CONDUCTOR_ENABLED=1`; if signing material is unavailable, the conductor remains
-  proposal-only and emits evidence without mutating tags.
+  Apply mode requires `RELEASE_CONDUCTOR_ENABLED=1`; if signing material is unavailable, the conductor now fails closed
+  before tag creation and emits readiness evidence without mutating tags.
   Hosted `schedule` and `workflow_run` conductor lanes stay proposal-only when apply mode is disabled, and dry-runs
   record advisory-only queue-evidence / no-recent-success diagnostics instead of failing for missing queue artifacts or
   idle dwell windows.

@@ -428,7 +428,7 @@ test('runReleaseConductor creates signed tag when apply is enabled and signing k
   assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'tag'));
 });
 
-test('runReleaseConductor stays proposal-only when signing material is unavailable', async () => {
+test('runReleaseConductor blocks apply when signing material is unavailable', async () => {
   const readJsonOptionalFn = async (filePath) => {
     const normalized = String(filePath);
     if (normalized.includes('queue-supervisor-report.json')) {
@@ -498,9 +498,11 @@ test('runReleaseConductor stays proposal-only when signing material is unavailab
     writeReportFn: async (reportPath) => reportPath
   });
 
-  assert.equal(exitCode, 0);
-  assert.equal(report.decision.status, 'pass');
+  assert.equal(exitCode, 1);
+  assert.equal(report.decision.status, 'fail');
   assert.equal(report.release.proposalOnly, true);
   assert.equal(report.release.tagCreated, false);
+  assert.equal(report.release.signingMaterial.available, false);
+  assert.ok(report.decision.blockers.some((entry) => entry.code === 'tag-signing-material-missing'));
   assert.equal(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'tag'), false);
 });

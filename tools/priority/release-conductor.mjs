@@ -579,6 +579,11 @@ export async function runReleaseConductor(options = {}) {
         code: 'missing-version-for-tag',
         message: 'Apply mode requires --version to propose/create a release tag.'
       });
+    } else if (!signingMaterial.available) {
+      blockers.push({
+        code: 'tag-signing-material-missing',
+        message: 'Apply mode requires signed-tag readiness before tag push. Configure user.signingkey (or equivalent signing material) and retry.'
+      });
     } else if (signingMaterial.available) {
       const tagResult = runCommandFn('git', ['tag', '-s', targetTag, '-m', `Release ${targetTag}`], {
         cwd: repoRoot,
