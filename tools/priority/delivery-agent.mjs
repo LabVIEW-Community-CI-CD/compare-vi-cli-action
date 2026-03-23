@@ -2687,6 +2687,35 @@ function buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt })
   };
 }
 
+function buildQueueAuthorityRefreshRuntimeState({ taskPacket, executionReceipt }) {
+  const queueAuthorityRefresh =
+    normalizeOptionalObject(executionReceipt?.details?.queueAuthorityRefresh) ??
+    normalizeOptionalObject(taskPacket?.evidence?.delivery?.queueAuthorityRefresh);
+  if (!queueAuthorityRefresh) {
+    return null;
+  }
+
+  return {
+    attempted: queueAuthorityRefresh.attempted === true,
+    status: normalizeText(queueAuthorityRefresh.status) || null,
+    reason: normalizeText(queueAuthorityRefresh.reason) || null,
+    helperCall: normalizeText(queueAuthorityRefresh.helperCall) || null,
+    summaryPath: normalizeText(queueAuthorityRefresh.summaryPath) || null,
+    mergeSummaryPath: normalizeText(queueAuthorityRefresh.mergeSummaryPath) || null,
+    receiptGeneratedAt: normalizeText(queueAuthorityRefresh.receiptGeneratedAt) || null,
+    receiptStatus: normalizeText(queueAuthorityRefresh.receiptStatus) || null,
+    receiptReason: normalizeText(queueAuthorityRefresh.receiptReason) || null,
+    evidenceFreshness: normalizeText(queueAuthorityRefresh.evidenceFreshness) || null,
+    nextWakeCondition: normalizeText(queueAuthorityRefresh.nextWakeCondition) || null,
+    mergeStateStatus: normalizeText(queueAuthorityRefresh.mergeStateStatus) || null,
+    isInMergeQueue:
+      typeof queueAuthorityRefresh.isInMergeQueue === 'boolean' ? queueAuthorityRefresh.isInMergeQueue : null,
+    autoMergeEnabled:
+      typeof queueAuthorityRefresh.autoMergeEnabled === 'boolean' ? queueAuthorityRefresh.autoMergeEnabled : null,
+    mergedAt: normalizeText(queueAuthorityRefresh.mergedAt) || null
+  };
+}
+
 function buildConcurrentLaneWatchPlan(concurrentLaneStatus = null) {
   const status = normalizeText(concurrentLaneStatus?.status).toLowerCase();
   const disposition = normalizeText(concurrentLaneStatus?.summary?.orchestratorDisposition).toLowerCase();
@@ -3331,6 +3360,7 @@ export function buildDeliveryAgentRuntimeRecord({
   const readyValidationClearance = buildReadyValidationClearanceRuntimeState({ taskPacket, executionReceipt });
   const concurrentLaneApply = buildConcurrentLaneApplyRuntimeState({ taskPacket, executionReceipt });
   const concurrentLaneStatus = buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt });
+  const queueAuthorityRefresh = buildQueueAuthorityRefreshRuntimeState({ taskPacket, executionReceipt });
   const liveAgentModelSelection = buildRuntimeLiveAgentModelSelection({ taskPacket, executionReceipt, repoRoot });
   const planeTransition = resolveDeliveryPlaneTransition({
     repoRoot,
@@ -3366,6 +3396,7 @@ export function buildDeliveryAgentRuntimeRecord({
     reviewMonitor,
     planeTransition,
     localReviewLoop,
+    queueAuthorityRefresh,
     readyValidationClearance,
     concurrentLaneApply,
     concurrentLaneStatus,
@@ -3414,6 +3445,7 @@ export function buildDeliveryAgentRuntimeRecord({
     workerPool,
     logicalLaneActivation,
     localReviewLoop,
+    queueAuthorityRefresh,
     concurrentLaneApply,
     concurrentLaneStatus,
     liveAgentModelSelection,
@@ -3423,6 +3455,8 @@ export function buildDeliveryAgentRuntimeRecord({
       statePath,
       lanePath,
       localReviewLoopReceiptPath: normalizeText(localReviewLoop?.receiptPath) || null,
+      queueAuthorityRefreshReceiptPath: normalizeText(queueAuthorityRefresh?.summaryPath) || null,
+      queueAuthorityRefreshMergeSummaryPath: normalizeText(queueAuthorityRefresh?.mergeSummaryPath) || null,
       concurrentLaneApplyReceiptPath: normalizeText(concurrentLaneApply?.receiptPath) || null,
       concurrentLaneStatusReceiptPath: normalizeText(concurrentLaneStatus?.receiptPath) || null,
       marketplaceSnapshotPath: normalizeText(marketplace?.snapshotPath) || null,
@@ -4789,15 +4823,26 @@ async function refreshQueueAuthorityDuringHostedWait({ taskPacket, repoRoot, dep
   const helperCall = `node ${helperArgs.join(' ')}`;
   const result = await runCommand('node', helperArgs, { cwd: repoRoot, env: process.env }, deps);
   if (result.status !== 0) {
+    const receipt = await readJsonIfPresent(queueRefreshSummaryPath);
     const message =
       normalizeText(result.stderr) || normalizeText(result.stdout) || `queue-refresh failed (${result.status})`;
     return {
+      attempted: true,
       status: 'failed',
       reason: message,
       helperCall,
       summaryPath: queueRefreshSummaryPath,
       mergeSummaryPath,
-      nextWakeCondition: null
+      receiptGeneratedAt: normalizeText(receipt?.generatedAt) || null,
+      receiptStatus: normalizeText(receipt?.summary?.status) || 'failed',
+      receiptReason: normalizeText(receipt?.summary?.reason) || message,
+      evidenceFreshness: receipt ? 'current' : 'missing',
+      nextWakeCondition: null,
+      mergeStateStatus: normalizeText(receipt?.initial?.mergeStateStatus) || null,
+      isInMergeQueue: typeof receipt?.initial?.isInMergeQueue === 'boolean' ? receipt.initial.isInMergeQueue : null,
+      autoMergeEnabled:
+        typeof receipt?.initial?.autoMergeEnabled === 'boolean' ? receipt.initial.autoMergeEnabled : null,
+      mergedAt: normalizeText(receipt?.initial?.mergedAt) || null
     };
   }
 
@@ -4815,12 +4860,22 @@ async function refreshQueueAuthorityDuringHostedWait({ taskPacket, repoRoot, dep
   }
 
   return {
+    attempted: true,
     status: 'completed',
     reason: normalizeText(receipt?.summary?.reason) || 'queue-refresh-dry-run',
     helperCall,
     summaryPath: queueRefreshSummaryPath,
     mergeSummaryPath,
-    nextWakeCondition
+    receiptGeneratedAt: normalizeText(receipt?.generatedAt) || null,
+    receiptStatus: normalizeText(receipt?.summary?.status) || null,
+    receiptReason: normalizeText(receipt?.summary?.reason) || null,
+    evidenceFreshness: receipt ? 'current' : 'missing',
+    nextWakeCondition,
+    mergeStateStatus: normalizeText(receipt?.initial?.mergeStateStatus) || null,
+    isInMergeQueue: typeof receipt?.initial?.isInMergeQueue === 'boolean' ? receipt.initial.isInMergeQueue : null,
+    autoMergeEnabled:
+      typeof receipt?.initial?.autoMergeEnabled === 'boolean' ? receipt.initial.autoMergeEnabled : null,
+    mergedAt: normalizeText(receipt?.initial?.mergedAt) || null
   };
 }
 
@@ -5408,6 +5463,7 @@ export async function runDeliveryTurnBroker({
           planned.laneLifecycle === 'waiting-review'
             ? planned.pullRequest?.copilotReviewWorkflow ?? null
             : null,
+        queueAuthorityRefresh,
         helperCallsExecuted,
         filesTouched: []
       }

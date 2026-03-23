@@ -65,6 +65,10 @@ function asOptional(value) {
   return normalized.length > 0 ? normalized : null;
 }
 
+function normalizeOptionalObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
 function normalizeUpper(value) {
   return typeof value === 'string' ? value.trim().toUpperCase() : '';
 }
@@ -330,6 +334,9 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
   const laneLifecycle = asOptional(activeLane?.laneLifecycle) || asOptional(deliveryRuntimeState?.laneLifecycle);
   const blockerClass = asOptional(activeLane?.blockerClass);
   const outcome = asOptional(activeLane?.outcome);
+  const queueAuthorityRefresh =
+    normalizeOptionalObject(activeLane?.queueAuthorityRefresh) ??
+    normalizeOptionalObject(deliveryRuntimeState?.queueAuthorityRefresh);
 
   let status = 'none';
   if (prUrl) {
@@ -352,6 +359,24 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
     outcome,
     blockerClass,
     nextWakeCondition: asOptional(activeLane?.nextWakeCondition),
+    queueAuthorityRefresh: {
+      attempted: queueAuthorityRefresh?.attempted === true,
+      status: asOptional(queueAuthorityRefresh?.status),
+      reason: asOptional(queueAuthorityRefresh?.reason),
+      summaryPath: asOptional(queueAuthorityRefresh?.summaryPath),
+      mergeSummaryPath: asOptional(queueAuthorityRefresh?.mergeSummaryPath),
+      receiptGeneratedAt: asOptional(queueAuthorityRefresh?.receiptGeneratedAt),
+      receiptStatus: asOptional(queueAuthorityRefresh?.receiptStatus),
+      receiptReason: asOptional(queueAuthorityRefresh?.receiptReason),
+      evidenceFreshness: asOptional(queueAuthorityRefresh?.evidenceFreshness),
+      nextWakeCondition: asOptional(queueAuthorityRefresh?.nextWakeCondition),
+      mergeStateStatus: asOptional(queueAuthorityRefresh?.mergeStateStatus),
+      isInMergeQueue:
+        typeof queueAuthorityRefresh?.isInMergeQueue === 'boolean' ? queueAuthorityRefresh.isInMergeQueue : null,
+      autoMergeEnabled:
+        typeof queueAuthorityRefresh?.autoMergeEnabled === 'boolean' ? queueAuthorityRefresh.autoMergeEnabled : null,
+      mergedAt: asOptional(queueAuthorityRefresh?.mergedAt)
+    },
     prUrl,
     issueNumber: Number.isInteger(activeLane?.issue) ? activeLane.issue : null,
     reason: asOptional(activeLane?.reason)

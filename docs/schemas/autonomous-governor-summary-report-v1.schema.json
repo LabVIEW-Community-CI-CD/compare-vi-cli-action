@@ -134,6 +134,7 @@
         "outcome",
         "blockerClass",
         "nextWakeCondition",
+        "queueAuthorityRefresh",
         "prUrl",
         "issueNumber",
         "reason"
@@ -156,6 +157,7 @@
         "outcome": { "type": ["string", "null"] },
         "blockerClass": { "type": ["string", "null"] },
         "nextWakeCondition": { "type": ["string", "null"] },
+        "queueAuthorityRefresh": { "$ref": "#/$defs/queueAuthorityRefresh" },
         "prUrl": { "type": ["string", "null"] },
         "issueNumber": { "type": ["integer", "null"], "minimum": 1 },
         "reason": { "type": ["string", "null"] }
@@ -336,9 +338,49 @@
           "enum": [
             "none",
             "delivery-runtime",
-            "merge-sync-summary"
+            "merge-sync-summary",
+            "queue-refresh-summary"
           ]
         }
+      }
+    },
+    "queueAuthorityRefresh": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempted",
+        "status",
+        "reason",
+        "summaryPath",
+        "mergeSummaryPath",
+        "receiptGeneratedAt",
+        "receiptStatus",
+        "receiptReason",
+        "evidenceFreshness",
+        "nextWakeCondition",
+        "mergeStateStatus",
+        "isInMergeQueue",
+        "autoMergeEnabled",
+        "mergedAt"
+      ],
+      "properties": {
+        "attempted": { "type": "boolean" },
+        "status": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] },
+        "summaryPath": { "type": ["string", "null"] },
+        "mergeSummaryPath": { "type": ["string", "null"] },
+        "receiptGeneratedAt": { "type": ["string", "null"] },
+        "receiptStatus": { "type": ["string", "null"] },
+        "receiptReason": { "type": ["string", "null"] },
+        "evidenceFreshness": {
+          "type": ["string", "null"],
+          "enum": ["current", "missing", null]
+        },
+        "nextWakeCondition": { "type": ["string", "null"] },
+        "mergeStateStatus": { "type": ["string", "null"] },
+        "isInMergeQueue": { "type": ["boolean", "null"] },
+        "autoMergeEnabled": { "type": ["boolean", "null"] },
+        "mergedAt": { "type": ["string", "null"] }
       }
     }
   }

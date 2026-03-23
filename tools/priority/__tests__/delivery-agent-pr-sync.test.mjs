@@ -239,6 +239,15 @@ test('runDeliveryTurnBroker refreshes queue authority during waiting-ci watch tu
   assert.equal(brokerResult.outcome, 'waiting-ci');
   assert.equal(brokerResult.details.actionType, 'watch-pr');
   assert.equal(brokerResult.details.nextWakeCondition, 'merge-queue-progress');
+  assert.equal(brokerResult.details.queueAuthorityRefresh.attempted, true);
+  assert.equal(brokerResult.details.queueAuthorityRefresh.status, 'completed');
+  assert.equal(
+    brokerResult.details.queueAuthorityRefresh.summaryPath,
+    path.join(repoRoot, 'tests', 'results', '_agent', 'queue', 'queue-refresh-1868.json')
+  );
+  assert.equal(brokerResult.details.queueAuthorityRefresh.receiptStatus, 'dry-run');
+  assert.equal(brokerResult.details.queueAuthorityRefresh.evidenceFreshness, 'current');
+  assert.equal(brokerResult.details.queueAuthorityRefresh.isInMergeQueue, true);
   assert.ok(
     brokerResult.details.helperCallsExecuted.some((entry) =>
       entry.includes('tools/priority/queue-refresh-pr.mjs')

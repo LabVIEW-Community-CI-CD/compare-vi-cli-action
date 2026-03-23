@@ -167,6 +167,7 @@ test('delivery-agent policy schema validates the checked-in policy contract', as
     targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
     consumerRailBranch: 'downstream/develop',
     reportPath: 'tests/results/_agent/promotion/template-agent-verification-report.json',
+    authoritativeReportPath: 'template-verification/template-agent-verification-report.json',
     metrics: {
       maxVerificationLagIterations: 1,
       maxHostedDurationMinutes: 30,
@@ -1327,6 +1328,91 @@ test('persistDeliveryAgentRuntimeState projects a cross-repo marketplace recomme
   assert.equal(result.payload.marketplace.status, 'ready');
   assert.equal(result.payload.marketplace.recommendedLane.repository, 'LabVIEW-Community-CI-CD/comparevi-history');
   assert.equal(path.basename(result.payload.artifacts.marketplaceSnapshotPath), 'lane-marketplace-snapshot.json');
+});
+
+test('persistDeliveryAgentRuntimeState keeps queue authority refresh telemetry in waiting-ci runtime state', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-queue-refresh-'));
+  const result = await persistDeliveryAgentRuntimeState({
+    repoRoot,
+    runtimeDir,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    policy: {
+      schema: 'priority/delivery-agent-policy@v1',
+      implementationRemote: 'origin',
+      maxActiveCodingLanes: 4
+    },
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-1871',
+        issue: 1871,
+        forkRemote: 'origin',
+        branch: 'issue/origin-1871-queue-authority-runtime-telemetry',
+        blockerClass: 'ci'
+      },
+      artifacts: {
+        laneLifecycle: 'waiting-ci'
+      }
+    },
+    taskPacket: {
+      laneId: 'origin-1871',
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-ci',
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+          }
+        }
+      }
+    },
+    executionReceipt: {
+      outcome: 'waiting-ci',
+      details: {
+        laneLifecycle: 'waiting-ci',
+        blockerClass: 'ci',
+        queueAuthorityRefresh: {
+          attempted: true,
+          status: 'completed',
+          reason: 'queue-refresh-dry-run',
+          helperCall: 'node tools/priority/queue-refresh-pr.mjs --pr 1876 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action --dry-run',
+          summaryPath: 'tests/results/_agent/queue/queue-refresh-1876.json',
+          mergeSummaryPath: 'tests/results/_agent/queue/merge-sync-1876.json',
+          receiptGeneratedAt: '2026-03-23T14:25:00.000Z',
+          receiptStatus: 'dry-run',
+          receiptReason: 'dry-run',
+          evidenceFreshness: 'current',
+          nextWakeCondition: 'merge-queue-progress',
+          mergeStateStatus: 'UNSTABLE',
+          isInMergeQueue: true,
+          autoMergeEnabled: false,
+          mergedAt: null
+        }
+      }
+    },
+    now: new Date('2026-03-23T14:25:01.000Z'),
+    collectMarketplaceSnapshotFn: async () => ({
+      summary: { repositoryCount: 0, eligibleLaneCount: 0, topEligibleLane: null },
+      entries: []
+    }),
+    writeMarketplaceSnapshotFn: async () => path.join(runtimeDir, 'lane-marketplace-snapshot.json')
+  });
+
+  assert.equal(result.payload.queueAuthorityRefresh.status, 'completed');
+  assert.equal(result.payload.queueAuthorityRefresh.receiptStatus, 'dry-run');
+  assert.equal(result.payload.activeLane.queueAuthorityRefresh.summaryPath, 'tests/results/_agent/queue/queue-refresh-1876.json');
+  assert.equal(result.payload.activeLane.queueAuthorityRefresh.isInMergeQueue, true);
+  assert.equal(result.payload.artifacts.queueAuthorityRefreshReceiptPath, 'tests/results/_agent/queue/queue-refresh-1876.json');
+  assert.equal(result.payload.artifacts.queueAuthorityRefreshMergeSummaryPath, 'tests/results/_agent/queue/merge-sync-1876.json');
+
+  const schema = await loadSchema('docs/schemas/delivery-agent-runtime-state-v1.schema.json');
+  const ajv = makeAjv();
+  const validate = ajv.compile(schema);
+  assert.equal(validate(result.payload), true, JSON.stringify(validate.errors, null, 2));
 });
 
 test('persistDeliveryAgentRuntimeState projects live-agent model selection into runtime state', async () => {
