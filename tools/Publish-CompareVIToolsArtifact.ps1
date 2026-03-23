@@ -147,7 +147,12 @@ function Get-CompareVIToolsVersionContract {
 }
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$moduleManifestResolved = (Resolve-Path -LiteralPath (Join-Path $repoRoot $ModuleManifestPath)).Path
+$moduleManifestCandidate = if ([System.IO.Path]::IsPathRooted($ModuleManifestPath)) {
+  $ModuleManifestPath
+} else {
+  Join-Path $repoRoot $ModuleManifestPath
+}
+$moduleManifestResolved = (Resolve-Path -LiteralPath $moduleManifestCandidate).Path
 $moduleRoot = Split-Path -Parent $moduleManifestResolved
 $toolsRoot = Split-Path -Parent $moduleRoot
 
@@ -332,6 +337,32 @@ try {
   }
 
   $consumerContractMetadata = [ordered]@{
+    capabilities = [ordered]@{
+      viHistory = [ordered]@{
+        schema = 'comparevi-tools/vi-history-capability@v1'
+        capabilityId = 'vi-history'
+        displayName = 'VI History'
+        distributionRole = 'upstream-producer'
+        distributionModel = 'release-bundle'
+        bundleMetadataPath = 'comparevi-tools-release.json'
+        bundleImportPath = 'tools/CompareVI.Tools/CompareVI.Tools.psd1'
+        releaseAssetPattern = 'CompareVI.Tools-v<release-version>.zip'
+        authoritativeConsumerPinFieldPath = 'versionContract.authoritativeConsumerPin'
+        authoritativeConsumerPinKindFieldPath = 'versionContract.authoritativeConsumerPinKind'
+        contractPaths = [ordered]@{
+          historyFacade = 'consumerContract.historyFacade'
+          localRuntimeProfiles = 'consumerContract.localRuntimeProfiles'
+          localOperatorSession = 'consumerContract.localOperatorSession'
+          diagnosticsCommentRenderer = 'consumerContract.diagnosticsCommentRenderer'
+          hostedNiLinuxRunner = 'consumerContract.hostedNiLinuxRunner'
+        }
+        notes = @(
+          'Use this capability record when a downstream distributor such as LabviewGitHubCiTemplate needs to stamp vi-history support into generated repositories without copying compare internals.',
+          'Resolve the immutable downstream pin from versionContract.authoritativeConsumerPin and then read the referenced consumer contract paths from the same comparevi-tools-release.json payload.',
+          'The capability contract declares compare-vi-cli-action as the upstream producer; downstream repositories should distribute or consume the capability, not vendor the full backend control plane.'
+        )
+      }
+    }
     historyFacade = [ordered]@{
       schema = 'comparevi-tools/history-facade@v1'
       schemaUrl = 'https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-tools-history-facade-v1.schema.json'
