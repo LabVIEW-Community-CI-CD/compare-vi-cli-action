@@ -37,7 +37,8 @@
         "monitoringModePath",
         "wakeLifecyclePath",
         "wakeInvestmentAccountingPath",
-        "deliveryRuntimeStatePath"
+        "deliveryRuntimeStatePath",
+        "releaseSigningReadinessPath"
       ],
       "properties": {
         "queueEmptyReportPath": { "type": "string", "minLength": 1 },
@@ -45,7 +46,8 @@
         "monitoringModePath": { "type": "string", "minLength": 1 },
         "wakeLifecyclePath": { "type": "string", "minLength": 1 },
         "wakeInvestmentAccountingPath": { "type": "string", "minLength": 1 },
-        "deliveryRuntimeStatePath": { "type": "string", "minLength": 1 }
+        "deliveryRuntimeStatePath": { "type": "string", "minLength": 1 },
+        "releaseSigningReadinessPath": { "type": "string", "minLength": 1 }
       }
     },
     "compare": {
@@ -55,6 +57,7 @@
         "queueState",
         "continuity",
         "monitoringMode",
+        "releaseSigningReadiness",
         "deliveryRuntime",
         "queueAuthority"
       ],
@@ -62,6 +65,7 @@
         "queueState": { "$ref": "#/$defs/queueState" },
         "continuity": { "$ref": "#/$defs/continuity" },
         "monitoringMode": { "$ref": "#/$defs/monitoringMode" },
+        "releaseSigningReadiness": { "$ref": "#/$defs/releaseSigningReadiness" },
         "deliveryRuntime": { "$ref": "#/$defs/deliveryRuntime" },
         "queueAuthority": { "$ref": "#/$defs/queueAuthority" }
       }
@@ -161,6 +165,34 @@
         "prUrl": { "type": ["string", "null"] },
         "issueNumber": { "type": ["integer", "null"], "minimum": 1 },
         "reason": { "type": ["string", "null"] }
+      }
+    },
+    "releaseSigningReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "codePathState",
+        "signingCapabilityState",
+        "publicationState",
+        "externalBlocker",
+        "blockerCount"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn",
+            "fail",
+            "missing"
+          ]
+        },
+        "codePathState": { "type": ["string", "null"] },
+        "signingCapabilityState": { "type": ["string", "null"] },
+        "publicationState": { "type": ["string", "null"] },
+        "externalBlocker": { "type": ["string", "null"] },
+        "blockerCount": { "type": "integer", "minimum": 0 }
       }
     },
     "queueAuthority": {
@@ -281,6 +313,9 @@
         "wakeTerminalState",
         "monitoringStatus",
         "futureAgentAction",
+        "releaseSigningStatus",
+        "releaseSigningExternalBlocker",
+        "releasePublicationState",
         "queueHandoffStatus",
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
@@ -320,6 +355,17 @@
         "wakeTerminalState": { "type": ["string", "null"] },
         "monitoringStatus": { "type": ["string", "null"] },
         "futureAgentAction": { "type": ["string", "null"] },
+        "releaseSigningStatus": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn",
+            "fail",
+            "missing"
+          ]
+        },
+        "releaseSigningExternalBlocker": { "type": ["string", "null"] },
+        "releasePublicationState": { "type": ["string", "null"] },
         "queueHandoffStatus": {
           "type": "string",
           "enum": [

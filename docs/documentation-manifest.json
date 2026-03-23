@@ -32,6 +32,20 @@
       ]
     },
     {
+      "name": "Release Signing Readiness Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Workflow-owned tag-signing readiness report contract, focused tests, and runbook references used to surface signing capability as an explicit external blocker before release attempts.",
+      "files": [
+        "docs/RELEASE_OPERATIONS_RUNBOOK.md",
+        "docs/RELEASE_PROMOTION_CONTRACT.md",
+        "docs/schemas/release-signing-readiness-report-v1.schema.json",
+        "tools/priority/release-signing-readiness.mjs",
+        "tools/priority/__tests__/release-signing-readiness.test.mjs",
+        "tools/priority/__tests__/release-signing-readiness-schema.test.mjs"
+      ]
+    },
+    {
       "name": "Docs Tree",
       "category": "docs",
       "status": "authoritative",

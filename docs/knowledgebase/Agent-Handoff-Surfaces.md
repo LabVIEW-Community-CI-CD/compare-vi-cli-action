@@ -23,7 +23,8 @@ entrypoint and machine-generated live state.
   template pivot readiness.
 - It refreshes `tests/results/_agent/handoff/autonomous-governor-summary.json`,
   which is the top-level machine-readable rollup for the autonomous governor's
-  current mode, wake disposition, funding-quality posture, and next owner.
+  current mode, wake disposition, funding-quality posture, release-signing
+  readiness, and next owner.
 - It refreshes
   `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`,
   which is the cross-repo machine-readable rollup for compare, canonical
@@ -60,6 +61,7 @@ entrypoint and machine-generated live state.
 - `tests/results/_agent/handoff/autonomous-governor-summary.json`
 - `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`
 - `tests/results/_agent/handoff/downstream-repo-graph-truth.json`
+- `tests/results/_agent/release/release-signing-readiness.json`
 - `tests/results/_agent/handoff/docker-review-loop-summary.json`
 - `tests/results/_agent/handoff/*.json`
 - `tests/results/_agent/sessions/*.json`
@@ -92,9 +94,11 @@ entrypoint and machine-generated live state.
   - merge-queue-owned PR waits, including the next wake condition and PR URL
   - template pivot readiness
   - current governor mode and next owner
-  - latest wake lifecycle terminal state
-  - funding-quality posture for the latest wake
-  - cross-repo owner and next-owner decisions
+- latest wake lifecycle terminal state
+- funding-quality posture for the latest wake
+- release-signing readiness, including explicit external blockers when workflow
+  signing material is absent
+- cross-repo owner and next-owner decisions
   - repo graph truth for producer lineage, canonical development, and consumer proving
   - wake conditions that should reopen compare or template work
   - supported downstream monitoring for canonical template and consumer forks

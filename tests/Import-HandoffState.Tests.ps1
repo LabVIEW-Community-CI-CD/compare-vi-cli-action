@@ -204,11 +204,60 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         monitoringModePath = 'tests/results/_agent/handoff/monitoring-mode.json'
         wakeLifecyclePath = 'tests/results/_agent/issue/wake-lifecycle.json'
         wakeInvestmentAccountingPath = 'tests/results/_agent/capital/wake-investment-accounting.json'
+        deliveryRuntimeStatePath = 'tests/results/_agent/runtime/delivery-agent-state.json'
+        releaseSigningReadinessPath = 'tests/results/_agent/release/release-signing-readiness.json'
       }
       compare = [ordered]@{
         queueState = [ordered]@{ status = 'queue-empty'; reason = 'queue-empty'; openIssueCount = 11; ready = $true }
         continuity = [ordered]@{ status = 'maintained'; turnBoundary = 'safe-idle'; supervisionState = 'safe-idle'; operatorPromptRequiredToResume = $false }
         monitoringMode = [ordered]@{ status = 'active'; futureAgentAction = 'future-agent-may-pivot'; wakeConditionCount = 0 }
+        releaseSigningReadiness = [ordered]@{
+          status = 'warn'
+          codePathState = 'ready'
+          signingCapabilityState = 'missing'
+          publicationState = 'tag-created-not-pushed'
+          externalBlocker = 'workflow-signing-secret-missing'
+          blockerCount = 1
+        }
+        deliveryRuntime = [ordered]@{
+          status = 'none'
+          runtimeStatus = $null
+          laneLifecycle = $null
+          actionType = $null
+          outcome = $null
+          blockerClass = $null
+          nextWakeCondition = $null
+          queueAuthorityRefresh = [ordered]@{
+            attempted = $false
+            status = $null
+            reason = $null
+            summaryPath = $null
+            mergeSummaryPath = $null
+            receiptGeneratedAt = $null
+            receiptStatus = $null
+            receiptReason = $null
+            evidenceFreshness = $null
+            nextWakeCondition = $null
+            mergeStateStatus = $null
+            isInMergeQueue = $null
+            autoMergeEnabled = $null
+            mergedAt = $null
+          }
+          prUrl = $null
+          issueNumber = $null
+          reason = $null
+        }
+        queueAuthority = [ordered]@{
+          status = 'none'
+          source = 'none'
+          nextWakeCondition = $null
+          summaryPath = $null
+          promotionStatus = $null
+          mergeStateStatus = $null
+          isInMergeQueue = $false
+          autoMergeEnabled = $false
+          prUrl = $null
+        }
       }
       wake = [ordered]@{
         terminalState = 'compare-work'
@@ -247,6 +296,13 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         wakeTerminalState = 'compare-work'
         monitoringStatus = 'active'
         futureAgentAction = 'future-agent-may-pivot'
+        releaseSigningStatus = 'warn'
+        releaseSigningExternalBlocker = 'workflow-signing-secret-missing'
+        releasePublicationState = 'tag-created-not-pushed'
+        queueHandoffStatus = 'none'
+        queueHandoffNextWakeCondition = $null
+        queueHandoffPrUrl = $null
+        queueAuthoritySource = 'none'
       }
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $handoffDir 'autonomous-governor-summary.json') -Encoding utf8
 
@@ -255,6 +311,8 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match '\[handoff\] Autonomous governor summary'
     $output | Should -Match 'mode\s+: compare-governance-work'
     $output | Should -Match 'next\s+: continue-compare-governance-work'
+    $output | Should -Match 'release\s+: warn'
+    $output | Should -Match 'blocker\s+: workflow-signing-secret-missing'
     $global:HandoffAutonomousGovernorSummary.schema | Should -Be 'priority/autonomous-governor-summary-report@v1'
 
     Remove-Variable -Name HandoffAutonomousGovernorSummary -Scope Global -ErrorAction SilentlyContinue

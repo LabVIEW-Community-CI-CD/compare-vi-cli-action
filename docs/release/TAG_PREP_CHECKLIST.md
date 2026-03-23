@@ -65,9 +65,13 @@ the archived release notes
 - [ ] Verify signed-tag readiness before push:
 
 ```pwsh
+node tools/npm/run-script.mjs priority:release:signing:readiness
 node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel rc --version 0.6.4-rc.1
 ```
 
+- [ ] Confirm `tests/results/_agent/release/release-signing-readiness.json`
+      does not report `externalBlocker` before retrying authoritative release
+      publication.
 - [ ] Confirm `tests/results/_agent/release/release-conductor-report.json` reports
       `status: pass` before pushing the RC tag.
 - [ ] Create an annotated RC tag:

@@ -102,6 +102,48 @@ function createWakeInvestmentAccounting() {
   };
 }
 
+function createReleaseSigningReadiness(overrides = {}) {
+  return {
+    schema: 'priority/release-signing-readiness-report@v1',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    workflowContract: {
+      ready: true,
+      workflowPath: '.github/workflows/release-conductor.yml',
+      reasons: []
+    },
+    secretInventory: {
+      status: 'missing',
+      requiredSecretPresent: false,
+      optionalPublicKeyPresent: false,
+      listedSecretCount: 3,
+      listedSecretNames: ['AUTO_APPROVE_TOKEN', 'GH_POLICY_TOKEN', 'GH_TOKEN'],
+      source: 'github-actions-secrets-api',
+      error: null
+    },
+    publication: {
+      status: 'tag-created-not-pushed',
+      tagCreated: true,
+      tagPushed: false,
+      targetTag: 'v0.6.4-rc.1'
+    },
+    summary: {
+      status: 'warn',
+      codePathState: 'ready',
+      signingCapabilityState: 'missing',
+      publicationState: 'tag-created-not-pushed',
+      externalBlocker: 'workflow-signing-secret-missing',
+      blockerCount: 1
+    },
+    blockers: [
+      {
+        code: 'workflow-signing-secret-missing',
+        message: 'RELEASE_TAG_SIGNING_PRIVATE_KEY is not configured for the repository Actions secrets surface.'
+      }
+    ],
+    ...overrides
+  };
+}
+
 function createDeliveryRuntimeState(overrides = {}) {
   return {
     schema: 'priority/delivery-agent-runtime-state@v1',
@@ -253,6 +295,9 @@ test('runAutonomousGovernorSummary reports compare governance work when the late
   assert.equal(report.summary.nextAction, 'continue-compare-governance-work');
   assert.equal(report.summary.signalQuality, 'validated-governance-work');
   assert.equal(report.funding.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
+  assert.equal(report.compare.releaseSigningReadiness.status, 'missing');
+  assert.equal(report.summary.releaseSigningStatus, 'missing');
+  assert.equal(report.summary.releaseSigningExternalBlocker, null);
 });
 
 test('runAutonomousGovernorSummary reports monitoring-active when no wake lifecycle exists', async () => {
@@ -270,10 +315,34 @@ test('runAutonomousGovernorSummary reports monitoring-active when no wake lifecy
   assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
   assert.equal(report.wake.terminalState, null);
   assert.equal(report.compare.deliveryRuntime.status, 'none');
+  assert.equal(report.compare.releaseSigningReadiness.status, 'missing');
   assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.attempted, false);
   assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.status, null);
   assert.equal(report.summary.queueHandoffStatus, 'none');
   assert.equal(report.summary.queueAuthoritySource, 'none');
+  assert.equal(report.summary.releaseSigningStatus, 'missing');
+});
+
+test('runAutonomousGovernorSummary carries explicit release signing blocker state into the governor summary', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-release-signing-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'release', 'release-signing-readiness.json'),
+    createReleaseSigningReadiness()
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.compare.releaseSigningReadiness.status, 'warn');
+  assert.equal(report.compare.releaseSigningReadiness.codePathState, 'ready');
+  assert.equal(report.compare.releaseSigningReadiness.signingCapabilityState, 'missing');
+  assert.equal(report.compare.releaseSigningReadiness.publicationState, 'tag-created-not-pushed');
+  assert.equal(report.compare.releaseSigningReadiness.externalBlocker, 'workflow-signing-secret-missing');
+  assert.equal(report.summary.releaseSigningStatus, 'warn');
+  assert.equal(report.summary.releaseSigningExternalBlocker, 'workflow-signing-secret-missing');
+  assert.equal(report.summary.releasePublicationState, 'tag-created-not-pushed');
 });
 
 test('runAutonomousGovernorSummary carries queue-owned delivery runtime state into the governor summary', async () => {
