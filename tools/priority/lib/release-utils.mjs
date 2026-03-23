@@ -41,6 +41,59 @@ export async function assertReleaseMetadataExists(repoRoot, tag, kind) {
   }
 }
 
+export async function ensureReleaseBranchMetadata(
+  repoRoot,
+  {
+    tag,
+    semver,
+    branch,
+    branchExists = false,
+    baseBranch = 'develop',
+    baseCommit = null,
+    releaseCommit = null,
+    pullRequest = null,
+    previousVersion = null,
+    surfaceVersions = null,
+    recoverySource = 'release-finalize'
+  }
+) {
+  try {
+    const artifactPath = await assertReleaseMetadataExists(repoRoot, tag, 'branch');
+    return {
+      artifactPath,
+      recovered: false
+    };
+  } catch (error) {
+    if (!branchExists || !pullRequest) {
+      throw error;
+    }
+
+    const payload = {
+      schema: 'release/branch@v1',
+      createdAt: new Date().toISOString(),
+      tag,
+      version: tag,
+      semver,
+      branch,
+      baseBranch,
+      baseCommit,
+      releaseCommit,
+      previousVersion,
+      surfaceVersions,
+      pullRequest,
+      recovered: true,
+      recoverySource
+    };
+
+    const artifactPath = await writeReleaseMetadata(repoRoot, tag, 'branch', payload);
+    return {
+      artifactPath,
+      recovered: true,
+      payload
+    };
+  }
+}
+
 export function summarizeStatusCheckRollup(rollup = []) {
   return (rollup || [])
     .filter(Boolean)

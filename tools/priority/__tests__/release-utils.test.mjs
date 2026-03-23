@@ -10,7 +10,8 @@ import {
   writeReleaseMetadata,
   summarizeStatusCheckRollup,
   getReleaseMetadataPath,
-  assertReleaseMetadataExists
+  assertReleaseMetadataExists,
+  ensureReleaseBranchMetadata
 } from '../lib/release-utils.mjs';
 
 test('normalizeVersionInput handles tagged and untagged semver', () => {
@@ -73,5 +74,57 @@ test('assertReleaseMetadataExists succeeds after writing release metadata', asyn
   assert.equal(
     artifactPath,
     path.join(repoDir, 'tests', 'results', '_agent', 'release', 'release-v1.0.0-branch.json')
+  );
+});
+
+test('ensureReleaseBranchMetadata recovers missing branch metadata when branch state is already authoritative', async (t) => {
+  const repoDir = await mkdtemp(path.join(tmpdir(), 'release-utils-recover-'));
+  t.after(() => rm(repoDir, { recursive: true, force: true }));
+
+  const result = await ensureReleaseBranchMetadata(repoDir, {
+    tag: 'v1.2.3-rc.1',
+    semver: '1.2.3-rc.1',
+    branch: 'release/v1.2.3-rc.1',
+    branchExists: true,
+    baseCommit: 'abc123',
+    releaseCommit: 'def456',
+    pullRequest: {
+      number: 42,
+      url: 'https://example.test/pr/42',
+      mergeStateStatus: 'MERGED'
+    },
+    recoverySource: 'release-finalize'
+  });
+
+  assert.equal(result.recovered, true);
+  assert.equal(
+    result.artifactPath,
+    path.join(repoDir, 'tests', 'results', '_agent', 'release', 'release-v1.2.3-rc.1-branch.json')
+  );
+
+  const contents = JSON.parse(await readFile(result.artifactPath, 'utf8'));
+  assert.equal(contents.schema, 'release/branch@v1');
+  assert.equal(contents.branch, 'release/v1.2.3-rc.1');
+  assert.equal(contents.baseBranch, 'develop');
+  assert.equal(contents.releaseCommit, 'def456');
+  assert.equal(contents.recovered, true);
+  assert.equal(contents.recoverySource, 'release-finalize');
+  assert.equal(contents.pullRequest.number, 42);
+});
+
+test('ensureReleaseBranchMetadata preserves missing-artifact failure when branch state is not authoritative', async (t) => {
+  const repoDir = await mkdtemp(path.join(tmpdir(), 'release-utils-no-recover-'));
+  t.after(() => rm(repoDir, { recursive: true, force: true }));
+
+  await assert.rejects(
+    () =>
+      ensureReleaseBranchMetadata(repoDir, {
+        tag: 'v1.2.3',
+        semver: '1.2.3',
+        branch: 'release/v1.2.3',
+        branchExists: false,
+        pullRequest: null
+      }),
+    /Missing required artifact/i
   );
 });
