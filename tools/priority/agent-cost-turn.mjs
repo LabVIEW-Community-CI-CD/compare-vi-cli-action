@@ -7,7 +7,35 @@ import { fileURLToPath } from 'node:url';
 
 export const REPORT_SCHEMA = 'priority/agent-cost-turn@v1';
 export const DEFAULT_OUTPUT_DIR = path.join('tests', 'results', '_agent', 'cost', 'turns');
+export const DEFAULT_OPERATOR_COST_PROFILE_PATH = path.join('tools', 'policy', 'operator-cost-profile.json');
 export const REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
+const TIMING_SOURCE_CANDIDATE_FIELDS = [
+  { path: ['elapsedSeconds'], divisor: 1 },
+  { path: ['elapsedMilliseconds'], divisor: 1000 },
+  { path: ['durationSeconds'], divisor: 1 },
+  { path: ['durationMs'], divisor: 1000 },
+  { path: ['metrics', 'elapsedSeconds'], divisor: 1 },
+  { path: ['metrics', 'elapsedMilliseconds'], divisor: 1000 },
+  { path: ['metrics', 'durationSeconds'], divisor: 1 },
+  { path: ['metrics', 'durationMs'], divisor: 1000 },
+  { path: ['timings', 'elapsedSeconds'], divisor: 1 },
+  { path: ['timings', 'elapsedMilliseconds'], divisor: 1000 },
+  { path: ['summary', 'durationSeconds'], divisor: 1 },
+  { path: ['summary', 'durationMs'], divisor: 1000 },
+  { path: ['cli', 'duration_s'], divisor: 1 }
+];
+const TIMING_START_CANDIDATE_FIELDS = [
+  ['startedAt'],
+  ['startTime'],
+  ['metrics', 'startedAt'],
+  ['timings', 'startedAt']
+];
+const TIMING_END_CANDIDATE_FIELDS = [
+  ['endedAt'],
+  ['endTime'],
+  ['metrics', 'endedAt'],
+  ['timings', 'endedAt']
+];
 
 function normalizeText(value) {
   if (value == null) {
@@ -30,6 +58,23 @@ function toNonNegativeNumber(value) {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function normalizeDateTime(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? normalized : null;
+}
+
+function roundNumber(value, precision = 6) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return Number(parsed.toFixed(precision));
 }
 
 function normalizeReasoningEffort(value) {
@@ -61,6 +106,13 @@ function readJsonIfExists(filePath) {
   } catch {
     return null;
   }
+}
+
+function safeRelative(targetPath) {
+  if (!normalizeText(targetPath)) {
+    return null;
+  }
+  return path.relative(process.cwd(), path.resolve(targetPath)).replace(/\\/g, '/');
 }
 
 function getPathValue(payload, pathSegments) {
@@ -95,6 +147,27 @@ function inferLaneBranchFromPayload(payload) {
     }
   }
 
+  return null;
+}
+
+function inferElapsedSecondsFromPayload(payload) {
+  for (const candidate of TIMING_SOURCE_CANDIDATE_FIELDS) {
+    const rawValue = getPathValue(payload, candidate.path);
+    const normalized = toNonNegativeNumber(rawValue);
+    if (normalized != null) {
+      return roundNumber(normalized / candidate.divisor);
+    }
+  }
+  return null;
+}
+
+function inferDateTimeFromPayload(payload, candidatePaths) {
+  for (const candidatePath of candidatePaths) {
+    const candidate = normalizeDateTime(getPathValue(payload, candidatePath));
+    if (candidate) {
+      return candidate;
+    }
+  }
   return null;
 }
 
@@ -136,6 +209,100 @@ function resolveLaneBranch(options, { readJsonFn = readJsonIfExists, inferCurren
   return inferCurrentGitBranchFn();
 }
 
+function resolveRuntimeTiming(options, { readJsonFn = readJsonIfExists } = {}) {
+  const explicitStartedAt = normalizeDateTime(options.startedAt);
+  const explicitEndedAt = normalizeDateTime(options.endedAt);
+  const explicitElapsedSeconds = toNonNegativeNumber(options.elapsedSeconds);
+
+  if (explicitElapsedSeconds != null) {
+    return {
+      startedAt: explicitStartedAt,
+      endedAt: explicitEndedAt,
+      elapsedSeconds: roundNumber(explicitElapsedSeconds),
+      elapsedSource: 'explicit'
+    };
+  }
+
+  if (explicitStartedAt && explicitEndedAt) {
+    return {
+      startedAt: explicitStartedAt,
+      endedAt: explicitEndedAt,
+      elapsedSeconds: roundNumber((Date.parse(explicitEndedAt) - Date.parse(explicitStartedAt)) / 1000),
+      elapsedSource: 'derived-start-end'
+    };
+  }
+
+  for (const candidate of [
+    { filePath: options.sourceReceiptPath, source: 'source-receipt' },
+    { filePath: options.sourceReportPath, source: 'source-report' }
+  ]) {
+    const payload = readJsonFn(candidate.filePath);
+    if (!payload) {
+      continue;
+    }
+    const elapsedSeconds = inferElapsedSecondsFromPayload(payload);
+    const startedAt = inferDateTimeFromPayload(payload, TIMING_START_CANDIDATE_FIELDS);
+    const endedAt = inferDateTimeFromPayload(payload, TIMING_END_CANDIDATE_FIELDS);
+    if (elapsedSeconds != null || (startedAt && endedAt)) {
+      return {
+        startedAt,
+        endedAt,
+        elapsedSeconds: elapsedSeconds ?? roundNumber((Date.parse(endedAt) - Date.parse(startedAt)) / 1000),
+        elapsedSource: candidate.source
+      };
+    }
+  }
+
+  return {
+    startedAt: explicitStartedAt,
+    endedAt: explicitEndedAt,
+    elapsedSeconds: null,
+    elapsedSource: null
+  };
+}
+
+function resolveOperatorProfile(options, { readJsonFn = readJsonIfExists } = {}) {
+  const configuredProfilePath = normalizeText(options.operatorCostProfilePath) || DEFAULT_OPERATOR_COST_PROFILE_PATH;
+  const payload = readJsonFn(configuredProfilePath);
+  if (!payload || payload.schema !== 'priority/operator-cost-profile@v1') {
+    return {
+      operatorProfilePath: safeRelative(configuredProfilePath) ?? configuredProfilePath,
+      operatorId: normalizeText(options.operatorId) || null,
+      operatorName: null,
+      laborRateUsdPerHour: null,
+      currency: 'USD',
+      pricingBasis: 'agent-runtime-hour',
+      status: 'missing-operator-profile'
+    };
+  }
+
+  const selectedOperatorId = normalizeText(options.operatorId) || normalizeText(payload.defaultOperatorId);
+  const selectedOperator = Array.isArray(payload.operators)
+    ? payload.operators.find((entry) => normalizeText(entry?.id) === selectedOperatorId)
+    : null;
+  if (!selectedOperator || selectedOperator.active !== true || selectedOperator.appliesToAgentRuntime !== true) {
+    return {
+      operatorProfilePath: safeRelative(configuredProfilePath) ?? configuredProfilePath,
+      operatorId: selectedOperatorId || null,
+      operatorName: null,
+      laborRateUsdPerHour: null,
+      currency: normalizeText(payload.currency) || 'USD',
+      pricingBasis: 'agent-runtime-hour',
+      status: 'missing-operator-profile'
+    };
+  }
+
+  return {
+    operatorProfilePath: safeRelative(configuredProfilePath) ?? configuredProfilePath,
+    operatorId: normalizeText(selectedOperator.id),
+    operatorName: normalizeText(selectedOperator.displayName),
+    laborRateUsdPerHour: toNonNegativeNumber(selectedOperator.laborRateUsdPerHour),
+    currency: normalizeText(payload.currency) || 'USD',
+    pricingBasis: normalizeText(selectedOperator.pricingBasis) || 'agent-runtime-hour',
+    status: 'configured'
+  };
+}
+
 export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
@@ -175,6 +342,11 @@ export function parseArgs(argv = process.argv) {
     sourceReceiptPath: null,
     sourceReportPath: null,
     usageObservedAt: null,
+    operatorCostProfilePath: DEFAULT_OPERATOR_COST_PROFILE_PATH,
+    operatorId: null,
+    startedAt: null,
+    endedAt: null,
+    elapsedSeconds: null,
     operatorSteered: false,
     operatorSteeringKind: null,
     operatorSteeringSource: null,
@@ -222,6 +394,11 @@ export function parseArgs(argv = process.argv) {
     '--source-receipt-path',
     '--source-report-path',
     '--usage-observed-at',
+    '--operator-cost-profile',
+    '--operator-id',
+    '--started-at',
+    '--ended-at',
+    '--elapsed-seconds',
     '--operator-steering-kind',
     '--operator-steering-source',
     '--operator-steering-observed-at',
@@ -283,6 +460,11 @@ export function parseArgs(argv = process.argv) {
         case '--source-receipt-path': options.sourceReceiptPath = next; break;
         case '--source-report-path': options.sourceReportPath = next; break;
         case '--usage-observed-at': options.usageObservedAt = next; break;
+        case '--operator-cost-profile': options.operatorCostProfilePath = next; break;
+        case '--operator-id': options.operatorId = next; break;
+        case '--started-at': options.startedAt = next; break;
+        case '--ended-at': options.endedAt = next; break;
+        case '--elapsed-seconds': options.elapsedSeconds = next; break;
         case '--operator-steering-kind': options.operatorSteeringKind = next; break;
         case '--operator-steering-source': options.operatorSteeringSource = next; break;
         case '--operator-steering-observed-at': options.operatorSteeringObservedAt = next; break;
@@ -330,6 +512,7 @@ export function parseArgs(argv = process.argv) {
   options.totalTokens = toNonNegativeInteger(options.totalTokens);
   options.usageUnitCount = toNonNegativeNumber(options.usageUnitCount) ?? 1;
   options.amountUsd = toNonNegativeNumber(options.amountUsd);
+  options.elapsedSeconds = toNonNegativeNumber(options.elapsedSeconds);
   options.inputUsdPer1kTokens = toNonNegativeNumber(options.inputUsdPer1kTokens);
   options.cachedInputUsdPer1kTokens = toNonNegativeNumber(options.cachedInputUsdPer1kTokens);
   options.outputUsdPer1kTokens = toNonNegativeNumber(options.outputUsdPer1kTokens);
@@ -359,6 +542,7 @@ export function parseArgs(argv = process.argv) {
 }
 
 export function buildAgentCostTurn(options, now = new Date(), helpers = {}) {
+  const { readJsonFn = readJsonIfExists } = helpers;
   const normalizedRequestedModel = normalizeText(options.requestedModel);
   const normalizedEffectiveModel = normalizeText(options.effectiveModel) || normalizedRequestedModel;
   const normalizedRequestedReasoningEffort = normalizeReasoningEffort(options.requestedReasoningEffort);
@@ -389,6 +573,8 @@ export function buildAgentCostTurn(options, now = new Date(), helpers = {}) {
   const normalizedOperatorSteeringNote = normalizeText(options.operatorSteeringNote) || null;
   const normalizedSteeringInvoiceTurnId = normalizeText(options.steeringInvoiceTurnId) || null;
   const normalizedLaneBranch = resolveLaneBranch(options, helpers);
+  const runtimeTiming = resolveRuntimeTiming(options, { readJsonFn });
+  const operatorProfile = resolveOperatorProfile(options, { readJsonFn });
   const normalizedOperatorSteered =
     Boolean(options.operatorSteered) ||
     normalizedOperatorSteeringKind !== null ||
@@ -411,6 +597,21 @@ export function buildAgentCostTurn(options, now = new Date(), helpers = {}) {
   if (!normalizedLaneBranch) {
     throw new Error('Missing required option: --lane-branch <value>.');
   }
+
+  const operatorLaborUsd =
+    runtimeTiming.elapsedSeconds != null && operatorProfile.laborRateUsdPerHour != null
+      ? roundNumber((runtimeTiming.elapsedSeconds / 3600) * operatorProfile.laborRateUsdPerHour)
+      : null;
+  const laborStatus =
+    operatorProfile.status !== 'configured'
+      ? operatorProfile.status
+      : operatorLaborUsd == null
+        ? 'missing-elapsed-seconds'
+        : 'computed';
+  const blendedTotalUsd =
+    normalizedAmountUsd != null && operatorLaborUsd != null
+      ? roundNumber(normalizedAmountUsd + operatorLaborUsd)
+      : null;
 
   const report = {
     schema: REPORT_SCHEMA,
@@ -467,6 +668,23 @@ export function buildAgentCostTurn(options, now = new Date(), helpers = {}) {
       sourceReceiptPath: normalizeText(options.sourceReceiptPath) || null,
       sourceReportPath: normalizeText(options.sourceReportPath) || null,
       usageObservedAt: normalizeText(options.usageObservedAt)
+    },
+    runtime: {
+      startedAt: runtimeTiming.startedAt,
+      endedAt: runtimeTiming.endedAt,
+      elapsedSeconds: runtimeTiming.elapsedSeconds,
+      elapsedSource: runtimeTiming.elapsedSource
+    },
+    labor: {
+      operatorProfilePath: operatorProfile.operatorProfilePath,
+      operatorId: operatorProfile.operatorId,
+      operatorName: operatorProfile.operatorName,
+      laborRateUsdPerHour: operatorProfile.laborRateUsdPerHour,
+      currency: operatorProfile.currency,
+      pricingBasis: operatorProfile.pricingBasis,
+      amountUsd: operatorLaborUsd,
+      blendedTotalUsd,
+      status: laborStatus
     },
     steering: {
       operatorIntervened: normalizedOperatorSteered,
@@ -541,6 +759,11 @@ function printUsage() {
   console.log('  --worker-slot-id <value>');
   console.log('  --source-receipt-path <path>');
   console.log('  --source-report-path <path>');
+  console.log(`  --operator-cost-profile <path>  Optional operator labor profile (default: ${DEFAULT_OPERATOR_COST_PROFILE_PATH}).`);
+  console.log('  --operator-id <value>');
+  console.log('  --started-at <date-time>');
+  console.log('  --ended-at <date-time>');
+  console.log('  --elapsed-seconds <number>');
   console.log('  --operator-steered');
   console.log('  --operator-steering-kind <value>');
   console.log('  --operator-steering-source <value>');

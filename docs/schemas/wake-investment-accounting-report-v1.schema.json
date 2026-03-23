@@ -176,8 +176,11 @@
         "selectedMetricCode",
         "benchmarkSourceKind",
         "selectedBenchmarkUsd",
+        "rollingAverageBlendedUsdPerIssue",
         "rollingAverageUsdPerIssue",
+        "currentActiveWindowAverageBlendedUsdPerIssue",
         "currentActiveWindowAverageUsdPerIssue",
+        "latestTrailingOperationalWindowAverageBlendedUsdPerIssue",
         "latestTrailingOperationalWindowAverageUsdPerIssue"
       ],
       "properties": {
@@ -187,6 +190,9 @@
             "null"
           ],
           "enum": [
+            "rollingAverageBlendedUsdPerIssue",
+            "currentActiveWindowAverageBlendedUsdPerIssue",
+            "latestTrailingOperationalWindowAverageBlendedUsdPerIssue",
             "rollingAverageUsdPerIssue",
             "currentActiveWindowAverageUsdPerIssue",
             "latestTrailingOperationalWindowAverageUsdPerIssue",
@@ -214,13 +220,31 @@
             "null"
           ]
         },
+        "rollingAverageBlendedUsdPerIssue": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "currentActiveWindowAverageUsdPerIssue": {
           "type": [
             "number",
             "null"
           ]
         },
+        "currentActiveWindowAverageBlendedUsdPerIssue": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "latestTrailingOperationalWindowAverageUsdPerIssue": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "latestTrailingOperationalWindowAverageBlendedUsdPerIssue": {
           "type": [
             "number",
             "null"
@@ -235,6 +259,9 @@
         "issueNumber",
         "stateBucket",
         "totalUsd",
+        "operatorLaborUsd",
+        "operatorLaborMissingTurnCount",
+        "blendedTotalUsd",
         "exactUsd",
         "estimatedUsd",
         "turnCount",
@@ -258,6 +285,25 @@
           ]
         },
         "totalUsd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "operatorLaborUsd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "operatorLaborMissingTurnCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "blendedTotalUsd": {
           "type": [
             "number",
             "null"
@@ -391,9 +437,12 @@
           "required": [
             "benchmarkIssueUsd",
             "observedWakeIssueUsd",
+            "observedCostBasis",
             "observedToBenchmarkRatio",
             "avoidedIssueBenchmarkUsd",
             "netPaybackUsd",
+            "observedOperatorLaborUsd",
+            "observedOperatorLaborMissingTurnCount",
             "exactObservedUsd",
             "estimatedObservedUsd",
             "issueTurnCount"
@@ -409,6 +458,13 @@
               "type": [
                 "number",
                 "null"
+              ]
+            },
+            "observedCostBasis": {
+              "type": "string",
+              "enum": [
+                "blended",
+                "token-only"
               ]
             },
             "observedToBenchmarkRatio": {
@@ -428,6 +484,19 @@
                 "number",
                 "null"
               ]
+            },
+            "observedOperatorLaborUsd": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "observedOperatorLaborMissingTurnCount": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
             },
             "exactObservedUsd": {
               "type": [
@@ -457,6 +526,9 @@
     "benchmarkMetricCode": {
       "type": "string",
       "enum": [
+        "rollingAverageBlendedUsdPerIssue",
+        "currentActiveWindowAverageBlendedUsdPerIssue",
+        "latestTrailingOperationalWindowAverageBlendedUsdPerIssue",
         "rollingAverageUsdPerIssue",
         "currentActiveWindowAverageUsdPerIssue",
         "latestTrailingOperationalWindowAverageUsdPerIssue"

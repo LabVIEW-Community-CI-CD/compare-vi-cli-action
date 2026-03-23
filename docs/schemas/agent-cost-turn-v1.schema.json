@@ -13,6 +13,8 @@
     "billing",
     "context",
     "provenance",
+    "runtime",
+    "labor",
     "steering"
   ],
   "properties": {
@@ -24,6 +26,8 @@
     "billing": { "$ref": "#/$defs/billing" },
     "context": { "$ref": "#/$defs/context" },
     "provenance": { "$ref": "#/$defs/provenance" },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "labor": { "$ref": "#/$defs/labor" },
     "steering": { "$ref": "#/$defs/steering" }
   },
   "$defs": {
@@ -35,6 +39,10 @@
         { "type": "string", "format": "date-time" },
         { "type": "null" }
       ]
+    },
+    "nullableNumber": {
+      "type": ["number", "null"],
+      "minimum": 0
     },
     "nullableReasoningEffort": {
       "type": ["string", "null"],
@@ -130,6 +138,49 @@
         "sourceReceiptPath": { "$ref": "#/$defs/nullableString" },
         "sourceReportPath": { "$ref": "#/$defs/nullableString" },
         "usageObservedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startedAt", "endedAt", "elapsedSeconds", "elapsedSource"],
+      "properties": {
+        "startedAt": { "$ref": "#/$defs/nullableDateTime" },
+        "endedAt": { "$ref": "#/$defs/nullableDateTime" },
+        "elapsedSeconds": { "$ref": "#/$defs/nullableNumber" },
+        "elapsedSource": {
+          "type": ["string", "null"],
+          "enum": ["explicit", "derived-start-end", "source-receipt", "source-report", null]
+        }
+      }
+    },
+    "labor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operatorProfilePath",
+        "operatorId",
+        "operatorName",
+        "laborRateUsdPerHour",
+        "currency",
+        "pricingBasis",
+        "amountUsd",
+        "blendedTotalUsd",
+        "status"
+      ],
+      "properties": {
+        "operatorProfilePath": { "$ref": "#/$defs/nullableString" },
+        "operatorId": { "$ref": "#/$defs/nullableString" },
+        "operatorName": { "$ref": "#/$defs/nullableString" },
+        "laborRateUsdPerHour": { "$ref": "#/$defs/nullableNumber" },
+        "currency": { "type": "string", "minLength": 1 },
+        "pricingBasis": { "type": "string", "minLength": 1 },
+        "amountUsd": { "$ref": "#/$defs/nullableNumber" },
+        "blendedTotalUsd": { "$ref": "#/$defs/nullableNumber" },
+        "status": {
+          "type": "string",
+          "enum": ["computed", "missing-elapsed-seconds", "missing-operator-profile"]
+        }
       }
     },
     "steering": {

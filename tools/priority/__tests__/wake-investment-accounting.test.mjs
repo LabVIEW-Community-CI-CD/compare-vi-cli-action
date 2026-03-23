@@ -16,6 +16,9 @@ function createPolicy() {
     schema: 'priority/wake-investment-accounting-policy@v1',
     compareRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     benchmarkMetricPreference: [
+      'rollingAverageBlendedUsdPerIssue',
+      'currentActiveWindowAverageBlendedUsdPerIssue',
+      'latestTrailingOperationalWindowAverageBlendedUsdPerIssue',
       'rollingAverageUsdPerIssue',
       'currentActiveWindowAverageUsdPerIssue',
       'latestTrailingOperationalWindowAverageUsdPerIssue'
@@ -156,6 +159,8 @@ function createWakeSynthesis({ classification, decision, workKind, recommendedOw
 }
 
 function createAverageIssueCostScorecard({ issueNumber = 1816, totalUsd = 0.0201, benchmark = 0.5, includeIssue = true }) {
+  const operatorLaborUsd = 10;
+  const blendedTotalUsd = totalUsd + operatorLaborUsd;
   return {
     schema: 'priority/average-issue-cost-scorecard@v1',
     generatedAt: '2026-03-22T17:10:00.000Z',
@@ -186,6 +191,9 @@ function createAverageIssueCostScorecard({ issueNumber = 1816, totalUsd = 0.0201
         observedFundingWindowCount: 1,
         distinctIssueCount: includeIssue ? 1 : 0,
         totalUsd,
+        operatorLaborUsd,
+        operatorLaborMissingTurnCount: 0,
+        blendedTotalUsd,
         issueAttributedUsd: includeIssue ? totalUsd : 0,
         unattributedUsd: includeIssue ? 0 : totalUsd,
         exactUsd: 0,
@@ -194,9 +202,12 @@ function createAverageIssueCostScorecard({ issueNumber = 1816, totalUsd = 0.0201
         backgroundAgentUsd: 0,
         hostedValidationUsd: 0,
         rollingAverageUsdPerIssue: benchmark,
+        rollingAverageBlendedUsdPerIssue: benchmark + operatorLaborUsd,
         currentActiveWindowAverageUsdPerIssue: benchmark - 0.05,
+        currentActiveWindowAverageBlendedUsdPerIssue: benchmark + operatorLaborUsd - 0.05,
         activeCalibrationWindowAverageUsdPerIssue: null,
         latestTrailingOperationalWindowAverageUsdPerIssue: benchmark + 0.05,
+        latestTrailingOperationalWindowAverageBlendedUsdPerIssue: benchmark + operatorLaborUsd + 0.05,
         unattributedTurnCount: includeIssue ? 0 : 1
       }
     },
@@ -212,6 +223,9 @@ function createAverageIssueCostScorecard({ issueNumber = 1816, totalUsd = 0.0201
             labels: ['governance'],
             url: 'https://example.test/issues/1816',
             totalUsd,
+            operatorLaborUsd,
+            operatorLaborMissingTurnCount: 0,
+            blendedTotalUsd,
             exactUsd: 0,
             estimatedUsd: totalUsd,
             turnCount: 1,
@@ -401,11 +415,12 @@ test('wake investment accounting prices compare-governance wake handling against
   assert.equal(report.summary.accountingBucket, 'compare-governance-work');
   assert.equal(report.summary.status, 'warn');
   assert.equal(report.summary.recommendation, 'continue-estimated-telemetry');
-  assert.equal(report.costBenchmark.selectedMetricCode, 'rollingAverageUsdPerIssue');
-  assert.equal(report.costBenchmark.selectedBenchmarkUsd, 0.5);
+  assert.equal(report.costBenchmark.selectedMetricCode, 'rollingAverageBlendedUsdPerIssue');
+  assert.equal(report.costBenchmark.selectedBenchmarkUsd, 10.5);
   assert.equal(report.observedIssueCost.issueNumber, 1816);
-  assert.equal(report.summary.metrics.observedWakeIssueUsd, 0.0201);
-  assert.equal(report.summary.metrics.avoidedIssueBenchmarkUsd, 0.5);
+  assert.equal(report.summary.metrics.observedWakeIssueUsd, 10.0201);
+  assert.equal(report.summary.metrics.observedCostBasis, 'blended');
+  assert.equal(report.summary.metrics.avoidedIssueBenchmarkUsd, 10.5);
   assert.equal(report.summary.metrics.netPaybackUsd, 0.4799);
   assert.equal(report.summary.paybackStatus, 'positive');
   assert.deepEqual(report.summary.paybackTriggerCodes, ['classification-eligible', 'owner-repository-mismatch', 'suppression-trigger']);
@@ -458,6 +473,7 @@ test('wake investment accounting stays warning-only when a live template wake ha
   assert.equal(report.observedIssueCost.issueNumber, null);
   assert.equal(report.summary.metrics.avoidedIssueBenchmarkUsd, null);
   assert.equal(report.summary.metrics.netPaybackUsd, null);
+  assert.equal(report.summary.metrics.observedCostBasis, 'token-only');
   assert.equal(report.summary.paybackStatus, 'unresolved');
   assert.equal(report.summary.accountingConfidence, 'low');
 });

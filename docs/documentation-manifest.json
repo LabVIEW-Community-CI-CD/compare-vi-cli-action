@@ -126,7 +126,7 @@
       "name": "Agent Cost Telemetry Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Checked-in invoice-turn, per-turn, and rollup cost telemetry contracts, fixtures, helper CLIs, and focused tests used to anchor spend reporting in repo-visible evidence.",
+      "description": "Checked-in invoice-turn, per-turn, rollup, operator labor, and blended autonomy cost telemetry contracts, fixtures, helper CLIs, and focused tests used to anchor spend reporting in repo-visible evidence.",
       "files": [
         "docs/knowledgebase/Agent-Cost-Telemetry-Surfaces.md",
         "docs/schemas/agent-cost-private-invoice-metadata-v1.schema.json",
@@ -134,6 +134,7 @@
         "docs/schemas/agent-cost-turn-v1.schema.json",
         "docs/schemas/agent-cost-rollup-v1.schema.json",
         "docs/schemas/average-issue-cost-scorecard-v1.schema.json",
+        "docs/schemas/operator-cost-profile-v1.schema.json",
         "docs/schemas/pr-spend-projection-v1.schema.json",
         "tools/priority/__fixtures__/agent-cost-rollup/live-turn-estimated.json",
         "tools/priority/__fixtures__/agent-cost-rollup/background-turn-exact.json",
@@ -141,6 +142,7 @@
         "tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-next-baseline.json",
         "tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline-reconciled.json",
         "tools/priority/__fixtures__/agent-cost-rollup/private-invoice-metadata-sample.json",
+        "tools/policy/operator-cost-profile.json",
         "tools/priority/agent-cost-invoice-normalize.mjs",
         "tools/priority/agent-cost-invoice-turn.mjs",
         "tools/priority/agent-cost-turn.mjs",
@@ -154,6 +156,7 @@
         "tools/priority/__tests__/agent-cost-turn.test.mjs",
         "tools/priority/__tests__/agent-cost-rollup.test.mjs",
         "tools/priority/__tests__/agent-cost-rollup-schema.test.mjs",
+        "tools/priority/__tests__/operator-cost-profile-schema.test.mjs",
         "tools/priority/__tests__/pr-spend-projection.test.mjs",
         "tools/priority/__tests__/pr-spend-projection-schema.test.mjs",
         "tools/priority/__tests__/agent-cost-telemetry-surfaces.test.mjs"

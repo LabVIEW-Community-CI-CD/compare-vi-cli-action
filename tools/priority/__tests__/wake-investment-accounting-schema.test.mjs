@@ -34,6 +34,9 @@ test('wake investment accounting report matches schema', async () => {
     schema: 'priority/wake-investment-accounting-policy@v1',
     compareRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     benchmarkMetricPreference: [
+      'rollingAverageBlendedUsdPerIssue',
+      'currentActiveWindowAverageBlendedUsdPerIssue',
+      'latestTrailingOperationalWindowAverageBlendedUsdPerIssue',
       'rollingAverageUsdPerIssue',
       'currentActiveWindowAverageUsdPerIssue',
       'latestTrailingOperationalWindowAverageUsdPerIssue'
@@ -192,6 +195,9 @@ test('wake investment accounting report matches schema', async () => {
         observedFundingWindowCount: 1,
         distinctIssueCount: 1,
         totalUsd: 0.0201,
+        operatorLaborUsd: 10,
+        operatorLaborMissingTurnCount: 0,
+        blendedTotalUsd: 10.0201,
         issueAttributedUsd: 0.0201,
         unattributedUsd: 0,
         exactUsd: 0,
@@ -200,9 +206,12 @@ test('wake investment accounting report matches schema', async () => {
         backgroundAgentUsd: 0,
         hostedValidationUsd: 0,
         rollingAverageUsdPerIssue: 0.5,
+        rollingAverageBlendedUsdPerIssue: 10.5,
         currentActiveWindowAverageUsdPerIssue: 0.45,
+        currentActiveWindowAverageBlendedUsdPerIssue: 10.45,
         activeCalibrationWindowAverageUsdPerIssue: null,
         latestTrailingOperationalWindowAverageUsdPerIssue: 0.55,
+        latestTrailingOperationalWindowAverageBlendedUsdPerIssue: 10.55,
         unattributedTurnCount: 0
       }
     },
@@ -217,6 +226,9 @@ test('wake investment accounting report matches schema', async () => {
         labels: ['governance'],
         url: 'https://example.test/issues/1816',
         totalUsd: 0.0201,
+        operatorLaborUsd: 10,
+        operatorLaborMissingTurnCount: 0,
+        blendedTotalUsd: 10.0201,
         exactUsd: 0,
         estimatedUsd: 0.0201,
         turnCount: 1,

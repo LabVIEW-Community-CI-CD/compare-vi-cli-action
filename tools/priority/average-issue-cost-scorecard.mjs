@@ -458,6 +458,8 @@ function createWindowAccumulator(windowSummary, currentInvoiceTurnId) {
     ...windowSummary,
     windowRole: role,
     allTurnUsd: 0,
+    operatorLaborUsd: 0,
+    operatorLaborMissingTurnCount: 0,
     issueAttributedUsd: 0,
     unattributedUsd: 0,
     exactUsd: 0,
@@ -494,6 +496,8 @@ function createIssueAccumulator(issueNumber) {
   return {
     issueNumber,
     totalUsd: 0,
+    operatorLaborUsd: 0,
+    operatorLaborMissingTurnCount: 0,
     exactUsd: 0,
     estimatedUsd: 0,
     turnCount: 0,
@@ -664,6 +668,12 @@ function buildIssueEntry(issueAccumulator, issueRecord, windowIds) {
     stateBucket: issueRecord?.stateBucket ?? 'unknown',
     stateSnapshotUpdatedAt: issueRecord?.updatedAt ?? null,
     totalUsd: roundNumber(issueAccumulator.totalUsd) ?? 0,
+    operatorLaborUsd: roundNumber(issueAccumulator.operatorLaborUsd) ?? 0,
+    operatorLaborMissingTurnCount: issueAccumulator.operatorLaborMissingTurnCount,
+    blendedTotalUsd:
+      issueAccumulator.operatorLaborMissingTurnCount === 0
+        ? roundNumber(issueAccumulator.totalUsd + issueAccumulator.operatorLaborUsd)
+        : null,
     exactUsd: roundNumber(issueAccumulator.exactUsd) ?? 0,
     estimatedUsd: roundNumber(issueAccumulator.estimatedUsd) ?? 0,
     turnCount: issueAccumulator.turnCount,
@@ -836,6 +846,11 @@ export async function buildAverageIssueCostScorecard({
     }
 
     windowAccumulator.allTurnUsd += amountUsd;
+    if (coerceNonNegativeNumber(turn.operatorLaborUsd) != null) {
+      windowAccumulator.operatorLaborUsd += coerceNonNegativeNumber(turn.operatorLaborUsd);
+    } else {
+      windowAccumulator.operatorLaborMissingTurnCount += 1;
+    }
     windowAccumulator.turnCount += 1;
     if (exactness === 'exact') {
       windowAccumulator.exactUsd += amountUsd;
@@ -866,6 +881,11 @@ export async function buildAverageIssueCostScorecard({
     }
     const issueAccumulator = issueAccumulators.get(issueNumber);
     issueAccumulator.totalUsd += amountUsd;
+    if (coerceNonNegativeNumber(turn.operatorLaborUsd) != null) {
+      issueAccumulator.operatorLaborUsd += coerceNonNegativeNumber(turn.operatorLaborUsd);
+    } else {
+      issueAccumulator.operatorLaborMissingTurnCount += 1;
+    }
     issueAccumulator.turnCount += 1;
     if (exactness === 'exact') {
       issueAccumulator.exactUsd += amountUsd;
@@ -962,6 +982,12 @@ export async function buildAverageIssueCostScorecard({
       issueStateAverages: summarizeIssueStateAverages(stateIssueEntries),
       metrics: {
         totalUsd: roundNumber(windowAccumulator.allTurnUsd) ?? 0,
+        operatorLaborUsd: roundNumber(windowAccumulator.operatorLaborUsd) ?? 0,
+        operatorLaborMissingTurnCount: windowAccumulator.operatorLaborMissingTurnCount,
+        blendedTotalUsd:
+          windowAccumulator.operatorLaborMissingTurnCount === 0
+            ? roundNumber(windowAccumulator.allTurnUsd + windowAccumulator.operatorLaborUsd)
+            : null,
         issueAttributedUsd: roundNumber(windowAccumulator.issueAttributedUsd) ?? 0,
         unattributedUsd: roundNumber(windowAccumulator.unattributedUsd) ?? 0,
         exactUsd: roundNumber(windowAccumulator.exactUsd) ?? 0,
@@ -985,6 +1011,10 @@ export async function buildAverageIssueCostScorecard({
   const stateAverages = summarizeIssueStateAverages(issueEntries);
 
   const totalUsd = roundNumber(turns.reduce((sumValue, turn) => sumValue + (coerceNonNegativeNumber(turn.amountUsd) ?? 0), 0)) ?? 0;
+  const operatorLaborUsd = roundNumber(
+    turns.reduce((sumValue, turn) => sumValue + (coerceNonNegativeNumber(turn.operatorLaborUsd) ?? 0), 0)
+  ) ?? 0;
+  const operatorLaborMissingTurnCount = turns.filter((turn) => coerceNonNegativeNumber(turn.operatorLaborUsd) == null).length;
   const issueAttributedUsd = roundNumber(issueEntries.reduce((sumValue, entry) => sumValue + entry.totalUsd, 0)) ?? 0;
   const exactUsd = roundNumber(issueEntries.reduce((sumValue, entry) => sumValue + entry.exactUsd, 0)) ?? 0;
   const estimatedUsd = roundNumber(issueEntries.reduce((sumValue, entry) => sumValue + entry.estimatedUsd, 0)) ?? 0;
@@ -1050,6 +1080,12 @@ export async function buildAverageIssueCostScorecard({
         observedFundingWindowCount: windowEntries.length,
         distinctIssueCount: issueEntries.length,
         totalUsd,
+        operatorLaborUsd,
+        operatorLaborMissingTurnCount,
+        blendedTotalUsd:
+          operatorLaborMissingTurnCount === 0
+            ? roundNumber(totalUsd + operatorLaborUsd)
+            : null,
         issueAttributedUsd,
         unattributedUsd,
         exactUsd,
@@ -1058,9 +1094,22 @@ export async function buildAverageIssueCostScorecard({
         backgroundAgentUsd,
         hostedValidationUsd,
         rollingAverageUsdPerIssue: computeAverage(issueAttributedUsd, issueEntries.length),
+        rollingAverageBlendedUsdPerIssue:
+          operatorLaborMissingTurnCount === 0
+            ? computeAverage(totalUsd + operatorLaborUsd, issueEntries.length)
+            : null,
         currentActiveWindowAverageUsdPerIssue: currentActiveWindow?.metrics?.averageUsdPerIssue ?? null,
+        currentActiveWindowAverageBlendedUsdPerIssue: currentActiveWindow?.metrics?.blendedTotalUsd != null
+          ? computeAverage(currentActiveWindow.metrics.blendedTotalUsd, currentActiveWindow.metrics.distinctIssueCount)
+          : null,
         activeCalibrationWindowAverageUsdPerIssue: activeCalibrationWindow?.metrics?.averageUsdPerIssue ?? null,
+        activeCalibrationWindowAverageBlendedUsdPerIssue: activeCalibrationWindow?.metrics?.blendedTotalUsd != null
+          ? computeAverage(activeCalibrationWindow.metrics.blendedTotalUsd, activeCalibrationWindow.metrics.distinctIssueCount)
+          : null,
         latestTrailingOperationalWindowAverageUsdPerIssue: latestTrailingOperationalWindow?.metrics?.averageUsdPerIssue ?? null,
+        latestTrailingOperationalWindowAverageBlendedUsdPerIssue: latestTrailingOperationalWindow?.metrics?.blendedTotalUsd != null
+          ? computeAverage(latestTrailingOperationalWindow.metrics.blendedTotalUsd, latestTrailingOperationalWindow.metrics.distinctIssueCount)
+          : null,
         unattributedTurnCount: issuelessTurns.length + unattributedTurns.length
       }
     },

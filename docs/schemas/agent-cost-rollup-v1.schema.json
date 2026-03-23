@@ -98,6 +98,17 @@
         "effectiveModel",
         "requestedReasoningEffort",
         "effectiveReasoningEffort",
+        "startedAt",
+        "endedAt",
+        "elapsedSeconds",
+        "elapsedSource",
+        "operatorProfilePath",
+        "operatorId",
+        "operatorName",
+        "laborRateUsdPerHour",
+        "operatorLaborUsd",
+        "blendedTotalUsd",
+        "laborStatus",
         "operatorIntervened",
         "steeringKind",
         "steeringSource",
@@ -138,6 +149,17 @@
         "effectiveModel": { "$ref": "#/$defs/nullableString" },
         "requestedReasoningEffort": { "$ref": "#/$defs/nullableString" },
         "effectiveReasoningEffort": { "$ref": "#/$defs/nullableString" },
+        "startedAt": { "$ref": "#/$defs/nullableString" },
+        "endedAt": { "$ref": "#/$defs/nullableString" },
+        "elapsedSeconds": { "type": ["number", "null"], "minimum": 0 },
+        "elapsedSource": { "$ref": "#/$defs/nullableString" },
+        "operatorProfilePath": { "$ref": "#/$defs/nullableString" },
+        "operatorId": { "$ref": "#/$defs/nullableString" },
+        "operatorName": { "$ref": "#/$defs/nullableString" },
+        "laborRateUsdPerHour": { "type": ["number", "null"], "minimum": 0 },
+        "operatorLaborUsd": { "type": ["number", "null"], "minimum": 0 },
+        "blendedTotalUsd": { "type": ["number", "null"], "minimum": 0 },
+        "laborStatus": { "$ref": "#/$defs/nullableString" },
         "operatorIntervened": { "type": "boolean" },
         "steeringKind": { "$ref": "#/$defs/nullableString" },
         "steeringSource": { "$ref": "#/$defs/nullableString" },
@@ -399,6 +421,10 @@
             "totalUsd",
             "exactUsd",
             "estimatedUsd",
+            "operatorLaborSeconds",
+            "operatorLaborUsd",
+            "operatorLaborMissingTurnCount",
+            "blendedTotalUsd",
             "totalInputTokens",
             "totalCachedInputTokens",
             "totalOutputTokens",
@@ -435,6 +461,10 @@
             "totalUsd": { "type": "number", "minimum": 0 },
             "exactUsd": { "type": "number", "minimum": 0 },
             "estimatedUsd": { "type": "number", "minimum": 0 },
+            "operatorLaborSeconds": { "type": "number", "minimum": 0 },
+            "operatorLaborUsd": { "type": "number", "minimum": 0 },
+            "operatorLaborMissingTurnCount": { "type": "integer", "minimum": 0 },
+            "blendedTotalUsd": { "type": ["number", "null"], "minimum": 0 },
             "totalInputTokens": { "type": "integer", "minimum": 0 },
             "totalCachedInputTokens": { "type": "integer", "minimum": 0 },
             "totalOutputTokens": { "type": "integer", "minimum": 0 },
@@ -468,7 +498,7 @@
         "provenance": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "reasoningEfforts", "steeringKinds", "steeringSources", "operatorSteeringTriggerKinds", "invoiceTurn", "invoiceTurnSelection", "invoiceTurns", "usageExports", "accountBalance", "operatorSteeringEvents"],
+          "required": ["sessionIds", "issueNumbers", "laneIds", "repositories", "rateCards", "reasoningEfforts", "steeringKinds", "steeringSources", "operatorSteeringTriggerKinds", "operatorProfiles", "invoiceTurn", "invoiceTurnSelection", "invoiceTurns", "usageExports", "accountBalance", "operatorSteeringEvents"],
           "properties": {
             "sessionIds": { "type": "array", "items": { "type": "string" } },
             "issueNumbers": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
@@ -478,6 +508,20 @@
             "steeringKinds": { "type": "array", "items": { "type": "string" } },
             "steeringSources": { "type": "array", "items": { "type": "string" } },
             "operatorSteeringTriggerKinds": { "type": "array", "items": { "type": "string" } },
+            "operatorProfiles": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["operatorId", "operatorName", "operatorProfilePath", "laborRateUsdPerHour"],
+                "properties": {
+                  "operatorId": { "$ref": "#/$defs/nullableString" },
+                  "operatorName": { "$ref": "#/$defs/nullableString" },
+                  "operatorProfilePath": { "$ref": "#/$defs/nullableString" },
+                  "laborRateUsdPerHour": { "type": ["number", "null"], "minimum": 0 }
+                }
+              }
+            },
             "rateCards": {
               "type": "array",
               "items": {
@@ -589,11 +633,14 @@
     "breakdownEntry": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["key", "turnCount", "totalUsd"],
+      "required": ["key", "turnCount", "totalUsd", "operatorLaborUsd", "operatorLaborMissingTurnCount", "blendedTotalUsd"],
       "properties": {
         "key": { "type": "string", "minLength": 1 },
         "turnCount": { "type": "integer", "minimum": 0 },
-        "totalUsd": { "type": "number", "minimum": 0 }
+        "totalUsd": { "type": "number", "minimum": 0 },
+        "operatorLaborUsd": { "type": "number", "minimum": 0 },
+        "operatorLaborMissingTurnCount": { "type": "integer", "minimum": 0 },
+        "blendedTotalUsd": { "type": ["number", "null"], "minimum": 0 }
       }
     },
     "breakdown": {

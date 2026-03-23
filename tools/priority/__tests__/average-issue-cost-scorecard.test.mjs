@@ -42,6 +42,17 @@ function buildTurn({
     effectiveModel: 'gpt-5.4',
     requestedReasoningEffort: 'medium',
     effectiveReasoningEffort: 'medium',
+    startedAt: observedAt,
+    endedAt: observedAt,
+    elapsedSeconds: 60,
+    elapsedSource: 'explicit',
+    operatorProfilePath: 'tools/policy/operator-cost-profile.json',
+    operatorId: 'sergio',
+    operatorName: 'Sergio Velderrain Ruiz',
+    laborRateUsdPerHour: 250,
+    operatorLaborUsd: 4.166667,
+    blendedTotalUsd: Number((amountUsd + 4.166667).toFixed(6)),
+    laborStatus: 'computed',
     operatorIntervened: false,
     steeringKind: null,
     steeringSource: null,
@@ -202,6 +213,8 @@ test('runAverageIssueCostScorecard projects rolling window averages, current-sta
   assert.equal(result.report.summary.recommendation, 'tighten-issue-attribution');
   assert.deepEqual(result.report.summary.reasons, ['estimated-spend-present', 'unattributed-turns-present']);
   assert.equal(result.report.summary.metrics.totalUsd, 21);
+  assert.equal(result.report.summary.metrics.operatorLaborUsd, 20.833335);
+  assert.equal(result.report.summary.metrics.blendedTotalUsd, 41.833335);
   assert.equal(result.report.summary.metrics.issueAttributedUsd, 20);
   assert.equal(result.report.summary.metrics.unattributedUsd, 1);
   assert.equal(result.report.summary.metrics.liveAgentUsd, 11);
@@ -212,8 +225,10 @@ test('runAverageIssueCostScorecard projects rolling window averages, current-sta
   assert.equal(result.report.summary.metrics.latestTrailingOperationalWindowAverageUsdPerIssue, 6);
   assert.equal(result.report.windows.length, 2);
   assert.equal(result.report.windows[0].metrics.averageUsdPerIssue, 6);
+  assert.equal(result.report.windows[0].metrics.operatorLaborUsd, 4.166667);
   assert.equal(result.report.windows[1].metrics.rollingAverageUsdPerIssue, 6.666667);
   assert.equal(result.report.issues.find((entry) => entry.issueNumber === 102)?.hostedValidationUsd, 8);
+  assert.equal(result.report.issues.find((entry) => entry.issueNumber === 102)?.blendedTotalUsd, 12.166667);
   assert.equal(result.report.issues.find((entry) => entry.issueNumber === 103)?.stateBucket, 'blocked-external');
   assert.equal(fs.existsSync(outputPath), true);
 });

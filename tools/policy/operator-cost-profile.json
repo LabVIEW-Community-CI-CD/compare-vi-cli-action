@@ -1,0 +1,15 @@
+{
+  "schema": "priority/operator-cost-profile@v1",
+  "currency": "USD",
+  "defaultOperatorId": "sergio",
+  "operators": [
+    {
+      "id": "sergio",
+      "displayName": "Sergio Velderrain Ruiz",
+      "laborRateUsdPerHour": 250,
+      "pricingBasis": "agent-runtime-hour",
+      "appliesToAgentRuntime": true,
+      "active": true
+    }
+  ]
+}

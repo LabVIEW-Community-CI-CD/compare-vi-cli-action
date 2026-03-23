@@ -298,6 +298,58 @@ heuristic USD while calibration is still in progress, but it must not claim
 final reconciled billing truth unless the underlying rollup carries that
 evidence.
 
+## Operator Labor And Blended Autonomy Cost
+
+`#1872` extends the spend layer so active agent runtime is priced as operator-
+equivalent labor in addition to token spend:
+
+- schema: `docs/schemas/operator-cost-profile-v1.schema.json`
+- policy: `tools/policy/operator-cost-profile.json`
+- turn helper: `tools/priority/agent-cost-turn.mjs`
+- rollup helper: `tools/priority/agent-cost-rollup.mjs`
+- projection helper: `tools/priority/pr-spend-projection.mjs`
+- benchmark helper: `tools/priority/average-issue-cost-scorecard.mjs`
+- wake pricing helper: `tools/priority/wake-investment-accounting.mjs`
+
+The checked-in default operator profile currently sets:
+
+- `operator.id = sergio`
+- `operator.displayName = Sergio Velderrain Ruiz`
+- `laborRateUsdPerHour = 250`
+- `pricingBasis = agent-runtime-hour`
+
+This means active agent runtime is additive across the system:
+
+- one agent running for one hour = `$250` operator labor before token cost
+- two agents running for one hour each = `$500` operator labor before token cost
+- total autonomy cost = `operatorLaborUsd + tokenCostUsd`
+
+The per-turn receipt now records:
+
+- `runtime.startedAt`
+- `runtime.endedAt`
+- `runtime.elapsedSeconds`
+- `runtime.elapsedSource`
+- `labor.operatorProfilePath`
+- `labor.operatorId`
+- `labor.operatorName`
+- `labor.laborRateUsdPerHour`
+- `labor.amountUsd`
+- `labor.blendedTotalUsd`
+
+Blended reporting is intentionally honest about missing evidence:
+
+- if elapsed timing is missing, labor stays unset instead of being invented
+- if labor is known and token spend is known, `blendedTotalUsd` is emitted
+- if labor is partially missing, PR projections and issue averages keep the
+  token total visible and mark the labor status as partial or missing
+
+Use this model when discussing autonomous economics:
+
+- `token` cost alone is incomplete
+- `operator labor` alone is incomplete
+- `blended autonomy cost` is the decision surface for future capital routing
+
 ## Average Issue Cost Over Time
 
 `#1708` adds a first machine-readable average issue cost scorecard that stays on
@@ -316,10 +368,12 @@ Behavior:
 - emits a time-ordered funding-window series with:
   - per-window `averageUsdPerIssue`
   - cumulative `rollingAverageUsdPerIssue`
+  - cumulative `rollingAverageBlendedUsdPerIssue`
 - separates observed spend into:
   - `liveAgentUsd`
   - `backgroundAgentUsd`
   - `hostedValidationUsd` when the turn is explicitly hosted-plane
+  - `operatorLaborUsd`
 - reports current issue-state buckets:
   - `open`
   - `closed-completed`
@@ -330,6 +384,13 @@ Behavior:
   - source receipt/report paths
   - invoice-turn ids
   - assignment strategies
+
+When labor timing is available, the scorecard also reports:
+
+- `blendedTotalUsd`
+- `rollingAverageBlendedUsdPerIssue`
+- `currentActiveWindowAverageBlendedUsdPerIssue`
+- `latestTrailingOperationalWindowAverageBlendedUsdPerIssue`
 
 This first slice is intentionally honest about issue state. It applies the
 current hydrated issue state to observed spend windows, which is enough to
@@ -463,6 +524,13 @@ factors into one opaque number.
 
 Those should stay follow-up lanes. The first slice should stay anchored to
 existing repo-visible receipts.
+
+Also keep these boundaries explicit:
+
+- the operator labor profile is checked-in policy, not hidden memory
+- labor math should price active agent runtime, not passive external waits
+- background daemon continuity should reduce active operator-equivalent burn,
+  not hide it
 
 ## Account-Backed Calibration Evidence
 

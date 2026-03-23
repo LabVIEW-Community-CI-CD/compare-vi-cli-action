@@ -79,6 +79,9 @@
     "benchmarkMetricCode": {
       "type": "string",
       "enum": [
+        "rollingAverageBlendedUsdPerIssue",
+        "currentActiveWindowAverageBlendedUsdPerIssue",
+        "latestTrailingOperationalWindowAverageBlendedUsdPerIssue",
         "rollingAverageUsdPerIssue",
         "currentActiveWindowAverageUsdPerIssue",
         "latestTrailingOperationalWindowAverageUsdPerIssue"
