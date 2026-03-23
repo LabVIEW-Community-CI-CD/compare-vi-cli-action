@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 
 import {
   classifyPullRequestWork,
@@ -86,6 +86,7 @@ test('runDeliveryTurnBroker updates a behind PR branch before waiting on review'
         schema: 'priority/delivery-agent-policy@v1',
         backlogAuthority: 'issues',
         implementationRemote: 'origin',
+        copilotReviewStrategy: 'off',
         autoSlice: true,
         autoMerge: true,
         maxActiveCodingLanes: 1,
@@ -114,6 +115,136 @@ test('runDeliveryTurnBroker updates a behind PR branch before waiting on review'
   assert.equal(brokerResult.outcome, 'branch-updated');
   assert.equal(brokerResult.details.actionType, 'sync-pr-branch');
   assert.equal(brokerResult.details.nextWakeCondition, 'checks-green');
+});
+
+test('runDeliveryTurnBroker refreshes queue authority during waiting-ci watch turns', async (t) => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-watch-pr-queue-refresh-'));
+  t.after(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  const readyValidationDir = path.join(repoRoot, 'tests', 'results', '_agent', 'runtime', 'ready-validation-clearance');
+  await mkdir(readyValidationDir, { recursive: true });
+  await writeFile(
+    path.join(
+      readyValidationDir,
+      'LabVIEW-Community-CI-CD-compare-vi-cli-action-pr-1868.json'
+    ),
+    `${JSON.stringify(
+      {
+        schema: 'priority/ready-validation-clearance@v1',
+        generatedAt: '2026-03-23T05:20:00.000Z',
+        repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        pullRequestNumber: 1868,
+        pullRequestUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1868',
+        readyHeadSha: '178a20cfcb43c89b55c2ddb291a039f97fd2ae1e',
+        currentHeadSha: '178a20cfcb43c89b55c2ddb291a039f97fd2ae1e',
+        status: 'current',
+        reason: 'PR remains in ready-validation on the same cleared head.'
+      },
+      null,
+      2
+    )}\n`,
+    'utf8'
+  );
+
+  const commandLog = [];
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-ci',
+      objective: {
+        summary: 'Advance issue #1867'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-ci',
+          pullRequest: {
+            number: 1868,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1868',
+            isDraft: false,
+            headRefOid: '178a20cfcb43c89b55c2ddb291a039f97fd2ae1e',
+            mergeStateStatus: 'BLOCKED',
+            copilotReviewSignal: {
+              actionableCommentCount: 0,
+              actionableThreadCount: 0,
+              hasCurrentHeadReview: true
+            },
+            copilotReviewWorkflow: {
+              status: 'COMPLETED',
+              conclusion: 'SUCCESS'
+            },
+            checks: {
+              blockerClass: 'ci'
+            }
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: []
+      }),
+      runCommandFn: async (command, args, options) => {
+        commandLog.push({ command, args, cwd: options?.cwd || '' });
+        if (command === 'node' && args[0] === 'tools/priority/queue-refresh-pr.mjs') {
+          const summaryPath = args[args.indexOf('--summary-path') + 1];
+          await mkdir(path.dirname(summaryPath), { recursive: true });
+          await writeFile(
+            summaryPath,
+            `${JSON.stringify(
+              {
+                schema: 'priority/queue-refresh-receipt@v1',
+                initial: {
+                  state: 'OPEN',
+                  mergeStateStatus: 'UNSTABLE',
+                  isInMergeQueue: true,
+                  autoMergeEnabled: false,
+                  mergedAt: null
+                },
+                summary: {
+                  status: 'dry-run',
+                  reason: 'dry-run'
+                },
+                requeue: {
+                  promotionStatus: null
+                }
+              },
+              null,
+              2
+            )}\n`,
+            'utf8'
+          );
+          return {
+            status: 0,
+            stdout: '',
+            stderr: ''
+          };
+        }
+        throw new Error(`Unexpected command: ${command} ${args.join(' ')}`);
+      }
+    }
+  });
+
+  assert.equal(brokerResult.outcome, 'waiting-ci');
+  assert.equal(brokerResult.details.actionType, 'watch-pr');
+  assert.equal(brokerResult.details.nextWakeCondition, 'merge-queue-progress');
+  assert.ok(
+    brokerResult.details.helperCallsExecuted.some((entry) =>
+      entry.includes('tools/priority/queue-refresh-pr.mjs')
+    )
+  );
+  assert.equal(commandLog.length, 1);
 });
 
 test('runDeliveryTurnBroker falls back to local git sync when gh pr update-branch fails', async (t) => {

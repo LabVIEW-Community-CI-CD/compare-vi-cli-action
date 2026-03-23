@@ -140,6 +140,66 @@ function createMergeSyncSummary(overrides = {}) {
   };
 }
 
+function createQueueRefreshReceipt(overrides = {}) {
+  return {
+    schema: 'priority/queue-refresh-receipt@v1',
+    operation: 'dequeue-update-requeue',
+    generatedAt: '2026-03-23T05:27:31.683Z',
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    pr: 1864,
+    dryRun: true,
+    baseRefName: 'develop',
+    headRefName: 'issue/upstream-1863-pr-create-merge-sync-handoff',
+    headRepositorySlug: 'svelderrainruiz/compare-vi-cli-action',
+    headRemote: 'origin',
+    queueManagedBase: true,
+    initial: {
+      state: 'OPEN',
+      mergeStateStatus: 'UNSTABLE',
+      isInMergeQueue: true,
+      autoMergeEnabled: false,
+      mergedAt: null,
+      headRefOid: '8ea4bbe3d9ea2ed1f268f52d3c32d7424d0ce76b',
+      currentBranch: 'issue/upstream-1869-merge-queue-refresh'
+    },
+    dequeue: {
+      attempted: true,
+      status: 'dry-run',
+      reason: 'dry-run',
+      helperCallsExecuted: [],
+      pullRequestId: 'PR_kwDOP5zZjs7Mks-1',
+      pollAttemptsUsed: 0,
+      finalIsInMergeQueue: true
+    },
+    refresh: {
+      attempted: true,
+      status: 'dry-run',
+      reason: 'dry-run',
+      helperCallsExecuted: [],
+      mode: 'rebase',
+      baseRemoteRef: 'upstream/develop',
+      forcePushTarget: 'origin:issue/upstream-1863-pr-create-merge-sync-handoff',
+      rebasedHeadSha: null
+    },
+    requeue: {
+      attempted: true,
+      status: 'dry-run',
+      reason: 'dry-run',
+      helperCallsExecuted: [],
+      mergeSummaryPath: 'tests/results/_agent/queue/merge-sync-1864.json',
+      promotionStatus: null,
+      materialized: null,
+      finalMode: null,
+      finalReason: null
+    },
+    summary: {
+      status: 'dry-run',
+      reason: 'dry-run'
+    },
+    ...overrides
+  };
+}
+
 test('parseArgs keeps governor summary defaults and accepts overrides', () => {
   const parsed = parseArgs([
     'node',
@@ -268,4 +328,49 @@ test('runAutonomousGovernorSummary prefers merge-sync queue evidence when it pro
   assert.equal(report.summary.queueHandoffStatus, 'merge-queue-progress');
   assert.equal(report.summary.queueHandoffNextWakeCondition, 'merge-queue-progress');
   assert.equal(report.summary.queueAuthoritySource, 'merge-sync-summary');
+});
+
+test('runAutonomousGovernorSummary prefers fresher queue-refresh evidence over older merge-sync state', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-queue-refresh-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'wake-lifecycle.json'), createWakeLifecycle());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'capital', 'wake-investment-accounting.json'),
+    createWakeInvestmentAccounting()
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState()
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'LabVIEW-Community-CI-CD-compare-vi-cli-action-pr-1864-queue-admission.json'),
+    createMergeSyncSummary({
+      promotion: {
+        status: 'already-auto-merge-enabled',
+        final: {
+          state: 'OPEN',
+          mergeStateStatus: 'BLOCKED',
+          isInMergeQueue: false,
+          autoMergeEnabled: true,
+          mergedAt: null
+        }
+      }
+    })
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'queue', 'queue-refresh-1864.json'),
+    createQueueRefreshReceipt()
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.compare.queueAuthority.status, 'merge-queue-progress');
+  assert.equal(report.compare.queueAuthority.source, 'queue-refresh-summary');
+  assert.equal(report.compare.queueAuthority.summaryPath, 'tests/results/_agent/queue/queue-refresh-1864.json');
+  assert.equal(report.compare.queueAuthority.mergeStateStatus, 'UNSTABLE');
+  assert.equal(report.compare.queueAuthority.isInMergeQueue, true);
+  assert.equal(report.summary.queueHandoffStatus, 'merge-queue-progress');
+  assert.equal(report.summary.queueAuthoritySource, 'queue-refresh-summary');
 });

@@ -122,8 +122,27 @@ function resolveMergeSyncSummaryCandidatePaths(repoRoot, repository, prNumber) {
   return Array.from(new Set([...directCandidates, ...discovered]));
 }
 
+function resolveQueueRefreshReceiptCandidatePaths(repoRoot, prNumber) {
+  if (!Number.isInteger(prNumber) || prNumber <= 0) {
+    return [];
+  }
+  return [path.join(repoRoot, 'tests', 'results', '_agent', 'queue', `queue-refresh-${prNumber}.json`)];
+}
+
 function resolveLatestMergeSyncSummaryPath(repoRoot, repository, prNumber) {
   const candidates = resolveMergeSyncSummaryCandidatePaths(repoRoot, repository, prNumber)
+    .filter((candidate) => fs.existsSync(candidate))
+    .map((candidate) => ({
+      path: candidate,
+      mtimeMs: fs.statSync(candidate).mtimeMs
+    }))
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+
+  return candidates[0]?.path || null;
+}
+
+function resolveLatestQueueRefreshReceiptPath(repoRoot, prNumber) {
+  const candidates = resolveQueueRefreshReceiptCandidatePaths(repoRoot, prNumber)
     .filter((candidate) => fs.existsSync(candidate))
     .map((candidate) => ({
       path: candidate,
@@ -341,6 +360,11 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
 
 function deriveQueueAuthority({ repoRoot, repository, deliveryRuntime, readOptionalJsonFn }) {
   const prNumber = parsePullRequestNumber(deliveryRuntime.prUrl);
+  const queueRefreshReceiptPath = resolveLatestQueueRefreshReceiptPath(repoRoot, prNumber);
+  const queueRefreshReceipt = queueRefreshReceiptPath ? readOptionalJsonFn(queueRefreshReceiptPath) : null;
+  if (queueRefreshReceipt?.schema && queueRefreshReceipt.schema !== 'priority/queue-refresh-receipt@v1') {
+    throw new Error(`Expected priority/queue-refresh-receipt@v1 at ${queueRefreshReceiptPath}.`);
+  }
   const mergeSyncSummaryPath = resolveLatestMergeSyncSummaryPath(repoRoot, repository, prNumber);
   const mergeSyncSummary = mergeSyncSummaryPath ? readOptionalJsonFn(mergeSyncSummaryPath) : null;
   if (mergeSyncSummary?.schema && mergeSyncSummary.schema !== 'priority/sync-merge@v1') {
@@ -354,27 +378,68 @@ function deriveQueueAuthority({ repoRoot, repository, deliveryRuntime, readOptio
   let mergeStateStatus = null;
   let isInMergeQueue = false;
   let autoMergeEnabled = false;
+  let summaryPath = null;
 
-  if (mergeSyncSummary) {
-    promotionStatus = asOptional(mergeSyncSummary?.promotion?.status);
-    mergeStateStatus =
-      asOptional(mergeSyncSummary?.promotion?.final?.mergeStateStatus) ||
-      asOptional(mergeSyncSummary?.prState?.mergeStateStatus);
-    isInMergeQueue = mergeSyncSummary?.promotion?.final?.isInMergeQueue === true;
-    autoMergeEnabled = mergeSyncSummary?.promotion?.final?.autoMergeEnabled === true;
+  if (queueRefreshReceipt) {
+    promotionStatus = asOptional(queueRefreshReceipt?.requeue?.promotionStatus);
+    mergeStateStatus = asOptional(queueRefreshReceipt?.initial?.mergeStateStatus);
+    isInMergeQueue = queueRefreshReceipt?.initial?.isInMergeQueue === true;
+    autoMergeEnabled = queueRefreshReceipt?.initial?.autoMergeEnabled === true;
+    summaryPath = queueRefreshReceiptPath;
 
-    if (['merged', 'already-merged'].includes(promotionStatus) || normalizeUpper(mergeSyncSummary?.promotion?.final?.state) === 'MERGED') {
+    if (asOptional(queueRefreshReceipt?.initial?.mergedAt)) {
       status = 'queue-settled';
       nextWakeCondition = 'queue-settled';
-      source = 'merge-sync-summary';
-    } else if (isInMergeQueue || ['queued', 'already-queued'].includes(promotionStatus)) {
+      source = 'queue-refresh-summary';
+    } else if (isInMergeQueue) {
       status = 'merge-queue-progress';
       nextWakeCondition = 'merge-queue-progress';
-      source = 'merge-sync-summary';
-    } else if (autoMergeEnabled || ['auto-merge-enabled', 'already-auto-merge-enabled'].includes(promotionStatus)) {
+      source = 'queue-refresh-summary';
+    } else if (autoMergeEnabled) {
       status = 'checks-pending';
       nextWakeCondition = 'checks-green';
-      source = 'merge-sync-summary';
+      source = 'queue-refresh-summary';
+    } else if (asOptional(queueRefreshReceipt?.summary?.reason) === 'not-in-merge-queue') {
+      status = 'checks-pending';
+      nextWakeCondition = 'checks-green';
+      source = 'queue-refresh-summary';
+    }
+  }
+
+  if (mergeSyncSummary) {
+    const mergeSyncPromotionStatus = asOptional(mergeSyncSummary?.promotion?.status);
+    const mergeSyncMergeStateStatus =
+      asOptional(mergeSyncSummary?.promotion?.final?.mergeStateStatus) ||
+      asOptional(mergeSyncSummary?.prState?.mergeStateStatus);
+    const mergeSyncIsInQueue = mergeSyncSummary?.promotion?.final?.isInMergeQueue === true;
+    const mergeSyncAutoMergeEnabled = mergeSyncSummary?.promotion?.final?.autoMergeEnabled === true;
+
+    if (source !== 'queue-refresh-summary') {
+      promotionStatus = mergeSyncPromotionStatus;
+      mergeStateStatus = mergeSyncMergeStateStatus;
+      isInMergeQueue = mergeSyncIsInQueue;
+      autoMergeEnabled = mergeSyncAutoMergeEnabled;
+      summaryPath = mergeSyncSummaryPath;
+
+      if (
+        ['merged', 'already-merged'].includes(mergeSyncPromotionStatus) ||
+        normalizeUpper(mergeSyncSummary?.promotion?.final?.state) === 'MERGED'
+      ) {
+        status = 'queue-settled';
+        nextWakeCondition = 'queue-settled';
+        source = 'merge-sync-summary';
+      } else if (mergeSyncIsInQueue || ['queued', 'already-queued'].includes(mergeSyncPromotionStatus)) {
+        status = 'merge-queue-progress';
+        nextWakeCondition = 'merge-queue-progress';
+        source = 'merge-sync-summary';
+      } else if (
+        mergeSyncAutoMergeEnabled ||
+        ['auto-merge-enabled', 'already-auto-merge-enabled'].includes(mergeSyncPromotionStatus)
+      ) {
+        status = 'checks-pending';
+        nextWakeCondition = 'checks-green';
+        source = 'merge-sync-summary';
+      }
     }
   }
 
@@ -382,7 +447,7 @@ function deriveQueueAuthority({ repoRoot, repository, deliveryRuntime, readOptio
     status,
     source,
     nextWakeCondition,
-    summaryPath: mergeSyncSummaryPath ? toRelative(repoRoot, mergeSyncSummaryPath) : null,
+    summaryPath: summaryPath ? toRelative(repoRoot, summaryPath) : null,
     promotionStatus,
     mergeStateStatus,
     isInMergeQueue,
