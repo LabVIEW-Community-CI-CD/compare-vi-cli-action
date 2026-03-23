@@ -216,6 +216,9 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
           codePathState = 'ready'
           signingCapabilityState = 'missing'
           publicationState = 'tag-created-not-pushed'
+          publishedBundleState = 'producer-native-incomplete'
+          publishedBundleReleaseTag = 'v0.6.3-tools.14'
+          publishedBundleAuthoritativeConsumerPin = $null
           externalBlocker = 'workflow-signing-secret-missing'
           blockerCount = 1
         }
@@ -299,6 +302,9 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         releaseSigningStatus = 'warn'
         releaseSigningExternalBlocker = 'workflow-signing-secret-missing'
         releasePublicationState = 'tag-created-not-pushed'
+        releasePublishedBundleState = 'producer-native-incomplete'
+        releasePublishedBundleReleaseTag = 'v0.6.3-tools.14'
+        releasePublishedBundleAuthoritativeConsumerPin = $null
         queueHandoffStatus = 'none'
         queueHandoffNextWakeCondition = $null
         queueHandoffPrUrl = $null
@@ -313,6 +319,8 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match 'next\s+: continue-compare-governance-work'
     $output | Should -Match 'release\s+: warn'
     $output | Should -Match 'blocker\s+: workflow-signing-secret-missing'
+    $output | Should -Match 'bundle\s+: producer-native-incomplete'
+    $output | Should -Match 'bundleTag: v0.6.3-tools.14'
     $global:HandoffAutonomousGovernorSummary.schema | Should -Be 'priority/autonomous-governor-summary-report@v1'
 
     Remove-Variable -Name HandoffAutonomousGovernorSummary -Scope Global -ErrorAction SilentlyContinue
@@ -359,6 +367,9 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
             source = 'compare-release-signing-readiness'
             releaseSigningStatus = 'warn'
             releasePublicationState = 'unobserved'
+            publishedBundleState = 'producer-native-incomplete'
+            publishedBundleReleaseTag = 'v0.6.3-tools.14'
+            publishedBundleAuthoritativeConsumerPin = $null
             signingCapabilityState = 'missing'
             externalBlocker = 'workflow-signing-secret-missing'
             detail = 'awaiting-compare-release-signing-blocker-clear'
@@ -384,6 +395,9 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         viHistoryDistributorDependencyTargetRepository = 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
         viHistoryDistributorDependencyExternalBlocker = 'workflow-signing-secret-missing'
         viHistoryDistributorDependencyPublicationState = 'unobserved'
+        viHistoryDistributorDependencyPublishedBundleState = 'producer-native-incomplete'
+        viHistoryDistributorDependencyPublishedBundleReleaseTag = 'v0.6.3-tools.14'
+        viHistoryDistributorDependencyAuthoritativeConsumerPin = $null
         portfolioWakeConditionCount = 3
         triggeredWakeConditions = @(
           'compare-queue-not-empty',
@@ -401,6 +415,8 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match 'vhist\s+: blocked'
     $output | Should -Match 'vhistRepo: LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
     $output | Should -Match 'vhistBlk : workflow-signing-secret-missing'
+    $output | Should -Match 'vhistPub : producer-native-incomplete'
+    $output | Should -Match 'vhistTag : v0.6.3-tools.14'
     $global:HandoffAutonomousGovernorPortfolioSummary.schema | Should -Be 'priority/autonomous-governor-portfolio-summary-report@v1'
 
     Remove-Variable -Name HandoffAutonomousGovernorPortfolioSummary -Scope Global -ErrorAction SilentlyContinue

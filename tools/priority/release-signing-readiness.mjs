@@ -21,6 +21,13 @@ export const DEFAULT_RELEASE_CONDUCTOR_REPORT_PATH = path.join(
   'release',
   'release-conductor-report.json'
 );
+export const DEFAULT_RELEASE_PUBLISHED_BUNDLE_OBSERVER_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'release',
+  'release-published-bundle-observer.json'
+);
 export const REQUIRED_SIGNING_SECRET = 'RELEASE_TAG_SIGNING_PRIVATE_KEY';
 export const OPTIONAL_SIGNING_SECRET = 'RELEASE_TAG_SIGNING_PUBLIC_KEY';
 export const REQUIRED_SIGNING_SCOPE = 'admin:ssh_signing_key';
@@ -108,6 +115,7 @@ export function parseArgs(argv = process.argv) {
     repo: null,
     outputPath: DEFAULT_OUTPUT_PATH,
     releaseConductorReportPath: DEFAULT_RELEASE_CONDUCTOR_REPORT_PATH,
+    releasePublishedBundleObserverPath: DEFAULT_RELEASE_PUBLISHED_BUNDLE_OBSERVER_PATH,
     help: false
   };
 
@@ -117,7 +125,13 @@ export function parseArgs(argv = process.argv) {
       options.help = true;
       continue;
     }
-    if (token === '--repo-root' || token === '--repo' || token === '--output' || token === '--release-conductor-report') {
+    if (
+      token === '--repo-root' ||
+      token === '--repo' ||
+      token === '--output' ||
+      token === '--release-conductor-report' ||
+      token === '--release-published-bundle-observer'
+    ) {
       const next = args[index + 1];
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
@@ -126,6 +140,7 @@ export function parseArgs(argv = process.argv) {
       if (token === '--repo') options.repo = next;
       if (token === '--output') options.outputPath = next;
       if (token === '--release-conductor-report') options.releaseConductorReportPath = next;
+      if (token === '--release-published-bundle-observer') options.releasePublishedBundleObserverPath = next;
       index += 1;
       continue;
     }
@@ -144,6 +159,7 @@ function printHelp() {
     '  --repo <owner/repo>                Repository slug override.',
     `  --output <path>                    Output JSON path (default: ${DEFAULT_OUTPUT_PATH}).`,
     `  --release-conductor-report <path>  Release conductor report path (default: ${DEFAULT_RELEASE_CONDUCTOR_REPORT_PATH}).`,
+    `  --release-published-bundle-observer <path> Published bundle observer path (default: ${DEFAULT_RELEASE_PUBLISHED_BUNDLE_OBSERVER_PATH}).`,
     '  -h, --help                         Show help.'
   ].forEach((line) => console.log(line));
 }
@@ -242,6 +258,68 @@ function derivePublicationState(conductorReport) {
   };
 }
 
+function derivePublishedBundleObserverState(observerReport) {
+  if (!observerReport) {
+    return {
+      status: 'unobserved',
+      releaseTag: null,
+      assetName: null,
+      publishedAt: null,
+      authoritativeConsumerPin: null
+    };
+  }
+
+  return {
+    status: asOptional(observerReport?.summary?.status) || 'unobserved',
+    releaseTag: asOptional(observerReport?.summary?.releaseTag) || asOptional(observerReport?.selection?.releaseTag),
+    assetName: asOptional(observerReport?.summary?.assetName) || asOptional(observerReport?.selection?.assetName),
+    publishedAt: asOptional(observerReport?.summary?.publishedAt) || asOptional(observerReport?.selection?.publishedAt),
+    authoritativeConsumerPin: asOptional(observerReport?.summary?.authoritativeConsumerPin)
+  };
+}
+
+function createPublishedBundleBlocker(publishedBundleObserver) {
+  switch (publishedBundleObserver.status) {
+    case 'release-unobserved':
+      return {
+        code: 'published-bundle-release-unobserved',
+        message: 'No published CompareVI.Tools release could be observed yet for the producer-native vi-history distributor contract.'
+      };
+    case 'release-not-found':
+      return {
+        code: 'published-bundle-release-not-found',
+        message: 'The requested CompareVI.Tools release tag was not found on GitHub, so producer-native vi-history publication is still unavailable.'
+      };
+    case 'asset-missing':
+      return {
+        code: 'published-bundle-asset-missing',
+        message: 'The observed CompareVI.Tools release does not publish a CompareVI.Tools zip asset yet.'
+      };
+    case 'download-failed':
+      return {
+        code: 'published-bundle-download-failed',
+        message: 'The published CompareVI.Tools asset could not be downloaded for producer-native vi-history verification.'
+      };
+    case 'extract-failed':
+      return {
+        code: 'published-bundle-extract-failed',
+        message: 'The published CompareVI.Tools asset could not be extracted for producer-native vi-history verification.'
+      };
+    case 'metadata-missing':
+      return {
+        code: 'published-bundle-metadata-missing',
+        message: 'The published CompareVI.Tools asset is missing comparevi-tools-release.json, so the producer-native vi-history contract is not published yet.'
+      };
+    case 'producer-native-incomplete':
+      return {
+        code: 'published-bundle-producer-native-incomplete',
+        message: 'The published CompareVI.Tools asset exists, but it is still missing the producer-native vi-history consumer contract.'
+      };
+    default:
+      return null;
+  }
+}
+
 export async function runReleaseSigningReadiness(options = {}, deps = {}) {
   const repoRoot = path.resolve(options.repoRoot ?? process.cwd());
   const environment = deps.environment ?? process.env;
@@ -250,6 +328,10 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
   const conductorReportPath = path.resolve(
     repoRoot,
     options.releaseConductorReportPath ?? DEFAULT_RELEASE_CONDUCTOR_REPORT_PATH
+  );
+  const publishedBundleObserverPath = path.resolve(
+    repoRoot,
+    options.releasePublishedBundleObserverPath ?? DEFAULT_RELEASE_PUBLISHED_BUNDLE_OBSERVER_PATH
   );
   const runGhJsonFn = deps.runGhJsonFn ?? runGhJson;
   const readOptionalJsonFn = deps.readOptionalJsonFn ?? readOptionalJson;
@@ -321,7 +403,17 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
   }
 
   const conductorReport = readOptionalJsonFn(conductorReportPath);
+  const publishedBundleObserverReport = readOptionalJsonFn(publishedBundleObserverPath);
+  if (
+    publishedBundleObserverReport &&
+    publishedBundleObserverReport.schema !== 'priority/release-published-bundle-observer-report@v1'
+  ) {
+    throw new Error(
+      `Expected priority/release-published-bundle-observer-report@v1 at ${publishedBundleObserverPath}.`
+    );
+  }
   const publication = derivePublicationState(conductorReport);
+  const publishedBundleObserver = derivePublishedBundleObserverState(publishedBundleObserverReport);
   const blockers = [];
 
   if (!workflowContract.ready) {
@@ -369,6 +461,11 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
     });
   }
 
+  const publishedBundleBlocker = createPublishedBundleBlocker(publishedBundleObserver);
+  if (publishedBundleBlocker) {
+    blockers.push(publishedBundleBlocker);
+  }
+
   const externalBlockerPriority = [
     'workflow-signing-secret-missing',
     'workflow-signing-secret-unverifiable',
@@ -391,6 +488,9 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
     signingAuthorityState: signingAuthority.status,
     releaseConductorApplyState: releaseConductorApply.status,
     publicationState: publication.status,
+    publishedBundleState: publishedBundleObserver.status,
+    publishedBundleReleaseTag: publishedBundleObserver.releaseTag,
+    publishedBundleAuthoritativeConsumerPin: publishedBundleObserver.authoritativeConsumerPin,
     externalBlocker: externalBlockerPriority.find((code) => blockers.some((entry) => entry.code === code)) ?? null,
     blockerCount: blockers.length
   };
@@ -400,7 +500,8 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
     generatedAt: now.toISOString(),
     repository,
     inputs: {
-      releaseConductorReportPath: path.relative(repoRoot, conductorReportPath).replace(/\\/g, '/')
+      releaseConductorReportPath: path.relative(repoRoot, conductorReportPath).replace(/\\/g, '/'),
+      releasePublishedBundleObserverPath: path.relative(repoRoot, publishedBundleObserverPath).replace(/\\/g, '/')
     },
     workflowContract: {
       ready: workflowContract.ready,
@@ -411,6 +512,7 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
     releaseConductorApply,
     signingAuthority,
     publication,
+    publishedBundleObserver,
     summary,
     blockers
   };

@@ -62,6 +62,8 @@ test('handoff entrypoint contract is wired into automation and operator docs', (
   assert.match(printHandoff, /continuity-summary\.json/);
   assert.match(printHandoff, /handoff-monitoring-mode\.mjs/);
   assert.match(printHandoff, /monitoring-mode\.json/);
+  assert.match(printHandoff, /release-published-bundle-observer\.mjs/);
+  assert.match(printHandoff, /release-published-bundle-observer\.json/);
   assert.match(printHandoff, /release-signing-readiness\.mjs/);
   assert.match(printHandoff, /release-signing-readiness\.json/);
   assert.match(printHandoff, /autonomous-governor-summary\.mjs/);

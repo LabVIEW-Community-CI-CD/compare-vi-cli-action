@@ -347,6 +347,9 @@ function deriveReleaseSigningReadiness(releaseSigningReadinessReport) {
       signingAuthorityState: null,
       releaseConductorApplyState: null,
       publicationState: null,
+      publishedBundleState: null,
+      publishedBundleReleaseTag: null,
+      publishedBundleAuthoritativeConsumerPin: null,
       externalBlocker: null,
       blockerCount: 0
     };
@@ -359,6 +362,11 @@ function deriveReleaseSigningReadiness(releaseSigningReadinessReport) {
     signingAuthorityState: asOptional(releaseSigningReadinessReport?.summary?.signingAuthorityState),
     releaseConductorApplyState: asOptional(releaseSigningReadinessReport?.summary?.releaseConductorApplyState),
     publicationState: asOptional(releaseSigningReadinessReport?.summary?.publicationState),
+    publishedBundleState: asOptional(releaseSigningReadinessReport?.summary?.publishedBundleState),
+    publishedBundleReleaseTag: asOptional(releaseSigningReadinessReport?.summary?.publishedBundleReleaseTag),
+    publishedBundleAuthoritativeConsumerPin: asOptional(
+      releaseSigningReadinessReport?.summary?.publishedBundleAuthoritativeConsumerPin
+    ),
     externalBlocker: asOptional(releaseSigningReadinessReport?.summary?.externalBlocker),
     blockerCount: Number.isInteger(releaseSigningReadinessReport?.summary?.blockerCount)
       ? releaseSigningReadinessReport.summary.blockerCount
@@ -718,6 +726,9 @@ function buildReport({
       releaseConductorApplyState: releaseSigningReadiness.releaseConductorApplyState,
       releaseSigningExternalBlocker: releaseSigningReadiness.externalBlocker,
       releasePublicationState: releaseSigningReadiness.publicationState,
+      releasePublishedBundleState: releaseSigningReadiness.publishedBundleState,
+      releasePublishedBundleReleaseTag: releaseSigningReadiness.publishedBundleReleaseTag,
+      releasePublishedBundleAuthoritativeConsumerPin: releaseSigningReadiness.publishedBundleAuthoritativeConsumerPin,
       queueHandoffStatus: queueAuthority.status,
       queueHandoffNextWakeCondition: queueAuthority.nextWakeCondition,
       queueHandoffPrUrl: queueAuthority.prUrl,

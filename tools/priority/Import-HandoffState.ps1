@@ -282,6 +282,12 @@ if ($governorSummary) {
     if ($governorSummary.summary.PSObject.Properties['releaseSigningExternalBlocker'] -and $governorSummary.summary.releaseSigningExternalBlocker) {
       Write-Host ("  blocker  : {0}" -f (Format-NullableValue $governorSummary.summary.releaseSigningExternalBlocker))
     }
+    if ($governorSummary.summary.PSObject.Properties['releasePublishedBundleState'] -and $governorSummary.summary.releasePublishedBundleState) {
+      Write-Host ("  bundle   : {0}" -f (Format-NullableValue $governorSummary.summary.releasePublishedBundleState))
+    }
+    if ($governorSummary.summary.PSObject.Properties['releasePublishedBundleReleaseTag'] -and $governorSummary.summary.releasePublishedBundleReleaseTag) {
+      Write-Host ("  bundleTag: {0}" -f (Format-NullableValue $governorSummary.summary.releasePublishedBundleReleaseTag))
+    }
   }
   if ($governorSummary.summary.nextOwnerRepository) {
     Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governorSummary.summary.nextOwnerRepository))
@@ -317,6 +323,12 @@ if ($governorPortfolioSummary) {
     }
     if ($governorPortfolioSummary.summary.PSObject.Properties['viHistoryDistributorDependencyExternalBlocker'] -and $governorPortfolioSummary.summary.viHistoryDistributorDependencyExternalBlocker) {
       Write-Host ("  vhistBlk : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.viHistoryDistributorDependencyExternalBlocker))
+    }
+    if ($governorPortfolioSummary.summary.PSObject.Properties['viHistoryDistributorDependencyPublishedBundleState'] -and $governorPortfolioSummary.summary.viHistoryDistributorDependencyPublishedBundleState) {
+      Write-Host ("  vhistPub : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.viHistoryDistributorDependencyPublishedBundleState))
+    }
+    if ($governorPortfolioSummary.summary.PSObject.Properties['viHistoryDistributorDependencyPublishedBundleReleaseTag'] -and $governorPortfolioSummary.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag) {
+      Write-Host ("  vhistTag : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag))
     }
   }
   if ($governorPortfolioSummary.summary.nextOwnerRepository) {

@@ -11,12 +11,13 @@
     "inputs",
     "workflowContract",
     "secretInventory",
-    "releaseConductorApply",
-    "signingAuthority",
-    "publication",
-    "summary",
-    "blockers"
-  ],
+        "releaseConductorApply",
+        "signingAuthority",
+        "publication",
+        "publishedBundleObserver",
+        "summary",
+        "blockers"
+      ],
   "properties": {
     "schema": {
       "const": "priority/release-signing-readiness-report@v1"
@@ -33,10 +34,15 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "releaseConductorReportPath"
+        "releaseConductorReportPath",
+        "releasePublishedBundleObserverPath"
       ],
       "properties": {
         "releaseConductorReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "releasePublishedBundleObserverPath": {
           "type": "string",
           "minLength": 1
         }
@@ -177,6 +183,37 @@
         "targetTag": { "type": ["string", "null"] }
       }
     },
+    "publishedBundleObserver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "releaseTag",
+        "assetName",
+        "publishedAt",
+        "authoritativeConsumerPin"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "unobserved",
+            "release-unobserved",
+            "release-not-found",
+            "asset-missing",
+            "download-failed",
+            "extract-failed",
+            "metadata-missing",
+            "producer-native-incomplete",
+            "producer-native-ready"
+          ]
+        },
+        "releaseTag": { "type": ["string", "null"] },
+        "assetName": { "type": ["string", "null"] },
+        "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+        "authoritativeConsumerPin": { "type": ["string", "null"] }
+      }
+    },
     "summary": {
       "type": "object",
       "additionalProperties": false,
@@ -187,6 +224,9 @@
         "signingAuthorityState",
         "releaseConductorApplyState",
         "publicationState",
+        "publishedBundleState",
+        "publishedBundleReleaseTag",
+        "publishedBundleAuthoritativeConsumerPin",
         "externalBlocker",
         "blockerCount"
       ],
@@ -239,6 +279,26 @@
             "authoritative-publication-successful"
           ]
         },
+        "publishedBundleState": {
+          "type": "string",
+          "enum": [
+            "unobserved",
+            "release-unobserved",
+            "release-not-found",
+            "asset-missing",
+            "download-failed",
+            "extract-failed",
+            "metadata-missing",
+            "producer-native-incomplete",
+            "producer-native-ready"
+          ]
+        },
+        "publishedBundleReleaseTag": {
+          "type": ["string", "null"]
+        },
+        "publishedBundleAuthoritativeConsumerPin": {
+          "type": ["string", "null"]
+        },
         "externalBlocker": {
           "type": [
             "string",
@@ -278,7 +338,14 @@
               "workflow-signing-key-missing",
               "workflow-signing-authority-unverifiable",
               "release-conductor-apply-disabled",
-              "release-conductor-apply-unverifiable"
+              "release-conductor-apply-unverifiable",
+              "published-bundle-release-unobserved",
+              "published-bundle-release-not-found",
+              "published-bundle-asset-missing",
+              "published-bundle-download-failed",
+              "published-bundle-extract-failed",
+              "published-bundle-metadata-missing",
+              "published-bundle-producer-native-incomplete"
             ]
           },
           "message": { "type": "string", "minLength": 1 }

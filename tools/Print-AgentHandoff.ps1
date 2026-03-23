@@ -1293,6 +1293,7 @@ try {
   $templateVerificationSyncScript = Join-Path $repoRoot 'tools' 'priority' 'sync-template-agent-verification-report.mjs'
   $templatePivotGateScript = Join-Path $repoRoot 'tools' 'priority' 'template-pivot-gate.mjs'
   $monitoringModeScript = Join-Path $repoRoot 'tools' 'priority' 'handoff-monitoring-mode.mjs'
+  $releasePublishedBundleObserverScript = Join-Path $repoRoot 'tools' 'priority' 'release-published-bundle-observer.mjs'
   $releaseSigningReadinessScript = Join-Path $repoRoot 'tools' 'priority' 'release-signing-readiness.mjs'
   $governorSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-summary.mjs'
   $governorPortfolioSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-portfolio-summary.mjs'
@@ -1310,6 +1311,7 @@ try {
     $templateVerificationSyncPath = Join-Path $promotionDir 'template-agent-verification-sync.json'
     $templatePivotGatePath = Join-Path $promotionDir 'template-pivot-gate-report.json'
     $releaseConductorReportPath = Join-Path $releaseDir 'release-conductor-report.json'
+    $releasePublishedBundleObserverPath = Join-Path $releaseDir 'release-published-bundle-observer.json'
     $releaseSigningReadinessPath = Join-Path $releaseDir 'release-signing-readiness.json'
     $queueEmptyReportPath = Join-Path $repoRoot 'tests/results/_agent/issue/no-standing-priority.json'
     $entrypointStatusPath = Join-Path $ResultsRoot '_agent/handoff/entrypoint-status.json'
@@ -1351,10 +1353,17 @@ try {
         --output $monitoringModePath | Out-Host
     }
 
+    if (Test-Path -LiteralPath $releasePublishedBundleObserverScript -PathType Leaf) {
+      & $nodeCmd.Source $releasePublishedBundleObserverScript `
+        --repo-root $repoRoot `
+        --output $releasePublishedBundleObserverPath | Out-Host
+    }
+
     if (Test-Path -LiteralPath $releaseSigningReadinessScript -PathType Leaf) {
       & $nodeCmd.Source $releaseSigningReadinessScript `
         --repo-root $repoRoot `
         --release-conductor-report $releaseConductorReportPath `
+        --release-published-bundle-observer $releasePublishedBundleObserverPath `
         --output $releaseSigningReadinessPath | Out-Host
     }
 
@@ -1538,6 +1547,12 @@ try {
       if ($governor.summary.PSObject.Properties['releasePublicationState'] -and $governor.summary.releasePublicationState) {
         Write-Host ("  publish  : {0}" -f (Format-NullableValue $governor.summary.releasePublicationState))
       }
+      if ($governor.summary.PSObject.Properties['releasePublishedBundleState'] -and $governor.summary.releasePublishedBundleState) {
+        Write-Host ("  bundle   : {0}" -f (Format-NullableValue $governor.summary.releasePublishedBundleState))
+      }
+      if ($governor.summary.PSObject.Properties['releasePublishedBundleReleaseTag'] -and $governor.summary.releasePublishedBundleReleaseTag) {
+        Write-Host ("  bundleTag: {0}" -f (Format-NullableValue $governor.summary.releasePublishedBundleReleaseTag))
+      }
     }
     if ($governor.summary.nextOwnerRepository) {
       Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governor.summary.nextOwnerRepository))
@@ -1571,6 +1586,12 @@ try {
         }
         if ($governor.summary.PSObject.Properties['releasePublicationState'] -and $governor.summary.releasePublicationState) {
           $governorLines += ('- Release publication: {0}' -f (Format-NullableValue $governor.summary.releasePublicationState))
+        }
+        if ($governor.summary.PSObject.Properties['releasePublishedBundleState'] -and $governor.summary.releasePublishedBundleState) {
+          $governorLines += ('- Published bundle: {0}' -f (Format-NullableValue $governor.summary.releasePublishedBundleState))
+        }
+        if ($governor.summary.PSObject.Properties['releasePublishedBundleReleaseTag'] -and $governor.summary.releasePublishedBundleReleaseTag) {
+          $governorLines += ('- Published bundle tag: {0}' -f (Format-NullableValue $governor.summary.releasePublishedBundleReleaseTag))
         }
       }
       if ($governor.summary.nextOwnerRepository) {
@@ -1614,6 +1635,12 @@ try {
       if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyExternalBlocker'] -and $portfolio.summary.viHistoryDistributorDependencyExternalBlocker) {
         Write-Host ("  vhistBlk : {0}" -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyExternalBlocker))
       }
+      if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyPublishedBundleState'] -and $portfolio.summary.viHistoryDistributorDependencyPublishedBundleState) {
+        Write-Host ("  vhistPub : {0}" -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyPublishedBundleState))
+      }
+      if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyPublishedBundleReleaseTag'] -and $portfolio.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag) {
+        Write-Host ("  vhistTag : {0}" -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag))
+      }
     }
     if ($portfolio.summary.nextOwnerRepository) {
       Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $portfolio.summary.nextOwnerRepository))
@@ -1643,6 +1670,12 @@ try {
         }
         if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyExternalBlocker'] -and $portfolio.summary.viHistoryDistributorDependencyExternalBlocker) {
           $portfolioLines += ('- VI-history blocker: {0}' -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyExternalBlocker))
+        }
+        if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyPublishedBundleState'] -and $portfolio.summary.viHistoryDistributorDependencyPublishedBundleState) {
+          $portfolioLines += ('- VI-history published bundle: {0}' -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyPublishedBundleState))
+        }
+        if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyPublishedBundleReleaseTag'] -and $portfolio.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag) {
+          $portfolioLines += ('- VI-history published bundle tag: {0}' -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag))
         }
       }
       if ($portfolio.summary.nextOwnerRepository) {
