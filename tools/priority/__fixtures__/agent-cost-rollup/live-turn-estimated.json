@@ -52,6 +52,23 @@
     "sourceReportPath": "tests/results/_agent/runtime/worker-slot-1.json",
     "usageObservedAt": "2026-03-21T18:29:00.000Z"
   },
+  "runtime": {
+    "startedAt": "2026-03-21T18:28:00.000Z",
+    "endedAt": "2026-03-21T18:29:30.000Z",
+    "elapsedSeconds": 90,
+    "elapsedSource": "explicit"
+  },
+  "labor": {
+    "operatorProfilePath": "tools/policy/operator-cost-profile.json",
+    "operatorId": "sergio",
+    "operatorName": "Sergio Velderrain Ruiz",
+    "laborRateUsdPerHour": 250,
+    "currency": "USD",
+    "pricingBasis": "agent-runtime-hour",
+    "amountUsd": 6.25,
+    "blendedTotalUsd": null,
+    "status": "computed"
+  },
   "steering": {
     "operatorIntervened": true,
     "kind": "operator-prompt",

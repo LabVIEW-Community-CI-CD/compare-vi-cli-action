@@ -223,6 +223,9 @@ function determineObservedIssueCost(issueNumber, averageIssueCostScorecard) {
       issueNumber: null,
       stateBucket: null,
       totalUsd: null,
+      operatorLaborUsd: null,
+      operatorLaborMissingTurnCount: null,
+      blendedTotalUsd: null,
       exactUsd: null,
       estimatedUsd: null,
       turnCount: null,
@@ -239,6 +242,9 @@ function determineObservedIssueCost(issueNumber, averageIssueCostScorecard) {
       issueNumber,
       stateBucket: null,
       totalUsd: null,
+      operatorLaborUsd: null,
+      operatorLaborMissingTurnCount: null,
+      blendedTotalUsd: null,
       exactUsd: null,
       estimatedUsd: null,
       turnCount: null,
@@ -264,6 +270,9 @@ function determineObservedIssueCost(issueNumber, averageIssueCostScorecard) {
     issueNumber,
     stateBucket: asOptional(issueEntry.stateBucket),
     totalUsd: coerceNonNegativeNumber(issueEntry.totalUsd),
+    operatorLaborUsd: coerceNonNegativeNumber(issueEntry.operatorLaborUsd),
+    operatorLaborMissingTurnCount: Number.isInteger(issueEntry.operatorLaborMissingTurnCount) ? issueEntry.operatorLaborMissingTurnCount : null,
+    blendedTotalUsd: coerceNonNegativeNumber(issueEntry.blendedTotalUsd),
     exactUsd,
     estimatedUsd,
     turnCount: Number.isInteger(issueEntry.turnCount) ? issueEntry.turnCount : null,
@@ -287,7 +296,9 @@ function selectBenchmark(policy, averageIssueCostScorecard, observedIssueCost) {
     }
   }
   if (policy.allowObservedIssueFallback === true) {
-    const fallbackValue = coerceNonNegativeNumber(observedIssueCost?.totalUsd);
+    const fallbackValue =
+      coerceNonNegativeNumber(observedIssueCost?.blendedTotalUsd) ??
+      coerceNonNegativeNumber(observedIssueCost?.totalUsd);
     if (fallbackValue != null && fallbackValue > 0) {
       return {
         selectedMetricCode: 'observedIssueUsdFallback',
@@ -338,7 +349,9 @@ function determinePaybackEligibility(policy, wakeAdjudication, wakeWorkSynthesis
 
 function determineConfidence(benchmark, observedIssueCost) {
   const hasBenchmark = coerceNonNegativeNumber(benchmark?.selectedBenchmarkUsd) != null;
-  const hasObserved = coerceNonNegativeNumber(observedIssueCost?.totalUsd) != null;
+  const hasObserved =
+    coerceNonNegativeNumber(observedIssueCost?.blendedTotalUsd) != null ||
+    coerceNonNegativeNumber(observedIssueCost?.totalUsd) != null;
   if (!hasBenchmark && !hasObserved) {
     return 'insufficient';
   }
@@ -433,7 +446,11 @@ export function buildWakeInvestmentAccounting({
   }
 
   const paybackTriggerCodes = determinePaybackEligibility(policy, wakeAdjudication, wakeWorkSynthesis);
-  const observedWakeIssueUsd = coerceNonNegativeNumber(observedIssueCost.totalUsd);
+  const observedWakeIssueUsd =
+    coerceNonNegativeNumber(observedIssueCost.blendedTotalUsd) ??
+    coerceNonNegativeNumber(observedIssueCost.totalUsd);
+  const observedCostBasis =
+    coerceNonNegativeNumber(observedIssueCost.blendedTotalUsd) != null ? 'blended' : 'token-only';
   const benchmarkIssueUsd = coerceNonNegativeNumber(benchmarkSelection.selectedBenchmarkUsd);
   const decisionPolicy = policy.decisionAccounting[wakeWorkSynthesis.summary.decision];
   const avoidedIssueBenchmarkUsd =
@@ -498,11 +515,18 @@ export function buildWakeInvestmentAccounting({
       benchmarkSourceKind: benchmarkSelection.benchmarkSourceKind,
       selectedBenchmarkUsd: benchmarkIssueUsd,
       rollingAverageUsdPerIssue: coerceNonNegativeNumber(averageIssueCostScorecard?.summary?.metrics?.rollingAverageUsdPerIssue),
+      rollingAverageBlendedUsdPerIssue: coerceNonNegativeNumber(averageIssueCostScorecard?.summary?.metrics?.rollingAverageBlendedUsdPerIssue),
       currentActiveWindowAverageUsdPerIssue: coerceNonNegativeNumber(
         averageIssueCostScorecard?.summary?.metrics?.currentActiveWindowAverageUsdPerIssue
       ),
+      currentActiveWindowAverageBlendedUsdPerIssue: coerceNonNegativeNumber(
+        averageIssueCostScorecard?.summary?.metrics?.currentActiveWindowAverageBlendedUsdPerIssue
+      ),
       latestTrailingOperationalWindowAverageUsdPerIssue: coerceNonNegativeNumber(
         averageIssueCostScorecard?.summary?.metrics?.latestTrailingOperationalWindowAverageUsdPerIssue
+      ),
+      latestTrailingOperationalWindowAverageBlendedUsdPerIssue: coerceNonNegativeNumber(
+        averageIssueCostScorecard?.summary?.metrics?.latestTrailingOperationalWindowAverageBlendedUsdPerIssue
       )
     },
     observedIssueCost,
@@ -519,9 +543,13 @@ export function buildWakeInvestmentAccounting({
       metrics: {
         benchmarkIssueUsd,
         observedWakeIssueUsd,
+        observedCostBasis,
         observedToBenchmarkRatio,
         avoidedIssueBenchmarkUsd,
         netPaybackUsd,
+        observedOperatorLaborUsd: coerceNonNegativeNumber(observedIssueCost.operatorLaborUsd),
+        observedOperatorLaborMissingTurnCount:
+          Number.isInteger(observedIssueCost.operatorLaborMissingTurnCount) ? observedIssueCost.operatorLaborMissingTurnCount : null,
         exactObservedUsd: coerceNonNegativeNumber(observedIssueCost.exactUsd),
         estimatedObservedUsd: coerceNonNegativeNumber(observedIssueCost.estimatedUsd),
         issueTurnCount: Number.isInteger(observedIssueCost.turnCount) ? observedIssueCost.turnCount : null

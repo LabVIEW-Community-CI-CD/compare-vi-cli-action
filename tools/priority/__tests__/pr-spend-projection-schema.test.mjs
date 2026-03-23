@@ -38,6 +38,10 @@ test('pr-spend-projection schema validates a generated report', () => {
             totalUsd: 0.25,
             exactUsd: 0,
             estimatedUsd: 0.25,
+            operatorLaborSeconds: 60,
+            operatorLaborUsd: 4.166667,
+            operatorLaborMissingTurnCount: 0,
+            blendedTotalUsd: 4.416667,
             totalTokens: 1000,
             estimatedCreditsConsumed: 6.25,
             actualCreditsConsumed: null,
@@ -65,6 +69,8 @@ test('pr-spend-projection schema validates a generated report', () => {
             effectiveReasoningEffort: 'xhigh',
             issueNumber: 1679,
             laneId: 'issue/origin-1679-pr-spend-projection',
+            elapsedSeconds: 60,
+            operatorLaborUsd: 4.166667,
             amountUsd: 0.25
           }
         ]

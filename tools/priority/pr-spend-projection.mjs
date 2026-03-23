@@ -185,10 +185,19 @@ function summarizeGroup(turns, keyBuilder, extraBuilder = null) {
     const existing = map.get(identity.key) ?? {
       ...identity,
       turnCount: 0,
-      amountUsd: 0
+      amountUsd: 0,
+      operatorLaborUsd: 0,
+      operatorLaborMissingTurnCount: 0,
+      blendedTotalUsd: 0
     };
     existing.turnCount += 1;
     existing.amountUsd = roundNumber(existing.amountUsd + Number(turn.amountUsd ?? 0));
+    existing.operatorLaborUsd = roundNumber(existing.operatorLaborUsd + Number(turn.operatorLaborUsd ?? 0));
+    existing.operatorLaborMissingTurnCount += Number(turn.operatorLaborUsd == null ? 1 : 0);
+    existing.blendedTotalUsd =
+      existing.operatorLaborMissingTurnCount === 0
+        ? roundNumber(existing.amountUsd + existing.operatorLaborUsd)
+        : null;
     if (extraBuilder) {
       extraBuilder(existing, turn);
     }
@@ -219,12 +228,16 @@ function buildMarkdown(report) {
     '',
     `- Status: \`${summary.status}\``,
     `- Billing truth: \`${summary.billingTruth}\``,
-    `- Projected total: \`${formatUsd(summary.totalUsd)}\``,
+    `- Token cost: \`${formatUsd(summary.totalUsd)}\``,
+    `- Operator labor (${summary.operatorLaborStatus}): \`${formatUsd(summary.operatorLaborUsd)}\``,
+    `- Known blended total: \`${summary.knownBlendedUsd == null ? 'n/a' : formatUsd(summary.knownBlendedUsd)}\``,
     `- Estimated portion: \`${formatUsd(summary.estimatedUsd)}\``,
     `- Exact portion: \`${formatUsd(summary.exactUsd)}\``,
     `- Observed turns: \`${metrics.totalTurns}\``,
     `- Live turns: \`${metrics.liveTurnCount}\``,
     `- Background turns: \`${metrics.backgroundTurnCount}\``,
+    `- Operator labor seconds: \`${metrics.operatorLaborSeconds}\``,
+    `- Turns missing labor timing: \`${summary.operatorLaborMissingTurnCount}\``,
     `- Invoice turn: \`${invoiceTurn?.invoiceTurnId ?? 'none'}\``,
     `- Funding purpose: \`${invoiceTurn?.fundingPurpose ?? 'unknown'}\``,
     `- Activation state: \`${invoiceTurn?.activationState ?? 'unknown'}\``,
@@ -385,6 +398,11 @@ function buildMetricsFromTurns(turns, unitPriceUsd) {
   const estimatedUsd = roundNumber(estimatedTurns.reduce((sum, turn) => sum + Number(turn.amountUsd ?? 0), 0));
   const totalUsd = roundNumber(exactUsd + estimatedUsd);
   const totalTokens = selectedTurns.reduce((sum, turn) => sum + Number(turn.totalTokens ?? 0), 0);
+  const operatorLaborSeconds = roundNumber(selectedTurns.reduce((sum, turn) => sum + Number(turn.elapsedSeconds ?? 0), 0));
+  const operatorLaborUsd = roundNumber(selectedTurns.reduce((sum, turn) => sum + Number(turn.operatorLaborUsd ?? 0), 0));
+  const operatorLaborMissingTurnCount = selectedTurns.filter((turn) => turn.operatorLaborUsd == null).length;
+  const knownBlendedUsd =
+    operatorLaborMissingTurnCount === 0 ? roundNumber(totalUsd + operatorLaborUsd) : null;
   const liveTurnCount = selectedTurns.filter((turn) => normalizeText(turn?.agentRole) === 'live').length;
   const backgroundTurnCount = selectedTurns.length - liveTurnCount;
   const creditsFromUsd =
@@ -405,6 +423,10 @@ function buildMetricsFromTurns(turns, unitPriceUsd) {
     totalUsd,
     exactUsd,
     estimatedUsd,
+    operatorLaborSeconds,
+    operatorLaborUsd,
+    operatorLaborMissingTurnCount,
+    knownBlendedUsd,
     totalTokens,
     estimatedCreditsConsumed: creditsFromUsd,
     actualCreditsConsumed: exactCredits,
@@ -635,7 +657,16 @@ export function evaluatePrSpendProjection({ costRollup, repo, prContext = null }
       billingTruth,
       totalUsd: roundNumber(metrics.totalUsd),
       exactUsd: roundNumber(metrics.exactUsd),
-      estimatedUsd: roundNumber(metrics.estimatedUsd)
+      estimatedUsd: roundNumber(metrics.estimatedUsd),
+      operatorLaborUsd: roundNumber(metrics.operatorLaborUsd),
+      operatorLaborMissingTurnCount: Number(metrics.operatorLaborMissingTurnCount ?? 0),
+      knownBlendedUsd: metrics.knownBlendedUsd ?? null,
+      operatorLaborStatus:
+        Number(metrics.operatorLaborMissingTurnCount ?? 0) === 0
+          ? 'complete'
+          : metrics.operatorLaborUsd > 0
+            ? 'partial'
+            : 'missing'
     },
     metrics: {
       totalTurns: Number(metrics.totalTurns ?? 0),
@@ -643,6 +674,7 @@ export function evaluatePrSpendProjection({ costRollup, repo, prContext = null }
       backgroundTurnCount: Number(metrics.backgroundTurnCount ?? 0),
       exactTurnCount: Number(metrics.exactTurnCount ?? 0),
       estimatedTurnCount: Number(metrics.estimatedTurnCount ?? 0),
+      operatorLaborSeconds: Number(metrics.operatorLaborSeconds ?? 0),
       totalTokens: Number(metrics.totalTokens ?? 0),
       estimatedCreditsConsumed: metrics.estimatedCreditsConsumed ?? null,
       actualCreditsConsumed: metrics.actualCreditsConsumed ?? null,
@@ -708,6 +740,7 @@ export function runPrSpendProjection(
   let materializationReportPath = null;
   let costRollupMaterialized = false;
   const materializeCostRollup = () => {
+    fs.mkdirSync(path.dirname(path.resolve(DEFAULT_MATERIALIZATION_REPORT_PATH)), { recursive: true });
     const materializationResult = materializeAgentCostRollupFn({
       repoRoot: process.cwd(),
       repo,

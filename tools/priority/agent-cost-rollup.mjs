@@ -243,6 +243,10 @@ function normalizeTurnReceipt(input) {
   const cachedInputTokens = toNonNegativeInteger(payload?.usage?.cachedInputTokens) ?? 0;
   const outputTokens = toNonNegativeInteger(payload?.usage?.outputTokens) ?? 0;
   const totalTokens = toNonNegativeInteger(payload?.usage?.totalTokens) ?? inputTokens + cachedInputTokens + outputTokens;
+  const operatorLaborUsd = toNonNegativeNumber(payload?.labor?.amountUsd);
+  const blendedTotalUsd =
+    toNonNegativeNumber(payload?.labor?.blendedTotalUsd) ??
+    (amountUsd != null && operatorLaborUsd != null ? roundUsd(amountUsd + operatorLaborUsd) : null);
 
   return {
     status: 'valid',
@@ -266,6 +270,17 @@ function normalizeTurnReceipt(input) {
       effectiveModel: normalizeText(payload?.model?.effective) || null,
       requestedReasoningEffort: normalizeReasoningEffort(payload?.model?.requestedReasoningEffort),
       effectiveReasoningEffort: normalizeReasoningEffort(payload?.model?.effectiveReasoningEffort),
+      startedAt: normalizeDateTime(payload?.runtime?.startedAt),
+      endedAt: normalizeDateTime(payload?.runtime?.endedAt),
+      elapsedSeconds: toNonNegativeNumber(payload?.runtime?.elapsedSeconds),
+      elapsedSource: normalizeText(payload?.runtime?.elapsedSource) || null,
+      operatorProfilePath: normalizeText(payload?.labor?.operatorProfilePath) || null,
+      operatorId: normalizeText(payload?.labor?.operatorId) || null,
+      operatorName: normalizeText(payload?.labor?.operatorName) || null,
+      laborRateUsdPerHour: toNonNegativeNumber(payload?.labor?.laborRateUsdPerHour),
+      operatorLaborUsd,
+      blendedTotalUsd,
+      laborStatus: normalizeText(payload?.labor?.status) || null,
       operatorIntervened: payload?.steering?.operatorIntervened === true,
       steeringKind: normalizeText(payload?.steering?.kind) || null,
       steeringSource: normalizeText(payload?.steering?.source) || null,
@@ -790,13 +805,32 @@ function addUsd(map, key, amountUsd) {
   map.set(normalizedKey, roundUsd((map.get(normalizedKey) ?? 0) + (amountUsd ?? 0)) ?? 0);
 }
 
-function materializeBreakdown(countMap, usdMap) {
+function addNullableUsd(map, key, amountUsd) {
+  const normalizedKey = normalizeText(key) || 'unknown';
+  if (amountUsd == null) {
+    return;
+  }
+  map.set(normalizedKey, roundUsd((map.get(normalizedKey) ?? 0) + amountUsd) ?? 0);
+}
+
+function incrementNullableCount(map, key, count = 1) {
+  const normalizedKey = normalizeText(key) || 'unknown';
+  map.set(normalizedKey, (map.get(normalizedKey) ?? 0) + count);
+}
+
+function materializeBreakdown(countMap, usdMap, operatorLaborUsdMap = new Map(), operatorLaborMissingTurnCountMap = new Map()) {
   return [...countMap.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, turnCount]) => ({
       key,
       turnCount,
-      totalUsd: usdMap.get(key) ?? 0
+      totalUsd: usdMap.get(key) ?? 0,
+      operatorLaborUsd: operatorLaborUsdMap.get(key) ?? 0,
+      operatorLaborMissingTurnCount: operatorLaborMissingTurnCountMap.get(key) ?? 0,
+      blendedTotalUsd:
+        (operatorLaborMissingTurnCountMap.get(key) ?? 0) === 0
+          ? roundUsd((usdMap.get(key) ?? 0) + (operatorLaborUsdMap.get(key) ?? 0))
+          : null
     }));
 }
 
@@ -1043,6 +1077,11 @@ export function runAgentCostRollup(options) {
   const totalUsd = sum(validTurns.map((entry) => entry.amountUsd));
   const exactUsd = sum(evaluation.exactTurns.map((entry) => entry.amountUsd));
   const estimatedUsd = sum(evaluation.estimatedTurns.map((entry) => entry.amountUsd));
+  const operatorLaborSeconds = roundUsd(validTurns.reduce((sumValue, entry) => sumValue + (entry.elapsedSeconds ?? 0), 0)) ?? 0;
+  const operatorLaborUsd = sum(validTurns.map((entry) => entry.operatorLaborUsd));
+  const operatorLaborMissingTurnCount = validTurns.filter((entry) => entry.operatorLaborUsd == null).length;
+  const blendedTotalUsd =
+    operatorLaborMissingTurnCount === 0 ? roundUsd(totalUsd + operatorLaborUsd) : null;
   const totalInputTokens = validTurns.reduce((sumValue, entry) => sumValue + (entry.inputTokens ?? 0), 0);
   const totalCachedInputTokens = validTurns.reduce((sumValue, entry) => sumValue + (entry.cachedInputTokens ?? 0), 0);
   const totalOutputTokens = validTurns.reduce((sumValue, entry) => sumValue + (entry.outputTokens ?? 0), 0);
@@ -1063,20 +1102,36 @@ export function runAgentCostRollup(options) {
 
   const byProviderCount = new Map();
   const byProviderUsd = new Map();
+  const byProviderOperatorLaborUsd = new Map();
+  const byProviderOperatorLaborMissingTurnCount = new Map();
   const byModelCount = new Map();
   const byModelUsd = new Map();
+  const byModelOperatorLaborUsd = new Map();
+  const byModelOperatorLaborMissingTurnCount = new Map();
   const byReasoningEffortCount = new Map();
   const byReasoningEffortUsd = new Map();
+  const byReasoningEffortOperatorLaborUsd = new Map();
+  const byReasoningEffortOperatorLaborMissingTurnCount = new Map();
   const byIssueCount = new Map();
   const byIssueUsd = new Map();
+  const byIssueOperatorLaborUsd = new Map();
+  const byIssueOperatorLaborMissingTurnCount = new Map();
   const byLaneCount = new Map();
   const byLaneUsd = new Map();
+  const byLaneOperatorLaborUsd = new Map();
+  const byLaneOperatorLaborMissingTurnCount = new Map();
   const byAgentRoleCount = new Map();
   const byAgentRoleUsd = new Map();
+  const byAgentRoleOperatorLaborUsd = new Map();
+  const byAgentRoleOperatorLaborMissingTurnCount = new Map();
   const byRepositoryCount = new Map();
   const byRepositoryUsd = new Map();
+  const byRepositoryOperatorLaborUsd = new Map();
+  const byRepositoryOperatorLaborMissingTurnCount = new Map();
   const bySteeringCount = new Map();
   const bySteeringUsd = new Map();
+  const bySteeringOperatorLaborUsd = new Map();
+  const bySteeringOperatorLaborMissingTurnCount = new Map();
 
   const rateCards = new Map();
   const sessionIds = new Set();
@@ -1088,24 +1143,41 @@ export function runAgentCostRollup(options) {
   const steeringSources = new Set();
   const operatorSteeringTriggerKinds = new Set();
   const operatorSteeringIssueNumbers = new Set();
+  const operatorProfiles = new Map();
 
   for (const turn of validTurns) {
     incrementCount(byProviderCount, turn.providerId);
     addUsd(byProviderUsd, turn.providerId, turn.amountUsd);
+    addNullableUsd(byProviderOperatorLaborUsd, turn.providerId, turn.operatorLaborUsd);
+    incrementNullableCount(byProviderOperatorLaborMissingTurnCount, turn.providerId, turn.operatorLaborUsd == null ? 1 : 0);
     incrementCount(byModelCount, turn.effectiveModel);
     addUsd(byModelUsd, turn.effectiveModel, turn.amountUsd);
+    addNullableUsd(byModelOperatorLaborUsd, turn.effectiveModel, turn.operatorLaborUsd);
+    incrementNullableCount(byModelOperatorLaborMissingTurnCount, turn.effectiveModel, turn.operatorLaborUsd == null ? 1 : 0);
     incrementCount(byReasoningEffortCount, turn.effectiveReasoningEffort || 'unspecified');
     addUsd(byReasoningEffortUsd, turn.effectiveReasoningEffort || 'unspecified', turn.amountUsd);
+    addNullableUsd(byReasoningEffortOperatorLaborUsd, turn.effectiveReasoningEffort || 'unspecified', turn.operatorLaborUsd);
+    incrementNullableCount(byReasoningEffortOperatorLaborMissingTurnCount, turn.effectiveReasoningEffort || 'unspecified', turn.operatorLaborUsd == null ? 1 : 0);
     incrementCount(byIssueCount, turn.issueNumber != null ? String(turn.issueNumber) : 'unknown');
     addUsd(byIssueUsd, turn.issueNumber != null ? String(turn.issueNumber) : 'unknown', turn.amountUsd);
+    addNullableUsd(byIssueOperatorLaborUsd, turn.issueNumber != null ? String(turn.issueNumber) : 'unknown', turn.operatorLaborUsd);
+    incrementNullableCount(byIssueOperatorLaborMissingTurnCount, turn.issueNumber != null ? String(turn.issueNumber) : 'unknown', turn.operatorLaborUsd == null ? 1 : 0);
     incrementCount(byLaneCount, turn.laneId);
     addUsd(byLaneUsd, turn.laneId, turn.amountUsd);
+    addNullableUsd(byLaneOperatorLaborUsd, turn.laneId, turn.operatorLaborUsd);
+    incrementNullableCount(byLaneOperatorLaborMissingTurnCount, turn.laneId, turn.operatorLaborUsd == null ? 1 : 0);
     incrementCount(byAgentRoleCount, turn.agentRole);
     addUsd(byAgentRoleUsd, turn.agentRole, turn.amountUsd);
+    addNullableUsd(byAgentRoleOperatorLaborUsd, turn.agentRole, turn.operatorLaborUsd);
+    incrementNullableCount(byAgentRoleOperatorLaborMissingTurnCount, turn.agentRole, turn.operatorLaborUsd == null ? 1 : 0);
     incrementCount(byRepositoryCount, turn.repository);
     addUsd(byRepositoryUsd, turn.repository, turn.amountUsd);
+    addNullableUsd(byRepositoryOperatorLaborUsd, turn.repository, turn.operatorLaborUsd);
+    incrementNullableCount(byRepositoryOperatorLaborMissingTurnCount, turn.repository, turn.operatorLaborUsd == null ? 1 : 0);
     incrementCount(bySteeringCount, turn.operatorIntervened ? 'steered' : 'unsteered');
     addUsd(bySteeringUsd, turn.operatorIntervened ? 'steered' : 'unsteered', turn.amountUsd);
+    addNullableUsd(bySteeringOperatorLaborUsd, turn.operatorIntervened ? 'steered' : 'unsteered', turn.operatorLaborUsd);
+    incrementNullableCount(bySteeringOperatorLaborMissingTurnCount, turn.operatorIntervened ? 'steered' : 'unsteered', turn.operatorLaborUsd == null ? 1 : 0);
     if (turn.rateCardId || turn.rateCardSource) {
       const rateCardKey = `${turn.rateCardId || 'unknown'}|${turn.rateCardSource || 'unknown'}`;
       if (!rateCards.has(rateCardKey)) {
@@ -1137,6 +1209,17 @@ export function runAgentCostRollup(options) {
     }
     if (turn.steeringSource) {
       steeringSources.add(turn.steeringSource);
+    }
+    if (turn.operatorId || turn.operatorProfilePath) {
+      const operatorKey = `${turn.operatorId || 'unknown'}|${turn.operatorProfilePath || 'unknown'}`;
+      if (!operatorProfiles.has(operatorKey)) {
+        operatorProfiles.set(operatorKey, {
+          operatorId: turn.operatorId,
+          operatorName: turn.operatorName,
+          operatorProfilePath: turn.operatorProfilePath,
+          laborRateUsdPerHour: turn.laborRateUsdPerHour
+        });
+      }
     }
   }
   for (const event of validOperatorSteeringEvents) {
@@ -1226,6 +1309,10 @@ export function runAgentCostRollup(options) {
         totalUsd,
         exactUsd,
         estimatedUsd,
+        operatorLaborSeconds,
+        operatorLaborUsd,
+        operatorLaborMissingTurnCount,
+        blendedTotalUsd,
         totalInputTokens,
         totalCachedInputTokens,
         totalOutputTokens,
@@ -1264,6 +1351,9 @@ export function runAgentCostRollup(options) {
         steeringKinds: [...steeringKinds].sort(),
         steeringSources: [...steeringSources].sort(),
         operatorSteeringTriggerKinds: [...operatorSteeringTriggerKinds].sort(),
+        operatorProfiles: [...operatorProfiles.values()].sort((left, right) =>
+          `${left.operatorId || ''}|${left.operatorProfilePath || ''}`.localeCompare(`${right.operatorId || ''}|${right.operatorProfilePath || ''}`)
+        ),
         rateCards: [...rateCards.values()].sort((left, right) =>
           `${left.id || ''}|${left.source || ''}`.localeCompare(`${right.id || ''}|${right.source || ''}`)
         ),
@@ -1317,14 +1407,14 @@ export function runAgentCostRollup(options) {
       events: validOperatorSteeringEvents
     },
     breakdown: {
-      byProvider: materializeBreakdown(byProviderCount, byProviderUsd),
-      byModel: materializeBreakdown(byModelCount, byModelUsd),
-      byReasoningEffort: materializeBreakdown(byReasoningEffortCount, byReasoningEffortUsd),
-      byIssue: materializeBreakdown(byIssueCount, byIssueUsd),
-      byLane: materializeBreakdown(byLaneCount, byLaneUsd),
-      byAgentRole: materializeBreakdown(byAgentRoleCount, byAgentRoleUsd),
-      byRepository: materializeBreakdown(byRepositoryCount, byRepositoryUsd),
-      bySteering: materializeBreakdown(bySteeringCount, bySteeringUsd)
+      byProvider: materializeBreakdown(byProviderCount, byProviderUsd, byProviderOperatorLaborUsd, byProviderOperatorLaborMissingTurnCount),
+      byModel: materializeBreakdown(byModelCount, byModelUsd, byModelOperatorLaborUsd, byModelOperatorLaborMissingTurnCount),
+      byReasoningEffort: materializeBreakdown(byReasoningEffortCount, byReasoningEffortUsd, byReasoningEffortOperatorLaborUsd, byReasoningEffortOperatorLaborMissingTurnCount),
+      byIssue: materializeBreakdown(byIssueCount, byIssueUsd, byIssueOperatorLaborUsd, byIssueOperatorLaborMissingTurnCount),
+      byLane: materializeBreakdown(byLaneCount, byLaneUsd, byLaneOperatorLaborUsd, byLaneOperatorLaborMissingTurnCount),
+      byAgentRole: materializeBreakdown(byAgentRoleCount, byAgentRoleUsd, byAgentRoleOperatorLaborUsd, byAgentRoleOperatorLaborMissingTurnCount),
+      byRepository: materializeBreakdown(byRepositoryCount, byRepositoryUsd, byRepositoryOperatorLaborUsd, byRepositoryOperatorLaborMissingTurnCount),
+      bySteering: materializeBreakdown(bySteeringCount, bySteeringUsd, bySteeringOperatorLaborUsd, bySteeringOperatorLaborMissingTurnCount)
     }
   };
 

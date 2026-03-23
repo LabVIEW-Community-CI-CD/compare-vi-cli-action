@@ -34,6 +34,10 @@ function createCostRollupFixture(overrides = {}) {
         totalUsd: 1.23,
         exactUsd: 0.5,
         estimatedUsd: 0.73,
+        operatorLaborSeconds: 180,
+        operatorLaborUsd: 12.5,
+        operatorLaborMissingTurnCount: 0,
+        blendedTotalUsd: 13.73,
         totalTokens: 123456,
         estimatedCreditsConsumed: 30.75,
         actualCreditsConsumed: 12.5,
@@ -68,6 +72,8 @@ function createCostRollupFixture(overrides = {}) {
         effectiveReasoningEffort: 'xhigh',
         issueNumber: 1671,
         laneId: 'issue/origin-1671-account-usage-balance-calibration',
+        elapsedSeconds: 120,
+        operatorLaborUsd: 8.333333,
         amountUsd: 0.83
       },
       {
@@ -78,6 +84,8 @@ function createCostRollupFixture(overrides = {}) {
         effectiveReasoningEffort: 'medium',
         issueNumber: 1679,
         laneId: 'issue/origin-1679-pr-spend-projection',
+        elapsedSeconds: 30,
+        operatorLaborUsd: 2.083333,
         amountUsd: 0.2
       },
       {
@@ -88,6 +96,8 @@ function createCostRollupFixture(overrides = {}) {
         effectiveReasoningEffort: 'medium',
         issueNumber: 1679,
         laneId: 'issue/origin-1679-pr-spend-projection',
+        elapsedSeconds: 30,
+        operatorLaborUsd: 2.083334,
         amountUsd: 0.2
       }
     ],
@@ -142,9 +152,13 @@ test('evaluatePrSpendProjection summarizes spend by role, provider, model, issue
 
   assert.equal(report.summary.status, 'pass');
   assert.equal(report.summary.billingTruth, 'estimated-only');
+  assert.equal(report.summary.operatorLaborUsd, 4.166667);
+  assert.equal(report.summary.knownBlendedUsd, 4.566667);
+  assert.equal(report.summary.operatorLaborStatus, 'complete');
   assert.equal(report.metrics.totalTurns, 2);
   assert.equal(report.metrics.liveTurnCount, 0);
   assert.equal(report.metrics.backgroundTurnCount, 2);
+  assert.equal(report.metrics.operatorLaborSeconds, 60);
   assert.equal(report.breakdown.providers[0].providerId, 'codex-cli');
   assert.deepEqual(
     report.breakdown.models.map((entry) => [entry.effectiveModel, entry.amountUsd]),
@@ -194,6 +208,7 @@ test('evaluatePrSpendProjection falls back to linked issue turns when branch tur
   assert.equal(report.pullRequest.linkedIssueNumber, 1679);
   assert.equal(report.metrics.totalTurns, 1);
   assert.equal(report.summary.totalUsd, 0.529789);
+  assert.equal(report.summary.operatorLaborStatus, 'missing');
 });
 
 test('evaluatePrSpendProjection falls back to the PR head ref issue number when the body omits a link', () => {
@@ -229,6 +244,7 @@ test('evaluatePrSpendProjection falls back to the PR head ref issue number when 
   assert.equal(report.pullRequest.selectorSource, 'github-pr-head-ref-issue-fallback');
   assert.equal(report.metrics.totalTurns, 1);
   assert.equal(report.summary.totalUsd, 0.612345);
+  assert.equal(report.summary.operatorLaborStatus, 'missing');
 });
 
 test('evaluatePrSpendProjection prefers laneBranch-attributed turns before linked issue fallback when laneId is a short lane identity', () => {
@@ -274,6 +290,7 @@ test('evaluatePrSpendProjection prefers laneBranch-attributed turns before linke
   assert.equal(report.pullRequest.selectorSource, 'github-pr-head-ref');
   assert.equal(report.metrics.totalTurns, 1);
   assert.equal(report.summary.totalUsd, 0.311111);
+  assert.equal(report.summary.operatorLaborStatus, 'missing');
   assert.equal(report.breakdown.lanes[0].laneId, 'origin-1682');
 });
 

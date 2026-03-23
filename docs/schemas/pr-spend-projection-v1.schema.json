@@ -37,7 +37,7 @@
     "summary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "blockerCount", "recommendation", "billingTruth", "totalUsd", "exactUsd", "estimatedUsd"],
+      "required": ["status", "blockerCount", "recommendation", "billingTruth", "totalUsd", "exactUsd", "estimatedUsd", "operatorLaborUsd", "operatorLaborMissingTurnCount", "knownBlendedUsd", "operatorLaborStatus"],
       "properties": {
         "status": { "type": "string", "enum": ["pass", "blocked"] },
         "blockerCount": { "type": "integer", "minimum": 0 },
@@ -45,7 +45,11 @@
         "billingTruth": { "type": "string", "enum": ["exact-only", "mixed", "estimated-only"] },
         "totalUsd": { "type": "number", "minimum": 0 },
         "exactUsd": { "type": "number", "minimum": 0 },
-        "estimatedUsd": { "type": "number", "minimum": 0 }
+        "estimatedUsd": { "type": "number", "minimum": 0 },
+        "operatorLaborUsd": { "type": "number", "minimum": 0 },
+        "operatorLaborMissingTurnCount": { "type": "integer", "minimum": 0 },
+        "knownBlendedUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorLaborStatus": { "type": "string", "enum": ["complete", "partial", "missing"] }
       }
     },
     "metrics": {
@@ -57,6 +61,7 @@
         "backgroundTurnCount",
         "exactTurnCount",
         "estimatedTurnCount",
+        "operatorLaborSeconds",
         "totalTokens",
         "estimatedCreditsConsumed",
         "actualCreditsConsumed",
@@ -68,6 +73,7 @@
         "backgroundTurnCount": { "type": "integer", "minimum": 0 },
         "exactTurnCount": { "type": "integer", "minimum": 0 },
         "estimatedTurnCount": { "type": "integer", "minimum": 0 },
+        "operatorLaborSeconds": { "type": "number", "minimum": 0 },
         "totalTokens": { "type": "integer", "minimum": 0 },
         "estimatedCreditsConsumed": { "type": ["number", "null"], "minimum": 0 },
         "actualCreditsConsumed": { "type": ["number", "null"], "minimum": 0 },

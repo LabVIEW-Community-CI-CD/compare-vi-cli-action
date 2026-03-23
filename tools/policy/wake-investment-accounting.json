@@ -2,6 +2,9 @@
   "schema": "priority/wake-investment-accounting-policy@v1",
   "compareRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
   "benchmarkMetricPreference": [
+    "rollingAverageBlendedUsdPerIssue",
+    "currentActiveWindowAverageBlendedUsdPerIssue",
+    "latestTrailingOperationalWindowAverageBlendedUsdPerIssue",
     "rollingAverageUsdPerIssue",
     "currentActiveWindowAverageUsdPerIssue",
     "latestTrailingOperationalWindowAverageUsdPerIssue"
