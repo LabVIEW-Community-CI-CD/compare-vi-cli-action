@@ -177,6 +177,9 @@
         "signingAuthorityState",
         "releaseConductorApplyState",
         "publicationState",
+        "publishedBundleState",
+        "publishedBundleReleaseTag",
+        "publishedBundleAuthoritativeConsumerPin",
         "externalBlocker",
         "blockerCount"
       ],
@@ -195,6 +198,9 @@
         "signingAuthorityState": { "type": ["string", "null"] },
         "releaseConductorApplyState": { "type": ["string", "null"] },
         "publicationState": { "type": ["string", "null"] },
+        "publishedBundleState": { "type": ["string", "null"] },
+        "publishedBundleReleaseTag": { "type": ["string", "null"] },
+        "publishedBundleAuthoritativeConsumerPin": { "type": ["string", "null"] },
         "externalBlocker": { "type": ["string", "null"] },
         "blockerCount": { "type": "integer", "minimum": 0 }
       }
@@ -322,6 +328,9 @@
         "releaseConductorApplyState",
         "releaseSigningExternalBlocker",
         "releasePublicationState",
+        "releasePublishedBundleState",
+        "releasePublishedBundleReleaseTag",
+        "releasePublishedBundleAuthoritativeConsumerPin",
         "queueHandoffStatus",
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
@@ -374,6 +383,9 @@
         "releaseConductorApplyState": { "type": ["string", "null"] },
         "releaseSigningExternalBlocker": { "type": ["string", "null"] },
         "releasePublicationState": { "type": ["string", "null"] },
+        "releasePublishedBundleState": { "type": ["string", "null"] },
+        "releasePublishedBundleReleaseTag": { "type": ["string", "null"] },
+        "releasePublishedBundleAuthoritativeConsumerPin": { "type": ["string", "null"] },
         "queueHandoffStatus": {
           "type": "string",
           "enum": [

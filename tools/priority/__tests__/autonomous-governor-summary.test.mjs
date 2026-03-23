@@ -151,6 +151,9 @@ function createReleaseSigningReadiness(overrides = {}) {
       signingAuthorityState: 'scope-missing',
       releaseConductorApplyState: 'disabled',
       publicationState: 'tag-created-not-pushed',
+      publishedBundleState: 'producer-native-incomplete',
+      publishedBundleReleaseTag: 'v0.6.3-tools.14',
+      publishedBundleAuthoritativeConsumerPin: null,
       externalBlocker: 'workflow-signing-secret-missing',
       blockerCount: 3
     },
@@ -369,12 +372,18 @@ test('runAutonomousGovernorSummary carries explicit release signing blocker stat
   assert.equal(report.compare.releaseSigningReadiness.signingAuthorityState, 'scope-missing');
   assert.equal(report.compare.releaseSigningReadiness.releaseConductorApplyState, 'disabled');
   assert.equal(report.compare.releaseSigningReadiness.publicationState, 'tag-created-not-pushed');
+  assert.equal(report.compare.releaseSigningReadiness.publishedBundleState, 'producer-native-incomplete');
+  assert.equal(report.compare.releaseSigningReadiness.publishedBundleReleaseTag, 'v0.6.3-tools.14');
+  assert.equal(report.compare.releaseSigningReadiness.publishedBundleAuthoritativeConsumerPin, null);
   assert.equal(report.compare.releaseSigningReadiness.externalBlocker, 'workflow-signing-secret-missing');
   assert.equal(report.summary.releaseSigningStatus, 'warn');
   assert.equal(report.summary.releaseSigningAuthorityState, 'scope-missing');
   assert.equal(report.summary.releaseConductorApplyState, 'disabled');
   assert.equal(report.summary.releaseSigningExternalBlocker, 'workflow-signing-secret-missing');
   assert.equal(report.summary.releasePublicationState, 'tag-created-not-pushed');
+  assert.equal(report.summary.releasePublishedBundleState, 'producer-native-incomplete');
+  assert.equal(report.summary.releasePublishedBundleReleaseTag, 'v0.6.3-tools.14');
+  assert.equal(report.summary.releasePublishedBundleAuthoritativeConsumerPin, null);
 });
 
 test('runAutonomousGovernorSummary carries queue-owned delivery runtime state into the governor summary', async () => {

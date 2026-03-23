@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   DEFAULT_OUTPUT_PATH,
   DEFAULT_RELEASE_CONDUCTOR_REPORT_PATH,
+  DEFAULT_RELEASE_PUBLISHED_BUNDLE_OBSERVER_PATH,
   parseArgs,
   REQUIRED_SIGNING_SECRET,
   OPTIONAL_SIGNING_SECRET,
@@ -20,6 +21,64 @@ function writeText(filePath, content) {
 
 function writeJson(filePath, payload) {
   writeText(filePath, `${JSON.stringify(payload, null, 2)}\n`);
+}
+
+function createPublishedBundleObserver(overrides = {}) {
+  return {
+    schema: 'priority/release-published-bundle-observer-report@v1',
+    generatedAt: '2026-03-23T17:19:30Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    inputs: {
+      requestedTag: null,
+      resultsDir: 'tests/results/_agent/release/published-bundle-observer'
+    },
+    selection: {
+      status: 'selected',
+      releaseTag: 'v0.6.4-rc.1-tools.1',
+      publishedAt: '2026-03-23T17:19:00Z',
+      releaseName: 'v0.6.4-rc.1-tools.1',
+      releaseId: 123,
+      prerelease: true,
+      draft: false,
+      assetName: 'CompareVI.Tools-v0.6.4-rc.1-tools.1.zip',
+      assetId: 456
+    },
+    bundle: {
+      status: 'extracted',
+      archivePath: 'tests/results/_agent/release/published-bundle-observer/download/CompareVI.Tools-v0.6.4-rc.1-tools.1.zip',
+      extractionRoot: 'tests/results/_agent/release/published-bundle-observer/bundle/CompareVI.Tools-v0.6.4-rc.1-tools.1',
+      downloadDirectory: 'tests/results/_agent/release/published-bundle-observer/download'
+    },
+    bundleContract: {
+      status: 'producer-native-ready',
+      metadataPath:
+        'tests/results/_agent/release/published-bundle-observer/bundle/CompareVI.Tools-v0.6.4-rc.1-tools.1/comparevi-tools-release.json',
+      schema: 'comparevi-tools-release-manifest@v1',
+      authoritativeConsumerPin: 'v0.6.4-rc.1-tools.1',
+      authoritativeConsumerPinKind: 'release-tag',
+      capabilityId: 'vi-history',
+      distributionRole: 'upstream-producer',
+      distributionModel: 'release-bundle',
+      bundleImportPath: '.github/workflows/vi-history.yml',
+      bundleImportPathExists: true,
+      releaseAssetPattern: 'CompareVI.Tools-v*.zip',
+      contractPathResolutions: [],
+      metadataPresent: true,
+      metadataSchemaMatches: true,
+      viHistoryCapabilityPresent: true,
+      viHistoryCapabilityProducerNative: true,
+      bundleContractPinResolved: true,
+      bundleContractPathsResolved: true
+    },
+    summary: {
+      status: 'producer-native-ready',
+      releaseTag: 'v0.6.4-rc.1-tools.1',
+      assetName: 'CompareVI.Tools-v0.6.4-rc.1-tools.1.zip',
+      publishedAt: '2026-03-23T17:19:00Z',
+      authoritativeConsumerPin: 'v0.6.4-rc.1-tools.1'
+    },
+    ...overrides
+  };
 }
 
 function seedWorkflowContract(repoRoot) {
@@ -62,11 +121,37 @@ test('parseArgs keeps defaults and accepts overrides', () => {
     DEFAULT_RELEASE_CONDUCTOR_REPORT_PATH,
     path.join('tests', 'results', '_agent', 'release', 'release-conductor-report.json')
   );
+  assert.equal(
+    DEFAULT_RELEASE_PUBLISHED_BUNDLE_OBSERVER_PATH,
+    path.join('tests', 'results', '_agent', 'release', 'release-published-bundle-observer.json')
+  );
 });
 
 test('runReleaseSigningReadiness reports explicit external blocker when workflow secret is missing', async () => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'release-signing-readiness-missing-'));
   seedWorkflowContract(repoRoot);
+  writeJson(path.join(repoRoot, DEFAULT_RELEASE_PUBLISHED_BUNDLE_OBSERVER_PATH), createPublishedBundleObserver({
+    bundleContract: {
+      ...createPublishedBundleObserver().bundleContract,
+      status: 'producer-native-incomplete',
+      authoritativeConsumerPin: null,
+      authoritativeConsumerPinKind: null,
+      capabilityId: null,
+      distributionRole: null,
+      distributionModel: null,
+      bundleImportPath: null,
+      bundleImportPathExists: false,
+      releaseAssetPattern: null,
+      viHistoryCapabilityPresent: false,
+      viHistoryCapabilityProducerNative: false,
+      bundleContractPinResolved: false
+    },
+    summary: {
+      ...createPublishedBundleObserver().summary,
+      status: 'producer-native-incomplete',
+      authoritativeConsumerPin: null
+    }
+  }));
 
   const result = await runReleaseSigningReadiness(
     {
@@ -98,14 +183,19 @@ test('runReleaseSigningReadiness reports explicit external blocker when workflow
   assert.equal(result.report.summary.signingAuthorityState, 'scope-missing');
   assert.equal(result.report.summary.releaseConductorApplyState, 'disabled');
   assert.equal(result.report.summary.publicationState, 'unobserved');
+  assert.equal(result.report.summary.publishedBundleState, 'producer-native-incomplete');
+  assert.equal(result.report.summary.publishedBundleReleaseTag, 'v0.6.4-rc.1-tools.1');
+  assert.equal(result.report.summary.publishedBundleAuthoritativeConsumerPin, null);
   assert.equal(result.report.summary.externalBlocker, 'workflow-signing-secret-missing');
   assert.equal(result.report.secretInventory.requiredSecretPresent, false);
   assert.equal(result.report.releaseConductorApply.status, 'disabled');
   assert.equal(result.report.signingAuthority.status, 'scope-missing');
+  assert.equal(result.report.publishedBundleObserver.status, 'producer-native-incomplete');
   assert.deepEqual(result.report.blockers.map((entry) => entry.code), [
     'workflow-signing-secret-missing',
     'release-conductor-apply-disabled',
-    'workflow-signing-admin-scope-missing'
+    'workflow-signing-admin-scope-missing',
+    'published-bundle-producer-native-incomplete'
   ]);
 });
 
@@ -119,6 +209,7 @@ test('runReleaseSigningReadiness reports publication success when signing capabi
       targetTag: 'v0.6.4-rc.1'
     }
   });
+  writeJson(path.join(repoRoot, DEFAULT_RELEASE_PUBLISHED_BUNDLE_OBSERVER_PATH), createPublishedBundleObserver());
 
   const result = await runReleaseSigningReadiness(
     {
@@ -150,10 +241,14 @@ test('runReleaseSigningReadiness reports publication success when signing capabi
   assert.equal(result.report.summary.signingAuthorityState, 'ready');
   assert.equal(result.report.summary.releaseConductorApplyState, 'enabled');
   assert.equal(result.report.summary.publicationState, 'authoritative-publication-successful');
+  assert.equal(result.report.summary.publishedBundleState, 'producer-native-ready');
+  assert.equal(result.report.summary.publishedBundleReleaseTag, 'v0.6.4-rc.1-tools.1');
+  assert.equal(result.report.summary.publishedBundleAuthoritativeConsumerPin, 'v0.6.4-rc.1-tools.1');
   assert.equal(result.report.summary.externalBlocker, null);
   assert.equal(result.report.secretInventory.requiredSecretPresent, true);
   assert.equal(result.report.releaseConductorApply.enabled, true);
   assert.equal(result.report.signingAuthority.listedKeyCount, 1);
   assert.equal(result.report.publication.targetTag, 'v0.6.4-rc.1');
+  assert.equal(result.report.publishedBundleObserver.status, 'producer-native-ready');
   assert.deepEqual(result.report.blockers, []);
 });

@@ -152,6 +152,15 @@ function deriveViHistoryDistributorDependency(compareGovernorSummary, monitoring
   const releasePublicationState =
     asOptional(compareGovernorSummary?.summary?.releasePublicationState) ||
     asOptional(releaseSigningReadiness?.publicationState);
+  const publishedBundleState =
+    asOptional(compareGovernorSummary?.summary?.releasePublishedBundleState) ||
+    asOptional(releaseSigningReadiness?.publishedBundleState);
+  const publishedBundleReleaseTag =
+    asOptional(compareGovernorSummary?.summary?.releasePublishedBundleReleaseTag) ||
+    asOptional(releaseSigningReadiness?.publishedBundleReleaseTag);
+  const publishedBundleAuthoritativeConsumerPin =
+    asOptional(compareGovernorSummary?.summary?.releasePublishedBundleAuthoritativeConsumerPin) ||
+    asOptional(releaseSigningReadiness?.publishedBundleAuthoritativeConsumerPin);
   const signingCapabilityState = asOptional(releaseSigningReadiness?.signingCapabilityState);
   const signingAuthorityState =
     asOptional(compareGovernorSummary?.summary?.releaseSigningAuthorityState) ||
@@ -165,14 +174,23 @@ function deriveViHistoryDistributorDependency(compareGovernorSummary, monitoring
 
   let status = 'unknown';
   let detail = 'missing-release-signing-readiness';
-  if (releasePublicationState === 'producer-native-ready') {
+  if (publishedBundleState === 'producer-native-ready' || releasePublicationState === 'producer-native-ready') {
     status = 'ready';
     detail = 'producer-native-release-ready';
-  } else if (releaseSigningStatus || releasePublicationState || signingCapabilityState || externalBlocker) {
+  } else if (
+    publishedBundleState ||
+    releaseSigningStatus ||
+    releasePublicationState ||
+    signingCapabilityState ||
+    externalBlocker
+  ) {
     status = 'blocked';
-    detail = externalBlocker
-      ? 'awaiting-compare-release-signing-blocker-clear'
-      : 'awaiting-producer-native-release-publication';
+    detail =
+      publishedBundleState && publishedBundleState !== 'unobserved'
+        ? 'awaiting-producer-native-bundle-publication'
+        : externalBlocker
+          ? 'awaiting-compare-release-signing-blocker-clear'
+          : 'awaiting-producer-native-release-publication';
   }
 
   return {
@@ -184,6 +202,9 @@ function deriveViHistoryDistributorDependency(compareGovernorSummary, monitoring
     source: 'compare-release-signing-readiness',
     releaseSigningStatus,
     releasePublicationState,
+    publishedBundleState,
+    publishedBundleReleaseTag,
+    publishedBundleAuthoritativeConsumerPin,
     signingCapabilityState,
     signingAuthorityState,
     releaseConductorApplyState,
@@ -430,6 +451,10 @@ function buildReport({
       viHistoryDistributorDependencyTargetRepository: viHistoryDistributorDependency.dependentRepository,
       viHistoryDistributorDependencyExternalBlocker: viHistoryDistributorDependency.externalBlocker,
       viHistoryDistributorDependencyPublicationState: viHistoryDistributorDependency.releasePublicationState,
+      viHistoryDistributorDependencyPublishedBundleState: viHistoryDistributorDependency.publishedBundleState,
+      viHistoryDistributorDependencyPublishedBundleReleaseTag: viHistoryDistributorDependency.publishedBundleReleaseTag,
+      viHistoryDistributorDependencyAuthoritativeConsumerPin:
+        viHistoryDistributorDependency.publishedBundleAuthoritativeConsumerPin,
       viHistoryDistributorDependencySigningAuthorityState: viHistoryDistributorDependency.signingAuthorityState,
       viHistoryDistributorDependencyReleaseConductorApplyState: viHistoryDistributorDependency.releaseConductorApplyState,
       portfolioWakeConditionCount: triggeredWakeConditions.length,

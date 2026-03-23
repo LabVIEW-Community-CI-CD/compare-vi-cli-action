@@ -50,6 +50,9 @@ function createCompareGovernorSummary(overrides = {}) {
         signingAuthorityState: 'scope-missing',
         releaseConductorApplyState: 'disabled',
         publicationState: 'unobserved',
+        publishedBundleState: 'producer-native-incomplete',
+        publishedBundleReleaseTag: 'v0.6.3-tools.14',
+        publishedBundleAuthoritativeConsumerPin: null,
         externalBlocker: 'workflow-signing-secret-missing'
       }
     },
@@ -98,7 +101,10 @@ function createCompareGovernorSummary(overrides = {}) {
       releaseSigningAuthorityState: 'scope-missing',
       releaseConductorApplyState: 'disabled',
       releaseSigningExternalBlocker: 'workflow-signing-secret-missing',
-      releasePublicationState: 'unobserved'
+      releasePublicationState: 'unobserved',
+      releasePublishedBundleState: 'producer-native-incomplete',
+      releasePublishedBundleReleaseTag: 'v0.6.3-tools.14',
+      releasePublishedBundleAuthoritativeConsumerPin: null
     },
     ...overrides
   };
@@ -326,6 +332,9 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
     'workflow-signing-secret-missing'
   );
   assert.equal(report.summary.viHistoryDistributorDependencyPublicationState, 'unobserved');
+  assert.equal(report.summary.viHistoryDistributorDependencyPublishedBundleState, 'producer-native-incomplete');
+  assert.equal(report.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag, 'v0.6.3-tools.14');
+  assert.equal(report.summary.viHistoryDistributorDependencyAuthoritativeConsumerPin, null);
   assert.equal(report.summary.viHistoryDistributorDependencySigningAuthorityState, 'scope-missing');
   assert.equal(report.summary.viHistoryDistributorDependencyReleaseConductorApplyState, 'disabled');
   assert.equal(report.compare.queueHandoffPrUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
@@ -341,11 +350,14 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
       source: 'compare-release-signing-readiness',
       releaseSigningStatus: 'warn',
       releasePublicationState: 'unobserved',
+      publishedBundleState: 'producer-native-incomplete',
+      publishedBundleReleaseTag: 'v0.6.3-tools.14',
+      publishedBundleAuthoritativeConsumerPin: null,
       signingCapabilityState: 'missing',
       signingAuthorityState: 'scope-missing',
       releaseConductorApplyState: 'disabled',
       externalBlocker: 'workflow-signing-secret-missing',
-      detail: 'awaiting-compare-release-signing-blocker-clear'
+      detail: 'awaiting-producer-native-bundle-publication'
     }
   ]);
   assert.deepEqual(report.portfolio.repositories.find((entry) => entry.id === 'compare').triggeredWakeConditions, [
@@ -597,6 +609,9 @@ test('runAutonomousGovernorPortfolioSummary flips next owner to template once vi
         signingAuthorityState: 'ready',
         releaseConductorApplyState: 'enabled',
         publicationState: 'producer-native-ready',
+        publishedBundleState: 'producer-native-ready',
+        publishedBundleReleaseTag: 'v0.6.4-rc.1-tools.1',
+        publishedBundleAuthoritativeConsumerPin: 'v0.6.4-rc.1-tools.1',
         externalBlocker: null
       }
     },
@@ -633,7 +648,10 @@ test('runAutonomousGovernorPortfolioSummary flips next owner to template once vi
       releaseSigningAuthorityState: 'ready',
       releaseConductorApplyState: 'enabled',
       releaseSigningExternalBlocker: null,
-      releasePublicationState: 'producer-native-ready'
+      releasePublicationState: 'producer-native-ready',
+      releasePublishedBundleState: 'producer-native-ready',
+      releasePublishedBundleReleaseTag: 'v0.6.4-rc.1-tools.1',
+      releasePublishedBundleAuthoritativeConsumerPin: 'v0.6.4-rc.1-tools.1'
     }
   });
   const monitoringMode = createMonitoringMode({
@@ -663,4 +681,7 @@ test('runAutonomousGovernorPortfolioSummary flips next owner to template once vi
   assert.equal(report.summary.nextAction, 'future-agent-may-pivot');
   assert.equal(report.summary.ownerDecisionSource, 'compare-monitoring-mode');
   assert.equal(report.summary.viHistoryDistributorDependencyStatus, 'ready');
+  assert.equal(report.summary.viHistoryDistributorDependencyPublishedBundleState, 'producer-native-ready');
+  assert.equal(report.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag, 'v0.6.4-rc.1-tools.1');
+  assert.equal(report.summary.viHistoryDistributorDependencyAuthoritativeConsumerPin, 'v0.6.4-rc.1-tools.1');
 });
