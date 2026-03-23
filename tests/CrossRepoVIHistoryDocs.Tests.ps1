@@ -17,6 +17,9 @@ Describe 'Cross-repo VI history docs' -Tag 'CompareVI' {
   It 'documents the canonical downstream demo consumer for the local-first loop' {
     $script:crossRepoDoc | Should -Match 'LabVIEW-Community-CI-CD/labview-icon-editor-demo'
     $script:crossRepoDoc | Should -Match 'comparevi-history'
+    $script:crossRepoDoc | Should -Match 'consumerContract\.capabilities\.viHistory'
+    $script:crossRepoDoc | Should -Match 'LabviewGitHubCiTemplate'
+    $script:crossRepoDoc | Should -Match 'versionContract\.authoritativeConsumerPin'
     $script:crossRepoDoc | Should -Match 'local-review'
     $script:crossRepoDoc | Should -Match 'local-proof'
     $script:crossRepoDoc | Should -Match 'priority:vi-history:budget'

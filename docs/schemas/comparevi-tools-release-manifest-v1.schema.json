@@ -169,11 +169,111 @@
     "consumerContract": {
       "type": "object",
       "required": [
+        "capabilities",
         "historyFacade",
         "localRuntimeProfiles",
         "localOperatorSession"
       ],
       "properties": {
+        "capabilities": {
+          "type": "object",
+          "required": [
+            "viHistory"
+          ],
+          "properties": {
+            "viHistory": {
+              "type": "object",
+              "required": [
+                "schema",
+                "capabilityId",
+                "displayName",
+                "distributionRole",
+                "distributionModel",
+                "bundleMetadataPath",
+                "bundleImportPath",
+                "releaseAssetPattern",
+                "authoritativeConsumerPinFieldPath",
+                "authoritativeConsumerPinKindFieldPath",
+                "contractPaths",
+                "notes"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "comparevi-tools/vi-history-capability@v1"
+                },
+                "capabilityId": {
+                  "const": "vi-history"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "distributionRole": {
+                  "type": "string",
+                  "enum": [
+                    "upstream-producer"
+                  ]
+                },
+                "distributionModel": {
+                  "type": "string",
+                  "enum": [
+                    "release-bundle"
+                  ]
+                },
+                "bundleMetadataPath": {
+                  "type": "string"
+                },
+                "bundleImportPath": {
+                  "type": "string"
+                },
+                "releaseAssetPattern": {
+                  "type": "string"
+                },
+                "authoritativeConsumerPinFieldPath": {
+                  "type": "string"
+                },
+                "authoritativeConsumerPinKindFieldPath": {
+                  "type": "string"
+                },
+                "contractPaths": {
+                  "type": "object",
+                  "required": [
+                    "historyFacade",
+                    "localRuntimeProfiles",
+                    "localOperatorSession",
+                    "diagnosticsCommentRenderer",
+                    "hostedNiLinuxRunner"
+                  ],
+                  "properties": {
+                    "historyFacade": {
+                      "type": "string"
+                    },
+                    "localRuntimeProfiles": {
+                      "type": "string"
+                    },
+                    "localOperatorSession": {
+                      "type": "string"
+                    },
+                    "diagnosticsCommentRenderer": {
+                      "type": "string"
+                    },
+                    "hostedNiLinuxRunner": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "notes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
         "historyFacade": {
           "type": "object",
           "required": [

@@ -91,6 +91,37 @@ object is the supported downstream summary surface: requested/executed modes,
 coverage and outcome interpretation, report paths, and per-mode tallies without
 the raw backend comparison payloads.
 
+## Template distribution contract
+
+`comparevi-tools-release.json` now also exposes a first-class capability record
+at `consumerContract.capabilities.viHistory`.
+
+Use that capability record when a downstream distributor such as
+`LabviewGitHubCiTemplate` needs to stamp `vi-history` support into generated
+repositories without copying compare's internal control plane.
+
+The capability contract tells downstream distributors:
+
+- this repository is the upstream producer for `vi-history`
+- the distribution model is the immutable release bundle
+- the authoritative downstream pin lives at
+  `versionContract.authoritativeConsumerPin`
+- the template should resolve the capability's consumer surfaces from the
+  referenced contract paths inside the same `comparevi-tools-release.json`
+  payload:
+  - `consumerContract.historyFacade`
+  - `consumerContract.localRuntimeProfiles`
+  - `consumerContract.localOperatorSession`
+  - `consumerContract.diagnosticsCommentRenderer`
+  - `consumerContract.hostedNiLinuxRunner`
+
+That keeps the producer/distributor boundary clean:
+
+- `compare-vi-cli-action` publishes and versions the capability
+- `LabviewGitHubCiTemplate` distributes the capability
+- generated repositories consume the pinned release surface instead of
+  vendoring compare internals
+
 For hosted GitHub runner diagnostics, use the same extracted bundle root as
 `COMPAREVI_SCRIPTS_ROOT` and resolve the NI Linux runner from
 `tools/Run-NILinuxContainerCompare.ps1`. Keep its adjacent support scripts

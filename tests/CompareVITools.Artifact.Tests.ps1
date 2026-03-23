@@ -96,6 +96,23 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $metadata.source.sha | Should -Be '0123456789abcdef0123456789abcdef01234567'
     $metadata.source.releaseTag | Should -Be 'v9.9.9'
     @($metadata.compatibility.supportedPaths) | Should -Contain 'cross-repo-vi-history-via-hosted-ni-linux-runner'
+    $metadata.consumerContract.capabilities.viHistory.schema | Should -Be 'comparevi-tools/vi-history-capability@v1'
+    $metadata.consumerContract.capabilities.viHistory.capabilityId | Should -Be 'vi-history'
+    $metadata.consumerContract.capabilities.viHistory.displayName | Should -Be 'VI History'
+    $metadata.consumerContract.capabilities.viHistory.distributionRole | Should -Be 'upstream-producer'
+    $metadata.consumerContract.capabilities.viHistory.distributionModel | Should -Be 'release-bundle'
+    $metadata.consumerContract.capabilities.viHistory.bundleMetadataPath | Should -Be 'comparevi-tools-release.json'
+    $metadata.consumerContract.capabilities.viHistory.bundleImportPath | Should -Be 'tools/CompareVI.Tools/CompareVI.Tools.psd1'
+    $metadata.consumerContract.capabilities.viHistory.releaseAssetPattern | Should -Be 'CompareVI.Tools-v<release-version>.zip'
+    $metadata.consumerContract.capabilities.viHistory.authoritativeConsumerPinFieldPath | Should -Be 'versionContract.authoritativeConsumerPin'
+    $metadata.consumerContract.capabilities.viHistory.authoritativeConsumerPinKindFieldPath | Should -Be 'versionContract.authoritativeConsumerPinKind'
+    $metadata.consumerContract.capabilities.viHistory.contractPaths.historyFacade | Should -Be 'consumerContract.historyFacade'
+    $metadata.consumerContract.capabilities.viHistory.contractPaths.localRuntimeProfiles | Should -Be 'consumerContract.localRuntimeProfiles'
+    $metadata.consumerContract.capabilities.viHistory.contractPaths.localOperatorSession | Should -Be 'consumerContract.localOperatorSession'
+    $metadata.consumerContract.capabilities.viHistory.contractPaths.diagnosticsCommentRenderer | Should -Be 'consumerContract.diagnosticsCommentRenderer'
+    $metadata.consumerContract.capabilities.viHistory.contractPaths.hostedNiLinuxRunner | Should -Be 'consumerContract.hostedNiLinuxRunner'
+    ((@($metadata.consumerContract.capabilities.viHistory.notes) -join [Environment]::NewLine)) | Should -Match 'LabviewGitHubCiTemplate'
+    ((@($metadata.consumerContract.capabilities.viHistory.notes) -join [Environment]::NewLine)) | Should -Match 'authoritativeConsumerPin'
     $metadata.consumerContract.historyFacade.schema | Should -Be 'comparevi-tools/history-facade@v1'
     $metadata.consumerContract.historyFacade.exportedFunction | Should -Be 'Invoke-CompareVIHistoryFacade'
     $metadata.consumerContract.historyFacade.resultsRelativePath | Should -Be 'history-summary.json'
@@ -200,6 +217,8 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $archiveMetadata = Get-Content -LiteralPath $archiveMetadataPath -Raw | ConvertFrom-Json
     $archiveMetadata.bundle.metadataPath | Should -Be 'comparevi-tools-release.json'
     $archiveMetadata.bundle.files.Count | Should -BeGreaterThan 5
+    $archiveMetadata.consumerContract.capabilities.viHistory.schema | Should -Be 'comparevi-tools/vi-history-capability@v1'
+    $archiveMetadata.consumerContract.capabilities.viHistory.contractPaths.historyFacade | Should -Be 'consumerContract.historyFacade'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Build-VIHistoryDevImage.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Invoke-VIHistoryLocalOperatorSession.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Invoke-VIHistoryLocalRefinement.ps1'
@@ -218,9 +237,10 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $metadataPath = Join-Path $TestDrive 'comparevi-tools-artifact-tools-iteration.json'
     $tempModulePath = Join-Path $TestDrive 'CompareVI.Tools.ToolsIteration.psd1'
     $tempModuleContents = Get-Content -LiteralPath $modulePath -Raw
-    $tempModuleContents = $tempModuleContents.Replace(
-      "ProjectUri = 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action'",
-      "ProjectUri = 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action'`r`n      Prerelease = 'tools.14'"
+    $tempModuleContents = [regex]::Replace(
+      $tempModuleContents,
+      "Prerelease\s*=\s*'[^']+'",
+      "Prerelease = 'tools.14'"
     )
     Set-Content -LiteralPath $tempModulePath -Value $tempModuleContents -Encoding utf8
     $relativeModulePath = [System.IO.Path]::GetRelativePath($repoRoot, $tempModulePath)
@@ -230,28 +250,28 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
       -OutputRoot $outDir `
       -MetadataReportPath $metadataPath `
       -Repository 'owner/repo' `
-      -SourceRef 'refs/tags/v0.6.3-tools.14' `
+      -SourceRef "refs/tags/v$moduleVersion-tools.14" `
       -SourceSha '0123456789abcdef0123456789abcdef01234567' `
-      -ReleaseTag 'v0.6.3-tools.14'
+      -ReleaseTag "v$moduleVersion-tools.14"
 
     Test-Path -LiteralPath $metadataPath | Should -BeTrue
     & $schemaScript -JsonPath $metadataPath -SchemaPath $schemaPath
     $LASTEXITCODE | Should -Be 0
 
     $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
-    $metadata.module.version | Should -Be '0.6.3'
-    $metadata.module.releaseVersion | Should -Be '0.6.3-tools.14'
-    $metadata.versionContract.baseSemver | Should -Be '0.6.3'
-    $metadata.versionContract.releaseVersion | Should -Be '0.6.3-tools.14'
-    $metadata.versionContract.stableFamilyTag | Should -Be 'v0.6.3'
+    $metadata.module.version | Should -Be $moduleVersion
+    $metadata.module.releaseVersion | Should -Be "$moduleVersion-tools.14"
+    $metadata.versionContract.baseSemver | Should -Be $moduleVersion
+    $metadata.versionContract.releaseVersion | Should -Be "$moduleVersion-tools.14"
+    $metadata.versionContract.stableFamilyTag | Should -Be "v$moduleVersion"
     $metadata.versionContract.stableFamilyTagMutable | Should -BeTrue
     $metadata.versionContract.toolsIteration | Should -Be 14
-    $metadata.versionContract.authoritativeConsumerPin | Should -Be 'v0.6.3-tools.14'
+    $metadata.versionContract.authoritativeConsumerPin | Should -Be "v$moduleVersion-tools.14"
     $metadata.versionContract.authoritativeConsumerPinKind | Should -Be 'release-tag'
     ((@($metadata.versionContract.notes) -join [Environment]::NewLine)) | Should -Match 'stableFamilyTag'
   }
 
-  It 'emits an empty prerelease GitHub output for stable CompareVI.Tools bundles' {
+  It 'emits the module prerelease GitHub output deterministically' {
     $outDir = Join-Path $TestDrive 'artifacts-github-output'
     $metadataPath = Join-Path $TestDrive 'comparevi-tools-artifact-github-output.json'
     $githubOutputPath = Join-Path $TestDrive 'github-output.txt'
@@ -280,7 +300,7 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $outputLines = Get-Content -LiteralPath $githubOutputPath
     $outputLines | Should -Contain "comparevi_tools_module_version=$moduleVersion"
     $outputLines | Should -Contain "comparevi_tools_release_version=$moduleReleaseVersion"
-    $outputLines | Should -Contain 'comparevi_tools_module_prerelease='
+    $outputLines | Should -Contain "comparevi_tools_module_prerelease=$modulePrerelease"
     @($outputLines | Where-Object { $_ -like 'comparevi_tools_module_prerelease=*' }).Count | Should -Be 1
   }
 
