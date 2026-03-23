@@ -50,7 +50,8 @@
         "nextAction",
         "queueHandoffStatus",
         "queueHandoffNextWakeCondition",
-        "queueHandoffPrUrl"
+        "queueHandoffPrUrl",
+        "queueAuthoritySource"
       ],
       "properties": {
         "repository": { "type": ["string", "null"] },
@@ -62,7 +63,8 @@
         "nextAction": { "type": ["string", "null"] },
         "queueHandoffStatus": { "type": ["string", "null"] },
         "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
-        "queueHandoffPrUrl": { "type": ["string", "null"] }
+        "queueHandoffPrUrl": { "type": ["string", "null"] },
+        "queueAuthoritySource": { "type": ["string", "null"] }
       }
     },
     "portfolio": {
@@ -150,7 +152,8 @@
                   "nextAction",
                   "queueHandoffStatus",
                   "queueHandoffNextWakeCondition",
-                  "queueHandoffPrUrl"
+                  "queueHandoffPrUrl",
+                  "queueAuthoritySource"
                 ],
                 "properties": {
                   "queueState": { "type": ["string", "null"] },
@@ -161,7 +164,8 @@
                   "nextAction": { "type": ["string", "null"] },
                   "queueHandoffStatus": { "type": ["string", "null"] },
                   "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
-                  "queueHandoffPrUrl": { "type": ["string", "null"] }
+                  "queueHandoffPrUrl": { "type": ["string", "null"] },
+                  "queueAuthoritySource": { "type": ["string", "null"] }
                 }
               },
               "triggeredWakeConditions": {
@@ -202,6 +206,7 @@
         "queueHandoffStatus",
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
+        "queueAuthoritySource",
         "portfolioWakeConditionCount",
         "triggeredWakeConditions"
       ],
@@ -221,6 +226,7 @@
         "queueHandoffStatus": { "type": ["string", "null"] },
         "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
         "queueHandoffPrUrl": { "type": ["string", "null"] },
+        "queueAuthoritySource": { "type": ["string", "null"] },
         "portfolioWakeConditionCount": { "type": "integer", "minimum": 0 },
         "triggeredWakeConditions": {
           "type": "array",

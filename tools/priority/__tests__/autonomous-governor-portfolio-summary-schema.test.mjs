@@ -119,7 +119,8 @@ test('autonomous governor portfolio summary schema validates a generated report'
       futureAgentAction: 'future-agent-may-pivot',
       queueHandoffStatus: 'checks-pending',
       queueHandoffNextWakeCondition: 'checks-green',
-      queueHandoffPrUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864'
+      queueHandoffPrUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
+      queueAuthoritySource: 'delivery-runtime'
     }
   });
 

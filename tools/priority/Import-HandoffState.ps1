@@ -285,6 +285,9 @@ if ($governorSummary) {
       $governorSummary.summary.queueHandoffStatus -ne 'none') {
     Write-Host ("  queueWait: {0}" -f (Format-NullableValue $governorSummary.summary.queueHandoffStatus))
     Write-Host ("  wake     : {0}" -f (Format-NullableValue $governorSummary.summary.queueHandoffNextWakeCondition))
+    if ($governorSummary.summary.PSObject.Properties['queueAuthoritySource']) {
+      Write-Host ("  source   : {0}" -f (Format-NullableValue $governorSummary.summary.queueAuthoritySource))
+    }
     if ($governorSummary.summary.PSObject.Properties['queueHandoffPrUrl'] -and $governorSummary.summary.queueHandoffPrUrl) {
       Write-Host ("  pr       : {0}" -f (Format-NullableValue $governorSummary.summary.queueHandoffPrUrl))
     }
@@ -308,6 +311,9 @@ if ($governorPortfolioSummary) {
       $governorPortfolioSummary.summary.queueHandoffStatus) {
     Write-Host ("  queueWait: {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.queueHandoffStatus))
     Write-Host ("  queueWake: {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.queueHandoffNextWakeCondition))
+    if ($governorPortfolioSummary.summary.PSObject.Properties['queueAuthoritySource']) {
+      Write-Host ("  queueSrc : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.queueAuthoritySource))
+    }
   }
   Set-Variable -Name HandoffAutonomousGovernorPortfolioSummary -Scope Global -Value $governorPortfolioSummary -Force
 }

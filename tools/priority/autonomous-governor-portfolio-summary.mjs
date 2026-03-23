@@ -213,7 +213,8 @@ function deriveRepositoryEntries(repoGraphTruth, monitoringMode, compareGovernor
             nextAction: asOptional(compareGovernorSummary?.summary?.nextAction),
             queueHandoffStatus: asOptional(compareGovernorSummary?.summary?.queueHandoffStatus),
             queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
-            queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl)
+            queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl),
+            queueAuthoritySource: asOptional(compareGovernorSummary?.summary?.queueAuthoritySource)
           }
         : null;
 
@@ -322,7 +323,8 @@ function buildReport({
       nextAction: asOptional(compareGovernorSummary?.summary?.nextAction),
       queueHandoffStatus: asOptional(compareGovernorSummary?.summary?.queueHandoffStatus),
       queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
-      queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl)
+      queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl),
+      queueAuthoritySource: asOptional(compareGovernorSummary?.summary?.queueAuthoritySource)
     },
     portfolio: {
       repositoryCount: repositoryEntries.length,
@@ -348,6 +350,7 @@ function buildReport({
       queueHandoffStatus: asOptional(compareGovernorSummary?.summary?.queueHandoffStatus),
       queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
       queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl),
+      queueAuthoritySource: asOptional(compareGovernorSummary?.summary?.queueAuthoritySource),
       portfolioWakeConditionCount: triggeredWakeConditions.length,
       triggeredWakeConditions
     }

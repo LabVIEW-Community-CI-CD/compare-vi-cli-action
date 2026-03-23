@@ -1525,6 +1525,9 @@ try {
         $governor.summary.queueHandoffStatus -ne 'none') {
       Write-Host ("  queueWait: {0}" -f (Format-NullableValue $governor.summary.queueHandoffStatus))
       Write-Host ("  queueWake: {0}" -f (Format-NullableValue $governor.summary.queueHandoffNextWakeCondition))
+      if ($governor.summary.PSObject.Properties['queueAuthoritySource']) {
+        Write-Host ("  queueSrc : {0}" -f (Format-NullableValue $governor.summary.queueAuthoritySource))
+      }
       if ($governor.summary.PSObject.Properties['queueHandoffPrUrl'] -and $governor.summary.queueHandoffPrUrl) {
         Write-Host ("  pr       : {0}" -f (Format-NullableValue $governor.summary.queueHandoffPrUrl))
       }
@@ -1547,6 +1550,9 @@ try {
           $governor.summary.queueHandoffStatus -ne 'none') {
         $governorLines += ('- Queue handoff: {0}' -f (Format-NullableValue $governor.summary.queueHandoffStatus))
         $governorLines += ('- Queue wake: {0}' -f (Format-NullableValue $governor.summary.queueHandoffNextWakeCondition))
+        if ($governor.summary.PSObject.Properties['queueAuthoritySource']) {
+          $governorLines += ('- Queue source: {0}' -f (Format-NullableValue $governor.summary.queueAuthoritySource))
+        }
         if ($governor.summary.PSObject.Properties['queueHandoffPrUrl'] -and $governor.summary.queueHandoffPrUrl) {
           $governorLines += ('- Queue PR: {0}' -f (Format-NullableValue $governor.summary.queueHandoffPrUrl))
         }
@@ -1576,6 +1582,9 @@ try {
         $portfolio.summary.queueHandoffStatus) {
       Write-Host ("  queueWait: {0}" -f (Format-NullableValue $portfolio.summary.queueHandoffStatus))
       Write-Host ("  queueWake: {0}" -f (Format-NullableValue $portfolio.summary.queueHandoffNextWakeCondition))
+      if ($portfolio.summary.PSObject.Properties['queueAuthoritySource']) {
+        Write-Host ("  queueSrc : {0}" -f (Format-NullableValue $portfolio.summary.queueAuthoritySource))
+      }
     }
     if ($env:GITHUB_STEP_SUMMARY) {
       $portfolioLines = @(
@@ -1594,6 +1603,9 @@ try {
           $portfolio.summary.queueHandoffStatus) {
         $portfolioLines += ('- Queue handoff: {0}' -f (Format-NullableValue $portfolio.summary.queueHandoffStatus))
         $portfolioLines += ('- Queue wake: {0}' -f (Format-NullableValue $portfolio.summary.queueHandoffNextWakeCondition))
+        if ($portfolio.summary.PSObject.Properties['queueAuthoritySource']) {
+          $portfolioLines += ('- Queue source: {0}' -f (Format-NullableValue $portfolio.summary.queueAuthoritySource))
+        }
       }
       ($portfolioLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
     }
