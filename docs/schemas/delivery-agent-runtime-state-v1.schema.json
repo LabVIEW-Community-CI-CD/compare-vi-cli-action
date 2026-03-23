@@ -133,6 +133,12 @@
         }
       }
     },
+    "queueAuthorityRefresh": {
+      "anyOf": [
+        { "$ref": "#/$defs/queueAuthorityRefresh" },
+        { "type": "null" }
+      ]
+    },
     "liveAgentModelSelection": {
       "type": ["object", "null"],
       "additionalProperties": true,
@@ -254,6 +260,12 @@
               "items": { "type": "string" }
             }
           }
+        },
+        "queueAuthorityRefresh": {
+          "anyOf": [
+            { "$ref": "#/$defs/queueAuthorityRefresh" },
+            { "type": "null" }
+          ]
         },
         "liveAgentModelSelection": {
           "type": ["object", "null"],
@@ -386,6 +398,47 @@
         "issue": { "type": ["integer", "null"], "minimum": 1 },
         "laneLifecycle": { "type": "string" },
         "releaseReason": { "type": "string" }
+      }
+    },
+    "queueAuthorityRefresh": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempted",
+        "status",
+        "reason",
+        "helperCall",
+        "summaryPath",
+        "mergeSummaryPath",
+        "receiptGeneratedAt",
+        "receiptStatus",
+        "receiptReason",
+        "evidenceFreshness",
+        "nextWakeCondition",
+        "mergeStateStatus",
+        "isInMergeQueue",
+        "autoMergeEnabled",
+        "mergedAt"
+      ],
+      "properties": {
+        "attempted": { "type": "boolean" },
+        "status": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] },
+        "helperCall": { "type": ["string", "null"] },
+        "summaryPath": { "type": ["string", "null"] },
+        "mergeSummaryPath": { "type": ["string", "null"] },
+        "receiptGeneratedAt": { "type": ["string", "null"], "format": "date-time" },
+        "receiptStatus": { "type": ["string", "null"] },
+        "receiptReason": { "type": ["string", "null"] },
+        "evidenceFreshness": {
+          "type": ["string", "null"],
+          "enum": ["current", "missing", null]
+        },
+        "nextWakeCondition": { "type": ["string", "null"] },
+        "mergeStateStatus": { "type": ["string", "null"] },
+        "isInMergeQueue": { "type": ["boolean", "null"] },
+        "autoMergeEnabled": { "type": ["boolean", "null"] },
+        "mergedAt": { "type": ["string", "null"], "format": "date-time" }
       }
     },
     "workerPool": {

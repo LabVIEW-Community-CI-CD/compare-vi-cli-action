@@ -107,6 +107,22 @@ function createDeliveryRuntimeState(overrides = {}) {
     schema: 'priority/delivery-agent-runtime-state@v1',
     status: 'waiting-ci',
     laneLifecycle: 'waiting-ci',
+    queueAuthorityRefresh: {
+      attempted: false,
+      status: null,
+      reason: null,
+      summaryPath: null,
+      mergeSummaryPath: null,
+      receiptGeneratedAt: null,
+      receiptStatus: null,
+      receiptReason: null,
+      evidenceFreshness: null,
+      nextWakeCondition: null,
+      mergeStateStatus: null,
+      isInMergeQueue: null,
+      autoMergeEnabled: null,
+      mergedAt: null
+    },
     activeLane: {
       issue: 1863,
       prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
@@ -254,6 +270,8 @@ test('runAutonomousGovernorSummary reports monitoring-active when no wake lifecy
   assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
   assert.equal(report.wake.terminalState, null);
   assert.equal(report.compare.deliveryRuntime.status, 'none');
+  assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.attempted, false);
+  assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.status, null);
   assert.equal(report.summary.queueHandoffStatus, 'none');
   assert.equal(report.summary.queueAuthoritySource, 'none');
 });
@@ -279,10 +297,77 @@ test('runAutonomousGovernorSummary carries queue-owned delivery runtime state in
   assert.equal(report.compare.deliveryRuntime.laneLifecycle, 'waiting-ci');
   assert.equal(report.compare.deliveryRuntime.nextWakeCondition, 'checks-green');
   assert.equal(report.compare.deliveryRuntime.prUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
+  assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.attempted, false);
+  assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.summaryPath, null);
   assert.equal(report.summary.queueHandoffStatus, 'checks-pending');
   assert.equal(report.summary.queueHandoffNextWakeCondition, 'checks-green');
   assert.equal(report.summary.queueHandoffPrUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
   assert.equal(report.summary.queueAuthoritySource, 'delivery-runtime');
+});
+
+test('runAutonomousGovernorSummary exposes queue authority refresh telemetry from delivery runtime state', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-runtime-refresh-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      queueAuthorityRefresh: {
+        attempted: true,
+        status: 'completed',
+        reason: 'queue-refresh-dry-run',
+        summaryPath: 'tests/results/_agent/queue/queue-refresh-1864.json',
+        mergeSummaryPath: 'tests/results/_agent/queue/merge-sync-1864.json',
+        receiptGeneratedAt: '2026-03-23T05:27:31.683Z',
+        receiptStatus: 'dry-run',
+        receiptReason: 'dry-run',
+        evidenceFreshness: 'current',
+        nextWakeCondition: 'merge-queue-progress',
+        mergeStateStatus: 'UNSTABLE',
+        isInMergeQueue: true,
+        autoMergeEnabled: false,
+        mergedAt: null
+      },
+      activeLane: {
+        issue: 1863,
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
+        laneLifecycle: 'waiting-ci',
+        actionType: 'merge-pr',
+        outcome: 'waiting-ci',
+        blockerClass: 'none',
+        nextWakeCondition: 'checks-green',
+        reason: 'Waiting for hosted checks to finish before merge queue advances.',
+        queueAuthorityRefresh: {
+          attempted: true,
+          status: 'completed',
+          reason: 'queue-refresh-dry-run',
+          summaryPath: 'tests/results/_agent/queue/queue-refresh-1864.json',
+          mergeSummaryPath: 'tests/results/_agent/queue/merge-sync-1864.json',
+          receiptGeneratedAt: '2026-03-23T05:27:31.683Z',
+          receiptStatus: 'dry-run',
+          receiptReason: 'dry-run',
+          evidenceFreshness: 'current',
+          nextWakeCondition: 'merge-queue-progress',
+          mergeStateStatus: 'UNSTABLE',
+          isInMergeQueue: true,
+          autoMergeEnabled: false,
+          mergedAt: null
+        }
+      }
+    })
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.attempted, true);
+  assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.status, 'completed');
+  assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.summaryPath, 'tests/results/_agent/queue/queue-refresh-1864.json');
+  assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.mergeSummaryPath, 'tests/results/_agent/queue/merge-sync-1864.json');
+  assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.receiptStatus, 'dry-run');
+  assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.evidenceFreshness, 'current');
+  assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.isInMergeQueue, true);
+  assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.autoMergeEnabled, false);
 });
 
 test('runAutonomousGovernorSummary prefers merge-sync queue evidence when it proves the PR is already queued', async () => {
