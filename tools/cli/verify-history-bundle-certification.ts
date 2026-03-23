@@ -32,7 +32,22 @@ interface CertificationSummary {
   execution?: {
     mode?: string;
     bundleArchivePath?: string | null;
-    historyScriptSupportsSourceBranchRef?: boolean;
+      historyScriptSupportsSourceBranchRef?: boolean;
+  };
+  bundleContract?: {
+    status?: string;
+    metadataPath?: string | null;
+    authoritativeConsumerPin?: string | null;
+    authoritativeConsumerPinKind?: string | null;
+    distributionRole?: string | null;
+    distributionModel?: string | null;
+    bundleImportPath?: string | null;
+    bundleImportPathExists?: boolean;
+    contractPathResolutions?: Array<{
+      name: string;
+      path: string;
+      resolved: boolean;
+    }>;
   };
   historyFacade?: {
     sourceBranchRef?: string;
@@ -49,6 +64,13 @@ interface CertificationSummary {
     actualModes?: string[];
     historyScriptSupportsSourceBranchRef?: boolean;
     historyFacadeSourceBranchRefMatches?: boolean;
+    bundleMetadataPresent?: boolean;
+    bundleMetadataSchemaMatches?: boolean;
+    viHistoryCapabilityPresent?: boolean;
+    viHistoryCapabilityProducerNative?: boolean;
+    bundleContractPinResolved?: boolean;
+    bundleImportPathExists?: boolean;
+    bundleContractPathsResolved?: boolean;
   };
 }
 
@@ -125,6 +147,33 @@ function verifySummary(summary: CertificationSummary, requiredModes: string[]): 
     throw new Error('Certification history facade sourceBranchRef does not match the requested source branch.');
   }
 
+  if (summary.execution?.mode === 'bundle') {
+    if (!summary.certification.bundleMetadataPresent) {
+      throw new Error('Bundle certification is missing comparevi-tools-release.json.');
+    }
+    if (!summary.certification.bundleMetadataSchemaMatches) {
+      throw new Error('Bundle certification metadata schema check failed.');
+    }
+    if (!summary.certification.viHistoryCapabilityPresent) {
+      throw new Error('Bundle certification did not find the vi-history capability record.');
+    }
+    if (!summary.certification.viHistoryCapabilityProducerNative) {
+      throw new Error('Bundle certification did not prove a producer-native vi-history capability.');
+    }
+    if (!summary.certification.bundleContractPinResolved) {
+      throw new Error('Bundle certification did not resolve the authoritative consumer pin.');
+    }
+    if (!summary.certification.bundleImportPathExists) {
+      throw new Error('Bundle certification could not resolve the declared bundle import path.');
+    }
+    if (!summary.certification.bundleContractPathsResolved) {
+      throw new Error('Bundle certification could not resolve one or more vi-history contract paths.');
+    }
+    if (summary.bundleContract?.status !== 'producer-native-ready') {
+      throw new Error(`Bundle certification reported unexpected producer-native status '${summary.bundleContract?.status ?? 'unknown'}'.`);
+    }
+  }
+
   const actualModes = [...new Set(summary.certification.actualModes ?? [])].sort();
   const expectedModes = [...requiredModes].sort();
   if (actualModes.length !== expectedModes.length || actualModes.some((mode, index) => mode !== expectedModes[index])) {
@@ -175,6 +224,28 @@ function buildMarkdown(summary: CertificationSummary, requiredModes: string[]): 
 
   if (summary.execution?.bundleArchivePath) {
     lines.push(`- Bundle archive: \`${summary.execution.bundleArchivePath}\``);
+  }
+  if (summary.bundleContract?.status) {
+    lines.push(`- Producer-native vi-history capability: \`${summary.bundleContract.status}\``);
+  }
+  if (summary.bundleContract?.authoritativeConsumerPin) {
+    lines.push(
+      `- Authoritative consumer pin: \`${summary.bundleContract.authoritativeConsumerPin}\` (${summary.bundleContract.authoritativeConsumerPinKind ?? 'unknown'})`,
+    );
+  }
+  if (summary.bundleContract?.distributionRole || summary.bundleContract?.distributionModel) {
+    lines.push(
+      `- Distribution role/model: \`${summary.bundleContract?.distributionRole ?? 'unknown'}\` / \`${summary.bundleContract?.distributionModel ?? 'unknown'}\``,
+    );
+  }
+  if (summary.bundleContract?.bundleImportPath) {
+    lines.push(
+      `- Bundle import path: \`${summary.bundleContract.bundleImportPath}\` (exists: \`${summary.bundleContract.bundleImportPathExists ? 'true' : 'false'}\`)`,
+    );
+  }
+  const unresolvedPaths = (summary.bundleContract?.contractPathResolutions ?? []).filter((entry) => !entry.resolved);
+  if (unresolvedPaths.length > 0) {
+    lines.push(`- Unresolved contract paths: \`${unresolvedPaths.map((entry) => entry.path).join(', ')}\``);
   }
 
   lines.push('');

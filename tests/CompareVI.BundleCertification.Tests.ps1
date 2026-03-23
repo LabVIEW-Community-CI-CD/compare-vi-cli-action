@@ -49,8 +49,18 @@ Describe 'CompareVI history bundle certification' -Tag 'CompareVI' {
         $summary.schema | Should -Be 'comparevi-history-bundle-certification@v1'
         $summary.execution.mode | Should -Be 'bundle'
         $summary.execution.bundleArchivePath | Should -Be $bundleArchivePath
-        $summary.sourceBranchRef | Should -Be 'develop'
+        $summary.sourceBranchRef | Should -Match '(^|/)develop$'
         $summary.execution.historyScriptSupportsSourceBranchRef | Should -BeTrue
+        $summary.bundleContract.status | Should -Be 'producer-native-ready'
+        $summary.bundleContract.metadataPath | Should -Be (Join-Path $summary.execution.bundleRoot 'comparevi-tools-release.json')
+        $summary.bundleContract.capabilityId | Should -Be 'vi-history'
+        $summary.bundleContract.distributionRole | Should -Be 'upstream-producer'
+        $summary.bundleContract.distributionModel | Should -Be 'release-bundle'
+        $summary.bundleContract.bundleImportPath | Should -Be 'tools/CompareVI.Tools/CompareVI.Tools.psd1'
+        $summary.bundleContract.bundleImportPathExists | Should -BeTrue
+        $summary.bundleContract.authoritativeConsumerPin | Should -Not -BeNullOrEmpty
+        $summary.bundleContract.authoritativeConsumerPinKind | Should -Not -BeNullOrEmpty
+        @($summary.bundleContract.contractPathResolutions | Where-Object { -not $_.resolved }).Count | Should -Be 0
         $summary.certification.passed | Should -BeTrue
         $summary.certification.noUnspecified | Should -BeTrue
         $summary.certification.warningHasUnspecified | Should -BeFalse
@@ -62,13 +72,20 @@ Describe 'CompareVI history bundle certification' -Tag 'CompareVI' {
         $summary.certification.historyFacadeCoverageAligned | Should -BeTrue
         $summary.certification.historyScriptSupportsSourceBranchRef | Should -BeTrue
         $summary.certification.historyFacadeSourceBranchRefMatches | Should -BeTrue
+        $summary.certification.bundleMetadataPresent | Should -BeTrue
+        $summary.certification.bundleMetadataSchemaMatches | Should -BeTrue
+        $summary.certification.viHistoryCapabilityPresent | Should -BeTrue
+        $summary.certification.viHistoryCapabilityProducerNative | Should -BeTrue
+        $summary.certification.bundleContractPinResolved | Should -BeTrue
+        $summary.certification.bundleImportPathExists | Should -BeTrue
+        $summary.certification.bundleContractPathsResolved | Should -BeTrue
         $summary.warningText | Should -Match 'LVCompare detected differences'
         $summary.warningText | Should -Not -Match 'unspecified'
         @($summary.certification.actualModes) | Should -Be @('attributes', 'front-panel', 'block-diagram')
         $summary.historyFacade.schema | Should -Be 'comparevi-tools/history-facade@v1'
         @($summary.historyFacade.requestedModes) | Should -Be @('attributes', 'front-panel', 'block-diagram')
         @($summary.historyFacade.executedModes) | Should -Be @('attributes', 'front-panel', 'block-diagram')
-        $summary.historyFacade.sourceBranchRef | Should -Be 'develop'
+        $summary.historyFacade.sourceBranchRef | Should -Match '(^|/)develop$'
         $summary.historyFacade.coverageClass | Should -Be 'catalog-aligned'
         Test-Path -LiteralPath $summary.outputs.historySummaryJson -PathType Leaf | Should -BeTrue
 

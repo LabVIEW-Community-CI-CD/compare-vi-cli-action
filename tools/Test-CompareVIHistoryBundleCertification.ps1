@@ -135,6 +135,36 @@ function Read-GitHubOutputFile {
     return $values
 }
 
+function Get-ObjectPathValue {
+    param(
+        [Parameter(Mandatory = $true)]$InputObject,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    $current = $InputObject
+    foreach ($segment in $Path -split '\.') {
+        if ($null -eq $current) {
+            return $null
+        }
+
+        if ($current -is [System.Collections.IDictionary]) {
+            if (-not $current.Contains($segment)) {
+                return $null
+            }
+            $current = $current[$segment]
+            continue
+        }
+
+        $property = $current.PSObject.Properties[$segment]
+        if ($null -eq $property) {
+            return $null
+        }
+        $current = $property.Value
+    }
+
+    return $current
+}
+
 function Test-GitRefExists {
     param(
         [Parameter(Mandatory = $true)][string]$RepoRoot,
@@ -320,7 +350,10 @@ try {
     [System.Environment]::SetEnvironmentVariable('STUB_COMPARE_REPORT_FIXTURE', $null, 'Process')
     [System.Environment]::SetEnvironmentVariable('STUB_COMPARE_REPO_ROOT', $repoRoot, 'Process')
 
-    $sourceBranchMaxCommitCount = 1000
+    # Bundle certification proves the released facade contract against the
+    # canonical develop lineage; keep the safeguard broad enough that normal
+    # repository growth does not turn certification into a false failure.
+    $sourceBranchMaxCommitCount = 4096
     $historyResult = Invoke-CapturedProcess -FilePath 'pwsh' -Arguments @(
         '-NoLogo',
         '-NoProfile',
@@ -443,7 +476,97 @@ $summaryModeListMatches = (($summaryModeSlugs.Count -eq $expectedModes.Count) -a
 $summaryCoverageAligned = $summaryCoverageClass -eq 'catalog-aligned'
 $summarySourceBranchRef = [string]$historySummary.target.sourceBranchRef
 $summarySourceBranchRefMatches = [string]::Equals($summarySourceBranchRef, $effectiveSourceBranchRef, [System.StringComparison]::Ordinal)
-$passed = ($missingModes.Count -eq 0) -and ($unexpectedModes.Count -eq 0) -and ($unspecifiedHits.Count -eq 0) -and (-not $warningHasUnspecified) -and $warningHasExplicitCategories -and $summarySchemaMatches -and $summaryRequestedMatches -and $summaryExecutedMatches -and $summaryModeListMatches -and $summaryCoverageAligned -and $historyScriptSupportsSourceBranchRef -and $summarySourceBranchRefMatches
+$bundleContractRequired = $executionMode -eq 'bundle'
+$bundleMetadataPath = Join-Path $executionRoot 'comparevi-tools-release.json'
+$bundleMetadataPresent = Test-Path -LiteralPath $bundleMetadataPath -PathType Leaf
+$bundleMetadataSchemaMatches = $false
+$viHistoryCapabilityPresent = $false
+$viHistoryCapabilityProducerNative = $false
+$bundleContractPinResolved = $false
+$bundleImportPathExists = $false
+$bundleContractPathsResolved = $false
+$bundleContractStatus = if ($executionMode -eq 'bundle') { 'metadata-missing' } else { 'repo-source' }
+$bundleMetadataSchema = $null
+$bundleAuthoritativeConsumerPin = $null
+$bundleAuthoritativeConsumerPinKind = $null
+$bundleCapabilityId = $null
+$bundleDistributionRole = $null
+$bundleDistributionModel = $null
+$bundleImportPath = $null
+$bundleReleaseAssetPattern = $null
+$bundleContractPathResolutions = @()
+
+if ($bundleMetadataPresent) {
+    $bundleMetadata = Get-Content -LiteralPath $bundleMetadataPath -Raw | ConvertFrom-Json -Depth 12
+    $bundleMetadataSchema = [string]$bundleMetadata.schema
+    $bundleMetadataSchemaMatches = $bundleMetadataSchema -eq 'comparevi-tools-release-manifest@v1'
+    $bundleAuthoritativeConsumerPin = [string]$bundleMetadata.versionContract.authoritativeConsumerPin
+    $bundleAuthoritativeConsumerPinKind = [string]$bundleMetadata.versionContract.authoritativeConsumerPinKind
+    $bundleContractPinResolved = -not [string]::IsNullOrWhiteSpace($bundleAuthoritativeConsumerPin) -and `
+        -not [string]::IsNullOrWhiteSpace($bundleAuthoritativeConsumerPinKind)
+
+    $capability = $bundleMetadata.consumerContract.capabilities.viHistory
+    if ($null -ne $capability) {
+        $viHistoryCapabilityPresent = [string]$capability.schema -eq 'comparevi-tools/vi-history-capability@v1' -and `
+            [string]$capability.capabilityId -eq 'vi-history'
+        $bundleCapabilityId = [string]$capability.capabilityId
+        $bundleDistributionRole = [string]$capability.distributionRole
+        $bundleDistributionModel = [string]$capability.distributionModel
+        $bundleImportPath = [string]$capability.bundleImportPath
+        $bundleReleaseAssetPattern = [string]$capability.releaseAssetPattern
+        $viHistoryCapabilityProducerNative = $bundleDistributionRole -eq 'upstream-producer' -and `
+            $bundleDistributionModel -eq 'release-bundle'
+
+        if (-not [string]::IsNullOrWhiteSpace($bundleImportPath)) {
+            $bundleImportPathExists = Test-Path -LiteralPath (Join-Path $executionRoot $bundleImportPath) -PathType Leaf
+        }
+
+        $pathResolutions = New-Object System.Collections.Generic.List[object]
+        $bundleContractPathsResolved = $true
+        foreach ($contractProperty in @($capability.contractPaths.PSObject.Properties)) {
+            $contractPath = [string]$contractProperty.Value
+            $resolvedValue = Get-ObjectPathValue -InputObject $bundleMetadata -Path $contractPath
+            $resolved = $null -ne $resolvedValue
+            if (-not $resolved) {
+                $bundleContractPathsResolved = $false
+            }
+
+            $pathResolutions.Add([pscustomobject]@{
+                name = [string]$contractProperty.Name
+                path = $contractPath
+                resolved = $resolved
+            }) | Out-Null
+        }
+        $bundleContractPathResolutions = @($pathResolutions.ToArray())
+    }
+
+    if ($bundleContractRequired) {
+        $bundleContractStatus = if ($bundleMetadataSchemaMatches -and `
+            $viHistoryCapabilityPresent -and `
+            $viHistoryCapabilityProducerNative -and `
+            $bundleContractPinResolved -and `
+            $bundleImportPathExists -and `
+            $bundleContractPathsResolved) {
+            'producer-native-ready'
+        } else {
+            'producer-native-incomplete'
+        }
+    }
+}
+
+$bundleContractPassed = if ($bundleContractRequired) {
+    $bundleMetadataPresent -and `
+        $bundleMetadataSchemaMatches -and `
+        $viHistoryCapabilityPresent -and `
+        $viHistoryCapabilityProducerNative -and `
+        $bundleContractPinResolved -and `
+        $bundleImportPathExists -and `
+        $bundleContractPathsResolved
+} else {
+    $true
+}
+
+$passed = ($missingModes.Count -eq 0) -and ($unexpectedModes.Count -eq 0) -and ($unspecifiedHits.Count -eq 0) -and (-not $warningHasUnspecified) -and $warningHasExplicitCategories -and $summarySchemaMatches -and $summaryRequestedMatches -and $summaryExecutedMatches -and $summaryModeListMatches -and $summaryCoverageAligned -and $historyScriptSupportsSourceBranchRef -and $summarySourceBranchRefMatches -and $bundleContractPassed
 
 if (-not $warningLine) {
     throw 'Certification run did not emit an LVCompare detected differences warning line.'
@@ -487,6 +610,28 @@ if (-not $passed) {
     if (-not $summarySourceBranchRefMatches) {
         $failureReasons.Add(("history facade sourceBranchRef mismatch: expected {0} actual {1}" -f $effectiveSourceBranchRef, $summarySourceBranchRef)) | Out-Null
     }
+    if ($bundleContractRequired -and -not $bundleMetadataPresent) {
+        $failureReasons.Add('bundle metadata missing') | Out-Null
+    }
+    if ($bundleContractRequired -and -not $bundleMetadataSchemaMatches) {
+        $failureReasons.Add(("bundle metadata schema mismatch: {0}" -f $bundleMetadataSchema)) | Out-Null
+    }
+    if ($bundleContractRequired -and -not $viHistoryCapabilityPresent) {
+        $failureReasons.Add('vi-history capability record missing from bundle metadata') | Out-Null
+    }
+    if ($bundleContractRequired -and -not $viHistoryCapabilityProducerNative) {
+        $failureReasons.Add(("vi-history capability is not producer-native: role={0}; model={1}" -f $bundleDistributionRole, $bundleDistributionModel)) | Out-Null
+    }
+    if ($bundleContractRequired -and -not $bundleContractPinResolved) {
+        $failureReasons.Add('bundle authoritative consumer pin was not resolved') | Out-Null
+    }
+    if ($bundleContractRequired -and -not $bundleImportPathExists) {
+        $failureReasons.Add(("bundle import path missing from extracted archive: {0}" -f $bundleImportPath)) | Out-Null
+    }
+    if ($bundleContractRequired -and -not $bundleContractPathsResolved) {
+        $unresolvedPaths = @($bundleContractPathResolutions | Where-Object { -not $_.resolved } | ForEach-Object { $_.path })
+        $failureReasons.Add(("vi-history contract paths did not resolve: {0}" -f ($unresolvedPaths -join ', '))) | Out-Null
+    }
     throw ("Multi-mode history bundle certification failed: {0}" -f ($failureReasons -join '; '))
 }
 
@@ -526,6 +671,20 @@ $summaryObject = [ordered]@{
         categoryCounts = $aggregateManifest.stats.categoryCounts
         bucketCounts = $aggregateManifest.stats.bucketCounts
     }
+    bundleContract = [ordered]@{
+        status = $bundleContractStatus
+        metadataPath = if ($bundleMetadataPresent) { $bundleMetadataPath } else { $null }
+        schema = $bundleMetadataSchema
+        authoritativeConsumerPin = $bundleAuthoritativeConsumerPin
+        authoritativeConsumerPinKind = $bundleAuthoritativeConsumerPinKind
+        capabilityId = $bundleCapabilityId
+        distributionRole = $bundleDistributionRole
+        distributionModel = $bundleDistributionModel
+        bundleImportPath = $bundleImportPath
+        bundleImportPathExists = $bundleImportPathExists
+        releaseAssetPattern = $bundleReleaseAssetPattern
+        contractPathResolutions = $bundleContractPathResolutions
+    }
     historyFacade = [ordered]@{
         schema = [string]$historySummary.schema
         requestedModes = $summaryRequestedModes
@@ -551,6 +710,13 @@ $summaryObject = [ordered]@{
         historyFacadeCoverageAligned = $summaryCoverageAligned
         historyScriptSupportsSourceBranchRef = $historyScriptSupportsSourceBranchRef
         historyFacadeSourceBranchRefMatches = $summarySourceBranchRefMatches
+        bundleMetadataPresent = $bundleMetadataPresent
+        bundleMetadataSchemaMatches = $bundleMetadataSchemaMatches
+        viHistoryCapabilityPresent = $viHistoryCapabilityPresent
+        viHistoryCapabilityProducerNative = $viHistoryCapabilityProducerNative
+        bundleContractPinResolved = $bundleContractPinResolved
+        bundleImportPathExists = $bundleImportPathExists
+        bundleContractPathsResolved = $bundleContractPathsResolved
         passed = $true
     }
 }
@@ -570,6 +736,11 @@ $summaryLines += ('- Summary JSON: `{0}`' -f $summaryPath)
 $summaryLines += ('- Aggregate manifest: `{0}`' -f $aggregateManifestPath)
 $summaryLines += ('- History facade JSON: `{0}`' -f $historySummaryJson)
 $summaryLines += ('- History facade coverage: `{0}`' -f $summaryCoverageClass)
+$summaryLines += ('- Producer-native vi-history capability: `{0}`' -f $bundleContractStatus)
+if ($bundleMetadataPresent) {
+    $summaryLines += ('- Authoritative consumer pin: `{0}` ({1})' -f $bundleAuthoritativeConsumerPin, $bundleAuthoritativeConsumerPinKind)
+    $summaryLines += ('- Distribution role/model: `{0}` / `{1}`' -f $bundleDistributionRole, $bundleDistributionModel)
+}
 $summaryLines += ''
 $summaryLines += '| Mode | Processed | Diffs | Signal | Collapsed Noise | Stop Reason |'
 $summaryLines += '| --- | ---: | ---: | ---: | ---: | --- |'

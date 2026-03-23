@@ -112,6 +112,16 @@ checkout, and it must prove the explicit public diagnostics bundle
 `attributes`, `front-panel`, and `block-diagram` without `Unspecified`
 category collapse.
 
+The same certification surface now also attests that the extracted bundle is
+producer-native for downstream `vi-history` distribution:
+
+- `comparevi-tools-release.json` is present in the extracted archive
+- `consumerContract.capabilities.viHistory` is present and marked
+  `upstream-producer` / `release-bundle`
+- `versionContract.authoritativeConsumerPin` is resolved
+- the declared bundle import path and referenced consumer contract paths resolve
+  inside the extracted bundle metadata
+
 ## Supply-chain trust gate
 
 Release tags must pass the supply-chain trust gate before GitHub Release publication:

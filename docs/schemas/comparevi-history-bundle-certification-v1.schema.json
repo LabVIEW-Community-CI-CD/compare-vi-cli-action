@@ -15,6 +15,7 @@
     "execution",
     "outputs",
     "aggregate",
+    "bundleContract",
     "warningText",
     "modes",
     "certification"
@@ -130,6 +131,115 @@
     "aggregate": {
       "$ref": "#/$defs/aggregateStats"
     },
+    "bundleContract": {
+      "type": "object",
+      "required": [
+        "status",
+        "metadataPath",
+        "schema",
+        "authoritativeConsumerPin",
+        "authoritativeConsumerPinKind",
+        "capabilityId",
+        "distributionRole",
+        "distributionModel",
+        "bundleImportPath",
+        "bundleImportPathExists",
+        "releaseAssetPattern",
+        "contractPathResolutions"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "producer-native-ready",
+            "producer-native-incomplete",
+            "metadata-missing",
+            "repo-source"
+          ]
+        },
+        "metadataPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authoritativeConsumerPin": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authoritativeConsumerPinKind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "capabilityId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "distributionRole": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "distributionModel": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bundleImportPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bundleImportPathExists": {
+          "type": "boolean"
+        },
+        "releaseAssetPattern": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contractPathResolutions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "path",
+              "resolved"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "resolved": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "historyFacade": {
       "$ref": "#/$defs/historyFacade"
     },
@@ -159,6 +269,13 @@
         "historyFacadeCoverageAligned",
         "historyScriptSupportsSourceBranchRef",
         "historyFacadeSourceBranchRefMatches",
+        "bundleMetadataPresent",
+        "bundleMetadataSchemaMatches",
+        "viHistoryCapabilityPresent",
+        "viHistoryCapabilityProducerNative",
+        "bundleContractPinResolved",
+        "bundleImportPathExists",
+        "bundleContractPathsResolved",
         "passed"
       ],
       "properties": {
@@ -202,6 +319,27 @@
           "type": "boolean"
         },
         "historyFacadeSourceBranchRefMatches": {
+          "type": "boolean"
+        },
+        "bundleMetadataPresent": {
+          "type": "boolean"
+        },
+        "bundleMetadataSchemaMatches": {
+          "type": "boolean"
+        },
+        "viHistoryCapabilityPresent": {
+          "type": "boolean"
+        },
+        "viHistoryCapabilityProducerNative": {
+          "type": "boolean"
+        },
+        "bundleContractPinResolved": {
+          "type": "boolean"
+        },
+        "bundleImportPathExists": {
+          "type": "boolean"
+        },
+        "bundleContractPathsResolved": {
           "type": "boolean"
         },
         "passed": {
