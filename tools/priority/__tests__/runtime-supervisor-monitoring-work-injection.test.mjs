@@ -167,6 +167,44 @@ test('planCompareviRuntimeStep keeps queue-empty compare ownership as idle with 
   );
 });
 
+test('planCompareviRuntimeStep describes repo-context pivot preparation when compare remains current owner but template is next', async () => {
+  const decision = await compareviRuntimeTest.planCompareviRuntimeStep({
+    repoRoot: '/tmp/repo',
+    env: { GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action' },
+    options: {},
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({ implementationRemote: 'origin' }),
+      runMonitoringWorkInjectionFn: async () => ({
+        issueNumber: null,
+        outputPath: '/tmp/repo/tests/results/_agent/issue/monitoring-work-injection.json',
+        ledgerPath: '/tmp/repo/tests/results/_agent/ops/ops-decision-ledger.json'
+      }),
+      classifyNoStandingPriorityConditionFn: async () => ({
+        status: 'classified',
+        reason: 'queue-empty',
+        openIssueCount: 0,
+        message: 'queue empty'
+      }),
+      resolveStandingPriorityForRepoFn: async () => ({ found: null }),
+      readGovernorPortfolioSummaryFn: async () =>
+        createGovernorPortfolioSummary({
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          nextAction: 'future-agent-may-pivot',
+          ownerDecisionSource: 'compare-monitoring-mode',
+          governorMode: 'monitoring-active'
+        })
+    }
+  });
+
+  assert.equal(decision.outcome, 'idle');
+  assert.match(decision.reason, /preparing repo-context pivot/i);
+  assert.equal(decision.artifacts.governorPortfolioHandoff.status, 'owner-match');
+  assert.equal(
+    decision.artifacts.governorPortfolioHandoff.nextOwnerRepository,
+    'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+  );
+});
+
 test('planCompareviRuntimeStep reports queue-empty external-owner handoff metadata when portfolio points at template', async () => {
   const decision = await compareviRuntimeTest.planCompareviRuntimeStep({
     repoRoot: '/tmp/repo',
