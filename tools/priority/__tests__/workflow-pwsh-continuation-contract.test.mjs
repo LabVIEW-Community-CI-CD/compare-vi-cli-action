@@ -88,6 +88,15 @@ test('release workflow explicitly dispatches publish-tools-image with actions wr
   assert.match(dispatchStep.with.script, /const releaseChannel = releaseVersion\.includes\('-rc\.'\) \? 'rc' : 'stable';/);
 });
 
+test('release workflow remains tag-triggered and also supports workflow_dispatch replay for repaired tags', () => {
+  const workflowPath = path.join(workflowsRoot, 'release.yml');
+  const workflowRaw = readFileSync(workflowPath, 'utf8');
+  const workflow = yaml.load(workflowRaw);
+
+  assert.deepEqual(workflow?.on?.push?.tags, ['v*']);
+  assert.ok(Object.prototype.hasOwnProperty.call(workflow?.on ?? {}, 'workflow_dispatch'));
+});
+
 test('release workflow resolves downloaded artifacts through the shared helper before validation', () => {
   const workflowPath = path.join(workflowsRoot, 'release.yml');
   const workflowRaw = readFileSync(workflowPath, 'utf8');
