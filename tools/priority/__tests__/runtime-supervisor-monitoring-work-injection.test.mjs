@@ -197,6 +197,44 @@ test('planCompareviRuntimeStep keeps queue-empty compare ownership as idle with 
   );
 });
 
+test('planCompareviRuntimeStep explains blocked vi-history distributor dependency during queue-empty compare ownership', async () => {
+  const decision = await compareviRuntimeTest.planCompareviRuntimeStep({
+    repoRoot: '/tmp/repo',
+    env: { GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action' },
+    options: {},
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({ implementationRemote: 'origin' }),
+      runMonitoringWorkInjectionFn: async () => ({
+        issueNumber: null,
+        outputPath: '/tmp/repo/tests/results/_agent/issue/monitoring-work-injection.json',
+        ledgerPath: '/tmp/repo/tests/results/_agent/ops/ops-decision-ledger.json'
+      }),
+      classifyNoStandingPriorityConditionFn: async () => ({
+        status: 'classified',
+        reason: 'queue-empty',
+        openIssueCount: 0,
+        message: 'queue empty'
+      }),
+      resolveStandingPriorityForRepoFn: async () => ({ found: null }),
+      readGovernorPortfolioSummaryFn: async () =>
+        createGovernorPortfolioSummary({
+          nextAction: 'complete-compare-vi-history-producer-release',
+          ownerDecisionSource: 'compare-vi-history-distributor-dependency',
+          governorMode: 'monitoring-active',
+          viHistoryDistributorDependencyStatus: 'blocked',
+          viHistoryDistributorDependencyExternalBlocker: 'workflow-signing-secret-missing',
+          viHistoryDistributorDependencyPublicationState: 'unobserved'
+        })
+    }
+  });
+
+  assert.equal(decision.outcome, 'idle');
+  assert.match(decision.reason, /vi-history distributor dependency/i);
+  assert.match(decision.reason, /workflow-signing-secret-missing/i);
+  assert.equal(decision.artifacts.governorPortfolioHandoff.status, 'owner-match');
+  assert.equal(decision.artifacts.governorPortfolioHandoff.viHistoryDistributorDependencyStatus, 'blocked');
+});
+
 test('planCompareviRuntimeStep describes repo-context pivot preparation when compare remains current owner but template is next', async () => {
   const decision = await compareviRuntimeTest.planCompareviRuntimeStep({
     repoRoot: '/tmp/repo',

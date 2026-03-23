@@ -341,10 +341,29 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         futureAgentAction = 'stay-in-compare-monitoring'
         governorMode = 'compare-governance-work'
         nextAction = 'continue-compare-governance-work'
+        queueHandoffStatus = $null
+        queueHandoffNextWakeCondition = $null
+        queueHandoffPrUrl = $null
+        queueAuthoritySource = $null
       }
       portfolio = [ordered]@{
         repositoryCount = 4
         repositories = @()
+        dependencies = @(
+          [ordered]@{
+            id = 'vi-history-producer-native-distributor'
+            status = 'blocked'
+            ownerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+            dependentRepository = 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+            requiredCapability = 'vi-history'
+            source = 'compare-release-signing-readiness'
+            releaseSigningStatus = 'warn'
+            releasePublicationState = 'unobserved'
+            signingCapabilityState = 'missing'
+            externalBlocker = 'workflow-signing-secret-missing'
+            detail = 'awaiting-compare-release-signing-blocker-clear'
+          }
+        )
         unsupportedPaths = @()
       }
       summary = [ordered]@{
@@ -357,6 +376,14 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         templateMonitoringStatus = 'pass'
         supportedProofStatus = 'pass'
         repoGraphStatus = 'pass'
+        queueHandoffStatus = $null
+        queueHandoffNextWakeCondition = $null
+        queueHandoffPrUrl = $null
+        queueAuthoritySource = $null
+        viHistoryDistributorDependencyStatus = 'blocked'
+        viHistoryDistributorDependencyTargetRepository = 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+        viHistoryDistributorDependencyExternalBlocker = 'workflow-signing-secret-missing'
+        viHistoryDistributorDependencyPublicationState = 'unobserved'
         portfolioWakeConditionCount = 3
         triggeredWakeConditions = @(
           'compare-queue-not-empty',
@@ -371,6 +398,9 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match '\[handoff\] Governor portfolio summary'
     $output | Should -Match 'mode\s+: compare-governance-work'
     $output | Should -Match 'proof\s+: pass'
+    $output | Should -Match 'vhist\s+: blocked'
+    $output | Should -Match 'vhistRepo: LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+    $output | Should -Match 'vhistBlk : workflow-signing-secret-missing'
     $global:HandoffAutonomousGovernorPortfolioSummary.schema | Should -Be 'priority/autonomous-governor-portfolio-summary-report@v1'
 
     Remove-Variable -Name HandoffAutonomousGovernorPortfolioSummary -Scope Global -ErrorAction SilentlyContinue
