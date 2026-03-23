@@ -92,8 +92,13 @@ function seedWorkflowContract(repoRoot) {
       '      - name: Configure release tag signing material',
       '        run: |',
       '          echo RELEASE_TAG_SIGNING_PRIVATE_KEY',
+      '          echo RELEASE_TAG_SIGNING_IDENTITY_NAME',
+      '          echo RELEASE_TAG_SIGNING_IDENTITY_EMAIL',
+      "          signing_login=\"$(gh api user --jq '.login')\"",
       '          git config gpg.format ssh',
-      '          git config user.signingkey "$public_key_path"'
+      '          git config user.signingkey "$public_key_path"',
+      '          git config user.name "$signing_name"',
+      '          git config user.email "$signing_email"'
     ].join('\n')
   );
 }

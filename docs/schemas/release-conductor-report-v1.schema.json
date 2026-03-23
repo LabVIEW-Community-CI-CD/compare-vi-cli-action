@@ -76,12 +76,25 @@
         "signingMaterial": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["available", "signingKey", "source", "backend"],
+          "required": ["available", "signingKey", "source", "backend", "identity"],
           "properties": {
             "available": { "type": "boolean" },
             "signingKey": { "type": ["string", "null"] },
             "source": { "type": "string" },
-            "backend": { "type": "string" }
+            "backend": { "type": "string" },
+            "identity": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["available", "name", "email", "source", "login", "accountId"],
+              "properties": {
+                "available": { "type": "boolean" },
+                "name": { "type": ["string", "null"] },
+                "email": { "type": ["string", "null"] },
+                "source": { "type": "string" },
+                "login": { "type": ["string", "null"] },
+                "accountId": { "type": ["string", "null"] }
+              }
+            }
           }
         },
         "repair": {
