@@ -341,6 +341,47 @@ test('maybeAdmitPullRequestToMergeQueue invokes merge-sync when the PR was just 
   assert.equal(calls[0].options.cwd, '/tmp/repo');
 });
 
+test('maybeAdmitPullRequestToMergeQueue invokes merge-sync for ready user-fork PR creation', () => {
+  const calls = [];
+  const result = maybeAdmitPullRequestToMergeQueue({
+    repoRoot: '/tmp/repo',
+    upstream: {
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action'
+    },
+    strategy: 'gh-pr-create',
+    pullRequest: {
+      number: 1862,
+      isDraft: false
+    },
+    readyTransition: {
+      status: 'not-applicable'
+    },
+    readJsonFn: () => ({
+      finalReason: 'merge-queue-branch-develop',
+      promotion: {
+        status: 'already-auto-merge-enabled',
+        materialized: true
+      }
+    }),
+    spawnSyncFn: (command, args, options) => {
+      calls.push({ command, args, options });
+      return {
+        status: 0,
+        stdout: '',
+        stderr: ''
+      };
+    }
+  });
+
+  assert.equal(result.status, 'already-auto-merge-enabled');
+  assert.equal(result.attempted, true);
+  assert.equal(result.reason, 'merge-queue-branch-develop');
+  assert.equal(result.promotion.status, 'already-auto-merge-enabled');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, 'node');
+});
+
 test('maybeAdmitPullRequestToMergeQueue skips when the PR creation flow did not auto-ready the PR', () => {
   const result = maybeAdmitPullRequestToMergeQueue({
     repoRoot: '/tmp/repo',
@@ -363,7 +404,32 @@ test('maybeAdmitPullRequestToMergeQueue skips when the PR creation flow did not 
 
   assert.equal(result.status, 'skipped');
   assert.equal(result.attempted, false);
-  assert.match(result.reason, /only attempted after the current PR creation flow marked the PR ready/i);
+  assert.match(result.reason, /remains draft/i);
+});
+
+test('maybeAdmitPullRequestToMergeQueue skips while a user-fork PR stays draft', () => {
+  const result = maybeAdmitPullRequestToMergeQueue({
+    repoRoot: '/tmp/repo',
+    upstream: {
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action'
+    },
+    strategy: 'gh-pr-create',
+    pullRequest: {
+      number: 1862,
+      isDraft: true
+    },
+    readyTransition: {
+      status: 'not-applicable'
+    },
+    spawnSyncFn: () => {
+      throw new Error('merge-sync should not run while the PR stays draft');
+    }
+  });
+
+  assert.equal(result.status, 'skipped');
+  assert.equal(result.attempted, false);
+  assert.match(result.reason, /remains draft/i);
 });
 
 test('parseArgs accepts explicit PR helper overrides', () => {
@@ -485,6 +551,59 @@ test('createPriorityPr forwards an explicit draft override to PR creation', () =
 
   assert.equal(draftCalls.length, 1);
   assert.equal(draftCalls[0].draft, true);
+});
+
+test('createPriorityPr hands a ready user-fork PR directly into queue admission', () => {
+  let queueAdmissionPayload = null;
+  const result = createPriorityPrWithNoMergedHistory({
+    env: {},
+    options: {
+      issue: 1863,
+      branch: 'issue/upstream-1863-pr-create-merge-sync-handoff'
+    },
+    readFileSyncFn: readDefaultPrTemplate,
+    getRepoRootFn: () => '/tmp/repo',
+    getCurrentBranchFn: () => 'issue/upstream-1863-pr-create-merge-sync-handoff',
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' }),
+    ensureForkRemoteFn: () => ({
+      owner: 'svelderrainruiz',
+      repo: 'compare-vi-cli-action',
+      sameOwnerFork: false,
+      remoteName: 'origin'
+    }),
+    pushBranchFn: () => ({ status: 'pushed' }),
+    runGhPrCreateFn: () => ({
+      strategy: 'gh-pr-create',
+      pullRequest: {
+        number: 1863,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1863',
+        isDraft: false
+      }
+    }),
+    admitToMergeQueueFn: (payload) => {
+      queueAdmissionPayload = payload;
+      return {
+        status: 'already-auto-merge-enabled',
+        reason: 'merge-queue-branch-develop',
+        attempted: true,
+        helperCall: 'node tools/priority/merge-sync-pr.mjs --pr 1863',
+        summaryPath: '/tmp/repo/tests/results/_agent/issue/queue-admission.json',
+        promotion: {
+          status: 'already-auto-merge-enabled',
+          materialized: true
+        }
+      };
+    },
+    resolveStandingIssueNumberFn: () => ({ issueNumber: 1863, source: 'cli' }),
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
+  });
+
+  assert.equal(result.pullRequest.isDraft, false);
+  assert.equal(result.readyTransition.status, 'not-applicable');
+  assert.equal(result.queueAdmission.status, 'already-auto-merge-enabled');
+  assert.equal(queueAdmissionPayload.strategy, 'gh-pr-create');
+  assert.equal(queueAdmissionPayload.pullRequest.isDraft, false);
 });
 
 test('parseRouterIssueNumber returns positive integer issue values', () => {
