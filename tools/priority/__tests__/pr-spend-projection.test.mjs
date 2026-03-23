@@ -325,7 +325,10 @@ test('runPrSpendProjection writes JSON and markdown outputs and can upsert a com
         posted = { repo, prNumber, body };
         return { posted: true, mode: 'update-existing-marker-comment' };
       },
-      lookupCurrentLoginFn: () => 'automation-user'
+      lookupCurrentLoginFn: () => 'automation-user',
+      runGitHubCommentBudgetHookFn: () => ({
+        markdown: '<!-- priority:github-comment-budget-hook:start -->\n_Budget hook_: stub.\n<!-- priority:github-comment-budget-hook:end -->\n'
+      })
     }
   );
 
@@ -409,7 +412,10 @@ test('runPrSpendProjection materializes a missing cost rollup before projection'
           outputPath: materializationReportPath,
           costRollupPath: requestedPath
         };
-      }
+      },
+      runGitHubCommentBudgetHookFn: () => ({
+        markdown: '<!-- priority:github-comment-budget-hook:start -->\n_Budget hook_: stub.\n<!-- priority:github-comment-budget-hook:end -->\n'
+      })
     }
   );
 
@@ -490,7 +496,10 @@ test('runPrSpendProjection rematerializes when an existing rollup has no matchin
           outputPath: requestedOutputPath,
           costRollupPath: requestedPath
         };
-      }
+      },
+      runGitHubCommentBudgetHookFn: () => ({
+        markdown: '<!-- priority:github-comment-budget-hook:start -->\n_Budget hook_: stub.\n<!-- priority:github-comment-budget-hook:end -->\n'
+      })
     }
   );
 

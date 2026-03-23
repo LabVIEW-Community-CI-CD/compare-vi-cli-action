@@ -1,0 +1,16 @@
+{
+  "schema": "priority/github-comment-budget-hook-policy@v1",
+  "costRollupPath": "tests/results/_agent/cost/agent-cost-rollup.json",
+  "materializationPolicyPath": "tools/policy/agent-cost-rollup-materialization.json",
+  "materializationReportPath": "tests/results/_agent/cost/agent-cost-rollup-materialization.json",
+  "outputPath": "tests/results/_agent/cost/github-comment-budget-hook.json",
+  "markdownOutputPath": "tests/results/_agent/cost/github-comment-budget-hook.md",
+  "operatorBudgetCapUsd": 50000,
+  "materializeCostRollup": true,
+  "reservedFundingPurposes": [
+    "calibration"
+  ],
+  "reservedActivationStates": [
+    "hold"
+  ]
+}

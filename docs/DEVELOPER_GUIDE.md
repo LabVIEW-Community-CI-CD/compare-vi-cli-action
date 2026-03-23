@@ -177,10 +177,14 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   `gh issue create/edit`. Omit `--output` to print to STDOUT.
 - `pwsh -NoLogo -NoProfile -File tools/Post-IssueComment.ps1 -Issue <number> -BodyFile issue-comment.md`
   Posts GitHub issue comments through `--body-file` by default so multiline Markdown survives PowerShell and mixed
-  Windows/WSL shells without backtick-escape drift.
+  Windows/WSL shells without backtick-escape drift. The wrapper also appends the
+  checked-in durable budget hook by default; pass `-SkipBudgetHook` only when a
+  test or break-glass path must suppress the attestation.
 - `pwsh -NoLogo -NoProfile -File tools/Post-PullRequestComment.ps1 -PullRequest <number> -Repo <owner/repo> -BodyFile pr-comment.md`
   Posts GitHub pull-request comments through `--body-file` by default so multiline Markdown survives PowerShell and
-  mixed Windows/WSL shells without backtick-escape drift.
+  mixed Windows/WSL shells without backtick-escape drift. The wrapper also
+  appends the checked-in durable budget hook by default; pass `-SkipBudgetHook`
+  only when a test or break-glass path must suppress the attestation.
 - `node tools/priority/github-helper.mjs snippet --issue 531 --prefix Fixes`  
   Emits an auto-link snippet (defaults to `Fixes #531`) you can drop into PR descriptions so GitHub auto-closes the issue.
 - `node tools/npm/run-script.mjs priority:project:portfolio:apply -- --url <issue-or-pr-url> --use-config`  

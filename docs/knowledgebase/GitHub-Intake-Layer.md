@@ -137,12 +137,20 @@ instead of inferring the correct path from prose alone.
   gh issue comment 875 --body-file issue-comment.md
   ```
 
+  `Post-IssueComment.ps1` now appends the durable budget hook by default so
+  automation-authored comments retain spend state even after session compaction.
+  Use `-SkipBudgetHook` only when a test or narrow break-glass path needs the
+  raw body unchanged.
+
 - Pull-request comments:
 
   ```powershell
   pwsh -File tools/Post-PullRequestComment.ps1 -PullRequest 875 -Repo owner/repo -BodyFile pr-comment.md
   gh pr comment 875 --repo owner/repo --body-file pr-comment.md
   ```
+
+  `Post-PullRequestComment.ps1` follows the same default and appends the durable
+  budget hook unless `-SkipBudgetHook` is explicit.
 
 - PR bodies:
 
@@ -234,4 +242,5 @@ Human-authored PRs should use the `human-change` template so they do not acciden
 For issue creation, issue comments, PR comments, and PR creation in mixed WSL/Windows shells, prefer `--body-file`
 over inline multiline `--body` strings. For comments, prefer `tools/Post-IssueComment.ps1` and
 `tools/Post-PullRequestComment.ps1` so PowerShell lanes always route through a temporary or explicit body file. That
-keeps quoting deterministic and aligns with the guidance in `AGENTS.md`.
+keeps quoting deterministic, appends the durable budget hook by default, and
+aligns with the guidance in `AGENTS.md`.

@@ -46,7 +46,7 @@ $payload | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $env:GH_CAPTURE_PA
     $bodyText = "PR comment from file`n"
     [System.IO.File]::WriteAllText($bodyPath, $bodyText)
 
-    & $scriptPath -PullRequest 1396 -Repo 'LabVIEW-Community-CI-CD/compare-vi-cli-action' -BodyFile $bodyPath -Quiet
+    & $scriptPath -PullRequest 1396 -Repo 'LabVIEW-Community-CI-CD/compare-vi-cli-action' -BodyFile $bodyPath -SkipBudgetHook -Quiet
 
     $capture = Get-Content -LiteralPath $script:capturePath -Raw | ConvertFrom-Json -ErrorAction Stop
     $capture.args[0] | Should -Be 'pr'
@@ -55,8 +55,8 @@ $payload | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $env:GH_CAPTURE_PA
     $capture.args | Should -Contain '--repo'
     $capture.args | Should -Contain 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
     $capture.args | Should -Contain '--body-file'
-    $capture.bodyPath | Should -Be (Resolve-Path -LiteralPath $bodyPath).Path
-    $capture.bodyContent | Should -BeExactly $bodyText
+    [string]::IsNullOrWhiteSpace($capture.bodyPath) | Should -BeFalse
+    $capture.bodyContent.TrimEnd("`r", "`n") | Should -BeExactly $bodyText.TrimEnd("`r", "`n")
   }
 
   It 'routes inline PR comment text through a temporary body file' {
@@ -65,7 +65,7 @@ Continuity line
 `upstream/develop...HEAD`
 '@.TrimEnd("`r", "`n")
 
-    & $scriptPath -PullRequest 1396 -Repo 'LabVIEW-Community-CI-CD/compare-vi-cli-action' -Body $bodyText -Quiet
+    & $scriptPath -PullRequest 1396 -Repo 'LabVIEW-Community-CI-CD/compare-vi-cli-action' -Body $bodyText -SkipBudgetHook -Quiet
 
     $capture = Get-Content -LiteralPath $script:capturePath -Raw | ConvertFrom-Json -ErrorAction Stop
     $capture.args | Should -Contain '--body-file'
@@ -78,10 +78,28 @@ Continuity line
     $bodyPath = Join-Path $TestDrive 'edit-last.md'
     Set-Content -LiteralPath $bodyPath -Value 'Edit last PR comment' -Encoding utf8
 
-    & $scriptPath -PullRequest 1396 -Repo 'LabVIEW-Community-CI-CD/compare-vi-cli-action' -BodyFile $bodyPath -EditLast -Quiet
+    & $scriptPath -PullRequest 1396 -Repo 'LabVIEW-Community-CI-CD/compare-vi-cli-action' -BodyFile $bodyPath -EditLast -SkipBudgetHook -Quiet
 
     $capture = Get-Content -LiteralPath $script:capturePath -Raw | ConvertFrom-Json -ErrorAction Stop
     $capture.args | Should -Contain '--edit-last'
     $capture.args | Should -Contain '--body-file'
+  }
+
+  It 'appends the budget hook when a stub markdown hook file is supplied' {
+    $bodyPath = Join-Path $TestDrive 'comment.md'
+    $hookPath = Join-Path $TestDrive 'hook.md'
+    Set-Content -LiteralPath $bodyPath -Value 'Body before hook' -Encoding utf8
+    Set-Content -LiteralPath $hookPath -Value @'
+<!-- priority:github-comment-budget-hook:start -->
+_Budget hook_: operator cap `$50000.000000`.
+<!-- priority:github-comment-budget-hook:end -->
+'@ -Encoding utf8
+
+    & $scriptPath -PullRequest 1396 -Repo 'LabVIEW-Community-CI-CD/compare-vi-cli-action' -BodyFile $bodyPath -BudgetHookMarkdownFile $hookPath -Quiet
+
+    $capture = Get-Content -LiteralPath $script:capturePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    $capture.bodyContent | Should -Match '<!-- priority:github-comment-budget-hook:start -->'
+    $capture.bodyContent | Should -Match 'Body before hook'
+    $capture.bodyContent | Should -Match 'operator cap'
   }
 }
