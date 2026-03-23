@@ -136,11 +136,13 @@
         "publicationReplay": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["requested", "workflow", "ref", "dispatched", "status", "error"],
+          "required": ["requested", "workflow", "ref", "tagInputName", "tagInputValue", "dispatched", "status", "error"],
           "properties": {
             "requested": { "type": "boolean" },
             "workflow": { "type": "string" },
             "ref": { "type": ["string", "null"] },
+            "tagInputName": { "type": ["string", "null"] },
+            "tagInputValue": { "type": ["string", "null"] },
             "dispatched": { "type": "boolean" },
             "status": {
               "type": "string",

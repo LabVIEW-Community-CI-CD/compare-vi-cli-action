@@ -920,6 +920,9 @@ test('runReleaseConductor repairs an existing authoritative tag when repair mode
   assert.equal(report.release.publicationReplay.requested, true);
   assert.equal(report.release.publicationReplay.status, 'dispatched');
   assert.equal(report.release.publicationReplay.dispatched, true);
+  assert.equal(report.release.publicationReplay.ref, 'develop');
+  assert.equal(report.release.publicationReplay.tagInputName, 'release_tag');
+  assert.equal(report.release.publicationReplay.tagInputValue, 'v0.8.0-rc.1');
   assert.equal(
     commandCalls.some(
       (entry) =>
@@ -949,7 +952,9 @@ test('runReleaseConductor repairs an existing authoritative tag when repair mode
         entry.args[1] === 'run' &&
         entry.args[2] === 'release.yml' &&
         entry.args[3] === '--ref' &&
-        entry.args[4] === 'v0.8.0-rc.1'
+        entry.args[4] === 'develop' &&
+        entry.args[5] === '-f' &&
+        entry.args[6] === 'release_tag=v0.8.0-rc.1'
     ),
     true
   );
@@ -1064,6 +1069,9 @@ test('runReleaseConductor fails apply when repaired tag publication replay dispa
   assert.equal(report.release.publicationReplay.requested, true);
   assert.equal(report.release.publicationReplay.status, 'dispatch-failed');
   assert.equal(report.release.publicationReplay.dispatched, false);
+  assert.equal(report.release.publicationReplay.ref, 'develop');
+  assert.equal(report.release.publicationReplay.tagInputName, 'release_tag');
+  assert.equal(report.release.publicationReplay.tagInputValue, 'v0.8.0-rc.1');
   assert.equal(report.release.publicationReplay.error, 'dispatch denied');
   assert.ok(report.decision.blockers.some((entry) => entry.code === 'release-replay-dispatch-failed'));
 });

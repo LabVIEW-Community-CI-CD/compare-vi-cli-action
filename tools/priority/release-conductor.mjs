@@ -14,6 +14,8 @@ export const DEFAULT_POLICY_SNAPSHOT_PATH = path.join('tests', 'results', '_agen
 export const DEFAULT_DWELL_MINUTES = 60;
 export const DEFAULT_QUARANTINE_STALE_HOURS = 24;
 export const RELEASE_PUBLICATION_WORKFLOW = 'release.yml';
+export const RELEASE_PUBLICATION_WORKFLOW_REF = 'develop';
+export const RELEASE_PUBLICATION_TAG_INPUT = 'release_tag';
 
 const REQUIRED_DWELL_WORKFLOWS = Object.freeze([
   { name: 'Validate', file: 'validate.yml' },
@@ -760,7 +762,9 @@ export async function runReleaseConductor(options = {}) {
   const publicationReplay = {
     requested: Boolean(args.repairExistingTag && applyRequested),
     workflow: RELEASE_PUBLICATION_WORKFLOW,
-    ref: targetTag,
+    ref: RELEASE_PUBLICATION_WORKFLOW_REF,
+    tagInputName: RELEASE_PUBLICATION_TAG_INPUT,
+    tagInputValue: targetTag,
     dispatched: false,
     status: args.repairExistingTag && applyRequested ? 'blocked' : 'not-requested',
     error: null
@@ -896,7 +900,15 @@ export async function runReleaseConductor(options = {}) {
                 repair.status = 'repaired';
                 const dispatchResult = runCommandFn(
                   'gh',
-                  ['workflow', 'run', RELEASE_PUBLICATION_WORKFLOW, '--ref', targetTag],
+                  [
+                    'workflow',
+                    'run',
+                    RELEASE_PUBLICATION_WORKFLOW,
+                    '--ref',
+                    RELEASE_PUBLICATION_WORKFLOW_REF,
+                    '-f',
+                    `${RELEASE_PUBLICATION_TAG_INPUT}=${targetTag}`
+                  ],
                   {
                     cwd: repoRoot,
                     allowFailure: true
