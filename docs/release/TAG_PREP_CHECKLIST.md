@@ -62,6 +62,14 @@ the archived release notes
 
 ## 6. Tag Creation
 
+- [ ] Verify signed-tag readiness before push:
+
+```pwsh
+node tools/npm/run-script.mjs priority:release:conductor -- --apply --channel rc --version 0.6.4-rc.1
+```
+
+- [ ] Confirm `tests/results/_agent/release/release-conductor-report.json` reports
+      `status: pass` before pushing the RC tag.
 - [ ] Create an annotated RC tag:
 
 ```pwsh
