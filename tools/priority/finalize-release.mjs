@@ -22,7 +22,8 @@ import {
   normalizeVersionInput,
   writeReleaseMetadata,
   summarizeStatusChecks,
-  assertReleaseMetadataExists
+  assertReleaseMetadataExists,
+  ensureReleaseBranchMetadata
 } from './lib/release-utils.mjs';
 import {
   readSessionIndexHygiene,
@@ -306,9 +307,6 @@ async function main() {
   process.chdir(repoRoot);
   ensureCleanWorkingTree(run, 'Working tree not clean. Commit or stash changes before finalizing the release.');
   ensureGhCli();
-  await assertReleaseMetadataExists(repoRoot, tag, 'branch');
-  const standingPriorityParity = await collectStandingPriorityParityEvidence(repoRoot);
-  const hygiene = collectReleaseHygiene(repoRoot);
 
   const releaseBranch = `release/${tag}`;
   ensureBranchExists(releaseBranch);
@@ -316,9 +314,23 @@ async function main() {
 
   const upstream = resolveUpstream(repoRoot);
   ensureOriginFork(repoRoot, upstream);
-  const compareEvidence = await collectCompareEvidenceGate(repoRoot, upstream, releaseBranch);
-
   const prInfo = ensureReleasePrReady(repoRoot, releaseBranch, requiredReleaseChecks);
+  const releaseBranchCommit = run('git', ['rev-parse', releaseBranch], { cwd: repoRoot });
+  const releaseBaseCommit = run('git', ['merge-base', 'upstream/develop', releaseBranch], { cwd: repoRoot });
+  await ensureReleaseBranchMetadata(repoRoot, {
+    tag,
+    semver,
+    branch: releaseBranch,
+    branchExists: true,
+    baseCommit: releaseBaseCommit,
+    releaseCommit: releaseBranchCommit,
+    pullRequest: prInfo,
+    recoverySource: 'release-finalize'
+  });
+
+  const standingPriorityParity = await collectStandingPriorityParityEvidence(repoRoot);
+  const hygiene = collectReleaseHygiene(repoRoot);
+  const compareEvidence = await collectCompareEvidenceGate(repoRoot, upstream, releaseBranch);
 
   run('git', ['fetch', 'origin'], { cwd: repoRoot });
   run('git', ['fetch', 'upstream'], { cwd: repoRoot });
