@@ -46,7 +46,10 @@
         "targetTag",
         "proposalOnly",
         "tagCreated",
+        "tagPushed",
         "tagError",
+        "tagPushError",
+        "tagPushRemote",
         "signingMaterial"
       ],
       "properties": {
@@ -56,15 +59,28 @@
         "targetTag": { "type": ["string", "null"] },
         "proposalOnly": { "type": "boolean" },
         "tagCreated": { "type": "boolean" },
+        "tagPushed": { "type": "boolean" },
         "tagError": { "type": ["string", "null"] },
+        "tagPushError": { "type": ["string", "null"] },
+        "tagPushRemote": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["remoteName", "remoteSlug", "source"],
+          "properties": {
+            "remoteName": { "type": ["string", "null"] },
+            "remoteSlug": { "type": ["string", "null"] },
+            "source": { "type": "string" }
+          }
+        },
         "signingMaterial": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["available", "signingKey", "source"],
+          "required": ["available", "signingKey", "source", "backend"],
           "properties": {
             "available": { "type": "boolean" },
             "signingKey": { "type": ["string", "null"] },
-            "source": { "type": "string" }
+            "source": { "type": "string" },
+            "backend": { "type": "string" }
           }
         }
       }

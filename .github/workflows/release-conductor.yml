@@ -66,10 +66,45 @@ jobs:
         run: |
           pwsh -NoLogo -NoProfile -File tools/priority/Resolve-PolicyToken.ps1 -TokenFileName release-conductor-gh-token.txt
 
+      - name: Configure release tag signing material
+        shell: bash
+        env:
+          RELEASE_TAG_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_TAG_SIGNING_PRIVATE_KEY }}
+          RELEASE_TAG_SIGNING_PUBLIC_KEY: ${{ secrets.RELEASE_TAG_SIGNING_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_TAG_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "No release tag signing key configured; skipping workflow-owned signing setup."
+            exit 0
+          fi
+          signing_dir="$RUNNER_TEMP/release-tag-signing"
+          mkdir -p "$signing_dir"
+          private_key_path="$signing_dir/id_release_tag_signing"
+          public_key_path="${private_key_path}.pub"
+
+          printf '%s\n' "$RELEASE_TAG_SIGNING_PRIVATE_KEY" > "$private_key_path"
+          chmod 600 "$private_key_path"
+
+          if [[ -n "${RELEASE_TAG_SIGNING_PUBLIC_KEY:-}" ]]; then
+            printf '%s\n' "$RELEASE_TAG_SIGNING_PUBLIC_KEY" > "$public_key_path"
+          else
+            ssh-keygen -y -f "$private_key_path" > "$public_key_path"
+          fi
+          chmod 644 "$public_key_path"
+
+          git config gpg.format ssh
+          git config user.signingkey "$public_key_path"
+          git config tag.gpgSign true
+
+          echo "RELEASE_TAG_SIGNING_BACKEND=ssh" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG_SIGNING_SOURCE=workflow-secret" >> "$GITHUB_ENV"
+
       - name: Run release conductor
         shell: pwsh
         env:
           RELEASE_CONDUCTOR_ENABLED: ${{ vars.RELEASE_CONDUCTOR_ENABLED || '0' }}
+          RELEASE_TAG_SIGNING_BACKEND: ${{ env.RELEASE_TAG_SIGNING_BACKEND || '' }}
+          RELEASE_TAG_SIGNING_SOURCE: ${{ env.RELEASE_TAG_SIGNING_SOURCE || '' }}
         run: |
           npm ci --ignore-scripts
           node tools/npm/run-script.mjs priority:policy:snapshot -- --output tests/results/_agent/policy/policy-state-snapshot.json

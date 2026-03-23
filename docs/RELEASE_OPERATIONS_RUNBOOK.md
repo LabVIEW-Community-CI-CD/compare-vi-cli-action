@@ -138,6 +138,18 @@ For unattended cadence, use `.github/workflows/downstream-onboarding-feedback.ym
 
 ## Supply-chain trust remediation classes
 
+Before relying on a local workstation tag, prefer the release conductor
+automation path:
+
+- run `.github/workflows/release-conductor.yml` in apply mode
+- provision `RELEASE_TAG_SIGNING_PRIVATE_KEY` and optional
+  `RELEASE_TAG_SIGNING_PUBLIC_KEY` for workflow-owned signing
+- inspect `tests/results/_agent/release/release-conductor-report.json`
+  first
+- require both:
+  - `release.tagCreated = true`
+  - `release.tagPushed = true`
+
 When the release trust gate fails, inspect `tests/results/_agent/supply-chain/release-trust-gate.json` and follow the
 matching remediation path:
 
