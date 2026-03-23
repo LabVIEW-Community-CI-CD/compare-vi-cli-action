@@ -155,6 +155,19 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.doesNotMatch(workflowRaw, /steps\.contract_artifacts\.outputs\.linux_tarball_path/);
 });
 
+test('release workflow appends repair-mode guidance for unsigned or lightweight tags', () => {
+  const workflowPath = path.join(workflowsRoot, 'release.yml');
+  const workflowRaw = readFileSync(workflowPath, 'utf8');
+
+  assert.match(workflowRaw, /name: Append release trust remediation guidance/);
+  assert.match(workflowRaw, /node tools\/priority\/release-trust-remediation\.mjs/);
+  assert.match(workflowRaw, /--trust-report tests\/results\/_agent\/supply-chain\/release-trust-gate\.json/);
+  assert.match(workflowRaw, /--tag-ref "\$\{\{\s*github\.ref_name\s*\}\}"/);
+  assert.match(workflowRaw, /--output tests\/results\/_agent\/release\/release-trust-remediation\.md/);
+  assert.match(workflowRaw, /--summary "\$GITHUB_STEP_SUMMARY"/);
+  assert.match(workflowRaw, /tests\/results\/_agent\/release\/release-trust-remediation\.md/);
+});
+
 test('monthly release workflow marks itself as the SLO remediation candidate', () => {
   const workflowPath = path.join(workflowsRoot, 'monthly-stability-release.yml');
   const workflowRaw = readFileSync(workflowPath, 'utf8');

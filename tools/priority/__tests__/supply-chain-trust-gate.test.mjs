@@ -349,6 +349,14 @@ test('verifyReleaseTagSignature fails for unsigned tag', async () => {
   });
 
   assert.ok(result.failures.some((failure) => failure.code === 'tag-signature-unverified'));
+  assert.ok(
+    result.failures.some(
+      (failure) =>
+        failure.code === 'tag-signature-unverified' &&
+        String(failure.hint).includes('priority:release:signing:readiness') &&
+        String(failure.hint).includes('repair_existing_tag = true')
+    )
+  );
   assert.equal(result.status.verified, false);
   assert.equal(result.status.reason, 'unsigned');
 });
@@ -380,6 +388,14 @@ test('verifyReleaseTagSignature fails for lightweight tag', async () => {
   });
 
   assert.ok(result.failures.some((failure) => failure.code === 'tag-not-annotated'));
+  assert.ok(
+    result.failures.some(
+      (failure) =>
+        failure.code === 'tag-not-annotated' &&
+        String(failure.hint).includes('priority:release:signing:readiness') &&
+        String(failure.hint).includes('repair_existing_tag = true')
+    )
+  );
   assert.equal(result.status.annotated, false);
   assert.equal(result.status.reason, 'not-annotated');
 });
