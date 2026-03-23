@@ -192,7 +192,8 @@
           "enum": [
             "none",
             "delivery-runtime",
-            "merge-sync-summary"
+            "merge-sync-summary",
+            "queue-refresh-summary"
           ]
         },
         "nextWakeCondition": { "type": ["string", "null"] },

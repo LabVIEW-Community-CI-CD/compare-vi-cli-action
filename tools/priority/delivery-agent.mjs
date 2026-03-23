@@ -4761,6 +4761,69 @@ async function mergePullRequest({ taskPacket, repoRoot, deps = {} }) {
   };
 }
 
+async function refreshQueueAuthorityDuringHostedWait({ taskPacket, repoRoot, deps = {} }) {
+  if (typeof deps.refreshQueueAuthorityDuringHostedWaitFn === 'function') {
+    return deps.refreshQueueAuthorityDuringHostedWaitFn({ taskPacket, repoRoot });
+  }
+  const pullRequest = taskPacket?.evidence?.delivery?.pullRequest ?? null;
+  const repository = normalizeText(taskPacket?.repository);
+  const prNumber = coercePositiveInteger(pullRequest?.number) ?? extractPullRequestNumberFromUrl(pullRequest?.url);
+  if (!repository || !prNumber) {
+    return null;
+  }
+
+  const queueRefreshSummaryPath = path.join(repoRoot, 'tests', 'results', '_agent', 'queue', `queue-refresh-${prNumber}.json`);
+  const mergeSummaryPath = path.join(repoRoot, 'tests', 'results', '_agent', 'queue', `merge-sync-${prNumber}.json`);
+  const helperArgs = [
+    'tools/priority/queue-refresh-pr.mjs',
+    '--pr',
+    String(prNumber),
+    '--repo',
+    repository,
+    '--dry-run',
+    '--summary-path',
+    queueRefreshSummaryPath,
+    '--merge-summary-path',
+    mergeSummaryPath
+  ];
+  const helperCall = `node ${helperArgs.join(' ')}`;
+  const result = await runCommand('node', helperArgs, { cwd: repoRoot, env: process.env }, deps);
+  if (result.status !== 0) {
+    const message =
+      normalizeText(result.stderr) || normalizeText(result.stdout) || `queue-refresh failed (${result.status})`;
+    return {
+      status: 'failed',
+      reason: message,
+      helperCall,
+      summaryPath: queueRefreshSummaryPath,
+      mergeSummaryPath,
+      nextWakeCondition: null
+    };
+  }
+
+  const receipt = await readJsonIfPresent(queueRefreshSummaryPath);
+  const isInMergeQueue = receipt?.initial?.isInMergeQueue === true;
+  const mergedAt = normalizeText(receipt?.initial?.mergedAt);
+  const autoMergeEnabled = receipt?.initial?.autoMergeEnabled === true;
+  let nextWakeCondition = 'checks-green';
+  if (mergedAt) {
+    nextWakeCondition = 'queue-settled';
+  } else if (isInMergeQueue) {
+    nextWakeCondition = 'merge-queue-progress';
+  } else if (autoMergeEnabled) {
+    nextWakeCondition = 'checks-green';
+  }
+
+  return {
+    status: 'completed',
+    reason: normalizeText(receipt?.summary?.reason) || 'queue-refresh-dry-run',
+    helperCall,
+    summaryPath: queueRefreshSummaryPath,
+    mergeSummaryPath,
+    nextWakeCondition
+  };
+}
+
 async function updatePullRequestBranch({ taskPacket, repoRoot, executionRoot = repoRoot, deps = {} }) {
   if (typeof deps.updatePullRequestBranchFn === 'function') {
     return deps.updatePullRequestBranchFn({ taskPacket, repoRoot, executionRoot });
@@ -5311,6 +5374,19 @@ export async function runDeliveryTurnBroker({
     if (draftOnlyResult) {
       return withWorkerProviderDispatch(draftOnlyResult, enrichedPacket);
     }
+    const queueAuthorityRefresh =
+      planned.laneLifecycle === 'waiting-ci'
+        ? await refreshQueueAuthorityDuringHostedWait({
+            taskPacket: enrichedPacket,
+            repoRoot,
+            deps
+          })
+        : null;
+    const helperCallsExecuted = [queueAuthorityRefresh?.helperCall].filter(Boolean);
+    const nextWakeCondition =
+      planned.laneLifecycle === 'waiting-review'
+        ? normalizeText(planned.pullRequest?.nextWakeCondition) || 'review-disposition-updated'
+        : normalizeText(queueAuthorityRefresh?.nextWakeCondition) || 'checks-green';
     return withWorkerProviderDispatch({
       status: 'completed',
       outcome: planned.laneLifecycle,
@@ -5324,10 +5400,7 @@ export async function runDeliveryTurnBroker({
         laneLifecycle: planned.laneLifecycle,
         blockerClass: planned.laneLifecycle === 'waiting-review' ? 'review' : 'ci',
         retryable: true,
-        nextWakeCondition:
-          planned.laneLifecycle === 'waiting-review'
-            ? normalizeText(planned.pullRequest?.nextWakeCondition) || 'review-disposition-updated'
-            : 'checks-green',
+        nextWakeCondition,
         pollIntervalSecondsHint:
           coercePositiveInteger(planned.pullRequest?.pollIntervalSecondsHint) ?? null,
         reviewPhase: planned.pullRequest?.isDraft === true ? 'draft-review' : 'ready-validation',
@@ -5335,7 +5408,7 @@ export async function runDeliveryTurnBroker({
           planned.laneLifecycle === 'waiting-review'
             ? planned.pullRequest?.copilotReviewWorkflow ?? null
             : null,
-        helperCallsExecuted: [],
+        helperCallsExecuted,
         filesTouched: []
       }
     }, enrichedPacket);
