@@ -99,6 +99,8 @@ jobs:
 
           git config gpg.format ssh
           git config user.signingkey "$public_key_path"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config tag.gpgSign true
 
           echo "RELEASE_TAG_SIGNING_BACKEND=ssh" >> "$GITHUB_ENV"
