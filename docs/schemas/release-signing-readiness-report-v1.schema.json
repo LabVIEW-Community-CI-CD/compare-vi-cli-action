@@ -11,6 +11,8 @@
     "inputs",
     "workflowContract",
     "secretInventory",
+    "releaseConductorApply",
+    "signingAuthority",
     "publication",
     "summary",
     "blockers"
@@ -89,6 +91,68 @@
         "error": { "type": ["string", "null"] }
       }
     },
+    "releaseConductorApply": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "variablePresent",
+        "enabled",
+        "configuredValue",
+        "listedVariableCount",
+        "listedVariableNames",
+        "source",
+        "error"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "enabled",
+            "disabled",
+            "unverifiable"
+          ]
+        },
+        "variablePresent": { "type": ["boolean", "null"] },
+        "enabled": { "type": ["boolean", "null"] },
+        "configuredValue": { "type": ["string", "null"] },
+        "listedVariableCount": { "type": ["integer", "null"], "minimum": 0 },
+        "listedVariableNames": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "source": { "type": "string", "minLength": 1 },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "signingAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "requiredScope",
+        "scopeAvailable",
+        "listedKeyCount",
+        "source",
+        "error"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "keys-missing",
+            "scope-missing",
+            "unverifiable"
+          ]
+        },
+        "requiredScope": { "type": "string", "minLength": 1 },
+        "scopeAvailable": { "type": ["boolean", "null"] },
+        "listedKeyCount": { "type": ["integer", "null"], "minimum": 0 },
+        "source": { "type": "string", "minLength": 1 },
+        "error": { "type": ["string", "null"] }
+      }
+    },
     "publication": {
       "type": "object",
       "additionalProperties": false,
@@ -120,6 +184,8 @@
         "status",
         "codePathState",
         "signingCapabilityState",
+        "signingAuthorityState",
+        "releaseConductorApplyState",
         "publicationState",
         "externalBlocker",
         "blockerCount"
@@ -147,6 +213,23 @@
             "unverifiable"
           ]
         },
+        "signingAuthorityState": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "keys-missing",
+            "scope-missing",
+            "unverifiable"
+          ]
+        },
+        "releaseConductorApplyState": {
+          "type": "string",
+          "enum": [
+            "enabled",
+            "disabled",
+            "unverifiable"
+          ]
+        },
         "publicationState": {
           "type": "string",
           "enum": [
@@ -164,6 +247,11 @@
           "enum": [
             "workflow-signing-secret-missing",
             "workflow-signing-secret-unverifiable",
+            "workflow-signing-admin-scope-missing",
+            "workflow-signing-key-missing",
+            "workflow-signing-authority-unverifiable",
+            "release-conductor-apply-disabled",
+            "release-conductor-apply-unverifiable",
             null
           ]
         },
@@ -185,7 +273,12 @@
             "enum": [
               "workflow-signing-contract-missing",
               "workflow-signing-secret-missing",
-              "workflow-signing-secret-unverifiable"
+              "workflow-signing-secret-unverifiable",
+              "workflow-signing-admin-scope-missing",
+              "workflow-signing-key-missing",
+              "workflow-signing-authority-unverifiable",
+              "release-conductor-apply-disabled",
+              "release-conductor-apply-unverifiable"
             ]
           },
           "message": { "type": "string", "minLength": 1 }

@@ -344,6 +344,8 @@ function deriveReleaseSigningReadiness(releaseSigningReadinessReport) {
       status: 'missing',
       codePathState: null,
       signingCapabilityState: null,
+      signingAuthorityState: null,
+      releaseConductorApplyState: null,
       publicationState: null,
       externalBlocker: null,
       blockerCount: 0
@@ -354,6 +356,8 @@ function deriveReleaseSigningReadiness(releaseSigningReadinessReport) {
     status: asOptional(releaseSigningReadinessReport?.summary?.status) || 'missing',
     codePathState: asOptional(releaseSigningReadinessReport?.summary?.codePathState),
     signingCapabilityState: asOptional(releaseSigningReadinessReport?.summary?.signingCapabilityState),
+    signingAuthorityState: asOptional(releaseSigningReadinessReport?.summary?.signingAuthorityState),
+    releaseConductorApplyState: asOptional(releaseSigningReadinessReport?.summary?.releaseConductorApplyState),
     publicationState: asOptional(releaseSigningReadinessReport?.summary?.publicationState),
     externalBlocker: asOptional(releaseSigningReadinessReport?.summary?.externalBlocker),
     blockerCount: Number.isInteger(releaseSigningReadinessReport?.summary?.blockerCount)
@@ -710,6 +714,8 @@ function buildReport({
       monitoringStatus: asOptional(monitoringMode?.summary?.status),
       futureAgentAction: asOptional(monitoringMode?.summary?.futureAgentAction),
       releaseSigningStatus: releaseSigningReadiness.status,
+      releaseSigningAuthorityState: releaseSigningReadiness.signingAuthorityState,
+      releaseConductorApplyState: releaseSigningReadiness.releaseConductorApplyState,
       releaseSigningExternalBlocker: releaseSigningReadiness.externalBlocker,
       releasePublicationState: releaseSigningReadiness.publicationState,
       queueHandoffStatus: queueAuthority.status,

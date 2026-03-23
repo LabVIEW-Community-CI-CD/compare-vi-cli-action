@@ -47,6 +47,8 @@ function createCompareGovernorSummary(overrides = {}) {
         status: 'warn',
         codePathState: 'ready',
         signingCapabilityState: 'missing',
+        signingAuthorityState: 'scope-missing',
+        releaseConductorApplyState: 'disabled',
         publicationState: 'unobserved',
         externalBlocker: 'workflow-signing-secret-missing'
       }
@@ -93,6 +95,8 @@ function createCompareGovernorSummary(overrides = {}) {
       queueHandoffPrUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
       queueAuthoritySource: 'delivery-runtime',
       releaseSigningStatus: 'warn',
+      releaseSigningAuthorityState: 'scope-missing',
+      releaseConductorApplyState: 'disabled',
       releaseSigningExternalBlocker: 'workflow-signing-secret-missing',
       releasePublicationState: 'unobserved'
     },
@@ -322,6 +326,8 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
     'workflow-signing-secret-missing'
   );
   assert.equal(report.summary.viHistoryDistributorDependencyPublicationState, 'unobserved');
+  assert.equal(report.summary.viHistoryDistributorDependencySigningAuthorityState, 'scope-missing');
+  assert.equal(report.summary.viHistoryDistributorDependencyReleaseConductorApplyState, 'disabled');
   assert.equal(report.compare.queueHandoffPrUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
   assert.equal(report.compare.queueAuthoritySource, 'delivery-runtime');
   assert.equal(report.portfolio.repositoryCount, 4);
@@ -336,6 +342,8 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
       releaseSigningStatus: 'warn',
       releasePublicationState: 'unobserved',
       signingCapabilityState: 'missing',
+      signingAuthorityState: 'scope-missing',
+      releaseConductorApplyState: 'disabled',
       externalBlocker: 'workflow-signing-secret-missing',
       detail: 'awaiting-compare-release-signing-blocker-clear'
     }
@@ -365,6 +373,15 @@ test('runAutonomousGovernorPortfolioSummary routes ownership to canonical templa
         status: 'blocked',
         futureAgentAction: 'reopen-template-monitoring-work',
         wakeConditionCount: 1
+      },
+      releaseSigningReadiness: {
+        status: 'warn',
+        codePathState: 'ready',
+        signingCapabilityState: 'missing',
+        signingAuthorityState: 'scope-missing',
+        releaseConductorApplyState: 'disabled',
+        publicationState: 'unobserved',
+        externalBlocker: 'workflow-signing-secret-missing'
       }
     },
     wake: {
@@ -391,7 +408,16 @@ test('runAutonomousGovernorPortfolioSummary routes ownership to canonical templa
       continuityStatus: 'maintained',
       wakeTerminalState: 'monitoring',
       monitoringStatus: 'blocked',
-      futureAgentAction: 'reopen-template-monitoring-work'
+      futureAgentAction: 'reopen-template-monitoring-work',
+      releaseSigningStatus: 'warn',
+      releaseSigningAuthorityState: 'scope-missing',
+      releaseConductorApplyState: 'disabled',
+      releaseSigningExternalBlocker: 'workflow-signing-secret-missing',
+      releasePublicationState: 'unobserved',
+      queueHandoffStatus: 'none',
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: 'none'
     }
   });
   const monitoringMode = createMonitoringMode({
@@ -477,6 +503,8 @@ test('runAutonomousGovernorPortfolioSummary keeps next owner on compare while vi
         status: 'warn',
         codePathState: 'ready',
         signingCapabilityState: 'missing',
+        signingAuthorityState: 'scope-missing',
+        releaseConductorApplyState: 'disabled',
         publicationState: 'unobserved',
         externalBlocker: 'workflow-signing-secret-missing'
       }
@@ -511,6 +539,8 @@ test('runAutonomousGovernorPortfolioSummary keeps next owner on compare while vi
       queueHandoffPrUrl: null,
       queueAuthoritySource: 'none',
       releaseSigningStatus: 'warn',
+      releaseSigningAuthorityState: 'scope-missing',
+      releaseConductorApplyState: 'disabled',
       releaseSigningExternalBlocker: 'workflow-signing-secret-missing',
       releasePublicationState: 'unobserved'
     }
@@ -563,7 +593,9 @@ test('runAutonomousGovernorPortfolioSummary flips next owner to template once vi
       releaseSigningReadiness: {
         status: 'pass',
         codePathState: 'ready',
-        signingCapabilityState: 'ready',
+        signingCapabilityState: 'configured',
+        signingAuthorityState: 'ready',
+        releaseConductorApplyState: 'enabled',
         publicationState: 'producer-native-ready',
         externalBlocker: null
       }
@@ -598,6 +630,8 @@ test('runAutonomousGovernorPortfolioSummary flips next owner to template once vi
       queueHandoffPrUrl: null,
       queueAuthoritySource: 'none',
       releaseSigningStatus: 'pass',
+      releaseSigningAuthorityState: 'ready',
+      releaseConductorApplyState: 'enabled',
       releaseSigningExternalBlocker: null,
       releasePublicationState: 'producer-native-ready'
     }

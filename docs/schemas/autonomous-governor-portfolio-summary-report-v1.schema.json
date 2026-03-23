@@ -190,6 +190,8 @@
               "releaseSigningStatus",
               "releasePublicationState",
               "signingCapabilityState",
+              "signingAuthorityState",
+              "releaseConductorApplyState",
               "externalBlocker",
               "detail"
             ],
@@ -203,6 +205,8 @@
               "releaseSigningStatus": { "type": ["string", "null"] },
               "releasePublicationState": { "type": ["string", "null"] },
               "signingCapabilityState": { "type": ["string", "null"] },
+              "signingAuthorityState": { "type": ["string", "null"] },
+              "releaseConductorApplyState": { "type": ["string", "null"] },
               "externalBlocker": { "type": ["string", "null"] },
               "detail": { "type": "string" }
             }
@@ -244,6 +248,8 @@
         "viHistoryDistributorDependencyTargetRepository",
         "viHistoryDistributorDependencyExternalBlocker",
         "viHistoryDistributorDependencyPublicationState",
+        "viHistoryDistributorDependencySigningAuthorityState",
+        "viHistoryDistributorDependencyReleaseConductorApplyState",
         "portfolioWakeConditionCount",
         "triggeredWakeConditions"
       ],
@@ -268,6 +274,8 @@
         "viHistoryDistributorDependencyTargetRepository": { "type": ["string", "null"] },
         "viHistoryDistributorDependencyExternalBlocker": { "type": ["string", "null"] },
         "viHistoryDistributorDependencyPublicationState": { "type": ["string", "null"] },
+        "viHistoryDistributorDependencySigningAuthorityState": { "type": ["string", "null"] },
+        "viHistoryDistributorDependencyReleaseConductorApplyState": { "type": ["string", "null"] },
         "portfolioWakeConditionCount": { "type": "integer", "minimum": 0 },
         "triggeredWakeConditions": {
           "type": "array",
