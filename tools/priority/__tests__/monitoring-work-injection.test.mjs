@@ -58,10 +58,64 @@ function createPolicy() {
   };
 }
 
-function createInputs(tmpDir, { includeWakeEvidence = true } = {}) {
+function createGovernorPortfolioSummary({
+  currentOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+  nextOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+  governorMode = 'compare-governance-work',
+  nextAction = 'continue-compare-governance-work',
+  ownerDecisionSource = 'compare-governor-summary',
+  status = 'active'
+} = {}) {
+  return {
+    schema: 'priority/autonomous-governor-portfolio-summary-report@v1',
+    generatedAt: '2099-01-01T00:00:30.000Z',
+    inputs: {
+      compareGovernorSummaryPath: 'tests/results/_agent/handoff/autonomous-governor-summary.json',
+      monitoringModePath: 'tests/results/_agent/handoff/monitoring-mode.json',
+      repoGraphTruthPath: 'tests/results/_agent/handoff/downstream-repo-graph-truth.json'
+    },
+    compare: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      queueState: 'queue-empty',
+      continuityStatus: 'maintained',
+      monitoringStatus: 'active',
+      futureAgentAction: 'future-agent-may-pivot',
+      governorMode,
+      nextAction
+    },
+    portfolio: {
+      repositoryCount: 4,
+      repositories: [],
+      unsupportedPaths: []
+    },
+    summary: {
+      status,
+      governorMode,
+      currentOwnerRepository,
+      nextOwnerRepository,
+      nextAction,
+      ownerDecisionSource,
+      templateMonitoringStatus: 'pass',
+      supportedProofStatus: 'pass',
+      repoGraphStatus: 'pass',
+      portfolioWakeConditionCount: 0,
+      triggeredWakeConditions: []
+    }
+  };
+}
+
+function createInputs(tmpDir, { includeWakeEvidence = true, governorPortfolioSummaryOverride = null } = {}) {
   const policyPath = path.join(tmpDir, 'policy.json');
   const queuePath = path.join(tmpDir, 'queue.json');
   const monitoringPath = path.join(tmpDir, 'monitoring.json');
+  const governorPortfolioSummaryPath = path.join(
+    tmpDir,
+    'tests',
+    'results',
+    '_agent',
+    'handoff',
+    'autonomous-governor-portfolio-summary.json'
+  );
   const hostSignalPath = path.join(tmpDir, 'host-signal.json');
   const wakeAdjudicationPath = path.join(tmpDir, 'wake-adjudication.json');
   const wakeWorkSynthesisPath = path.join(tmpDir, 'wake-work-synthesis.json');
@@ -80,6 +134,10 @@ function createInputs(tmpDir, { includeWakeEvidence = true } = {}) {
       wakeConditionCount: 0
     }
   });
+  writeJson(
+    governorPortfolioSummaryPath,
+    governorPortfolioSummaryOverride || createGovernorPortfolioSummary()
+  );
   writeJson(hostSignalPath, {
     schema: 'priority/delivery-agent-host-signal@v1',
     generatedAt: '2099-01-01T00:00:00.000Z',
@@ -143,6 +201,7 @@ function createInputs(tmpDir, { includeWakeEvidence = true } = {}) {
     policyPath,
     queuePath,
     monitoringPath,
+    governorPortfolioSummaryPath,
     hostSignalPath,
     wakeAdjudicationPath,
     wakeWorkSynthesisPath,
@@ -342,7 +401,124 @@ test('runMonitoringWorkInjection creates a compare governance issue from actiona
   assert.equal(report.summary.triggerId, 'compare-governance-wake');
   assert.equal(report.selectedRule.resolvedDedupeMarker, 'monitoring-work-injector:compare-governance-wake:reconcile-downstream-branch-target-provenance');
   assert.equal(report.evidence.wake.decision, 'compare-governance-work');
+  assert.equal(report.portfolioRouting.status, 'owner-match');
   assert.ok(ghCalls.some((entry) => entry.startsWith('issue create')));
+});
+
+test('runMonitoringWorkInjection keeps template-owned actionable wakes out of compare issue injection when the portfolio routes ownership away', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-template-owned-'));
+  const {
+    policyPath,
+    queuePath,
+    monitoringPath,
+    hostSignalPath,
+    wakeAdjudicationPath,
+    wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath
+  } = createInputs(tmpDir, {
+    governorPortfolioSummaryOverride: createGovernorPortfolioSummary({
+      currentOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      governorMode: 'template-work',
+      nextAction: 'reopen-template-monitoring-work',
+      ownerDecisionSource: 'template-monitoring'
+    })
+  });
+  writeJson(wakeWorkSynthesisPath, {
+    schema: 'priority/wake-work-synthesis-report@v1',
+    generatedAt: '2099-01-01T00:02:00.000Z',
+    wake: {
+      classification: 'live-defect',
+      nextAction: 'repair-template-smoke'
+    },
+    summary: {
+      decision: 'template-work',
+      status: 'actionable',
+      recommendedOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      reason: 'Supported template proof regressed.'
+    }
+  });
+  writeJson(hostSignalPath, {
+    schema: 'priority/delivery-agent-host-signal@v1',
+    generatedAt: '2099-01-01T00:00:00.000Z',
+    status: 'ready',
+    provider: 'native-wsl',
+    daemonFingerprint: 'abc123'
+  });
+
+  const { report } = await runMonitoringWorkInjection(
+    {
+      repoRoot: tmpDir,
+      policyPath,
+      queueEmptyReportPath: queuePath,
+      monitoringModePath: monitoringPath,
+      hostSignalPath,
+      wakeAdjudicationPath,
+      wakeWorkSynthesisPath,
+      wakeInvestmentAccountingPath,
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    {
+      runGhJsonFn: () => {
+        throw new Error('template-owned routes must not query compare issues');
+      },
+      runGhFn: () => {
+        throw new Error('template-owned routes must not mutate compare issues');
+      }
+    }
+  );
+
+  assert.equal(report.summary.status, 'external-route');
+  assert.equal(report.portfolioRouting.status, 'external-owner');
+  assert.equal(report.evidence.governorPortfolio.currentOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+});
+
+test('runMonitoringWorkInjection fails closed when portfolio ownership contradicts the lower-tier actionable wake', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-portfolio-contradiction-'));
+  const {
+    policyPath,
+    queuePath,
+    monitoringPath,
+    hostSignalPath,
+    wakeAdjudicationPath,
+    wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath
+  } = createInputs(tmpDir, {
+    governorPortfolioSummaryOverride: createGovernorPortfolioSummary({
+      currentOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      governorMode: 'template-work',
+      nextAction: 'reopen-template-monitoring-work',
+      ownerDecisionSource: 'template-monitoring'
+    })
+  });
+
+  const { report } = await runMonitoringWorkInjection(
+    {
+      repoRoot: tmpDir,
+      policyPath,
+      queueEmptyReportPath: queuePath,
+      monitoringModePath: monitoringPath,
+      hostSignalPath,
+      wakeAdjudicationPath,
+      wakeWorkSynthesisPath,
+      wakeInvestmentAccountingPath,
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    {
+      runGhJsonFn: () => {
+        throw new Error('contradictory ownership must fail closed before GitHub queries');
+      },
+      runGhFn: () => {
+        throw new Error('contradictory ownership must fail closed before issue mutation');
+      }
+    }
+  );
+
+  assert.equal(report.summary.status, 'policy-blocked');
+  assert.equal(report.summary.triggerId, 'compare-governance-wake');
+  assert.equal(report.portfolioRouting.status, 'contradiction');
+  assert.deepEqual(report.portfolioRouting.contradictionFields, ['recommendedOwnerRepository']);
 });
 
 test('runMonitoringWorkInjection suppresses stale wakes instead of injecting new work', async () => {
