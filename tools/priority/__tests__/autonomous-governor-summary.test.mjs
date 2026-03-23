@@ -102,6 +102,25 @@ function createWakeInvestmentAccounting() {
   };
 }
 
+function createDeliveryRuntimeState(overrides = {}) {
+  return {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    status: 'waiting-ci',
+    laneLifecycle: 'waiting-ci',
+    activeLane: {
+      issue: 1863,
+      prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
+      laneLifecycle: 'waiting-ci',
+      actionType: 'merge-pr',
+      outcome: 'waiting-ci',
+      blockerClass: 'none',
+      nextWakeCondition: 'checks-green',
+      reason: 'Waiting for hosted checks to finish before merge queue advances.'
+    },
+    ...overrides
+  };
+}
+
 test('parseArgs keeps governor summary defaults and accepts overrides', () => {
   const parsed = parseArgs([
     'node',
@@ -155,4 +174,32 @@ test('runAutonomousGovernorSummary reports monitoring-active when no wake lifecy
   assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
   assert.equal(report.wake.terminalState, null);
+  assert.equal(report.compare.deliveryRuntime.status, 'none');
+  assert.equal(report.summary.queueHandoffStatus, 'none');
+});
+
+test('runAutonomousGovernorSummary carries queue-owned delivery runtime state into the governor summary', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-queue-handoff-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'wake-lifecycle.json'), createWakeLifecycle());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'capital', 'wake-investment-accounting.json'),
+    createWakeInvestmentAccounting()
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState()
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.compare.deliveryRuntime.status, 'checks-pending');
+  assert.equal(report.compare.deliveryRuntime.laneLifecycle, 'waiting-ci');
+  assert.equal(report.compare.deliveryRuntime.nextWakeCondition, 'checks-green');
+  assert.equal(report.compare.deliveryRuntime.prUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
+  assert.equal(report.summary.queueHandoffStatus, 'checks-pending');
+  assert.equal(report.summary.queueHandoffNextWakeCondition, 'checks-green');
+  assert.equal(report.summary.queueHandoffPrUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
 });

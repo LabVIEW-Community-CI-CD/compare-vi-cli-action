@@ -47,7 +47,10 @@
         "monitoringStatus",
         "futureAgentAction",
         "governorMode",
-        "nextAction"
+        "nextAction",
+        "queueHandoffStatus",
+        "queueHandoffNextWakeCondition",
+        "queueHandoffPrUrl"
       ],
       "properties": {
         "repository": { "type": ["string", "null"] },
@@ -56,7 +59,10 @@
         "monitoringStatus": { "type": ["string", "null"] },
         "futureAgentAction": { "type": ["string", "null"] },
         "governorMode": { "type": ["string", "null"] },
-        "nextAction": { "type": ["string", "null"] }
+        "nextAction": { "type": ["string", "null"] },
+        "queueHandoffStatus": { "type": ["string", "null"] },
+        "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
+        "queueHandoffPrUrl": { "type": ["string", "null"] }
       }
     },
     "portfolio": {
@@ -141,7 +147,10 @@
                   "monitoringStatus",
                   "futureAgentAction",
                   "governorMode",
-                  "nextAction"
+                  "nextAction",
+                  "queueHandoffStatus",
+                  "queueHandoffNextWakeCondition",
+                  "queueHandoffPrUrl"
                 ],
                 "properties": {
                   "queueState": { "type": ["string", "null"] },
@@ -149,7 +158,10 @@
                   "monitoringStatus": { "type": ["string", "null"] },
                   "futureAgentAction": { "type": ["string", "null"] },
                   "governorMode": { "type": ["string", "null"] },
-                  "nextAction": { "type": ["string", "null"] }
+                  "nextAction": { "type": ["string", "null"] },
+                  "queueHandoffStatus": { "type": ["string", "null"] },
+                  "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
+                  "queueHandoffPrUrl": { "type": ["string", "null"] }
                 }
               },
               "triggeredWakeConditions": {
@@ -187,6 +199,9 @@
         "templateMonitoringStatus",
         "supportedProofStatus",
         "repoGraphStatus",
+        "queueHandoffStatus",
+        "queueHandoffNextWakeCondition",
+        "queueHandoffPrUrl",
         "portfolioWakeConditionCount",
         "triggeredWakeConditions"
       ],
@@ -203,6 +218,9 @@
         "templateMonitoringStatus": { "type": "string" },
         "supportedProofStatus": { "type": "string" },
         "repoGraphStatus": { "type": ["string", "null"] },
+        "queueHandoffStatus": { "type": ["string", "null"] },
+        "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
+        "queueHandoffPrUrl": { "type": ["string", "null"] },
         "portfolioWakeConditionCount": { "type": "integer", "minimum": 0 },
         "triggeredWakeConditions": {
           "type": "array",

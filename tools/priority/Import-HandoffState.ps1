@@ -280,6 +280,15 @@ if ($governorSummary) {
   if ($governorSummary.summary.nextOwnerRepository) {
     Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governorSummary.summary.nextOwnerRepository))
   }
+  if ($governorSummary.summary.PSObject.Properties['queueHandoffStatus'] -and
+      $governorSummary.summary.queueHandoffStatus -and
+      $governorSummary.summary.queueHandoffStatus -ne 'none') {
+    Write-Host ("  queueWait: {0}" -f (Format-NullableValue $governorSummary.summary.queueHandoffStatus))
+    Write-Host ("  wake     : {0}" -f (Format-NullableValue $governorSummary.summary.queueHandoffNextWakeCondition))
+    if ($governorSummary.summary.PSObject.Properties['queueHandoffPrUrl'] -and $governorSummary.summary.queueHandoffPrUrl) {
+      Write-Host ("  pr       : {0}" -f (Format-NullableValue $governorSummary.summary.queueHandoffPrUrl))
+    }
+  }
   if ($governorSummary.summary.wakeTerminalState) {
     Write-Host ("  wake     : {0}" -f (Format-NullableValue $governorSummary.summary.wakeTerminalState))
   }
@@ -294,6 +303,11 @@ if ($governorPortfolioSummary) {
   Write-Host ("  proof    : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.supportedProofStatus))
   if ($governorPortfolioSummary.summary.nextOwnerRepository) {
     Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.nextOwnerRepository))
+  }
+  if ($governorPortfolioSummary.summary.PSObject.Properties['queueHandoffStatus'] -and
+      $governorPortfolioSummary.summary.queueHandoffStatus) {
+    Write-Host ("  queueWait: {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.queueHandoffStatus))
+    Write-Host ("  queueWake: {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.queueHandoffNextWakeCondition))
   }
   Set-Variable -Name HandoffAutonomousGovernorPortfolioSummary -Scope Global -Value $governorPortfolioSummary -Force
 }

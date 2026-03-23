@@ -13,12 +13,35 @@ function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 
+function resolveValidatorRepoRoot(repoRoot) {
+  const localValidatorOk =
+    fs.existsSync(path.join(repoRoot, 'dist', 'tools', 'schemas', 'validate-json.js')) &&
+    fs.existsSync(path.join(repoRoot, 'node_modules', 'ajv', 'package.json')) &&
+    fs.existsSync(path.join(repoRoot, 'node_modules', 'argparse', 'package.json'));
+  if (localValidatorOk) {
+    return repoRoot;
+  }
+  const candidates = [
+    path.resolve(repoRoot, '..', 'compare-monitoring-canonical'),
+    path.resolve(repoRoot, '..', '1843-wake-lifecycle-state-machine')
+  ];
+  return (
+    candidates.find(
+      (candidate) =>
+        fs.existsSync(path.join(candidate, 'dist', 'tools', 'schemas', 'validate-json.js')) &&
+        fs.existsSync(path.join(candidate, 'node_modules', 'ajv', 'package.json')) &&
+        fs.existsSync(path.join(candidate, 'node_modules', 'argparse', 'package.json'))
+    ) || repoRoot
+  );
+}
+
 function runSchemaValidate(repoRoot, schemaPath, dataPath) {
+  const validatorRepoRoot = resolveValidatorRepoRoot(repoRoot);
   const result = spawnSync(
     'node',
-    [path.join(repoRoot, 'dist', 'tools', 'schemas', 'validate-json.js'), '--schema', schemaPath, '--data', dataPath],
+    [path.join(validatorRepoRoot, 'dist', 'tools', 'schemas', 'validate-json.js'), '--schema', schemaPath, '--data', dataPath],
     {
-      cwd: repoRoot,
+      cwd: validatorRepoRoot,
       encoding: 'utf8'
     }
   );
@@ -43,7 +66,19 @@ test('autonomous governor portfolio summary schema validates a generated report'
     compare: {
       queueState: { status: 'queue-empty', reason: 'queue-empty', openIssueCount: 0, ready: true },
       continuity: { status: 'maintained', turnBoundary: 'safe-idle', supervisionState: 'idle-monitoring', operatorPromptRequiredToResume: false },
-      monitoringMode: { status: 'active', futureAgentAction: 'future-agent-may-pivot', wakeConditionCount: 0 }
+      monitoringMode: { status: 'active', futureAgentAction: 'future-agent-may-pivot', wakeConditionCount: 0 },
+      deliveryRuntime: {
+        status: 'checks-pending',
+        runtimeStatus: 'waiting-ci',
+        laneLifecycle: 'waiting-ci',
+        actionType: 'merge-pr',
+        outcome: 'waiting-ci',
+        blockerClass: 'none',
+        nextWakeCondition: 'checks-green',
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
+        issueNumber: 1863,
+        reason: 'Waiting for hosted checks to finish before merge queue advances.'
+      }
     },
     wake: {
       terminalState: 'monitoring',
@@ -81,7 +116,10 @@ test('autonomous governor portfolio summary schema validates a generated report'
       continuityStatus: 'maintained',
       wakeTerminalState: 'monitoring',
       monitoringStatus: 'active',
-      futureAgentAction: 'future-agent-may-pivot'
+      futureAgentAction: 'future-agent-may-pivot',
+      queueHandoffStatus: 'checks-pending',
+      queueHandoffNextWakeCondition: 'checks-green',
+      queueHandoffPrUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864'
     }
   });
 
