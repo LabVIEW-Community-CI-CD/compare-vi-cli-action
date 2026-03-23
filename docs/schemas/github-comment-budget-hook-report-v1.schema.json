@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/github-comment-budget-hook-report-v1.schema.json",
+  "title": "GitHub Comment Budget Hook Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "target",
+    "summary",
+    "turns",
+    "funding",
+    "source",
+    "blockers"
+  ],
+  "properties": {
+    "schema": { "const": "priority/github-comment-budget-hook@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repository": { "type": ["string", "null"] },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "number"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "number": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "recommendation",
+        "tokenSpendUsd",
+        "operatorLaborObservedUsd",
+        "operatorLaborMissingTurnCount",
+        "observedBlendedLowerBoundUsd",
+        "knownBlendedUsd",
+        "operatorBudgetCapUsd",
+        "operatorBudgetRemainingLowerBoundUsd",
+        "operatorBudgetRemainingStatus"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "warn", "blocked"] },
+        "recommendation": { "type": "string", "minLength": 1 },
+        "tokenSpendUsd": { "type": "number", "minimum": 0 },
+        "operatorLaborObservedUsd": { "type": "number", "minimum": 0 },
+        "operatorLaborMissingTurnCount": { "type": "integer", "minimum": 0 },
+        "observedBlendedLowerBoundUsd": { "type": "number", "minimum": 0 },
+        "knownBlendedUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetCapUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetRemainingLowerBoundUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetRemainingStatus": { "type": "string", "enum": ["observed", "lower-bound", "unknown"] }
+      }
+    },
+    "turns": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["totalTurns", "liveTurnCount", "backgroundTurnCount"],
+      "properties": {
+        "totalTurns": { "type": "integer", "minimum": 0 },
+        "liveTurnCount": { "type": "integer", "minimum": 0 },
+        "backgroundTurnCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "funding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["billingWindow", "reservedFunding"],
+      "properties": {
+        "billingWindow": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["invoiceTurnId", "invoiceId", "fundingPurpose", "activationState", "prepaidUsd", "tokenSpendUsd", "remainingUsd", "pricingBasis", "selectionMode", "selectionReason"],
+          "properties": {
+            "invoiceTurnId": { "type": ["string", "null"] },
+            "invoiceId": { "type": ["string", "null"] },
+            "fundingPurpose": { "type": ["string", "null"] },
+            "activationState": { "type": ["string", "null"] },
+            "prepaidUsd": { "type": ["number", "null"], "minimum": 0 },
+            "tokenSpendUsd": { "type": "number", "minimum": 0 },
+            "remainingUsd": { "type": ["number", "null"], "minimum": 0 },
+            "pricingBasis": { "type": ["string", "null"] },
+            "selectionMode": { "type": ["string", "null"] },
+            "selectionReason": { "type": ["string", "null"] }
+          }
+        },
+        "reservedFunding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count", "totalReservedUsd", "windows"],
+          "properties": {
+            "count": { "type": "integer", "minimum": 0 },
+            "totalReservedUsd": { "type": "number", "minimum": 0 },
+            "windows": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["invoiceTurnId", "invoiceId", "fundingPurpose", "activationState", "prepaidUsd", "operatorNote"],
+                "properties": {
+                  "invoiceTurnId": { "type": ["string", "null"] },
+                  "invoiceId": { "type": ["string", "null"] },
+                  "fundingPurpose": { "type": ["string", "null"] },
+                  "activationState": { "type": ["string", "null"] },
+                  "prepaidUsd": { "type": ["number", "null"], "minimum": 0 },
+                  "operatorNote": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyPath", "costRollupPath", "costRollupMaterialized", "costRollupMaterializationReportPath", "operatorCostProfilePath", "outputPath", "markdownOutputPath"],
+      "properties": {
+        "policyPath": { "type": ["string", "null"] },
+        "costRollupPath": { "type": ["string", "null"] },
+        "costRollupMaterialized": { "type": "boolean" },
+        "costRollupMaterializationReportPath": { "type": ["string", "null"] },
+        "operatorCostProfilePath": { "type": ["string", "null"] },
+        "outputPath": { "type": ["string", "null"] },
+        "markdownOutputPath": { "type": ["string", "null"] }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "details"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 },
+          "details": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

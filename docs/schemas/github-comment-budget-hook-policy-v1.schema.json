@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/github-comment-budget-hook-policy-v1.schema.json",
+  "title": "GitHub Comment Budget Hook Policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "costRollupPath",
+    "materializationPolicyPath",
+    "materializationReportPath",
+    "outputPath",
+    "markdownOutputPath",
+    "operatorBudgetCapUsd",
+    "materializeCostRollup",
+    "reservedFundingPurposes",
+    "reservedActivationStates"
+  ],
+  "properties": {
+    "schema": { "const": "priority/github-comment-budget-hook-policy@v1" },
+    "costRollupPath": { "type": "string", "minLength": 1 },
+    "materializationPolicyPath": { "type": "string", "minLength": 1 },
+    "materializationReportPath": { "type": "string", "minLength": 1 },
+    "outputPath": { "type": "string", "minLength": 1 },
+    "markdownOutputPath": { "type": "string", "minLength": 1 },
+    "operatorBudgetCapUsd": { "type": "number", "minimum": 0 },
+    "materializeCostRollup": { "type": "boolean" },
+    "reservedFundingPurposes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "reservedActivationStates": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

@@ -258,6 +258,47 @@ There is now a local-only normalization helper for private invoice metadata:
 - helper: `tools/priority/agent-cost-invoice-normalize.mjs`
 
 This helper intentionally does not scrape PDFs directly in the stable slice.
+
+## Durable GitHub Comment Budget Hook
+
+Automation-authored GitHub comments now have a checked-in budget attestation
+surface so cost state survives session compaction and comment history remains a
+durable breadcrumb for later agents.
+
+- schema: `docs/schemas/github-comment-budget-hook-policy-v1.schema.json`
+- schema: `docs/schemas/github-comment-budget-hook-report-v1.schema.json`
+- policy: `tools/policy/github-comment-budget-hook.json`
+- helper: `tools/priority/github-comment-budget-hook.mjs`
+- npm surface: `priority:cost:comment-hook`
+- wrappers:
+  - `tools/Post-IssueComment.ps1`
+  - `tools/Post-PullRequestComment.ps1`
+
+The hook appends a machine-readable and human-readable budget block to GitHub
+comments with these markers:
+
+- `<!-- priority:github-comment-budget-hook:start -->`
+- `<!-- priority:github-comment-budget-hook:end -->`
+
+The hook projects:
+
+- token spend
+- observed operator-equivalent labor
+- observed blended lower-bound spend
+- operator budget cap / remaining lower bound
+- operational invoice-turn remainder
+- reserved calibration funding window state
+- live/background/total turn counts
+
+The checked-in policy keeps the calibration window reserved instead of silently
+consuming it. The current intent is:
+
+- operational invoice turn may spend
+- calibration invoice turn remains on hold
+
+Use the wrappers by default so GitHub issue and PR comments pick up the durable
+budget hook automatically. Pass `-SkipBudgetHook` only for narrow test or
+break-glass cases where the attestation must be suppressed deliberately.
 Instead, it normalizes a local private metadata JSON payload into a checked-in
 invoice-turn contract. That keeps raw invoice documents out of the repository
 while still reducing manual transcription drift.

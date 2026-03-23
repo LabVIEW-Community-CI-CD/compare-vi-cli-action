@@ -6,6 +6,12 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runMaterializeAgentCostRollup } from './materialize-agent-cost-rollup.mjs';
+import {
+  COMMENT_HOOK_END_MARKER,
+  COMMENT_HOOK_START_MARKER,
+  appendBudgetHook,
+  runGitHubCommentBudgetHook
+} from './github-comment-budget-hook.mjs';
 
 export const REPORT_SCHEMA = 'priority/pr-spend-projection@v1';
 export const COST_ROLLUP_SCHEMA = 'priority/agent-cost-rollup@v1';
@@ -290,6 +296,16 @@ function buildMarkdown(report) {
   }
 
   return `${lines.join('\n').trimEnd()}\n`;
+}
+
+function buildBudgetHookFallback(error) {
+  const message = normalizeText(error?.message ?? error);
+  return [
+    COMMENT_HOOK_START_MARKER,
+    `_Budget hook_: unavailable (\`comment-budget-hook-generation-failed\`): ${message || 'unknown error'}.`,
+    COMMENT_HOOK_END_MARKER,
+    ''
+  ].join('\n');
 }
 
 function findExistingSpendComment(repo, prNumber, marker = COMMENT_MARKER) {
@@ -726,7 +742,8 @@ export function runPrSpendProjection(
     upsertCommentFn = upsertPullRequestComment,
     lookupCurrentLoginFn = lookupCurrentLogin,
     resolvePullRequestContextFn = resolvePullRequestContext,
-    materializeAgentCostRollupFn = runMaterializeAgentCostRollup
+    materializeAgentCostRollupFn = runMaterializeAgentCostRollup,
+    runGitHubCommentBudgetHookFn = runGitHubCommentBudgetHook
   } = {}
 ) {
   const repo = resolveRepoSlugFn(options.repo);
@@ -783,7 +800,20 @@ export function runPrSpendProjection(
   report.source.costRollupPath = safeRelative(resolvedCostRollupPath);
   report.source.costRollupMaterialized = costRollupMaterialized;
   report.source.costRollupMaterializationReportPath = materializationReportPath ? safeRelative(materializationReportPath) : null;
-  const markdown = buildMarkdown(report);
+  let budgetHookMarkdown = '';
+  try {
+    budgetHookMarkdown = runGitHubCommentBudgetHookFn({
+      repoRoot: process.cwd(),
+      repo,
+      costRollupPath: resolvedCostRollupPath,
+      materialize: false,
+      targetKind: 'pr',
+      targetNumber: options.prNumber ?? prContext?.number ?? null
+    })?.markdown ?? '';
+  } catch (error) {
+    budgetHookMarkdown = buildBudgetHookFallback(error);
+  }
+  const markdown = appendBudgetHook(buildMarkdown(report), budgetHookMarkdown);
   const markdownPath = writeTextFn(options.markdownOutputPath || DEFAULT_MARKDOWN_OUTPUT_PATH, markdown);
   report.source.markdownPath = safeRelative(markdownPath);
 
