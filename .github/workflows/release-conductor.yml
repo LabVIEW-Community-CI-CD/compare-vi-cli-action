@@ -8,6 +8,11 @@ on:
         required: false
         default: false
         type: boolean
+      repair_existing_tag:
+        description: 'Repair an existing authoritative tag as a signed annotated tag'
+        required: false
+        default: false
+        type: boolean
       channel:
         description: 'Release channel'
         required: false
@@ -138,6 +143,10 @@ jobs:
             $args += '--apply'
           } else {
             $args += '--dry-run'
+          }
+
+          if ('${{ inputs.repair_existing_tag }}' -eq 'true') {
+            $args += '--repair-existing-tag'
           }
 
           $channelInput = '${{ inputs.channel }}'

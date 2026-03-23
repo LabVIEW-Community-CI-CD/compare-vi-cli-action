@@ -12,6 +12,8 @@ test('release conductor workflow keeps workflow_run proposal-only when apply mod
   const workflowPath = path.join(repoRoot, '.github', 'workflows', 'release-conductor.yml');
   const workflow = await readFile(workflowPath, 'utf8');
 
+  assert.match(workflow, /repair_existing_tag:/);
+  assert.match(workflow, /description:\s+'Repair an existing authoritative tag as a signed annotated tag'/);
   assert.match(workflow, /RELEASE_CONDUCTOR_ENABLED:\s+\$\{\{\s*vars\.RELEASE_CONDUCTOR_ENABLED \|\| '0'\s*\}\}/);
   assert.match(workflow, /name:\s+Configure release tag signing material/);
   assert.match(workflow, /if \[\[ -z "\$\{RELEASE_TAG_SIGNING_PRIVATE_KEY:-\}" \]\]; then/);
@@ -25,4 +27,5 @@ test('release conductor workflow keeps workflow_run proposal-only when apply mod
   );
   assert.match(workflow, /RELEASE_TAG_SIGNING_BACKEND:\s+\$\{\{\s*env\.RELEASE_TAG_SIGNING_BACKEND \|\| ''\s*\}\}/);
   assert.match(workflow, /RELEASE_TAG_SIGNING_SOURCE:\s+\$\{\{\s*env\.RELEASE_TAG_SIGNING_SOURCE \|\| ''\s*\}\}/);
+  assert.match(workflow, /if \('\$\{\{\s*inputs\.repair_existing_tag\s*\}\}' -eq 'true'\) \{\s+\$args \+= '--repair-existing-tag'\s+\}/ms);
 });

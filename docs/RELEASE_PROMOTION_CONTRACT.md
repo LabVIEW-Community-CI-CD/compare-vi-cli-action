@@ -154,6 +154,8 @@ plane:
   - signing backend/source
   - whether the tag was created
   - whether the tag was pushed authoritatively
+  - whether repair mode was requested/performed for an existing tag
+  - the authoritative remote tag object/commit used for repair
   - any push failure blocker
 
 ## Workflow signing readiness
