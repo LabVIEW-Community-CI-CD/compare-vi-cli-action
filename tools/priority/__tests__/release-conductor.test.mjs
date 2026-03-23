@@ -93,6 +93,34 @@ test('gate evaluators classify pass/fail deterministically', () => {
   assert.equal(queueFail.status, 'fail');
   assert.ok(queueFail.reasons.includes('queue-paused'));
 
+  const queueIdlePass = evaluateQueueHealthGate({
+    exists: true,
+    error: null,
+    payload: {
+      paused: true,
+      pausedReasons: ['success-rate-below-threshold'],
+      throughputController: { mode: 'stabilize' },
+      runtimeFleet: {
+        totals: {
+          queued: 0,
+          inProgress: 0,
+          stalled: 0
+        }
+      },
+      queueInventory: {
+        mergeQueueOccupancy: 0,
+        readyQueuedCount: 0
+      },
+      summary: {
+        quarantinedCount: 0
+      }
+    }
+  });
+  assert.equal(queueIdlePass.status, 'pass');
+  assert.equal(queueIdlePass.paused, true);
+  assert.equal(queueIdlePass.controllerMode, 'stabilize');
+  assert.deepEqual(queueIdlePass.reasons, ['release-safe-idle-queue-pause']);
+
   const policyPass = evaluatePolicySnapshotGate({
     exists: true,
     error: null,
@@ -412,6 +440,19 @@ test('runReleaseConductor creates and publishes a signed tag when apply is enabl
       }
       return { status: 1, stdout: '', stderr: 'missing config' };
     }
+    if (command === 'git' && args[0] === 'ls-remote') {
+      return {
+        status: 0,
+        stdout: [
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/tags/v0.8.0-rc.1',
+          'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\trefs/tags/v0.8.0-rc.1^{}'
+        ].join('\n'),
+        stderr: ''
+      };
+    }
+    if (command === 'git' && args[0] === 'rev-parse') {
+      return { status: 0, stdout: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n', stderr: '' };
+    }
     if (command === 'git' && args[0] === 'tag') {
       return { status: 0, stdout: '', stderr: '' };
     }
@@ -455,6 +496,115 @@ test('runReleaseConductor creates and publishes a signed tag when apply is enabl
   assert.equal(report.release.tagPushed, true);
   assert.equal(report.release.tagPushRemote.remoteName, 'upstream');
   assert.equal(report.release.signingMaterial.backend, 'ssh');
+  assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'tag'));
+  assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'push'));
+});
+
+test('runReleaseConductor allows apply when queue pause is only an idle success-rate throttle', async () => {
+  const readJsonOptionalFn = async (filePath) => {
+    const normalized = String(filePath);
+    if (normalized.includes('queue-supervisor-report.json')) {
+      return {
+        exists: true,
+        error: null,
+        path: filePath,
+        payload: {
+          paused: true,
+          pausedReasons: ['success-rate-below-threshold'],
+          throughputController: { mode: 'stabilize' },
+          runtimeFleet: {
+            totals: {
+              queued: 0,
+              inProgress: 0,
+              stalled: 0
+            }
+          },
+          queueInventory: {
+            mergeQueueOccupancy: 0,
+            readyQueuedCount: 0
+          },
+          summary: {
+            quarantinedCount: 0
+          },
+          retryHistory: {}
+        }
+      };
+    }
+    return {
+      exists: true,
+      error: null,
+      path: filePath,
+      payload: {
+        schema: 'priority/policy-live-state@v1',
+        generatedAt: '2026-03-06T10:00:00Z',
+        state: {}
+      }
+    };
+  };
+
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'api') {
+      return makeWorkflowRunsResponse(String(args[1]));
+    }
+    throw new Error(`unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const commandCalls = [];
+  const runCommandFn = (command, args) => {
+    commandCalls.push({ command, args });
+    if (command === 'git' && args[0] === 'config') {
+      if (args[2] === 'user.signingkey') {
+        return { status: 0, stdout: '/tmp/release-signing.pub', stderr: '' };
+      }
+      if (args[2] === 'gpg.format') {
+        return { status: 0, stdout: 'ssh', stderr: '' };
+      }
+      if (args[2] === 'remote.upstream.url') {
+        return { status: 0, stdout: 'https://github.com/owner/repo.git', stderr: '' };
+      }
+      return { status: 1, stdout: '', stderr: 'missing config' };
+    }
+    if (command === 'git' && args[0] === 'tag') {
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    if (command === 'git' && args[0] === 'push') {
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    return { status: 0, stdout: '', stderr: '' };
+  };
+
+  const { report, exitCode } = await runReleaseConductor({
+    repoRoot: process.cwd(),
+    now: new Date('2026-03-06T12:00:00.000Z'),
+    args: {
+      apply: true,
+      dryRun: false,
+      repairExistingTag: false,
+      reportPath: 'tests/results/_agent/release/release-conductor-report.json',
+      queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      policySnapshotPath: 'tests/results/_agent/policy/policy-state-snapshot.json',
+      repo: 'owner/repo',
+      stream: 'comparevi-cli',
+      channel: 'rc',
+      version: '0.8.0-rc.1',
+      dwellMinutes: 60,
+      quarantineStaleHours: 24,
+      help: false
+    },
+    environment: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      RELEASE_CONDUCTOR_ENABLED: '1'
+    },
+    runGhJsonFn,
+    runCommandFn,
+    readJsonOptionalFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(report.gates.queueHealth.status, 'pass');
+  assert.deepEqual(report.gates.queueHealth.reasons, ['release-safe-idle-queue-pause']);
+  assert.equal(report.release.proposalOnly, false);
   assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'tag'));
   assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'push'));
 });
