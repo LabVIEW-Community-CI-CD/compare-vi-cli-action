@@ -55,13 +55,15 @@
         "queueState",
         "continuity",
         "monitoringMode",
-        "deliveryRuntime"
+        "deliveryRuntime",
+        "queueAuthority"
       ],
       "properties": {
         "queueState": { "$ref": "#/$defs/queueState" },
         "continuity": { "$ref": "#/$defs/continuity" },
         "monitoringMode": { "$ref": "#/$defs/monitoringMode" },
-        "deliveryRuntime": { "$ref": "#/$defs/deliveryRuntime" }
+        "deliveryRuntime": { "$ref": "#/$defs/deliveryRuntime" },
+        "queueAuthority": { "$ref": "#/$defs/queueAuthority" }
       }
     },
     "wake": {
@@ -144,7 +146,8 @@
             "checks-pending",
             "merge-queue-progress",
             "merge-blocked",
-            "pr-active"
+            "pr-active",
+            "queue-settled"
           ]
         },
         "runtimeStatus": { "type": ["string", "null"] },
@@ -156,6 +159,49 @@
         "prUrl": { "type": ["string", "null"] },
         "issueNumber": { "type": ["integer", "null"], "minimum": 1 },
         "reason": { "type": ["string", "null"] }
+      }
+    },
+    "queueAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "source",
+        "nextWakeCondition",
+        "summaryPath",
+        "promotionStatus",
+        "mergeStateStatus",
+        "isInMergeQueue",
+        "autoMergeEnabled",
+        "prUrl"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "none",
+            "checks-pending",
+            "merge-queue-progress",
+            "merge-blocked",
+            "pr-active",
+            "queue-settled"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "none",
+            "delivery-runtime",
+            "merge-sync-summary"
+          ]
+        },
+        "nextWakeCondition": { "type": ["string", "null"] },
+        "summaryPath": { "type": ["string", "null"] },
+        "promotionStatus": { "type": ["string", "null"] },
+        "mergeStateStatus": { "type": ["string", "null"] },
+        "isInMergeQueue": { "type": "boolean" },
+        "autoMergeEnabled": { "type": "boolean" },
+        "prUrl": { "type": ["string", "null"] }
       }
     },
     "wake": {
@@ -234,7 +280,8 @@
         "futureAgentAction",
         "queueHandoffStatus",
         "queueHandoffNextWakeCondition",
-        "queueHandoffPrUrl"
+        "queueHandoffPrUrl",
+        "queueAuthoritySource"
       ],
       "properties": {
         "governorMode": {
@@ -277,11 +324,20 @@
             "checks-pending",
             "merge-queue-progress",
             "merge-blocked",
-            "pr-active"
+            "pr-active",
+            "queue-settled"
           ]
         },
         "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
-        "queueHandoffPrUrl": { "type": ["string", "null"] }
+        "queueHandoffPrUrl": { "type": ["string", "null"] },
+        "queueAuthoritySource": {
+          "type": "string",
+          "enum": [
+            "none",
+            "delivery-runtime",
+            "merge-sync-summary"
+          ]
+        }
       }
     }
   }

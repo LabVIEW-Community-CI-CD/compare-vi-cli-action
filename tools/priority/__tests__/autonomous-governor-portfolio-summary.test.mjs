@@ -83,7 +83,8 @@ function createCompareGovernorSummary(overrides = {}) {
       futureAgentAction: 'stay-in-compare-monitoring',
       queueHandoffStatus: 'checks-pending',
       queueHandoffNextWakeCondition: 'checks-green',
-      queueHandoffPrUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864'
+      queueHandoffPrUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
+      queueAuthoritySource: 'delivery-runtime'
     },
     ...overrides
   };
@@ -304,7 +305,9 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.summary.ownerDecisionSource, 'compare-governor-summary');
   assert.equal(report.summary.queueHandoffStatus, 'checks-pending');
   assert.equal(report.summary.queueHandoffNextWakeCondition, 'checks-green');
+  assert.equal(report.summary.queueAuthoritySource, 'delivery-runtime');
   assert.equal(report.compare.queueHandoffPrUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
+  assert.equal(report.compare.queueAuthoritySource, 'delivery-runtime');
   assert.equal(report.portfolio.repositoryCount, 4);
   assert.deepEqual(report.portfolio.repositories.find((entry) => entry.id === 'compare').triggeredWakeConditions, [
     'compare-queue-not-empty',

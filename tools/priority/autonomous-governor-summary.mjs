@@ -65,12 +65,73 @@ function asOptional(value) {
   return normalized.length > 0 ? normalized : null;
 }
 
+function normalizeUpper(value) {
+  return typeof value === 'string' ? value.trim().toUpperCase() : '';
+}
+
+function sanitizeSegment(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'runtime';
+}
+
+function parsePullRequestNumber(value) {
+  const match = String(value || '').match(/\/pull\/(\d+)(?:\/|$)/i);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function readOptionalJson(filePath) {
   const resolvedPath = path.resolve(filePath);
   if (!fs.existsSync(resolvedPath)) {
     return null;
   }
   return JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+}
+
+function resolveMergeSyncSummaryCandidatePaths(repoRoot, repository, prNumber) {
+  if (!Number.isInteger(prNumber) || prNumber <= 0) {
+    return [];
+  }
+
+  const issueDir = path.join(repoRoot, 'tests', 'results', '_agent', 'issue');
+  const directCandidates = [
+    path.join(repoRoot, 'tests', 'results', '_agent', 'queue', `merge-sync-${prNumber}.json`),
+    path.join(issueDir, `${sanitizeSegment(repository)}-pr-${prNumber}-queue-admission.json`)
+  ];
+
+  const discovered = [];
+  if (fs.existsSync(issueDir)) {
+    for (const entry of fs.readdirSync(issueDir, { withFileTypes: true })) {
+      if (!entry.isFile()) {
+        continue;
+      }
+      if (
+        entry.name.includes(`pr-${prNumber}-queue-admission.json`) ||
+        entry.name.includes(`merge-sync-${prNumber}`)
+      ) {
+        discovered.push(path.join(issueDir, entry.name));
+      }
+    }
+  }
+
+  return Array.from(new Set([...directCandidates, ...discovered]));
+}
+
+function resolveLatestMergeSyncSummaryPath(repoRoot, repository, prNumber) {
+  const candidates = resolveMergeSyncSummaryCandidatePaths(repoRoot, repository, prNumber)
+    .filter((candidate) => fs.existsSync(candidate))
+    .map((candidate) => ({
+      path: candidate,
+      mtimeMs: fs.statSync(candidate).mtimeMs
+    }))
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+
+  return candidates[0]?.path || null;
 }
 
 function writeJson(filePath, payload) {
@@ -278,6 +339,58 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
   };
 }
 
+function deriveQueueAuthority({ repoRoot, repository, deliveryRuntime, readOptionalJsonFn }) {
+  const prNumber = parsePullRequestNumber(deliveryRuntime.prUrl);
+  const mergeSyncSummaryPath = resolveLatestMergeSyncSummaryPath(repoRoot, repository, prNumber);
+  const mergeSyncSummary = mergeSyncSummaryPath ? readOptionalJsonFn(mergeSyncSummaryPath) : null;
+  if (mergeSyncSummary?.schema && mergeSyncSummary.schema !== 'priority/sync-merge@v1') {
+    throw new Error(`Expected priority/sync-merge@v1 at ${mergeSyncSummaryPath}.`);
+  }
+
+  let status = deliveryRuntime.status;
+  let source = deliveryRuntime.status === 'none' ? 'none' : 'delivery-runtime';
+  let nextWakeCondition = deliveryRuntime.nextWakeCondition;
+  let promotionStatus = null;
+  let mergeStateStatus = null;
+  let isInMergeQueue = false;
+  let autoMergeEnabled = false;
+
+  if (mergeSyncSummary) {
+    promotionStatus = asOptional(mergeSyncSummary?.promotion?.status);
+    mergeStateStatus =
+      asOptional(mergeSyncSummary?.promotion?.final?.mergeStateStatus) ||
+      asOptional(mergeSyncSummary?.prState?.mergeStateStatus);
+    isInMergeQueue = mergeSyncSummary?.promotion?.final?.isInMergeQueue === true;
+    autoMergeEnabled = mergeSyncSummary?.promotion?.final?.autoMergeEnabled === true;
+
+    if (['merged', 'already-merged'].includes(promotionStatus) || normalizeUpper(mergeSyncSummary?.promotion?.final?.state) === 'MERGED') {
+      status = 'queue-settled';
+      nextWakeCondition = 'queue-settled';
+      source = 'merge-sync-summary';
+    } else if (isInMergeQueue || ['queued', 'already-queued'].includes(promotionStatus)) {
+      status = 'merge-queue-progress';
+      nextWakeCondition = 'merge-queue-progress';
+      source = 'merge-sync-summary';
+    } else if (autoMergeEnabled || ['auto-merge-enabled', 'already-auto-merge-enabled'].includes(promotionStatus)) {
+      status = 'checks-pending';
+      nextWakeCondition = 'checks-green';
+      source = 'merge-sync-summary';
+    }
+  }
+
+  return {
+    status,
+    source,
+    nextWakeCondition,
+    summaryPath: mergeSyncSummaryPath ? toRelative(repoRoot, mergeSyncSummaryPath) : null,
+    promotionStatus,
+    mergeStateStatus,
+    isInMergeQueue,
+    autoMergeEnabled,
+    prUrl: deliveryRuntime.prUrl
+  };
+}
+
 function deriveGovernorMode({ queueState, continuity, monitoringMode, wake }) {
   switch (wake.terminalState) {
     case 'compare-work':
@@ -404,6 +517,7 @@ function buildReport({
   wakeInvestmentAccounting,
   deliveryRuntimeStatePath,
   deliveryRuntimeState,
+  readOptionalJsonFn,
   now
 }) {
   const repository =
@@ -417,6 +531,12 @@ function buildReport({
   const wake = deriveWake(wakeLifecycle);
   const funding = deriveFunding(wakeInvestmentAccounting);
   const deliveryRuntime = deriveDeliveryRuntime(deliveryRuntimeState);
+  const queueAuthority = deriveQueueAuthority({
+    repoRoot,
+    repository,
+    deliveryRuntime,
+    readOptionalJsonFn
+  });
   const governorMode = deriveGovernorMode({ queueState, continuity, monitoringMode, wake });
   const signalQuality = deriveSignalQuality({ governorMode, wake });
   const owners = deriveOwners({ governorMode, monitoringMode, wake, repository });
@@ -444,7 +564,8 @@ function buildReport({
           ? monitoringMode.summary.wakeConditionCount
           : null
       },
-      deliveryRuntime
+      deliveryRuntime,
+      queueAuthority
     },
     wake,
     funding,
@@ -459,9 +580,10 @@ function buildReport({
       wakeTerminalState: wake.terminalState,
       monitoringStatus: asOptional(monitoringMode?.summary?.status),
       futureAgentAction: asOptional(monitoringMode?.summary?.futureAgentAction),
-      queueHandoffStatus: deliveryRuntime.status,
-      queueHandoffNextWakeCondition: deliveryRuntime.nextWakeCondition,
-      queueHandoffPrUrl: deliveryRuntime.prUrl
+      queueHandoffStatus: queueAuthority.status,
+      queueHandoffNextWakeCondition: queueAuthority.nextWakeCondition,
+      queueHandoffPrUrl: queueAuthority.prUrl,
+      queueAuthoritySource: queueAuthority.source
     }
   };
 }
@@ -526,6 +648,7 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     wakeInvestmentAccounting,
     deliveryRuntimeStatePath,
     deliveryRuntimeState,
+    readOptionalJsonFn,
     now
   });
 
