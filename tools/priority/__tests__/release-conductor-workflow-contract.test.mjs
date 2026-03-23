@@ -27,5 +27,10 @@ test('release conductor workflow keeps workflow_run proposal-only when apply mod
   );
   assert.match(workflow, /RELEASE_TAG_SIGNING_BACKEND:\s+\$\{\{\s*env\.RELEASE_TAG_SIGNING_BACKEND \|\| ''\s*\}\}/);
   assert.match(workflow, /RELEASE_TAG_SIGNING_SOURCE:\s+\$\{\{\s*env\.RELEASE_TAG_SIGNING_SOURCE \|\| ''\s*\}\}/);
+  assert.match(
+    workflow,
+    /node tools\/npm\/run-script\.mjs priority:queue:supervisor -- --dry-run --report tests\/results\/_agent\/queue\/queue-supervisor-report\.json/
+  );
   assert.match(workflow, /if \('\$\{\{\s*inputs\.repair_existing_tag\s*\}\}' -eq 'true'\) \{\s+\$args \+= '--repair-existing-tag'\s+\}/ms);
+  assert.match(workflow, /tests\/results\/_agent\/queue\/queue-supervisor-report\.json/);
 });

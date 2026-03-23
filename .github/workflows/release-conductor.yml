@@ -112,6 +112,7 @@ jobs:
           RELEASE_TAG_SIGNING_SOURCE: ${{ env.RELEASE_TAG_SIGNING_SOURCE || '' }}
         run: |
           npm ci --ignore-scripts
+          node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run --report tests/results/_agent/queue/queue-supervisor-report.json
           node tools/npm/run-script.mjs priority:policy:snapshot -- --output tests/results/_agent/policy/policy-state-snapshot.json
 
           $reportPath = 'tests/results/_agent/release/release-conductor-report.json'
@@ -178,5 +179,6 @@ jobs:
           name: release-conductor-${{ github.run_id }}
           path: |
             tests/results/_agent/release/release-conductor-report.json
+            tests/results/_agent/queue/queue-supervisor-report.json
             tests/results/_agent/policy/policy-state-snapshot.json
           if-no-files-found: error
