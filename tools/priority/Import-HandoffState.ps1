@@ -310,6 +310,15 @@ if ($governorPortfolioSummary) {
   Write-Host ("  next     : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.nextAction))
   Write-Host ("  template : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.templateMonitoringStatus))
   Write-Host ("  proof    : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.supportedProofStatus))
+  if ($governorPortfolioSummary.summary.PSObject.Properties['viHistoryDistributorDependencyStatus']) {
+    Write-Host ("  vhist    : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.viHistoryDistributorDependencyStatus))
+    if ($governorPortfolioSummary.summary.PSObject.Properties['viHistoryDistributorDependencyTargetRepository'] -and $governorPortfolioSummary.summary.viHistoryDistributorDependencyTargetRepository) {
+      Write-Host ("  vhistRepo: {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.viHistoryDistributorDependencyTargetRepository))
+    }
+    if ($governorPortfolioSummary.summary.PSObject.Properties['viHistoryDistributorDependencyExternalBlocker'] -and $governorPortfolioSummary.summary.viHistoryDistributorDependencyExternalBlocker) {
+      Write-Host ("  vhistBlk : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.viHistoryDistributorDependencyExternalBlocker))
+    }
+  }
   if ($governorPortfolioSummary.summary.nextOwnerRepository) {
     Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.nextOwnerRepository))
   }

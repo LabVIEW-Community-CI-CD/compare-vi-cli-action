@@ -1606,6 +1606,15 @@ try {
     Write-Host ("  next     : {0}" -f (Format-NullableValue $portfolio.summary.nextAction))
     Write-Host ("  template : {0}" -f (Format-NullableValue $portfolio.summary.templateMonitoringStatus))
     Write-Host ("  proof    : {0}" -f (Format-NullableValue $portfolio.summary.supportedProofStatus))
+    if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyStatus']) {
+      Write-Host ("  vhist    : {0}" -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyStatus))
+      if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyTargetRepository'] -and $portfolio.summary.viHistoryDistributorDependencyTargetRepository) {
+        Write-Host ("  vhistRepo: {0}" -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyTargetRepository))
+      }
+      if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyExternalBlocker'] -and $portfolio.summary.viHistoryDistributorDependencyExternalBlocker) {
+        Write-Host ("  vhistBlk : {0}" -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyExternalBlocker))
+      }
+    }
     if ($portfolio.summary.nextOwnerRepository) {
       Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $portfolio.summary.nextOwnerRepository))
     }
@@ -1627,6 +1636,15 @@ try {
         ('- Template monitoring: {0}' -f (Format-NullableValue $portfolio.summary.templateMonitoringStatus)),
         ('- Supported proof: {0}' -f (Format-NullableValue $portfolio.summary.supportedProofStatus))
       )
+      if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyStatus']) {
+        $portfolioLines += ('- VI-history dependency: {0}' -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyStatus))
+        if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyTargetRepository'] -and $portfolio.summary.viHistoryDistributorDependencyTargetRepository) {
+          $portfolioLines += ('- VI-history target: {0}' -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyTargetRepository))
+        }
+        if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyExternalBlocker'] -and $portfolio.summary.viHistoryDistributorDependencyExternalBlocker) {
+          $portfolioLines += ('- VI-history blocker: {0}' -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyExternalBlocker))
+        }
+      }
       if ($portfolio.summary.nextOwnerRepository) {
         $portfolioLines += ('- Next owner: {0}' -f (Format-NullableValue $portfolio.summary.nextOwnerRepository))
       }
