@@ -107,6 +107,13 @@ export {
 const COMPAREVI_UPSTREAM_REPOSITORY = 'LabVIEW-Community-CI-CD/compare-vi-cli-action';
 const PRIORITY_CACHE_FILENAME = '.agent_priority_cache.json';
 const PRIORITY_ISSUE_DIR = path.join('tests', 'results', '_agent', 'issue');
+const DEFAULT_AUTONOMOUS_GOVERNOR_PORTFOLIO_SUMMARY_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'handoff',
+  'autonomous-governor-portfolio-summary.json'
+);
 const execFileAsync = promisify(execFile);
 const COMPAREVI_PREFERRED_HELPERS = [
   'node tools/npm/run-script.mjs priority:github:metadata:apply',
@@ -370,6 +377,93 @@ async function readJsonIfPresent(filePath) {
     if (error?.code === 'ENOENT') return null;
     throw error;
   }
+}
+
+async function resolveGovernorPortfolioHandoff({ repoRoot, repository, deps = {} }) {
+  const reportPath = path.resolve(
+    repoRoot,
+    deps.governorPortfolioSummaryPath || DEFAULT_AUTONOMOUS_GOVERNOR_PORTFOLIO_SUMMARY_PATH
+  );
+  const summaryPath = path.relative(repoRoot, reportPath).replace(/\\/g, '/');
+
+  let payload = null;
+  try {
+    if (typeof deps.readGovernorPortfolioSummaryFn === 'function') {
+      payload = await deps.readGovernorPortfolioSummaryFn({ repoRoot, reportPath, repository });
+    } else {
+      payload = await readJsonIfPresent(reportPath);
+    }
+  } catch (error) {
+    return {
+      summaryPath,
+      status: 'invalid',
+      currentOwnerRepository: null,
+      nextOwnerRepository: null,
+      nextAction: null,
+      ownerDecisionSource: null,
+      governorMode: null,
+      reason: `Unable to read governor portfolio summary: ${error?.message || String(error)}`
+    };
+  }
+
+  if (!payload) {
+    return {
+      summaryPath,
+      status: 'missing',
+      currentOwnerRepository: null,
+      nextOwnerRepository: null,
+      nextAction: null,
+      ownerDecisionSource: null,
+      governorMode: null,
+      reason: 'Governor portfolio summary is unavailable for queue-empty handoff.'
+    };
+  }
+
+  if (normalizeText(payload?.schema) !== 'priority/autonomous-governor-portfolio-summary-report@v1') {
+    return {
+      summaryPath,
+      status: 'invalid',
+      currentOwnerRepository: null,
+      nextOwnerRepository: null,
+      nextAction: null,
+      ownerDecisionSource: null,
+      governorMode: null,
+      reason: 'Governor portfolio summary does not match the expected schema.'
+    };
+  }
+
+  const currentOwnerRepository = normalizeText(payload?.summary?.currentOwnerRepository) || null;
+  const nextOwnerRepository = normalizeText(payload?.summary?.nextOwnerRepository) || null;
+  const nextAction = normalizeText(payload?.summary?.nextAction) || null;
+  const ownerDecisionSource = normalizeText(payload?.summary?.ownerDecisionSource) || null;
+  const governorMode = normalizeText(payload?.summary?.governorMode) || null;
+
+  if (!currentOwnerRepository || !nextOwnerRepository || !nextAction || !ownerDecisionSource || !governorMode) {
+    return {
+      summaryPath,
+      status: 'invalid',
+      currentOwnerRepository,
+      nextOwnerRepository,
+      nextAction,
+      ownerDecisionSource,
+      governorMode,
+      reason: 'Governor portfolio summary is missing required owner handoff fields.'
+    };
+  }
+
+  return {
+    summaryPath,
+    status: currentOwnerRepository === repository ? 'owner-match' : 'external-owner',
+    currentOwnerRepository,
+    nextOwnerRepository,
+    nextAction,
+    ownerDecisionSource,
+    governorMode,
+    reason:
+      currentOwnerRepository === repository
+        ? `Governor portfolio keeps current ownership in ${currentOwnerRepository}.`
+        : `Governor portfolio assigns current ownership to ${currentOwnerRepository}.`
+  };
 }
 
 function resolveCheckoutPath(repoRoot, checkoutPath) {
@@ -778,6 +872,31 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
           deps
         });
       }
+
+      const governorPortfolioHandoff = await resolveGovernorPortfolioHandoff({
+        repoRoot,
+        repository: targetRepository,
+        deps
+      });
+      artifactPaths.governorPortfolioHandoff = governorPortfolioHandoff;
+
+      let reason = classification.message;
+      if (governorPortfolioHandoff.status === 'owner-match') {
+        reason = `standing queue is empty; governor portfolio keeps ownership in ${governorPortfolioHandoff.currentOwnerRepository}.`;
+      } else if (governorPortfolioHandoff.status === 'external-owner') {
+        reason = `standing queue is empty; governor portfolio hands ownership to ${governorPortfolioHandoff.currentOwnerRepository}.`;
+      } else if (governorPortfolioHandoff.status === 'missing') {
+        reason = 'standing queue is empty; governor portfolio handoff is unavailable (missing).';
+      } else if (governorPortfolioHandoff.status === 'invalid') {
+        reason = 'standing queue is empty; governor portfolio handoff is unavailable (invalid).';
+      }
+
+      return {
+        source: 'comparevi-standing-priority-live',
+        outcome: 'idle',
+        reason,
+        artifacts: artifactPaths
+      };
     }
     return {
       source: 'comparevi-standing-priority-live',
