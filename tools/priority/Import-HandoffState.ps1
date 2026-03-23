@@ -277,6 +277,12 @@ if ($governorSummary) {
   Write-Host ("  next     : {0}" -f (Format-NullableValue $governorSummary.summary.nextAction))
   Write-Host ("  queue    : {0}" -f (Format-NullableValue $governorSummary.summary.queueState))
   Write-Host ("  signal   : {0}" -f (Format-NullableValue $governorSummary.summary.signalQuality))
+  if ($governorSummary.summary.PSObject.Properties['releaseSigningStatus']) {
+    Write-Host ("  release  : {0}" -f (Format-NullableValue $governorSummary.summary.releaseSigningStatus))
+    if ($governorSummary.summary.PSObject.Properties['releaseSigningExternalBlocker'] -and $governorSummary.summary.releaseSigningExternalBlocker) {
+      Write-Host ("  blocker  : {0}" -f (Format-NullableValue $governorSummary.summary.releaseSigningExternalBlocker))
+    }
+  }
   if ($governorSummary.summary.nextOwnerRepository) {
     Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governorSummary.summary.nextOwnerRepository))
   }

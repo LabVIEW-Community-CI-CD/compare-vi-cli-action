@@ -1293,19 +1293,24 @@ try {
   $templateVerificationSyncScript = Join-Path $repoRoot 'tools' 'priority' 'sync-template-agent-verification-report.mjs'
   $templatePivotGateScript = Join-Path $repoRoot 'tools' 'priority' 'template-pivot-gate.mjs'
   $monitoringModeScript = Join-Path $repoRoot 'tools' 'priority' 'handoff-monitoring-mode.mjs'
+  $releaseSigningReadinessScript = Join-Path $repoRoot 'tools' 'priority' 'release-signing-readiness.mjs'
   $governorSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-summary.mjs'
   $governorPortfolioSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-portfolio-summary.mjs'
   $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
   if ($nodeCmd) {
     $promotionDir = Join-Path $ResultsRoot '_agent/promotion'
+    $releaseDir = Join-Path $ResultsRoot '_agent/release'
     $handoffDir = Join-Path $ResultsRoot '_agent/handoff'
     New-Item -ItemType Directory -Force -Path $promotionDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
     New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
 
     $templateVerificationSeedPath = Join-Path $promotionDir 'template-agent-verification-report.json'
     $templateVerificationOverlayPath = Join-Path $promotionDir 'template-agent-verification-report.local.json'
     $templateVerificationSyncPath = Join-Path $promotionDir 'template-agent-verification-sync.json'
     $templatePivotGatePath = Join-Path $promotionDir 'template-pivot-gate-report.json'
+    $releaseConductorReportPath = Join-Path $releaseDir 'release-conductor-report.json'
+    $releaseSigningReadinessPath = Join-Path $releaseDir 'release-signing-readiness.json'
     $queueEmptyReportPath = Join-Path $repoRoot 'tests/results/_agent/issue/no-standing-priority.json'
     $entrypointStatusPath = Join-Path $ResultsRoot '_agent/handoff/entrypoint-status.json'
     $continuitySummaryPath = Join-Path $ResultsRoot '_agent/handoff/continuity-summary.json'
@@ -1346,12 +1351,20 @@ try {
         --output $monitoringModePath | Out-Host
     }
 
+    if (Test-Path -LiteralPath $releaseSigningReadinessScript -PathType Leaf) {
+      & $nodeCmd.Source $releaseSigningReadinessScript `
+        --repo-root $repoRoot `
+        --release-conductor-report $releaseConductorReportPath `
+        --output $releaseSigningReadinessPath | Out-Host
+    }
+
     if (Test-Path -LiteralPath $governorSummaryScript -PathType Leaf) {
       & $nodeCmd.Source $governorSummaryScript `
         --repo-root $repoRoot `
         --queue-empty-report $queueEmptyReportPath `
         --continuity-summary $continuitySummaryPath `
         --monitoring-mode $monitoringModePath `
+        --release-signing-readiness $releaseSigningReadinessPath `
         --output $governorSummaryPath | Out-Host
     }
 
@@ -1517,6 +1530,15 @@ try {
     Write-Host ("  next     : {0}" -f (Format-NullableValue $governor.summary.nextAction))
     Write-Host ("  signal   : {0}" -f (Format-NullableValue $governor.summary.signalQuality))
     Write-Host ("  queue    : {0}" -f (Format-NullableValue $governor.summary.queueState))
+    if ($governor.summary.PSObject.Properties['releaseSigningStatus']) {
+      Write-Host ("  signing  : {0}" -f (Format-NullableValue $governor.summary.releaseSigningStatus))
+      if ($governor.summary.PSObject.Properties['releaseSigningExternalBlocker'] -and $governor.summary.releaseSigningExternalBlocker) {
+        Write-Host ("  blocker  : {0}" -f (Format-NullableValue $governor.summary.releaseSigningExternalBlocker))
+      }
+      if ($governor.summary.PSObject.Properties['releasePublicationState'] -and $governor.summary.releasePublicationState) {
+        Write-Host ("  publish  : {0}" -f (Format-NullableValue $governor.summary.releasePublicationState))
+      }
+    }
     if ($governor.summary.nextOwnerRepository) {
       Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governor.summary.nextOwnerRepository))
     }
@@ -1542,6 +1564,15 @@ try {
         ('- Signal quality: {0}' -f (Format-NullableValue $governor.summary.signalQuality)),
         ('- Queue state: {0}' -f (Format-NullableValue $governor.summary.queueState))
       )
+      if ($governor.summary.PSObject.Properties['releaseSigningStatus']) {
+        $governorLines += ('- Release signing: {0}' -f (Format-NullableValue $governor.summary.releaseSigningStatus))
+        if ($governor.summary.PSObject.Properties['releaseSigningExternalBlocker'] -and $governor.summary.releaseSigningExternalBlocker) {
+          $governorLines += ('- Release blocker: {0}' -f (Format-NullableValue $governor.summary.releaseSigningExternalBlocker))
+        }
+        if ($governor.summary.PSObject.Properties['releasePublicationState'] -and $governor.summary.releasePublicationState) {
+          $governorLines += ('- Release publication: {0}' -f (Format-NullableValue $governor.summary.releasePublicationState))
+        }
+      }
       if ($governor.summary.nextOwnerRepository) {
         $governorLines += ('- Next owner: {0}' -f (Format-NullableValue $governor.summary.nextOwnerRepository))
       }

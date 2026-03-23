@@ -53,11 +53,18 @@ Configuration path: `Settings -> Environments -> <environment> -> Required revie
      backend stable release as fully complete
 5. Finalize release (draft tag + metadata):
    - `node tools/npm/run-script.mjs release:finalize -- <version>`
-6. Verify rollback drill health:
+6. Verify workflow signing readiness before authoritative tag publication:
+   - `node tools/npm/run-script.mjs priority:release:signing:readiness`
+   - confirm `tests/results/_agent/release/release-signing-readiness.json` reports:
+     - `codePathState = ready`
+     - `signingCapabilityState = configured`
+   - if `externalBlocker = workflow-signing-secret-missing|workflow-signing-secret-unverifiable`,
+     treat that as an explicit external blocker and stop before rerunning release publication flows
+7. Verify rollback drill health:
    - `node tools/npm/run-script.mjs priority:rollback:drill:health -- --repo <owner/repo>`
    - confirm `tests/results/_agent/release/rollback-drill-health.json` reports `status=pass`
-7. Obtain environment approvals for protected deployments from GitHub UI/mobile.
-8. Record evidence links in the governing issue/PR before closure.
+8. Obtain environment approvals for protected deployments from GitHub UI/mobile.
+9. Record evidence links in the governing issue/PR before closure.
 
 ## One-command rollback
 
@@ -161,6 +168,9 @@ matching remediation path:
   - Restore GitHub CLI availability on runner and retry release.
 - `tag-not-annotated`, `tag-signature-unverified`
   - Recreate release tag as a signed annotated tag and rerun release.
+- `workflow-signing-secret-missing`, `workflow-signing-secret-unverifiable`
+  - Use `node tools/npm/run-script.mjs priority:release:signing:readiness` to confirm the blocker, provision or repair
+    the workflow signing secrets, and only then rerun authoritative release publication.
 - `checksum-invalid-line`, `checksum-empty`, `checksum-entry-missing-file`, `checksum-missing-artifact`, `checksum-mismatch`
   - Regenerate `SHA256SUMS.txt` from fresh artifacts and ensure no post-pack mutation occurred.
 - `sbom-parse-failed`, `sbom-invalid`
@@ -190,6 +200,7 @@ matching remediation path:
 
 - `tests/results/_agent/release/release-<tag>-branch.json`
 - `tests/results/_agent/release/release-<tag>-finalize.json`
+- `tests/results/_agent/release/release-signing-readiness.json`
 - `tests/results/_agent/policy/policy-drift-report.json`
 - `tests/results/_agent/health-snapshot/health-snapshot.json`
 - `tests/results/_agent/supply-chain/release-trust-gate.json`

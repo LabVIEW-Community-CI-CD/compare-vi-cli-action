@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/release-signing-readiness-report-v1.schema.json",
+  "title": "Release Signing Readiness Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "inputs",
+    "workflowContract",
+    "secretInventory",
+    "publication",
+    "summary",
+    "blockers"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/release-signing-readiness-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseConductorReportPath"
+      ],
+      "properties": {
+        "releaseConductorReportPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "workflowContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ready",
+        "workflowPath",
+        "reasons"
+      ],
+      "properties": {
+        "ready": { "type": "boolean" },
+        "workflowPath": { "type": "string", "minLength": 1 },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "secretInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "requiredSecretPresent",
+        "optionalPublicKeyPresent",
+        "listedSecretCount",
+        "listedSecretNames",
+        "source",
+        "error"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "configured",
+            "missing",
+            "unverifiable"
+          ]
+        },
+        "requiredSecretPresent": { "type": ["boolean", "null"] },
+        "optionalPublicKeyPresent": { "type": ["boolean", "null"] },
+        "listedSecretCount": { "type": ["integer", "null"], "minimum": 0 },
+        "listedSecretNames": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "source": { "type": "string", "minLength": 1 },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "tagCreated",
+        "tagPushed",
+        "targetTag"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "unobserved",
+            "not-attempted",
+            "tag-created-not-pushed",
+            "authoritative-publication-successful"
+          ]
+        },
+        "tagCreated": { "type": "boolean" },
+        "tagPushed": { "type": "boolean" },
+        "targetTag": { "type": ["string", "null"] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "codePathState",
+        "signingCapabilityState",
+        "publicationState",
+        "externalBlocker",
+        "blockerCount"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn"
+          ]
+        },
+        "codePathState": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "missing-contract"
+          ]
+        },
+        "signingCapabilityState": {
+          "type": "string",
+          "enum": [
+            "configured",
+            "missing",
+            "unverifiable"
+          ]
+        },
+        "publicationState": {
+          "type": "string",
+          "enum": [
+            "unobserved",
+            "not-attempted",
+            "tag-created-not-pushed",
+            "authoritative-publication-successful"
+          ]
+        },
+        "externalBlocker": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "workflow-signing-secret-missing",
+            "workflow-signing-secret-unverifiable",
+            null
+          ]
+        },
+        "blockerCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "workflow-signing-contract-missing",
+              "workflow-signing-secret-missing",
+              "workflow-signing-secret-unverifiable"
+            ]
+          },
+          "message": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

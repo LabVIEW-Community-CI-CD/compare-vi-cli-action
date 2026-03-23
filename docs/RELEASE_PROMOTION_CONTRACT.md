@@ -16,6 +16,9 @@ alignment, and evidence ledger expectations.
 - Certification runbook: `docs/CERTIFICATION_MATRIX.md`
 - Supply-chain trust gate script: `tools/priority/supply-chain-trust-gate.mjs`
 - Supply-chain trust gate schema: `docs/schemas/supply-chain-trust-gate-v1.schema.json`
+- Release signing readiness script: `tools/priority/release-signing-readiness.mjs`
+- Release signing readiness schema:
+  `docs/schemas/release-signing-readiness-report-v1.schema.json`
 - Rollback policy: `tools/policy/release-rollback-policy.json`
 - Rollback command: `tools/priority/rollback-release.mjs`
 - Rollback drill health gate: `tools/priority/rollback-drill-health.mjs`
@@ -152,6 +155,30 @@ plane:
   - whether the tag was created
   - whether the tag was pushed authoritatively
   - any push failure blocker
+
+## Workflow signing readiness
+
+Authoritative release-tag publication must also expose workflow signing readiness
+before the release lane is rerun:
+
+- Report script: `node tools/npm/run-script.mjs priority:release:signing:readiness`
+- Report artifact:
+  `tests/results/_agent/release/release-signing-readiness.json`
+
+That report distinguishes:
+
+- `codePathState`
+  - whether the checked-in release conductor exposes the workflow-owned signing
+    contract
+- `signingCapabilityState`
+  - whether repository Actions secrets actually provide the signing material
+- `publicationState`
+  - whether authoritative signed tag publication has already succeeded
+
+If the report emits `externalBlocker = workflow-signing-secret-missing` or
+`workflow-signing-secret-unverifiable`, promotion remains blocked by external
+signing readiness and release attempts must not be rerun just to rediscover the
+same missing capability.
 
 ## Rollback drill health gate
 

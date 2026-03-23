@@ -62,6 +62,8 @@ test('handoff entrypoint contract is wired into automation and operator docs', (
   assert.match(printHandoff, /continuity-summary\.json/);
   assert.match(printHandoff, /handoff-monitoring-mode\.mjs/);
   assert.match(printHandoff, /monitoring-mode\.json/);
+  assert.match(printHandoff, /release-signing-readiness\.mjs/);
+  assert.match(printHandoff, /release-signing-readiness\.json/);
   assert.match(printHandoff, /autonomous-governor-summary\.mjs/);
   assert.match(printHandoff, /autonomous-governor-summary\.json/);
   assert.match(printHandoff, /autonomous-governor-portfolio-summary\.mjs/);
@@ -95,6 +97,7 @@ test('handoff entrypoint contract is wired into automation and operator docs', (
   assert.match(handoffGuide, /autonomous-governor-summary\.json/);
   assert.match(handoffGuide, /autonomous-governor-portfolio-summary\.json/);
   assert.match(handoffGuide, /docker-review-loop-summary\.json/);
+  assert.match(handoffGuide, /release-signing/i);
   assert.match(handoffGuide, /priority:handoff/);
   assert.match(handoffGuide, /queue-empty/);
   assert.match(handoffGuide, /future agents may pivot/i);

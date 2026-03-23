@@ -56,6 +56,13 @@ export const DEFAULT_DELIVERY_RUNTIME_STATE_PATH = path.join(
   'runtime',
   'delivery-agent-state.json'
 );
+export const DEFAULT_RELEASE_SIGNING_READINESS_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'release',
+  'release-signing-readiness.json'
+);
 
 function asOptional(value) {
   if (value == null) {
@@ -189,6 +196,7 @@ export function parseArgs(argv = process.argv) {
     wakeLifecyclePath: DEFAULT_WAKE_LIFECYCLE_PATH,
     wakeInvestmentAccountingPath: DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH,
     deliveryRuntimeStatePath: DEFAULT_DELIVERY_RUNTIME_STATE_PATH,
+    releaseSigningReadinessPath: DEFAULT_RELEASE_SIGNING_READINESS_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
     help: false
   };
@@ -201,6 +209,7 @@ export function parseArgs(argv = process.argv) {
     ['--wake-lifecycle', 'wakeLifecyclePath'],
     ['--wake-investment-accounting', 'wakeInvestmentAccountingPath'],
     ['--delivery-runtime-state', 'deliveryRuntimeStatePath'],
+    ['--release-signing-readiness', 'releaseSigningReadinessPath'],
     ['--output', 'outputPath']
   ]);
 
@@ -237,6 +246,7 @@ function printHelp() {
     `  --wake-lifecycle <path>           Wake lifecycle path (default: ${DEFAULT_WAKE_LIFECYCLE_PATH}).`,
     `  --wake-investment-accounting <path> Wake investment accounting path (default: ${DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH}).`,
     `  --delivery-runtime-state <path>   Delivery runtime state path (default: ${DEFAULT_DELIVERY_RUNTIME_STATE_PATH}).`,
+    `  --release-signing-readiness <path> Release signing readiness path (default: ${DEFAULT_RELEASE_SIGNING_READINESS_PATH}).`,
     `  --output <path>                   Output path (default: ${DEFAULT_OUTPUT_PATH}).`,
     '  -h, --help                        Show help.'
   ].forEach((line) => console.log(line));
@@ -325,6 +335,30 @@ function deriveFunding(wakeInvestmentAccounting) {
       typeof wakeInvestmentAccounting?.summary?.metrics?.netPaybackUsd === 'number'
         ? wakeInvestmentAccounting.summary.metrics.netPaybackUsd
         : null
+  };
+}
+
+function deriveReleaseSigningReadiness(releaseSigningReadinessReport) {
+  if (releaseSigningReadinessReport?.schema !== 'priority/release-signing-readiness-report@v1') {
+    return {
+      status: 'missing',
+      codePathState: null,
+      signingCapabilityState: null,
+      publicationState: null,
+      externalBlocker: null,
+      blockerCount: 0
+    };
+  }
+
+  return {
+    status: asOptional(releaseSigningReadinessReport?.summary?.status) || 'missing',
+    codePathState: asOptional(releaseSigningReadinessReport?.summary?.codePathState),
+    signingCapabilityState: asOptional(releaseSigningReadinessReport?.summary?.signingCapabilityState),
+    publicationState: asOptional(releaseSigningReadinessReport?.summary?.publicationState),
+    externalBlocker: asOptional(releaseSigningReadinessReport?.summary?.externalBlocker),
+    blockerCount: Number.isInteger(releaseSigningReadinessReport?.summary?.blockerCount)
+      ? releaseSigningReadinessReport.summary.blockerCount
+      : 0
   };
 }
 
@@ -607,6 +641,8 @@ function buildReport({
   wakeInvestmentAccounting,
   deliveryRuntimeStatePath,
   deliveryRuntimeState,
+  releaseSigningReadinessPath,
+  releaseSigningReadinessReport,
   readOptionalJsonFn,
   now
 }) {
@@ -620,6 +656,7 @@ function buildReport({
   const continuity = deriveContinuity(continuitySummary, monitoringMode);
   const wake = deriveWake(wakeLifecycle);
   const funding = deriveFunding(wakeInvestmentAccounting);
+  const releaseSigningReadiness = deriveReleaseSigningReadiness(releaseSigningReadinessReport);
   const deliveryRuntime = deriveDeliveryRuntime(deliveryRuntimeState);
   const queueAuthority = deriveQueueAuthority({
     repoRoot,
@@ -642,7 +679,8 @@ function buildReport({
       monitoringModePath: toRelative(repoRoot, monitoringModePath),
       wakeLifecyclePath: toRelative(repoRoot, wakeLifecyclePath),
       wakeInvestmentAccountingPath: toRelative(repoRoot, wakeInvestmentAccountingPath),
-      deliveryRuntimeStatePath: toRelative(repoRoot, deliveryRuntimeStatePath)
+      deliveryRuntimeStatePath: toRelative(repoRoot, deliveryRuntimeStatePath),
+      releaseSigningReadinessPath: toRelative(repoRoot, releaseSigningReadinessPath)
     },
     compare: {
       queueState,
@@ -654,6 +692,7 @@ function buildReport({
           ? monitoringMode.summary.wakeConditionCount
           : null
       },
+      releaseSigningReadiness,
       deliveryRuntime,
       queueAuthority
     },
@@ -670,6 +709,9 @@ function buildReport({
       wakeTerminalState: wake.terminalState,
       monitoringStatus: asOptional(monitoringMode?.summary?.status),
       futureAgentAction: asOptional(monitoringMode?.summary?.futureAgentAction),
+      releaseSigningStatus: releaseSigningReadiness.status,
+      releaseSigningExternalBlocker: releaseSigningReadiness.externalBlocker,
+      releasePublicationState: releaseSigningReadiness.publicationState,
       queueHandoffStatus: queueAuthority.status,
       queueHandoffNextWakeCondition: queueAuthority.nextWakeCondition,
       queueHandoffPrUrl: queueAuthority.prUrl,
@@ -692,6 +734,10 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     repoRoot,
     options.deliveryRuntimeStatePath || DEFAULT_DELIVERY_RUNTIME_STATE_PATH
   );
+  const releaseSigningReadinessPath = path.resolve(
+    repoRoot,
+    options.releaseSigningReadinessPath || DEFAULT_RELEASE_SIGNING_READINESS_PATH
+  );
   const outputPath = path.resolve(repoRoot, options.outputPath || DEFAULT_OUTPUT_PATH);
 
   const readOptionalJsonFn = deps.readOptionalJsonFn || readOptionalJson;
@@ -704,6 +750,7 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   const wakeLifecycle = readOptionalJsonFn(wakeLifecyclePath);
   const wakeInvestmentAccounting = readOptionalJsonFn(wakeInvestmentAccountingPath);
   const deliveryRuntimeState = readOptionalJsonFn(deliveryRuntimeStatePath);
+  const releaseSigningReadinessReport = readOptionalJsonFn(releaseSigningReadinessPath);
 
   if (queueEmptyReport) {
     ensureSchema(queueEmptyReport, queueEmptyReportPath, 'standing-priority/no-standing@v1');
@@ -723,6 +770,13 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   if (deliveryRuntimeState) {
     ensureSchema(deliveryRuntimeState, deliveryRuntimeStatePath, 'priority/delivery-agent-runtime-state@v1');
   }
+  if (releaseSigningReadinessReport) {
+    ensureSchema(
+      releaseSigningReadinessReport,
+      releaseSigningReadinessPath,
+      'priority/release-signing-readiness-report@v1'
+    );
+  }
 
   const report = buildReport({
     repoRoot,
@@ -738,6 +792,8 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     wakeInvestmentAccounting,
     deliveryRuntimeStatePath,
     deliveryRuntimeState,
+    releaseSigningReadinessPath,
+    releaseSigningReadinessReport,
     readOptionalJsonFn,
     now
   });
