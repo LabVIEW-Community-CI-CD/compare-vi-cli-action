@@ -392,10 +392,16 @@ test('parseArgs accepts explicit PR helper overrides', () => {
     title: 'Explicit title',
     body: null,
     bodyFile: 'pr-body.md',
+    draft: null,
     reportDir: path.join('tests', 'results', '_agent', 'issue'),
     headRemote: null,
     help: false
   });
+});
+
+test('parseArgs accepts an explicit draft override', () => {
+  const options = parseArgs(['node', 'create-pr.mjs', '--draft']);
+  assert.equal(options.draft, true);
 });
 
 test('parseArgs rejects conflicting body inputs', () => {
@@ -439,6 +445,46 @@ test('parseArgs accepts an explicit head remote override', () => {
 test('parseArgs accepts an explicit report directory override', () => {
   const options = parseArgs(['node', 'create-pr.mjs', '--report-dir', '.tmp/pr-reports']);
   assert.equal(options.reportDir, '.tmp/pr-reports');
+});
+
+test('createPriorityPr forwards an explicit draft override to PR creation', () => {
+  const draftCalls = [];
+  createPriorityPrWithNoMergedHistory({
+    env: {},
+    options: {
+      issue: 1861,
+      branch: 'issue/upstream-1861-draft-pr-merge-sync-friction',
+      draft: true
+    },
+    readFileSyncFn: readDefaultPrTemplate,
+    getRepoRootFn: () => '/tmp/repo',
+    getCurrentBranchFn: () => 'issue/upstream-1861-draft-pr-merge-sync-friction',
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' }),
+    ensureForkRemoteFn: () => ({
+      owner: 'svelderrainruiz',
+      repo: 'compare-vi-cli-action',
+      sameOwnerFork: false,
+      remoteName: 'origin'
+    }),
+    pushBranchFn: () => ({ status: 'already-published' }),
+    runGhPrCreateFn: (payload) => {
+      draftCalls.push(payload);
+      return {
+        strategy: 'gh-pr-create',
+        pullRequest: {
+          number: 1862,
+          url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1862',
+          isDraft: true
+        }
+      };
+    },
+    resolveStandingIssueNumberFn: () => ({ issueNumber: 1861, source: 'cli' }),
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
+  });
+
+  assert.equal(draftCalls.length, 1);
+  assert.equal(draftCalls[0].draft, true);
 });
 
 test('parseRouterIssueNumber returns positive integer issue values', () => {
