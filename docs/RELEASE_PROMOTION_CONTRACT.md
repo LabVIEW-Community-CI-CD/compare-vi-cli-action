@@ -137,6 +137,22 @@ Release tags must pass the supply-chain trust gate before GitHub Release publica
 
 If the trust gate fails, release publication is blocked (fail-closed) and the report artifact must be used for remediation.
 
+Authoritative signed tag publication now belongs to the release conductor control
+plane:
+
+- `.github/workflows/release-conductor.yml` may load
+  `RELEASE_TAG_SIGNING_PRIVATE_KEY` and optional
+  `RELEASE_TAG_SIGNING_PUBLIC_KEY`
+- when signing material is present, release conductor must:
+  - configure workflow-owned tag signing
+  - create the signed annotated tag
+  - push the tag to the authoritative remote for the target repository
+- `tests/results/_agent/release/release-conductor-report.json` must record:
+  - signing backend/source
+  - whether the tag was created
+  - whether the tag was pushed authoritatively
+  - any push failure blocker
+
 ## Rollback drill health gate
 
 Release tags must pass rollback drill health before GitHub Release publication:

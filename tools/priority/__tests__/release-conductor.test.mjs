@@ -348,7 +348,7 @@ test('runReleaseConductor still blocks dry-run when the dwell window contains wo
   assert.ok(report.decision.blockers.some((entry) => entry.code === 'green-dwell-failed'));
 });
 
-test('runReleaseConductor creates signed tag when apply is enabled and signing key is available', async () => {
+test('runReleaseConductor creates and publishes a signed tag when apply is enabled and signing key is available', async () => {
   const readJsonOptionalFn = async (filePath) => {
     const normalized = String(filePath);
     if (normalized.includes('queue-supervisor-report.json')) {
@@ -386,9 +386,21 @@ test('runReleaseConductor creates signed tag when apply is enabled and signing k
   const runCommandFn = (command, args) => {
     commandCalls.push({ command, args });
     if (command === 'git' && args[0] === 'config') {
-      return { status: 0, stdout: 'ABC123', stderr: '' };
+      if (args[2] === 'user.signingkey') {
+        return { status: 0, stdout: '/tmp/release-signing.pub', stderr: '' };
+      }
+      if (args[2] === 'gpg.format') {
+        return { status: 0, stdout: 'ssh', stderr: '' };
+      }
+      if (args[2] === 'remote.upstream.url') {
+        return { status: 0, stdout: 'https://github.com/owner/repo.git', stderr: '' };
+      }
+      return { status: 1, stdout: '', stderr: 'missing config' };
     }
     if (command === 'git' && args[0] === 'tag') {
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    if (command === 'git' && args[0] === 'push') {
       return { status: 0, stdout: '', stderr: '' };
     }
     return { status: 0, stdout: '', stderr: '' };
@@ -425,7 +437,99 @@ test('runReleaseConductor creates signed tag when apply is enabled and signing k
   assert.equal(report.decision.status, 'pass');
   assert.equal(report.release.proposalOnly, false);
   assert.equal(report.release.tagCreated, true);
+  assert.equal(report.release.tagPushed, true);
+  assert.equal(report.release.tagPushRemote.remoteName, 'upstream');
+  assert.equal(report.release.signingMaterial.backend, 'ssh');
   assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'tag'));
+  assert.ok(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'push'));
+});
+
+test('runReleaseConductor fails apply when signed tag push remote is unavailable', async () => {
+  const readJsonOptionalFn = async (filePath) => {
+    const normalized = String(filePath);
+    if (normalized.includes('queue-supervisor-report.json')) {
+      return {
+        exists: true,
+        error: null,
+        path: filePath,
+        payload: {
+          paused: false,
+          throughputController: { mode: 'healthy' },
+          retryHistory: {}
+        }
+      };
+    }
+    return {
+      exists: true,
+      error: null,
+      path: filePath,
+      payload: {
+        schema: 'priority/policy-live-state@v1',
+        generatedAt: '2026-03-06T10:00:00Z',
+        state: {}
+      }
+    };
+  };
+
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'api') {
+      return makeWorkflowRunsResponse(String(args[1]));
+    }
+    throw new Error(`unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const commandCalls = [];
+  const runCommandFn = (command, args) => {
+    commandCalls.push({ command, args });
+    if (command === 'git' && args[0] === 'config') {
+      if (args[2] === 'user.signingkey') {
+        return { status: 0, stdout: '/tmp/release-signing.pub', stderr: '' };
+      }
+      if (args[2] === 'gpg.format') {
+        return { status: 0, stdout: 'ssh', stderr: '' };
+      }
+      return { status: 1, stdout: '', stderr: 'missing config' };
+    }
+    if (command === 'git' && args[0] === 'tag') {
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    return { status: 0, stdout: '', stderr: '' };
+  };
+
+  const { report, exitCode } = await runReleaseConductor({
+    repoRoot: process.cwd(),
+    now: new Date('2026-03-06T12:00:00.000Z'),
+    args: {
+      apply: true,
+      dryRun: false,
+      reportPath: 'tests/results/_agent/release/release-conductor-report.json',
+      queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      policySnapshotPath: 'tests/results/_agent/policy/policy-state-snapshot.json',
+      repo: 'owner/repo',
+      stream: 'comparevi-cli',
+      channel: 'stable',
+      version: '0.8.0',
+      dwellMinutes: 60,
+      quarantineStaleHours: 24,
+      help: false
+    },
+    environment: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      RELEASE_CONDUCTOR_ENABLED: '1'
+    },
+    runGhJsonFn,
+    runCommandFn,
+    readJsonOptionalFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(exitCode, 1);
+  assert.equal(report.decision.status, 'fail');
+  assert.equal(report.release.tagCreated, true);
+  assert.equal(report.release.tagPushed, false);
+  assert.equal(report.release.tagPushRemote.remoteName, null);
+  assert.ok(report.decision.blockers.some((entry) => entry.code === 'tag-push-remote-missing'));
+  assert.equal(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'push'), false);
 });
 
 test('runReleaseConductor blocks apply when signing material is unavailable', async () => {

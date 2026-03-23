@@ -443,17 +443,25 @@ function fetchWorkflowRunsByName({ runGhJsonFn, repository, branch, sampleSize, 
   };
 }
 
-function detectSigningMaterial({ runCommandFn, repoRoot }) {
+function detectSigningMaterial({ runCommandFn, repoRoot, environment = process.env }) {
   const keyResult = runCommandFn('git', ['config', '--get', 'user.signingkey'], {
     cwd: repoRoot,
     allowFailure: true
   });
   const signingKey = asOptional(keyResult.stdout);
+  const formatResult = runCommandFn('git', ['config', '--get', 'gpg.format'], {
+    cwd: repoRoot,
+    allowFailure: true
+  });
+  const configuredFormat = asOptional(formatResult.stdout);
+  const backend = asOptional(environment.RELEASE_TAG_SIGNING_BACKEND) ?? configuredFormat ?? 'openpgp';
+  const source = signingKey ? asOptional(environment.RELEASE_TAG_SIGNING_SOURCE) ?? 'git-config' : 'missing';
 
   return {
     available: Boolean(signingKey),
     signingKey,
-    source: signingKey ? 'git-config' : 'missing'
+    source,
+    backend
   };
 }
 
@@ -461,6 +469,30 @@ function resolveTargetTag(version) {
   const normalized = asOptional(version);
   if (!normalized) return null;
   return normalized.startsWith('v') ? normalized : `v${normalized}`;
+}
+
+function resolveTagPushRemote({ repoRoot, repository, runCommandFn }) {
+  for (const remoteName of ['upstream', 'origin']) {
+    const remoteResult = runCommandFn('git', ['config', '--get', `remote.${remoteName}.url`], {
+      cwd: repoRoot,
+      allowFailure: true
+    });
+    const remoteUrl = asOptional(remoteResult.stdout);
+    const remoteSlug = parseRemoteUrl(remoteUrl);
+    if (remoteSlug && remoteSlug === repository) {
+      return {
+        remoteName,
+        remoteSlug,
+        source: 'matching-remote-url'
+      };
+    }
+  }
+
+  return {
+    remoteName: null,
+    remoteSlug: null,
+    source: 'missing'
+  };
 }
 
 async function writeReport(filePath, payload) {
@@ -567,11 +599,14 @@ export async function runReleaseConductor(options = {}) {
     });
   }
 
-  const signingMaterial = detectSigningMaterial({ runCommandFn, repoRoot });
+  const signingMaterial = detectSigningMaterial({ runCommandFn, repoRoot, environment });
   const targetTag = resolveTargetTag(args.version);
   let tagCreated = false;
+  let tagPushed = false;
   let tagError = null;
+  let tagPushError = null;
   let proposalOnly = true;
+  const tagPushRemote = resolveTagPushRemote({ repoRoot, repository, runCommandFn });
 
   if (blockers.length === 0 && applyRequested && conductorEnabled) {
     if (!targetTag) {
@@ -591,7 +626,29 @@ export async function runReleaseConductor(options = {}) {
       });
       if (tagResult.status === 0) {
         tagCreated = true;
-        proposalOnly = false;
+        const pushRemoteName = asOptional(tagPushRemote.remoteName);
+        if (!pushRemoteName) {
+          tagPushError = 'Unable to resolve an authoritative git remote for tag publication.';
+          blockers.push({
+            code: 'tag-push-remote-missing',
+            message: `Signed tag ${targetTag} was created locally but no authoritative push remote matched ${repository}.`
+          });
+        } else {
+          const pushResult = runCommandFn('git', ['push', pushRemoteName, `refs/tags/${targetTag}`], {
+            cwd: repoRoot,
+            allowFailure: true
+          });
+          if (pushResult.status === 0) {
+            tagPushed = true;
+            proposalOnly = false;
+          } else {
+            tagPushError = asOptional(pushResult.stderr) ?? asOptional(pushResult.stdout) ?? 'tag push failed';
+            blockers.push({
+              code: 'tag-push-failed',
+              message: `Signed tag publication failed for ${targetTag}: ${tagPushError}`
+            });
+          }
+        }
       } else {
         tagError = asOptional(tagResult.stderr) ?? asOptional(tagResult.stdout) ?? 'tag creation failed';
         blockers.push({
@@ -619,7 +676,10 @@ export async function runReleaseConductor(options = {}) {
       targetTag,
       proposalOnly,
       tagCreated,
+      tagPushed,
       tagError,
+      tagPushError,
+      tagPushRemote,
       signingMaterial
     },
     inputs: {
