@@ -140,6 +140,20 @@ Release tags must pass the supply-chain trust gate before GitHub Release publica
 
 If the trust gate fails, release publication is blocked (fail-closed) and the report artifact must be used for remediation.
 
+Release publication also emits trust remediation guidance when the trust gate
+finds repair-eligible tag failures:
+
+- Markdown artifact:
+  `tests/results/_agent/release/release-trust-remediation.md`
+- Required behavior:
+  - preserve the existing release tag identity
+  - route `tag-not-annotated` and `tag-signature-unverified` to release
+    conductor repair mode
+  - instruct repair using:
+    - `version = <existing tag version>`
+    - `apply = true`
+    - `repair_existing_tag = true`
+
 Authoritative signed tag publication now belongs to the release conductor control
 plane:
 

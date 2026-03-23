@@ -245,12 +245,25 @@ jobs:
             -JsonPath tests/results/_agent/supply-chain/release-trust-gate.json `
             -SchemaPath docs/schemas/supply-chain-trust-gate-v1.schema.json
 
+      - name: Append release trust remediation guidance
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/priority/release-trust-remediation.mjs \
+            --trust-report tests/results/_agent/supply-chain/release-trust-gate.json \
+            --tag-ref "${{ github.ref_name }}" \
+            --output tests/results/_agent/release/release-trust-remediation.md \
+            --summary "$GITHUB_STEP_SUMMARY"
+
       - name: Upload supply-chain trust artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: release-supply-chain-trust-${{ github.run_id }}
-          path: tests/results/_agent/supply-chain/release-trust-gate.json
+          path: |
+            tests/results/_agent/supply-chain/release-trust-gate.json
+            tests/results/_agent/release/release-trust-remediation.md
           if-no-files-found: error
 
       - name: Enforce rollback drill health gate
