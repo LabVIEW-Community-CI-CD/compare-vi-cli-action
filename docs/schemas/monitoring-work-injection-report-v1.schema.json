@@ -13,6 +13,7 @@
     "inputs",
     "evidence",
     "selectedRule",
+    "portfolioRouting",
     "freshness",
     "replay",
     "decisionLedger",
@@ -71,6 +72,7 @@
       "required": [
         "queueEmptyReportPath",
         "monitoringModePath",
+        "governorPortfolioSummaryPath",
         "hostSignalPath",
         "wakeAdjudicationPath",
         "wakeWorkSynthesisPath",
@@ -82,6 +84,10 @@
           "minLength": 1
         },
         "monitoringModePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "governorPortfolioSummaryPath": {
           "type": "string",
           "minLength": 1
         },
@@ -109,6 +115,7 @@
       "required": [
         "queueEmpty",
         "monitoringMode",
+        "governorPortfolio",
         "hostSignal",
         "wake"
       ],
@@ -127,6 +134,16 @@
           "anyOf": [
             {
               "$ref": "#/$defs/monitoringMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "governorPortfolio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/governorPortfolio"
             },
             {
               "type": "null"
@@ -164,6 +181,9 @@
           "type": "null"
         }
       ]
+    },
+    "portfolioRouting": {
+      "$ref": "#/$defs/portfolioRouting"
     },
     "freshness": {
       "$ref": "#/$defs/freshnessReport"
@@ -318,6 +338,167 @@
             "string",
             "null"
           ]
+        }
+      }
+    },
+    "governorPortfolio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "governorMode",
+        "currentOwnerRepository",
+        "nextOwnerRepository",
+        "nextAction",
+        "ownerDecisionSource",
+        "templateMonitoringStatus",
+        "supportedProofStatus",
+        "repoGraphStatus",
+        "portfolioWakeConditionCount",
+        "triggeredWakeConditions"
+      ],
+      "properties": {
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "governorMode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "currentOwnerRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextOwnerRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextAction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ownerDecisionSource": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "templateMonitoringStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "supportedProofStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repoGraphStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "portfolioWakeConditionCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "triggeredWakeConditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "portfolioRouting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "available",
+        "status",
+        "reason",
+        "governorMode",
+        "currentOwnerRepository",
+        "nextOwnerRepository",
+        "nextAction",
+        "ownerDecisionSource",
+        "contradiction",
+        "contradictionFields",
+        "allowInjection"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "governorMode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "currentOwnerRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextOwnerRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextAction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ownerDecisionSource": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contradiction": {
+          "type": "boolean"
+        },
+        "contradictionFields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowInjection": {
+          "type": "boolean"
         }
       }
     },

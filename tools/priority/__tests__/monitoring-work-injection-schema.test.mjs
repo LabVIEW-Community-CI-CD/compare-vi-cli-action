@@ -53,6 +53,14 @@ test('monitoring work injection report matches schema', async () => {
   const policyPath = path.join(tmpDir, 'policy.json');
   const queueEmptyReportPath = path.join(tmpDir, 'queue.json');
   const monitoringModePath = path.join(tmpDir, 'monitoring-mode.json');
+  const governorPortfolioSummaryPath = path.join(
+    tmpDir,
+    'tests',
+    'results',
+    '_agent',
+    'handoff',
+    'autonomous-governor-portfolio-summary.json'
+  );
   const hostSignalPath = path.join(tmpDir, 'host-signal.json');
   const wakeAdjudicationPath = path.join(tmpDir, 'wake-adjudication.json');
   const wakeWorkSynthesisPath = path.join(tmpDir, 'wake-work-synthesis.json');
@@ -99,6 +107,42 @@ test('monitoring work injection report matches schema', async () => {
       status: 'active',
       futureAgentAction: 'future-agent-may-pivot',
       wakeConditionCount: 1
+    }
+  });
+  writeJson(governorPortfolioSummaryPath, {
+    schema: 'priority/autonomous-governor-portfolio-summary-report@v1',
+    generatedAt: '2099-01-01T00:00:30.000Z',
+    inputs: {
+      compareGovernorSummaryPath: 'tests/results/_agent/handoff/autonomous-governor-summary.json',
+      monitoringModePath: 'tests/results/_agent/handoff/monitoring-mode.json',
+      repoGraphTruthPath: 'tests/results/_agent/handoff/downstream-repo-graph-truth.json'
+    },
+    compare: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      queueState: 'queue-empty',
+      continuityStatus: 'maintained',
+      monitoringStatus: 'active',
+      futureAgentAction: 'future-agent-may-pivot',
+      governorMode: 'compare-governance-work',
+      nextAction: 'continue-compare-governance-work'
+    },
+    portfolio: {
+      repositoryCount: 4,
+      repositories: [],
+      unsupportedPaths: []
+    },
+    summary: {
+      status: 'active',
+      governorMode: 'compare-governance-work',
+      currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      nextOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      nextAction: 'continue-compare-governance-work',
+      ownerDecisionSource: 'compare-governor-summary',
+      templateMonitoringStatus: 'pass',
+      supportedProofStatus: 'pass',
+      repoGraphStatus: 'pass',
+      portfolioWakeConditionCount: 0,
+      triggeredWakeConditions: []
     }
   });
   writeJson(hostSignalPath, {

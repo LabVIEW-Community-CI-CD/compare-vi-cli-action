@@ -26,6 +26,13 @@ export const DEFAULT_MONITORING_MODE_PATH = path.join(
   'handoff',
   'monitoring-mode.json'
 );
+export const DEFAULT_GOVERNOR_PORTFOLIO_SUMMARY_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'handoff',
+  'autonomous-governor-portfolio-summary.json'
+);
 export const DEFAULT_HOST_SIGNAL_PATH = path.join(
   'tests',
   'results',
@@ -89,6 +96,13 @@ function ensureWakeWorkSynthesisReport(payload, filePath) {
 function ensureWakeInvestmentAccountingReport(payload, filePath) {
   if (payload?.schema !== 'priority/wake-investment-accounting-report@v1') {
     throw new Error(`Expected wake investment accounting report at ${filePath}.`);
+  }
+  return payload;
+}
+
+function ensureGovernorPortfolioSummaryReport(payload, filePath) {
+  if (payload?.schema !== 'priority/autonomous-governor-portfolio-summary-report@v1') {
+    throw new Error(`Expected autonomous governor portfolio summary report at ${filePath}.`);
   }
   return payload;
 }
@@ -353,6 +367,29 @@ function createWakeEvidence(wakeAdjudication, wakeWorkSynthesis, wakeInvestmentA
     authoritySource:
       asOptional(wakeWorkSynthesis?.authority?.source) ||
       asOptional(wakeAdjudication?.authority?.authoritative?.source)
+  };
+}
+
+function createGovernorPortfolioEvidence(governorPortfolioSummary) {
+  if (!governorPortfolioSummary) {
+    return null;
+  }
+  return {
+    status: asOptional(governorPortfolioSummary.summary?.status),
+    governorMode: asOptional(governorPortfolioSummary.summary?.governorMode),
+    currentOwnerRepository: asOptional(governorPortfolioSummary.summary?.currentOwnerRepository),
+    nextOwnerRepository: asOptional(governorPortfolioSummary.summary?.nextOwnerRepository),
+    nextAction: asOptional(governorPortfolioSummary.summary?.nextAction),
+    ownerDecisionSource: asOptional(governorPortfolioSummary.summary?.ownerDecisionSource),
+    templateMonitoringStatus: asOptional(governorPortfolioSummary.summary?.templateMonitoringStatus),
+    supportedProofStatus: asOptional(governorPortfolioSummary.summary?.supportedProofStatus),
+    repoGraphStatus: asOptional(governorPortfolioSummary.summary?.repoGraphStatus),
+    portfolioWakeConditionCount: Number.isInteger(governorPortfolioSummary.summary?.portfolioWakeConditionCount)
+      ? governorPortfolioSummary.summary.portfolioWakeConditionCount
+      : null,
+    triggeredWakeConditions: Array.isArray(governorPortfolioSummary.summary?.triggeredWakeConditions)
+      ? governorPortfolioSummary.summary.triggeredWakeConditions.map((entry) => String(entry))
+      : []
   };
 }
 
@@ -879,6 +916,112 @@ function buildFallbackSummary(wakeEvidence, repository) {
   };
 }
 
+function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wakeEvidence, selectedRule }) {
+  const summary = governorPortfolioSummary?.summary || null;
+  const currentOwnerRepository = asOptional(summary?.currentOwnerRepository);
+  const nextOwnerRepository = asOptional(summary?.nextOwnerRepository);
+  const governorMode = asOptional(summary?.governorMode);
+  const nextAction = asOptional(summary?.nextAction);
+  const ownerDecisionSource = asOptional(summary?.ownerDecisionSource);
+  const wakeHasOwnershipSignal = Boolean(
+    wakeEvidence?.recommendedOwnerRepository ||
+      wakeEvidence?.decision ||
+      wakeEvidence?.status ||
+      wakeEvidence?.nextAction
+  );
+  const required = ruleUsesWakeEvidence(selectedRule) || (!selectedRule && wakeHasOwnershipSignal);
+  const contradictoryOwner =
+    required &&
+    currentOwnerRepository &&
+    wakeEvidence?.recommendedOwnerRepository &&
+    currentOwnerRepository !== wakeEvidence.recommendedOwnerRepository;
+
+  if (!required) {
+    return {
+      required: false,
+      available: summary != null,
+      status: 'not-required',
+      reason: 'Portfolio routing was not required for the selected monitoring rule.',
+      governorMode,
+      currentOwnerRepository,
+      nextOwnerRepository,
+      nextAction,
+      ownerDecisionSource,
+      contradiction: false,
+      contradictionFields: [],
+      allowInjection: true
+    };
+  }
+
+  if (!summary) {
+    return {
+      required: true,
+      available: false,
+      status: 'missing',
+      reason: 'Governor portfolio summary is required for cross-repository wake ownership routing.',
+      governorMode: null,
+      currentOwnerRepository: null,
+      nextOwnerRepository: null,
+      nextAction: null,
+      ownerDecisionSource: null,
+      contradiction: false,
+      contradictionFields: [],
+      allowInjection: false
+    };
+  }
+
+  if (contradictoryOwner) {
+    return {
+      required: true,
+      available: true,
+      status: 'contradiction',
+      reason: `Governor portfolio assigns current ownership to ${currentOwnerRepository}, but the wake recommends ${wakeEvidence.recommendedOwnerRepository}.`,
+      governorMode,
+      currentOwnerRepository,
+      nextOwnerRepository,
+      nextAction,
+      ownerDecisionSource,
+      contradiction: true,
+      contradictionFields: ['recommendedOwnerRepository'],
+      allowInjection: false
+    };
+  }
+
+  if (currentOwnerRepository && repository && currentOwnerRepository !== repository) {
+    return {
+      required: true,
+      available: true,
+      status: 'external-owner',
+      reason: `Governor portfolio assigns current ownership to ${currentOwnerRepository}, not ${repository}.`,
+      governorMode,
+      currentOwnerRepository,
+      nextOwnerRepository,
+      nextAction,
+      ownerDecisionSource,
+      contradiction: false,
+      contradictionFields: [],
+      allowInjection: false
+    };
+  }
+
+  return {
+    required: true,
+    available: true,
+    status: 'owner-match',
+    reason: currentOwnerRepository
+      ? `Governor portfolio assigns current ownership to ${currentOwnerRepository}.`
+      : 'Governor portfolio does not override the current repository owner.',
+    governorMode,
+    currentOwnerRepository,
+    nextOwnerRepository,
+    nextAction,
+    ownerDecisionSource,
+    contradiction: false,
+    contradictionFields: [],
+    allowInjection: true
+  };
+}
+
 function ensureIssueLabels(repository, issueNumber, desiredLabels, currentLabels, runGhFn) {
   const missing = desiredLabels.filter((label) => !currentLabels.includes(label));
   if (missing.length === 0) {
@@ -925,6 +1068,10 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
   const ledgerPath = path.resolve(repoRoot, options.ledgerPath || DEFAULT_DECISION_LEDGER_PATH);
   const queueEmptyReportPath = path.resolve(repoRoot, options.queueEmptyReportPath || DEFAULT_QUEUE_EMPTY_REPORT_PATH);
   const monitoringModePath = path.resolve(repoRoot, options.monitoringModePath || DEFAULT_MONITORING_MODE_PATH);
+  const governorPortfolioSummaryPath = path.resolve(
+    repoRoot,
+    options.governorPortfolioSummaryPath || DEFAULT_GOVERNOR_PORTFOLIO_SUMMARY_PATH
+  );
   const hostSignalPath = path.resolve(repoRoot, options.hostSignalPath || DEFAULT_HOST_SIGNAL_PATH);
   const wakeAdjudicationPath = path.resolve(repoRoot, options.wakeAdjudicationPath || DEFAULT_WAKE_ADJUDICATION_PATH);
   const wakeWorkSynthesisPath = path.resolve(repoRoot, options.wakeWorkSynthesisPath || DEFAULT_WAKE_WORK_SYNTHESIS_PATH);
@@ -940,6 +1087,7 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
     policy.compareRepository;
   const queueEmptyReport = readOptionalJson(queueEmptyReportPath);
   const monitoringMode = readOptionalJson(monitoringModePath);
+  const rawGovernorPortfolioSummary = readOptionalJson(governorPortfolioSummaryPath);
   const hostSignal = readOptionalJson(hostSignalPath);
   const rawWakeAdjudication = readOptionalJson(wakeAdjudicationPath);
   const rawWakeWorkSynthesis = readOptionalJson(wakeWorkSynthesisPath);
@@ -951,7 +1099,11 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
   const wakeInvestmentAccounting = rawWakeInvestmentAccounting
     ? ensureWakeInvestmentAccountingReport(rawWakeInvestmentAccounting, wakeInvestmentAccountingPath)
     : null;
+  const governorPortfolioSummary = rawGovernorPortfolioSummary
+    ? ensureGovernorPortfolioSummaryReport(rawGovernorPortfolioSummary, governorPortfolioSummaryPath)
+    : null;
   const wakeEvidence = createWakeEvidence(wakeAdjudication, wakeWorkSynthesis, wakeInvestmentAccounting);
+  const governorPortfolio = createGovernorPortfolioEvidence(governorPortfolioSummary);
   const helperCallsExecuted = [];
   const appendLedger = options.appendLedger !== false;
   const queueEligible =
@@ -963,6 +1115,12 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
     selectedRule = policy.rules.find((rule) => ruleMatches(rule, monitoringMode, hostSignal, wakeEvidence)) ?? null;
   }
   const resolvedDedupeMarker = selectedRule ? resolveDedupeMarker(selectedRule, wakeEvidence) : null;
+  const portfolioRouting = buildPortfolioRoutingContext({
+    governorPortfolioSummary,
+    repository,
+    wakeEvidence,
+    selectedRule
+  });
   const freshness = buildFreshnessContext({
     repoRoot,
     policy,
@@ -1021,7 +1179,16 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
   }
 
   if (selectedRule) {
-    if (freshness.blockingSources.length > 0) {
+    if (!portfolioRouting.allowInjection) {
+      summary = {
+        status: portfolioRouting.status === 'external-owner' ? 'external-route' : 'policy-blocked',
+        injected: false,
+        reason: portfolioRouting.reason,
+        issueNumber: null,
+        issueUrl: null,
+        triggerId: selectedRule.id
+      };
+    } else if (freshness.blockingSources.length > 0) {
       summary = {
         status: 'policy-blocked',
         injected: false,
@@ -1138,6 +1305,7 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
     inputs: {
       queueEmptyReportPath: path.relative(repoRoot, queueEmptyReportPath).replace(/\\/g, '/'),
       monitoringModePath: path.relative(repoRoot, monitoringModePath).replace(/\\/g, '/'),
+      governorPortfolioSummaryPath: path.relative(repoRoot, governorPortfolioSummaryPath).replace(/\\/g, '/'),
       hostSignalPath: path.relative(repoRoot, hostSignalPath).replace(/\\/g, '/'),
       wakeAdjudicationPath: path.relative(repoRoot, wakeAdjudicationPath).replace(/\\/g, '/'),
       wakeWorkSynthesisPath: path.relative(repoRoot, wakeWorkSynthesisPath).replace(/\\/g, '/'),
@@ -1160,6 +1328,7 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
               : null
           }
         : null,
+      governorPortfolio,
       hostSignal: hostSignal
         ? {
             status: asOptional(hostSignal.status),
@@ -1208,6 +1377,7 @@ export async function runMonitoringWorkInjection(options = {}, deps = {}) {
           }
         }
       : null,
+    portfolioRouting,
     freshness,
     replay,
     decisionLedger: {
@@ -1267,6 +1437,7 @@ export function parseArgs(argv = process.argv) {
     outputPath: DEFAULT_OUTPUT_PATH,
     queueEmptyReportPath: DEFAULT_QUEUE_EMPTY_REPORT_PATH,
     monitoringModePath: DEFAULT_MONITORING_MODE_PATH,
+    governorPortfolioSummaryPath: DEFAULT_GOVERNOR_PORTFOLIO_SUMMARY_PATH,
     hostSignalPath: DEFAULT_HOST_SIGNAL_PATH,
     wakeAdjudicationPath: DEFAULT_WAKE_ADJUDICATION_PATH,
     wakeWorkSynthesisPath: DEFAULT_WAKE_WORK_SYNTHESIS_PATH,
@@ -1288,6 +1459,8 @@ export function parseArgs(argv = process.argv) {
       args.queueEmptyReportPath = argv[++index];
     } else if (arg === '--monitoring-mode') {
       args.monitoringModePath = argv[++index];
+    } else if (arg === '--governor-portfolio-summary') {
+      args.governorPortfolioSummaryPath = argv[++index];
     } else if (arg === '--host-signal') {
       args.hostSignalPath = argv[++index];
     } else if (arg === '--wake-adjudication') {
@@ -1319,7 +1492,7 @@ async function main(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
     console.log(
-      'Usage: node tools/priority/monitoring-work-injection.mjs [--dry-run] [--repo <owner/repo>] [--wake-adjudication <path>] [--wake-work-synthesis <path>] [--wake-investment-accounting <path>] [--ledger <path>] [--skip-ledger]'
+      'Usage: node tools/priority/monitoring-work-injection.mjs [--dry-run] [--repo <owner/repo>] [--governor-portfolio-summary <path>] [--wake-adjudication <path>] [--wake-work-synthesis <path>] [--wake-investment-accounting <path>] [--ledger <path>] [--skip-ledger]'
     );
     return 0;
   }
