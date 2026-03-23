@@ -135,6 +135,8 @@ Use the artifacts in this order:
 1. `labview-2026-host-plane-report.json`
    - confirms the native `x64` and `x32` plane readiness
    - shows the host/runner identity
+   - records `host.osFingerprint` as the canonical Windows upgrade baseline for
+     the isolated lane group
    - records the mutually exclusive Docker pair and the candidate parallel pairs
 2. `labview-2026-host-plane-summary.md`
    - records the operator-facing summary paired with the report
@@ -203,6 +205,12 @@ trustworthy.
    merge-queued, or fully settled without raw GitHub polling.
 8. When summarizing a run, name the exact plane identifier instead of saying “host” or “Docker” without qualification.
 9. Do not treat `native-labview-2026-32` as a release or CI authority surface; it is a shadow accelerator only.
+10. Compare `host.osFingerprint.fingerprintSha256` before and after host
+    upgrades. If it changes, treat the new value as a moved canonical host OS
+    baseline rather than attributing the drift to the workload first.
+11. Use `host.osFingerprint.isolatedLaneGroupId` as the replayable identifier
+    for this canonical Windows baseline when documenting or comparing isolated
+    local lane groups.
 
 ## Related contracts
 

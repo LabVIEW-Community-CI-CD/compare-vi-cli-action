@@ -12,6 +12,34 @@ All values are strings; use `1` / `0` for boolean-style flags.
 | `LVCOMPARE_PATH` | Optional override for LVCompare.exe (must resolve to canonical path) |
 | `WORKING_DIRECTORY` | Process CWD when invoking LVCompare |
 
+## Canonical host OS fingerprint
+
+The authoritative OS/build receipt for the canonical Windows host lane group is
+written by:
+
+```powershell
+node tools/npm/run-script.mjs env:labview:2026:host-planes
+```
+
+Primary artifact:
+
+- `tests/results/_agent/host-planes/labview-2026-host-plane-report.json`
+
+Key fields:
+
+- `host.osFingerprint.fingerprintSha256`
+- `host.osFingerprint.isolatedLaneGroupId`
+- `host.osFingerprint.canonical.version`
+- `host.osFingerprint.canonical.buildNumber`
+- `host.osFingerprint.canonical.ubr`
+- `host.osFingerprint.canonical.displayVersion`
+- `host.osFingerprint.canonical.editionId`
+
+Treat those fields as the upgrade-attribution baseline for isolated lane
+groups. If the fingerprint changes after a host upgrade, classify that as host
+OS drift first and only then assess Docker, LabVIEW, or workflow regressions.
+`computerName`, branding labels, and boot/install timestamps remain advisory.
+
 ## Dispatcher guards (leak detection / cleanup)
 
 | Variable | Notes |

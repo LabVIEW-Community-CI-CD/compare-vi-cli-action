@@ -33,6 +33,8 @@ test('single-host runbook points to the authoritative commands and artifacts', (
   assert.match(runbook, /node tools\/npm\/run-script\.mjs history:diagnostics:show -- --ResultsRoot tests\/results\/local-parity\/windows/);
   assert.match(runbook, /labview-2026-host-plane-report\.json/);
   assert.match(runbook, /labview-2026-host-plane-summary\.md/);
+  assert.match(runbook, /host\.osFingerprint/);
+  assert.match(runbook, /fingerprintSha256/);
   assert.match(runbook, /docker-runtime-fastloop-readiness\.json/);
   assert.match(runbook, /docker-fast-loop-summary-path/);
   assert.match(runbook, /docker-fast-loop-status-path/);
