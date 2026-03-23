@@ -36,14 +36,16 @@
         "continuitySummaryPath",
         "monitoringModePath",
         "wakeLifecyclePath",
-        "wakeInvestmentAccountingPath"
+        "wakeInvestmentAccountingPath",
+        "deliveryRuntimeStatePath"
       ],
       "properties": {
         "queueEmptyReportPath": { "type": "string", "minLength": 1 },
         "continuitySummaryPath": { "type": "string", "minLength": 1 },
         "monitoringModePath": { "type": "string", "minLength": 1 },
         "wakeLifecyclePath": { "type": "string", "minLength": 1 },
-        "wakeInvestmentAccountingPath": { "type": "string", "minLength": 1 }
+        "wakeInvestmentAccountingPath": { "type": "string", "minLength": 1 },
+        "deliveryRuntimeStatePath": { "type": "string", "minLength": 1 }
       }
     },
     "compare": {
@@ -52,12 +54,14 @@
       "required": [
         "queueState",
         "continuity",
-        "monitoringMode"
+        "monitoringMode",
+        "deliveryRuntime"
       ],
       "properties": {
         "queueState": { "$ref": "#/$defs/queueState" },
         "continuity": { "$ref": "#/$defs/continuity" },
-        "monitoringMode": { "$ref": "#/$defs/monitoringMode" }
+        "monitoringMode": { "$ref": "#/$defs/monitoringMode" },
+        "deliveryRuntime": { "$ref": "#/$defs/deliveryRuntime" }
       }
     },
     "wake": {
@@ -115,6 +119,43 @@
         "status": { "type": ["string", "null"] },
         "futureAgentAction": { "type": ["string", "null"] },
         "wakeConditionCount": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "deliveryRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "runtimeStatus",
+        "laneLifecycle",
+        "actionType",
+        "outcome",
+        "blockerClass",
+        "nextWakeCondition",
+        "prUrl",
+        "issueNumber",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "none",
+            "checks-pending",
+            "merge-queue-progress",
+            "merge-blocked",
+            "pr-active"
+          ]
+        },
+        "runtimeStatus": { "type": ["string", "null"] },
+        "laneLifecycle": { "type": ["string", "null"] },
+        "actionType": { "type": ["string", "null"] },
+        "outcome": { "type": ["string", "null"] },
+        "blockerClass": { "type": ["string", "null"] },
+        "nextWakeCondition": { "type": ["string", "null"] },
+        "prUrl": { "type": ["string", "null"] },
+        "issueNumber": { "type": ["integer", "null"], "minimum": 1 },
+        "reason": { "type": ["string", "null"] }
       }
     },
     "wake": {
@@ -190,7 +231,10 @@
         "continuityStatus",
         "wakeTerminalState",
         "monitoringStatus",
-        "futureAgentAction"
+        "futureAgentAction",
+        "queueHandoffStatus",
+        "queueHandoffNextWakeCondition",
+        "queueHandoffPrUrl"
       ],
       "properties": {
         "governorMode": {
@@ -225,7 +269,19 @@
         "continuityStatus": { "type": ["string", "null"] },
         "wakeTerminalState": { "type": ["string", "null"] },
         "monitoringStatus": { "type": ["string", "null"] },
-        "futureAgentAction": { "type": ["string", "null"] }
+        "futureAgentAction": { "type": ["string", "null"] },
+        "queueHandoffStatus": {
+          "type": "string",
+          "enum": [
+            "none",
+            "checks-pending",
+            "merge-queue-progress",
+            "merge-blocked",
+            "pr-active"
+          ]
+        },
+        "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
+        "queueHandoffPrUrl": { "type": ["string", "null"] }
       }
     }
   }

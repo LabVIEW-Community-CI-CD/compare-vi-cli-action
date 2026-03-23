@@ -1520,6 +1520,15 @@ try {
     if ($governor.summary.nextOwnerRepository) {
       Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governor.summary.nextOwnerRepository))
     }
+    if ($governor.summary.PSObject.Properties['queueHandoffStatus'] -and
+        $governor.summary.queueHandoffStatus -and
+        $governor.summary.queueHandoffStatus -ne 'none') {
+      Write-Host ("  queueWait: {0}" -f (Format-NullableValue $governor.summary.queueHandoffStatus))
+      Write-Host ("  queueWake: {0}" -f (Format-NullableValue $governor.summary.queueHandoffNextWakeCondition))
+      if ($governor.summary.PSObject.Properties['queueHandoffPrUrl'] -and $governor.summary.queueHandoffPrUrl) {
+        Write-Host ("  pr       : {0}" -f (Format-NullableValue $governor.summary.queueHandoffPrUrl))
+      }
+    }
     if ($env:GITHUB_STEP_SUMMARY) {
       $governorLines = @(
         '### Autonomous Governor',
@@ -1532,6 +1541,15 @@ try {
       )
       if ($governor.summary.nextOwnerRepository) {
         $governorLines += ('- Next owner: {0}' -f (Format-NullableValue $governor.summary.nextOwnerRepository))
+      }
+      if ($governor.summary.PSObject.Properties['queueHandoffStatus'] -and
+          $governor.summary.queueHandoffStatus -and
+          $governor.summary.queueHandoffStatus -ne 'none') {
+        $governorLines += ('- Queue handoff: {0}' -f (Format-NullableValue $governor.summary.queueHandoffStatus))
+        $governorLines += ('- Queue wake: {0}' -f (Format-NullableValue $governor.summary.queueHandoffNextWakeCondition))
+        if ($governor.summary.PSObject.Properties['queueHandoffPrUrl'] -and $governor.summary.queueHandoffPrUrl) {
+          $governorLines += ('- Queue PR: {0}' -f (Format-NullableValue $governor.summary.queueHandoffPrUrl))
+        }
       }
       ($governorLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
     }
@@ -1554,6 +1572,11 @@ try {
     if ($portfolio.summary.nextOwnerRepository) {
       Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $portfolio.summary.nextOwnerRepository))
     }
+    if ($portfolio.summary.PSObject.Properties['queueHandoffStatus'] -and
+        $portfolio.summary.queueHandoffStatus) {
+      Write-Host ("  queueWait: {0}" -f (Format-NullableValue $portfolio.summary.queueHandoffStatus))
+      Write-Host ("  queueWake: {0}" -f (Format-NullableValue $portfolio.summary.queueHandoffNextWakeCondition))
+    }
     if ($env:GITHUB_STEP_SUMMARY) {
       $portfolioLines = @(
         '### Governor Portfolio',
@@ -1566,6 +1589,11 @@ try {
       )
       if ($portfolio.summary.nextOwnerRepository) {
         $portfolioLines += ('- Next owner: {0}' -f (Format-NullableValue $portfolio.summary.nextOwnerRepository))
+      }
+      if ($portfolio.summary.PSObject.Properties['queueHandoffStatus'] -and
+          $portfolio.summary.queueHandoffStatus) {
+        $portfolioLines += ('- Queue handoff: {0}' -f (Format-NullableValue $portfolio.summary.queueHandoffStatus))
+        $portfolioLines += ('- Queue wake: {0}' -f (Format-NullableValue $portfolio.summary.queueHandoffNextWakeCondition))
       }
       ($portfolioLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
     }

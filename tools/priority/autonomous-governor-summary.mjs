@@ -49,6 +49,13 @@ export const DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH = path.join(
   'capital',
   'wake-investment-accounting.json'
 );
+export const DEFAULT_DELIVERY_RUNTIME_STATE_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'runtime',
+  'delivery-agent-state.json'
+);
 
 function asOptional(value) {
   if (value == null) {
@@ -97,6 +104,7 @@ export function parseArgs(argv = process.argv) {
     monitoringModePath: DEFAULT_MONITORING_MODE_PATH,
     wakeLifecyclePath: DEFAULT_WAKE_LIFECYCLE_PATH,
     wakeInvestmentAccountingPath: DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH,
+    deliveryRuntimeStatePath: DEFAULT_DELIVERY_RUNTIME_STATE_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
     help: false
   };
@@ -108,6 +116,7 @@ export function parseArgs(argv = process.argv) {
     ['--monitoring-mode', 'monitoringModePath'],
     ['--wake-lifecycle', 'wakeLifecyclePath'],
     ['--wake-investment-accounting', 'wakeInvestmentAccountingPath'],
+    ['--delivery-runtime-state', 'deliveryRuntimeStatePath'],
     ['--output', 'outputPath']
   ]);
 
@@ -143,6 +152,7 @@ function printHelp() {
     `  --monitoring-mode <path>          Monitoring mode path (default: ${DEFAULT_MONITORING_MODE_PATH}).`,
     `  --wake-lifecycle <path>           Wake lifecycle path (default: ${DEFAULT_WAKE_LIFECYCLE_PATH}).`,
     `  --wake-investment-accounting <path> Wake investment accounting path (default: ${DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH}).`,
+    `  --delivery-runtime-state <path>   Delivery runtime state path (default: ${DEFAULT_DELIVERY_RUNTIME_STATE_PATH}).`,
     `  --output <path>                   Output path (default: ${DEFAULT_OUTPUT_PATH}).`,
     '  -h, --help                        Show help.'
   ].forEach((line) => console.log(line));
@@ -231,6 +241,40 @@ function deriveFunding(wakeInvestmentAccounting) {
       typeof wakeInvestmentAccounting?.summary?.metrics?.netPaybackUsd === 'number'
         ? wakeInvestmentAccounting.summary.metrics.netPaybackUsd
         : null
+  };
+}
+
+function deriveDeliveryRuntime(deliveryRuntimeState) {
+  const activeLane = deliveryRuntimeState?.activeLane || {};
+  const prUrl = asOptional(activeLane?.prUrl);
+  const laneLifecycle = asOptional(activeLane?.laneLifecycle) || asOptional(deliveryRuntimeState?.laneLifecycle);
+  const blockerClass = asOptional(activeLane?.blockerClass);
+  const outcome = asOptional(activeLane?.outcome);
+
+  let status = 'none';
+  if (prUrl) {
+    if (laneLifecycle === 'waiting-ci') {
+      status = 'checks-pending';
+    } else if (laneLifecycle === 'ready-merge') {
+      status = 'merge-queue-progress';
+    } else if (blockerClass === 'merge' || outcome === 'merge-blocked') {
+      status = 'merge-blocked';
+    } else {
+      status = 'pr-active';
+    }
+  }
+
+  return {
+    status,
+    runtimeStatus: asOptional(deliveryRuntimeState?.status),
+    laneLifecycle,
+    actionType: asOptional(activeLane?.actionType),
+    outcome,
+    blockerClass,
+    nextWakeCondition: asOptional(activeLane?.nextWakeCondition),
+    prUrl,
+    issueNumber: Number.isInteger(activeLane?.issue) ? activeLane.issue : null,
+    reason: asOptional(activeLane?.reason)
   };
 }
 
@@ -358,6 +402,8 @@ function buildReport({
   wakeLifecycle,
   wakeInvestmentAccountingPath,
   wakeInvestmentAccounting,
+  deliveryRuntimeStatePath,
+  deliveryRuntimeState,
   now
 }) {
   const repository =
@@ -370,6 +416,7 @@ function buildReport({
   const continuity = deriveContinuity(continuitySummary, monitoringMode);
   const wake = deriveWake(wakeLifecycle);
   const funding = deriveFunding(wakeInvestmentAccounting);
+  const deliveryRuntime = deriveDeliveryRuntime(deliveryRuntimeState);
   const governorMode = deriveGovernorMode({ queueState, continuity, monitoringMode, wake });
   const signalQuality = deriveSignalQuality({ governorMode, wake });
   const owners = deriveOwners({ governorMode, monitoringMode, wake, repository });
@@ -384,7 +431,8 @@ function buildReport({
       continuitySummaryPath: toRelative(repoRoot, continuitySummaryPath),
       monitoringModePath: toRelative(repoRoot, monitoringModePath),
       wakeLifecyclePath: toRelative(repoRoot, wakeLifecyclePath),
-      wakeInvestmentAccountingPath: toRelative(repoRoot, wakeInvestmentAccountingPath)
+      wakeInvestmentAccountingPath: toRelative(repoRoot, wakeInvestmentAccountingPath),
+      deliveryRuntimeStatePath: toRelative(repoRoot, deliveryRuntimeStatePath)
     },
     compare: {
       queueState,
@@ -395,7 +443,8 @@ function buildReport({
         wakeConditionCount: Number.isInteger(monitoringMode?.summary?.wakeConditionCount)
           ? monitoringMode.summary.wakeConditionCount
           : null
-      }
+      },
+      deliveryRuntime
     },
     wake,
     funding,
@@ -409,7 +458,10 @@ function buildReport({
       continuityStatus: continuity.status,
       wakeTerminalState: wake.terminalState,
       monitoringStatus: asOptional(monitoringMode?.summary?.status),
-      futureAgentAction: asOptional(monitoringMode?.summary?.futureAgentAction)
+      futureAgentAction: asOptional(monitoringMode?.summary?.futureAgentAction),
+      queueHandoffStatus: deliveryRuntime.status,
+      queueHandoffNextWakeCondition: deliveryRuntime.nextWakeCondition,
+      queueHandoffPrUrl: deliveryRuntime.prUrl
     }
   };
 }
@@ -424,6 +476,10 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     repoRoot,
     options.wakeInvestmentAccountingPath || DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH
   );
+  const deliveryRuntimeStatePath = path.resolve(
+    repoRoot,
+    options.deliveryRuntimeStatePath || DEFAULT_DELIVERY_RUNTIME_STATE_PATH
+  );
   const outputPath = path.resolve(repoRoot, options.outputPath || DEFAULT_OUTPUT_PATH);
 
   const readOptionalJsonFn = deps.readOptionalJsonFn || readOptionalJson;
@@ -435,6 +491,7 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   const monitoringMode = readOptionalJsonFn(monitoringModePath);
   const wakeLifecycle = readOptionalJsonFn(wakeLifecyclePath);
   const wakeInvestmentAccounting = readOptionalJsonFn(wakeInvestmentAccountingPath);
+  const deliveryRuntimeState = readOptionalJsonFn(deliveryRuntimeStatePath);
 
   if (queueEmptyReport) {
     ensureSchema(queueEmptyReport, queueEmptyReportPath, 'standing-priority/no-standing@v1');
@@ -451,6 +508,9 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   if (wakeInvestmentAccounting) {
     ensureSchema(wakeInvestmentAccounting, wakeInvestmentAccountingPath, 'priority/wake-investment-accounting-report@v1');
   }
+  if (deliveryRuntimeState) {
+    ensureSchema(deliveryRuntimeState, deliveryRuntimeStatePath, 'priority/delivery-agent-runtime-state@v1');
+  }
 
   const report = buildReport({
     repoRoot,
@@ -464,6 +524,8 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     wakeLifecycle,
     wakeInvestmentAccountingPath,
     wakeInvestmentAccounting,
+    deliveryRuntimeStatePath,
+    deliveryRuntimeState,
     now
   });
 

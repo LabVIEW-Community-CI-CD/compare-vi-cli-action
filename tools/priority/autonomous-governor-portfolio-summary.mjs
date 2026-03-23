@@ -210,7 +210,10 @@ function deriveRepositoryEntries(repoGraphTruth, monitoringMode, compareGovernor
             monitoringStatus: asOptional(compareGovernorSummary?.summary?.monitoringStatus),
             futureAgentAction: asOptional(compareGovernorSummary?.summary?.futureAgentAction),
             governorMode: asOptional(compareGovernorSummary?.summary?.governorMode),
-            nextAction: asOptional(compareGovernorSummary?.summary?.nextAction)
+            nextAction: asOptional(compareGovernorSummary?.summary?.nextAction),
+            queueHandoffStatus: asOptional(compareGovernorSummary?.summary?.queueHandoffStatus),
+            queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
+            queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl)
           }
         : null;
 
@@ -316,7 +319,10 @@ function buildReport({
       monitoringStatus: asOptional(compareGovernorSummary?.summary?.monitoringStatus),
       futureAgentAction: asOptional(compareGovernorSummary?.summary?.futureAgentAction),
       governorMode: asOptional(compareGovernorSummary?.summary?.governorMode),
-      nextAction: asOptional(compareGovernorSummary?.summary?.nextAction)
+      nextAction: asOptional(compareGovernorSummary?.summary?.nextAction),
+      queueHandoffStatus: asOptional(compareGovernorSummary?.summary?.queueHandoffStatus),
+      queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
+      queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl)
     },
     portfolio: {
       repositoryCount: repositoryEntries.length,
@@ -339,6 +345,9 @@ function buildReport({
       templateMonitoringStatus,
       supportedProofStatus,
       repoGraphStatus: asOptional(repoGraphTruth?.summary?.status),
+      queueHandoffStatus: asOptional(compareGovernorSummary?.summary?.queueHandoffStatus),
+      queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
+      queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl),
       portfolioWakeConditionCount: triggeredWakeConditions.length,
       triggeredWakeConditions
     }

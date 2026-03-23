@@ -89,6 +89,7 @@ entrypoint and machine-generated live state.
 - It summarizes:
   - compare queue state
   - continuity state
+  - merge-queue-owned PR waits, including the next wake condition and PR URL
   - template pivot readiness
   - current governor mode and next owner
   - latest wake lifecycle terminal state

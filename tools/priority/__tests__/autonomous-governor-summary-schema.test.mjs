@@ -84,6 +84,21 @@ test('autonomous governor summary report matches schema', async () => {
       wakeConditionCount: 0
     }
   });
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'), {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    status: 'waiting-ci',
+    laneLifecycle: 'waiting-ci',
+    activeLane: {
+      issue: 1863,
+      prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
+      laneLifecycle: 'waiting-ci',
+      actionType: 'merge-pr',
+      outcome: 'waiting-ci',
+      blockerClass: 'none',
+      nextWakeCondition: 'checks-green',
+      reason: 'Waiting for hosted checks to finish before merge queue advances.'
+    }
+  });
 
   const outputPath = path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'autonomous-governor-summary.json');
   const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir, outputPath });
