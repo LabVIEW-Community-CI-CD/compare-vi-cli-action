@@ -14,7 +14,7 @@ test('release conductor workflow keeps workflow_run proposal-only when apply mod
 
   assert.match(workflow, /RELEASE_CONDUCTOR_ENABLED:\s+\$\{\{\s*vars\.RELEASE_CONDUCTOR_ENABLED \|\| '0'\s*\}\}/);
   assert.match(workflow, /name:\s+Configure release tag signing material/);
-  assert.match(workflow, /if:\s+\$\{\{\s*secrets\.RELEASE_TAG_SIGNING_PRIVATE_KEY != ''\s*\}\}/);
+  assert.match(workflow, /if \[\[ -z "\$\{RELEASE_TAG_SIGNING_PRIVATE_KEY:-\}" \]\]; then/);
   assert.match(workflow, /git config gpg\.format ssh/);
   assert.match(workflow, /git config user\.signingkey "\$public_key_path"/);
   assert.match(workflow, /RELEASE_TAG_SIGNING_BACKEND=ssh/);

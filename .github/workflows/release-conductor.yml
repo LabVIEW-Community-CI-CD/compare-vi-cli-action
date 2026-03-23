@@ -67,13 +67,16 @@ jobs:
           pwsh -NoLogo -NoProfile -File tools/priority/Resolve-PolicyToken.ps1 -TokenFileName release-conductor-gh-token.txt
 
       - name: Configure release tag signing material
-        if: ${{ secrets.RELEASE_TAG_SIGNING_PRIVATE_KEY != '' }}
         shell: bash
         env:
           RELEASE_TAG_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_TAG_SIGNING_PRIVATE_KEY }}
           RELEASE_TAG_SIGNING_PUBLIC_KEY: ${{ secrets.RELEASE_TAG_SIGNING_PUBLIC_KEY }}
         run: |
           set -euo pipefail
+          if [[ -z "${RELEASE_TAG_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "No release tag signing key configured; skipping workflow-owned signing setup."
+            exit 0
+          fi
           signing_dir="$RUNNER_TEMP/release-tag-signing"
           mkdir -p "$signing_dir"
           private_key_path="$signing_dir/id_release_tag_signing"
