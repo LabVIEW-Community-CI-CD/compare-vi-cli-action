@@ -308,6 +308,33 @@ test('buildGhPrCreateArgs preserves the standard gh create path for user forks',
     'develop',
     '--head',
     'fork-owner:issue/963-test',
+    '--title',
+    'Helper title',
+    '--body',
+    'Helper body'
+  ]);
+});
+
+test('buildGhPrCreateArgs supports explicit draft mode for user forks', () => {
+  const args = buildGhPrCreateArgs({
+    upstream: { owner: 'upstream-owner', repo: 'repo' },
+    origin: { owner: 'fork-owner', repo: 'repo' },
+    branch: 'issue/963-test',
+    base: 'develop',
+    title: 'Helper title',
+    body: 'Helper body',
+    draft: true
+  });
+
+  assert.deepEqual(args, [
+    'pr',
+    'create',
+    '--repo',
+    'upstream-owner/repo',
+    '--base',
+    'develop',
+    '--head',
+    'fork-owner:issue/963-test',
     '--draft',
     '--title',
     'Helper title',
@@ -427,10 +454,11 @@ test('graphql PR helpers expose the same-owner fork mutation contract', () => {
     body: 'Body'
   });
   assert.match(request.query, /createPullRequest/);
-  assert.match(request.query, /draft: true/);
+  assert.match(request.query, /draft: \$draft/);
   assert.equal(request.variables.repositoryId, 'R_upstream');
   assert.equal(request.variables.headRepositoryId, 'R_fork');
   assert.equal(request.variables.headRefName, 'issue/963-org-owned-fork-pr-helper');
+  assert.equal(request.variables.draft, true);
 });
 
 test('findExistingPullRequest matches the branch/base pair and same-owner cross-repo head', () => {
@@ -905,13 +933,57 @@ test('runGhPrCreate preserves the gh CLI path for user-owned forks', () => {
     'develop',
     '--head',
     'svelderrainruiz:issue/963-org-owned-fork-pr-helper',
-    '--draft',
     '--title',
     'Fix #963',
     '--body',
     'Body'
   ]);
   assert.equal(result.strategy, 'gh-pr-create');
+  assert.equal(result.pullRequest, null);
+});
+
+test('runGhPrCreate keeps explicit draft mode for user-owned forks', () => {
+  const calls = [];
+  const result = runGhPrCreate(
+    {
+      repoRoot: '/tmp/repo',
+      upstream: { owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' },
+      origin: { owner: 'svelderrainruiz', repo: 'compare-vi-cli-action', sameOwnerFork: false },
+      branch: 'issue/963-org-owned-fork-pr-helper',
+      base: 'develop',
+      title: 'Fix #963',
+      body: 'Body',
+      draft: true
+    },
+    {
+      spawnSyncFn: (command, args) => {
+        calls.push({ command, args });
+        return {
+          status: 0,
+          stdout: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963\n',
+          stderr: ''
+        };
+      }
+    }
+  );
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].args, [
+    'pr',
+    'create',
+    '--repo',
+    'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    '--base',
+    'develop',
+    '--head',
+    'svelderrainruiz:issue/963-org-owned-fork-pr-helper',
+    '--draft',
+    '--title',
+    'Fix #963',
+    '--body',
+    'Body'
+  ]);
+  assert.equal(result.pullRequest?.isDraft, true);
 });
 
 test('runGhPrCreate surfaces gh CLI stdout and parses the created PR URL on success', () => {
@@ -942,7 +1014,8 @@ test('runGhPrCreate surfaces gh CLI stdout and parses the created PR URL on succ
   assert.equal(result.strategy, 'gh-pr-create');
   assert.deepEqual(result.pullRequest, {
     number: 963,
-    url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963'
+    url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/963',
+    isDraft: false
   });
 });
 
@@ -1053,6 +1126,6 @@ test('runGhPrCreate redacts title and body from gh command errors', () => {
           findExistingPullRequestFn: () => null
         }
       ),
-    /gh pr create --repo LabVIEW-Community-CI-CD\/compare-vi-cli-action --base develop --head svelderrainruiz:issue\/963-org-owned-fork-pr-helper --draft --title <redacted:title> --body <redacted:body> failed: gh: create failed/i
+    /gh pr create --repo LabVIEW-Community-CI-CD\/compare-vi-cli-action --base develop --head svelderrainruiz:issue\/963-org-owned-fork-pr-helper --title <redacted:title> --body <redacted:body> failed: gh: create failed/i
   );
 });

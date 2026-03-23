@@ -52,6 +52,7 @@ const USAGE_LINES = [
   '  --title <text>          Explicit pull request title.',
   '  --body <text>           Explicit pull request body.',
   '  --body-file <path>      Read the pull request body from a file.',
+  '  --draft                 Create the pull request as draft instead of ready-for-review.',
   `  --report-dir <path>     Directory for the machine-readable report (default: ${DEFAULT_REPORT_DIR}).`,
   '  --head-remote <name>    Fork remote to push/open from (default: AGENT_PRIORITY_ACTIVE_FORK_REMOTE or origin).',
   '  -h, --help              Show this message and exit.'
@@ -73,6 +74,7 @@ export function parseArgs(argv = process.argv) {
     title: null,
     body: null,
     bodyFile: null,
+    draft: null,
     reportDir: DEFAULT_REPORT_DIR,
     headRemote: null,
     help: false
@@ -96,6 +98,11 @@ export function parseArgs(argv = process.argv) {
 
     if (token === '-h' || token === '--help') {
       options.help = true;
+      continue;
+    }
+
+    if (token === '--draft') {
+      options.draft = true;
       continue;
     }
 
@@ -1318,7 +1325,8 @@ export function createPriorityPr({
     branch,
     base,
     title,
-    body
+    body,
+    draft: options.draft === true
   });
   const readyTransition = maybePromotePullRequestToReady({
     repoRoot,

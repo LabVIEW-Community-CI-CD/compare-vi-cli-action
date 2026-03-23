@@ -408,7 +408,7 @@ export function pushToRemote(repoRoot, remote, ref) {
   }
 }
 
-export function buildGhPrCreateArgs({ upstream, origin, headRepository, branch, base, title, body }) {
+export function buildGhPrCreateArgs({ upstream, origin, headRepository, branch, base, title, body, draft = false }) {
   const resolvedHeadRepository = headRepository ?? origin;
   const repoSlug = requireRepositorySlug(upstream, 'upstream');
   return [
@@ -420,7 +420,7 @@ export function buildGhPrCreateArgs({ upstream, origin, headRepository, branch, 
     base,
     '--head',
     `${resolvedHeadRepository.owner}:${branch}`,
-    '--draft',
+    ...(draft ? ['--draft'] : []),
     '--title',
     normalizePrText(title, { label: 'PR title' }),
     '--body',
@@ -482,7 +482,8 @@ export function buildCreatePullRequestMutation({
   headRefName,
   baseRefName,
   title,
-  body
+  body,
+  draft = true
 }) {
   return {
     query: `
@@ -491,6 +492,7 @@ export function buildCreatePullRequestMutation({
         $headRepositoryId: ID,
         $headRefName: String!,
         $baseRefName: String!,
+        $draft: Boolean!,
         $title: String!,
         $body: String!
       ) {
@@ -500,7 +502,7 @@ export function buildCreatePullRequestMutation({
             headRepositoryId: $headRepositoryId,
             headRefName: $headRefName,
             baseRefName: $baseRefName,
-            draft: true,
+            draft: $draft,
             title: $title,
             body: $body,
             maintainerCanModify: true
@@ -518,6 +520,7 @@ export function buildCreatePullRequestMutation({
       headRepositoryId,
       headRefName,
       baseRefName,
+      draft: draft === true,
       title,
       body
     }
@@ -744,7 +747,7 @@ export function findOpenAncestorPullRequest(
 }
 
 export function runGhPrCreate(
-  { repoRoot, upstream, origin, headRepository, branch, base, title, body },
+  { repoRoot, upstream, origin, headRepository, branch, base, title, body, draft = null },
   {
     spawnSyncFn = spawnSync,
     loadRepositoryGraphMetadataFn = loadRepositoryGraphMetadata,
@@ -758,6 +761,7 @@ export function runGhPrCreate(
 ) {
   const resolvedHeadRepository = headRepository ?? origin;
   const strategy = selectPullRequestCreateStrategy({ upstream, headRepository: resolvedHeadRepository });
+  const createAsDraft = draft === true || strategy === 'graphql-same-owner-fork';
 
   if (strategy === 'graphql-same-owner-fork') {
     const upstreamMetadata = loadRepositoryGraphMetadataFn(repoRoot, upstream, {
@@ -780,6 +784,7 @@ export function runGhPrCreate(
           headRepositoryId: originMetadata.id,
           headRefName,
           baseRefName: base,
+          draft: createAsDraft,
           title,
           body
         });
@@ -792,7 +797,10 @@ export function runGhPrCreate(
         writeStdoutFn(`${pullRequest.url}\n`);
         return {
           strategy,
-          pullRequest
+          pullRequest: {
+            ...pullRequest,
+            isDraft: createAsDraft
+          }
         };
       } catch (error) {
         if (isExistingPullRequestError(error)) {
@@ -850,7 +858,8 @@ export function runGhPrCreate(
     branch,
     base,
     title,
-    body
+    body,
+    draft: createAsDraft
   });
   const result = spawnSyncFn('gh', args, {
     cwd: repoRoot,
@@ -909,7 +918,8 @@ export function runGhPrCreate(
   const pullRequest = urlMatch?.[0]
     ? {
         number: Number.parseInt(urlMatch.groups.number, 10),
-        url: urlMatch[0]
+        url: urlMatch[0],
+        isDraft: createAsDraft
       }
     : null;
 
