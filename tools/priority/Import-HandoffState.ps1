@@ -45,6 +45,7 @@ $entrypointStatus = Read-HandoffJson -Name 'entrypoint-status.json'
 $continuitySummary = Read-HandoffJson -Name 'continuity-summary.json'
 $monitoringMode = Read-HandoffJson -Name 'monitoring-mode.json'
 $governorSummary = Read-HandoffJson -Name 'autonomous-governor-summary.json'
+$governorPortfolioSummary = Read-HandoffJson -Name 'autonomous-governor-portfolio-summary.json'
 $operatorSteeringEvent = Read-HandoffJson -Name 'operator-steering-event.json'
 
 if ($issueSummary) {
@@ -283,6 +284,18 @@ if ($governorSummary) {
     Write-Host ("  wake     : {0}" -f (Format-NullableValue $governorSummary.summary.wakeTerminalState))
   }
   Set-Variable -Name HandoffAutonomousGovernorSummary -Scope Global -Value $governorSummary -Force
+}
+if ($governorPortfolioSummary) {
+  Write-Host '[handoff] Governor portfolio summary' -ForegroundColor Cyan
+  Write-Host ("  mode     : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.governorMode))
+  Write-Host ("  owner    : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.currentOwnerRepository))
+  Write-Host ("  next     : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.nextAction))
+  Write-Host ("  template : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.templateMonitoringStatus))
+  Write-Host ("  proof    : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.supportedProofStatus))
+  if ($governorPortfolioSummary.summary.nextOwnerRepository) {
+    Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.nextOwnerRepository))
+  }
+  Set-Variable -Name HandoffAutonomousGovernorPortfolioSummary -Scope Global -Value $governorPortfolioSummary -Force
 }
 if ($operatorSteeringEvent) {
   Write-Host '[handoff] Operator steering event' -ForegroundColor Cyan

@@ -24,6 +24,10 @@ entrypoint and machine-generated live state.
 - It refreshes `tests/results/_agent/handoff/autonomous-governor-summary.json`,
   which is the top-level machine-readable rollup for the autonomous governor's
   current mode, wake disposition, funding-quality posture, and next owner.
+- It refreshes
+  `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`,
+  which is the cross-repo machine-readable rollup for compare, canonical
+  template, and proving-rail fork ownership.
 - It refreshes `tests/results/_agent/handoff/downstream-repo-graph-truth.json`,
   which is the machine-readable repo/branch-role map for producer lineage,
   canonical development, and consumer proving across the supervised repos.
@@ -54,6 +58,7 @@ entrypoint and machine-generated live state.
 - `tests/results/_agent/handoff/entrypoint-status.json`
 - `tests/results/_agent/handoff/monitoring-mode.json`
 - `tests/results/_agent/handoff/autonomous-governor-summary.json`
+- `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`
 - `tests/results/_agent/handoff/downstream-repo-graph-truth.json`
 - `tests/results/_agent/handoff/docker-review-loop-summary.json`
 - `tests/results/_agent/handoff/*.json`
@@ -76,6 +81,9 @@ entrypoint and machine-generated live state.
   event-driven monitoring mode.
 - `tests/results/_agent/handoff/autonomous-governor-summary.json` is the
   top-level operating summary for the autonomous governor.
+- `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json` is
+  the cross-repo operating summary for compare, canonical template, and proving
+  forks together.
 - `tests/results/_agent/handoff/downstream-repo-graph-truth.json` is the
   canonical branch-role truth surface for downstream supervision.
 - It summarizes:
@@ -85,6 +93,7 @@ entrypoint and machine-generated live state.
   - current governor mode and next owner
   - latest wake lifecycle terminal state
   - funding-quality posture for the latest wake
+  - cross-repo owner and next-owner decisions
   - repo graph truth for producer lineage, canonical development, and consumer proving
   - wake conditions that should reopen compare or template work
   - supported downstream monitoring for canonical template and consumer forks
