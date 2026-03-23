@@ -67,6 +67,16 @@ test('autonomous governor portfolio summary schema validates a generated report'
       queueState: { status: 'queue-empty', reason: 'queue-empty', openIssueCount: 0, ready: true },
       continuity: { status: 'maintained', turnBoundary: 'safe-idle', supervisionState: 'idle-monitoring', operatorPromptRequiredToResume: false },
       monitoringMode: { status: 'active', futureAgentAction: 'future-agent-may-pivot', wakeConditionCount: 0 },
+      releaseSigningReadiness: {
+        status: 'missing',
+        codePathState: null,
+        signingCapabilityState: null,
+        signingAuthorityState: null,
+        releaseConductorApplyState: null,
+        publicationState: null,
+        externalBlocker: null,
+        blockerCount: 0
+      },
       deliveryRuntime: {
         status: 'checks-pending',
         runtimeStatus: 'waiting-ci',
@@ -117,6 +127,11 @@ test('autonomous governor portfolio summary schema validates a generated report'
       wakeTerminalState: 'monitoring',
       monitoringStatus: 'active',
       futureAgentAction: 'future-agent-may-pivot',
+      releaseSigningStatus: 'missing',
+      releaseSigningAuthorityState: null,
+      releaseConductorApplyState: null,
+      releaseSigningExternalBlocker: null,
+      releasePublicationState: null,
       queueHandoffStatus: 'checks-pending',
       queueHandoffNextWakeCondition: 'checks-green',
       queueHandoffPrUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',

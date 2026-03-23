@@ -120,6 +120,24 @@ function createReleaseSigningReadiness(overrides = {}) {
       source: 'github-actions-secrets-api',
       error: null
     },
+    releaseConductorApply: {
+      status: 'disabled',
+      variablePresent: false,
+      enabled: false,
+      configuredValue: null,
+      listedVariableCount: 0,
+      listedVariableNames: [],
+      source: 'github-actions-variables-api',
+      error: null
+    },
+    signingAuthority: {
+      status: 'scope-missing',
+      requiredScope: 'admin:ssh_signing_key',
+      scopeAvailable: false,
+      listedKeyCount: null,
+      source: 'github-user-ssh-signing-keys-api',
+      error: 'This API operation needs the \"admin:ssh_signing_key\" scope.'
+    },
     publication: {
       status: 'tag-created-not-pushed',
       tagCreated: true,
@@ -130,14 +148,24 @@ function createReleaseSigningReadiness(overrides = {}) {
       status: 'warn',
       codePathState: 'ready',
       signingCapabilityState: 'missing',
+      signingAuthorityState: 'scope-missing',
+      releaseConductorApplyState: 'disabled',
       publicationState: 'tag-created-not-pushed',
       externalBlocker: 'workflow-signing-secret-missing',
-      blockerCount: 1
+      blockerCount: 3
     },
     blockers: [
       {
         code: 'workflow-signing-secret-missing',
         message: 'RELEASE_TAG_SIGNING_PRIVATE_KEY is not configured for the repository Actions secrets surface.'
+      },
+      {
+        code: 'release-conductor-apply-disabled',
+        message: 'RELEASE_CONDUCTOR_ENABLED is not set to 1 for the repository Actions variable surface.'
+      },
+      {
+        code: 'workflow-signing-admin-scope-missing',
+        message: 'admin:ssh_signing_key is not available to the current automation identity, so SSH signing-key authority cannot be verified or managed.'
       }
     ],
     ...overrides
@@ -338,9 +366,13 @@ test('runAutonomousGovernorSummary carries explicit release signing blocker stat
   assert.equal(report.compare.releaseSigningReadiness.status, 'warn');
   assert.equal(report.compare.releaseSigningReadiness.codePathState, 'ready');
   assert.equal(report.compare.releaseSigningReadiness.signingCapabilityState, 'missing');
+  assert.equal(report.compare.releaseSigningReadiness.signingAuthorityState, 'scope-missing');
+  assert.equal(report.compare.releaseSigningReadiness.releaseConductorApplyState, 'disabled');
   assert.equal(report.compare.releaseSigningReadiness.publicationState, 'tag-created-not-pushed');
   assert.equal(report.compare.releaseSigningReadiness.externalBlocker, 'workflow-signing-secret-missing');
   assert.equal(report.summary.releaseSigningStatus, 'warn');
+  assert.equal(report.summary.releaseSigningAuthorityState, 'scope-missing');
+  assert.equal(report.summary.releaseConductorApplyState, 'disabled');
   assert.equal(report.summary.releaseSigningExternalBlocker, 'workflow-signing-secret-missing');
   assert.equal(report.summary.releasePublicationState, 'tag-created-not-pushed');
 });

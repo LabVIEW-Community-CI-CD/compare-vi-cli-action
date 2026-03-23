@@ -75,9 +75,19 @@ test('release signing readiness report matches schema', async () => {
     },
     {
       now: new Date('2026-03-23T17:30:00Z'),
-      runGhJsonFn: () => ({
-        secrets: [{ name: 'RELEASE_TAG_SIGNING_PRIVATE_KEY' }]
-      })
+      runGhJsonFn: (args) => {
+        const endpoint = args[1] ?? '';
+        if (endpoint.includes('/actions/secrets')) {
+          return { secrets: [{ name: 'RELEASE_TAG_SIGNING_PRIVATE_KEY' }] };
+        }
+        if (endpoint.includes('/actions/variables')) {
+          return { variables: [{ name: 'RELEASE_CONDUCTOR_ENABLED', value: '1' }] };
+        }
+        if (endpoint.startsWith('user/ssh_signing_keys')) {
+          return [{ id: 1, title: 'compare-release-signing' }];
+        }
+        throw new Error(`Unexpected endpoint: ${endpoint}`);
+      }
     }
   );
 

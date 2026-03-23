@@ -153,6 +153,12 @@ function deriveViHistoryDistributorDependency(compareGovernorSummary, monitoring
     asOptional(compareGovernorSummary?.summary?.releasePublicationState) ||
     asOptional(releaseSigningReadiness?.publicationState);
   const signingCapabilityState = asOptional(releaseSigningReadiness?.signingCapabilityState);
+  const signingAuthorityState =
+    asOptional(compareGovernorSummary?.summary?.releaseSigningAuthorityState) ||
+    asOptional(releaseSigningReadiness?.signingAuthorityState);
+  const releaseConductorApplyState =
+    asOptional(compareGovernorSummary?.summary?.releaseConductorApplyState) ||
+    asOptional(releaseSigningReadiness?.releaseConductorApplyState);
   const externalBlocker =
     asOptional(compareGovernorSummary?.summary?.releaseSigningExternalBlocker) ||
     asOptional(releaseSigningReadiness?.externalBlocker);
@@ -179,6 +185,8 @@ function deriveViHistoryDistributorDependency(compareGovernorSummary, monitoring
     releaseSigningStatus,
     releasePublicationState,
     signingCapabilityState,
+    signingAuthorityState,
+    releaseConductorApplyState,
     externalBlocker,
     detail
   };
@@ -422,6 +430,8 @@ function buildReport({
       viHistoryDistributorDependencyTargetRepository: viHistoryDistributorDependency.dependentRepository,
       viHistoryDistributorDependencyExternalBlocker: viHistoryDistributorDependency.externalBlocker,
       viHistoryDistributorDependencyPublicationState: viHistoryDistributorDependency.releasePublicationState,
+      viHistoryDistributorDependencySigningAuthorityState: viHistoryDistributorDependency.signingAuthorityState,
+      viHistoryDistributorDependencyReleaseConductorApplyState: viHistoryDistributorDependency.releaseConductorApplyState,
       portfolioWakeConditionCount: triggeredWakeConditions.length,
       triggeredWakeConditions
     }

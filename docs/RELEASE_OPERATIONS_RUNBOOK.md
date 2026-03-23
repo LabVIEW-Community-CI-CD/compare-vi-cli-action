@@ -58,7 +58,9 @@ Configuration path: `Settings -> Environments -> <environment> -> Required revie
    - confirm `tests/results/_agent/release/release-signing-readiness.json` reports:
      - `codePathState = ready`
      - `signingCapabilityState = configured`
-   - if `externalBlocker = workflow-signing-secret-missing|workflow-signing-secret-unverifiable`,
+     - `signingAuthorityState = ready`
+     - `releaseConductorApplyState = enabled`
+   - if `externalBlocker` reports any signing secret, signing authority, or apply-gating blocker,
      treat that as an explicit external blocker and stop before rerunning release publication flows
 7. Verify rollback drill health:
    - `node tools/npm/run-script.mjs priority:rollback:drill:health -- --repo <owner/repo>`
@@ -169,8 +171,11 @@ matching remediation path:
 - `tag-not-annotated`, `tag-signature-unverified`
   - Recreate release tag as a signed annotated tag and rerun release.
 - `workflow-signing-secret-missing`, `workflow-signing-secret-unverifiable`
+- `workflow-signing-admin-scope-missing`, `workflow-signing-key-missing`, `workflow-signing-authority-unverifiable`
+- `release-conductor-apply-disabled`, `release-conductor-apply-unverifiable`
   - Use `node tools/npm/run-script.mjs priority:release:signing:readiness` to confirm the blocker, provision or repair
-    the workflow signing secrets, and only then rerun authoritative release publication.
+    the workflow signing secrets, signing authority, or release-conductor enablement, and only then rerun authoritative
+    release publication.
 - `checksum-invalid-line`, `checksum-empty`, `checksum-entry-missing-file`, `checksum-missing-artifact`, `checksum-mismatch`
   - Regenerate `SHA256SUMS.txt` from fresh artifacts and ensure no post-pack mutation occurred.
 - `sbom-parse-failed`, `sbom-invalid`

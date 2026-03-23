@@ -75,9 +75,19 @@ test('runReleaseSigningReadiness reports explicit external blocker when workflow
     },
     {
       now: new Date('2026-03-23T17:20:00Z'),
-      runGhJsonFn: () => ({
-        secrets: [{ name: 'GH_TOKEN' }]
-      })
+      runGhJsonFn: (args) => {
+        const endpoint = args[1] ?? '';
+        if (endpoint.includes('/actions/secrets')) {
+          return { secrets: [{ name: 'GH_TOKEN' }] };
+        }
+        if (endpoint.includes('/actions/variables')) {
+          return { variables: [] };
+        }
+        if (endpoint.startsWith('user/ssh_signing_keys')) {
+          throw new Error('This API operation needs the "admin:ssh_signing_key" scope.');
+        }
+        throw new Error(`Unexpected endpoint: ${endpoint}`);
+      }
     }
   );
 
@@ -85,10 +95,18 @@ test('runReleaseSigningReadiness reports explicit external blocker when workflow
   assert.equal(result.report.summary.status, 'warn');
   assert.equal(result.report.summary.codePathState, 'ready');
   assert.equal(result.report.summary.signingCapabilityState, 'missing');
+  assert.equal(result.report.summary.signingAuthorityState, 'scope-missing');
+  assert.equal(result.report.summary.releaseConductorApplyState, 'disabled');
   assert.equal(result.report.summary.publicationState, 'unobserved');
   assert.equal(result.report.summary.externalBlocker, 'workflow-signing-secret-missing');
   assert.equal(result.report.secretInventory.requiredSecretPresent, false);
-  assert.deepEqual(result.report.blockers.map((entry) => entry.code), ['workflow-signing-secret-missing']);
+  assert.equal(result.report.releaseConductorApply.status, 'disabled');
+  assert.equal(result.report.signingAuthority.status, 'scope-missing');
+  assert.deepEqual(result.report.blockers.map((entry) => entry.code), [
+    'workflow-signing-secret-missing',
+    'release-conductor-apply-disabled',
+    'workflow-signing-admin-scope-missing'
+  ]);
 });
 
 test('runReleaseSigningReadiness reports publication success when signing capability is configured', async () => {
@@ -109,9 +127,19 @@ test('runReleaseSigningReadiness reports publication success when signing capabi
     },
     {
       now: new Date('2026-03-23T17:21:00Z'),
-      runGhJsonFn: () => ({
-        secrets: [{ name: REQUIRED_SIGNING_SECRET }, { name: OPTIONAL_SIGNING_SECRET }]
-      })
+      runGhJsonFn: (args) => {
+        const endpoint = args[1] ?? '';
+        if (endpoint.includes('/actions/secrets')) {
+          return { secrets: [{ name: REQUIRED_SIGNING_SECRET }, { name: OPTIONAL_SIGNING_SECRET }] };
+        }
+        if (endpoint.includes('/actions/variables')) {
+          return { variables: [{ name: 'RELEASE_CONDUCTOR_ENABLED', value: '1' }] };
+        }
+        if (endpoint.startsWith('user/ssh_signing_keys')) {
+          return [{ id: 1, title: 'compare-release-signing' }];
+        }
+        throw new Error(`Unexpected endpoint: ${endpoint}`);
+      }
     }
   );
 
@@ -119,9 +147,13 @@ test('runReleaseSigningReadiness reports publication success when signing capabi
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.summary.codePathState, 'ready');
   assert.equal(result.report.summary.signingCapabilityState, 'configured');
+  assert.equal(result.report.summary.signingAuthorityState, 'ready');
+  assert.equal(result.report.summary.releaseConductorApplyState, 'enabled');
   assert.equal(result.report.summary.publicationState, 'authoritative-publication-successful');
   assert.equal(result.report.summary.externalBlocker, null);
   assert.equal(result.report.secretInventory.requiredSecretPresent, true);
+  assert.equal(result.report.releaseConductorApply.enabled, true);
+  assert.equal(result.report.signingAuthority.listedKeyCount, 1);
   assert.equal(result.report.publication.targetTag, 'v0.6.4-rc.1');
   assert.deepEqual(result.report.blockers, []);
 });

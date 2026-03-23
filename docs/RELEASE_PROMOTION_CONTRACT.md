@@ -175,10 +175,19 @@ That report distinguishes:
 - `publicationState`
   - whether authoritative signed tag publication has already succeeded
 
-If the report emits `externalBlocker = workflow-signing-secret-missing` or
-`workflow-signing-secret-unverifiable`, promotion remains blocked by external
-signing readiness and release attempts must not be rerun just to rediscover the
-same missing capability.
+If the report emits an external blocker such as:
+
+- `workflow-signing-secret-missing`
+- `workflow-signing-secret-unverifiable`
+- `workflow-signing-admin-scope-missing`
+- `workflow-signing-key-missing`
+- `workflow-signing-authority-unverifiable`
+- `release-conductor-apply-disabled`
+- `release-conductor-apply-unverifiable`
+
+promotion remains blocked by external signing readiness. Repair the specific
+secret, authority, or apply-gating surface first, then refresh readiness
+instead of rerunning release publication just to rediscover the same blocker.
 
 ## Rollback drill health gate
 

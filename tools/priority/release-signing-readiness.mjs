@@ -23,6 +23,8 @@ export const DEFAULT_RELEASE_CONDUCTOR_REPORT_PATH = path.join(
 );
 export const REQUIRED_SIGNING_SECRET = 'RELEASE_TAG_SIGNING_PRIVATE_KEY';
 export const OPTIONAL_SIGNING_SECRET = 'RELEASE_TAG_SIGNING_PUBLIC_KEY';
+export const REQUIRED_SIGNING_SCOPE = 'admin:ssh_signing_key';
+export const RELEASE_CONDUCTOR_ENABLE_VARIABLE = 'RELEASE_CONDUCTOR_ENABLED';
 
 function asOptional(value) {
   if (value == null) {
@@ -184,6 +186,42 @@ function normalizeSecretInventory(payload) {
   };
 }
 
+function normalizeVariableInventory(payload) {
+  const variables = Array.isArray(payload?.variables) ? payload.variables : [];
+  const values = new Map(
+    variables
+      .map((entry) => [String(entry?.name ?? '').trim(), asOptional(entry?.value)])
+      .filter(([name]) => Boolean(name))
+  );
+  const configuredValue = values.get(RELEASE_CONDUCTOR_ENABLE_VARIABLE) ?? null;
+  const enabled = configuredValue === '1';
+  return {
+    status: enabled ? 'enabled' : 'disabled',
+    variablePresent: values.has(RELEASE_CONDUCTOR_ENABLE_VARIABLE),
+    enabled,
+    configuredValue,
+    listedVariableCount: variables.length,
+    listedVariableNames: Array.from(values.keys()).sort()
+  };
+}
+
+function normalizeSigningAuthority(payload) {
+  const keys = Array.isArray(payload) ? payload : Array.isArray(payload?.ssh_signing_keys) ? payload.ssh_signing_keys : [];
+  return {
+    status: keys.length > 0 ? 'ready' : 'keys-missing',
+    requiredScope: REQUIRED_SIGNING_SCOPE,
+    scopeAvailable: true,
+    listedKeyCount: keys.length
+  };
+}
+
+function hasMissingScopeError(message, scope) {
+  if (!message || !scope) {
+    return false;
+  }
+  return message.includes(scope) || message.includes(`"${scope}"`);
+}
+
 function derivePublicationState(conductorReport) {
   const release = conductorReport?.release ?? null;
   if (!release) {
@@ -219,9 +257,9 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
   const now = deps.now ?? new Date();
 
   const workflowContract = hasSigningWorkflowContract(repoRoot);
+  const [owner, repo] = repository.split('/');
   let secretInventory;
   try {
-    const [owner, repo] = repository.split('/');
     const payload = runGhJsonFn(['api', `repos/${owner}/${repo}/actions/secrets?per_page=100`], { cwd: repoRoot });
     secretInventory = {
       ...normalizeSecretInventory(payload),
@@ -237,6 +275,48 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
       listedSecretNames: [],
       source: 'github-actions-secrets-api',
       error: error?.message ?? String(error)
+    };
+  }
+
+  let releaseConductorApply;
+  try {
+    const payload = runGhJsonFn(['api', `repos/${owner}/${repo}/actions/variables?per_page=100`], { cwd: repoRoot });
+    releaseConductorApply = {
+      ...normalizeVariableInventory(payload),
+      source: 'github-actions-variables-api',
+      error: null
+    };
+  } catch (error) {
+    releaseConductorApply = {
+      status: 'unverifiable',
+      variablePresent: null,
+      enabled: null,
+      configuredValue: null,
+      listedVariableCount: null,
+      listedVariableNames: [],
+      source: 'github-actions-variables-api',
+      error: error?.message ?? String(error)
+    };
+  }
+
+  let signingAuthority;
+  try {
+    const payload = runGhJsonFn(['api', 'user/ssh_signing_keys?per_page=100'], { cwd: repoRoot });
+    signingAuthority = {
+      ...normalizeSigningAuthority(payload),
+      source: 'github-user-ssh-signing-keys-api',
+      error: null
+    };
+  } catch (error) {
+    const message = error?.message ?? String(error);
+    const scopeMissing = hasMissingScopeError(message, REQUIRED_SIGNING_SCOPE);
+    signingAuthority = {
+      status: scopeMissing ? 'scope-missing' : 'unverifiable',
+      requiredScope: REQUIRED_SIGNING_SCOPE,
+      scopeAvailable: scopeMissing ? false : null,
+      listedKeyCount: null,
+      source: 'github-user-ssh-signing-keys-api',
+      error: message
     };
   }
 
@@ -261,6 +341,43 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
       message: 'Unable to verify repository Actions secrets from the current automation identity.'
     });
   }
+  if (releaseConductorApply.status === 'disabled') {
+    blockers.push({
+      code: 'release-conductor-apply-disabled',
+      message: `${RELEASE_CONDUCTOR_ENABLE_VARIABLE} is not set to 1 for the repository Actions variable surface.`
+    });
+  } else if (releaseConductorApply.status === 'unverifiable') {
+    blockers.push({
+      code: 'release-conductor-apply-unverifiable',
+      message: 'Unable to verify release conductor apply gating from the current automation identity.'
+    });
+  }
+  if (signingAuthority.status === 'keys-missing') {
+    blockers.push({
+      code: 'workflow-signing-key-missing',
+      message: 'Authenticated identity can inspect SSH signing keys, but no SSH signing key is currently registered.'
+    });
+  } else if (signingAuthority.status === 'scope-missing') {
+    blockers.push({
+      code: 'workflow-signing-admin-scope-missing',
+      message: `${REQUIRED_SIGNING_SCOPE} is not available to the current automation identity, so SSH signing-key authority cannot be verified or managed.`
+    });
+  } else if (signingAuthority.status === 'unverifiable') {
+    blockers.push({
+      code: 'workflow-signing-authority-unverifiable',
+      message: 'Unable to verify SSH signing-key authority for the current automation identity.'
+    });
+  }
+
+  const externalBlockerPriority = [
+    'workflow-signing-secret-missing',
+    'workflow-signing-secret-unverifiable',
+    'workflow-signing-admin-scope-missing',
+    'workflow-signing-key-missing',
+    'workflow-signing-authority-unverifiable',
+    'release-conductor-apply-disabled',
+    'release-conductor-apply-unverifiable'
+  ];
 
   const summary = {
     status: blockers.length === 0 ? 'pass' : 'warn',
@@ -271,10 +388,10 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
         : secretInventory.status === 'missing'
           ? 'missing'
           : 'unverifiable',
+    signingAuthorityState: signingAuthority.status,
+    releaseConductorApplyState: releaseConductorApply.status,
     publicationState: publication.status,
-    externalBlocker:
-      blockers.find((entry) => entry.code === 'workflow-signing-secret-missing' || entry.code === 'workflow-signing-secret-unverifiable')
-        ?.code ?? null,
+    externalBlocker: externalBlockerPriority.find((code) => blockers.some((entry) => entry.code === code)) ?? null,
     blockerCount: blockers.length
   };
 
@@ -291,6 +408,8 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
       reasons: workflowContract.reasons
     },
     secretInventory,
+    releaseConductorApply,
+    signingAuthority,
     publication,
     summary,
     blockers
