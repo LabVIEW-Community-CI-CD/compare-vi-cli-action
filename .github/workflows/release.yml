@@ -50,8 +50,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          resolved_tag='${{ steps.release_target.outputs.tag }}'
           channel="stable"
-          if [[ "${{ steps.release_target.outputs.tag }}" == *"-rc."* ]]; then
+          if [[ "$resolved_tag" == *-rc.* ]]; then
             channel="rc"
           fi
           echo "channel=${channel}" >> "$GITHUB_OUTPUT"
