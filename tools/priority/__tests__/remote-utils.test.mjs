@@ -13,6 +13,7 @@ import {
   loadRepositoryGraphMetadata,
   ensureOriginFork,
   pushBranch,
+  buildGraphqlArgs,
   buildGhPrCreateArgs,
   buildGhPrEditArgs,
   buildGhPrListArgs,
@@ -459,6 +460,36 @@ test('graphql PR helpers expose the same-owner fork mutation contract', () => {
   assert.equal(request.variables.headRepositoryId, 'R_fork');
   assert.equal(request.variables.headRefName, 'issue/963-org-owned-fork-pr-helper');
   assert.equal(request.variables.draft, true);
+});
+
+test('buildGraphqlArgs preserves string variables and sends booleans as typed GraphQL fields', () => {
+  const args = buildGraphqlArgs('mutation Test { noop }', {
+    repositoryId: 'R_upstream',
+    headRepositoryId: 'R_fork',
+    headRefName: 'issue/963-org-owned-fork-pr-helper',
+    baseRefName: 'develop',
+    draft: false,
+    retryCount: 2
+  });
+
+  assert.deepEqual(args, [
+    'api',
+    'graphql',
+    '-f',
+    'query=mutation Test { noop }',
+    '-f',
+    'repositoryId=R_upstream',
+    '-f',
+    'headRepositoryId=R_fork',
+    '-f',
+    'headRefName=issue/963-org-owned-fork-pr-helper',
+    '-f',
+    'baseRefName=develop',
+    '-F',
+    'draft=false',
+    '-F',
+    'retryCount=2'
+  ]);
 });
 
 test('findExistingPullRequest matches the branch/base pair and same-owner cross-repo head', () => {
