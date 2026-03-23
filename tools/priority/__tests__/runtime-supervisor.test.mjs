@@ -122,6 +122,47 @@ function makeLaneBranchClassContract() {
   };
 }
 
+function createMonitoringEntrypoints({
+  comparePath = 'E:\\comparevi-lanes\\compare-monitoring-canonical',
+  templatePath = 'E:\\comparevi-lanes\\LabviewGitHubCiTemplate-monitoring-canonical'
+} = {}) {
+  return {
+    schema: 'local/monitoring-entrypoints-v1',
+    generatedAt: '2026-03-23T04:30:00.000Z',
+    compare: {
+      authoritative: true,
+      path: comparePath,
+      checkoutState: 'branch-monitoring/upstream-develop',
+      headSha: 'e0acdbfd445cafcc7257a2b740fdb4cce4da12bb',
+      receipts: {
+        queueEmpty: `${comparePath}\\tests\\results\\_agent\\issue\\no-standing-priority.json`
+      },
+      currentState: {
+        standingQueue: 'queue-empty',
+        continuity: 'maintained',
+        turnBoundary: 'safe-idle',
+        monitoringMode: 'active',
+        futureAgentAction: 'future-agent-may-pivot'
+      }
+    },
+    template: {
+      authoritative: true,
+      path: templatePath,
+      checkoutState: 'branch-monitoring/origin-develop',
+      headSha: '7c09c6fc989a25d79b9ae73135aa2403f77d6df6',
+      currentState: {
+        canonicalOpenIssues: 0,
+        orgForkOpenIssues: 0,
+        personalForkOpenIssues: 0
+      },
+      supportedProofRuns: {
+        orgFork: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork/actions/runs/23405232217',
+        personalFork: 'https://github.com/svelderrainruiz/LabviewGitHubCiTemplate/actions/runs/23405232554'
+      }
+    }
+  };
+}
+
 test('parseArgs accepts runtime action, lane metadata, and lease options', () => {
   const parsed = parseArgs([
     'node',
@@ -3597,6 +3638,165 @@ test('comparevi canonical execution delegates to the delivery broker instead of 
   assert.equal(execution.outcome, 'coding-command-finished');
   assert.equal(execution.source, 'delivery-agent-broker');
   assert.equal(execution.details.actionType, 'execute-coding-turn');
+});
+
+test('comparevi runtime executes repo-context pivot when queue-empty portfolio handoff targets canonical template', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'comparevi-runtime-portfolio-pivot-'));
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    env: {
+      GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    schedulerDecision: {
+      outcome: 'idle',
+      reason:
+        'standing queue is empty; governor portfolio keeps ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action while preparing repo-context pivot to LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate.',
+      artifacts: {
+        governorPortfolioHandoff: {
+          summaryPath: 'tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json',
+          status: 'owner-match',
+          currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          nextAction: 'future-agent-may-pivot',
+          ownerDecisionSource: 'compare-monitoring-mode',
+          governorMode: 'monitoring-active',
+          reason: 'Governor portfolio keeps current ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action.'
+        }
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      objective: {
+        summary:
+          'standing queue is empty; governor portfolio keeps ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action while preparing repo-context pivot to LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate.'
+      }
+    },
+    taskPacketArtifacts: {
+      latestPath: path.join(runtimeDir, 'task-packet.json')
+    },
+    runtimeArtifactPaths: {
+      runtimeDir
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        implementationRemote: 'origin',
+        maxActiveCodingLanes: 4
+      }),
+      readMonitoringEntrypointsFn: async () => createMonitoringEntrypoints(),
+      collectMarketplaceSnapshotFn: async () => ({
+        schema: 'priority/lane-marketplace-snapshot@v1',
+        generatedAt: '2026-03-23T04:31:00.000Z',
+        summary: {
+          repositoryCount: 0,
+          eligibleLaneCount: 0,
+          topEligibleLane: null
+        },
+        entries: []
+      }),
+      writeMarketplaceSnapshotFn: async () => path.join(runtimeDir, 'lane-marketplace-snapshot.json'),
+      selectMarketplaceRecommendationFn: () => null,
+      runTemplateAgentVerificationReportFn: async () => null
+    }
+  });
+
+  assert.equal(execution.outcome, 'repo-context-pivot');
+  assert.equal(execution.details.actionType, 'repo-context-pivot');
+  assert.equal(execution.details.nextWakeCondition, 'target-repository-cycle');
+  assert.equal(execution.details.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(
+    execution.details.targetEntrypointPath,
+    'E:\\comparevi-lanes\\LabviewGitHubCiTemplate-monitoring-canonical'
+  );
+  assert.equal(
+    execution.artifacts.governorPortfolioPivot.status,
+    'ready'
+  );
+
+  const persisted = await readJson(path.join(runtimeDir, 'delivery-agent-state.json'));
+  assert.equal(persisted.activeLane.actionType, 'repo-context-pivot');
+  assert.equal(persisted.activeLane.outcome, 'repo-context-pivot');
+  assert.equal(persisted.activeLane.nextWakeCondition, 'target-repository-cycle');
+});
+
+test('comparevi runtime keeps idle when repo-context pivot target registry is unavailable', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'comparevi-runtime-portfolio-pending-'));
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    env: {
+      GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    schedulerDecision: {
+      outcome: 'idle',
+      reason:
+        'standing queue is empty; governor portfolio keeps ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action while preparing repo-context pivot to LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate.',
+      artifacts: {
+        governorPortfolioHandoff: {
+          summaryPath: 'tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json',
+          status: 'owner-match',
+          currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          nextAction: 'future-agent-may-pivot',
+          ownerDecisionSource: 'compare-monitoring-mode',
+          governorMode: 'monitoring-active',
+          reason: 'Governor portfolio keeps current ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action.'
+        }
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      objective: {
+        summary:
+          'standing queue is empty; governor portfolio keeps ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action while preparing repo-context pivot to LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate.'
+      }
+    },
+    taskPacketArtifacts: {
+      latestPath: path.join(runtimeDir, 'task-packet.json')
+    },
+    runtimeArtifactPaths: {
+      runtimeDir
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        implementationRemote: 'origin',
+        maxActiveCodingLanes: 4
+      }),
+      readMonitoringEntrypointsFn: async () => null,
+      collectMarketplaceSnapshotFn: async () => ({
+        schema: 'priority/lane-marketplace-snapshot@v1',
+        generatedAt: '2026-03-23T04:31:00.000Z',
+        summary: {
+          repositoryCount: 0,
+          eligibleLaneCount: 0,
+          topEligibleLane: null
+        },
+        entries: []
+      }),
+      writeMarketplaceSnapshotFn: async () => path.join(runtimeDir, 'lane-marketplace-snapshot.json'),
+      selectMarketplaceRecommendationFn: () => null,
+      runTemplateAgentVerificationReportFn: async () => null
+    }
+  });
+
+  assert.equal(execution.outcome, 'idle');
+  assert.equal(execution.details.actionType, 'repo-context-pivot-pending');
+  assert.equal(execution.details.pivotStatus, 'missing');
+  assert.match(execution.reason, /unavailable \(missing\)/i);
+
+  const persisted = await readJson(path.join(runtimeDir, 'delivery-agent-state.json'));
+  assert.equal(persisted.activeLane.actionType, 'repo-context-pivot-pending');
+  assert.equal(persisted.activeLane.outcome, 'idle');
 });
 
 test('comparevi canonical execution consumes the broker receipt file when stdout includes helper chatter', async () => {

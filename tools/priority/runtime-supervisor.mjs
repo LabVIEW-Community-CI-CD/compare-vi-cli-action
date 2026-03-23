@@ -114,6 +114,7 @@ const DEFAULT_AUTONOMOUS_GOVERNOR_PORTFOLIO_SUMMARY_PATH = path.join(
   'handoff',
   'autonomous-governor-portfolio-summary.json'
 );
+const DEFAULT_MONITORING_ENTRYPOINTS_PATH = path.join('..', 'monitoring-entrypoints.json');
 const execFileAsync = promisify(execFile);
 const COMPAREVI_PREFERRED_HELPERS = [
   'node tools/npm/run-script.mjs priority:github:metadata:apply',
@@ -160,6 +161,19 @@ function coercePositiveInteger(value) {
     return null;
   }
   return parsed;
+}
+
+function toDisplayPath(repoRoot, candidatePath) {
+  const normalized = normalizeText(candidatePath);
+  if (!normalized) {
+    return null;
+  }
+  const resolved = path.resolve(normalized);
+  const relative = path.relative(repoRoot, resolved);
+  if (!relative || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+    return relative.replace(/\\/g, '/');
+  }
+  return resolved;
 }
 
 function resolveLiveAgentModelSelectionEvidence({
@@ -463,6 +477,184 @@ async function resolveGovernorPortfolioHandoff({ repoRoot, repository, deps = {}
       currentOwnerRepository === repository
         ? `Governor portfolio keeps current ownership in ${currentOwnerRepository}.`
         : `Governor portfolio assigns current ownership to ${currentOwnerRepository}.`
+  };
+}
+
+function resolveMonitoringEntrypointByRepository(payload, repository) {
+  const normalizedRepository = normalizeText(repository).toLowerCase();
+  if (!normalizedRepository) {
+    return null;
+  }
+  if (normalizedRepository === COMPAREVI_UPSTREAM_REPOSITORY.toLowerCase()) {
+    return payload?.compare ?? null;
+  }
+  if (normalizedRepository === 'labview-community-ci-cd/labviewgithubcitemplate') {
+    return payload?.template ?? null;
+  }
+  return null;
+}
+
+async function resolveGovernorPortfolioPivotExecution({
+  repoRoot,
+  repository,
+  governorPortfolioHandoff,
+  env = {},
+  deps = {}
+}) {
+  const currentRepository =
+    normalizeText(repository) || normalizeText(env.GITHUB_REPOSITORY) || COMPAREVI_UPSTREAM_REPOSITORY;
+  const currentOwnerRepository = normalizeText(governorPortfolioHandoff?.currentOwnerRepository) || currentRepository;
+  const nextOwnerRepository = normalizeText(governorPortfolioHandoff?.nextOwnerRepository) || currentOwnerRepository;
+  const nextAction = normalizeText(governorPortfolioHandoff?.nextAction) || null;
+  const ownerDecisionSource = normalizeText(governorPortfolioHandoff?.ownerDecisionSource) || null;
+  const governorMode = normalizeText(governorPortfolioHandoff?.governorMode) || null;
+
+  if (!nextOwnerRepository || nextOwnerRepository.toLowerCase() === currentRepository.toLowerCase()) {
+    return {
+      status: 'same-repository',
+      registryPath: null,
+      currentRepository,
+      currentOwnerRepository,
+      nextOwnerRepository,
+      nextAction,
+      ownerDecisionSource,
+      governorMode,
+      targetEntrypointPath: null,
+      targetHeadSha: null,
+      targetCheckoutState: null,
+      targetReceipts: null,
+      targetCurrentState: null,
+      reason: `Governor portfolio keeps repo-context ownership in ${currentRepository}.`
+    };
+  }
+
+  if (!['future-agent-may-pivot', 'reopen-template-monitoring-work'].includes(nextAction)) {
+    return {
+      status: 'unsupported-action',
+      registryPath: null,
+      currentRepository,
+      currentOwnerRepository,
+      nextOwnerRepository,
+      nextAction,
+      ownerDecisionSource,
+      governorMode,
+      targetEntrypointPath: null,
+      targetHeadSha: null,
+      targetCheckoutState: null,
+      targetReceipts: null,
+      targetCurrentState: null,
+      reason: `Governor portfolio requested '${nextAction || 'unknown'}', which is not a supported runtime pivot action.`
+    };
+  }
+
+  const entrypointsPath = path.resolve(
+    repoRoot,
+    deps.monitoringEntrypointsPath ||
+      env.AGENT_MONITORING_ENTRYPOINTS_PATH ||
+      env.COMPAREVI_MONITORING_ENTRYPOINTS_PATH ||
+      DEFAULT_MONITORING_ENTRYPOINTS_PATH
+  );
+  const registryPath = toDisplayPath(repoRoot, entrypointsPath);
+
+  let payload = null;
+  try {
+    if (typeof deps.readMonitoringEntrypointsFn === 'function') {
+      payload = await deps.readMonitoringEntrypointsFn({ repoRoot, entrypointsPath, repository: nextOwnerRepository });
+    } else {
+      payload = await readJsonIfPresent(entrypointsPath);
+    }
+  } catch (error) {
+    return {
+      status: 'invalid',
+      registryPath,
+      currentRepository,
+      currentOwnerRepository,
+      nextOwnerRepository,
+      nextAction,
+      ownerDecisionSource,
+      governorMode,
+      targetEntrypointPath: null,
+      targetHeadSha: null,
+      targetCheckoutState: null,
+      targetReceipts: null,
+      targetCurrentState: null,
+      reason: `Unable to read monitoring entrypoints registry: ${error?.message || String(error)}`
+    };
+  }
+
+  if (!payload) {
+    return {
+      status: 'missing',
+      registryPath,
+      currentRepository,
+      currentOwnerRepository,
+      nextOwnerRepository,
+      nextAction,
+      ownerDecisionSource,
+      governorMode,
+      targetEntrypointPath: null,
+      targetHeadSha: null,
+      targetCheckoutState: null,
+      targetReceipts: null,
+      targetCurrentState: null,
+      reason: 'Monitoring entrypoints registry is unavailable for runtime repo-context pivot.'
+    };
+  }
+
+  if (normalizeText(payload?.schema) !== 'local/monitoring-entrypoints-v1') {
+    return {
+      status: 'invalid',
+      registryPath,
+      currentRepository,
+      currentOwnerRepository,
+      nextOwnerRepository,
+      nextAction,
+      ownerDecisionSource,
+      governorMode,
+      targetEntrypointPath: null,
+      targetHeadSha: null,
+      targetCheckoutState: null,
+      targetReceipts: null,
+      targetCurrentState: null,
+      reason: 'Monitoring entrypoints registry does not match the expected schema.'
+    };
+  }
+
+  const entrypoint = resolveMonitoringEntrypointByRepository(payload, nextOwnerRepository);
+  if (!entrypoint) {
+    return {
+      status: 'unsupported-target',
+      registryPath,
+      currentRepository,
+      currentOwnerRepository,
+      nextOwnerRepository,
+      nextAction,
+      ownerDecisionSource,
+      governorMode,
+      targetEntrypointPath: null,
+      targetHeadSha: null,
+      targetCheckoutState: null,
+      targetReceipts: null,
+      targetCurrentState: null,
+      reason: `Monitoring entrypoints registry does not expose a supported target for ${nextOwnerRepository}.`
+    };
+  }
+
+  return {
+    status: 'ready',
+    registryPath,
+    currentRepository,
+    currentOwnerRepository,
+    nextOwnerRepository,
+    nextAction,
+    ownerDecisionSource,
+    governorMode,
+    targetEntrypointPath: normalizeText(entrypoint.path) || null,
+    targetHeadSha: normalizeText(entrypoint.headSha) || null,
+    targetCheckoutState: normalizeText(entrypoint.checkoutState) || null,
+    targetReceipts: entrypoint.receipts ?? null,
+    targetCurrentState: entrypoint.currentState ?? null,
+    reason: `Runtime repo-context pivot is ready for ${nextOwnerRepository}.`
   };
 }
 
@@ -882,7 +1074,19 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
 
       let reason = classification.message;
       if (governorPortfolioHandoff.status === 'owner-match') {
-        reason = `standing queue is empty; governor portfolio keeps ownership in ${governorPortfolioHandoff.currentOwnerRepository}.`;
+        if (
+          normalizeText(governorPortfolioHandoff.nextOwnerRepository) &&
+          normalizeText(governorPortfolioHandoff.nextOwnerRepository).toLowerCase() !== targetRepository.toLowerCase() &&
+          ['future-agent-may-pivot', 'reopen-template-monitoring-work'].includes(
+            normalizeText(governorPortfolioHandoff.nextAction)
+          )
+        ) {
+          reason =
+            `standing queue is empty; governor portfolio keeps ownership in ${governorPortfolioHandoff.currentOwnerRepository} ` +
+            `while preparing repo-context pivot to ${governorPortfolioHandoff.nextOwnerRepository}.`;
+        } else {
+          reason = `standing queue is empty; governor portfolio keeps ownership in ${governorPortfolioHandoff.currentOwnerRepository}.`;
+        }
       } else if (governorPortfolioHandoff.status === 'external-owner') {
         reason = `standing queue is empty; governor portfolio hands ownership to ${governorPortfolioHandoff.currentOwnerRepository}.`;
       } else if (governorPortfolioHandoff.status === 'missing') {
@@ -1418,6 +1622,102 @@ async function executeCompareviTurn({
   }
 
   if (!standingRepository || !Number.isInteger(standingIssueNumber) || standingIssueNumber <= 0) {
+    const governorPortfolioPivot = await resolveGovernorPortfolioPivotExecution({
+      repoRoot,
+      repository: repository || options.repo || env.GITHUB_REPOSITORY || upstreamRepository,
+      governorPortfolioHandoff: schedulerDecision?.artifacts?.governorPortfolioHandoff ?? null,
+      env,
+      deps
+    });
+    if (governorPortfolioPivot.status === 'ready') {
+      const receipt = {
+        status: 'completed',
+        outcome: 'repo-context-pivot',
+        reason: `Standing queue is empty; runtime repo-context pivots to ${governorPortfolioPivot.nextOwnerRepository}.`,
+        source: 'comparevi-runtime',
+        details: {
+          laneLifecycle: 'idle',
+          blockerClass: 'none',
+          actionType: 'repo-context-pivot',
+          retryable: true,
+          nextWakeCondition: 'target-repository-cycle',
+          currentRepository: governorPortfolioPivot.currentRepository,
+          currentOwnerRepository: governorPortfolioPivot.currentOwnerRepository,
+          nextOwnerRepository: governorPortfolioPivot.nextOwnerRepository,
+          nextAction: governorPortfolioPivot.nextAction,
+          ownerDecisionSource: governorPortfolioPivot.ownerDecisionSource,
+          governorMode: governorPortfolioPivot.governorMode,
+          monitoringEntrypointsPath: governorPortfolioPivot.registryPath,
+          targetEntrypointPath: governorPortfolioPivot.targetEntrypointPath,
+          targetHeadSha: governorPortfolioPivot.targetHeadSha,
+          targetCheckoutState: governorPortfolioPivot.targetCheckoutState,
+          targetCurrentState: governorPortfolioPivot.targetCurrentState,
+          targetReceipts: governorPortfolioPivot.targetReceipts
+        },
+        artifacts: {
+          governorPortfolioHandoff: schedulerDecision?.artifacts?.governorPortfolioHandoff ?? null,
+          governorPortfolioPivot
+        }
+      };
+      await persistCompareviDeliveryRuntime({
+        repository: repository || standingRepository || options.repo || env.GITHUB_REPOSITORY || 'unknown/unknown',
+        runtimeArtifactPaths,
+        schedulerDecision,
+        taskPacket,
+        executionReceipt: receipt,
+        repoRoot,
+        deps,
+        now
+      });
+      return receipt;
+    }
+
+    if (governorPortfolioPivot.status !== 'same-repository') {
+      const receipt = {
+        status: 'completed',
+        outcome: 'idle',
+        reason:
+          `Standing queue is empty; runtime repo-context pivot to ${governorPortfolioPivot.nextOwnerRepository || 'the next owner'} ` +
+          `is unavailable (${governorPortfolioPivot.status}).`,
+        source: 'comparevi-runtime',
+        details: {
+          laneLifecycle: 'idle',
+          blockerClass: governorPortfolioPivot.status === 'invalid' ? 'helper' : 'none',
+          actionType: 'repo-context-pivot-pending',
+          retryable: true,
+          nextWakeCondition: 'portfolio-handoff-refreshed',
+          currentRepository: governorPortfolioPivot.currentRepository,
+          currentOwnerRepository: governorPortfolioPivot.currentOwnerRepository,
+          nextOwnerRepository: governorPortfolioPivot.nextOwnerRepository,
+          nextAction: governorPortfolioPivot.nextAction,
+          ownerDecisionSource: governorPortfolioPivot.ownerDecisionSource,
+          governorMode: governorPortfolioPivot.governorMode,
+          monitoringEntrypointsPath: governorPortfolioPivot.registryPath,
+          targetEntrypointPath: governorPortfolioPivot.targetEntrypointPath,
+          targetHeadSha: governorPortfolioPivot.targetHeadSha,
+          targetCheckoutState: governorPortfolioPivot.targetCheckoutState,
+          targetCurrentState: governorPortfolioPivot.targetCurrentState,
+          targetReceipts: governorPortfolioPivot.targetReceipts,
+          pivotStatus: governorPortfolioPivot.status
+        },
+        artifacts: {
+          governorPortfolioHandoff: schedulerDecision?.artifacts?.governorPortfolioHandoff ?? null,
+          governorPortfolioPivot
+        }
+      };
+      await persistCompareviDeliveryRuntime({
+        repository: repository || standingRepository || options.repo || env.GITHUB_REPOSITORY || 'unknown/unknown',
+        runtimeArtifactPaths,
+        schedulerDecision,
+        taskPacket,
+        executionReceipt: receipt,
+        repoRoot,
+        deps,
+        now
+      });
+      return receipt;
+    }
+
     const receipt = {
       status: 'completed',
       outcome: 'idle',
