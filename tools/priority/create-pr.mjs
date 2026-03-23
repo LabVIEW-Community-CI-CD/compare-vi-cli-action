@@ -364,10 +364,10 @@ export function maybeAdmitPullRequestToMergeQueue({
   readJsonFn = readJsonFile,
   spawnSyncFn = spawnSync
 }) {
-  if (strategy !== 'graphql-same-owner-fork') {
+  if (!['graphql-same-owner-fork', 'gh-pr-create'].includes(strategy)) {
     return {
       status: 'skipped',
-      reason: 'Queue admission only applies to same-owner fork PR creation.',
+      reason: 'Queue admission only applies to PR creation flows with merge-sync handoff support.',
       attempted: false
     };
   }
@@ -380,7 +380,19 @@ export function maybeAdmitPullRequestToMergeQueue({
     };
   }
 
-  if (normalizeText(readyTransition?.status).toLowerCase() !== 'ready') {
+  if (pullRequest?.isDraft === true) {
+    return {
+      status: 'skipped',
+      reason: 'Queue admission is skipped while the pull request remains draft.',
+      attempted: false
+    };
+  }
+
+  const readyTransitionStatus = normalizeText(readyTransition?.status).toLowerCase();
+  if (
+    strategy === 'graphql-same-owner-fork' &&
+    !['ready', 'already-ready'].includes(readyTransitionStatus)
+  ) {
     return {
       status: 'skipped',
       reason: 'Queue admission is only attempted after the current PR creation flow marked the PR ready for review.',
