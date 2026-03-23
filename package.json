@@ -129,6 +129,7 @@
     "priority:release:cadence": "node tools/priority/release-cadence-check.mjs",
     "priority:release:conductor": "node tools/priority/release-conductor.mjs",
     "priority:release:signing:readiness": "node tools/priority/release-signing-readiness.mjs",
+    "priority:release:published:bundle": "node tools/priority/release-published-bundle-observer.mjs",
     "priority:remediation:slo": "node tools/priority/remediation-slo-evaluator.mjs",
     "priority:weekly:scorecard": "node tools/priority/weekly-scorecard.mjs",
     "priority:security:audit": "node tools/priority/dependency-audit.mjs",
