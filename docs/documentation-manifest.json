@@ -46,6 +46,19 @@
       ]
     },
     {
+      "name": "Published CompareVI.Tools Bundle Observer",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Published-release observer that downloads the latest CompareVI.Tools asset and checks whether the producer-native vi-history contract is live for downstream template distribution.",
+      "files": [
+        "docs/RELEASE_PROMOTION_CONTRACT.md",
+        "docs/schemas/release-published-bundle-observer-report-v1.schema.json",
+        "tools/priority/release-published-bundle-observer.mjs",
+        "tools/priority/__tests__/release-published-bundle-observer.test.mjs",
+        "tools/priority/__tests__/release-published-bundle-observer-schema.test.mjs"
+      ]
+    },
+    {
       "name": "Docs Tree",
       "category": "docs",
       "status": "authoritative",

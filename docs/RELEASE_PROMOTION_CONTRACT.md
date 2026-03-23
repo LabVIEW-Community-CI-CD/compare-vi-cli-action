@@ -205,6 +205,29 @@ promotion remains blocked by external signing readiness. Repair the specific
 secret, authority, or apply-gating surface first, then refresh readiness
 instead of rerunning release publication just to rediscover the same blocker.
 
+## Published CompareVI.Tools bundle observer
+
+Once a release exists, compare can also observe the actually published
+`CompareVI.Tools` asset and check whether it is already producer-native for the
+template's `vi-history` distribution contract:
+
+- Observer script:
+  `node tools/npm/run-script.mjs priority:release:published:bundle`
+- Report artifact:
+  `tests/results/_agent/release/release-published-bundle-observer.json`
+
+This observer downloads the published `CompareVI.Tools-v*.zip` asset, extracts
+`comparevi-tools-release.json`, and proves whether the published bundle already
+exposes:
+
+- `consumerContract.capabilities.viHistory`
+- `upstream-producer` / `release-bundle`
+- `versionContract.authoritativeConsumerPin`
+- the declared bundle import path and referenced consumer contract paths
+
+That surface is the compare-side bridge between signed release publication and
+template issue `LabviewGitHubCiTemplate#18`.
+
 ## Rollback drill health gate
 
 Release tags must pass rollback drill health before GitHub Release publication:
