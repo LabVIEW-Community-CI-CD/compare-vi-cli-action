@@ -101,7 +101,7 @@ jobs:
             signing_name="$(gh api user --jq '.name // .login')"
           fi
           if [[ -z "$signing_email" ]]; then
-            signing_email="$(gh api user --jq '.email // \"\"')"
+            signing_email="$(gh api user --jq '.email // ""')"
           fi
           if [[ -z "$signing_email" ]]; then
             signing_email="${signing_id}+${signing_login}@users.noreply.github.com"
