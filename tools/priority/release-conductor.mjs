@@ -495,15 +495,34 @@ function detectSigningMaterial({ runCommandFn, repoRoot, environment = process.e
     cwd: repoRoot,
     allowFailure: true
   });
+  const nameResult = runCommandFn('git', ['config', '--get', 'user.name'], {
+    cwd: repoRoot,
+    allowFailure: true
+  });
+  const emailResult = runCommandFn('git', ['config', '--get', 'user.email'], {
+    cwd: repoRoot,
+    allowFailure: true
+  });
   const configuredFormat = asOptional(formatResult.stdout);
   const backend = asOptional(environment.RELEASE_TAG_SIGNING_BACKEND) ?? configuredFormat ?? 'openpgp';
   const source = signingKey ? asOptional(environment.RELEASE_TAG_SIGNING_SOURCE) ?? 'git-config' : 'missing';
+  const identityName = asOptional(nameResult.stdout);
+  const identityEmail = asOptional(emailResult.stdout);
+  const identityAvailable = Boolean(identityName && identityEmail);
 
   return {
     available: Boolean(signingKey),
     signingKey,
     source,
-    backend
+    backend,
+    identity: {
+      available: identityAvailable,
+      name: identityName,
+      email: identityEmail,
+      source: identityAvailable ? asOptional(environment.RELEASE_TAG_SIGNING_IDENTITY_SOURCE) ?? 'git-config' : 'missing',
+      login: asOptional(environment.RELEASE_TAG_SIGNING_IDENTITY_LOGIN),
+      accountId: asOptional(environment.RELEASE_TAG_SIGNING_IDENTITY_ID)
+    }
   };
 }
 

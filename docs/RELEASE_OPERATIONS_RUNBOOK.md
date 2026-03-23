@@ -159,6 +159,10 @@ automation path:
   - `repair_existing_tag = true`
 - provision `RELEASE_TAG_SIGNING_PRIVATE_KEY` and optional
   `RELEASE_TAG_SIGNING_PUBLIC_KEY` for workflow-owned signing
+- optionally set `RELEASE_TAG_SIGNING_IDENTITY_NAME` and
+  `RELEASE_TAG_SIGNING_IDENTITY_EMAIL` when the signing authority should use an
+  explicit Git identity override; otherwise the workflow derives the signer
+  identity from the resolved policy token account
 - inspect `tests/results/_agent/release/release-conductor-report.json`
   first
 - require both:

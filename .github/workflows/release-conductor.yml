@@ -76,16 +76,41 @@ jobs:
         env:
           RELEASE_TAG_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_TAG_SIGNING_PRIVATE_KEY }}
           RELEASE_TAG_SIGNING_PUBLIC_KEY: ${{ secrets.RELEASE_TAG_SIGNING_PUBLIC_KEY }}
+          RELEASE_TAG_SIGNING_IDENTITY_NAME: ${{ vars.RELEASE_TAG_SIGNING_IDENTITY_NAME || '' }}
+          RELEASE_TAG_SIGNING_IDENTITY_EMAIL: ${{ vars.RELEASE_TAG_SIGNING_IDENTITY_EMAIL || '' }}
         run: |
           set -euo pipefail
           if [[ -z "${RELEASE_TAG_SIGNING_PRIVATE_KEY:-}" ]]; then
             echo "No release tag signing key configured; skipping workflow-owned signing setup."
             exit 0
           fi
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::GH_TOKEN is unavailable after Resolve-PolicyToken; cannot derive workflow signing identity."
+            exit 1
+          fi
           signing_dir="$RUNNER_TEMP/release-tag-signing"
           mkdir -p "$signing_dir"
           private_key_path="$signing_dir/id_release_tag_signing"
           public_key_path="${private_key_path}.pub"
+          signing_login="$(gh api user --jq '.login')"
+          signing_id="$(gh api user --jq '.id')"
+          signing_name="${RELEASE_TAG_SIGNING_IDENTITY_NAME:-}"
+          signing_email="${RELEASE_TAG_SIGNING_IDENTITY_EMAIL:-}"
+
+          if [[ -z "$signing_name" ]]; then
+            signing_name="$(gh api user --jq '.name // .login')"
+          fi
+          if [[ -z "$signing_email" ]]; then
+            signing_email="$(gh api user --jq '.email // \"\"')"
+          fi
+          if [[ -z "$signing_email" ]]; then
+            signing_email="${signing_id}+${signing_login}@users.noreply.github.com"
+          fi
+
+          identity_source="policy-token-user"
+          if [[ -n "${RELEASE_TAG_SIGNING_IDENTITY_NAME:-}" || -n "${RELEASE_TAG_SIGNING_IDENTITY_EMAIL:-}" ]]; then
+            identity_source="repo-variable-override"
+          fi
 
           printf '%s\n' "$RELEASE_TAG_SIGNING_PRIVATE_KEY" > "$private_key_path"
           chmod 600 "$private_key_path"
@@ -99,12 +124,19 @@ jobs:
 
           git config gpg.format ssh
           git config user.signingkey "$public_key_path"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "$signing_name"
+          git config user.email "$signing_email"
           git config tag.gpgSign true
 
-          echo "RELEASE_TAG_SIGNING_BACKEND=ssh" >> "$GITHUB_ENV"
-          echo "RELEASE_TAG_SIGNING_SOURCE=workflow-secret" >> "$GITHUB_ENV"
+          {
+            echo "RELEASE_TAG_SIGNING_BACKEND=ssh"
+            echo "RELEASE_TAG_SIGNING_SOURCE=workflow-secret"
+            echo "RELEASE_TAG_SIGNING_IDENTITY_NAME=$signing_name"
+            echo "RELEASE_TAG_SIGNING_IDENTITY_EMAIL=$signing_email"
+            echo "RELEASE_TAG_SIGNING_IDENTITY_LOGIN=$signing_login"
+            echo "RELEASE_TAG_SIGNING_IDENTITY_ID=$signing_id"
+            echo "RELEASE_TAG_SIGNING_IDENTITY_SOURCE=$identity_source"
+          } >> "$GITHUB_ENV"
 
       - name: Run release conductor
         shell: pwsh

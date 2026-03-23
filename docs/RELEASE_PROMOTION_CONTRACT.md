@@ -160,12 +160,19 @@ plane:
 - `.github/workflows/release-conductor.yml` may load
   `RELEASE_TAG_SIGNING_PRIVATE_KEY` and optional
   `RELEASE_TAG_SIGNING_PUBLIC_KEY`
+- the workflow may also honor optional repo variables:
+  - `RELEASE_TAG_SIGNING_IDENTITY_NAME`
+  - `RELEASE_TAG_SIGNING_IDENTITY_EMAIL`
+  - when unset, the workflow derives signer identity from the resolved policy
+    token account before recreating or publishing the signed tag
 - when signing material is present, release conductor must:
   - configure workflow-owned tag signing
+  - configure workflow-owned signer identity
   - create the signed annotated tag
   - push the tag to the authoritative remote for the target repository
 - `tests/results/_agent/release/release-conductor-report.json` must record:
   - signing backend/source
+  - signer identity used for tag creation/repair
   - whether the tag was created
   - whether the tag was pushed authoritatively
   - whether repair mode was requested/performed for an existing tag

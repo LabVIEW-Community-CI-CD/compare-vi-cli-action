@@ -177,8 +177,13 @@ function hasSigningWorkflowContract(repoRoot) {
   const requiredSnippets = [
     'Configure release tag signing material',
     'RELEASE_TAG_SIGNING_PRIVATE_KEY',
+    'RELEASE_TAG_SIGNING_IDENTITY_NAME',
+    'RELEASE_TAG_SIGNING_IDENTITY_EMAIL',
+    "gh api user --jq '.login'",
     'git config gpg.format ssh',
-    'git config user.signingkey "$public_key_path"'
+    'git config user.signingkey "$public_key_path"',
+    'git config user.name "$signing_name"',
+    'git config user.email "$signing_email"'
   ];
   const missing = requiredSnippets.filter((snippet) => !workflow.includes(snippet));
   return {
