@@ -25,7 +25,9 @@ import {
   maybeAdmitPullRequestToMergeQueue,
   maybePromotePullRequestToReady,
   readReadyValidationClearance,
+  repairStaleConflictingQueueAdmission,
   resolveQueueAdmissionSummaryPath,
+  resolveQueueAdmissionRepairSummaryPath,
   resolveReadyValidationClearancePath,
   writePriorityPrReport
 } from '../create-pr.mjs';
@@ -268,6 +270,24 @@ test('resolveQueueAdmissionSummaryPath stores queue-admission summaries under th
       '_agent',
       'issue',
       'LabVIEW-Community-CI-CD-compare-vi-cli-action-pr-1611-queue-admission.json'
+    )
+  );
+});
+
+test('resolveQueueAdmissionRepairSummaryPath stores repair receipts under the issue report directory', () => {
+  assert.equal(
+    resolveQueueAdmissionRepairSummaryPath({
+      repoRoot: '/tmp/repo',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      pullRequestNumber: 1878
+    }),
+    path.join(
+      '/tmp/repo',
+      'tests',
+      'results',
+      '_agent',
+      'issue',
+      'LabVIEW-Community-CI-CD-compare-vi-cli-action-pr-1878-queue-admission-repair.json'
     )
   );
 });
@@ -604,6 +624,136 @@ test('createPriorityPr hands a ready user-fork PR directly into queue admission'
   assert.equal(result.queueAdmission.status, 'already-auto-merge-enabled');
   assert.equal(queueAdmissionPayload.strategy, 'gh-pr-create');
   assert.equal(queueAdmissionPayload.pullRequest.isDraft, false);
+});
+
+test('createPriorityPr retries queue admission after repairing stale conflicting fork PR lineage', () => {
+  const queueAdmissionCalls = [];
+  const result = createPriorityPrWithNoMergedHistory({
+    env: {},
+    options: {
+      issue: 1879,
+      branch: 'issue/upstream-1879-stale-conflict-queue-admission'
+    },
+    readFileSyncFn: readDefaultPrTemplate,
+    getRepoRootFn: () => '/tmp/repo',
+    getCurrentBranchFn: () => 'issue/upstream-1879-stale-conflict-queue-admission',
+    getCurrentHeadShaFn: () => '9bc2ff98f958c0b9b9f6fd6a2ca570c35207645e',
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' }),
+    ensureForkRemoteFn: () => ({
+      owner: 'svelderrainruiz',
+      repo: 'compare-vi-cli-action',
+      sameOwnerFork: false,
+      remoteName: 'origin'
+    }),
+    pushBranchFn: () => ({ status: 'pushed' }),
+    runGhPrCreateFn: () => ({
+      strategy: 'gh-pr-create',
+      pullRequest: {
+        number: 1878,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1878',
+        isDraft: false
+      }
+    }),
+    admitToMergeQueueFn: (payload) => {
+      queueAdmissionCalls.push(payload);
+      if (queueAdmissionCalls.length === 1) {
+        return {
+          status: 'admission-failed',
+          reason: 'PR has merge conflicts (DIRTY/CONFLICTING). Resolve conflicts before merge automation.',
+          attempted: true,
+          helperCall: 'node tools/priority/merge-sync-pr.mjs --pr 1878',
+          summaryPath: '/tmp/repo/tests/results/_agent/issue/queue-admission.json',
+          promotion: null
+        };
+      }
+      return {
+        status: 'auto-merge-enabled',
+        reason: 'merge-queue-branch-develop',
+        attempted: true,
+        helperCall: 'node tools/priority/merge-sync-pr.mjs --pr 1878',
+        summaryPath: '/tmp/repo/tests/results/_agent/issue/queue-admission.json',
+        promotion: {
+          status: 'auto-merge-enabled',
+          materialized: true
+        }
+      };
+    },
+    repairConflictingQueueAdmissionFn: () => ({
+      attempted: true,
+      status: 'repaired',
+      reason: 'Rebuilt the conflicting head from fresh upstream/develop.',
+      receiptPath: '/tmp/repo/tests/results/_agent/issue/queue-admission-repair.json',
+      originalHeadSha: '9bc2ff98f958c0b9b9f6fd6a2ca570c35207645e',
+      rebuiltHeadSha: '5f5c111cf14b19284a5e23dd7b01a30054e6cd57'
+    }),
+    resolveStandingIssueNumberFn: () => ({ issueNumber: 1879, source: 'cli' }),
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
+  });
+
+  assert.equal(queueAdmissionCalls.length, 2);
+  assert.equal(result.queueAdmission.status, 'auto-merge-enabled');
+  assert.equal(result.queueAdmission.promotion.status, 'auto-merge-enabled');
+  assert.equal(result.queueAdmission.repair.status, 'repaired');
+  assert.equal(result.queueAdmission.repair.originalHeadSha, '9bc2ff98f958c0b9b9f6fd6a2ca570c35207645e');
+  assert.equal(result.queueAdmission.repair.rebuiltHeadSha, '5f5c111cf14b19284a5e23dd7b01a30054e6cd57');
+});
+
+test('createPriorityPr preserves queue-admission failure when stale-lineage repair proves a real conflict', () => {
+  const queueAdmissionCalls = [];
+  const result = createPriorityPrWithNoMergedHistory({
+    env: {},
+    options: {
+      issue: 1879,
+      branch: 'issue/upstream-1879-stale-conflict-queue-admission'
+    },
+    readFileSyncFn: readDefaultPrTemplate,
+    getRepoRootFn: () => '/tmp/repo',
+    getCurrentBranchFn: () => 'issue/upstream-1879-stale-conflict-queue-admission',
+    ensureGhCliFn: () => {},
+    resolveUpstreamFn: () => ({ owner: 'LabVIEW-Community-CI-CD', repo: 'compare-vi-cli-action' }),
+    ensureForkRemoteFn: () => ({
+      owner: 'svelderrainruiz',
+      repo: 'compare-vi-cli-action',
+      sameOwnerFork: false,
+      remoteName: 'origin'
+    }),
+    pushBranchFn: () => ({ status: 'pushed' }),
+    runGhPrCreateFn: () => ({
+      strategy: 'gh-pr-create',
+      pullRequest: {
+        number: 1878,
+        url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1878',
+        isDraft: false
+      }
+    }),
+    admitToMergeQueueFn: (payload) => {
+      queueAdmissionCalls.push(payload);
+      return {
+        status: 'admission-failed',
+        reason: 'PR has merge conflicts (DIRTY/CONFLICTING). Resolve conflicts before merge automation.',
+        attempted: true,
+        helperCall: 'node tools/priority/merge-sync-pr.mjs --pr 1878',
+        summaryPath: '/tmp/repo/tests/results/_agent/issue/queue-admission.json',
+        promotion: null
+      };
+    },
+    repairConflictingQueueAdmissionFn: () => ({
+      attempted: true,
+      status: 'real-conflict',
+      reason: 'Cherry-pick conflict while replaying 9bc2ff98.',
+      receiptPath: '/tmp/repo/tests/results/_agent/issue/queue-admission-repair.json',
+      originalHeadSha: '9bc2ff98f958c0b9b9f6fd6a2ca570c35207645e',
+      rebuiltHeadSha: null
+    }),
+    resolveStandingIssueNumberFn: () => ({ issueNumber: 1879, source: 'cli' }),
+    loadBranchClassContractFn: () => TEST_BRANCH_CONTRACT
+  });
+
+  assert.equal(queueAdmissionCalls.length, 1);
+  assert.equal(result.queueAdmission.status, 'admission-failed');
+  assert.equal(result.queueAdmission.repair.status, 'real-conflict');
+  assert.equal(result.queueAdmission.repair.rebuiltHeadSha, null);
 });
 
 test('parseRouterIssueNumber returns positive integer issue values', () => {
@@ -1666,6 +1816,91 @@ test('writePriorityPrReport persists ready-transition metadata for unattended re
   assert.match(report.queueAdmission.helperCall, /^node tools\/priority\/merge-sync-pr\.mjs --pr 1597/);
   assert.match(report.queueAdmission.summaryPath, /queue-admission\.json$/);
   assert.equal(report.queueAdmission.promotion.status, 'queued');
+});
+
+test('repairStaleConflictingQueueAdmission rebuilds a conflicting fork PR head from fresh upstream and records the receipt', () => {
+  const reportDir = mkdtempSync(path.join(os.tmpdir(), 'priority-pr-conflict-repair-'));
+  const gitCalls = [];
+  const writes = [];
+  const result = repairStaleConflictingQueueAdmission({
+    repoRoot: '/tmp/repo',
+    upstream: {
+      owner: 'LabVIEW-Community-CI-CD',
+      repo: 'compare-vi-cli-action'
+    },
+    headRemote: 'origin',
+    branch: 'issue/upstream-1871-queue-authority-runtime-telemetry',
+    base: 'develop',
+    pullRequest: {
+      number: 1878,
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1878'
+    },
+    queueAdmission: {
+      status: 'admission-failed',
+      reason: 'PR has merge conflicts (DIRTY/CONFLICTING). Resolve conflicts before merge automation.'
+    },
+    runFn: (_command, args, options) => {
+      gitCalls.push({ args, options });
+      if (args[0] === 'rev-list') {
+        return ['a12f797e02a514f1737e1860d8a036b988963dff', '9bc2ff98f958c0b9b9f6fd6a2ca570c35207645e'].join('\n');
+      }
+      if (args[0] === 'worktree' && args[1] === 'add') {
+        return '';
+      }
+      if (args[0] === 'cherry-pick' && args[1] === 'a12f797e02a514f1737e1860d8a036b988963dff') {
+        const error = new Error('The previous cherry-pick is now empty.');
+        error.stderr = 'The previous cherry-pick is now empty.';
+        throw error;
+      }
+      if (args[0] === 'cherry-pick' && args[1] === '--skip') {
+        return '';
+      }
+      if (args[0] === 'cherry-pick' && args[1] === '9bc2ff98f958c0b9b9f6fd6a2ca570c35207645e') {
+        return '';
+      }
+      if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+        return '5f5c111cf14b19284a5e23dd7b01a30054e6cd57';
+      }
+      if (args[0] === 'push') {
+        return '';
+      }
+      if (args[0] === 'worktree' && args[1] === 'remove') {
+        return '';
+      }
+      throw new Error(`Unexpected git args: ${args.join(' ')}`);
+    },
+    runGhJsonFn: () => ({
+      number: 1878,
+      state: 'OPEN',
+      mergeStateStatus: 'DIRTY',
+      mergeable: 'CONFLICTING',
+      isDraft: false,
+      headRefName: 'issue/upstream-1871-queue-authority-runtime-telemetry',
+      headRefOid: '9bc2ff98f958c0b9b9f6fd6a2ca570c35207645e',
+      baseRefName: 'develop',
+      url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1878'
+    }),
+    mkdtempSyncFn: () => reportDir,
+    mkdirSyncFn: () => {},
+    writeFileSyncFn: (filePath, content) => {
+      writes.push({ filePath, content: JSON.parse(content) });
+    }
+  });
+
+  assert.equal(result.attempted, true);
+  assert.equal(result.status, 'repaired');
+  assert.equal(result.originalHeadSha, '9bc2ff98f958c0b9b9f6fd6a2ca570c35207645e');
+  assert.equal(result.rebuiltHeadSha, '5f5c111cf14b19284a5e23dd7b01a30054e6cd57');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].content.replayedCommits[0].status, 'already-applied');
+  assert.equal(writes[0].content.replayedCommits[1].status, 'applied');
+  assert.ok(
+    gitCalls.some(
+      (entry) =>
+        entry.args[0] === 'push' &&
+        entry.args[1] === '--force-with-lease=refs/heads/issue/upstream-1871-queue-authority-runtime-telemetry:9bc2ff98f958c0b9b9f6fd6a2ca570c35207645e'
+    )
+  );
 });
 
 test('createPriorityPr fails closed before push when the branch already backed a merged PR', () => {

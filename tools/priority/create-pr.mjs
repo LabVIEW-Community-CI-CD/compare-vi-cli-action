@@ -2,9 +2,10 @@
 
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   run,
@@ -21,7 +22,8 @@ import {
   findMergedPullRequest,
   findOpenAncestorPullRequest,
   parseRepositorySlug,
-  buildRepositorySlug
+  buildRepositorySlug,
+  runGhJson
 } from './lib/remote-utils.mjs';
 import {
   DEFAULT_BRANCH_CLASS_CONTRACT_RELATIVE_PATH,
@@ -332,6 +334,24 @@ export function resolveQueueAdmissionSummaryPath({
   );
 }
 
+export function resolveQueueAdmissionRepairSummaryPath({
+  repoRoot,
+  repository,
+  pullRequestNumber
+}) {
+  const repositorySlug = normalizeText(repository)
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return path.join(
+    repoRoot,
+    'tests',
+    'results',
+    '_agent',
+    'issue',
+    `${repositorySlug || 'repository'}-pr-${pullRequestNumber}-queue-admission-repair.json`
+  );
+}
+
 export function buildQueueAdmissionMergeSyncArgs({ repository, pullRequestNumber, summaryPath }) {
   const repoSlug = normalizeText(repository);
   const prNumber = toPositiveInteger(pullRequestNumber);
@@ -353,6 +373,314 @@ export function buildQueueAdmissionMergeSyncArgs({ repository, pullRequestNumber
     '--summary-path',
     summaryPath
   ];
+}
+
+function readPullRequestQueueAdmissionState({
+  repoRoot,
+  repository,
+  pullRequestNumber,
+  runGhJsonFn = runGhJson
+}) {
+  const repoSlug = normalizeText(repository);
+  const prNumber = toPositiveInteger(pullRequestNumber);
+  if (!repoSlug || !prNumber) {
+    return null;
+  }
+
+  const payload = runGhJsonFn(repoRoot, [
+    'pr',
+    'view',
+    String(prNumber),
+    '--repo',
+    repoSlug,
+    '--json',
+    'number,state,mergeStateStatus,mergeable,isDraft,headRefName,headRefOid,baseRefName,url'
+  ]);
+
+  return payload
+    ? {
+        number: toPositiveInteger(payload.number),
+        state: normalizeText(payload.state) || null,
+        mergeStateStatus: normalizeText(payload.mergeStateStatus) || null,
+        mergeable: normalizeText(payload.mergeable) || null,
+        isDraft: payload.isDraft === true,
+        headRefName: normalizeText(payload.headRefName) || null,
+        headRefOid: normalizeText(payload.headRefOid) || null,
+        baseRefName: normalizeText(payload.baseRefName) || null,
+        url: normalizeText(payload.url) || null
+      }
+    : null;
+}
+
+function listBranchReplayCommits({ repoRoot, baseRef, branch, runFn = run }) {
+  const text = normalizeText(
+    runFn('git', ['rev-list', '--reverse', `${baseRef}..${branch}`], {
+      cwd: repoRoot
+    })
+  );
+  if (!text) {
+    return [];
+  }
+  return text
+    .split(/\r?\n/)
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+}
+
+function buildQueueAdmissionRepairReport(report) {
+  return {
+    schema: 'priority/pr-queue-admission-repair@v1',
+    generatedAt: report.generatedAt,
+    repository: report.repository,
+    pullRequest: {
+      number: report.pullRequestNumber,
+      url: report.pullRequestUrl,
+      baseRefName: report.baseRefName,
+      headRefName: report.headRefName
+    },
+    branch: report.branch,
+    headRemote: report.headRemote,
+    source: report.source,
+    attempted: report.attempted,
+    status: report.status,
+    reason: report.reason,
+    originalHeadSha: report.originalHeadSha,
+    rebuiltHeadSha: report.rebuiltHeadSha,
+    originalMergeStateStatus: report.originalMergeStateStatus,
+    originalMergeable: report.originalMergeable,
+    replayedCommits: report.replayedCommits,
+    forcePush: report.forcePush,
+    queueAdmission: report.queueAdmission
+  };
+}
+
+function writeQueueAdmissionRepairReport({
+  reportPath,
+  report,
+  mkdirSyncFn = mkdirSync,
+  writeFileSyncFn = writeFileSync
+}) {
+  mkdirSyncFn(path.dirname(reportPath), { recursive: true });
+  writeFileSyncFn(reportPath, `${JSON.stringify(buildQueueAdmissionRepairReport(report), null, 2)}\n`, 'utf8');
+}
+
+function isConflictingQueueAdmissionFailure(queueAdmission) {
+  const status = normalizeText(queueAdmission?.status).toLowerCase();
+  const reason = normalizeText(queueAdmission?.reason);
+  return status === 'admission-failed' && /DIRTY\/CONFLICTING|merge conflicts/i.test(reason);
+}
+
+function isEmptyCherryPickFailure(error) {
+  const detail = normalizeText(error?.stderr || error?.message || error);
+  return /cherry-pick is now empty|previous cherry-pick is now empty|nothing to commit/i.test(detail);
+}
+
+export function repairStaleConflictingQueueAdmission({
+  repoRoot,
+  upstream,
+  headRemote,
+  branch,
+  base,
+  pullRequest,
+  queueAdmission,
+  runFn = run,
+  runGhJsonFn = runGhJson,
+  mkdirSyncFn = mkdirSync,
+  mkdtempSyncFn = mkdtempSync,
+  writeFileSyncFn = writeFileSync
+}) {
+  const repository = buildRepositorySlug(upstream);
+  const pullRequestNumber = toPositiveInteger(pullRequest?.number);
+  const reportPath = resolveQueueAdmissionRepairSummaryPath({
+    repoRoot,
+    repository,
+    pullRequestNumber
+  });
+  const report = {
+    generatedAt: new Date().toISOString(),
+    repository,
+    pullRequestNumber,
+    pullRequestUrl: pullRequest?.url ?? null,
+    baseRefName: normalizeText(base) || null,
+    headRefName: normalizeText(branch) || null,
+    branch: normalizeText(branch) || null,
+    headRemote: normalizeText(headRemote) || null,
+    source: 'priority:pr-queue-admission',
+    attempted: false,
+    status: 'not-applicable',
+    reason: 'Queue admission failure is not eligible for stale conflicting lineage repair.',
+    originalHeadSha: null,
+    rebuiltHeadSha: null,
+    originalMergeStateStatus: null,
+    originalMergeable: null,
+    replayedCommits: [],
+    forcePush: {
+      attempted: false,
+      status: null,
+      expectedRemoteHeadSha: null
+    },
+    queueAdmission: {
+      originalStatus: normalizeText(queueAdmission?.status) || null,
+      originalReason: normalizeText(queueAdmission?.reason) || null,
+      retried: false
+    }
+  };
+
+  if (!isConflictingQueueAdmissionFailure(queueAdmission)) {
+    writeQueueAdmissionRepairReport({ reportPath, report, mkdirSyncFn, writeFileSyncFn });
+    return {
+      attempted: false,
+      status: report.status,
+      reason: report.reason,
+      receiptPath: reportPath
+    };
+  }
+
+  report.attempted = true;
+  report.status = 'repair-failed';
+
+  const prState = readPullRequestQueueAdmissionState({
+    repoRoot,
+    repository,
+    pullRequestNumber,
+    runGhJsonFn
+  });
+  report.pullRequestUrl = prState?.url ?? report.pullRequestUrl;
+  report.baseRefName = prState?.baseRefName ?? report.baseRefName;
+  report.headRefName = prState?.headRefName ?? report.headRefName;
+  report.originalHeadSha = prState?.headRefOid ?? null;
+  report.originalMergeStateStatus = prState?.mergeStateStatus ?? null;
+  report.originalMergeable = prState?.mergeable ?? null;
+  report.forcePush.expectedRemoteHeadSha = prState?.headRefOid ?? null;
+
+  if (
+    !prState ||
+    normalizeText(prState.state).toUpperCase() !== 'OPEN' ||
+    prState.isDraft === true ||
+    !(
+      normalizeText(prState.mergeStateStatus).toUpperCase() === 'DIRTY' ||
+      normalizeText(prState.mergeable).toUpperCase() === 'CONFLICTING'
+    )
+  ) {
+    report.status = 'not-applicable';
+    report.reason = 'Live PR state is no longer an open DIRTY/CONFLICTING queue-admission candidate.';
+    writeQueueAdmissionRepairReport({ reportPath, report, mkdirSyncFn, writeFileSyncFn });
+    return {
+      attempted: true,
+      status: report.status,
+      reason: report.reason,
+      receiptPath: reportPath,
+      originalHeadSha: report.originalHeadSha,
+      rebuiltHeadSha: null
+    };
+  }
+
+  const baseRef = `upstream/${prState.baseRefName || base || 'develop'}`;
+  const replayCommits = listBranchReplayCommits({
+    repoRoot,
+    baseRef,
+    branch,
+    runFn
+  });
+  if (replayCommits.length === 0) {
+    report.reason = `No replay commits were found for ${baseRef}..${branch}.`;
+    writeQueueAdmissionRepairReport({ reportPath, report, mkdirSyncFn, writeFileSyncFn });
+    return {
+      attempted: true,
+      status: report.status,
+      reason: report.reason,
+      receiptPath: reportPath,
+      originalHeadSha: report.originalHeadSha,
+      rebuiltHeadSha: null
+    };
+  }
+
+  const tempWorktree = mkdtempSyncFn(path.join(os.tmpdir(), 'priority-pr-conflict-repair-'));
+  let worktreeAdded = false;
+
+  try {
+    runFn('git', ['worktree', 'add', '--detach', tempWorktree, baseRef], {
+      cwd: repoRoot
+    });
+    worktreeAdded = true;
+
+    for (const commit of replayCommits) {
+      try {
+        runFn('git', ['cherry-pick', commit], { cwd: tempWorktree });
+        report.replayedCommits.push({ sha: commit, status: 'applied', reason: null });
+      } catch (error) {
+        if (isEmptyCherryPickFailure(error)) {
+          runFn('git', ['cherry-pick', '--skip'], { cwd: tempWorktree });
+          report.replayedCommits.push({ sha: commit, status: 'already-applied', reason: 'empty-cherry-pick' });
+          continue;
+        }
+
+        try {
+          runFn('git', ['cherry-pick', '--abort'], { cwd: tempWorktree });
+        } catch {
+          // Best-effort cleanup only.
+        }
+        report.status = 'real-conflict';
+        report.reason =
+          normalizeText(error?.stderr || error?.message || error) ||
+          `Cherry-pick conflict while replaying ${commit}.`;
+        report.replayedCommits.push({ sha: commit, status: 'conflicted', reason: report.reason });
+        writeQueueAdmissionRepairReport({ reportPath, report, mkdirSyncFn, writeFileSyncFn });
+        return {
+          attempted: true,
+          status: report.status,
+          reason: report.reason,
+          receiptPath: reportPath,
+          originalHeadSha: report.originalHeadSha,
+          rebuiltHeadSha: null
+        };
+      }
+    }
+
+    report.rebuiltHeadSha = normalizeText(runFn('git', ['rev-parse', 'HEAD'], { cwd: tempWorktree })) || null;
+    report.forcePush.attempted = true;
+    runFn(
+      'git',
+      [
+        'push',
+        `--force-with-lease=refs/heads/${branch}:${prState.headRefOid}`,
+        headRemote,
+        `HEAD:refs/heads/${branch}`
+      ],
+      { cwd: tempWorktree }
+    );
+    report.forcePush.status = 'pushed';
+    report.status = 'repaired';
+    report.reason = 'Rebuilt the PR head from fresh upstream base and force-pushed it with lease protection.';
+    writeQueueAdmissionRepairReport({ reportPath, report, mkdirSyncFn, writeFileSyncFn });
+    return {
+      attempted: true,
+      status: report.status,
+      reason: report.reason,
+      receiptPath: reportPath,
+      originalHeadSha: report.originalHeadSha,
+      rebuiltHeadSha: report.rebuiltHeadSha
+    };
+  } catch (error) {
+    report.reason = normalizeText(error?.stderr || error?.message || error) || 'Queue-admission conflict repair failed.';
+    writeQueueAdmissionRepairReport({ reportPath, report, mkdirSyncFn, writeFileSyncFn });
+    return {
+      attempted: true,
+      status: report.status,
+      reason: report.reason,
+      receiptPath: reportPath,
+      originalHeadSha: report.originalHeadSha,
+      rebuiltHeadSha: report.rebuiltHeadSha
+    };
+  } finally {
+    if (worktreeAdded) {
+      try {
+        runFn('git', ['worktree', 'remove', '--force', tempWorktree], { cwd: repoRoot });
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
+  }
 }
 
 export function maybeAdmitPullRequestToMergeQueue({
@@ -1173,6 +1501,7 @@ export function createPriorityPr({
   runGhPrCreateFn = runGhPrCreate,
   runReadyProbeFn = probeReadyTransitionViaMergeSyncDryRun,
   admitToMergeQueueFn = maybeAdmitPullRequestToMergeQueue,
+  repairConflictingQueueAdmissionFn = repairStaleConflictingQueueAdmission,
   findMergedPullRequestFn = findMergedPullRequest,
   findOpenAncestorPullRequestFn = findOpenAncestorPullRequest,
   resolveStandingIssueNumberFn = resolveStandingIssueNumberForPr,
@@ -1357,7 +1686,7 @@ export function createPriorityPr({
           isDraft: false
         }
       : prResult?.pullRequest ?? null;
-  const queueAdmission = admitToMergeQueueFn({
+  let queueAdmission = admitToMergeQueueFn({
     repoRoot,
     upstream,
     strategy: prResult?.strategy ?? null,
@@ -1365,6 +1694,51 @@ export function createPriorityPr({
     readyTransition,
     readJsonFn
   });
+  if (queueAdmission?.status === 'admission-failed') {
+    const repair = repairConflictingQueueAdmissionFn({
+      repoRoot,
+      upstream,
+      headRemote,
+      branch,
+      base,
+      pullRequest,
+      queueAdmission,
+      runFn
+    });
+    if (repair?.attempted === true) {
+      if (repair.status === 'repaired') {
+        const retriedQueueAdmission = admitToMergeQueueFn({
+          repoRoot,
+          upstream,
+          strategy: prResult?.strategy ?? null,
+          pullRequest,
+          readyTransition,
+          readJsonFn
+        });
+        queueAdmission = {
+          ...retriedQueueAdmission,
+          repair: {
+            status: repair.status ?? null,
+            reason: repair.reason ?? null,
+            receiptPath: repair.receiptPath ?? null,
+            originalHeadSha: repair.originalHeadSha ?? null,
+            rebuiltHeadSha: repair.rebuiltHeadSha ?? null
+          }
+        };
+      } else {
+        queueAdmission = {
+          ...queueAdmission,
+          repair: {
+            status: repair.status ?? null,
+            reason: repair.reason ?? null,
+            receiptPath: repair.receiptPath ?? null,
+            originalHeadSha: repair.originalHeadSha ?? null,
+            rebuiltHeadSha: repair.rebuiltHeadSha ?? null
+          }
+        };
+      }
+    }
+  }
 
   return {
     repoRoot,
@@ -1472,7 +1846,16 @@ export function buildPriorityPrReport(result, generatedAt = new Date().toISOStri
           attempted: result.queueAdmission.attempted === true,
           helperCall: result.queueAdmission.helperCall ?? null,
           summaryPath: result.queueAdmission.summaryPath ?? null,
-          promotion: result.queueAdmission.promotion ?? null
+          promotion: result.queueAdmission.promotion ?? null,
+          repair: result.queueAdmission.repair
+            ? {
+                status: result.queueAdmission.repair.status ?? null,
+                reason: result.queueAdmission.repair.reason ?? null,
+                receiptPath: result.queueAdmission.repair.receiptPath ?? null,
+                originalHeadSha: result.queueAdmission.repair.originalHeadSha ?? null,
+                rebuiltHeadSha: result.queueAdmission.repair.rebuiltHeadSha ?? null
+              }
+            : null
         }
       : null,
     stackedFollowUp: result.stackedFollowUp
