@@ -170,6 +170,8 @@ plane:
   - configure workflow-owned signer identity
   - create the signed annotated tag
   - push the tag to the authoritative remote for the target repository
+  - when repairing an existing tag, dispatch `.github/workflows/release.yml`
+    on the repaired tag ref so publication replays deterministically
 - `tests/results/_agent/release/release-conductor-report.json` must record:
   - signing backend/source
   - signer identity used for tag creation/repair
@@ -177,6 +179,7 @@ plane:
   - whether the tag was pushed authoritatively
   - whether repair mode was requested/performed for an existing tag
   - the authoritative remote tag object/commit used for repair
+  - whether repaired-tag publication replay was dispatched
   - any push failure blocker
 
 ## Workflow signing readiness

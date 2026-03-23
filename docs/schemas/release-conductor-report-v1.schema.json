@@ -51,7 +51,8 @@
         "tagPushError",
         "tagPushRemote",
         "signingMaterial",
-        "repair"
+        "repair",
+        "publicationReplay"
       ],
       "properties": {
         "stream": { "type": "string" },
@@ -130,6 +131,22 @@
             "tagRecreated": { "type": "boolean" },
             "pushLeaseExpectedOid": { "type": ["string", "null"] },
             "lookupError": { "type": ["string", "null"] }
+          }
+        },
+        "publicationReplay": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requested", "workflow", "ref", "dispatched", "status", "error"],
+          "properties": {
+            "requested": { "type": "boolean" },
+            "workflow": { "type": "string" },
+            "ref": { "type": ["string", "null"] },
+            "dispatched": { "type": "boolean" },
+            "status": {
+              "type": "string",
+              "enum": ["not-requested", "blocked", "dispatched", "dispatch-failed"]
+            },
+            "error": { "type": ["string", "null"] }
           }
         }
       }

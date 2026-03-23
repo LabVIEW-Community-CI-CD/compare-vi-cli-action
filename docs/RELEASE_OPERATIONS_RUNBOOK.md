@@ -171,6 +171,8 @@ automation path:
   - when repair mode is used:
     - `release.repair.status = repaired`
     - `release.repair.remoteTargetCommitOid` matches the authoritative commit
+    - `release.publicationReplay.status = dispatched`
+    - the replayed `Release on tag` run succeeds for the repaired tag ref
 
 When the release trust gate fails, inspect `tests/results/_agent/supply-chain/release-trust-gate.json` and follow the
 matching remediation path:
@@ -188,7 +190,8 @@ matching remediation path:
     for the target version so the authoritative tag is recreated as a signed
     annotated tag without changing the intended release commit.
   - Rerun release only after the repair report shows
-    `release.repair.status = repaired`.
+    `release.repair.status = repaired` and
+    `release.publicationReplay.status = dispatched`.
 - `workflow-signing-secret-missing`, `workflow-signing-secret-unverifiable`
 - `workflow-signing-admin-scope-missing`, `workflow-signing-key-missing`, `workflow-signing-authority-unverifiable`
 - `release-conductor-apply-disabled`, `release-conductor-apply-unverifiable`

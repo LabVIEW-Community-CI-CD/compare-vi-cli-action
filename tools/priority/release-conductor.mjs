@@ -13,6 +13,7 @@ export const DEFAULT_QUEUE_REPORT_PATH = path.join('tests', 'results', '_agent',
 export const DEFAULT_POLICY_SNAPSHOT_PATH = path.join('tests', 'results', '_agent', 'policy', 'policy-state-snapshot.json');
 export const DEFAULT_DWELL_MINUTES = 60;
 export const DEFAULT_QUARANTINE_STALE_HOURS = 24;
+export const RELEASE_PUBLICATION_WORKFLOW = 'release.yml';
 
 const REQUIRED_DWELL_WORKFLOWS = Object.freeze([
   { name: 'Validate', file: 'validate.yml' },
@@ -756,6 +757,14 @@ export async function runReleaseConductor(options = {}) {
   let tagError = null;
   let tagPushError = null;
   let proposalOnly = true;
+  const publicationReplay = {
+    requested: Boolean(args.repairExistingTag && applyRequested),
+    workflow: RELEASE_PUBLICATION_WORKFLOW,
+    ref: targetTag,
+    dispatched: false,
+    status: args.repairExistingTag && applyRequested ? 'blocked' : 'not-requested',
+    error: null
+  };
   const tagPushRemote = resolveTagPushRemote({ repoRoot, repository, runCommandFn });
   const remoteTag = inspectRemoteTag({
     repoRoot,
@@ -885,6 +894,28 @@ export async function runReleaseConductor(options = {}) {
                 tagPushed = true;
                 proposalOnly = false;
                 repair.status = 'repaired';
+                const dispatchResult = runCommandFn(
+                  'gh',
+                  ['workflow', 'run', RELEASE_PUBLICATION_WORKFLOW, '--ref', targetTag],
+                  {
+                    cwd: repoRoot,
+                    allowFailure: true
+                  }
+                );
+                if (dispatchResult.status === 0) {
+                  publicationReplay.dispatched = true;
+                  publicationReplay.status = 'dispatched';
+                } else {
+                  publicationReplay.status = 'dispatch-failed';
+                  publicationReplay.error =
+                    asOptional(dispatchResult.stderr) ??
+                    asOptional(dispatchResult.stdout) ??
+                    'release workflow dispatch failed';
+                  blockers.push({
+                    code: 'release-replay-dispatch-failed',
+                    message: `Release publication replay dispatch failed for ${targetTag}: ${publicationReplay.error}`
+                  });
+                }
               } else {
                 tagPushError = asOptional(pushResult.stderr) ?? asOptional(pushResult.stdout) ?? 'repair tag push failed';
                 blockers.push({
@@ -968,7 +999,8 @@ export async function runReleaseConductor(options = {}) {
       tagPushError,
       tagPushRemote,
       signingMaterial,
-      repair
+      repair,
+      publicationReplay
     },
     inputs: {
       reportPath: args.reportPath,

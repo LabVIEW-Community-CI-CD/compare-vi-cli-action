@@ -917,6 +917,9 @@ test('runReleaseConductor repairs an existing authoritative tag when repair mode
   assert.equal(report.release.repair.status, 'repaired');
   assert.equal(report.release.repair.localTagDeleted, true);
   assert.equal(report.release.repair.tagRecreated, true);
+  assert.equal(report.release.publicationReplay.requested, true);
+  assert.equal(report.release.publicationReplay.status, 'dispatched');
+  assert.equal(report.release.publicationReplay.dispatched, true);
   assert.equal(
     commandCalls.some(
       (entry) =>
@@ -938,6 +941,131 @@ test('runReleaseConductor repairs an existing authoritative tag when repair mode
     ),
     true
   );
+  assert.equal(
+    commandCalls.some(
+      (entry) =>
+        entry.command === 'gh' &&
+        entry.args[0] === 'workflow' &&
+        entry.args[1] === 'run' &&
+        entry.args[2] === 'release.yml' &&
+        entry.args[3] === '--ref' &&
+        entry.args[4] === 'v0.8.0-rc.1'
+    ),
+    true
+  );
+});
+
+test('runReleaseConductor fails apply when repaired tag publication replay dispatch fails', async () => {
+  const readJsonOptionalFn = async (filePath) => {
+    const normalized = String(filePath);
+    if (normalized.includes('queue-supervisor-report.json')) {
+      return {
+        exists: true,
+        error: null,
+        path: filePath,
+        payload: {
+          paused: false,
+          throughputController: { mode: 'healthy' },
+          retryHistory: {}
+        }
+      };
+    }
+    return {
+      exists: true,
+      error: null,
+      path: filePath,
+      payload: {
+        schema: 'priority/policy-live-state@v1',
+        generatedAt: '2026-03-06T10:00:00Z',
+        state: {}
+      }
+    };
+  };
+
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'api') {
+      return makeWorkflowRunsResponse(String(args[1]));
+    }
+    throw new Error(`unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const runCommandFn = (command, args) => {
+    if (command === 'git' && args[0] === 'config') {
+      if (args[2] === 'user.signingkey') {
+        return { status: 0, stdout: '/tmp/release-signing.pub', stderr: '' };
+      }
+      if (args[2] === 'gpg.format') {
+        return { status: 0, stdout: 'ssh', stderr: '' };
+      }
+      if (args[2] === 'remote.upstream.url') {
+        return { status: 0, stdout: 'https://github.com/owner/repo.git', stderr: '' };
+      }
+      return { status: 1, stdout: '', stderr: 'missing config' };
+    }
+    if (command === 'git' && args[0] === 'ls-remote') {
+      return {
+        status: 0,
+        stdout: [
+          '1111111111111111111111111111111111111111\trefs/tags/v0.8.0-rc.1',
+          '2222222222222222222222222222222222222222\trefs/tags/v0.8.0-rc.1^{}'
+        ].join('\n'),
+        stderr: ''
+      };
+    }
+    if (command === 'git' && args[0] === 'rev-parse') {
+      return { status: 0, stdout: '1111111111111111111111111111111111111111\n', stderr: '' };
+    }
+    if (command === 'git' && args[0] === 'tag' && args[1] === '-d') {
+      return { status: 0, stdout: `Deleted tag '${args[2]}'`, stderr: '' };
+    }
+    if (command === 'git' && args[0] === 'tag') {
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    if (command === 'git' && args[0] === 'push') {
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    if (command === 'gh' && args[0] === 'workflow' && args[1] === 'run') {
+      return { status: 1, stdout: '', stderr: 'dispatch denied' };
+    }
+    return { status: 0, stdout: '', stderr: '' };
+  };
+
+  const { report, exitCode } = await runReleaseConductor({
+    repoRoot: process.cwd(),
+    now: new Date('2026-03-06T12:00:00.000Z'),
+    args: {
+      apply: true,
+      dryRun: false,
+      repairExistingTag: true,
+      reportPath: 'tests/results/_agent/release/release-conductor-report.json',
+      queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      policySnapshotPath: 'tests/results/_agent/policy/policy-state-snapshot.json',
+      repo: 'owner/repo',
+      stream: 'comparevi-cli',
+      channel: 'rc',
+      version: '0.8.0-rc.1',
+      dwellMinutes: 60,
+      quarantineStaleHours: 24,
+      help: false
+    },
+    environment: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      RELEASE_CONDUCTOR_ENABLED: '1'
+    },
+    runGhJsonFn,
+    runCommandFn,
+    readJsonOptionalFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(exitCode, 1);
+  assert.equal(report.decision.status, 'fail');
+  assert.equal(report.release.repair.status, 'repaired');
+  assert.equal(report.release.publicationReplay.requested, true);
+  assert.equal(report.release.publicationReplay.status, 'dispatch-failed');
+  assert.equal(report.release.publicationReplay.dispatched, false);
+  assert.equal(report.release.publicationReplay.error, 'dispatch denied');
+  assert.ok(report.decision.blockers.some((entry) => entry.code === 'release-replay-dispatch-failed'));
 });
 
 test('runReleaseConductor fails apply when signed tag push remote is unavailable', async () => {
