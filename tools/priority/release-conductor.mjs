@@ -303,10 +303,45 @@ export function evaluateQueueHealthGate(queueReportEnvelope) {
     queueReport?.throughputController?.mode ??
     queueReport?.adaptiveInflight?.mode ??
     null;
+  const pausedReasons = Array.isArray(queueReport?.pausedReasons) ? queueReport.pausedReasons : [];
+  const runtimeTotals =
+    queueReport?.runtimeFleet && typeof queueReport.runtimeFleet === 'object' ? queueReport.runtimeFleet.totals : null;
+  const mergeQueueOccupancy =
+    queueReport?.queueInventory?.mergeQueueOccupancy ??
+    queueReport?.summary?.mergeQueueOccupancy ??
+    null;
+  const readyQueuedCount =
+    queueReport?.queueInventory?.readyQueuedCount ??
+    queueReport?.summary?.readyQueuedCount ??
+    null;
+  const quarantinedCount = queueReport?.summary?.quarantinedCount ?? null;
+  const idleSuccessRatePause =
+    paused &&
+    controllerMode === 'stabilize' &&
+    pausedReasons.length > 0 &&
+    pausedReasons.every((reason) => reason === 'success-rate-below-threshold') &&
+    Number(mergeQueueOccupancy ?? 0) === 0 &&
+    Number(readyQueuedCount ?? 0) === 0 &&
+    Number(runtimeTotals?.queued ?? 0) === 0 &&
+    Number(runtimeTotals?.inProgress ?? 0) === 0 &&
+    Number(runtimeTotals?.stalled ?? 0) === 0 &&
+    Number(quarantinedCount ?? 0) === 0;
 
   const reasons = [];
+  if (idleSuccessRatePause) {
+    reasons.push('release-safe-idle-queue-pause');
+  }
   if (paused) reasons.push('queue-paused');
   if (controllerMode === 'stabilize') reasons.push('queue-stabilize-mode');
+
+  if (idleSuccessRatePause) {
+    return {
+      status: 'pass',
+      reasons: ['release-safe-idle-queue-pause'],
+      paused,
+      controllerMode
+    };
+  }
 
   return {
     status: reasons.length === 0 ? 'pass' : 'fail',
