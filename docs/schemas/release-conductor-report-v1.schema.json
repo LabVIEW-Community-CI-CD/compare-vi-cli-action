@@ -50,7 +50,8 @@
         "tagError",
         "tagPushError",
         "tagPushRemote",
-        "signingMaterial"
+        "signingMaterial",
+        "repair"
       ],
       "properties": {
         "stream": { "type": "string" },
@@ -81,6 +82,41 @@
             "signingKey": { "type": ["string", "null"] },
             "source": { "type": "string" },
             "backend": { "type": "string" }
+          }
+        },
+        "repair": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requested",
+            "status",
+            "remoteTagRef",
+            "remoteTagExists",
+            "remoteTagAnnotated",
+            "remoteTagObjectOid",
+            "remoteTargetCommitOid",
+            "localTagPresent",
+            "localTagDeleted",
+            "tagRecreated",
+            "pushLeaseExpectedOid",
+            "lookupError"
+          ],
+          "properties": {
+            "requested": { "type": "boolean" },
+            "status": {
+              "type": "string",
+              "enum": ["not-requested", "repair-available", "ready", "repaired", "blocked"]
+            },
+            "remoteTagRef": { "type": ["string", "null"] },
+            "remoteTagExists": { "type": "boolean" },
+            "remoteTagAnnotated": { "type": ["boolean", "null"] },
+            "remoteTagObjectOid": { "type": ["string", "null"] },
+            "remoteTargetCommitOid": { "type": ["string", "null"] },
+            "localTagPresent": { "type": "boolean" },
+            "localTagDeleted": { "type": "boolean" },
+            "tagRecreated": { "type": "boolean" },
+            "pushLeaseExpectedOid": { "type": ["string", "null"] },
+            "lookupError": { "type": ["string", "null"] }
           }
         }
       }

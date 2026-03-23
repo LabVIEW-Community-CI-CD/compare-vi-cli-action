@@ -24,6 +24,7 @@ function printUsage() {
   console.log('');
   console.log('Options:');
   console.log('  --apply                     Apply release mutation (default is --dry-run).');
+  console.log('  --repair-existing-tag       Repair an existing authoritative tag by recreating it as a signed annotated tag.');
   console.log(`  --report <path>             Write report JSON (default: ${DEFAULT_REPORT_PATH}).`);
   console.log(`  --queue-report <path>       Queue supervisor report path (default: ${DEFAULT_QUEUE_REPORT_PATH}).`);
   console.log(`  --policy-snapshot <path>    Policy snapshot path (default: ${DEFAULT_POLICY_SNAPSHOT_PATH}).`);
@@ -96,6 +97,7 @@ export function parseArgs(argv = process.argv) {
   const options = {
     apply: false,
     dryRun: true,
+    repairExistingTag: false,
     reportPath: DEFAULT_REPORT_PATH,
     queueReportPath: DEFAULT_QUEUE_REPORT_PATH,
     policySnapshotPath: DEFAULT_POLICY_SNAPSHOT_PATH,
@@ -117,6 +119,10 @@ export function parseArgs(argv = process.argv) {
     if (token === '--apply') {
       options.apply = true;
       options.dryRun = false;
+      continue;
+    }
+    if (token === '--repair-existing-tag') {
+      options.repairExistingTag = true;
       continue;
     }
     if (token === '--dry-run') {
@@ -350,6 +356,7 @@ export function evaluateQuarantineGate({
     return {
       status: 'fail',
       reasons: ['queue-report-unavailable'],
+      staleHours,
       staleCount: null,
       activeCount: null,
       staleEntries: []
@@ -469,6 +476,95 @@ function resolveTargetTag(version) {
   const normalized = asOptional(version);
   if (!normalized) return null;
   return normalized.startsWith('v') ? normalized : `v${normalized}`;
+}
+
+function inspectLocalTag({ repoRoot, tagRef, runCommandFn }) {
+  if (!tagRef) {
+    return {
+      present: false,
+      objectOid: null
+    };
+  }
+
+  const result = runCommandFn('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tagRef}`], {
+    cwd: repoRoot,
+    allowFailure: true
+  });
+  return {
+    present: result.status === 0,
+    objectOid: asOptional(result.stdout)
+  };
+}
+
+function inspectRemoteTag({ repoRoot, remoteName, tagRef, runCommandFn }) {
+  if (!remoteName || !tagRef) {
+    return {
+      exists: false,
+      refName: tagRef ? `refs/tags/${tagRef}` : null,
+      objectOid: null,
+      targetCommitOid: null,
+      annotated: null,
+      lookupError: null
+    };
+  }
+
+  const refName = `refs/tags/${tagRef}`;
+  const result = runCommandFn('git', ['ls-remote', '--tags', remoteName, refName, `${refName}^{}`], {
+    cwd: repoRoot,
+    allowFailure: true
+  });
+  if (result.status !== 0) {
+    return {
+      exists: false,
+      refName,
+      objectOid: null,
+      targetCommitOid: null,
+      annotated: null,
+      lookupError: asOptional(result.stderr) ?? asOptional(result.stdout) ?? `git ls-remote failed (${result.status})`
+    };
+  }
+
+  let objectOid = null;
+  let peeledOid = null;
+  for (const rawLine of String(result.stdout ?? '').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    const [oid, resolvedRef] = line.split(/\s+/, 2);
+    if (resolvedRef === refName) {
+      objectOid = oid;
+    } else if (resolvedRef === `${refName}^{}`) {
+      peeledOid = oid;
+    }
+  }
+
+  const exists = Boolean(objectOid);
+  return {
+    exists,
+    refName,
+    objectOid,
+    targetCommitOid: peeledOid ?? objectOid,
+    annotated: exists ? Boolean(peeledOid) : null,
+    lookupError: null
+  };
+}
+
+function createRepairState({ requested, remoteTag = null, localTag = null }) {
+  return {
+    requested: Boolean(requested),
+    status: 'not-requested',
+    remoteTagRef: remoteTag?.refName ?? null,
+    remoteTagExists: Boolean(remoteTag?.exists),
+    remoteTagAnnotated: remoteTag?.annotated ?? null,
+    remoteTagObjectOid: remoteTag?.objectOid ?? null,
+    remoteTargetCommitOid: remoteTag?.targetCommitOid ?? null,
+    localTagPresent: Boolean(localTag?.present),
+    localTagDeleted: false,
+    tagRecreated: false,
+    pushLeaseExpectedOid: remoteTag?.objectOid ?? null,
+    lookupError: remoteTag?.lookupError ?? null
+  };
 }
 
 function resolveTagPushRemote({ repoRoot, repository, runCommandFn }) {
@@ -607,6 +703,72 @@ export async function runReleaseConductor(options = {}) {
   let tagPushError = null;
   let proposalOnly = true;
   const tagPushRemote = resolveTagPushRemote({ repoRoot, repository, runCommandFn });
+  const remoteTag = inspectRemoteTag({
+    repoRoot,
+    remoteName: asOptional(tagPushRemote.remoteName),
+    tagRef: targetTag,
+    runCommandFn
+  });
+  const localTag = inspectLocalTag({
+    repoRoot,
+    tagRef: targetTag,
+    runCommandFn
+  });
+  const repair = createRepairState({
+    requested: args.repairExistingTag,
+    remoteTag,
+    localTag
+  });
+
+  if (repair.remoteTagExists && !repair.requested) {
+    repair.status = 'repair-available';
+    pushUniqueDecisionEntry(advisories, {
+      code: 'existing-tag-repair-available',
+      message: `Authoritative tag ${targetTag} already exists; rerun release conductor with --repair-existing-tag to recreate it as a signed annotated tag.`
+    });
+  }
+  if (repair.requested && !targetTag) {
+    repair.status = 'blocked';
+  } else if (repair.requested && remoteTag.lookupError) {
+    repair.status = 'blocked';
+  } else if (repair.requested && !asOptional(tagPushRemote.remoteName)) {
+    repair.status = 'blocked';
+  } else if (repair.requested && !repair.remoteTagExists) {
+    repair.status = 'blocked';
+  } else if (repair.requested && (!repair.remoteTargetCommitOid || !repair.pushLeaseExpectedOid)) {
+    repair.status = 'blocked';
+  } else if (repair.requested && repair.remoteTagExists) {
+    repair.status = applyRequested ? 'blocked' : 'ready';
+  }
+
+  if (repair.requested) {
+    if (!targetTag) {
+      blockers.push({
+        code: 'missing-version-for-tag',
+        message: 'Repair mode requires --version to identify the authoritative release tag.'
+      });
+    } else if (!asOptional(tagPushRemote.remoteName)) {
+      blockers.push({
+        code: 'tag-push-remote-missing',
+        message: `Repair mode could not resolve an authoritative push remote matching ${repository}.`
+      });
+    } else if (remoteTag.lookupError) {
+      blockers.push({
+        code: 'repair-remote-tag-lookup-failed',
+        message: `Unable to inspect authoritative tag ${targetTag}: ${remoteTag.lookupError}`
+      });
+    } else if (!repair.remoteTagExists) {
+      blockers.push({
+        code: 'repair-target-tag-missing',
+        message: `Repair mode requires existing authoritative tag ${targetTag}, but no authoritative tag ref was found on ${tagPushRemote.remoteName}.`
+      });
+    } else if (!repair.remoteTargetCommitOid || !repair.pushLeaseExpectedOid) {
+      blockers.push({
+        code: 'repair-target-unresolved',
+        message: `Repair mode could not resolve the authoritative object/commit for ${targetTag}.`
+      });
+    }
+  }
 
   if (blockers.length === 0 && applyRequested && conductorEnabled) {
     if (!targetTag) {
@@ -618,6 +780,77 @@ export async function runReleaseConductor(options = {}) {
       blockers.push({
         code: 'tag-signing-material-missing',
         message: 'Apply mode requires signed-tag readiness before tag push. Configure user.signingkey (or equivalent signing material) and retry.'
+      });
+    } else if (args.repairExistingTag) {
+        if (repair.localTagPresent) {
+          const deleteResult = runCommandFn('git', ['tag', '-d', targetTag], {
+            cwd: repoRoot,
+            allowFailure: true
+          });
+          if (deleteResult.status !== 0) {
+            tagError = asOptional(deleteResult.stderr) ?? asOptional(deleteResult.stdout) ?? 'local tag delete failed';
+            blockers.push({
+              code: 'repair-local-tag-delete-failed',
+              message: `Unable to remove existing local tag ${targetTag} before repair: ${tagError}`
+            });
+          } else {
+            repair.localTagDeleted = true;
+          }
+        }
+
+        if (blockers.length === 0) {
+          const tagResult = runCommandFn(
+            'git',
+            ['tag', '-s', '-f', targetTag, repair.remoteTargetCommitOid, '-m', `Release ${targetTag}`],
+            {
+              cwd: repoRoot,
+              allowFailure: true
+            }
+          );
+          if (tagResult.status === 0) {
+            tagCreated = true;
+            repair.tagRecreated = true;
+            const pushRemoteName = asOptional(tagPushRemote.remoteName);
+            if (!pushRemoteName) {
+              tagPushError = 'Unable to resolve an authoritative git remote for repair publication.';
+              blockers.push({
+                code: 'tag-push-remote-missing',
+                message: `Signed repair tag ${targetTag} was created locally but no authoritative push remote matched ${repository}.`
+              });
+            } else {
+              const leaseArg = `--force-with-lease=refs/tags/${targetTag}:${repair.pushLeaseExpectedOid}`;
+              const pushResult = runCommandFn(
+                'git',
+                ['push', leaseArg, pushRemoteName, `refs/tags/${targetTag}:refs/tags/${targetTag}`],
+                {
+                  cwd: repoRoot,
+                  allowFailure: true
+                }
+              );
+              if (pushResult.status === 0) {
+                tagPushed = true;
+                proposalOnly = false;
+                repair.status = 'repaired';
+              } else {
+                tagPushError = asOptional(pushResult.stderr) ?? asOptional(pushResult.stdout) ?? 'repair tag push failed';
+                blockers.push({
+                  code: 'repair-tag-push-failed',
+                  message: `Signed repair publication failed for ${targetTag}: ${tagPushError}`
+                });
+              }
+            }
+          } else {
+            tagError = asOptional(tagResult.stderr) ?? asOptional(tagResult.stdout) ?? 'repair tag creation failed';
+            blockers.push({
+              code: 'repair-tag-recreate-failed',
+              message: `Signed repair tag creation failed for ${targetTag}: ${tagError}`
+            });
+          }
+        }
+    } else if (repair.remoteTagExists) {
+      blockers.push({
+        code: 'existing-tag-requires-repair-mode',
+        message: `Authoritative tag ${targetTag} already exists. Rerun release conductor with --repair-existing-tag to recreate it as a signed annotated tag at ${repair.remoteTargetCommitOid}.`
       });
     } else if (signingMaterial.available) {
       const tagResult = runCommandFn('git', ['tag', '-s', targetTag, '-m', `Release ${targetTag}`], {
@@ -680,7 +913,8 @@ export async function runReleaseConductor(options = {}) {
       tagError,
       tagPushError,
       tagPushRemote,
-      signingMaterial
+      signingMaterial,
+      repair
     },
     inputs: {
       reportPath: args.reportPath,

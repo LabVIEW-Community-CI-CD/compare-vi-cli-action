@@ -151,6 +151,12 @@ Before relying on a local workstation tag, prefer the release conductor
 automation path:
 
 - run `.github/workflows/release-conductor.yml` in apply mode
+- if the authoritative release tag already exists but the trust gate reports
+  `tag-not-annotated` or `tag-signature-unverified`, rerun
+  `.github/workflows/release-conductor.yml` with:
+  - the target `version`
+  - `apply = true`
+  - `repair_existing_tag = true`
 - provision `RELEASE_TAG_SIGNING_PRIVATE_KEY` and optional
   `RELEASE_TAG_SIGNING_PUBLIC_KEY` for workflow-owned signing
 - inspect `tests/results/_agent/release/release-conductor-report.json`
@@ -158,6 +164,9 @@ automation path:
 - require both:
   - `release.tagCreated = true`
   - `release.tagPushed = true`
+  - when repair mode is used:
+    - `release.repair.status = repaired`
+    - `release.repair.remoteTargetCommitOid` matches the authoritative commit
 
 When the release trust gate fails, inspect `tests/results/_agent/supply-chain/release-trust-gate.json` and follow the
 matching remediation path:
@@ -169,7 +178,13 @@ matching remediation path:
 - `tag-signature-cli-unavailable`
   - Restore GitHub CLI availability on runner and retry release.
 - `tag-not-annotated`, `tag-signature-unverified`
-  - Recreate release tag as a signed annotated tag and rerun release.
+  - Use `node tools/npm/run-script.mjs priority:release:signing:readiness`
+    first.
+  - If signing readiness is `ready`, run the release conductor in repair mode
+    for the target version so the authoritative tag is recreated as a signed
+    annotated tag without changing the intended release commit.
+  - Rerun release only after the repair report shows
+    `release.repair.status = repaired`.
 - `workflow-signing-secret-missing`, `workflow-signing-secret-unverifiable`
 - `workflow-signing-admin-scope-missing`, `workflow-signing-key-missing`, `workflow-signing-authority-unverifiable`
 - `release-conductor-apply-disabled`, `release-conductor-apply-unverifiable`
