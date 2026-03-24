@@ -116,6 +116,8 @@
         "operatorAuthorizationRef",
         "isolatedLaneGroupId",
         "fingerprintSha256",
+        "linkedDockerLaneId",
+        "linkedDockerLaneLeaseId",
         "workingRoot",
         "artifactRoot",
         "isStale",
@@ -209,6 +211,18 @@
           ]
         },
         "fingerprintSha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "linkedDockerLaneId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "linkedDockerLaneLeaseId": {
           "type": [
             "string",
             "null"

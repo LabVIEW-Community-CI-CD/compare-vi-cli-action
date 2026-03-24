@@ -141,9 +141,11 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["committedAt"],
+          "required": ["committedAt", "executionCellId", "executionCellLeaseId"],
           "properties": {
-            "committedAt": { "type": "string", "format": "date-time" }
+            "committedAt": { "type": "string", "format": "date-time" },
+            "executionCellId": { "type": ["string", "null"] },
+            "executionCellLeaseId": { "type": ["string", "null"] }
           }
         }
       ]

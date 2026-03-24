@@ -83,6 +83,8 @@ test('execution cell lease report schema validates an active teststand harness l
       commit: {
         committedAt: '2026-03-24T00:00:00.000Z',
         harnessInstanceId: 'harness-hooke-01',
+        dockerLaneId: 'docker-agent-hooke-01',
+        dockerLaneLeaseId: 'docker-lease-123',
         workingRoot: 'E:/comparevi-lanes/cells/hooke-01/work',
         artifactRoot: 'E:/comparevi-lanes/cells/hooke-01/artifacts'
       },
@@ -104,6 +106,8 @@ test('execution cell lease report schema validates an active teststand harness l
       operatorAuthorizationRef: null,
       isolatedLaneGroupId: 'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
       fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      linkedDockerLaneId: 'docker-agent-hooke-01',
+      linkedDockerLaneLeaseId: 'docker-lease-123',
       workingRoot: 'E:/comparevi-lanes/cells/hooke-01/work',
       artifactRoot: 'E:/comparevi-lanes/cells/hooke-01/artifacts',
       isStale: false,

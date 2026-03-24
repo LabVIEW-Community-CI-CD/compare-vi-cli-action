@@ -525,6 +525,7 @@ export async function runExecutionCellBundle(options = {}) {
     workingRoot: options.workingRoot,
     artifactRoot: options.artifactRoot,
     harnessInstanceId: options.harnessInstanceId,
+    dockerLaneReportPath,
     hostPlaneReportPath: options.hostPlaneReportPath,
     operatorCostProfilePath: options.operatorCostProfilePath,
     leaseRoot: options.leaseRoot,
@@ -543,6 +544,7 @@ export async function runExecutionCellBundle(options = {}) {
         capabilities,
         operatorId: options.operatorId,
         operatorAuthorizationRef: options.operatorAuthorizationRef,
+        executionCellReportPath,
         hostPlaneReportPath: options.hostPlaneReportPath,
         operatorCostProfilePath: options.operatorCostProfilePath,
         handshakeRoot: options.handshakeRoot,
@@ -562,6 +564,7 @@ export async function runExecutionCellBundle(options = {}) {
       executionCell = await runExecutionCellLease(executionCellOptions);
       if (dockerLaneOptions) {
         dockerLane = await runDockerLaneHandshake(dockerLaneOptions);
+        await writeReport(dockerLaneReportPath, dockerLane);
       }
       break;
     case 'grant':
@@ -569,6 +572,7 @@ export async function runExecutionCellBundle(options = {}) {
       if (dockerLaneOptions) {
         if (normalizeText(executionCell?.status) === STATUS.granted) {
           dockerLane = await runDockerLaneHandshake(dockerLaneOptions);
+          await writeReport(dockerLaneReportPath, dockerLane);
           if (normalizeText(dockerLane?.status) !== STATUS.granted) {
             rollbacks.executionCell = await maybeReleaseExecutionCell(
               executionCellOptions,
@@ -585,6 +589,7 @@ export async function runExecutionCellBundle(options = {}) {
     case 'commit':
       if (dockerLaneOptions) {
         dockerLane = await runDockerLaneHandshake(dockerLaneOptions);
+        await writeReport(dockerLaneReportPath, dockerLane);
         if (normalizeText(dockerLane?.status) === STATUS.committed) {
           executionCell = await runExecutionCellLease(executionCellOptions);
           if (normalizeText(executionCell?.status) !== STATUS.committed) {
@@ -600,12 +605,14 @@ export async function runExecutionCellBundle(options = {}) {
     case 'heartbeat':
       if (dockerLaneOptions) {
         dockerLane = await runDockerLaneHandshake(dockerLaneOptions);
+        await writeReport(dockerLaneReportPath, dockerLane);
       }
       executionCell = await runExecutionCellLease(executionCellOptions);
       break;
     case 'release':
       if (dockerLaneOptions) {
         dockerLane = await runDockerLaneHandshake(dockerLaneOptions);
+        await writeReport(dockerLaneReportPath, dockerLane);
       }
       executionCell = await runExecutionCellLease(executionCellOptions);
       break;
@@ -613,6 +620,7 @@ export async function runExecutionCellBundle(options = {}) {
       executionCell = await runExecutionCellLease({ ...executionCellOptions, action: 'inspect' });
       if (dockerLaneOptions) {
         dockerLane = await runDockerLaneHandshake({ ...dockerLaneOptions, action: 'inspect' });
+        await writeReport(dockerLaneReportPath, dockerLane);
       }
       break;
     default:

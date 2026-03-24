@@ -371,6 +371,8 @@ function buildBaseReport(action, cellId, leasePath, generatedAt, lease, extras =
       operatorAuthorizationRef: toOptionalText(lease?.request?.operatorAuthorizationRef),
       isolatedLaneGroupId: toOptionalText(lease?.host?.isolatedLaneGroupId),
       fingerprintSha256: toOptionalText(lease?.host?.fingerprintSha256),
+      linkedDockerLaneId: toOptionalText(lease?.commit?.dockerLaneId),
+      linkedDockerLaneLeaseId: toOptionalText(lease?.commit?.dockerLaneLeaseId),
       workingRoot: toOptionalText(lease?.commit?.workingRoot) || toOptionalText(lease?.request?.workingRoot),
       artifactRoot: toOptionalText(lease?.commit?.artifactRoot) || toOptionalText(lease?.request?.artifactRoot),
       isStale: stale,
@@ -383,6 +385,69 @@ function buildBaseReport(action, cellId, leasePath, generatedAt, lease, extras =
     },
     ...extras
   };
+}
+
+function resolveDockerLaneLinkContext(report) {
+  if (!report || typeof report !== 'object') {
+    return null;
+  }
+  const handshake = report.handshake;
+  if (!handshake || typeof handshake !== 'object') {
+    return null;
+  }
+  return {
+    laneId: toOptionalText(report?.laneId) || toOptionalText(handshake?.laneId),
+    leaseId: toOptionalText(report?.summary?.leaseId) || toOptionalText(handshake?.grant?.leaseId),
+    holder: toOptionalText(report?.summary?.holder) || toOptionalText(handshake?.request?.agentId),
+    isolatedLaneGroupId:
+      toOptionalText(report?.summary?.isolatedLaneGroupId) || toOptionalText(handshake?.host?.isolatedLaneGroupId),
+    fingerprintSha256:
+      toOptionalText(report?.summary?.fingerprintSha256) || toOptionalText(handshake?.host?.fingerprintSha256)
+  };
+}
+
+function validateDockerLaneLink(lease, linkedDockerLane) {
+  if (!linkedDockerLane) {
+    return ['docker-lane-report-invalid'];
+  }
+
+  const reasons = [];
+  if (!linkedDockerLane.laneId) {
+    reasons.push('docker-lane-id-missing');
+  }
+  if (!linkedDockerLane.leaseId) {
+    reasons.push('docker-lane-lease-id-missing');
+  }
+  if (!linkedDockerLane.holder) {
+    reasons.push('docker-lane-holder-missing');
+  }
+  if (!linkedDockerLane.isolatedLaneGroupId || !linkedDockerLane.fingerprintSha256) {
+    reasons.push('docker-lane-host-fingerprint-missing');
+  }
+
+  const leaseHolder = toOptionalText(lease?.request?.agentId);
+  if (leaseHolder && linkedDockerLane.holder && linkedDockerLane.holder !== leaseHolder) {
+    reasons.push('docker-lane-owner-mismatch');
+  }
+
+  const leaseIsolatedLaneGroupId = toOptionalText(lease?.host?.isolatedLaneGroupId);
+  const leaseFingerprintSha256 = toOptionalText(lease?.host?.fingerprintSha256);
+  if (
+    leaseIsolatedLaneGroupId &&
+    linkedDockerLane.isolatedLaneGroupId &&
+    linkedDockerLane.isolatedLaneGroupId !== leaseIsolatedLaneGroupId
+  ) {
+    reasons.push('docker-lane-isolated-lane-group-mismatch');
+  }
+  if (
+    leaseFingerprintSha256 &&
+    linkedDockerLane.fingerprintSha256 &&
+    linkedDockerLane.fingerprintSha256 !== leaseFingerprintSha256
+  ) {
+    reasons.push('docker-lane-host-fingerprint-mismatch');
+  }
+
+  return reasons;
 }
 
 function parseArgs(argv) {
@@ -413,6 +478,8 @@ function parseArgs(argv) {
       result.workingRoot = argv[++index];
     } else if (token === '--artifact-root') {
       result.artifactRoot = argv[++index];
+    } else if (token === '--docker-lane-report-path') {
+      result.dockerLaneReportPath = argv[++index];
     } else if (token === '--lease-id') {
       result.leaseId = argv[++index];
     } else if (token === '--harness-instance-id') {
@@ -605,6 +672,27 @@ export async function runExecutionCellLease(options = {}) {
       return report;
     }
 
+    let linkedDockerLane = null;
+    if (action === 'commit' && toOptionalText(options.dockerLaneReportPath)) {
+      linkedDockerLane = resolveDockerLaneLinkContext(
+        await loadOptionalJson(path.resolve(repoRoot, options.dockerLaneReportPath))
+      );
+      const linkReasons = validateDockerLaneLink(existing, linkedDockerLane);
+      if (linkReasons.length > 0) {
+        const report = buildBaseReport(action, cellId, leasePath, generatedAt, existing, {
+          status: STATUS.mismatch,
+          policy: {
+            operatorId: operatorProfile.operatorId,
+            currency: operatorProfile.currency,
+            laborRateUsdPerHour: operatorProfile.laborRateUsdPerHour
+          }
+        });
+        report.summary.denialReasons.push(...linkReasons);
+        await writeJsonAtomic(outputPath, report);
+        return report;
+      }
+    }
+
     const lease = {
       ...existing,
       generatedAt,
@@ -616,6 +704,10 @@ export async function runExecutionCellLease(options = {}) {
         committedAt: generatedAt,
         harnessInstanceId:
           toOptionalText(options.harnessInstanceId) || toOptionalText(existing?.commit?.harnessInstanceId),
+        dockerLaneId:
+          linkedDockerLane?.laneId || toOptionalText(existing?.commit?.dockerLaneId),
+        dockerLaneLeaseId:
+          linkedDockerLane?.leaseId || toOptionalText(existing?.commit?.dockerLaneLeaseId),
         workingRoot: toOptionalText(options.workingRoot) || toOptionalText(existing?.request?.workingRoot),
         artifactRoot: toOptionalText(options.artifactRoot) || toOptionalText(existing?.request?.artifactRoot)
       }
@@ -631,6 +723,9 @@ export async function runExecutionCellLease(options = {}) {
       }
     });
     report.summary.observations.push(...hostContext.observations);
+    if (linkedDockerLane?.laneId) {
+      report.summary.observations.push('linked-docker-lane-commit');
+    }
     await writeJsonAtomic(outputPath, report);
     return report;
   }

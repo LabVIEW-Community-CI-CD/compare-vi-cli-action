@@ -79,6 +79,11 @@ durable receipt:
 
 - `node tools/npm/run-script.mjs priority:lane:execution-cell:bundle -- --action request --cell-id exec-cell-sagan-kernel-01 --lane-id docker-agent-sagan-kernel-01 --agent-id sagan --agent-class sagan --cell-class kernel-coordinator --suite-class dual-plane-parity --plane-binding dual-plane-parity --capability teststand-harness --capability docker-lane --operator-authorization-ref budget-auth://operator/session-2026-03-24`
 
+At `commit`, the execution-cell lease and Docker-lane handshake should bind to each other reciprocally through their
+child receipts. The execution-cell commit now records `dockerLaneId` plus `dockerLaneLeaseId`, and the Docker-lane
+commit records `executionCellId` plus `executionCellLeaseId`. Premium activation is not complete until both receipts
+carry those reciprocal ids for the same agent-owned host fingerprint.
+
 The resulting report is written to:
 
 - `tests/results/_agent/runtime/docker-lane-handshake.json`

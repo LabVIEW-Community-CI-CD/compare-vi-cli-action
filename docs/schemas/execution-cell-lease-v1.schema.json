@@ -295,6 +295,8 @@
       "required": [
         "committedAt",
         "harnessInstanceId",
+        "dockerLaneId",
+        "dockerLaneLeaseId",
         "workingRoot",
         "artifactRoot"
       ],
@@ -304,6 +306,18 @@
           "format": "date-time"
         },
         "harnessInstanceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dockerLaneId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dockerLaneLeaseId": {
           "type": [
             "string",
             "null"

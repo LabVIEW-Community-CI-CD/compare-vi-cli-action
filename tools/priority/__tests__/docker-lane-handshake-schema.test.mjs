@@ -88,6 +88,8 @@ test('docker lane handshake report schema validates a premium Sagan dual-lane gr
       operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-23',
       isolatedLaneGroupId: 'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
       fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      linkedExecutionCellId: null,
+      linkedExecutionCellLeaseId: null,
       isStale: false,
       ageSeconds: 0,
       ttlSeconds: 1800,

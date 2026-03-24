@@ -278,6 +278,8 @@ test('commit heartbeat and release keep the same handshake and permit active ins
     });
     assert.equal(committed.status, 'committed');
     assert.equal(committed.handshake.state, 'active');
+    assert.equal(committed.summary.linkedExecutionCellId, null);
+    assert.equal(committed.summary.linkedExecutionCellLeaseId, null);
 
     const renewed = await runDockerLaneHandshake({
       action: 'heartbeat',
@@ -319,6 +321,82 @@ test('commit heartbeat and release keep the same handshake and permit active ins
     assert.equal(release.handshake.state, 'released');
     assert.equal(release.summary.handshakeState, 'released');
     assert.deepEqual(release.handshake.release.artifactPaths, ['tests/results/_agent/runtime/docker-lane-proof.json']);
+  });
+});
+
+test('commit binds docker lane to a linked execution-cell report with the same agent and host fingerprint', async () => {
+  await withTempDir('docker-lane-handshake-linked-cell', async (root) => {
+    const hostPlaneReportPath = path.join(root, 'host-plane.json');
+    const operatorCostProfilePath = path.join(root, 'operator-cost-profile.json');
+    const handshakeRoot = path.join(root, 'handshakes');
+    const executionCellReportPath = path.join(root, 'execution-cell-report.json');
+    await writeJson(hostPlaneReportPath, createHostPlaneReport());
+    await writeJson(operatorCostProfilePath, createOperatorCostProfile());
+    await writeJson(executionCellReportPath, {
+      schema: 'priority/execution-cell-lease-report@v1',
+      cellId: 'exec-cell-boyle-02',
+      lease: {
+        cellId: 'exec-cell-boyle-02',
+        host: createHostPlaneReport().host.osFingerprint,
+        request: {
+          agentId: 'boyle',
+          planeBinding: 'native-labview-2026-64',
+          harnessKind: 'teststand-compare-harness'
+        },
+        grant: { leaseId: 'exec-lease-123' }
+      },
+      summary: {
+        holder: 'boyle',
+        leaseId: 'exec-lease-123',
+        harnessKind: 'teststand-compare-harness',
+        planeBinding: 'native-labview-2026-64',
+        isolatedLaneGroupId: createHostPlaneReport().host.osFingerprint.isolatedLaneGroupId,
+        fingerprintSha256: createHostPlaneReport().host.osFingerprint.fingerprintSha256
+      }
+    });
+
+    await runDockerLaneHandshake({
+      action: 'request',
+      laneId: 'docker-agent-boyle-02',
+      agentId: 'boyle',
+      agentClass: 'subagent',
+      capabilities: [DOCKER_LANE_CAPABILITY],
+      hostPlaneReportPath,
+      operatorCostProfilePath,
+      handshakeRoot,
+      repoRoot: root,
+      now: new Date('2026-03-24T00:20:00.000Z')
+    });
+    const granted = await runDockerLaneHandshake({
+      action: 'grant',
+      laneId: 'docker-agent-boyle-02',
+      agentId: 'boyle',
+      agentClass: 'subagent',
+      hostPlaneReportPath,
+      operatorCostProfilePath,
+      handshakeRoot,
+      repoRoot: root,
+      now: new Date('2026-03-24T00:21:00.000Z')
+    });
+
+    const committed = await runDockerLaneHandshake({
+      action: 'commit',
+      laneId: 'docker-agent-boyle-02',
+      agentId: 'boyle',
+      leaseId: granted.handshake.grant.leaseId,
+      executionCellReportPath,
+      hostPlaneReportPath,
+      operatorCostProfilePath,
+      handshakeRoot,
+      repoRoot: root,
+      now: new Date('2026-03-24T00:22:00.000Z')
+    });
+
+    assert.equal(committed.status, 'committed');
+    assert.equal(committed.handshake.commit.executionCellId, 'exec-cell-boyle-02');
+    assert.equal(committed.handshake.commit.executionCellLeaseId, 'exec-lease-123');
+    assert.equal(committed.summary.linkedExecutionCellId, 'exec-cell-boyle-02');
+    assert.equal(committed.summary.linkedExecutionCellLeaseId, 'exec-lease-123');
   });
 });
 

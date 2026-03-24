@@ -277,6 +277,8 @@ function buildBaseReport(action, laneId, handshakePath, generatedAt, handshake, 
       operatorAuthorizationRef: toOptionalText(handshake?.request?.operatorAuthorizationRef),
       isolatedLaneGroupId: toOptionalText(handshake?.host?.isolatedLaneGroupId),
       fingerprintSha256: toOptionalText(handshake?.host?.fingerprintSha256),
+      linkedExecutionCellId: toOptionalText(handshake?.commit?.executionCellId),
+      linkedExecutionCellLeaseId: toOptionalText(handshake?.commit?.executionCellLeaseId),
       isStale: stale,
       ageSeconds: Number.isFinite(handshakeAgeSeconds(handshake, Date.parse(generatedAt)))
         ? Number(handshakeAgeSeconds(handshake, Date.parse(generatedAt)).toFixed(3))
@@ -287,6 +289,86 @@ function buildBaseReport(action, laneId, handshakePath, generatedAt, handshake, 
     },
     ...extras
   };
+}
+
+function isWindowsNativeExecutionCellLink(linkedExecutionCell) {
+  const harnessKind = normalizeText(linkedExecutionCell?.harnessKind);
+  const planeBinding = normalizeText(linkedExecutionCell?.planeBinding).toLowerCase();
+  if (!harnessKind || harnessKind !== 'teststand-compare-harness') {
+    return false;
+  }
+  if (!planeBinding) {
+    return true;
+  }
+  return planeBinding === 'dual-plane-parity' || planeBinding.startsWith('native-labview-');
+}
+
+function resolveExecutionCellLinkContext(report) {
+  if (!report || typeof report !== 'object') {
+    return null;
+  }
+  const lease = report.lease;
+  if (!lease || typeof lease !== 'object') {
+    return null;
+  }
+  return {
+    cellId: toOptionalText(report?.cellId) || toOptionalText(lease?.cellId),
+    leaseId: toOptionalText(report?.summary?.leaseId) || toOptionalText(lease?.grant?.leaseId),
+    holder: toOptionalText(report?.summary?.holder) || toOptionalText(lease?.request?.agentId),
+    isolatedLaneGroupId:
+      toOptionalText(report?.summary?.isolatedLaneGroupId) || toOptionalText(lease?.host?.isolatedLaneGroupId),
+    fingerprintSha256:
+      toOptionalText(report?.summary?.fingerprintSha256) || toOptionalText(lease?.host?.fingerprintSha256),
+    planeBinding: toOptionalText(report?.summary?.planeBinding) || toOptionalText(lease?.request?.planeBinding),
+    harnessKind: toOptionalText(report?.summary?.harnessKind) || toOptionalText(lease?.request?.harnessKind)
+  };
+}
+
+function validateExecutionCellLink(handshake, linkedExecutionCell) {
+  if (!linkedExecutionCell) {
+    return ['execution-cell-report-invalid'];
+  }
+
+  const reasons = [];
+  if (!linkedExecutionCell.cellId) {
+    reasons.push('execution-cell-id-missing');
+  }
+  if (!linkedExecutionCell.leaseId) {
+    reasons.push('execution-cell-lease-id-missing');
+  }
+  if (!linkedExecutionCell.holder) {
+    reasons.push('execution-cell-holder-missing');
+  }
+  if (!linkedExecutionCell.isolatedLaneGroupId || !linkedExecutionCell.fingerprintSha256) {
+    reasons.push('execution-cell-host-fingerprint-missing');
+  }
+  if (!isWindowsNativeExecutionCellLink(linkedExecutionCell)) {
+    reasons.push('execution-cell-not-windows-native-teststand');
+  }
+
+  const handshakeHolder = toOptionalText(handshake?.request?.agentId);
+  if (handshakeHolder && linkedExecutionCell.holder && linkedExecutionCell.holder !== handshakeHolder) {
+    reasons.push('execution-cell-owner-mismatch');
+  }
+
+  const handshakeIsolatedLaneGroupId = toOptionalText(handshake?.host?.isolatedLaneGroupId);
+  const handshakeFingerprintSha256 = toOptionalText(handshake?.host?.fingerprintSha256);
+  if (
+    handshakeIsolatedLaneGroupId &&
+    linkedExecutionCell.isolatedLaneGroupId &&
+    linkedExecutionCell.isolatedLaneGroupId !== handshakeIsolatedLaneGroupId
+  ) {
+    reasons.push('execution-cell-isolated-lane-group-mismatch');
+  }
+  if (
+    handshakeFingerprintSha256 &&
+    linkedExecutionCell.fingerprintSha256 &&
+    linkedExecutionCell.fingerprintSha256 !== handshakeFingerprintSha256
+  ) {
+    reasons.push('execution-cell-host-fingerprint-mismatch');
+  }
+
+  return reasons;
 }
 
 function buildRequestRecord({
@@ -351,6 +433,7 @@ function printUsage() {
   console.log(`  --ttl-seconds <n>                  Grant TTL in seconds (default: ${DEFAULT_TTL_SECONDS}).`);
   console.log('  --grantor <id>                     Grantor id recorded on grant (default: sagan-governor).');
   console.log('  --lease-id <id>                    Lease id matcher for commit/heartbeat/release.');
+  console.log('  --execution-cell-report <path>     Execution-cell report used to bind a committed Docker lane to a cell.');
   console.log('  --capability <name>                Requested capability (repeatable).');
   console.log(`  --premium-dual-lane                Shortcut for ${DOCKER_LANE_CAPABILITY} + ${NATIVE_LV32_CAPABILITY}.`);
   console.log('  --final-status <status>            Release final status (default: succeeded).');
@@ -379,6 +462,7 @@ export function parseArgs(argv = process.argv) {
     finalStatus: 'succeeded',
     artifactPaths: [],
     handshakeRoot: '',
+    executionCellReportPath: '',
     help: false
   };
 
@@ -409,6 +493,7 @@ export function parseArgs(argv = process.argv) {
       token === '--ttl-seconds' ||
       token === '--grantor' ||
       token === '--lease-id' ||
+      token === '--execution-cell-report' ||
       token === '--final-status' ||
       token === '--handshake-root'
     ) {
@@ -434,6 +519,7 @@ export function parseArgs(argv = process.argv) {
       }
       if (token === '--grantor') options.grantor = next;
       if (token === '--lease-id') options.leaseId = next;
+      if (token === '--execution-cell-report') options.executionCellReportPath = next;
       if (token === '--final-status') options.finalStatus = next;
       if (token === '--handshake-root') options.handshakeRoot = next;
       continue;
@@ -599,14 +685,41 @@ export async function runDockerLaneHandshake(options = {}) {
     if (current.state !== 'granted') {
       return withDenialReasons({ ...reportWithHost, status: STATUS.invalidState }, ['commit-requires-granted-state']);
     }
+
+    let linkedExecutionCell = null;
+    if (toOptionalText(options.executionCellReportPath)) {
+      linkedExecutionCell = resolveExecutionCellLinkContext(
+        await readJsonIfPresent(path.resolve(repoRoot, options.executionCellReportPath))
+      );
+      const linkReasons = validateExecutionCellLink(current, linkedExecutionCell);
+      if (linkReasons.length > 0) {
+        return withDenialReasons({ ...reportWithHost, status: STATUS.mismatch }, linkReasons);
+      }
+    }
+
     const next = cloneForTransition(current, options.now || new Date());
     next.state = 'active';
     next.heartbeatAt = generatedAt;
     next.commit = {
-      committedAt: generatedAt
+      committedAt: generatedAt,
+      executionCellId: linkedExecutionCell?.cellId || toOptionalText(current?.commit?.executionCellId),
+      executionCellLeaseId: linkedExecutionCell?.leaseId || toOptionalText(current?.commit?.executionCellLeaseId)
     };
     await writeJsonAtomic(handshakePath, next);
-    return buildResultReport(action, laneId, handshakePath, generatedAt, next, operatorProfile, hostObservations, STATUS.committed);
+    const report = buildResultReport(
+      action,
+      laneId,
+      handshakePath,
+      generatedAt,
+      next,
+      operatorProfile,
+      hostObservations,
+      STATUS.committed
+    );
+    if (linkedExecutionCell?.cellId) {
+      report.summary.observations.push('linked-execution-cell-commit');
+    }
+    return report;
   }
 
   if (action === 'heartbeat') {

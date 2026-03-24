@@ -164,6 +164,8 @@ test('commit and release stamp the harness instance and artifact paths', async (
     assert.equal(committed.status, 'committed');
     assert.equal(committed.lease.state, 'active');
     assert.equal(committed.lease.commit.harnessInstanceId, 'harness-epicurus-02');
+    assert.equal(committed.summary.linkedDockerLaneId, null);
+    assert.equal(committed.summary.linkedDockerLaneLeaseId, null);
 
     const released = await runExecutionCellLease({
       action: 'release',
@@ -179,6 +181,77 @@ test('commit and release stamp the harness instance and artifact paths', async (
 
     assert.equal(released.status, 'released');
     assert.equal(released.lease.release.artifactPaths[0], 'tests/results/_agent/runtime/teststand-session.json');
+  });
+});
+
+test('commit binds execution cell to a linked docker-lane report with the same agent and host fingerprint', async () => {
+  await withTempDir('execution-cell-lease-linked-docker', async (root) => {
+    const hostPlaneReportPath = path.join(root, 'host-plane.json');
+    const operatorCostProfilePath = path.join(root, 'operator-cost-profile.json');
+    const leaseRoot = path.join(root, 'leases');
+    const dockerLaneReportPath = path.join(root, 'docker-lane-report.json');
+    await writeJson(hostPlaneReportPath, createHostPlaneReport());
+    await writeJson(operatorCostProfilePath, createOperatorCostProfile());
+    await writeJson(dockerLaneReportPath, {
+      schema: 'priority/docker-lane-handshake-report@v1',
+      laneId: 'docker-agent-boyle-01',
+      handshake: {
+        laneId: 'docker-agent-boyle-01',
+        host: createHostPlaneReport().host.osFingerprint,
+        request: { agentId: 'boyle' },
+        grant: { leaseId: 'docker-lease-123' }
+      },
+      summary: {
+        holder: 'boyle',
+        leaseId: 'docker-lease-123',
+        isolatedLaneGroupId: createHostPlaneReport().host.osFingerprint.isolatedLaneGroupId,
+        fingerprintSha256: createHostPlaneReport().host.osFingerprint.fingerprintSha256
+      }
+    });
+
+    await runExecutionCellLease({
+      action: 'request',
+      cellId: 'exec-cell-boyle-01',
+      agentId: 'boyle',
+      agentClass: 'subagent',
+      cellClass: 'worker',
+      suiteClass: 'single-compare',
+      planeBinding: 'native-labview-2026-64',
+      capabilities: ['teststand-harness'],
+      hostPlaneReportPath,
+      operatorCostProfilePath,
+      leaseRoot,
+      repoRoot: root,
+      now: new Date('2026-03-24T00:10:00.000Z')
+    });
+    const granted = await runExecutionCellLease({
+      action: 'grant',
+      cellId: 'exec-cell-boyle-01',
+      hostPlaneReportPath,
+      operatorCostProfilePath,
+      leaseRoot,
+      repoRoot: root,
+      now: new Date('2026-03-24T00:11:00.000Z')
+    });
+
+    const committed = await runExecutionCellLease({
+      action: 'commit',
+      cellId: 'exec-cell-boyle-01',
+      leaseId: granted.lease.grant.leaseId,
+      harnessInstanceId: 'harness-boyle-01',
+      dockerLaneReportPath,
+      hostPlaneReportPath,
+      operatorCostProfilePath,
+      leaseRoot,
+      repoRoot: root,
+      now: new Date('2026-03-24T00:12:00.000Z')
+    });
+
+    assert.equal(committed.status, 'committed');
+    assert.equal(committed.lease.commit.dockerLaneId, 'docker-agent-boyle-01');
+    assert.equal(committed.lease.commit.dockerLaneLeaseId, 'docker-lease-123');
+    assert.equal(committed.summary.linkedDockerLaneId, 'docker-agent-boyle-01');
+    assert.equal(committed.summary.linkedDockerLaneLeaseId, 'docker-lease-123');
   });
 });
 

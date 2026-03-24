@@ -304,6 +304,16 @@ test('execution-cell bundle commits and releases both leases together', async ()
     assert.equal(committed.status, 'committed');
     assert.equal(committed.executionCell.status, 'committed');
     assert.equal(committed.dockerLane.status, 'committed');
+    assert.equal(committed.executionCell.summary.linkedDockerLaneId, 'docker-agent-epicurus-03');
+    assert.equal(
+      committed.executionCell.summary.linkedDockerLaneLeaseId,
+      committed.dockerLane.summary.leaseId
+    );
+    assert.equal(committed.dockerLane.summary.linkedExecutionCellId, 'exec-cell-epicurus-03');
+    assert.equal(
+      committed.dockerLane.summary.linkedExecutionCellLeaseId,
+      committed.executionCell.summary.leaseId
+    );
 
     const released = await runExecutionCellBundle({
       action: 'release',
