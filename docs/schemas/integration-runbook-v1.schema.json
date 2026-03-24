@@ -26,7 +26,58 @@
             ]
           },
             "status": { "type": "string", "enum": ["Passed", "Failed", "Skipped"] },
-            "details": { "type": "object" }
+            "details": {
+              "type": "object",
+              "properties": {
+                "exitCode": { "type": ["integer", "null"] },
+                "error": { "type": "string" },
+                "loopIterations": { "type": "integer", "minimum": 0 },
+                "finalStatusPath": { "type": "string" },
+                "finalStatusReadError": { "type": "string" },
+                "finalStatusMissing": { "type": "boolean" },
+                "harness": {
+                  "type": "object",
+                  "properties": {
+                    "runtimeSurface": { "const": "windows-native-teststand" },
+                    "processModelClass": {
+                      "type": "string",
+                      "enum": ["sequential-process-model", "parallel-process-model"]
+                    },
+                    "windowsOnly": { "type": "boolean" },
+                    "requestedSimultaneous": { "type": "boolean" },
+                    "cellClass": { "type": ["string", "null"] },
+                    "executionCellLeasePath": { "type": "string" },
+                    "executionCellId": { "type": "string" },
+                    "executionCellLeaseId": { "type": "string" },
+                    "harnessInstanceLeasePath": { "type": "string" },
+                    "harnessInstanceLeaseId": { "type": "string" },
+                    "harnessInstanceId": { "type": "string" }
+                  },
+                  "additionalProperties": true
+                },
+                "executionTopology": {
+                  "type": "object",
+                  "properties": {
+                    "runtimeSurface": { "const": "windows-native-teststand" },
+                    "processModelClass": {
+                      "type": "string",
+                      "enum": ["sequential-process-model", "parallel-process-model"]
+                    },
+                    "windowsOnly": { "type": "boolean" },
+                    "requestedSimultaneous": { "type": "boolean" },
+                    "cellClass": { "type": ["string", "null"] },
+                    "executionCellLeasePath": { "type": "string" },
+                    "executionCellId": { "type": "string" },
+                    "executionCellLeaseId": { "type": "string" },
+                    "harnessInstanceLeasePath": { "type": "string" },
+                    "harnessInstanceLeaseId": { "type": "string" },
+                    "harnessInstanceId": { "type": "string" }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
         },
         "additionalProperties": false
       }

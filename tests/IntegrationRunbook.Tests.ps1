@@ -11,6 +11,7 @@ Describe 'IntegrationRunbook - Phase Selection & JSON' -Tag 'Unit' {
     $global:runRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
     $global:runScript = Resolve-Path $scriptPath
     $global:schemaFile = Resolve-Path $schemaPath
+    . "$PSScriptRoot/TestHelpers.Schema.ps1"
   }
 
   It 'emits JSON with expected schema id and core properties (subset phases)' {
@@ -31,6 +32,7 @@ Describe 'IntegrationRunbook - Phase Selection & JSON' -Tag 'Unit' {
     Test-Path $tmp | Should -BeTrue
     $json = Get-Content $tmp -Raw | ConvertFrom-Json
     $json.schema | Should -Be 'integration-runbook-v1'
+    Assert-JsonShape -Path $tmp -Spec 'IntegrationRunbook' | Should -BeTrue
     $json.phases.Count | Should -Be 2
     ($json.phases | ForEach-Object name) | Should -Be @('Prereqs','ViInputs')
     $json.overallStatus | Should -Match 'Passed|Failed'
@@ -166,6 +168,7 @@ exit 0
 
     Test-Path $tmp | Should -BeTrue
     $json = Get-Content $tmp -Raw | ConvertFrom-Json
+    Assert-JsonShape -Path $tmp -Spec 'IntegrationRunbook' | Should -BeTrue
     $loopPhase = $json.phases | Where-Object name -eq 'Loop'
     $loopPhase.status | Should -Be 'Passed'
     $loopPhase.details.loopIterations | Should -Be 2
