@@ -334,6 +334,8 @@ const testStandProcessModelSchema = z.object({
 const testStandHarnessInstanceSchema = z.object({
     harnessKind: z.string().min(1),
     instanceId: z.string().min(1),
+    leaseId: z.string().min(1).nullable().optional(),
+    leasePath: z.string().min(1).nullable().optional(),
     role: z.enum(['single-plane', 'coordinator', 'plane-child']),
     processModelClass: z.enum(['sequential-process-model', 'parallel-process-model']),
     planeBinding: z.string().min(1).nullable().optional(),

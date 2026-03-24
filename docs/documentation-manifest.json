@@ -486,6 +486,8 @@
         "docs/schemas/execution-cell-lease-v1.schema.json",
         "docs/schemas/execution-cell-lease-report-v1.schema.json",
         "docs/schemas/labview-2026-host-plane-report-v1.schema.json",
+        "docs/schemas/teststand-harness-instance-lease-v1.schema.json",
+        "docs/schemas/teststand-harness-instance-lease-report-v1.schema.json",
         "tests/VIHistoryLocalAcceleration.Tests.ps1",
         "tests/TestStand-CompareHarness.Tests.ps1",
         "tools/Build-VIHistoryDevImage.ps1",
@@ -502,12 +504,15 @@
         "tools/priority/docker-lane-handshake.mjs",
         "tools/priority/execution-cell-bundle.mjs",
         "tools/priority/execution-cell-lease.mjs",
+        "tools/priority/teststand-harness-instance-lease.mjs",
         "tools/priority/__tests__/docker-lane-handshake.test.mjs",
         "tools/priority/__tests__/docker-lane-handshake-schema.test.mjs",
         "tools/priority/__tests__/execution-cell-bundle.test.mjs",
         "tools/priority/__tests__/execution-cell-bundle-schema.test.mjs",
         "tools/priority/__tests__/execution-cell-lease.test.mjs",
-        "tools/priority/__tests__/execution-cell-lease-schema.test.mjs"
+        "tools/priority/__tests__/execution-cell-lease-schema.test.mjs",
+        "tools/priority/__tests__/teststand-harness-instance-lease.test.mjs",
+        "tools/priority/__tests__/teststand-harness-instance-lease-schema.test.mjs"
       ]
     },
     {

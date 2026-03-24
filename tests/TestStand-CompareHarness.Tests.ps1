@@ -434,3 +434,169 @@ exit 0
     finally { Pop-Location }
   }
 }
+
+Describe 'TestStand-CompareHarness.ps1 (harness-instance lease)' -Tag 'Unit' {
+  It 'prefers a dedicated harness-instance lease over ad hoc instance arguments' {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $baseDir = Join-Path $TestDrive 'lease-base'
+    $headDir = Join-Path $TestDrive 'lease-head'
+    New-Item -ItemType Directory -Path $baseDir, $headDir | Out-Null
+    $baseVi = Join-Path $baseDir 'Base.vi'
+    $headVi = Join-Path $headDir 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding UTF8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding UTF8
+
+    $work = Join-Path $TestDrive 'harness-instance-lease'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    Push-Location $work
+    try {
+      New-Item -ItemType Directory -Path 'tools' | Out-Null
+      Copy-Item -LiteralPath (Join-Path $repoRoot 'tools\TestStand-CompareHarness.ps1') -Destination 'tools\TestStand-CompareHarness.ps1'
+
+      Set-Content -LiteralPath 'tools/Warmup-LabVIEWRuntime.ps1' -Encoding UTF8 -Value @"
+param([string]`$JsonLogPath)
+if (`$JsonLogPath) {
+  `$dir = Split-Path -Parent `$JsonLogPath
+  if (`$dir -and -not (Test-Path `$dir)) { New-Item -ItemType Directory -Path `$dir -Force | Out-Null }
+  '{"type":"warmup","schema":"stub"}' | Set-Content -LiteralPath `$JsonLogPath -Encoding utf8
+}
+exit 0
+"@
+
+      Set-Content -LiteralPath 'tools/Invoke-LVCompare.ps1' -Encoding UTF8 -Value @"
+param(
+  [string]`$BaseVi,
+  [string]`$HeadVi,
+  [Alias('LabVIEWPath')]
+  [string]`$LabVIEWExePath,
+  [Alias('LVCompareExePath')]
+  [string]`$LVComparePath,
+  [string]`$OutputDir,
+  [switch]`$RenderReport,
+  [string]`$JsonLogPath
+)
+if (-not (Test-Path `$OutputDir)) { New-Item -ItemType Directory -Path `$OutputDir -Force | Out-Null }
+if (`$JsonLogPath) { '{}' | Set-Content -LiteralPath `$JsonLogPath -Encoding utf8 }
+@{
+  exitCode = 0
+  seconds = 0.5
+  command = 'stub-cli'
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path `$OutputDir 'lvcompare-capture.json') -Encoding utf8
+exit 0
+"@
+
+      Set-Content -LiteralPath 'tools/Close-LVCompare.ps1' -Value "param() exit 0" -Encoding UTF8
+      Set-Content -LiteralPath 'tools/Close-LabVIEW.ps1' -Value "param() exit 0" -Encoding UTF8
+
+      $outputRoot = Join-Path $work 'results'
+      $executionCellLeasePath = Join-Path $work 'execution-cell.json'
+      $harnessLeasePath = Join-Path $work 'harness-instance.json'
+      $leaseWorkingRoot = Join-Path $work 'lease-work-active'
+      $leaseArtifactRoot = Join-Path $work 'lease-artifacts-active'
+
+      @"
+{
+  "schema": "priority/execution-cell-lease@v1",
+  "cellId": "exec-cell-mill-01",
+  "host": {
+    "isolatedLaneGroupId": "host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "fingerprintSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  },
+  "request": {
+    "agentId": "mill",
+    "agentClass": "subagent",
+    "cellClass": "worker",
+    "suiteClass": "single-compare",
+    "planeBinding": "native-labview-2026-64",
+    "harnessKind": "teststand-compare-harness",
+    "workingRoot": "__OUTPUT_ROOT__",
+    "artifactRoot": "__OUTPUT_ROOT__"
+  },
+  "grant": {
+    "leaseId": "exec-lease-mill-01",
+    "premiumSaganMode": false
+  },
+  "commit": {
+    "workingRoot": "__OUTPUT_ROOT__",
+    "artifactRoot": "__OUTPUT_ROOT__"
+  }
+}
+"@.Replace('__OUTPUT_ROOT__', $outputRoot.Replace('\', '\\')) | Set-Content -LiteralPath $executionCellLeasePath -Encoding UTF8
+
+      @"
+{
+  "schema": "priority/teststand-harness-instance-lease@v1",
+  "generatedAt": "2026-03-24T02:00:00.000Z",
+  "instanceId": "lease-harness-mill-01",
+  "resourceKind": "teststand-harness-instance",
+  "state": "active",
+  "sequence": 3,
+  "heartbeatAt": "2026-03-24T02:00:00.000Z",
+  "host": {
+    "isolatedLaneGroupId": "host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "fingerprintSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  },
+  "request": {
+    "requestId": "request-harness-01",
+    "requestedAt": "2026-03-24T01:59:00.000Z",
+    "executionCellLeasePath": "__EXECUTION_CELL_LEASE_PATH__",
+    "executionCellId": "exec-cell-mill-01",
+    "executionCellLeaseId": "exec-lease-mill-01",
+    "agentId": "mill",
+    "agentClass": "subagent",
+    "cellClass": "worker",
+    "suiteClass": "single-compare",
+    "planeBinding": "native-labview-2026-64",
+    "role": "single-plane",
+    "planeKey": null,
+    "parentInstanceId": null,
+    "harnessKind": "teststand-compare-harness",
+    "runtimeSurface": "windows-native-teststand",
+    "processModelClass": "sequential-process-model",
+    "premiumSaganMode": false,
+    "operatorAuthorizationRef": null,
+    "workingRoot": "__LEASE_WORKING_ROOT__",
+    "artifactRoot": "__LEASE_ARTIFACT_ROOT__"
+  },
+  "grant": {
+    "grantedAt": "2026-03-24T02:00:00.000Z",
+    "grantor": "teststand-harness-governor",
+    "leaseId": "harness-lease-mill-01",
+    "ttlSeconds": 1800
+  },
+  "commit": {
+    "committedAt": "2026-03-24T02:01:00.000Z",
+    "workingRoot": "__LEASE_WORKING_ROOT__",
+    "artifactRoot": "__LEASE_ARTIFACT_ROOT__"
+  },
+  "release": null
+}
+"@.Replace('__EXECUTION_CELL_LEASE_PATH__', $executionCellLeasePath.Replace('\', '\\')).Replace('__LEASE_WORKING_ROOT__', $leaseWorkingRoot.Replace('\', '\\')).Replace('__LEASE_ARTIFACT_ROOT__', $leaseArtifactRoot.Replace('\', '\\')) | Set-Content -LiteralPath $harnessLeasePath -Encoding UTF8
+
+      $harness = Join-Path $work 'tools\TestStand-CompareHarness.ps1'
+      & pwsh -NoLogo -NoProfile -File $harness `
+        -BaseVi $baseVi `
+        -HeadVi $headVi `
+        -OutputRoot $outputRoot `
+        -Warmup skip `
+        -ExecutionCellLeasePath $executionCellLeasePath `
+        -HarnessInstanceLeasePath $harnessLeasePath `
+        -HarnessInstanceId 'ignored-harness-id' *> $null
+
+      $sessionIndex = Join-Path $outputRoot 'session-index.json'
+      Test-Path -LiteralPath $sessionIndex | Should -BeTrue
+      $indexData = Get-Content -LiteralPath $sessionIndex -Raw | ConvertFrom-Json -Depth 12
+      $indexData.executionCell.cellId | Should -Be 'exec-cell-mill-01'
+      $indexData.executionCell.workingRoot | Should -Be $leaseWorkingRoot
+      $indexData.executionCell.artifactRoot | Should -Be $leaseArtifactRoot
+      $indexData.harnessInstance.instanceId | Should -Be 'lease-harness-mill-01'
+      $indexData.harnessInstance.leaseId | Should -Be 'harness-lease-mill-01'
+      $indexData.harnessInstance.leasePath | Should -Be $harnessLeasePath
+      $indexData.harnessInstance.role | Should -Be 'single-plane'
+      $indexData.harnessInstance.processModelClass | Should -Be 'sequential-process-model'
+      $indexData.processModel.rootHarnessInstanceId | Should -Be 'lease-harness-mill-01'
+      $indexData.processModel.runtimeSurface | Should -Be 'windows-native-teststand'
+    }
+    finally { Pop-Location }
+  }
+}

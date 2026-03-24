@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/teststand-harness-instance-lease-report-v1.schema.json",
+  "title": "TestStand Harness Instance Lease Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "action",
+    "status",
+    "instanceId",
+    "leasePath",
+    "lease",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/teststand-harness-instance-lease-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "request",
+        "grant",
+        "commit",
+        "heartbeat",
+        "release",
+        "inspect"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "requested",
+        "granted",
+        "committed",
+        "renewed",
+        "released",
+        "active",
+        "stale",
+        "denied",
+        "invalid-state",
+        "not-found",
+        "mismatch"
+      ]
+    },
+    "instanceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "leasePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lease": {
+      "oneOf": [
+        {
+          "$ref": "teststand-harness-instance-lease-v1.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "leaseState",
+        "leaseId",
+        "executionCellId",
+        "executionCellLeaseId",
+        "agentId",
+        "agentClass",
+        "cellClass",
+        "suiteClass",
+        "role",
+        "planeKey",
+        "parentInstanceId",
+        "harnessKind",
+        "runtimeSurface",
+        "processModelClass",
+        "premiumSaganMode",
+        "operatorAuthorizationRef",
+        "isolatedLaneGroupId",
+        "fingerprintSha256",
+        "isStale",
+        "ageSeconds",
+        "ttlSeconds",
+        "workingRoot",
+        "artifactRoot",
+        "denialReasons",
+        "observations"
+      ],
+      "properties": {
+        "leaseState": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "leaseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "executionCellId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "executionCellLeaseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agentId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agentClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cellClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suiteClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "planeKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parentInstanceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harnessKind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtimeSurface": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "processModelClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "premiumSaganMode": {
+          "type": "boolean"
+        },
+        "operatorAuthorizationRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "isolatedLaneGroupId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fingerprintSha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "isStale": {
+          "type": "boolean"
+        },
+        "ageSeconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "ttlSeconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "workingRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifactRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "denialReasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

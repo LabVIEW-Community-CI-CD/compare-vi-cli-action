@@ -102,6 +102,7 @@
     "priority:lane:docker:handshake": "node tools/priority/docker-lane-handshake.mjs",
     "priority:lane:execution-cell": "node tools/priority/execution-cell-lease.mjs",
     "priority:lane:execution-cell:bundle": "node tools/priority/execution-cell-bundle.mjs",
+    "priority:lane:teststand:harness-instance": "node tools/priority/teststand-harness-instance-lease.mjs",
     "priority:lane:concurrency:plan": "node tools/priority/concurrent-lane-plan.mjs",
     "priority:lane:concurrency:apply": "node tools/priority/concurrent-lane-apply.mjs",
     "priority:lane:concurrency:status": "node tools/priority/concurrent-lane-status.mjs",

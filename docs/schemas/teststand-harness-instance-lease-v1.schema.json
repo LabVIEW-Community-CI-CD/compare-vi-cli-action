@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/teststand-harness-instance-lease-v1.schema.json",
+  "title": "TestStand Harness Instance Lease",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "instanceId",
+    "resourceKind",
+    "state",
+    "sequence",
+    "heartbeatAt",
+    "host",
+    "request",
+    "grant",
+    "commit",
+    "release"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/teststand-harness-instance-lease@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "instanceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resourceKind": {
+      "const": "teststand-harness-instance"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "requested",
+        "granted",
+        "active",
+        "released"
+      ]
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "heartbeatAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "isolatedLaneGroupId",
+        "fingerprintSha256"
+      ],
+      "properties": {
+        "isolatedLaneGroupId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fingerprintSha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "requestedAt",
+        "executionCellLeasePath",
+        "executionCellId",
+        "executionCellLeaseId",
+        "agentId",
+        "agentClass",
+        "cellClass",
+        "suiteClass",
+        "planeBinding",
+        "role",
+        "planeKey",
+        "parentInstanceId",
+        "harnessKind",
+        "runtimeSurface",
+        "processModelClass",
+        "premiumSaganMode",
+        "operatorAuthorizationRef",
+        "workingRoot",
+        "artifactRoot"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "executionCellLeasePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "executionCellId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "executionCellLeaseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agentId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agentClass": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "sagan",
+            "subagent",
+            "other",
+            null
+          ]
+        },
+        "cellClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suiteClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "planeBinding": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "single-plane",
+            "coordinator",
+            "plane-child"
+          ]
+        },
+        "planeKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parentInstanceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harnessKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtimeSurface": {
+          "const": "windows-native-teststand"
+        },
+        "processModelClass": {
+          "type": "string",
+          "enum": [
+            "sequential-process-model",
+            "parallel-process-model"
+          ]
+        },
+        "premiumSaganMode": {
+          "type": "boolean"
+        },
+        "operatorAuthorizationRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workingRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifactRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "grant": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "grantedAt",
+        "grantor",
+        "leaseId",
+        "ttlSeconds"
+      ],
+      "properties": {
+        "grantedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "grantor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "leaseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ttlSeconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "commit": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "committedAt",
+        "workingRoot",
+        "artifactRoot"
+      ],
+      "properties": {
+        "committedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "workingRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifactRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "release": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "releasedAt",
+        "artifactPaths"
+      ],
+      "properties": {
+        "releasedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "artifactPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

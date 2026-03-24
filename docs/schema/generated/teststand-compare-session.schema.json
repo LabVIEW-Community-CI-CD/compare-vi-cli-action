@@ -445,6 +445,28 @@
                   "type": "string",
                   "minLength": 1
                 },
+                "leaseId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "leasePath": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "role": {
                   "type": "string",
                   "enum": [
