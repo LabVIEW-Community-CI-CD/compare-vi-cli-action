@@ -58,10 +58,21 @@ test('github-comment-budget-hook report and policy validate against checked-in s
               operatorLaborUsd: 4,
               operatorLaborMissingTurnCount: 0,
               blendedTotalUsd: 5.5,
-              estimatedPrepaidUsdRemaining: 398.5
+              estimatedPrepaidUsdRemaining: 398.5,
+              accountBalanceTotalCredits: 28750,
+              accountBalanceUsedCredits: 24600,
+              accountBalanceRemainingCredits: 4150
             },
             provenance: {
               operatorProfiles: [{ operatorProfilePath: 'tools/policy/operator-cost-profile.json' }],
+              invoiceTurn: {
+                unitPriceUsd: 0.04
+              },
+              accountBalance: {
+                sourceKind: 'operator-account-state',
+                sourcePathEvidence: 'operator-account-state.json',
+                operatorNote: 'Latest operator-provided balance snapshot.'
+              },
               invoiceTurns: []
             }
           },

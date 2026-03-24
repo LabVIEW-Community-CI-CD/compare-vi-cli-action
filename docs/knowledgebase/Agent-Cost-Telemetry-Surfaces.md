@@ -286,7 +286,10 @@ The hook projects:
 - observed operator-equivalent labor
 - observed blended lower-bound spend
 - operator budget cap / remaining lower bound
-- operational invoice-turn remainder
+- operator budget spendable status
+- active invoice-turn remainder
+- whole-account remaining USD estimate from the latest credit snapshot
+- operational headroom after protected reserve
 - reserved calibration funding window state
 - live/background/total turn counts
 
@@ -295,6 +298,11 @@ consuming it. The current intent is:
 
 - operational invoice turn may spend
 - calibration invoice turn remains on hold
+
+When operator labor timing is incomplete, the hook still records the lower-bound
+cap math but marks spendable operator remaining as unreconciled. That prevents
+the comment trail from implying the full configured operator cap is immediately
+safe to spend.
 
 Use the wrappers by default so GitHub issue and PR comments pick up the durable
 budget hook automatically. Pass `-SkipBudgetHook` only for narrow test or

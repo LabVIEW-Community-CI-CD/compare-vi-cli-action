@@ -157,23 +157,24 @@ function chooseTargetRepository(repo, rollup) {
 
 function summarizeBillingWindow(rollup) {
   const billingWindow = rollup?.billingWindow;
+  const invoiceTurn = rollup?.summary?.provenance?.invoiceTurn;
   if (!billingWindow || typeof billingWindow !== 'object') {
     return null;
   }
-  const prepaidUsd = toNonNegativeNumber(billingWindow.prepaidUsd);
+  const prepaidUsd = toNonNegativeNumber(billingWindow.prepaidUsd) ?? toNonNegativeNumber(invoiceTurn?.prepaidUsd);
   const tokenSpendUsd = toNonNegativeNumber(rollup?.summary?.metrics?.totalUsd) ?? 0;
   const remainingUsd =
     toNonNegativeNumber(rollup?.summary?.metrics?.estimatedPrepaidUsdRemaining) ??
     (prepaidUsd != null ? roundUsd(prepaidUsd - tokenSpendUsd) : null);
   return {
-    invoiceTurnId: asOptional(billingWindow.invoiceTurnId),
-    invoiceId: asOptional(billingWindow.invoiceId),
-    fundingPurpose: asOptional(billingWindow.fundingPurpose),
-    activationState: asOptional(billingWindow.activationState),
+    invoiceTurnId: asOptional(billingWindow.invoiceTurnId) ?? asOptional(invoiceTurn?.invoiceTurnId),
+    invoiceId: asOptional(billingWindow.invoiceId) ?? asOptional(invoiceTurn?.invoiceId),
+    fundingPurpose: asOptional(billingWindow.fundingPurpose) ?? asOptional(invoiceTurn?.fundingPurpose),
+    activationState: asOptional(billingWindow.activationState) ?? asOptional(invoiceTurn?.activationState),
     prepaidUsd,
     tokenSpendUsd,
     remainingUsd,
-    pricingBasis: asOptional(billingWindow.pricingBasis),
+    pricingBasis: asOptional(billingWindow.pricingBasis) ?? asOptional(invoiceTurn?.pricingBasis),
     selectionMode: asOptional(billingWindow?.selection?.mode),
     selectionReason: asOptional(billingWindow?.selection?.reason)
   };
@@ -209,6 +210,64 @@ function summarizeReservedFundingWindows(rollup, policy, billingWindowInvoiceTur
   };
 }
 
+function summarizeAccountBalance(rollup) {
+  const metrics = rollup?.summary?.metrics ?? {};
+  const accountBalance = rollup?.summary?.provenance?.accountBalance ?? {};
+  const totalCredits = toNonNegativeNumber(metrics.accountBalanceTotalCredits ?? accountBalance?.totalCredits);
+  const usedCredits = toNonNegativeNumber(metrics.accountBalanceUsedCredits ?? accountBalance?.usedCredits);
+  const remainingCredits = toNonNegativeNumber(metrics.accountBalanceRemainingCredits ?? accountBalance?.remainingCredits);
+  const unitPriceUsd =
+    toNonNegativeNumber(rollup?.summary?.provenance?.invoiceTurn?.unitPriceUsd) ??
+    toNonNegativeNumber(rollup?.billingWindow?.credits?.unitPriceUsd);
+  const remainingUsdEstimate =
+    remainingCredits != null && unitPriceUsd != null
+      ? roundUsd(remainingCredits * unitPriceUsd)
+      : null;
+
+  if (totalCredits == null && usedCredits == null && remainingCredits == null && remainingUsdEstimate == null) {
+    return null;
+  }
+
+  return {
+    totalCredits,
+    usedCredits,
+    remainingCredits,
+    unitPriceUsd,
+    remainingUsdEstimate,
+    sourceKind: asOptional(accountBalance?.sourceKind),
+    sourcePathEvidence: asOptional(accountBalance?.sourcePathEvidence),
+    operatorNote: asOptional(accountBalance?.operatorNote)
+  };
+}
+
+function summarizeOperationalHeadroom(accountBalance, reservedFunding) {
+  const reservedUsd = toNonNegativeNumber(reservedFunding?.totalReservedUsd) ?? 0;
+  const accountRemainingUsdEstimate = toNonNegativeNumber(accountBalance?.remainingUsdEstimate);
+  if (accountRemainingUsdEstimate == null) {
+    return {
+      accountRemainingUsdEstimate: null,
+      operationalHeadroomUsd: null,
+      status: 'unknown',
+      basis: 'missing-account-balance'
+    };
+  }
+
+  const operationalHeadroomUsd = roundUsd(Math.max(accountRemainingUsdEstimate - reservedUsd, 0)) ?? 0;
+  const status =
+    operationalHeadroomUsd <= 0
+      ? 'reserve-protected-only'
+      : operationalHeadroomUsd <= 100
+        ? 'reserve-near'
+        : 'healthy';
+
+  return {
+    accountRemainingUsdEstimate,
+    operationalHeadroomUsd,
+    status,
+    basis: 'account-balance-minus-reserve'
+  };
+}
+
 function buildJsonHookPayload(report) {
   return {
     schema: report.schema,
@@ -224,7 +283,14 @@ function buildJsonHookPayload(report) {
     operatorBudgetCapUsd: report.summary.operatorBudgetCapUsd,
     operatorBudgetRemainingLowerBoundUsd: report.summary.operatorBudgetRemainingLowerBoundUsd,
     operatorBudgetRemainingStatus: report.summary.operatorBudgetRemainingStatus,
+    operatorBudgetSpendableUsd: report.summary.operatorBudgetSpendableUsd,
+    operatorBudgetSpendableStatus: report.summary.operatorBudgetSpendableStatus,
+    accountRemainingUsdEstimate: report.summary.accountRemainingUsdEstimate,
+    operationalHeadroomUsd: report.summary.operationalHeadroomUsd,
+    operationalHeadroomStatus: report.summary.operationalHeadroomStatus,
+    budgetPressureState: report.summary.budgetPressureState,
     billingWindow: report.funding.billingWindow,
+    accountBalance: report.funding.accountBalance,
     reservedFunding: report.funding.reservedFunding,
     turns: report.turns,
     source: report.source,
@@ -244,20 +310,29 @@ function buildMarkdown(report) {
     lines.push(`_Budget hook_: unavailable (${blockerCodes || '`unknown-blocker`'}). Receipt: \`${report.source.outputPath ?? 'none'}\`.`);
   } else {
     const billingWindow = report.funding.billingWindow;
+    const accountBalance = report.funding.accountBalance;
     const reservedFunding = report.funding.reservedFunding;
     const operatorBudgetText = report.summary.operatorBudgetCapUsd == null
       ? 'operator cap unknown'
-      : `operator ${formatUsd(report.summary.operatorLaborObservedUsd)} of ${formatUsd(report.summary.operatorBudgetCapUsd)} cap (remaining ${report.summary.operatorBudgetRemainingStatus === 'lower-bound' ? '>=' : ''}${formatUsd(report.summary.operatorBudgetRemainingLowerBoundUsd)})`;
+      : report.summary.operatorBudgetSpendableStatus === 'observed'
+        ? `operator ${formatUsd(report.summary.operatorLaborObservedUsd)} of ${formatUsd(report.summary.operatorBudgetCapUsd)} cap (spendable remaining ${formatUsd(report.summary.operatorBudgetSpendableUsd)})`
+        : `operator ${formatUsd(report.summary.operatorLaborObservedUsd)} of ${formatUsd(report.summary.operatorBudgetCapUsd)} cap (spendable remaining unreconciled; lower bound ${report.summary.operatorBudgetRemainingStatus === 'lower-bound' ? '>=' : ''}${formatUsd(report.summary.operatorBudgetRemainingLowerBoundUsd)})`;
     const billingWindowText = billingWindow?.invoiceTurnId
       ? `window \`${billingWindow.invoiceTurnId}\` spent ${formatUsd(billingWindow.tokenSpendUsd)} remaining ${formatUsd(billingWindow.remainingUsd)}`
       : 'window unavailable';
+    const accountText = accountBalance?.remainingUsdEstimate != null
+      ? `account est ${formatUsd(accountBalance.remainingUsdEstimate)} remaining from ${accountBalance.remainingCredits} credits @ ${formatUsd(accountBalance.unitPriceUsd)} per credit`
+      : 'account headroom unavailable';
+    const headroomText = report.summary.operationalHeadroomUsd != null
+      ? `operational headroom ${formatUsd(report.summary.operationalHeadroomUsd)} (${report.summary.operationalHeadroomStatus})`
+      : `operational headroom unavailable (${report.summary.operationalHeadroomStatus})`;
     const reserveText = reservedFunding.count > 0
       ? `; calibration reserve ${formatUsd(reservedFunding.totalReservedUsd)} across ${reservedFunding.count} held window(s)`
       : '';
     const timingText = report.summary.operatorLaborMissingTurnCount > 0
       ? `; ${report.summary.operatorLaborMissingTurnCount} turn(s) still pending labor timing`
       : '';
-    lines.push(`_Budget hook_: blended lower bound ${formatUsd(report.summary.observedBlendedLowerBoundUsd)}; ${operatorBudgetText}; ${billingWindowText}; turns ${report.turns.totalTurns} total (${report.turns.liveTurnCount} live, ${report.turns.backgroundTurnCount} background)${timingText}${reserveText}. Receipt: \`${report.source.outputPath}\`.`);
+    lines.push(`_Budget hook_: blended lower bound ${formatUsd(report.summary.observedBlendedLowerBoundUsd)}; ${operatorBudgetText}; ${billingWindowText}; ${accountText}; ${headroomText}; pressure ${report.summary.budgetPressureState}; turns ${report.turns.totalTurns} total (${report.turns.liveTurnCount} live, ${report.turns.backgroundTurnCount} background)${timingText}${reserveText}. Receipt: \`${report.source.outputPath}\`.`);
   }
 
   lines.push(COMMENT_HOOK_END_MARKER, '');
@@ -301,18 +376,43 @@ export function buildGitHubCommentBudgetHookReport({ rollup, repository, targetK
   const operatorLaborMissingTurnCount = Number(metrics.operatorLaborMissingTurnCount ?? 0) || 0;
   const observedBlendedLowerBoundUsd = roundUsd(tokenSpendUsd + operatorLaborObservedUsd) ?? 0;
   const knownBlendedUsd = toNonNegativeNumber(metrics.blendedTotalUsd);
+  const accountBalance = summarizeAccountBalance(rollup);
+  const operationalHeadroom = summarizeOperationalHeadroom(accountBalance, reservedFunding);
   const operatorBudgetRemainingLowerBoundUsd =
     operatorBudgetCapUsd == null ? null : roundUsd(Math.max(0, operatorBudgetCapUsd - operatorLaborObservedUsd));
   const operatorBudgetRemainingStatus =
     operatorBudgetCapUsd == null ? 'unknown' : operatorLaborMissingTurnCount > 0 ? 'lower-bound' : 'observed';
+  const operatorBudgetSpendableStatus =
+    operatorBudgetCapUsd == null ? 'unknown' : operatorLaborMissingTurnCount > 0 ? 'unreconciled' : 'observed';
+  const operatorBudgetSpendableUsd =
+    operatorBudgetSpendableStatus === 'observed' ? operatorBudgetRemainingLowerBoundUsd : null;
 
   const blocking = Array.isArray(blockers) ? blockers.filter(Boolean) : [];
-  const status = blocking.length > 0 ? 'blocked' : operatorLaborMissingTurnCount > 0 ? 'warn' : 'pass';
+  const budgetPressureState =
+    blocking.length > 0
+      ? 'blocked'
+      : operationalHeadroom.status === 'reserve-protected-only'
+        ? 'stop-nonessential-spend'
+        : operationalHeadroom.status === 'reserve-near'
+          ? 'tight'
+          : operationalHeadroom.status === 'unknown' || operatorBudgetSpendableStatus !== 'observed'
+            ? 'cautious'
+            : 'healthy';
+  const status =
+    blocking.length > 0
+      ? 'blocked'
+      : budgetPressureState === 'healthy'
+        ? 'pass'
+        : 'warn';
   const recommendation =
     status === 'blocked'
       ? 'repair-comment-budget-hook-inputs'
+      : budgetPressureState === 'stop-nonessential-spend'
+        ? 'protect-calibration-reserve'
+        : budgetPressureState === 'tight'
+          ? 'constrain-spend'
       : operatorLaborMissingTurnCount > 0
-        ? 'continue-observing-labor-timing'
+        ? 'reconcile-operator-labor-before-assuming-headroom'
         : 'comment-budget-hook-ready';
 
   return {
@@ -333,7 +433,13 @@ export function buildGitHubCommentBudgetHookReport({ rollup, repository, targetK
       knownBlendedUsd,
       operatorBudgetCapUsd,
       operatorBudgetRemainingLowerBoundUsd,
-      operatorBudgetRemainingStatus
+      operatorBudgetRemainingStatus,
+      operatorBudgetSpendableUsd,
+      operatorBudgetSpendableStatus,
+      accountRemainingUsdEstimate: operationalHeadroom.accountRemainingUsdEstimate,
+      operationalHeadroomUsd: operationalHeadroom.operationalHeadroomUsd,
+      operationalHeadroomStatus: operationalHeadroom.status,
+      budgetPressureState
     },
     turns: {
       totalTurns: Number(metrics.totalTurns ?? 0) || 0,
@@ -342,6 +448,7 @@ export function buildGitHubCommentBudgetHookReport({ rollup, repository, targetK
     },
     funding: {
       billingWindow,
+      accountBalance,
       reservedFunding
     },
     source,

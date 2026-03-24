@@ -41,7 +41,13 @@
         "knownBlendedUsd",
         "operatorBudgetCapUsd",
         "operatorBudgetRemainingLowerBoundUsd",
-        "operatorBudgetRemainingStatus"
+        "operatorBudgetRemainingStatus",
+        "operatorBudgetSpendableUsd",
+        "operatorBudgetSpendableStatus",
+        "accountRemainingUsdEstimate",
+        "operationalHeadroomUsd",
+        "operationalHeadroomStatus",
+        "budgetPressureState"
       ],
       "properties": {
         "status": { "type": "string", "enum": ["pass", "warn", "blocked"] },
@@ -53,7 +59,13 @@
         "knownBlendedUsd": { "type": ["number", "null"], "minimum": 0 },
         "operatorBudgetCapUsd": { "type": ["number", "null"], "minimum": 0 },
         "operatorBudgetRemainingLowerBoundUsd": { "type": ["number", "null"], "minimum": 0 },
-        "operatorBudgetRemainingStatus": { "type": "string", "enum": ["observed", "lower-bound", "unknown"] }
+        "operatorBudgetRemainingStatus": { "type": "string", "enum": ["observed", "lower-bound", "unknown"] },
+        "operatorBudgetSpendableUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetSpendableStatus": { "type": "string", "enum": ["observed", "unreconciled", "unknown"] },
+        "accountRemainingUsdEstimate": { "type": ["number", "null"], "minimum": 0 },
+        "operationalHeadroomUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operationalHeadroomStatus": { "type": "string", "enum": ["healthy", "reserve-near", "reserve-protected-only", "unknown"] },
+        "budgetPressureState": { "type": "string", "enum": ["healthy", "cautious", "tight", "stop-nonessential-spend", "blocked"] }
       }
     },
     "turns": {
@@ -69,7 +81,7 @@
     "funding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["billingWindow", "reservedFunding"],
+      "required": ["billingWindow", "accountBalance", "reservedFunding"],
       "properties": {
         "billingWindow": {
           "type": ["object", "null"],
@@ -86,6 +98,21 @@
             "pricingBasis": { "type": ["string", "null"] },
             "selectionMode": { "type": ["string", "null"] },
             "selectionReason": { "type": ["string", "null"] }
+          }
+        },
+        "accountBalance": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["totalCredits", "usedCredits", "remainingCredits", "unitPriceUsd", "remainingUsdEstimate", "sourceKind", "sourcePathEvidence", "operatorNote"],
+          "properties": {
+            "totalCredits": { "type": ["number", "null"], "minimum": 0 },
+            "usedCredits": { "type": ["number", "null"], "minimum": 0 },
+            "remainingCredits": { "type": ["number", "null"], "minimum": 0 },
+            "unitPriceUsd": { "type": ["number", "null"], "minimum": 0 },
+            "remainingUsdEstimate": { "type": ["number", "null"], "minimum": 0 },
+            "sourceKind": { "type": ["string", "null"] },
+            "sourcePathEvidence": { "type": ["string", "null"] },
+            "operatorNote": { "type": ["string", "null"] }
           }
         },
         "reservedFunding": {
