@@ -102,6 +102,17 @@ $script:JsonShapeSpecs['LoopEvent'] = [pscustomobject]@{
   }
 }
 
+$script:JsonShapeSpecs['IntegrationRunbook'] = [pscustomobject]@{
+  Required = @('schema','generated','phases','overallStatus')
+  Optional = @()
+  Types = @{
+    schema        = { param($v) $v -is [string] -and $v -eq 'integration-runbook-v1' }
+    generated     = { param($v) ($v -is [string]) -or ($v -is [datetime]) }
+    overallStatus = { param($v) $v -is [string] -and $v -match '^(Passed|Failed)$' }
+    phases        = { param($v) $v -is [object[]] }
+  }
+}
+
 function Assert-JsonShape {
   [CmdletBinding()] param(
     [Parameter(Mandatory)][string]$Path,
