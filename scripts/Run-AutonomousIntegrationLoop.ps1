@@ -371,6 +371,10 @@ if ($UseTestStandHarness) {
     output = $resolvedOutputRoot
     warmup = $warmupMode
     suiteClass = $TestStandSuiteClass
+    runtimeSurface = 'windows-native-teststand'
+    processModelClass = if ($TestStandSuiteClass -eq 'dual-plane-parity') { 'parallel-process-model' } else { 'sequential-process-model' }
+    windowsOnly = $true
+    requestedSimultaneous = ($TestStandSuiteClass -eq 'dual-plane-parity')
     renderReport = $renderReport
     closeLabVIEW = $closeLabVIEW
     closeLVCompare = $closeLVCompare
@@ -553,6 +557,9 @@ if ($UseTestStandHarness -and $harnessPlan) {
   $planPayload.harnessOutput = $harnessPlan.output
   $planPayload.harnessWarmup = $harnessPlan.warmup
   $planPayload.harnessRenderReport = $harnessPlan.renderReport
+  $planPayload.harnessRuntimeSurface = $harnessPlan.runtimeSurface
+  $planPayload.harnessProcessModelClass = $harnessPlan.processModelClass
+  $planPayload.harnessRequestedSimultaneous = $harnessPlan.requestedSimultaneous
 }
 Write-JsonEvent 'plan' $planPayload
 
@@ -569,6 +576,8 @@ if ($DryRun) {
   if ($UseTestStandHarness -and $harnessPlan) {
     $dryRunPayload.harnessPath = $harnessPlan.path
     $dryRunPayload.harnessOutput = $harnessPlan.output
+    $dryRunPayload.harnessRuntimeSurface = $harnessPlan.runtimeSurface
+    $dryRunPayload.harnessProcessModelClass = $harnessPlan.processModelClass
   }
   Write-JsonEvent 'dryRun' $dryRunPayload
   Set-LoopExit 0
@@ -599,6 +608,21 @@ if ($FinalStatusJsonPath) {
       diffSummaryEmitted = [bool]$result.DiffSummary
       basePath = $result.BasePath
       headPath = $result.HeadPath
+    }
+    if ($UseTestStandHarness -and $harnessPlan) {
+      $obj.harness = [ordered]@{
+        path = $harnessPlan.path
+        output = $harnessPlan.output
+        suiteClass = $harnessPlan.suiteClass
+        runtimeSurface = $harnessPlan.runtimeSurface
+        processModelClass = $harnessPlan.processModelClass
+        windowsOnly = $harnessPlan.windowsOnly
+        requestedSimultaneous = $harnessPlan.requestedSimultaneous
+        executionCellLeasePath = $harnessPlan.executionCellLeasePath
+        executionCellId = $harnessPlan.executionCellId
+        executionCellLeaseId = $harnessPlan.executionCellLeaseId
+        harnessInstanceId = $harnessPlan.harnessInstanceId
+      }
     }
     $json = $obj | ConvertTo-Json -Depth 5
     $finalDir = Split-Path -Parent $FinalStatusJsonPath
