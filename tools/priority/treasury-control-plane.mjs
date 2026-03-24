@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 import { runMaterializeAgentCostRollup } from './materialize-agent-cost-rollup.mjs';
 
-export const REPORT_SCHEMA = 'priority/treasury-control-plane@v1';
-export const POLICY_SCHEMA = 'priority/treasury-control-plane-policy@v1';
+export const REPORT_SCHEMA = 'priority/treasury-control-plane@v2';
+export const POLICY_SCHEMA = 'priority/treasury-control-plane-policy@v2';
 export const DEFAULT_POLICY_PATH = path.join('tools', 'policy', 'treasury-control-plane.json');
 export const DEFAULT_OUTPUT_PATH = path.join(
   'tests',
@@ -16,6 +16,14 @@ export const DEFAULT_OUTPUT_PATH = path.join(
   'cost',
   'treasury-control-plane.json'
 );
+export const TREASURY_OPERATION = Object.freeze({
+  CORE_DELIVERY: 'core-delivery',
+  QUEUE_AUTHORITY: 'queue-authority',
+  RELEASE_APPLY: 'release-apply',
+  BACKGROUND_FANOUT: 'background-fanout',
+  NON_ESSENTIAL_WORK: 'non-essential-work',
+  PREMIUM_SAGAN: 'premium-sagan'
+});
 
 function normalizeText(value) {
   if (value == null) {
@@ -48,6 +56,15 @@ function roundUsd(value) {
     return null;
   }
   return Number(parsed.toFixed(6));
+}
+
+function toTimestamp(value) {
+  const normalized = asOptional(value);
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function safeRelative(repoRoot, targetPath) {
@@ -229,6 +246,44 @@ function summarizeAccountBalance(rollup) {
   };
 }
 
+function evaluateAccountBalanceFreshness(rollup, policy, now) {
+  const accountBalance = rollup?.summary?.provenance?.accountBalance ?? {};
+  const snapshotAt = asOptional(accountBalance?.snapshotAt);
+  const snapshotTimestamp = toTimestamp(snapshotAt);
+  const maxAgeHours = toPositiveInteger(policy?.thresholds?.accountBalanceMaxAgeHours) ?? 24;
+  if (snapshotTimestamp == null) {
+    return {
+      status: 'unknown',
+      blocker: createBlocker(
+        'account-balance-snapshot-missing',
+        'Treasury requires account-balance snapshotAt evidence to enforce safe spend.',
+        asOptional(accountBalance?.sourcePathEvidence)
+      )
+    };
+  }
+
+  const ageHours = Math.max(0, (now.getTime() - snapshotTimestamp) / (60 * 60 * 1000));
+  if (ageHours > maxAgeHours) {
+    return {
+      status: 'stale',
+      ageHours: roundUsd(ageHours),
+      maxAgeHours,
+      blocker: createBlocker(
+        'account-balance-stale',
+        `Treasury requires account-balance evidence no older than ${maxAgeHours}h; current snapshot age is ${roundUsd(ageHours)}h.`,
+        asOptional(accountBalance?.sourcePathEvidence) || snapshotAt
+      )
+    };
+  }
+
+  return {
+    status: 'fresh',
+    ageHours: roundUsd(ageHours),
+    maxAgeHours,
+    blocker: null
+  };
+}
+
 function summarizeOperationalHeadroom(accountBalance, reservedFunding, policy) {
   const reservedUsd = toNonNegativeNumber(reservedFunding?.totalReservedUsd) ?? 0;
   const accountRemainingUsdEstimate = toNonNegativeNumber(accountBalance?.remainingUsdEstimate);
@@ -345,6 +400,7 @@ function deriveControls({
     && operationalHeadroomUsd >= premiumThreshold;
   const backgroundEligible =
     (budgetPressureState === 'healthy' || budgetPressureState === 'cautious')
+    && operatorBudgetSpendableStatus === 'observed'
     && operationalHeadroomUsd != null
     && operationalHeadroomUsd >= backgroundThreshold;
   const backgroundMax = !backgroundEligible
@@ -361,7 +417,10 @@ function deriveControls({
     premiumSaganMode: {
       allowed: premiumEligible,
       requiresOperatorAuthorization: true,
+      requiresExplicitOperatorPrompt: true,
       minimumOperationalHeadroomUsd: premiumThreshold,
+      estimatedFollowupAuthorizationsNeeded:
+        toPositiveInteger(policy?.limits?.premiumSaganFollowupAuthorizationsEstimate) ?? 1,
       reason: premiumEligible ? 'budget-healthy' : `budget-${budgetPressureState}`
     },
     backgroundFanout: {
@@ -375,6 +434,140 @@ function deriveControls({
       minimumOperationalHeadroomUsd: nonEssentialThreshold,
       reason: nonEssentialAllowed ? 'budget-healthy' : `budget-${budgetPressureState}`
     }
+  };
+}
+
+function deriveOperationControls({ spendPolicyState, budgetPressureState, controls }) {
+  const coreDeliveryAllowed =
+    ['healthy', 'cautious-delivery', 'core-delivery-only'].includes(spendPolicyState)
+    && budgetPressureState !== 'blocked';
+  const coreDeliveryReason = coreDeliveryAllowed
+    ? `policy-${spendPolicyState}`
+    : budgetPressureState === 'blocked'
+      ? 'treasury-blocked'
+      : `policy-${spendPolicyState}`;
+
+  return {
+    [TREASURY_OPERATION.CORE_DELIVERY]: {
+      allowed: coreDeliveryAllowed,
+      reason: coreDeliveryReason
+    },
+    [TREASURY_OPERATION.QUEUE_AUTHORITY]: {
+      allowed: coreDeliveryAllowed,
+      reason: coreDeliveryReason
+    },
+    [TREASURY_OPERATION.RELEASE_APPLY]: {
+      allowed: coreDeliveryAllowed,
+      reason: coreDeliveryReason
+    },
+    [TREASURY_OPERATION.BACKGROUND_FANOUT]: {
+      allowed: controls.backgroundFanout.allowed === true,
+      reason: controls.backgroundFanout.reason
+    },
+    [TREASURY_OPERATION.NON_ESSENTIAL_WORK]: {
+      allowed: controls.nonEssentialWork.allowed === true,
+      reason: controls.nonEssentialWork.reason
+    },
+    [TREASURY_OPERATION.PREMIUM_SAGAN]: {
+      allowed: controls.premiumSaganMode.allowed === true,
+      reason: controls.premiumSaganMode.reason,
+      requiresOperatorAuthorization: controls.premiumSaganMode.requiresOperatorAuthorization === true,
+      requiresExplicitOperatorPrompt: controls.premiumSaganMode.requiresExplicitOperatorPrompt === true,
+      estimatedFollowupAuthorizationsNeeded:
+        toPositiveInteger(controls.premiumSaganMode.estimatedFollowupAuthorizationsNeeded) ?? 1
+    }
+  };
+}
+
+function normalizeTreasuryOperation(value) {
+  const normalized = asOptional(value)?.toLowerCase();
+  return Object.values(TREASURY_OPERATION).includes(normalized) ? normalized : null;
+}
+
+function buildAuthorizationEstimate(operationControl = {}) {
+  const requiresOperatorAuthorization = operationControl.requiresOperatorAuthorization === true;
+  const requiresExplicitOperatorPrompt = operationControl.requiresExplicitOperatorPrompt === true;
+  const estimatedFollowupAuthorizationsNeeded =
+    requiresOperatorAuthorization
+      ? toPositiveInteger(operationControl.estimatedFollowupAuthorizationsNeeded) ?? 1
+      : 0;
+
+  return {
+    requiresOperatorAuthorization,
+    requiresExplicitOperatorPrompt,
+    estimatedFollowupAuthorizationsNeeded
+  };
+}
+
+export function evaluateTreasuryOperation(report, operation) {
+  const normalizedOperation = normalizeTreasuryOperation(operation);
+  if (!normalizedOperation) {
+    return {
+      allowed: false,
+      operation: operation ?? null,
+      code: 'treasury-operation-unknown',
+      reason: 'Unknown treasury operation request.',
+      operationControl: null,
+      authorization: buildAuthorizationEstimate()
+    };
+  }
+
+  if (!report || typeof report !== 'object') {
+    return {
+      allowed: false,
+      operation: normalizedOperation,
+      code: 'treasury-report-missing',
+      reason: 'Treasury control plane report is missing.',
+      operationControl: null,
+      authorization: buildAuthorizationEstimate()
+    };
+  }
+
+  if (normalizeText(report.schema) !== REPORT_SCHEMA) {
+    return {
+      allowed: false,
+      operation: normalizedOperation,
+      code: 'treasury-schema-mismatch',
+      reason: `Treasury control plane report must remain ${REPORT_SCHEMA}.`,
+      operationControl: null,
+      authorization: buildAuthorizationEstimate()
+    };
+  }
+
+  const operationControl = report?.controls?.operations?.[normalizedOperation];
+  const authorization = buildAuthorizationEstimate(operationControl);
+  if (!operationControl || typeof operationControl !== 'object') {
+    return {
+      allowed: false,
+      operation: normalizedOperation,
+      code: 'treasury-operation-missing',
+      reason: `Treasury control plane did not publish an operation control for ${normalizedOperation}.`,
+      operationControl: null,
+      authorization
+    };
+  }
+
+  if (operationControl.allowed !== true) {
+    return {
+      allowed: false,
+      operation: normalizedOperation,
+      code: 'treasury-operation-denied',
+      reason:
+        operationControl.reason
+          ? `Treasury denied ${normalizedOperation}: ${operationControl.reason}.`
+          : `Treasury denied ${normalizedOperation}.`,
+      operationControl,
+      authorization
+    };
+  }
+
+  return {
+    allowed: true,
+    operation: normalizedOperation,
+    code: 'treasury-operation-allowed',
+    reason: operationControl.reason || 'treasury-allowed',
+    operationControl,
+    authorization
   };
 }
 
@@ -460,7 +653,12 @@ export function buildTreasuryControlPlaneReport({
     operatorBudgetSpendableStatus: operatorBudget.operatorBudgetSpendableStatus,
     policy
   });
-  const safeSpendableUsd = operationalHeadroom.operationalHeadroomUsd;
+  const operationControls = deriveOperationControls({
+    spendPolicyState,
+    budgetPressureState,
+    controls
+  });
+  const safeSpendableUsd = Array.isArray(blockers) && blockers.length > 0 ? 0 : operationalHeadroom.operationalHeadroomUsd;
   const possibleSpendableUpperBoundUsd = operationalHeadroom.possibleOperationalHeadroomUpperBoundUsd;
   const protectedReserveUsd = toNonNegativeNumber(reservedFunding?.totalReservedUsd) ?? 0;
 
@@ -493,7 +691,13 @@ export function buildTreasuryControlPlaneReport({
       operatorBudgetRemainingStatus: operatorBudget.operatorBudgetRemainingStatus,
       operatorBudgetSpendableUsd: operatorBudget.operatorBudgetSpendableUsd,
       operatorBudgetSpendableStatus: operatorBudget.operatorBudgetSpendableStatus,
+      coreDeliveryAllowed: operationControls[TREASURY_OPERATION.CORE_DELIVERY].allowed,
+      queueAuthorityAllowed: operationControls[TREASURY_OPERATION.QUEUE_AUTHORITY].allowed,
+      releaseApplyAllowed: operationControls[TREASURY_OPERATION.RELEASE_APPLY].allowed,
       premiumSaganAllowed: controls.premiumSaganMode.allowed,
+      premiumAuthorizationPromptRequired: controls.premiumSaganMode.requiresExplicitOperatorPrompt === true,
+      premiumAuthorizationFollowupEstimate:
+        toPositiveInteger(controls.premiumSaganMode.estimatedFollowupAuthorizationsNeeded) ?? 1,
       backgroundFanoutAllowed: controls.backgroundFanout.allowed,
       maxBackgroundSubagents: controls.backgroundFanout.maximumConcurrentSubagents,
       nonEssentialWorkAllowed: controls.nonEssentialWork.allowed,
@@ -509,7 +713,10 @@ export function buildTreasuryControlPlaneReport({
       accountBalance,
       reservedFunding
     },
-    controls,
+    controls: {
+      ...controls,
+      operations: operationControls
+    },
     source,
     blockers: Array.isArray(blockers) ? blockers.filter(Boolean) : []
   };
@@ -576,6 +783,13 @@ export function runTreasuryControlPlane(
     }
   }
 
+  if (rollup && typeof rollup === 'object') {
+    const accountBalanceFreshness = evaluateAccountBalanceFreshness(rollup, policy, now);
+    if (accountBalanceFreshness.blocker) {
+      blockers.push(accountBalanceFreshness.blocker);
+    }
+  }
+
   const billingWindow = summarizeBillingWindow(rollup);
   const reservedFunding = summarizeReservedFundingWindows(rollup, policy, billingWindow?.invoiceTurnId ?? null);
   const repository = chooseTargetRepository(options.repo, rollup);
@@ -607,6 +821,47 @@ export function runTreasuryControlPlane(
   return {
     report,
     outputPath
+  };
+}
+
+export function runTreasuryOperationGuard(
+  options,
+  {
+    runTreasuryControlPlaneFn = runTreasuryControlPlane
+  } = {}
+) {
+  const repoRoot = path.resolve(options?.repoRoot || process.cwd());
+  let report = null;
+  let outputPath = null;
+  let decision = null;
+
+  try {
+    const treasuryResult = runTreasuryControlPlaneFn({
+      repoRoot,
+      repo: options?.repo,
+      policyPath: options?.policyPath,
+      costRollupPath: options?.costRollupPath,
+      outputPath: options?.outputPath,
+      materialize: options?.materialize
+    });
+    report = treasuryResult?.report ?? null;
+    outputPath = treasuryResult?.outputPath ?? null;
+    decision = evaluateTreasuryOperation(report, options?.operation);
+  } catch (error) {
+    decision = {
+      allowed: false,
+      operation: normalizeTreasuryOperation(options?.operation),
+      code: 'treasury-control-plane-unavailable',
+      reason: error?.message || String(error),
+      operationControl: null,
+      authorization: buildAuthorizationEstimate()
+    };
+  }
+
+  return {
+    report,
+    outputPath,
+    decision
   };
 }
 

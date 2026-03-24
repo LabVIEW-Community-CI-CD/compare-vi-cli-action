@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_POLICY_PATH as DEFAULT_TREASURY_POLICY_PATH, TREASURY_OPERATION, runTreasuryOperationGuard } from './treasury-control-plane.mjs';
 
 export const REPORT_SCHEMA = 'release/release-conductor-report@v1';
 export const DEFAULT_REPORT_PATH = path.join('tests', 'results', '_agent', 'release', 'release-conductor-report.json');
@@ -664,6 +665,7 @@ export async function runReleaseConductor(options = {}) {
   const readJsonOptionalFn = options.readJsonOptionalFn ?? readJsonOptional;
   const writeReportFn = options.writeReportFn ?? writeReport;
   const environment = options.environment ?? process.env;
+  const runTreasuryOperationGuardFn = options.runTreasuryOperationGuardFn ?? runTreasuryOperationGuard;
 
   const repository = resolveRepositorySlug(repoRoot, args.repo, environment);
   const queueReportEnvelope = await readJsonOptionalFn(path.resolve(repoRoot, args.queueReportPath));
@@ -692,6 +694,23 @@ export async function runReleaseConductor(options = {}) {
   const applyRequested = Boolean(args.apply && !args.dryRun);
   const blockers = [];
   const advisories = [];
+  const treasuryPolicyPath = path.resolve(repoRoot, DEFAULT_TREASURY_POLICY_PATH);
+  const shouldRunTreasuryGuard =
+    applyRequested && (options.enforceTreasuryGuard === true || typeof options.runTreasuryOperationGuardFn === 'function');
+  if (shouldRunTreasuryGuard) {
+    const treasuryGuard = runTreasuryOperationGuardFn({
+      repoRoot,
+      repo: repository,
+      policyPath: treasuryPolicyPath,
+      operation: TREASURY_OPERATION.RELEASE_APPLY
+    });
+    if (treasuryGuard?.decision?.allowed !== true) {
+      blockers.push({
+        code: 'treasury-release-apply-denied',
+        message: treasuryGuard?.decision?.reason || 'Treasury denied release apply.'
+      });
+    }
+  }
   if (fetchErrors.length > 0) {
     blockers.push({
       code: 'workflow-fetch-failed',
@@ -1052,7 +1071,10 @@ export async function main(argv = process.argv) {
     return 0;
   }
 
-  const { report, reportPath, exitCode } = await runReleaseConductor({ args });
+  const { report, reportPath, exitCode } = await runReleaseConductor({
+    args,
+    enforceTreasuryGuard: true
+  });
   console.log(
     `[release-conductor] report: ${reportPath} status=${report.decision.status} blockers=${report.decision.blockerCount} advisories=${report.decision.advisoryCount}`
   );

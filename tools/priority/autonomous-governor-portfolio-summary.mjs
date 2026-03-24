@@ -390,7 +390,14 @@ function deriveTreasury(compareGovernorSummary) {
       operatorBudgetObservedRemainingStatus:
         asOptional(treasury.operatorBudgetObservedRemainingStatus) || 'unknown',
       operatorBudgetSpendableStatus: asOptional(treasury.operatorBudgetSpendableStatus) || 'unknown',
+      coreDeliveryAllowed: treasury.coreDeliveryAllowed === true,
+      queueAuthorityAllowed: treasury.queueAuthorityAllowed === true,
+      releaseApplyAllowed: treasury.releaseApplyAllowed === true,
       premiumSaganAllowed: treasury.premiumSaganAllowed === true,
+      premiumAuthorizationPromptRequired: treasury.premiumAuthorizationPromptRequired === true,
+      premiumAuthorizationFollowupEstimate: Number.isInteger(treasury.premiumAuthorizationFollowupEstimate)
+        ? treasury.premiumAuthorizationFollowupEstimate
+        : 0,
       backgroundFanoutAllowed: treasury.backgroundFanoutAllowed === true,
       maxBackgroundSubagents: Number.isInteger(treasury.maxBackgroundSubagents)
         ? treasury.maxBackgroundSubagents
@@ -430,7 +437,17 @@ function deriveTreasury(compareGovernorSummary) {
       asOptional(compareGovernorSummary?.summary?.treasuryOperatorBudgetObservedRemainingStatus) || 'unknown',
     operatorBudgetSpendableStatus:
       asOptional(compareGovernorSummary?.summary?.treasuryOperatorBudgetSpendableStatus) || 'unknown',
+    coreDeliveryAllowed: compareGovernorSummary?.summary?.treasuryCoreDeliveryAllowed === true,
+    queueAuthorityAllowed: compareGovernorSummary?.summary?.treasuryQueueAuthorityAllowed === true,
+    releaseApplyAllowed: compareGovernorSummary?.summary?.treasuryReleaseApplyAllowed === true,
     premiumSaganAllowed: compareGovernorSummary?.summary?.treasuryPremiumSaganAllowed === true,
+    premiumAuthorizationPromptRequired:
+      compareGovernorSummary?.summary?.treasuryPremiumAuthorizationPromptRequired === true,
+    premiumAuthorizationFollowupEstimate: Number.isInteger(
+      compareGovernorSummary?.summary?.treasuryPremiumAuthorizationFollowupEstimate
+    )
+      ? compareGovernorSummary.summary.treasuryPremiumAuthorizationFollowupEstimate
+      : 0,
     backgroundFanoutAllowed: compareGovernorSummary?.summary?.treasuryBackgroundFanoutAllowed === true,
     maxBackgroundSubagents: Number.isInteger(compareGovernorSummary?.summary?.treasuryMaxBackgroundSubagents)
       ? compareGovernorSummary.summary.treasuryMaxBackgroundSubagents
@@ -661,7 +678,12 @@ function buildReport({
       treasuryOperatorBudgetObservedRemainingUpperBoundUsd: treasury.operatorBudgetObservedRemainingUpperBoundUsd,
       treasuryOperatorBudgetObservedRemainingStatus: treasury.operatorBudgetObservedRemainingStatus,
       treasuryOperatorBudgetSpendableStatus: treasury.operatorBudgetSpendableStatus,
+      treasuryCoreDeliveryAllowed: treasury.coreDeliveryAllowed,
+      treasuryQueueAuthorityAllowed: treasury.queueAuthorityAllowed,
+      treasuryReleaseApplyAllowed: treasury.releaseApplyAllowed,
       treasuryPremiumSaganAllowed: treasury.premiumSaganAllowed,
+      treasuryPremiumAuthorizationPromptRequired: treasury.premiumAuthorizationPromptRequired,
+      treasuryPremiumAuthorizationFollowupEstimate: treasury.premiumAuthorizationFollowupEstimate,
       treasuryBackgroundFanoutAllowed: treasury.backgroundFanoutAllowed,
       treasuryMaxBackgroundSubagents: treasury.maxBackgroundSubagents,
       treasuryNonEssentialWorkAllowed: treasury.nonEssentialWorkAllowed
@@ -727,7 +749,12 @@ function buildReport({
       treasuryOperatorBudgetObservedRemainingUpperBoundUsd: treasury.operatorBudgetObservedRemainingUpperBoundUsd,
       treasuryOperatorBudgetObservedRemainingStatus: treasury.operatorBudgetObservedRemainingStatus,
       treasuryOperatorBudgetSpendableStatus: treasury.operatorBudgetSpendableStatus,
+      treasuryCoreDeliveryAllowed: treasury.coreDeliveryAllowed,
+      treasuryQueueAuthorityAllowed: treasury.queueAuthorityAllowed,
+      treasuryReleaseApplyAllowed: treasury.releaseApplyAllowed,
       treasuryPremiumSaganAllowed: treasury.premiumSaganAllowed,
+      treasuryPremiumAuthorizationPromptRequired: treasury.premiumAuthorizationPromptRequired,
+      treasuryPremiumAuthorizationFollowupEstimate: treasury.premiumAuthorizationFollowupEstimate,
       treasuryBackgroundFanoutAllowed: treasury.backgroundFanoutAllowed,
       treasuryMaxBackgroundSubagents: treasury.maxBackgroundSubagents,
       treasuryNonEssentialWorkAllowed: treasury.nonEssentialWorkAllowed,

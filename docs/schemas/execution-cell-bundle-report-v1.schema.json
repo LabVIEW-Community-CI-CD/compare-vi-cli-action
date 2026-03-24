@@ -154,8 +154,14 @@
         "windowsNativeTestStand",
         "effectiveBillableRateMultiplier",
         "effectiveBillableRateUsdPerHour",
+        "premiumSaganRequested",
         "premiumSaganMode",
+        "operatorAuthorizationRequired",
+        "operatorAuthorizationPromptRequired",
+        "estimatedFollowupAuthorizationsNeeded",
         "operatorAuthorizationRef",
+        "treasuryDecisionCode",
+        "treasuryControlPlanePath",
         "isolatedLaneGroupId",
         "fingerprintSha256",
         "capabilities",
@@ -267,10 +273,35 @@
           ],
           "minimum": 0
         },
+        "premiumSaganRequested": {
+          "type": "boolean"
+        },
         "premiumSaganMode": {
           "type": "boolean"
         },
+        "operatorAuthorizationRequired": {
+          "type": "boolean"
+        },
+        "operatorAuthorizationPromptRequired": {
+          "type": "boolean"
+        },
+        "estimatedFollowupAuthorizationsNeeded": {
+          "type": "integer",
+          "minimum": 0
+        },
         "operatorAuthorizationRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "treasuryDecisionCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "treasuryControlPlanePath": {
           "type": [
             "string",
             "null"

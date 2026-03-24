@@ -100,7 +100,7 @@ test('autonomous governor summary report matches schema', async () => {
     }
   });
   writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'cost', 'treasury-control-plane.json'), {
-    schema: 'priority/treasury-control-plane@v1',
+    schema: 'priority/treasury-control-plane@v2',
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     summary: {
       status: 'warn',
@@ -127,7 +127,12 @@ test('autonomous governor summary report matches schema', async () => {
       operatorBudgetRemainingStatus: 'unknown',
       operatorBudgetSpendableUsd: null,
       operatorBudgetSpendableStatus: 'unreconciled',
+      coreDeliveryAllowed: true,
+      queueAuthorityAllowed: true,
+      releaseApplyAllowed: true,
       premiumSaganAllowed: false,
+      premiumAuthorizationPromptRequired: true,
+      premiumAuthorizationFollowupEstimate: 1,
       backgroundFanoutAllowed: false,
       maxBackgroundSubagents: 0,
       nonEssentialWorkAllowed: false,
@@ -180,6 +185,8 @@ test('autonomous governor summary report matches schema', async () => {
       premiumSaganMode: {
         allowed: false,
         requiresOperatorAuthorization: true,
+        requiresExplicitOperatorPrompt: true,
+        estimatedFollowupAuthorizationsNeeded: 1,
         minimumOperationalHeadroomUsd: 150,
         reason: 'budget-tight'
       },
@@ -193,6 +200,20 @@ test('autonomous governor summary report matches schema', async () => {
         allowed: false,
         minimumOperationalHeadroomUsd: 100,
         reason: 'budget-tight'
+      },
+      operations: {
+        'core-delivery': { allowed: true, reason: 'policy-core-delivery-only' },
+        'queue-authority': { allowed: true, reason: 'policy-core-delivery-only' },
+        'release-apply': { allowed: true, reason: 'policy-core-delivery-only' },
+        'background-fanout': { allowed: false, reason: 'budget-tight' },
+        'non-essential-work': { allowed: false, reason: 'budget-tight' },
+        'premium-sagan': {
+          allowed: false,
+          reason: 'budget-tight',
+          requiresOperatorAuthorization: true,
+          requiresExplicitOperatorPrompt: true,
+          estimatedFollowupAuthorizationsNeeded: 1
+        }
       }
     },
     source: {

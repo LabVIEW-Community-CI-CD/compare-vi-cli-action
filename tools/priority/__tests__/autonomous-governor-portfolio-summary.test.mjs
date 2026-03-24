@@ -57,7 +57,12 @@ function createCompareGovernorSummary(overrides = {}) {
         operatorBudgetObservedRemainingUpperBoundUsd: 49970,
         operatorBudgetObservedRemainingStatus: 'upper-bound',
         operatorBudgetSpendableStatus: 'unreconciled',
+        coreDeliveryAllowed: true,
+        queueAuthorityAllowed: true,
+        releaseApplyAllowed: true,
         premiumSaganAllowed: false,
+        premiumAuthorizationPromptRequired: true,
+        premiumAuthorizationFollowupEstimate: 1,
         backgroundFanoutAllowed: false,
         maxBackgroundSubagents: 0,
         nonEssentialWorkAllowed: false
@@ -208,7 +213,12 @@ function createCompareGovernorSummary(overrides = {}) {
       treasuryOperatorBudgetObservedRemainingUpperBoundUsd: 49970,
       treasuryOperatorBudgetObservedRemainingStatus: 'upper-bound',
       treasuryOperatorBudgetSpendableStatus: 'unreconciled',
+      treasuryCoreDeliveryAllowed: true,
+      treasuryQueueAuthorityAllowed: true,
+      treasuryReleaseApplyAllowed: true,
       treasuryPremiumSaganAllowed: false,
+      treasuryPremiumAuthorizationPromptRequired: true,
+      treasuryPremiumAuthorizationFollowupEstimate: 1,
       treasuryBackgroundFanoutAllowed: false,
       treasuryMaxBackgroundSubagents: 0,
       treasuryNonEssentialWorkAllowed: false,
@@ -465,6 +475,11 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.compare.treasury.safeSpendableUsd, 66);
   assert.equal(report.compare.treasury.operatorBudgetObservedRemainingUpperBoundUsd, 49970);
   assert.equal(report.compare.treasury.operatorBudgetSpendableStatus, 'unreconciled');
+  assert.equal(report.compare.treasury.coreDeliveryAllowed, true);
+  assert.equal(report.compare.treasury.queueAuthorityAllowed, true);
+  assert.equal(report.compare.treasury.releaseApplyAllowed, true);
+  assert.equal(report.compare.treasury.premiumAuthorizationPromptRequired, true);
+  assert.equal(report.compare.treasury.premiumAuthorizationFollowupEstimate, 1);
   assert.equal(report.summary.treasuryStatus, 'warn');
   assert.equal(report.summary.treasuryConfidence, 'lower-bound-only');
   assert.equal(report.summary.treasurySpendPolicyState, 'core-delivery-only');
@@ -478,6 +493,8 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.summary.treasuryOperatorBudgetObservedRemainingStatus, 'upper-bound');
   assert.equal(report.summary.treasuryOperatorBudgetSpendableStatus, 'unreconciled');
   assert.equal(report.summary.treasuryPremiumSaganAllowed, false);
+  assert.equal(report.summary.treasuryPremiumAuthorizationPromptRequired, true);
+  assert.equal(report.summary.treasuryPremiumAuthorizationFollowupEstimate, 1);
   assert.equal(report.summary.treasuryBackgroundFanoutAllowed, false);
   assert.equal(report.summary.treasuryMaxBackgroundSubagents, 0);
   assert.equal(report.summary.treasuryNonEssentialWorkAllowed, false);

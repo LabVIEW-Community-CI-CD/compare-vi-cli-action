@@ -112,7 +112,12 @@ test('execution-cell bundle grants coordinated worker cell and docker lane at or
     assert.equal(granted.executionCell.status, 'granted');
     assert.equal(granted.dockerLane.status, 'granted');
     assert.equal(granted.summary.effectiveBillableRateUsdPerHour, 250);
+    assert.equal(granted.summary.premiumSaganRequested, false);
     assert.equal(granted.summary.premiumSaganMode, false);
+    assert.equal(granted.summary.operatorAuthorizationRequired, false);
+    assert.equal(granted.summary.operatorAuthorizationPromptRequired, false);
+    assert.equal(granted.summary.estimatedFollowupAuthorizationsNeeded, 0);
+    assert.equal(granted.summary.treasuryDecisionCode, null);
     assert.equal(granted.summary.windowsNativeTestStand, true);
     assert.equal(granted.summary.reciprocalLinkReady, false);
   });
@@ -172,13 +177,110 @@ test('execution-cell bundle infers premium Sagan dual-lane mode for dual-plane p
     assert.equal(granted.status, 'granted');
     assert.equal(granted.executionCell.status, 'granted');
     assert.equal(granted.dockerLane.status, 'granted');
+    assert.equal(granted.summary.premiumSaganRequested, true);
     assert.equal(granted.summary.premiumSaganMode, true);
+    assert.equal(granted.summary.operatorAuthorizationRequired, true);
+    assert.equal(granted.summary.operatorAuthorizationPromptRequired, true);
+    assert.equal(granted.summary.estimatedFollowupAuthorizationsNeeded, 1);
     assert.equal(granted.summary.effectiveBillableRateUsdPerHour, 375);
     assert.equal(granted.summary.reciprocalLinkReady, false);
     assert.deepEqual(
       granted.summary.capabilities.sort(),
       ['docker-lane', 'native-labview-2026-32', 'teststand-harness'].sort()
     );
+  });
+});
+
+test('execution-cell bundle fails closed when treasury denies premium Sagan mode', async () => {
+  await withTempDir('execution-cell-bundle-premium-treasury-denied', async (root) => {
+    const hostPlaneReportPath = path.join(root, 'host-plane.json');
+    const operatorCostProfilePath = path.join(root, 'operator-cost-profile.json');
+    await writeJson(hostPlaneReportPath, createHostPlaneReport());
+    await writeJson(operatorCostProfilePath, createOperatorCostProfile());
+
+    const denied = await runExecutionCellBundle({
+      action: 'request',
+      cellId: 'exec-cell-sagan-kernel-03',
+      laneId: 'docker-agent-sagan-kernel-03',
+      agentId: 'sagan',
+      agentClass: 'sagan',
+      cellClass: 'kernel-coordinator',
+      suiteClass: 'dual-plane-parity',
+      planeBinding: 'dual-plane-parity',
+      harnessKind: 'teststand-compare-harness',
+      capabilities: ['teststand-harness', 'docker-lane'],
+      operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
+      repoRoot: root,
+      runTreasuryOperationGuardFn: () => ({
+        outputPath: path.join(root, 'tests', 'results', '_agent', 'cost', 'treasury-control-plane.json'),
+        decision: {
+          allowed: false,
+          code: 'treasury-operation-denied',
+          reason: 'Treasury denied premium-sagan: budget-tight.',
+          authorization: {
+            requiresOperatorAuthorization: true,
+            requiresExplicitOperatorPrompt: true,
+            estimatedFollowupAuthorizationsNeeded: 2
+          }
+        }
+      })
+    });
+
+    assert.equal(denied.status, 'denied');
+    assert.equal(denied.executionCell, null);
+    assert.equal(denied.dockerLane, null);
+    assert.equal(denied.summary.premiumSaganRequested, true);
+    assert.equal(denied.summary.premiumSaganMode, false);
+    assert.equal(denied.summary.operatorAuthorizationRequired, true);
+    assert.equal(denied.summary.operatorAuthorizationPromptRequired, true);
+    assert.equal(denied.summary.estimatedFollowupAuthorizationsNeeded, 2);
+    assert.equal(denied.summary.treasuryDecisionCode, 'treasury-operation-denied');
+    assert.match(denied.summary.treasuryControlPlanePath, /treasury-control-plane\.json$/);
+    assert.match(denied.summary.denialReasons.join('\n'), /treasury-operation-denied/);
+  });
+});
+
+test('execution-cell bundle surfaces an explicit operator authorization prompt when premium mode lacks authorization', async () => {
+  await withTempDir('execution-cell-bundle-premium-auth-required', async (root) => {
+    const hostPlaneReportPath = path.join(root, 'host-plane.json');
+    const operatorCostProfilePath = path.join(root, 'operator-cost-profile.json');
+    await writeJson(hostPlaneReportPath, createHostPlaneReport());
+    await writeJson(operatorCostProfilePath, createOperatorCostProfile());
+
+    const denied = await runExecutionCellBundle({
+      action: 'request',
+      cellId: 'exec-cell-sagan-kernel-04',
+      laneId: 'docker-agent-sagan-kernel-04',
+      agentId: 'sagan',
+      agentClass: 'sagan',
+      cellClass: 'kernel-coordinator',
+      suiteClass: 'dual-plane-parity',
+      planeBinding: 'dual-plane-parity',
+      harnessKind: 'teststand-compare-harness',
+      capabilities: ['teststand-harness', 'docker-lane'],
+      repoRoot: root,
+      runTreasuryOperationGuardFn: () => ({
+        outputPath: path.join(root, 'tests', 'results', '_agent', 'cost', 'treasury-control-plane.json'),
+        decision: {
+          allowed: true,
+          code: 'treasury-operation-allowed',
+          reason: 'budget-healthy',
+          authorization: {
+            requiresOperatorAuthorization: true,
+            requiresExplicitOperatorPrompt: true,
+            estimatedFollowupAuthorizationsNeeded: 1
+          }
+        }
+      })
+    });
+
+    assert.equal(denied.status, 'denied');
+    assert.equal(denied.summary.premiumSaganRequested, true);
+    assert.equal(denied.summary.operatorAuthorizationRequired, true);
+    assert.equal(denied.summary.operatorAuthorizationPromptRequired, true);
+    assert.equal(denied.summary.estimatedFollowupAuthorizationsNeeded, 1);
+    assert.match(denied.summary.denialReasons.join('\n'), /operator-authorization-required/);
+    assert.match(denied.summary.observations.join('\n'), /premium-operator-prompt-required/);
   });
 });
 

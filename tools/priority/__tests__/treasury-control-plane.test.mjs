@@ -4,7 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { runTreasuryControlPlane } from '../treasury-control-plane.mjs';
+import {
+  TREASURY_OPERATION,
+  evaluateTreasuryOperation,
+  runTreasuryControlPlane,
+  runTreasuryOperationGuard
+} from '../treasury-control-plane.mjs';
 
 function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -39,6 +44,7 @@ function createRollupFixture({ operatorLaborMissingTurnCount = 1 } = {}) {
           unitPriceUsd: 0.04
         },
         accountBalance: {
+          snapshotAt: '2026-03-24T08:00:00.000Z',
           sourceKind: 'operator-account-state',
           sourcePathEvidence: 'operator-account-state.json',
           operatorNote: 'Latest operator-provided balance snapshot.'
@@ -85,7 +91,7 @@ test('runTreasuryControlPlane produces a governed lower-bound treasury state whe
 
   const policyPath = path.join(repoRoot, 'tools', 'policy', 'treasury-control-plane.json');
   writeJson(policyPath, {
-    schema: 'priority/treasury-control-plane-policy@v1',
+    schema: 'priority/treasury-control-plane-policy@v2',
     costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
     materializationPolicyPath: 'tools/policy/agent-cost-rollup-materialization.json',
     materializationReportPath: 'tests/results/_agent/cost/agent-cost-rollup-materialization.json',
@@ -95,6 +101,7 @@ test('runTreasuryControlPlane produces a governed lower-bound treasury state whe
     reservedFundingPurposes: ['calibration'],
     reservedActivationStates: ['hold'],
     thresholds: {
+      accountBalanceMaxAgeHours: 24,
       reserveNearOperationalHeadroomUsd: 100,
       healthyOperationalHeadroomUsd: 250,
       premiumSaganMinimumOperationalHeadroomUsd: 150,
@@ -103,7 +110,8 @@ test('runTreasuryControlPlane produces a governed lower-bound treasury state whe
     },
     limits: {
       healthyBackgroundSubagentsMax: 2,
-      cautiousBackgroundSubagentsMax: 1
+      cautiousBackgroundSubagentsMax: 1,
+      premiumSaganFollowupAuthorizationsEstimate: 1
     }
   });
 
@@ -124,6 +132,8 @@ test('runTreasuryControlPlane produces a governed lower-bound treasury state whe
           outputPath
         };
       }
+    ,
+      now: new Date('2026-03-24T12:00:00.000Z')
     }
   );
 
@@ -141,11 +151,23 @@ test('runTreasuryControlPlane produces a governed lower-bound treasury state whe
   assert.equal(result.report.summary.operatorBudgetRemainingStatus, 'unknown');
   assert.equal(result.report.summary.operatorBudgetSpendableUsd, null);
   assert.equal(result.report.summary.operatorBudgetSpendableStatus, 'unreconciled');
+  assert.equal(result.report.summary.coreDeliveryAllowed, true);
+  assert.equal(result.report.summary.queueAuthorityAllowed, true);
+  assert.equal(result.report.summary.releaseApplyAllowed, true);
   assert.equal(result.report.summary.premiumSaganAllowed, false);
+  assert.equal(result.report.summary.premiumAuthorizationPromptRequired, true);
+  assert.equal(result.report.summary.premiumAuthorizationFollowupEstimate, 1);
   assert.equal(result.report.summary.backgroundFanoutAllowed, false);
   assert.equal(result.report.summary.maxBackgroundSubagents, 0);
   assert.equal(result.report.summary.nonEssentialWorkAllowed, false);
   assert.equal(result.report.controls.premiumSaganMode.requiresOperatorAuthorization, true);
+  assert.equal(result.report.controls.premiumSaganMode.requiresExplicitOperatorPrompt, true);
+  assert.equal(result.report.controls.operations['core-delivery'].allowed, true);
+  assert.equal(result.report.controls.operations['queue-authority'].allowed, true);
+  assert.equal(result.report.controls.operations['release-apply'].allowed, true);
+  assert.equal(result.report.controls.operations['background-fanout'].allowed, false);
+  assert.equal(result.report.controls.operations['non-essential-work'].allowed, false);
+  assert.equal(result.report.controls.operations['premium-sagan'].allowed, false);
   assert.equal(result.report.funding.reservedFunding.totalReservedUsd, 100);
 });
 
@@ -156,7 +178,7 @@ test('runTreasuryControlPlane allows healthier expansion only when operator timi
 
   const policyPath = path.join(repoRoot, 'tools', 'policy', 'treasury-control-plane.json');
   writeJson(policyPath, {
-    schema: 'priority/treasury-control-plane-policy@v1',
+    schema: 'priority/treasury-control-plane-policy@v2',
     costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
     materializationPolicyPath: 'tools/policy/agent-cost-rollup-materialization.json',
     materializationReportPath: 'tests/results/_agent/cost/agent-cost-rollup-materialization.json',
@@ -166,6 +188,7 @@ test('runTreasuryControlPlane allows healthier expansion only when operator timi
     reservedFundingPurposes: ['calibration'],
     reservedActivationStates: ['hold'],
     thresholds: {
+      accountBalanceMaxAgeHours: 24,
       reserveNearOperationalHeadroomUsd: 100,
       healthyOperationalHeadroomUsd: 250,
       premiumSaganMinimumOperationalHeadroomUsd: 150,
@@ -174,7 +197,8 @@ test('runTreasuryControlPlane allows healthier expansion only when operator timi
     },
     limits: {
       healthyBackgroundSubagentsMax: 2,
-      cautiousBackgroundSubagentsMax: 1
+      cautiousBackgroundSubagentsMax: 1,
+      premiumSaganFollowupAuthorizationsEstimate: 1
     }
   });
 
@@ -197,6 +221,8 @@ test('runTreasuryControlPlane allows healthier expansion only when operator timi
           outputPath
         };
       }
+    ,
+      now: new Date('2026-03-24T12:00:00.000Z')
     }
   );
 
@@ -214,4 +240,177 @@ test('runTreasuryControlPlane allows healthier expansion only when operator timi
   assert.equal(result.report.summary.backgroundFanoutAllowed, true);
   assert.equal(result.report.summary.maxBackgroundSubagents, 2);
   assert.equal(result.report.summary.nonEssentialWorkAllowed, true);
+});
+
+test('runTreasuryOperationGuard allows core delivery but denies premium and fanout under tight lower-bound-only posture', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'treasury-operation-guard-'));
+  const repoRoot = path.join(tempDir, 'repo');
+  fs.mkdirSync(repoRoot, { recursive: true });
+
+  const policyPath = path.join(repoRoot, 'tools', 'policy', 'treasury-control-plane.json');
+  writeJson(policyPath, {
+    schema: 'priority/treasury-control-plane-policy@v2',
+    costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
+    materializationPolicyPath: 'tools/policy/agent-cost-rollup-materialization.json',
+    materializationReportPath: 'tests/results/_agent/cost/agent-cost-rollup-materialization.json',
+    outputPath: 'tests/results/_agent/cost/treasury-control-plane.json',
+    operatorBudgetCapUsd: 50000,
+    materializeCostRollup: true,
+    reservedFundingPurposes: ['calibration'],
+    reservedActivationStates: ['hold'],
+    thresholds: {
+      accountBalanceMaxAgeHours: 24,
+      reserveNearOperationalHeadroomUsd: 100,
+      healthyOperationalHeadroomUsd: 250,
+      premiumSaganMinimumOperationalHeadroomUsd: 150,
+      backgroundFanoutMinimumOperationalHeadroomUsd: 125,
+      nonEssentialWorkMinimumOperationalHeadroomUsd: 100
+    },
+    limits: {
+      healthyBackgroundSubagentsMax: 2,
+      cautiousBackgroundSubagentsMax: 1,
+      premiumSaganFollowupAuthorizationsEstimate: 2
+    }
+  });
+
+  const makeGuard = (operation) =>
+    runTreasuryOperationGuard(
+      {
+        repoRoot,
+        policyPath,
+        operation
+      },
+      {
+        runTreasuryControlPlaneFn: ({ repoRoot: guardRepoRoot, policyPath: guardPolicyPath }) =>
+          runTreasuryControlPlane(
+            {
+              repoRoot: guardRepoRoot,
+              policyPath: guardPolicyPath
+            },
+            {
+              runMaterializeAgentCostRollupFn: ({ costRollupPath, outputPath }) => {
+                writeJson(costRollupPath, createRollupFixture());
+                writeJson(outputPath, {
+                  schema: 'priority/agent-cost-rollup-materialization@v1',
+                  summary: { status: 'pass' }
+                });
+                return {
+                  costRollupPath,
+                  outputPath
+                };
+              }
+            ,
+              now: new Date('2026-03-24T12:00:00.000Z')
+            }
+          )
+      }
+    );
+
+  const coreDelivery = makeGuard(TREASURY_OPERATION.CORE_DELIVERY);
+  const queueAuthority = makeGuard(TREASURY_OPERATION.QUEUE_AUTHORITY);
+  const releaseApply = makeGuard(TREASURY_OPERATION.RELEASE_APPLY);
+  const backgroundFanout = makeGuard(TREASURY_OPERATION.BACKGROUND_FANOUT);
+  const premiumSagan = makeGuard(TREASURY_OPERATION.PREMIUM_SAGAN);
+
+  assert.equal(coreDelivery.decision.allowed, true);
+  assert.equal(queueAuthority.decision.allowed, true);
+  assert.equal(releaseApply.decision.allowed, true);
+  assert.equal(backgroundFanout.decision.allowed, false);
+  assert.equal(premiumSagan.decision.allowed, false);
+  assert.equal(premiumSagan.decision.authorization.requiresOperatorAuthorization, true);
+  assert.equal(premiumSagan.decision.authorization.requiresExplicitOperatorPrompt, true);
+  assert.equal(premiumSagan.decision.authorization.estimatedFollowupAuthorizationsNeeded, 2);
+});
+
+test('runTreasuryControlPlane blocks automation when account-balance evidence is stale', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'treasury-control-plane-stale-balance-'));
+  const repoRoot = path.join(tempDir, 'repo');
+  fs.mkdirSync(repoRoot, { recursive: true });
+
+  const policyPath = path.join(repoRoot, 'tools', 'policy', 'treasury-control-plane.json');
+  writeJson(policyPath, {
+    schema: 'priority/treasury-control-plane-policy@v2',
+    costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
+    materializationPolicyPath: 'tools/policy/agent-cost-rollup-materialization.json',
+    materializationReportPath: 'tests/results/_agent/cost/agent-cost-rollup-materialization.json',
+    outputPath: 'tests/results/_agent/cost/treasury-control-plane.json',
+    operatorBudgetCapUsd: 50000,
+    materializeCostRollup: true,
+    reservedFundingPurposes: ['calibration'],
+    reservedActivationStates: ['hold'],
+    thresholds: {
+      accountBalanceMaxAgeHours: 24,
+      reserveNearOperationalHeadroomUsd: 100,
+      healthyOperationalHeadroomUsd: 250,
+      premiumSaganMinimumOperationalHeadroomUsd: 150,
+      backgroundFanoutMinimumOperationalHeadroomUsd: 125,
+      nonEssentialWorkMinimumOperationalHeadroomUsd: 100
+    },
+    limits: {
+      healthyBackgroundSubagentsMax: 2,
+      cautiousBackgroundSubagentsMax: 1,
+      premiumSaganFollowupAuthorizationsEstimate: 1
+    }
+  });
+
+  const result = runTreasuryControlPlane(
+    {
+      repoRoot,
+      policyPath
+    },
+    {
+      runMaterializeAgentCostRollupFn: ({ costRollupPath, outputPath }) => {
+        const rollup = createRollupFixture();
+        rollup.summary.provenance.accountBalance.snapshotAt = '2026-03-21T12:00:00.000Z';
+        writeJson(costRollupPath, rollup);
+        writeJson(outputPath, {
+          schema: 'priority/agent-cost-rollup-materialization@v1',
+          summary: { status: 'pass' }
+        });
+        return {
+          costRollupPath,
+          outputPath
+        };
+      },
+      now: new Date('2026-03-24T16:00:00.000Z')
+    }
+  );
+
+  assert.equal(result.report.summary.status, 'blocked');
+  assert.equal(result.report.summary.recommendation, 'repair-treasury-inputs');
+  assert.equal(result.report.summary.confidence, 'blocked');
+  assert.equal(result.report.summary.safeSpendableUsd, 0);
+  assert.equal(result.report.summary.coreDeliveryAllowed, false);
+  assert.equal(result.report.summary.queueAuthorityAllowed, false);
+  assert.equal(result.report.summary.releaseApplyAllowed, false);
+  assert.match(
+    result.report.blockers.map((entry) => entry.code).join('\n'),
+    /account-balance-stale/
+  );
+});
+
+test('evaluateTreasuryOperation fails closed when only reserve funding remains', () => {
+  const report = {
+    schema: 'priority/treasury-control-plane@v2',
+    controls: {
+      operations: {
+        'core-delivery': { allowed: false, reason: 'policy-reserve-protected-only' },
+        'queue-authority': { allowed: false, reason: 'policy-reserve-protected-only' },
+        'release-apply': { allowed: false, reason: 'policy-reserve-protected-only' },
+        'background-fanout': { allowed: false, reason: 'budget-stop-nonessential-spend' },
+        'non-essential-work': { allowed: false, reason: 'budget-stop-nonessential-spend' },
+        'premium-sagan': {
+          allowed: false,
+          reason: 'budget-stop-nonessential-spend',
+          requiresOperatorAuthorization: true,
+          requiresExplicitOperatorPrompt: true,
+          estimatedFollowupAuthorizationsNeeded: 1
+        }
+      }
+    }
+  };
+
+  const decision = evaluateTreasuryOperation(report, TREASURY_OPERATION.CORE_DELIVERY);
+  assert.equal(decision.allowed, false);
+  assert.equal(decision.code, 'treasury-operation-denied');
 });

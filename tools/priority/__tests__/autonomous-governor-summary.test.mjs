@@ -104,7 +104,7 @@ function createWakeInvestmentAccounting() {
 
 function createTreasuryControlPlane(overrides = {}) {
   return {
-    schema: 'priority/treasury-control-plane@v1',
+    schema: 'priority/treasury-control-plane@v2',
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     summary: {
       status: 'warn',
@@ -131,7 +131,12 @@ function createTreasuryControlPlane(overrides = {}) {
       operatorBudgetRemainingStatus: 'unknown',
       operatorBudgetSpendableUsd: null,
       operatorBudgetSpendableStatus: 'unreconciled',
+      coreDeliveryAllowed: true,
+      queueAuthorityAllowed: true,
+      releaseApplyAllowed: true,
       premiumSaganAllowed: false,
+      premiumAuthorizationPromptRequired: true,
+      premiumAuthorizationFollowupEstimate: 1,
       backgroundFanoutAllowed: false,
       maxBackgroundSubagents: 0,
       nonEssentialWorkAllowed: false,
@@ -184,6 +189,8 @@ function createTreasuryControlPlane(overrides = {}) {
       premiumSaganMode: {
         allowed: false,
         requiresOperatorAuthorization: true,
+        requiresExplicitOperatorPrompt: true,
+        estimatedFollowupAuthorizationsNeeded: 1,
         minimumOperationalHeadroomUsd: 150,
         reason: 'budget-tight'
       },
@@ -197,6 +204,20 @@ function createTreasuryControlPlane(overrides = {}) {
         allowed: false,
         minimumOperationalHeadroomUsd: 100,
         reason: 'budget-tight'
+      },
+      operations: {
+        'core-delivery': { allowed: true, reason: 'policy-core-delivery-only' },
+        'queue-authority': { allowed: true, reason: 'policy-core-delivery-only' },
+        'release-apply': { allowed: true, reason: 'policy-core-delivery-only' },
+        'background-fanout': { allowed: false, reason: 'budget-tight' },
+        'non-essential-work': { allowed: false, reason: 'budget-tight' },
+        'premium-sagan': {
+          allowed: false,
+          reason: 'budget-tight',
+          requiresOperatorAuthorization: true,
+          requiresExplicitOperatorPrompt: true,
+          estimatedFollowupAuthorizationsNeeded: 1
+        }
       }
     },
     source: {
@@ -520,7 +541,12 @@ test('runAutonomousGovernorSummary reports compare governance work when the late
   assert.equal(report.compare.treasury.safeSpendableUsd, 66);
   assert.equal(report.compare.treasury.operatorBudgetObservedRemainingUpperBoundUsd, 49970);
   assert.equal(report.compare.treasury.operatorBudgetSpendableStatus, 'unreconciled');
+  assert.equal(report.compare.treasury.coreDeliveryAllowed, true);
+  assert.equal(report.compare.treasury.queueAuthorityAllowed, true);
+  assert.equal(report.compare.treasury.releaseApplyAllowed, true);
   assert.equal(report.compare.treasury.premiumSaganAllowed, false);
+  assert.equal(report.compare.treasury.premiumAuthorizationPromptRequired, true);
+  assert.equal(report.compare.treasury.premiumAuthorizationFollowupEstimate, 1);
   assert.equal(report.compare.treasury.backgroundFanoutAllowed, false);
   assert.equal(report.compare.treasury.maxBackgroundSubagents, 0);
   assert.equal(report.compare.treasury.nonEssentialWorkAllowed, false);
@@ -537,6 +563,8 @@ test('runAutonomousGovernorSummary reports compare governance work when the late
   assert.equal(report.summary.treasuryOperatorBudgetObservedRemainingStatus, 'upper-bound');
   assert.equal(report.summary.treasuryOperatorBudgetSpendableStatus, 'unreconciled');
   assert.equal(report.summary.treasuryPremiumSaganAllowed, false);
+  assert.equal(report.summary.treasuryPremiumAuthorizationPromptRequired, true);
+  assert.equal(report.summary.treasuryPremiumAuthorizationFollowupEstimate, 1);
   assert.equal(report.summary.treasuryBackgroundFanoutAllowed, false);
   assert.equal(report.summary.treasuryMaxBackgroundSubagents, 0);
   assert.equal(report.summary.treasuryNonEssentialWorkAllowed, false);

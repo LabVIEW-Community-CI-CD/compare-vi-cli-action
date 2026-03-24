@@ -683,7 +683,7 @@ function deriveFunding(wakeInvestmentAccounting) {
 }
 
 function deriveTreasury(treasuryControlPlaneReport) {
-  if (treasuryControlPlaneReport?.schema !== 'priority/treasury-control-plane@v1') {
+  if (treasuryControlPlaneReport?.schema !== 'priority/treasury-control-plane@v2') {
     return {
       status: 'missing',
       confidence: 'unknown',
@@ -697,7 +697,12 @@ function deriveTreasury(treasuryControlPlaneReport) {
       operatorBudgetObservedRemainingUpperBoundUsd: null,
       operatorBudgetObservedRemainingStatus: 'unknown',
       operatorBudgetSpendableStatus: 'unknown',
+      coreDeliveryAllowed: false,
+      queueAuthorityAllowed: false,
+      releaseApplyAllowed: false,
       premiumSaganAllowed: false,
+      premiumAuthorizationPromptRequired: false,
+      premiumAuthorizationFollowupEstimate: 0,
       backgroundFanoutAllowed: false,
       maxBackgroundSubagents: 0,
       nonEssentialWorkAllowed: false
@@ -737,7 +742,17 @@ function deriveTreasury(treasuryControlPlaneReport) {
       asOptional(treasuryControlPlaneReport?.summary?.operatorBudgetObservedRemainingStatus) || 'unknown',
     operatorBudgetSpendableStatus:
       asOptional(treasuryControlPlaneReport?.summary?.operatorBudgetSpendableStatus) || 'unknown',
+    coreDeliveryAllowed: parseBoolean(treasuryControlPlaneReport?.summary?.coreDeliveryAllowed),
+    queueAuthorityAllowed: parseBoolean(treasuryControlPlaneReport?.summary?.queueAuthorityAllowed),
+    releaseApplyAllowed: parseBoolean(treasuryControlPlaneReport?.summary?.releaseApplyAllowed),
     premiumSaganAllowed: parseBoolean(treasuryControlPlaneReport?.summary?.premiumSaganAllowed),
+    premiumAuthorizationPromptRequired:
+      parseBoolean(treasuryControlPlaneReport?.summary?.premiumAuthorizationPromptRequired),
+    premiumAuthorizationFollowupEstimate: Number.isInteger(
+      treasuryControlPlaneReport?.summary?.premiumAuthorizationFollowupEstimate
+    )
+      ? treasuryControlPlaneReport.summary.premiumAuthorizationFollowupEstimate
+      : 0,
     backgroundFanoutAllowed: parseBoolean(treasuryControlPlaneReport?.summary?.backgroundFanoutAllowed),
     maxBackgroundSubagents: Number.isInteger(treasuryControlPlaneReport?.summary?.maxBackgroundSubagents)
       ? treasuryControlPlaneReport.summary.maxBackgroundSubagents
@@ -1198,7 +1213,12 @@ function buildReport({
       treasuryOperatorBudgetObservedRemainingUpperBoundUsd: treasury.operatorBudgetObservedRemainingUpperBoundUsd,
       treasuryOperatorBudgetObservedRemainingStatus: treasury.operatorBudgetObservedRemainingStatus,
       treasuryOperatorBudgetSpendableStatus: treasury.operatorBudgetSpendableStatus,
+      treasuryCoreDeliveryAllowed: treasury.coreDeliveryAllowed,
+      treasuryQueueAuthorityAllowed: treasury.queueAuthorityAllowed,
+      treasuryReleaseApplyAllowed: treasury.releaseApplyAllowed,
       treasuryPremiumSaganAllowed: treasury.premiumSaganAllowed,
+      treasuryPremiumAuthorizationPromptRequired: treasury.premiumAuthorizationPromptRequired,
+      treasuryPremiumAuthorizationFollowupEstimate: treasury.premiumAuthorizationFollowupEstimate,
       treasuryBackgroundFanoutAllowed: treasury.backgroundFanoutAllowed,
       treasuryMaxBackgroundSubagents: treasury.maxBackgroundSubagents,
       treasuryNonEssentialWorkAllowed: treasury.nonEssentialWorkAllowed,
@@ -1276,7 +1296,7 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     ensureSchema(
       treasuryControlPlaneReport,
       treasuryControlPlanePath,
-      'priority/treasury-control-plane@v1'
+      'priority/treasury-control-plane@v2'
     );
   }
 

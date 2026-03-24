@@ -271,8 +271,8 @@ The budget hook is now a projection layer, not the authority.
 
 The authoritative spend-governance surface is the treasury control plane:
 
-- schema: `docs/schemas/treasury-control-plane-policy-v1.schema.json`
-- schema: `docs/schemas/treasury-control-plane-report-v1.schema.json`
+- schema: `docs/schemas/treasury-control-plane-policy-v2.schema.json`
+- schema: `docs/schemas/treasury-control-plane-report-v2.schema.json`
 - policy: `tools/policy/treasury-control-plane.json`
 - helper: `tools/priority/treasury-control-plane.mjs`
 - npm surface: `priority:cost:treasury`

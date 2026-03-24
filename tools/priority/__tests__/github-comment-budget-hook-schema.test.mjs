@@ -48,7 +48,7 @@ test('github-comment-budget-hook report and policy validate against checked-in s
     {
       runTreasuryControlPlaneFn: () => ({
         report: {
-          schema: 'priority/treasury-control-plane@v1',
+          schema: 'priority/treasury-control-plane@v2',
           repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
           summary: {
             status: 'pass',
@@ -75,7 +75,12 @@ test('github-comment-budget-hook report and policy validate against checked-in s
             operatorBudgetRemainingStatus: 'observed',
             operatorBudgetSpendableUsd: 49996,
             operatorBudgetSpendableStatus: 'observed',
+            coreDeliveryAllowed: true,
+            queueAuthorityAllowed: true,
+            releaseApplyAllowed: true,
             premiumSaganAllowed: true,
+            premiumAuthorizationPromptRequired: true,
+            premiumAuthorizationFollowupEstimate: 1,
             backgroundFanoutAllowed: true,
             maxBackgroundSubagents: 2,
             nonEssentialWorkAllowed: true,
@@ -119,6 +124,8 @@ test('github-comment-budget-hook report and policy validate against checked-in s
             premiumSaganMode: {
               allowed: true,
               requiresOperatorAuthorization: true,
+              requiresExplicitOperatorPrompt: true,
+              estimatedFollowupAuthorizationsNeeded: 1,
               minimumOperationalHeadroomUsd: 150,
               reason: 'budget-healthy'
             },
@@ -132,6 +139,20 @@ test('github-comment-budget-hook report and policy validate against checked-in s
               allowed: true,
               minimumOperationalHeadroomUsd: 100,
               reason: 'budget-healthy'
+            },
+            operations: {
+              'core-delivery': { allowed: true, reason: 'policy-healthy' },
+              'queue-authority': { allowed: true, reason: 'policy-healthy' },
+              'release-apply': { allowed: true, reason: 'policy-healthy' },
+              'background-fanout': { allowed: true, reason: 'budget-healthy' },
+              'non-essential-work': { allowed: true, reason: 'budget-healthy' },
+              'premium-sagan': {
+                allowed: true,
+                reason: 'budget-healthy',
+                requiresOperatorAuthorization: true,
+                requiresExplicitOperatorPrompt: true,
+                estimatedFollowupAuthorizationsNeeded: 1
+              }
             }
           },
           source: {

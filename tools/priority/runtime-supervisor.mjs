@@ -83,6 +83,11 @@ import {
   DEFAULT_OUTPUT_PATH as DEFAULT_MONITORING_WORK_INJECTION_PATH,
   runMonitoringWorkInjection
 } from './monitoring-work-injection.mjs';
+import {
+  DEFAULT_POLICY_PATH as DEFAULT_TREASURY_POLICY_PATH,
+  TREASURY_OPERATION,
+  runTreasuryOperationGuard
+} from './treasury-control-plane.mjs';
 
 export {
   ACTIONS,
@@ -1912,6 +1917,50 @@ async function executeCompareviTurn({
   }
 
   if (standingRepository === upstreamRepository || !Number.isInteger(mirrorOf?.number) || !normalizeText(mirrorOf?.url)) {
+    const treasuryPolicyPath = path.resolve(repoRoot, DEFAULT_TREASURY_POLICY_PATH);
+    const shouldRunTreasuryGuard =
+      typeof deps.runTreasuryOperationGuardFn === 'function' || options.enforceTreasuryGuard === true;
+    if (shouldRunTreasuryGuard) {
+      const runTreasuryOperationGuardFn = deps.runTreasuryOperationGuardFn ?? runTreasuryOperationGuard;
+      const treasuryGuard = runTreasuryOperationGuardFn({
+        repoRoot,
+        repo: repository || standingRepository,
+        policyPath: treasuryPolicyPath,
+        operation: TREASURY_OPERATION.CORE_DELIVERY
+      });
+      if (treasuryGuard?.decision?.allowed !== true) {
+        const receipt = {
+          status: 'blocked',
+          outcome: 'treasury-core-delivery-denied',
+          reason: treasuryGuard?.decision?.reason || 'Treasury denied core delivery.',
+          source: 'comparevi-runtime',
+          details: {
+            laneLifecycle: 'blocked',
+            blockerClass: 'budget',
+            actionType: 'treasury-guard',
+            retryable: true,
+            nextWakeCondition: 'treasury-reconciled',
+            treasuryOperation: TREASURY_OPERATION.CORE_DELIVERY,
+            treasuryDecisionCode: treasuryGuard?.decision?.code || 'treasury-operation-denied'
+          },
+          artifacts: {
+            treasuryControlPlanePath: treasuryGuard?.outputPath || null
+          }
+        };
+        await persistCompareviDeliveryRuntime({
+          repository: repository || standingRepository,
+          runtimeArtifactPaths,
+          schedulerDecision,
+          taskPacket,
+          executionReceipt: receipt,
+          repoRoot,
+          deps,
+          now
+        });
+        return receipt;
+      }
+    }
+
     const receipt = await invokeCanonicalDeliveryTurn({
       repoRoot,
       deps,
@@ -2100,7 +2149,13 @@ export const compareviRuntimeAdapter = createRuntimeAdapter({
   bootstrapWorker: (context) => bootstrapCompareviWorkerCheckout(context),
   activateWorker: (context) => activateCompareviWorkerLane(context),
   buildTaskPacket: (context) => buildCompareviTaskPacket(context),
-  executeTurn: (context) => executeCompareviTurn(context)
+  executeTurn: (context) => executeCompareviTurn({
+    ...context,
+    options: {
+      ...(context?.options || {}),
+      enforceTreasuryGuard: true
+    }
+  })
 });
 
 export const compareviRuntimeTest = {

@@ -117,6 +117,78 @@ test('runDeliveryTurnBroker updates a behind PR branch before waiting on review'
   assert.equal(brokerResult.details.nextWakeCondition, 'checks-green');
 });
 
+test('runDeliveryTurnBroker fails closed when treasury denies sync-pr-branch core delivery', async (t) => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-pr-sync-treasury-'));
+  t.after(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  let branchUpdateCalled = false;
+  const brokerResult = await runDeliveryTurnBroker({
+    repoRoot,
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'waiting-review',
+      objective: {
+        summary: 'Advance issue #959'
+      },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'waiting-review',
+          pullRequest: {
+            number: 1017,
+            url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1017',
+            mergeStateStatus: 'BEHIND',
+            syncRequired: true,
+            checks: {
+              blockerClass: 'ci'
+            }
+          }
+        }
+      }
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        backlogAuthority: 'issues',
+        implementationRemote: 'origin',
+        copilotReviewStrategy: 'off',
+        autoSlice: true,
+        autoMerge: true,
+        maxActiveCodingLanes: 1,
+        allowPolicyMutations: false,
+        allowReleaseAdmin: false,
+        stopWhenNoOpenEpics: true,
+        codingTurnCommand: []
+      }),
+      runTreasuryOperationGuardFn: () => ({
+        decision: {
+          allowed: false,
+          code: 'treasury-operation-denied',
+          reason: 'Treasury denied core-delivery: reserve-protected-only.',
+          authorization: {
+            requiresOperatorAuthorization: false,
+            requiresExplicitOperatorPrompt: false,
+            estimatedFollowupAuthorizationsNeeded: 0
+          }
+        }
+      }),
+      updatePullRequestBranchFn: async () => {
+        branchUpdateCalled = true;
+        return {
+          status: 'completed',
+          outcome: 'branch-updated'
+        };
+      }
+    }
+  });
+
+  assert.equal(brokerResult.status, 'blocked');
+  assert.equal(brokerResult.outcome, 'treasury-core-delivery-denied');
+  assert.equal(brokerResult.details.treasuryDecisionCode, 'treasury-operation-denied');
+  assert.equal(branchUpdateCalled, false);
+});
+
 test('runDeliveryTurnBroker refreshes queue authority during waiting-ci watch turns', async (t) => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-watch-pr-queue-refresh-'));
   t.after(async () => {

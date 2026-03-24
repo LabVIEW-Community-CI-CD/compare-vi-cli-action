@@ -19,7 +19,7 @@ function writeJson(filePath, payload) {
 
 function createTreasuryReportFixture() {
   return {
-    schema: 'priority/treasury-control-plane@v1',
+    schema: 'priority/treasury-control-plane@v2',
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     summary: {
       status: 'warn',
@@ -46,7 +46,12 @@ function createTreasuryReportFixture() {
       operatorBudgetRemainingStatus: 'unknown',
       operatorBudgetSpendableUsd: null,
       operatorBudgetSpendableStatus: 'unreconciled',
+      coreDeliveryAllowed: true,
+      queueAuthorityAllowed: true,
+      releaseApplyAllowed: true,
       premiumSaganAllowed: false,
+      premiumAuthorizationPromptRequired: true,
+      premiumAuthorizationFollowupEstimate: 1,
       backgroundFanoutAllowed: false,
       maxBackgroundSubagents: 0,
       nonEssentialWorkAllowed: false,
@@ -99,6 +104,8 @@ function createTreasuryReportFixture() {
       premiumSaganMode: {
         allowed: false,
         requiresOperatorAuthorization: true,
+        requiresExplicitOperatorPrompt: true,
+        estimatedFollowupAuthorizationsNeeded: 1,
         minimumOperationalHeadroomUsd: 150,
         reason: 'budget-tight'
       },
@@ -112,6 +119,20 @@ function createTreasuryReportFixture() {
         allowed: false,
         minimumOperationalHeadroomUsd: 100,
         reason: 'budget-tight'
+      },
+      operations: {
+        'core-delivery': { allowed: true, reason: 'policy-core-delivery-only' },
+        'queue-authority': { allowed: true, reason: 'policy-core-delivery-only' },
+        'release-apply': { allowed: true, reason: 'policy-core-delivery-only' },
+        'background-fanout': { allowed: false, reason: 'budget-tight' },
+        'non-essential-work': { allowed: false, reason: 'budget-tight' },
+        'premium-sagan': {
+          allowed: false,
+          reason: 'budget-tight',
+          requiresOperatorAuthorization: true,
+          requiresExplicitOperatorPrompt: true,
+          estimatedFollowupAuthorizationsNeeded: 1
+        }
       }
     },
     source: {
@@ -190,7 +211,12 @@ test('runGitHubCommentBudgetHook projects the treasury control plane into a dura
   assert.equal(result.report.summary.safeSpendableUsd, 66);
   assert.equal(result.report.summary.treasuryConfidence, 'lower-bound-only');
   assert.equal(result.report.summary.treasurySpendPolicyState, 'core-delivery-only');
+  assert.equal(result.report.summary.coreDeliveryAllowed, true);
+  assert.equal(result.report.summary.queueAuthorityAllowed, true);
+  assert.equal(result.report.summary.releaseApplyAllowed, true);
   assert.equal(result.report.summary.premiumSaganAllowed, false);
+  assert.equal(result.report.summary.premiumAuthorizationPromptRequired, true);
+  assert.equal(result.report.summary.premiumAuthorizationFollowupEstimate, 1);
   assert.equal(result.report.summary.backgroundFanoutAllowed, false);
   assert.equal(result.report.summary.maxBackgroundSubagents, 0);
   assert.equal(result.report.summary.nonEssentialWorkAllowed, false);
@@ -206,5 +232,7 @@ test('runGitHubCommentBudgetHook projects the treasury control plane into a dura
   assert.match(result.markdown, /observed upper bound \$49970\.000000/);
   assert.match(result.markdown, /safe spend \$66\.000000/);
   assert.match(result.markdown, /treasury core-delivery-only \(lower-bound-only\)/);
+  assert.match(result.markdown, /ops core=true queue=true release=true/);
+  assert.match(result.markdown, /premium requires explicit operator authorization \(follow-up estimate 1\)/);
   assert.match(result.markdown, /calibration reserve \$100\.000000/);
 });

@@ -299,7 +299,12 @@ function buildJsonHookPayload(report) {
     possibleSpendableUpperBoundUsd: report.summary.possibleSpendableUpperBoundUsd,
     treasuryConfidence: report.summary.treasuryConfidence,
     treasurySpendPolicyState: report.summary.treasurySpendPolicyState,
+    coreDeliveryAllowed: report.summary.coreDeliveryAllowed,
+    queueAuthorityAllowed: report.summary.queueAuthorityAllowed,
+    releaseApplyAllowed: report.summary.releaseApplyAllowed,
     premiumSaganAllowed: report.summary.premiumSaganAllowed,
+    premiumAuthorizationPromptRequired: report.summary.premiumAuthorizationPromptRequired,
+    premiumAuthorizationFollowupEstimate: report.summary.premiumAuthorizationFollowupEstimate,
     backgroundFanoutAllowed: report.summary.backgroundFanoutAllowed,
     maxBackgroundSubagents: report.summary.maxBackgroundSubagents,
     nonEssentialWorkAllowed: report.summary.nonEssentialWorkAllowed,
@@ -342,13 +347,18 @@ function buildMarkdown(report) {
       ? `operational headroom ${formatUsd(report.summary.operationalHeadroomUsd)} (${report.summary.operationalHeadroomStatus}); safe spend ${formatUsd(report.summary.safeSpendableUsd)}`
       : `operational headroom unavailable (${report.summary.operationalHeadroomStatus})`;
     const treasuryText = `treasury ${report.summary.treasurySpendPolicyState} (${report.summary.treasuryConfidence})`;
+    const treasuryOperationsText =
+      `ops core=${report.summary.coreDeliveryAllowed} queue=${report.summary.queueAuthorityAllowed} release=${report.summary.releaseApplyAllowed}`;
+    const premiumPromptText = report.summary.premiumAuthorizationPromptRequired
+      ? `; premium requires explicit operator authorization (follow-up estimate ${report.summary.premiumAuthorizationFollowupEstimate})`
+      : '';
     const reserveText = reservedFunding.count > 0
       ? `; calibration reserve ${formatUsd(reservedFunding.totalReservedUsd)} across ${reservedFunding.count} held window(s)`
       : '';
     const timingText = report.summary.operatorLaborMissingTurnCount > 0
       ? `; ${report.summary.operatorLaborMissingTurnCount} turn(s) still pending labor timing`
       : '';
-    lines.push(`_Budget hook_: blended lower bound ${formatUsd(report.summary.observedBlendedLowerBoundUsd)}; ${operatorBudgetText}; ${billingWindowText}; ${accountText}; ${headroomText}; ${treasuryText}; pressure ${report.summary.budgetPressureState}; turns ${report.turns.totalTurns} total (${report.turns.liveTurnCount} live, ${report.turns.backgroundTurnCount} background)${timingText}${reserveText}. Receipt: \`${report.source.outputPath}\`.`);
+    lines.push(`_Budget hook_: blended lower bound ${formatUsd(report.summary.observedBlendedLowerBoundUsd)}; ${operatorBudgetText}; ${billingWindowText}; ${accountText}; ${headroomText}; ${treasuryText}; ${treasuryOperationsText}; pressure ${report.summary.budgetPressureState}${premiumPromptText}; turns ${report.turns.totalTurns} total (${report.turns.liveTurnCount} live, ${report.turns.backgroundTurnCount} background)${timingText}${reserveText}. Receipt: \`${report.source.outputPath}\`.`);
   }
 
   lines.push(COMMENT_HOOK_END_MARKER, '');
@@ -434,7 +444,12 @@ export function buildGitHubCommentBudgetHookReport({ treasuryReport, repository,
       possibleSpendableUpperBoundUsd: toNonNegativeNumber(treasurySummary.possibleSpendableUpperBoundUsd),
       treasuryConfidence: asOptional(treasurySummary.confidence) || 'unknown',
       treasurySpendPolicyState: asOptional(treasurySummary.spendPolicyState) || 'blocked',
+      coreDeliveryAllowed: treasurySummary.coreDeliveryAllowed === true,
+      queueAuthorityAllowed: treasurySummary.queueAuthorityAllowed === true,
+      releaseApplyAllowed: treasurySummary.releaseApplyAllowed === true,
       premiumSaganAllowed: treasurySummary.premiumSaganAllowed === true,
+      premiumAuthorizationPromptRequired: treasurySummary.premiumAuthorizationPromptRequired === true,
+      premiumAuthorizationFollowupEstimate: Number(treasurySummary.premiumAuthorizationFollowupEstimate ?? 0) || 0,
       backgroundFanoutAllowed: treasurySummary.backgroundFanoutAllowed === true,
       maxBackgroundSubagents: Number(treasurySummary.maxBackgroundSubagents ?? 0) || 0,
       nonEssentialWorkAllowed: treasurySummary.nonEssentialWorkAllowed === true,

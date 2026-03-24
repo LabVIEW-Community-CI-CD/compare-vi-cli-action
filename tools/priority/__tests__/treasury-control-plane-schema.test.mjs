@@ -26,7 +26,7 @@ test('treasury-control-plane policy and report validate against checked-in schem
   const policyPath = path.join(repo, 'tools', 'policy', 'treasury-control-plane.json');
 
   writeJson(policyPath, {
-    schema: 'priority/treasury-control-plane-policy@v1',
+    schema: 'priority/treasury-control-plane-policy@v2',
     costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
     materializationPolicyPath: 'tools/policy/agent-cost-rollup-materialization.json',
     materializationReportPath: 'tests/results/_agent/cost/agent-cost-rollup-materialization.json',
@@ -36,6 +36,7 @@ test('treasury-control-plane policy and report validate against checked-in schem
     reservedFundingPurposes: ['calibration'],
     reservedActivationStates: ['hold'],
     thresholds: {
+      accountBalanceMaxAgeHours: 24,
       reserveNearOperationalHeadroomUsd: 100,
       healthyOperationalHeadroomUsd: 250,
       premiumSaganMinimumOperationalHeadroomUsd: 150,
@@ -44,7 +45,8 @@ test('treasury-control-plane policy and report validate against checked-in schem
     },
     limits: {
       healthyBackgroundSubagentsMax: 2,
-      cautiousBackgroundSubagentsMax: 1
+      cautiousBackgroundSubagentsMax: 1,
+      premiumSaganFollowupAuthorizationsEstimate: 1
     }
   });
 
@@ -78,6 +80,7 @@ test('treasury-control-plane policy and report validate against checked-in schem
                 unitPriceUsd: 0.04
               },
               accountBalance: {
+                snapshotAt: '2026-03-24T08:00:00.000Z',
                 sourceKind: 'operator-account-state',
                 sourcePathEvidence: 'operator-account-state.json',
                 operatorNote: 'Latest operator-provided balance snapshot.'
@@ -106,14 +109,15 @@ test('treasury-control-plane policy and report validate against checked-in schem
         });
         writeJson(outputPath, { schema: 'priority/agent-cost-rollup-materialization@v1', summary: { status: 'pass' } });
         return { costRollupPath, outputPath };
-      }
+      },
+      now: new Date('2026-03-24T12:00:00.000Z')
     }
   );
 
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   addFormats(ajv);
-  const validatePolicy = ajv.compile(readJson(path.join(repoRoot, 'docs', 'schemas', 'treasury-control-plane-policy-v1.schema.json')));
-  const validateReport = ajv.compile(readJson(path.join(repoRoot, 'docs', 'schemas', 'treasury-control-plane-report-v1.schema.json')));
+  const validatePolicy = ajv.compile(readJson(path.join(repoRoot, 'docs', 'schemas', 'treasury-control-plane-policy-v2.schema.json')));
+  const validateReport = ajv.compile(readJson(path.join(repoRoot, 'docs', 'schemas', 'treasury-control-plane-report-v2.schema.json')));
 
   assert.equal(validatePolicy(readJson(policyPath)), true, JSON.stringify(validatePolicy.errors, null, 2));
   assert.equal(validateReport(report), true, JSON.stringify(validateReport.errors, null, 2));

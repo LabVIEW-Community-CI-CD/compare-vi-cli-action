@@ -1,5 +1,5 @@
 {
-  "schema": "priority/treasury-control-plane-policy@v1",
+  "schema": "priority/treasury-control-plane-policy@v2",
   "costRollupPath": "tests/results/_agent/cost/agent-cost-rollup.json",
   "materializationPolicyPath": "tools/policy/agent-cost-rollup-materialization.json",
   "materializationReportPath": "tests/results/_agent/cost/agent-cost-rollup-materialization.json",
@@ -13,6 +13,7 @@
     "hold"
   ],
   "thresholds": {
+    "accountBalanceMaxAgeHours": 24,
     "reserveNearOperationalHeadroomUsd": 100,
     "healthyOperationalHeadroomUsd": 250,
     "premiumSaganMinimumOperationalHeadroomUsd": 150,
@@ -21,6 +22,7 @@
   },
   "limits": {
     "healthyBackgroundSubagentsMax": 2,
-    "cautiousBackgroundSubagentsMax": 1
+    "cautiousBackgroundSubagentsMax": 1,
+    "premiumSaganFollowupAuthorizationsEstimate": 1
   }
 }

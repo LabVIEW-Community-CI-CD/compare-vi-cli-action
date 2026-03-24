@@ -103,7 +103,8 @@ async function main(argv = process.argv) {
       taskPacket,
       taskPacketPath,
       repoRoot,
-      policyPath: options.policyPath
+      policyPath: options.policyPath,
+      enforceTreasuryGuard: true
     })
   );
 

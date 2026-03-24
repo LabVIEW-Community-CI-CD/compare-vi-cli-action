@@ -3703,6 +3703,81 @@ test('comparevi canonical execution delegates to the delivery broker instead of 
   assert.equal(execution.details.actionType, 'execute-coding-turn');
 });
 
+test('comparevi canonical execution fails closed when treasury denies core delivery', async () => {
+  let brokerCalled = false;
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    env: {
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-1012',
+        issue: 1012,
+        forkRemote: 'origin',
+        branch: 'issue/origin-1012-wire-canonical-delivery-broker'
+      },
+      artifacts: {
+        standingRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        standingIssueNumber: 1010,
+        laneLifecycle: 'coding',
+        selectedActionType: 'advance-child-issue'
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      objective: { summary: 'Advance issue #1012' },
+      evidence: {
+        delivery: {
+          laneLifecycle: 'coding',
+          selectedActionType: 'advance-child-issue',
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+          }
+        }
+      }
+    },
+    taskPacketArtifacts: {
+      latestPath: '/tmp/repo/tests/results/_agent/runtime/task-packet.json'
+    },
+    runtimeArtifactPaths: {
+      runtimeDir: '/tmp/repo/tests/results/_agent/runtime'
+    },
+    deps: {
+      runTreasuryOperationGuardFn: () => ({
+        outputPath: '/tmp/repo/tests/results/_agent/cost/treasury-control-plane.json',
+        decision: {
+          allowed: false,
+          code: 'treasury-operation-denied',
+          reason: 'Treasury denied core-delivery: reserve-protected-only.'
+        }
+      }),
+      invokeDeliveryTurnBrokerFn: async () => {
+        brokerCalled = true;
+        return {
+          status: 'completed',
+          outcome: 'coding-command-finished'
+        };
+      }
+    }
+  });
+
+  assert.equal(execution.status, 'blocked');
+  assert.equal(execution.outcome, 'treasury-core-delivery-denied');
+  assert.equal(execution.details.treasuryDecisionCode, 'treasury-operation-denied');
+  assert.equal(brokerCalled, false);
+});
+
 test('comparevi runtime executes repo-context pivot when queue-empty portfolio handoff targets canonical template', async () => {
   const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'comparevi-runtime-portfolio-pivot-'));
   const execution = await compareviRuntimeTest.executeCompareviTurn({

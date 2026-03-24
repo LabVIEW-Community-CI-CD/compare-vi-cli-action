@@ -2,7 +2,6 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +9,7 @@ import { parseRemoteUrl, runGhGraphql } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 import { buildQueueReadinessReport, DEFAULT_READINESS_REPORT_PATH } from './queue-readiness.mjs';
 import { hasDeferredPostMergeBranchCleanup, reconcileDeferredBranchCleanup } from './merge-sync-pr.mjs';
+import { DEFAULT_POLICY_PATH as DEFAULT_TREASURY_POLICY_PATH, TREASURY_OPERATION, runTreasuryOperationGuard } from './treasury-control-plane.mjs';
 
 const REPORT_SCHEMA = 'priority/queue-supervisor-report@v1';
 const DEFAULT_REPORT_PATH = path.join('tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json');
@@ -1587,6 +1587,7 @@ export async function runQueueSupervisor(options = {}) {
   const writeReportFn = options.writeReportFn ?? writeReport;
   const reconcileDeferredBranchCleanupFn = options.reconcileDeferredBranchCleanupFn ?? reconcileDeferredBranchCleanup;
   const runGhGraphqlFn = options.runGhGraphqlFn ?? (options.runGhJsonFn ? null : runGhGraphql);
+  const runTreasuryOperationGuardFn = options.runTreasuryOperationGuardFn ?? runTreasuryOperationGuard;
   const repository = resolveRepositorySlug(repoRoot, args.repo);
   const repositoryOwner = String(repository).split('/')[0]?.trim().toLowerCase() ?? '';
 
@@ -1915,6 +1916,27 @@ export async function runQueueSupervisor(options = {}) {
     reconcileDeferredBranchCleanupFn
   });
 
+  const treasuryPolicyPath = path.resolve(repoRoot, DEFAULT_TREASURY_POLICY_PATH);
+  const shouldRunTreasuryGuard =
+    Boolean(args.apply && !args.dryRun)
+    && (options.enforceTreasuryGuard === true || typeof options.runTreasuryOperationGuardFn === 'function');
+  if (shouldRunTreasuryGuard) {
+    const treasuryGuard = runTreasuryOperationGuardFn({
+      repoRoot,
+      repo: repository,
+      policyPath: treasuryPolicyPath,
+      operation: TREASURY_OPERATION.QUEUE_AUTHORITY
+    });
+    if (treasuryGuard?.decision?.allowed !== true) {
+      report.paused = true;
+      report.pausedReasons = [...new Set([
+        ...(Array.isArray(report.pausedReasons) ? report.pausedReasons : []),
+        'treasury-queue-authority-denied',
+        treasuryGuard?.decision?.code || 'treasury-operation-denied'
+      ])];
+    }
+  }
+
   if (report.paused || args.dryRun || !args.apply) {
     report.retryHistory = retryHistory;
     const resolvedPath = await writeReportFn(args.reportPath, report);
@@ -2050,7 +2072,10 @@ export async function main(argv = process.argv) {
     return 0;
   }
 
-  const { report, reportPath, controllerState, controllerStatePath, readinessPath } = await runQueueSupervisor({ args });
+  const { report, reportPath, controllerState, controllerStatePath, readinessPath } = await runQueueSupervisor({
+    args,
+    enforceTreasuryGuard: true
+  });
   console.log(`[queue-supervisor] report written: ${reportPath}`);
   if (controllerStatePath) {
     console.log(
