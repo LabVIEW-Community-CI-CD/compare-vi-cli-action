@@ -227,6 +227,31 @@ function createDeliveryRuntimeState(overrides = {}) {
         completionStatus: 'waiting',
         failureClass: null
       },
+      executionTopology: {
+        status: 'bundle-committed',
+        executionPlane: 'hosted',
+        providerId: 'hosted-github-workflow',
+        workerSlotId: 'worker-slot-2',
+        activeLogicalLaneCount: 2,
+        seededLogicalLaneCount: 4,
+        catalogCount: 4,
+        runtimeSurface: 'windows-native-teststand',
+        processModelClass: 'parallel-process-model',
+        windowsOnly: true,
+        requestedSimultaneous: true,
+        cellClass: 'kernel-coordinator',
+        suiteClass: 'dual-plane-parity',
+        operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
+        premiumSaganMode: true,
+        reciprocalLinkReady: true,
+        executionCellLeaseId: 'exec-lease-123',
+        dockerLaneLeaseId: 'docker-lease-456',
+        harnessKind: 'teststand-compare-harness',
+        harnessInstanceId: 'ts-harness-01',
+        cellId: 'cell-sagan-kernel',
+        laneId: 'docker-lane-01',
+        planeBinding: 'dual-plane-parity'
+      },
       concurrentLaneStatus: {
         executionBundle: {
           status: 'committed',
@@ -505,6 +530,120 @@ test('runAutonomousGovernorSummary carries queue-owned delivery runtime state in
   assert.equal(report.summary.queueHandoffNextWakeCondition, 'checks-green');
   assert.equal(report.summary.queueHandoffPrUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
   assert.equal(report.summary.queueAuthoritySource, 'delivery-runtime');
+});
+
+test('runAutonomousGovernorSummary prefers concentrated delivery execution topology over raw bundle-derived conflicts', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-execution-topology-preference-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'wake-lifecycle.json'), createWakeLifecycle());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'capital', 'wake-investment-accounting.json'),
+    createWakeInvestmentAccounting()
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      activeLane: {
+        issue: 1863,
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
+        laneLifecycle: 'waiting-ci',
+        actionType: 'merge-pr',
+        outcome: 'waiting-ci',
+        blockerClass: 'none',
+        nextWakeCondition: 'checks-green',
+        reason: 'Waiting for hosted checks to finish before merge queue advances.',
+        providerDispatch: {
+          providerId: 'hosted-github-workflow',
+          providerKind: 'hosted-github-workflow',
+          executionPlane: 'hosted',
+          assignmentMode: 'async-validation',
+          dispatchSurface: 'github-actions',
+          completionMode: 'async',
+          workerSlotId: 'worker-slot-2',
+          dispatchStatus: 'completed',
+          completionStatus: 'waiting',
+          failureClass: null
+        },
+        executionTopology: {
+          status: 'provider-waiting',
+          executionPlane: 'local',
+          providerId: 'local-codex',
+          workerSlotId: 'worker-slot-9',
+          activeLogicalLaneCount: 1,
+          seededLogicalLaneCount: 2,
+          catalogCount: 2,
+          runtimeSurface: 'windows-native-teststand',
+          processModelClass: 'sequential-process-model',
+          windowsOnly: true,
+          requestedSimultaneous: false,
+          cellClass: 'worker-cell',
+          suiteClass: 'single-plane-review',
+          operatorAuthorizationRef: 'budget-auth://operator/session-override',
+          premiumSaganMode: false,
+          reciprocalLinkReady: false,
+          executionCellLeaseId: 'exec-lease-override',
+          dockerLaneLeaseId: 'docker-lease-override',
+          harnessKind: 'teststand-compare-harness',
+          harnessInstanceId: 'ts-harness-override',
+          cellId: 'cell-worker-09',
+          laneId: 'docker-lane-09',
+          planeBinding: 'native-labview-2026-64'
+        },
+        concurrentLaneStatus: {
+          executionBundle: {
+            status: 'committed',
+            planeBinding: 'dual-plane-parity',
+            cellClass: 'kernel-coordinator',
+            suiteClass: 'dual-plane-parity',
+            harnessKind: 'teststand-compare-harness',
+            premiumSaganMode: true,
+            reciprocalLinkReady: true,
+            effectiveBillableRateUsdPerHour: 375,
+            executionCellLeaseId: 'exec-lease-123',
+            dockerLaneLeaseId: 'docker-lease-456',
+            harnessInstanceId: 'ts-harness-01',
+            operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
+            cellId: 'cell-sagan-kernel',
+            laneId: 'docker-lane-01'
+          }
+        }
+      }
+    })
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.compare.deliveryRuntime.executionTopology.status, 'provider-waiting');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.executionPlane, 'local');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.providerId, 'local-codex');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.workerSlotId, 'worker-slot-9');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.activeLogicalLaneCount, 1);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.seededLogicalLaneCount, 2);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.catalogCount, 2);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.processModelClass, 'sequential-process-model');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.requestedSimultaneous, false);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.cellClass, 'worker-cell');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.suiteClass, 'single-plane-review');
+  assert.equal(
+    report.compare.deliveryRuntime.executionTopology.operatorAuthorizationRef,
+    'budget-auth://operator/session-override'
+  );
+  assert.equal(report.compare.deliveryRuntime.executionTopology.providerDispatch.dispatchStatus, 'completed');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.executionBundle.status, 'committed');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.status, 'committed');
+  assert.equal(report.summary.executionTopologyStatus, 'provider-waiting');
+  assert.equal(report.summary.executionTopologyExecutionPlane, 'local');
+  assert.equal(report.summary.executionTopologyProviderId, 'local-codex');
+  assert.equal(report.summary.executionTopologyWorkerSlotId, 'worker-slot-9');
+  assert.equal(report.summary.executionTopologyActiveLogicalLaneCount, 1);
+  assert.equal(report.summary.executionTopologySeededLogicalLaneCount, 2);
+  assert.equal(report.summary.executionTopologyProcessModelClass, 'sequential-process-model');
+  assert.equal(report.summary.executionTopologyRequestedSimultaneous, false);
+  assert.equal(report.summary.executionTopologyCellClass, 'worker-cell');
+  assert.equal(report.summary.executionTopologySuiteClass, 'single-plane-review');
+  assert.equal(report.summary.executionTopologyOperatorAuthorizationRef, 'budget-auth://operator/session-override');
 });
 
 test('runAutonomousGovernorSummary exposes queue authority refresh telemetry from delivery runtime state', async () => {
