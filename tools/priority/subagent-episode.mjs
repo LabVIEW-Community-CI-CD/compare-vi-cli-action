@@ -212,6 +212,8 @@ export function buildSubagentEpisodeReport(input, options = {}) {
       suiteClass: normalizeText(execution.suiteClass),
       harnessKind: normalizeText(execution.harnessKind),
       harnessInstanceId: normalizeText(execution.harnessInstanceId),
+      harnessInstanceLeaseId: normalizeText(execution.harnessInstanceLeaseId),
+      harnessInstanceLeasePath: normalizeText(execution.harnessInstanceLeasePath),
       runtimeSurface: normalizeText(execution.runtimeSurface),
       processModelClass: normalizeText(execution.processModelClass),
       operatorAuthorizationRef: normalizeText(execution.operatorAuthorizationRef),

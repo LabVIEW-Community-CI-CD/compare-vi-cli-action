@@ -138,6 +138,8 @@ function createEpisode(agentName, status, generatedAt, extra = {}) {
       suiteClass: extra.suiteClass || null,
       harnessKind: extra.harnessKind || null,
       harnessInstanceId: extra.harnessInstanceId || null,
+      harnessInstanceLeaseId: extra.harnessInstanceLeaseId || null,
+      harnessInstanceLeasePath: extra.harnessInstanceLeasePath || null,
       runtimeSurface: extra.runtimeSurface || null,
       processModelClass: extra.processModelClass || null,
       operatorAuthorizationRef: extra.operatorAuthorizationRef || null,
@@ -199,6 +201,8 @@ test('runSaganContextConcentrator builds hot and warm memory from episodes and g
       suiteClass: 'handoff-analysis',
       harnessKind: 'teststand-instance',
       harnessInstanceId: 'ts-euler-001',
+      harnessInstanceLeaseId: 'harness-lease-euler-001',
+      harnessInstanceLeasePath: 'tests/results/_agent/runtime/euler-harness-lease.json',
       runtimeSurface: 'windows-native-teststand',
       processModelClass: 'sequential',
       premiumSaganMode: false,
@@ -247,8 +251,15 @@ test('runSaganContextConcentrator builds hot and warm memory from episodes and g
   assert.ok(report.memory.hotWorkingSet.some((entry) => entry.kind === 'dependency'));
   assert.ok(report.memory.hotWorkingSet.some((entry) => entry.agentName === 'Euler'));
   assert.ok(report.memory.warmMemory.some((entry) => entry.agentName === 'Hooke'));
-  assert.ok(report.memory.hotWorkingSet.some((entry) => entry.executionOwnershipLabel === 'cell cell-euler-001 / docker docker-euler-001 / harness ts-euler-001 / windows-native-teststand / sequential'));
+  assert.ok(
+    report.memory.hotWorkingSet.some(
+      (entry) =>
+        entry.executionOwnershipLabel ===
+        'cell cell-euler-001 / docker docker-euler-001 / harness ts-euler-001 / harness-lease harness-lease-euler-001 / windows-native-teststand / sequential'
+    )
+  );
   assert.ok(report.episodes.recent.some((entry) => entry.cellId === 'cell-euler-001'));
+  assert.ok(report.episodes.recent.some((entry) => entry.harnessInstanceLeaseId === 'harness-lease-euler-001'));
   assert.ok(fs.existsSync(outputPath));
 });
 

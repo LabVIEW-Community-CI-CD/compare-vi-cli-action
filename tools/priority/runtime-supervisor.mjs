@@ -859,6 +859,8 @@ function projectConcurrentLaneStatusReceipt(receiptPath, receipt) {
       dockerLaneLeaseId: normalizeText(executionBundle.dockerLaneLeaseId) || null,
       harnessKind: normalizeText(executionBundle.harnessKind) || null,
       harnessInstanceId: normalizeText(executionBundle.harnessInstanceId) || null,
+      harnessInstanceLeaseId: normalizeText(executionBundle.harnessInstanceLeaseId) || null,
+      harnessInstanceLeasePath: normalizeText(executionBundle.harnessInstanceLeasePath) || null,
       planeBinding: normalizeText(executionBundle.planeBinding) || null,
       premiumSaganMode: executionBundle.premiumSaganMode === true,
       reciprocalLinkReady: executionBundle.reciprocalLinkReady === true,

@@ -144,6 +144,7 @@ function buildExecutionOwnershipLabel(record) {
   const cellId = normalizeText(record?.cellId);
   const dockerLaneId = normalizeText(record?.dockerLaneId);
   const harnessInstanceId = normalizeText(record?.harnessInstanceId);
+  const harnessInstanceLeaseId = normalizeText(record?.harnessInstanceLeaseId);
   const runtimeSurface = normalizeText(record?.runtimeSurface);
   const processModelClass = normalizeText(record?.processModelClass);
   const premiumSaganMode = normalizeBoolean(record?.premiumSaganMode);
@@ -156,6 +157,9 @@ function buildExecutionOwnershipLabel(record) {
   }
   if (harnessInstanceId) {
     parts.push(`harness ${harnessInstanceId}`);
+  }
+  if (harnessInstanceLeaseId) {
+    parts.push(`harness-lease ${harnessInstanceLeaseId}`);
   }
   if (runtimeSurface) {
     parts.push(runtimeSurface);
@@ -191,6 +195,8 @@ function buildEpisodeDigest(episode, repoRoot, filePath) {
     suiteClass: normalizeText(execution.suiteClass),
     harnessKind: normalizeText(execution.harnessKind),
     harnessInstanceId: normalizeText(execution.harnessInstanceId),
+    harnessInstanceLeaseId: normalizeText(execution.harnessInstanceLeaseId),
+    harnessInstanceLeasePath: normalizeText(execution.harnessInstanceLeasePath),
     runtimeSurface: normalizeText(execution.runtimeSurface),
     processModelClass: normalizeText(execution.processModelClass),
     operatorAuthorizationRef: normalizeText(execution.operatorAuthorizationRef),
@@ -210,6 +216,8 @@ function makeMemoryItem({
   cellId = null,
   dockerLaneId = null,
   harnessInstanceId = null,
+  harnessInstanceLeaseId = null,
+  harnessInstanceLeasePath = null,
   runtimeSurface = null,
   processModelClass = null,
   premiumSaganMode = null,
@@ -231,6 +239,8 @@ function makeMemoryItem({
     cellId: normalizeText(cellId),
     dockerLaneId: normalizeText(dockerLaneId),
     harnessInstanceId: normalizeText(harnessInstanceId),
+    harnessInstanceLeaseId: normalizeText(harnessInstanceLeaseId),
+    harnessInstanceLeasePath: normalizeText(harnessInstanceLeasePath),
     runtimeSurface: normalizeText(runtimeSurface),
     processModelClass: normalizeText(processModelClass),
     premiumSaganMode: normalizeBoolean(premiumSaganMode),
@@ -497,6 +507,8 @@ function deriveEpisodeMemoryItems(sortedEpisodes, repoRoot, seenIds) {
       cellId: digest.cellId,
       dockerLaneId: digest.dockerLaneId,
       harnessInstanceId: digest.harnessInstanceId,
+      harnessInstanceLeaseId: digest.harnessInstanceLeaseId,
+      harnessInstanceLeasePath: digest.harnessInstanceLeasePath,
       runtimeSurface: digest.runtimeSurface,
       processModelClass: digest.processModelClass,
       premiumSaganMode: digest.premiumSaganMode,

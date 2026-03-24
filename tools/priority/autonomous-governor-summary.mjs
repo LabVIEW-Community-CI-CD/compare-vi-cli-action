@@ -325,6 +325,22 @@ function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBu
         asOptional(activeLaneExecutionTopology.suiteClass) ||
         asOptional(topologyExecutionBundle?.suiteClass) ||
         asOptional(executionBundle?.suiteClass),
+      harnessKind:
+        asOptional(activeLaneExecutionTopology.harnessKind) ||
+        asOptional(topologyExecutionBundle?.harnessKind) ||
+        asOptional(executionBundle?.harnessKind),
+      harnessInstanceId:
+        asOptional(activeLaneExecutionTopology.harnessInstanceId) ||
+        asOptional(topologyExecutionBundle?.harnessInstanceId) ||
+        asOptional(executionBundle?.harnessInstanceId),
+      harnessInstanceLeaseId:
+        asOptional(activeLaneExecutionTopology.harnessInstanceLeaseId) ||
+        asOptional(topologyExecutionBundle?.harnessInstanceLeaseId) ||
+        asOptional(executionBundle?.harnessInstanceLeaseId),
+      harnessInstanceLeasePath:
+        asOptional(activeLaneExecutionTopology.harnessInstanceLeasePath) ||
+        asOptional(topologyExecutionBundle?.harnessInstanceLeasePath) ||
+        asOptional(executionBundle?.harnessInstanceLeasePath),
       operatorAuthorizationRef:
         asOptional(activeLaneExecutionTopology.operatorAuthorizationRef) ||
         asOptional(topologyExecutionBundle?.operatorAuthorizationRef) ||
@@ -402,6 +418,14 @@ function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBu
           asOptional(activeLaneExecutionTopology.harnessInstanceId) ||
           asOptional(topologyExecutionBundle?.harnessInstanceId) ||
           asOptional(executionBundle?.harnessInstanceId),
+        harnessInstanceLeaseId:
+          asOptional(activeLaneExecutionTopology.harnessInstanceLeaseId) ||
+          asOptional(topologyExecutionBundle?.harnessInstanceLeaseId) ||
+          asOptional(executionBundle?.harnessInstanceLeaseId),
+        harnessInstanceLeasePath:
+          asOptional(activeLaneExecutionTopology.harnessInstanceLeasePath) ||
+          asOptional(topologyExecutionBundle?.harnessInstanceLeasePath) ||
+          asOptional(executionBundle?.harnessInstanceLeasePath),
         operatorAuthorizationRef:
           asOptional(topologyExecutionBundle?.operatorAuthorizationRef) ||
           asOptional(executionBundle?.operatorAuthorizationRef),
@@ -447,6 +471,10 @@ function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBu
     requestedSimultaneous: processModel.requestedSimultaneous,
     cellClass: asOptional(executionBundle?.cellClass),
     suiteClass: asOptional(executionBundle?.suiteClass),
+    harnessKind: asOptional(executionBundle?.harnessKind),
+    harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
+    harnessInstanceLeaseId: asOptional(executionBundle?.harnessInstanceLeaseId),
+    harnessInstanceLeasePath: asOptional(executionBundle?.harnessInstanceLeasePath),
     operatorAuthorizationRef: asOptional(executionBundle?.operatorAuthorizationRef),
     premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
     reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
@@ -481,6 +509,8 @@ function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBu
       dockerLaneLeaseId: asOptional(executionBundle?.dockerLaneLeaseId),
       harnessKind: asOptional(executionBundle?.harnessKind),
       harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
+      harnessInstanceLeaseId: asOptional(executionBundle?.harnessInstanceLeaseId),
+      harnessInstanceLeasePath: asOptional(executionBundle?.harnessInstanceLeasePath),
       operatorAuthorizationRef: asOptional(executionBundle?.operatorAuthorizationRef),
       cellId: asOptional(executionBundle?.cellId),
       laneId: asOptional(executionBundle?.laneId),
@@ -727,6 +757,8 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
       dockerLaneLeaseId: asOptional(executionBundle?.dockerLaneLeaseId),
       harnessKind: asOptional(executionBundle?.harnessKind),
       harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
+      harnessInstanceLeaseId: asOptional(executionBundle?.harnessInstanceLeaseId),
+      harnessInstanceLeasePath: asOptional(executionBundle?.harnessInstanceLeasePath),
       operatorAuthorizationRef: asOptional(executionBundle?.operatorAuthorizationRef),
       cellId: asOptional(executionBundle?.cellId),
       laneId: asOptional(executionBundle?.laneId),

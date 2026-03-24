@@ -70,6 +70,10 @@ function createCompareGovernorSummary(overrides = {}) {
           requestedSimultaneous: true,
           cellClass: 'kernel-coordinator',
           suiteClass: 'dual-plane-parity',
+          harnessKind: 'teststand-compare-harness',
+          harnessInstanceId: 'ts-harness-01',
+          harnessInstanceLeaseId: 'harness-lease-789',
+          harnessInstanceLeasePath: 'tests/results/_agent/runtime/teststand-harness-instance-lease.json',
           operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
           premiumSaganMode: true,
           reciprocalLinkReady: true,
@@ -102,6 +106,8 @@ function createCompareGovernorSummary(overrides = {}) {
             executionCellLeaseId: 'exec-lease-123',
             dockerLaneLeaseId: 'docker-lease-456',
             harnessInstanceId: 'ts-harness-01',
+            harnessInstanceLeaseId: 'harness-lease-789',
+            harnessInstanceLeasePath: 'tests/results/_agent/runtime/teststand-harness-instance-lease.json',
             operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
             cellId: 'cell-sagan-kernel',
             laneId: 'docker-lane-01',
@@ -443,12 +449,26 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.compare.executionTopology.requestedSimultaneous, true);
   assert.equal(report.compare.executionTopology.cellClass, 'kernel-coordinator');
   assert.equal(report.compare.executionTopology.suiteClass, 'dual-plane-parity');
+  assert.equal(report.compare.executionTopology.harnessKind, 'teststand-compare-harness');
+  assert.equal(report.compare.executionTopology.harnessInstanceId, 'ts-harness-01');
+  assert.equal(report.compare.executionTopology.harnessInstanceLeaseId, 'harness-lease-789');
+  assert.equal(
+    report.compare.executionTopology.harnessInstanceLeasePath,
+    'tests/results/_agent/runtime/teststand-harness-instance-lease.json'
+  );
   assert.equal(report.compare.executionTopology.operatorAuthorizationRef, 'budget-auth://operator/session-2026-03-24');
   assert.equal(report.compare.executionTopology.logicalLaneActivation.catalogCount, 4);
   assert.equal(report.compare.executionTopology.providerDispatch.dispatchStatus, 'completed');
   assert.equal(report.compare.executionTopology.executionBundle.status, 'committed');
   assert.equal(report.compare.executionTopology.executionBundle.cellClass, 'kernel-coordinator');
   assert.equal(report.compare.executionTopology.executionBundle.suiteClass, 'dual-plane-parity');
+  assert.equal(report.compare.executionTopology.executionBundle.harnessKind, 'teststand-compare-harness');
+  assert.equal(report.compare.executionTopology.executionBundle.harnessInstanceId, 'ts-harness-01');
+  assert.equal(report.compare.executionTopology.executionBundle.harnessInstanceLeaseId, 'harness-lease-789');
+  assert.equal(
+    report.compare.executionTopology.executionBundle.harnessInstanceLeasePath,
+    'tests/results/_agent/runtime/teststand-harness-instance-lease.json'
+  );
   assert.equal(
     report.compare.executionTopology.executionBundle.operatorAuthorizationRef,
     'budget-auth://operator/session-2026-03-24'
