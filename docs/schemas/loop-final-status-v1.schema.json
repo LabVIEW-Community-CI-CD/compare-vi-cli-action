@@ -37,6 +37,8 @@
         "executionCellLeasePath": {"type": "string"},
         "executionCellId": {"type": "string"},
         "executionCellLeaseId": {"type": "string"},
+        "harnessInstanceLeasePath": {"type": "string"},
+        "harnessInstanceLeaseId": {"type": "string"},
         "harnessInstanceId": {"type": "string"}
       },
       "required": ["path", "output", "suiteClass", "runtimeSurface", "processModelClass", "windowsOnly", "requestedSimultaneous"],
