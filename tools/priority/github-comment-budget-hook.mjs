@@ -3,7 +3,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runMaterializeAgentCostRollup } from './materialize-agent-cost-rollup.mjs';
+import {
+  DEFAULT_POLICY_PATH as DEFAULT_TREASURY_POLICY_PATH,
+  runTreasuryControlPlane
+} from './treasury-control-plane.mjs';
 
 export const REPORT_SCHEMA = 'priority/github-comment-budget-hook@v1';
 export const POLICY_SCHEMA = 'priority/github-comment-budget-hook-policy@v1';
@@ -96,6 +99,7 @@ function parseArgs(argv = process.argv) {
     targetKind: 'unknown',
     targetNumber: null,
     policyPath: DEFAULT_POLICY_PATH,
+    treasuryPolicyPath: null,
     costRollupPath: null,
     outputPath: null,
     markdownOutputPath: null,
@@ -118,7 +122,7 @@ function parseArgs(argv = process.argv) {
       options.materialize = false;
       continue;
     }
-    if (['--repo-root', '--repo', '--target-kind', '--target-number', '--policy', '--cost-rollup', '--output', '--markdown-output'].includes(token)) {
+    if (['--repo-root', '--repo', '--target-kind', '--target-number', '--policy', '--treasury-policy', '--cost-rollup', '--output', '--markdown-output'].includes(token)) {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
       }
@@ -128,6 +132,7 @@ function parseArgs(argv = process.argv) {
       if (token === '--target-kind') options.targetKind = next;
       if (token === '--target-number') options.targetNumber = toPositiveInteger(next);
       if (token === '--policy') options.policyPath = next;
+      if (token === '--treasury-policy') options.treasuryPolicyPath = next;
       if (token === '--cost-rollup') options.costRollupPath = next;
       if (token === '--output') options.outputPath = next;
       if (token === '--markdown-output') options.markdownOutputPath = next;
@@ -281,6 +286,8 @@ function buildJsonHookPayload(report) {
     operatorLaborObservedUsd: report.summary.operatorLaborObservedUsd,
     operatorLaborMissingTurnCount: report.summary.operatorLaborMissingTurnCount,
     operatorBudgetCapUsd: report.summary.operatorBudgetCapUsd,
+    operatorBudgetObservedRemainingUpperBoundUsd: report.summary.operatorBudgetObservedRemainingUpperBoundUsd,
+    operatorBudgetObservedRemainingStatus: report.summary.operatorBudgetObservedRemainingStatus,
     operatorBudgetRemainingLowerBoundUsd: report.summary.operatorBudgetRemainingLowerBoundUsd,
     operatorBudgetRemainingStatus: report.summary.operatorBudgetRemainingStatus,
     operatorBudgetSpendableUsd: report.summary.operatorBudgetSpendableUsd,
@@ -288,6 +295,19 @@ function buildJsonHookPayload(report) {
     accountRemainingUsdEstimate: report.summary.accountRemainingUsdEstimate,
     operationalHeadroomUsd: report.summary.operationalHeadroomUsd,
     operationalHeadroomStatus: report.summary.operationalHeadroomStatus,
+    safeSpendableUsd: report.summary.safeSpendableUsd,
+    possibleSpendableUpperBoundUsd: report.summary.possibleSpendableUpperBoundUsd,
+    treasuryConfidence: report.summary.treasuryConfidence,
+    treasurySpendPolicyState: report.summary.treasurySpendPolicyState,
+    coreDeliveryAllowed: report.summary.coreDeliveryAllowed,
+    queueAuthorityAllowed: report.summary.queueAuthorityAllowed,
+    releaseApplyAllowed: report.summary.releaseApplyAllowed,
+    premiumSaganAllowed: report.summary.premiumSaganAllowed,
+    premiumAuthorizationPromptRequired: report.summary.premiumAuthorizationPromptRequired,
+    premiumAuthorizationFollowupEstimate: report.summary.premiumAuthorizationFollowupEstimate,
+    backgroundFanoutAllowed: report.summary.backgroundFanoutAllowed,
+    maxBackgroundSubagents: report.summary.maxBackgroundSubagents,
+    nonEssentialWorkAllowed: report.summary.nonEssentialWorkAllowed,
     budgetPressureState: report.summary.budgetPressureState,
     billingWindow: report.funding.billingWindow,
     accountBalance: report.funding.accountBalance,
@@ -316,7 +336,7 @@ function buildMarkdown(report) {
       ? 'operator cap unknown'
       : report.summary.operatorBudgetSpendableStatus === 'observed'
         ? `operator ${formatUsd(report.summary.operatorLaborObservedUsd)} of ${formatUsd(report.summary.operatorBudgetCapUsd)} cap (spendable remaining ${formatUsd(report.summary.operatorBudgetSpendableUsd)})`
-        : `operator ${formatUsd(report.summary.operatorLaborObservedUsd)} of ${formatUsd(report.summary.operatorBudgetCapUsd)} cap (spendable remaining unreconciled; lower bound ${report.summary.operatorBudgetRemainingStatus === 'lower-bound' ? '>=' : ''}${formatUsd(report.summary.operatorBudgetRemainingLowerBoundUsd)})`;
+        : `operator ${formatUsd(report.summary.operatorLaborObservedUsd)} of ${formatUsd(report.summary.operatorBudgetCapUsd)} cap (spendable remaining unreconciled; observed upper bound ${formatUsd(report.summary.operatorBudgetObservedRemainingUpperBoundUsd)})`;
     const billingWindowText = billingWindow?.invoiceTurnId
       ? `window \`${billingWindow.invoiceTurnId}\` spent ${formatUsd(billingWindow.tokenSpendUsd)} remaining ${formatUsd(billingWindow.remainingUsd)}`
       : 'window unavailable';
@@ -324,15 +344,21 @@ function buildMarkdown(report) {
       ? `account est ${formatUsd(accountBalance.remainingUsdEstimate)} remaining from ${accountBalance.remainingCredits} credits @ ${formatUsd(accountBalance.unitPriceUsd)} per credit`
       : 'account headroom unavailable';
     const headroomText = report.summary.operationalHeadroomUsd != null
-      ? `operational headroom ${formatUsd(report.summary.operationalHeadroomUsd)} (${report.summary.operationalHeadroomStatus})`
+      ? `operational headroom ${formatUsd(report.summary.operationalHeadroomUsd)} (${report.summary.operationalHeadroomStatus}); safe spend ${formatUsd(report.summary.safeSpendableUsd)}`
       : `operational headroom unavailable (${report.summary.operationalHeadroomStatus})`;
+    const treasuryText = `treasury ${report.summary.treasurySpendPolicyState} (${report.summary.treasuryConfidence})`;
+    const treasuryOperationsText =
+      `ops core=${report.summary.coreDeliveryAllowed} queue=${report.summary.queueAuthorityAllowed} release=${report.summary.releaseApplyAllowed}`;
+    const premiumPromptText = report.summary.premiumAuthorizationPromptRequired
+      ? `; premium requires explicit operator authorization (follow-up estimate ${report.summary.premiumAuthorizationFollowupEstimate})`
+      : '';
     const reserveText = reservedFunding.count > 0
       ? `; calibration reserve ${formatUsd(reservedFunding.totalReservedUsd)} across ${reservedFunding.count} held window(s)`
       : '';
     const timingText = report.summary.operatorLaborMissingTurnCount > 0
       ? `; ${report.summary.operatorLaborMissingTurnCount} turn(s) still pending labor timing`
       : '';
-    lines.push(`_Budget hook_: blended lower bound ${formatUsd(report.summary.observedBlendedLowerBoundUsd)}; ${operatorBudgetText}; ${billingWindowText}; ${accountText}; ${headroomText}; pressure ${report.summary.budgetPressureState}; turns ${report.turns.totalTurns} total (${report.turns.liveTurnCount} live, ${report.turns.backgroundTurnCount} background)${timingText}${reserveText}. Receipt: \`${report.source.outputPath}\`.`);
+    lines.push(`_Budget hook_: blended lower bound ${formatUsd(report.summary.observedBlendedLowerBoundUsd)}; ${operatorBudgetText}; ${billingWindowText}; ${accountText}; ${headroomText}; ${treasuryText}; ${treasuryOperationsText}; pressure ${report.summary.budgetPressureState}${premiumPromptText}; turns ${report.turns.totalTurns} total (${report.turns.liveTurnCount} live, ${report.turns.backgroundTurnCount} background)${timingText}${reserveText}. Receipt: \`${report.source.outputPath}\`.`);
   }
 
   lines.push(COMMENT_HOOK_END_MARKER, '');
@@ -369,56 +395,27 @@ export function appendBudgetHook(body, hookMarkdown) {
   return `${cleanBody}\n\n${hook}\n`;
 }
 
-export function buildGitHubCommentBudgetHookReport({ rollup, repository, targetKind, targetNumber, operatorBudgetCapUsd, reservedFunding, billingWindow, source, blockers, now }) {
-  const metrics = rollup?.summary?.metrics ?? {};
-  const tokenSpendUsd = toNonNegativeNumber(metrics.totalUsd) ?? 0;
-  const operatorLaborObservedUsd = toNonNegativeNumber(metrics.operatorLaborUsd) ?? 0;
-  const operatorLaborMissingTurnCount = Number(metrics.operatorLaborMissingTurnCount ?? 0) || 0;
-  const observedBlendedLowerBoundUsd = roundUsd(tokenSpendUsd + operatorLaborObservedUsd) ?? 0;
-  const knownBlendedUsd = toNonNegativeNumber(metrics.blendedTotalUsd);
-  const accountBalance = summarizeAccountBalance(rollup);
-  const operationalHeadroom = summarizeOperationalHeadroom(accountBalance, reservedFunding);
-  const operatorBudgetRemainingLowerBoundUsd =
-    operatorBudgetCapUsd == null ? null : roundUsd(Math.max(0, operatorBudgetCapUsd - operatorLaborObservedUsd));
-  const operatorBudgetRemainingStatus =
-    operatorBudgetCapUsd == null ? 'unknown' : operatorLaborMissingTurnCount > 0 ? 'lower-bound' : 'observed';
-  const operatorBudgetSpendableStatus =
-    operatorBudgetCapUsd == null ? 'unknown' : operatorLaborMissingTurnCount > 0 ? 'unreconciled' : 'observed';
-  const operatorBudgetSpendableUsd =
-    operatorBudgetSpendableStatus === 'observed' ? operatorBudgetRemainingLowerBoundUsd : null;
-
-  const blocking = Array.isArray(blockers) ? blockers.filter(Boolean) : [];
-  const budgetPressureState =
-    blocking.length > 0
-      ? 'blocked'
-      : operationalHeadroom.status === 'reserve-protected-only'
-        ? 'stop-nonessential-spend'
-        : operationalHeadroom.status === 'reserve-near'
-          ? 'tight'
-          : operationalHeadroom.status === 'unknown' || operatorBudgetSpendableStatus !== 'observed'
-            ? 'cautious'
-            : 'healthy';
-  const status =
-    blocking.length > 0
-      ? 'blocked'
-      : budgetPressureState === 'healthy'
-        ? 'pass'
-        : 'warn';
-  const recommendation =
-    status === 'blocked'
-      ? 'repair-comment-budget-hook-inputs'
-      : budgetPressureState === 'stop-nonessential-spend'
-        ? 'protect-calibration-reserve'
-        : budgetPressureState === 'tight'
-          ? 'constrain-spend'
-      : operatorLaborMissingTurnCount > 0
-        ? 'reconcile-operator-labor-before-assuming-headroom'
-        : 'comment-budget-hook-ready';
+export function buildGitHubCommentBudgetHookReport({ treasuryReport, repository, targetKind, targetNumber, source, blockers, now }) {
+  const treasurySummary = treasuryReport?.summary ?? {};
+  const treasuryTurns = treasuryReport?.turns ?? {};
+  const treasuryFunding = treasuryReport?.funding ?? {
+    billingWindow: null,
+    accountBalance: null,
+    reservedFunding: { count: 0, totalReservedUsd: 0, windows: [] }
+  };
+  const combinedBlockers = [
+    ...(Array.isArray(treasuryReport?.blockers) ? treasuryReport.blockers : []),
+    ...(Array.isArray(blockers) ? blockers : [])
+  ].filter(Boolean);
+  const status = combinedBlockers.length > 0 ? 'blocked' : asOptional(treasurySummary.status) || 'blocked';
+  const recommendation = combinedBlockers.length > 0
+    ? 'repair-comment-budget-hook-inputs'
+    : asOptional(treasurySummary.recommendation) || 'comment-budget-hook-ready';
 
   return {
     schema: REPORT_SCHEMA,
     generatedAt: now.toISOString(),
-    repository,
+    repository: repository || treasuryReport?.repository || null,
     target: {
       kind: asOptional(targetKind) || 'unknown',
       number: targetNumber ?? null
@@ -426,33 +423,50 @@ export function buildGitHubCommentBudgetHookReport({ rollup, repository, targetK
     summary: {
       status,
       recommendation,
-      tokenSpendUsd,
-      operatorLaborObservedUsd,
-      operatorLaborMissingTurnCount,
-      observedBlendedLowerBoundUsd,
-      knownBlendedUsd,
-      operatorBudgetCapUsd,
-      operatorBudgetRemainingLowerBoundUsd,
-      operatorBudgetRemainingStatus,
-      operatorBudgetSpendableUsd,
-      operatorBudgetSpendableStatus,
-      accountRemainingUsdEstimate: operationalHeadroom.accountRemainingUsdEstimate,
-      operationalHeadroomUsd: operationalHeadroom.operationalHeadroomUsd,
-      operationalHeadroomStatus: operationalHeadroom.status,
-      budgetPressureState
+      tokenSpendUsd: toNonNegativeNumber(treasurySummary.tokenSpendUsd) ?? 0,
+      operatorLaborObservedUsd: toNonNegativeNumber(treasurySummary.operatorLaborObservedUsd) ?? 0,
+      operatorLaborMissingTurnCount: Number(treasurySummary.operatorLaborMissingTurnCount ?? 0) || 0,
+      observedBlendedLowerBoundUsd: toNonNegativeNumber(treasurySummary.observedBlendedLowerBoundUsd) ?? 0,
+      knownBlendedUsd: toNonNegativeNumber(treasurySummary.knownBlendedUsd),
+      operatorBudgetCapUsd: toNonNegativeNumber(treasurySummary.operatorBudgetCapUsd),
+      operatorBudgetObservedRemainingUpperBoundUsd: toNonNegativeNumber(
+        treasurySummary.operatorBudgetObservedRemainingUpperBoundUsd
+      ),
+      operatorBudgetObservedRemainingStatus: asOptional(treasurySummary.operatorBudgetObservedRemainingStatus) || 'unknown',
+      operatorBudgetRemainingLowerBoundUsd: toNonNegativeNumber(treasurySummary.operatorBudgetRemainingLowerBoundUsd),
+      operatorBudgetRemainingStatus: asOptional(treasurySummary.operatorBudgetRemainingStatus) || 'unknown',
+      operatorBudgetSpendableUsd: toNonNegativeNumber(treasurySummary.operatorBudgetSpendableUsd),
+      operatorBudgetSpendableStatus: asOptional(treasurySummary.operatorBudgetSpendableStatus) || 'unknown',
+      accountRemainingUsdEstimate: toNonNegativeNumber(treasurySummary.accountRemainingUsdEstimate),
+      operationalHeadroomUsd: toNonNegativeNumber(treasurySummary.operationalHeadroomUsd),
+      operationalHeadroomStatus: asOptional(treasurySummary.operationalHeadroomStatus) || 'unknown',
+      safeSpendableUsd: toNonNegativeNumber(treasurySummary.safeSpendableUsd),
+      possibleSpendableUpperBoundUsd: toNonNegativeNumber(treasurySummary.possibleSpendableUpperBoundUsd),
+      treasuryConfidence: asOptional(treasurySummary.confidence) || 'unknown',
+      treasurySpendPolicyState: asOptional(treasurySummary.spendPolicyState) || 'blocked',
+      coreDeliveryAllowed: treasurySummary.coreDeliveryAllowed === true,
+      queueAuthorityAllowed: treasurySummary.queueAuthorityAllowed === true,
+      releaseApplyAllowed: treasurySummary.releaseApplyAllowed === true,
+      premiumSaganAllowed: treasurySummary.premiumSaganAllowed === true,
+      premiumAuthorizationPromptRequired: treasurySummary.premiumAuthorizationPromptRequired === true,
+      premiumAuthorizationFollowupEstimate: Number(treasurySummary.premiumAuthorizationFollowupEstimate ?? 0) || 0,
+      backgroundFanoutAllowed: treasurySummary.backgroundFanoutAllowed === true,
+      maxBackgroundSubagents: Number(treasurySummary.maxBackgroundSubagents ?? 0) || 0,
+      nonEssentialWorkAllowed: treasurySummary.nonEssentialWorkAllowed === true,
+      budgetPressureState: asOptional(treasurySummary.budgetPressureState) || 'blocked'
     },
     turns: {
-      totalTurns: Number(metrics.totalTurns ?? 0) || 0,
-      liveTurnCount: Number(metrics.liveTurnCount ?? 0) || 0,
-      backgroundTurnCount: Number(metrics.backgroundTurnCount ?? 0) || 0
+      totalTurns: Number(treasuryTurns.totalTurns ?? 0) || 0,
+      liveTurnCount: Number(treasuryTurns.liveTurnCount ?? 0) || 0,
+      backgroundTurnCount: Number(treasuryTurns.backgroundTurnCount ?? 0) || 0
     },
     funding: {
-      billingWindow,
-      accountBalance,
-      reservedFunding
+      billingWindow: treasuryFunding.billingWindow ?? null,
+      accountBalance: treasuryFunding.accountBalance ?? null,
+      reservedFunding: treasuryFunding.reservedFunding ?? { count: 0, totalReservedUsd: 0, windows: [] }
     },
     source,
-    blockers: blocking
+    blockers: combinedBlockers
   };
 }
 
@@ -460,72 +474,44 @@ export function runGitHubCommentBudgetHook(
   options,
   {
     now = new Date(),
-    readJsonFn = readJson,
     writeJsonFn = writeJson,
     writeTextFn = writeText,
-    runMaterializeAgentCostRollupFn = runMaterializeAgentCostRollup
+    runTreasuryControlPlaneFn = runTreasuryControlPlane
   } = {}
 ) {
   const repoRoot = path.resolve(options.repoRoot || process.cwd());
   const { resolvedPolicyPath, policy } = loadPolicy(repoRoot, options.policyPath || DEFAULT_POLICY_PATH);
-  let costRollupPath = path.resolve(repoRoot, options.costRollupPath || asOptional(policy.costRollupPath) || DEFAULT_OUTPUT_PATH.replace('github-comment-budget-hook', 'agent-cost-rollup'));
-  let costRollupMaterialized = false;
-  let costRollupMaterializationReportPath = null;
   const blockers = [];
-
-  const shouldMaterialize = options.materialize ?? Boolean(policy.materializeCostRollup);
-  if (shouldMaterialize) {
-    try {
-      const materializeResult = runMaterializeAgentCostRollupFn({
-        repoRoot,
-        repo: options.repo,
-        policyPath: asOptional(policy.materializationPolicyPath) || undefined,
-        costRollupPath,
-        outputPath: asOptional(policy.materializationReportPath) || undefined
-      });
-      costRollupMaterialized = true;
-      costRollupPath = path.resolve(materializeResult.costRollupPath || costRollupPath);
-      costRollupMaterializationReportPath = safeRelative(repoRoot, materializeResult.outputPath);
-    } catch (error) {
-      blockers.push(createBlocker('cost-rollup-materialization-failed', error?.message || String(error)));
-    }
-  }
-
-  let rollup = null;
-  if (!fs.existsSync(costRollupPath)) {
-    blockers.push(createBlocker('cost-rollup-missing', 'Agent cost rollup is missing.', safeRelative(repoRoot, costRollupPath)));
-  } else {
-    try {
-      rollup = readJsonFn(costRollupPath);
-      if (normalizeText(rollup?.schema) !== 'priority/agent-cost-rollup@v1') {
-        blockers.push(createBlocker('cost-rollup-schema-mismatch', 'Agent cost rollup schema must remain priority/agent-cost-rollup@v1.', safeRelative(repoRoot, costRollupPath)));
-      }
-    } catch (error) {
-      blockers.push(createBlocker('cost-rollup-unreadable', error?.message || String(error), safeRelative(repoRoot, costRollupPath)));
-    }
-  }
-
-  const billingWindow = summarizeBillingWindow(rollup);
-  const reservedFunding = summarizeReservedFundingWindows(rollup, policy, billingWindow?.invoiceTurnId ?? null);
-  const repository = chooseTargetRepository(options.repo, rollup);
-  const operatorBudgetCapUsd = toNonNegativeNumber(policy.operatorBudgetCapUsd);
+  const treasuryPolicyPath = path.resolve(
+    repoRoot,
+    options.treasuryPolicyPath || asOptional(policy.treasuryPolicyPath) || DEFAULT_TREASURY_POLICY_PATH
+  );
   const outputPath = path.resolve(repoRoot, options.outputPath || asOptional(policy.outputPath) || DEFAULT_OUTPUT_PATH);
   const markdownOutputPath = path.resolve(repoRoot, options.markdownOutputPath || asOptional(policy.markdownOutputPath) || DEFAULT_MARKDOWN_OUTPUT_PATH);
+  let treasuryReport = null;
+
+  try {
+    const treasuryResult = runTreasuryControlPlaneFn({
+      repoRoot,
+      repo: options.repo,
+      policyPath: treasuryPolicyPath,
+      costRollupPath: options.costRollupPath,
+      materialize: options.materialize
+    });
+    treasuryReport = treasuryResult.report;
+  } catch (error) {
+    blockers.push(createBlocker('treasury-control-plane-failed', error?.message || String(error)));
+  }
 
   const report = buildGitHubCommentBudgetHookReport({
-    rollup,
-    repository,
+    treasuryReport,
+    repository: chooseTargetRepository(options.repo, treasuryReport),
     targetKind: options.targetKind,
     targetNumber: options.targetNumber,
-    operatorBudgetCapUsd,
-    reservedFunding,
-    billingWindow,
     source: {
       policyPath: safeRelative(repoRoot, resolvedPolicyPath),
-      costRollupPath: safeRelative(repoRoot, costRollupPath),
-      costRollupMaterialized,
-      costRollupMaterializationReportPath,
-      operatorCostProfilePath: asOptional(rollup?.summary?.provenance?.operatorProfiles?.[0]?.operatorProfilePath) || 'tools/policy/operator-cost-profile.json',
+      treasuryPolicyPath: safeRelative(repoRoot, treasuryPolicyPath),
+      treasuryControlPlanePath: asOptional(treasuryReport?.source?.outputPath),
       outputPath: safeRelative(repoRoot, outputPath),
       markdownOutputPath: safeRelative(repoRoot, markdownOutputPath)
     },
@@ -556,6 +542,7 @@ function printUsage() {
     '  --repo <owner/repo>        Repository slug override.',
     '  --target-kind <issue|pr>   Comment target kind.',
     '  --target-number <number>   Comment target number.',
+    '  --treasury-policy <path>   Treasury policy path override.',
     '  --cost-rollup <path>       Cost rollup path override.',
     `  --output <path>            JSON report path (default: ${DEFAULT_OUTPUT_PATH}).`,
     `  --markdown-output <path>   Markdown hook path (default: ${DEFAULT_MARKDOWN_OUTPUT_PATH}).`,

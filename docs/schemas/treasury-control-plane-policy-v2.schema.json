@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/treasury-control-plane-policy-v2.schema.json",
+  "title": "Treasury Control Plane Policy v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "costRollupPath",
+    "materializationPolicyPath",
+    "materializationReportPath",
+    "outputPath",
+    "operatorBudgetCapUsd",
+    "materializeCostRollup",
+    "reservedFundingPurposes",
+    "reservedActivationStates",
+    "thresholds",
+    "limits"
+  ],
+  "properties": {
+    "schema": { "const": "priority/treasury-control-plane-policy@v2" },
+    "costRollupPath": { "type": "string", "minLength": 1 },
+    "materializationPolicyPath": { "type": "string", "minLength": 1 },
+    "materializationReportPath": { "type": "string", "minLength": 1 },
+    "outputPath": { "type": "string", "minLength": 1 },
+    "operatorBudgetCapUsd": { "type": "number", "minimum": 0 },
+    "materializeCostRollup": { "type": "boolean" },
+    "reservedFundingPurposes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "reservedActivationStates": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accountBalanceMaxAgeHours",
+        "reserveNearOperationalHeadroomUsd",
+        "healthyOperationalHeadroomUsd",
+        "premiumSaganMinimumOperationalHeadroomUsd",
+        "backgroundFanoutMinimumOperationalHeadroomUsd",
+        "nonEssentialWorkMinimumOperationalHeadroomUsd"
+      ],
+      "properties": {
+        "accountBalanceMaxAgeHours": { "type": "integer", "minimum": 1 },
+        "reserveNearOperationalHeadroomUsd": { "type": "number", "minimum": 0 },
+        "healthyOperationalHeadroomUsd": { "type": "number", "minimum": 0 },
+        "premiumSaganMinimumOperationalHeadroomUsd": { "type": "number", "minimum": 0 },
+        "backgroundFanoutMinimumOperationalHeadroomUsd": { "type": "number", "minimum": 0 },
+        "nonEssentialWorkMinimumOperationalHeadroomUsd": { "type": "number", "minimum": 0 }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "healthyBackgroundSubagentsMax",
+        "cautiousBackgroundSubagentsMax",
+        "premiumSaganFollowupAuthorizationsEstimate"
+      ],
+      "properties": {
+        "healthyBackgroundSubagentsMax": { "type": "integer", "minimum": 0 },
+        "cautiousBackgroundSubagentsMax": { "type": "integer", "minimum": 0 },
+        "premiumSaganFollowupAuthorizationsEstimate": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

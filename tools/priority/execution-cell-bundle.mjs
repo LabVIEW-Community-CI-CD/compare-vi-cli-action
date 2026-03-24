@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
@@ -16,6 +17,11 @@ import {
   DEFAULT_OUTPUT_PATH as DEFAULT_EXECUTION_CELL_REPORT_PATH,
   runExecutionCellLease
 } from './execution-cell-lease.mjs';
+import {
+  DEFAULT_POLICY_PATH as DEFAULT_TREASURY_POLICY_PATH,
+  TREASURY_OPERATION,
+  runTreasuryOperationGuard
+} from './treasury-control-plane.mjs';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(MODULE_DIR, '..', '..');
@@ -73,6 +79,11 @@ function normalizeCapabilities(capabilities = []) {
 
 function wantsDockerLane(options = {}) {
   return Boolean(toOptionalText(options.laneId)) || normalizeCapabilities(options.capabilities).includes(DOCKER_LANE_CAPABILITY);
+}
+
+function isPremiumSaganRequested(capabilities = []) {
+  const normalized = new Set(normalizeCapabilities(capabilities));
+  return normalized.has(DOCKER_LANE_CAPABILITY) && normalized.has(NATIVE_LV32_CAPABILITY);
 }
 
 function inferBundleCapabilities(capabilities = [], planeBinding, dockerRequested) {
@@ -265,14 +276,27 @@ function buildReport({
   outputPath,
   dockerRequested,
   capabilities,
+  premiumSaganRequested = false,
+  premiumAuthorization = {},
   executionCell,
   dockerLane,
-  rollbacks
+  rollbacks,
+  overrideStatus = null,
+  extraDenialReasons = []
 }) {
   const reports = [executionCell, dockerLane].filter(Boolean);
   const effectiveRate = summarizeEffectiveRate(reports);
   const premiumSaganMode =
     executionCell?.summary?.premiumSaganMode === true || dockerLane?.summary?.premiumSaganMode === true;
+  const operatorAuthorizationRequired =
+    premiumAuthorization.operatorAuthorizationRequired === true ||
+    (premiumSaganRequested && premiumSaganMode === true);
+  const operatorAuthorizationPromptRequired =
+    premiumAuthorization.operatorAuthorizationPromptRequired === true;
+  const estimatedFollowupAuthorizationsNeeded =
+    operatorAuthorizationRequired
+      ? Number(premiumAuthorization.estimatedFollowupAuthorizationsNeeded ?? 1) || 1
+      : 0;
   const observations = collectSummaryStrings(reports, 'observations');
   if (reports.length > 1 && effectiveRate.usdPerHour != null) {
     observations.push('agent-billed-once-at-effective-rate');
@@ -283,12 +307,13 @@ function buildReport({
   if (rollbacks.dockerLane) {
     observations.push(`docker-lane-rollback-${rollbacks.dockerLane.status}`);
   }
+  observations.push(...(Array.isArray(premiumAuthorization.observations) ? premiumAuthorization.observations : []));
 
   return {
     schema: EXECUTION_CELL_BUNDLE_REPORT_SCHEMA,
     generatedAt,
     action,
-    status: resolveBundleStatus(action, executionCell, dockerLane, rollbacks),
+    status: overrideStatus || resolveBundleStatus(action, executionCell, dockerLane, rollbacks),
     cellId,
     laneId: toOptionalText(laneId),
     outputPath,
@@ -323,10 +348,16 @@ function buildReport({
       ),
       effectiveBillableRateMultiplier: effectiveRate.multiplier,
       effectiveBillableRateUsdPerHour: effectiveRate.usdPerHour,
+      premiumSaganRequested,
       premiumSaganMode,
+      operatorAuthorizationRequired,
+      operatorAuthorizationPromptRequired,
+      estimatedFollowupAuthorizationsNeeded,
       operatorAuthorizationRef:
         toOptionalText(executionCell?.summary?.operatorAuthorizationRef) ||
         toOptionalText(dockerLane?.summary?.operatorAuthorizationRef),
+      treasuryDecisionCode: toOptionalText(premiumAuthorization.treasuryDecisionCode),
+      treasuryControlPlanePath: toOptionalText(premiumAuthorization.treasuryControlPlanePath),
       isolatedLaneGroupId:
         toOptionalText(executionCell?.summary?.isolatedLaneGroupId) ||
         toOptionalText(dockerLane?.summary?.isolatedLaneGroupId),
@@ -334,7 +365,14 @@ function buildReport({
         toOptionalText(executionCell?.summary?.fingerprintSha256) ||
         toOptionalText(dockerLane?.summary?.fingerprintSha256),
       capabilities,
-      denialReasons: collectSummaryStrings([...reports, rollbacks.executionCell, rollbacks.dockerLane], 'denialReasons'),
+      denialReasons: [
+        ...new Set(
+          [
+            ...collectSummaryStrings([...reports, rollbacks.executionCell, rollbacks.dockerLane], 'denialReasons'),
+            ...extraDenialReasons
+          ].filter(Boolean)
+        )
+      ],
       observations: [...new Set(observations.filter(Boolean))]
     }
   };
@@ -489,16 +527,28 @@ export async function runExecutionCellBundle(options = {}) {
   const outputPath = path.resolve(repoRoot, options.outputPath || DEFAULT_OUTPUT_PATH);
   const dockerRequested = wantsDockerLane(options);
   const capabilities = inferBundleCapabilities(options.capabilities, options.planeBinding, dockerRequested);
+  const action = normalizeText(options.action).toLowerCase();
+  const premiumSaganRequested = isPremiumSaganRequested(capabilities);
+  let premiumAuthorization = {
+    operatorAuthorizationRequired: premiumSaganRequested,
+    operatorAuthorizationPromptRequired: premiumSaganRequested,
+    estimatedFollowupAuthorizationsNeeded: premiumSaganRequested ? 1 : 0,
+    treasuryDecisionCode: null,
+    treasuryControlPlanePath: null,
+    observations: []
+  };
 
   if (!toOptionalText(options.cellId)) {
     const report = buildReport({
-      action: options.action,
+      action,
       generatedAt,
       cellId: '',
       laneId: options.laneId,
       outputPath,
       dockerRequested,
       capabilities,
+      premiumSaganRequested,
+      premiumAuthorization,
       executionCell: null,
       dockerLane: null,
       rollbacks: {}
@@ -511,13 +561,15 @@ export async function runExecutionCellBundle(options = {}) {
 
   if (dockerRequested && !toOptionalText(options.laneId)) {
     const report = buildReport({
-      action: options.action,
+      action,
       generatedAt,
       cellId: options.cellId,
       laneId: '',
       outputPath,
       dockerRequested,
       capabilities,
+      premiumSaganRequested,
+      premiumAuthorization,
       executionCell: null,
       dockerLane: null,
       rollbacks: {}
@@ -533,6 +585,84 @@ export async function runExecutionCellBundle(options = {}) {
     options.executionCellReportPath || DEFAULT_EXECUTION_CELL_REPORT_PATH
   );
   const dockerLaneReportPath = path.resolve(repoRoot, options.dockerLaneReportPath || DEFAULT_DOCKER_REPORT_PATH);
+
+  if (premiumSaganRequested && !['inspect', 'release'].includes(action)) {
+    const treasuryPolicyPath = path.resolve(repoRoot, DEFAULT_TREASURY_POLICY_PATH);
+    const shouldRunTreasuryGuard =
+      typeof options.runTreasuryOperationGuardFn === 'function'
+      || options.enforceTreasuryGuard === true
+      || existsSync(treasuryPolicyPath);
+    if (shouldRunTreasuryGuard) {
+      const treasuryGuard = (options.runTreasuryOperationGuardFn ?? runTreasuryOperationGuard)({
+        repoRoot,
+        repo: options.repository || null,
+        policyPath: treasuryPolicyPath,
+        operation: TREASURY_OPERATION.PREMIUM_SAGAN
+      });
+      premiumAuthorization = {
+        operatorAuthorizationRequired: treasuryGuard?.decision?.authorization?.requiresOperatorAuthorization === true,
+        operatorAuthorizationPromptRequired:
+          treasuryGuard?.decision?.authorization?.requiresExplicitOperatorPrompt === true,
+        estimatedFollowupAuthorizationsNeeded:
+          Number(treasuryGuard?.decision?.authorization?.estimatedFollowupAuthorizationsNeeded ?? 0) || 0,
+        treasuryDecisionCode: treasuryGuard?.decision?.code || null,
+        treasuryControlPlanePath: treasuryGuard?.outputPath || null,
+        observations:
+          treasuryGuard?.decision?.authorization?.requiresExplicitOperatorPrompt === true
+            ? ['premium-operator-prompt-required']
+            : []
+      };
+      if (treasuryGuard?.decision?.allowed !== true) {
+        const report = buildReport({
+          action,
+          generatedAt,
+          cellId: options.cellId,
+          laneId: options.laneId,
+          outputPath,
+          dockerRequested,
+          capabilities,
+          premiumSaganRequested,
+          premiumAuthorization,
+          executionCell: null,
+          dockerLane: null,
+          rollbacks: {},
+          overrideStatus: STATUS.denied,
+          extraDenialReasons: [
+            treasuryGuard?.decision?.code || 'treasury-operation-denied'
+          ]
+        });
+        await writeReport(outputPath, report);
+        return report;
+      }
+    }
+    if (!toOptionalText(options.operatorAuthorizationRef)) {
+      const report = buildReport({
+        action,
+        generatedAt,
+        cellId: options.cellId,
+        laneId: options.laneId,
+        outputPath,
+        dockerRequested,
+        capabilities,
+        premiumSaganRequested,
+        premiumAuthorization: {
+          ...premiumAuthorization,
+          operatorAuthorizationRequired: true,
+          operatorAuthorizationPromptRequired: true,
+          estimatedFollowupAuthorizationsNeeded:
+            Number(premiumAuthorization.estimatedFollowupAuthorizationsNeeded ?? 0) || 1,
+          observations: [...new Set([...(premiumAuthorization.observations || []), 'premium-operator-prompt-required'])]
+        },
+        executionCell: null,
+        dockerLane: null,
+        rollbacks: {},
+        overrideStatus: STATUS.denied,
+        extraDenialReasons: ['operator-authorization-required']
+      });
+      await writeReport(outputPath, report);
+      return report;
+    }
+  }
 
   const executionCellOptions = {
     action: options.action,
@@ -652,13 +782,15 @@ export async function runExecutionCellBundle(options = {}) {
   }
 
   const report = buildReport({
-    action: normalizeText(options.action).toLowerCase(),
+    action,
     generatedAt,
     cellId: options.cellId,
     laneId: options.laneId,
     outputPath,
     dockerRequested,
     capabilities,
+    premiumSaganRequested,
+    premiumAuthorization,
     executionCell,
     dockerLane,
     rollbacks
@@ -686,7 +818,8 @@ export async function main(argv = process.argv) {
 
   const report = await runExecutionCellBundle({
     ...options,
-    repoRoot: process.cwd()
+    repoRoot: process.cwd(),
+    enforceTreasuryGuard: true
   });
   console.log(
     `[execution-cell-bundle] report: ${path.resolve(process.cwd(), options.outputPath || DEFAULT_OUTPUT_PATH)} status=${report.status} cell=${report.cellId} lane=${report.laneId ?? 'none'}`

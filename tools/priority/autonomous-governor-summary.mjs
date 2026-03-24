@@ -63,6 +63,13 @@ export const DEFAULT_RELEASE_SIGNING_READINESS_PATH = path.join(
   'release',
   'release-signing-readiness.json'
 );
+export const DEFAULT_TREASURY_CONTROL_PLANE_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'cost',
+  'treasury-control-plane.json'
+);
 
 function asOptional(value) {
   if (value == null) {
@@ -531,6 +538,7 @@ export function parseArgs(argv = process.argv) {
     wakeInvestmentAccountingPath: DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH,
     deliveryRuntimeStatePath: DEFAULT_DELIVERY_RUNTIME_STATE_PATH,
     releaseSigningReadinessPath: DEFAULT_RELEASE_SIGNING_READINESS_PATH,
+    treasuryControlPlanePath: DEFAULT_TREASURY_CONTROL_PLANE_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
     help: false
   };
@@ -544,6 +552,7 @@ export function parseArgs(argv = process.argv) {
     ['--wake-investment-accounting', 'wakeInvestmentAccountingPath'],
     ['--delivery-runtime-state', 'deliveryRuntimeStatePath'],
     ['--release-signing-readiness', 'releaseSigningReadinessPath'],
+    ['--treasury-control-plane', 'treasuryControlPlanePath'],
     ['--output', 'outputPath']
   ]);
 
@@ -581,6 +590,7 @@ function printHelp() {
     `  --wake-investment-accounting <path> Wake investment accounting path (default: ${DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH}).`,
     `  --delivery-runtime-state <path>   Delivery runtime state path (default: ${DEFAULT_DELIVERY_RUNTIME_STATE_PATH}).`,
     `  --release-signing-readiness <path> Release signing readiness path (default: ${DEFAULT_RELEASE_SIGNING_READINESS_PATH}).`,
+    `  --treasury-control-plane <path>   Treasury control-plane path (default: ${DEFAULT_TREASURY_CONTROL_PLANE_PATH}).`,
     `  --output <path>                   Output path (default: ${DEFAULT_OUTPUT_PATH}).`,
     '  -h, --help                        Show help.'
   ].forEach((line) => console.log(line));
@@ -669,6 +679,85 @@ function deriveFunding(wakeInvestmentAccounting) {
       typeof wakeInvestmentAccounting?.summary?.metrics?.netPaybackUsd === 'number'
         ? wakeInvestmentAccounting.summary.metrics.netPaybackUsd
         : null
+  };
+}
+
+function deriveTreasury(treasuryControlPlaneReport) {
+  if (treasuryControlPlaneReport?.schema !== 'priority/treasury-control-plane@v2') {
+    return {
+      status: 'missing',
+      confidence: 'unknown',
+      spendPolicyState: 'blocked',
+      budgetPressureState: 'cautious',
+      protectedReserveUsd: null,
+      accountRemainingUsdEstimate: null,
+      operationalHeadroomUsd: null,
+      safeSpendableUsd: null,
+      possibleSpendableUpperBoundUsd: null,
+      operatorBudgetObservedRemainingUpperBoundUsd: null,
+      operatorBudgetObservedRemainingStatus: 'unknown',
+      operatorBudgetSpendableStatus: 'unknown',
+      coreDeliveryAllowed: false,
+      queueAuthorityAllowed: false,
+      releaseApplyAllowed: false,
+      premiumSaganAllowed: false,
+      premiumAuthorizationPromptRequired: false,
+      premiumAuthorizationFollowupEstimate: 0,
+      backgroundFanoutAllowed: false,
+      maxBackgroundSubagents: 0,
+      nonEssentialWorkAllowed: false
+    };
+  }
+
+  return {
+    status: asOptional(treasuryControlPlaneReport?.summary?.status) || 'missing',
+    confidence: asOptional(treasuryControlPlaneReport?.summary?.confidence) || 'unknown',
+    spendPolicyState: asOptional(treasuryControlPlaneReport?.summary?.spendPolicyState) || 'blocked',
+    budgetPressureState: asOptional(treasuryControlPlaneReport?.summary?.budgetPressureState) || 'cautious',
+    protectedReserveUsd:
+      typeof treasuryControlPlaneReport?.summary?.protectedReserveUsd === 'number'
+        ? treasuryControlPlaneReport.summary.protectedReserveUsd
+        : null,
+    accountRemainingUsdEstimate:
+      typeof treasuryControlPlaneReport?.summary?.accountRemainingUsdEstimate === 'number'
+        ? treasuryControlPlaneReport.summary.accountRemainingUsdEstimate
+        : null,
+    operationalHeadroomUsd:
+      typeof treasuryControlPlaneReport?.summary?.operationalHeadroomUsd === 'number'
+        ? treasuryControlPlaneReport.summary.operationalHeadroomUsd
+        : null,
+    safeSpendableUsd:
+      typeof treasuryControlPlaneReport?.summary?.safeSpendableUsd === 'number'
+        ? treasuryControlPlaneReport.summary.safeSpendableUsd
+        : null,
+    possibleSpendableUpperBoundUsd:
+      typeof treasuryControlPlaneReport?.summary?.possibleSpendableUpperBoundUsd === 'number'
+        ? treasuryControlPlaneReport.summary.possibleSpendableUpperBoundUsd
+        : null,
+    operatorBudgetObservedRemainingUpperBoundUsd:
+      typeof treasuryControlPlaneReport?.summary?.operatorBudgetObservedRemainingUpperBoundUsd === 'number'
+        ? treasuryControlPlaneReport.summary.operatorBudgetObservedRemainingUpperBoundUsd
+        : null,
+    operatorBudgetObservedRemainingStatus:
+      asOptional(treasuryControlPlaneReport?.summary?.operatorBudgetObservedRemainingStatus) || 'unknown',
+    operatorBudgetSpendableStatus:
+      asOptional(treasuryControlPlaneReport?.summary?.operatorBudgetSpendableStatus) || 'unknown',
+    coreDeliveryAllowed: parseBoolean(treasuryControlPlaneReport?.summary?.coreDeliveryAllowed),
+    queueAuthorityAllowed: parseBoolean(treasuryControlPlaneReport?.summary?.queueAuthorityAllowed),
+    releaseApplyAllowed: parseBoolean(treasuryControlPlaneReport?.summary?.releaseApplyAllowed),
+    premiumSaganAllowed: parseBoolean(treasuryControlPlaneReport?.summary?.premiumSaganAllowed),
+    premiumAuthorizationPromptRequired:
+      parseBoolean(treasuryControlPlaneReport?.summary?.premiumAuthorizationPromptRequired),
+    premiumAuthorizationFollowupEstimate: Number.isInteger(
+      treasuryControlPlaneReport?.summary?.premiumAuthorizationFollowupEstimate
+    )
+      ? treasuryControlPlaneReport.summary.premiumAuthorizationFollowupEstimate
+      : 0,
+    backgroundFanoutAllowed: parseBoolean(treasuryControlPlaneReport?.summary?.backgroundFanoutAllowed),
+    maxBackgroundSubagents: Number.isInteger(treasuryControlPlaneReport?.summary?.maxBackgroundSubagents)
+      ? treasuryControlPlaneReport.summary.maxBackgroundSubagents
+      : 0,
+    nonEssentialWorkAllowed: parseBoolean(treasuryControlPlaneReport?.summary?.nonEssentialWorkAllowed)
   };
 }
 
@@ -1015,6 +1104,8 @@ function buildReport({
   deliveryRuntimeState,
   releaseSigningReadinessPath,
   releaseSigningReadinessReport,
+  treasuryControlPlanePath,
+  treasuryControlPlaneReport,
   readOptionalJsonFn,
   now
 }) {
@@ -1028,6 +1119,7 @@ function buildReport({
   const continuity = deriveContinuity(continuitySummary, monitoringMode);
   const wake = deriveWake(wakeLifecycle);
   const funding = deriveFunding(wakeInvestmentAccounting);
+  const treasury = deriveTreasury(treasuryControlPlaneReport);
   const releaseSigningReadiness = deriveReleaseSigningReadiness(releaseSigningReadinessReport);
   const deliveryRuntime = deriveDeliveryRuntime(deliveryRuntimeState);
   const queueAuthority = deriveQueueAuthority({
@@ -1052,7 +1144,8 @@ function buildReport({
       wakeLifecyclePath: toRelative(repoRoot, wakeLifecyclePath),
       wakeInvestmentAccountingPath: toRelative(repoRoot, wakeInvestmentAccountingPath),
       deliveryRuntimeStatePath: toRelative(repoRoot, deliveryRuntimeStatePath),
-      releaseSigningReadinessPath: toRelative(repoRoot, releaseSigningReadinessPath)
+      releaseSigningReadinessPath: toRelative(repoRoot, releaseSigningReadinessPath),
+      treasuryControlPlanePath: toRelative(repoRoot, treasuryControlPlanePath)
     },
     compare: {
       queueState,
@@ -1064,6 +1157,7 @@ function buildReport({
           ? monitoringMode.summary.wakeConditionCount
           : null
       },
+      treasury,
       releaseSigningReadiness,
       deliveryRuntime,
       queueAuthority
@@ -1107,6 +1201,27 @@ function buildReport({
       executionBundlePremiumSaganMode: deliveryRuntime.executionBundle.premiumSaganMode,
       executionBundleReciprocalLinkReady: deliveryRuntime.executionBundle.reciprocalLinkReady,
       executionBundleEffectiveBillableRateUsdPerHour: deliveryRuntime.executionBundle.effectiveBillableRateUsdPerHour,
+      treasuryStatus: treasury.status,
+      treasuryConfidence: treasury.confidence,
+      treasurySpendPolicyState: treasury.spendPolicyState,
+      treasuryBudgetPressureState: treasury.budgetPressureState,
+      treasuryProtectedReserveUsd: treasury.protectedReserveUsd,
+      treasuryAccountRemainingUsdEstimate: treasury.accountRemainingUsdEstimate,
+      treasuryOperationalHeadroomUsd: treasury.operationalHeadroomUsd,
+      treasurySafeSpendableUsd: treasury.safeSpendableUsd,
+      treasuryPossibleSpendableUpperBoundUsd: treasury.possibleSpendableUpperBoundUsd,
+      treasuryOperatorBudgetObservedRemainingUpperBoundUsd: treasury.operatorBudgetObservedRemainingUpperBoundUsd,
+      treasuryOperatorBudgetObservedRemainingStatus: treasury.operatorBudgetObservedRemainingStatus,
+      treasuryOperatorBudgetSpendableStatus: treasury.operatorBudgetSpendableStatus,
+      treasuryCoreDeliveryAllowed: treasury.coreDeliveryAllowed,
+      treasuryQueueAuthorityAllowed: treasury.queueAuthorityAllowed,
+      treasuryReleaseApplyAllowed: treasury.releaseApplyAllowed,
+      treasuryPremiumSaganAllowed: treasury.premiumSaganAllowed,
+      treasuryPremiumAuthorizationPromptRequired: treasury.premiumAuthorizationPromptRequired,
+      treasuryPremiumAuthorizationFollowupEstimate: treasury.premiumAuthorizationFollowupEstimate,
+      treasuryBackgroundFanoutAllowed: treasury.backgroundFanoutAllowed,
+      treasuryMaxBackgroundSubagents: treasury.maxBackgroundSubagents,
+      treasuryNonEssentialWorkAllowed: treasury.nonEssentialWorkAllowed,
       queueHandoffStatus: queueAuthority.status,
       queueHandoffNextWakeCondition: queueAuthority.nextWakeCondition,
       queueHandoffPrUrl: queueAuthority.prUrl,
@@ -1133,6 +1248,10 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     repoRoot,
     options.releaseSigningReadinessPath || DEFAULT_RELEASE_SIGNING_READINESS_PATH
   );
+  const treasuryControlPlanePath = path.resolve(
+    repoRoot,
+    options.treasuryControlPlanePath || DEFAULT_TREASURY_CONTROL_PLANE_PATH
+  );
   const outputPath = path.resolve(repoRoot, options.outputPath || DEFAULT_OUTPUT_PATH);
 
   const readOptionalJsonFn = deps.readOptionalJsonFn || readOptionalJson;
@@ -1146,6 +1265,7 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   const wakeInvestmentAccounting = readOptionalJsonFn(wakeInvestmentAccountingPath);
   const deliveryRuntimeState = readOptionalJsonFn(deliveryRuntimeStatePath);
   const releaseSigningReadinessReport = readOptionalJsonFn(releaseSigningReadinessPath);
+  const treasuryControlPlaneReport = readOptionalJsonFn(treasuryControlPlanePath);
 
   if (queueEmptyReport) {
     ensureSchema(queueEmptyReport, queueEmptyReportPath, 'standing-priority/no-standing@v1');
@@ -1172,6 +1292,13 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
       'priority/release-signing-readiness-report@v1'
     );
   }
+  if (treasuryControlPlaneReport) {
+    ensureSchema(
+      treasuryControlPlaneReport,
+      treasuryControlPlanePath,
+      'priority/treasury-control-plane@v2'
+    );
+  }
 
   const report = buildReport({
     repoRoot,
@@ -1189,6 +1316,8 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     deliveryRuntimeState,
     releaseSigningReadinessPath,
     releaseSigningReadinessReport,
+    treasuryControlPlanePath,
+    treasuryControlPlaneReport,
     readOptionalJsonFn,
     now
   });

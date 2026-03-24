@@ -17,6 +17,11 @@ import {
   DEFAULT_STATUS_OUTPUT_PATH as DEFAULT_CONCURRENT_LANE_STATUS_RECEIPT_PATH,
   observeConcurrentLaneStatus
 } from './concurrent-lane-status.mjs';
+import {
+  DEFAULT_POLICY_PATH as DEFAULT_TREASURY_POLICY_PATH,
+  TREASURY_OPERATION,
+  runTreasuryOperationGuard
+} from './treasury-control-plane.mjs';
 import { loadBranchClassContract, resolveBranchPlaneTransition } from './lib/branch-classification.mjs';
 import { resolveRequiredLaneBranchPrefix } from './lib/runtime-lane-branch-contract.mjs';
 import {
@@ -5531,6 +5536,7 @@ export async function runDeliveryTurnBroker({
   taskPacketPath = '',
   repoRoot,
   policyPath,
+  enforceTreasuryGuard = false,
   now = new Date(),
   deps = {}
 }) {
@@ -5548,6 +5554,46 @@ export async function runDeliveryTurnBroker({
   };
   const executionRoot = resolveExecutionRoot(repoRoot, enrichedPacket);
   const planned = planDeliveryBrokerAction(enrichedPacket);
+  const treasuryPolicyPath = path.resolve(repoRoot, DEFAULT_TREASURY_POLICY_PATH);
+  const shouldRunTreasuryGuard =
+    typeof deps.runTreasuryOperationGuardFn === 'function' || enforceTreasuryGuard === true;
+  const guardBrokerOperation = (operation, actionType, outcome, nextWakeCondition = 'treasury-reconciled') => {
+    if (!shouldRunTreasuryGuard) {
+      return null;
+    }
+    const runTreasuryOperationGuardFn = deps.runTreasuryOperationGuardFn ?? runTreasuryOperationGuard;
+    const treasuryGuard = runTreasuryOperationGuardFn({
+      repoRoot,
+      repo: normalizeText(taskPacket?.repository) || null,
+      policyPath: treasuryPolicyPath,
+      operation
+    });
+    if (treasuryGuard?.decision?.allowed === true) {
+      return null;
+    }
+    return withWorkerProviderDispatch({
+      status: 'blocked',
+      outcome,
+      reason: treasuryGuard?.decision?.reason || `Treasury denied ${operation}.`,
+      source: 'delivery-agent-broker',
+      details: {
+        actionType,
+        laneLifecycle: 'blocked',
+        blockerClass: 'budget',
+        retryable: true,
+        nextWakeCondition,
+        helperCallsExecuted: [],
+        filesTouched: [],
+        treasuryOperation: operation,
+        treasuryDecisionCode: treasuryGuard?.decision?.code || 'treasury-operation-denied',
+        operatorAuthorizationRequired: treasuryGuard?.decision?.authorization?.requiresOperatorAuthorization === true,
+        operatorAuthorizationPromptRequired:
+          treasuryGuard?.decision?.authorization?.requiresExplicitOperatorPrompt === true,
+        estimatedFollowupAuthorizationsNeeded:
+          Number(treasuryGuard?.decision?.authorization?.estimatedFollowupAuthorizationsNeeded ?? 0) || 0
+      }
+    }, enrichedPacket);
+  };
 
   if (planned.actionType === 'idle') {
     return withWorkerProviderDispatch({
@@ -5640,6 +5686,14 @@ export async function runDeliveryTurnBroker({
   }
 
   if (planned.actionType === 'dispatch-concurrent-lanes') {
+    const treasuryDenied = guardBrokerOperation(
+      TREASURY_OPERATION.BACKGROUND_FANOUT,
+      'dispatch-concurrent-lanes',
+      'treasury-background-fanout-denied'
+    );
+    if (treasuryDenied) {
+      return treasuryDenied;
+    }
     const dispatchResult = await dispatchConcurrentLanes({
       taskPacket: enrichedPacket,
       repoRoot,
@@ -5650,6 +5704,14 @@ export async function runDeliveryTurnBroker({
   }
 
   if (planned.actionType === 'sync-pr-branch') {
+    const treasuryDenied = guardBrokerOperation(
+      TREASURY_OPERATION.CORE_DELIVERY,
+      'sync-pr-branch',
+      'treasury-core-delivery-denied'
+    );
+    if (treasuryDenied) {
+      return treasuryDenied;
+    }
     return withWorkerProviderDispatch(await updatePullRequestBranch({
       taskPacket: enrichedPacket,
       repoRoot,
@@ -5659,6 +5721,14 @@ export async function runDeliveryTurnBroker({
   }
 
   if (planned.actionType === 'merge-pr') {
+    const treasuryDenied = guardBrokerOperation(
+      TREASURY_OPERATION.QUEUE_AUTHORITY,
+      'merge-pr',
+      'treasury-queue-authority-denied'
+    );
+    if (treasuryDenied) {
+      return treasuryDenied;
+    }
     const mergeResult = await mergePullRequest({
       taskPacket: enrichedPacket,
       repoRoot,
@@ -5743,6 +5813,14 @@ export async function runDeliveryTurnBroker({
   }
 
   if (planned.actionType === 'reshape-backlog') {
+    const treasuryDenied = guardBrokerOperation(
+      TREASURY_OPERATION.NON_ESSENTIAL_WORK,
+      'reshape-backlog',
+      'treasury-non-essential-work-denied'
+    );
+    if (treasuryDenied) {
+      return treasuryDenied;
+    }
     if (policy.autoSlice !== true) {
       return withWorkerProviderDispatch({
         status: 'blocked',
@@ -5766,6 +5844,15 @@ export async function runDeliveryTurnBroker({
       deps,
       now
     }), enrichedPacket);
+  }
+
+  const treasuryDenied = guardBrokerOperation(
+    TREASURY_OPERATION.CORE_DELIVERY,
+    'execute-coding-turn',
+    'treasury-core-delivery-denied'
+  );
+  if (treasuryDenied) {
+    return treasuryDenied;
   }
 
   return withWorkerProviderDispatch(await invokeCodingTurnCommand({

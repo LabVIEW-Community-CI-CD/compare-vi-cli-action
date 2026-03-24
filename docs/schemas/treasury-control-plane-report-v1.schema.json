@@ -1,44 +1,45 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/github-comment-budget-hook-report-v1.schema.json",
-  "title": "GitHub Comment Budget Hook Report v1",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/treasury-control-plane-report-v1.schema.json",
+  "title": "Treasury Control Plane Report v1",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema",
     "generatedAt",
     "repository",
-    "target",
     "summary",
     "turns",
     "funding",
+    "controls",
     "source",
     "blockers"
   ],
   "properties": {
-    "schema": { "const": "priority/github-comment-budget-hook@v1" },
+    "schema": { "const": "priority/treasury-control-plane@v1" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "repository": { "type": ["string", "null"] },
-    "target": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["kind", "number"],
-      "properties": {
-        "kind": { "type": "string", "minLength": 1 },
-        "number": { "type": ["integer", "null"], "minimum": 1 }
-      }
-    },
     "summary": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "status",
         "recommendation",
+        "confidence",
+        "spendPolicyState",
+        "budgetPressureState",
         "tokenSpendUsd",
         "operatorLaborObservedUsd",
         "operatorLaborMissingTurnCount",
         "observedBlendedLowerBoundUsd",
         "knownBlendedUsd",
+        "protectedReserveUsd",
+        "accountRemainingUsdEstimate",
+        "operationalHeadroomUsd",
+        "operationalHeadroomStatus",
+        "safeSpendableUsd",
+        "possibleSpendableUpperBoundUsd",
+        "sourceConflictCount",
         "operatorBudgetCapUsd",
         "operatorBudgetObservedRemainingUpperBoundUsd",
         "operatorBudgetObservedRemainingStatus",
@@ -46,56 +47,60 @@
         "operatorBudgetRemainingStatus",
         "operatorBudgetSpendableUsd",
         "operatorBudgetSpendableStatus",
-        "accountRemainingUsdEstimate",
-        "operationalHeadroomUsd",
-        "operationalHeadroomStatus",
-        "safeSpendableUsd",
-        "possibleSpendableUpperBoundUsd",
-        "treasuryConfidence",
-        "treasurySpendPolicyState",
-        "coreDeliveryAllowed",
-        "queueAuthorityAllowed",
-        "releaseApplyAllowed",
         "premiumSaganAllowed",
-        "premiumAuthorizationPromptRequired",
-        "premiumAuthorizationFollowupEstimate",
         "backgroundFanoutAllowed",
         "maxBackgroundSubagents",
         "nonEssentialWorkAllowed",
-        "budgetPressureState"
+        "calibrationReserveProtected"
       ],
       "properties": {
         "status": { "type": "string", "enum": ["pass", "warn", "blocked"] },
         "recommendation": { "type": "string", "minLength": 1 },
+        "confidence": { "type": "string", "enum": ["observed", "lower-bound-only", "conflicted", "blocked"] },
+        "spendPolicyState": {
+          "type": "string",
+          "enum": ["healthy", "cautious-delivery", "core-delivery-only", "reserve-protected-only", "blocked"]
+        },
+        "budgetPressureState": {
+          "type": "string",
+          "enum": ["healthy", "cautious", "tight", "stop-nonessential-spend", "blocked"]
+        },
         "tokenSpendUsd": { "type": "number", "minimum": 0 },
         "operatorLaborObservedUsd": { "type": "number", "minimum": 0 },
         "operatorLaborMissingTurnCount": { "type": "integer", "minimum": 0 },
         "observedBlendedLowerBoundUsd": { "type": "number", "minimum": 0 },
         "knownBlendedUsd": { "type": ["number", "null"], "minimum": 0 },
-        "operatorBudgetCapUsd": { "type": ["number", "null"], "minimum": 0 },
-        "operatorBudgetObservedRemainingUpperBoundUsd": { "type": ["number", "null"], "minimum": 0 },
-        "operatorBudgetObservedRemainingStatus": { "type": "string", "enum": ["observed", "upper-bound", "unknown"] },
-        "operatorBudgetRemainingLowerBoundUsd": { "type": ["number", "null"], "minimum": 0 },
-        "operatorBudgetRemainingStatus": { "type": "string", "enum": ["observed", "unknown"] },
-        "operatorBudgetSpendableUsd": { "type": ["number", "null"], "minimum": 0 },
-        "operatorBudgetSpendableStatus": { "type": "string", "enum": ["observed", "unreconciled", "unknown"] },
+        "protectedReserveUsd": { "type": "number", "minimum": 0 },
         "accountRemainingUsdEstimate": { "type": ["number", "null"], "minimum": 0 },
         "operationalHeadroomUsd": { "type": ["number", "null"], "minimum": 0 },
-        "operationalHeadroomStatus": { "type": "string", "enum": ["healthy", "reserve-near", "reserve-protected-only", "unknown"] },
+        "operationalHeadroomStatus": {
+          "type": "string",
+          "enum": ["healthy", "reserve-near", "reserve-protected-only", "unknown"]
+        },
         "safeSpendableUsd": { "type": ["number", "null"], "minimum": 0 },
         "possibleSpendableUpperBoundUsd": { "type": ["number", "null"], "minimum": 0 },
-        "treasuryConfidence": { "type": "string", "enum": ["observed", "lower-bound-only", "conflicted", "blocked", "unknown"] },
-        "treasurySpendPolicyState": { "type": "string", "enum": ["healthy", "cautious-delivery", "core-delivery-only", "reserve-protected-only", "blocked"] },
-        "coreDeliveryAllowed": { "type": "boolean" },
-        "queueAuthorityAllowed": { "type": "boolean" },
-        "releaseApplyAllowed": { "type": "boolean" },
+        "sourceConflictCount": { "type": "integer", "minimum": 0 },
+        "operatorBudgetCapUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetObservedRemainingUpperBoundUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetObservedRemainingStatus": {
+          "type": "string",
+          "enum": ["observed", "upper-bound", "unknown"]
+        },
+        "operatorBudgetRemainingLowerBoundUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetRemainingStatus": {
+          "type": "string",
+          "enum": ["observed", "unknown"]
+        },
+        "operatorBudgetSpendableUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetSpendableStatus": {
+          "type": "string",
+          "enum": ["observed", "unreconciled", "unknown"]
+        },
         "premiumSaganAllowed": { "type": "boolean" },
-        "premiumAuthorizationPromptRequired": { "type": "boolean" },
-        "premiumAuthorizationFollowupEstimate": { "type": "integer", "minimum": 0 },
         "backgroundFanoutAllowed": { "type": "boolean" },
         "maxBackgroundSubagents": { "type": "integer", "minimum": 0 },
         "nonEssentialWorkAllowed": { "type": "boolean" },
-        "budgetPressureState": { "type": "string", "enum": ["healthy", "cautious", "tight", "stop-nonessential-spend", "blocked"] }
+        "calibrationReserveProtected": { "type": "boolean" }
       }
     },
     "turns": {
@@ -116,14 +121,25 @@
         "billingWindow": {
           "type": ["object", "null"],
           "additionalProperties": false,
-          "required": ["invoiceTurnId", "invoiceId", "fundingPurpose", "activationState", "prepaidUsd", "tokenSpendUsd", "remainingUsd", "pricingBasis", "selectionMode", "selectionReason"],
+          "required": [
+            "invoiceTurnId",
+            "invoiceId",
+            "fundingPurpose",
+            "activationState",
+            "prepaidUsd",
+            "tokenSpendUsd",
+            "remainingUsd",
+            "pricingBasis",
+            "selectionMode",
+            "selectionReason"
+          ],
           "properties": {
             "invoiceTurnId": { "type": ["string", "null"] },
             "invoiceId": { "type": ["string", "null"] },
             "fundingPurpose": { "type": ["string", "null"] },
             "activationState": { "type": ["string", "null"] },
             "prepaidUsd": { "type": ["number", "null"], "minimum": 0 },
-            "tokenSpendUsd": { "type": "number", "minimum": 0 },
+            "tokenSpendUsd": { "type": ["number", "null"], "minimum": 0 },
             "remainingUsd": { "type": ["number", "null"], "minimum": 0 },
             "pricingBasis": { "type": ["string", "null"] },
             "selectionMode": { "type": ["string", "null"] },
@@ -133,7 +149,16 @@
         "accountBalance": {
           "type": ["object", "null"],
           "additionalProperties": false,
-          "required": ["totalCredits", "usedCredits", "remainingCredits", "unitPriceUsd", "remainingUsdEstimate", "sourceKind", "sourcePathEvidence", "operatorNote"],
+          "required": [
+            "totalCredits",
+            "usedCredits",
+            "remainingCredits",
+            "unitPriceUsd",
+            "remainingUsdEstimate",
+            "sourceKind",
+            "sourcePathEvidence",
+            "operatorNote"
+          ],
           "properties": {
             "totalCredits": { "type": ["number", "null"], "minimum": 0 },
             "usedCredits": { "type": ["number", "null"], "minimum": 0 },
@@ -157,7 +182,14 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["invoiceTurnId", "invoiceId", "fundingPurpose", "activationState", "prepaidUsd", "operatorNote"],
+                "required": [
+                  "invoiceTurnId",
+                  "invoiceId",
+                  "fundingPurpose",
+                  "activationState",
+                  "prepaidUsd",
+                  "operatorNote"
+                ],
                 "properties": {
                   "invoiceTurnId": { "type": ["string", "null"] },
                   "invoiceId": { "type": ["string", "null"] },
@@ -172,16 +204,63 @@
         }
       }
     },
+    "controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["premiumSaganMode", "backgroundFanout", "nonEssentialWork"],
+      "properties": {
+        "premiumSaganMode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["allowed", "requiresOperatorAuthorization", "minimumOperationalHeadroomUsd", "reason"],
+          "properties": {
+            "allowed": { "type": "boolean" },
+            "requiresOperatorAuthorization": { "type": "boolean" },
+            "minimumOperationalHeadroomUsd": { "type": ["number", "null"], "minimum": 0 },
+            "reason": { "type": ["string", "null"] }
+          }
+        },
+        "backgroundFanout": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["allowed", "minimumOperationalHeadroomUsd", "maximumConcurrentSubagents", "reason"],
+          "properties": {
+            "allowed": { "type": "boolean" },
+            "minimumOperationalHeadroomUsd": { "type": ["number", "null"], "minimum": 0 },
+            "maximumConcurrentSubagents": { "type": "integer", "minimum": 0 },
+            "reason": { "type": ["string", "null"] }
+          }
+        },
+        "nonEssentialWork": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["allowed", "minimumOperationalHeadroomUsd", "reason"],
+          "properties": {
+            "allowed": { "type": "boolean" },
+            "minimumOperationalHeadroomUsd": { "type": ["number", "null"], "minimum": 0 },
+            "reason": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["policyPath", "treasuryPolicyPath", "treasuryControlPlanePath", "outputPath", "markdownOutputPath"],
+      "required": [
+        "policyPath",
+        "costRollupPath",
+        "costRollupMaterialized",
+        "costRollupMaterializationReportPath",
+        "operatorCostProfilePath",
+        "outputPath"
+      ],
       "properties": {
         "policyPath": { "type": ["string", "null"] },
-        "treasuryPolicyPath": { "type": ["string", "null"] },
-        "treasuryControlPlanePath": { "type": ["string", "null"] },
-        "outputPath": { "type": ["string", "null"] },
-        "markdownOutputPath": { "type": ["string", "null"] }
+        "costRollupPath": { "type": ["string", "null"] },
+        "costRollupMaterialized": { "type": "boolean" },
+        "costRollupMaterializationReportPath": { "type": ["string", "null"] },
+        "operatorCostProfilePath": { "type": ["string", "null"] },
+        "outputPath": { "type": ["string", "null"] }
       }
     },
     "blockers": {

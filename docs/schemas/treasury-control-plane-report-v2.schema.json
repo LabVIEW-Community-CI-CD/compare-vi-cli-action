@@ -1,0 +1,376 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/treasury-control-plane-report-v2.schema.json",
+  "title": "Treasury Control Plane Report v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "summary",
+    "turns",
+    "funding",
+    "controls",
+    "source",
+    "blockers"
+  ],
+  "properties": {
+    "schema": { "const": "priority/treasury-control-plane@v2" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repository": { "type": ["string", "null"] },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "recommendation",
+        "confidence",
+        "spendPolicyState",
+        "budgetPressureState",
+        "tokenSpendUsd",
+        "operatorLaborObservedUsd",
+        "operatorLaborMissingTurnCount",
+        "observedBlendedLowerBoundUsd",
+        "knownBlendedUsd",
+        "protectedReserveUsd",
+        "accountRemainingUsdEstimate",
+        "operationalHeadroomUsd",
+        "operationalHeadroomStatus",
+        "safeSpendableUsd",
+        "possibleSpendableUpperBoundUsd",
+        "sourceConflictCount",
+        "operatorBudgetCapUsd",
+        "operatorBudgetObservedRemainingUpperBoundUsd",
+        "operatorBudgetObservedRemainingStatus",
+        "operatorBudgetRemainingLowerBoundUsd",
+        "operatorBudgetRemainingStatus",
+        "operatorBudgetSpendableUsd",
+        "operatorBudgetSpendableStatus",
+        "coreDeliveryAllowed",
+        "queueAuthorityAllowed",
+        "releaseApplyAllowed",
+        "premiumSaganAllowed",
+        "premiumAuthorizationPromptRequired",
+        "premiumAuthorizationFollowupEstimate",
+        "backgroundFanoutAllowed",
+        "maxBackgroundSubagents",
+        "nonEssentialWorkAllowed",
+        "calibrationReserveProtected"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "warn", "blocked"] },
+        "recommendation": { "type": "string", "minLength": 1 },
+        "confidence": { "type": "string", "enum": ["observed", "lower-bound-only", "conflicted", "blocked"] },
+        "spendPolicyState": {
+          "type": "string",
+          "enum": ["healthy", "cautious-delivery", "core-delivery-only", "reserve-protected-only", "blocked"]
+        },
+        "budgetPressureState": {
+          "type": "string",
+          "enum": ["healthy", "cautious", "tight", "stop-nonessential-spend", "blocked"]
+        },
+        "tokenSpendUsd": { "type": "number", "minimum": 0 },
+        "operatorLaborObservedUsd": { "type": "number", "minimum": 0 },
+        "operatorLaborMissingTurnCount": { "type": "integer", "minimum": 0 },
+        "observedBlendedLowerBoundUsd": { "type": "number", "minimum": 0 },
+        "knownBlendedUsd": { "type": ["number", "null"], "minimum": 0 },
+        "protectedReserveUsd": { "type": "number", "minimum": 0 },
+        "accountRemainingUsdEstimate": { "type": ["number", "null"], "minimum": 0 },
+        "operationalHeadroomUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operationalHeadroomStatus": {
+          "type": "string",
+          "enum": ["healthy", "reserve-near", "reserve-protected-only", "unknown"]
+        },
+        "safeSpendableUsd": { "type": ["number", "null"], "minimum": 0 },
+        "possibleSpendableUpperBoundUsd": { "type": ["number", "null"], "minimum": 0 },
+        "sourceConflictCount": { "type": "integer", "minimum": 0 },
+        "operatorBudgetCapUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetObservedRemainingUpperBoundUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetObservedRemainingStatus": {
+          "type": "string",
+          "enum": ["observed", "upper-bound", "unknown"]
+        },
+        "operatorBudgetRemainingLowerBoundUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetRemainingStatus": {
+          "type": "string",
+          "enum": ["observed", "unknown"]
+        },
+        "operatorBudgetSpendableUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetSpendableStatus": {
+          "type": "string",
+          "enum": ["observed", "unreconciled", "unknown"]
+        },
+        "coreDeliveryAllowed": { "type": "boolean" },
+        "queueAuthorityAllowed": { "type": "boolean" },
+        "releaseApplyAllowed": { "type": "boolean" },
+        "premiumSaganAllowed": { "type": "boolean" },
+        "premiumAuthorizationPromptRequired": { "type": "boolean" },
+        "premiumAuthorizationFollowupEstimate": { "type": "integer", "minimum": 0 },
+        "backgroundFanoutAllowed": { "type": "boolean" },
+        "maxBackgroundSubagents": { "type": "integer", "minimum": 0 },
+        "nonEssentialWorkAllowed": { "type": "boolean" },
+        "calibrationReserveProtected": { "type": "boolean" }
+      }
+    },
+    "turns": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["totalTurns", "liveTurnCount", "backgroundTurnCount"],
+      "properties": {
+        "totalTurns": { "type": "integer", "minimum": 0 },
+        "liveTurnCount": { "type": "integer", "minimum": 0 },
+        "backgroundTurnCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "funding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["billingWindow", "accountBalance", "reservedFunding"],
+      "properties": {
+        "billingWindow": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "invoiceTurnId",
+            "invoiceId",
+            "fundingPurpose",
+            "activationState",
+            "prepaidUsd",
+            "tokenSpendUsd",
+            "remainingUsd",
+            "pricingBasis",
+            "selectionMode",
+            "selectionReason"
+          ],
+          "properties": {
+            "invoiceTurnId": { "type": ["string", "null"] },
+            "invoiceId": { "type": ["string", "null"] },
+            "fundingPurpose": { "type": ["string", "null"] },
+            "activationState": { "type": ["string", "null"] },
+            "prepaidUsd": { "type": ["number", "null"], "minimum": 0 },
+            "tokenSpendUsd": { "type": ["number", "null"], "minimum": 0 },
+            "remainingUsd": { "type": ["number", "null"], "minimum": 0 },
+            "pricingBasis": { "type": ["string", "null"] },
+            "selectionMode": { "type": ["string", "null"] },
+            "selectionReason": { "type": ["string", "null"] }
+          }
+        },
+        "accountBalance": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "totalCredits",
+            "usedCredits",
+            "remainingCredits",
+            "unitPriceUsd",
+            "remainingUsdEstimate",
+            "sourceKind",
+            "sourcePathEvidence",
+            "operatorNote"
+          ],
+          "properties": {
+            "totalCredits": { "type": ["number", "null"], "minimum": 0 },
+            "usedCredits": { "type": ["number", "null"], "minimum": 0 },
+            "remainingCredits": { "type": ["number", "null"], "minimum": 0 },
+            "unitPriceUsd": { "type": ["number", "null"], "minimum": 0 },
+            "remainingUsdEstimate": { "type": ["number", "null"], "minimum": 0 },
+            "sourceKind": { "type": ["string", "null"] },
+            "sourcePathEvidence": { "type": ["string", "null"] },
+            "operatorNote": { "type": ["string", "null"] }
+          }
+        },
+        "reservedFunding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count", "totalReservedUsd", "windows"],
+          "properties": {
+            "count": { "type": "integer", "minimum": 0 },
+            "totalReservedUsd": { "type": "number", "minimum": 0 },
+            "windows": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "invoiceTurnId",
+                  "invoiceId",
+                  "fundingPurpose",
+                  "activationState",
+                  "prepaidUsd",
+                  "operatorNote"
+                ],
+                "properties": {
+                  "invoiceTurnId": { "type": ["string", "null"] },
+                  "invoiceId": { "type": ["string", "null"] },
+                  "fundingPurpose": { "type": ["string", "null"] },
+                  "activationState": { "type": ["string", "null"] },
+                  "prepaidUsd": { "type": ["number", "null"], "minimum": 0 },
+                  "operatorNote": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["premiumSaganMode", "backgroundFanout", "nonEssentialWork", "operations"],
+      "properties": {
+        "premiumSaganMode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "allowed",
+            "requiresOperatorAuthorization",
+            "requiresExplicitOperatorPrompt",
+            "estimatedFollowupAuthorizationsNeeded",
+            "minimumOperationalHeadroomUsd",
+            "reason"
+          ],
+          "properties": {
+            "allowed": { "type": "boolean" },
+            "requiresOperatorAuthorization": { "type": "boolean" },
+            "requiresExplicitOperatorPrompt": { "type": "boolean" },
+            "estimatedFollowupAuthorizationsNeeded": { "type": "integer", "minimum": 0 },
+            "minimumOperationalHeadroomUsd": { "type": ["number", "null"], "minimum": 0 },
+            "reason": { "type": ["string", "null"] }
+          }
+        },
+        "backgroundFanout": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["allowed", "minimumOperationalHeadroomUsd", "maximumConcurrentSubagents", "reason"],
+          "properties": {
+            "allowed": { "type": "boolean" },
+            "minimumOperationalHeadroomUsd": { "type": ["number", "null"], "minimum": 0 },
+            "maximumConcurrentSubagents": { "type": "integer", "minimum": 0 },
+            "reason": { "type": ["string", "null"] }
+          }
+        },
+        "nonEssentialWork": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["allowed", "minimumOperationalHeadroomUsd", "reason"],
+          "properties": {
+            "allowed": { "type": "boolean" },
+            "minimumOperationalHeadroomUsd": { "type": ["number", "null"], "minimum": 0 },
+            "reason": { "type": ["string", "null"] }
+          }
+        },
+        "operations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "core-delivery",
+            "queue-authority",
+            "release-apply",
+            "background-fanout",
+            "non-essential-work",
+            "premium-sagan"
+          ],
+          "properties": {
+            "core-delivery": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["allowed", "reason"],
+              "properties": {
+                "allowed": { "type": "boolean" },
+                "reason": { "type": ["string", "null"] }
+              }
+            },
+            "queue-authority": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["allowed", "reason"],
+              "properties": {
+                "allowed": { "type": "boolean" },
+                "reason": { "type": ["string", "null"] }
+              }
+            },
+            "release-apply": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["allowed", "reason"],
+              "properties": {
+                "allowed": { "type": "boolean" },
+                "reason": { "type": ["string", "null"] }
+              }
+            },
+            "background-fanout": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["allowed", "reason"],
+              "properties": {
+                "allowed": { "type": "boolean" },
+                "reason": { "type": ["string", "null"] }
+              }
+            },
+            "non-essential-work": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["allowed", "reason"],
+              "properties": {
+                "allowed": { "type": "boolean" },
+                "reason": { "type": ["string", "null"] }
+              }
+            },
+            "premium-sagan": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "allowed",
+                "reason",
+                "requiresOperatorAuthorization",
+                "requiresExplicitOperatorPrompt",
+                "estimatedFollowupAuthorizationsNeeded"
+              ],
+              "properties": {
+                "allowed": { "type": "boolean" },
+                "reason": { "type": ["string", "null"] },
+                "requiresOperatorAuthorization": { "type": "boolean" },
+                "requiresExplicitOperatorPrompt": { "type": "boolean" },
+                "estimatedFollowupAuthorizationsNeeded": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyPath",
+        "costRollupPath",
+        "costRollupMaterialized",
+        "costRollupMaterializationReportPath",
+        "operatorCostProfilePath",
+        "outputPath"
+      ],
+      "properties": {
+        "policyPath": { "type": ["string", "null"] },
+        "costRollupPath": { "type": ["string", "null"] },
+        "costRollupMaterialized": { "type": "boolean" },
+        "costRollupMaterializationReportPath": { "type": ["string", "null"] },
+        "operatorCostProfilePath": { "type": ["string", "null"] },
+        "outputPath": { "type": ["string", "null"] }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "details"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 },
+          "details": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

@@ -26,6 +26,7 @@ test('github-comment-budget-hook report and policy validate against checked-in s
   const policyPath = path.join(repo, 'tools', 'policy', 'github-comment-budget-hook.json');
   writeJson(policyPath, {
     schema: 'priority/github-comment-budget-hook-policy@v1',
+    treasuryPolicyPath: 'tools/policy/treasury-control-plane.json',
     costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
     materializationPolicyPath: 'tools/policy/agent-cost-rollup-materialization.json',
     materializationReportPath: 'tests/results/_agent/cost/agent-cost-rollup-materialization.json',
@@ -45,50 +46,126 @@ test('github-comment-budget-hook report and policy validate against checked-in s
       targetNumber: 1908
     },
     {
-      runMaterializeAgentCostRollupFn: ({ costRollupPath, outputPath }) => {
-        writeJson(costRollupPath, {
-          schema: 'priority/agent-cost-rollup@v1',
+      runTreasuryControlPlaneFn: () => ({
+        report: {
+          schema: 'priority/treasury-control-plane@v2',
           repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
           summary: {
-            metrics: {
-              totalTurns: 1,
-              liveTurnCount: 0,
-              backgroundTurnCount: 1,
-              totalUsd: 1.5,
-              operatorLaborUsd: 4,
-              operatorLaborMissingTurnCount: 0,
-              blendedTotalUsd: 5.5,
-              estimatedPrepaidUsdRemaining: 398.5,
-              accountBalanceTotalCredits: 28750,
-              accountBalanceUsedCredits: 24600,
-              accountBalanceRemainingCredits: 4150
+            status: 'pass',
+            recommendation: 'treasury-control-plane-ready',
+            confidence: 'observed',
+            spendPolicyState: 'healthy',
+            budgetPressureState: 'healthy',
+            tokenSpendUsd: 1.5,
+            operatorLaborObservedUsd: 4,
+            operatorLaborMissingTurnCount: 0,
+            observedBlendedLowerBoundUsd: 5.5,
+            knownBlendedUsd: 5.5,
+            protectedReserveUsd: 0,
+            accountRemainingUsdEstimate: 400,
+            operationalHeadroomUsd: 400,
+            operationalHeadroomStatus: 'healthy',
+            safeSpendableUsd: 400,
+            possibleSpendableUpperBoundUsd: 400,
+            sourceConflictCount: 0,
+            operatorBudgetCapUsd: 50000,
+            operatorBudgetObservedRemainingUpperBoundUsd: 49996,
+            operatorBudgetObservedRemainingStatus: 'observed',
+            operatorBudgetRemainingLowerBoundUsd: 49996,
+            operatorBudgetRemainingStatus: 'observed',
+            operatorBudgetSpendableUsd: 49996,
+            operatorBudgetSpendableStatus: 'observed',
+            coreDeliveryAllowed: true,
+            queueAuthorityAllowed: true,
+            releaseApplyAllowed: true,
+            premiumSaganAllowed: true,
+            premiumAuthorizationPromptRequired: true,
+            premiumAuthorizationFollowupEstimate: 1,
+            backgroundFanoutAllowed: true,
+            maxBackgroundSubagents: 2,
+            nonEssentialWorkAllowed: true,
+            calibrationReserveProtected: false
+          },
+          turns: {
+            totalTurns: 1,
+            liveTurnCount: 0,
+            backgroundTurnCount: 1
+          },
+          funding: {
+            billingWindow: {
+              invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
+              invoiceId: 'HQ1VJLMV-0027',
+              fundingPurpose: 'operational',
+              activationState: 'active',
+              prepaidUsd: 400,
+              tokenSpendUsd: 1.5,
+              remainingUsd: 398.5,
+              pricingBasis: 'prepaid-credit',
+              selectionMode: 'hold',
+              selectionReason: null
             },
-            provenance: {
-              operatorProfiles: [{ operatorProfilePath: 'tools/policy/operator-cost-profile.json' }],
-              invoiceTurn: {
-                unitPriceUsd: 0.04
-              },
-              accountBalance: {
-                sourceKind: 'operator-account-state',
-                sourcePathEvidence: 'operator-account-state.json',
-                operatorNote: 'Latest operator-provided balance snapshot.'
-              },
-              invoiceTurns: []
+            accountBalance: {
+              totalCredits: 28750,
+              usedCredits: 18750,
+              remainingCredits: 10000,
+              unitPriceUsd: 0.04,
+              remainingUsdEstimate: 400,
+              sourceKind: 'operator-account-state',
+              sourcePathEvidence: 'operator-account-state.json',
+              operatorNote: 'Latest operator-provided balance snapshot.'
+            },
+            reservedFunding: {
+              count: 0,
+              totalReservedUsd: 0,
+              windows: []
             }
           },
-          billingWindow: {
-            invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
-            invoiceId: 'HQ1VJLMV-0027',
-            fundingPurpose: 'operational',
-            activationState: 'active',
-            prepaidUsd: 400,
-            pricingBasis: 'prepaid-credit',
-            selection: { mode: 'hold', reason: null }
-          }
-        });
-        writeJson(outputPath, { schema: 'priority/agent-cost-rollup-materialization@v1', summary: { status: 'pass' } });
-        return { costRollupPath, outputPath };
-      }
+          controls: {
+            premiumSaganMode: {
+              allowed: true,
+              requiresOperatorAuthorization: true,
+              requiresExplicitOperatorPrompt: true,
+              estimatedFollowupAuthorizationsNeeded: 1,
+              minimumOperationalHeadroomUsd: 150,
+              reason: 'budget-healthy'
+            },
+            backgroundFanout: {
+              allowed: true,
+              minimumOperationalHeadroomUsd: 125,
+              maximumConcurrentSubagents: 2,
+              reason: 'budget-healthy'
+            },
+            nonEssentialWork: {
+              allowed: true,
+              minimumOperationalHeadroomUsd: 100,
+              reason: 'budget-healthy'
+            },
+            operations: {
+              'core-delivery': { allowed: true, reason: 'policy-healthy' },
+              'queue-authority': { allowed: true, reason: 'policy-healthy' },
+              'release-apply': { allowed: true, reason: 'policy-healthy' },
+              'background-fanout': { allowed: true, reason: 'budget-healthy' },
+              'non-essential-work': { allowed: true, reason: 'budget-healthy' },
+              'premium-sagan': {
+                allowed: true,
+                reason: 'budget-healthy',
+                requiresOperatorAuthorization: true,
+                requiresExplicitOperatorPrompt: true,
+                estimatedFollowupAuthorizationsNeeded: 1
+              }
+            }
+          },
+          source: {
+            policyPath: 'tools/policy/treasury-control-plane.json',
+            costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
+            costRollupMaterialized: true,
+            costRollupMaterializationReportPath: 'tests/results/_agent/cost/agent-cost-rollup-materialization.json',
+            operatorCostProfilePath: 'tools/policy/operator-cost-profile.json',
+            outputPath: 'tests/results/_agent/cost/treasury-control-plane.json'
+          },
+          blockers: []
+        }
+      })
     }
   );
 

@@ -1629,6 +1629,19 @@ try {
       Write-Host ("  execLink : {0}" -f (Format-NullableValue $governor.summary.executionBundleReciprocalLinkReady))
       Write-Host ("  execRate : {0}" -f (Format-NullableValue $governor.summary.executionBundleEffectiveBillableRateUsdPerHour))
     }
+    if ($governor.summary.PSObject.Properties['treasuryStatus'] -and $governor.summary.treasuryStatus) {
+      Write-Host ("  treas    : {0}" -f (Format-NullableValue $governor.summary.treasuryStatus))
+      Write-Host ("  treasPol : {0}" -f (Format-NullableValue $governor.summary.treasurySpendPolicyState))
+      Write-Host ("  treasConf: {0}" -f (Format-NullableValue $governor.summary.treasuryConfidence))
+      Write-Host ("  treasSafe: {0}" -f (Format-NullableValue $governor.summary.treasurySafeSpendableUsd))
+      Write-Host ("  treasCore: {0}" -f (Format-NullableValue $governor.summary.treasuryCoreDeliveryAllowed))
+      Write-Host ("  treasQ   : {0}" -f (Format-NullableValue $governor.summary.treasuryQueueAuthorityAllowed))
+      Write-Host ("  treasRel : {0}" -f (Format-NullableValue $governor.summary.treasuryReleaseApplyAllowed))
+      Write-Host ("  treasPrem: {0}" -f (Format-NullableValue $governor.summary.treasuryPremiumSaganAllowed))
+      Write-Host ("  treasAuth: {0}" -f (Format-NullableValue $governor.summary.treasuryPremiumAuthorizationPromptRequired))
+      Write-Host ("  treasAuth+: {0}" -f (Format-NullableValue $governor.summary.treasuryPremiumAuthorizationFollowupEstimate))
+      Write-Host ("  treasFan : {0}" -f (Format-NullableValue $governor.summary.treasuryMaxBackgroundSubagents))
+    }
     if ($env:GITHUB_STEP_SUMMARY) {
       $governorLines = @(
         '### Autonomous Governor',
@@ -1714,6 +1727,19 @@ try {
         $governorLines += ('- Premium Sagan mode: {0}' -f (Format-NullableValue $governor.summary.executionBundlePremiumSaganMode))
         $governorLines += ('- Execution reciprocal link: {0}' -f (Format-NullableValue $governor.summary.executionBundleReciprocalLinkReady))
         $governorLines += ('- Execution effective rate USD/hr: {0}' -f (Format-NullableValue $governor.summary.executionBundleEffectiveBillableRateUsdPerHour))
+      }
+      if ($governor.summary.PSObject.Properties['treasuryStatus'] -and $governor.summary.treasuryStatus) {
+        $governorLines += ('- Treasury status: {0}' -f (Format-NullableValue $governor.summary.treasuryStatus))
+        $governorLines += ('- Treasury policy: {0}' -f (Format-NullableValue $governor.summary.treasurySpendPolicyState))
+        $governorLines += ('- Treasury confidence: {0}' -f (Format-NullableValue $governor.summary.treasuryConfidence))
+        $governorLines += ('- Treasury safe spendable USD: {0}' -f (Format-NullableValue $governor.summary.treasurySafeSpendableUsd))
+        $governorLines += ('- Treasury core delivery allowed: {0}' -f (Format-NullableValue $governor.summary.treasuryCoreDeliveryAllowed))
+        $governorLines += ('- Treasury queue authority allowed: {0}' -f (Format-NullableValue $governor.summary.treasuryQueueAuthorityAllowed))
+        $governorLines += ('- Treasury release apply allowed: {0}' -f (Format-NullableValue $governor.summary.treasuryReleaseApplyAllowed))
+        $governorLines += ('- Treasury premium Sagan allowed: {0}' -f (Format-NullableValue $governor.summary.treasuryPremiumSaganAllowed))
+        $governorLines += ('- Treasury premium operator prompt required: {0}' -f (Format-NullableValue $governor.summary.treasuryPremiumAuthorizationPromptRequired))
+        $governorLines += ('- Treasury premium follow-up authorization estimate: {0}' -f (Format-NullableValue $governor.summary.treasuryPremiumAuthorizationFollowupEstimate))
+        $governorLines += ('- Treasury max background subagents: {0}' -f (Format-NullableValue $governor.summary.treasuryMaxBackgroundSubagents))
       }
       ($governorLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
     }
@@ -1802,6 +1828,19 @@ try {
       Write-Host ("  execLink : {0}" -f (Format-NullableValue $portfolio.summary.executionBundleReciprocalLinkReady))
       Write-Host ("  execRate : {0}" -f (Format-NullableValue $portfolio.summary.executionBundleEffectiveBillableRateUsdPerHour))
     }
+    if ($portfolio.summary.PSObject.Properties['treasuryStatus'] -and $portfolio.summary.treasuryStatus) {
+      Write-Host ("  treas    : {0}" -f (Format-NullableValue $portfolio.summary.treasuryStatus))
+      Write-Host ("  treasPol : {0}" -f (Format-NullableValue $portfolio.summary.treasurySpendPolicyState))
+      Write-Host ("  treasConf: {0}" -f (Format-NullableValue $portfolio.summary.treasuryConfidence))
+      Write-Host ("  treasSafe: {0}" -f (Format-NullableValue $portfolio.summary.treasurySafeSpendableUsd))
+      Write-Host ("  treasCore: {0}" -f (Format-NullableValue $portfolio.summary.treasuryCoreDeliveryAllowed))
+      Write-Host ("  treasQ   : {0}" -f (Format-NullableValue $portfolio.summary.treasuryQueueAuthorityAllowed))
+      Write-Host ("  treasRel : {0}" -f (Format-NullableValue $portfolio.summary.treasuryReleaseApplyAllowed))
+      Write-Host ("  treasPrem: {0}" -f (Format-NullableValue $portfolio.summary.treasuryPremiumSaganAllowed))
+      Write-Host ("  treasAuth: {0}" -f (Format-NullableValue $portfolio.summary.treasuryPremiumAuthorizationPromptRequired))
+      Write-Host ("  treasAuth+: {0}" -f (Format-NullableValue $portfolio.summary.treasuryPremiumAuthorizationFollowupEstimate))
+      Write-Host ("  treasFan : {0}" -f (Format-NullableValue $portfolio.summary.treasuryMaxBackgroundSubagents))
+    }
     if ($env:GITHUB_STEP_SUMMARY) {
       $portfolioLines = @(
         '### Governor Portfolio',
@@ -1880,6 +1919,19 @@ try {
         $portfolioLines += ('- Premium Sagan mode: {0}' -f (Format-NullableValue $portfolio.summary.executionBundlePremiumSaganMode))
         $portfolioLines += ('- Execution reciprocal link: {0}' -f (Format-NullableValue $portfolio.summary.executionBundleReciprocalLinkReady))
         $portfolioLines += ('- Execution effective rate USD/hr: {0}' -f (Format-NullableValue $portfolio.summary.executionBundleEffectiveBillableRateUsdPerHour))
+      }
+      if ($portfolio.summary.PSObject.Properties['treasuryStatus'] -and $portfolio.summary.treasuryStatus) {
+        $portfolioLines += ('- Treasury status: {0}' -f (Format-NullableValue $portfolio.summary.treasuryStatus))
+        $portfolioLines += ('- Treasury policy: {0}' -f (Format-NullableValue $portfolio.summary.treasurySpendPolicyState))
+        $portfolioLines += ('- Treasury confidence: {0}' -f (Format-NullableValue $portfolio.summary.treasuryConfidence))
+        $portfolioLines += ('- Treasury safe spendable USD: {0}' -f (Format-NullableValue $portfolio.summary.treasurySafeSpendableUsd))
+        $portfolioLines += ('- Treasury core delivery allowed: {0}' -f (Format-NullableValue $portfolio.summary.treasuryCoreDeliveryAllowed))
+        $portfolioLines += ('- Treasury queue authority allowed: {0}' -f (Format-NullableValue $portfolio.summary.treasuryQueueAuthorityAllowed))
+        $portfolioLines += ('- Treasury release apply allowed: {0}' -f (Format-NullableValue $portfolio.summary.treasuryReleaseApplyAllowed))
+        $portfolioLines += ('- Treasury premium Sagan allowed: {0}' -f (Format-NullableValue $portfolio.summary.treasuryPremiumSaganAllowed))
+        $portfolioLines += ('- Treasury premium operator prompt required: {0}' -f (Format-NullableValue $portfolio.summary.treasuryPremiumAuthorizationPromptRequired))
+        $portfolioLines += ('- Treasury premium follow-up authorization estimate: {0}' -f (Format-NullableValue $portfolio.summary.treasuryPremiumAuthorizationFollowupEstimate))
+        $portfolioLines += ('- Treasury max background subagents: {0}' -f (Format-NullableValue $portfolio.summary.treasuryMaxBackgroundSubagents))
       }
       ($portfolioLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
     }

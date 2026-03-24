@@ -239,6 +239,87 @@ test('runReleaseConductor blocks apply when release conductor flag is disabled',
   assert.equal(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'tag'), false);
 });
 
+test('runReleaseConductor fails closed when treasury denies release apply', async () => {
+  const readJsonOptionalFn = async (filePath) => {
+    const normalized = String(filePath);
+    if (normalized.includes('queue-supervisor-report.json')) {
+      return {
+        exists: true,
+        error: null,
+        path: filePath,
+        payload: {
+          paused: false,
+          throughputController: { mode: 'healthy' },
+          retryHistory: {}
+        }
+      };
+    }
+    return {
+      exists: true,
+      error: null,
+      path: filePath,
+      payload: {
+        schema: 'priority/policy-live-state@v1',
+        generatedAt: '2026-03-06T10:00:00Z',
+        state: {}
+      }
+    };
+  };
+
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'api') {
+      return makeWorkflowRunsResponse(String(args[1]));
+    }
+    throw new Error(`unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const commandCalls = [];
+  const { report, exitCode } = await runReleaseConductor({
+    repoRoot: process.cwd(),
+    now: new Date('2026-03-06T12:00:00.000Z'),
+    args: {
+      apply: true,
+      dryRun: false,
+      reportPath: 'tests/results/_agent/release/release-conductor-report.json',
+      queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      policySnapshotPath: 'tests/results/_agent/policy/policy-state-snapshot.json',
+      repo: 'owner/repo',
+      stream: 'comparevi-cli',
+      channel: 'stable',
+      version: '0.8.0',
+      dwellMinutes: 60,
+      quarantineStaleHours: 24,
+      help: false
+    },
+    environment: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      RELEASE_CONDUCTOR_ENABLED: '1'
+    },
+    runGhJsonFn,
+    runCommandFn: (command, args) => {
+      commandCalls.push({ command, args });
+      if (command === 'git' && args[0] === 'config') {
+        return { status: 0, stdout: 'ABC123', stderr: '' };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    },
+    readJsonOptionalFn,
+    writeReportFn: async (reportPath) => reportPath,
+    runTreasuryOperationGuardFn: () => ({
+      decision: {
+        allowed: false,
+        code: 'treasury-operation-denied',
+        reason: 'Treasury denied release-apply: policy-core-delivery-only.'
+      }
+    })
+  });
+
+  assert.equal(exitCode, 1);
+  assert.equal(report.decision.status, 'fail');
+  assert.ok(report.decision.blockers.some((entry) => entry.code === 'treasury-release-apply-denied'));
+  assert.equal(commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'tag'), false);
+});
+
 test('runReleaseConductor keeps dry-run proposal-only when queue evidence is missing and no recent success exists', async () => {
   const readJsonOptionalFn = async (filePath) => {
     const normalized = String(filePath);

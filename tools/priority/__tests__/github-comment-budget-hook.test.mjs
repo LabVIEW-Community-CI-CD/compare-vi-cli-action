@@ -17,47 +17,78 @@ function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 
-function createRollupFixture() {
+function createTreasuryReportFixture() {
   return {
-    schema: 'priority/agent-cost-rollup@v1',
+    schema: 'priority/treasury-control-plane@v2',
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     summary: {
-      metrics: {
-        totalTurns: 3,
-        liveTurnCount: 1,
-        backgroundTurnCount: 2,
-        totalUsd: 12.5,
-        operatorLaborUsd: 30,
-        operatorLaborMissingTurnCount: 1,
-        blendedTotalUsd: null,
-        estimatedPrepaidUsdRemaining: 387.5,
-        accountBalanceTotalCredits: 28750,
-        accountBalanceUsedCredits: 24600,
-        accountBalanceRemainingCredits: 4150
+      status: 'warn',
+      recommendation: 'constrain-spend-to-core-delivery',
+      confidence: 'lower-bound-only',
+      spendPolicyState: 'core-delivery-only',
+      budgetPressureState: 'tight',
+      tokenSpendUsd: 12.5,
+      operatorLaborObservedUsd: 30,
+      operatorLaborMissingTurnCount: 1,
+      observedBlendedLowerBoundUsd: 42.5,
+      knownBlendedUsd: null,
+      protectedReserveUsd: 100,
+      accountRemainingUsdEstimate: 166,
+      operationalHeadroomUsd: 66,
+      operationalHeadroomStatus: 'reserve-near',
+      safeSpendableUsd: 66,
+      possibleSpendableUpperBoundUsd: 66,
+      sourceConflictCount: 0,
+      operatorBudgetCapUsd: 50000,
+      operatorBudgetObservedRemainingUpperBoundUsd: 49970,
+      operatorBudgetObservedRemainingStatus: 'upper-bound',
+      operatorBudgetRemainingLowerBoundUsd: null,
+      operatorBudgetRemainingStatus: 'unknown',
+      operatorBudgetSpendableUsd: null,
+      operatorBudgetSpendableStatus: 'unreconciled',
+      coreDeliveryAllowed: true,
+      queueAuthorityAllowed: true,
+      releaseApplyAllowed: true,
+      premiumSaganAllowed: false,
+      premiumAuthorizationPromptRequired: true,
+      premiumAuthorizationFollowupEstimate: 1,
+      backgroundFanoutAllowed: false,
+      maxBackgroundSubagents: 0,
+      nonEssentialWorkAllowed: false,
+      calibrationReserveProtected: true
+    },
+    turns: {
+      totalTurns: 3,
+      liveTurnCount: 1,
+      backgroundTurnCount: 2
+    },
+    funding: {
+      billingWindow: {
+        invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
+        invoiceId: 'HQ1VJLMV-0027',
+        fundingPurpose: 'operational',
+        activationState: 'active',
+        prepaidUsd: 400,
+        tokenSpendUsd: 12.5,
+        remainingUsd: 387.5,
+        pricingBasis: 'prepaid-credit',
+        selectionMode: 'hold',
+        selectionReason: 'Calibration funding window remains on hold before activation.'
       },
-      provenance: {
-        operatorProfiles: [
-          {
-            operatorProfilePath: 'tools/policy/operator-cost-profile.json'
-          }
-        ],
-        invoiceTurn: {
-          unitPriceUsd: 0.04
-        },
-        accountBalance: {
-          sourceKind: 'operator-account-state',
-          sourcePathEvidence: 'operator-account-state.json',
-          operatorNote: 'Latest operator-provided balance snapshot.'
-        },
-        invoiceTurns: [
-          {
-            invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
-            invoiceId: 'HQ1VJLMV-0027',
-            fundingPurpose: 'operational',
-            activationState: 'active',
-            prepaidUsd: 400,
-            operatorNote: 'Operational window.'
-          },
+      accountBalance: {
+        totalCredits: 28750,
+        usedCredits: 24600,
+        remainingCredits: 4150,
+        unitPriceUsd: 0.04,
+        remainingUsdEstimate: 166,
+        sourceKind: 'operator-account-state',
+        sourcePathEvidence: 'operator-account-state.json',
+        operatorNote: 'Latest operator-provided balance snapshot.'
+      },
+      reservedFunding: {
+        count: 1,
+        totalReservedUsd: 100,
+        windows: [
           {
             invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0028',
             invoiceId: 'HQ1VJLMV-0028',
@@ -69,18 +100,50 @@ function createRollupFixture() {
         ]
       }
     },
-    billingWindow: {
-      invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
-      invoiceId: 'HQ1VJLMV-0027',
-      fundingPurpose: 'operational',
-      activationState: 'active',
-      prepaidUsd: 400,
-      pricingBasis: 'prepaid-credit',
-      selection: {
-        mode: 'hold',
-        reason: 'Calibration funding window remains on hold before activation.'
+    controls: {
+      premiumSaganMode: {
+        allowed: false,
+        requiresOperatorAuthorization: true,
+        requiresExplicitOperatorPrompt: true,
+        estimatedFollowupAuthorizationsNeeded: 1,
+        minimumOperationalHeadroomUsd: 150,
+        reason: 'budget-tight'
+      },
+      backgroundFanout: {
+        allowed: false,
+        minimumOperationalHeadroomUsd: 125,
+        maximumConcurrentSubagents: 0,
+        reason: 'budget-tight'
+      },
+      nonEssentialWork: {
+        allowed: false,
+        minimumOperationalHeadroomUsd: 100,
+        reason: 'budget-tight'
+      },
+      operations: {
+        'core-delivery': { allowed: true, reason: 'policy-core-delivery-only' },
+        'queue-authority': { allowed: true, reason: 'policy-core-delivery-only' },
+        'release-apply': { allowed: true, reason: 'policy-core-delivery-only' },
+        'background-fanout': { allowed: false, reason: 'budget-tight' },
+        'non-essential-work': { allowed: false, reason: 'budget-tight' },
+        'premium-sagan': {
+          allowed: false,
+          reason: 'budget-tight',
+          requiresOperatorAuthorization: true,
+          requiresExplicitOperatorPrompt: true,
+          estimatedFollowupAuthorizationsNeeded: 1
+        }
       }
-    }
+    },
+    source: {
+      policyPath: 'tools/policy/treasury-control-plane.json',
+      costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
+      costRollupMaterialized: true,
+      costRollupMaterializationReportPath: 'tests/results/_agent/cost/agent-cost-rollup-materialization.json',
+      operatorCostProfilePath: 'tools/policy/operator-cost-profile.json',
+      outputPath: 'tests/results/_agent/cost/treasury-control-plane.json'
+    },
+    blockers: []
   };
 }
 
@@ -98,17 +161,17 @@ test('appendBudgetHook appends exactly one hook block', () => {
   assert.match(twice, new RegExp(COMMENT_HOOK_START_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
-test('runGitHubCommentBudgetHook emits a durable lower-bound budget hook with reserved calibration context', () => {
+test('runGitHubCommentBudgetHook projects the treasury control plane into a durable comment hook', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'github-comment-budget-hook-'));
   const repoRoot = path.join(tempDir, 'repo');
   fs.mkdirSync(repoRoot, { recursive: true });
   const policyPath = path.join(repoRoot, 'tools', 'policy', 'github-comment-budget-hook.json');
   const outputPath = path.join(repoRoot, 'tests', 'results', '_agent', 'cost', 'github-comment-budget-hook.json');
   const markdownOutputPath = path.join(repoRoot, 'tests', 'results', '_agent', 'cost', 'github-comment-budget-hook.md');
-  const rollupPath = path.join(repoRoot, 'tests', 'results', '_agent', 'cost', 'agent-cost-rollup.json');
 
   writeJson(policyPath, {
     schema: 'priority/github-comment-budget-hook-policy@v1',
+    treasuryPolicyPath: 'tools/policy/treasury-control-plane.json',
     costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
     materializationPolicyPath: 'tools/policy/agent-cost-rollup-materialization.json',
     materializationReportPath: 'tests/results/_agent/cost/agent-cost-rollup-materialization.json',
@@ -128,29 +191,35 @@ test('runGitHubCommentBudgetHook emits a durable lower-bound budget hook with re
       targetNumber: 1907
     },
     {
-      runMaterializeAgentCostRollupFn: ({ costRollupPath, outputPath: materializationPath }) => {
-        writeJson(costRollupPath, createRollupFixture());
-        writeJson(materializationPath, {
-          schema: 'priority/agent-cost-rollup-materialization@v1',
-          summary: { status: 'pass' }
-        });
-        return {
-          costRollupPath,
-          outputPath: materializationPath
-        };
-      }
+      runTreasuryControlPlaneFn: () => ({
+        report: createTreasuryReportFixture()
+      })
     }
   );
 
   assert.equal(result.report.summary.status, 'warn');
   assert.equal(result.report.summary.operatorBudgetCapUsd, 50000);
-  assert.equal(result.report.summary.operatorBudgetRemainingStatus, 'lower-bound');
+  assert.equal(result.report.summary.operatorBudgetObservedRemainingUpperBoundUsd, 49970);
+  assert.equal(result.report.summary.operatorBudgetObservedRemainingStatus, 'upper-bound');
+  assert.equal(result.report.summary.operatorBudgetRemainingLowerBoundUsd, null);
+  assert.equal(result.report.summary.operatorBudgetRemainingStatus, 'unknown');
   assert.equal(result.report.summary.operatorBudgetSpendableStatus, 'unreconciled');
   assert.equal(result.report.summary.operatorBudgetSpendableUsd, null);
   assert.equal(result.report.summary.observedBlendedLowerBoundUsd, 42.5);
   assert.equal(result.report.summary.accountRemainingUsdEstimate, 166);
   assert.equal(result.report.summary.operationalHeadroomUsd, 66);
-  assert.equal(result.report.summary.operationalHeadroomStatus, 'reserve-near');
+  assert.equal(result.report.summary.safeSpendableUsd, 66);
+  assert.equal(result.report.summary.treasuryConfidence, 'lower-bound-only');
+  assert.equal(result.report.summary.treasurySpendPolicyState, 'core-delivery-only');
+  assert.equal(result.report.summary.coreDeliveryAllowed, true);
+  assert.equal(result.report.summary.queueAuthorityAllowed, true);
+  assert.equal(result.report.summary.releaseApplyAllowed, true);
+  assert.equal(result.report.summary.premiumSaganAllowed, false);
+  assert.equal(result.report.summary.premiumAuthorizationPromptRequired, true);
+  assert.equal(result.report.summary.premiumAuthorizationFollowupEstimate, 1);
+  assert.equal(result.report.summary.backgroundFanoutAllowed, false);
+  assert.equal(result.report.summary.maxBackgroundSubagents, 0);
+  assert.equal(result.report.summary.nonEssentialWorkAllowed, false);
   assert.equal(result.report.summary.budgetPressureState, 'tight');
   assert.equal(result.report.turns.backgroundTurnCount, 2);
   assert.equal(result.report.funding.accountBalance.remainingCredits, 4150);
@@ -160,8 +229,10 @@ test('runGitHubCommentBudgetHook emits a durable lower-bound budget hook with re
   assert.equal(fs.existsSync(outputPath), true);
   assert.equal(fs.existsSync(markdownOutputPath), true);
   assert.match(result.markdown, /blended lower bound \$42\.500000/);
-  assert.match(result.markdown, /account est \$166\.000000 remaining/);
-  assert.match(result.markdown, /operational headroom \$66\.000000 \(reserve-near\)/);
-  assert.match(result.markdown, /pressure tight/);
+  assert.match(result.markdown, /observed upper bound \$49970\.000000/);
+  assert.match(result.markdown, /safe spend \$66\.000000/);
+  assert.match(result.markdown, /treasury core-delivery-only \(lower-bound-only\)/);
+  assert.match(result.markdown, /ops core=true queue=true release=true/);
+  assert.match(result.markdown, /premium requires explicit operator authorization \(follow-up estimate 1\)/);
   assert.match(result.markdown, /calibration reserve \$100\.000000/);
 });

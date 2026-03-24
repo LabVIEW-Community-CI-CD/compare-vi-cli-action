@@ -99,10 +99,138 @@ test('autonomous governor summary report matches schema', async () => {
       reason: 'Waiting for hosted checks to finish before merge queue advances.'
     }
   });
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'cost', 'treasury-control-plane.json'), {
+    schema: 'priority/treasury-control-plane@v2',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    summary: {
+      status: 'warn',
+      recommendation: 'constrain-spend-to-core-delivery',
+      confidence: 'lower-bound-only',
+      spendPolicyState: 'core-delivery-only',
+      budgetPressureState: 'tight',
+      tokenSpendUsd: 12.5,
+      operatorLaborObservedUsd: 30,
+      operatorLaborMissingTurnCount: 1,
+      observedBlendedLowerBoundUsd: 42.5,
+      knownBlendedUsd: null,
+      protectedReserveUsd: 100,
+      accountRemainingUsdEstimate: 166,
+      operationalHeadroomUsd: 66,
+      operationalHeadroomStatus: 'reserve-near',
+      safeSpendableUsd: 66,
+      possibleSpendableUpperBoundUsd: 66,
+      sourceConflictCount: 0,
+      operatorBudgetCapUsd: 50000,
+      operatorBudgetObservedRemainingUpperBoundUsd: 49970,
+      operatorBudgetObservedRemainingStatus: 'upper-bound',
+      operatorBudgetRemainingLowerBoundUsd: null,
+      operatorBudgetRemainingStatus: 'unknown',
+      operatorBudgetSpendableUsd: null,
+      operatorBudgetSpendableStatus: 'unreconciled',
+      coreDeliveryAllowed: true,
+      queueAuthorityAllowed: true,
+      releaseApplyAllowed: true,
+      premiumSaganAllowed: false,
+      premiumAuthorizationPromptRequired: true,
+      premiumAuthorizationFollowupEstimate: 1,
+      backgroundFanoutAllowed: false,
+      maxBackgroundSubagents: 0,
+      nonEssentialWorkAllowed: false,
+      calibrationReserveProtected: true
+    },
+    turns: {
+      totalTurns: 3,
+      liveTurnCount: 1,
+      backgroundTurnCount: 2
+    },
+    funding: {
+      billingWindow: {
+        invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
+        invoiceId: 'HQ1VJLMV-0027',
+        fundingPurpose: 'operational',
+        activationState: 'active',
+        prepaidUsd: 400,
+        tokenSpendUsd: 12.5,
+        remainingUsd: 387.5,
+        pricingBasis: 'prepaid-credit',
+        selectionMode: 'hold',
+        selectionReason: 'Calibration funding window remains on hold before activation.'
+      },
+      accountBalance: {
+        totalCredits: 28750,
+        usedCredits: 24600,
+        remainingCredits: 4150,
+        unitPriceUsd: 0.04,
+        remainingUsdEstimate: 166,
+        sourceKind: 'operator-account-state',
+        sourcePathEvidence: 'operator-account-state.json',
+        operatorNote: 'Latest operator-provided balance snapshot.'
+      },
+      reservedFunding: {
+        count: 1,
+        totalReservedUsd: 100,
+        windows: [
+          {
+            invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0028',
+            invoiceId: 'HQ1VJLMV-0028',
+            fundingPurpose: 'calibration',
+            activationState: 'hold',
+            prepaidUsd: 100,
+            operatorNote: 'Reserved calibration window.'
+          }
+        ]
+      }
+    },
+    controls: {
+      premiumSaganMode: {
+        allowed: false,
+        requiresOperatorAuthorization: true,
+        requiresExplicitOperatorPrompt: true,
+        estimatedFollowupAuthorizationsNeeded: 1,
+        minimumOperationalHeadroomUsd: 150,
+        reason: 'budget-tight'
+      },
+      backgroundFanout: {
+        allowed: false,
+        minimumOperationalHeadroomUsd: 125,
+        maximumConcurrentSubagents: 0,
+        reason: 'budget-tight'
+      },
+      nonEssentialWork: {
+        allowed: false,
+        minimumOperationalHeadroomUsd: 100,
+        reason: 'budget-tight'
+      },
+      operations: {
+        'core-delivery': { allowed: true, reason: 'policy-core-delivery-only' },
+        'queue-authority': { allowed: true, reason: 'policy-core-delivery-only' },
+        'release-apply': { allowed: true, reason: 'policy-core-delivery-only' },
+        'background-fanout': { allowed: false, reason: 'budget-tight' },
+        'non-essential-work': { allowed: false, reason: 'budget-tight' },
+        'premium-sagan': {
+          allowed: false,
+          reason: 'budget-tight',
+          requiresOperatorAuthorization: true,
+          requiresExplicitOperatorPrompt: true,
+          estimatedFollowupAuthorizationsNeeded: 1
+        }
+      }
+    },
+    source: {
+      policyPath: 'tools/policy/treasury-control-plane.json',
+      costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
+      costRollupMaterialized: true,
+      costRollupMaterializationReportPath: 'tests/results/_agent/cost/agent-cost-rollup-materialization.json',
+      operatorCostProfilePath: 'tools/policy/operator-cost-profile.json',
+      outputPath: 'tests/results/_agent/cost/treasury-control-plane.json'
+    },
+    blockers: []
+  });
 
   const outputPath = path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'autonomous-governor-summary.json');
   const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir, outputPath });
 
   runSchemaValidate(repoRoot, path.join(repoRoot, 'docs', 'schemas', 'autonomous-governor-summary-report-v1.schema.json'), outputPath);
   assert.equal(report.schema, 'priority/autonomous-governor-summary-report@v1');
+  assert.equal(report.summary.treasurySafeSpendableUsd, 66);
 });

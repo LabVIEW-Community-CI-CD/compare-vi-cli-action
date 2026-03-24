@@ -51,5 +51,17 @@ Describe 'Local Agent Handoff' -Tag 'Unit' {
     $content | Should -Match 'harnessInstanceId'
     $content | Should -Match 'execHLease\s*:'
     $content | Should -Match 'harnessInstanceLeaseId'
+    $content | Should -Match 'treas\s*:'
+    $content | Should -Match 'treasuryStatus'
+    $content | Should -Match 'treasPol\s*:'
+    $content | Should -Match 'treasurySpendPolicyState'
+    $content | Should -Match 'treasConf\s*:'
+    $content | Should -Match 'treasuryConfidence'
+    $content | Should -Match 'treasSafe\s*:'
+    $content | Should -Match 'treasurySafeSpendableUsd'
+    $content | Should -Match 'treasPrem\s*:'
+    $content | Should -Match 'treasuryPremiumSaganAllowed'
+    $content | Should -Match 'treasFan\s*:'
+    $content | Should -Match 'treasuryMaxBackgroundSubagents'
   }
 }

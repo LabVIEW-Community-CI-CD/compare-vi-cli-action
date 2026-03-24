@@ -1881,3 +1881,67 @@ test('runQueueSupervisor applies governor stabilize cap when queue is healthy', 
   assert.equal(report.effectiveMaxInflight, 2);
   assert.equal(report.paused, false);
 });
+
+test('runQueueSupervisor fails closed when treasury denies queue authority', async () => {
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'pr' && args[1] === 'list') {
+      return [];
+    }
+    if (args[0] === 'api' && String(args[1]).includes('validate.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('policy-guard-upstream.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('fixture-drift.yml')) return { workflow_runs: [] };
+    if (args[0] === 'api' && String(args[1]).includes('commit-integrity.yml')) return { workflow_runs: [] };
+    throw new Error(`Unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const readJsonFileFn = async (filePath) => {
+    if (String(filePath).endsWith('branch-required-checks.json')) {
+      return { branches: { develop: ['lint'] } };
+    }
+    if (String(filePath).endsWith('policy.json')) {
+      return { rulesets: {} };
+    }
+    throw new Error(`Unexpected read path: ${filePath}`);
+  };
+
+  let commandCalls = 0;
+  const { report } = await runQueueSupervisor({
+    repoRoot: process.cwd(),
+    args: {
+      apply: true,
+      dryRun: false,
+      reportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      maxInflight: 5,
+      minInflight: 1,
+      adaptiveCap: false,
+      maxQueuedRuns: 6,
+      maxInProgressRuns: 8,
+      stallThresholdMinutes: 45,
+      repo: 'owner/repo',
+      baseBranches: ['develop', 'main'],
+      healthBranch: 'develop',
+      help: false
+    },
+    now: new Date('2026-03-05T21:30:00.000Z'),
+    runGhJsonFn,
+    runCommandFn: () => {
+      commandCalls += 1;
+      return { status: 0, stdout: '', stderr: '' };
+    },
+    readJsonFileFn,
+    readOptionalJsonFn: async () => null,
+    writeReportFn: async (reportPath) => reportPath,
+    runTreasuryOperationGuardFn: () => ({
+      decision: {
+        allowed: false,
+        code: 'treasury-operation-denied',
+        reason: 'Treasury denied queue-authority: policy-core-delivery-only.'
+      }
+    })
+  });
+
+  assert.equal(report.paused, true);
+  assert.ok(report.pausedReasons.includes('treasury-queue-authority-denied'));
+  assert.ok(report.pausedReasons.includes('treasury-operation-denied'));
+  assert.equal(commandCalls, 0);
+});
