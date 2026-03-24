@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-tools-docker-image-contract-v1.schema.json",
+  "title": "CompareVI.Tools Docker Image Contract v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "schemaUrl",
+    "images",
+    "notes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-tools/docker-image-contract@v1"
+    },
+    "schemaUrl": {
+      "type": "string"
+    },
+    "images": {
+      "type": "object",
+      "required": [
+        "hostedNiLinuxRunner"
+      ],
+      "properties": {
+        "hostedNiLinuxRunner": {
+          "type": "object",
+          "required": [
+            "imageRef",
+            "consumerRole",
+            "notes"
+          ],
+          "properties": {
+            "imageRef": {
+              "type": "string"
+            },
+            "consumerRole": {
+              "type": "string",
+              "enum": [
+                "hosted-ni-linux-runner"
+              ]
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

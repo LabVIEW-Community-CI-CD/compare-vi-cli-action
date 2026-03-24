@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-tools-docker-profile-capability-v1.schema.json",
+  "title": "CompareVI.Tools Docker Profile Capability v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "capabilityId",
+    "displayName",
+    "distributionRole",
+    "distributionModel",
+    "bundleMetadataPath",
+    "bundleImportPath",
+    "releaseAssetPattern",
+    "authoritativeConsumerPinFieldPath",
+    "authoritativeConsumerPinKindFieldPath",
+    "authoritativeImageContractSource",
+    "notes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-tools/docker-profile-capability@v1"
+    },
+    "capabilityId": {
+      "const": "docker-profile"
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "distributionRole": {
+      "type": "string",
+      "enum": [
+        "upstream-producer"
+      ]
+    },
+    "distributionModel": {
+      "type": "string",
+      "enum": [
+        "release-bundle"
+      ]
+    },
+    "bundleMetadataPath": {
+      "type": "string"
+    },
+    "bundleImportPath": {
+      "type": "string"
+    },
+    "releaseAssetPattern": {
+      "type": "string"
+    },
+    "authoritativeConsumerPinFieldPath": {
+      "type": "string"
+    },
+    "authoritativeConsumerPinKindFieldPath": {
+      "type": "string"
+    },
+    "authoritativeImageContractSource": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

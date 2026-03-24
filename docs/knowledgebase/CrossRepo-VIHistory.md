@@ -114,6 +114,11 @@ The capability contract tells downstream distributors:
   - `consumerContract.localOperatorSession`
   - `consumerContract.diagnosticsCommentRenderer`
   - `consumerContract.hostedNiLinuxRunner`
+- the template Docker profile should resolve the Producer-published Docker
+  image contract from
+  `consumerContract.capabilities.dockerProfile.authoritativeImageContractSource`,
+  which currently points at `consumerContract.dockerImageContract` inside the
+  same immutable `comparevi-tools-release.json` payload
 
 That keeps the producer/distributor boundary clean:
 

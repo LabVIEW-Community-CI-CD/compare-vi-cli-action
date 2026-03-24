@@ -200,10 +200,21 @@ function evaluateBundleContract(bundleRoot) {
     bundleImportPathExists: false,
     releaseAssetPattern: null,
     contractPathResolutions: [],
+    dockerCapabilityId: null,
+    dockerDistributionRole: null,
+    dockerDistributionModel: null,
+    authoritativeImageContractSource: null,
+    authoritativeImageContractSourceResolved: false,
+    dockerBundleImportPath: null,
+    dockerBundleImportPathExists: false,
+    dockerReleaseAssetPattern: null,
+    dockerImageContractSchema: null,
     metadataPresent: false,
     metadataSchemaMatches: false,
     viHistoryCapabilityPresent: false,
     viHistoryCapabilityProducerNative: false,
+    dockerProfileCapabilityPresent: false,
+    dockerProfileCapabilityProducerNative: false,
     bundleContractPinResolved: false,
     bundleContractPathsResolved: false
   };
@@ -242,6 +253,30 @@ function evaluateBundleContract(bundleRoot) {
     resolved: getObjectPathValue(metadata, contractPath) != null
   }));
   result.bundleContractPathsResolved = result.contractPathResolutions.every((entry) => entry.resolved);
+
+  const dockerCapability = metadata?.consumerContract?.capabilities?.dockerProfile ?? null;
+  result.dockerCapabilityId = asOptional(dockerCapability?.capabilityId);
+  result.dockerDistributionRole = asOptional(dockerCapability?.distributionRole);
+  result.dockerDistributionModel = asOptional(dockerCapability?.distributionModel);
+  result.authoritativeImageContractSource = asOptional(dockerCapability?.authoritativeImageContractSource);
+  result.dockerBundleImportPath = asOptional(dockerCapability?.bundleImportPath);
+  result.dockerReleaseAssetPattern = asOptional(dockerCapability?.releaseAssetPattern);
+  result.dockerProfileCapabilityPresent =
+    asOptional(dockerCapability?.schema) === 'comparevi-tools/docker-profile-capability@v1' &&
+    result.dockerCapabilityId === 'docker-profile';
+  result.dockerProfileCapabilityProducerNative =
+    result.dockerDistributionRole === 'upstream-producer' && result.dockerDistributionModel === 'release-bundle';
+  result.authoritativeImageContractSourceResolved =
+    Boolean(result.authoritativeImageContractSource) &&
+    getObjectPathValue(metadata, result.authoritativeImageContractSource) != null;
+
+  if (result.dockerBundleImportPath) {
+    result.dockerBundleImportPathExists = fs.existsSync(path.join(bundleRoot, result.dockerBundleImportPath));
+  }
+
+  result.dockerImageContractSchema = asOptional(
+    getObjectPathValue(metadata, result.authoritativeImageContractSource ?? '')?.schema
+  );
 
   result.status =
     result.metadataSchemaMatches &&

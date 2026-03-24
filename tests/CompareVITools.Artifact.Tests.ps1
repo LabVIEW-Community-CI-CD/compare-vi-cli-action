@@ -113,6 +113,18 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $metadata.consumerContract.capabilities.viHistory.contractPaths.hostedNiLinuxRunner | Should -Be 'consumerContract.hostedNiLinuxRunner'
     ((@($metadata.consumerContract.capabilities.viHistory.notes) -join [Environment]::NewLine)) | Should -Match 'LabviewGitHubCiTemplate'
     ((@($metadata.consumerContract.capabilities.viHistory.notes) -join [Environment]::NewLine)) | Should -Match 'authoritativeConsumerPin'
+    $metadata.consumerContract.capabilities.dockerProfile.schema | Should -Be 'comparevi-tools/docker-profile-capability@v1'
+    $metadata.consumerContract.capabilities.dockerProfile.capabilityId | Should -Be 'docker-profile'
+    $metadata.consumerContract.capabilities.dockerProfile.displayName | Should -Be 'Docker Profile'
+    $metadata.consumerContract.capabilities.dockerProfile.distributionRole | Should -Be 'upstream-producer'
+    $metadata.consumerContract.capabilities.dockerProfile.distributionModel | Should -Be 'release-bundle'
+    $metadata.consumerContract.capabilities.dockerProfile.bundleMetadataPath | Should -Be 'comparevi-tools-release.json'
+    $metadata.consumerContract.capabilities.dockerProfile.bundleImportPath | Should -Be 'tools/CompareVI.Tools/CompareVI.Tools.psd1'
+    $metadata.consumerContract.capabilities.dockerProfile.releaseAssetPattern | Should -Be 'CompareVI.Tools-v<release-version>.zip'
+    $metadata.consumerContract.capabilities.dockerProfile.authoritativeConsumerPinFieldPath | Should -Be 'versionContract.authoritativeConsumerPin'
+    $metadata.consumerContract.capabilities.dockerProfile.authoritativeConsumerPinKindFieldPath | Should -Be 'versionContract.authoritativeConsumerPinKind'
+    $metadata.consumerContract.capabilities.dockerProfile.authoritativeImageContractSource | Should -Be 'consumerContract.dockerImageContract'
+    ((@($metadata.consumerContract.capabilities.dockerProfile.notes) -join [Environment]::NewLine)) | Should -Match 'Producer-published Docker image contract'
     $metadata.consumerContract.historyFacade.schema | Should -Be 'comparevi-tools/history-facade@v1'
     $metadata.consumerContract.historyFacade.exportedFunction | Should -Be 'Invoke-CompareVIHistoryFacade'
     $metadata.consumerContract.historyFacade.resultsRelativePath | Should -Be 'history-summary.json'
@@ -163,6 +175,11 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     )
     $metadata.consumerContract.hostedNiLinuxRunner.captureFileName | Should -Be 'ni-linux-container-capture.json'
     $metadata.consumerContract.hostedNiLinuxRunner.defaultImage | Should -Be 'nationalinstruments/labview:2026q1-linux'
+    $metadata.consumerContract.dockerImageContract.schema | Should -Be 'comparevi-tools/docker-image-contract@v1'
+    $metadata.consumerContract.dockerImageContract.schemaUrl | Should -Be 'https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/comparevi-tools-docker-image-contract-v1.schema.json'
+    $metadata.consumerContract.dockerImageContract.images.hostedNiLinuxRunner.imageRef | Should -Be 'nationalinstruments/labview:2026q1-linux'
+    $metadata.consumerContract.dockerImageContract.images.hostedNiLinuxRunner.consumerRole | Should -Be 'hosted-ni-linux-runner'
+    ((@($metadata.consumerContract.dockerImageContract.notes) -join [Environment]::NewLine)) | Should -Match 'authoritative Producer-published image contract'
 
     $archivePath = Join-Path $outDir $metadata.bundle.archiveName
     Test-Path -LiteralPath $archivePath | Should -BeTrue
@@ -219,6 +236,9 @@ Describe 'CompareVI.Tools artifact publishing' -Tag 'REQ:DOTNET_CLI_RELEASE_ASSE
     $archiveMetadata.bundle.files.Count | Should -BeGreaterThan 5
     $archiveMetadata.consumerContract.capabilities.viHistory.schema | Should -Be 'comparevi-tools/vi-history-capability@v1'
     $archiveMetadata.consumerContract.capabilities.viHistory.contractPaths.historyFacade | Should -Be 'consumerContract.historyFacade'
+    $archiveMetadata.consumerContract.capabilities.dockerProfile.schema | Should -Be 'comparevi-tools/docker-profile-capability@v1'
+    $archiveMetadata.consumerContract.capabilities.dockerProfile.authoritativeImageContractSource | Should -Be 'consumerContract.dockerImageContract'
+    $archiveMetadata.consumerContract.dockerImageContract.images.hostedNiLinuxRunner.imageRef | Should -Be 'nationalinstruments/labview:2026q1-linux'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Build-VIHistoryDevImage.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Invoke-VIHistoryLocalOperatorSession.ps1'
     @($archiveMetadata.bundle.files.path) | Should -Contain 'tools/Invoke-VIHistoryLocalRefinement.ps1'
