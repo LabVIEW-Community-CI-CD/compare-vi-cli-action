@@ -186,6 +186,15 @@ function parseBoolean(value) {
   return value === true;
 }
 
+function coalesceBoolean(...values) {
+  for (const value of values) {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+  }
+  return false;
+}
+
 function normalizeLower(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
@@ -242,13 +251,181 @@ function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBu
   const providerDispatch =
     normalizeOptionalObject(activeLane?.providerDispatch) ??
     normalizeOptionalObject(deliveryRuntimeState?.artifacts?.providerDispatch);
-  const processModel = deriveExecutionTopologyProcessModel(executionBundle);
-  const activeLogicalLaneCount = Number.isInteger(logicalLaneActivation?.activeLaneCount)
+  const activeLaneExecutionTopology = normalizeOptionalObject(activeLane?.executionTopology);
+  const activeLogicalLaneCountFallback = Number.isInteger(logicalLaneActivation?.activeLaneCount)
     ? logicalLaneActivation.activeLaneCount
     : null;
-  const seededLogicalLaneCount = Number.isInteger(logicalLaneActivation?.seededLaneCount)
+  const seededLogicalLaneCountFallback = Number.isInteger(logicalLaneActivation?.seededLaneCount)
     ? logicalLaneActivation.seededLaneCount
     : null;
+
+  if (activeLaneExecutionTopology) {
+    const topologyLogicalLaneActivation = normalizeOptionalObject(activeLaneExecutionTopology.logicalLaneActivation);
+    const topologyProviderDispatch = normalizeOptionalObject(activeLaneExecutionTopology.providerDispatch);
+    const topologyExecutionBundle = normalizeOptionalObject(activeLaneExecutionTopology.executionBundle);
+    const effectiveProviderDispatch = topologyProviderDispatch ?? providerDispatch;
+    const effectiveExecutionBundle = topologyExecutionBundle ?? executionBundle;
+    const processModel = deriveExecutionTopologyProcessModel(effectiveExecutionBundle);
+    const activeLogicalLaneCount = Number.isInteger(activeLaneExecutionTopology.activeLogicalLaneCount)
+      ? activeLaneExecutionTopology.activeLogicalLaneCount
+      : Number.isInteger(topologyLogicalLaneActivation?.activeLaneCount)
+        ? topologyLogicalLaneActivation.activeLaneCount
+        : activeLogicalLaneCountFallback;
+    const seededLogicalLaneCount = Number.isInteger(activeLaneExecutionTopology.seededLogicalLaneCount)
+      ? activeLaneExecutionTopology.seededLogicalLaneCount
+      : Number.isInteger(topologyLogicalLaneActivation?.seededLaneCount)
+        ? topologyLogicalLaneActivation.seededLaneCount
+        : seededLogicalLaneCountFallback;
+    const catalogCount = Number.isInteger(activeLaneExecutionTopology.catalogCount)
+      ? activeLaneExecutionTopology.catalogCount
+      : Number.isInteger(topologyLogicalLaneActivation?.catalogCount)
+        ? topologyLogicalLaneActivation.catalogCount
+        : logicalLaneCatalog.length;
+    const executionPlane =
+      asOptional(activeLaneExecutionTopology.executionPlane) ||
+      asOptional(topologyProviderDispatch?.executionPlane) ||
+      asOptional(providerDispatch?.executionPlane) ||
+      asOptional(activeLaneExecutionTopology.planeBinding) ||
+      asOptional(topologyExecutionBundle?.planeBinding) ||
+      asOptional(executionBundle?.planeBinding);
+
+    return {
+      status:
+        asOptional(activeLaneExecutionTopology.status) ||
+        deriveExecutionTopologyStatus({
+          activeLogicalLaneCount,
+          seededLogicalLaneCount,
+          providerDispatch: effectiveProviderDispatch,
+          executionBundle: effectiveExecutionBundle
+        }),
+      executionPlane,
+      providerId:
+        asOptional(activeLaneExecutionTopology.providerId) ||
+        asOptional(topologyProviderDispatch?.providerId) ||
+        asOptional(providerDispatch?.providerId),
+      workerSlotId:
+        asOptional(activeLaneExecutionTopology.workerSlotId) ||
+        asOptional(topologyProviderDispatch?.workerSlotId) ||
+        asOptional(providerDispatch?.workerSlotId),
+      activeLogicalLaneCount,
+      seededLogicalLaneCount,
+      catalogCount,
+      runtimeSurface: asOptional(activeLaneExecutionTopology.runtimeSurface) || processModel.runtimeSurface,
+      processModelClass: asOptional(activeLaneExecutionTopology.processModelClass) || processModel.processModelClass,
+      windowsOnly: coalesceBoolean(activeLaneExecutionTopology.windowsOnly, processModel.windowsOnly),
+      requestedSimultaneous: coalesceBoolean(
+        activeLaneExecutionTopology.requestedSimultaneous,
+        processModel.requestedSimultaneous
+      ),
+      cellClass:
+        asOptional(activeLaneExecutionTopology.cellClass) ||
+        asOptional(topologyExecutionBundle?.cellClass) ||
+        asOptional(executionBundle?.cellClass),
+      suiteClass:
+        asOptional(activeLaneExecutionTopology.suiteClass) ||
+        asOptional(topologyExecutionBundle?.suiteClass) ||
+        asOptional(executionBundle?.suiteClass),
+      operatorAuthorizationRef:
+        asOptional(activeLaneExecutionTopology.operatorAuthorizationRef) ||
+        asOptional(topologyExecutionBundle?.operatorAuthorizationRef) ||
+        asOptional(executionBundle?.operatorAuthorizationRef),
+      premiumSaganMode: coalesceBoolean(
+        activeLaneExecutionTopology.premiumSaganMode,
+        topologyExecutionBundle?.premiumSaganMode,
+        executionBundle?.premiumSaganMode
+      ),
+      reciprocalLinkReady: coalesceBoolean(
+        activeLaneExecutionTopology.reciprocalLinkReady,
+        topologyExecutionBundle?.reciprocalLinkReady,
+        executionBundle?.reciprocalLinkReady
+      ),
+      logicalLaneActivation: {
+        activeLaneCount: activeLogicalLaneCount,
+        seededLaneCount: seededLogicalLaneCount,
+        catalogCount
+      },
+      providerDispatch: {
+        providerId: asOptional(topologyProviderDispatch?.providerId) || asOptional(providerDispatch?.providerId),
+        providerKind: asOptional(topologyProviderDispatch?.providerKind) || asOptional(providerDispatch?.providerKind),
+        executionPlane,
+        assignmentMode:
+          asOptional(topologyProviderDispatch?.assignmentMode) || asOptional(providerDispatch?.assignmentMode),
+        dispatchSurface:
+          asOptional(topologyProviderDispatch?.dispatchSurface) || asOptional(providerDispatch?.dispatchSurface),
+        completionMode:
+          asOptional(topologyProviderDispatch?.completionMode) || asOptional(providerDispatch?.completionMode),
+        workerSlotId:
+          asOptional(topologyProviderDispatch?.workerSlotId) || asOptional(providerDispatch?.workerSlotId),
+        dispatchStatus:
+          asOptional(topologyProviderDispatch?.dispatchStatus) || asOptional(providerDispatch?.dispatchStatus),
+        completionStatus:
+          asOptional(topologyProviderDispatch?.completionStatus) || asOptional(providerDispatch?.completionStatus),
+        failureClass:
+          asOptional(topologyProviderDispatch?.failureClass) || asOptional(providerDispatch?.failureClass)
+      },
+      executionBundle: {
+        status: asOptional(topologyExecutionBundle?.status) || asOptional(executionBundle?.status),
+        planeBinding:
+          asOptional(activeLaneExecutionTopology.planeBinding) ||
+          asOptional(topologyExecutionBundle?.planeBinding) ||
+          asOptional(executionBundle?.planeBinding),
+        cellClass:
+          asOptional(topologyExecutionBundle?.cellClass) || asOptional(executionBundle?.cellClass),
+        suiteClass:
+          asOptional(topologyExecutionBundle?.suiteClass) || asOptional(executionBundle?.suiteClass),
+        premiumSaganMode: coalesceBoolean(
+          topologyExecutionBundle?.premiumSaganMode,
+          executionBundle?.premiumSaganMode
+        ),
+        reciprocalLinkReady: coalesceBoolean(
+          topologyExecutionBundle?.reciprocalLinkReady,
+          executionBundle?.reciprocalLinkReady
+        ),
+        effectiveBillableRateUsdPerHour: Number.isFinite(topologyExecutionBundle?.effectiveBillableRateUsdPerHour)
+          ? topologyExecutionBundle.effectiveBillableRateUsdPerHour
+          : Number.isFinite(executionBundle?.effectiveBillableRateUsdPerHour)
+            ? executionBundle.effectiveBillableRateUsdPerHour
+            : null,
+        executionCellLeaseId:
+          asOptional(activeLaneExecutionTopology.executionCellLeaseId) ||
+          asOptional(topologyExecutionBundle?.executionCellLeaseId) ||
+          asOptional(executionBundle?.executionCellLeaseId),
+        dockerLaneLeaseId:
+          asOptional(activeLaneExecutionTopology.dockerLaneLeaseId) ||
+          asOptional(topologyExecutionBundle?.dockerLaneLeaseId) ||
+          asOptional(executionBundle?.dockerLaneLeaseId),
+        harnessKind:
+          asOptional(activeLaneExecutionTopology.harnessKind) ||
+          asOptional(topologyExecutionBundle?.harnessKind) ||
+          asOptional(executionBundle?.harnessKind),
+        harnessInstanceId:
+          asOptional(activeLaneExecutionTopology.harnessInstanceId) ||
+          asOptional(topologyExecutionBundle?.harnessInstanceId) ||
+          asOptional(executionBundle?.harnessInstanceId),
+        operatorAuthorizationRef:
+          asOptional(topologyExecutionBundle?.operatorAuthorizationRef) ||
+          asOptional(executionBundle?.operatorAuthorizationRef),
+        cellId:
+          asOptional(activeLaneExecutionTopology.cellId) ||
+          asOptional(topologyExecutionBundle?.cellId) ||
+          asOptional(executionBundle?.cellId),
+        laneId:
+          asOptional(activeLaneExecutionTopology.laneId) ||
+          asOptional(topologyExecutionBundle?.laneId) ||
+          asOptional(executionBundle?.laneId),
+        isolatedLaneGroupId:
+          asOptional(topologyExecutionBundle?.isolatedLaneGroupId) ||
+          asOptional(executionBundle?.isolatedLaneGroupId),
+        fingerprintSha256:
+          asOptional(topologyExecutionBundle?.fingerprintSha256) ||
+          asOptional(executionBundle?.fingerprintSha256)
+      }
+    };
+  }
+
+  const processModel = deriveExecutionTopologyProcessModel(executionBundle);
+  const activeLogicalLaneCount = activeLogicalLaneCountFallback;
+  const seededLogicalLaneCount = seededLogicalLaneCountFallback;
   const executionPlane = asOptional(providerDispatch?.executionPlane) || asOptional(executionBundle?.planeBinding);
 
   return {
