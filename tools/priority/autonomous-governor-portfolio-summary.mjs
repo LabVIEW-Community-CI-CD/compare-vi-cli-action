@@ -224,6 +224,113 @@ function derivePortfolioMode(compareGovernorSummary, monitoringMode) {
   return compareMode || 'attention-required';
 }
 
+function deriveExecutionTopology(compareGovernorSummary) {
+  const executionTopology = compareGovernorSummary?.compare?.deliveryRuntime?.executionTopology;
+  if (executionTopology && typeof executionTopology === 'object' && !Array.isArray(executionTopology)) {
+    return {
+      status: asOptional(executionTopology.status),
+      executionPlane: asOptional(executionTopology.executionPlane),
+      providerId: asOptional(executionTopology.providerId),
+      workerSlotId: asOptional(executionTopology.workerSlotId),
+      activeLogicalLaneCount: Number.isInteger(executionTopology.activeLogicalLaneCount)
+        ? executionTopology.activeLogicalLaneCount
+        : null,
+      seededLogicalLaneCount: Number.isInteger(executionTopology.seededLogicalLaneCount)
+        ? executionTopology.seededLogicalLaneCount
+        : null,
+      catalogCount: Number.isInteger(executionTopology.catalogCount) ? executionTopology.catalogCount : 0,
+      premiumSaganMode: executionTopology.premiumSaganMode === true,
+      reciprocalLinkReady: executionTopology.reciprocalLinkReady === true,
+      logicalLaneActivation: {
+        activeLaneCount: Number.isInteger(executionTopology?.logicalLaneActivation?.activeLaneCount)
+          ? executionTopology.logicalLaneActivation.activeLaneCount
+          : null,
+        seededLaneCount: Number.isInteger(executionTopology?.logicalLaneActivation?.seededLaneCount)
+          ? executionTopology.logicalLaneActivation.seededLaneCount
+          : null,
+        catalogCount: Number.isInteger(executionTopology?.logicalLaneActivation?.catalogCount)
+          ? executionTopology.logicalLaneActivation.catalogCount
+          : 0
+      },
+      providerDispatch: {
+        providerId: asOptional(executionTopology?.providerDispatch?.providerId),
+        providerKind: asOptional(executionTopology?.providerDispatch?.providerKind),
+        executionPlane: asOptional(executionTopology?.providerDispatch?.executionPlane),
+        assignmentMode: asOptional(executionTopology?.providerDispatch?.assignmentMode),
+        dispatchSurface: asOptional(executionTopology?.providerDispatch?.dispatchSurface),
+        completionMode: asOptional(executionTopology?.providerDispatch?.completionMode),
+        workerSlotId: asOptional(executionTopology?.providerDispatch?.workerSlotId),
+        dispatchStatus: asOptional(executionTopology?.providerDispatch?.dispatchStatus),
+        completionStatus: asOptional(executionTopology?.providerDispatch?.completionStatus),
+        failureClass: asOptional(executionTopology?.providerDispatch?.failureClass)
+      },
+      executionBundle: {
+        status: asOptional(executionTopology?.executionBundle?.status),
+        planeBinding: asOptional(executionTopology?.executionBundle?.planeBinding),
+        premiumSaganMode: executionTopology?.executionBundle?.premiumSaganMode === true,
+        reciprocalLinkReady: executionTopology?.executionBundle?.reciprocalLinkReady === true,
+        effectiveBillableRateUsdPerHour: Number.isFinite(executionTopology?.executionBundle?.effectiveBillableRateUsdPerHour)
+          ? executionTopology.executionBundle.effectiveBillableRateUsdPerHour
+          : null,
+        executionCellLeaseId: asOptional(executionTopology?.executionBundle?.executionCellLeaseId),
+        dockerLaneLeaseId: asOptional(executionTopology?.executionBundle?.dockerLaneLeaseId),
+        harnessInstanceId: asOptional(executionTopology?.executionBundle?.harnessInstanceId),
+        cellId: asOptional(executionTopology?.executionBundle?.cellId),
+        laneId: asOptional(executionTopology?.executionBundle?.laneId),
+        isolatedLaneGroupId: asOptional(executionTopology?.executionBundle?.isolatedLaneGroupId),
+        fingerprintSha256: asOptional(executionTopology?.executionBundle?.fingerprintSha256)
+      }
+    };
+  }
+
+  return {
+    status: asOptional(compareGovernorSummary?.summary?.executionBundleStatus),
+    executionPlane: asOptional(compareGovernorSummary?.summary?.executionBundlePlaneBinding),
+    providerId: null,
+    workerSlotId: null,
+    activeLogicalLaneCount: null,
+    seededLogicalLaneCount: null,
+    catalogCount: 0,
+    premiumSaganMode: compareGovernorSummary?.summary?.executionBundlePremiumSaganMode === true,
+    reciprocalLinkReady: compareGovernorSummary?.summary?.executionBundleReciprocalLinkReady === true,
+    logicalLaneActivation: {
+      activeLaneCount: null,
+      seededLaneCount: null,
+      catalogCount: 0
+    },
+    providerDispatch: {
+      providerId: null,
+      providerKind: null,
+      executionPlane: null,
+      assignmentMode: null,
+      dispatchSurface: null,
+      completionMode: null,
+      workerSlotId: null,
+      dispatchStatus: null,
+      completionStatus: null,
+      failureClass: null
+    },
+    executionBundle: {
+      status: asOptional(compareGovernorSummary?.summary?.executionBundleStatus),
+      planeBinding: asOptional(compareGovernorSummary?.summary?.executionBundlePlaneBinding),
+      premiumSaganMode: compareGovernorSummary?.summary?.executionBundlePremiumSaganMode === true,
+      reciprocalLinkReady: compareGovernorSummary?.summary?.executionBundleReciprocalLinkReady === true,
+      effectiveBillableRateUsdPerHour: Number.isFinite(
+        compareGovernorSummary?.summary?.executionBundleEffectiveBillableRateUsdPerHour
+      )
+        ? compareGovernorSummary.summary.executionBundleEffectiveBillableRateUsdPerHour
+        : null,
+      executionCellLeaseId: null,
+      dockerLaneLeaseId: null,
+      harnessInstanceId: null,
+      cellId: null,
+      laneId: null,
+      isolatedLaneGroupId: null,
+      fingerprintSha256: null
+    }
+  };
+}
+
 function deriveOwners(compareGovernorSummary, monitoringMode, portfolioMode, viHistoryDistributorDependency) {
   const compareRepository =
     asOptional(compareGovernorSummary?.summary?.currentOwnerRepository) ||
@@ -397,6 +504,7 @@ function buildReport({
   const triggeredWakeConditions = Array.isArray(monitoringMode?.summary?.triggeredWakeConditions)
     ? monitoringMode.summary.triggeredWakeConditions
     : [];
+  const executionTopology = deriveExecutionTopology(compareGovernorSummary);
 
   return {
     schema: 'priority/autonomous-governor-portfolio-summary-report@v1',
@@ -420,6 +528,7 @@ function buildReport({
       queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
       queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl),
       queueAuthoritySource: asOptional(compareGovernorSummary?.summary?.queueAuthoritySource),
+      executionTopology,
       executionBundleStatus: asOptional(compareGovernorSummary?.summary?.executionBundleStatus),
       executionBundlePlaneBinding: asOptional(compareGovernorSummary?.summary?.executionBundlePlaneBinding),
       executionBundlePremiumSaganMode: compareGovernorSummary?.summary?.executionBundlePremiumSaganMode === true,
@@ -457,6 +566,12 @@ function buildReport({
       queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
       queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl),
       queueAuthoritySource: asOptional(compareGovernorSummary?.summary?.queueAuthoritySource),
+      executionTopologyStatus: executionTopology.status,
+      executionTopologyExecutionPlane: executionTopology.executionPlane,
+      executionTopologyProviderId: executionTopology.providerId,
+      executionTopologyWorkerSlotId: executionTopology.workerSlotId,
+      executionTopologyActiveLogicalLaneCount: executionTopology.activeLogicalLaneCount,
+      executionTopologySeededLogicalLaneCount: executionTopology.seededLogicalLaneCount,
       executionBundleStatus: asOptional(compareGovernorSummary?.summary?.executionBundleStatus),
       executionBundlePlaneBinding: asOptional(compareGovernorSummary?.summary?.executionBundlePlaneBinding),
       executionBundlePremiumSaganMode: compareGovernorSummary?.summary?.executionBundlePremiumSaganMode === true,

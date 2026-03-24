@@ -186,6 +186,94 @@ function parseBoolean(value) {
   return value === true;
 }
 
+function deriveExecutionTopologyStatus({ activeLogicalLaneCount, seededLogicalLaneCount, providerDispatch, executionBundle }) {
+  const bundleStatus = asOptional(executionBundle?.status);
+  if (bundleStatus) {
+    return `bundle-${bundleStatus}`;
+  }
+
+  const completionStatus = asOptional(providerDispatch?.completionStatus);
+  if (completionStatus) {
+    return `provider-${completionStatus}`;
+  }
+
+  const dispatchStatus = asOptional(providerDispatch?.dispatchStatus);
+  if (dispatchStatus) {
+    return `provider-${dispatchStatus}`;
+  }
+
+  if ((activeLogicalLaneCount ?? 0) > 0 || (seededLogicalLaneCount ?? 0) > 0) {
+    return 'logical-lanes-tracked';
+  }
+
+  return 'none';
+}
+
+function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBundle }) {
+  const logicalLaneActivation = normalizeOptionalObject(deliveryRuntimeState?.logicalLaneActivation);
+  const logicalLaneCatalog = Array.isArray(logicalLaneActivation?.catalog) ? logicalLaneActivation.catalog : [];
+  const providerDispatch =
+    normalizeOptionalObject(activeLane?.providerDispatch) ??
+    normalizeOptionalObject(deliveryRuntimeState?.artifacts?.providerDispatch);
+  const activeLogicalLaneCount = Number.isInteger(logicalLaneActivation?.activeLaneCount)
+    ? logicalLaneActivation.activeLaneCount
+    : null;
+  const seededLogicalLaneCount = Number.isInteger(logicalLaneActivation?.seededLaneCount)
+    ? logicalLaneActivation.seededLaneCount
+    : null;
+  const executionPlane = asOptional(providerDispatch?.executionPlane) || asOptional(executionBundle?.planeBinding);
+
+  return {
+    status: deriveExecutionTopologyStatus({
+      activeLogicalLaneCount,
+      seededLogicalLaneCount,
+      providerDispatch,
+      executionBundle
+    }),
+    executionPlane,
+    providerId: asOptional(providerDispatch?.providerId),
+    workerSlotId: asOptional(providerDispatch?.workerSlotId),
+    activeLogicalLaneCount,
+    seededLogicalLaneCount,
+    catalogCount: logicalLaneCatalog.length,
+    premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
+    reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
+    logicalLaneActivation: {
+      activeLaneCount: activeLogicalLaneCount,
+      seededLaneCount: seededLogicalLaneCount,
+      catalogCount: logicalLaneCatalog.length
+    },
+    providerDispatch: {
+      providerId: asOptional(providerDispatch?.providerId),
+      providerKind: asOptional(providerDispatch?.providerKind),
+      executionPlane,
+      assignmentMode: asOptional(providerDispatch?.assignmentMode),
+      dispatchSurface: asOptional(providerDispatch?.dispatchSurface),
+      completionMode: asOptional(providerDispatch?.completionMode),
+      workerSlotId: asOptional(providerDispatch?.workerSlotId),
+      dispatchStatus: asOptional(providerDispatch?.dispatchStatus),
+      completionStatus: asOptional(providerDispatch?.completionStatus),
+      failureClass: asOptional(providerDispatch?.failureClass)
+    },
+    executionBundle: {
+      status: asOptional(executionBundle?.status),
+      planeBinding: asOptional(executionBundle?.planeBinding),
+      premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
+      reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
+      effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle?.effectiveBillableRateUsdPerHour)
+        ? executionBundle.effectiveBillableRateUsdPerHour
+        : null,
+      executionCellLeaseId: asOptional(executionBundle?.executionCellLeaseId),
+      dockerLaneLeaseId: asOptional(executionBundle?.dockerLaneLeaseId),
+      harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
+      cellId: asOptional(executionBundle?.cellId),
+      laneId: asOptional(executionBundle?.laneId),
+      isolatedLaneGroupId: asOptional(executionBundle?.isolatedLaneGroupId),
+      fingerprintSha256: asOptional(executionBundle?.fingerprintSha256)
+    }
+  };
+}
+
 export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
@@ -385,6 +473,7 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
     normalizeOptionalObject(deliveryRuntimeState?.queueAuthorityRefresh);
   const concurrentLaneStatus = normalizeOptionalObject(activeLane?.concurrentLaneStatus);
   const executionBundle = normalizeOptionalObject(concurrentLaneStatus?.executionBundle);
+  const executionTopology = deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBundle });
 
   let status = 'none';
   if (prUrl) {
@@ -407,6 +496,7 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
     outcome,
     blockerClass,
     nextWakeCondition: asOptional(activeLane?.nextWakeCondition),
+    executionTopology,
     executionBundle: {
       status: asOptional(executionBundle?.status),
       planeBinding: asOptional(executionBundle?.planeBinding),
@@ -747,6 +837,12 @@ function buildReport({
       releasePublishedBundleState: releaseSigningReadiness.publishedBundleState,
       releasePublishedBundleReleaseTag: releaseSigningReadiness.publishedBundleReleaseTag,
       releasePublishedBundleAuthoritativeConsumerPin: releaseSigningReadiness.publishedBundleAuthoritativeConsumerPin,
+      executionTopologyStatus: deliveryRuntime.executionTopology.status,
+      executionTopologyExecutionPlane: deliveryRuntime.executionTopology.executionPlane,
+      executionTopologyProviderId: deliveryRuntime.executionTopology.providerId,
+      executionTopologyWorkerSlotId: deliveryRuntime.executionTopology.workerSlotId,
+      executionTopologyActiveLogicalLaneCount: deliveryRuntime.executionTopology.activeLogicalLaneCount,
+      executionTopologySeededLogicalLaneCount: deliveryRuntime.executionTopology.seededLogicalLaneCount,
       executionBundleStatus: deliveryRuntime.executionBundle.status,
       executionBundlePlaneBinding: deliveryRuntime.executionBundle.planeBinding,
       executionBundlePremiumSaganMode: deliveryRuntime.executionBundle.premiumSaganMode,
