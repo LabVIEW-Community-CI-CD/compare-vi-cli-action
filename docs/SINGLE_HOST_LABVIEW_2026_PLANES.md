@@ -16,6 +16,10 @@ Treat these four planes as distinct:
 Do not collapse them into a generic “LabVIEW 2026 host” concept. The repo contracts and artifacts are written so future
 agents can tell which plane actually produced the evidence.
 
+Treat the TestStand harness as a host-plane consumer, not a fifth plane. It is a deterministic wrapper around native
+LabVIEW warmup and LVCompare session capture, so its receipts still belong to one of the native planes rather than to a
+separate execution category.
+
 ## Shadow policy
 
 `native-labview-2026-32` is a shadow acceleration surface, not an authoritative
@@ -50,6 +54,40 @@ The native planes are also distinct:
 
 They may share supporting tooling paths, but they remain different host planes and must not be reported as one surface.
 
+## Lease-backed lane protocol
+
+Shared host surfaces must use a software four-phase handshake before an agent treats a Docker or premium native lane as
+owned:
+
+1. `request`
+2. `grant`
+3. `commit` plus `heartbeat`
+4. `release`
+
+Use the checked-in helper when you need a replayable lease receipt:
+
+- `node tools/npm/run-script.mjs priority:lane:docker:handshake -- --action request --lane-id docker-agent-epicurus-linux-01 --agent-id epicurus --agent-class subagent --capability docker-lane`
+
+The resulting report is written to:
+
+- `tests/results/_agent/runtime/docker-lane-handshake.json`
+
+The durable handshake state lives under the Git common-dir so clean worktrees share one lease view.
+
+### Premium Sagan dual-lane rule
+
+Only `sagan` may lease `docker-lane` and `native-labview-2026-32` simultaneously.
+
+- required capabilities:
+  - `docker-lane`
+  - `native-labview-2026-32`
+- required authorization:
+  - `operatorAuthorizationRef`
+- billable multiplier:
+  - `1.5x` the configured operator labor rate
+
+Subagents may lease isolated Docker lanes, but they must not activate the premium dual-lane combination.
+
 ## Authoritative entry points
 
 Use these commands as the checked-in operator surfaces:
@@ -75,10 +113,14 @@ Use these commands as the checked-in operator surfaces:
      the recommendation that led to the applied bundle without leaving the
      checked-in report chain.
 5. Fast Docker Desktop lane loops:
+   - `node tools/npm/run-script.mjs priority:lane:docker:handshake -- --action inspect --lane-id <lane-id>`
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope linux -StepTimeoutSeconds 600`
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope windows -StepTimeoutSeconds 600`
    - `pwsh -NoLogo -NoProfile -File tools/Test-DockerDesktopFastLoop.ps1 -LaneScope both -StepTimeoutSeconds 600`
-6. Differentiated diagnostics replay:
+6. TestStand harness session wrapper:
+   - `pwsh -NoLogo -NoProfile -File tools/TestStand-CompareHarness.ps1 -BaseVi <base> -HeadVi <head> -OutputRoot tests/results/teststand-session -Warmup detect -RenderReport`
+   - Use this when the host plane needs a deterministic native compare session with a replayable `session-index.json`.
+7. Differentiated diagnostics replay:
    - `node tools/npm/run-script.mjs history:diagnostics:show -- --ResultsRoot tests/results/local-parity/windows`
 
 The replay helper is the fastest operator readback. It prints the host-plane report first and then the differentiated
@@ -104,19 +146,21 @@ Use these artifacts as the machine-readable source of truth:
    - `tests/results/_agent/runtime/concurrent-lane-apply-receipt.json`
 4. Concurrent lane status receipt:
    - `tests/results/_agent/runtime/concurrent-lane-status-receipt.json`
-5. Fast-loop readiness envelope:
+5. Docker lane handshake receipt:
+   - `tests/results/_agent/runtime/docker-lane-handshake.json`
+6. Fast-loop readiness envelope:
    - `docker-runtime-fastloop-readiness.json`
    - `docker-runtime-fastloop-readiness.md`
-6. Fast-loop proof bundle when produced:
+7. Fast-loop proof bundle when produced:
    - `docker-fast-loop-proof-*.json`
-7. Top-level fast-loop GitHub outputs when `tools/Test-DockerDesktopFastLoop.ps1` runs inside GitHub Actions:
+8. Top-level fast-loop GitHub outputs when `tools/Test-DockerDesktopFastLoop.ps1` runs inside GitHub Actions:
    - `docker-fast-loop-summary-path`
    - `docker-fast-loop-status-path`
    - `docker-fast-loop-host-plane-summary-path`
    - `docker-fast-loop-host-plane-summary-status`
    - `docker-fast-loop-host-plane-summary-sha256`
    - `docker-fast-loop-host-plane-summary-reason`
-8. Top-level fast-loop Step Summary when `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
+9. Top-level fast-loop Step Summary when `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
    - `Summary Path`
    - `Status Path`
    - `Host Plane Summary Path`
@@ -156,31 +200,36 @@ Use the artifacts in this order:
    - records merge-queue-backed PR state when a PR can be resolved from the applied branch or explicit selector
    - keeps deferred manual Docker and host-native shadow lanes explicit for the orchestrator
    - records an orchestrator disposition so worker-slot release decisions do not depend on ad hoc GitHub polling
-6. `docker-runtime-fastloop-readiness.json`
+6. `docker-lane-handshake.json`
+   - records request, grant, commit/heartbeat, and release state for one isolated Docker lane
+   - projects `host.osFingerprint.isolatedLaneGroupId` into the lease
+   - records whether premium Sagan dual-lane mode was requested or granted
+   - records the billable operator-equivalent rate derived from the operator cost profile
+7. `docker-runtime-fastloop-readiness.json`
    - records the fast-loop verdict and lane outcomes
    - carries the differentiated Docker Desktop plane projection
    - records `hostPlaneSummary.path`, `hostPlaneSummary.status`, and `hostPlaneSummary.sha256`
    - records whether Docker exclusivity was required and whether it was satisfied
-7. `docker-fast-loop-proof-*.json`
+8. `docker-fast-loop-proof-*.json`
    - records `hostPlaneSummaryPath`
    - records `hostPlaneSummaryProvenance`
    - records `hashes.hostPlaneSummarySha256`
    - projects GitHub outputs:
      - `docker-fast-loop-proof-host-plane-summary-path`
      - `docker-fast-loop-proof-host-plane-summary-sha256`
-8. Top-level `tools/Test-DockerDesktopFastLoop.ps1` GitHub outputs
+9. Top-level `tools/Test-DockerDesktopFastLoop.ps1` GitHub outputs
    - project `docker-fast-loop-summary-path` and `docker-fast-loop-status-path`
    - project `docker-fast-loop-host-plane-summary-path`
    - project `docker-fast-loop-host-plane-summary-status`
    - project `docker-fast-loop-host-plane-summary-sha256`
    - project `docker-fast-loop-host-plane-summary-reason`
    - keep success and fail-closed summary provenance available to downstream workflow consumers without reopening JSON
-9. Top-level `tools/Test-DockerDesktopFastLoop.ps1` Step Summary
+10. Top-level `tools/Test-DockerDesktopFastLoop.ps1` Step Summary
    - appends `### Docker Fast Loop Summary`
    - prints the same summary path and status path surfaced through GitHub outputs
    - prints host-plane summary path, status, SHA-256, and fail-closed reason
    - preserves the missing-summary reason before the script throws
-10. `history:diagnostics:show`
+11. `history:diagnostics:show`
     - replays the same distinction in console form for the operator
     - prints `[host-plane-split][summary] <path> status=<status> sha256=<sha256>` when summary provenance exists
 
@@ -205,10 +254,16 @@ trustworthy.
    merge-queued, or fully settled without raw GitHub polling.
 8. When summarizing a run, name the exact plane identifier instead of saying “host” or “Docker” without qualification.
 9. Do not treat `native-labview-2026-32` as a release or CI authority surface; it is a shadow accelerator only.
-10. Compare `host.osFingerprint.fingerprintSha256` before and after host
+10. Treat `tools/TestStand-CompareHarness.ps1` as a deterministic consumer of a native plane. Its `session-index.json`
+    is useful evidence, but it does not create a new authority plane.
+11. Use the Docker-lane handshake before assigning an isolated Docker lane to a background agent so exclusivity,
+    billable rate, and host fingerprint stay replayable.
+12. Only Sagan may request simultaneous `docker-lane` plus `native-labview-2026-32`, and that request must carry an
+    explicit `operatorAuthorizationRef`.
+13. Compare `host.osFingerprint.fingerprintSha256` before and after host
     upgrades. If it changes, treat the new value as a moved canonical host OS
     baseline rather than attributing the drift to the workload first.
-11. Use `host.osFingerprint.isolatedLaneGroupId` as the replayable identifier
+14. Use `host.osFingerprint.isolatedLaneGroupId` as the replayable identifier
     for this canonical Windows baseline when documenting or comparing isolated
     local lane groups.
 
@@ -218,10 +273,14 @@ trustworthy.
 - [concurrent-lane-apply-receipt-v1.schema.json](schemas/concurrent-lane-apply-receipt-v1.schema.json)
 - [concurrent-lane-status-receipt-v1.schema.json](schemas/concurrent-lane-status-receipt-v1.schema.json)
 - [concurrent-lane-plan-v1.schema.json](schemas/concurrent-lane-plan-v1.schema.json)
+- [docker-lane-handshake-v1.schema.json](schemas/docker-lane-handshake-v1.schema.json)
+- [docker-lane-handshake-report-v1.schema.json](schemas/docker-lane-handshake-report-v1.schema.json)
 - [labview-2026-host-plane-report-v1.schema.json](schemas/labview-2026-host-plane-report-v1.schema.json)
 - [Write-LabVIEW2026HostPlaneDiagnostics.ps1](../tools/Write-LabVIEW2026HostPlaneDiagnostics.ps1)
 - [concurrent-lane-apply.mjs](../tools/priority/concurrent-lane-apply.mjs)
 - [concurrent-lane-status.mjs](../tools/priority/concurrent-lane-status.mjs)
 - [concurrent-lane-plan.mjs](../tools/priority/concurrent-lane-plan.mjs)
+- [docker-lane-handshake.mjs](../tools/priority/docker-lane-handshake.mjs)
 - [Test-DockerDesktopFastLoop.ps1](../tools/Test-DockerDesktopFastLoop.ps1)
+- [TestStand-CompareHarness.ps1](../tools/TestStand-CompareHarness.ps1)
 - [Show-DockerFastLoopDiagnostics.ps1](../tools/Show-DockerFastLoopDiagnostics.ps1)
