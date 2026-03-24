@@ -31,6 +31,9 @@ Artifacts appear under `tests/results/` (JSON summary, results XML, dispatcher l
 - Runner online with labels `[self-hosted, Windows, X64, comparevi, capability-ingress]`.
 - VI fixtures available and accessible by runner service.
 - LVCompare not blocked by antivirus / pending updates.
+- Current compare self-hosted workflows stay ingress-only by policy. Reserve
+  `labview-2026`, `lv32`, `docker-lane`, and `teststand` for jobs that
+  explicitly lease those specialized planes through the governed host fabric.
 
 ## Troubleshooting
 

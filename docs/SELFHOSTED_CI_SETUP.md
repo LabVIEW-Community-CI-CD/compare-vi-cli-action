@@ -93,7 +93,13 @@ Self-hosted compare workflows should target:
 
 Add capability labels only when a job truly needs them. `capability-ingress` is
 the stable ingress requirement; execution cells and Docker lanes remain the
-local isolation mechanism behind it.
+local isolation mechanism behind it. The checked-in routing source of truth for
+today's compare jobs is:
+
+- `tools/policy/runner-capability-routing.json`
+
+That matrix intentionally keeps most current compare jobs ingress-only until
+they truly consume `labview-2026`, `lv32`, `docker-lane`, or `teststand`.
 
 ## Maintenance
 

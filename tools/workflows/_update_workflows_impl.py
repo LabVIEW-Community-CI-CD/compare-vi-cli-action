@@ -29,6 +29,14 @@ yaml = YAML(typ='rt')
 yaml.preserve_quotes = True
 yaml.width = 4096  # avoid folding
 
+COMPARE_CAPABILITY_INGRESS_RUNS_ON = [
+    'self-hosted',
+    'Windows',
+    'X64',
+    'comparevi',
+    'capability-ingress',
+]
+
 
 def load_yaml(path: Path):
     with path.open('r', encoding='utf-8') as fp:
@@ -624,7 +632,7 @@ def ensure_interactivity_probe_job(doc) -> bool:
     )
     job = {
         'if': desired_if,
-        'runs-on': ['self-hosted', 'Windows', 'X64'],
+        'runs-on': list(COMPARE_CAPABILITY_INGRESS_RUNS_ON),
         'timeout-minutes': 2,
         'needs': ['normalize', 'preflight'],
         'outputs': desired_outputs,
