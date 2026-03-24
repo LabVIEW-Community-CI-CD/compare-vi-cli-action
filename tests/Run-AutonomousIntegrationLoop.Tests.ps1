@@ -77,8 +77,20 @@ Describe 'Run-AutonomousIntegrationLoop TestStand harness mode' -Tag 'Unit' {
     New-Item -ItemType Directory -Path $outDir -Force | Out-Null
     $base = Join-Path $outDir 'BaseHarness.vi'
     $head = Join-Path $outDir 'HeadHarness.vi'
+    $leasePath = Join-Path $outDir 'execution-cell.json'
     New-Item -ItemType File -Path $base -Force | Out-Null
     New-Item -ItemType File -Path $head -Force | Out-Null
+    @'
+{
+  "schema": "priority/execution-cell-lease-report@v1",
+  "summary": {
+    "cellClass": "worker",
+    "suiteClass": "dual-plane-parity",
+    "operatorAuthorizationRef": "budget-auth://operator/session-2026-03-24",
+    "premiumSaganMode": false
+  }
+}
+'@ | Set-Content -LiteralPath $leasePath -Encoding UTF8
 
     $harnessStub = Join-Path $outDir 'TestStand-CompareHarness.ps1'
     $logPath = Join-Path $outDir 'harness-log.ndjson'
@@ -145,7 +157,7 @@ exit 0
     try {
       $runner = Join-Path $outDir 'runner-harness.ps1'
       $runnerContent = @"
-& '$scriptPath' -Base '$base' -Head '$head' -MaxIterations 2 -IntervalSeconds 0 -LogVerbosity Quiet -LvCompareArgs '-foo 1 -bar' -UseTestStandHarness -TestStandHarnessPath '$harnessStub' -TestStandOutputRoot '$outputRoot' -TestStandWarmup detect -TestStandSuiteClass dual-plane-parity -TestStandLabVIEW64Path 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandLabVIEW32Path 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandAgentId 'hooke' -TestStandAgentClass 'subagent' -TestStandExecutionCellLeasePath 'E:\comparevi-lanes\cells\hooke-01\execution-cell.json' -TestStandExecutionCellId 'exec-cell-hooke-loop-01' -TestStandExecutionCellLeaseId 'lease-hooke-loop-01' -TestStandHarnessInstanceId 'ts-loop-hooke-01' -TestStandRenderReport -TestStandCloseLabVIEW -TestStandCloseLVCompare -TestStandTimeoutSeconds 45 -TestStandReplaceFlags -FinalStatusJsonPath '$outDir/final.json'
+& '$scriptPath' -Base '$base' -Head '$head' -MaxIterations 2 -IntervalSeconds 0 -LogVerbosity Quiet -LvCompareArgs '-foo 1 -bar' -UseTestStandHarness -TestStandHarnessPath '$harnessStub' -TestStandOutputRoot '$outputRoot' -TestStandWarmup detect -TestStandSuiteClass dual-plane-parity -TestStandLabVIEW64Path 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandLabVIEW32Path 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandAgentId 'hooke' -TestStandAgentClass 'subagent' -TestStandExecutionCellLeasePath '$leasePath' -TestStandExecutionCellId 'exec-cell-hooke-loop-01' -TestStandExecutionCellLeaseId 'lease-hooke-loop-01' -TestStandHarnessInstanceId 'ts-loop-hooke-01' -TestStandRenderReport -TestStandCloseLabVIEW -TestStandCloseLVCompare -TestStandTimeoutSeconds 45 -TestStandReplaceFlags -FinalStatusJsonPath '$outDir/final.json'
 exit `$LASTEXITCODE
 "@
       Set-Content -LiteralPath $runner -Encoding UTF8 -Value $runnerContent
@@ -164,7 +176,7 @@ exit `$LASTEXITCODE
       $entries | ForEach-Object { $_.labview32Exe } | Sort-Object -Unique | Should -Be @('C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe')
       $entries | ForEach-Object { $_.agentId } | Sort-Object -Unique | Should -Be @('hooke')
       $entries | ForEach-Object { $_.agentClass } | Sort-Object -Unique | Should -Be @('subagent')
-      $entries | ForEach-Object { $_.executionCellLeasePath } | Sort-Object -Unique | Should -Be @('E:\comparevi-lanes\cells\hooke-01\execution-cell.json')
+      $entries | ForEach-Object { $_.executionCellLeasePath } | Sort-Object -Unique | Should -Be @($leasePath)
       $entries | ForEach-Object { $_.executionCellId } | Sort-Object -Unique | Should -Be @('exec-cell-hooke-loop-01')
       $entries | ForEach-Object { $_.executionCellLeaseId } | Sort-Object -Unique | Should -Be @('lease-hooke-loop-01')
       $entries | ForEach-Object { $_.harnessInstanceId } | Sort-Object -Unique | Should -Be @('ts-loop-hooke-01')
@@ -183,7 +195,10 @@ exit `$LASTEXITCODE
       $finalStatus.harness.processModelClass | Should -Be 'parallel-process-model'
       $finalStatus.harness.windowsOnly | Should -BeTrue
       $finalStatus.harness.requestedSimultaneous | Should -BeTrue
-      $finalStatus.harness.executionCellLeasePath | Should -Be 'E:\comparevi-lanes\cells\hooke-01\execution-cell.json'
+      $finalStatus.harness.cellClass | Should -Be 'worker'
+      $finalStatus.harness.operatorAuthorizationRef | Should -Be 'budget-auth://operator/session-2026-03-24'
+      $finalStatus.harness.premiumSaganMode | Should -BeFalse
+      $finalStatus.harness.executionCellLeasePath | Should -Be $leasePath
       $finalStatus.harness.executionCellId | Should -Be 'exec-cell-hooke-loop-01'
       $finalStatus.harness.executionCellLeaseId | Should -Be 'lease-hooke-loop-01'
       $finalStatus.harness.harnessInstanceId | Should -Be 'ts-loop-hooke-01'

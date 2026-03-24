@@ -163,6 +163,62 @@ function Set-LoopExit {
   exit $Code
 }
 
+function Get-ExecutionCellLeaseMetadata {
+  param([string]$LeasePath)
+
+  $metadata = [ordered]@{
+    cellClass = $null
+    suiteClass = $null
+    operatorAuthorizationRef = $null
+    premiumSaganMode = $false
+  }
+
+  if ([string]::IsNullOrWhiteSpace($LeasePath)) {
+    return [pscustomobject]$metadata
+  }
+
+  try {
+    $resolvedLeasePath = (Resolve-Path -LiteralPath $LeasePath -ErrorAction Stop).Path
+    $payload = Get-Content -LiteralPath $resolvedLeasePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    $summary = if ($payload -and $payload.PSObject.Properties.Name -contains 'summary') { $payload.summary } else { $null }
+    $lease = if ($payload -and $payload.PSObject.Properties.Name -contains 'lease') { $payload.lease } else { $null }
+    $request = if ($lease -and $lease.PSObject.Properties.Name -contains 'request') { $lease.request } else { $null }
+    $grant = if ($lease -and $lease.PSObject.Properties.Name -contains 'grant') { $lease.grant } else { $null }
+
+    $summaryCellClass = if ($summary) { $summary.cellClass } else { $null }
+    $requestCellClass = if ($request) { $request.cellClass } else { $null }
+    foreach ($candidate in @($summaryCellClass, $requestCellClass)) {
+      if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+        $metadata.cellClass = [string]$candidate
+        break
+      }
+    }
+    $summarySuiteClass = if ($summary) { $summary.suiteClass } else { $null }
+    $requestSuiteClass = if ($request) { $request.suiteClass } else { $null }
+    foreach ($candidate in @($summarySuiteClass, $requestSuiteClass)) {
+      if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+        $metadata.suiteClass = [string]$candidate
+        break
+      }
+    }
+    $summaryOperatorAuthorizationRef = if ($summary) { $summary.operatorAuthorizationRef } else { $null }
+    $requestOperatorAuthorizationRef = if ($request) { $request.operatorAuthorizationRef } else { $null }
+    foreach ($candidate in @($summaryOperatorAuthorizationRef, $requestOperatorAuthorizationRef)) {
+      if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+        $metadata.operatorAuthorizationRef = [string]$candidate
+        break
+      }
+    }
+    if ($summary -and $summary.PSObject.Properties.Name -contains 'premiumSaganMode') {
+      $metadata.premiumSaganMode = [bool]$summary.premiumSaganMode
+    } elseif ($grant -and $grant.PSObject.Properties.Name -contains 'premiumSaganMode') {
+      $metadata.premiumSaganMode = [bool]$grant.premiumSaganMode
+    }
+  } catch {}
+
+  return [pscustomobject]$metadata
+}
+
 # Defaults / fallbacks
 if (-not $MaxIterations) { $MaxIterations = 1 }
 if ($null -eq $IntervalSeconds) { $IntervalSeconds = 0 }
@@ -293,6 +349,7 @@ if ($UseTestStandHarness) {
   $executionCellLeasePath = $TestStandExecutionCellLeasePath
   $executionCellId = $TestStandExecutionCellId
   $executionCellLeaseId = $TestStandExecutionCellLeaseId
+  $executionCellLeaseMetadata = Get-ExecutionCellLeaseMetadata -LeasePath $executionCellLeasePath
   $agentId = $TestStandAgentId
   $agentClass = $TestStandAgentClass
   $harnessInstanceId = $TestStandHarnessInstanceId
@@ -385,6 +442,9 @@ if ($UseTestStandHarness) {
     labview32Path = $labview32Path
     agentId = $agentId
     agentClass = $agentClass
+    cellClass = $executionCellLeaseMetadata.cellClass
+    operatorAuthorizationRef = $executionCellLeaseMetadata.operatorAuthorizationRef
+    premiumSaganMode = [bool]$executionCellLeaseMetadata.premiumSaganMode
     executionCellLeasePath = $executionCellLeasePath
     executionCellId = $executionCellId
     executionCellLeaseId = $executionCellLeaseId
@@ -493,6 +553,8 @@ function Invoke-LabVIEWCloser {
   }
 }
 
+$shouldCloseLabVIEW = (-not $UseTestStandHarness) -and (-not $executor)
+
 function Ensure-JsonLog {
   param([string]$Path)
   if (-not $Path) { return }
@@ -586,7 +648,9 @@ if ($DryRun) {
 try {
   $result = Invoke-IntegrationCompareLoop @invokeParams
 } catch {
-  Invoke-LabVIEWCloser -Context 'invoke-exception'
+  if ($shouldCloseLabVIEW) {
+    Invoke-LabVIEWCloser -Context 'invoke-exception'
+  }
   throw
 }
 Write-JsonEvent 'result' (@{ iterations=$result.Iterations; diffs=$result.DiffCount; errors=$result.ErrorCount; succeeded=$result.Succeeded })
@@ -618,6 +682,9 @@ if ($FinalStatusJsonPath) {
         processModelClass = $harnessPlan.processModelClass
         windowsOnly = $harnessPlan.windowsOnly
         requestedSimultaneous = $harnessPlan.requestedSimultaneous
+        cellClass = $harnessPlan.cellClass
+        operatorAuthorizationRef = $harnessPlan.operatorAuthorizationRef
+        premiumSaganMode = $harnessPlan.premiumSaganMode
         executionCellLeasePath = $harnessPlan.executionCellLeasePath
         executionCellId = $harnessPlan.executionCellId
         executionCellLeaseId = $harnessPlan.executionCellLeaseId
@@ -655,7 +722,9 @@ if (-not $NoStepSummary -and $env:GITHUB_STEP_SUMMARY -and $result.DiffSummary) 
   Write-Detail 'Step summary append skipped (suppressed or not in Actions).' 'Debug'
 }
 
-Invoke-LabVIEWCloser -Context 'post-loop'
+if ($shouldCloseLabVIEW) {
+  Invoke-LabVIEWCloser -Context 'post-loop'
+}
 
 # Exit code semantics: 0 when succeeded (even if diffs unless FailOnDiff terminated early), 1 if any errors encountered
 if (-not $result.Succeeded) { Set-LoopExit 1 }
