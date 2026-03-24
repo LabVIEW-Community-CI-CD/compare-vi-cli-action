@@ -25,6 +25,10 @@ entrypoint and machine-generated live state.
   which is the top-level machine-readable rollup for the autonomous governor's
   current mode, wake disposition, funding-quality posture, release-signing
   readiness, and next owner.
+- It refreshes `tests/results/_agent/handoff/sagan-context-concentrator.json`,
+  which is the machine-readable hot/warm memory concentrator for the current
+  standing issue, current owner decision, recent subagent episodes, and durable
+  blocker context.
 - It refreshes
   `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`,
   which is the cross-repo machine-readable rollup for compare, canonical
@@ -44,6 +48,9 @@ entrypoint and machine-generated live state.
 - `node tools/npm/run-script.mjs priority:handoff`
   imports the handoff bundle and prints the entrypoint index, standing-priority
   snapshot, and other current summaries.
+- `node tools/npm/run-script.mjs priority:context:concentrate`
+  rebuilds the compact context concentrator directly when you need the
+  synthesized hot/warm memory view without the full handoff bundle.
 - `node tools/npm/run-script.mjs priority:handoff-tests`
   exercises the contract lane used to keep these handoff surfaces from drifting.
 
@@ -59,6 +66,7 @@ entrypoint and machine-generated live state.
 - `tests/results/_agent/handoff/entrypoint-status.json`
 - `tests/results/_agent/handoff/monitoring-mode.json`
 - `tests/results/_agent/handoff/autonomous-governor-summary.json`
+- `tests/results/_agent/handoff/sagan-context-concentrator.json`
 - `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`
 - `tests/results/_agent/handoff/downstream-repo-graph-truth.json`
 - `tests/results/_agent/release/release-signing-readiness.json`
@@ -83,6 +91,9 @@ entrypoint and machine-generated live state.
   event-driven monitoring mode.
 - `tests/results/_agent/handoff/autonomous-governor-summary.json` is the
   top-level operating summary for the autonomous governor.
+- `tests/results/_agent/handoff/sagan-context-concentrator.json` is the compact
+  durable memory view that keeps subagent findings, hot blockers, and current
+  owner decisions close to the active handoff surface.
 - `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json` is
   the cross-repo operating summary for compare, canonical template, and proving
   forks together.
@@ -100,6 +111,8 @@ entrypoint and machine-generated live state.
   - funding-quality posture for the latest wake
   - release-signing readiness, including explicit external blockers when workflow
     signing material is absent
+  - concentrated subagent episode memory, including hot working set,
+    warm recent memory, archive count, and lower-bound blended spend
   - cross-repo owner and next-owner decisions
   - repo graph truth for producer lineage, canonical development, and consumer proving
   - wake conditions that should reopen compare or template work

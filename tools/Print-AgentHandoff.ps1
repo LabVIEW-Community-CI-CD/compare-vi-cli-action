@@ -1297,6 +1297,7 @@ try {
   $releaseSigningReadinessScript = Join-Path $repoRoot 'tools' 'priority' 'release-signing-readiness.mjs'
   $governorSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-summary.mjs'
   $governorPortfolioSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-portfolio-summary.mjs'
+  $contextConcentratorScript = Join-Path $repoRoot 'tools' 'priority' 'sagan-context-concentrator.mjs'
   $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
   if ($nodeCmd) {
     $promotionDir = Join-Path $ResultsRoot '_agent/promotion'
@@ -1320,6 +1321,7 @@ try {
     $monitoringModePath = Join-Path $handoffDir 'monitoring-mode.json'
     $governorSummaryPath = Join-Path $handoffDir 'autonomous-governor-summary.json'
     $governorPortfolioSummaryPath = Join-Path $handoffDir 'autonomous-governor-portfolio-summary.json'
+    $contextConcentratorPath = Join-Path $handoffDir 'sagan-context-concentrator.json'
 
     if (Test-Path -LiteralPath $repoGraphTruthScript -PathType Leaf) {
       & $nodeCmd.Source $repoGraphTruthScript `
@@ -1384,6 +1386,18 @@ try {
         --monitoring-mode $monitoringModePath `
         --repo-graph-truth $repoGraphTruthPath `
         --output $governorPortfolioSummaryPath | Out-Host
+    }
+
+    if (Test-Path -LiteralPath $contextConcentratorScript -PathType Leaf) {
+      & $nodeCmd.Source $contextConcentratorScript `
+        --repo-root $repoRoot `
+        --priority-cache (Join-Path $repoRoot '.agent_priority_cache.json') `
+        --governor-summary $governorSummaryPath `
+        --governor-portfolio-summary $governorPortfolioSummaryPath `
+        --monitoring-mode $monitoringModePath `
+        --operator-steering-event (Join-Path $handoffDir 'operator-steering-event.json') `
+        --episode-directory (Join-Path $ResultsRoot '_agent/memory/subagent-episodes') `
+        --output $contextConcentratorPath | Out-Host
     }
   }
 } catch {
@@ -1826,6 +1840,58 @@ try {
   }
 } catch {
   Write-Warning ("Failed to display governor portfolio summary: {0}" -f $_.Exception.Message)
+}
+
+try {
+  $contextConcentratorPath = Join-Path $ResultsRoot '_agent/handoff/sagan-context-concentrator.json'
+  if (Test-Path -LiteralPath $contextConcentratorPath -PathType Leaf) {
+    $concentrator = Get-Content -LiteralPath $contextConcentratorPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    Write-Host ''
+    Write-Host '[Context Concentrator]' -ForegroundColor Cyan
+    Write-Host ("  status   : {0}" -f (Format-NullableValue $concentrator.summary.concentrationStatus))
+    if ($concentrator.summary.activeIssueNumber) {
+      Write-Host ("  issue    : #{0}" -f (Format-NullableValue $concentrator.summary.activeIssueNumber))
+    }
+    Write-Host ("  owner    : {0}" -f (Format-NullableValue $concentrator.summary.currentOwnerRepository))
+    Write-Host ("  next     : {0}" -f (Format-NullableValue $concentrator.summary.nextAction))
+    Write-Host ("  hot/warm : {0}/{1}" -f (Format-NullableValue $concentrator.summary.hotWorkingSetCount), (Format-NullableValue $concentrator.summary.warmMemoryCount))
+    Write-Host ("  archive  : {0}" -f (Format-NullableValue $concentrator.summary.archiveCount))
+    Write-Host ("  blockers : {0}" -f (Format-NullableValue $concentrator.summary.blockerCount))
+    Write-Host ('  spend    : ${0}' -f (Format-NullableValue $concentrator.summary.blendedLowerBoundUsd))
+    foreach ($entry in @($concentrator.memory.hotWorkingSet | Select-Object -First 3)) {
+      $ownershipLabel = if ($entry.PSObject.Properties['executionOwnershipLabel']) {
+        $entry.executionOwnershipLabel
+      } else {
+        $null
+      }
+      if ($ownershipLabel) {
+        Write-Host ("  - {0} [{1}] :: {2}" -f (Format-NullableValue $entry.label), (Format-NullableValue $entry.status), (Format-NullableValue $ownershipLabel))
+      } else {
+        Write-Host ("  - {0} [{1}]" -f (Format-NullableValue $entry.label), (Format-NullableValue $entry.status))
+      }
+    }
+    if ($env:GITHUB_STEP_SUMMARY) {
+      $activeIssueLabel = if ($concentrator.summary.activeIssueNumber) {
+        "#$($concentrator.summary.activeIssueNumber)"
+      } else {
+        'n/a'
+      }
+      $contextLines = @(
+        '### Context Concentrator',
+        '',
+        ('- Status: {0}' -f (Format-NullableValue $concentrator.summary.concentrationStatus)),
+        ('- Active issue: {0}' -f $activeIssueLabel),
+        ('- Current owner: {0}' -f (Format-NullableValue $concentrator.summary.currentOwnerRepository)),
+        ('- Next action: {0}' -f (Format-NullableValue $concentrator.summary.nextAction)),
+        ('- Hot/warm/archive: {0}/{1}/{2}' -f (Format-NullableValue $concentrator.summary.hotWorkingSetCount), (Format-NullableValue $concentrator.summary.warmMemoryCount), (Format-NullableValue $concentrator.summary.archiveCount)),
+        ('- Blockers: {0}' -f (Format-NullableValue $concentrator.summary.blockerCount)),
+        ('- Blended lower-bound spend: ${0}' -f (Format-NullableValue $concentrator.summary.blendedLowerBoundUsd))
+      )
+      ($contextLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+    }
+  }
+} catch {
+  Write-Warning ("Failed to display context concentrator summary: {0}" -f $_.Exception.Message)
 }
 
 try {
