@@ -1,0 +1,178 @@
+{
+  "version": 1,
+  "baseIngressLabels": [
+    "self-hosted",
+    "Windows",
+    "X64",
+    "comparevi",
+    "capability-ingress"
+  ],
+  "optionalCapabilityLabels": [
+    "labview-2026",
+    "lv32",
+    "docker-lane",
+    "teststand"
+  ],
+  "deferredCapabilityCandidates": [
+    {
+      "workflow": ".github/workflows/labview-cli-compare.yml",
+      "job": "cli-compare",
+      "candidateLabels": [
+        "lv32"
+      ],
+      "reason": "The job validates the Program Files (x86) LabVIEW CLI path today, but this slice keeps lv32 reserved for explicit native 32-bit plane consumers until that label contract is widened deliberately."
+    }
+  ],
+  "workflowJobRouting": [
+    {
+      "workflow": ".github/workflows/ci-orchestrated.yml",
+      "jobs": [
+        {
+          "id": "probe",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        },
+        {
+          "id": "pester-category",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        },
+        {
+          "id": "drift",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        },
+        {
+          "id": "windows-single",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
+      "workflow": ".github/workflows/compare-artifacts.yml",
+      "jobs": [
+        {
+          "id": "publish",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
+      "workflow": ".github/workflows/labview-cli-compare.yml",
+      "jobs": [
+        {
+          "id": "cli-compare",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
+      "workflow": ".github/workflows/pester-reusable.yml",
+      "jobs": [
+        {
+          "id": "preflight",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        },
+        {
+          "id": "pester",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
+      "workflow": ".github/workflows/runbook-validation.yml",
+      "jobs": [
+        {
+          "id": "runbook-check",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
+      "workflow": ".github/workflows/smoke-on-label.yml",
+      "jobs": [
+        {
+          "id": "smoke",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
+      "workflow": ".github/workflows/smoke.yml",
+      "jobs": [
+        {
+          "id": "preflight",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        },
+        {
+          "id": "compare",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
+      "workflow": ".github/workflows/vi-compare-pr.yml",
+      "jobs": [
+        {
+          "id": "preflight",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        },
+        {
+          "id": "vi-compare",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
+      "workflow": ".github/workflows/vi-compare-refs.yml",
+      "jobs": [
+        {
+          "id": "preflight",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        },
+        {
+          "id": "compare",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
+      "workflow": ".github/workflows/vi-history-compare.yml",
+      "jobs": [
+        {
+          "id": "preflight",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        },
+        {
+          "id": "compare-history",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    },
+    {
+      "workflow": ".github/workflows/vi-staging-smoke.yml",
+      "jobs": [
+        {
+          "id": "smoke",
+          "routingClass": "ingress-only",
+          "requiredCapabilityLabels": []
+        }
+      ]
+    }
+  ]
+}
