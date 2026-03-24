@@ -97,6 +97,7 @@ The harness now accepts:
 - `-ExecutionCellLeasePath`
 - `-ExecutionCellId`
 - `-ExecutionCellLeaseId`
+- `-HarnessInstanceLeasePath`
 - `-HarnessInstanceId`
 
 Session receipts project both:
@@ -104,6 +105,11 @@ Session receipts project both:
 - `executionCell`
 - `harnessInstance`
 - `processModel`
+
+`-HarnessInstanceLeasePath` lets the owning execution cell point the harness at a first-class harness-instance lease.
+When present, the harness prefers the lease-backed `instanceId`, `role`, `processModelClass`, lease identity, and
+working/artifact roots over ad hoc instance arguments. That keeps the session evidence aligned with the leased runtime
+surface instead of reconstructing it from loose parameters.
 
 That keeps TestStand evidence attributable to one agent-owned memory/process boundary instead of an unscoped host run.
 
