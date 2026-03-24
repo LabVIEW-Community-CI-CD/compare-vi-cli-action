@@ -31,8 +31,18 @@ jobs:
           $json = Get-Content runbook-ci.json -Raw | ConvertFrom-Json
           $json | Add-Member -NotePropertyName hostElapsedSeconds -NotePropertyValue $elapsedSeconds -Force
           $json | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath runbook-ci.json -Encoding utf8
+          $loopPhase = @($json.phases) | Where-Object { $_.name -eq 'Loop' } | Select-Object -First 1
+          $executionTopology = if ($loopPhase -and $loopPhase.details -and $loopPhase.details.PSObject.Properties.Name -contains 'executionTopology') { $loopPhase.details.executionTopology } else { $null }
           if ($env:GITHUB_OUTPUT) {
             Add-Content -Path $env:GITHUB_OUTPUT -Value ("host_elapsed_seconds=$elapsedSeconds") -Encoding utf8
+            Add-Content -Path $env:GITHUB_OUTPUT -Value ("loop_execution_topology_present=" + [bool]$executionTopology) -Encoding utf8
+          }
+          if ($env:GITHUB_STEP_SUMMARY -and $executionTopology) {
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Loop Execution Topology" -Encoding utf8
+            if ($executionTopology.runtimeSurface) { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ("- Runtime surface: `{0}`" -f $executionTopology.runtimeSurface) -Encoding utf8 }
+            if ($executionTopology.processModelClass) { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ("- Process model: `{0}`" -f $executionTopology.processModelClass) -Encoding utf8 }
+            if ($executionTopology.executionCellLeaseId) { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ("- Execution cell lease: `{0}`" -f $executionTopology.executionCellLeaseId) -Encoding utf8 }
+            if ($executionTopology.harnessInstanceLeaseId) { Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ("- Harness lease: `{0}`" -f $executionTopology.harnessInstanceLeaseId) -Encoding utf8 }
           }
           Get-Content runbook-ci.json
 
@@ -48,4 +58,9 @@ jobs:
           $json = Get-Content runbook-ci.json -Raw | ConvertFrom-Json
           if ($json.schema -ne 'integration-runbook-v1') { throw 'Schema mismatch' }
           if (-not $json.phases) { throw 'No phases in runbook output' }
-
+          $loopPhase = @($json.phases) | Where-Object { $_.name -eq 'Loop' } | Select-Object -First 1
+          if ($loopPhase -and $loopPhase.details -and $loopPhase.details.PSObject.Properties.Name -contains 'executionTopology') {
+            $executionTopology = $loopPhase.details.executionTopology
+            if (-not $executionTopology.runtimeSurface) { throw 'Loop executionTopology.runtimeSurface missing' }
+            if (-not $executionTopology.processModelClass) { throw 'Loop executionTopology.processModelClass missing' }
+          }
