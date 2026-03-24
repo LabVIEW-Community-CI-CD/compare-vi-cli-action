@@ -365,6 +365,80 @@ function deriveExecutionTopology(compareGovernorSummary) {
   };
 }
 
+function deriveTreasury(compareGovernorSummary) {
+  const treasury = compareGovernorSummary?.compare?.treasury;
+  if (treasury && typeof treasury === 'object' && !Array.isArray(treasury)) {
+    return {
+      status: asOptional(treasury.status) || 'missing',
+      confidence: asOptional(treasury.confidence) || 'unknown',
+      spendPolicyState: asOptional(treasury.spendPolicyState) || 'blocked',
+      budgetPressureState: asOptional(treasury.budgetPressureState) || 'cautious',
+      protectedReserveUsd: Number.isFinite(treasury.protectedReserveUsd) ? treasury.protectedReserveUsd : null,
+      accountRemainingUsdEstimate: Number.isFinite(treasury.accountRemainingUsdEstimate)
+        ? treasury.accountRemainingUsdEstimate
+        : null,
+      operationalHeadroomUsd: Number.isFinite(treasury.operationalHeadroomUsd) ? treasury.operationalHeadroomUsd : null,
+      safeSpendableUsd: Number.isFinite(treasury.safeSpendableUsd) ? treasury.safeSpendableUsd : null,
+      possibleSpendableUpperBoundUsd: Number.isFinite(treasury.possibleSpendableUpperBoundUsd)
+        ? treasury.possibleSpendableUpperBoundUsd
+        : null,
+      operatorBudgetObservedRemainingUpperBoundUsd: Number.isFinite(
+        treasury.operatorBudgetObservedRemainingUpperBoundUsd
+      )
+        ? treasury.operatorBudgetObservedRemainingUpperBoundUsd
+        : null,
+      operatorBudgetObservedRemainingStatus:
+        asOptional(treasury.operatorBudgetObservedRemainingStatus) || 'unknown',
+      operatorBudgetSpendableStatus: asOptional(treasury.operatorBudgetSpendableStatus) || 'unknown',
+      premiumSaganAllowed: treasury.premiumSaganAllowed === true,
+      backgroundFanoutAllowed: treasury.backgroundFanoutAllowed === true,
+      maxBackgroundSubagents: Number.isInteger(treasury.maxBackgroundSubagents)
+        ? treasury.maxBackgroundSubagents
+        : 0,
+      nonEssentialWorkAllowed: treasury.nonEssentialWorkAllowed === true
+    };
+  }
+
+  return {
+    status: asOptional(compareGovernorSummary?.summary?.treasuryStatus) || 'missing',
+    confidence: asOptional(compareGovernorSummary?.summary?.treasuryConfidence) || 'unknown',
+    spendPolicyState: asOptional(compareGovernorSummary?.summary?.treasurySpendPolicyState) || 'blocked',
+    budgetPressureState: asOptional(compareGovernorSummary?.summary?.treasuryBudgetPressureState) || 'cautious',
+    protectedReserveUsd: Number.isFinite(compareGovernorSummary?.summary?.treasuryProtectedReserveUsd)
+      ? compareGovernorSummary.summary.treasuryProtectedReserveUsd
+      : null,
+    accountRemainingUsdEstimate: Number.isFinite(compareGovernorSummary?.summary?.treasuryAccountRemainingUsdEstimate)
+      ? compareGovernorSummary.summary.treasuryAccountRemainingUsdEstimate
+      : null,
+    operationalHeadroomUsd: Number.isFinite(compareGovernorSummary?.summary?.treasuryOperationalHeadroomUsd)
+      ? compareGovernorSummary.summary.treasuryOperationalHeadroomUsd
+      : null,
+    safeSpendableUsd: Number.isFinite(compareGovernorSummary?.summary?.treasurySafeSpendableUsd)
+      ? compareGovernorSummary.summary.treasurySafeSpendableUsd
+      : null,
+    possibleSpendableUpperBoundUsd: Number.isFinite(
+      compareGovernorSummary?.summary?.treasuryPossibleSpendableUpperBoundUsd
+    )
+      ? compareGovernorSummary.summary.treasuryPossibleSpendableUpperBoundUsd
+      : null,
+    operatorBudgetObservedRemainingUpperBoundUsd: Number.isFinite(
+      compareGovernorSummary?.summary?.treasuryOperatorBudgetObservedRemainingUpperBoundUsd
+    )
+      ? compareGovernorSummary.summary.treasuryOperatorBudgetObservedRemainingUpperBoundUsd
+      : null,
+    operatorBudgetObservedRemainingStatus:
+      asOptional(compareGovernorSummary?.summary?.treasuryOperatorBudgetObservedRemainingStatus) || 'unknown',
+    operatorBudgetSpendableStatus:
+      asOptional(compareGovernorSummary?.summary?.treasuryOperatorBudgetSpendableStatus) || 'unknown',
+    premiumSaganAllowed: compareGovernorSummary?.summary?.treasuryPremiumSaganAllowed === true,
+    backgroundFanoutAllowed: compareGovernorSummary?.summary?.treasuryBackgroundFanoutAllowed === true,
+    maxBackgroundSubagents: Number.isInteger(compareGovernorSummary?.summary?.treasuryMaxBackgroundSubagents)
+      ? compareGovernorSummary.summary.treasuryMaxBackgroundSubagents
+      : 0,
+    nonEssentialWorkAllowed: compareGovernorSummary?.summary?.treasuryNonEssentialWorkAllowed === true
+  };
+}
+
 function deriveOwners(compareGovernorSummary, monitoringMode, portfolioMode, viHistoryDistributorDependency) {
   const compareRepository =
     asOptional(compareGovernorSummary?.summary?.currentOwnerRepository) ||
@@ -539,6 +613,7 @@ function buildReport({
     ? monitoringMode.summary.triggeredWakeConditions
     : [];
   const executionTopology = deriveExecutionTopology(compareGovernorSummary);
+  const treasury = deriveTreasury(compareGovernorSummary);
 
   return {
     schema: 'priority/autonomous-governor-portfolio-summary-report@v1',
@@ -562,6 +637,7 @@ function buildReport({
       queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
       queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl),
       queueAuthoritySource: asOptional(compareGovernorSummary?.summary?.queueAuthoritySource),
+      treasury,
       executionTopology,
       executionBundleStatus: asOptional(compareGovernorSummary?.summary?.executionBundleStatus),
       executionBundlePlaneBinding: asOptional(compareGovernorSummary?.summary?.executionBundlePlaneBinding),
@@ -572,7 +648,23 @@ function buildReport({
         compareGovernorSummary?.summary?.executionBundleEffectiveBillableRateUsdPerHour
       )
         ? compareGovernorSummary.summary.executionBundleEffectiveBillableRateUsdPerHour
-        : null
+        : null,
+      treasuryStatus: treasury.status,
+      treasuryConfidence: treasury.confidence,
+      treasurySpendPolicyState: treasury.spendPolicyState,
+      treasuryBudgetPressureState: treasury.budgetPressureState,
+      treasuryProtectedReserveUsd: treasury.protectedReserveUsd,
+      treasuryAccountRemainingUsdEstimate: treasury.accountRemainingUsdEstimate,
+      treasuryOperationalHeadroomUsd: treasury.operationalHeadroomUsd,
+      treasurySafeSpendableUsd: treasury.safeSpendableUsd,
+      treasuryPossibleSpendableUpperBoundUsd: treasury.possibleSpendableUpperBoundUsd,
+      treasuryOperatorBudgetObservedRemainingUpperBoundUsd: treasury.operatorBudgetObservedRemainingUpperBoundUsd,
+      treasuryOperatorBudgetObservedRemainingStatus: treasury.operatorBudgetObservedRemainingStatus,
+      treasuryOperatorBudgetSpendableStatus: treasury.operatorBudgetSpendableStatus,
+      treasuryPremiumSaganAllowed: treasury.premiumSaganAllowed,
+      treasuryBackgroundFanoutAllowed: treasury.backgroundFanoutAllowed,
+      treasuryMaxBackgroundSubagents: treasury.maxBackgroundSubagents,
+      treasuryNonEssentialWorkAllowed: treasury.nonEssentialWorkAllowed
     },
     portfolio: {
       repositoryCount: repositoryEntries.length,
@@ -623,6 +715,22 @@ function buildReport({
       )
         ? compareGovernorSummary.summary.executionBundleEffectiveBillableRateUsdPerHour
         : null,
+      treasuryStatus: treasury.status,
+      treasuryConfidence: treasury.confidence,
+      treasurySpendPolicyState: treasury.spendPolicyState,
+      treasuryBudgetPressureState: treasury.budgetPressureState,
+      treasuryProtectedReserveUsd: treasury.protectedReserveUsd,
+      treasuryAccountRemainingUsdEstimate: treasury.accountRemainingUsdEstimate,
+      treasuryOperationalHeadroomUsd: treasury.operationalHeadroomUsd,
+      treasurySafeSpendableUsd: treasury.safeSpendableUsd,
+      treasuryPossibleSpendableUpperBoundUsd: treasury.possibleSpendableUpperBoundUsd,
+      treasuryOperatorBudgetObservedRemainingUpperBoundUsd: treasury.operatorBudgetObservedRemainingUpperBoundUsd,
+      treasuryOperatorBudgetObservedRemainingStatus: treasury.operatorBudgetObservedRemainingStatus,
+      treasuryOperatorBudgetSpendableStatus: treasury.operatorBudgetSpendableStatus,
+      treasuryPremiumSaganAllowed: treasury.premiumSaganAllowed,
+      treasuryBackgroundFanoutAllowed: treasury.backgroundFanoutAllowed,
+      treasuryMaxBackgroundSubagents: treasury.maxBackgroundSubagents,
+      treasuryNonEssentialWorkAllowed: treasury.nonEssentialWorkAllowed,
       viHistoryDistributorDependencyStatus: viHistoryDistributorDependency.status,
       viHistoryDistributorDependencyTargetRepository: viHistoryDistributorDependency.dependentRepository,
       viHistoryDistributorDependencyExternalBlocker: viHistoryDistributorDependency.externalBlocker,

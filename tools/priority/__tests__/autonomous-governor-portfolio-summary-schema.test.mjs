@@ -61,12 +61,31 @@ test('autonomous governor portfolio summary schema validates a generated report'
       continuitySummaryPath: 'tests/results/_agent/handoff/continuity-summary.json',
       monitoringModePath: 'tests/results/_agent/handoff/monitoring-mode.json',
       wakeLifecyclePath: 'tests/results/_agent/issue/wake-lifecycle.json',
-      wakeInvestmentAccountingPath: 'tests/results/_agent/capital/wake-investment-accounting.json'
+      wakeInvestmentAccountingPath: 'tests/results/_agent/capital/wake-investment-accounting.json',
+      treasuryControlPlanePath: 'tests/results/_agent/cost/treasury-control-plane.json'
     },
     compare: {
       queueState: { status: 'queue-empty', reason: 'queue-empty', openIssueCount: 0, ready: true },
       continuity: { status: 'maintained', turnBoundary: 'safe-idle', supervisionState: 'idle-monitoring', operatorPromptRequiredToResume: false },
       monitoringMode: { status: 'active', futureAgentAction: 'future-agent-may-pivot', wakeConditionCount: 0 },
+      treasury: {
+        status: 'warn',
+        confidence: 'lower-bound-only',
+        spendPolicyState: 'core-delivery-only',
+        budgetPressureState: 'tight',
+        protectedReserveUsd: 100,
+        accountRemainingUsdEstimate: 166,
+        operationalHeadroomUsd: 66,
+        safeSpendableUsd: 66,
+        possibleSpendableUpperBoundUsd: 66,
+        operatorBudgetObservedRemainingUpperBoundUsd: 49970,
+        operatorBudgetObservedRemainingStatus: 'upper-bound',
+        operatorBudgetSpendableStatus: 'unreconciled',
+        premiumSaganAllowed: false,
+        backgroundFanoutAllowed: false,
+        maxBackgroundSubagents: 0,
+        nonEssentialWorkAllowed: false
+      },
       releaseSigningReadiness: {
         status: 'missing',
         codePathState: null,
@@ -141,7 +160,23 @@ test('autonomous governor portfolio summary schema validates a generated report'
       queueHandoffStatus: 'checks-pending',
       queueHandoffNextWakeCondition: 'checks-green',
       queueHandoffPrUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
-      queueAuthoritySource: 'delivery-runtime'
+      queueAuthoritySource: 'delivery-runtime',
+      treasuryStatus: 'warn',
+      treasuryConfidence: 'lower-bound-only',
+      treasurySpendPolicyState: 'core-delivery-only',
+      treasuryBudgetPressureState: 'tight',
+      treasuryProtectedReserveUsd: 100,
+      treasuryAccountRemainingUsdEstimate: 166,
+      treasuryOperationalHeadroomUsd: 66,
+      treasurySafeSpendableUsd: 66,
+      treasuryPossibleSpendableUpperBoundUsd: 66,
+      treasuryOperatorBudgetObservedRemainingUpperBoundUsd: 49970,
+      treasuryOperatorBudgetObservedRemainingStatus: 'upper-bound',
+      treasuryOperatorBudgetSpendableStatus: 'unreconciled',
+      treasuryPremiumSaganAllowed: false,
+      treasuryBackgroundFanoutAllowed: false,
+      treasuryMaxBackgroundSubagents: 0,
+      treasuryNonEssentialWorkAllowed: false
     }
   });
 
@@ -247,4 +282,5 @@ test('autonomous governor portfolio summary schema validates a generated report'
 
   runSchemaValidate(repoRoot, path.join(repoRoot, 'docs', 'schemas', 'autonomous-governor-portfolio-summary-report-v1.schema.json'), outputPath);
   assert.equal(report.schema, 'priority/autonomous-governor-portfolio-summary-report@v1');
+  assert.equal(report.summary.treasurySafeSpendableUsd, 66);
 });

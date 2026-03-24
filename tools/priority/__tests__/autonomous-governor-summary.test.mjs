@@ -102,6 +102,116 @@ function createWakeInvestmentAccounting() {
   };
 }
 
+function createTreasuryControlPlane(overrides = {}) {
+  return {
+    schema: 'priority/treasury-control-plane@v1',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    summary: {
+      status: 'warn',
+      recommendation: 'constrain-spend-to-core-delivery',
+      confidence: 'lower-bound-only',
+      spendPolicyState: 'core-delivery-only',
+      budgetPressureState: 'tight',
+      tokenSpendUsd: 12.5,
+      operatorLaborObservedUsd: 30,
+      operatorLaborMissingTurnCount: 1,
+      observedBlendedLowerBoundUsd: 42.5,
+      knownBlendedUsd: null,
+      protectedReserveUsd: 100,
+      accountRemainingUsdEstimate: 166,
+      operationalHeadroomUsd: 66,
+      operationalHeadroomStatus: 'reserve-near',
+      safeSpendableUsd: 66,
+      possibleSpendableUpperBoundUsd: 66,
+      sourceConflictCount: 0,
+      operatorBudgetCapUsd: 50000,
+      operatorBudgetObservedRemainingUpperBoundUsd: 49970,
+      operatorBudgetObservedRemainingStatus: 'upper-bound',
+      operatorBudgetRemainingLowerBoundUsd: null,
+      operatorBudgetRemainingStatus: 'unknown',
+      operatorBudgetSpendableUsd: null,
+      operatorBudgetSpendableStatus: 'unreconciled',
+      premiumSaganAllowed: false,
+      backgroundFanoutAllowed: false,
+      maxBackgroundSubagents: 0,
+      nonEssentialWorkAllowed: false,
+      calibrationReserveProtected: true
+    },
+    turns: {
+      totalTurns: 3,
+      liveTurnCount: 1,
+      backgroundTurnCount: 2
+    },
+    funding: {
+      billingWindow: {
+        invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
+        invoiceId: 'HQ1VJLMV-0027',
+        fundingPurpose: 'operational',
+        activationState: 'active',
+        prepaidUsd: 400,
+        tokenSpendUsd: 12.5,
+        remainingUsd: 387.5,
+        pricingBasis: 'prepaid-credit',
+        selectionMode: 'hold',
+        selectionReason: 'Calibration funding window remains on hold before activation.'
+      },
+      accountBalance: {
+        totalCredits: 28750,
+        usedCredits: 24600,
+        remainingCredits: 4150,
+        unitPriceUsd: 0.04,
+        remainingUsdEstimate: 166,
+        sourceKind: 'operator-account-state',
+        sourcePathEvidence: 'operator-account-state.json',
+        operatorNote: 'Latest operator-provided balance snapshot.'
+      },
+      reservedFunding: {
+        count: 1,
+        totalReservedUsd: 100,
+        windows: [
+          {
+            invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0028',
+            invoiceId: 'HQ1VJLMV-0028',
+            fundingPurpose: 'calibration',
+            activationState: 'hold',
+            prepaidUsd: 100,
+            operatorNote: 'Reserved calibration window.'
+          }
+        ]
+      }
+    },
+    controls: {
+      premiumSaganMode: {
+        allowed: false,
+        requiresOperatorAuthorization: true,
+        minimumOperationalHeadroomUsd: 150,
+        reason: 'budget-tight'
+      },
+      backgroundFanout: {
+        allowed: false,
+        minimumOperationalHeadroomUsd: 125,
+        maximumConcurrentSubagents: 0,
+        reason: 'budget-tight'
+      },
+      nonEssentialWork: {
+        allowed: false,
+        minimumOperationalHeadroomUsd: 100,
+        reason: 'budget-tight'
+      }
+    },
+    source: {
+      policyPath: 'tools/policy/treasury-control-plane.json',
+      costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
+      costRollupMaterialized: true,
+      costRollupMaterializationReportPath: 'tests/results/_agent/cost/agent-cost-rollup-materialization.json',
+      operatorCostProfilePath: 'tools/policy/operator-cost-profile.json',
+      outputPath: 'tests/results/_agent/cost/treasury-control-plane.json'
+    },
+    blockers: [],
+    ...overrides
+  };
+}
+
 function createReleaseSigningReadiness(overrides = {}) {
   return {
     schema: 'priority/release-signing-readiness-report@v1',
@@ -389,6 +499,10 @@ test('runAutonomousGovernorSummary reports compare governance work when the late
     path.join(tmpDir, 'tests', 'results', '_agent', 'capital', 'wake-investment-accounting.json'),
     createWakeInvestmentAccounting()
   );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'cost', 'treasury-control-plane.json'),
+    createTreasuryControlPlane()
+  );
 
   const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
 
@@ -399,6 +513,33 @@ test('runAutonomousGovernorSummary reports compare governance work when the late
   assert.equal(report.summary.signalQuality, 'validated-governance-work');
   assert.equal(report.funding.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.equal(report.compare.releaseSigningReadiness.status, 'missing');
+  assert.equal(report.compare.treasury.status, 'warn');
+  assert.equal(report.compare.treasury.confidence, 'lower-bound-only');
+  assert.equal(report.compare.treasury.spendPolicyState, 'core-delivery-only');
+  assert.equal(report.compare.treasury.operationalHeadroomUsd, 66);
+  assert.equal(report.compare.treasury.safeSpendableUsd, 66);
+  assert.equal(report.compare.treasury.operatorBudgetObservedRemainingUpperBoundUsd, 49970);
+  assert.equal(report.compare.treasury.operatorBudgetSpendableStatus, 'unreconciled');
+  assert.equal(report.compare.treasury.premiumSaganAllowed, false);
+  assert.equal(report.compare.treasury.backgroundFanoutAllowed, false);
+  assert.equal(report.compare.treasury.maxBackgroundSubagents, 0);
+  assert.equal(report.compare.treasury.nonEssentialWorkAllowed, false);
+  assert.equal(report.summary.treasuryStatus, 'warn');
+  assert.equal(report.summary.treasuryConfidence, 'lower-bound-only');
+  assert.equal(report.summary.treasurySpendPolicyState, 'core-delivery-only');
+  assert.equal(report.summary.treasuryBudgetPressureState, 'tight');
+  assert.equal(report.summary.treasuryProtectedReserveUsd, 100);
+  assert.equal(report.summary.treasuryAccountRemainingUsdEstimate, 166);
+  assert.equal(report.summary.treasuryOperationalHeadroomUsd, 66);
+  assert.equal(report.summary.treasurySafeSpendableUsd, 66);
+  assert.equal(report.summary.treasuryPossibleSpendableUpperBoundUsd, 66);
+  assert.equal(report.summary.treasuryOperatorBudgetObservedRemainingUpperBoundUsd, 49970);
+  assert.equal(report.summary.treasuryOperatorBudgetObservedRemainingStatus, 'upper-bound');
+  assert.equal(report.summary.treasuryOperatorBudgetSpendableStatus, 'unreconciled');
+  assert.equal(report.summary.treasuryPremiumSaganAllowed, false);
+  assert.equal(report.summary.treasuryBackgroundFanoutAllowed, false);
+  assert.equal(report.summary.treasuryMaxBackgroundSubagents, 0);
+  assert.equal(report.summary.treasuryNonEssentialWorkAllowed, false);
   assert.equal(report.summary.releaseSigningStatus, 'missing');
   assert.equal(report.summary.releaseSigningExternalBlocker, null);
 });
@@ -424,6 +565,12 @@ test('runAutonomousGovernorSummary reports monitoring-active when no wake lifecy
   assert.equal(report.summary.queueHandoffStatus, 'none');
   assert.equal(report.summary.queueAuthoritySource, 'none');
   assert.equal(report.summary.releaseSigningStatus, 'missing');
+  assert.equal(report.compare.treasury.status, 'missing');
+  assert.equal(report.summary.treasuryStatus, 'missing');
+  assert.equal(report.summary.treasurySpendPolicyState, 'blocked');
+  assert.equal(report.summary.treasuryPremiumSaganAllowed, false);
+  assert.equal(report.summary.treasuryBackgroundFanoutAllowed, false);
+  assert.equal(report.summary.treasuryMaxBackgroundSubagents, 0);
 });
 
 test('runAutonomousGovernorSummary carries explicit release signing blocker state into the governor summary', async () => {

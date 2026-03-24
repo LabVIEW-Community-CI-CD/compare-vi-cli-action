@@ -153,7 +153,7 @@
       "name": "Agent Cost Telemetry Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Checked-in invoice-turn, per-turn, rollup, operator labor, and blended autonomy cost telemetry contracts, fixtures, helper CLIs, and focused tests used to anchor spend reporting in repo-visible evidence.",
+      "description": "Checked-in invoice-turn, per-turn, rollup, treasury control-plane, operator labor, and blended autonomy cost telemetry contracts, fixtures, helper CLIs, and focused tests used to anchor spend reporting in repo-visible evidence.",
       "files": [
         "docs/knowledgebase/Agent-Cost-Telemetry-Surfaces.md",
         "docs/schemas/agent-cost-private-invoice-metadata-v1.schema.json",
@@ -165,6 +165,8 @@
         "docs/schemas/github-comment-budget-hook-report-v1.schema.json",
         "docs/schemas/operator-cost-profile-v1.schema.json",
         "docs/schemas/pr-spend-projection-v1.schema.json",
+        "docs/schemas/treasury-control-plane-policy-v1.schema.json",
+        "docs/schemas/treasury-control-plane-report-v1.schema.json",
         "tools/priority/__fixtures__/agent-cost-rollup/live-turn-estimated.json",
         "tools/priority/__fixtures__/agent-cost-rollup/background-turn-exact.json",
         "tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline.json",
@@ -173,6 +175,7 @@
         "tools/priority/__fixtures__/agent-cost-rollup/private-invoice-metadata-sample.json",
         "tools/policy/github-comment-budget-hook.json",
         "tools/policy/operator-cost-profile.json",
+        "tools/policy/treasury-control-plane.json",
         "tools/priority/agent-cost-invoice-normalize.mjs",
         "tools/priority/agent-cost-invoice-turn.mjs",
         "tools/priority/agent-cost-turn.mjs",
@@ -180,6 +183,7 @@
         "tools/priority/average-issue-cost-scorecard.mjs",
         "tools/priority/github-comment-budget-hook.mjs",
         "tools/priority/pr-spend-projection.mjs",
+        "tools/priority/treasury-control-plane.mjs",
         "tools/priority/__tests__/github-comment-budget-hook.test.mjs",
         "tools/priority/__tests__/github-comment-budget-hook-schema.test.mjs",
         "tools/priority/__tests__/average-issue-cost-scorecard.test.mjs",
@@ -192,7 +196,9 @@
         "tools/priority/__tests__/operator-cost-profile-schema.test.mjs",
         "tools/priority/__tests__/pr-spend-projection.test.mjs",
         "tools/priority/__tests__/pr-spend-projection-schema.test.mjs",
-        "tools/priority/__tests__/agent-cost-telemetry-surfaces.test.mjs"
+        "tools/priority/__tests__/agent-cost-telemetry-surfaces.test.mjs",
+        "tools/priority/__tests__/treasury-control-plane.test.mjs",
+        "tools/priority/__tests__/treasury-control-plane-schema.test.mjs"
       ]
     },
     {

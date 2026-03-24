@@ -38,7 +38,8 @@
         "wakeLifecyclePath",
         "wakeInvestmentAccountingPath",
         "deliveryRuntimeStatePath",
-        "releaseSigningReadinessPath"
+        "releaseSigningReadinessPath",
+        "treasuryControlPlanePath"
       ],
       "properties": {
         "queueEmptyReportPath": { "type": "string", "minLength": 1 },
@@ -47,7 +48,8 @@
         "wakeLifecyclePath": { "type": "string", "minLength": 1 },
         "wakeInvestmentAccountingPath": { "type": "string", "minLength": 1 },
         "deliveryRuntimeStatePath": { "type": "string", "minLength": 1 },
-        "releaseSigningReadinessPath": { "type": "string", "minLength": 1 }
+        "releaseSigningReadinessPath": { "type": "string", "minLength": 1 },
+        "treasuryControlPlanePath": { "type": "string", "minLength": 1 }
       }
     },
     "compare": {
@@ -57,6 +59,7 @@
         "queueState",
         "continuity",
         "monitoringMode",
+        "treasury",
         "releaseSigningReadiness",
         "deliveryRuntime",
         "queueAuthority"
@@ -65,6 +68,7 @@
         "queueState": { "$ref": "#/$defs/queueState" },
         "continuity": { "$ref": "#/$defs/continuity" },
         "monitoringMode": { "$ref": "#/$defs/monitoringMode" },
+        "treasury": { "$ref": "#/$defs/treasury" },
         "releaseSigningReadiness": { "$ref": "#/$defs/releaseSigningReadiness" },
         "deliveryRuntime": { "$ref": "#/$defs/deliveryRuntime" },
         "queueAuthority": { "$ref": "#/$defs/queueAuthority" }
@@ -313,6 +317,46 @@
         "netPaybackUsd": { "type": ["number", "null"] }
       }
     },
+    "treasury": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "confidence",
+        "spendPolicyState",
+        "budgetPressureState",
+        "protectedReserveUsd",
+        "accountRemainingUsdEstimate",
+        "operationalHeadroomUsd",
+        "safeSpendableUsd",
+        "possibleSpendableUpperBoundUsd",
+        "operatorBudgetObservedRemainingUpperBoundUsd",
+        "operatorBudgetObservedRemainingStatus",
+        "operatorBudgetSpendableStatus",
+        "premiumSaganAllowed",
+        "backgroundFanoutAllowed",
+        "maxBackgroundSubagents",
+        "nonEssentialWorkAllowed"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "warn", "blocked", "missing"] },
+        "confidence": { "type": "string", "enum": ["observed", "lower-bound-only", "conflicted", "blocked", "unknown"] },
+        "spendPolicyState": { "type": "string", "enum": ["healthy", "cautious-delivery", "core-delivery-only", "reserve-protected-only", "blocked"] },
+        "budgetPressureState": { "type": "string", "enum": ["healthy", "cautious", "tight", "stop-nonessential-spend", "blocked"] },
+        "protectedReserveUsd": { "type": ["number", "null"], "minimum": 0 },
+        "accountRemainingUsdEstimate": { "type": ["number", "null"], "minimum": 0 },
+        "operationalHeadroomUsd": { "type": ["number", "null"], "minimum": 0 },
+        "safeSpendableUsd": { "type": ["number", "null"], "minimum": 0 },
+        "possibleSpendableUpperBoundUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetObservedRemainingUpperBoundUsd": { "type": ["number", "null"], "minimum": 0 },
+        "operatorBudgetObservedRemainingStatus": { "type": "string", "enum": ["observed", "upper-bound", "unknown"] },
+        "operatorBudgetSpendableStatus": { "type": "string", "enum": ["observed", "unreconciled", "unknown"] },
+        "premiumSaganAllowed": { "type": "boolean" },
+        "backgroundFanoutAllowed": { "type": "boolean" },
+        "maxBackgroundSubagents": { "type": "integer", "minimum": 0 },
+        "nonEssentialWorkAllowed": { "type": "boolean" }
+      }
+    },
     "summary": {
       "type": "object",
       "additionalProperties": false,
@@ -353,6 +397,22 @@
         "executionBundlePremiumSaganMode",
         "executionBundleReciprocalLinkReady",
         "executionBundleEffectiveBillableRateUsdPerHour",
+        "treasuryStatus",
+        "treasuryConfidence",
+        "treasurySpendPolicyState",
+        "treasuryBudgetPressureState",
+        "treasuryProtectedReserveUsd",
+        "treasuryAccountRemainingUsdEstimate",
+        "treasuryOperationalHeadroomUsd",
+        "treasurySafeSpendableUsd",
+        "treasuryPossibleSpendableUpperBoundUsd",
+        "treasuryOperatorBudgetObservedRemainingUpperBoundUsd",
+        "treasuryOperatorBudgetObservedRemainingStatus",
+        "treasuryOperatorBudgetSpendableStatus",
+        "treasuryPremiumSaganAllowed",
+        "treasuryBackgroundFanoutAllowed",
+        "treasuryMaxBackgroundSubagents",
+        "treasuryNonEssentialWorkAllowed",
         "queueHandoffStatus",
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
@@ -426,6 +486,22 @@
         "executionBundlePremiumSaganMode": { "type": "boolean" },
         "executionBundleReciprocalLinkReady": { "type": "boolean" },
         "executionBundleEffectiveBillableRateUsdPerHour": { "type": ["number", "null"], "minimum": 0 },
+        "treasuryStatus": { "type": "string", "enum": ["pass", "warn", "blocked", "missing"] },
+        "treasuryConfidence": { "type": "string", "enum": ["observed", "lower-bound-only", "conflicted", "blocked", "unknown"] },
+        "treasurySpendPolicyState": { "type": "string", "enum": ["healthy", "cautious-delivery", "core-delivery-only", "reserve-protected-only", "blocked"] },
+        "treasuryBudgetPressureState": { "type": "string", "enum": ["healthy", "cautious", "tight", "stop-nonessential-spend", "blocked"] },
+        "treasuryProtectedReserveUsd": { "type": ["number", "null"], "minimum": 0 },
+        "treasuryAccountRemainingUsdEstimate": { "type": ["number", "null"], "minimum": 0 },
+        "treasuryOperationalHeadroomUsd": { "type": ["number", "null"], "minimum": 0 },
+        "treasurySafeSpendableUsd": { "type": ["number", "null"], "minimum": 0 },
+        "treasuryPossibleSpendableUpperBoundUsd": { "type": ["number", "null"], "minimum": 0 },
+        "treasuryOperatorBudgetObservedRemainingUpperBoundUsd": { "type": ["number", "null"], "minimum": 0 },
+        "treasuryOperatorBudgetObservedRemainingStatus": { "type": "string", "enum": ["observed", "upper-bound", "unknown"] },
+        "treasuryOperatorBudgetSpendableStatus": { "type": "string", "enum": ["observed", "unreconciled", "unknown"] },
+        "treasuryPremiumSaganAllowed": { "type": "boolean" },
+        "treasuryBackgroundFanoutAllowed": { "type": "boolean" },
+        "treasuryMaxBackgroundSubagents": { "type": "integer", "minimum": 0 },
+        "treasuryNonEssentialWorkAllowed": { "type": "boolean" },
         "queueHandoffStatus": {
           "type": "string",
           "enum": [

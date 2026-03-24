@@ -1,5 +1,6 @@
 {
   "schema": "priority/github-comment-budget-hook-policy@v1",
+  "treasuryPolicyPath": "tools/policy/treasury-control-plane.json",
   "costRollupPath": "tests/results/_agent/cost/agent-cost-rollup.json",
   "materializationPolicyPath": "tools/policy/agent-cost-rollup-materialization.json",
   "materializationReportPath": "tests/results/_agent/cost/agent-cost-rollup-materialization.json",

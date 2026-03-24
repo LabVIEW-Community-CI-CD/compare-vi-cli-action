@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": [
     "schema",
+    "treasuryPolicyPath",
     "costRollupPath",
     "materializationPolicyPath",
     "materializationReportPath",
@@ -18,6 +19,7 @@
   ],
   "properties": {
     "schema": { "const": "priority/github-comment-budget-hook-policy@v1" },
+    "treasuryPolicyPath": { "type": "string", "minLength": 1 },
     "costRollupPath": { "type": "string", "minLength": 1 },
     "materializationPolicyPath": { "type": "string", "minLength": 1 },
     "materializationReportPath": { "type": "string", "minLength": 1 },

@@ -28,7 +28,8 @@ function createCompareGovernorSummary(overrides = {}) {
       continuitySummaryPath: 'tests/results/_agent/handoff/continuity-summary.json',
       monitoringModePath: 'tests/results/_agent/handoff/monitoring-mode.json',
       wakeLifecyclePath: 'tests/results/_agent/issue/wake-lifecycle.json',
-      wakeInvestmentAccountingPath: 'tests/results/_agent/capital/wake-investment-accounting.json'
+      wakeInvestmentAccountingPath: 'tests/results/_agent/capital/wake-investment-accounting.json',
+      treasuryControlPlanePath: 'tests/results/_agent/cost/treasury-control-plane.json'
     },
     compare: {
       queueState: { status: 'not-queue-empty', reason: 'standing-open', openIssueCount: 1, ready: false },
@@ -42,6 +43,24 @@ function createCompareGovernorSummary(overrides = {}) {
         status: 'blocked',
         futureAgentAction: 'stay-in-compare-monitoring',
         wakeConditionCount: 3
+      },
+      treasury: {
+        status: 'warn',
+        confidence: 'lower-bound-only',
+        spendPolicyState: 'core-delivery-only',
+        budgetPressureState: 'tight',
+        protectedReserveUsd: 100,
+        accountRemainingUsdEstimate: 166,
+        operationalHeadroomUsd: 66,
+        safeSpendableUsd: 66,
+        possibleSpendableUpperBoundUsd: 66,
+        operatorBudgetObservedRemainingUpperBoundUsd: 49970,
+        operatorBudgetObservedRemainingStatus: 'upper-bound',
+        operatorBudgetSpendableStatus: 'unreconciled',
+        premiumSaganAllowed: false,
+        backgroundFanoutAllowed: false,
+        maxBackgroundSubagents: 0,
+        nonEssentialWorkAllowed: false
       },
       releaseSigningReadiness: {
         status: 'warn',
@@ -177,6 +196,22 @@ function createCompareGovernorSummary(overrides = {}) {
       executionBundlePremiumSaganMode: true,
       executionBundleReciprocalLinkReady: true,
       executionBundleEffectiveBillableRateUsdPerHour: 375,
+      treasuryStatus: 'warn',
+      treasuryConfidence: 'lower-bound-only',
+      treasurySpendPolicyState: 'core-delivery-only',
+      treasuryBudgetPressureState: 'tight',
+      treasuryProtectedReserveUsd: 100,
+      treasuryAccountRemainingUsdEstimate: 166,
+      treasuryOperationalHeadroomUsd: 66,
+      treasurySafeSpendableUsd: 66,
+      treasuryPossibleSpendableUpperBoundUsd: 66,
+      treasuryOperatorBudgetObservedRemainingUpperBoundUsd: 49970,
+      treasuryOperatorBudgetObservedRemainingStatus: 'upper-bound',
+      treasuryOperatorBudgetSpendableStatus: 'unreconciled',
+      treasuryPremiumSaganAllowed: false,
+      treasuryBackgroundFanoutAllowed: false,
+      treasuryMaxBackgroundSubagents: 0,
+      treasuryNonEssentialWorkAllowed: false,
       releaseSigningStatus: 'warn',
       releaseSigningAuthorityState: 'scope-missing',
       releaseConductorApplyState: 'disabled',
@@ -424,6 +459,28 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.summary.executionBundlePremiumSaganMode, true);
   assert.equal(report.summary.executionBundleReciprocalLinkReady, true);
   assert.equal(report.summary.executionBundleEffectiveBillableRateUsdPerHour, 375);
+  assert.equal(report.compare.treasury.status, 'warn');
+  assert.equal(report.compare.treasury.confidence, 'lower-bound-only');
+  assert.equal(report.compare.treasury.spendPolicyState, 'core-delivery-only');
+  assert.equal(report.compare.treasury.safeSpendableUsd, 66);
+  assert.equal(report.compare.treasury.operatorBudgetObservedRemainingUpperBoundUsd, 49970);
+  assert.equal(report.compare.treasury.operatorBudgetSpendableStatus, 'unreconciled');
+  assert.equal(report.summary.treasuryStatus, 'warn');
+  assert.equal(report.summary.treasuryConfidence, 'lower-bound-only');
+  assert.equal(report.summary.treasurySpendPolicyState, 'core-delivery-only');
+  assert.equal(report.summary.treasuryBudgetPressureState, 'tight');
+  assert.equal(report.summary.treasuryProtectedReserveUsd, 100);
+  assert.equal(report.summary.treasuryAccountRemainingUsdEstimate, 166);
+  assert.equal(report.summary.treasuryOperationalHeadroomUsd, 66);
+  assert.equal(report.summary.treasurySafeSpendableUsd, 66);
+  assert.equal(report.summary.treasuryPossibleSpendableUpperBoundUsd, 66);
+  assert.equal(report.summary.treasuryOperatorBudgetObservedRemainingUpperBoundUsd, 49970);
+  assert.equal(report.summary.treasuryOperatorBudgetObservedRemainingStatus, 'upper-bound');
+  assert.equal(report.summary.treasuryOperatorBudgetSpendableStatus, 'unreconciled');
+  assert.equal(report.summary.treasuryPremiumSaganAllowed, false);
+  assert.equal(report.summary.treasuryBackgroundFanoutAllowed, false);
+  assert.equal(report.summary.treasuryMaxBackgroundSubagents, 0);
+  assert.equal(report.summary.treasuryNonEssentialWorkAllowed, false);
   assert.equal(report.summary.viHistoryDistributorDependencyStatus, 'blocked');
   assert.equal(
     report.summary.viHistoryDistributorDependencyExternalBlocker,

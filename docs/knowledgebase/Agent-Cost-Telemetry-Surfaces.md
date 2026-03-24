@@ -265,6 +265,33 @@ Automation-authored GitHub comments now have a checked-in budget attestation
 surface so cost state survives session compaction and comment history remains a
 durable breadcrumb for later agents.
 
+## Treasury Control Plane
+
+The budget hook is now a projection layer, not the authority.
+
+The authoritative spend-governance surface is the treasury control plane:
+
+- schema: `docs/schemas/treasury-control-plane-policy-v1.schema.json`
+- schema: `docs/schemas/treasury-control-plane-report-v1.schema.json`
+- policy: `tools/policy/treasury-control-plane.json`
+- helper: `tools/priority/treasury-control-plane.mjs`
+- npm surface: `priority:cost:treasury`
+
+This surface separates:
+
+- whole-account remaining USD estimate
+- protected reserve USD
+- operational headroom
+- safe spendable lower bound
+- possible spendable upper bound
+- operator budget observed upper bound
+- operator budget spendable status
+- premium/background/non-essential execution controls
+
+The treasury control plane is what governor, portfolio, and handoff surfaces
+should read when deciding whether work is allowed. The GitHub comment hook
+exists to persist that decision visibly on issue and PR history.
+
 - schema: `docs/schemas/github-comment-budget-hook-policy-v1.schema.json`
 - schema: `docs/schemas/github-comment-budget-hook-report-v1.schema.json`
 - policy: `tools/policy/github-comment-budget-hook.json`
