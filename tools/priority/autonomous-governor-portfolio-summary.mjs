@@ -243,6 +243,9 @@ function deriveExecutionTopology(compareGovernorSummary) {
       processModelClass: asOptional(executionTopology.processModelClass),
       windowsOnly: executionTopology.windowsOnly === true,
       requestedSimultaneous: executionTopology.requestedSimultaneous === true,
+      cellClass: asOptional(executionTopology.cellClass),
+      suiteClass: asOptional(executionTopology.suiteClass),
+      operatorAuthorizationRef: asOptional(executionTopology.operatorAuthorizationRef),
       premiumSaganMode: executionTopology.premiumSaganMode === true,
       reciprocalLinkReady: executionTopology.reciprocalLinkReady === true,
       logicalLaneActivation: {
@@ -271,6 +274,8 @@ function deriveExecutionTopology(compareGovernorSummary) {
       executionBundle: {
         status: asOptional(executionTopology?.executionBundle?.status),
         planeBinding: asOptional(executionTopology?.executionBundle?.planeBinding),
+        cellClass: asOptional(executionTopology?.executionBundle?.cellClass),
+        suiteClass: asOptional(executionTopology?.executionBundle?.suiteClass),
         premiumSaganMode: executionTopology?.executionBundle?.premiumSaganMode === true,
         reciprocalLinkReady: executionTopology?.executionBundle?.reciprocalLinkReady === true,
         effectiveBillableRateUsdPerHour: Number.isFinite(executionTopology?.executionBundle?.effectiveBillableRateUsdPerHour)
@@ -280,6 +285,7 @@ function deriveExecutionTopology(compareGovernorSummary) {
         dockerLaneLeaseId: asOptional(executionTopology?.executionBundle?.dockerLaneLeaseId),
         harnessKind: asOptional(executionTopology?.executionBundle?.harnessKind),
         harnessInstanceId: asOptional(executionTopology?.executionBundle?.harnessInstanceId),
+        operatorAuthorizationRef: asOptional(executionTopology?.executionBundle?.operatorAuthorizationRef),
         cellId: asOptional(executionTopology?.executionBundle?.cellId),
         laneId: asOptional(executionTopology?.executionBundle?.laneId),
         isolatedLaneGroupId: asOptional(executionTopology?.executionBundle?.isolatedLaneGroupId),
@@ -300,6 +306,9 @@ function deriveExecutionTopology(compareGovernorSummary) {
     processModelClass: asOptional(compareGovernorSummary?.summary?.executionTopologyProcessModelClass),
     windowsOnly: compareGovernorSummary?.summary?.executionTopologyWindowsOnly === true,
     requestedSimultaneous: compareGovernorSummary?.summary?.executionTopologyRequestedSimultaneous === true,
+    cellClass: asOptional(compareGovernorSummary?.summary?.executionTopologyCellClass),
+    suiteClass: asOptional(compareGovernorSummary?.summary?.executionTopologySuiteClass),
+    operatorAuthorizationRef: asOptional(compareGovernorSummary?.summary?.executionTopologyOperatorAuthorizationRef),
     premiumSaganMode: compareGovernorSummary?.summary?.executionBundlePremiumSaganMode === true,
     reciprocalLinkReady: compareGovernorSummary?.summary?.executionBundleReciprocalLinkReady === true,
     logicalLaneActivation: {
@@ -322,6 +331,8 @@ function deriveExecutionTopology(compareGovernorSummary) {
     executionBundle: {
       status: asOptional(compareGovernorSummary?.summary?.executionBundleStatus),
       planeBinding: asOptional(compareGovernorSummary?.summary?.executionBundlePlaneBinding),
+      cellClass: null,
+      suiteClass: null,
       premiumSaganMode: compareGovernorSummary?.summary?.executionBundlePremiumSaganMode === true,
       reciprocalLinkReady: compareGovernorSummary?.summary?.executionBundleReciprocalLinkReady === true,
       effectiveBillableRateUsdPerHour: Number.isFinite(
@@ -333,6 +344,7 @@ function deriveExecutionTopology(compareGovernorSummary) {
       dockerLaneLeaseId: null,
       harnessKind: null,
       harnessInstanceId: null,
+      operatorAuthorizationRef: null,
       cellId: null,
       laneId: null,
       isolatedLaneGroupId: null,
@@ -586,6 +598,9 @@ function buildReport({
       executionTopologyProcessModelClass: executionTopology.processModelClass,
       executionTopologyWindowsOnly: executionTopology.windowsOnly,
       executionTopologyRequestedSimultaneous: executionTopology.requestedSimultaneous,
+      executionTopologyCellClass: executionTopology.cellClass,
+      executionTopologySuiteClass: executionTopology.suiteClass,
+      executionTopologyOperatorAuthorizationRef: executionTopology.operatorAuthorizationRef,
       executionBundleStatus: asOptional(compareGovernorSummary?.summary?.executionBundleStatus),
       executionBundlePlaneBinding: asOptional(compareGovernorSummary?.summary?.executionBundlePlaneBinding),
       executionBundlePremiumSaganMode: compareGovernorSummary?.summary?.executionBundlePremiumSaganMode === true,

@@ -2677,8 +2677,11 @@ function buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt })
           status: normalizeText(executionBundle.status) || null,
           cellId: normalizeText(executionBundle.cellId) || null,
           laneId: normalizeText(executionBundle.laneId) || null,
+          cellClass: normalizeText(executionBundle.cellClass) || null,
+          suiteClass: normalizeText(executionBundle.suiteClass) || null,
           executionCellLeaseId: normalizeText(executionBundle.executionCellLeaseId) || null,
           dockerLaneLeaseId: normalizeText(executionBundle.dockerLaneLeaseId) || null,
+          harnessKind: normalizeText(executionBundle.harnessKind) || null,
           harnessInstanceId: normalizeText(executionBundle.harnessInstanceId) || null,
           planeBinding: normalizeText(executionBundle.planeBinding) || null,
           premiumSaganMode: executionBundle.premiumSaganMode === true,
@@ -2686,6 +2689,7 @@ function buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt })
           effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle.effectiveBillableRateUsdPerHour)
             ? executionBundle.effectiveBillableRateUsdPerHour
             : null,
+          operatorAuthorizationRef: normalizeText(executionBundle.operatorAuthorizationRef) || null,
           isolatedLaneGroupId: normalizeText(executionBundle.isolatedLaneGroupId) || null,
           fingerprintSha256: normalizeText(executionBundle.fingerprintSha256) || null
         }

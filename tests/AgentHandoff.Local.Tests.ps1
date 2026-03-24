@@ -41,5 +41,11 @@ Describe 'Local Agent Handoff' -Tag 'Unit' {
     $content | Should -Match 'executionTopologyProcessModelClass'
     $content | Should -Match 'execSim\s*:'
     $content | Should -Match 'executionTopologyRequestedSimultaneous'
+    $content | Should -Match 'execCell\s*:'
+    $content | Should -Match 'executionTopologyCellClass'
+    $content | Should -Match 'execSuite\s*:'
+    $content | Should -Match 'executionTopologySuiteClass'
+    $content | Should -Match 'execAuth\s*:'
+    $content | Should -Match 'executionTopologyOperatorAuthorizationRef'
   }
 }

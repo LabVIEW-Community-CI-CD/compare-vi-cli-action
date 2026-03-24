@@ -567,13 +567,17 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
           status: 'committed',
           cellId: 'cell-sagan-kernel',
           laneId: 'docker-lane-01',
+          cellClass: 'kernel-coordinator',
+          suiteClass: 'dual-plane-parity',
           executionCellLeaseId: 'exec-lease-123',
           dockerLaneLeaseId: 'docker-lease-456',
+          harnessKind: 'teststand-compare-harness',
           harnessInstanceId: 'ts-harness-01',
           planeBinding: 'dual-plane-parity',
           premiumSaganMode: true,
           reciprocalLinkReady: true,
           effectiveBillableRateUsdPerHour: 375,
+          operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
           isolatedLaneGroupId: 'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
           fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
         },
@@ -783,7 +787,14 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
   assert.equal(packet.status, 'waiting-ci');
   assert.equal(packet.evidence.delivery.laneLifecycle, 'waiting-ci');
   assert.equal(packet.evidence.delivery.concurrentLaneStatus.executionBundle.status, 'committed');
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus.executionBundle.cellClass, 'kernel-coordinator');
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus.executionBundle.suiteClass, 'dual-plane-parity');
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus.executionBundle.harnessKind, 'teststand-compare-harness');
   assert.equal(packet.evidence.delivery.concurrentLaneStatus.executionBundle.reciprocalLinkReady, true);
+  assert.equal(
+    packet.evidence.delivery.concurrentLaneStatus.executionBundle.operatorAuthorizationRef,
+    'budget-auth://operator/session-2026-03-24'
+  );
   assert.equal(packet.evidence.delivery.concurrentLaneStatus.summary.orchestratorDisposition, 'wait-hosted-run');
   assert.equal(packet.evidence.delivery.concurrentLaneStatus.summary.executionBundleStatus, 'committed');
   assert.equal(packet.evidence.delivery.concurrentLaneStatus.summary.deferredLaneCount, 1);

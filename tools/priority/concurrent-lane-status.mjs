@@ -214,8 +214,11 @@ function projectExecutionBundleReceipt(receiptPath, receipt) {
     status: toOptionalText(receipt.status),
     cellId: toOptionalText(receipt.cellId),
     laneId: toOptionalText(receipt.laneId),
+    cellClass: toOptionalText(summary.cellClass),
+    suiteClass: toOptionalText(summary.suiteClass),
     executionCellLeaseId: toOptionalText(summary.executionCellLeaseId),
     dockerLaneLeaseId: toOptionalText(summary.dockerLaneLeaseId),
+    harnessKind: toOptionalText(summary.harnessKind),
     harnessInstanceId: toOptionalText(summary.harnessInstanceId),
     planeBinding: toOptionalText(summary.planeBinding),
     premiumSaganMode: summary.premiumSaganMode === true,
@@ -223,6 +226,7 @@ function projectExecutionBundleReceipt(receiptPath, receipt) {
     effectiveBillableRateUsdPerHour: Number.isFinite(summary.effectiveBillableRateUsdPerHour)
       ? summary.effectiveBillableRateUsdPerHour
       : null,
+    operatorAuthorizationRef: toOptionalText(summary.operatorAuthorizationRef),
     isolatedLaneGroupId: toOptionalText(summary.isolatedLaneGroupId),
     fingerprintSha256: toOptionalText(summary.fingerprintSha256)
   };

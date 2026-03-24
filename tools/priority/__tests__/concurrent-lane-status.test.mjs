@@ -165,13 +165,17 @@ test('observeConcurrentLaneStatus projects active hosted lanes and queued PR mer
     cellId: 'cell-sagan-kernel',
     laneId: 'docker-lane-01',
     summary: {
+      cellClass: 'kernel-coordinator',
+      suiteClass: 'dual-plane-parity',
       executionCellLeaseId: 'exec-lease-123',
       dockerLaneLeaseId: 'docker-lease-456',
+      harnessKind: 'teststand-compare-harness',
       harnessInstanceId: 'ts-harness-01',
       planeBinding: 'dual-plane-parity',
       premiumSaganMode: true,
       reciprocalLinkReady: true,
       effectiveBillableRateUsdPerHour: 375,
+      operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
       isolatedLaneGroupId: 'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
       fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     }
@@ -262,8 +266,12 @@ test('observeConcurrentLaneStatus projects active hosted lanes and queued PR mer
   assert.equal(receipt.hostedRun.observationStatus, 'active');
   assert.equal(receipt.pullRequest.observationStatus, 'queued');
   assert.equal(receipt.executionBundle.status, 'committed');
+  assert.equal(receipt.executionBundle.cellClass, 'kernel-coordinator');
+  assert.equal(receipt.executionBundle.suiteClass, 'dual-plane-parity');
+  assert.equal(receipt.executionBundle.harnessKind, 'teststand-compare-harness');
   assert.equal(receipt.executionBundle.reciprocalLinkReady, true);
   assert.equal(receipt.executionBundle.premiumSaganMode, true);
+  assert.equal(receipt.executionBundle.operatorAuthorizationRef, 'budget-auth://operator/session-2026-03-24');
   assert.equal(receipt.summary.orchestratorDisposition, 'wait-hosted-run');
   assert.equal(receipt.summary.activeLaneCount, 2);
   assert.equal(receipt.summary.deferredLaneCount, 1);
