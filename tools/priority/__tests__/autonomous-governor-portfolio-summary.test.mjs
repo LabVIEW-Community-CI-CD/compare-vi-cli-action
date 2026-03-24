@@ -64,6 +64,10 @@ function createCompareGovernorSummary(overrides = {}) {
           activeLogicalLaneCount: 2,
           seededLogicalLaneCount: 4,
           catalogCount: 4,
+          runtimeSurface: 'windows-native-teststand',
+          processModelClass: 'parallel-process-model',
+          windowsOnly: true,
+          requestedSimultaneous: true,
           premiumSaganMode: true,
           reciprocalLinkReady: true,
           logicalLaneActivation: {
@@ -86,6 +90,7 @@ function createCompareGovernorSummary(overrides = {}) {
           executionBundle: {
             status: 'committed',
             planeBinding: 'dual-plane-parity',
+            harnessKind: 'teststand-compare-harness',
             premiumSaganMode: true,
             reciprocalLinkReady: true,
             effectiveBillableRateUsdPerHour: 375,
@@ -148,6 +153,10 @@ function createCompareGovernorSummary(overrides = {}) {
       executionTopologyWorkerSlotId: 'worker-slot-2',
       executionTopologyActiveLogicalLaneCount: 2,
       executionTopologySeededLogicalLaneCount: 4,
+      executionTopologyRuntimeSurface: 'windows-native-teststand',
+      executionTopologyProcessModelClass: 'parallel-process-model',
+      executionTopologyWindowsOnly: true,
+      executionTopologyRequestedSimultaneous: true,
       executionBundleStatus: 'committed',
       executionBundlePlaneBinding: 'dual-plane-parity',
       executionBundlePremiumSaganMode: true,
@@ -388,6 +397,10 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.summary.executionTopologyWorkerSlotId, 'worker-slot-2');
   assert.equal(report.summary.executionTopologyActiveLogicalLaneCount, 2);
   assert.equal(report.summary.executionTopologySeededLogicalLaneCount, 4);
+  assert.equal(report.summary.executionTopologyRuntimeSurface, 'windows-native-teststand');
+  assert.equal(report.summary.executionTopologyProcessModelClass, 'parallel-process-model');
+  assert.equal(report.summary.executionTopologyWindowsOnly, true);
+  assert.equal(report.summary.executionTopologyRequestedSimultaneous, true);
   assert.equal(report.summary.executionBundleStatus, 'committed');
   assert.equal(report.summary.executionBundlePlaneBinding, 'dual-plane-parity');
   assert.equal(report.summary.executionBundlePremiumSaganMode, true);
@@ -412,6 +425,10 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.compare.executionTopology.workerSlotId, 'worker-slot-2');
   assert.equal(report.compare.executionTopology.activeLogicalLaneCount, 2);
   assert.equal(report.compare.executionTopology.seededLogicalLaneCount, 4);
+  assert.equal(report.compare.executionTopology.runtimeSurface, 'windows-native-teststand');
+  assert.equal(report.compare.executionTopology.processModelClass, 'parallel-process-model');
+  assert.equal(report.compare.executionTopology.windowsOnly, true);
+  assert.equal(report.compare.executionTopology.requestedSimultaneous, true);
   assert.equal(report.compare.executionTopology.logicalLaneActivation.catalogCount, 4);
   assert.equal(report.compare.executionTopology.providerDispatch.dispatchStatus, 'completed');
   assert.equal(report.compare.executionTopology.executionBundle.status, 'committed');

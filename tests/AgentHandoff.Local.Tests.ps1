@@ -29,4 +29,17 @@ Describe 'Local Agent Handoff' -Tag 'Unit' {
     $planeTransition.schema | Should -Be 'agent-handoff/plane-transition-v1'
     $planeTransition.status | Should -Not -BeNullOrEmpty
   }
+
+  It 'declares governor execution process-model fields in the handoff printer' {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $script = Join-Path $repoRoot 'tools' 'Print-AgentHandoff.ps1'
+    Test-Path -LiteralPath $script | Should -BeTrue
+    $content = Get-Content -LiteralPath $script -Raw
+    $content | Should -Match 'execSurf\s*:'
+    $content | Should -Match 'executionTopologyRuntimeSurface'
+    $content | Should -Match 'execProc\s*:'
+    $content | Should -Match 'executionTopologyProcessModelClass'
+    $content | Should -Match 'execSim\s*:'
+    $content | Should -Match 'executionTopologyRequestedSimultaneous'
+  }
 }
