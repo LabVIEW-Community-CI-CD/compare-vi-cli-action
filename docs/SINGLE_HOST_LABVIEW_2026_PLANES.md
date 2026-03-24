@@ -120,6 +120,10 @@ Use these commands as the checked-in operator surfaces:
 6. TestStand harness session wrapper:
    - `pwsh -NoLogo -NoProfile -File tools/TestStand-CompareHarness.ps1 -BaseVi <base> -HeadVi <head> -OutputRoot tests/results/teststand-session -Warmup detect -RenderReport`
    - Use this when the host plane needs a deterministic native compare session with a replayable `session-index.json`.
+   - For native LabVIEW 2026 x64/x32 parity on the same host, add:
+     - `-SuiteClass dual-plane-parity -LabVIEW64ExePath <x64-labview-exe> -LabVIEW32ExePath <x32-labview-exe>`
+   - Dual-plane parity still treats the harness as a host-plane consumer. It does not create a new authority plane;
+     it produces a parity receipt across the two existing native planes.
 7. Differentiated diagnostics replay:
    - `node tools/npm/run-script.mjs history:diagnostics:show -- --ResultsRoot tests/results/local-parity/windows`
 
@@ -258,6 +262,8 @@ trustworthy.
     is useful evidence, but it does not create a new authority plane.
 11. Use the Docker-lane handshake before assigning an isolated Docker lane to a background agent so exclusivity,
     billable rate, and host fingerprint stay replayable.
+12. When a parity run needs both native LabVIEW 2026 planes at once, use `-SuiteClass dual-plane-parity` and keep the
+    output tied to the same `host.osFingerprint.isolatedLaneGroupId` as the surrounding host-plane receipts.
 12. Only Sagan may request simultaneous `docker-lane` plus `native-labview-2026-32`, and that request must carry an
     explicit `operatorAuthorizationRef`.
 13. Compare `host.osFingerprint.fingerprintSha256` before and after host

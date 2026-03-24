@@ -15,6 +15,8 @@ param(
   [string]$BaseVi,
   [string]$HeadVi,
   [string]$LabVIEWExePath,
+  [string]$LabVIEW64ExePath,
+  [string]$LabVIEW32ExePath,
   [string]$LVComparePath,
   [string]$OutputRoot = 'tests/results/teststand-session',
   [string[]]$Flags,
@@ -23,6 +25,8 @@ param(
   [string]$NoiseProfile = 'full',
   [ValidateSet('detect','spawn','skip')]
   [string]$Warmup = 'detect',
+  [ValidateSet('single-compare','dual-plane-parity')]
+  [string]$TestStandSuiteClass = 'single-compare',
   [switch]$RenderReport,
   [switch]$CloseLabVIEW,
   [switch]$CloseLVCompare,
@@ -144,7 +148,10 @@ $harness = Join-Path $repoRoot 'tools/TestStand-CompareHarness.ps1'
   if ($sameNameCollision) { $hParams.SameNameHint = $true }
 
   if ($LabVIEWExePath) { $hParams.LabVIEWExePath = $LabVIEWExePath }
+  if ($LabVIEW64ExePath) { $hParams.LabVIEW64ExePath = $LabVIEW64ExePath }
+  if ($LabVIEW32ExePath) { $hParams.LabVIEW32ExePath = $LabVIEW32ExePath }
   if ($LVComparePath)  { $hParams.LVComparePath  = $LVComparePath }
+  if ($TestStandSuiteClass -ne 'single-compare') { $hParams.SuiteClass = $TestStandSuiteClass }
   if ($PSBoundParameters.ContainsKey('Flags')) { $hParams.Flags = $Flags }
   if ($ReplaceFlags)   { $hParams.ReplaceFlags = $true }
   if ($RenderReport)   { $hParams.RenderReport   = $true }
@@ -202,10 +209,15 @@ $harness = Join-Path $repoRoot 'tools/TestStand-CompareHarness.ps1'
   if ($session) {
     try {
       $statusEnvelope.session = @{
+        suiteClass = $session.suiteClass
+        primaryPlane = $session.primaryPlane
+        requestedSimultaneous = $session.requestedSimultaneous
         outcome  = $session.outcome
         error    = $session.error
         compare  = $session.compare
         content  = $session.content
+        parity   = $session.parity
+        planes   = $session.planes
       }
     } catch {}
   }

@@ -194,3 +194,123 @@ exit 0
   }
 }
 
+Describe 'TestStand-CompareHarness.ps1 (dual-plane parity)' -Tag 'Unit' {
+  It 'runs LabVIEW 2026 x64 and x32 sessions simultaneously and emits a parity session index' {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $baseDir = Join-Path $TestDrive 'dual-base'
+    $headDir = Join-Path $TestDrive 'dual-head'
+    New-Item -ItemType Directory -Path $baseDir, $headDir | Out-Null
+    $baseVi = Join-Path $baseDir 'Base.vi'
+    $headVi = Join-Path $headDir 'Head.vi'
+    Set-Content -LiteralPath $baseVi -Value 'base' -Encoding UTF8
+    Set-Content -LiteralPath $headVi -Value 'head' -Encoding UTF8
+
+    $work = Join-Path $TestDrive 'harness-dual-plane'
+    New-Item -ItemType Directory -Path $work | Out-Null
+    Push-Location $work
+    try {
+      New-Item -ItemType Directory -Path 'tools' | Out-Null
+      Copy-Item -LiteralPath (Join-Path $repoRoot 'tools\TestStand-CompareHarness.ps1') -Destination 'tools\TestStand-CompareHarness.ps1'
+
+      Set-Content -LiteralPath 'tools/Warmup-LabVIEWRuntime.ps1' -Encoding UTF8 -Value @'
+param(
+  [string]$LabVIEWPath,
+  [string]$JsonLogPath,
+  [string]$SupportedBitness
+)
+if ($JsonLogPath) {
+  $dir = Split-Path -Parent $JsonLogPath
+  if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+  (@{ type = 'warmup'; bitness = $SupportedBitness; labview = $LabVIEWPath } | ConvertTo-Json -Compress) | Set-Content -LiteralPath $JsonLogPath -Encoding utf8
+}
+exit 0
+'@
+
+      $invokeStub = @'
+param(
+  [string]$BaseVi,
+  [string]$HeadVi,
+  [Alias('LabVIEWPath')]
+  [string]$LabVIEWExePath,
+  [Alias('LVCompareExePath')]
+  [string]$LVComparePath,
+  [string]$OutputDir,
+  [switch]$RenderReport,
+  [string]$JsonLogPath,
+  [object]$Flags,
+  [string]$NoiseProfile,
+  [string]$LabVIEWBitness
+)
+if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
+if ($JsonLogPath) {
+  '{}' | Set-Content -LiteralPath $JsonLogPath -Encoding utf8
+}
+$capture = [ordered]@{
+  exitCode = 0
+  seconds = if ($LabVIEWBitness -eq '32') { 1.32 } else { 1.64 }
+  command = "stub-$LabVIEWBitness"
+  cliPath = "C:\Program Files\National Instruments\Shared\LabVIEW CLI\$LabVIEWBitness\LabVIEWCLI.exe"
+  environment = @{
+    cli = @{
+      path = "C:\Program Files\National Instruments\Shared\LabVIEW CLI\$LabVIEWBitness\LabVIEWCLI.exe"
+      version = '26.0.0f0'
+      reportType = 'html'
+      reportPath = 'compare-report.html'
+      status = 'ok'
+      message = "compare completed for $LabVIEWBitness"
+    }
+  }
+}
+$capture | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputDir 'lvcompare-capture.json') -Encoding utf8
+if ($RenderReport) {
+  Set-Content -LiteralPath (Join-Path $OutputDir 'compare-report.html') -Value "<html data-bitness='$LabVIEWBitness'/>" -Encoding utf8
+}
+exit 0
+'@
+      Set-Content -LiteralPath 'tools/Invoke-LVCompare.ps1' -Value $invokeStub -Encoding UTF8
+      Set-Content -LiteralPath 'tools/Close-LVCompare.ps1' -Value "param() exit 0" -Encoding UTF8
+      Set-Content -LiteralPath 'tools/Close-LabVIEW.ps1' -Value "param() exit 0" -Encoding UTF8
+
+      $outputRoot = Join-Path $work 'results'
+      $harness = Join-Path $work 'tools\TestStand-CompareHarness.ps1'
+      & pwsh -NoLogo -NoProfile -File $harness `
+        -BaseVi $baseVi `
+        -HeadVi $headVi `
+        -OutputRoot $outputRoot `
+        -SuiteClass dual-plane-parity `
+        -LabVIEW64ExePath 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' `
+        -LabVIEW32ExePath 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' `
+        -Warmup detect `
+        -RenderReport *> $null
+
+      $LASTEXITCODE | Should -Be 0
+
+      $sessionIndex = Join-Path $outputRoot 'session-index.json'
+      Test-Path -LiteralPath $sessionIndex | Should -BeTrue
+      $indexData = Get-Content -LiteralPath $sessionIndex -Raw | ConvertFrom-Json -Depth 12
+      $indexData.schema | Should -Be 'teststand-compare-session/v2'
+      $indexData.suiteClass | Should -Be 'dual-plane-parity'
+      $indexData.primaryPlane | Should -Be 'native-labview-2026-64'
+      $indexData.requestedSimultaneous | Should -BeTrue
+      $indexData.parity.status | Should -Be 'match'
+      $indexData.parity.mismatchCount | Should -Be 0
+      $indexData.planes.x64.plane | Should -Be 'native-labview-2026-64'
+      $indexData.planes.x32.plane | Should -Be 'native-labview-2026-32'
+      $indexData.planes.x64.architecture | Should -Be '64-bit'
+      $indexData.planes.x32.architecture | Should -Be '32-bit'
+      $indexData.planes.x64.labviewExePath | Should -Be 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe'
+      $indexData.planes.x32.labviewExePath | Should -Be 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe'
+      $indexData.planes.x64.outcome.exitCode | Should -Be 0
+      $indexData.planes.x32.outcome.exitCode | Should -Be 0
+      $indexData.planes.x64.compare.report | Should -BeTrue
+      $indexData.planes.x32.compare.report | Should -BeTrue
+      $indexData.planes.x64.compare.policy | Should -Be 'cli-only'
+      $indexData.planes.x32.compare.policy | Should -Be 'cli-only'
+      $indexData.planes.x64.compare.mode | Should -Be 'labview-cli'
+      $indexData.planes.x32.compare.mode | Should -Be 'labview-cli'
+      Test-Path -LiteralPath (Join-Path $outputRoot 'planes\x64\session-index.json') | Should -BeTrue
+      Test-Path -LiteralPath (Join-Path $outputRoot 'planes\x32\session-index.json') | Should -BeTrue
+    }
+    finally { Pop-Location }
+  }
+}

@@ -18,6 +18,9 @@ Describe 'Run-DX.ps1 (TestStand staging)' -Tag 'Unit' {
       New-Item -ItemType Directory -Path 'tools' | Out-Null
       Copy-Item -LiteralPath $script:RunDxPath -Destination 'tools/Run-DX.ps1'
       Copy-Item -LiteralPath $script:StageScriptPath -Destination 'tools/Stage-CompareInputs.ps1'
+      $runDxContent = Get-Content -LiteralPath (Join-Path $work 'tools/Run-DX.ps1') -Raw
+      $runDxContent = $runDxContent -replace '(?m)^exit \$exit$', 'return $exit'
+      Set-Content -LiteralPath (Join-Path $work 'tools/Run-DX.ps1') -Value $runDxContent -Encoding UTF8
 $harnessStub = @'
 param(
   [string]$BaseVi,
@@ -78,13 +81,13 @@ exit 0
 
       $outputRoot = Join-Path $work 'results'
       $runDx = Join-Path $work 'tools/Run-DX.ps1'
-      & pwsh -NoLogo -NoProfile -File $runDx `
+      $result = & $runDx `
         -Suite TestStand `
         -BaseVi $baseVi `
         -HeadVi $headVi `
         -OutputRoot $outputRoot `
-        -Warmup skip *> $null
-      $LASTEXITCODE | Should -Be 0
+        -Warmup skip
+      $result | Should -Be 0
 
       $logPath = Join-Path $outputRoot 'harness-log.json'
       Test-Path -LiteralPath $logPath | Should -BeTrue
@@ -116,6 +119,9 @@ exit 0
       New-Item -ItemType Directory -Path 'tools' | Out-Null
       Copy-Item -LiteralPath $script:RunDxPath -Destination 'tools/Run-DX.ps1'
       Copy-Item -LiteralPath $script:StageScriptPath -Destination 'tools/Stage-CompareInputs.ps1'
+      $runDxContent = Get-Content -LiteralPath (Join-Path $work 'tools/Run-DX.ps1') -Raw
+      $runDxContent = $runDxContent -replace '(?m)^exit \$exit$', 'return $exit'
+      Set-Content -LiteralPath (Join-Path $work 'tools/Run-DX.ps1') -Value $runDxContent -Encoding UTF8
 $harnessStub = @'
 param(
   [string]$BaseVi,
@@ -174,15 +180,15 @@ exit 0
 
       $outputRoot = Join-Path $work 'results'
       $runDx = Join-Path $work 'tools/Run-DX.ps1'
-      & pwsh -NoLogo -NoProfile -File $runDx `
+      $result = & $runDx `
         -Suite TestStand `
         -BaseVi $baseVi `
         -HeadVi $headVi `
         -OutputRoot $outputRoot `
         -Warmup detect `
         -UseRawPaths `
-        -NoiseProfile legacy *> $null
-      $LASTEXITCODE | Should -Be 0
+        -NoiseProfile legacy
+      $result | Should -Be 0
 
       $logPath = Join-Path $outputRoot 'harness-log.json'
       Test-Path -LiteralPath $logPath | Should -BeTrue
@@ -202,5 +208,20 @@ exit 0
     }
     finally { Pop-Location }
   }
-}
 
+  It 'declares dual-plane parity forwarding and status projection in the wrapper contract' {
+    $content = Get-Content -LiteralPath $script:RunDxPath -Raw
+
+    $content | Should -Match '\[string\]\$LabVIEW64ExePath'
+    $content | Should -Match '\[string\]\$LabVIEW32ExePath'
+    $content | Should -Match "\[ValidateSet\('single-compare','dual-plane-parity'\)\]\s*\[string\]\`$TestStandSuiteClass"
+    $content | Should -Match '\$hParams\.LabVIEW64ExePath\s*=\s*\$LabVIEW64ExePath'
+    $content | Should -Match '\$hParams\.LabVIEW32ExePath\s*=\s*\$LabVIEW32ExePath'
+    $content | Should -Match '\$hParams\.SuiteClass\s*=\s*\$TestStandSuiteClass'
+    $content | Should -Match 'suiteClass\s*=\s*\$session\.suiteClass'
+    $content | Should -Match 'primaryPlane\s*=\s*\$session\.primaryPlane'
+    $content | Should -Match 'requestedSimultaneous\s*=\s*\$session\.requestedSimultaneous'
+    $content | Should -Match 'parity\s*=\s*\$session\.parity'
+    $content | Should -Match 'planes\s*=\s*\$session\.planes'
+  }
+}

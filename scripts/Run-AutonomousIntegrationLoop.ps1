@@ -138,12 +138,15 @@ param(
   , [string]$TestStandHarnessPath = $env:LOOP_TESTSTAND_HARNESS_PATH
   , [string]$TestStandOutputRoot = $env:LOOP_TESTSTAND_OUTPUT_ROOT
   , [ValidateSet('detect','spawn','skip')][string]$TestStandWarmup = $( if ($env:LOOP_TESTSTAND_WARMUP) { $env:LOOP_TESTSTAND_WARMUP } else { 'skip' } )
+  , [ValidateSet('single-compare','dual-plane-parity')][string]$TestStandSuiteClass = $( if ($env:LOOP_TESTSTAND_SUITE_CLASS) { $env:LOOP_TESTSTAND_SUITE_CLASS } else { 'single-compare' } )
   , [switch]$TestStandRenderReport
   , [switch]$TestStandCloseLabVIEW
   , [switch]$TestStandCloseLVCompare
   , [int]$TestStandTimeoutSeconds = ($env:LOOP_TESTSTAND_TIMEOUT_SECONDS -as [int])
   , [switch]$TestStandDisableTimeout
   , [string]$TestStandLabVIEWPath = $env:LOOP_TESTSTAND_LABVIEW_PATH
+, [string]$TestStandLabVIEW64Path = $env:LOOP_TESTSTAND_LABVIEW64_PATH
+, [string]$TestStandLabVIEW32Path = $env:LOOP_TESTSTAND_LABVIEW32_PATH
 , [string]$TestStandLVComparePath = $env:LOOP_TESTSTAND_LVCOMPARE_PATH
 , [switch]$TestStandReplaceFlags
 )
@@ -277,6 +280,8 @@ if ($UseTestStandHarness) {
   $disableTimeout = [bool]$TestStandDisableTimeout
   $timeoutValue = if ($PSBoundParameters.ContainsKey('TestStandTimeoutSeconds') -or $env:LOOP_TESTSTAND_TIMEOUT_SECONDS) { $TestStandTimeoutSeconds } else { $null }
   $labviewPath = $TestStandLabVIEWPath
+  $labview64Path = $TestStandLabVIEW64Path
+  $labview32Path = $TestStandLabVIEW32Path
   $lvcomparePath = $TestStandLVComparePath
   $replaceFlags = [bool]$TestStandReplaceFlags
   $harnessIteration = [ref]0
@@ -298,7 +303,10 @@ if ($UseTestStandHarness) {
       Warmup     = $warmupMode
     }
     if ($labviewPath) { $harnessParams.LabVIEWExePath = $labviewPath }
+    if ($labview64Path) { $harnessParams.LabVIEW64ExePath = $labview64Path }
+    if ($labview32Path) { $harnessParams.LabVIEW32ExePath = $labview32Path }
     if ($lvcomparePath) { $harnessParams.LVComparePath = $lvcomparePath }
+    if ($TestStandSuiteClass -ne 'single-compare') { $harnessParams.SuiteClass = $TestStandSuiteClass }
     if ($renderReport) { $harnessParams.RenderReport = $true }
     if ($closeLabVIEW) { $harnessParams.CloseLabVIEW = $true }
     if ($closeLVCompare) { $harnessParams.CloseLVCompare = $true }
@@ -344,11 +352,15 @@ if ($UseTestStandHarness) {
     path = $resolvedHarness
     output = $resolvedOutputRoot
     warmup = $warmupMode
+    suiteClass = $TestStandSuiteClass
     renderReport = $renderReport
     closeLabVIEW = $closeLabVIEW
     closeLVCompare = $closeLVCompare
     disableTimeout = $disableTimeout
     timeout = $timeoutValue
+    labviewPath = $labviewPath
+    labview64Path = $labview64Path
+    labview32Path = $labview32Path
   }
 }
 

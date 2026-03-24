@@ -6,7 +6,10 @@
       "properties": {
         "schema": {
           "type": "string",
-          "const": "teststand-compare-session/v1"
+          "enum": [
+            "teststand-compare-session/v1",
+            "teststand-compare-session/v2"
+          ]
         },
         "at": {
           "type": "string",
@@ -151,6 +154,33 @@
               },
               "additionalProperties": false
             },
+            "staging": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "root": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "enabled",
+                "root"
+              ],
+              "additionalProperties": false
+            },
+            "allowSameLeaf": {
+              "type": "boolean"
+            },
             "policy": {
               "type": "string",
               "enum": [
@@ -220,6 +250,203 @@
               "type": "null"
             }
           ]
+        },
+        "suiteClass": {
+          "type": "string",
+          "enum": [
+            "single-compare",
+            "dual-plane-parity"
+          ]
+        },
+        "primaryPlane": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestedSimultaneous": {
+          "type": "boolean"
+        },
+        "planes": {
+          "type": "object",
+          "properties": {
+            "x64": {
+              "type": "object",
+              "properties": {
+                "plane": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "architecture": {
+                  "type": "string",
+                  "enum": [
+                    "32-bit",
+                    "64-bit"
+                  ]
+                },
+                "labviewExePath": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "outputRoot": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "warmup": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "$ref": "#/definitions/teststand-compare-session/properties/warmup/properties/mode"
+                    },
+                    "events": {
+                      "$ref": "#/definitions/teststand-compare-session/properties/warmup/properties/events"
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "events"
+                  ],
+                  "additionalProperties": false
+                },
+                "compare": {
+                  "$ref": "#/definitions/teststand-compare-session/properties/compare"
+                },
+                "outcome": {
+                  "$ref": "#/definitions/teststand-compare-session/properties/outcome"
+                },
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "exitCode": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "plane",
+                "architecture",
+                "outputRoot",
+                "warmup",
+                "compare",
+                "outcome",
+                "exitCode"
+              ],
+              "additionalProperties": false
+            },
+            "x32": {
+              "$ref": "#/definitions/teststand-compare-session/properties/planes/properties/x64"
+            }
+          },
+          "required": [
+            "x64",
+            "x32"
+          ],
+          "additionalProperties": false
+        },
+        "parity": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "match",
+                "mismatch",
+                "incomplete"
+              ]
+            },
+            "comparedFields": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "exitCodeParity": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "diffParity": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "mismatchCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mismatches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "x64": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "x32": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "field"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "status",
+            "comparedFields",
+            "mismatchCount",
+            "mismatches"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
