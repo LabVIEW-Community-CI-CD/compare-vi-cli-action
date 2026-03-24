@@ -1,0 +1,269 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/execution-cell-bundle-report-v1.schema.json",
+  "title": "Execution Cell Bundle Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "action",
+    "status",
+    "cellId",
+    "laneId",
+    "outputPath",
+    "executionCellReportPath",
+    "dockerLaneReportPath",
+    "executionCell",
+    "dockerLane",
+    "rollbacks",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/execution-cell-bundle-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "request",
+        "grant",
+        "commit",
+        "heartbeat",
+        "release",
+        "inspect"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "requested",
+        "granted",
+        "committed",
+        "renewed",
+        "released",
+        "active",
+        "busy",
+        "denied",
+        "not-found",
+        "mismatch",
+        "invalid-state",
+        "stale",
+        "partial"
+      ]
+    },
+    "cellId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "laneId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "outputPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executionCellReportPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "dockerLaneReportPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "executionCell": {
+      "oneOf": [
+        {
+          "$ref": "execution-cell-lease-report-v1.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "dockerLane": {
+      "oneOf": [
+        {
+          "$ref": "docker-lane-handshake-report-v1.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rollbacks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executionCell",
+        "dockerLane"
+      ],
+      "properties": {
+        "executionCell": {
+          "oneOf": [
+            {
+              "$ref": "execution-cell-lease-report-v1.schema.json"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dockerLane": {
+          "oneOf": [
+            {
+              "$ref": "docker-lane-handshake-report-v1.schema.json"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "holder",
+        "agentClass",
+        "cellClass",
+        "suiteClass",
+        "planeBinding",
+        "harnessKind",
+        "harnessInstanceId",
+        "dockerRequested",
+        "windowsNativeTestStand",
+        "effectiveBillableRateMultiplier",
+        "effectiveBillableRateUsdPerHour",
+        "premiumSaganMode",
+        "operatorAuthorizationRef",
+        "isolatedLaneGroupId",
+        "fingerprintSha256",
+        "capabilities",
+        "denialReasons",
+        "observations"
+      ],
+      "properties": {
+        "holder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agentClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cellClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suiteClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "planeBinding": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harnessKind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harnessInstanceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dockerRequested": {
+          "type": "boolean"
+        },
+        "windowsNativeTestStand": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "effectiveBillableRateMultiplier": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "effectiveBillableRateUsdPerHour": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "premiumSaganMode": {
+          "type": "boolean"
+        },
+        "operatorAuthorizationRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "isolatedLaneGroupId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fingerprintSha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "denialReasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

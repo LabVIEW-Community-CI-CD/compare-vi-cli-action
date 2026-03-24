@@ -548,7 +548,7 @@ export async function runDockerLaneHandshake(options = {}) {
       requestId: options.requestId || uniqueId('request', Date.parse(generatedAt))
     });
     await writeJsonAtomic(handshakePath, next);
-    return { ...reportWithHost, status: STATUS.requested, handshake: next };
+    return buildResultReport(action, laneId, handshakePath, generatedAt, next, operatorProfile, hostObservations, STATUS.requested);
   }
 
   if (!current) {
@@ -586,7 +586,7 @@ export async function runDockerLaneHandshake(options = {}) {
       operatorAuthorizationRef: toOptionalText(current.request.operatorAuthorizationRef)
     };
     await writeJsonAtomic(handshakePath, next);
-    return { ...reportWithHost, status: STATUS.granted, handshake: next };
+    return buildResultReport(action, laneId, handshakePath, generatedAt, next, operatorProfile, hostObservations, STATUS.granted);
   }
 
   const leaseId = toOptionalText(options.leaseId);
@@ -606,7 +606,7 @@ export async function runDockerLaneHandshake(options = {}) {
       committedAt: generatedAt
     };
     await writeJsonAtomic(handshakePath, next);
-    return { ...reportWithHost, status: STATUS.committed, handshake: next };
+    return buildResultReport(action, laneId, handshakePath, generatedAt, next, operatorProfile, hostObservations, STATUS.committed);
   }
 
   if (action === 'heartbeat') {
@@ -616,7 +616,7 @@ export async function runDockerLaneHandshake(options = {}) {
     const next = cloneForTransition(current, options.now || new Date());
     next.heartbeatAt = generatedAt;
     await writeJsonAtomic(handshakePath, next);
-    return { ...reportWithHost, status: STATUS.renewed, handshake: next };
+    return buildResultReport(action, laneId, handshakePath, generatedAt, next, operatorProfile, hostObservations, STATUS.renewed);
   }
 
   if (action === 'release') {
@@ -632,7 +632,7 @@ export async function runDockerLaneHandshake(options = {}) {
       artifactPaths: normalizeCapabilities(options.artifactPaths)
     };
     await writeJsonAtomic(handshakePath, next);
-    return { ...reportWithHost, status: STATUS.released, handshake: next };
+    return buildResultReport(action, laneId, handshakePath, generatedAt, next, operatorProfile, hostObservations, STATUS.released);
   }
 
   return withDenialReasons({ ...reportWithHost, status: STATUS.invalidState }, ['action-unhandled']);
@@ -646,6 +646,22 @@ function exitCodeForStatus(status) {
     return 0;
   }
   return 1;
+}
+
+function buildResultReport(action, laneId, handshakePath, generatedAt, handshake, operatorProfile, hostObservations, status) {
+  const base = buildBaseReport(action, laneId, handshakePath, generatedAt, handshake, {
+    policy: {
+      operatorId: operatorProfile.operatorId,
+      currency: operatorProfile.currency,
+      laborRateUsdPerHour: operatorProfile.laborRateUsdPerHour,
+      premiumSaganRateMultiplier: PREMIUM_RATE_MULTIPLIER
+    }
+  });
+  return {
+    ...withObservations(base, hostObservations),
+    status,
+    handshake
+  };
 }
 
 export async function main(argv = process.argv) {
@@ -666,7 +682,8 @@ export async function main(argv = process.argv) {
   return exitCodeForStatus(report.status);
 }
 
-if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`) {
+const isEntrypoint = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isEntrypoint) {
   const exitCode = await main(process.argv);
   process.exitCode = exitCode;
 }

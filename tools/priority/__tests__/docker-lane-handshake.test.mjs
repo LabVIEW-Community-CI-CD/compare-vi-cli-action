@@ -13,6 +13,7 @@ import {
   PREMIUM_RATE_MULTIPLIER,
   handshakePathForLane,
   isHandshakeStale,
+  main,
   runDockerLaneHandshake
 } from '../docker-lane-handshake.mjs';
 
@@ -226,6 +227,8 @@ test('grant requires operator authorization for premium Sagan dual-lane mode and
     assert.equal(granted.handshake.grant.premiumSaganMode, true);
     assert.equal(granted.handshake.grant.billableRateMultiplier, PREMIUM_RATE_MULTIPLIER);
     assert.equal(granted.handshake.grant.billableRateUsdPerHour, 375);
+    assert.equal(granted.summary.handshakeState, 'granted');
+    assert.equal(granted.summary.leaseId, granted.handshake.grant.leaseId);
   });
 });
 
@@ -314,6 +317,47 @@ test('commit heartbeat and release keep the same handshake and permit active ins
     });
     assert.equal(release.status, 'released');
     assert.equal(release.handshake.state, 'released');
+    assert.equal(release.summary.handshakeState, 'released');
     assert.deepEqual(release.handshake.release.artifactPaths, ['tests/results/_agent/runtime/docker-lane-proof.json']);
+  });
+});
+
+test('docker lane handshake CLI main writes a request receipt', async () => {
+  await withTempDir('docker-lane-handshake-cli', async (root) => {
+    const hostPlaneReportPath = path.join(root, 'host-plane.json');
+    const operatorCostProfilePath = path.join(root, 'operator-cost-profile.json');
+    const outputPath = path.join(root, 'docker-lane-handshake-cli.json');
+    const handshakeRoot = path.join(root, 'docker-lane-handshakes');
+    await writeJson(hostPlaneReportPath, createHostPlaneReport());
+    await writeJson(operatorCostProfilePath, createOperatorCostProfile());
+
+    const exitCode = await main([
+      'node',
+      path.join(root, 'docker-lane-handshake.mjs'),
+      '--action',
+      'request',
+      '--lane-id',
+      'docker-agent-boyle-05',
+      '--agent-id',
+      'boyle',
+      '--agent-class',
+      'subagent',
+      '--capability',
+      'docker-lane',
+      '--host-plane-report',
+      hostPlaneReportPath,
+      '--operator-cost-profile',
+      operatorCostProfilePath,
+      '--handshake-root',
+      handshakeRoot,
+      '--output',
+      outputPath
+    ]);
+
+    assert.equal(exitCode, 0);
+    const receipt = JSON.parse(await fs.readFile(outputPath, 'utf8'));
+    assert.equal(receipt.status, 'requested');
+    assert.equal(receipt.laneId, 'docker-agent-boyle-05');
+    assert.equal(receipt.summary.handshakeState, 'requested');
   });
 });

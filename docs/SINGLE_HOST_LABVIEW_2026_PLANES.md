@@ -74,11 +74,18 @@ Use the execution-cell helper when an agent needs an isolated TestStand-owned na
 
 - `node tools/npm/run-script.mjs priority:lane:execution-cell -- --action request --cell-id exec-cell-hooke-01 --agent-id hooke --agent-class subagent --suite-class dual-plane-parity --plane-binding native-labview-2026-64 --capability teststand-harness`
 
+Use the bundle helper when one agent needs a Windows-native execution cell plus an isolated Docker lane under one
+durable receipt:
+
+- `node tools/npm/run-script.mjs priority:lane:execution-cell:bundle -- --action request --cell-id exec-cell-sagan-kernel-01 --lane-id docker-agent-sagan-kernel-01 --agent-id sagan --agent-class sagan --cell-class kernel-coordinator --suite-class dual-plane-parity --plane-binding dual-plane-parity --capability teststand-harness --capability docker-lane --operator-authorization-ref budget-auth://operator/session-2026-03-24`
+
 The resulting report is written to:
 
 - `tests/results/_agent/runtime/docker-lane-handshake.json`
 
 - `tests/results/_agent/runtime/execution-cell-lease.json`
+
+- `tests/results/_agent/runtime/execution-cell-bundle.json`
 
 The durable handshake state lives under the Git common-dir so clean worktrees share one lease view.
 
@@ -126,6 +133,16 @@ Execution cells that use `teststand-compare-harness` must bind only to Windows-n
 
 Bindings like `docker-desktop/linux-container-2026` or other container/Linux plane identifiers are invalid for
 TestStand-owned cells and should fail closed at lease grant time.
+
+When a single agent needs both a Windows-native execution cell and a Docker lane, prefer the bundle helper over
+manual choreography. It keeps:
+
+- the execution cell receipt
+- the Docker lane handshake
+- premium Sagan rate enforcement
+- rollback of partial grants
+
+under one machine-readable bundle report instead of leaving the allocation split across two separate ad hoc calls.
 
 ## Authoritative entry points
 
@@ -195,19 +212,21 @@ Use these artifacts as the machine-readable source of truth:
    - `tests/results/_agent/runtime/docker-lane-handshake.json`
 6. Execution cell lease receipt:
    - `tests/results/_agent/runtime/execution-cell-lease.json`
-7. Fast-loop readiness envelope:
+7. Execution cell bundle receipt:
+   - `tests/results/_agent/runtime/execution-cell-bundle.json`
+8. Fast-loop readiness envelope:
    - `docker-runtime-fastloop-readiness.json`
    - `docker-runtime-fastloop-readiness.md`
-8. Fast-loop proof bundle when produced:
+9. Fast-loop proof bundle when produced:
    - `docker-fast-loop-proof-*.json`
-9. Top-level fast-loop GitHub outputs when `tools/Test-DockerDesktopFastLoop.ps1` runs inside GitHub Actions:
+10. Top-level fast-loop GitHub outputs when `tools/Test-DockerDesktopFastLoop.ps1` runs inside GitHub Actions:
    - `docker-fast-loop-summary-path`
    - `docker-fast-loop-status-path`
    - `docker-fast-loop-host-plane-summary-path`
    - `docker-fast-loop-host-plane-summary-status`
    - `docker-fast-loop-host-plane-summary-sha256`
    - `docker-fast-loop-host-plane-summary-reason`
-10. Top-level fast-loop Step Summary when `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
+11. Top-level fast-loop Step Summary when `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
    - `Summary Path`
    - `Status Path`
    - `Host Plane Summary Path`
@@ -252,26 +271,31 @@ Use the artifacts in this order:
    - projects `host.osFingerprint.isolatedLaneGroupId` into the lease
    - records whether premium Sagan dual-lane mode was requested or granted
    - records the billable operator-equivalent rate derived from the operator cost profile
-7. `docker-runtime-fastloop-readiness.json`
+7. `execution-cell-bundle.json`
+   - records one agent-owned allocation across a Windows-native execution cell and an optional isolated Docker lane
+   - records the effective billable rate once, even when both child resources are active
+   - rolls back partial grants so failed bundle admission does not strand half-allocated state
+   - keeps premium Sagan dual-lane authorization and Windows-native TestStand requirements in one receipt
+8. `docker-runtime-fastloop-readiness.json`
    - records the fast-loop verdict and lane outcomes
    - carries the differentiated Docker Desktop plane projection
    - records `hostPlaneSummary.path`, `hostPlaneSummary.status`, and `hostPlaneSummary.sha256`
    - records whether Docker exclusivity was required and whether it was satisfied
-8. `docker-fast-loop-proof-*.json`
+9. `docker-fast-loop-proof-*.json`
    - records `hostPlaneSummaryPath`
    - records `hostPlaneSummaryProvenance`
    - records `hashes.hostPlaneSummarySha256`
    - projects GitHub outputs:
      - `docker-fast-loop-proof-host-plane-summary-path`
      - `docker-fast-loop-proof-host-plane-summary-sha256`
-9. Top-level `tools/Test-DockerDesktopFastLoop.ps1` GitHub outputs
+10. Top-level `tools/Test-DockerDesktopFastLoop.ps1` GitHub outputs
    - project `docker-fast-loop-summary-path` and `docker-fast-loop-status-path`
    - project `docker-fast-loop-host-plane-summary-path`
    - project `docker-fast-loop-host-plane-summary-status`
    - project `docker-fast-loop-host-plane-summary-sha256`
    - project `docker-fast-loop-host-plane-summary-reason`
    - keep success and fail-closed summary provenance available to downstream workflow consumers without reopening JSON
-10. Top-level `tools/Test-DockerDesktopFastLoop.ps1` Step Summary
+11. Top-level `tools/Test-DockerDesktopFastLoop.ps1` Step Summary
    - appends `### Docker Fast Loop Summary`
    - prints the same summary path and status path surfaced through GitHub outputs
    - prints host-plane summary path, status, SHA-256, and fail-closed reason
@@ -309,10 +333,13 @@ trustworthy.
     output tied to the same `host.osFingerprint.isolatedLaneGroupId` as the surrounding host-plane receipts.
 12. Only Sagan may request simultaneous `docker-lane` plus `native-labview-2026-32`, and that request must carry an
     explicit `operatorAuthorizationRef`.
-13. Compare `host.osFingerprint.fingerprintSha256` before and after host
+13. Use `priority:lane:execution-cell:bundle` when one agent needs both a Windows-native TestStand cell and an
+    isolated Docker lane. It is the preferred control surface for Sagan kernel cells and for future per-agent
+    execution cells that need container-local tooling alongside native Windows LabVIEW work.
+14. Compare `host.osFingerprint.fingerprintSha256` before and after host
     upgrades. If it changes, treat the new value as a moved canonical host OS
     baseline rather than attributing the drift to the workload first.
-14. Use `host.osFingerprint.isolatedLaneGroupId` as the replayable identifier
+15. Use `host.osFingerprint.isolatedLaneGroupId` as the replayable identifier
     for this canonical Windows baseline when documenting or comparing isolated
     local lane groups.
 
@@ -324,10 +351,12 @@ trustworthy.
 - [concurrent-lane-plan-v1.schema.json](schemas/concurrent-lane-plan-v1.schema.json)
 - [docker-lane-handshake-v1.schema.json](schemas/docker-lane-handshake-v1.schema.json)
 - [docker-lane-handshake-report-v1.schema.json](schemas/docker-lane-handshake-report-v1.schema.json)
+- [execution-cell-bundle-report-v1.schema.json](schemas/execution-cell-bundle-report-v1.schema.json)
 - [labview-2026-host-plane-report-v1.schema.json](schemas/labview-2026-host-plane-report-v1.schema.json)
 - [Write-LabVIEW2026HostPlaneDiagnostics.ps1](../tools/Write-LabVIEW2026HostPlaneDiagnostics.ps1)
 - [concurrent-lane-apply.mjs](../tools/priority/concurrent-lane-apply.mjs)
 - [concurrent-lane-status.mjs](../tools/priority/concurrent-lane-status.mjs)
+- [execution-cell-bundle.mjs](../tools/priority/execution-cell-bundle.mjs)
 - [concurrent-lane-plan.mjs](../tools/priority/concurrent-lane-plan.mjs)
 - [docker-lane-handshake.mjs](../tools/priority/docker-lane-handshake.mjs)
 - [Test-DockerDesktopFastLoop.ps1](../tools/Test-DockerDesktopFastLoop.ps1)

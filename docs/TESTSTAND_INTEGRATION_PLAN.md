@@ -104,6 +104,10 @@ Session receipts project both:
 
 That keeps TestStand evidence attributable to one agent-owned memory/process boundary instead of an unscoped host run.
 
+When the owning agent also needs an isolated Docker lane for repeatable adjunct tooling, prefer
+`priority:lane:execution-cell:bundle` over separate lease calls. That bundle projects one effective billable rate,
+rolls back partial allocations, and keeps the Windows-only TestStand contract attached to the same cell-owned receipt.
+
 > **Note**: `-CloseLabVIEW` / `-CloseLVCompare` now queue post-run cleanup requests. The helpers do not invoke the close
 > scripts inline; instead `tools/Post-Run-Cleanup.ps1` consumes the requests after `Invoke-PesterTests.ps1` completes,
 > guaranteeing a single LabVIEWCLI invocation per job.
