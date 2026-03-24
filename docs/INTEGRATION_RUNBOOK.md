@@ -18,6 +18,10 @@ CLI and the repository scripts.
 
 `Invoke-IntegrationRunbook.ps1` orchestrates all phases with logging and artefact capture.
 
+When the `Loop` phase runs with the TestStand-backed host-fabric surfaces, the runbook JSON now carries
+`Loop.details.executionTopology`, including the runtime surface, process-model class, execution-cell lease,
+and harness lease identity. That gives downstream consumers a stable ownership chain instead of opaque loop output.
+
 ## Canonical LVCompare path
 
 The action only accepts the default location:
@@ -56,6 +60,10 @@ pwsh -File scripts/Run-AutonomousIntegrationLoop.ps1 -MaxIterations 25
 
 Artifacts land under `tests/results/` (compare evidence, loop JSON, Pester results).
 
+For local runs, `tools/Local-Runbook.ps1` now auto-stages a runbook JSON report whenever the `Loop` phase is included
+and prints a focused Loop execution topology summary after the child runbook finishes. That keeps the human-facing path
+aligned with the machine-readable `integration-runbook-v1` contract.
+
 ## Helpful scripts
 
 - `tools/Close-LVCompare.ps1` – closes LVCompare gracefully or kills after timeout.
@@ -76,4 +84,3 @@ Artifacts land under `tests/results/` (compare evidence, loop JSON, Pester resul
 - [`docs/TROUBLESHOOTING.md`](./TROUBLESHOOTING.md)
 - [`docs/COMPARE_LOOP_MODULE.md`](./COMPARE_LOOP_MODULE.md)
 - [`docs/FIXTURE_DRIFT.md`](./FIXTURE_DRIFT.md)
-
