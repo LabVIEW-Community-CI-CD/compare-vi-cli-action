@@ -57,6 +57,8 @@ $log = [ordered]@{
 $log | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputRoot 'harness-log.json') -Encoding utf8
 $session = [ordered]@{
   schema = 'teststand-compare-session/v1'
+  suiteClass = 'single-compare'
+  requestedSimultaneous = $false
   warmup = @{
     mode   = $Warmup
     events = $null
@@ -81,6 +83,10 @@ $session = [ordered]@{
     leasePath = $ExecutionCellLeasePath
     agentId = $AgentId
     agentClass = $AgentClass
+    cellClass = 'worker'
+    suiteClass = 'single-compare'
+    operatorAuthorizationRef = 'budget-auth://operator/session-2026-03-24'
+    premiumSaganMode = $false
   }
   harnessInstance = @{
     harnessKind = 'teststand-compare-harness'
@@ -118,6 +124,7 @@ exit 0
         -BaseVi $baseVi `
         -HeadVi $headVi `
         -OutputRoot $outputRoot `
+        -ResultsPath $outputRoot `
         -Warmup skip `
         -AgentId hooke `
         -AgentClass subagent `
@@ -155,6 +162,18 @@ exit 0
       $session.harnessInstance.instanceId | Should -Be 'harness-hooke-01'
       $session.processModel.runtimeSurface | Should -Be 'windows-native-teststand'
       $session.processModel.processModelClass | Should -Be 'sequential-process-model'
+      $statusPath = Join-Path $outputRoot '_agent/dx-status.json'
+      $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+      $status.executionTopology.suiteClass | Should -Be 'single-compare'
+      $status.executionTopology.runtimeSurface | Should -Be 'windows-native-teststand'
+      $status.executionTopology.processModelClass | Should -Be 'sequential-process-model'
+      $status.executionTopology.requestedSimultaneous | Should -BeFalse
+      $status.executionTopology.cellClass | Should -Be 'worker'
+      $status.executionTopology.operatorAuthorizationRef | Should -Be 'budget-auth://operator/session-2026-03-24'
+      $status.executionTopology.premiumSaganMode | Should -BeFalse
+      $status.executionTopology.harnessKind | Should -Be 'teststand-compare-harness'
+      $status.executionTopology.executionCellId | Should -Be 'exec-cell-hooke-01'
+      $status.executionTopology.executionCellLeaseId | Should -Be 'lease-hooke-01'
     }
     finally { Pop-Location }
   }
@@ -206,6 +225,8 @@ $log = [ordered]@{
 $log | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputRoot 'harness-log.json') -Encoding utf8
 $session = [ordered]@{
   schema = 'teststand-compare-session/v1'
+  suiteClass = 'single-compare'
+  requestedSimultaneous = $false
   warmup = @{
     mode   = $Warmup
     events = $null
@@ -230,6 +251,10 @@ $session = [ordered]@{
     leasePath = $ExecutionCellLeasePath
     agentId = $AgentId
     agentClass = $AgentClass
+    cellClass = 'worker'
+    suiteClass = 'single-compare'
+    operatorAuthorizationRef = $null
+    premiumSaganMode = $false
   }
   harnessInstance = @{
     harnessKind = 'teststand-compare-harness'
@@ -265,6 +290,7 @@ exit 0
         -BaseVi $baseVi `
         -HeadVi $headVi `
         -OutputRoot $outputRoot `
+        -ResultsPath $outputRoot `
         -Warmup detect `
         -UseRawPaths `
         -NoiseProfile legacy
@@ -310,13 +336,16 @@ exit 0
     $content | Should -Match '\$hParams\.ExecutionCellId\s*=\s*\$ExecutionCellId'
     $content | Should -Match '\$hParams\.ExecutionCellLeaseId\s*=\s*\$ExecutionCellLeaseId'
     $content | Should -Match '\$hParams\.HarnessInstanceId\s*=\s*\$HarnessInstanceId'
-    $content | Should -Match 'suiteClass\s*=\s*\$session\.suiteClass'
-    $content | Should -Match 'primaryPlane\s*=\s*\$session\.primaryPlane'
-    $content | Should -Match 'requestedSimultaneous\s*=\s*\$session\.requestedSimultaneous'
-    $content | Should -Match 'executionCell\s*=\s*\$session\.executionCell'
-    $content | Should -Match 'harnessInstance\s*=\s*\$session\.harnessInstance'
-    $content | Should -Match 'processModel\s*=\s*\$session\.processModel'
-    $content | Should -Match 'parity\s*=\s*\$session\.parity'
-    $content | Should -Match 'planes\s*=\s*\$session\.planes'
+    $content | Should -Match 'suiteClass\s*=\s*if\s*\(\$session\.PSObject\.Properties\.Name\s*-contains\s*''suiteClass''\)'
+    $content | Should -Match 'primaryPlane\s*=\s*Get-SessionValue\s+\$session\s+''primaryPlane'''
+    $content | Should -Match 'Get-SessionBoolValue'
+    $content | Should -Match '\$requestedSimultaneous\s*=\s*\$false'
+    $content | Should -Match 'requestedSimultaneous\s*=\s*\$requestedSimultaneous'
+    $content | Should -Match 'executionTopology\s*=\s*@\{'
+    $content | Should -Match 'executionCell\s*=\s*Get-SessionValue\s+\$session\s+''executionCell'''
+    $content | Should -Match 'harnessInstance\s*=\s*Get-SessionValue\s+\$session\s+''harnessInstance'''
+    $content | Should -Match 'processModel\s*=\s*Get-SessionValue\s+\$session\s+''processModel'''
+    $content | Should -Match 'parity\s*=\s*Get-SessionValue\s+\$session\s+''parity'''
+    $content | Should -Match 'planes\s*=\s*Get-SessionValue\s+\$session\s+''planes'''
   }
 }

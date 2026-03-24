@@ -62,6 +62,24 @@ function Write-DxLine([string]$msg,[string]$kind='info'){
   Write-Host ("[dx] {0} {1}" -f $kind,$msg)
 }
 
+function Get-SessionBoolValue($Source, [string]$PropertyName, [bool]$Default = $false) {
+  try {
+    if ($Source -and $Source.PSObject.Properties.Name -contains $PropertyName) {
+      return [bool]$Source.$PropertyName
+    }
+  } catch {}
+  return $Default
+}
+
+function Get-SessionValue($Source, [string]$PropertyName, $Default = $null) {
+  try {
+    if ($Source -and $Source.PSObject.Properties.Name -contains $PropertyName) {
+      return $Source.$PropertyName
+    }
+  } catch {}
+  return $Default
+}
+
 # Apply DX toggles
 if (-not $env:DX_CONSOLE_LEVEL)   { $env:DX_CONSOLE_LEVEL   = 'concise' }
 if (-not $env:DX_CONSOLE_PREFERRED) { $env:DX_CONSOLE_PREFERRED = '1' }
@@ -157,7 +175,7 @@ $harness = Join-Path $repoRoot 'tools/TestStand-CompareHarness.ps1'
   if ($LabVIEW64ExePath) { $hParams.LabVIEW64ExePath = $LabVIEW64ExePath }
   if ($LabVIEW32ExePath) { $hParams.LabVIEW32ExePath = $LabVIEW32ExePath }
   if ($LVComparePath)  { $hParams.LVComparePath  = $LVComparePath }
-  if ($TestStandSuiteClass -ne 'single-compare') { $hParams.SuiteClass = $TestStandSuiteClass }
+  $hParams.SuiteClass = $TestStandSuiteClass
   if ($AgentId) { $hParams.AgentId = $AgentId }
   if ($AgentClass) { $hParams.AgentClass = $AgentClass }
   if ($ExecutionCellLeasePath) { $hParams.ExecutionCellLeasePath = $ExecutionCellLeasePath }
@@ -220,19 +238,37 @@ $harness = Join-Path $repoRoot 'tools/TestStand-CompareHarness.ps1'
   }
   if ($session) {
     try {
+      $requestedSimultaneous = $false
+      if ($session.PSObject.Properties.Name -contains 'requestedSimultaneous') {
+        $requestedSimultaneous = [bool]$session.requestedSimultaneous
+      } elseif ($session.processModel -and $session.processModel.PSObject.Properties.Name -contains 'processModelClass') {
+        $requestedSimultaneous = ($session.processModel.processModelClass -eq 'parallel-process-model')
+      }
       $statusEnvelope.session = @{
-        suiteClass = $session.suiteClass
-        primaryPlane = $session.primaryPlane
-        requestedSimultaneous = $session.requestedSimultaneous
-        outcome  = $session.outcome
-        error    = $session.error
-        executionCell = $session.executionCell
-        harnessInstance = $session.harnessInstance
-        processModel = $session.processModel
-        compare  = $session.compare
-        content  = $session.content
-        parity   = $session.parity
-        planes   = $session.planes
+        suiteClass = Get-SessionValue $session 'suiteClass'
+        primaryPlane = Get-SessionValue $session 'primaryPlane'
+        requestedSimultaneous = $requestedSimultaneous
+        outcome  = Get-SessionValue $session 'outcome'
+        error    = Get-SessionValue $session 'error'
+        executionCell = Get-SessionValue $session 'executionCell'
+        harnessInstance = Get-SessionValue $session 'harnessInstance'
+        processModel = Get-SessionValue $session 'processModel'
+        compare  = Get-SessionValue $session 'compare'
+        content  = Get-SessionValue $session 'content'
+        parity   = Get-SessionValue $session 'parity'
+        planes   = Get-SessionValue $session 'planes'
+      }
+      $statusEnvelope.executionTopology = @{
+        suiteClass = if ($session.PSObject.Properties.Name -contains 'suiteClass') { $session.suiteClass } elseif (Get-SessionValue $session 'executionCell') { (Get-SessionValue (Get-SessionValue $session 'executionCell') 'suiteClass') } else { $null }
+        runtimeSurface = Get-SessionValue (Get-SessionValue $session 'processModel') 'runtimeSurface'
+        processModelClass = Get-SessionValue (Get-SessionValue $session 'processModel') 'processModelClass'
+        requestedSimultaneous = $requestedSimultaneous
+        cellClass = Get-SessionValue (Get-SessionValue $session 'executionCell') 'cellClass'
+        operatorAuthorizationRef = Get-SessionValue (Get-SessionValue $session 'executionCell') 'operatorAuthorizationRef'
+        premiumSaganMode = if (Get-SessionValue $session 'executionCell') { Get-SessionBoolValue (Get-SessionValue $session 'executionCell') 'premiumSaganMode' } else { $false }
+        harnessKind = Get-SessionValue (Get-SessionValue $session 'harnessInstance') 'harnessKind'
+        executionCellId = Get-SessionValue (Get-SessionValue $session 'executionCell') 'cellId'
+        executionCellLeaseId = Get-SessionValue (Get-SessionValue $session 'executionCell') 'leaseId'
       }
     } catch {}
   }
