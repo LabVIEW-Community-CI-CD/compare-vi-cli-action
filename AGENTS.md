@@ -105,6 +105,8 @@ Keep it short, stable, and helper-oriented. Deep runbooks belong in checked-in d
   `tests/results/_agent/handoff/autonomous-governor-summary.json`.
 - `node tools/npm/run-script.mjs priority:governor:portfolio` refreshes the cross-repo operating receipt at
   `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`.
+- `node tools/npm/run-script.mjs priority:context:concentrate` refreshes the compact durable memory receipt at
+  `tests/results/_agent/handoff/sagan-context-concentrator.json`.
 - `node tools/npm/run-script.mjs priority:continuity` refreshes the continuity receipts at
   `tests/results/_agent/runtime/continuity-telemetry.json` and
   `tests/results/_agent/handoff/continuity-summary.json`.
@@ -116,6 +118,7 @@ Keep it short, stable, and helper-oriented. Deep runbooks belong in checked-in d
   - `tests/results/_agent/issue/no-standing-priority.json`
   - `tests/results/_agent/handoff/autonomous-governor-summary.json`
   - `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`
+  - `tests/results/_agent/handoff/sagan-context-concentrator.json`
   - `tests/results/_agent/handoff/continuity-summary.json`
   - `tests/results/_agent/handoff/entrypoint-status.json`
   - `tests/results/_agent/runtime/`

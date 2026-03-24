@@ -46,6 +46,7 @@ $continuitySummary = Read-HandoffJson -Name 'continuity-summary.json'
 $monitoringMode = Read-HandoffJson -Name 'monitoring-mode.json'
 $governorSummary = Read-HandoffJson -Name 'autonomous-governor-summary.json'
 $governorPortfolioSummary = Read-HandoffJson -Name 'autonomous-governor-portfolio-summary.json'
+$contextConcentrator = Read-HandoffJson -Name 'sagan-context-concentrator.json'
 $operatorSteeringEvent = Read-HandoffJson -Name 'operator-steering-event.json'
 
 if ($issueSummary) {
@@ -343,6 +344,23 @@ if ($governorPortfolioSummary) {
     }
   }
   Set-Variable -Name HandoffAutonomousGovernorPortfolioSummary -Scope Global -Value $governorPortfolioSummary -Force
+}
+if ($contextConcentrator) {
+  Write-Host '[handoff] Context concentrator' -ForegroundColor Cyan
+  Write-Host ("  status   : {0}" -f (Format-NullableValue $contextConcentrator.summary.concentrationStatus))
+  if ($contextConcentrator.summary.activeIssueNumber) {
+    Write-Host ("  issue    : #{0}" -f (Format-NullableValue $contextConcentrator.summary.activeIssueNumber))
+  }
+  Write-Host ("  owner    : {0}" -f (Format-NullableValue $contextConcentrator.summary.currentOwnerRepository))
+  Write-Host ("  next     : {0}" -f (Format-NullableValue $contextConcentrator.summary.nextAction))
+  Write-Host ("  hot/warm : {0}/{1}" -f (Format-NullableValue $contextConcentrator.summary.hotWorkingSetCount), (Format-NullableValue $contextConcentrator.summary.warmMemoryCount))
+  Write-Host ("  archive  : {0}" -f (Format-NullableValue $contextConcentrator.summary.archiveCount))
+  Write-Host ("  blockers : {0}" -f (Format-NullableValue $contextConcentrator.summary.blockerCount))
+  Write-Host ('  spend    : ${0}' -f (Format-NullableValue $contextConcentrator.summary.blendedLowerBoundUsd))
+  foreach ($entry in @($contextConcentrator.memory.hotWorkingSet | Select-Object -First 3)) {
+    Write-Host ("  - {0} [{1}]" -f (Format-NullableValue $entry.label), (Format-NullableValue $entry.status))
+  }
+  Set-Variable -Name HandoffContextConcentrator -Scope Global -Value $contextConcentrator -Force
 }
 if ($operatorSteeringEvent) {
   Write-Host '[handoff] Operator steering event' -ForegroundColor Cyan
