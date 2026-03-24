@@ -231,6 +231,7 @@ function createDeliveryRuntimeState(overrides = {}) {
         executionBundle: {
           status: 'committed',
           planeBinding: 'dual-plane-parity',
+          harnessKind: 'teststand-compare-harness',
           premiumSaganMode: true,
           reciprocalLinkReady: true,
           effectiveBillableRateUsdPerHour: 375,
@@ -453,6 +454,10 @@ test('runAutonomousGovernorSummary carries queue-owned delivery runtime state in
   assert.equal(report.compare.deliveryRuntime.executionTopology.activeLogicalLaneCount, 2);
   assert.equal(report.compare.deliveryRuntime.executionTopology.seededLogicalLaneCount, 4);
   assert.equal(report.compare.deliveryRuntime.executionTopology.catalogCount, 4);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.runtimeSurface, 'windows-native-teststand');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.processModelClass, 'parallel-process-model');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.windowsOnly, true);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.requestedSimultaneous, true);
   assert.equal(report.compare.deliveryRuntime.executionTopology.logicalLaneActivation.activeLaneCount, 2);
   assert.equal(report.compare.deliveryRuntime.executionTopology.providerDispatch.dispatchStatus, 'completed');
   assert.equal(report.compare.deliveryRuntime.executionTopology.executionBundle.status, 'committed');
@@ -469,6 +474,10 @@ test('runAutonomousGovernorSummary carries queue-owned delivery runtime state in
   assert.equal(report.summary.executionTopologyWorkerSlotId, 'worker-slot-2');
   assert.equal(report.summary.executionTopologyActiveLogicalLaneCount, 2);
   assert.equal(report.summary.executionTopologySeededLogicalLaneCount, 4);
+  assert.equal(report.summary.executionTopologyRuntimeSurface, 'windows-native-teststand');
+  assert.equal(report.summary.executionTopologyProcessModelClass, 'parallel-process-model');
+  assert.equal(report.summary.executionTopologyWindowsOnly, true);
+  assert.equal(report.summary.executionTopologyRequestedSimultaneous, true);
   assert.equal(report.summary.executionBundleStatus, 'committed');
   assert.equal(report.summary.executionBundlePlaneBinding, 'dual-plane-parity');
   assert.equal(report.summary.executionBundlePremiumSaganMode, true);

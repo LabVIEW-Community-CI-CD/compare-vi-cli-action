@@ -1576,6 +1576,15 @@ try {
       Write-Host ("  execLanes: {0}/{1}" -f
         (Format-NullableValue $governor.summary.executionTopologyActiveLogicalLaneCount),
         (Format-NullableValue $governor.summary.executionTopologySeededLogicalLaneCount))
+      if ($governor.summary.PSObject.Properties['executionTopologyRuntimeSurface'] -and $governor.summary.executionTopologyRuntimeSurface) {
+        Write-Host ("  execSurf : {0}" -f (Format-NullableValue $governor.summary.executionTopologyRuntimeSurface))
+      }
+      if ($governor.summary.PSObject.Properties['executionTopologyProcessModelClass'] -and $governor.summary.executionTopologyProcessModelClass) {
+        Write-Host ("  execProc : {0}" -f (Format-NullableValue $governor.summary.executionTopologyProcessModelClass))
+      }
+      if ($governor.summary.PSObject.Properties['executionTopologyRequestedSimultaneous'] -and $governor.summary.executionTopologyRequestedSimultaneous) {
+        Write-Host ("  execSim  : {0}" -f (Format-NullableValue $governor.summary.executionTopologyRequestedSimultaneous))
+      }
     }
     if ($governor.summary.PSObject.Properties['executionBundleStatus'] -and $governor.summary.executionBundleStatus) {
       Write-Host ("  exec     : {0}" -f (Format-NullableValue $governor.summary.executionBundleStatus))
@@ -1631,6 +1640,15 @@ try {
         $governorLines += ('- Execution logical lanes active/seeded: {0}/{1}' -f
           (Format-NullableValue $governor.summary.executionTopologyActiveLogicalLaneCount),
           (Format-NullableValue $governor.summary.executionTopologySeededLogicalLaneCount))
+        if ($governor.summary.PSObject.Properties['executionTopologyRuntimeSurface'] -and $governor.summary.executionTopologyRuntimeSurface) {
+          $governorLines += ('- Execution runtime surface: {0}' -f (Format-NullableValue $governor.summary.executionTopologyRuntimeSurface))
+        }
+        if ($governor.summary.PSObject.Properties['executionTopologyProcessModelClass'] -and $governor.summary.executionTopologyProcessModelClass) {
+          $governorLines += ('- Execution process model: {0}' -f (Format-NullableValue $governor.summary.executionTopologyProcessModelClass))
+        }
+        if ($governor.summary.PSObject.Properties['executionTopologyRequestedSimultaneous'] -and $governor.summary.executionTopologyRequestedSimultaneous) {
+          $governorLines += ('- Execution simultaneous: {0}' -f (Format-NullableValue $governor.summary.executionTopologyRequestedSimultaneous))
+        }
       }
       if ($governor.summary.PSObject.Properties['executionBundleStatus'] -and $governor.summary.executionBundleStatus) {
         $governorLines += ('- Execution bundle: {0}' -f (Format-NullableValue $governor.summary.executionBundleStatus))
@@ -1690,6 +1708,15 @@ try {
       Write-Host ("  execLanes: {0}/{1}" -f
         (Format-NullableValue $portfolio.summary.executionTopologyActiveLogicalLaneCount),
         (Format-NullableValue $portfolio.summary.executionTopologySeededLogicalLaneCount))
+      if ($portfolio.summary.PSObject.Properties['executionTopologyRuntimeSurface'] -and $portfolio.summary.executionTopologyRuntimeSurface) {
+        Write-Host ("  execSurf : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyRuntimeSurface))
+      }
+      if ($portfolio.summary.PSObject.Properties['executionTopologyProcessModelClass'] -and $portfolio.summary.executionTopologyProcessModelClass) {
+        Write-Host ("  execProc : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyProcessModelClass))
+      }
+      if ($portfolio.summary.PSObject.Properties['executionTopologyRequestedSimultaneous'] -and $portfolio.summary.executionTopologyRequestedSimultaneous) {
+        Write-Host ("  execSim  : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyRequestedSimultaneous))
+      }
     }
     if ($portfolio.summary.PSObject.Properties['executionBundleStatus'] -and $portfolio.summary.executionBundleStatus) {
       Write-Host ("  exec     : {0}" -f (Format-NullableValue $portfolio.summary.executionBundleStatus))
@@ -1741,6 +1768,15 @@ try {
         $portfolioLines += ('- Execution logical lanes active/seeded: {0}/{1}' -f
           (Format-NullableValue $portfolio.summary.executionTopologyActiveLogicalLaneCount),
           (Format-NullableValue $portfolio.summary.executionTopologySeededLogicalLaneCount))
+        if ($portfolio.summary.PSObject.Properties['executionTopologyRuntimeSurface'] -and $portfolio.summary.executionTopologyRuntimeSurface) {
+          $portfolioLines += ('- Execution runtime surface: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyRuntimeSurface))
+        }
+        if ($portfolio.summary.PSObject.Properties['executionTopologyProcessModelClass'] -and $portfolio.summary.executionTopologyProcessModelClass) {
+          $portfolioLines += ('- Execution process model: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyProcessModelClass))
+        }
+        if ($portfolio.summary.PSObject.Properties['executionTopologyRequestedSimultaneous'] -and $portfolio.summary.executionTopologyRequestedSimultaneous) {
+          $portfolioLines += ('- Execution simultaneous: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyRequestedSimultaneous))
+        }
       }
       if ($portfolio.summary.PSObject.Properties['executionBundleStatus'] -and $portfolio.summary.executionBundleStatus) {
         $portfolioLines += ('- Execution bundle: {0}' -f (Format-NullableValue $portfolio.summary.executionBundleStatus))

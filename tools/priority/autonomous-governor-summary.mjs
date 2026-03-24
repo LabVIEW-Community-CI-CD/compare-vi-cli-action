@@ -186,6 +186,33 @@ function parseBoolean(value) {
   return value === true;
 }
 
+function normalizeLower(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function deriveExecutionTopologyProcessModel(executionBundle) {
+  const planeBinding = asOptional(executionBundle?.planeBinding);
+  const normalizedPlaneBinding = normalizeLower(planeBinding);
+  const harnessKind = asOptional(executionBundle?.harnessKind);
+  const requestedSimultaneous = normalizedPlaneBinding === 'dual-plane-parity';
+  const windowsNativeTestStand =
+    (!harnessKind || harnessKind === 'teststand-compare-harness') &&
+    (requestedSimultaneous || normalizedPlaneBinding.startsWith('native-labview-'));
+  const runtimeSurface = windowsNativeTestStand ? 'windows-native-teststand' : null;
+  const processModelClass = !runtimeSurface
+    ? null
+    : requestedSimultaneous
+      ? 'parallel-process-model'
+      : 'sequential-process-model';
+
+  return {
+    runtimeSurface,
+    processModelClass,
+    windowsOnly: runtimeSurface === 'windows-native-teststand',
+    requestedSimultaneous
+  };
+}
+
 function deriveExecutionTopologyStatus({ activeLogicalLaneCount, seededLogicalLaneCount, providerDispatch, executionBundle }) {
   const bundleStatus = asOptional(executionBundle?.status);
   if (bundleStatus) {
@@ -215,6 +242,7 @@ function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBu
   const providerDispatch =
     normalizeOptionalObject(activeLane?.providerDispatch) ??
     normalizeOptionalObject(deliveryRuntimeState?.artifacts?.providerDispatch);
+  const processModel = deriveExecutionTopologyProcessModel(executionBundle);
   const activeLogicalLaneCount = Number.isInteger(logicalLaneActivation?.activeLaneCount)
     ? logicalLaneActivation.activeLaneCount
     : null;
@@ -236,6 +264,10 @@ function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBu
     activeLogicalLaneCount,
     seededLogicalLaneCount,
     catalogCount: logicalLaneCatalog.length,
+    runtimeSurface: processModel.runtimeSurface,
+    processModelClass: processModel.processModelClass,
+    windowsOnly: processModel.windowsOnly,
+    requestedSimultaneous: processModel.requestedSimultaneous,
     premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
     reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
     logicalLaneActivation: {
@@ -265,6 +297,7 @@ function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBu
         : null,
       executionCellLeaseId: asOptional(executionBundle?.executionCellLeaseId),
       dockerLaneLeaseId: asOptional(executionBundle?.dockerLaneLeaseId),
+      harnessKind: asOptional(executionBundle?.harnessKind),
       harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
       cellId: asOptional(executionBundle?.cellId),
       laneId: asOptional(executionBundle?.laneId),
@@ -507,6 +540,7 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
         : null,
       executionCellLeaseId: asOptional(executionBundle?.executionCellLeaseId),
       dockerLaneLeaseId: asOptional(executionBundle?.dockerLaneLeaseId),
+      harnessKind: asOptional(executionBundle?.harnessKind),
       harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
       cellId: asOptional(executionBundle?.cellId),
       laneId: asOptional(executionBundle?.laneId),
@@ -843,6 +877,10 @@ function buildReport({
       executionTopologyWorkerSlotId: deliveryRuntime.executionTopology.workerSlotId,
       executionTopologyActiveLogicalLaneCount: deliveryRuntime.executionTopology.activeLogicalLaneCount,
       executionTopologySeededLogicalLaneCount: deliveryRuntime.executionTopology.seededLogicalLaneCount,
+      executionTopologyRuntimeSurface: deliveryRuntime.executionTopology.runtimeSurface,
+      executionTopologyProcessModelClass: deliveryRuntime.executionTopology.processModelClass,
+      executionTopologyWindowsOnly: deliveryRuntime.executionTopology.windowsOnly,
+      executionTopologyRequestedSimultaneous: deliveryRuntime.executionTopology.requestedSimultaneous,
       executionBundleStatus: deliveryRuntime.executionBundle.status,
       executionBundlePlaneBinding: deliveryRuntime.executionBundle.planeBinding,
       executionBundlePremiumSaganMode: deliveryRuntime.executionBundle.premiumSaganMode,
