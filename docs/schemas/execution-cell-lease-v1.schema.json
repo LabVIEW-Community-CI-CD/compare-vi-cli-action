@@ -1,0 +1,351 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/execution-cell-lease-v1.schema.json",
+  "title": "Execution Cell Lease",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "cellId",
+    "resourceKind",
+    "state",
+    "sequence",
+    "heartbeatAt",
+    "request",
+    "grant",
+    "commit",
+    "release"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/execution-cell-lease@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cellId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resourceKind": {
+      "const": "execution-cell"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "requested",
+        "granted",
+        "active",
+        "released"
+      ]
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "heartbeatAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "host": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "isolatedLaneGroupId",
+        "fingerprintSha256",
+        "platform",
+        "computerName",
+        "canonical"
+      ],
+      "properties": {
+        "isolatedLaneGroupId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fingerprintSha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "platform": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "computerName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "canonical": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "buildNumber",
+            "ubr"
+          ],
+          "properties": {
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "buildNumber": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ubr": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "requestedAt",
+        "agentId",
+        "agentClass",
+        "cellClass",
+        "suiteClass",
+        "planeBinding",
+        "harnessKind",
+        "capabilities",
+        "premiumDualLaneRequested",
+        "operatorId",
+        "operatorAuthorizationRef",
+        "workingRoot",
+        "artifactRoot"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "agentId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agentClass": {
+          "type": "string",
+          "enum": [
+            "sagan",
+            "subagent",
+            "other"
+          ]
+        },
+        "cellClass": {
+          "type": "string",
+          "enum": [
+            "worker",
+            "coordinator",
+            "kernel-coordinator"
+          ]
+        },
+        "suiteClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "planeBinding": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harnessKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "premiumDualLaneRequested": {
+          "type": "boolean"
+        },
+        "operatorId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operatorAuthorizationRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workingRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifactRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "grant": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "grantedAt",
+        "grantor",
+        "leaseId",
+        "ttlSeconds",
+        "premiumDualLaneRequested",
+        "premiumSaganMode",
+        "policyDecision",
+        "grantedCapabilities",
+        "billableRateMultiplier",
+        "billableRateUsdPerHour"
+      ],
+      "properties": {
+        "grantedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "grantor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "leaseId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ttlSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "premiumDualLaneRequested": {
+          "type": "boolean"
+        },
+        "premiumSaganMode": {
+          "type": "boolean"
+        },
+        "policyDecision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "grantedCapabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "billableRateMultiplier": {
+          "type": "number",
+          "minimum": 0
+        },
+        "billableRateUsdPerHour": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "commit": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "committedAt",
+        "harnessInstanceId",
+        "workingRoot",
+        "artifactRoot"
+      ],
+      "properties": {
+        "committedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "harnessInstanceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workingRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifactRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "release": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "releasedAt",
+        "artifactPaths"
+      ],
+      "properties": {
+        "releasedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "artifactPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

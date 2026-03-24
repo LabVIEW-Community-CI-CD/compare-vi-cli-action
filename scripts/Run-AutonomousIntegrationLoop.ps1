@@ -148,6 +148,12 @@ param(
 , [string]$TestStandLabVIEW64Path = $env:LOOP_TESTSTAND_LABVIEW64_PATH
 , [string]$TestStandLabVIEW32Path = $env:LOOP_TESTSTAND_LABVIEW32_PATH
 , [string]$TestStandLVComparePath = $env:LOOP_TESTSTAND_LVCOMPARE_PATH
+, [string]$TestStandAgentId = $env:LOOP_TESTSTAND_AGENT_ID
+, [string]$TestStandAgentClass = $env:LOOP_TESTSTAND_AGENT_CLASS
+, [string]$TestStandExecutionCellLeasePath = $env:LOOP_TESTSTAND_EXECUTION_CELL_LEASE_PATH
+, [string]$TestStandExecutionCellId = $env:LOOP_TESTSTAND_EXECUTION_CELL_ID
+, [string]$TestStandExecutionCellLeaseId = $env:LOOP_TESTSTAND_EXECUTION_CELL_LEASE_ID
+, [string]$TestStandHarnessInstanceId = $env:LOOP_TESTSTAND_HARNESS_INSTANCE_ID
 , [switch]$TestStandReplaceFlags
 )
 
@@ -284,6 +290,12 @@ if ($UseTestStandHarness) {
   $labview32Path = $TestStandLabVIEW32Path
   $lvcomparePath = $TestStandLVComparePath
   $replaceFlags = [bool]$TestStandReplaceFlags
+  $executionCellLeasePath = $TestStandExecutionCellLeasePath
+  $executionCellId = $TestStandExecutionCellId
+  $executionCellLeaseId = $TestStandExecutionCellLeaseId
+  $agentId = $TestStandAgentId
+  $agentClass = $TestStandAgentClass
+  $harnessInstanceId = $TestStandHarnessInstanceId
   $harnessIteration = [ref]0
 
   $executor = {
@@ -307,6 +319,12 @@ if ($UseTestStandHarness) {
     if ($labview32Path) { $harnessParams.LabVIEW32ExePath = $labview32Path }
     if ($lvcomparePath) { $harnessParams.LVComparePath = $lvcomparePath }
     if ($TestStandSuiteClass -ne 'single-compare') { $harnessParams.SuiteClass = $TestStandSuiteClass }
+    if ($agentId) { $harnessParams.AgentId = $agentId }
+    if ($agentClass) { $harnessParams.AgentClass = $agentClass }
+    if ($executionCellLeasePath) { $harnessParams.ExecutionCellLeasePath = $executionCellLeasePath }
+    if ($executionCellId) { $harnessParams.ExecutionCellId = $executionCellId }
+    if ($executionCellLeaseId) { $harnessParams.ExecutionCellLeaseId = $executionCellLeaseId }
+    if ($harnessInstanceId) { $harnessParams.HarnessInstanceId = $harnessInstanceId }
     if ($renderReport) { $harnessParams.RenderReport = $true }
     if ($closeLabVIEW) { $harnessParams.CloseLabVIEW = $true }
     if ($closeLVCompare) { $harnessParams.CloseLVCompare = $true }
@@ -361,6 +379,12 @@ if ($UseTestStandHarness) {
     labviewPath = $labviewPath
     labview64Path = $labview64Path
     labview32Path = $labview32Path
+    agentId = $agentId
+    agentClass = $agentClass
+    executionCellLeasePath = $executionCellLeasePath
+    executionCellId = $executionCellId
+    executionCellLeaseId = $executionCellLeaseId
+    harnessInstanceId = $harnessInstanceId
   }
 }
 

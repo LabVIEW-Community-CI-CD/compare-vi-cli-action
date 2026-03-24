@@ -98,6 +98,7 @@
     "priority:continuity": "node tools/priority/continuity-telemetry.mjs",
     "priority:lane:marketplace": "node tools/priority/lane-marketplace.mjs",
     "priority:lane:docker:handshake": "node tools/priority/docker-lane-handshake.mjs",
+    "priority:lane:execution-cell": "node tools/priority/execution-cell-lease.mjs",
     "priority:lane:concurrency:plan": "node tools/priority/concurrent-lane-plan.mjs",
     "priority:lane:concurrency:apply": "node tools/priority/concurrent-lane-apply.mjs",
     "priority:lane:concurrency:status": "node tools/priority/concurrent-lane-status.mjs",

@@ -336,6 +336,31 @@ const testStandCompareNodeSchema = z.object({
   timeoutSeconds: z.number().min(0).optional(),
 });
 
+const testStandExecutionCellSchema = z.object({
+  cellId: z.string().min(1).nullable().optional(),
+  leaseId: z.string().min(1).nullable().optional(),
+  leasePath: z.string().min(1).nullable().optional(),
+  agentId: z.string().min(1).nullable().optional(),
+  agentClass: z.enum(['sagan', 'subagent', 'other']).nullable().optional(),
+  cellClass: z.enum(['worker', 'coordinator', 'kernel-coordinator']).nullable().optional(),
+  suiteClass: z.enum(['single-compare', 'dual-plane-parity']).nullable().optional(),
+  planeBinding: z.string().min(1).nullable().optional(),
+  premiumSaganMode: z.boolean().optional(),
+  operatorAuthorizationRef: z.string().min(1).nullable().optional(),
+  workingRoot: z.string().min(1).nullable().optional(),
+  artifactRoot: z.string().min(1).nullable().optional(),
+  isolatedLaneGroupId: z.string().min(1).nullable().optional(),
+  hostOsFingerprintSha256: hexSha256.nullable().optional(),
+});
+
+const testStandHarnessInstanceSchema = z.object({
+  harnessKind: z.string().min(1),
+  instanceId: z.string().min(1),
+  role: z.enum(['single-plane', 'coordinator', 'plane-child']),
+  planeBinding: z.string().min(1).nullable().optional(),
+  parentInstanceId: z.string().min(1).nullable().optional(),
+});
+
 const testStandPlaneSessionSchema = z.object({
   plane: z.string().min(1),
   architecture: z.enum(['32-bit', '64-bit']),
@@ -349,6 +374,8 @@ const testStandPlaneSessionSchema = z.object({
   outcome: testStandCompareOutcomeSchema,
   error: z.union([z.string().min(1), z.null()]).optional(),
   exitCode: z.number(),
+  executionCell: testStandExecutionCellSchema.nullable().optional(),
+  harnessInstance: testStandHarnessInstanceSchema.nullable().optional(),
 });
 
 const testStandParitySummarySchema = z.object({
@@ -376,6 +403,8 @@ const testStandCompareSessionSchema = z.object({
   compare: testStandCompareNodeSchema,
   outcome: testStandCompareOutcomeSchema,
   error: z.union([z.string().min(1), z.null()]).optional(),
+  executionCell: testStandExecutionCellSchema.nullable().optional(),
+  harnessInstance: testStandHarnessInstanceSchema.nullable().optional(),
   suiteClass: z.enum(['single-compare', 'dual-plane-parity']).optional(),
   primaryPlane: z.string().min(1).optional(),
   requestedSimultaneous: z.boolean().optional(),

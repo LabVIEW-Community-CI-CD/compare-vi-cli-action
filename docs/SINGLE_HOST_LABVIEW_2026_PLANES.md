@@ -16,9 +16,11 @@ Treat these four planes as distinct:
 Do not collapse them into a generic “LabVIEW 2026 host” concept. The repo contracts and artifacts are written so future
 agents can tell which plane actually produced the evidence.
 
-Treat the TestStand harness as a host-plane consumer, not a fifth plane. It is a deterministic wrapper around native
-LabVIEW warmup and LVCompare session capture, so its receipts still belong to one of the native planes rather than to a
-separate execution category.
+Treat the TestStand harness as a host-plane consumer, not a fifth plane. It is a deterministic wrapper around
+Windows-native LabVIEW warmup and LVCompare session capture, so its receipts still belong to one of the native planes
+rather than to a separate execution category.
+
+TestStand is a Windows-only runtime surface. It should not be modeled as a Linux or Docker execution runtime.
 
 ## Shadow policy
 
@@ -68,9 +70,15 @@ Use the checked-in helper when you need a replayable lease receipt:
 
 - `node tools/npm/run-script.mjs priority:lane:docker:handshake -- --action request --lane-id docker-agent-epicurus-linux-01 --agent-id epicurus --agent-class subagent --capability docker-lane`
 
+Use the execution-cell helper when an agent needs an isolated TestStand-owned native session cell:
+
+- `node tools/npm/run-script.mjs priority:lane:execution-cell -- --action request --cell-id exec-cell-hooke-01 --agent-id hooke --agent-class subagent --suite-class dual-plane-parity --plane-binding native-labview-2026-64 --capability teststand-harness`
+
 The resulting report is written to:
 
 - `tests/results/_agent/runtime/docker-lane-handshake.json`
+
+- `tests/results/_agent/runtime/execution-cell-lease.json`
 
 The durable handshake state lives under the Git common-dir so clean worktrees share one lease view.
 
@@ -87,6 +95,37 @@ Only `sagan` may lease `docker-lane` and `native-labview-2026-32` simultaneously
   - `1.5x` the configured operator labor rate
 
 Subagents may lease isolated Docker lanes, but they must not activate the premium dual-lane combination.
+
+### Execution cells and harness instances
+
+Each agent should lease an execution cell before it launches a native TestStand compare session.
+
+- one agent -> one execution cell lease
+- one execution cell -> one owning TestStand harness instance
+- dual-plane parity -> one coordinator harness instance plus one child harness instance per native plane
+
+Project the execution-cell lease into the harness with:
+
+- `-ExecutionCellLeasePath`
+- `-ExecutionCellId`
+- `-ExecutionCellLeaseId`
+- `-HarnessInstanceId`
+
+That keeps session receipts attributable to:
+
+- the agent
+- the execution cell
+- the owning harness instance
+- the canonical host OS fingerprint
+
+Execution cells that use `teststand-compare-harness` must bind only to Windows-native planes:
+
+- `native-labview-2026-64`
+- `native-labview-2026-32`
+- `dual-plane-parity`
+
+Bindings like `docker-desktop/linux-container-2026` or other container/Linux plane identifiers are invalid for
+TestStand-owned cells and should fail closed at lease grant time.
 
 ## Authoritative entry points
 
@@ -120,6 +159,8 @@ Use these commands as the checked-in operator surfaces:
 6. TestStand harness session wrapper:
    - `pwsh -NoLogo -NoProfile -File tools/TestStand-CompareHarness.ps1 -BaseVi <base> -HeadVi <head> -OutputRoot tests/results/teststand-session -Warmup detect -RenderReport`
    - Use this when the host plane needs a deterministic native compare session with a replayable `session-index.json`.
+   - To bind the session to an execution cell, add:
+     - `-ExecutionCellLeasePath <lease-report-path> -ExecutionCellId <cell-id> -ExecutionCellLeaseId <lease-id> -HarnessInstanceId <instance-id>`
    - For native LabVIEW 2026 x64/x32 parity on the same host, add:
      - `-SuiteClass dual-plane-parity -LabVIEW64ExePath <x64-labview-exe> -LabVIEW32ExePath <x32-labview-exe>`
    - Dual-plane parity still treats the harness as a host-plane consumer. It does not create a new authority plane;
@@ -152,19 +193,21 @@ Use these artifacts as the machine-readable source of truth:
    - `tests/results/_agent/runtime/concurrent-lane-status-receipt.json`
 5. Docker lane handshake receipt:
    - `tests/results/_agent/runtime/docker-lane-handshake.json`
-6. Fast-loop readiness envelope:
+6. Execution cell lease receipt:
+   - `tests/results/_agent/runtime/execution-cell-lease.json`
+7. Fast-loop readiness envelope:
    - `docker-runtime-fastloop-readiness.json`
    - `docker-runtime-fastloop-readiness.md`
-7. Fast-loop proof bundle when produced:
+8. Fast-loop proof bundle when produced:
    - `docker-fast-loop-proof-*.json`
-8. Top-level fast-loop GitHub outputs when `tools/Test-DockerDesktopFastLoop.ps1` runs inside GitHub Actions:
+9. Top-level fast-loop GitHub outputs when `tools/Test-DockerDesktopFastLoop.ps1` runs inside GitHub Actions:
    - `docker-fast-loop-summary-path`
    - `docker-fast-loop-status-path`
    - `docker-fast-loop-host-plane-summary-path`
    - `docker-fast-loop-host-plane-summary-status`
    - `docker-fast-loop-host-plane-summary-sha256`
    - `docker-fast-loop-host-plane-summary-reason`
-9. Top-level fast-loop Step Summary when `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
+10. Top-level fast-loop Step Summary when `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
    - `Summary Path`
    - `Status Path`
    - `Host Plane Summary Path`

@@ -41,6 +41,10 @@ stays available even when fresh harness artefacts are not present.
 `tests/results/teststand-session/session-index.json` produced locally, allowing agents to verify shape changes without
 rerunning LabVIEW.
 
+TestStand itself is Windows-only. Treat it as a Windows-native execution-cell runtime, not as a Linux or Docker
+runtime. Linux/container planes may still participate elsewhere in the host fabric, but not as TestStand-owned harness
+cells.
+
 Validate the session index with `node tools/npm/run-script.mjs session:teststand:validate` so schema regressions surface
 immediately when the harness outputs change.
 
@@ -77,6 +81,28 @@ Parity sessions use `schema = teststand-compare-session/v2` and include:
 
 This keeps dual-plane parity runs visible in `tests/results/_agent/dx-status.json` without changing the default
 single-plane TestStand path.
+
+### 1.2.2 Execution-cell-owned harness instances
+
+Treat the harness as an execution-cell consumer, not as ambient host state.
+
+- each agent leases one execution cell
+- that execution cell owns its harness instance
+- dual-plane parity keeps one coordinator harness instance plus one child harness instance per plane
+
+The harness now accepts:
+
+- `-ExecutionCellLeasePath`
+- `-ExecutionCellId`
+- `-ExecutionCellLeaseId`
+- `-HarnessInstanceId`
+
+Session receipts project both:
+
+- `executionCell`
+- `harnessInstance`
+
+That keeps TestStand evidence attributable to one agent-owned memory/process boundary instead of an unscoped host run.
 
 > **Note**: `-CloseLabVIEW` / `-CloseLVCompare` now queue post-run cleanup requests. The helpers do not invoke the close
 > scripts inline; instead `tools/Post-Run-Cleanup.ps1` consumes the requests after `Invoke-PesterTests.ps1` completes,

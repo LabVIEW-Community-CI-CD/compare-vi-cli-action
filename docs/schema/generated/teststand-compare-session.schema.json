@@ -251,6 +251,232 @@
             }
           ]
         },
+        "executionCell": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "cellId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "leaseId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "leasePath": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "agentId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "agentClass": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "sagan",
+                        "subagent",
+                        "other"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cellClass": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "worker",
+                        "coordinator",
+                        "kernel-coordinator"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "suiteClass": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "single-compare",
+                        "dual-plane-parity"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "planeBinding": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "premiumSaganMode": {
+                  "type": "boolean"
+                },
+                "operatorAuthorizationRef": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "workingRoot": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "artifactRoot": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "isolatedLaneGroupId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "hostOsFingerprintSha256": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[A-Fa-f0-9]{64}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "harnessInstance": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "harnessKind": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "instanceId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "single-plane",
+                    "coordinator",
+                    "plane-child"
+                  ]
+                },
+                "planeBinding": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "parentInstanceId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "harnessKind",
+                "instanceId",
+                "role"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "suiteClass": {
           "type": "string",
           "enum": [
@@ -332,6 +558,26 @@
                 },
                 "exitCode": {
                   "type": "number"
+                },
+                "executionCell": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/teststand-compare-session/properties/executionCell/anyOf/0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "harnessInstance": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/teststand-compare-session/properties/harnessInstance/anyOf/0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               },
               "required": [

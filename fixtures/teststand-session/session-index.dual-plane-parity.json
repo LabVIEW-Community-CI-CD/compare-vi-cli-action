@@ -27,6 +27,29 @@
     "diff": false
   },
   "error": null,
+  "executionCell": {
+    "cellId": "exec-cell-sagan-01",
+    "leaseId": "lease-sagan-01",
+    "leasePath": "tests/results/_agent/runtime/execution-cell-sagan-01.json",
+    "agentId": "sagan",
+    "agentClass": "sagan",
+    "cellClass": "kernel-coordinator",
+    "suiteClass": "dual-plane-parity",
+    "planeBinding": "dual-plane-parity",
+    "premiumSaganMode": false,
+    "operatorAuthorizationRef": null,
+    "workingRoot": "tests/results/teststand-session",
+    "artifactRoot": "tests/results/teststand-session",
+    "isolatedLaneGroupId": "host-os-fingerprint:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+    "hostOsFingerprintSha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+  },
+  "harnessInstance": {
+    "harnessKind": "teststand-compare-harness",
+    "instanceId": "ts-harness-sagan-01",
+    "role": "coordinator",
+    "planeBinding": "dual-plane-parity",
+    "parentInstanceId": null
+  },
   "planes": {
     "x64": {
       "plane": "native-labview-2026-64",
@@ -56,7 +79,30 @@
         "diff": false
       },
       "error": null,
-      "exitCode": 0
+      "exitCode": 0,
+      "executionCell": {
+        "cellId": "exec-cell-sagan-01",
+        "leaseId": "lease-sagan-01",
+        "leasePath": "tests/results/_agent/runtime/execution-cell-sagan-01.json",
+        "agentId": "sagan",
+        "agentClass": "sagan",
+        "cellClass": "kernel-coordinator",
+        "suiteClass": "dual-plane-parity",
+        "planeBinding": "native-labview-2026-64",
+        "premiumSaganMode": false,
+        "operatorAuthorizationRef": null,
+        "workingRoot": "tests/results/teststand-session/planes/x64",
+        "artifactRoot": "tests/results/teststand-session/planes/x64",
+        "isolatedLaneGroupId": "host-os-fingerprint:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+        "hostOsFingerprintSha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+      },
+      "harnessInstance": {
+        "harnessKind": "teststand-compare-harness",
+        "instanceId": "ts-harness-sagan-01-x64",
+        "role": "plane-child",
+        "planeBinding": "native-labview-2026-64",
+        "parentInstanceId": "ts-harness-sagan-01"
+      }
     },
     "x32": {
       "plane": "native-labview-2026-32",
@@ -86,7 +132,30 @@
         "diff": false
       },
       "error": null,
-      "exitCode": 0
+      "exitCode": 0,
+      "executionCell": {
+        "cellId": "exec-cell-sagan-01",
+        "leaseId": "lease-sagan-01",
+        "leasePath": "tests/results/_agent/runtime/execution-cell-sagan-01.json",
+        "agentId": "sagan",
+        "agentClass": "sagan",
+        "cellClass": "kernel-coordinator",
+        "suiteClass": "dual-plane-parity",
+        "planeBinding": "native-labview-2026-32",
+        "premiumSaganMode": false,
+        "operatorAuthorizationRef": null,
+        "workingRoot": "tests/results/teststand-session/planes/x32",
+        "artifactRoot": "tests/results/teststand-session/planes/x32",
+        "isolatedLaneGroupId": "host-os-fingerprint:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+        "hostOsFingerprintSha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+      },
+      "harnessInstance": {
+        "harnessKind": "teststand-compare-harness",
+        "instanceId": "ts-harness-sagan-01-x32",
+        "role": "plane-child",
+        "planeBinding": "native-labview-2026-32",
+        "parentInstanceId": "ts-harness-sagan-01"
+      }
     }
   },
   "parity": {

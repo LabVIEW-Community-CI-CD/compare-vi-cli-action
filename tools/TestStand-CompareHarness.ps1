@@ -41,7 +41,15 @@ param(
 [string]$LabVIEW32ExePath,
 [switch]$InternalSinglePlane,
 [ValidateSet('x64','x32')]
-[string]$InternalPlaneKey
+[string]$InternalPlaneKey,
+[string]$AgentId = $env:CODEX_AGENT_ID,
+[string]$AgentClass = $env:CODEX_AGENT_CLASS,
+[string]$ExecutionCellLeasePath = $env:TESTSTAND_EXECUTION_CELL_LEASE_PATH,
+[string]$ExecutionCellId = $env:TESTSTAND_EXECUTION_CELL_ID,
+[string]$ExecutionCellLeaseId = $env:TESTSTAND_EXECUTION_CELL_LEASE_ID,
+[string]$ExecutionCellSuiteClass = $env:TESTSTAND_EXECUTION_CELL_SUITE_CLASS,
+[string]$HarnessInstanceId = $env:TESTSTAND_HARNESS_INSTANCE_ID,
+[string]$ParentHarnessInstanceId = $env:TESTSTAND_PARENT_HARNESS_INSTANCE_ID
 )
 
 Set-StrictMode -Version Latest
@@ -127,6 +135,149 @@ function New-SessionOutcome {
   }
 }
 
+function Read-JsonFileIfPresent {
+  param([AllowNull()][string]$Path)
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return $null
+  }
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return $null
+  }
+
+  try {
+    return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -Depth 20
+  } catch {
+    return $null
+  }
+}
+
+function Get-FirstNonEmptyText {
+  param([AllowNull()][object[]]$Values)
+
+  foreach ($value in @($Values)) {
+    if ($null -eq $value) {
+      continue
+    }
+    $text = [string]$value
+    if (-not [string]::IsNullOrWhiteSpace($text)) {
+      return $text
+    }
+  }
+
+  return $null
+}
+
+function Resolve-TestStandExecutionCellContext {
+  param(
+    [AllowNull()][string]$ExecutionCellLeasePath,
+    [AllowNull()][string]$ExecutionCellId,
+    [AllowNull()][string]$ExecutionCellLeaseId,
+    [AllowNull()][string]$ExecutionCellSuiteClass,
+    [AllowNull()][string]$HarnessInstanceId,
+    [AllowNull()][string]$ParentHarnessInstanceId,
+    [AllowNull()][string]$AgentId,
+    [AllowNull()][string]$AgentClass,
+    [AllowNull()][string]$SuiteClass,
+    [AllowNull()][string]$PlaneName,
+    [AllowNull()][string]$Role,
+    [Parameter(Mandatory)][string]$OutputRoot
+  )
+
+  $resolvedLeasePath = if ([string]::IsNullOrWhiteSpace($ExecutionCellLeasePath)) {
+    $null
+  } else {
+    $resolvedLease = Resolve-Path -LiteralPath $ExecutionCellLeasePath -ErrorAction SilentlyContinue
+    if ($resolvedLease) { $resolvedLease.Path } else { $ExecutionCellLeasePath }
+  }
+  $lease = Read-JsonFileIfPresent -Path $resolvedLeasePath
+  $leaseRequest = if ($lease -and $lease.PSObject.Properties['request']) { $lease.request } else { $null }
+  $leaseGrant = if ($lease -and $lease.PSObject.Properties['grant']) { $lease.grant } else { $null }
+  $leaseCommit = if ($lease -and $lease.PSObject.Properties['commit']) { $lease.commit } else { $null }
+  $leaseHost = if ($lease -and $lease.PSObject.Properties['host']) { $lease.host } else { $null }
+  $leaseCellId = if ($lease -and $lease.PSObject.Properties['cellId']) { $lease.cellId } else { $null }
+  $leaseGrantLeaseId = if ($leaseGrant -and $leaseGrant.PSObject.Properties['leaseId']) { $leaseGrant.leaseId } else { $null }
+  $leaseRequestAgentId = if ($leaseRequest -and $leaseRequest.PSObject.Properties['agentId']) { $leaseRequest.agentId } else { $null }
+  $leaseRequestAgentClass = if ($leaseRequest -and $leaseRequest.PSObject.Properties['agentClass']) { $leaseRequest.agentClass } else { $null }
+  $leaseRequestCellClass = if ($leaseRequest -and $leaseRequest.PSObject.Properties['cellClass']) { $leaseRequest.cellClass } else { $null }
+  $leaseRequestSuiteClass = if ($leaseRequest -and $leaseRequest.PSObject.Properties['suiteClass']) { $leaseRequest.suiteClass } else { $null }
+  $leaseRequestPlaneBinding = if ($leaseRequest -and $leaseRequest.PSObject.Properties['planeBinding']) { $leaseRequest.planeBinding } else { $null }
+  $leaseRequestWorkingRoot = if ($leaseRequest -and $leaseRequest.PSObject.Properties['workingRoot']) { $leaseRequest.workingRoot } else { $null }
+  $leaseRequestArtifactRoot = if ($leaseRequest -and $leaseRequest.PSObject.Properties['artifactRoot']) { $leaseRequest.artifactRoot } else { $null }
+  $leaseRequestHarnessKind = if ($leaseRequest -and $leaseRequest.PSObject.Properties['harnessKind']) { $leaseRequest.harnessKind } else { $null }
+  $leaseRequestOperatorAuthorizationRef = if ($leaseRequest -and $leaseRequest.PSObject.Properties['operatorAuthorizationRef']) { $leaseRequest.operatorAuthorizationRef } else { $null }
+  $leaseCommitWorkingRoot = if ($leaseCommit -and $leaseCommit.PSObject.Properties['workingRoot']) { $leaseCommit.workingRoot } else { $null }
+  $leaseCommitArtifactRoot = if ($leaseCommit -and $leaseCommit.PSObject.Properties['artifactRoot']) { $leaseCommit.artifactRoot } else { $null }
+  $leaseHostIsolatedLaneGroupId = if ($leaseHost -and $leaseHost.PSObject.Properties['isolatedLaneGroupId']) { $leaseHost.isolatedLaneGroupId } else { $null }
+  $leaseHostFingerprintSha256 = if ($leaseHost -and $leaseHost.PSObject.Properties['fingerprintSha256']) { $leaseHost.fingerprintSha256 } else { $null }
+  $leaseGrantPremiumSaganMode = if ($leaseGrant -and $leaseGrant.PSObject.Properties['premiumSaganMode']) { $leaseGrant.premiumSaganMode } else { $null }
+
+  $resolvedCellId = Get-FirstNonEmptyText @($ExecutionCellId, $leaseCellId)
+  $resolvedLeaseId = Get-FirstNonEmptyText @($ExecutionCellLeaseId, $leaseGrantLeaseId)
+  $resolvedAgentId = Get-FirstNonEmptyText @($AgentId, $leaseRequestAgentId)
+  $resolvedAgentClass = (Get-FirstNonEmptyText @($AgentClass, $leaseRequestAgentClass))
+  if ([string]::IsNullOrWhiteSpace($resolvedAgentClass)) {
+    $resolvedAgentClass = 'subagent'
+  }
+  $resolvedSuiteClass = Get-FirstNonEmptyText @($ExecutionCellSuiteClass, $leaseRequestSuiteClass, $SuiteClass)
+  $resolvedPlaneBinding = if ([string]::IsNullOrWhiteSpace($PlaneName)) {
+    Get-FirstNonEmptyText @($leaseRequestPlaneBinding, $(if ($resolvedSuiteClass -eq 'dual-plane-parity') { 'dual-plane-parity' } else { $null }))
+  } else {
+    $PlaneName
+  }
+  $resolvedWorkingRoot = Get-FirstNonEmptyText @($leaseCommitWorkingRoot, $leaseRequestWorkingRoot, $OutputRoot)
+  $resolvedArtifactRoot = Get-FirstNonEmptyText @($leaseCommitArtifactRoot, $leaseRequestArtifactRoot, $OutputRoot)
+  $resolvedHarnessKind = Get-FirstNonEmptyText @($leaseRequestHarnessKind, 'teststand-compare-harness')
+  $resolvedRole = Get-FirstNonEmptyText @($Role, $(if (-not [string]::IsNullOrWhiteSpace($ParentHarnessInstanceId)) { 'plane-child' } elseif ($resolvedSuiteClass -eq 'dual-plane-parity' -and [string]::IsNullOrWhiteSpace($PlaneName)) { 'coordinator' } else { 'single-plane' }))
+
+  $planeSuffix = if ($PlaneName -match '2026-64$') {
+    'x64'
+  } elseif ($PlaneName -match '2026-32$') {
+    'x32'
+  } else {
+    'plane'
+  }
+  $resolvedHarnessInstanceId = Get-FirstNonEmptyText @(
+    $HarnessInstanceId,
+    $(if (-not [string]::IsNullOrWhiteSpace($ParentHarnessInstanceId)) { '{0}-{1}' -f $ParentHarnessInstanceId, $planeSuffix } else { $null }),
+    $(if (-not [string]::IsNullOrWhiteSpace($resolvedCellId)) { '{0}-{1}' -f $resolvedHarnessKind, $resolvedCellId } else { $null }),
+    $(if (-not [string]::IsNullOrWhiteSpace($PlaneName)) { '{0}-{1}' -f $resolvedHarnessKind, $planeSuffix } else { $resolvedHarnessKind })
+  )
+
+  $executionCell = $null
+  if (-not [string]::IsNullOrWhiteSpace($resolvedCellId) -or -not [string]::IsNullOrWhiteSpace($resolvedLeaseId) -or -not [string]::IsNullOrWhiteSpace($resolvedAgentId) -or -not [string]::IsNullOrWhiteSpace($resolvedLeasePath)) {
+    $executionCell = [ordered]@{
+      cellId = $resolvedCellId
+      leaseId = $resolvedLeaseId
+      leasePath = $resolvedLeasePath
+      agentId = $resolvedAgentId
+      agentClass = $resolvedAgentClass
+      cellClass = Get-FirstNonEmptyText @($leaseRequestCellClass)
+      suiteClass = $resolvedSuiteClass
+      planeBinding = $resolvedPlaneBinding
+      premiumSaganMode = if ($null -eq $leaseGrantPremiumSaganMode) { $false } else { [bool]$leaseGrantPremiumSaganMode }
+      operatorAuthorizationRef = Get-FirstNonEmptyText @($leaseRequestOperatorAuthorizationRef)
+      workingRoot = $resolvedWorkingRoot
+      artifactRoot = $resolvedArtifactRoot
+      isolatedLaneGroupId = Get-FirstNonEmptyText @($leaseHostIsolatedLaneGroupId)
+      hostOsFingerprintSha256 = Get-FirstNonEmptyText @($leaseHostFingerprintSha256)
+    }
+  }
+
+  $harnessInstance = [ordered]@{
+    harnessKind = $resolvedHarnessKind
+    instanceId = $resolvedHarnessInstanceId
+    role = $resolvedRole
+    planeBinding = $resolvedPlaneBinding
+    parentInstanceId = Get-FirstNonEmptyText @($ParentHarnessInstanceId)
+  }
+
+  return [pscustomobject]@{
+    executionCell = $executionCell
+    harnessInstance = $harnessInstance
+  }
+}
+
 function Invoke-TestStandSinglePlaneSession {
   param(
     [Parameter(Mandatory)][string]$RepoRoot,
@@ -137,6 +288,7 @@ function Invoke-TestStandSinglePlaneSession {
     [AllowNull()][string]$LVComparePath,
     [Parameter(Mandatory)][string]$OutputRoot,
     [ValidateSet('detect','spawn','skip')][string]$Warmup,
+    [AllowNull()][string]$SuiteClass,
     [AllowNull()][string[]]$Flags,
     [bool]$ReplaceFlags,
     [ValidateSet('full','legacy')][string]$NoiseProfile,
@@ -148,10 +300,20 @@ function Invoke-TestStandSinglePlaneSession {
     [AllowNull()][string]$StagingRoot,
     [bool]$SameNameHint,
     [bool]$AllowSameLeaf,
-    [AllowNull()][string]$PlaneName
+    [AllowNull()][string]$PlaneName,
+    [AllowNull()][string]$AgentId,
+    [AllowNull()][string]$AgentClass,
+    [AllowNull()][string]$ExecutionCellLeasePath,
+    [AllowNull()][string]$ExecutionCellId,
+    [AllowNull()][string]$ExecutionCellLeaseId,
+    [AllowNull()][string]$ExecutionCellSuiteClass,
+    [AllowNull()][string]$HarnessInstanceId,
+    [AllowNull()][string]$ParentHarnessInstanceId,
+    [AllowNull()][string]$HarnessRole
   )
 
   $resolvedOutputRoot = Resolve-AbsolutePath -RepoRoot $RepoRoot -Candidate $OutputRoot
+  $cellLeaseContext = Resolve-TestStandExecutionCellContext -ExecutionCellLeasePath $ExecutionCellLeasePath -ExecutionCellId $ExecutionCellId -ExecutionCellLeaseId $ExecutionCellLeaseId -ExecutionCellSuiteClass $ExecutionCellSuiteClass -HarnessInstanceId $HarnessInstanceId -ParentHarnessInstanceId $ParentHarnessInstanceId -AgentId $AgentId -AgentClass $AgentClass -SuiteClass $SuiteClass -PlaneName $PlaneName -Role $HarnessRole -OutputRoot $resolvedOutputRoot
   $paths = [ordered]@{
     warmupDir = Join-Path $resolvedOutputRoot '_warmup'
     compareDir = Join-Path $resolvedOutputRoot 'compare'
@@ -309,6 +471,8 @@ function Invoke-TestStandSinglePlaneSession {
     outcome = New-SessionOutcome -Capture $cap
     error = $err
     exitCode = if ($cap) { [int]$cap.exitCode } else { 1 }
+    executionCell = $cellLeaseContext.executionCell
+    harnessInstance = $cellLeaseContext.harnessInstance
   }
 
   return [pscustomobject]$planeRecord
@@ -327,6 +491,8 @@ function Write-TestStandV1SessionIndex {
     compare = $PlaneSession.compare
     outcome = $PlaneSession.outcome
     error   = $PlaneSession.error
+    executionCell = $PlaneSession.executionCell
+    harnessInstance = $PlaneSession.harnessInstance
   }
 
   $indexPath = Join-Path $OutputRoot 'session-index.json'
@@ -443,7 +609,14 @@ function Start-DualPlaneChildProcess {
     [bool]$DisableTimeout,
     [AllowNull()][string]$StagingRoot,
     [bool]$SameNameHint,
-    [bool]$AllowSameLeaf
+    [bool]$AllowSameLeaf,
+    [AllowNull()][string]$AgentId,
+    [AllowNull()][string]$AgentClass,
+    [AllowNull()][string]$ExecutionCellLeasePath,
+    [AllowNull()][string]$ExecutionCellId,
+    [AllowNull()][string]$ExecutionCellLeaseId,
+    [AllowNull()][string]$ExecutionCellSuiteClass,
+    [AllowNull()][string]$ParentHarnessInstanceId
   )
 
   $pwsh = (Get-Command pwsh -ErrorAction Stop).Source
@@ -494,6 +667,34 @@ function Start-DualPlaneChildProcess {
     $args.Add('-StagingRoot') | Out-Null
     $args.Add($StagingRoot) | Out-Null
   }
+  if ($AgentId) {
+    $args.Add('-AgentId') | Out-Null
+    $args.Add($AgentId) | Out-Null
+  }
+  if ($AgentClass) {
+    $args.Add('-AgentClass') | Out-Null
+    $args.Add($AgentClass) | Out-Null
+  }
+  if ($ExecutionCellLeasePath) {
+    $args.Add('-ExecutionCellLeasePath') | Out-Null
+    $args.Add($ExecutionCellLeasePath) | Out-Null
+  }
+  if ($ExecutionCellId) {
+    $args.Add('-ExecutionCellId') | Out-Null
+    $args.Add($ExecutionCellId) | Out-Null
+  }
+  if ($ExecutionCellLeaseId) {
+    $args.Add('-ExecutionCellLeaseId') | Out-Null
+    $args.Add($ExecutionCellLeaseId) | Out-Null
+  }
+  if ($ExecutionCellSuiteClass) {
+    $args.Add('-ExecutionCellSuiteClass') | Out-Null
+    $args.Add($ExecutionCellSuiteClass) | Out-Null
+  }
+  if ($ParentHarnessInstanceId) {
+    $args.Add('-ParentHarnessInstanceId') | Out-Null
+    $args.Add($ParentHarnessInstanceId) | Out-Null
+  }
   if ($SameNameHint) { $args.Add('-SameNameHint') | Out-Null }
   if ($AllowSameLeaf) { $args.Add('-AllowSameLeaf') | Out-Null }
 
@@ -522,11 +723,18 @@ function Invoke-DualPlaneParitySuite {
     [bool]$DisableTimeout,
     [AllowNull()][string]$StagingRoot,
     [bool]$SameNameHint,
-    [bool]$AllowSameLeaf
+    [bool]$AllowSameLeaf,
+    [AllowNull()][string]$AgentId,
+    [AllowNull()][string]$AgentClass,
+    [AllowNull()][string]$ExecutionCellLeasePath,
+    [AllowNull()][string]$ExecutionCellId,
+    [AllowNull()][string]$ExecutionCellLeaseId,
+    [AllowNull()][string]$HarnessInstanceId
   )
 
   $resolvedOutputRoot = Resolve-AbsolutePath -RepoRoot $RepoRoot -Candidate $OutputRoot
   New-Dir $resolvedOutputRoot
+  $dualPlaneContext = Resolve-TestStandExecutionCellContext -ExecutionCellLeasePath $ExecutionCellLeasePath -ExecutionCellId $ExecutionCellId -ExecutionCellLeaseId $ExecutionCellLeaseId -ExecutionCellSuiteClass 'dual-plane-parity' -HarnessInstanceId $HarnessInstanceId -AgentId $AgentId -AgentClass $AgentClass -SuiteClass 'dual-plane-parity' -PlaneName $null -Role 'coordinator' -OutputRoot $resolvedOutputRoot
 
   $x64LabVIEW = if ([string]::IsNullOrWhiteSpace($LabVIEW64ExePath)) {
     if ([string]::IsNullOrWhiteSpace($DefaultLabVIEWExePath)) { Resolve-LabVIEW2026Path -Bitness '64' } else { $DefaultLabVIEWExePath }
@@ -543,8 +751,8 @@ function Invoke-DualPlaneParitySuite {
 
   $suiteTimeout = if ($DisableTimeout -or $TimeoutSeconds -le 0) { 0 } else { [Math]::Max(30, $TimeoutSeconds + 30) }
 
-  $x64Process = Start-DualPlaneChildProcess -ScriptPath $ScriptPath -PlaneKey 'x64' -BaseVi $BaseVi -HeadVi $HeadVi -OutputRoot $x64Root -LabVIEWExePath $x64LabVIEW -LabVIEWBitness '64' -LVComparePath $LVComparePath -Warmup $Warmup -Flags $Flags -ReplaceFlags:$ReplaceFlags -NoiseProfile $NoiseProfile -RenderReport:$RenderReport -CloseLabVIEW:$CloseLabVIEW -CloseLVCompare:$CloseLVCompare -TimeoutSeconds $TimeoutSeconds -DisableTimeout:$DisableTimeout -StagingRoot $StagingRoot -SameNameHint:$SameNameHint -AllowSameLeaf:$AllowSameLeaf
-  $x32Process = Start-DualPlaneChildProcess -ScriptPath $ScriptPath -PlaneKey 'x32' -BaseVi $BaseVi -HeadVi $HeadVi -OutputRoot $x32Root -LabVIEWExePath $x32LabVIEW -LabVIEWBitness '32' -LVComparePath $LVComparePath -Warmup $Warmup -Flags $Flags -ReplaceFlags:$ReplaceFlags -NoiseProfile $NoiseProfile -RenderReport:$RenderReport -CloseLabVIEW:$CloseLabVIEW -CloseLVCompare:$CloseLVCompare -TimeoutSeconds $TimeoutSeconds -DisableTimeout:$DisableTimeout -StagingRoot $StagingRoot -SameNameHint:$SameNameHint -AllowSameLeaf:$AllowSameLeaf
+  $x64Process = Start-DualPlaneChildProcess -ScriptPath $ScriptPath -PlaneKey 'x64' -BaseVi $BaseVi -HeadVi $HeadVi -OutputRoot $x64Root -LabVIEWExePath $x64LabVIEW -LabVIEWBitness '64' -LVComparePath $LVComparePath -Warmup $Warmup -Flags $Flags -ReplaceFlags:$ReplaceFlags -NoiseProfile $NoiseProfile -RenderReport:$RenderReport -CloseLabVIEW:$CloseLabVIEW -CloseLVCompare:$CloseLVCompare -TimeoutSeconds $TimeoutSeconds -DisableTimeout:$DisableTimeout -StagingRoot $StagingRoot -SameNameHint:$SameNameHint -AllowSameLeaf:$AllowSameLeaf -AgentId $AgentId -AgentClass $AgentClass -ExecutionCellLeasePath $ExecutionCellLeasePath -ExecutionCellId $ExecutionCellId -ExecutionCellLeaseId $ExecutionCellLeaseId -ExecutionCellSuiteClass 'dual-plane-parity' -ParentHarnessInstanceId $dualPlaneContext.harnessInstance.instanceId
+  $x32Process = Start-DualPlaneChildProcess -ScriptPath $ScriptPath -PlaneKey 'x32' -BaseVi $BaseVi -HeadVi $HeadVi -OutputRoot $x32Root -LabVIEWExePath $x32LabVIEW -LabVIEWBitness '32' -LVComparePath $LVComparePath -Warmup $Warmup -Flags $Flags -ReplaceFlags:$ReplaceFlags -NoiseProfile $NoiseProfile -RenderReport:$RenderReport -CloseLabVIEW:$CloseLabVIEW -CloseLVCompare:$CloseLVCompare -TimeoutSeconds $TimeoutSeconds -DisableTimeout:$DisableTimeout -StagingRoot $StagingRoot -SameNameHint:$SameNameHint -AllowSameLeaf:$AllowSameLeaf -AgentId $AgentId -AgentClass $AgentClass -ExecutionCellLeasePath $ExecutionCellLeasePath -ExecutionCellId $ExecutionCellId -ExecutionCellLeaseId $ExecutionCellLeaseId -ExecutionCellSuiteClass 'dual-plane-parity' -ParentHarnessInstanceId $dualPlaneContext.harnessInstance.instanceId
 
   Wait-ForChildProcesses -Processes @($x64Process, $x32Process) -TimeoutSeconds $suiteTimeout
 
@@ -570,6 +778,8 @@ function Invoke-DualPlaneParitySuite {
     outcome = $x64Index.outcome
     error = $x64Index.error
     exitCode = if ($null -ne $x64Index.outcome) { [int]$x64Index.outcome.exitCode } else { if ($x64Process.ExitCode -is [int]) { [int]$x64Process.ExitCode } else { 1 } }
+    executionCell = $x64Index.executionCell
+    harnessInstance = $x64Index.harnessInstance
   }
   $x32Session = [pscustomobject][ordered]@{
     plane = 'native-labview-2026-32'
@@ -581,6 +791,8 @@ function Invoke-DualPlaneParitySuite {
     outcome = $x32Index.outcome
     error = $x32Index.error
     exitCode = if ($null -ne $x32Index.outcome) { [int]$x32Index.outcome.exitCode } else { if ($x32Process.ExitCode -is [int]) { [int]$x32Process.ExitCode } else { 1 } }
+    executionCell = $x32Index.executionCell
+    harnessInstance = $x32Index.harnessInstance
   }
 
   $parity = New-DualPlaneParitySummary -X64Session $x64Session -X32Session $x32Session
@@ -601,6 +813,8 @@ function Invoke-DualPlaneParitySuite {
     compare = $x64Session.compare
     outcome = $x64Session.outcome
     error = $topError
+    executionCell = $dualPlaneContext.executionCell
+    harnessInstance = $dualPlaneContext.harnessInstance
     planes = [ordered]@{
       x64 = $x64Session
       x32 = $x32Session
@@ -637,7 +851,7 @@ if (-not [System.IO.Path]::IsPathRooted($OutputRoot)) {
 }
 
 if ($SuiteClass -eq 'dual-plane-parity' -and -not $InternalSinglePlane) {
-  Invoke-DualPlaneParitySuite -RepoRoot $repo -ScriptPath $PSCommandPath -BaseVi $BaseVi -HeadVi $HeadVi -OutputRoot $OutputRoot -DefaultLabVIEWExePath $LabVIEWExePath -LabVIEW64ExePath $LabVIEW64ExePath -LabVIEW32ExePath $LabVIEW32ExePath -LVComparePath $LVComparePath -Warmup $Warmup -Flags $Flags -ReplaceFlags:$ReplaceFlags -NoiseProfile $NoiseProfile -RenderReport:$RenderReport -CloseLabVIEW:$CloseLabVIEW -CloseLVCompare:$CloseLVCompare -TimeoutSeconds $TimeoutSeconds -DisableTimeout:$DisableTimeout -StagingRoot $StagingRoot -SameNameHint:$SameNameHint -AllowSameLeaf:$AllowSameLeaf
+  Invoke-DualPlaneParitySuite -RepoRoot $repo -ScriptPath $PSCommandPath -BaseVi $BaseVi -HeadVi $HeadVi -OutputRoot $OutputRoot -DefaultLabVIEWExePath $LabVIEWExePath -LabVIEW64ExePath $LabVIEW64ExePath -LabVIEW32ExePath $LabVIEW32ExePath -LVComparePath $LVComparePath -Warmup $Warmup -Flags $Flags -ReplaceFlags:$ReplaceFlags -NoiseProfile $NoiseProfile -RenderReport:$RenderReport -CloseLabVIEW:$CloseLabVIEW -CloseLVCompare:$CloseLVCompare -TimeoutSeconds $TimeoutSeconds -DisableTimeout:$DisableTimeout -StagingRoot $StagingRoot -SameNameHint:$SameNameHint -AllowSameLeaf:$AllowSameLeaf -AgentId $AgentId -AgentClass $AgentClass -ExecutionCellLeasePath $ExecutionCellLeasePath -ExecutionCellId $ExecutionCellId -ExecutionCellLeaseId $ExecutionCellLeaseId -HarnessInstanceId $HarnessInstanceId
   return
 }
 
@@ -646,8 +860,9 @@ $planeName = switch ($InternalPlaneKey) {
   'x32' { 'native-labview-2026-32' }
   default { $null }
 }
+$harnessRole = if ($InternalSinglePlane -and -not [string]::IsNullOrWhiteSpace($InternalPlaneKey)) { 'plane-child' } else { 'single-plane' }
 
-$singlePlaneSession = Invoke-TestStandSinglePlaneSession -RepoRoot $repo -BaseVi $BaseVi -HeadVi $HeadVi -LabVIEWExePath $LabVIEWExePath -LabVIEWBitness $LabVIEWBitness -LVComparePath $LVComparePath -OutputRoot $OutputRoot -Warmup $Warmup -Flags $Flags -ReplaceFlags:$ReplaceFlags -NoiseProfile $NoiseProfile -RenderReport:$RenderReport -CloseLabVIEW:$CloseLabVIEW -CloseLVCompare:$CloseLVCompare -TimeoutSeconds $TimeoutSeconds -DisableTimeout:$DisableTimeout -StagingRoot $StagingRoot -SameNameHint:$SameNameHint -AllowSameLeaf:$AllowSameLeaf -PlaneName $planeName
+$singlePlaneSession = Invoke-TestStandSinglePlaneSession -RepoRoot $repo -BaseVi $BaseVi -HeadVi $HeadVi -LabVIEWExePath $LabVIEWExePath -LabVIEWBitness $LabVIEWBitness -LVComparePath $LVComparePath -OutputRoot $OutputRoot -Warmup $Warmup -Flags $Flags -ReplaceFlags:$ReplaceFlags -NoiseProfile $NoiseProfile -RenderReport:$RenderReport -CloseLabVIEW:$CloseLabVIEW -CloseLVCompare:$CloseLVCompare -TimeoutSeconds $TimeoutSeconds -DisableTimeout:$DisableTimeout -StagingRoot $StagingRoot -SameNameHint:$SameNameHint -AllowSameLeaf:$AllowSameLeaf -PlaneName $planeName -AgentId $AgentId -AgentClass $AgentClass -ExecutionCellLeasePath $ExecutionCellLeasePath -ExecutionCellId $ExecutionCellId -ExecutionCellLeaseId $ExecutionCellLeaseId -ExecutionCellSuiteClass $ExecutionCellSuiteClass -HarnessInstanceId $HarnessInstanceId -ParentHarnessInstanceId $ParentHarnessInstanceId -HarnessRole $harnessRole -SuiteClass $SuiteClass
 
 Write-TestStandV1SessionIndex -OutputRoot $OutputRoot -PlaneSession $singlePlaneSession
 
