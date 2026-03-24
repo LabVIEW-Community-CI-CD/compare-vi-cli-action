@@ -661,6 +661,9 @@ pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim
   `node tools/npm/run-script.mjs priority:handoff`, which now prints the
   entrypoint index alongside the standing-priority snapshot and other handoff
   summaries.
+- Refresh the compact hot/warm durable memory view directly with
+  `node tools/npm/run-script.mjs priority:context:concentrate`, which writes
+  `tests/results/_agent/handoff/sagan-context-concentrator.json`.
 - The overall future-agent handoff contract is summarized in
   [`docs/knowledgebase/Agent-Handoff-Surfaces.md`](./knowledgebase/Agent-Handoff-Surfaces.md).
 - See [`WATCHER_TELEMETRY_DX.md`](./WATCHER_TELEMETRY_DX.md) for automation response expectations.
