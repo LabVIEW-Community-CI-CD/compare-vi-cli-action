@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     timeout-minutes: 45
     env:
       UNBLOCK_GUARD: '1'
@@ -165,4 +165,3 @@ jobs:
         snapshot-path: tests/results/runner-unblock-snapshot.json
         cleanup: "${{ env.UNBLOCK_GUARD == '1' }}"
         process-names: conhost,pwsh,LabVIEW,LVCompare
-

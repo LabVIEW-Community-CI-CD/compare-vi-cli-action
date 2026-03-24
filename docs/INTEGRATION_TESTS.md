@@ -28,7 +28,7 @@ Artifacts appear under `tests/results/` (JSON summary, results XML, dispatcher l
 
 ## Checklist before running
 
-- Runner online with labels `[self-hosted, Windows, X64]`.
+- Runner online with labels `[self-hosted, Windows, X64, comparevi, capability-ingress]`.
 - VI fixtures available and accessible by runner service.
 - LVCompare not blocked by antivirus / pending updates.
 
@@ -45,4 +45,3 @@ Artifacts appear under `tests/results/` (JSON summary, results XML, dispatcher l
 - [`docs/SELFHOSTED_CI_SETUP.md`](./SELFHOSTED_CI_SETUP.md)
 - [`docs/E2E_TESTING_GUIDE.md`](./E2E_TESTING_GUIDE.md)
 - [`docs/TROUBLESHOOTING.md`](./TROUBLESHOOTING.md)
-

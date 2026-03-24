@@ -15,7 +15,7 @@ concurrency:
 jobs:
   runbook-check:
     if: ${{ github.event.repository.fork != true && !startsWith(github.ref, 'refs/tags/') }}
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     timeout-minutes: 3
     steps:
       - name: Checkout
