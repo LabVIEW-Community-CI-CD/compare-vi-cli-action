@@ -232,13 +232,13 @@ jobs:
         run: npm ci
 
       - name: Download Linux bootstrap artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cookiecutter-bootstrap-linux
           path: tests/results/_agent
 
       - name: Download Windows bootstrap artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: cookiecutter-bootstrap-windows
           path: tests/results/_agent
