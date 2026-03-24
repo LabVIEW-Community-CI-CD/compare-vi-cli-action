@@ -52,6 +52,7 @@
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
         "queueAuthoritySource",
+        "executionTopology",
         "executionBundleStatus",
         "executionBundlePlaneBinding",
         "executionBundlePremiumSaganMode",
@@ -70,6 +71,7 @@
         "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
         "queueHandoffPrUrl": { "type": ["string", "null"] },
         "queueAuthoritySource": { "type": ["string", "null"] },
+        "executionTopology": { "$ref": "#/$defs/executionTopology" },
         "executionBundleStatus": { "type": ["string", "null"] },
         "executionBundlePlaneBinding": { "type": ["string", "null"] },
         "executionBundlePremiumSaganMode": { "type": "boolean" },
@@ -260,6 +262,12 @@
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
         "queueAuthoritySource",
+        "executionTopologyStatus",
+        "executionTopologyExecutionPlane",
+        "executionTopologyProviderId",
+        "executionTopologyWorkerSlotId",
+        "executionTopologyActiveLogicalLaneCount",
+        "executionTopologySeededLogicalLaneCount",
         "executionBundleStatus",
         "executionBundlePlaneBinding",
         "executionBundlePremiumSaganMode",
@@ -294,6 +302,12 @@
         "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
         "queueHandoffPrUrl": { "type": ["string", "null"] },
         "queueAuthoritySource": { "type": ["string", "null"] },
+        "executionTopologyStatus": { "type": ["string", "null"] },
+        "executionTopologyExecutionPlane": { "type": ["string", "null"] },
+        "executionTopologyProviderId": { "type": ["string", "null"] },
+        "executionTopologyWorkerSlotId": { "type": ["string", "null"] },
+        "executionTopologyActiveLogicalLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "executionTopologySeededLogicalLaneCount": { "type": ["integer", "null"], "minimum": 0 },
         "executionBundleStatus": { "type": ["string", "null"] },
         "executionBundlePlaneBinding": { "type": ["string", "null"] },
         "executionBundlePremiumSaganMode": { "type": "boolean" },
@@ -313,6 +327,110 @@
           "type": "array",
           "items": { "type": "string" }
         }
+      }
+    }
+  },
+  "$defs": {
+    "executionBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "planeBinding",
+        "premiumSaganMode",
+        "reciprocalLinkReady",
+        "effectiveBillableRateUsdPerHour",
+        "executionCellLeaseId",
+        "dockerLaneLeaseId",
+        "harnessInstanceId",
+        "cellId",
+        "laneId",
+        "isolatedLaneGroupId",
+        "fingerprintSha256"
+      ],
+      "properties": {
+        "status": { "type": ["string", "null"] },
+        "planeBinding": { "type": ["string", "null"] },
+        "premiumSaganMode": { "type": "boolean" },
+        "reciprocalLinkReady": { "type": "boolean" },
+        "effectiveBillableRateUsdPerHour": { "type": ["number", "null"], "minimum": 0 },
+        "executionCellLeaseId": { "type": ["string", "null"] },
+        "dockerLaneLeaseId": { "type": ["string", "null"] },
+        "harnessInstanceId": { "type": ["string", "null"] },
+        "cellId": { "type": ["string", "null"] },
+        "laneId": { "type": ["string", "null"] },
+        "isolatedLaneGroupId": { "type": ["string", "null"] },
+        "fingerprintSha256": { "type": ["string", "null"] }
+      }
+    },
+    "executionTopologyLogicalLaneActivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["activeLaneCount", "seededLaneCount", "catalogCount"],
+      "properties": {
+        "activeLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "seededLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "catalogCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "executionTopologyProviderDispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerId",
+        "providerKind",
+        "executionPlane",
+        "assignmentMode",
+        "dispatchSurface",
+        "completionMode",
+        "workerSlotId",
+        "dispatchStatus",
+        "completionStatus",
+        "failureClass"
+      ],
+      "properties": {
+        "providerId": { "type": ["string", "null"] },
+        "providerKind": { "type": ["string", "null"] },
+        "executionPlane": { "type": ["string", "null"] },
+        "assignmentMode": { "type": ["string", "null"] },
+        "dispatchSurface": { "type": ["string", "null"] },
+        "completionMode": { "type": ["string", "null"] },
+        "workerSlotId": { "type": ["string", "null"] },
+        "dispatchStatus": { "type": ["string", "null"] },
+        "completionStatus": { "type": ["string", "null"] },
+        "failureClass": { "type": ["string", "null"] }
+      }
+    },
+    "executionTopology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "executionPlane",
+        "providerId",
+        "workerSlotId",
+        "activeLogicalLaneCount",
+        "seededLogicalLaneCount",
+        "catalogCount",
+        "premiumSaganMode",
+        "reciprocalLinkReady",
+        "logicalLaneActivation",
+        "providerDispatch",
+        "executionBundle"
+      ],
+      "properties": {
+        "status": { "type": ["string", "null"] },
+        "executionPlane": { "type": ["string", "null"] },
+        "providerId": { "type": ["string", "null"] },
+        "workerSlotId": { "type": ["string", "null"] },
+        "activeLogicalLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "seededLogicalLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "catalogCount": { "type": "integer", "minimum": 0 },
+        "premiumSaganMode": { "type": "boolean" },
+        "reciprocalLinkReady": { "type": "boolean" },
+        "logicalLaneActivation": { "$ref": "#/$defs/executionTopologyLogicalLaneActivation" },
+        "providerDispatch": { "$ref": "#/$defs/executionTopologyProviderDispatch" },
+        "executionBundle": { "$ref": "#/$defs/executionBundle" }
       }
     }
   }

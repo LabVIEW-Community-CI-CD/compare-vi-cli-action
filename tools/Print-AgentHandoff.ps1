@@ -1569,6 +1569,14 @@ try {
         Write-Host ("  pr       : {0}" -f (Format-NullableValue $governor.summary.queueHandoffPrUrl))
       }
     }
+    if ($governor.summary.PSObject.Properties['executionTopologyStatus'] -and $governor.summary.executionTopologyStatus) {
+      Write-Host ("  execTopo : {0}" -f (Format-NullableValue $governor.summary.executionTopologyStatus))
+      Write-Host ("  execProv : {0}" -f (Format-NullableValue $governor.summary.executionTopologyProviderId))
+      Write-Host ("  execSlot : {0}" -f (Format-NullableValue $governor.summary.executionTopologyWorkerSlotId))
+      Write-Host ("  execLanes: {0}/{1}" -f
+        (Format-NullableValue $governor.summary.executionTopologyActiveLogicalLaneCount),
+        (Format-NullableValue $governor.summary.executionTopologySeededLogicalLaneCount))
+    }
     if ($governor.summary.PSObject.Properties['executionBundleStatus'] -and $governor.summary.executionBundleStatus) {
       Write-Host ("  exec     : {0}" -f (Format-NullableValue $governor.summary.executionBundleStatus))
       Write-Host ("  execPlan : {0}" -f (Format-NullableValue $governor.summary.executionBundlePlaneBinding))
@@ -1615,6 +1623,14 @@ try {
         if ($governor.summary.PSObject.Properties['queueHandoffPrUrl'] -and $governor.summary.queueHandoffPrUrl) {
           $governorLines += ('- Queue PR: {0}' -f (Format-NullableValue $governor.summary.queueHandoffPrUrl))
         }
+      }
+      if ($governor.summary.PSObject.Properties['executionTopologyStatus'] -and $governor.summary.executionTopologyStatus) {
+        $governorLines += ('- Execution topology: {0}' -f (Format-NullableValue $governor.summary.executionTopologyStatus))
+        $governorLines += ('- Execution provider: {0}' -f (Format-NullableValue $governor.summary.executionTopologyProviderId))
+        $governorLines += ('- Execution worker slot: {0}' -f (Format-NullableValue $governor.summary.executionTopologyWorkerSlotId))
+        $governorLines += ('- Execution logical lanes active/seeded: {0}/{1}' -f
+          (Format-NullableValue $governor.summary.executionTopologyActiveLogicalLaneCount),
+          (Format-NullableValue $governor.summary.executionTopologySeededLogicalLaneCount))
       }
       if ($governor.summary.PSObject.Properties['executionBundleStatus'] -and $governor.summary.executionBundleStatus) {
         $governorLines += ('- Execution bundle: {0}' -f (Format-NullableValue $governor.summary.executionBundleStatus))
@@ -1667,6 +1683,14 @@ try {
         Write-Host ("  queueSrc : {0}" -f (Format-NullableValue $portfolio.summary.queueAuthoritySource))
       }
     }
+    if ($portfolio.summary.PSObject.Properties['executionTopologyStatus'] -and $portfolio.summary.executionTopologyStatus) {
+      Write-Host ("  execTopo : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyStatus))
+      Write-Host ("  execProv : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyProviderId))
+      Write-Host ("  execSlot : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyWorkerSlotId))
+      Write-Host ("  execLanes: {0}/{1}" -f
+        (Format-NullableValue $portfolio.summary.executionTopologyActiveLogicalLaneCount),
+        (Format-NullableValue $portfolio.summary.executionTopologySeededLogicalLaneCount))
+    }
     if ($portfolio.summary.PSObject.Properties['executionBundleStatus'] -and $portfolio.summary.executionBundleStatus) {
       Write-Host ("  exec     : {0}" -f (Format-NullableValue $portfolio.summary.executionBundleStatus))
       Write-Host ("  execPlan : {0}" -f (Format-NullableValue $portfolio.summary.executionBundlePlaneBinding))
@@ -1709,6 +1733,14 @@ try {
         if ($portfolio.summary.PSObject.Properties['queueAuthoritySource']) {
           $portfolioLines += ('- Queue source: {0}' -f (Format-NullableValue $portfolio.summary.queueAuthoritySource))
         }
+      }
+      if ($portfolio.summary.PSObject.Properties['executionTopologyStatus'] -and $portfolio.summary.executionTopologyStatus) {
+        $portfolioLines += ('- Execution topology: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyStatus))
+        $portfolioLines += ('- Execution provider: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyProviderId))
+        $portfolioLines += ('- Execution worker slot: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyWorkerSlotId))
+        $portfolioLines += ('- Execution logical lanes active/seeded: {0}/{1}' -f
+          (Format-NullableValue $portfolio.summary.executionTopologyActiveLogicalLaneCount),
+          (Format-NullableValue $portfolio.summary.executionTopologySeededLogicalLaneCount))
       }
       if ($portfolio.summary.PSObject.Properties['executionBundleStatus'] -and $portfolio.summary.executionBundleStatus) {
         $portfolioLines += ('- Execution bundle: {0}' -f (Format-NullableValue $portfolio.summary.executionBundleStatus))

@@ -54,6 +54,51 @@ function createCompareGovernorSummary(overrides = {}) {
         publishedBundleReleaseTag: 'v0.6.3-tools.14',
         publishedBundleAuthoritativeConsumerPin: null,
         externalBlocker: 'workflow-signing-secret-missing'
+      },
+      deliveryRuntime: {
+        executionTopology: {
+          status: 'bundle-committed',
+          executionPlane: 'hosted',
+          providerId: 'hosted-github-workflow',
+          workerSlotId: 'worker-slot-2',
+          activeLogicalLaneCount: 2,
+          seededLogicalLaneCount: 4,
+          catalogCount: 4,
+          premiumSaganMode: true,
+          reciprocalLinkReady: true,
+          logicalLaneActivation: {
+            activeLaneCount: 2,
+            seededLaneCount: 4,
+            catalogCount: 4
+          },
+          providerDispatch: {
+            providerId: 'hosted-github-workflow',
+            providerKind: 'hosted-github-workflow',
+            executionPlane: 'hosted',
+            assignmentMode: 'async-validation',
+            dispatchSurface: 'github-actions',
+            completionMode: 'async',
+            workerSlotId: 'worker-slot-2',
+            dispatchStatus: 'completed',
+            completionStatus: 'waiting',
+            failureClass: null
+          },
+          executionBundle: {
+            status: 'committed',
+            planeBinding: 'dual-plane-parity',
+            premiumSaganMode: true,
+            reciprocalLinkReady: true,
+            effectiveBillableRateUsdPerHour: 375,
+            executionCellLeaseId: 'exec-lease-123',
+            dockerLaneLeaseId: 'docker-lease-456',
+            harnessInstanceId: 'ts-harness-01',
+            cellId: 'cell-sagan-kernel',
+            laneId: 'docker-lane-01',
+            isolatedLaneGroupId:
+              'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+            fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+          }
+        }
       }
     },
     wake: {
@@ -97,6 +142,12 @@ function createCompareGovernorSummary(overrides = {}) {
       queueHandoffNextWakeCondition: 'checks-green',
       queueHandoffPrUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
       queueAuthoritySource: 'delivery-runtime',
+      executionTopologyStatus: 'bundle-committed',
+      executionTopologyExecutionPlane: 'hosted',
+      executionTopologyProviderId: 'hosted-github-workflow',
+      executionTopologyWorkerSlotId: 'worker-slot-2',
+      executionTopologyActiveLogicalLaneCount: 2,
+      executionTopologySeededLogicalLaneCount: 4,
       executionBundleStatus: 'committed',
       executionBundlePlaneBinding: 'dual-plane-parity',
       executionBundlePremiumSaganMode: true,
@@ -331,6 +382,12 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.summary.queueHandoffStatus, 'checks-pending');
   assert.equal(report.summary.queueHandoffNextWakeCondition, 'checks-green');
   assert.equal(report.summary.queueAuthoritySource, 'delivery-runtime');
+  assert.equal(report.summary.executionTopologyStatus, 'bundle-committed');
+  assert.equal(report.summary.executionTopologyExecutionPlane, 'hosted');
+  assert.equal(report.summary.executionTopologyProviderId, 'hosted-github-workflow');
+  assert.equal(report.summary.executionTopologyWorkerSlotId, 'worker-slot-2');
+  assert.equal(report.summary.executionTopologyActiveLogicalLaneCount, 2);
+  assert.equal(report.summary.executionTopologySeededLogicalLaneCount, 4);
   assert.equal(report.summary.executionBundleStatus, 'committed');
   assert.equal(report.summary.executionBundlePlaneBinding, 'dual-plane-parity');
   assert.equal(report.summary.executionBundlePremiumSaganMode, true);
@@ -349,6 +406,15 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.summary.viHistoryDistributorDependencyReleaseConductorApplyState, 'disabled');
   assert.equal(report.compare.queueHandoffPrUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
   assert.equal(report.compare.queueAuthoritySource, 'delivery-runtime');
+  assert.equal(report.compare.executionTopology.status, 'bundle-committed');
+  assert.equal(report.compare.executionTopology.executionPlane, 'hosted');
+  assert.equal(report.compare.executionTopology.providerId, 'hosted-github-workflow');
+  assert.equal(report.compare.executionTopology.workerSlotId, 'worker-slot-2');
+  assert.equal(report.compare.executionTopology.activeLogicalLaneCount, 2);
+  assert.equal(report.compare.executionTopology.seededLogicalLaneCount, 4);
+  assert.equal(report.compare.executionTopology.logicalLaneActivation.catalogCount, 4);
+  assert.equal(report.compare.executionTopology.providerDispatch.dispatchStatus, 'completed');
+  assert.equal(report.compare.executionTopology.executionBundle.status, 'committed');
   assert.equal(report.compare.executionBundleStatus, 'committed');
   assert.equal(report.compare.executionBundlePlaneBinding, 'dual-plane-parity');
   assert.equal(report.compare.executionBundlePremiumSaganMode, true);

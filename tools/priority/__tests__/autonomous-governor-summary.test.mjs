@@ -180,6 +180,16 @@ function createDeliveryRuntimeState(overrides = {}) {
     schema: 'priority/delivery-agent-runtime-state@v1',
     status: 'waiting-ci',
     laneLifecycle: 'waiting-ci',
+    logicalLaneActivation: {
+      seededLaneCount: 4,
+      activeLaneCount: 2,
+      catalog: [
+        { id: 'logical-lane-01', activationState: 'active' },
+        { id: 'logical-lane-02', activationState: 'active' },
+        { id: 'logical-lane-03', activationState: 'seeded' },
+        { id: 'logical-lane-04', activationState: 'seeded' }
+      ]
+    },
     queueAuthorityRefresh: {
       attempted: false,
       status: null,
@@ -205,6 +215,18 @@ function createDeliveryRuntimeState(overrides = {}) {
       blockerClass: 'none',
       nextWakeCondition: 'checks-green',
       reason: 'Waiting for hosted checks to finish before merge queue advances.',
+      providerDispatch: {
+        providerId: 'hosted-github-workflow',
+        providerKind: 'hosted-github-workflow',
+        executionPlane: 'hosted',
+        assignmentMode: 'async-validation',
+        dispatchSurface: 'github-actions',
+        completionMode: 'async',
+        workerSlotId: 'worker-slot-2',
+        dispatchStatus: 'completed',
+        completionStatus: 'waiting',
+        failureClass: null
+      },
       concurrentLaneStatus: {
         executionBundle: {
           status: 'committed',
@@ -424,6 +446,16 @@ test('runAutonomousGovernorSummary carries queue-owned delivery runtime state in
   assert.equal(report.compare.deliveryRuntime.laneLifecycle, 'waiting-ci');
   assert.equal(report.compare.deliveryRuntime.nextWakeCondition, 'checks-green');
   assert.equal(report.compare.deliveryRuntime.prUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.status, 'bundle-committed');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.executionPlane, 'hosted');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.providerId, 'hosted-github-workflow');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.workerSlotId, 'worker-slot-2');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.activeLogicalLaneCount, 2);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.seededLogicalLaneCount, 4);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.catalogCount, 4);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.logicalLaneActivation.activeLaneCount, 2);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.providerDispatch.dispatchStatus, 'completed');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.executionBundle.status, 'committed');
   assert.equal(report.compare.deliveryRuntime.executionBundle.status, 'committed');
   assert.equal(report.compare.deliveryRuntime.executionBundle.planeBinding, 'dual-plane-parity');
   assert.equal(report.compare.deliveryRuntime.executionBundle.premiumSaganMode, true);
@@ -431,6 +463,12 @@ test('runAutonomousGovernorSummary carries queue-owned delivery runtime state in
   assert.equal(report.compare.deliveryRuntime.executionBundle.effectiveBillableRateUsdPerHour, 375);
   assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.attempted, false);
   assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.summaryPath, null);
+  assert.equal(report.summary.executionTopologyStatus, 'bundle-committed');
+  assert.equal(report.summary.executionTopologyExecutionPlane, 'hosted');
+  assert.equal(report.summary.executionTopologyProviderId, 'hosted-github-workflow');
+  assert.equal(report.summary.executionTopologyWorkerSlotId, 'worker-slot-2');
+  assert.equal(report.summary.executionTopologyActiveLogicalLaneCount, 2);
+  assert.equal(report.summary.executionTopologySeededLogicalLaneCount, 4);
   assert.equal(report.summary.executionBundleStatus, 'committed');
   assert.equal(report.summary.executionBundlePlaneBinding, 'dual-plane-parity');
   assert.equal(report.summary.executionBundlePremiumSaganMode, true);
