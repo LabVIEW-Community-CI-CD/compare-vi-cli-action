@@ -257,6 +257,7 @@ function Invoke-PhaseLoop {
   param($r,$ctx)
   Write-PhaseBanner $r.name
   $env:LOOP_SIMULATE = ''  # ensure real
+  $loopFinalStatusPath = Join-Path ([System.IO.Path]::GetTempPath()) ("runbook-loop-final-status-" + [guid]::NewGuid().ToString() + ".json")
   # Optional quick/override controls via env (non-breaking defaults)
   try {
     if (-not $PSBoundParameters.ContainsKey('LoopIterations')) {
@@ -270,9 +271,36 @@ function Invoke-PhaseLoop {
   try { if ($env:RUNBOOK_LOOP_QUICK -match '^(?i:1|true|yes|on)$') { $failOn = $true } } catch {}
   $env:LOOP_FAIL_ON_DIFF = ($failOn ? 'true' : 'false')
   try {
-    & (Join-Path (Get-Location) 'scripts' 'Run-AutonomousIntegrationLoop.ps1')
+    & (Join-Path (Get-Location) 'scripts' 'Run-AutonomousIntegrationLoop.ps1') -FinalStatusJsonPath $loopFinalStatusPath
     $code = $LASTEXITCODE
     $r.details.exitCode = $code
+    $r.details.finalStatusPath = $loopFinalStatusPath
+    if (Test-Path -LiteralPath $loopFinalStatusPath -PathType Leaf) {
+      try {
+        $finalStatus = Get-Content -LiteralPath $loopFinalStatusPath -Raw | ConvertFrom-Json -ErrorAction Stop
+        $r.details.loopIterations = $finalStatus.iterations
+        if ($finalStatus.PSObject.Properties.Name -contains 'harness' -and $finalStatus.harness) {
+          $r.details.harness = $finalStatus.harness
+          $r.details.executionTopology = [ordered]@{
+            runtimeSurface = $finalStatus.harness.runtimeSurface
+            processModelClass = $finalStatus.harness.processModelClass
+            windowsOnly = $finalStatus.harness.windowsOnly
+            requestedSimultaneous = $finalStatus.harness.requestedSimultaneous
+            cellClass = $finalStatus.harness.cellClass
+            executionCellLeasePath = $finalStatus.harness.executionCellLeasePath
+            executionCellId = $finalStatus.harness.executionCellId
+            executionCellLeaseId = $finalStatus.harness.executionCellLeaseId
+            harnessInstanceLeasePath = $finalStatus.harness.harnessInstanceLeasePath
+            harnessInstanceLeaseId = $finalStatus.harness.harnessInstanceLeaseId
+            harnessInstanceId = $finalStatus.harness.harnessInstanceId
+          }
+        }
+      } catch {
+        $r.details.finalStatusReadError = $_.Exception.Message
+      }
+    } else {
+      $r.details.finalStatusMissing = $true
+    }
     if ($code -eq 0) { $r.status='Passed' } else { $r.status='Failed' }
   } catch {
     $r.details.error = $_.Exception.Message
@@ -387,4 +415,3 @@ if ($env:GITHUB_STEP_SUMMARY) {
 if ($PassThru) { return $final }
 
 if ($overallFailed) { exit 1 } else { exit 0 }
-
