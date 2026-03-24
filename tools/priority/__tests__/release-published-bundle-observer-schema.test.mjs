@@ -69,6 +69,14 @@ test('release published bundle observer report matches schema', async () => {
       localOperatorSession: { schema: 'comparevi-tools/local-operator-session@v1' },
       diagnosticsCommentRenderer: { schema: 'comparevi-tools/diagnostics-comment-renderer@v1' },
       hostedNiLinuxRunner: { schema: 'comparevi-tools/hosted-ni-linux-runner@v1' },
+      dockerImageContract: {
+        schema: 'comparevi-tools/docker-image-contract@v1',
+        images: {
+          hostedNiLinuxRunner: {
+            imageRef: 'nationalinstruments/labview:2026q1-linux'
+          }
+        }
+      },
       capabilities: {
         viHistory: {
           schema: 'comparevi-tools/vi-history-capability@v1',
@@ -84,6 +92,15 @@ test('release published bundle observer report matches schema', async () => {
             diagnosticsCommentRenderer: 'consumerContract.diagnosticsCommentRenderer',
             hostedNiLinuxRunner: 'consumerContract.hostedNiLinuxRunner'
           }
+        },
+        dockerProfile: {
+          schema: 'comparevi-tools/docker-profile-capability@v1',
+          capabilityId: 'docker-profile',
+          distributionRole: 'upstream-producer',
+          distributionModel: 'release-bundle',
+          bundleImportPath: 'tools/CompareVI.Tools/CompareVI.Tools.psd1',
+          releaseAssetPattern: 'CompareVI.Tools-v<release-version>.zip',
+          authoritativeImageContractSource: 'consumerContract.dockerImageContract'
         }
       }
     }

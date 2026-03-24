@@ -178,7 +178,8 @@
         "capabilities": {
           "type": "object",
           "required": [
-            "viHistory"
+            "viHistory",
+            "dockerProfile"
           ],
           "properties": {
             "viHistory": {
@@ -261,6 +262,71 @@
                     }
                   },
                   "additionalProperties": false
+                },
+                "notes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "dockerProfile": {
+              "type": "object",
+              "required": [
+                "schema",
+                "capabilityId",
+                "displayName",
+                "distributionRole",
+                "distributionModel",
+                "bundleMetadataPath",
+                "bundleImportPath",
+                "releaseAssetPattern",
+                "authoritativeConsumerPinFieldPath",
+                "authoritativeConsumerPinKindFieldPath",
+                "authoritativeImageContractSource",
+                "notes"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "comparevi-tools/docker-profile-capability@v1"
+                },
+                "capabilityId": {
+                  "const": "docker-profile"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "distributionRole": {
+                  "type": "string",
+                  "enum": [
+                    "upstream-producer"
+                  ]
+                },
+                "distributionModel": {
+                  "type": "string",
+                  "enum": [
+                    "release-bundle"
+                  ]
+                },
+                "bundleMetadataPath": {
+                  "type": "string"
+                },
+                "bundleImportPath": {
+                  "type": "string"
+                },
+                "releaseAssetPattern": {
+                  "type": "string"
+                },
+                "authoritativeConsumerPinFieldPath": {
+                  "type": "string"
+                },
+                "authoritativeConsumerPinKindFieldPath": {
+                  "type": "string"
+                },
+                "authoritativeImageContractSource": {
+                  "type": "string"
                 },
                 "notes": {
                   "type": "array",
@@ -464,6 +530,65 @@
             },
             "defaultImage": {
               "type": "string"
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "dockerImageContract": {
+          "type": "object",
+          "required": [
+            "schema",
+            "schemaUrl",
+            "images",
+            "notes"
+          ],
+          "properties": {
+            "schema": {
+              "const": "comparevi-tools/docker-image-contract@v1"
+            },
+            "schemaUrl": {
+              "type": "string"
+            },
+            "images": {
+              "type": "object",
+              "required": [
+                "hostedNiLinuxRunner"
+              ],
+              "properties": {
+                "hostedNiLinuxRunner": {
+                  "type": "object",
+                  "required": [
+                    "imageRef",
+                    "consumerRole",
+                    "notes"
+                  ],
+                  "properties": {
+                    "imageRef": {
+                      "type": "string"
+                    },
+                    "consumerRole": {
+                      "type": "string",
+                      "enum": [
+                        "hosted-ni-linux-runner"
+                      ]
+                    },
+                    "notes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
             },
             "notes": {
               "type": "array",
