@@ -51,7 +51,12 @@
         "queueHandoffStatus",
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
-        "queueAuthoritySource"
+        "queueAuthoritySource",
+        "executionBundleStatus",
+        "executionBundlePlaneBinding",
+        "executionBundlePremiumSaganMode",
+        "executionBundleReciprocalLinkReady",
+        "executionBundleEffectiveBillableRateUsdPerHour"
       ],
       "properties": {
         "repository": { "type": ["string", "null"] },
@@ -64,7 +69,12 @@
         "queueHandoffStatus": { "type": ["string", "null"] },
         "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
         "queueHandoffPrUrl": { "type": ["string", "null"] },
-        "queueAuthoritySource": { "type": ["string", "null"] }
+        "queueAuthoritySource": { "type": ["string", "null"] },
+        "executionBundleStatus": { "type": ["string", "null"] },
+        "executionBundlePlaneBinding": { "type": ["string", "null"] },
+        "executionBundlePremiumSaganMode": { "type": "boolean" },
+        "executionBundleReciprocalLinkReady": { "type": "boolean" },
+        "executionBundleEffectiveBillableRateUsdPerHour": { "type": ["number", "null"], "minimum": 0 }
       }
     },
     "portfolio": {
@@ -250,6 +260,11 @@
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
         "queueAuthoritySource",
+        "executionBundleStatus",
+        "executionBundlePlaneBinding",
+        "executionBundlePremiumSaganMode",
+        "executionBundleReciprocalLinkReady",
+        "executionBundleEffectiveBillableRateUsdPerHour",
         "viHistoryDistributorDependencyStatus",
         "viHistoryDistributorDependencyTargetRepository",
         "viHistoryDistributorDependencyExternalBlocker",
@@ -279,6 +294,11 @@
         "queueHandoffNextWakeCondition": { "type": ["string", "null"] },
         "queueHandoffPrUrl": { "type": ["string", "null"] },
         "queueAuthoritySource": { "type": ["string", "null"] },
+        "executionBundleStatus": { "type": ["string", "null"] },
+        "executionBundlePlaneBinding": { "type": ["string", "null"] },
+        "executionBundlePremiumSaganMode": { "type": "boolean" },
+        "executionBundleReciprocalLinkReady": { "type": "boolean" },
+        "executionBundleEffectiveBillableRateUsdPerHour": { "type": ["number", "null"], "minimum": 0 },
         "viHistoryDistributorDependencyStatus": { "type": "string", "enum": ["ready", "blocked", "unknown"] },
         "viHistoryDistributorDependencyTargetRepository": { "type": ["string", "null"] },
         "viHistoryDistributorDependencyExternalBlocker": { "type": ["string", "null"] },

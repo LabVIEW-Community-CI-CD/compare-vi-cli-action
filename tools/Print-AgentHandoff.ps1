@@ -1569,6 +1569,13 @@ try {
         Write-Host ("  pr       : {0}" -f (Format-NullableValue $governor.summary.queueHandoffPrUrl))
       }
     }
+    if ($governor.summary.PSObject.Properties['executionBundleStatus'] -and $governor.summary.executionBundleStatus) {
+      Write-Host ("  exec     : {0}" -f (Format-NullableValue $governor.summary.executionBundleStatus))
+      Write-Host ("  execPlan : {0}" -f (Format-NullableValue $governor.summary.executionBundlePlaneBinding))
+      Write-Host ("  execPrem : {0}" -f (Format-NullableValue $governor.summary.executionBundlePremiumSaganMode))
+      Write-Host ("  execLink : {0}" -f (Format-NullableValue $governor.summary.executionBundleReciprocalLinkReady))
+      Write-Host ("  execRate : {0}" -f (Format-NullableValue $governor.summary.executionBundleEffectiveBillableRateUsdPerHour))
+    }
     if ($env:GITHUB_STEP_SUMMARY) {
       $governorLines = @(
         '### Autonomous Governor',
@@ -1608,6 +1615,13 @@ try {
         if ($governor.summary.PSObject.Properties['queueHandoffPrUrl'] -and $governor.summary.queueHandoffPrUrl) {
           $governorLines += ('- Queue PR: {0}' -f (Format-NullableValue $governor.summary.queueHandoffPrUrl))
         }
+      }
+      if ($governor.summary.PSObject.Properties['executionBundleStatus'] -and $governor.summary.executionBundleStatus) {
+        $governorLines += ('- Execution bundle: {0}' -f (Format-NullableValue $governor.summary.executionBundleStatus))
+        $governorLines += ('- Execution plane: {0}' -f (Format-NullableValue $governor.summary.executionBundlePlaneBinding))
+        $governorLines += ('- Premium Sagan mode: {0}' -f (Format-NullableValue $governor.summary.executionBundlePremiumSaganMode))
+        $governorLines += ('- Execution reciprocal link: {0}' -f (Format-NullableValue $governor.summary.executionBundleReciprocalLinkReady))
+        $governorLines += ('- Execution effective rate USD/hr: {0}' -f (Format-NullableValue $governor.summary.executionBundleEffectiveBillableRateUsdPerHour))
       }
       ($governorLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
     }
@@ -1653,6 +1667,13 @@ try {
         Write-Host ("  queueSrc : {0}" -f (Format-NullableValue $portfolio.summary.queueAuthoritySource))
       }
     }
+    if ($portfolio.summary.PSObject.Properties['executionBundleStatus'] -and $portfolio.summary.executionBundleStatus) {
+      Write-Host ("  exec     : {0}" -f (Format-NullableValue $portfolio.summary.executionBundleStatus))
+      Write-Host ("  execPlan : {0}" -f (Format-NullableValue $portfolio.summary.executionBundlePlaneBinding))
+      Write-Host ("  execPrem : {0}" -f (Format-NullableValue $portfolio.summary.executionBundlePremiumSaganMode))
+      Write-Host ("  execLink : {0}" -f (Format-NullableValue $portfolio.summary.executionBundleReciprocalLinkReady))
+      Write-Host ("  execRate : {0}" -f (Format-NullableValue $portfolio.summary.executionBundleEffectiveBillableRateUsdPerHour))
+    }
     if ($env:GITHUB_STEP_SUMMARY) {
       $portfolioLines = @(
         '### Governor Portfolio',
@@ -1688,6 +1709,13 @@ try {
         if ($portfolio.summary.PSObject.Properties['queueAuthoritySource']) {
           $portfolioLines += ('- Queue source: {0}' -f (Format-NullableValue $portfolio.summary.queueAuthoritySource))
         }
+      }
+      if ($portfolio.summary.PSObject.Properties['executionBundleStatus'] -and $portfolio.summary.executionBundleStatus) {
+        $portfolioLines += ('- Execution bundle: {0}' -f (Format-NullableValue $portfolio.summary.executionBundleStatus))
+        $portfolioLines += ('- Execution plane: {0}' -f (Format-NullableValue $portfolio.summary.executionBundlePlaneBinding))
+        $portfolioLines += ('- Premium Sagan mode: {0}' -f (Format-NullableValue $portfolio.summary.executionBundlePremiumSaganMode))
+        $portfolioLines += ('- Execution reciprocal link: {0}' -f (Format-NullableValue $portfolio.summary.executionBundleReciprocalLinkReady))
+        $portfolioLines += ('- Execution effective rate USD/hr: {0}' -f (Format-NullableValue $portfolio.summary.executionBundleEffectiveBillableRateUsdPerHour))
       }
       ($portfolioLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
     }
