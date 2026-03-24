@@ -26,7 +26,7 @@ if (-not (Get-Variable -Name JsonShapeSpecs -Scope Script -ErrorAction SilentlyC
 
 $script:JsonShapeSpecs['FinalStatus'] = [pscustomobject]@{
   Required = @('schema','timestamp','iterations','diffs','errors','succeeded')
-  Optional = @('averageSeconds','totalSeconds','percentiles','histogram','diffSummaryEmitted','basePath','headPath')
+  Optional = @('averageSeconds','totalSeconds','percentiles','histogram','diffSummaryEmitted','basePath','headPath','harness')
   Types    = @{
     schema            = { param($v) $v -is [string] -and $v -eq 'loop-final-status-v1' }
   timestamp         = { param($v) ($v -is [string] -or $v -is [datetime]) }
@@ -41,6 +41,7 @@ $script:JsonShapeSpecs['FinalStatus'] = [pscustomobject]@{
     diffSummaryEmitted= { param($v) -not $v -or $v -is [bool] }
     basePath          = { param($v) -not $v -or $v -is [string] }
     headPath          = { param($v) -not $v -or $v -is [string] }
+    harness           = { param($v) -not $v -or ($v -is [hashtable] -or $v -is [pscustomobject]) }
   }
 }
 

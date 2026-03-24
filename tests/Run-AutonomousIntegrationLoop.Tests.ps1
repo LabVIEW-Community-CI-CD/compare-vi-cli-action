@@ -174,6 +174,19 @@ exit `$LASTEXITCODE
       $entries | ForEach-Object { [int]$_.timeout } | Sort-Object -Unique | Should -Be @(45)
       $entries | ForEach-Object { $_.replaceFlags } | Sort-Object -Unique | Should -Be @($true)
       $entries | ForEach-Object { $_.flags } | ForEach-Object { $_ } | Sort-Object -Unique | Should -Be @('-bar','-foo','1')
+
+      $finalStatus = Get-Content -LiteralPath (Join-Path $outDir 'final.json') -Raw | ConvertFrom-Json
+      $finalStatus.harness.path | Should -Be $harnessStub
+      $finalStatus.harness.output | Should -Be $outputRoot
+      $finalStatus.harness.suiteClass | Should -Be 'dual-plane-parity'
+      $finalStatus.harness.runtimeSurface | Should -Be 'windows-native-teststand'
+      $finalStatus.harness.processModelClass | Should -Be 'parallel-process-model'
+      $finalStatus.harness.windowsOnly | Should -BeTrue
+      $finalStatus.harness.requestedSimultaneous | Should -BeTrue
+      $finalStatus.harness.executionCellLeasePath | Should -Be 'E:\comparevi-lanes\cells\hooke-01\execution-cell.json'
+      $finalStatus.harness.executionCellId | Should -Be 'exec-cell-hooke-loop-01'
+      $finalStatus.harness.executionCellLeaseId | Should -Be 'lease-hooke-loop-01'
+      $finalStatus.harness.harnessInstanceId | Should -Be 'ts-loop-hooke-01'
     }
     finally {
       Remove-Item Env:HARNESS_LOG -ErrorAction SilentlyContinue

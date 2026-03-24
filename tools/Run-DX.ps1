@@ -228,6 +228,7 @@ $harness = Join-Path $repoRoot 'tools/TestStand-CompareHarness.ps1'
         error    = $session.error
         executionCell = $session.executionCell
         harnessInstance = $session.harnessInstance
+        processModel = $session.processModel
         compare  = $session.compare
         content  = $session.content
         parity   = $session.parity

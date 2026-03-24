@@ -17,7 +17,28 @@
     "histogram": {"type": ["array","null"], "items": {"type": "object"}},
     "diffSummaryEmitted": {"type": "boolean"},
     "basePath": {"type": "string"},
-    "headPath": {"type": "string"}
+    "headPath": {"type": "string"},
+    "harness": {
+      "type": "object",
+      "properties": {
+        "path": {"type": "string"},
+        "output": {"type": "string"},
+        "suiteClass": {"type": "string"},
+        "runtimeSurface": {"const": "windows-native-teststand"},
+        "processModelClass": {
+          "type": "string",
+          "enum": ["sequential-process-model", "parallel-process-model"]
+        },
+        "windowsOnly": {"type": "boolean"},
+        "requestedSimultaneous": {"type": "boolean"},
+        "executionCellLeasePath": {"type": "string"},
+        "executionCellId": {"type": "string"},
+        "executionCellLeaseId": {"type": "string"},
+        "harnessInstanceId": {"type": "string"}
+      },
+      "required": ["path", "output", "suiteClass", "runtimeSurface", "processModelClass", "windowsOnly", "requestedSimultaneous"],
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

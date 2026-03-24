@@ -86,6 +86,14 @@ $session = [ordered]@{
     harnessKind = 'teststand-compare-harness'
     instanceId = $HarnessInstanceId
     role = 'single-plane'
+    processModelClass = 'sequential-process-model'
+  }
+  processModel = @{
+    runtimeSurface = 'windows-native-teststand'
+    processModelClass = 'sequential-process-model'
+    windowsOnly = $true
+    rootHarnessInstanceId = $HarnessInstanceId
+    planeCount = 1
   }
 }
 $session | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $OutputRoot 'session-index.json') -Encoding utf8
@@ -145,6 +153,8 @@ exit 0
       $session.executionCell.cellId | Should -Be 'exec-cell-hooke-01'
       $session.executionCell.leaseId | Should -Be 'lease-hooke-01'
       $session.harnessInstance.instanceId | Should -Be 'harness-hooke-01'
+      $session.processModel.runtimeSurface | Should -Be 'windows-native-teststand'
+      $session.processModel.processModelClass | Should -Be 'sequential-process-model'
     }
     finally { Pop-Location }
   }
@@ -225,6 +235,14 @@ $session = [ordered]@{
     harnessKind = 'teststand-compare-harness'
     instanceId = $HarnessInstanceId
     role = 'single-plane'
+    processModelClass = 'sequential-process-model'
+  }
+  processModel = @{
+    runtimeSurface = 'windows-native-teststand'
+    processModelClass = 'sequential-process-model'
+    windowsOnly = $true
+    rootHarnessInstanceId = $HarnessInstanceId
+    planeCount = 1
   }
 }
 $session | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $OutputRoot 'session-index.json') -Encoding utf8
@@ -297,6 +315,7 @@ exit 0
     $content | Should -Match 'requestedSimultaneous\s*=\s*\$session\.requestedSimultaneous'
     $content | Should -Match 'executionCell\s*=\s*\$session\.executionCell'
     $content | Should -Match 'harnessInstance\s*=\s*\$session\.harnessInstance'
+    $content | Should -Match 'processModel\s*=\s*\$session\.processModel'
     $content | Should -Match 'parity\s*=\s*\$session\.parity'
     $content | Should -Match 'planes\s*=\s*\$session\.planes'
   }
