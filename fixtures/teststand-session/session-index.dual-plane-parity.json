@@ -36,6 +36,7 @@
     "cellClass": "kernel-coordinator",
     "suiteClass": "dual-plane-parity",
     "planeBinding": "dual-plane-parity",
+    "runtimeSurface": "windows-native-teststand",
     "premiumSaganMode": false,
     "operatorAuthorizationRef": null,
     "workingRoot": "tests/results/teststand-session",
@@ -47,8 +48,16 @@
     "harnessKind": "teststand-compare-harness",
     "instanceId": "ts-harness-sagan-01",
     "role": "coordinator",
+    "processModelClass": "parallel-process-model",
     "planeBinding": "dual-plane-parity",
     "parentInstanceId": null
+  },
+  "processModel": {
+    "runtimeSurface": "windows-native-teststand",
+    "processModelClass": "parallel-process-model",
+    "windowsOnly": true,
+    "rootHarnessInstanceId": "ts-harness-sagan-01",
+    "planeCount": 2
   },
   "planes": {
     "x64": {
@@ -89,6 +98,7 @@
         "cellClass": "kernel-coordinator",
         "suiteClass": "dual-plane-parity",
         "planeBinding": "native-labview-2026-64",
+        "runtimeSurface": "windows-native-teststand",
         "premiumSaganMode": false,
         "operatorAuthorizationRef": null,
         "workingRoot": "tests/results/teststand-session/planes/x64",
@@ -100,8 +110,16 @@
         "harnessKind": "teststand-compare-harness",
         "instanceId": "ts-harness-sagan-01-x64",
         "role": "plane-child",
+        "processModelClass": "parallel-process-model",
         "planeBinding": "native-labview-2026-64",
         "parentInstanceId": "ts-harness-sagan-01"
+      },
+      "processModel": {
+        "runtimeSurface": "windows-native-teststand",
+        "processModelClass": "parallel-process-model",
+        "windowsOnly": true,
+        "rootHarnessInstanceId": "ts-harness-sagan-01",
+        "planeCount": 2
       }
     },
     "x32": {
@@ -142,6 +160,7 @@
         "cellClass": "kernel-coordinator",
         "suiteClass": "dual-plane-parity",
         "planeBinding": "native-labview-2026-32",
+        "runtimeSurface": "windows-native-teststand",
         "premiumSaganMode": false,
         "operatorAuthorizationRef": null,
         "workingRoot": "tests/results/teststand-session/planes/x32",
@@ -153,8 +172,16 @@
         "harnessKind": "teststand-compare-harness",
         "instanceId": "ts-harness-sagan-01-x32",
         "role": "plane-child",
+        "processModelClass": "parallel-process-model",
         "planeBinding": "native-labview-2026-32",
         "parentInstanceId": "ts-harness-sagan-01"
+      },
+      "processModel": {
+        "runtimeSurface": "windows-native-teststand",
+        "processModelClass": "parallel-process-model",
+        "windowsOnly": true,
+        "rootHarnessInstanceId": "ts-harness-sagan-01",
+        "planeCount": 2
       }
     }
   },

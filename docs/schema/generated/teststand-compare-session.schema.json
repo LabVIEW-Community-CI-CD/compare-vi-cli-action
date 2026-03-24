@@ -355,6 +355,17 @@
                     }
                   ]
                 },
+                "runtimeSurface": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": "windows-native-teststand"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "premiumSaganMode": {
                   "type": "boolean"
                 },
@@ -442,6 +453,13 @@
                     "plane-child"
                   ]
                 },
+                "processModelClass": {
+                  "type": "string",
+                  "enum": [
+                    "sequential-process-model",
+                    "parallel-process-model"
+                  ]
+                },
                 "planeBinding": {
                   "anyOf": [
                     {
@@ -468,7 +486,8 @@
               "required": [
                 "harnessKind",
                 "instanceId",
-                "role"
+                "role",
+                "processModelClass"
               ],
               "additionalProperties": false
             },
@@ -476,6 +495,42 @@
               "type": "null"
             }
           ]
+        },
+        "processModel": {
+          "type": "object",
+          "properties": {
+            "runtimeSurface": {
+              "type": "string",
+              "const": "windows-native-teststand"
+            },
+            "processModelClass": {
+              "type": "string",
+              "enum": [
+                "sequential-process-model",
+                "parallel-process-model"
+              ]
+            },
+            "windowsOnly": {
+              "type": "boolean",
+              "const": true
+            },
+            "rootHarnessInstanceId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "planeCount": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "runtimeSurface",
+            "processModelClass",
+            "windowsOnly",
+            "rootHarnessInstanceId",
+            "planeCount"
+          ],
+          "additionalProperties": false
         },
         "suiteClass": {
           "type": "string",
@@ -578,6 +633,9 @@
                       "type": "null"
                     }
                   ]
+                },
+                "processModel": {
+                  "$ref": "#/definitions/teststand-compare-session/properties/processModel"
                 }
               },
               "required": [

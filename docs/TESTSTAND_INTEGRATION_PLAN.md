@@ -70,6 +70,8 @@ Parity sessions use `schema = teststand-compare-session/v2` and include:
 - `suiteClass = dual-plane-parity`
 - `primaryPlane = native-labview-2026-64`
 - `requestedSimultaneous = true`
+- `processModel.runtimeSurface = windows-native-teststand`
+- `processModel.processModelClass = parallel-process-model`
 - `planes.x64` / `planes.x32` single-plane session records
 - `parity.status`, `mismatchCount`, and field-level mismatch details
 
@@ -101,8 +103,16 @@ Session receipts project both:
 
 - `executionCell`
 - `harnessInstance`
+- `processModel`
 
 That keeps TestStand evidence attributable to one agent-owned memory/process boundary instead of an unscoped host run.
+
+The explicit process-model contract now makes 3 things machine-readable:
+
+- `executionCell.runtimeSurface = windows-native-teststand`
+- `harnessInstance.processModelClass = sequential-process-model|parallel-process-model`
+- `processModel.rootHarnessInstanceId` / `planeCount` so coordinator-owned parity runs stay attributable even when child
+  plane receipts are inspected independently
 
 When the owning agent also needs an isolated Docker lane for repeatable adjunct tooling, prefer
 `priority:lane:execution-cell:bundle` over separate lease calls. That bundle projects one effective billable rate,

@@ -130,10 +130,17 @@ exit 0
       $indexData.executionCell.agentId | Should -Be 'hooke'
       $indexData.executionCell.agentClass | Should -Be 'subagent'
       $indexData.executionCell.cellClass | Should -Be 'worker'
+      $indexData.executionCell.runtimeSurface | Should -Be 'windows-native-teststand'
       $indexData.executionCell.premiumSaganMode | Should -BeFalse
       $indexData.executionCell.operatorAuthorizationRef | Should -BeNullOrEmpty
       $indexData.harnessInstance.instanceId | Should -Be 'ts-harness-hooke-01'
       $indexData.harnessInstance.role | Should -Be 'single-plane'
+      $indexData.harnessInstance.processModelClass | Should -Be 'sequential-process-model'
+      $indexData.processModel.runtimeSurface | Should -Be 'windows-native-teststand'
+      $indexData.processModel.processModelClass | Should -Be 'sequential-process-model'
+      $indexData.processModel.windowsOnly | Should -BeTrue
+      $indexData.processModel.rootHarnessInstanceId | Should -Be 'ts-harness-hooke-01'
+      $indexData.processModel.planeCount | Should -Be 1
     }
     finally { Pop-Location }
   }
@@ -356,10 +363,17 @@ exit 0
       $indexData.executionCell.agentId | Should -Be 'sagan'
       $indexData.executionCell.agentClass | Should -Be 'sagan'
       $indexData.executionCell.cellClass | Should -Be 'kernel-coordinator'
+      $indexData.executionCell.runtimeSurface | Should -Be 'windows-native-teststand'
       $indexData.executionCell.premiumSaganMode | Should -BeFalse
       $indexData.executionCell.operatorAuthorizationRef | Should -BeNullOrEmpty
       $indexData.harnessInstance.instanceId | Should -Be 'ts-harness-sagan-01'
       $indexData.harnessInstance.role | Should -Be 'coordinator'
+      $indexData.harnessInstance.processModelClass | Should -Be 'parallel-process-model'
+      $indexData.processModel.runtimeSurface | Should -Be 'windows-native-teststand'
+      $indexData.processModel.processModelClass | Should -Be 'parallel-process-model'
+      $indexData.processModel.windowsOnly | Should -BeTrue
+      $indexData.processModel.rootHarnessInstanceId | Should -Be 'ts-harness-sagan-01'
+      $indexData.processModel.planeCount | Should -Be 2
       $indexData.parity.status | Should -Be 'match'
       $indexData.parity.mismatchCount | Should -Be 0
       $indexData.planes.x64.plane | Should -Be 'native-labview-2026-64'
@@ -380,14 +394,26 @@ exit 0
       $indexData.planes.x32.executionCell.cellId | Should -Be 'exec-cell-sagan-01'
       $indexData.planes.x64.executionCell.cellClass | Should -Be 'kernel-coordinator'
       $indexData.planes.x32.executionCell.cellClass | Should -Be 'kernel-coordinator'
+      $indexData.planes.x64.executionCell.runtimeSurface | Should -Be 'windows-native-teststand'
+      $indexData.planes.x32.executionCell.runtimeSurface | Should -Be 'windows-native-teststand'
       $indexData.planes.x64.executionCell.premiumSaganMode | Should -BeFalse
       $indexData.planes.x32.executionCell.premiumSaganMode | Should -BeFalse
       $indexData.planes.x64.harnessInstance.role | Should -Be 'plane-child'
       $indexData.planes.x32.harnessInstance.role | Should -Be 'plane-child'
+      $indexData.planes.x64.harnessInstance.processModelClass | Should -Be 'parallel-process-model'
+      $indexData.planes.x32.harnessInstance.processModelClass | Should -Be 'parallel-process-model'
       $indexData.planes.x64.harnessInstance.parentInstanceId | Should -Be 'ts-harness-sagan-01'
       $indexData.planes.x32.harnessInstance.parentInstanceId | Should -Be 'ts-harness-sagan-01'
       $indexData.planes.x64.harnessInstance.instanceId | Should -Be 'ts-harness-sagan-01-x64'
       $indexData.planes.x32.harnessInstance.instanceId | Should -Be 'ts-harness-sagan-01-x32'
+      $indexData.planes.x64.processModel.runtimeSurface | Should -Be 'windows-native-teststand'
+      $indexData.planes.x32.processModel.runtimeSurface | Should -Be 'windows-native-teststand'
+      $indexData.planes.x64.processModel.processModelClass | Should -Be 'parallel-process-model'
+      $indexData.planes.x32.processModel.processModelClass | Should -Be 'parallel-process-model'
+      $indexData.planes.x64.processModel.rootHarnessInstanceId | Should -Be 'ts-harness-sagan-01'
+      $indexData.planes.x32.processModel.rootHarnessInstanceId | Should -Be 'ts-harness-sagan-01'
+      $indexData.planes.x64.processModel.planeCount | Should -Be 2
+      $indexData.planes.x32.processModel.planeCount | Should -Be 2
       Test-Path -LiteralPath (Join-Path $outputRoot 'planes\x64\session-index.json') | Should -BeTrue
       Test-Path -LiteralPath (Join-Path $outputRoot 'planes\x32\session-index.json') | Should -BeTrue
       $x64Child = Get-Content -LiteralPath (Join-Path $outputRoot 'planes\x64\session-index.json') -Raw | ConvertFrom-Json -Depth 12
@@ -396,8 +422,14 @@ exit 0
       $x32Child.executionCell.cellId | Should -Be 'exec-cell-sagan-01'
       $x64Child.executionCell.cellClass | Should -Be 'kernel-coordinator'
       $x32Child.executionCell.cellClass | Should -Be 'kernel-coordinator'
+      $x64Child.executionCell.runtimeSurface | Should -Be 'windows-native-teststand'
+      $x32Child.executionCell.runtimeSurface | Should -Be 'windows-native-teststand'
       $x64Child.harnessInstance.instanceId | Should -Be 'ts-harness-sagan-01-x64'
       $x32Child.harnessInstance.instanceId | Should -Be 'ts-harness-sagan-01-x32'
+      $x64Child.harnessInstance.processModelClass | Should -Be 'parallel-process-model'
+      $x32Child.harnessInstance.processModelClass | Should -Be 'parallel-process-model'
+      $x64Child.processModel.rootHarnessInstanceId | Should -Be 'ts-harness-sagan-01'
+      $x32Child.processModel.rootHarnessInstanceId | Should -Be 'ts-harness-sagan-01'
     }
     finally { Pop-Location }
   }
