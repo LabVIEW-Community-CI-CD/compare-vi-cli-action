@@ -78,6 +78,7 @@ Describe 'Run-AutonomousIntegrationLoop TestStand harness mode' -Tag 'Unit' {
     $base = Join-Path $outDir 'BaseHarness.vi'
     $head = Join-Path $outDir 'HeadHarness.vi'
     $leasePath = Join-Path $outDir 'execution-cell.json'
+    $harnessLeasePath = Join-Path $outDir 'harness-instance.json'
     New-Item -ItemType File -Path $base -Force | Out-Null
     New-Item -ItemType File -Path $head -Force | Out-Null
     @'
@@ -91,6 +92,19 @@ Describe 'Run-AutonomousIntegrationLoop TestStand harness mode' -Tag 'Unit' {
   }
 }
 '@ | Set-Content -LiteralPath $leasePath -Encoding UTF8
+    @'
+{
+  "instanceId": "ts-loop-hooke-01",
+  "request": {
+    "role": "worker",
+    "runtimeSurface": "windows-native-teststand",
+    "processModelClass": "parallel-process-model"
+  },
+  "grant": {
+    "leaseId": "harness-lease-hooke-loop-01"
+  }
+}
+'@ | Set-Content -LiteralPath $harnessLeasePath -Encoding UTF8
 
     $harnessStub = Join-Path $outDir 'TestStand-CompareHarness.ps1'
     $logPath = Join-Path $outDir 'harness-log.ndjson'
@@ -108,6 +122,7 @@ param(
   [string]`$ExecutionCellLeasePath,
   [string]`$ExecutionCellId,
   [string]`$ExecutionCellLeaseId,
+  [string]`$HarnessInstanceLeasePath,
   [string]`$HarnessInstanceId,
   [string]`$OutputRoot,
   [ValidateSet('detect','spawn','skip')][string]`$Warmup,
@@ -138,6 +153,7 @@ if (`$logDir -and -not (Test-Path `$logDir)) { New-Item -ItemType Directory -Pat
   executionCellLeasePath = `$ExecutionCellLeasePath
   executionCellId = `$ExecutionCellId
   executionCellLeaseId = `$ExecutionCellLeaseId
+  harnessInstanceLeasePath = `$HarnessInstanceLeasePath
   harnessInstanceId = `$HarnessInstanceId
   flags = @(`$Flags)
   renderReport = `$RenderReport.IsPresent
@@ -157,7 +173,7 @@ exit 0
     try {
       $runner = Join-Path $outDir 'runner-harness.ps1'
       $runnerContent = @"
-& '$scriptPath' -Base '$base' -Head '$head' -MaxIterations 2 -IntervalSeconds 0 -LogVerbosity Quiet -LvCompareArgs '-foo 1 -bar' -UseTestStandHarness -TestStandHarnessPath '$harnessStub' -TestStandOutputRoot '$outputRoot' -TestStandWarmup detect -TestStandSuiteClass dual-plane-parity -TestStandLabVIEW64Path 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandLabVIEW32Path 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandAgentId 'hooke' -TestStandAgentClass 'subagent' -TestStandExecutionCellLeasePath '$leasePath' -TestStandExecutionCellId 'exec-cell-hooke-loop-01' -TestStandExecutionCellLeaseId 'lease-hooke-loop-01' -TestStandHarnessInstanceId 'ts-loop-hooke-01' -TestStandRenderReport -TestStandCloseLabVIEW -TestStandCloseLVCompare -TestStandTimeoutSeconds 45 -TestStandReplaceFlags -FinalStatusJsonPath '$outDir/final.json'
+& '$scriptPath' -Base '$base' -Head '$head' -MaxIterations 2 -IntervalSeconds 0 -LogVerbosity Quiet -LvCompareArgs '-foo 1 -bar' -UseTestStandHarness -TestStandHarnessPath '$harnessStub' -TestStandOutputRoot '$outputRoot' -TestStandWarmup detect -TestStandSuiteClass dual-plane-parity -TestStandLabVIEW64Path 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandLabVIEW32Path 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandAgentId 'hooke' -TestStandAgentClass 'subagent' -TestStandExecutionCellLeasePath '$leasePath' -TestStandExecutionCellId 'exec-cell-hooke-loop-01' -TestStandExecutionCellLeaseId 'lease-hooke-loop-01' -TestStandHarnessInstanceLeasePath '$harnessLeasePath' -TestStandHarnessInstanceId 'ts-loop-hooke-01' -TestStandRenderReport -TestStandCloseLabVIEW -TestStandCloseLVCompare -TestStandTimeoutSeconds 45 -TestStandReplaceFlags -FinalStatusJsonPath '$outDir/final.json'
 exit `$LASTEXITCODE
 "@
       Set-Content -LiteralPath $runner -Encoding UTF8 -Value $runnerContent
@@ -179,6 +195,7 @@ exit `$LASTEXITCODE
       $entries | ForEach-Object { $_.executionCellLeasePath } | Sort-Object -Unique | Should -Be @($leasePath)
       $entries | ForEach-Object { $_.executionCellId } | Sort-Object -Unique | Should -Be @('exec-cell-hooke-loop-01')
       $entries | ForEach-Object { $_.executionCellLeaseId } | Sort-Object -Unique | Should -Be @('lease-hooke-loop-01')
+      $entries | ForEach-Object { $_.harnessInstanceLeasePath } | Sort-Object -Unique | Should -Be @($harnessLeasePath)
       $entries | ForEach-Object { $_.harnessInstanceId } | Sort-Object -Unique | Should -Be @('ts-loop-hooke-01')
       $entries | ForEach-Object { $_.renderReport } | Sort-Object -Unique | Should -Be @($true)
       $entries | ForEach-Object { $_.closeLabVIEW } | Sort-Object -Unique | Should -Be @($true)
@@ -201,6 +218,8 @@ exit `$LASTEXITCODE
       $finalStatus.harness.executionCellLeasePath | Should -Be $leasePath
       $finalStatus.harness.executionCellId | Should -Be 'exec-cell-hooke-loop-01'
       $finalStatus.harness.executionCellLeaseId | Should -Be 'lease-hooke-loop-01'
+      $finalStatus.harness.harnessInstanceLeasePath | Should -Be $harnessLeasePath
+      $finalStatus.harness.harnessInstanceLeaseId | Should -Be 'harness-lease-hooke-loop-01'
       $finalStatus.harness.harnessInstanceId | Should -Be 'ts-loop-hooke-01'
     }
     finally {

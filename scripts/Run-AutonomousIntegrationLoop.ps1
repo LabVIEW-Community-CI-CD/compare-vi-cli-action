@@ -153,6 +153,7 @@ param(
 , [string]$TestStandExecutionCellLeasePath = $env:LOOP_TESTSTAND_EXECUTION_CELL_LEASE_PATH
 , [string]$TestStandExecutionCellId = $env:LOOP_TESTSTAND_EXECUTION_CELL_ID
 , [string]$TestStandExecutionCellLeaseId = $env:LOOP_TESTSTAND_EXECUTION_CELL_LEASE_ID
+, [string]$TestStandHarnessInstanceLeasePath = $env:LOOP_TESTSTAND_HARNESS_INSTANCE_LEASE_PATH
 , [string]$TestStandHarnessInstanceId = $env:LOOP_TESTSTAND_HARNESS_INSTANCE_ID
 , [switch]$TestStandReplaceFlags
 )
@@ -213,6 +214,29 @@ function Get-ExecutionCellLeaseMetadata {
       $metadata.premiumSaganMode = [bool]$summary.premiumSaganMode
     } elseif ($grant -and $grant.PSObject.Properties.Name -contains 'premiumSaganMode') {
       $metadata.premiumSaganMode = [bool]$grant.premiumSaganMode
+    }
+  } catch {}
+
+  return [pscustomobject]$metadata
+}
+
+function Get-HarnessInstanceLeaseMetadata {
+  param([string]$LeasePath)
+
+  $metadata = [ordered]@{
+    leaseId = $null
+  }
+
+  if ([string]::IsNullOrWhiteSpace($LeasePath)) {
+    return [pscustomobject]$metadata
+  }
+
+  try {
+    $resolvedLeasePath = (Resolve-Path -LiteralPath $LeasePath -ErrorAction Stop).Path
+    $payload = Get-Content -LiteralPath $resolvedLeasePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    $grant = if ($payload -and $payload.PSObject.Properties.Name -contains 'grant') { $payload.grant } else { $null }
+    if ($grant -and $grant.PSObject.Properties.Name -contains 'leaseId' -and -not [string]::IsNullOrWhiteSpace($grant.leaseId)) {
+      $metadata.leaseId = [string]$grant.leaseId
     }
   } catch {}
 
@@ -352,6 +376,8 @@ if ($UseTestStandHarness) {
   $executionCellLeaseMetadata = Get-ExecutionCellLeaseMetadata -LeasePath $executionCellLeasePath
   $agentId = $TestStandAgentId
   $agentClass = $TestStandAgentClass
+  $harnessInstanceLeasePath = $TestStandHarnessInstanceLeasePath
+  $harnessInstanceLeaseMetadata = Get-HarnessInstanceLeaseMetadata -LeasePath $harnessInstanceLeasePath
   $harnessInstanceId = $TestStandHarnessInstanceId
   $harnessIteration = [ref]0
 
@@ -381,6 +407,7 @@ if ($UseTestStandHarness) {
     if ($executionCellLeasePath) { $harnessParams.ExecutionCellLeasePath = $executionCellLeasePath }
     if ($executionCellId) { $harnessParams.ExecutionCellId = $executionCellId }
     if ($executionCellLeaseId) { $harnessParams.ExecutionCellLeaseId = $executionCellLeaseId }
+    if ($harnessInstanceLeasePath) { $harnessParams.HarnessInstanceLeasePath = $harnessInstanceLeasePath }
     if ($harnessInstanceId) { $harnessParams.HarnessInstanceId = $harnessInstanceId }
     if ($renderReport) { $harnessParams.RenderReport = $true }
     if ($closeLabVIEW) { $harnessParams.CloseLabVIEW = $true }
@@ -448,6 +475,8 @@ if ($UseTestStandHarness) {
     executionCellLeasePath = $executionCellLeasePath
     executionCellId = $executionCellId
     executionCellLeaseId = $executionCellLeaseId
+    harnessInstanceLeasePath = $harnessInstanceLeasePath
+    harnessInstanceLeaseId = $harnessInstanceLeaseMetadata.leaseId
     harnessInstanceId = $harnessInstanceId
   }
 }
@@ -688,6 +717,8 @@ if ($FinalStatusJsonPath) {
         executionCellLeasePath = $harnessPlan.executionCellLeasePath
         executionCellId = $harnessPlan.executionCellId
         executionCellLeaseId = $harnessPlan.executionCellLeaseId
+        harnessInstanceLeasePath = $harnessPlan.harnessInstanceLeasePath
+        harnessInstanceLeaseId = $harnessPlan.harnessInstanceLeaseId
         harnessInstanceId = $harnessPlan.harnessInstanceId
       }
     }
