@@ -267,6 +267,9 @@ $harness = Join-Path $repoRoot 'tools/TestStand-CompareHarness.ps1'
         operatorAuthorizationRef = Get-SessionValue (Get-SessionValue $session 'executionCell') 'operatorAuthorizationRef'
         premiumSaganMode = if (Get-SessionValue $session 'executionCell') { Get-SessionBoolValue (Get-SessionValue $session 'executionCell') 'premiumSaganMode' } else { $false }
         harnessKind = Get-SessionValue (Get-SessionValue $session 'harnessInstance') 'harnessKind'
+        harnessInstanceId = Get-SessionValue (Get-SessionValue $session 'harnessInstance') 'instanceId'
+        harnessInstanceLeaseId = Get-SessionValue (Get-SessionValue $session 'harnessInstance') 'leaseId'
+        harnessInstanceLeasePath = Get-SessionValue (Get-SessionValue $session 'harnessInstance') 'leasePath'
         executionCellId = Get-SessionValue (Get-SessionValue $session 'executionCell') 'cellId'
         executionCellLeaseId = Get-SessionValue (Get-SessionValue $session 'executionCell') 'leaseId'
       }

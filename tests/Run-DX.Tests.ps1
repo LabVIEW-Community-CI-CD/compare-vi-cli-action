@@ -91,6 +91,8 @@ $session = [ordered]@{
   harnessInstance = @{
     harnessKind = 'teststand-compare-harness'
     instanceId = $HarnessInstanceId
+    leaseId = 'harness-lease-hooke-01'
+    leasePath = 'tests/results/teststand/harness-hooke-01.json'
     role = 'single-plane'
     processModelClass = 'sequential-process-model'
   }
@@ -172,6 +174,9 @@ exit 0
       $status.executionTopology.operatorAuthorizationRef | Should -Be 'budget-auth://operator/session-2026-03-24'
       $status.executionTopology.premiumSaganMode | Should -BeFalse
       $status.executionTopology.harnessKind | Should -Be 'teststand-compare-harness'
+      $status.executionTopology.harnessInstanceId | Should -Be 'harness-hooke-01'
+      $status.executionTopology.harnessInstanceLeaseId | Should -Be 'harness-lease-hooke-01'
+      $status.executionTopology.harnessInstanceLeasePath | Should -Be 'tests/results/teststand/harness-hooke-01.json'
       $status.executionTopology.executionCellId | Should -Be 'exec-cell-hooke-01'
       $status.executionTopology.executionCellLeaseId | Should -Be 'lease-hooke-01'
     }
@@ -344,6 +349,8 @@ exit 0
     $content | Should -Match 'executionTopology\s*=\s*@\{'
     $content | Should -Match 'executionCell\s*=\s*Get-SessionValue\s+\$session\s+''executionCell'''
     $content | Should -Match 'harnessInstance\s*=\s*Get-SessionValue\s+\$session\s+''harnessInstance'''
+    $content | Should -Match 'harnessInstanceLeaseId\s*='
+    $content | Should -Match 'harnessInstanceLeasePath\s*='
     $content | Should -Match 'processModel\s*=\s*Get-SessionValue\s+\$session\s+''processModel'''
     $content | Should -Match 'parity\s*=\s*Get-SessionValue\s+\$session\s+''parity'''
     $content | Should -Match 'planes\s*=\s*Get-SessionValue\s+\$session\s+''planes'''
