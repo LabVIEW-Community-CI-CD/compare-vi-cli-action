@@ -471,17 +471,40 @@ if ($UseTestStandHarness) {
       if ($logDir -and -not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
     }
 
+    $iterationExecutionTopology = [ordered]@{
+      runtimeSurface = 'windows-native-teststand'
+      processModelClass = if ($TestStandSuiteClass -eq 'dual-plane-parity') { 'parallel-process-model' } else { 'sequential-process-model' }
+      windowsOnly = $true
+      requestedSimultaneous = ($TestStandSuiteClass -eq 'dual-plane-parity')
+      cellClass = $executionCellLeaseMetadata.cellClass
+      executionCellLeasePath = $executionCellLeasePath
+      executionCellId = $executionCellId
+      executionCellLeaseId = $executionCellLeaseId
+      harnessInstanceLeasePath = $harnessInstanceLeasePath
+      harnessInstanceLeaseId = $harnessInstanceLeaseMetadata.leaseId
+      harnessInstanceId = $harnessInstanceId
+    }
+
     $exitCode = 0
-    Write-JsonEvent 'harnessInvoke' @{ iteration=$currentIteration; output=$iterationRoot; status='start' }
+    Write-JsonEvent 'harnessInvoke' @{ iteration=$currentIteration; output=$iterationRoot; status='start'; executionTopology=$iterationExecutionTopology }
     try {
       & $resolvedHarness @harnessParams | Out-Null
       $exitCode = $LASTEXITCODE
       $sessionMetadata = Get-TestStandHarnessSessionMetadata -IterationRoot $iterationRoot
       if (-not [string]::IsNullOrWhiteSpace($sessionMetadata.harnessInstanceId) -or -not [string]::IsNullOrWhiteSpace($sessionMetadata.harnessInstanceLeaseId) -or -not [string]::IsNullOrWhiteSpace($sessionMetadata.harnessInstanceLeasePath)) {
         $latestHarnessSessionMetadata.Value = $sessionMetadata
+        if (-not [string]::IsNullOrWhiteSpace($sessionMetadata.harnessInstanceId)) {
+          $iterationExecutionTopology.harnessInstanceId = $sessionMetadata.harnessInstanceId
+        }
+        if (-not [string]::IsNullOrWhiteSpace($sessionMetadata.harnessInstanceLeaseId)) {
+          $iterationExecutionTopology.harnessInstanceLeaseId = $sessionMetadata.harnessInstanceLeaseId
+        }
+        if (-not [string]::IsNullOrWhiteSpace($sessionMetadata.harnessInstanceLeasePath)) {
+          $iterationExecutionTopology.harnessInstanceLeasePath = $sessionMetadata.harnessInstanceLeasePath
+        }
       }
     } catch {
-      Write-JsonEvent 'harnessResult' @{ iteration=$currentIteration; status='exception'; message=$_.Exception.Message }
+      Write-JsonEvent 'harnessResult' @{ iteration=$currentIteration; status='exception'; message=$_.Exception.Message; executionTopology=$iterationExecutionTopology }
       throw
     } finally {
       if ($restoreHarnessLog) {
@@ -490,7 +513,7 @@ if ($UseTestStandHarness) {
         $env:HARNESS_LOG = $originalHarnessLog
       }
     }
-    Write-JsonEvent 'harnessResult' @{ iteration=$currentIteration; exitCode=$exitCode }
+    Write-JsonEvent 'harnessResult' @{ iteration=$currentIteration; exitCode=$exitCode; executionTopology=$iterationExecutionTopology }
     return $exitCode
   }
   $skipValidation = $false
@@ -697,6 +720,19 @@ if ($UseTestStandHarness -and $harnessPlan) {
   $planPayload.harnessRuntimeSurface = $harnessPlan.runtimeSurface
   $planPayload.harnessProcessModelClass = $harnessPlan.processModelClass
   $planPayload.harnessRequestedSimultaneous = $harnessPlan.requestedSimultaneous
+  $planPayload.executionTopology = [ordered]@{
+    runtimeSurface = $harnessPlan.runtimeSurface
+    processModelClass = $harnessPlan.processModelClass
+    windowsOnly = $harnessPlan.windowsOnly
+    requestedSimultaneous = $harnessPlan.requestedSimultaneous
+    cellClass = $harnessPlan.cellClass
+    executionCellLeasePath = $harnessPlan.executionCellLeasePath
+    executionCellId = $harnessPlan.executionCellId
+    executionCellLeaseId = $harnessPlan.executionCellLeaseId
+    harnessInstanceLeasePath = $harnessPlan.harnessInstanceLeasePath
+    harnessInstanceLeaseId = $harnessPlan.harnessInstanceLeaseId
+    harnessInstanceId = $harnessPlan.harnessInstanceId
+  }
 }
 Write-JsonEvent 'plan' $planPayload
 
@@ -715,6 +751,19 @@ if ($DryRun) {
     $dryRunPayload.harnessOutput = $harnessPlan.output
     $dryRunPayload.harnessRuntimeSurface = $harnessPlan.runtimeSurface
     $dryRunPayload.harnessProcessModelClass = $harnessPlan.processModelClass
+    $dryRunPayload.executionTopology = [ordered]@{
+      runtimeSurface = $harnessPlan.runtimeSurface
+      processModelClass = $harnessPlan.processModelClass
+      windowsOnly = $harnessPlan.windowsOnly
+      requestedSimultaneous = $harnessPlan.requestedSimultaneous
+      cellClass = $harnessPlan.cellClass
+      executionCellLeasePath = $harnessPlan.executionCellLeasePath
+      executionCellId = $harnessPlan.executionCellId
+      executionCellLeaseId = $harnessPlan.executionCellLeaseId
+      harnessInstanceLeasePath = $harnessPlan.harnessInstanceLeasePath
+      harnessInstanceLeaseId = $harnessPlan.harnessInstanceLeaseId
+      harnessInstanceId = $harnessPlan.harnessInstanceId
+    }
   }
   Write-JsonEvent 'dryRun' $dryRunPayload
   Set-LoopExit 0
