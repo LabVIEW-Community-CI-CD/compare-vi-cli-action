@@ -30,7 +30,10 @@ function createRollupFixture() {
         operatorLaborUsd: 30,
         operatorLaborMissingTurnCount: 1,
         blendedTotalUsd: null,
-        estimatedPrepaidUsdRemaining: 387.5
+        estimatedPrepaidUsdRemaining: 387.5,
+        accountBalanceTotalCredits: 28750,
+        accountBalanceUsedCredits: 24600,
+        accountBalanceRemainingCredits: 4150
       },
       provenance: {
         operatorProfiles: [
@@ -38,6 +41,14 @@ function createRollupFixture() {
             operatorProfilePath: 'tools/policy/operator-cost-profile.json'
           }
         ],
+        invoiceTurn: {
+          unitPriceUsd: 0.04
+        },
+        accountBalance: {
+          sourceKind: 'operator-account-state',
+          sourcePathEvidence: 'operator-account-state.json',
+          operatorNote: 'Latest operator-provided balance snapshot.'
+        },
         invoiceTurns: [
           {
             invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
@@ -134,12 +145,23 @@ test('runGitHubCommentBudgetHook emits a durable lower-bound budget hook with re
   assert.equal(result.report.summary.status, 'warn');
   assert.equal(result.report.summary.operatorBudgetCapUsd, 50000);
   assert.equal(result.report.summary.operatorBudgetRemainingStatus, 'lower-bound');
+  assert.equal(result.report.summary.operatorBudgetSpendableStatus, 'unreconciled');
+  assert.equal(result.report.summary.operatorBudgetSpendableUsd, null);
   assert.equal(result.report.summary.observedBlendedLowerBoundUsd, 42.5);
+  assert.equal(result.report.summary.accountRemainingUsdEstimate, 166);
+  assert.equal(result.report.summary.operationalHeadroomUsd, 66);
+  assert.equal(result.report.summary.operationalHeadroomStatus, 'reserve-near');
+  assert.equal(result.report.summary.budgetPressureState, 'tight');
   assert.equal(result.report.turns.backgroundTurnCount, 2);
+  assert.equal(result.report.funding.accountBalance.remainingCredits, 4150);
+  assert.equal(result.report.funding.accountBalance.remainingUsdEstimate, 166);
   assert.equal(result.report.funding.reservedFunding.count, 1);
   assert.equal(result.report.funding.reservedFunding.totalReservedUsd, 100);
   assert.equal(fs.existsSync(outputPath), true);
   assert.equal(fs.existsSync(markdownOutputPath), true);
   assert.match(result.markdown, /blended lower bound \$42\.500000/);
+  assert.match(result.markdown, /account est \$166\.000000 remaining/);
+  assert.match(result.markdown, /operational headroom \$66\.000000 \(reserve-near\)/);
+  assert.match(result.markdown, /pressure tight/);
   assert.match(result.markdown, /calibration reserve \$100\.000000/);
 });

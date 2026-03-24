@@ -217,12 +217,30 @@ function setupMaterializationFixture() {
     createInvoiceTurnPayload()
   );
   writeJson(
+    path.join(donorRoot, 'tests', 'results', '_agent', 'cost', 'invoice-turns', 'HQ1VJLMV-0027.metadata.local.json'),
+    {
+      schema: 'priority/agent-cost-private-invoice-metadata@v1',
+      invoiceId: 'HQ1VJLMV-0027'
+    }
+  );
+  writeJson(
     path.join(donorRoot, 'tests', 'results', '_agent', 'cost', 'usage-exports', 'usage-export-2026-03-15.json'),
     createUsageExportPayload()
   );
   writeJson(
     path.join(donorRoot, 'tests', 'results', '_agent', 'cost', 'account-balances', 'account-balance-2026-03-21.json'),
     createAccountBalancePayload()
+  );
+  writeJson(
+    path.join(donorRoot, 'tests', 'results', '_agent', 'cost', 'account-balances', 'account-balance-2026-03-21.private.local.json'),
+    {
+      schema: 'priority/agent-cost-private-account-balance@v1',
+      balances: {
+        totalCredits: 27500,
+        usedCredits: 15800,
+        remainingCredits: 11700
+      }
+    }
   );
 
   return { repoRoot };
@@ -245,6 +263,14 @@ test('runMaterializeAgentCostRollup materializes a heuristic turn and rollup in 
   assert.equal(result.report.syncedReceipts.invoiceTurns.materializedCount, 1);
   assert.equal(result.report.syncedReceipts.usageExports.materializedCount, 1);
   assert.equal(result.report.syncedReceipts.accountBalances.materializedCount, 1);
+  assert.equal(
+    result.report.syncedReceipts.invoiceTurns.files.some((entry) => entry.fileName.includes('.metadata.')),
+    false
+  );
+  assert.equal(
+    result.report.syncedReceipts.accountBalances.files.some((entry) => entry.fileName.includes('.private.')),
+    false
+  );
   assert.equal(result.report.heuristicTurn.requestedModel, 'gpt-5.4');
   assert.equal(fs.existsSync(result.outputPath), true);
   assert.equal(fs.existsSync(result.costRollupPath), true);

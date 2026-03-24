@@ -147,8 +147,13 @@ function listJsonFiles(dirPath) {
     return [];
   }
   return fs.readdirSync(resolved, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json') && !shouldIgnoreDiscoveredReceipt(entry.name))
     .map((entry) => path.join(resolved, entry.name));
+}
+
+function shouldIgnoreDiscoveredReceipt(fileName) {
+  const normalized = normalizeText(fileName).toLowerCase();
+  return normalized.includes('.private.') || normalized.includes('.metadata.');
 }
 
 function chooseNewestByBasename(filePaths) {
