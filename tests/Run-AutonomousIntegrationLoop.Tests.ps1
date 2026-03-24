@@ -108,6 +108,7 @@ Describe 'Run-AutonomousIntegrationLoop TestStand harness mode' -Tag 'Unit' {
 
     $harnessStub = Join-Path $outDir 'TestStand-CompareHarness.ps1'
     $logPath = Join-Path $outDir 'harness-log.ndjson'
+    $jsonLogPath = Join-Path $outDir 'loop.events.json'
     $outputRoot = Join-Path $outDir 'outputs'
 $stubContent = @"
 param(
@@ -186,7 +187,7 @@ exit 0
     try {
       $runner = Join-Path $outDir 'runner-harness.ps1'
       $runnerContent = @"
-& '$scriptPath' -Base '$base' -Head '$head' -MaxIterations 2 -IntervalSeconds 0 -LogVerbosity Quiet -LvCompareArgs '-foo 1 -bar' -UseTestStandHarness -TestStandHarnessPath '$harnessStub' -TestStandOutputRoot '$outputRoot' -TestStandWarmup detect -TestStandSuiteClass dual-plane-parity -TestStandLabVIEW64Path 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandLabVIEW32Path 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandAgentId 'hooke' -TestStandAgentClass 'subagent' -TestStandExecutionCellLeasePath '$leasePath' -TestStandExecutionCellId 'exec-cell-hooke-loop-01' -TestStandExecutionCellLeaseId 'lease-hooke-loop-01' -TestStandHarnessInstanceLeasePath '$harnessLeasePath' -TestStandHarnessInstanceId 'ts-loop-hooke-01' -TestStandRenderReport -TestStandCloseLabVIEW -TestStandCloseLVCompare -TestStandTimeoutSeconds 45 -TestStandReplaceFlags -FinalStatusJsonPath '$outDir/final.json'
+& '$scriptPath' -Base '$base' -Head '$head' -MaxIterations 2 -IntervalSeconds 0 -LogVerbosity Quiet -JsonLogPath '$jsonLogPath' -LvCompareArgs '-foo 1 -bar' -UseTestStandHarness -TestStandHarnessPath '$harnessStub' -TestStandOutputRoot '$outputRoot' -TestStandWarmup detect -TestStandSuiteClass dual-plane-parity -TestStandLabVIEW64Path 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandLabVIEW32Path 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandAgentId 'hooke' -TestStandAgentClass 'subagent' -TestStandExecutionCellLeasePath '$leasePath' -TestStandExecutionCellId 'exec-cell-hooke-loop-01' -TestStandExecutionCellLeaseId 'lease-hooke-loop-01' -TestStandHarnessInstanceLeasePath '$harnessLeasePath' -TestStandHarnessInstanceId 'ts-loop-hooke-01' -TestStandRenderReport -TestStandCloseLabVIEW -TestStandCloseLVCompare -TestStandTimeoutSeconds 45 -TestStandReplaceFlags -FinalStatusJsonPath '$outDir/final.json'
 exit `$LASTEXITCODE
 "@
       Set-Content -LiteralPath $runner -Encoding UTF8 -Value $runnerContent
@@ -216,6 +217,20 @@ exit `$LASTEXITCODE
       $entries | ForEach-Object { [int]$_.timeout } | Sort-Object -Unique | Should -Be @(45)
       $entries | ForEach-Object { $_.replaceFlags } | Sort-Object -Unique | Should -Be @($true)
       $entries | ForEach-Object { $_.flags } | ForEach-Object { $_ } | Sort-Object -Unique | Should -Be @('-bar','-foo','1')
+
+      $eventEntries = Get-Content -LiteralPath $jsonLogPath | ForEach-Object { $_ | ConvertFrom-Json }
+      $planEvent = $eventEntries | Where-Object { $_.type -eq 'plan' } | Select-Object -First 1
+      $planEvent.executionTopology.runtimeSurface | Should -Be 'windows-native-teststand'
+      $planEvent.executionTopology.processModelClass | Should -Be 'parallel-process-model'
+      $planEvent.executionTopology.executionCellLeaseId | Should -Be 'lease-hooke-loop-01'
+      $planEvent.executionTopology.harnessInstanceLeaseId | Should -Be 'harness-lease-hooke-loop-01'
+      $planEvent.executionTopology.harnessInstanceId | Should -Be 'ts-loop-hooke-01'
+
+      $lastHarnessResult = $eventEntries | Where-Object { $_.type -eq 'harnessResult' -and $_.PSObject.Properties.Name -contains 'exitCode' } | Select-Object -Last 1
+      $lastHarnessResult.executionTopology.executionCellLeaseId | Should -Be 'lease-hooke-loop-01'
+      $lastHarnessResult.executionTopology.harnessInstanceLeaseId | Should -Be 'harness-lease-session-hooke-loop-01'
+      $lastHarnessResult.executionTopology.harnessInstanceLeasePath | Should -Be (Join-Path (Join-Path $outputRoot 'iteration-0002') 'session-harness-lease.json')
+      $lastHarnessResult.executionTopology.harnessInstanceId | Should -Be 'session-ts-loop-hooke-01'
 
       $finalStatus = Get-Content -LiteralPath (Join-Path $outDir 'final.json') -Raw | ConvertFrom-Json
       $finalStatus.harness.path | Should -Be $harnessStub
