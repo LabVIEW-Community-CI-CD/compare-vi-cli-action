@@ -243,6 +243,43 @@ function Get-HarnessInstanceLeaseMetadata {
   return [pscustomobject]$metadata
 }
 
+function Get-TestStandHarnessSessionMetadata {
+  param([string]$IterationRoot)
+
+  $metadata = [ordered]@{
+    harnessInstanceId = $null
+    harnessInstanceLeaseId = $null
+    harnessInstanceLeasePath = $null
+  }
+
+  if ([string]::IsNullOrWhiteSpace($IterationRoot)) {
+    return [pscustomobject]$metadata
+  }
+
+  try {
+    $sessionIndexPath = Join-Path $IterationRoot 'session-index.json'
+    if (-not (Test-Path -LiteralPath $sessionIndexPath -PathType Leaf)) {
+      return [pscustomobject]$metadata
+    }
+
+    $payload = Get-Content -LiteralPath $sessionIndexPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    $harnessInstance = if ($payload -and $payload.PSObject.Properties.Name -contains 'harnessInstance') { $payload.harnessInstance } else { $null }
+    if ($harnessInstance) {
+      if ($harnessInstance.PSObject.Properties.Name -contains 'instanceId' -and -not [string]::IsNullOrWhiteSpace($harnessInstance.instanceId)) {
+        $metadata.harnessInstanceId = [string]$harnessInstance.instanceId
+      }
+      if ($harnessInstance.PSObject.Properties.Name -contains 'leaseId' -and -not [string]::IsNullOrWhiteSpace($harnessInstance.leaseId)) {
+        $metadata.harnessInstanceLeaseId = [string]$harnessInstance.leaseId
+      }
+      if ($harnessInstance.PSObject.Properties.Name -contains 'leasePath' -and -not [string]::IsNullOrWhiteSpace($harnessInstance.leasePath)) {
+        $metadata.harnessInstanceLeasePath = [string]$harnessInstance.leasePath
+      }
+    }
+  } catch {}
+
+  return [pscustomobject]$metadata
+}
+
 # Defaults / fallbacks
 if (-not $MaxIterations) { $MaxIterations = 1 }
 if ($null -eq $IntervalSeconds) { $IntervalSeconds = 0 }
@@ -380,6 +417,11 @@ if ($UseTestStandHarness) {
   $harnessInstanceLeaseMetadata = Get-HarnessInstanceLeaseMetadata -LeasePath $harnessInstanceLeasePath
   $harnessInstanceId = $TestStandHarnessInstanceId
   $harnessIteration = [ref]0
+  $latestHarnessSessionMetadata = [ref]([pscustomobject]@{
+    harnessInstanceId = $null
+    harnessInstanceLeaseId = $null
+    harnessInstanceLeasePath = $null
+  })
 
   $executor = {
     param($CliPath,$BasePath,$HeadPath,$ArgsList)
@@ -434,6 +476,10 @@ if ($UseTestStandHarness) {
     try {
       & $resolvedHarness @harnessParams | Out-Null
       $exitCode = $LASTEXITCODE
+      $sessionMetadata = Get-TestStandHarnessSessionMetadata -IterationRoot $iterationRoot
+      if (-not [string]::IsNullOrWhiteSpace($sessionMetadata.harnessInstanceId) -or -not [string]::IsNullOrWhiteSpace($sessionMetadata.harnessInstanceLeaseId) -or -not [string]::IsNullOrWhiteSpace($sessionMetadata.harnessInstanceLeasePath)) {
+        $latestHarnessSessionMetadata.Value = $sessionMetadata
+      }
     } catch {
       Write-JsonEvent 'harnessResult' @{ iteration=$currentIteration; status='exception'; message=$_.Exception.Message }
       throw
@@ -682,6 +728,19 @@ try {
   }
   throw
 }
+
+if ($UseTestStandHarness -and $harnessPlan -and $latestHarnessSessionMetadata.Value) {
+  if (-not [string]::IsNullOrWhiteSpace($latestHarnessSessionMetadata.Value.harnessInstanceId)) {
+    $harnessPlan.harnessInstanceId = $latestHarnessSessionMetadata.Value.harnessInstanceId
+  }
+  if (-not [string]::IsNullOrWhiteSpace($latestHarnessSessionMetadata.Value.harnessInstanceLeaseId)) {
+    $harnessPlan.harnessInstanceLeaseId = $latestHarnessSessionMetadata.Value.harnessInstanceLeaseId
+  }
+  if (-not [string]::IsNullOrWhiteSpace($latestHarnessSessionMetadata.Value.harnessInstanceLeasePath)) {
+    $harnessPlan.harnessInstanceLeasePath = $latestHarnessSessionMetadata.Value.harnessInstanceLeasePath
+  }
+}
+
 Write-JsonEvent 'result' (@{ iterations=$result.Iterations; diffs=$result.DiffCount; errors=$result.ErrorCount; succeeded=$result.Succeeded })
 
 # Final status JSON emission (independent of run summary JSON produced by loop if that param was set)
