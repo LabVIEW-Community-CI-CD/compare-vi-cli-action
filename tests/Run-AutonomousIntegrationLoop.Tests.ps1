@@ -164,6 +164,19 @@ if (`$logDir -and -not (Test-Path `$logDir)) { New-Item -ItemType Directory -Pat
   replaceFlags = `$ReplaceFlags.IsPresent
 }
 (`$payload | ConvertTo-Json -Compress) | Add-Content -Path `$log
+`$sessionIndex = [ordered]@{
+  schema = 'teststand-compare-session-v1'
+  harnessInstance = [ordered]@{
+    instanceId = "session-`$HarnessInstanceId"
+    leaseId = 'harness-lease-session-hooke-loop-01'
+    leasePath = (Join-Path `$OutputRoot 'session-harness-lease.json')
+  }
+  processModel = [ordered]@{
+    runtimeSurface = 'windows-native-teststand'
+    processModelClass = if (`$SuiteClass -eq 'dual-plane-parity') { 'parallel-process-model' } else { 'sequential-process-model' }
+  }
+}
+(`$sessionIndex | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath (Join-Path `$OutputRoot 'session-index.json') -Encoding UTF8
 if (`$env:HARNESS_EXIT_CODE) { exit [int]`$env:HARNESS_EXIT_CODE }
 exit 0
 "@
@@ -218,9 +231,9 @@ exit `$LASTEXITCODE
       $finalStatus.harness.executionCellLeasePath | Should -Be $leasePath
       $finalStatus.harness.executionCellId | Should -Be 'exec-cell-hooke-loop-01'
       $finalStatus.harness.executionCellLeaseId | Should -Be 'lease-hooke-loop-01'
-      $finalStatus.harness.harnessInstanceLeasePath | Should -Be $harnessLeasePath
-      $finalStatus.harness.harnessInstanceLeaseId | Should -Be 'harness-lease-hooke-loop-01'
-      $finalStatus.harness.harnessInstanceId | Should -Be 'ts-loop-hooke-01'
+      $finalStatus.harness.harnessInstanceLeasePath | Should -Be (Join-Path (Join-Path $outputRoot 'iteration-0002') 'session-harness-lease.json')
+      $finalStatus.harness.harnessInstanceLeaseId | Should -Be 'harness-lease-session-hooke-loop-01'
+      $finalStatus.harness.harnessInstanceId | Should -Be 'session-ts-loop-hooke-01'
     }
     finally {
       Remove-Item Env:HARNESS_LOG -ErrorAction SilentlyContinue
