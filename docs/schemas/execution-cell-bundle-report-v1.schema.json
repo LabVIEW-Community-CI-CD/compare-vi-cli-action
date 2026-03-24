@@ -143,6 +143,13 @@
         "planeBinding",
         "harnessKind",
         "harnessInstanceId",
+        "executionCellLeaseId",
+        "dockerLaneLeaseId",
+        "linkedExecutionCellId",
+        "linkedExecutionCellLeaseId",
+        "linkedDockerLaneId",
+        "linkedDockerLaneLeaseId",
+        "reciprocalLinkReady",
         "dockerRequested",
         "windowsNativeTestStand",
         "effectiveBillableRateMultiplier",
@@ -197,6 +204,45 @@
             "string",
             "null"
           ]
+        },
+        "executionCellLeaseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dockerLaneLeaseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "linkedExecutionCellId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "linkedExecutionCellLeaseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "linkedDockerLaneId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "linkedDockerLaneLeaseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reciprocalLinkReady": {
+          "type": "boolean"
         },
         "dockerRequested": {
           "type": "boolean"

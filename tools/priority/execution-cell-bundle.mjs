@@ -139,6 +139,23 @@ function collectSummaryStrings(reports, field) {
   return [...new Set(values)];
 }
 
+function hasReciprocalBundleLink(executionCell, dockerLane, cellId, laneId) {
+  const executionSummary = executionCell?.summary ?? {};
+  const dockerSummary = dockerLane?.summary ?? {};
+  const executionLeaseId = normalizeText(executionSummary.leaseId);
+  const dockerLeaseId = normalizeText(dockerSummary.leaseId);
+  if (!executionLeaseId || !dockerLeaseId) {
+    return false;
+  }
+
+  return (
+    normalizeText(executionSummary.linkedDockerLaneId) === normalizeText(laneId) &&
+    normalizeText(executionSummary.linkedDockerLaneLeaseId) === dockerLeaseId &&
+    normalizeText(dockerSummary.linkedExecutionCellId) === normalizeText(cellId) &&
+    normalizeText(dockerSummary.linkedExecutionCellLeaseId) === executionLeaseId
+  );
+}
+
 function resolveBundleStatus(action, executionCell, dockerLane, rollbacks) {
   const failure = firstFailureStatus(executionCell, dockerLane, rollbacks.executionCell, rollbacks.dockerLane);
   if (failure) {
@@ -292,6 +309,13 @@ function buildReport({
       planeBinding: toOptionalText(executionCell?.summary?.planeBinding),
       harnessKind: toOptionalText(executionCell?.summary?.harnessKind),
       harnessInstanceId: toOptionalText(executionCell?.summary?.harnessInstanceId),
+      executionCellLeaseId: toOptionalText(executionCell?.summary?.leaseId),
+      dockerLaneLeaseId: toOptionalText(dockerLane?.summary?.leaseId),
+      linkedExecutionCellId: toOptionalText(dockerLane?.summary?.linkedExecutionCellId),
+      linkedExecutionCellLeaseId: toOptionalText(dockerLane?.summary?.linkedExecutionCellLeaseId),
+      linkedDockerLaneId: toOptionalText(executionCell?.summary?.linkedDockerLaneId),
+      linkedDockerLaneLeaseId: toOptionalText(executionCell?.summary?.linkedDockerLaneLeaseId),
+      reciprocalLinkReady: hasReciprocalBundleLink(executionCell, dockerLane, cellId, laneId),
       dockerRequested,
       windowsNativeTestStand: isWindowsNativeTestStand(
         executionCell?.summary?.planeBinding,

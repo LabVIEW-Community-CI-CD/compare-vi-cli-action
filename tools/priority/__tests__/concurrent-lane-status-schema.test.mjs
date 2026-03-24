@@ -24,6 +24,7 @@ test('concurrent lane status schema validates the generated receipt', async () =
   const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
   const tempDir = mkdtempSync(path.join(os.tmpdir(), 'concurrent-lane-status-schema-'));
   const applyReceiptPath = path.join(tempDir, 'apply.json');
+  const executionBundleReceiptPath = path.join(tempDir, 'execution-cell-bundle.json');
   writeJson(applyReceiptPath, {
     schema: 'priority/concurrent-lane-apply-receipt@v1',
     generatedAt: '2026-03-21T00:00:00.000Z',
@@ -87,9 +88,33 @@ test('concurrent lane status schema validates the generated receipt', async () =
       shadowLaneIds: []
     }
   });
+  writeJson(executionBundleReceiptPath, {
+    schema: 'priority/execution-cell-bundle-report@v1',
+    status: 'granted',
+    cellId: 'cell-sagan-kernel',
+    laneId: 'docker-lane-01',
+    summary: {
+      executionCellLeaseId: 'exec-lease-123',
+      dockerLaneLeaseId: 'docker-lease-456',
+      harnessInstanceId: 'ts-harness-01',
+      planeBinding: 'dual-plane-parity',
+      premiumSaganMode: true,
+      reciprocalLinkReady: false,
+      effectiveBillableRateUsdPerHour: 375,
+      isolatedLaneGroupId: 'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    }
+  });
 
   const { receipt } = await observeConcurrentLaneStatus(
-    parseArgs(['node', 'concurrent-lane-status.mjs', '--apply-receipt', applyReceiptPath]),
+    parseArgs([
+      'node',
+      'concurrent-lane-status.mjs',
+      '--apply-receipt',
+      applyReceiptPath,
+      '--execution-bundle-receipt',
+      executionBundleReceiptPath
+    ]),
     {
       ensureGhCliFn: () => {},
       getRepoRootFn: () => tempDir,
@@ -107,6 +132,8 @@ test('concurrent lane status schema validates the generated receipt', async () =
   addFormats(ajv);
   const validate = ajv.compile(schema);
   assert.equal(validate(receipt), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(receipt.executionBundle.status, 'granted');
+  assert.equal(receipt.summary.executionBundlePremiumSaganMode, true);
   assert.equal(receipt.plan.schema, 'priority/concurrent-lane-plan@v1');
   assert.equal(receipt.plan.source, 'file');
   assert.equal(receipt.plan.recommendedBundleId, 'hosted-only-proof');

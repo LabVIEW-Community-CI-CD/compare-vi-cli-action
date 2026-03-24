@@ -114,6 +114,7 @@ test('execution-cell bundle grants coordinated worker cell and docker lane at or
     assert.equal(granted.summary.effectiveBillableRateUsdPerHour, 250);
     assert.equal(granted.summary.premiumSaganMode, false);
     assert.equal(granted.summary.windowsNativeTestStand, true);
+    assert.equal(granted.summary.reciprocalLinkReady, false);
   });
 });
 
@@ -173,6 +174,7 @@ test('execution-cell bundle infers premium Sagan dual-lane mode for dual-plane p
     assert.equal(granted.dockerLane.status, 'granted');
     assert.equal(granted.summary.premiumSaganMode, true);
     assert.equal(granted.summary.effectiveBillableRateUsdPerHour, 375);
+    assert.equal(granted.summary.reciprocalLinkReady, false);
     assert.deepEqual(
       granted.summary.capabilities.sort(),
       ['docker-lane', 'native-labview-2026-32', 'teststand-harness'].sort()
@@ -304,6 +306,10 @@ test('execution-cell bundle commits and releases both leases together', async ()
     assert.equal(committed.status, 'committed');
     assert.equal(committed.executionCell.status, 'committed');
     assert.equal(committed.dockerLane.status, 'committed');
+    assert.equal(committed.summary.executionCellLeaseId, committed.executionCell.summary.leaseId);
+    assert.equal(committed.summary.dockerLaneLeaseId, committed.dockerLane.summary.leaseId);
+    assert.equal(committed.summary.linkedExecutionCellId, 'exec-cell-epicurus-03');
+    assert.equal(committed.summary.linkedDockerLaneId, 'docker-agent-epicurus-03');
     assert.equal(committed.executionCell.summary.linkedDockerLaneId, 'docker-agent-epicurus-03');
     assert.equal(
       committed.executionCell.summary.linkedDockerLaneLeaseId,
@@ -314,6 +320,7 @@ test('execution-cell bundle commits and releases both leases together', async ()
       committed.dockerLane.summary.linkedExecutionCellLeaseId,
       committed.executionCell.summary.leaseId
     );
+    assert.equal(committed.summary.reciprocalLinkReady, true);
 
     const released = await runExecutionCellBundle({
       action: 'release',

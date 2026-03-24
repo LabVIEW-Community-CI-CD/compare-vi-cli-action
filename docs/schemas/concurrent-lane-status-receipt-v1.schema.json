@@ -246,6 +246,42 @@
         }
       }
     },
+    "executionBundle": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema",
+        "status",
+        "cellId",
+        "laneId",
+        "executionCellLeaseId",
+        "dockerLaneLeaseId",
+        "harnessInstanceId",
+        "planeBinding",
+        "premiumSaganMode",
+        "reciprocalLinkReady",
+        "effectiveBillableRateUsdPerHour",
+        "isolatedLaneGroupId",
+        "fingerprintSha256"
+      ],
+      "properties": {
+        "path": { "type": ["string", "null"] },
+        "schema": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] },
+        "cellId": { "type": ["string", "null"] },
+        "laneId": { "type": ["string", "null"] },
+        "executionCellLeaseId": { "type": ["string", "null"] },
+        "dockerLaneLeaseId": { "type": ["string", "null"] },
+        "harnessInstanceId": { "type": ["string", "null"] },
+        "planeBinding": { "type": ["string", "null"] },
+        "premiumSaganMode": { "type": "boolean" },
+        "reciprocalLinkReady": { "type": "boolean" },
+        "effectiveBillableRateUsdPerHour": { "type": ["number", "null"] },
+        "isolatedLaneGroupId": { "type": ["string", "null"] },
+        "fingerprintSha256": { "type": ["string", "null"] }
+      }
+    },
     "laneStatuses": {
       "type": "array",
       "items": {
@@ -352,6 +388,9 @@
         "deferredLaneCount",
         "manualLaneCount",
         "shadowLaneCount",
+        "executionBundleStatus",
+        "executionBundleReciprocalLinkReady",
+        "executionBundlePremiumSaganMode",
         "idleClassificationCoverage",
         "pullRequestStatus",
         "orchestratorDisposition"
@@ -395,6 +434,15 @@
         "shadowLaneCount": {
           "type": "integer",
           "minimum": 0
+        },
+        "executionBundleStatus": {
+          "type": ["string", "null"]
+        },
+        "executionBundleReciprocalLinkReady": {
+          "type": "boolean"
+        },
+        "executionBundlePremiumSaganMode": {
+          "type": "boolean"
         },
         "idleClassificationCoverage": {
           "type": "object",
