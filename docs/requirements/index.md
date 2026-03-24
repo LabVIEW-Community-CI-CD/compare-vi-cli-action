@@ -9,3 +9,5 @@
 - [`REQ-DOTNET_CLI_RELEASE_ASSET`](./DOTNET_CLI_RELEASE_ASSET.md)
 - [`DOTNET CLI PowerShell Mapping`](./DOTNET_CLI_POWERSHELL_MAPPING.md)
 - [`DOTNET CLI Release Checklist`](./DOTNET_CLI_RELEASE_CHECKLIST.md)
+- [`Template Docker Profile Requirement V9`](./TEMPLATE_DOCKER_PROFILE_REQUIREMENT_V9.md)
+- [`Template Docker Profile Implementation Backlog V1`](./TEMPLATE_DOCKER_PROFILE_IMPLEMENTATION_BACKLOG_V1.md)
