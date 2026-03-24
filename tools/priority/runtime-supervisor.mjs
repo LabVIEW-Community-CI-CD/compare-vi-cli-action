@@ -59,6 +59,7 @@ import {
 } from './sync-standing-priority.mjs';
 import {
   buildWorkerProviderSelectionRequest,
+  buildExecutionTopologyRuntimeState,
   buildLocalReviewLoopRequest,
   buildCanonicalDeliveryDecision,
   selectWorkerProviderAssignment,
@@ -1421,6 +1422,15 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
     deps,
     selectedProviderId: workerProviderSelection.selectedProviderId
   });
+  const executionTopology = buildExecutionTopologyRuntimeState({
+    providerSelection: workerProviderSelection,
+    workerSlotId:
+      normalizeText(workerBranch?.slotId) ||
+      normalizeText(workerReady?.slotId) ||
+      normalizeText(preparedWorker?.slotId) ||
+      null,
+    concurrentLaneStatus
+  });
 
   return {
     source: 'comparevi-runtime',
@@ -1511,6 +1521,7 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
         backlog: artifacts.backlogRepair ?? null,
         concurrentLaneApply,
         concurrentLaneStatus,
+        executionTopology,
         planeTransition,
         localReviewLoop,
         liveAgentModelSelection,
