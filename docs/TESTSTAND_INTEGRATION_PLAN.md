@@ -41,8 +41,72 @@ stays available even when fresh harness artefacts are not present.
 `tests/results/teststand-session/session-index.json` produced locally, allowing agents to verify shape changes without
 rerunning LabVIEW.
 
+TestStand itself is Windows-only. Treat it as a Windows-native execution-cell runtime, not as a Linux or Docker
+runtime. Linux/container planes may still participate elsewhere in the host fabric, but not as TestStand-owned harness
+cells.
+
 Validate the session index with `node tools/npm/run-script.mjs session:teststand:validate` so schema regressions surface
 immediately when the harness outputs change.
+
+### 1.2.1 Dual-plane parity command
+
+The harness now also supports an opt-in LabVIEW 2026 native parity suite that launches both native planes
+simultaneously and writes a parity-aware `session-index.json`.
+
+```powershell
+pwsh -NoLogo -NoProfile -File tools/TestStand-CompareHarness.ps1 `
+  -BaseVi (Resolve-Path .\VI1.vi) `
+  -HeadVi (Resolve-Path .\VI2.vi) `
+  -OutputRoot tests/results/teststand-session `
+  -SuiteClass dual-plane-parity `
+  -LabVIEW64ExePath 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' `
+  -LabVIEW32ExePath 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' `
+  -Warmup detect `
+  -RenderReport
+```
+
+Parity sessions use `schema = teststand-compare-session/v2` and include:
+
+- `suiteClass = dual-plane-parity`
+- `primaryPlane = native-labview-2026-64`
+- `requestedSimultaneous = true`
+- `planes.x64` / `planes.x32` single-plane session records
+- `parity.status`, `mismatchCount`, and field-level mismatch details
+
+`Run-DX.ps1` forwards the same contract through:
+
+- `-TestStandSuiteClass dual-plane-parity`
+- `-LabVIEW64ExePath`
+- `-LabVIEW32ExePath`
+
+This keeps dual-plane parity runs visible in `tests/results/_agent/dx-status.json` without changing the default
+single-plane TestStand path.
+
+### 1.2.2 Execution-cell-owned harness instances
+
+Treat the harness as an execution-cell consumer, not as ambient host state.
+
+- each agent leases one execution cell
+- that execution cell owns its harness instance
+- dual-plane parity keeps one coordinator harness instance plus one child harness instance per plane
+
+The harness now accepts:
+
+- `-ExecutionCellLeasePath`
+- `-ExecutionCellId`
+- `-ExecutionCellLeaseId`
+- `-HarnessInstanceId`
+
+Session receipts project both:
+
+- `executionCell`
+- `harnessInstance`
+
+That keeps TestStand evidence attributable to one agent-owned memory/process boundary instead of an unscoped host run.
+
+When the owning agent also needs an isolated Docker lane for repeatable adjunct tooling, prefer
+`priority:lane:execution-cell:bundle` over separate lease calls. That bundle projects one effective billable rate,
+rolls back partial allocations, and keeps the Windows-only TestStand contract attached to the same cell-owned receipt.
 
 > **Note**: `-CloseLabVIEW` / `-CloseLVCompare` now queue post-run cleanup requests. The helpers do not invoke the close
 > scripts inline; instead `tools/Post-Run-Cleanup.ps1` consumes the requests after `Invoke-PesterTests.ps1` completes,
@@ -109,8 +173,9 @@ deterministic:
 
 ### 2.2 Telemetry
 
-- Update `tools/Ensure-SessionIndex.ps1` to recognise the `teststand-compare-session/v1` schema and emit summary lines
-  (`exit`, `diff`, elapsed seconds).
+- Update `tools/Ensure-SessionIndex.ps1` to recognise both `teststand-compare-session/v1` and
+  `teststand-compare-session/v2`, emitting summary lines (`exit`, `diff`, elapsed seconds) and parity status when the
+  dual-plane suite is used.
 - Amend the Summary appender to group TestStand runs under a dedicated heading (`### TestStand Compare Session`).
 - Capture the warmup/compare NDJSON files via the artifact manifest so they are available for debugging.
 

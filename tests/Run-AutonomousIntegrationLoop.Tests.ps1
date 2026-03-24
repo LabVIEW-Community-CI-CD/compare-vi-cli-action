@@ -88,9 +88,18 @@ param(
   [string]`$BaseVi,
   [string]`$HeadVi,
   [Alias('LabVIEWPath')][string]`$LabVIEWExePath,
+  [string]`$LabVIEW64ExePath,
+  [string]`$LabVIEW32ExePath,
   [Alias('LVCompareExePath')][string]`$LVComparePath,
+  [string]`$AgentId,
+  [string]`$AgentClass,
+  [string]`$ExecutionCellLeasePath,
+  [string]`$ExecutionCellId,
+  [string]`$ExecutionCellLeaseId,
+  [string]`$HarnessInstanceId,
   [string]`$OutputRoot,
   [ValidateSet('detect','spawn','skip')][string]`$Warmup,
+  [ValidateSet('single-compare','dual-plane-parity')][string]`$SuiteClass = 'single-compare',
   [string[]]`$Flags,
   [switch]`$RenderReport,
   [switch]`$CloseLabVIEW,
@@ -108,6 +117,16 @@ if (`$logDir -and -not (Test-Path `$logDir)) { New-Item -ItemType Directory -Pat
   head = `$HeadVi
   output = `$OutputRoot
   warmup = `$Warmup
+  suiteClass = `$SuiteClass
+  labviewExe = `$LabVIEWExePath
+  labview64Exe = `$LabVIEW64ExePath
+  labview32Exe = `$LabVIEW32ExePath
+  agentId = `$AgentId
+  agentClass = `$AgentClass
+  executionCellLeasePath = `$ExecutionCellLeasePath
+  executionCellId = `$ExecutionCellId
+  executionCellLeaseId = `$ExecutionCellLeaseId
+  harnessInstanceId = `$HarnessInstanceId
   flags = @(`$Flags)
   renderReport = `$RenderReport.IsPresent
   closeLabVIEW = `$CloseLabVIEW.IsPresent
@@ -126,7 +145,7 @@ exit 0
     try {
       $runner = Join-Path $outDir 'runner-harness.ps1'
       $runnerContent = @"
-& '$scriptPath' -Base '$base' -Head '$head' -MaxIterations 2 -IntervalSeconds 0 -LogVerbosity Quiet -LvCompareArgs '-foo 1 -bar' -UseTestStandHarness -TestStandHarnessPath '$harnessStub' -TestStandOutputRoot '$outputRoot' -TestStandWarmup detect -TestStandRenderReport -TestStandCloseLabVIEW -TestStandCloseLVCompare -TestStandTimeoutSeconds 45 -TestStandReplaceFlags -FinalStatusJsonPath '$outDir/final.json'
+& '$scriptPath' -Base '$base' -Head '$head' -MaxIterations 2 -IntervalSeconds 0 -LogVerbosity Quiet -LvCompareArgs '-foo 1 -bar' -UseTestStandHarness -TestStandHarnessPath '$harnessStub' -TestStandOutputRoot '$outputRoot' -TestStandWarmup detect -TestStandSuiteClass dual-plane-parity -TestStandLabVIEW64Path 'C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandLabVIEW32Path 'C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe' -TestStandAgentId 'hooke' -TestStandAgentClass 'subagent' -TestStandExecutionCellLeasePath 'E:\comparevi-lanes\cells\hooke-01\execution-cell.json' -TestStandExecutionCellId 'exec-cell-hooke-loop-01' -TestStandExecutionCellLeaseId 'lease-hooke-loop-01' -TestStandHarnessInstanceId 'ts-loop-hooke-01' -TestStandRenderReport -TestStandCloseLabVIEW -TestStandCloseLVCompare -TestStandTimeoutSeconds 45 -TestStandReplaceFlags -FinalStatusJsonPath '$outDir/final.json'
 exit `$LASTEXITCODE
 "@
       Set-Content -LiteralPath $runner -Encoding UTF8 -Value $runnerContent
@@ -140,6 +159,15 @@ exit `$LASTEXITCODE
       $entries[0].output | Should -Match 'iteration-0001$'
       $entries[1].output | Should -Match 'iteration-0002$'
       $entries | ForEach-Object { $_.warmup } | Sort-Object -Unique | Should -Be @('detect')
+      $entries | ForEach-Object { $_.suiteClass } | Sort-Object -Unique | Should -Be @('dual-plane-parity')
+      $entries | ForEach-Object { $_.labview64Exe } | Sort-Object -Unique | Should -Be @('C:\Program Files\National Instruments\LabVIEW 2026\LabVIEW.exe')
+      $entries | ForEach-Object { $_.labview32Exe } | Sort-Object -Unique | Should -Be @('C:\Program Files (x86)\National Instruments\LabVIEW 2026\LabVIEW.exe')
+      $entries | ForEach-Object { $_.agentId } | Sort-Object -Unique | Should -Be @('hooke')
+      $entries | ForEach-Object { $_.agentClass } | Sort-Object -Unique | Should -Be @('subagent')
+      $entries | ForEach-Object { $_.executionCellLeasePath } | Sort-Object -Unique | Should -Be @('E:\comparevi-lanes\cells\hooke-01\execution-cell.json')
+      $entries | ForEach-Object { $_.executionCellId } | Sort-Object -Unique | Should -Be @('exec-cell-hooke-loop-01')
+      $entries | ForEach-Object { $_.executionCellLeaseId } | Sort-Object -Unique | Should -Be @('lease-hooke-loop-01')
+      $entries | ForEach-Object { $_.harnessInstanceId } | Sort-Object -Unique | Should -Be @('ts-loop-hooke-01')
       $entries | ForEach-Object { $_.renderReport } | Sort-Object -Unique | Should -Be @($true)
       $entries | ForEach-Object { $_.closeLabVIEW } | Sort-Object -Unique | Should -Be @($true)
       $entries | ForEach-Object { $_.closeLVCompare } | Sort-Object -Unique | Should -Be @($true)

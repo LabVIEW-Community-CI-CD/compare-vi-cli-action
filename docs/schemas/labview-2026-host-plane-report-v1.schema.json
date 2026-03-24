@@ -23,10 +23,11 @@
     },
     "host": {
       "type": "object",
-      "required": ["os", "computerName"],
+      "required": ["os", "computerName", "osFingerprint"],
       "properties": {
         "os": { "type": "string" },
-        "computerName": { "type": "string" }
+        "computerName": { "type": "string" },
+        "osFingerprint": { "$ref": "#/definitions/osFingerprint" }
       },
       "additionalProperties": false
     },
@@ -180,6 +181,94 @@
         "pairs": {
           "type": "array",
           "items": { "$ref": "#/definitions/pair" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "osFingerprint": {
+      "type": "object",
+      "required": [
+        "role",
+        "comparisonScope",
+        "platform",
+        "fingerprintSha256",
+        "isolatedLaneGroupId",
+        "canonical",
+        "advisory",
+        "sources"
+      ],
+      "properties": {
+        "role": { "const": "canonical-host-baseline" },
+        "comparisonScope": { "const": "isolated-lane-group" },
+        "platform": { "type": "string" },
+        "fingerprintSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "isolatedLaneGroupId": {
+          "type": "string",
+          "pattern": "^host-os-fingerprint:[a-f0-9]{64}$"
+        },
+        "canonical": {
+          "type": "object",
+          "required": [
+            "version",
+            "buildNumber",
+            "ubr",
+            "displayVersion",
+            "editionId",
+            "installationType",
+            "architecture",
+            "systemType",
+            "buildLabEx"
+          ],
+          "properties": {
+            "version": { "type": "string" },
+            "buildNumber": { "type": "string" },
+            "ubr": { "type": "integer", "minimum": 0 },
+            "displayVersion": { "type": "string" },
+            "editionId": { "type": "string" },
+            "installationType": { "type": "string" },
+            "architecture": { "type": "string" },
+            "systemType": { "type": "string" },
+            "buildLabEx": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "advisory": {
+          "type": "object",
+          "required": [
+            "caption",
+            "productName",
+            "currentVersionCompatibility",
+            "brandingMismatch",
+            "installDate",
+            "lastBootUpTime"
+          ],
+          "properties": {
+            "caption": { "type": "string" },
+            "productName": { "type": "string" },
+            "currentVersionCompatibility": { "type": "string" },
+            "brandingMismatch": { "type": "boolean" },
+            "installDate": { "type": "string" },
+            "lastBootUpTime": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "sources": {
+          "type": "object",
+          "required": ["registryPath", "cimClass", "systemClass", "comparisonFields"],
+          "properties": {
+            "registryPath": { "type": "string" },
+            "cimClass": { "type": "string" },
+            "systemClass": { "type": "string" },
+            "comparisonFields": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

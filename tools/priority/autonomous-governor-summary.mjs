@@ -383,6 +383,8 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
   const queueAuthorityRefresh =
     normalizeOptionalObject(activeLane?.queueAuthorityRefresh) ??
     normalizeOptionalObject(deliveryRuntimeState?.queueAuthorityRefresh);
+  const concurrentLaneStatus = normalizeOptionalObject(activeLane?.concurrentLaneStatus);
+  const executionBundle = normalizeOptionalObject(concurrentLaneStatus?.executionBundle);
 
   let status = 'none';
   if (prUrl) {
@@ -405,6 +407,22 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
     outcome,
     blockerClass,
     nextWakeCondition: asOptional(activeLane?.nextWakeCondition),
+    executionBundle: {
+      status: asOptional(executionBundle?.status),
+      planeBinding: asOptional(executionBundle?.planeBinding),
+      premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
+      reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
+      effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle?.effectiveBillableRateUsdPerHour)
+        ? executionBundle.effectiveBillableRateUsdPerHour
+        : null,
+      executionCellLeaseId: asOptional(executionBundle?.executionCellLeaseId),
+      dockerLaneLeaseId: asOptional(executionBundle?.dockerLaneLeaseId),
+      harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
+      cellId: asOptional(executionBundle?.cellId),
+      laneId: asOptional(executionBundle?.laneId),
+      isolatedLaneGroupId: asOptional(executionBundle?.isolatedLaneGroupId),
+      fingerprintSha256: asOptional(executionBundle?.fingerprintSha256)
+    },
     queueAuthorityRefresh: {
       attempted: queueAuthorityRefresh?.attempted === true,
       status: asOptional(queueAuthorityRefresh?.status),
@@ -729,6 +747,11 @@ function buildReport({
       releasePublishedBundleState: releaseSigningReadiness.publishedBundleState,
       releasePublishedBundleReleaseTag: releaseSigningReadiness.publishedBundleReleaseTag,
       releasePublishedBundleAuthoritativeConsumerPin: releaseSigningReadiness.publishedBundleAuthoritativeConsumerPin,
+      executionBundleStatus: deliveryRuntime.executionBundle.status,
+      executionBundlePlaneBinding: deliveryRuntime.executionBundle.planeBinding,
+      executionBundlePremiumSaganMode: deliveryRuntime.executionBundle.premiumSaganMode,
+      executionBundleReciprocalLinkReady: deliveryRuntime.executionBundle.reciprocalLinkReady,
+      executionBundleEffectiveBillableRateUsdPerHour: deliveryRuntime.executionBundle.effectiveBillableRateUsdPerHour,
       queueHandoffStatus: queueAuthority.status,
       queueHandoffNextWakeCondition: queueAuthority.nextWakeCondition,
       queueHandoffPrUrl: queueAuthority.prUrl,

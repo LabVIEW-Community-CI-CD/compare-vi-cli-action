@@ -12,6 +12,56 @@ All values are strings; use `1` / `0` for boolean-style flags.
 | `LVCOMPARE_PATH` | Optional override for LVCompare.exe (must resolve to canonical path) |
 | `WORKING_DIRECTORY` | Process CWD when invoking LVCompare |
 
+## Canonical host OS fingerprint
+
+The authoritative OS/build receipt for the canonical Windows host lane group is
+written by:
+
+```powershell
+node tools/npm/run-script.mjs env:labview:2026:host-planes
+```
+
+Primary artifact:
+
+- `tests/results/_agent/host-planes/labview-2026-host-plane-report.json`
+
+Key fields:
+
+- `host.osFingerprint.fingerprintSha256`
+- `host.osFingerprint.isolatedLaneGroupId`
+- `host.osFingerprint.canonical.version`
+- `host.osFingerprint.canonical.buildNumber`
+- `host.osFingerprint.canonical.ubr`
+- `host.osFingerprint.canonical.displayVersion`
+- `host.osFingerprint.canonical.editionId`
+
+Treat those fields as the upgrade-attribution baseline for isolated lane
+groups. If the fingerprint changes after a host upgrade, classify that as host
+OS drift first and only then assess Docker, LabVIEW, or workflow regressions.
+`computerName`, branding labels, and boot/install timestamps remain advisory.
+
+## Docker lane handshake
+
+Use the lease helper when a background agent needs an isolated Docker lane:
+
+```powershell
+node tools/npm/run-script.mjs priority:lane:docker:handshake -- --action request --lane-id docker-agent-epicurus-linux-01 --agent-id epicurus --agent-class subagent --capability docker-lane
+```
+
+Primary artifact:
+
+- `tests/results/_agent/runtime/docker-lane-handshake.json`
+
+Notes:
+
+- The helper depends on the canonical host-plane report and the operator cost profile.
+- Ordinary subagent Docker leases use the configured operator labor rate as-is.
+- Premium simultaneous `docker-lane` plus `native-labview-2026-32` is Sagan-only, requires `operatorAuthorizationRef`,
+  and bills at `1.5x` the configured operator labor rate.
+- The handshake projects `host.osFingerprint.isolatedLaneGroupId` and
+  `host.osFingerprint.fingerprintSha256` into the lease so Docker-lane usage stays attributable to the canonical host OS
+  baseline.
+
 ## Dispatcher guards (leak detection / cleanup)
 
 | Variable | Notes |
@@ -64,6 +114,9 @@ Notes:
   the wrapper and the TestStand harness invoke the LabVIEW CLI directly to generate an HTML report
   and enrich `lvcompare-capture.json` with an `environment.cli` metadata block (path, version,
   reportType, reportPath, status, message).
+- `tools/TestStand-CompareHarness.ps1` remains a native-plane consumer surface. It is useful when you need deterministic
+  warmup plus compare session receipts, but it should still be attributed to the selected native plane rather than to a
+  separate execution plane.
 - When a CLI report is produced, embedded artefacts (for example, diff images) are decoded into
   `tests/results/<session>/compare/cli-images/`, and `environment.cli.artifacts` records the report
   size, image count, and exported file paths so downstream tooling can rehydrate attachments.

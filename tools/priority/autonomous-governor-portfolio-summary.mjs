@@ -419,7 +419,17 @@ function buildReport({
       queueHandoffStatus: asOptional(compareGovernorSummary?.summary?.queueHandoffStatus),
       queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
       queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl),
-      queueAuthoritySource: asOptional(compareGovernorSummary?.summary?.queueAuthoritySource)
+      queueAuthoritySource: asOptional(compareGovernorSummary?.summary?.queueAuthoritySource),
+      executionBundleStatus: asOptional(compareGovernorSummary?.summary?.executionBundleStatus),
+      executionBundlePlaneBinding: asOptional(compareGovernorSummary?.summary?.executionBundlePlaneBinding),
+      executionBundlePremiumSaganMode: compareGovernorSummary?.summary?.executionBundlePremiumSaganMode === true,
+      executionBundleReciprocalLinkReady:
+        compareGovernorSummary?.summary?.executionBundleReciprocalLinkReady === true,
+      executionBundleEffectiveBillableRateUsdPerHour: Number.isFinite(
+        compareGovernorSummary?.summary?.executionBundleEffectiveBillableRateUsdPerHour
+      )
+        ? compareGovernorSummary.summary.executionBundleEffectiveBillableRateUsdPerHour
+        : null
     },
     portfolio: {
       repositoryCount: repositoryEntries.length,
@@ -447,6 +457,16 @@ function buildReport({
       queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
       queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl),
       queueAuthoritySource: asOptional(compareGovernorSummary?.summary?.queueAuthoritySource),
+      executionBundleStatus: asOptional(compareGovernorSummary?.summary?.executionBundleStatus),
+      executionBundlePlaneBinding: asOptional(compareGovernorSummary?.summary?.executionBundlePlaneBinding),
+      executionBundlePremiumSaganMode: compareGovernorSummary?.summary?.executionBundlePremiumSaganMode === true,
+      executionBundleReciprocalLinkReady:
+        compareGovernorSummary?.summary?.executionBundleReciprocalLinkReady === true,
+      executionBundleEffectiveBillableRateUsdPerHour: Number.isFinite(
+        compareGovernorSummary?.summary?.executionBundleEffectiveBillableRateUsdPerHour
+      )
+        ? compareGovernorSummary.summary.executionBundleEffectiveBillableRateUsdPerHour
+        : null,
       viHistoryDistributorDependencyStatus: viHistoryDistributorDependency.status,
       viHistoryDistributorDependencyTargetRepository: viHistoryDistributorDependency.dependentRepository,
       viHistoryDistributorDependencyExternalBlocker: viHistoryDistributorDependency.externalBlocker,

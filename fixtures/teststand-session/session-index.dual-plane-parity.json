@@ -1,0 +1,175 @@
+{
+  "schema": "teststand-compare-session/v2",
+  "at": "2026-03-24T00:30:00.000Z",
+  "suiteClass": "dual-plane-parity",
+  "primaryPlane": "native-labview-2026-64",
+  "requestedSimultaneous": true,
+  "warmup": {
+    "mode": "skip",
+    "events": null
+  },
+  "compare": {
+    "events": "planes/x64/compare/compare-events.ndjson",
+    "capture": "planes/x64/compare/lvcompare-capture.json",
+    "report": true,
+    "command": "LabVIEWCLI64 CreateComparisonReport",
+    "cliPath": "C:/Program Files (x86)/National Instruments/Shared/LabVIEW CLI/LabVIEWCLI.exe",
+    "policy": "cli-only",
+    "mode": "labview-cli",
+    "autoCli": false,
+    "sameName": false,
+    "timeoutSeconds": 600
+  },
+  "outcome": {
+    "exitCode": 0,
+    "seconds": 9.2,
+    "command": "LabVIEWCLI64 CreateComparisonReport",
+    "diff": false
+  },
+  "error": null,
+  "executionCell": {
+    "cellId": "exec-cell-sagan-01",
+    "leaseId": "lease-sagan-01",
+    "leasePath": "tests/results/_agent/runtime/execution-cell-sagan-01.json",
+    "agentId": "sagan",
+    "agentClass": "sagan",
+    "cellClass": "kernel-coordinator",
+    "suiteClass": "dual-plane-parity",
+    "planeBinding": "dual-plane-parity",
+    "premiumSaganMode": false,
+    "operatorAuthorizationRef": null,
+    "workingRoot": "tests/results/teststand-session",
+    "artifactRoot": "tests/results/teststand-session",
+    "isolatedLaneGroupId": "host-os-fingerprint:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+    "hostOsFingerprintSha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+  },
+  "harnessInstance": {
+    "harnessKind": "teststand-compare-harness",
+    "instanceId": "ts-harness-sagan-01",
+    "role": "coordinator",
+    "planeBinding": "dual-plane-parity",
+    "parentInstanceId": null
+  },
+  "planes": {
+    "x64": {
+      "plane": "native-labview-2026-64",
+      "architecture": "64-bit",
+      "labviewExePath": "C:/Program Files/National Instruments/LabVIEW 2026/LabVIEW.exe",
+      "outputRoot": "planes/x64",
+      "warmup": {
+        "mode": "skip",
+        "events": null
+      },
+      "compare": {
+        "events": "planes/x64/compare/compare-events.ndjson",
+        "capture": "planes/x64/compare/lvcompare-capture.json",
+        "report": true,
+        "command": "LabVIEWCLI64 CreateComparisonReport",
+        "cliPath": "C:/Program Files (x86)/National Instruments/Shared/LabVIEW CLI/LabVIEWCLI.exe",
+        "policy": "cli-only",
+        "mode": "labview-cli",
+        "autoCli": false,
+        "sameName": false,
+        "timeoutSeconds": 600
+      },
+      "outcome": {
+        "exitCode": 0,
+        "seconds": 9.2,
+        "command": "LabVIEWCLI64 CreateComparisonReport",
+        "diff": false
+      },
+      "error": null,
+      "exitCode": 0,
+      "executionCell": {
+        "cellId": "exec-cell-sagan-01",
+        "leaseId": "lease-sagan-01",
+        "leasePath": "tests/results/_agent/runtime/execution-cell-sagan-01.json",
+        "agentId": "sagan",
+        "agentClass": "sagan",
+        "cellClass": "kernel-coordinator",
+        "suiteClass": "dual-plane-parity",
+        "planeBinding": "native-labview-2026-64",
+        "premiumSaganMode": false,
+        "operatorAuthorizationRef": null,
+        "workingRoot": "tests/results/teststand-session/planes/x64",
+        "artifactRoot": "tests/results/teststand-session/planes/x64",
+        "isolatedLaneGroupId": "host-os-fingerprint:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+        "hostOsFingerprintSha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+      },
+      "harnessInstance": {
+        "harnessKind": "teststand-compare-harness",
+        "instanceId": "ts-harness-sagan-01-x64",
+        "role": "plane-child",
+        "planeBinding": "native-labview-2026-64",
+        "parentInstanceId": "ts-harness-sagan-01"
+      }
+    },
+    "x32": {
+      "plane": "native-labview-2026-32",
+      "architecture": "32-bit",
+      "labviewExePath": "C:/Program Files (x86)/National Instruments/LabVIEW 2026/LabVIEW.exe",
+      "outputRoot": "planes/x32",
+      "warmup": {
+        "mode": "skip",
+        "events": null
+      },
+      "compare": {
+        "events": "planes/x32/compare/compare-events.ndjson",
+        "capture": "planes/x32/compare/lvcompare-capture.json",
+        "report": true,
+        "command": "LabVIEWCLI32 CreateComparisonReport",
+        "cliPath": "C:/Program Files (x86)/National Instruments/Shared/LabVIEW CLI/LabVIEWCLI.exe",
+        "policy": "cli-only",
+        "mode": "labview-cli",
+        "autoCli": false,
+        "sameName": false,
+        "timeoutSeconds": 600
+      },
+      "outcome": {
+        "exitCode": 0,
+        "seconds": 9.8,
+        "command": "LabVIEWCLI32 CreateComparisonReport",
+        "diff": false
+      },
+      "error": null,
+      "exitCode": 0,
+      "executionCell": {
+        "cellId": "exec-cell-sagan-01",
+        "leaseId": "lease-sagan-01",
+        "leasePath": "tests/results/_agent/runtime/execution-cell-sagan-01.json",
+        "agentId": "sagan",
+        "agentClass": "sagan",
+        "cellClass": "kernel-coordinator",
+        "suiteClass": "dual-plane-parity",
+        "planeBinding": "native-labview-2026-32",
+        "premiumSaganMode": false,
+        "operatorAuthorizationRef": null,
+        "workingRoot": "tests/results/teststand-session/planes/x32",
+        "artifactRoot": "tests/results/teststand-session/planes/x32",
+        "isolatedLaneGroupId": "host-os-fingerprint:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+        "hostOsFingerprintSha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+      },
+      "harnessInstance": {
+        "harnessKind": "teststand-compare-harness",
+        "instanceId": "ts-harness-sagan-01-x32",
+        "role": "plane-child",
+        "planeBinding": "native-labview-2026-32",
+        "parentInstanceId": "ts-harness-sagan-01"
+      }
+    }
+  },
+  "parity": {
+    "status": "match",
+    "comparedFields": [
+      "outcome.exitCode",
+      "outcome.diff",
+      "compare.report",
+      "compare.mode",
+      "compare.policy"
+    ],
+    "exitCodeParity": true,
+    "diffParity": true,
+    "mismatchCount": 0,
+    "mismatches": []
+  }
+}

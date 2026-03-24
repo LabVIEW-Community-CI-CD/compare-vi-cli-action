@@ -97,6 +97,11 @@ function createCompareGovernorSummary(overrides = {}) {
       queueHandoffNextWakeCondition: 'checks-green',
       queueHandoffPrUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864',
       queueAuthoritySource: 'delivery-runtime',
+      executionBundleStatus: 'committed',
+      executionBundlePlaneBinding: 'dual-plane-parity',
+      executionBundlePremiumSaganMode: true,
+      executionBundleReciprocalLinkReady: true,
+      executionBundleEffectiveBillableRateUsdPerHour: 375,
       releaseSigningStatus: 'warn',
       releaseSigningAuthorityState: 'scope-missing',
       releaseConductorApplyState: 'disabled',
@@ -326,6 +331,11 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.summary.queueHandoffStatus, 'checks-pending');
   assert.equal(report.summary.queueHandoffNextWakeCondition, 'checks-green');
   assert.equal(report.summary.queueAuthoritySource, 'delivery-runtime');
+  assert.equal(report.summary.executionBundleStatus, 'committed');
+  assert.equal(report.summary.executionBundlePlaneBinding, 'dual-plane-parity');
+  assert.equal(report.summary.executionBundlePremiumSaganMode, true);
+  assert.equal(report.summary.executionBundleReciprocalLinkReady, true);
+  assert.equal(report.summary.executionBundleEffectiveBillableRateUsdPerHour, 375);
   assert.equal(report.summary.viHistoryDistributorDependencyStatus, 'blocked');
   assert.equal(
     report.summary.viHistoryDistributorDependencyExternalBlocker,
@@ -339,6 +349,11 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.summary.viHistoryDistributorDependencyReleaseConductorApplyState, 'disabled');
   assert.equal(report.compare.queueHandoffPrUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
   assert.equal(report.compare.queueAuthoritySource, 'delivery-runtime');
+  assert.equal(report.compare.executionBundleStatus, 'committed');
+  assert.equal(report.compare.executionBundlePlaneBinding, 'dual-plane-parity');
+  assert.equal(report.compare.executionBundlePremiumSaganMode, true);
+  assert.equal(report.compare.executionBundleReciprocalLinkReady, true);
+  assert.equal(report.compare.executionBundleEffectiveBillableRateUsdPerHour, 375);
   assert.equal(report.portfolio.repositoryCount, 4);
   assert.deepEqual(report.portfolio.dependencies, [
     {

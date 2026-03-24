@@ -561,6 +561,22 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
           },
           error: null
         },
+        executionBundle: {
+          path: 'tests/results/_agent/runtime/execution-cell-bundle.json',
+          schema: 'priority/execution-cell-bundle-report@v1',
+          status: 'committed',
+          cellId: 'cell-sagan-kernel',
+          laneId: 'docker-lane-01',
+          executionCellLeaseId: 'exec-lease-123',
+          dockerLaneLeaseId: 'docker-lease-456',
+          harnessInstanceId: 'ts-harness-01',
+          planeBinding: 'dual-plane-parity',
+          premiumSaganMode: true,
+          reciprocalLinkReady: true,
+          effectiveBillableRateUsdPerHour: 375,
+          isolatedLaneGroupId: 'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+        },
         laneStatuses: [
           {
             id: 'hosted-linux-proof',
@@ -595,6 +611,9 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
           deferredLaneCount: 1,
           manualLaneCount: 1,
           shadowLaneCount: 0,
+          executionBundleStatus: 'committed',
+          executionBundleReciprocalLinkReady: true,
+          executionBundlePremiumSaganMode: true,
           pullRequestStatus: 'not-requested',
           orchestratorDisposition: 'wait-hosted-run'
         }
@@ -763,7 +782,10 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
 
   assert.equal(packet.status, 'waiting-ci');
   assert.equal(packet.evidence.delivery.laneLifecycle, 'waiting-ci');
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus.executionBundle.status, 'committed');
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus.executionBundle.reciprocalLinkReady, true);
   assert.equal(packet.evidence.delivery.concurrentLaneStatus.summary.orchestratorDisposition, 'wait-hosted-run');
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus.summary.executionBundleStatus, 'committed');
   assert.equal(packet.evidence.delivery.concurrentLaneStatus.summary.deferredLaneCount, 1);
   assert.equal(packet.evidence.delivery.workerProviderSelection.selectedAssignmentMode, 'async-validation');
   assert.equal(

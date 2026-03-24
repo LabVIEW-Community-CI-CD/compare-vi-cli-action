@@ -8,6 +8,10 @@ import {
   CONCURRENT_LANE_APPLY_RECEIPT_SCHEMA,
   DEFAULT_OUTPUT_PATH as DEFAULT_APPLY_RECEIPT_PATH
 } from './concurrent-lane-apply.mjs';
+import {
+  DEFAULT_OUTPUT_PATH as DEFAULT_EXECUTION_BUNDLE_RECEIPT_PATH,
+  EXECUTION_CELL_BUNDLE_REPORT_SCHEMA
+} from './execution-cell-bundle.mjs';
 import { ensureGhCli, resolveUpstream, runGhGraphql, runGhJson } from './lib/remote-utils.mjs';
 import { getRepoRoot } from './lib/branch-utils.mjs';
 
@@ -52,6 +56,17 @@ function coercePositiveInteger(value) {
 
 async function readJsonRequired(filePath) {
   return JSON.parse(await fs.readFile(filePath, 'utf8'));
+}
+
+async function readJsonIfPresent(filePath) {
+  try {
+    return JSON.parse(await fs.readFile(filePath, 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
 }
 
 async function writeReceipt(outputPath, receipt) {
@@ -185,6 +200,32 @@ function determineReceiptStatus({ applyReceipt, hostedObservationStatus, pullReq
     return 'active';
   }
   return 'settled';
+}
+
+function projectExecutionBundleReceipt(receiptPath, receipt) {
+  if (!receipt || receipt.schema !== EXECUTION_CELL_BUNDLE_REPORT_SCHEMA) {
+    return null;
+  }
+
+  const summary = receipt.summary && typeof receipt.summary === 'object' ? receipt.summary : {};
+  return {
+    path: toOptionalText(receiptPath),
+    schema: toOptionalText(receipt.schema),
+    status: toOptionalText(receipt.status),
+    cellId: toOptionalText(receipt.cellId),
+    laneId: toOptionalText(receipt.laneId),
+    executionCellLeaseId: toOptionalText(summary.executionCellLeaseId),
+    dockerLaneLeaseId: toOptionalText(summary.dockerLaneLeaseId),
+    harnessInstanceId: toOptionalText(summary.harnessInstanceId),
+    planeBinding: toOptionalText(summary.planeBinding),
+    premiumSaganMode: summary.premiumSaganMode === true,
+    reciprocalLinkReady: summary.reciprocalLinkReady === true,
+    effectiveBillableRateUsdPerHour: Number.isFinite(summary.effectiveBillableRateUsdPerHour)
+      ? summary.effectiveBillableRateUsdPerHour
+      : null,
+    isolatedLaneGroupId: toOptionalText(summary.isolatedLaneGroupId),
+    fingerprintSha256: toOptionalText(summary.fingerprintSha256)
+  };
 }
 
 const IDLE_CLASSIFICATION_STATES = Object.freeze([
@@ -367,6 +408,7 @@ export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
     applyReceiptPath: DEFAULT_APPLY_RECEIPT_PATH,
+    executionBundleReceiptPath: DEFAULT_EXECUTION_BUNDLE_RECEIPT_PATH,
     outputPath: DEFAULT_STATUS_OUTPUT_PATH,
     repo: null,
     pr: null,
@@ -381,12 +423,20 @@ export function parseArgs(argv = process.argv) {
       options.help = true;
       continue;
     }
-    if (token === '--apply-receipt' || token === '--output' || token === '--repo' || token === '--pr' || token === '--ref') {
+    if (
+      token === '--apply-receipt' ||
+      token === '--execution-bundle-receipt' ||
+      token === '--output' ||
+      token === '--repo' ||
+      token === '--pr' ||
+      token === '--ref'
+    ) {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
       }
       index += 1;
       if (token === '--apply-receipt') options.applyReceiptPath = next;
+      if (token === '--execution-bundle-receipt') options.executionBundleReceiptPath = next;
       if (token === '--output') options.outputPath = next;
       if (token === '--repo') options.repo = next;
       if (token === '--pr') options.pr = next;
@@ -690,6 +740,7 @@ function observePullRequest({
 export function buildConcurrentLaneStatusReceipt({
   applyReceiptPath,
   applyReceipt,
+  executionBundle,
   hostedRun,
   pullRequest,
   laneStatuses,
@@ -727,6 +778,7 @@ export function buildConcurrentLaneStatusReceipt({
       recommendedBundleId: toOptionalText(applyReceipt?.plan?.recommendedBundleId),
       selectedBundleId: toOptionalText(applyReceipt?.plan?.selectedBundle?.id)
     },
+    executionBundle: executionBundle ?? null,
     hostedRun,
     pullRequest,
     laneStatuses: enrichedLaneStatuses,
@@ -742,6 +794,9 @@ export function buildConcurrentLaneStatusReceipt({
       deferredLaneCount,
       manualLaneCount: laneStatuses.filter((entry) => entry.executionPlane === 'local').length,
       shadowLaneCount: laneStatuses.filter((entry) => entry.executionPlane === 'local-shadow').length,
+      executionBundleStatus: toOptionalText(executionBundle?.status),
+      executionBundleReciprocalLinkReady: executionBundle?.reciprocalLinkReady === true,
+      executionBundlePremiumSaganMode: executionBundle?.premiumSaganMode === true,
       pullRequestStatus: pullRequest?.observationStatus ?? 'not-requested',
       idleClassificationCoverage,
       orchestratorDisposition: determineOrchestratorDisposition({
@@ -766,12 +821,18 @@ export async function observeConcurrentLaneStatus(
 ) {
   const repoRoot = getRepoRootFn();
   const applyReceiptPath = path.resolve(repoRoot, options.applyReceiptPath);
+  const executionBundleReceiptPath = path.resolve(repoRoot, options.executionBundleReceiptPath);
   const applyReceipt = await readJsonRequired(applyReceiptPath);
   if (applyReceipt?.schema !== CONCURRENT_LANE_APPLY_RECEIPT_SCHEMA) {
     throw new Error(
       `Concurrent lane apply receipt at '${applyReceiptPath}' has schema '${applyReceipt?.schema ?? 'unknown'}'; expected '${CONCURRENT_LANE_APPLY_RECEIPT_SCHEMA}'.`
     );
   }
+
+  const executionBundle = projectExecutionBundleReceipt(
+    executionBundleReceiptPath,
+    await readJsonIfPresent(executionBundleReceiptPath)
+  );
 
   const repository =
     toOptionalText(options.repo) ??
@@ -835,6 +896,7 @@ export async function observeConcurrentLaneStatus(
   const receipt = buildConcurrentLaneStatusReceipt({
     applyReceiptPath,
     applyReceipt,
+    executionBundle,
     hostedRun,
     pullRequest,
     laneStatuses,
@@ -850,6 +912,9 @@ function printUsage() {
   console.log('');
   console.log('Options:');
   console.log(`  --apply-receipt <path>  Concurrent lane apply receipt path (default: ${DEFAULT_APPLY_RECEIPT_PATH})`);
+  console.log(
+    `  --execution-bundle-receipt <path>  Execution bundle receipt path (default: ${DEFAULT_EXECUTION_BUNDLE_RECEIPT_PATH})`
+  );
   console.log(`  --output <path>         Status receipt path (default: ${DEFAULT_STATUS_OUTPUT_PATH})`);
   console.log('  --repo <owner/repo>     Repository override for hosted run and PR observation.');
   console.log('  --pr <number>           Pull request number override for merge-queue observation.');

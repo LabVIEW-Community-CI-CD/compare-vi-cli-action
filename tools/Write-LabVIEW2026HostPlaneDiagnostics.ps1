@@ -109,6 +109,10 @@ function New-HostPlaneSummaryMarkdown {
   )
 
   $runner = Get-ObjectValue -Object $Report -Name 'runner'
+  $hostInfo = Get-ObjectValue -Object $Report -Name 'host'
+  $osFingerprint = Get-ObjectValue -Object $hostInfo -Name 'osFingerprint'
+  $osCanonical = Get-ObjectValue -Object $osFingerprint -Name 'canonical'
+  $osAdvisory = Get-ObjectValue -Object $osFingerprint -Name 'advisory'
   $native = Get-ObjectValue -Object $Report -Name 'native'
   $executionPolicy = Get-ObjectValue -Object $Report -Name 'executionPolicy'
   $policy = Get-ObjectValue -Object $Report -Name 'policy'
@@ -135,6 +139,20 @@ function New-HostPlaneSummaryMarkdown {
     '',
     ('- Report: `{0}`' -f $ReportPath),
     ('- Runner: `{0}` (hostIsRunner={1})' -f ([string](Get-ObjectValue -Object $runner -Name 'runnerName')), ([string][bool](Get-ObjectValue -Object $runner -Name 'hostIsRunner'))),
+    ('- Canonical host OS: `{0}` version=`{1}` build=`{2}` ubr=`{3}` displayVersion=`{4}` edition=`{5}` architecture=`{6}`' -f `
+        ([string](Get-ObjectValue -Object $osFingerprint -Name 'platform')), `
+        ([string](Get-ObjectValue -Object $osCanonical -Name 'version')), `
+        ([string](Get-ObjectValue -Object $osCanonical -Name 'buildNumber')), `
+        ([string](Get-ObjectValue -Object $osCanonical -Name 'ubr')), `
+        ([string](Get-ObjectValue -Object $osCanonical -Name 'displayVersion')), `
+        ([string](Get-ObjectValue -Object $osCanonical -Name 'editionId')), `
+        ([string](Get-ObjectValue -Object $osCanonical -Name 'architecture'))),
+    ('- Host OS fingerprint SHA-256: `{0}`' -f ([string](Get-ObjectValue -Object $osFingerprint -Name 'fingerprintSha256'))),
+    ('- Isolated lane group ID: `{0}`' -f ([string](Get-ObjectValue -Object $osFingerprint -Name 'isolatedLaneGroupId'))),
+    ('- Host OS branding: caption=`{0}` registryProduct=`{1}` mismatch={2}' -f `
+        ([string](Get-ObjectValue -Object $osAdvisory -Name 'caption')), `
+        ([string](Get-ObjectValue -Object $osAdvisory -Name 'productName')), `
+        ([string][bool](Get-ObjectValue -Object $osAdvisory -Name 'brandingMismatch'))),
     ('- Native 64-bit: `{0}`' -f ([string](Get-ObjectValue -Object $x64Plane -Name 'status'))),
     ('- Native 32-bit: `{0}`' -f ([string](Get-ObjectValue -Object $x32Plane -Name 'status'))),
     ('- Parallel native support: `{0}`' -f ([string][bool](Get-ObjectValue -Object $native -Name 'parallelLabVIEWSupported'))),
@@ -203,6 +221,10 @@ Write-GitHubOutput -Key 'labview-2026-host-plane-summary-path' -Value $summaryRe
 Write-GitHubOutput -Key 'labview-2026-native-64-status' -Value ([string]$report.native.planes.x64.status) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'labview-2026-native-32-status' -Value ([string]$report.native.planes.x32.status) -Path $GitHubOutputPath
 Write-GitHubOutput -Key 'labview-2026-native-parallel-supported' -Value ([string][bool]$report.native.parallelLabVIEWSupported) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'labview-2026-host-os-fingerprint-sha256' -Value ([string]$report.host.osFingerprint.fingerprintSha256) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'labview-2026-host-isolated-lane-group-id' -Value ([string]$report.host.osFingerprint.isolatedLaneGroupId) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'labview-2026-host-os-version' -Value ([string]$report.host.osFingerprint.canonical.version) -Path $GitHubOutputPath
+Write-GitHubOutput -Key 'labview-2026-host-os-build' -Value ([string]$report.host.osFingerprint.canonical.buildNumber) -Path $GitHubOutputPath
 
 if ($PassThru) {
   Write-Output $report

@@ -204,7 +204,24 @@ function createDeliveryRuntimeState(overrides = {}) {
       outcome: 'waiting-ci',
       blockerClass: 'none',
       nextWakeCondition: 'checks-green',
-      reason: 'Waiting for hosted checks to finish before merge queue advances.'
+      reason: 'Waiting for hosted checks to finish before merge queue advances.',
+      concurrentLaneStatus: {
+        executionBundle: {
+          status: 'committed',
+          planeBinding: 'dual-plane-parity',
+          premiumSaganMode: true,
+          reciprocalLinkReady: true,
+          effectiveBillableRateUsdPerHour: 375,
+          executionCellLeaseId: 'exec-lease-123',
+          dockerLaneLeaseId: 'docker-lease-456',
+          harnessInstanceId: 'ts-harness-01',
+          cellId: 'cell-sagan-kernel',
+          laneId: 'docker-lane-01',
+          isolatedLaneGroupId:
+            'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+        }
+      }
     },
     ...overrides
   };
@@ -407,8 +424,18 @@ test('runAutonomousGovernorSummary carries queue-owned delivery runtime state in
   assert.equal(report.compare.deliveryRuntime.laneLifecycle, 'waiting-ci');
   assert.equal(report.compare.deliveryRuntime.nextWakeCondition, 'checks-green');
   assert.equal(report.compare.deliveryRuntime.prUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.status, 'committed');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.planeBinding, 'dual-plane-parity');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.premiumSaganMode, true);
+  assert.equal(report.compare.deliveryRuntime.executionBundle.reciprocalLinkReady, true);
+  assert.equal(report.compare.deliveryRuntime.executionBundle.effectiveBillableRateUsdPerHour, 375);
   assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.attempted, false);
   assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.summaryPath, null);
+  assert.equal(report.summary.executionBundleStatus, 'committed');
+  assert.equal(report.summary.executionBundlePlaneBinding, 'dual-plane-parity');
+  assert.equal(report.summary.executionBundlePremiumSaganMode, true);
+  assert.equal(report.summary.executionBundleReciprocalLinkReady, true);
+  assert.equal(report.summary.executionBundleEffectiveBillableRateUsdPerHour, 375);
   assert.equal(report.summary.queueHandoffStatus, 'checks-pending');
   assert.equal(report.summary.queueHandoffNextWakeCondition, 'checks-green');
   assert.equal(report.summary.queueHandoffPrUrl, 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864');

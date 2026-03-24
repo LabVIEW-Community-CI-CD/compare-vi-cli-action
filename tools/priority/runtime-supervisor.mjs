@@ -823,6 +823,7 @@ function projectConcurrentLaneStatusReceipt(receiptPath, receipt) {
   const hostedRun = receipt.hostedRun && typeof receipt.hostedRun === 'object' ? receipt.hostedRun : {};
   const pullRequest = receipt.pullRequest && typeof receipt.pullRequest === 'object' ? receipt.pullRequest : {};
   const mergeQueue = pullRequest.mergeQueue && typeof pullRequest.mergeQueue === 'object' ? pullRequest.mergeQueue : {};
+  const executionBundle = receipt.executionBundle && typeof receipt.executionBundle === 'object' ? receipt.executionBundle : {};
 
   return {
     receiptPath,
@@ -845,6 +846,24 @@ function projectConcurrentLaneStatusReceipt(receiptPath, receipt) {
         enqueuedAt: normalizeText(mergeQueue.enqueuedAt) || null
       }
     },
+    executionBundle: {
+      path: normalizeText(executionBundle.path) || null,
+      schema: normalizeText(executionBundle.schema) || null,
+      status: normalizeText(executionBundle.status) || null,
+      cellId: normalizeText(executionBundle.cellId) || null,
+      laneId: normalizeText(executionBundle.laneId) || null,
+      executionCellLeaseId: normalizeText(executionBundle.executionCellLeaseId) || null,
+      dockerLaneLeaseId: normalizeText(executionBundle.dockerLaneLeaseId) || null,
+      harnessInstanceId: normalizeText(executionBundle.harnessInstanceId) || null,
+      planeBinding: normalizeText(executionBundle.planeBinding) || null,
+      premiumSaganMode: executionBundle.premiumSaganMode === true,
+      reciprocalLinkReady: executionBundle.reciprocalLinkReady === true,
+      effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle.effectiveBillableRateUsdPerHour)
+        ? executionBundle.effectiveBillableRateUsdPerHour
+        : null,
+      isolatedLaneGroupId: normalizeText(executionBundle.isolatedLaneGroupId) || null,
+      fingerprintSha256: normalizeText(executionBundle.fingerprintSha256) || null
+    },
     summary: {
       laneCount: coercePositiveInteger(summary.laneCount) ?? 0,
       activeLaneCount: coercePositiveInteger(summary.activeLaneCount) ?? 0,
@@ -853,6 +872,9 @@ function projectConcurrentLaneStatusReceipt(receiptPath, receipt) {
       deferredLaneCount: coercePositiveInteger(summary.deferredLaneCount) ?? 0,
       manualLaneCount: coercePositiveInteger(summary.manualLaneCount) ?? 0,
       shadowLaneCount: coercePositiveInteger(summary.shadowLaneCount) ?? 0,
+      executionBundleStatus: normalizeText(summary.executionBundleStatus) || null,
+      executionBundleReciprocalLinkReady: summary.executionBundleReciprocalLinkReady === true,
+      executionBundlePremiumSaganMode: summary.executionBundlePremiumSaganMode === true,
       pullRequestStatus: normalizeText(summary.pullRequestStatus) || null,
       orchestratorDisposition: normalizeText(summary.orchestratorDisposition) || null
     }

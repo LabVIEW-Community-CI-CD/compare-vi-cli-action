@@ -13,6 +13,9 @@ Minimal steps to provision a Windows runner suitable for LVCompare workflows.
 ## Runner configuration
 
 - Labels: `self-hosted`, `Windows`, `X64`.
+- Prefer a small number of coarse GitHub runner labels over one runner registration per background agent.
+- Isolated Docker lanes should be leased locally through the Docker-lane handshake helper instead of by creating a
+  permanent GitHub Actions runner service for each agent.
 - Service account requires access to VI fixtures and temporary directories.
 - Environment variables (system scope recommended):
   - `LV_BASE_VI`, `LV_HEAD_VI` (sample VIs).
@@ -27,9 +30,36 @@ Minimal steps to provision a Windows runner suitable for LVCompare workflows.
 Test-Path 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompare.exe'
 [Environment]::GetEnvironmentVariable('LV_BASE_VI', 'Machine')
 [Environment]::GetEnvironmentVariable('LV_HEAD_VI', 'Machine')
+node tools/npm/run-script.mjs env:labview:2026:host-planes
+node tools/npm/run-script.mjs priority:lane:docker:handshake -- --action request --lane-id docker-agent-check-01 --agent-id operator --agent-class other --capability docker-lane
 ```
 
 Dispatch `Pester (self-hosted, real CLI)` manually to confirm environment validation and tests pass.
+
+When the host is part of the canonical isolated lane group, treat the generated
+host-plane report as the OS/build source of truth:
+
+- `tests/results/_agent/host-planes/labview-2026-host-plane-report.json`
+- `host.osFingerprint.fingerprintSha256`
+- `host.osFingerprint.isolatedLaneGroupId`
+- `host.osFingerprint.canonical.version`
+- `host.osFingerprint.canonical.buildNumber`
+- `host.osFingerprint.canonical.ubr`
+
+Future host refreshes and isolated lane groups should compare against that
+fingerprint before blaming LabVIEW, Docker, or runner drift on the workload
+itself.
+
+When the host also carries deterministic compare tooling, the TestStand harness
+is a supported native-plane consumer:
+
+- `pwsh -NoLogo -NoProfile -File tools/TestStand-CompareHarness.ps1`
+  `-BaseVi <base> -HeadVi <head> -OutputRoot`
+  `tests/results/teststand-session -Warmup detect -RenderReport`
+
+That harness does not define a separate runner class. It consumes one of the
+native LabVIEW planes and should be attributed to the same host OS fingerprint
+and isolated lane group.
 
 ## Maintenance
 
@@ -37,5 +67,9 @@ Dispatch `Pester (self-hosted, real CLI)` manually to confirm environment valida
 - Monitor runner health (Actions → Runners).
 - Rotate PATs and verify secrets annually.
 - Periodically refresh fixture VIs and environment variables.
+- After a Windows upgrade, rerun
+  `node tools/npm/run-script.mjs env:labview:2026:host-planes` and compare the
+  previous versus current `host.osFingerprint` values before reclassifying lane
+  regressions. A changed fingerprint means the canonical host OS baseline moved.
 
 Further reading: [`docs/E2E_TESTING_GUIDE.md`](./E2E_TESTING_GUIDE.md), [`docs/ENVIRONMENT.md`](./ENVIRONMENT.md).

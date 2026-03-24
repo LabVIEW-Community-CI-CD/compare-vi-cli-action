@@ -2643,6 +2643,7 @@ function buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt })
   const hostedRun = normalizeOptionalObject(concurrentLaneStatus.hostedRun);
   const pullRequest = normalizeOptionalObject(concurrentLaneStatus.pullRequest);
   const mergeQueue = normalizeOptionalObject(pullRequest?.mergeQueue);
+  const executionBundle = normalizeOptionalObject(concurrentLaneStatus.executionBundle);
 
   return {
     receiptPath: normalizeText(concurrentLaneStatus.receiptPath) || null,
@@ -2669,6 +2670,24 @@ function buildConcurrentLaneStatusRuntimeState({ taskPacket, executionReceipt })
                 enqueuedAt: normalizeText(mergeQueue.enqueuedAt) || null
               }
             : null
+        }
+      : null,
+    executionBundle: executionBundle
+      ? {
+          status: normalizeText(executionBundle.status) || null,
+          cellId: normalizeText(executionBundle.cellId) || null,
+          laneId: normalizeText(executionBundle.laneId) || null,
+          executionCellLeaseId: normalizeText(executionBundle.executionCellLeaseId) || null,
+          dockerLaneLeaseId: normalizeText(executionBundle.dockerLaneLeaseId) || null,
+          harnessInstanceId: normalizeText(executionBundle.harnessInstanceId) || null,
+          planeBinding: normalizeText(executionBundle.planeBinding) || null,
+          premiumSaganMode: executionBundle.premiumSaganMode === true,
+          reciprocalLinkReady: executionBundle.reciprocalLinkReady === true,
+          effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle.effectiveBillableRateUsdPerHour)
+            ? executionBundle.effectiveBillableRateUsdPerHour
+            : null,
+          isolatedLaneGroupId: normalizeText(executionBundle.isolatedLaneGroupId) || null,
+          fingerprintSha256: normalizeText(executionBundle.fingerprintSha256) || null
         }
       : null,
     summary: summary

@@ -149,13 +149,47 @@ function createApplyReceipt(overrides = {}) {
 test('observeConcurrentLaneStatus projects active hosted lanes and queued PR merge state', async () => {
   const tempDir = createTempDir();
   const applyReceiptPath = path.join(tempDir, 'tests', 'results', '_agent', 'runtime', 'concurrent-lane-apply-receipt.json');
+  const executionBundleReceiptPath = path.join(
+    tempDir,
+    'tests',
+    'results',
+    '_agent',
+    'runtime',
+    'execution-cell-bundle.json'
+  );
   const outputPath = path.join(tempDir, 'tests', 'results', '_agent', 'runtime', 'concurrent-lane-status-receipt.json');
   writeJson(applyReceiptPath, createApplyReceipt());
+  writeJson(executionBundleReceiptPath, {
+    schema: 'priority/execution-cell-bundle-report@v1',
+    status: 'committed',
+    cellId: 'cell-sagan-kernel',
+    laneId: 'docker-lane-01',
+    summary: {
+      executionCellLeaseId: 'exec-lease-123',
+      dockerLaneLeaseId: 'docker-lease-456',
+      harnessInstanceId: 'ts-harness-01',
+      planeBinding: 'dual-plane-parity',
+      premiumSaganMode: true,
+      reciprocalLinkReady: true,
+      effectiveBillableRateUsdPerHour: 375,
+      isolatedLaneGroupId: 'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    }
+  });
 
   const ghJsonCalls = [];
   const ghGraphqlCalls = [];
   const { receipt, outputPath: writtenPath } = await observeConcurrentLaneStatus(
-    parseArgs(['node', 'concurrent-lane-status.mjs', '--apply-receipt', applyReceiptPath, '--output', outputPath]),
+    parseArgs([
+      'node',
+      'concurrent-lane-status.mjs',
+      '--apply-receipt',
+      applyReceiptPath,
+      '--execution-bundle-receipt',
+      executionBundleReceiptPath,
+      '--output',
+      outputPath
+    ]),
     {
       ensureGhCliFn: () => {},
       getRepoRootFn: () => tempDir,
@@ -227,9 +261,15 @@ test('observeConcurrentLaneStatus projects active hosted lanes and queued PR mer
   assert.equal(receipt.plan.selectedBundleId, 'hosted-plus-manual-linux-docker');
   assert.equal(receipt.hostedRun.observationStatus, 'active');
   assert.equal(receipt.pullRequest.observationStatus, 'queued');
+  assert.equal(receipt.executionBundle.status, 'committed');
+  assert.equal(receipt.executionBundle.reciprocalLinkReady, true);
+  assert.equal(receipt.executionBundle.premiumSaganMode, true);
   assert.equal(receipt.summary.orchestratorDisposition, 'wait-hosted-run');
   assert.equal(receipt.summary.activeLaneCount, 2);
   assert.equal(receipt.summary.deferredLaneCount, 1);
+  assert.equal(receipt.summary.executionBundleStatus, 'committed');
+  assert.equal(receipt.summary.executionBundleReciprocalLinkReady, true);
+  assert.equal(receipt.summary.executionBundlePremiumSaganMode, true);
   assert.equal(receipt.laneStatuses[0].idleClassification, null);
   assert.equal(receipt.laneStatuses[2].idleClassification?.state, 'waiting-merge');
   assert.equal(receipt.summary.idleClassificationCoverage.managedLaneCount, 3);
@@ -353,6 +393,7 @@ test('observeConcurrentLaneStatus settles completed hosted runs and keeps deferr
   );
 
   assert.equal(receipt.status, 'settled');
+  assert.equal(receipt.executionBundle, null);
   assert.equal(receipt.plan.path, 'tests/results/_agent/runtime/concurrent-lane-plan.json');
   assert.equal(receipt.plan.schema, 'priority/concurrent-lane-plan@v1');
   assert.equal(receipt.plan.source, 'file');
@@ -398,6 +439,7 @@ test('observeConcurrentLaneStatus fails closed when hosted workflow observation 
   );
 
   assert.equal(receipt.status, 'failed');
+  assert.equal(receipt.executionBundle, null);
   assert.equal(receipt.hostedRun.observationStatus, 'failed');
   assert.equal(receipt.summary.orchestratorDisposition, 'hold-investigate');
   assert.match(receipt.observationErrors[0] ?? '', /rate limited/i);

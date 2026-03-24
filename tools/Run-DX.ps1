@@ -15,6 +15,8 @@ param(
   [string]$BaseVi,
   [string]$HeadVi,
   [string]$LabVIEWExePath,
+  [string]$LabVIEW64ExePath,
+  [string]$LabVIEW32ExePath,
   [string]$LVComparePath,
   [string]$OutputRoot = 'tests/results/teststand-session',
   [string[]]$Flags,
@@ -23,6 +25,14 @@ param(
   [string]$NoiseProfile = 'full',
   [ValidateSet('detect','spawn','skip')]
   [string]$Warmup = 'detect',
+  [ValidateSet('single-compare','dual-plane-parity')]
+  [string]$TestStandSuiteClass = 'single-compare',
+  [string]$AgentId,
+  [string]$AgentClass,
+  [string]$ExecutionCellLeasePath,
+  [string]$ExecutionCellId,
+  [string]$ExecutionCellLeaseId,
+  [string]$HarnessInstanceId,
   [switch]$RenderReport,
   [switch]$CloseLabVIEW,
   [switch]$CloseLVCompare,
@@ -144,7 +154,16 @@ $harness = Join-Path $repoRoot 'tools/TestStand-CompareHarness.ps1'
   if ($sameNameCollision) { $hParams.SameNameHint = $true }
 
   if ($LabVIEWExePath) { $hParams.LabVIEWExePath = $LabVIEWExePath }
+  if ($LabVIEW64ExePath) { $hParams.LabVIEW64ExePath = $LabVIEW64ExePath }
+  if ($LabVIEW32ExePath) { $hParams.LabVIEW32ExePath = $LabVIEW32ExePath }
   if ($LVComparePath)  { $hParams.LVComparePath  = $LVComparePath }
+  if ($TestStandSuiteClass -ne 'single-compare') { $hParams.SuiteClass = $TestStandSuiteClass }
+  if ($AgentId) { $hParams.AgentId = $AgentId }
+  if ($AgentClass) { $hParams.AgentClass = $AgentClass }
+  if ($ExecutionCellLeasePath) { $hParams.ExecutionCellLeasePath = $ExecutionCellLeasePath }
+  if ($ExecutionCellId) { $hParams.ExecutionCellId = $ExecutionCellId }
+  if ($ExecutionCellLeaseId) { $hParams.ExecutionCellLeaseId = $ExecutionCellLeaseId }
+  if ($HarnessInstanceId) { $hParams.HarnessInstanceId = $HarnessInstanceId }
   if ($PSBoundParameters.ContainsKey('Flags')) { $hParams.Flags = $Flags }
   if ($ReplaceFlags)   { $hParams.ReplaceFlags = $true }
   if ($RenderReport)   { $hParams.RenderReport   = $true }
@@ -202,10 +221,17 @@ $harness = Join-Path $repoRoot 'tools/TestStand-CompareHarness.ps1'
   if ($session) {
     try {
       $statusEnvelope.session = @{
+        suiteClass = $session.suiteClass
+        primaryPlane = $session.primaryPlane
+        requestedSimultaneous = $session.requestedSimultaneous
         outcome  = $session.outcome
         error    = $session.error
+        executionCell = $session.executionCell
+        harnessInstance = $session.harnessInstance
         compare  = $session.compare
         content  = $session.content
+        parity   = $session.parity
+        planes   = $session.planes
       }
     } catch {}
   }

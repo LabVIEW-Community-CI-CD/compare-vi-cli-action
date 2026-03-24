@@ -792,6 +792,40 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
             completionMode: 'async',
             selectedSlotId: 'worker-slot-2',
             requiresLocalCheckout: false
+          },
+          concurrentLaneStatus: {
+            receiptPath: 'tests/results/_agent/runtime/concurrent-lane-status-receipt.json',
+            status: 'settled',
+            selectedBundleId: 'hosted-plus-manual-linux-docker',
+            executionBundle: {
+              status: 'committed',
+              cellId: 'cell-sagan-kernel',
+              laneId: 'docker-lane-01',
+              executionCellLeaseId: 'exec-lease-123',
+              dockerLaneLeaseId: 'docker-lease-456',
+              harnessInstanceId: 'ts-harness-01',
+              planeBinding: 'dual-plane-parity',
+              premiumSaganMode: true,
+              reciprocalLinkReady: true,
+              effectiveBillableRateUsdPerHour: 375,
+              isolatedLaneGroupId:
+                'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+              fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+            },
+            summary: {
+              laneCount: 3,
+              activeLaneCount: 2,
+              completedLaneCount: 0,
+              failedLaneCount: 0,
+              deferredLaneCount: 1,
+              manualLaneCount: 1,
+              shadowLaneCount: 0,
+              executionBundleStatus: 'committed',
+              executionBundleReciprocalLinkReady: true,
+              executionBundlePremiumSaganMode: true,
+              pullRequestStatus: 'queued',
+              orchestratorDisposition: 'wait-hosted-run'
+            }
           }
         }
       }
@@ -955,6 +989,11 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
   assert.equal(state.activeLane.workerProviderSelection.selectedProviderId, 'hosted-github-workflow');
   assert.equal(state.activeLane.providerDispatch.providerId, 'hosted-github-workflow');
   assert.equal(state.activeLane.providerDispatch.workerSlotId, 'worker-slot-2');
+  assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.status, 'committed');
+  assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.planeBinding, 'dual-plane-parity');
+  assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.premiumSaganMode, true);
+  assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.reciprocalLinkReady, true);
+  assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.effectiveBillableRateUsdPerHour, 375);
   assert.equal(state.activeLane.planeTransition.from, 'origin');
   assert.equal(state.activeLane.planeTransition.to, 'upstream');
   assert.equal(state.artifacts.planeTransition.action, 'promote');
