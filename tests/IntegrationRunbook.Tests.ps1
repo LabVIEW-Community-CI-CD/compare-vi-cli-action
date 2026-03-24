@@ -115,6 +115,66 @@ Describe 'IntegrationRunbook - Phase Selection & JSON' -Tag 'Unit' {
       Remove-Item Env:LV_HEAD_VI -ErrorAction SilentlyContinue
     }
   }
+
+  It 'projects loop execution topology from the loop final status into Loop phase details' {
+    $tempRepo = Join-Path $TestDrive 'runbook-loop-topology'
+    $scriptsDir = Join-Path $tempRepo 'scripts'
+    New-Item -ItemType Directory -Path $scriptsDir -Force | Out-Null
+
+    $runbookCopy = Join-Path $scriptsDir 'Invoke-IntegrationRunbook.ps1'
+    Copy-Item -LiteralPath $runScript -Destination $runbookCopy -Force
+
+    $loopStub = @"
+param([string]`$FinalStatusJsonPath)
+`$payload = [ordered]@{
+  schema = 'loop-final-status-v1'
+  timestamp = '2026-03-24T12:30:00Z'
+  iterations = 2
+  diffs = 0
+  errors = 0
+  succeeded = `$true
+  harness = [ordered]@{
+    runtimeSurface = 'windows-native-teststand'
+    processModelClass = 'parallel-process-model'
+    windowsOnly = `$true
+    requestedSimultaneous = `$true
+    cellClass = 'worker'
+    executionCellLeasePath = 'tests/results/_agent/runtime/execution-cell-hooke-loop.json'
+    executionCellId = 'exec-cell-hooke-loop-01'
+    executionCellLeaseId = 'lease-hooke-loop-01'
+    harnessInstanceLeasePath = 'tests/results/_agent/runtime/harness-instance-hooke-loop.json'
+    harnessInstanceLeaseId = 'harness-lease-hooke-loop-01'
+    harnessInstanceId = 'ts-hooke-loop-01'
+  }
+}
+(`$payload | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath `$FinalStatusJsonPath -Encoding UTF8
+exit 0
+"@
+    Set-Content -LiteralPath (Join-Path $scriptsDir 'Run-AutonomousIntegrationLoop.ps1') -Value $loopStub -Encoding UTF8
+
+    Set-Content -LiteralPath (Join-Path $tempRepo 'VI1.vi') -Value '' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $tempRepo 'VI2.vi') -Value '' -Encoding utf8
+
+    $tmp = Join-Path $tempRepo 'tmp-runbook-loop-topology.json'
+    Push-Location $tempRepo
+    try {
+      & $runbookCopy -Phases 'Prereqs,ViInputs,Loop' -JsonReport $tmp | Out-Null
+      $LASTEXITCODE | Should -Be 0
+    } finally {
+      Pop-Location
+    }
+
+    Test-Path $tmp | Should -BeTrue
+    $json = Get-Content $tmp -Raw | ConvertFrom-Json
+    $loopPhase = $json.phases | Where-Object name -eq 'Loop'
+    $loopPhase.status | Should -Be 'Passed'
+    $loopPhase.details.loopIterations | Should -Be 2
+    $loopPhase.details.executionTopology.runtimeSurface | Should -Be 'windows-native-teststand'
+    $loopPhase.details.executionTopology.processModelClass | Should -Be 'parallel-process-model'
+    $loopPhase.details.executionTopology.executionCellLeaseId | Should -Be 'lease-hooke-loop-01'
+    $loopPhase.details.executionTopology.harnessInstanceLeaseId | Should -Be 'harness-lease-hooke-loop-01'
+    $loopPhase.details.executionTopology.harnessInstanceId | Should -Be 'ts-hooke-loop-01'
+  }
 }
 
 Describe 'IntegrationRunbook - Schema Shape Minimal Validation' -Tag 'Unit' {
