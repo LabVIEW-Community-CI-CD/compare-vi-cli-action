@@ -231,6 +231,8 @@ function createDeliveryRuntimeState(overrides = {}) {
         executionBundle: {
           status: 'committed',
           planeBinding: 'dual-plane-parity',
+          cellClass: 'kernel-coordinator',
+          suiteClass: 'dual-plane-parity',
           harnessKind: 'teststand-compare-harness',
           premiumSaganMode: true,
           reciprocalLinkReady: true,
@@ -238,6 +240,7 @@ function createDeliveryRuntimeState(overrides = {}) {
           executionCellLeaseId: 'exec-lease-123',
           dockerLaneLeaseId: 'docker-lease-456',
           harnessInstanceId: 'ts-harness-01',
+          operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
           cellId: 'cell-sagan-kernel',
           laneId: 'docker-lane-01',
           isolatedLaneGroupId:
@@ -458,14 +461,26 @@ test('runAutonomousGovernorSummary carries queue-owned delivery runtime state in
   assert.equal(report.compare.deliveryRuntime.executionTopology.processModelClass, 'parallel-process-model');
   assert.equal(report.compare.deliveryRuntime.executionTopology.windowsOnly, true);
   assert.equal(report.compare.deliveryRuntime.executionTopology.requestedSimultaneous, true);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.cellClass, 'kernel-coordinator');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.suiteClass, 'dual-plane-parity');
+  assert.equal(
+    report.compare.deliveryRuntime.executionTopology.operatorAuthorizationRef,
+    'budget-auth://operator/session-2026-03-24'
+  );
   assert.equal(report.compare.deliveryRuntime.executionTopology.logicalLaneActivation.activeLaneCount, 2);
   assert.equal(report.compare.deliveryRuntime.executionTopology.providerDispatch.dispatchStatus, 'completed');
   assert.equal(report.compare.deliveryRuntime.executionTopology.executionBundle.status, 'committed');
   assert.equal(report.compare.deliveryRuntime.executionBundle.status, 'committed');
   assert.equal(report.compare.deliveryRuntime.executionBundle.planeBinding, 'dual-plane-parity');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.cellClass, 'kernel-coordinator');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.suiteClass, 'dual-plane-parity');
   assert.equal(report.compare.deliveryRuntime.executionBundle.premiumSaganMode, true);
   assert.equal(report.compare.deliveryRuntime.executionBundle.reciprocalLinkReady, true);
   assert.equal(report.compare.deliveryRuntime.executionBundle.effectiveBillableRateUsdPerHour, 375);
+  assert.equal(
+    report.compare.deliveryRuntime.executionBundle.operatorAuthorizationRef,
+    'budget-auth://operator/session-2026-03-24'
+  );
   assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.attempted, false);
   assert.equal(report.compare.deliveryRuntime.queueAuthorityRefresh.summaryPath, null);
   assert.equal(report.summary.executionTopologyStatus, 'bundle-committed');
@@ -478,6 +493,9 @@ test('runAutonomousGovernorSummary carries queue-owned delivery runtime state in
   assert.equal(report.summary.executionTopologyProcessModelClass, 'parallel-process-model');
   assert.equal(report.summary.executionTopologyWindowsOnly, true);
   assert.equal(report.summary.executionTopologyRequestedSimultaneous, true);
+  assert.equal(report.summary.executionTopologyCellClass, 'kernel-coordinator');
+  assert.equal(report.summary.executionTopologySuiteClass, 'dual-plane-parity');
+  assert.equal(report.summary.executionTopologyOperatorAuthorizationRef, 'budget-auth://operator/session-2026-03-24');
   assert.equal(report.summary.executionBundleStatus, 'committed');
   assert.equal(report.summary.executionBundlePlaneBinding, 'dual-plane-parity');
   assert.equal(report.summary.executionBundlePremiumSaganMode, true);

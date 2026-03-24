@@ -1585,6 +1585,15 @@ try {
       if ($governor.summary.PSObject.Properties['executionTopologyRequestedSimultaneous'] -and $governor.summary.executionTopologyRequestedSimultaneous) {
         Write-Host ("  execSim  : {0}" -f (Format-NullableValue $governor.summary.executionTopologyRequestedSimultaneous))
       }
+      if ($governor.summary.PSObject.Properties['executionTopologyCellClass'] -and $governor.summary.executionTopologyCellClass) {
+        Write-Host ("  execCell : {0}" -f (Format-NullableValue $governor.summary.executionTopologyCellClass))
+      }
+      if ($governor.summary.PSObject.Properties['executionTopologySuiteClass'] -and $governor.summary.executionTopologySuiteClass) {
+        Write-Host ("  execSuite: {0}" -f (Format-NullableValue $governor.summary.executionTopologySuiteClass))
+      }
+      if ($governor.summary.PSObject.Properties['executionTopologyOperatorAuthorizationRef'] -and $governor.summary.executionTopologyOperatorAuthorizationRef) {
+        Write-Host ("  execAuth : {0}" -f (Format-NullableValue $governor.summary.executionTopologyOperatorAuthorizationRef))
+      }
     }
     if ($governor.summary.PSObject.Properties['executionBundleStatus'] -and $governor.summary.executionBundleStatus) {
       Write-Host ("  exec     : {0}" -f (Format-NullableValue $governor.summary.executionBundleStatus))
@@ -1648,6 +1657,15 @@ try {
         }
         if ($governor.summary.PSObject.Properties['executionTopologyRequestedSimultaneous'] -and $governor.summary.executionTopologyRequestedSimultaneous) {
           $governorLines += ('- Execution simultaneous: {0}' -f (Format-NullableValue $governor.summary.executionTopologyRequestedSimultaneous))
+        }
+        if ($governor.summary.PSObject.Properties['executionTopologyCellClass'] -and $governor.summary.executionTopologyCellClass) {
+          $governorLines += ('- Execution cell class: {0}' -f (Format-NullableValue $governor.summary.executionTopologyCellClass))
+        }
+        if ($governor.summary.PSObject.Properties['executionTopologySuiteClass'] -and $governor.summary.executionTopologySuiteClass) {
+          $governorLines += ('- Execution suite class: {0}' -f (Format-NullableValue $governor.summary.executionTopologySuiteClass))
+        }
+        if ($governor.summary.PSObject.Properties['executionTopologyOperatorAuthorizationRef'] -and $governor.summary.executionTopologyOperatorAuthorizationRef) {
+          $governorLines += ('- Execution operator authorization: {0}' -f (Format-NullableValue $governor.summary.executionTopologyOperatorAuthorizationRef))
         }
       }
       if ($governor.summary.PSObject.Properties['executionBundleStatus'] -and $governor.summary.executionBundleStatus) {
@@ -1717,6 +1735,15 @@ try {
       if ($portfolio.summary.PSObject.Properties['executionTopologyRequestedSimultaneous'] -and $portfolio.summary.executionTopologyRequestedSimultaneous) {
         Write-Host ("  execSim  : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyRequestedSimultaneous))
       }
+      if ($portfolio.summary.PSObject.Properties['executionTopologyCellClass'] -and $portfolio.summary.executionTopologyCellClass) {
+        Write-Host ("  execCell : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyCellClass))
+      }
+      if ($portfolio.summary.PSObject.Properties['executionTopologySuiteClass'] -and $portfolio.summary.executionTopologySuiteClass) {
+        Write-Host ("  execSuite: {0}" -f (Format-NullableValue $portfolio.summary.executionTopologySuiteClass))
+      }
+      if ($portfolio.summary.PSObject.Properties['executionTopologyOperatorAuthorizationRef'] -and $portfolio.summary.executionTopologyOperatorAuthorizationRef) {
+        Write-Host ("  execAuth : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyOperatorAuthorizationRef))
+      }
     }
     if ($portfolio.summary.PSObject.Properties['executionBundleStatus'] -and $portfolio.summary.executionBundleStatus) {
       Write-Host ("  exec     : {0}" -f (Format-NullableValue $portfolio.summary.executionBundleStatus))
@@ -1776,6 +1803,15 @@ try {
         }
         if ($portfolio.summary.PSObject.Properties['executionTopologyRequestedSimultaneous'] -and $portfolio.summary.executionTopologyRequestedSimultaneous) {
           $portfolioLines += ('- Execution simultaneous: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyRequestedSimultaneous))
+        }
+        if ($portfolio.summary.PSObject.Properties['executionTopologyCellClass'] -and $portfolio.summary.executionTopologyCellClass) {
+          $portfolioLines += ('- Execution cell class: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyCellClass))
+        }
+        if ($portfolio.summary.PSObject.Properties['executionTopologySuiteClass'] -and $portfolio.summary.executionTopologySuiteClass) {
+          $portfolioLines += ('- Execution suite class: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologySuiteClass))
+        }
+        if ($portfolio.summary.PSObject.Properties['executionTopologyOperatorAuthorizationRef'] -and $portfolio.summary.executionTopologyOperatorAuthorizationRef) {
+          $portfolioLines += ('- Execution operator authorization: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyOperatorAuthorizationRef))
         }
       }
       if ($portfolio.summary.PSObject.Properties['executionBundleStatus'] -and $portfolio.summary.executionBundleStatus) {

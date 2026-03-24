@@ -801,13 +801,17 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
               status: 'committed',
               cellId: 'cell-sagan-kernel',
               laneId: 'docker-lane-01',
+              cellClass: 'kernel-coordinator',
+              suiteClass: 'dual-plane-parity',
               executionCellLeaseId: 'exec-lease-123',
               dockerLaneLeaseId: 'docker-lease-456',
+              harnessKind: 'teststand-compare-harness',
               harnessInstanceId: 'ts-harness-01',
               planeBinding: 'dual-plane-parity',
               premiumSaganMode: true,
               reciprocalLinkReady: true,
               effectiveBillableRateUsdPerHour: 375,
+              operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
               isolatedLaneGroupId:
                 'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
               fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
@@ -991,9 +995,16 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
   assert.equal(state.activeLane.providerDispatch.workerSlotId, 'worker-slot-2');
   assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.status, 'committed');
   assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.planeBinding, 'dual-plane-parity');
+  assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.cellClass, 'kernel-coordinator');
+  assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.suiteClass, 'dual-plane-parity');
+  assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.harnessKind, 'teststand-compare-harness');
   assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.premiumSaganMode, true);
   assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.reciprocalLinkReady, true);
   assert.equal(state.activeLane.concurrentLaneStatus.executionBundle.effectiveBillableRateUsdPerHour, 375);
+  assert.equal(
+    state.activeLane.concurrentLaneStatus.executionBundle.operatorAuthorizationRef,
+    'budget-auth://operator/session-2026-03-24'
+  );
   assert.equal(state.activeLane.planeTransition.from, 'origin');
   assert.equal(state.activeLane.planeTransition.to, 'upstream');
   assert.equal(state.artifacts.planeTransition.action, 'promote');

@@ -94,13 +94,17 @@ test('concurrent lane status schema validates the generated receipt', async () =
     cellId: 'cell-sagan-kernel',
     laneId: 'docker-lane-01',
     summary: {
+      cellClass: 'kernel-coordinator',
+      suiteClass: 'dual-plane-parity',
       executionCellLeaseId: 'exec-lease-123',
       dockerLaneLeaseId: 'docker-lease-456',
+      harnessKind: 'teststand-compare-harness',
       harnessInstanceId: 'ts-harness-01',
       planeBinding: 'dual-plane-parity',
       premiumSaganMode: true,
       reciprocalLinkReady: false,
       effectiveBillableRateUsdPerHour: 375,
+      operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
       isolatedLaneGroupId: 'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
       fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     }

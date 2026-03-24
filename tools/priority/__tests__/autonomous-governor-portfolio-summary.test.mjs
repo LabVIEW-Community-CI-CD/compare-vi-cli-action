@@ -68,6 +68,9 @@ function createCompareGovernorSummary(overrides = {}) {
           processModelClass: 'parallel-process-model',
           windowsOnly: true,
           requestedSimultaneous: true,
+          cellClass: 'kernel-coordinator',
+          suiteClass: 'dual-plane-parity',
+          operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
           premiumSaganMode: true,
           reciprocalLinkReady: true,
           logicalLaneActivation: {
@@ -90,6 +93,8 @@ function createCompareGovernorSummary(overrides = {}) {
           executionBundle: {
             status: 'committed',
             planeBinding: 'dual-plane-parity',
+            cellClass: 'kernel-coordinator',
+            suiteClass: 'dual-plane-parity',
             harnessKind: 'teststand-compare-harness',
             premiumSaganMode: true,
             reciprocalLinkReady: true,
@@ -97,6 +102,7 @@ function createCompareGovernorSummary(overrides = {}) {
             executionCellLeaseId: 'exec-lease-123',
             dockerLaneLeaseId: 'docker-lease-456',
             harnessInstanceId: 'ts-harness-01',
+            operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
             cellId: 'cell-sagan-kernel',
             laneId: 'docker-lane-01',
             isolatedLaneGroupId:
@@ -157,6 +163,9 @@ function createCompareGovernorSummary(overrides = {}) {
       executionTopologyProcessModelClass: 'parallel-process-model',
       executionTopologyWindowsOnly: true,
       executionTopologyRequestedSimultaneous: true,
+      executionTopologyCellClass: 'kernel-coordinator',
+      executionTopologySuiteClass: 'dual-plane-parity',
+      executionTopologyOperatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
       executionBundleStatus: 'committed',
       executionBundlePlaneBinding: 'dual-plane-parity',
       executionBundlePremiumSaganMode: true,
@@ -401,6 +410,9 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.summary.executionTopologyProcessModelClass, 'parallel-process-model');
   assert.equal(report.summary.executionTopologyWindowsOnly, true);
   assert.equal(report.summary.executionTopologyRequestedSimultaneous, true);
+  assert.equal(report.summary.executionTopologyCellClass, 'kernel-coordinator');
+  assert.equal(report.summary.executionTopologySuiteClass, 'dual-plane-parity');
+  assert.equal(report.summary.executionTopologyOperatorAuthorizationRef, 'budget-auth://operator/session-2026-03-24');
   assert.equal(report.summary.executionBundleStatus, 'committed');
   assert.equal(report.summary.executionBundlePlaneBinding, 'dual-plane-parity');
   assert.equal(report.summary.executionBundlePremiumSaganMode, true);
@@ -429,9 +441,18 @@ test('runAutonomousGovernorPortfolioSummary keeps compare as owner during active
   assert.equal(report.compare.executionTopology.processModelClass, 'parallel-process-model');
   assert.equal(report.compare.executionTopology.windowsOnly, true);
   assert.equal(report.compare.executionTopology.requestedSimultaneous, true);
+  assert.equal(report.compare.executionTopology.cellClass, 'kernel-coordinator');
+  assert.equal(report.compare.executionTopology.suiteClass, 'dual-plane-parity');
+  assert.equal(report.compare.executionTopology.operatorAuthorizationRef, 'budget-auth://operator/session-2026-03-24');
   assert.equal(report.compare.executionTopology.logicalLaneActivation.catalogCount, 4);
   assert.equal(report.compare.executionTopology.providerDispatch.dispatchStatus, 'completed');
   assert.equal(report.compare.executionTopology.executionBundle.status, 'committed');
+  assert.equal(report.compare.executionTopology.executionBundle.cellClass, 'kernel-coordinator');
+  assert.equal(report.compare.executionTopology.executionBundle.suiteClass, 'dual-plane-parity');
+  assert.equal(
+    report.compare.executionTopology.executionBundle.operatorAuthorizationRef,
+    'budget-auth://operator/session-2026-03-24'
+  );
   assert.equal(report.compare.executionBundleStatus, 'committed');
   assert.equal(report.compare.executionBundlePlaneBinding, 'dual-plane-parity');
   assert.equal(report.compare.executionBundlePremiumSaganMode, true);

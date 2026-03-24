@@ -268,6 +268,9 @@ function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBu
     processModelClass: processModel.processModelClass,
     windowsOnly: processModel.windowsOnly,
     requestedSimultaneous: processModel.requestedSimultaneous,
+    cellClass: asOptional(executionBundle?.cellClass),
+    suiteClass: asOptional(executionBundle?.suiteClass),
+    operatorAuthorizationRef: asOptional(executionBundle?.operatorAuthorizationRef),
     premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
     reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
     logicalLaneActivation: {
@@ -290,6 +293,8 @@ function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBu
     executionBundle: {
       status: asOptional(executionBundle?.status),
       planeBinding: asOptional(executionBundle?.planeBinding),
+      cellClass: asOptional(executionBundle?.cellClass),
+      suiteClass: asOptional(executionBundle?.suiteClass),
       premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
       reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
       effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle?.effectiveBillableRateUsdPerHour)
@@ -299,6 +304,7 @@ function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBu
       dockerLaneLeaseId: asOptional(executionBundle?.dockerLaneLeaseId),
       harnessKind: asOptional(executionBundle?.harnessKind),
       harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
+      operatorAuthorizationRef: asOptional(executionBundle?.operatorAuthorizationRef),
       cellId: asOptional(executionBundle?.cellId),
       laneId: asOptional(executionBundle?.laneId),
       isolatedLaneGroupId: asOptional(executionBundle?.isolatedLaneGroupId),
@@ -533,6 +539,8 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
     executionBundle: {
       status: asOptional(executionBundle?.status),
       planeBinding: asOptional(executionBundle?.planeBinding),
+      cellClass: asOptional(executionBundle?.cellClass),
+      suiteClass: asOptional(executionBundle?.suiteClass),
       premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
       reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
       effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle?.effectiveBillableRateUsdPerHour)
@@ -542,6 +550,7 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
       dockerLaneLeaseId: asOptional(executionBundle?.dockerLaneLeaseId),
       harnessKind: asOptional(executionBundle?.harnessKind),
       harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
+      operatorAuthorizationRef: asOptional(executionBundle?.operatorAuthorizationRef),
       cellId: asOptional(executionBundle?.cellId),
       laneId: asOptional(executionBundle?.laneId),
       isolatedLaneGroupId: asOptional(executionBundle?.isolatedLaneGroupId),
@@ -881,6 +890,9 @@ function buildReport({
       executionTopologyProcessModelClass: deliveryRuntime.executionTopology.processModelClass,
       executionTopologyWindowsOnly: deliveryRuntime.executionTopology.windowsOnly,
       executionTopologyRequestedSimultaneous: deliveryRuntime.executionTopology.requestedSimultaneous,
+      executionTopologyCellClass: deliveryRuntime.executionTopology.cellClass,
+      executionTopologySuiteClass: deliveryRuntime.executionTopology.suiteClass,
+      executionTopologyOperatorAuthorizationRef: deliveryRuntime.executionTopology.operatorAuthorizationRef,
       executionBundleStatus: deliveryRuntime.executionBundle.status,
       executionBundlePlaneBinding: deliveryRuntime.executionBundle.planeBinding,
       executionBundlePremiumSaganMode: deliveryRuntime.executionBundle.premiumSaganMode,
