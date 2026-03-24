@@ -54,7 +54,7 @@ jobs:
   smoke:
     needs: pre-init
     if: github.event_name == 'workflow_dispatch' && needs.pre-init.outputs.docs_only != 'true'
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     env:
       UNBLOCK_GUARD: '1'
       WATCH_CONSOLE: '1'

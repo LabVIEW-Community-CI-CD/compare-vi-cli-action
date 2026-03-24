@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   smoke:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -51,4 +51,3 @@ jobs:
           name: vi-staging-smoke
           path: tests/results/_agent/smoke/vi-stage/
           if-no-files-found: ignore
-

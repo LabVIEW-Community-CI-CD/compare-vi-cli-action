@@ -1,18 +1,35 @@
 <!-- markdownlint-disable-next-line MD041 -->
 # Self-Hosted CI Setup
 
-Minimal steps to provision a Windows runner suitable for LVCompare workflows.
+Provision this machine as the canonical compare capability host, not as a
+generic shared workstation runner. GitHub Actions should land work on the host
+through a small ingress label surface, then the governed execution-cell and
+Docker-lane helpers decide how the work runs locally.
 
 ## Installations
 
 1. GitHub Actions runner (service mode).
-2. LabVIEW 2025 Q3 with LVCompare CLI feature.
+2. LabVIEW 2026 64-bit and 32-bit native paths when the host will serve dual-plane parity.
 3. PowerShell 7 (`pwsh`).
-4. Git + Node.js (optional for local tooling).
+4. Git + Node.js.
+5. Docker engine reachable through the governed host policy used by the Docker-lane handshake.
 
 ## Runner configuration
 
-- Labels: `self-hosted`, `Windows`, `X64`.
+- Canonical install root: `C:\actions-runner\comparevi-capability-ingress`
+- Canonical runner role: compare capability ingress host
+- Canonical service model: delayed-auto-start Windows service
+- Required labels:
+  - `self-hosted`
+  - `Windows`
+  - `X64`
+  - `comparevi`
+  - `capability-ingress`
+- Optional capability labels:
+  - `labview-2026`
+  - `lv32`
+  - `docker-lane`
+  - `teststand`
 - Prefer a small number of coarse GitHub runner labels over one runner registration per background agent.
 - Isolated Docker lanes should be leased locally through the Docker-lane handshake helper instead of by creating a
   permanent GitHub Actions runner service for each agent.
@@ -31,8 +48,17 @@ Test-Path 'C:\Program Files\National Instruments\Shared\LabVIEW Compare\LVCompar
 [Environment]::GetEnvironmentVariable('LV_BASE_VI', 'Machine')
 [Environment]::GetEnvironmentVariable('LV_HEAD_VI', 'Machine')
 node tools/npm/run-script.mjs env:labview:2026:host-planes
+pwsh -NoLogo -NoProfile -File tools/Assert-RunnerLabelContract.ps1 `
+  -Repository LabVIEW-Community-CI-CD/compare-vi-cli-action `
+  -RunnerName GHOST-comparevi-capability-ingress `
+  -RequiredLabel capability-ingress `
+  -Token (gh auth token)
 node tools/npm/run-script.mjs priority:lane:docker:handshake -- --action request --lane-id docker-agent-check-01 --agent-id operator --agent-class other --capability docker-lane
 ```
+
+Inside a GitHub Actions job, the same helper automatically switches to
+run-jobs validation through `GITHUB_RUN_ID`, `RUNNER_NAME`, and
+`GITHUB_TOKEN`.
 
 Dispatch `Pester (self-hosted, real CLI)` manually to confirm environment validation and tests pass.
 
@@ -60,6 +86,14 @@ is a supported native-plane consumer:
 That harness does not define a separate runner class. It consumes one of the
 native LabVIEW planes and should be attributed to the same host OS fingerprint
 and isolated lane group.
+
+Self-hosted compare workflows should target:
+
+- `runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]`
+
+Add capability labels only when a job truly needs them. `capability-ingress` is
+the stable ingress requirement; execution cells and Docker lanes remain the
+local isolation mechanism behind it.
 
 ## Maintenance
 

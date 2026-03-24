@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   cli-compare:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     env:
       # Headless + safe UI behaviour
       LV_SUPPRESS_UI: '1'
@@ -68,4 +68,3 @@ jobs:
           Write-Host "exitCode  = ${{ steps.compare.outputs.exitCode }}"
           Write-Host "cliPath   = ${{ steps.compare.outputs.cliPath }}"
           Write-Host "command   = ${{ steps.compare.outputs.command }}"
-

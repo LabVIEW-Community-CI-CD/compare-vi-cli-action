@@ -277,7 +277,7 @@ jobs:
   probe:
     # Quick interactivity probe on self-hosted Windows to decide single vs fallback
     if: ${{ inputs.strategy == 'single' || vars.ORCH_STRATEGY == 'single' }}
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     timeout-minutes: 2
     needs: [normalize, preflight]
     env:
@@ -318,7 +318,7 @@ jobs:
 
   pester-category:
     if: ${{ inputs.strategy == 'matrix' || vars.ORCH_STRATEGY == 'matrix' || (inputs.strategy == '' && vars.ORCH_STRATEGY == '') || (inputs.strategy == 'single' && needs.probe.outputs.ok == 'false') }}
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     timeout-minutes: 3
     needs: [normalize, preflight, probe]
     strategy:
@@ -623,7 +623,7 @@ jobs:
 
   drift:
     if: ${{ inputs.strategy == 'matrix' || vars.ORCH_STRATEGY == 'matrix' || (inputs.strategy == '' && vars.ORCH_STRATEGY == '') }}
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     timeout-minutes: 3
     needs: [pester-category]
     env:
@@ -1010,7 +1010,7 @@ jobs:
       run: pwsh -File tools/Write-RerunHint.ps1 -Workflow 'ci-orchestrated.yml' -IncludeIntegration '${{ inputs.include_integration || 'true' }}' -SampleId '${{ inputs.sample_id || '' }}'
   windows-single:
     if: ${{ (inputs.strategy == 'single' || vars.ORCH_STRATEGY == 'single') && needs.probe.outputs.ok == 'true' }}
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress]
     timeout-minutes: 10
     needs: [normalize, preflight, probe]
     env:

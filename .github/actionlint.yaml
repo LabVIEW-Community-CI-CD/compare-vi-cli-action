@@ -1,4 +1,10 @@
 self-hosted-runner:
   labels:
+    - comparevi
+    - capability-ingress
+    - labview-2026
+    - lv32
+    - docker-lane
+    - teststand
     - self-hosted-docker-linux
     - hosted-docker-linux
