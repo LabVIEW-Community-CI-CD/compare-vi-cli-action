@@ -68,16 +68,26 @@ owned:
 
 Use the checked-in helper when you need a replayable lease receipt:
 
-- `node tools/npm/run-script.mjs priority:lane:docker:handshake -- --action request --lane-id docker-agent-epicurus-linux-01 --agent-id epicurus --agent-class subagent --capability docker-lane`
+- `node tools/npm/run-script.mjs priority:lane:docker:handshake -- --action request`
+  `--lane-id docker-agent-epicurus-linux-01 --agent-id epicurus`
+  `--agent-class subagent --capability docker-lane`
 
 Use the execution-cell helper when an agent needs an isolated TestStand-owned native session cell:
 
-- `node tools/npm/run-script.mjs priority:lane:execution-cell -- --action request --cell-id exec-cell-hooke-01 --agent-id hooke --agent-class subagent --suite-class dual-plane-parity --plane-binding native-labview-2026-64 --capability teststand-harness`
+- `node tools/npm/run-script.mjs priority:lane:execution-cell -- --action request`
+  `--cell-id exec-cell-hooke-01 --agent-id hooke --agent-class subagent`
+  `--suite-class dual-plane-parity --plane-binding native-labview-2026-64`
+  `--capability teststand-harness`
 
 Use the bundle helper when one agent needs a Windows-native execution cell plus an isolated Docker lane under one
 durable receipt:
 
-- `node tools/npm/run-script.mjs priority:lane:execution-cell:bundle -- --action request --cell-id exec-cell-sagan-kernel-01 --lane-id docker-agent-sagan-kernel-01 --agent-id sagan --agent-class sagan --cell-class kernel-coordinator --suite-class dual-plane-parity --plane-binding dual-plane-parity --capability teststand-harness --capability docker-lane --operator-authorization-ref budget-auth://operator/session-2026-03-24`
+- `node tools/npm/run-script.mjs priority:lane:execution-cell:bundle -- --action request`
+  `--cell-id exec-cell-sagan-kernel-01 --lane-id docker-agent-sagan-kernel-01`
+  `--agent-id sagan --agent-class sagan --cell-class kernel-coordinator`
+  `--suite-class dual-plane-parity --plane-binding dual-plane-parity`
+  `--capability teststand-harness --capability docker-lane`
+  `--operator-authorization-ref budget-auth://operator/session-2026-03-24`
 
 At `commit`, the execution-cell lease and Docker-lane handshake should bind to each other reciprocally through their
 child receipts. The execution-cell commit now records `dockerLaneId` plus `dockerLaneLeaseId`, and the Docker-lane
@@ -224,20 +234,18 @@ Use these artifacts as the machine-readable source of truth:
    - `docker-runtime-fastloop-readiness.md`
 9. Fast-loop proof bundle when produced:
    - `docker-fast-loop-proof-*.json`
-10. Top-level fast-loop GitHub outputs when `tools/Test-DockerDesktopFastLoop.ps1` runs inside GitHub Actions:
-   - `docker-fast-loop-summary-path`
-   - `docker-fast-loop-status-path`
-   - `docker-fast-loop-host-plane-summary-path`
-   - `docker-fast-loop-host-plane-summary-status`
-   - `docker-fast-loop-host-plane-summary-sha256`
-   - `docker-fast-loop-host-plane-summary-reason`
-11. Top-level fast-loop Step Summary when `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
-   - `Summary Path`
-   - `Status Path`
-   - `Host Plane Summary Path`
-   - `Host Plane Summary Status`
-   - `Host Plane Summary SHA-256`
-   - `Host Plane Summary Reason`
+10. Top-level fast-loop GitHub outputs when
+    `tools/Test-DockerDesktopFastLoop.ps1` runs inside GitHub Actions:
+    `docker-fast-loop-summary-path`, `docker-fast-loop-status-path`,
+    `docker-fast-loop-host-plane-summary-path`,
+    `docker-fast-loop-host-plane-summary-status`,
+    `docker-fast-loop-host-plane-summary-sha256`, and
+    `docker-fast-loop-host-plane-summary-reason`
+11. Top-level fast-loop Step Summary when
+    `tools/Test-DockerDesktopFastLoop.ps1` receives `-StepSummaryPath`:
+    `Summary Path`, `Status Path`, `Host Plane Summary Path`,
+    `Host Plane Summary Status`, `Host Plane Summary SHA-256`, and
+    `Host Plane Summary Reason`
 
 When the local fast loop runs, prefer the readiness envelope for lane verdicts and the host-plane report for the native
 64-bit versus native 32-bit split. For Docker lane replay, use the readiness envelope together with
@@ -293,21 +301,23 @@ Use the artifacts in this order:
    - projects GitHub outputs:
      - `docker-fast-loop-proof-host-plane-summary-path`
      - `docker-fast-loop-proof-host-plane-summary-sha256`
-10. Top-level `tools/Test-DockerDesktopFastLoop.ps1` GitHub outputs
-   - project `docker-fast-loop-summary-path` and `docker-fast-loop-status-path`
-   - project `docker-fast-loop-host-plane-summary-path`
-   - project `docker-fast-loop-host-plane-summary-status`
-   - project `docker-fast-loop-host-plane-summary-sha256`
-   - project `docker-fast-loop-host-plane-summary-reason`
-   - keep success and fail-closed summary provenance available to downstream workflow consumers without reopening JSON
-11. Top-level `tools/Test-DockerDesktopFastLoop.ps1` Step Summary
-   - appends `### Docker Fast Loop Summary`
-   - prints the same summary path and status path surfaced through GitHub outputs
-   - prints host-plane summary path, status, SHA-256, and fail-closed reason
-   - preserves the missing-summary reason before the script throws
-11. `history:diagnostics:show`
-    - replays the same distinction in console form for the operator
-    - prints `[host-plane-split][summary] <path> status=<status> sha256=<sha256>` when summary provenance exists
+10. Top-level `tools/Test-DockerDesktopFastLoop.ps1` GitHub outputs:
+    project `docker-fast-loop-summary-path`,
+    `docker-fast-loop-status-path`, `docker-fast-loop-host-plane-summary-path`,
+    `docker-fast-loop-host-plane-summary-status`,
+    `docker-fast-loop-host-plane-summary-sha256`, and
+    `docker-fast-loop-host-plane-summary-reason`. Keep success and fail-closed
+    summary provenance available to downstream workflow consumers without
+    reopening JSON.
+11. Top-level `tools/Test-DockerDesktopFastLoop.ps1` Step Summary:
+    append `### Docker Fast Loop Summary`, print the same summary path and
+    status path surfaced through GitHub outputs, print host-plane summary path,
+    status, SHA-256, and fail-closed reason, and preserve the missing-summary
+    reason before the script throws.
+12. `history:diagnostics:show`:
+    replay the same distinction in console form for the operator and print
+    `[host-plane-split][summary] <path> status=<status> sha256=<sha256>` when
+    summary provenance exists.
 
 If any of those surfaces disagree on the selected plane or exclusivity state, stop and treat the run as not yet
 trustworthy.
@@ -336,15 +346,18 @@ trustworthy.
     billable rate, and host fingerprint stay replayable.
 12. When a parity run needs both native LabVIEW 2026 planes at once, use `-SuiteClass dual-plane-parity` and keep the
     output tied to the same `host.osFingerprint.isolatedLaneGroupId` as the surrounding host-plane receipts.
-12. Only Sagan may request simultaneous `docker-lane` plus `native-labview-2026-32`, and that request must carry an
-    explicit `operatorAuthorizationRef`.
-13. Use `priority:lane:execution-cell:bundle` when one agent needs both a Windows-native TestStand cell and an
-    isolated Docker lane. It is the preferred control surface for Sagan kernel cells and for future per-agent
-    execution cells that need container-local tooling alongside native Windows LabVIEW work.
-14. Compare `host.osFingerprint.fingerprintSha256` before and after host
+13. Only Sagan may request simultaneous `docker-lane` plus
+    `native-labview-2026-32`, and that request must carry an explicit
+    `operatorAuthorizationRef`.
+14. Use `priority:lane:execution-cell:bundle` when one agent needs both a
+    Windows-native TestStand cell and an isolated Docker lane. It is the
+    preferred control surface for Sagan kernel cells and for future per-agent
+    execution cells that need container-local tooling alongside native Windows
+    LabVIEW work.
+15. Compare `host.osFingerprint.fingerprintSha256` before and after host
     upgrades. If it changes, treat the new value as a moved canonical host OS
     baseline rather than attributing the drift to the workload first.
-15. Use `host.osFingerprint.isolatedLaneGroupId` as the replayable identifier
+16. Use `host.osFingerprint.isolatedLaneGroupId` as the replayable identifier
     for this canonical Windows baseline when documenting or comparing isolated
     local lane groups.
 

@@ -50,12 +50,16 @@ Future host refreshes and isolated lane groups should compare against that
 fingerprint before blaming LabVIEW, Docker, or runner drift on the workload
 itself.
 
-When the host also carries deterministic compare tooling, the TestStand harness is a supported native-plane consumer:
+When the host also carries deterministic compare tooling, the TestStand harness
+is a supported native-plane consumer:
 
-- `pwsh -NoLogo -NoProfile -File tools/TestStand-CompareHarness.ps1 -BaseVi <base> -HeadVi <head> -OutputRoot tests/results/teststand-session -Warmup detect -RenderReport`
+- `pwsh -NoLogo -NoProfile -File tools/TestStand-CompareHarness.ps1`
+  `-BaseVi <base> -HeadVi <head> -OutputRoot`
+  `tests/results/teststand-session -Warmup detect -RenderReport`
 
-That harness does not define a separate runner class. It consumes one of the native LabVIEW planes and should be
-attributed to the same host OS fingerprint and isolated lane group.
+That harness does not define a separate runner class. It consumes one of the
+native LabVIEW planes and should be attributed to the same host OS fingerprint
+and isolated lane group.
 
 ## Maintenance
 
