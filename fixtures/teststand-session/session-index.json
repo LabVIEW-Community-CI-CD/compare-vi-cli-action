@@ -64,6 +64,7 @@
     "cellClass": "worker",
     "suiteClass": "single-compare",
     "planeBinding": "native-labview-2025-64",
+    "runtimeSurface": "windows-native-teststand",
     "premiumSaganMode": false,
     "operatorAuthorizationRef": null,
     "workingRoot": "tests/results/teststand-session",
@@ -75,7 +76,15 @@
     "harnessKind": "teststand-compare-harness",
     "instanceId": "ts-harness-hooke-01",
     "role": "single-plane",
+    "processModelClass": "sequential-process-model",
     "planeBinding": "native-labview-2025-64",
     "parentInstanceId": null
+  },
+  "processModel": {
+    "runtimeSurface": "windows-native-teststand",
+    "processModelClass": "sequential-process-model",
+    "windowsOnly": true,
+    "rootHarnessInstanceId": "ts-harness-hooke-01",
+    "planeCount": 1
   }
 }

@@ -229,6 +229,11 @@ function Resolve-TestStandExecutionCellContext {
   $resolvedArtifactRoot = Get-FirstNonEmptyText @($leaseCommitArtifactRoot, $leaseRequestArtifactRoot, $OutputRoot)
   $resolvedHarnessKind = Get-FirstNonEmptyText @($leaseRequestHarnessKind, 'teststand-compare-harness')
   $resolvedRole = Get-FirstNonEmptyText @($Role, $(if (-not [string]::IsNullOrWhiteSpace($ParentHarnessInstanceId)) { 'plane-child' } elseif ($resolvedSuiteClass -eq 'dual-plane-parity' -and [string]::IsNullOrWhiteSpace($PlaneName)) { 'coordinator' } else { 'single-plane' }))
+  $resolvedProcessModelClass = if ($resolvedSuiteClass -eq 'dual-plane-parity') {
+    'parallel-process-model'
+  } else {
+    'sequential-process-model'
+  }
 
   $planeSuffix = if ($PlaneName -match '2026-64$') {
     'x64'
@@ -255,6 +260,7 @@ function Resolve-TestStandExecutionCellContext {
       cellClass = Get-FirstNonEmptyText @($leaseRequestCellClass)
       suiteClass = $resolvedSuiteClass
       planeBinding = $resolvedPlaneBinding
+      runtimeSurface = 'windows-native-teststand'
       premiumSaganMode = if ($null -eq $leaseGrantPremiumSaganMode) { $false } else { [bool]$leaseGrantPremiumSaganMode }
       operatorAuthorizationRef = Get-FirstNonEmptyText @($leaseRequestOperatorAuthorizationRef)
       workingRoot = $resolvedWorkingRoot
@@ -268,13 +274,23 @@ function Resolve-TestStandExecutionCellContext {
     harnessKind = $resolvedHarnessKind
     instanceId = $resolvedHarnessInstanceId
     role = $resolvedRole
+    processModelClass = $resolvedProcessModelClass
     planeBinding = $resolvedPlaneBinding
     parentInstanceId = Get-FirstNonEmptyText @($ParentHarnessInstanceId)
+  }
+
+  $processModel = [ordered]@{
+    runtimeSurface = 'windows-native-teststand'
+    processModelClass = $resolvedProcessModelClass
+    windowsOnly = $true
+    rootHarnessInstanceId = Get-FirstNonEmptyText @($ParentHarnessInstanceId, $resolvedHarnessInstanceId)
+    planeCount = if ($resolvedSuiteClass -eq 'dual-plane-parity') { 2 } else { 1 }
   }
 
   return [pscustomobject]@{
     executionCell = $executionCell
     harnessInstance = $harnessInstance
+    processModel = $processModel
   }
 }
 
@@ -473,6 +489,7 @@ function Invoke-TestStandSinglePlaneSession {
     exitCode = if ($cap) { [int]$cap.exitCode } else { 1 }
     executionCell = $cellLeaseContext.executionCell
     harnessInstance = $cellLeaseContext.harnessInstance
+    processModel = $cellLeaseContext.processModel
   }
 
   return [pscustomobject]$planeRecord
@@ -493,6 +510,7 @@ function Write-TestStandV1SessionIndex {
     error   = $PlaneSession.error
     executionCell = $PlaneSession.executionCell
     harnessInstance = $PlaneSession.harnessInstance
+    processModel = $PlaneSession.processModel
   }
 
   $indexPath = Join-Path $OutputRoot 'session-index.json'
@@ -780,6 +798,7 @@ function Invoke-DualPlaneParitySuite {
     exitCode = if ($null -ne $x64Index.outcome) { [int]$x64Index.outcome.exitCode } else { if ($x64Process.ExitCode -is [int]) { [int]$x64Process.ExitCode } else { 1 } }
     executionCell = $x64Index.executionCell
     harnessInstance = $x64Index.harnessInstance
+    processModel = $x64Index.processModel
   }
   $x32Session = [pscustomobject][ordered]@{
     plane = 'native-labview-2026-32'
@@ -793,6 +812,7 @@ function Invoke-DualPlaneParitySuite {
     exitCode = if ($null -ne $x32Index.outcome) { [int]$x32Index.outcome.exitCode } else { if ($x32Process.ExitCode -is [int]) { [int]$x32Process.ExitCode } else { 1 } }
     executionCell = $x32Index.executionCell
     harnessInstance = $x32Index.harnessInstance
+    processModel = $x32Index.processModel
   }
 
   $parity = New-DualPlaneParitySummary -X64Session $x64Session -X32Session $x32Session
@@ -815,6 +835,7 @@ function Invoke-DualPlaneParitySuite {
     error = $topError
     executionCell = $dualPlaneContext.executionCell
     harnessInstance = $dualPlaneContext.harnessInstance
+    processModel = $dualPlaneContext.processModel
     planes = [ordered]@{
       x64 = $x64Session
       x32 = $x32Session
