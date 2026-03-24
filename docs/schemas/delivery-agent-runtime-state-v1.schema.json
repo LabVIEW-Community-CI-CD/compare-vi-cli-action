@@ -337,6 +337,8 @@
             "planeBinding": { "type": ["string", "null"] },
             "harnessKind": { "type": ["string", "null"] },
             "harnessInstanceId": { "type": ["string", "null"] },
+            "harnessInstanceLeaseId": { "type": ["string", "null"] },
+            "harnessInstanceLeasePath": { "type": ["string", "null"] },
             "executionCellLeaseId": { "type": ["string", "null"] },
             "dockerLaneLeaseId": { "type": ["string", "null"] },
             "premiumSaganMode": { "type": "boolean" },

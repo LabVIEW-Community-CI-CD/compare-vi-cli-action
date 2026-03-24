@@ -807,6 +807,8 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
               dockerLaneLeaseId: 'docker-lease-456',
               harnessKind: 'teststand-compare-harness',
               harnessInstanceId: 'ts-harness-01',
+              harnessInstanceLeaseId: 'harness-lease-789',
+              harnessInstanceLeasePath: 'tests/results/_agent/runtime/teststand-harness-instance-lease.json',
               planeBinding: 'dual-plane-parity',
               premiumSaganMode: true,
               reciprocalLinkReady: true,
@@ -1004,6 +1006,11 @@ test('delivery-agent runtime state schema validates persisted runtime state', as
   assert.equal(state.activeLane.executionTopology.planeBinding, 'dual-plane-parity');
   assert.equal(state.activeLane.executionTopology.harnessKind, 'teststand-compare-harness');
   assert.equal(state.activeLane.executionTopology.harnessInstanceId, 'ts-harness-01');
+  assert.equal(state.activeLane.executionTopology.harnessInstanceLeaseId, 'harness-lease-789');
+  assert.equal(
+    state.activeLane.executionTopology.harnessInstanceLeasePath,
+    'tests/results/_agent/runtime/teststand-harness-instance-lease.json'
+  );
   assert.equal(state.activeLane.executionTopology.executionCellLeaseId, 'exec-lease-123');
   assert.equal(state.activeLane.executionTopology.dockerLaneLeaseId, 'docker-lease-456');
   assert.equal(state.activeLane.executionTopology.premiumSaganMode, true);

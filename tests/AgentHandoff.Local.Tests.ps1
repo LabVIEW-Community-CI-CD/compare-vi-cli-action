@@ -47,5 +47,9 @@ Describe 'Local Agent Handoff' -Tag 'Unit' {
     $content | Should -Match 'executionTopologySuiteClass'
     $content | Should -Match 'execAuth\s*:'
     $content | Should -Match 'executionTopologyOperatorAuthorizationRef'
+    $content | Should -Match 'execHarn\s*:'
+    $content | Should -Match 'harnessInstanceId'
+    $content | Should -Match 'execHLease\s*:'
+    $content | Should -Match 'harnessInstanceLeaseId'
   }
 }

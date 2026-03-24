@@ -573,6 +573,8 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
           dockerLaneLeaseId: 'docker-lease-456',
           harnessKind: 'teststand-compare-harness',
           harnessInstanceId: 'ts-harness-01',
+          harnessInstanceLeaseId: 'harness-lease-789',
+          harnessInstanceLeasePath: 'tests/results/_agent/runtime/teststand-harness-instance-lease.json',
           planeBinding: 'dual-plane-parity',
           premiumSaganMode: true,
           reciprocalLinkReady: true,
@@ -797,6 +799,11 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
   assert.equal(packet.evidence.delivery.executionTopology.planeBinding, 'dual-plane-parity');
   assert.equal(packet.evidence.delivery.executionTopology.harnessKind, 'teststand-compare-harness');
   assert.equal(packet.evidence.delivery.executionTopology.harnessInstanceId, 'ts-harness-01');
+  assert.equal(packet.evidence.delivery.executionTopology.harnessInstanceLeaseId, 'harness-lease-789');
+  assert.equal(
+    packet.evidence.delivery.executionTopology.harnessInstanceLeasePath,
+    'tests/results/_agent/runtime/teststand-harness-instance-lease.json'
+  );
   assert.equal(packet.evidence.delivery.executionTopology.executionCellLeaseId, 'exec-lease-123');
   assert.equal(packet.evidence.delivery.executionTopology.dockerLaneLeaseId, 'docker-lease-456');
   assert.equal(packet.evidence.delivery.executionTopology.premiumSaganMode, true);
@@ -7554,6 +7561,8 @@ test('persistDeliveryAgentRuntimeState keeps deferred concurrent lane obligation
   assert.equal(persistedState.activeLane.executionTopology.planeBinding, null);
   assert.equal(persistedState.activeLane.executionTopology.harnessKind, null);
   assert.equal(persistedState.activeLane.executionTopology.harnessInstanceId, null);
+  assert.equal(persistedState.activeLane.executionTopology.harnessInstanceLeaseId, null);
+  assert.equal(persistedState.activeLane.executionTopology.harnessInstanceLeasePath, null);
   assert.equal(persistedState.activeLane.executionTopology.executionCellLeaseId, null);
   assert.equal(persistedState.activeLane.executionTopology.dockerLaneLeaseId, null);
   assert.equal(persistedState.activeLane.executionTopology.premiumSaganMode, false);

@@ -59,6 +59,8 @@ test('buildSubagentEpisodeReport normalizes source payload', () => {
         suiteClass: 'handoff-analysis',
         harnessKind: 'teststand-instance',
         harnessInstanceId: 'ts-euler-001',
+        harnessInstanceLeaseId: 'harness-lease-euler-001',
+        harnessInstanceLeasePath: 'tests/results/_agent/runtime/euler-harness-lease.json',
         runtimeSurface: 'windows-native-teststand',
         processModelClass: 'sequential',
         operatorAuthorizationRef: null,
@@ -97,6 +99,8 @@ test('buildSubagentEpisodeReport normalizes source payload', () => {
   assert.equal(report.execution.dockerLaneId, 'docker-euler-001');
   assert.equal(report.execution.cellId, 'cell-euler-001');
   assert.equal(report.execution.harnessInstanceId, 'ts-euler-001');
+  assert.equal(report.execution.harnessInstanceLeaseId, 'harness-lease-euler-001');
+  assert.equal(report.execution.harnessInstanceLeasePath, 'tests/results/_agent/runtime/euler-harness-lease.json');
   assert.equal(report.execution.runtimeSurface, 'windows-native-teststand');
   assert.equal(report.execution.premiumSaganMode, false);
   assert.equal(report.summary.nextAction, 'wire concentrator into Print-AgentHandoff');
@@ -132,6 +136,8 @@ test('runSubagentEpisode writes a normalized episode report', async () => {
       suiteClass: 'receipt-catalog',
       harnessKind: 'teststand-instance',
       harnessInstanceId: 'ts-euclid-001',
+      harnessInstanceLeaseId: 'harness-lease-euclid-001',
+      harnessInstanceLeasePath: 'tests/results/_agent/runtime/euclid-harness-lease.json',
       runtimeSurface: 'windows-native-teststand',
       processModelClass: 'sequential',
       operatorAuthorizationRef: null,
@@ -159,5 +165,7 @@ test('runSubagentEpisode writes a normalized episode report', async () => {
   assert.equal(report.execution.status, 'completed');
   assert.equal(report.execution.cellClass, 'worker-cell');
   assert.equal(report.execution.harnessInstanceId, 'ts-euclid-001');
+  assert.equal(report.execution.harnessInstanceLeaseId, 'harness-lease-euclid-001');
+  assert.equal(report.execution.harnessInstanceLeasePath, 'tests/results/_agent/runtime/euclid-harness-lease.json');
   assert.ok(fs.existsSync(outputPath));
 });

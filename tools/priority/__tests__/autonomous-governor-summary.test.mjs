@@ -248,6 +248,8 @@ function createDeliveryRuntimeState(overrides = {}) {
         dockerLaneLeaseId: 'docker-lease-456',
         harnessKind: 'teststand-compare-harness',
         harnessInstanceId: 'ts-harness-01',
+        harnessInstanceLeaseId: 'harness-lease-789',
+        harnessInstanceLeasePath: 'tests/results/_agent/runtime/teststand-harness-instance-lease.json',
         cellId: 'cell-sagan-kernel',
         laneId: 'docker-lane-01',
         planeBinding: 'dual-plane-parity'
@@ -265,6 +267,8 @@ function createDeliveryRuntimeState(overrides = {}) {
           executionCellLeaseId: 'exec-lease-123',
           dockerLaneLeaseId: 'docker-lease-456',
           harnessInstanceId: 'ts-harness-01',
+          harnessInstanceLeaseId: 'harness-lease-789',
+          harnessInstanceLeasePath: 'tests/results/_agent/runtime/teststand-harness-instance-lease.json',
           operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
           cellId: 'cell-sagan-kernel',
           laneId: 'docker-lane-01',
@@ -486,6 +490,13 @@ test('runAutonomousGovernorSummary carries queue-owned delivery runtime state in
   assert.equal(report.compare.deliveryRuntime.executionTopology.processModelClass, 'parallel-process-model');
   assert.equal(report.compare.deliveryRuntime.executionTopology.windowsOnly, true);
   assert.equal(report.compare.deliveryRuntime.executionTopology.requestedSimultaneous, true);
+  assert.equal(report.compare.deliveryRuntime.executionTopology.harnessKind, 'teststand-compare-harness');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.harnessInstanceId, 'ts-harness-01');
+  assert.equal(report.compare.deliveryRuntime.executionTopology.harnessInstanceLeaseId, 'harness-lease-789');
+  assert.equal(
+    report.compare.deliveryRuntime.executionTopology.harnessInstanceLeasePath,
+    'tests/results/_agent/runtime/teststand-harness-instance-lease.json'
+  );
   assert.equal(report.compare.deliveryRuntime.executionTopology.cellClass, 'kernel-coordinator');
   assert.equal(report.compare.deliveryRuntime.executionTopology.suiteClass, 'dual-plane-parity');
   assert.equal(
@@ -499,6 +510,13 @@ test('runAutonomousGovernorSummary carries queue-owned delivery runtime state in
   assert.equal(report.compare.deliveryRuntime.executionBundle.planeBinding, 'dual-plane-parity');
   assert.equal(report.compare.deliveryRuntime.executionBundle.cellClass, 'kernel-coordinator');
   assert.equal(report.compare.deliveryRuntime.executionBundle.suiteClass, 'dual-plane-parity');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.harnessKind, 'teststand-compare-harness');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.harnessInstanceId, 'ts-harness-01');
+  assert.equal(report.compare.deliveryRuntime.executionBundle.harnessInstanceLeaseId, 'harness-lease-789');
+  assert.equal(
+    report.compare.deliveryRuntime.executionBundle.harnessInstanceLeasePath,
+    'tests/results/_agent/runtime/teststand-harness-instance-lease.json'
+  );
   assert.equal(report.compare.deliveryRuntime.executionBundle.premiumSaganMode, true);
   assert.equal(report.compare.deliveryRuntime.executionBundle.reciprocalLinkReady, true);
   assert.equal(report.compare.deliveryRuntime.executionBundle.effectiveBillableRateUsdPerHour, 375);
@@ -587,6 +605,8 @@ test('runAutonomousGovernorSummary prefers concentrated delivery execution topol
           dockerLaneLeaseId: 'docker-lease-override',
           harnessKind: 'teststand-compare-harness',
           harnessInstanceId: 'ts-harness-override',
+          harnessInstanceLeaseId: 'harness-lease-override',
+          harnessInstanceLeasePath: 'tests/results/_agent/runtime/teststand-harness-instance-lease-override.json',
           cellId: 'cell-worker-09',
           laneId: 'docker-lane-09',
           planeBinding: 'native-labview-2026-64'
@@ -604,6 +624,8 @@ test('runAutonomousGovernorSummary prefers concentrated delivery execution topol
             executionCellLeaseId: 'exec-lease-123',
             dockerLaneLeaseId: 'docker-lease-456',
             harnessInstanceId: 'ts-harness-01',
+            harnessInstanceLeaseId: 'harness-lease-789',
+            harnessInstanceLeasePath: 'tests/results/_agent/runtime/teststand-harness-instance-lease.json',
             operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
             cellId: 'cell-sagan-kernel',
             laneId: 'docker-lane-01'

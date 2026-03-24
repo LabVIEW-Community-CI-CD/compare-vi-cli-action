@@ -1584,6 +1584,13 @@ try {
       }
     }
     if ($governor.summary.PSObject.Properties['executionTopologyStatus'] -and $governor.summary.executionTopologyStatus) {
+      $governorExecTopology = $null
+      if ($governor.PSObject.Properties['compare'] -and $governor.compare -and $governor.compare.PSObject.Properties['deliveryRuntime']) {
+        $deliveryRuntime = $governor.compare.deliveryRuntime
+        if ($deliveryRuntime -and $deliveryRuntime.PSObject.Properties['executionTopology']) {
+          $governorExecTopology = $deliveryRuntime.executionTopology
+        }
+      }
       Write-Host ("  execTopo : {0}" -f (Format-NullableValue $governor.summary.executionTopologyStatus))
       Write-Host ("  execProv : {0}" -f (Format-NullableValue $governor.summary.executionTopologyProviderId))
       Write-Host ("  execSlot : {0}" -f (Format-NullableValue $governor.summary.executionTopologyWorkerSlotId))
@@ -1607,6 +1614,12 @@ try {
       }
       if ($governor.summary.PSObject.Properties['executionTopologyOperatorAuthorizationRef'] -and $governor.summary.executionTopologyOperatorAuthorizationRef) {
         Write-Host ("  execAuth : {0}" -f (Format-NullableValue $governor.summary.executionTopologyOperatorAuthorizationRef))
+      }
+      if ($governorExecTopology -and $governorExecTopology.PSObject.Properties['harnessInstanceId'] -and $governorExecTopology.harnessInstanceId) {
+        Write-Host ("  execHarn : {0}" -f (Format-NullableValue $governorExecTopology.harnessInstanceId))
+      }
+      if ($governorExecTopology -and $governorExecTopology.PSObject.Properties['harnessInstanceLeaseId'] -and $governorExecTopology.harnessInstanceLeaseId) {
+        Write-Host ("  execHLease: {0}" -f (Format-NullableValue $governorExecTopology.harnessInstanceLeaseId))
       }
     }
     if ($governor.summary.PSObject.Properties['executionBundleStatus'] -and $governor.summary.executionBundleStatus) {
@@ -1657,6 +1670,13 @@ try {
         }
       }
       if ($governor.summary.PSObject.Properties['executionTopologyStatus'] -and $governor.summary.executionTopologyStatus) {
+        $governorExecTopology = $null
+        if ($governor.PSObject.Properties['compare'] -and $governor.compare -and $governor.compare.PSObject.Properties['deliveryRuntime']) {
+          $deliveryRuntime = $governor.compare.deliveryRuntime
+          if ($deliveryRuntime -and $deliveryRuntime.PSObject.Properties['executionTopology']) {
+            $governorExecTopology = $deliveryRuntime.executionTopology
+          }
+        }
         $governorLines += ('- Execution topology: {0}' -f (Format-NullableValue $governor.summary.executionTopologyStatus))
         $governorLines += ('- Execution provider: {0}' -f (Format-NullableValue $governor.summary.executionTopologyProviderId))
         $governorLines += ('- Execution worker slot: {0}' -f (Format-NullableValue $governor.summary.executionTopologyWorkerSlotId))
@@ -1680,6 +1700,12 @@ try {
         }
         if ($governor.summary.PSObject.Properties['executionTopologyOperatorAuthorizationRef'] -and $governor.summary.executionTopologyOperatorAuthorizationRef) {
           $governorLines += ('- Execution operator authorization: {0}' -f (Format-NullableValue $governor.summary.executionTopologyOperatorAuthorizationRef))
+        }
+        if ($governorExecTopology -and $governorExecTopology.PSObject.Properties['harnessInstanceId'] -and $governorExecTopology.harnessInstanceId) {
+          $governorLines += ('- Execution harness instance: {0}' -f (Format-NullableValue $governorExecTopology.harnessInstanceId))
+        }
+        if ($governorExecTopology -and $governorExecTopology.PSObject.Properties['harnessInstanceLeaseId'] -and $governorExecTopology.harnessInstanceLeaseId) {
+          $governorLines += ('- Execution harness lease: {0}' -f (Format-NullableValue $governorExecTopology.harnessInstanceLeaseId))
         }
       }
       if ($governor.summary.PSObject.Properties['executionBundleStatus'] -and $governor.summary.executionBundleStatus) {
@@ -1734,6 +1760,10 @@ try {
       }
     }
     if ($portfolio.summary.PSObject.Properties['executionTopologyStatus'] -and $portfolio.summary.executionTopologyStatus) {
+      $portfolioExecTopology = $null
+      if ($portfolio.PSObject.Properties['compare'] -and $portfolio.compare -and $portfolio.compare.PSObject.Properties['executionTopology']) {
+        $portfolioExecTopology = $portfolio.compare.executionTopology
+      }
       Write-Host ("  execTopo : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyStatus))
       Write-Host ("  execProv : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyProviderId))
       Write-Host ("  execSlot : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyWorkerSlotId))
@@ -1757,6 +1787,12 @@ try {
       }
       if ($portfolio.summary.PSObject.Properties['executionTopologyOperatorAuthorizationRef'] -and $portfolio.summary.executionTopologyOperatorAuthorizationRef) {
         Write-Host ("  execAuth : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyOperatorAuthorizationRef))
+      }
+      if ($portfolioExecTopology -and $portfolioExecTopology.PSObject.Properties['harnessInstanceId'] -and $portfolioExecTopology.harnessInstanceId) {
+        Write-Host ("  execHarn : {0}" -f (Format-NullableValue $portfolioExecTopology.harnessInstanceId))
+      }
+      if ($portfolioExecTopology -and $portfolioExecTopology.PSObject.Properties['harnessInstanceLeaseId'] -and $portfolioExecTopology.harnessInstanceLeaseId) {
+        Write-Host ("  execHLease: {0}" -f (Format-NullableValue $portfolioExecTopology.harnessInstanceLeaseId))
       }
     }
     if ($portfolio.summary.PSObject.Properties['executionBundleStatus'] -and $portfolio.summary.executionBundleStatus) {
@@ -1803,6 +1839,10 @@ try {
         }
       }
       if ($portfolio.summary.PSObject.Properties['executionTopologyStatus'] -and $portfolio.summary.executionTopologyStatus) {
+        $portfolioExecTopology = $null
+        if ($portfolio.PSObject.Properties['compare'] -and $portfolio.compare -and $portfolio.compare.PSObject.Properties['executionTopology']) {
+          $portfolioExecTopology = $portfolio.compare.executionTopology
+        }
         $portfolioLines += ('- Execution topology: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyStatus))
         $portfolioLines += ('- Execution provider: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyProviderId))
         $portfolioLines += ('- Execution worker slot: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyWorkerSlotId))
@@ -1826,6 +1866,12 @@ try {
         }
         if ($portfolio.summary.PSObject.Properties['executionTopologyOperatorAuthorizationRef'] -and $portfolio.summary.executionTopologyOperatorAuthorizationRef) {
           $portfolioLines += ('- Execution operator authorization: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyOperatorAuthorizationRef))
+        }
+        if ($portfolioExecTopology -and $portfolioExecTopology.PSObject.Properties['harnessInstanceId'] -and $portfolioExecTopology.harnessInstanceId) {
+          $portfolioLines += ('- Execution harness instance: {0}' -f (Format-NullableValue $portfolioExecTopology.harnessInstanceId))
+        }
+        if ($portfolioExecTopology -and $portfolioExecTopology.PSObject.Properties['harnessInstanceLeaseId'] -and $portfolioExecTopology.harnessInstanceLeaseId) {
+          $portfolioLines += ('- Execution harness lease: {0}' -f (Format-NullableValue $portfolioExecTopology.harnessInstanceLeaseId))
         }
       }
       if ($portfolio.summary.PSObject.Properties['executionBundleStatus'] -and $portfolio.summary.executionBundleStatus) {
