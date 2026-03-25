@@ -51,6 +51,7 @@
         "tagPushError",
         "tagPushRemote",
         "signingMaterial",
+        "immutableRelease",
         "repair",
         "publicationReplay"
       ],
@@ -94,6 +95,62 @@
                 "source": { "type": "string" },
                 "login": { "type": ["string", "null"] },
                 "accountId": { "type": ["string", "null"] }
+              }
+            }
+          }
+        },
+        "immutableRelease": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "tagRef",
+            "repairBlocked",
+            "repositorySetting",
+            "publishedRelease"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "unobserved",
+                "published-release-immutable",
+                "published-release-mutable",
+                "release-not-found",
+                "unverifiable"
+              ]
+            },
+            "tagRef": { "type": ["string", "null"] },
+            "repairBlocked": { "type": "boolean" },
+            "repositorySetting": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "enabled", "enforcedByOwner", "error"],
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": ["unobserved", "enabled", "disabled", "unverifiable"]
+                },
+                "enabled": { "type": ["boolean", "null"] },
+                "enforcedByOwner": { "type": ["boolean", "null"] },
+                "error": { "type": ["string", "null"] }
+              }
+            },
+            "publishedRelease": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "exists", "immutable", "releaseId", "releaseUrl", "tagName", "error"],
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": ["unobserved", "release-not-found", "mutable", "immutable", "unverifiable"]
+                },
+                "exists": { "type": ["boolean", "null"] },
+                "immutable": { "type": ["boolean", "null"] },
+                "releaseId": { "type": ["integer", "null"] },
+                "releaseUrl": { "type": ["string", "null"] },
+                "tagName": { "type": ["string", "null"] },
+                "error": { "type": ["string", "null"] }
               }
             }
           }

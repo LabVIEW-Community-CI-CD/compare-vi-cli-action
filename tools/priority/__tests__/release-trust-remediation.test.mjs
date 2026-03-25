@@ -22,6 +22,7 @@ test('buildReleaseTrustRemediationMarkdown emits repair guidance for unsigned or
   assert.match(markdown, /repair-eligible tag failures/);
   assert.match(markdown, /`version = 0\.6\.4-rc\.1`/);
   assert.match(markdown, /`repair_existing_tag = true`/);
+  assert.match(markdown, /immutable published GitHub Release/);
   assert.match(markdown, /Preserve tag identity and asset names/);
 });
 
@@ -71,4 +72,6 @@ test('runReleaseTrustRemediation writes markdown artifact and appends to workflo
   const summary = await readFile(summaryPath, 'utf8');
   assert.match(output, /`repair_existing_tag = true`/);
   assert.match(summary, /`repair_existing_tag = true`/);
+  assert.match(output, /protected-tag authority path/);
+  assert.match(summary, /protected-tag authority path/);
 });

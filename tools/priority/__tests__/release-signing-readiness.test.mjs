@@ -257,3 +257,65 @@ test('runReleaseSigningReadiness reports publication success when signing capabi
   assert.equal(result.report.publishedBundleObserver.status, 'producer-native-ready');
   assert.deepEqual(result.report.blockers, []);
 });
+
+test('runReleaseSigningReadiness reports immutable published-tag repair as an external blocker', async () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'release-signing-readiness-immutable-'));
+  seedWorkflowContract(repoRoot);
+  writeJson(path.join(repoRoot, DEFAULT_RELEASE_CONDUCTOR_REPORT_PATH), {
+    release: {
+      targetTag: 'v0.6.4-rc.2',
+      immutableRelease: {
+        status: 'published-release-immutable',
+        tagRef: 'v0.6.4-rc.2',
+        repairBlocked: true,
+        repositorySetting: {
+          status: 'enabled',
+          enabled: true,
+          enforcedByOwner: false,
+          error: null
+        },
+        publishedRelease: {
+          status: 'immutable',
+          exists: true,
+          immutable: true,
+          releaseId: 123,
+          releaseUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/releases/tag/v0.6.4-rc.2',
+          tagName: 'v0.6.4-rc.2',
+          error: null
+        }
+      }
+    },
+    decision: {
+      blockers: [{ code: 'repair-target-release-immutable' }]
+    }
+  });
+  writeJson(path.join(repoRoot, DEFAULT_RELEASE_PUBLISHED_BUNDLE_OBSERVER_PATH), createPublishedBundleObserver());
+
+  const result = await runReleaseSigningReadiness(
+    {
+      repoRoot,
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    {
+      now: new Date('2026-03-23T17:22:00Z'),
+      runGhJsonFn: (args) => {
+        const endpoint = args[1] ?? '';
+        if (endpoint.includes('/actions/secrets')) {
+          return { secrets: [{ name: REQUIRED_SIGNING_SECRET }, { name: OPTIONAL_SIGNING_SECRET }] };
+        }
+        if (endpoint.includes('/actions/variables')) {
+          return { variables: [{ name: 'RELEASE_CONDUCTOR_ENABLED', value: '1' }] };
+        }
+        if (endpoint.startsWith('user/ssh_signing_keys')) {
+          return [{ id: 1, title: 'compare-release-signing' }];
+        }
+        throw new Error(`Unexpected endpoint: ${endpoint}`);
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report.summary.status, 'warn');
+  assert.equal(result.report.summary.externalBlocker, 'release-repair-immutable-blocked');
+  assert.ok(result.report.blockers.some((entry) => entry.code === 'release-repair-immutable-blocked'));
+});
