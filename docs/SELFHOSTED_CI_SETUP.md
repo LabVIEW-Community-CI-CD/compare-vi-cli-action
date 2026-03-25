@@ -111,6 +111,11 @@ consumer:
 Keep `labview-2026`, `lv32`, `docker-lane`, and `teststand` opt-in everywhere
 else until a job has the same explicit machine-readable need.
 
+`.github/workflows/pester-reusable.yml` stays on the generic ingress surface.
+It may use an explicit `LVCOMPARE_PATH` override, but it does not silently fall
+back to `C:\Program Files (x86)\National Instruments\Shared\LabVIEW Compare\LVCompare.exe`
+on the default ingress lane.
+
 ## Maintenance
 
 - Keep LabVIEW and Windows patched.
