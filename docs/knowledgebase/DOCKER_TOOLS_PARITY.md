@@ -62,6 +62,35 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 -UseToolsImage -RequirementsVerific
   `tests/results/_agent/runtime/delivery-agent-lanes/`. Future agents should read the runtime-state `localReviewLoop`
   node first when resuming a daemon-driven lane, then open the deeper Docker/Desktop receipt paths only when needed.
 
+## Workflow-grade replay lane
+
+For workflow-grade replay against real GitHub Actions evidence, use the checked-in Docker replay helper:
+
+```powershell
+node tools/npm/run-script.mjs priority:workflow:replay:docker -- --mode session-index-v2-promotion --run-id 23543808174 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action
+```
+
+- The first delivered mode is `session-index-v2-promotion`.
+- The helper runs the checked-in workflow helper inside the CompareVI tools image rather than inventing a separate
+  replay implementation.
+- Outer receipt:
+  - `tests/results/docker-tools-parity/workflow-replay/session-index-v2-promotion-receipt.json`
+- Inner replay artifacts:
+  - `tests/results/docker-tools-parity/workflow-replay/session-index-v2-promotion/`
+- Image selection fails closed in this order:
+  - explicit `--image`
+  - `COMPAREVI_TOOLS_IMAGE`
+  - local `comparevi-tools:local`
+  - published `ghcr.io/labview-community-ci-cd/comparevi-tools:latest`
+- Token resolution fails closed in this order:
+  - `GH_TOKEN`
+  - `GITHUB_TOKEN`
+  - `gh auth token`
+
+This first slice is Linux-first. For Windows Docker/Desktop parity today, continue to use the existing NI Windows proof
+surfaces and host preflight path. Workflow-grade Windows replay is the next extension under the same replay-lane
+objective, not a separate ad hoc lane.
+
 ## Review-loop policy
 
 - First-discovery on GitHub Actions is acceptable. Repeat discovery of the same

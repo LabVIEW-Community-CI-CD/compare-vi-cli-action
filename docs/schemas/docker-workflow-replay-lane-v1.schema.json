@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-ci-cd.example/compare-vi-cli-action/docker-workflow-replay-lane-v1.schema.json",
+  "title": "Docker Workflow Replay Lane Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "repoRoot",
+    "git",
+    "replay",
+    "docker",
+    "artifacts",
+    "result"
+  ],
+  "properties": {
+    "schema": {
+      "const": "docker-workflow-replay-lane@v1"
+    },
+    "schemaVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repoRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headSha",
+        "branch",
+        "upstreamDevelopMergeBase",
+        "dirtyTracked"
+      ],
+      "properties": {
+        "headSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "upstreamDevelopMergeBase": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dirtyTracked": {
+          "type": "boolean"
+        }
+      }
+    },
+    "replay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "repository",
+        "runId",
+        "branch",
+        "helperPath"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "helperPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "docker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "image",
+        "imageSource",
+        "tokenSource",
+        "command"
+      ],
+      "properties": {
+        "image": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "imageSource": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tokenSource": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "entry",
+            "args",
+            "sanitizedShellCommand"
+          ],
+          "properties": {
+            "entry": {
+              "type": "string",
+              "minLength": 1
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sanitizedShellCommand": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receiptPath",
+        "replayReportPath",
+        "downloadReportPath",
+        "destinationRoot"
+      ],
+      "properties": {
+        "receiptPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "replayReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "downloadReportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "destinationRoot": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "exitCode",
+        "replayStatus",
+        "replayDecisionState",
+        "errorMessage"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "passed",
+            "failed"
+          ]
+        },
+        "exitCode": {
+          "type": "integer"
+        },
+        "replayStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replayDecisionState": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "errorMessage": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}
