@@ -78,6 +78,7 @@ test('release workflow explicitly dispatches publish-tools-image with actions wr
 
   assert.equal(releaseJob?.permissions?.actions, 'write');
   assert.ok(dispatchStep, 'release workflow should dispatch publish-tools-image explicitly');
+  assert.equal(dispatchStep.if, "env.RELEASE_PUBLICATION_MODE == 'publish'");
   assert.equal(dispatchStep.uses, 'actions/github-script@v8');
   assert.match(dispatchStep.with.script, /workflow_id:\s*'publish-tools-image\.yml'/);
   assert.match(dispatchStep.with.script, /ref:\s*'develop'/);
@@ -97,12 +98,23 @@ test('release workflow remains tag-triggered and also supports workflow_dispatch
   assert.ok(Object.prototype.hasOwnProperty.call(workflow?.on ?? {}, 'workflow_dispatch'));
   assert.equal(workflow?.on?.workflow_dispatch?.inputs?.release_tag?.required, true);
   assert.equal(workflow?.on?.workflow_dispatch?.inputs?.release_tag?.type, 'string');
+  assert.equal(workflow?.on?.workflow_dispatch?.inputs?.publication_mode?.default, 'publish');
+  assert.equal(workflow?.on?.workflow_dispatch?.inputs?.publication_mode?.type, 'choice');
+  assert.deepEqual(workflow?.on?.workflow_dispatch?.inputs?.publication_mode?.options, ['publish', 'verify-existing-release']);
   assert.match(workflowRaw, /name: Resolve release target tag/);
   assert.match(workflowRaw, /tag='\$\{\{\s*inputs\.release_tag\s*\}\}'/);
+  assert.match(workflowRaw, /name: Resolve publication mode/);
+  assert.match(workflowRaw, /mode='\$\{\{\s*inputs\.publication_mode\s*\}\}'/);
   assert.match(workflowRaw, /target_tag:\s*\$\{\{\s*steps\.release_target\.outputs\.tag\s*\}\}/);
+  assert.match(workflowRaw, /publication_mode:\s*\$\{\{\s*steps\.publication_mode\.outputs\.mode\s*\}\}/);
   assert.match(workflowRaw, /ref:\s*\$\{\{\s*steps\.release_target\.outputs\.tag\s*\}\}/);
   assert.match(workflowRaw, /RELEASE_TAG:\s*\$\{\{\s*needs\.certification-matrix\.outputs\.target_tag\s*\}\}/);
+  assert.match(workflowRaw, /RELEASE_PUBLICATION_MODE:\s*\$\{\{\s*needs\.certification-matrix\.outputs\.publication_mode\s*\}\}/);
   assert.match(workflowRaw, /tag_name:\s*\$\{\{\s*env\.RELEASE_TAG\s*\}\}/);
+  assert.match(workflowRaw, /if:\s*env\.RELEASE_PUBLICATION_MODE == 'publish' && steps\.notes\.outputs\.fallback == 'false'/);
+  assert.match(workflowRaw, /if:\s*env\.RELEASE_PUBLICATION_MODE == 'publish' && steps\.notes\.outputs\.fallback == 'true'/);
+  assert.match(workflowRaw, /name: Record protected-tag-safe replay mode/);
+  assert.match(workflowRaw, /if:\s*env\.RELEASE_PUBLICATION_MODE == 'verify-existing-release'/);
 });
 
 test('release workflow resolves downloaded artifacts through the shared helper before validation', () => {

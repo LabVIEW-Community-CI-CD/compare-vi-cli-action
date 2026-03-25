@@ -923,6 +923,8 @@ test('runReleaseConductor repairs an existing authoritative tag when repair mode
   assert.equal(report.release.publicationReplay.ref, 'develop');
   assert.equal(report.release.publicationReplay.tagInputName, 'release_tag');
   assert.equal(report.release.publicationReplay.tagInputValue, 'v0.8.0-rc.1');
+  assert.equal(report.release.publicationReplay.modeInputName, 'publication_mode');
+  assert.equal(report.release.publicationReplay.modeInputValue, 'publish');
   assert.equal(
     commandCalls.some(
       (entry) =>
@@ -954,13 +956,15 @@ test('runReleaseConductor repairs an existing authoritative tag when repair mode
         entry.args[3] === '--ref' &&
         entry.args[4] === 'develop' &&
         entry.args[5] === '-f' &&
-        entry.args[6] === 'release_tag=v0.8.0-rc.1'
+        entry.args[6] === 'release_tag=v0.8.0-rc.1' &&
+        entry.args[7] === '-f' &&
+        entry.args[8] === 'publication_mode=publish'
     ),
     true
   );
 });
 
-test('runReleaseConductor blocks repair mode when the published release is immutable', async () => {
+test('runReleaseConductor dispatches protected-tag-safe replay when the published release is immutable', async () => {
   const readJsonOptionalFn = async (filePath) => {
     const normalized = String(filePath);
     if (normalized.includes('queue-supervisor-report.json')) {
@@ -1068,11 +1072,22 @@ test('runReleaseConductor blocks repair mode when the published release is immut
     writeReportFn: async (reportPath) => reportPath
   });
 
-  assert.equal(exitCode, 1);
-  assert.equal(report.release.repair.status, 'blocked');
+  assert.equal(exitCode, 0);
+  assert.equal(report.decision.status, 'pass');
+  assert.equal(report.release.proposalOnly, false);
+  assert.equal(report.release.tagCreated, false);
+  assert.equal(report.release.tagPushed, false);
+  assert.equal(report.release.repair.status, 'equivalent-replay-dispatched');
   assert.equal(report.release.immutableRelease.status, 'published-release-immutable');
   assert.equal(report.release.immutableRelease.publishedRelease.immutable, true);
-  assert.ok(report.decision.blockers.some((entry) => entry.code === 'repair-target-release-immutable'));
+  assert.equal(report.release.publicationReplay.requested, true);
+  assert.equal(report.release.publicationReplay.status, 'dispatched');
+  assert.equal(report.release.publicationReplay.dispatched, true);
+  assert.equal(report.release.publicationReplay.tagInputName, 'release_tag');
+  assert.equal(report.release.publicationReplay.tagInputValue, 'v0.8.0-rc.1');
+  assert.equal(report.release.publicationReplay.modeInputName, 'publication_mode');
+  assert.equal(report.release.publicationReplay.modeInputValue, 'verify-existing-release');
+  assert.deepEqual(report.decision.blockers, []);
   assert.equal(
     commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'tag' && entry.args.includes('-f')),
     false
@@ -1081,6 +1096,132 @@ test('runReleaseConductor blocks repair mode when the published release is immut
     commandCalls.some((entry) => entry.command === 'git' && entry.args[0] === 'push'),
     false
   );
+  assert.equal(
+    commandCalls.some(
+      (entry) =>
+        entry.command === 'gh' &&
+        entry.args[0] === 'workflow' &&
+        entry.args[1] === 'run' &&
+        entry.args[2] === 'release.yml' &&
+        entry.args[3] === '--ref' &&
+        entry.args[4] === 'develop' &&
+        entry.args[5] === '-f' &&
+        entry.args[6] === 'release_tag=v0.8.0-rc.1' &&
+        entry.args[7] === '-f' &&
+        entry.args[8] === 'publication_mode=verify-existing-release'
+    ),
+    true
+  );
+});
+
+test('runReleaseConductor reports equivalent replay availability in dry-run for immutable published releases', async () => {
+  const readJsonOptionalFn = async (filePath) => {
+    const normalized = String(filePath);
+    if (normalized.includes('queue-supervisor-report.json')) {
+      return {
+        exists: true,
+        error: null,
+        path: filePath,
+        payload: {
+          paused: false,
+          throughputController: { mode: 'healthy' },
+          retryHistory: {}
+        }
+      };
+    }
+    return {
+      exists: true,
+      error: null,
+      path: filePath,
+      payload: {
+        schema: 'priority/policy-live-state@v1',
+        generatedAt: '2026-03-06T10:00:00Z',
+        state: {}
+      }
+    };
+  };
+
+  const runGhJsonFn = (args) => {
+    if (args[0] !== 'api') {
+      throw new Error(`unexpected gh args: ${args.join(' ')}`);
+    }
+    const endpoint = String(args[1] ?? '');
+    if (endpoint.includes('/actions/workflows/')) {
+      return makeWorkflowRunsResponse(endpoint);
+    }
+    if (endpoint === 'repos/owner/repo/immutable-releases') {
+      return { enabled: true, enforced_by_owner: false };
+    }
+    if (endpoint === 'repos/owner/repo/releases/tags/v0.8.0-rc.1') {
+      return {
+        id: 42,
+        tag_name: 'v0.8.0-rc.1',
+        immutable: true,
+        html_url: 'https://github.com/owner/repo/releases/tag/v0.8.0-rc.1'
+      };
+    }
+    throw new Error(`unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const commandCalls = [];
+  const runCommandFn = (command, args) => {
+    commandCalls.push({ command, args });
+    if (command === 'git' && args[0] === 'config') {
+      if (args[2] === 'remote.upstream.url') {
+        return { status: 0, stdout: 'https://github.com/owner/repo.git', stderr: '' };
+      }
+      return { status: 1, stdout: '', stderr: 'missing config' };
+    }
+    if (command === 'git' && args[0] === 'ls-remote') {
+      return {
+        status: 0,
+        stdout: [
+          '1111111111111111111111111111111111111111\trefs/tags/v0.8.0-rc.1',
+          '2222222222222222222222222222222222222222\trefs/tags/v0.8.0-rc.1^{}'
+        ].join('\n'),
+        stderr: ''
+      };
+    }
+    if (command === 'git' && args[0] === 'rev-parse') {
+      return { status: 1, stdout: '', stderr: '' };
+    }
+    return { status: 0, stdout: '', stderr: '' };
+  };
+
+  const { report, exitCode } = await runReleaseConductor({
+    repoRoot: process.cwd(),
+    now: new Date('2026-03-06T12:00:00.000Z'),
+    args: {
+      apply: false,
+      dryRun: true,
+      repairExistingTag: true,
+      reportPath: 'tests/results/_agent/release/release-conductor-report.json',
+      queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      policySnapshotPath: 'tests/results/_agent/policy/policy-state-snapshot.json',
+      repo: 'owner/repo',
+      stream: 'comparevi-cli',
+      channel: 'rc',
+      version: '0.8.0-rc.1',
+      dwellMinutes: 60,
+      quarantineStaleHours: 24,
+      help: false
+    },
+    environment: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      RELEASE_CONDUCTOR_ENABLED: '0'
+    },
+    runGhJsonFn,
+    runCommandFn,
+    readJsonOptionalFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(report.decision.status, 'pass');
+  assert.equal(report.release.repair.status, 'ready-equivalent-replay');
+  assert.equal(report.release.immutableRelease.status, 'published-release-immutable');
+  assert.equal(report.release.publicationReplay.requested, false);
+  assert.equal(report.release.publicationReplay.status, 'not-requested');
   assert.equal(
     commandCalls.some((entry) => entry.command === 'gh' && entry.args[0] === 'workflow' && entry.args[1] === 'run'),
     false
@@ -1199,6 +1340,8 @@ test('runReleaseConductor fails apply when repaired tag publication replay dispa
   assert.equal(report.release.publicationReplay.ref, 'develop');
   assert.equal(report.release.publicationReplay.tagInputName, 'release_tag');
   assert.equal(report.release.publicationReplay.tagInputValue, 'v0.8.0-rc.1');
+  assert.equal(report.release.publicationReplay.modeInputName, 'publication_mode');
+  assert.equal(report.release.publicationReplay.modeInputValue, 'publish');
   assert.equal(report.release.publicationReplay.error, 'dispatch denied');
   assert.ok(report.decision.blockers.some((entry) => entry.code === 'release-replay-dispatch-failed'));
 });

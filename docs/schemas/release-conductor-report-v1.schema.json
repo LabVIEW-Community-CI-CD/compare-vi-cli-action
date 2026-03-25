@@ -176,7 +176,15 @@
             "requested": { "type": "boolean" },
             "status": {
               "type": "string",
-              "enum": ["not-requested", "repair-available", "ready", "repaired", "blocked"]
+              "enum": [
+                "not-requested",
+                "repair-available",
+                "ready",
+                "ready-equivalent-replay",
+                "repaired",
+                "equivalent-replay-dispatched",
+                "blocked"
+              ]
             },
             "remoteTagRef": { "type": ["string", "null"] },
             "remoteTagExists": { "type": "boolean" },
@@ -193,13 +201,29 @@
         "publicationReplay": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["requested", "workflow", "ref", "tagInputName", "tagInputValue", "dispatched", "status", "error"],
+          "required": [
+            "requested",
+            "workflow",
+            "ref",
+            "tagInputName",
+            "tagInputValue",
+            "modeInputName",
+            "modeInputValue",
+            "dispatched",
+            "status",
+            "error"
+          ],
           "properties": {
             "requested": { "type": "boolean" },
             "workflow": { "type": "string" },
             "ref": { "type": ["string", "null"] },
             "tagInputName": { "type": ["string", "null"] },
             "tagInputValue": { "type": ["string", "null"] },
+            "modeInputName": { "type": ["string", "null"] },
+            "modeInputValue": {
+              "type": ["string", "null"],
+              "enum": ["publish", "verify-existing-release", null]
+            },
             "dispatched": { "type": "boolean" },
             "status": {
               "type": "string",

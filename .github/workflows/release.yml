@@ -10,6 +10,14 @@ on:
         description: 'Authoritative release tag to publish or replay.'
         required: true
         type: string
+      publication_mode:
+        description: 'Release publication behavior for workflow_dispatch replay.'
+        required: false
+        default: publish
+        type: choice
+        options:
+          - publish
+          - verify-existing-release
 
 jobs:
   certification-matrix:
@@ -21,6 +29,7 @@ jobs:
     outputs:
       target_tag: ${{ steps.release_target.outputs.tag }}
       channel: ${{ steps.channel.outputs.channel }}
+      publication_mode: ${{ steps.publication_mode.outputs.mode }}
     steps:
       - name: Resolve release target tag
         id: release_target
@@ -56,6 +65,25 @@ jobs:
             channel="rc"
           fi
           echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve publication mode
+        id: publication_mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          mode='publish'
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            mode='${{ inputs.publication_mode }}'
+          fi
+          case "$mode" in
+            publish|verify-existing-release)
+              ;;
+            *)
+              echo "Unsupported publication mode: $mode" >&2
+              exit 1
+              ;;
+          esac
+          echo "mode=${mode}" >> "$GITHUB_OUTPUT"
 
       - name: Generate certification matrix
         shell: bash
@@ -100,6 +128,7 @@ jobs:
       target_tag: ${{ needs.certification-matrix.outputs.target_tag }}
     env:
       RELEASE_TAG: ${{ needs.certification-matrix.outputs.target_tag }}
+      RELEASE_PUBLICATION_MODE: ${{ needs.certification-matrix.outputs.publication_mode }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -365,8 +394,19 @@ jobs:
             '- `comparevi-history` is versioned and released separately; backend contract changes require an explicit facade ref bump/release in that repo.'
           ) | Out-File -FilePath RELEASE_NOTES.md -Encoding utf8 -Append
 
+      - name: Record protected-tag-safe replay mode
+        if: env.RELEASE_PUBLICATION_MODE == 'verify-existing-release'
+        shell: pwsh
+        run: |
+          @(
+            '## Protected-Tag-Safe Replay'
+            ''
+            ('- Verified `{0}` from workflow ref `develop` without mutating the existing GitHub Release.' -f $env:RELEASE_TAG)
+            '- GitHub Release mutation and Publish Tools Image dispatch are intentionally skipped in this mode.'
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
       - name: Create GitHub Release with assets (CHANGELOG)
-        if: steps.notes.outputs.fallback == 'false'
+        if: env.RELEASE_PUBLICATION_MODE == 'publish' && steps.notes.outputs.fallback == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
@@ -379,7 +419,7 @@ jobs:
             artifacts/cli/provenance.json
 
       - name: Create GitHub Release with assets (auto notes)
-        if: steps.notes.outputs.fallback == 'true'
+        if: env.RELEASE_PUBLICATION_MODE == 'publish' && steps.notes.outputs.fallback == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
@@ -392,6 +432,7 @@ jobs:
             artifacts/cli/provenance.json
 
       - name: Dispatch Publish Tools Image workflow
+        if: env.RELEASE_PUBLICATION_MODE == 'publish'
         uses: actions/github-script@v8
         with:
           script: |
