@@ -21,6 +21,7 @@
     "localOverlayReport",
     "authorityReport",
     "hostedAuthorityReport",
+    "supportedProofAuthorityReport",
     "provingSelectionStatus",
     "provingSelectionError",
     "selection"
@@ -81,6 +82,9 @@
     "hostedAuthorityReport": {
       "$ref": "#/$defs/reportRef"
     },
+    "supportedProofAuthorityReport": {
+      "$ref": "#/$defs/reportRef"
+    },
     "provingSelectionStatus": {
       "type": "string",
       "enum": ["pass", "fail", "missing", "error"]
@@ -102,6 +106,7 @@
         "source": {
           "enum": [
             "hosted-authority",
+            "supported-proof-authority",
             "authority",
             "none"
           ]

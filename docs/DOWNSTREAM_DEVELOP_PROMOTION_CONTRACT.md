@@ -17,6 +17,7 @@ It is not a second feature-development branch.
 - Proving scorecard output: `tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json`
 - Template-agent verification lane report: `tests/results/_agent/promotion/template-agent-verification-report.json`
 - Authoritative template verification overlay: `tests/results/_agent/promotion/template-agent-verification-report.local.json`, projected during bootstrap from the latest matching downstream proving artifact for the current `develop` source SHA
+- Supported template-proof authority synthesis: `tests/results/_agent/promotion/template-agent-verification-report.supported.json`, projected from the latest supported `template-smoke` `workflow_dispatch` proof on a supported consumer fork when that proof is aligned to the current canonical template head
 - Selection resolver: `tools/priority/resolve-downstream-proving-artifact.mjs`
 - Selection schema: `docs/schemas/downstream-proving-selection-v1.schema.json`
 - Selection output: `tests/results/_agent/release/downstream-proving-selection.json`
@@ -107,8 +108,11 @@ duration so the reserved lane does not remain stale between local delivery turns
 
 Fresh standing worktrees should not treat the checked-in `pending` seed as the
 latest authority by default. `tools/priority/project-template-agent-verification-authority.mjs`
-now resolves the current hosted downstream-proving artifact for `develop` and
-projects a local `.local.json` overlay. Local consumers such as
+has been replaced by `tools/priority/sync-template-agent-verification-report.mjs`,
+which resolves the current hosted downstream-proving artifact for `develop` and,
+when needed, synthesizes authority from the latest supported template proof
+aligned to the canonical template head before projecting the local `.local.json`
+overlay. Local consumers such as
 `tools/priority/template-pivot-gate.mjs` must prefer that overlay when it is
 present.
 

@@ -6,6 +6,10 @@ import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolveArtifactDestinationRoot } from './lib/storage-root-policy.mjs';
 import { runResolveDownstreamProvingArtifact } from './resolve-downstream-proving-artifact.mjs';
+import {
+  DEFAULT_TEMPLATE_POLICY_PATH,
+  evaluateTemplateAgentVerificationReport
+} from './template-agent-verification-report.mjs';
 
 export const REPORT_SCHEMA = 'priority/template-agent-verification-sync-report@v1';
 export const DEFAULT_POLICY_PATH = path.join('tools', 'priority', 'delivery-agent.policy.json');
@@ -40,6 +44,20 @@ export const DEFAULT_PROVING_SELECTION_DESTINATION_ROOT = path.join(
   '_agent',
   'promotion',
   'template-agent-verification-downstream-proving-artifacts'
+);
+export const DEFAULT_MONITORING_MODE_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'handoff',
+  'monitoring-mode.json'
+);
+export const DEFAULT_SUPPORTED_PROOF_REPORT_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'promotion',
+  'template-agent-verification-report.supported.json'
 );
 export const DEFAULT_PROVING_BRANCH = 'develop';
 export const DEFAULT_PROVING_WORKFLOW = 'downstream-promotion.yml';
@@ -188,6 +206,11 @@ function writeJson(filePath, payload) {
   return resolvedPath;
 }
 
+function removeFile(filePath) {
+  const resolvedPath = path.resolve(filePath);
+  fs.rmSync(resolvedPath, { force: true });
+}
+
 function copyFile(sourcePath, destinationPath) {
   const resolvedSourcePath = path.resolve(sourcePath);
   const resolvedDestinationPath = path.resolve(destinationPath);
@@ -280,8 +303,126 @@ async function resolveHostedAuthorityReport({
   };
 }
 
-function selectAuthoritySource(authorityReport, hostedAuthorityReport) {
-  if (!authorityReport.valid && !hostedAuthorityReport.valid) {
+function deriveCanonicalTemplateHeadSha(repositories) {
+  for (const entry of repositories) {
+    const canonicalHeadSha = asOptional(entry?.branchAlignment?.canonicalHeadSha);
+    if (canonicalHeadSha) {
+      return canonicalHeadSha;
+    }
+  }
+  for (const entry of repositories) {
+    if (asOptional(entry?.role) === 'canonical-template') {
+      const headSha = asOptional(entry?.branchAlignment?.headSha);
+      if (headSha) {
+        return headSha;
+      }
+    }
+  }
+  return null;
+}
+
+function resolveSupportedProofCandidate(monitoringModePayload, policy) {
+  if (monitoringModePayload?.schema !== 'agent-handoff/monitoring-mode-v1') {
+    return null;
+  }
+  if (asOptional(monitoringModePayload?.templateMonitoring?.status) !== 'pass') {
+    return null;
+  }
+
+  const repositories = Array.isArray(monitoringModePayload?.templateMonitoring?.repositories)
+    ? monitoringModePayload.templateMonitoring.repositories
+    : [];
+  const canonicalRepository =
+    asOptional(repositories.find((entry) => asOptional(entry?.role) === 'canonical-template')?.repository) ??
+    asOptional(policy?.templateAgentVerificationLane?.targetRepository);
+  const canonicalHeadSha = deriveCanonicalTemplateHeadSha(repositories);
+  const selectedMonitor =
+    repositories.find((entry) => {
+      if (asOptional(entry?.supportedProof?.status) !== 'pass') {
+        return false;
+      }
+      if (!asOptional(entry?.supportedProof?.runUrl)) {
+        return false;
+      }
+      const branchAlignmentStatus = asOptional(entry?.branchAlignment?.status);
+      if (entry?.branchAlignment != null && branchAlignmentStatus !== 'pass') {
+        return false;
+      }
+      const supportedHeadSha = asOptional(entry?.supportedProof?.headSha);
+      if (canonicalHeadSha && supportedHeadSha && supportedHeadSha !== canonicalHeadSha) {
+        return false;
+      }
+      return true;
+    }) ?? null;
+
+  if (!selectedMonitor || !canonicalRepository || !canonicalHeadSha) {
+    return null;
+  }
+
+  return {
+    canonicalRepository,
+    canonicalHeadSha,
+    selectedMonitor
+  };
+}
+
+function synthesizeSupportedProofAuthorityReport({
+  policy,
+  templatePolicy,
+  repository,
+  branch,
+  expectedSourceSha,
+  monitoringModeInput,
+  monitoringModePath,
+  supportedProofReportPath,
+  readOptionalJsonFn,
+  writeJsonFn
+}) {
+  const supportedProofCandidate = resolveSupportedProofCandidate(monitoringModeInput?.payload, policy);
+  if (!supportedProofCandidate || !repository || !expectedSourceSha) {
+    removeFile(supportedProofReportPath);
+    return describeReport(null);
+  }
+
+  const report = evaluateTemplateAgentVerificationReport({
+    policy,
+    repo: repository,
+    iterationLabel: `supported template proof for compare ${expectedSourceSha.slice(0, 8)}`,
+    iterationRef: `${branch}:${expectedSourceSha.slice(0, 8)}`,
+    iterationHeadSha: expectedSourceSha,
+    verificationStatus: 'pass',
+    durationSeconds: null,
+    provider: 'hosted-github-workflow',
+    runUrl: supportedProofCandidate.selectedMonitor.supportedProof.runUrl,
+    templateRepo: supportedProofCandidate.canonicalRepository,
+    templateVersion: supportedProofCandidate.canonicalHeadSha,
+    templateRef: supportedProofCandidate.canonicalHeadSha,
+    cookiecutterVersion: asOptional(templatePolicy?.cookiecutterVersion),
+    executionPlane: 'hosted-github-actions',
+    containerImage: null,
+    generatedConsumerWorkspaceRoot: null,
+    laneId: 'supported-template-proof',
+    agentId: 'compare-monitoring-mode',
+    fundingWindowId: null
+  });
+
+  report.authorityProjection = {
+    source: 'supported-template-proof',
+    monitoringModePath: path.resolve(monitoringModePath),
+    supportedRepository: supportedProofCandidate.selectedMonitor.repository,
+    supportedRole: asOptional(supportedProofCandidate.selectedMonitor.role),
+    canonicalRepository: supportedProofCandidate.canonicalRepository,
+    canonicalHeadSha: supportedProofCandidate.canonicalHeadSha,
+    supportedProofRunUrl: asOptional(supportedProofCandidate.selectedMonitor.supportedProof?.runUrl),
+    supportedProofHeadSha: asOptional(supportedProofCandidate.selectedMonitor.supportedProof?.headSha)
+  };
+
+  writeJsonFn(supportedProofReportPath, report);
+  return describeReport(readOptionalJsonFn(supportedProofReportPath));
+}
+
+function selectAuthoritySource(authorityReport, hostedAuthorityReport, supportedProofAuthorityReport) {
+  if (!authorityReport.valid && !hostedAuthorityReport.valid && !supportedProofAuthorityReport.valid) {
     return {
       source: 'none',
       reason: 'no-valid-report',
@@ -289,27 +430,33 @@ function selectAuthoritySource(authorityReport, hostedAuthorityReport) {
     };
   }
 
-  if (hostedAuthorityReport.valid && !authorityReport.valid) {
+  if (hostedAuthorityReport.valid) {
     return {
       source: 'hosted-authority',
-      reason: 'shared-authority-missing-or-invalid',
+      reason: 'downstream-proving-artifact-current',
       selectedPath: hostedAuthorityReport.path
     };
   }
 
-  if (authorityReport.valid && !hostedAuthorityReport.valid) {
+  if (
+    supportedProofAuthorityReport.valid &&
+    authorityReport.valid &&
+    authorityReport.runUrl === supportedProofAuthorityReport.runUrl &&
+    authorityReport.templateRef === supportedProofAuthorityReport.templateRef &&
+    authorityReport.templateVersion === supportedProofAuthorityReport.templateVersion
+  ) {
     return {
       source: 'authority',
-      reason: 'shared-authority-current',
+      reason: 'shared-authority-matches-supported-proof',
       selectedPath: authorityReport.path
     };
   }
 
-  if ((hostedAuthorityReport.generatedAtMs ?? -1) > (authorityReport.generatedAtMs ?? -1)) {
+  if (supportedProofAuthorityReport.valid) {
     return {
-      source: 'hosted-authority',
-      reason: 'hosted-authority-newer-than-shared',
-      selectedPath: hostedAuthorityReport.path
+      source: 'supported-proof-authority',
+      reason: 'supported-template-proof-current',
+      selectedPath: supportedProofAuthorityReport.path
     };
   }
 
@@ -327,6 +474,9 @@ export function parseArgs(argv = process.argv) {
     localReportPath: DEFAULT_LOCAL_REPORT_PATH,
     localOverlayReportPath: DEFAULT_LOCAL_OVERLAY_REPORT_PATH,
     authorityReportPath: null,
+    templatePolicyPath: DEFAULT_TEMPLATE_POLICY_PATH,
+    monitoringModePath: DEFAULT_MONITORING_MODE_PATH,
+    supportedProofReportPath: DEFAULT_SUPPORTED_PROOF_REPORT_PATH,
     repo: null,
     branch: DEFAULT_PROVING_BRANCH,
     workflow: DEFAULT_PROVING_WORKFLOW,
@@ -352,6 +502,9 @@ export function parseArgs(argv = process.argv) {
       token === '--local-report' ||
       token === '--local-overlay-report' ||
       token === '--authority-report' ||
+      token === '--template-policy' ||
+      token === '--monitoring-mode' ||
+      token === '--supported-proof-report' ||
       token === '--repo' ||
       token === '--branch' ||
       token === '--workflow' ||
@@ -369,6 +522,9 @@ export function parseArgs(argv = process.argv) {
       if (token === '--local-report') options.localReportPath = next;
       if (token === '--local-overlay-report') options.localOverlayReportPath = next;
       if (token === '--authority-report') options.authorityReportPath = next;
+      if (token === '--template-policy') options.templatePolicyPath = next;
+      if (token === '--monitoring-mode') options.monitoringModePath = next;
+      if (token === '--supported-proof-report') options.supportedProofReportPath = next;
       if (token === '--repo') options.repo = next;
       if (token === '--branch') options.branch = next;
       if (token === '--workflow') options.workflow = next;
@@ -402,6 +558,13 @@ export async function syncTemplateAgentVerificationReport(
   const repoRoot = path.resolve(options.repoRoot || process.cwd());
   const policyPath = path.resolve(repoRoot, options.policyPath || DEFAULT_POLICY_PATH);
   const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'));
+  const templatePolicyPath = path.resolve(repoRoot, options.templatePolicyPath || DEFAULT_TEMPLATE_POLICY_PATH);
+  const templatePolicy = readOptionalJsonFn(templatePolicyPath)?.payload ?? {};
+  const monitoringModePath = path.resolve(repoRoot, options.monitoringModePath || DEFAULT_MONITORING_MODE_PATH);
+  const supportedProofReportPath = path.resolve(
+    repoRoot,
+    options.supportedProofReportPath || DEFAULT_SUPPORTED_PROOF_REPORT_PATH
+  );
   const repository = resolveRepoSlugFn(options.repo, execSyncFn);
   const branch = asOptional(options.branch) || DEFAULT_PROVING_BRANCH;
   const workflow = asOptional(options.workflow) || DEFAULT_PROVING_WORKFLOW;
@@ -434,6 +597,19 @@ export async function syncTemplateAgentVerificationReport(
   const localReport = describeReport(readOptionalJsonFn(localReportPath));
   let authorityReport = describeReport(readOptionalJsonFn(authorityReportPath));
   let hostedAuthorityReport = describeReport(null);
+  const monitoringMode = readOptionalJsonFn(monitoringModePath);
+  const supportedProofAuthorityReport = synthesizeSupportedProofAuthorityReport({
+    policy,
+    templatePolicy,
+    repository,
+    branch,
+    expectedSourceSha,
+    monitoringModeInput: monitoringMode,
+    monitoringModePath,
+    supportedProofReportPath,
+    readOptionalJsonFn,
+    writeJsonFn
+  });
   let provingSelection = null;
   let provingSelectionStatus = 'missing';
   let provingSelectionError = null;
@@ -461,15 +637,24 @@ export async function syncTemplateAgentVerificationReport(
     }
   }
 
-  const selection = selectAuthoritySource(authorityReport, hostedAuthorityReport);
+  const selection = selectAuthoritySource(authorityReport, hostedAuthorityReport, supportedProofAuthorityReport);
   let synchronizedAuthorityCache = false;
   if (selection.source === 'hosted-authority' && hostedAuthorityReport.valid) {
     copyFileFn(hostedAuthorityReport.path, authorityReportPath);
     authorityReport = describeReport(readOptionalJsonFn(authorityReportPath));
     synchronizedAuthorityCache = true;
+  } else if (selection.source === 'supported-proof-authority' && supportedProofAuthorityReport.valid) {
+    copyFileFn(supportedProofAuthorityReport.path, authorityReportPath);
+    authorityReport = describeReport(readOptionalJsonFn(authorityReportPath));
+    synchronizedAuthorityCache = true;
   }
 
-  const effectiveAuthoritativeReport = selection.source === 'hosted-authority' ? hostedAuthorityReport : authorityReport;
+  const effectiveAuthoritativeReport =
+    selection.source === 'hosted-authority'
+      ? hostedAuthorityReport
+      : selection.source === 'supported-proof-authority'
+        ? supportedProofAuthorityReport
+        : authorityReport;
   let synchronizedLocalOverlay = false;
   if (effectiveAuthoritativeReport.valid && effectiveAuthoritativeReport.path) {
     copyFileFn(effectiveAuthoritativeReport.path, localOverlayReportPath);
@@ -497,6 +682,7 @@ export async function syncTemplateAgentVerificationReport(
     localOverlayReport,
     authorityReport,
     hostedAuthorityReport,
+    supportedProofAuthorityReport,
     provingSelectionStatus,
     provingSelectionError,
     selection: {
@@ -525,6 +711,9 @@ function printHelp() {
     `  --local-report <path>      Checked-in local seed report path (default: ${DEFAULT_LOCAL_REPORT_PATH}).`,
     `  --local-overlay-report <path> Local authoritative overlay path (default: ${DEFAULT_LOCAL_OVERLAY_REPORT_PATH}).`,
     '  --authority-report <path>  Explicit shared authoritative report path override.',
+    `  --template-policy <path>   Template dependency policy path (default: ${DEFAULT_TEMPLATE_POLICY_PATH}).`,
+    `  --monitoring-mode <path>   Monitoring-mode handoff path (default: ${DEFAULT_MONITORING_MODE_PATH}).`,
+    `  --supported-proof-report <path> Supported-proof authority report path (default: ${DEFAULT_SUPPORTED_PROOF_REPORT_PATH}).`,
     '  --repo <owner/repo>        Repository slug for downstream proving selection.',
     `  --branch <name>            Downstream proving workflow branch (default: ${DEFAULT_PROVING_BRANCH}).`,
     `  --workflow <file>          Downstream proving workflow file (default: ${DEFAULT_PROVING_WORKFLOW}).`,
