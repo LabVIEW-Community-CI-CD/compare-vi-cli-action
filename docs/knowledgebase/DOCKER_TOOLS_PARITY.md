@@ -13,6 +13,13 @@ The lane split is intentional:
   non-blocking dependency-audit observation receipt under `tests/results/_agent/security/`.
 - `tools/Invoke-NILinuxReviewSuite.ps1` is the broader flag-combination certification surface.
 
+Workflow-grade replay lanes now sit alongside that review loop:
+
+- Linux replay: `node tools/npm/run-script.mjs priority:workflow:replay:docker -- --mode session-index-v2-promotion --run-id <id> --repo <owner/repo>`
+- Windows replay: `node tools/npm/run-script.mjs priority:workflow:replay:windows`
+
+The replay receipts are deterministic and land under `tests/results/docker-tools-parity/workflow-replay/`.
+
 ## Environment prerequisites
 
 - Docker Desktop (or Engine) must be available. On Windows, confirm with `docker version`; the client/server details
@@ -141,6 +148,33 @@ pwsh -File tools/Run-NonLVChecksInDocker.ps1 `
   together with markdown/docs/workflow status and requirements coverage so
   future agents only need one starting artifact before opening the deeper VI
   history evidence.
+
+## Windows workflow-grade replay
+
+Use the Windows replay companion when a defect depends on Docker Desktop Windows
+container mode, the pinned NI Windows image, or the Windows shell boundary:
+
+```powershell
+node tools/npm/run-script.mjs priority:workflow:replay:windows
+```
+
+Hosted-parity preflight without mutating the local Docker engine:
+
+```powershell
+node tools/npm/run-script.mjs priority:workflow:replay:windows -- --execution-surface github-hosted-windows --allow-unavailable
+```
+
+Primary artifacts:
+
+- `tests/results/docker-tools-parity/workflow-replay/windows-ni-2026q1-host-preflight-receipt.json`
+- `tests/results/docker-tools-parity/workflow-replay/windows-ni-2026q1-host-preflight/windows-ni-2026q1-host-preflight.json`
+
+Policy notes:
+
+- `desktop-local` is fail-closed when Docker Desktop is still on the Linux engine.
+- `github-hosted-windows` may emit `status = unavailable` when the hosted Windows
+  Docker plane is not usable and `--allow-unavailable` was requested.
+- The Windows replay lane is proof-only. It is not a release path.
 
 ## Cleanup expectations
 
