@@ -220,6 +220,54 @@ Describe 'Ensure-SessionIndex' -Tag 'Unit' {
     @($v2.branchProtection.actual).Count | Should -Be 0
   }
 
+  It 'prefers an explicit branch-protection API failure over provisional produced-context mismatch state' {
+    $td = Join-Path $TestDrive 'results-api-error-mismatch-v2'
+    New-Item -ItemType Directory -Force -Path $td | Out-Null
+
+    $v1 = [ordered]@{
+      schema = 'session-index/v1'
+      schemaVersion = '1.0.0'
+      generatedAtUtc = '2026-03-25T00:00:00.0000000Z'
+      resultsDir = $td
+      files = [ordered]@{}
+      status = 'warn'
+      branchProtection = [ordered]@{
+        contract = [ordered]@{
+          id = 'bp-verify'
+          version = '1'
+          issue = 118
+          mappingPath = 'tools/policy/branch-required-checks.json'
+          mappingDigest = 'abc123'
+        }
+        branch = 'develop'
+        expected = @('agent-review-policy', 'lint', 'session-index')
+        produced = @('Validate / lint', 'Validate / session-index')
+        actual = [ordered]@{
+          status = 'error'
+        }
+        result = [ordered]@{
+          status = 'warn'
+          reason = 'missing_required'
+        }
+        notes = @(
+          'Missing contexts: agent-review-policy'
+          'Live branch protection context query failed.'
+          'Branch protection query failed: Response status code does not indicate success: 403 (Forbidden).'
+        )
+        tags = @('bp-verify')
+      }
+    } | ConvertTo-Json -Depth 10
+    Set-Content -LiteralPath (Join-Path $td 'session-index.json') -Value $v1 -Encoding UTF8
+
+    $root = (Get-Location).Path
+    & (Join-Path $root 'tools/Ensure-SessionIndex.ps1') -ResultsDir $td -ForceSessionIndexV2
+
+    $v2 = Get-Content -LiteralPath (Join-Path $td 'session-index-v2.json') -Raw | ConvertFrom-Json -Depth 50
+    $v2.branchProtection.status | Should -Be 'error'
+    $v2.branchProtection.reason | Should -Be 'api_forbidden'
+    @($v2.branchProtection.actual).Count | Should -Be 0
+  }
+
   It 'treats legacy branch-protection payloads without a live actual query as unavailable instead of backfilling contexts' {
     $td = Join-Path $TestDrive 'results-legacy-branch-protection-v2'
     New-Item -ItemType Directory -Force -Path $td | Out-Null

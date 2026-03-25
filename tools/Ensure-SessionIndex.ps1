@@ -325,6 +325,7 @@ function ConvertTo-SessionIndexV2Payload {
   $branchProtectionPayload = $null
   if ($branchProtection) {
     $expectedContexts = Get-StringArray -Value (Get-PropertyValue -Object $branchProtection -Name 'expected')
+    $hasActualBlock = Test-HasProperty -Object $branchProtection -Name 'actual'
     $actualBlock = Get-PropertyValue -Object $branchProtection -Name 'actual'
     $actualStatus = Get-TextValue -Value (Get-PropertyValue -Object $actualBlock -Name 'status')
     $actualContexts = Get-StringArray -Value (Get-PropertyValue -Object $actualBlock -Name 'contexts')
@@ -343,7 +344,12 @@ function ConvertTo-SessionIndexV2Payload {
     $branchProtectionStatus = Resolve-SessionIndexV2BranchProtectionStatus -Value (Get-PropertyValue -Object (Get-PropertyValue -Object $branchProtection -Name 'result') -Name 'status')
     $reason = Resolve-SessionIndexV2BranchProtectionReason -Value (Get-PropertyValue -Object (Get-PropertyValue -Object $branchProtection -Name 'result') -Name 'reason')
     $actualReason = Resolve-SessionIndexV2ActualReason -ActualStatus $actualStatus -Notes $bpNotes
-    if ($actualReason -and (-not $reason -or $reason -eq 'aligned')) {
+    $preferActualReason = $actualReason -and (
+      ($hasActualBlock -and $actualStatus -in @('error', 'unavailable')) -or
+      (-not $reason) -or
+      $reason -eq 'aligned'
+    )
+    if ($preferActualReason) {
       $reason = $actualReason
       if ($actualStatus -eq 'error') {
         $branchProtectionStatus = 'error'
