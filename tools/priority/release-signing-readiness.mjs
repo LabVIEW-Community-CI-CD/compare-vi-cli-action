@@ -325,6 +325,27 @@ function createPublishedBundleBlocker(publishedBundleObserver) {
   }
 }
 
+function createImmutableRepairBlocker(conductorReport) {
+  const blockerCodes = new Set(
+    (Array.isArray(conductorReport?.decision?.blockers) ? conductorReport.decision.blockers : [])
+      .map((entry) => String(entry?.code ?? '').trim())
+      .filter(Boolean)
+  );
+  const immutableBlocked =
+    conductorReport?.release?.immutableRelease?.repairBlocked === true ||
+    blockerCodes.has('repair-target-release-immutable') ||
+    blockerCodes.has('existing-tag-repair-blocked-by-immutable-release');
+  if (!immutableBlocked) {
+    return null;
+  }
+
+  const targetTag = asOptional(conductorReport?.release?.targetTag) ?? 'the current release tag';
+  return {
+    code: 'release-repair-immutable-blocked',
+    message: `Release conductor observed ${targetTag} as an immutable published GitHub Release, so in-place repair_existing_tag replay is blocked until a protected-tag authority path or new authoritative tag is used.`
+  };
+}
+
 export async function runReleaseSigningReadiness(options = {}, deps = {}) {
   const repoRoot = path.resolve(options.repoRoot ?? process.cwd());
   const environment = deps.environment ?? process.env;
@@ -470,6 +491,10 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
   if (publishedBundleBlocker) {
     blockers.push(publishedBundleBlocker);
   }
+  const immutableRepairBlocker = createImmutableRepairBlocker(conductorReport);
+  if (immutableRepairBlocker) {
+    blockers.push(immutableRepairBlocker);
+  }
 
   const externalBlockerPriority = [
     'workflow-signing-secret-missing',
@@ -478,7 +503,8 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
     'workflow-signing-key-missing',
     'workflow-signing-authority-unverifiable',
     'release-conductor-apply-disabled',
-    'release-conductor-apply-unverifiable'
+    'release-conductor-apply-unverifiable',
+    'release-repair-immutable-blocked'
   ];
 
   const summary = {

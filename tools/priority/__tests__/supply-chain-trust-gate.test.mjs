@@ -354,7 +354,8 @@ test('verifyReleaseTagSignature fails for unsigned tag', async () => {
       (failure) =>
         failure.code === 'tag-signature-unverified' &&
         String(failure.hint).includes('priority:release:signing:readiness') &&
-        String(failure.hint).includes('repair_existing_tag = true')
+        String(failure.hint).includes('repair_existing_tag = true') &&
+        String(failure.hint).includes('immutable published GitHub Release')
     )
   );
   assert.equal(result.status.verified, false);
@@ -393,7 +394,8 @@ test('verifyReleaseTagSignature fails for lightweight tag', async () => {
       (failure) =>
         failure.code === 'tag-not-annotated' &&
         String(failure.hint).includes('priority:release:signing:readiness') &&
-        String(failure.hint).includes('repair_existing_tag = true')
+        String(failure.hint).includes('repair_existing_tag = true') &&
+        String(failure.hint).includes('immutable published GitHub Release')
     )
   );
   assert.equal(result.status.annotated, false);

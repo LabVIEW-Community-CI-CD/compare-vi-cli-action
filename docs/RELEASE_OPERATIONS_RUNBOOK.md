@@ -157,6 +157,10 @@ automation path:
   - the target `version`
   - `apply = true`
   - `repair_existing_tag = true`
+- if the target tag already backs an immutable published GitHub Release, do not
+  rerun `repair_existing_tag` against the same published tag
+  - use the protected-tag authority path or publish a new authoritative tag
+    identity instead
 - provision `RELEASE_TAG_SIGNING_PRIVATE_KEY` and optional
   `RELEASE_TAG_SIGNING_PUBLIC_KEY` for workflow-owned signing
 - optionally set `RELEASE_TAG_SIGNING_IDENTITY_NAME` and
@@ -165,6 +169,9 @@ automation path:
   identity from the resolved policy token account
 - inspect `tests/results/_agent/release/release-conductor-report.json`
   first
+- inspect `release.immutableRelease`
+  - if `repairBlocked = true`, repair-in-place is unavailable for that
+    published tag
 - require both:
   - `release.tagCreated = true`
   - `release.tagPushed = true`
@@ -188,6 +195,9 @@ matching remediation path:
 - `tag-not-annotated`, `tag-signature-unverified`
   - Use `node tools/npm/run-script.mjs priority:release:signing:readiness`
     first.
+  - If the target tag already backs an immutable published release, stop and
+    use the protected-tag authority path or publish a new authoritative tag
+    identity instead of rerunning repair on the same tag.
   - If signing readiness is `ready`, run the release conductor in repair mode
     for the target version so the authoritative tag is recreated as a signed
     annotated tag without changing the intended release commit.
@@ -199,10 +209,11 @@ matching remediation path:
     repaired tag itself carrying the newer workflow definition.
 - `workflow-signing-secret-missing`, `workflow-signing-secret-unverifiable`
 - `workflow-signing-admin-scope-missing`, `workflow-signing-key-missing`, `workflow-signing-authority-unverifiable`
-- `release-conductor-apply-disabled`, `release-conductor-apply-unverifiable`
+- `release-conductor-apply-disabled`, `release-conductor-apply-unverifiable`, `release-repair-immutable-blocked`
   - Use `node tools/npm/run-script.mjs priority:release:signing:readiness` to confirm the blocker, provision or repair
-    the workflow signing secrets, signing authority, or release-conductor enablement, and only then rerun authoritative
-    release publication.
+    the workflow signing secrets, signing authority, or release-conductor enablement. When the blocker is
+    `release-repair-immutable-blocked`, do not rerun `repair_existing_tag` on the same published tag; route through
+    the protected-tag authority path or publish a new authoritative tag identity instead.
 - `checksum-invalid-line`, `checksum-empty`, `checksum-entry-missing-file`, `checksum-missing-artifact`, `checksum-mismatch`
   - Regenerate `SHA256SUMS.txt` from fresh artifacts and ensure no post-pack mutation occurred.
 - `sbom-parse-failed`, `sbom-invalid`

@@ -201,6 +201,11 @@ function runGhJson(args, { cwd } = {}) {
   return raw ? JSON.parse(raw) : null;
 }
 
+function isGitHubNotFoundError(message) {
+  const normalized = asOptional(message);
+  return Boolean(normalized && (/\b404\b/.test(normalized) || /not found/i.test(normalized)));
+}
+
 async function readJsonOptional(filePath) {
   const resolved = path.resolve(filePath);
   if (!existsSync(resolved)) {
@@ -648,6 +653,123 @@ function resolveTagPushRemote({ repoRoot, repository, runCommandFn }) {
   };
 }
 
+function inspectImmutableReleaseState({ repository, tagRef, runGhJsonFn, cwd }) {
+  const normalizedTagRef = asOptional(tagRef);
+  const immutableRelease = {
+    status: 'unobserved',
+    tagRef: normalizedTagRef,
+    repairBlocked: false,
+    repositorySetting: {
+      status: 'unobserved',
+      enabled: null,
+      enforcedByOwner: null,
+      error: null
+    },
+    publishedRelease: {
+      status: 'unobserved',
+      exists: null,
+      immutable: null,
+      releaseId: null,
+      releaseUrl: null,
+      tagName: null,
+      error: null
+    }
+  };
+  if (!normalizedTagRef) {
+    return immutableRelease;
+  }
+
+  try {
+    const payload = runGhJsonFn(['api', `repos/${repository}/immutable-releases`], { cwd }) ?? {};
+    if (typeof payload?.enabled === 'boolean' || typeof payload?.enforced_by_owner === 'boolean') {
+      immutableRelease.repositorySetting = {
+        status: payload.enabled === true ? 'enabled' : 'disabled',
+        enabled: payload.enabled === true,
+        enforcedByOwner: payload.enforced_by_owner === true,
+        error: null
+      };
+    } else {
+      immutableRelease.repositorySetting = {
+        status: 'unverifiable',
+        enabled: null,
+        enforcedByOwner: null,
+        error: 'immutable release settings response shape was not recognized'
+      };
+    }
+  } catch (error) {
+    immutableRelease.repositorySetting = {
+      status: 'unverifiable',
+      enabled: null,
+      enforcedByOwner: null,
+      error: error?.message ?? String(error)
+    };
+  }
+
+  try {
+    const payload = runGhJsonFn(['api', `repos/${repository}/releases/tags/${normalizedTagRef}`], { cwd }) ?? {};
+    const looksLikeRelease =
+      typeof payload?.immutable === 'boolean' ||
+      Number.isInteger(payload?.id) ||
+      Boolean(asOptional(payload?.tag_name)) ||
+      Boolean(asOptional(payload?.html_url));
+    if (!looksLikeRelease) {
+      immutableRelease.publishedRelease = {
+        status: 'unverifiable',
+        exists: null,
+        immutable: null,
+        releaseId: null,
+        releaseUrl: null,
+        tagName: null,
+        error: 'release lookup response shape was not recognized'
+      };
+    } else {
+      immutableRelease.publishedRelease = {
+        status: payload.immutable === true ? 'immutable' : 'mutable',
+        exists: true,
+        immutable: payload.immutable === true,
+        releaseId: Number.isInteger(payload?.id) ? payload.id : null,
+        releaseUrl: asOptional(payload?.html_url) ?? asOptional(payload?.url),
+        tagName: asOptional(payload?.tag_name) ?? normalizedTagRef,
+        error: null
+      };
+    }
+  } catch (error) {
+    const message = error?.message ?? String(error);
+    immutableRelease.publishedRelease = {
+      status: isGitHubNotFoundError(message) ? 'release-not-found' : 'unverifiable',
+      exists: isGitHubNotFoundError(message) ? false : null,
+      immutable: null,
+      releaseId: null,
+      releaseUrl: null,
+      tagName: normalizedTagRef,
+      error: message
+    };
+  }
+
+  if (immutableRelease.publishedRelease.status === 'immutable') {
+    immutableRelease.status = 'published-release-immutable';
+    immutableRelease.repairBlocked = true;
+  } else if (immutableRelease.publishedRelease.status === 'mutable') {
+    immutableRelease.status = 'published-release-mutable';
+  } else if (immutableRelease.publishedRelease.status === 'release-not-found') {
+    immutableRelease.status = 'release-not-found';
+  } else if (
+    immutableRelease.repositorySetting.status === 'unverifiable' ||
+    immutableRelease.publishedRelease.status === 'unverifiable'
+  ) {
+    immutableRelease.status = 'unverifiable';
+  }
+
+  return immutableRelease;
+}
+
+function buildImmutableRepairBlockedMessage({ targetTag, immutableRelease }) {
+  const normalizedTag = asOptional(targetTag) ?? 'the current release tag';
+  const releaseUrl = asOptional(immutableRelease?.publishedRelease?.releaseUrl);
+  const releaseLocation = releaseUrl ? ` (${releaseUrl})` : '';
+  return `Authoritative tag ${normalizedTag} already backs an immutable published GitHub Release${releaseLocation}. Do not rerun release conductor with --repair-existing-tag against the same published tag; publish a new authoritative tag or use the protected-tag authority path.`;
+}
+
 async function writeReport(filePath, payload) {
   const resolved = path.resolve(filePath);
   await mkdir(path.dirname(resolved), { recursive: true });
@@ -786,13 +908,36 @@ export async function runReleaseConductor(options = {}) {
     remoteTag,
     localTag
   });
+  const immutableRelease =
+    targetTag && (repair.requested || repair.remoteTagExists)
+      ? inspectImmutableReleaseState({
+          repository,
+          tagRef: targetTag,
+          runGhJsonFn,
+          cwd: repoRoot
+        })
+      : inspectImmutableReleaseState({
+          repository,
+          tagRef: null,
+          runGhJsonFn,
+          cwd: repoRoot
+        });
+  const repairBlockedByImmutableRelease = Boolean(repair.remoteTagExists && immutableRelease.repairBlocked);
 
   if (repair.remoteTagExists && !repair.requested) {
-    repair.status = 'repair-available';
-    pushUniqueDecisionEntry(advisories, {
-      code: 'existing-tag-repair-available',
-      message: `Authoritative tag ${targetTag} already exists; rerun release conductor with --repair-existing-tag to recreate it as a signed annotated tag.`
-    });
+    repair.status = repairBlockedByImmutableRelease ? 'blocked' : 'repair-available';
+    pushUniqueDecisionEntry(
+      advisories,
+      repairBlockedByImmutableRelease
+        ? {
+            code: 'existing-tag-repair-blocked-by-immutable-release',
+            message: buildImmutableRepairBlockedMessage({ targetTag, immutableRelease })
+          }
+        : {
+            code: 'existing-tag-repair-available',
+            message: `Authoritative tag ${targetTag} already exists; rerun release conductor with --repair-existing-tag to recreate it as a signed annotated tag.`
+          }
+    );
   }
   if (repair.requested && !targetTag) {
     repair.status = 'blocked';
@@ -803,6 +948,8 @@ export async function runReleaseConductor(options = {}) {
   } else if (repair.requested && !repair.remoteTagExists) {
     repair.status = 'blocked';
   } else if (repair.requested && (!repair.remoteTargetCommitOid || !repair.pushLeaseExpectedOid)) {
+    repair.status = 'blocked';
+  } else if (repair.requested && repairBlockedByImmutableRelease) {
     repair.status = 'blocked';
   } else if (repair.requested && repair.remoteTagExists) {
     repair.status = applyRequested ? 'blocked' : 'ready';
@@ -828,6 +975,11 @@ export async function runReleaseConductor(options = {}) {
       blockers.push({
         code: 'repair-target-tag-missing',
         message: `Repair mode requires existing authoritative tag ${targetTag}, but no authoritative tag ref was found on ${tagPushRemote.remoteName}.`
+      });
+    } else if (repairBlockedByImmutableRelease) {
+      blockers.push({
+        code: 'repair-target-release-immutable',
+        message: buildImmutableRepairBlockedMessage({ targetTag, immutableRelease })
       });
     } else if (!repair.remoteTargetCommitOid || !repair.pushLeaseExpectedOid) {
       blockers.push({
@@ -945,10 +1097,17 @@ export async function runReleaseConductor(options = {}) {
           }
         }
     } else if (repair.remoteTagExists) {
-      blockers.push({
-        code: 'existing-tag-requires-repair-mode',
-        message: `Authoritative tag ${targetTag} already exists. Rerun release conductor with --repair-existing-tag to recreate it as a signed annotated tag at ${repair.remoteTargetCommitOid}.`
-      });
+      blockers.push(
+        repairBlockedByImmutableRelease
+          ? {
+              code: 'existing-tag-repair-blocked-by-immutable-release',
+              message: buildImmutableRepairBlockedMessage({ targetTag, immutableRelease })
+            }
+          : {
+              code: 'existing-tag-requires-repair-mode',
+              message: `Authoritative tag ${targetTag} already exists. Rerun release conductor with --repair-existing-tag to recreate it as a signed annotated tag at ${repair.remoteTargetCommitOid}.`
+            }
+      );
     } else if (signingMaterial.available) {
       const tagResult = runCommandFn('git', ['tag', '-s', targetTag, '-m', `Release ${targetTag}`], {
         cwd: repoRoot,
@@ -1011,6 +1170,7 @@ export async function runReleaseConductor(options = {}) {
       tagPushError,
       tagPushRemote,
       signingMaterial,
+      immutableRelease,
       repair,
       publicationReplay
     },

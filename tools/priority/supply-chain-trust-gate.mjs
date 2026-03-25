@@ -33,9 +33,9 @@ const FAILURE_HINTS = {
   'tag-object-lookup-failed': 'Unable to resolve annotated tag object via GitHub API. Confirm tag object availability.',
   'tag-signature-parse-failed': 'Tag signature payload could not be parsed. Re-run and inspect gh api output.',
   'tag-not-annotated':
-    'Release tag is lightweight/non-annotated. Run priority:release:signing:readiness first; if readiness is ready, rerun .github/workflows/release-conductor.yml with repair_existing_tag = true to recreate the same release tag as a signed annotated tag.',
+    'Release tag is lightweight/non-annotated. Run priority:release:signing:readiness first; if the target tag already backs an immutable published GitHub Release, do not rerun repair_existing_tag on the same tag. Use the protected-tag authority path or publish a new authoritative tag. Otherwise, rerun .github/workflows/release-conductor.yml with repair_existing_tag = true to recreate the same release tag as a signed annotated tag.',
   'tag-signature-unverified':
-    'Release tag signature is not verified. Run priority:release:signing:readiness first; if readiness is ready, rerun .github/workflows/release-conductor.yml with repair_existing_tag = true to repair the same release tag before rerunning release.',
+    'Release tag signature is not verified. Run priority:release:signing:readiness first; if the target tag already backs an immutable published GitHub Release, do not rerun repair_existing_tag on the same tag. Use the protected-tag authority path or publish a new authoritative tag. Otherwise, rerun .github/workflows/release-conductor.yml with repair_existing_tag = true to repair the same release tag before rerunning release.',
   'attestation-cli-unavailable': 'GitHub CLI is unavailable. Install/enable gh on runner before trust gate.',
   'attestation-output-parse-failed': 'Attestation verification output was not valid JSON. Re-run verification and inspect gh logs.',
   'attestation-unverified': 'Artifact attestation verification failed. Confirm attest-build-provenance step and signer workflow.',

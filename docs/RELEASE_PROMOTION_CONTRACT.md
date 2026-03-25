@@ -153,6 +153,10 @@ finds repair-eligible tag failures:
     - `version = <existing tag version>`
     - `apply = true`
     - `repair_existing_tag = true`
+  - if the target tag already backs an immutable published GitHub Release, do
+    not rerun `repair_existing_tag` against the same published tag
+    - use the protected-tag authority path or publish a new authoritative tag
+      identity instead
 
 Authoritative signed tag publication now belongs to the release conductor control
 plane:
@@ -178,6 +182,7 @@ plane:
   - signer identity used for tag creation/repair
   - whether the tag was created
   - whether the tag was pushed authoritatively
+  - immutable published-release observation for the target tag
   - whether repair mode was requested/performed for an existing tag
   - the authoritative remote tag object/commit used for repair
   - which workflow ref carried the replay dispatch
@@ -213,6 +218,7 @@ If the report emits an external blocker such as:
 - `workflow-signing-authority-unverifiable`
 - `release-conductor-apply-disabled`
 - `release-conductor-apply-unverifiable`
+- `release-repair-immutable-blocked`
 
 promotion remains blocked by external signing readiness. Repair the specific
 secret, authority, or apply-gating surface first, then refresh readiness

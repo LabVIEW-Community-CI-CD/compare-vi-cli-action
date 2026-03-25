@@ -93,6 +93,8 @@ export function buildReleaseTrustRemediationMarkdown({ trustReport, tagRef }) {
   lines.push(`- Release trust gate reported repair-eligible tag failures for \`${normalizedTag ?? 'unknown-tag'}\`.`);
   lines.push(`- Failure codes: ${relevantFailures.map((failure) => `\`${failure.code}\``).join(', ')}`);
   lines.push('- Preserve tag identity and asset names. Do not rename the release tag to bypass trust verification.');
+  lines.push('- If the target tag already backs an immutable published GitHub Release, stop before rerunning repair mode on the same tag.');
+  lines.push('- In that case, use the protected-tag authority path or publish a new authoritative tag identity before replay.');
   lines.push('- Rerun `.github/workflows/release-conductor.yml` with:');
   lines.push(`  - \`version = ${normalizedVersion ?? 'X.Y.Z'}\``);
   lines.push('  - `apply = true`');
