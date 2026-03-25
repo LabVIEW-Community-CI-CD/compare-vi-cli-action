@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/background-agent-state-snapshot-v1.schema.json",
+  "title": "Background Agent State Snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "owner",
+    "mode",
+    "targetSaturation",
+    "acceptableBand",
+    "measurementWindow",
+    "availableAgents",
+    "agents"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/background-agent-state-snapshot@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "owner": {
+      "type": ["string", "null"]
+    },
+    "mode": {
+      "type": ["string", "null"]
+    },
+    "targetSaturation": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "acceptableBand": {
+      "$ref": "#/$defs/band"
+    },
+    "measurementWindow": {
+      "type": ["string", "null"]
+    },
+    "availableAgents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "constraintReason": {
+      "type": ["string", "null"]
+    },
+    "notes": {
+      "$ref": "#/$defs/stringArray"
+    },
+    "agents": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/agent" }
+    }
+  },
+  "$defs": {
+    "band": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "state", "taskSummary", "detail"],
+      "properties": {
+        "id": { "type": ["string", "null"] },
+        "name": { "type": ["string", "null"] },
+        "state": { "type": "string", "minLength": 1 },
+        "taskSummary": { "type": ["string", "null"] },
+        "detail": { "type": ["string", "null"] }
+      }
+    },
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
