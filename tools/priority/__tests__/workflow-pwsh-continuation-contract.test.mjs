@@ -153,12 +153,16 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.match(workflowRaw, /docs\/schemas\/downstream-proving-selection-v1\.schema\.json/);
   assert.match(workflowRaw, /--downstream-proving-selection tests\/results\/_agent\/release\/downstream-proving-selection\.json/);
   assert.match(workflowRaw, /steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path/);
+  assert.match(workflowRaw, /downstream_promotion_path="\$\{\{\s*steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path\s*\}\}"/);
+  assert.match(workflowRaw, /if \[ -n "\$\{downstream_promotion_path\}" \]; then/);
+  assert.match(workflowRaw, /scorecard_args\+=\(--downstream-promotion "\$\{downstream_promotion_path\}"\)/);
   assert.match(workflowRaw, /tools\/release-review\/Evaluate-ReleaseReviewPolicy\.ps1/);
   assert.match(workflowRaw, /tests\/results\/release-contract\/review-comment\.md/);
   assert.match(workflowRaw, /--candidate-workflow release\.yml/);
-  assert.match(workflowRaw, /--downstream-promotion "\$\{\{\s*steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path\s*\}\}"/);
   assert.match(workflowRaw, /--require-downstream-proving/);
+  assert.doesNotMatch(workflowRaw, /--downstream-promotion "\$\{\{\s*steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path\s*\}\}"/);
   assert.match(workflowRaw, /signed_tag_args=\(\)/);
+  assert.match(workflowRaw, /scorecard_args=\(/);
   assert.match(workflowRaw, /signed_tag_args\+=\(--require-signed-tag\)/);
   assert.equal(releaseContractJob?.permissions?.actions, 'read');
   assert.equal(releaseContractJob?.if, "${{ always() && needs.release.result == 'success' }}");
