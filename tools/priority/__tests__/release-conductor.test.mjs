@@ -391,6 +391,76 @@ test('runReleaseConductor still blocks dry-run when the dwell window contains wo
   assert.ok(report.decision.blockers.some((entry) => entry.code === 'green-dwell-failed'));
 });
 
+test('runReleaseConductor allows proposal-only dry-run without an explicit version', async () => {
+  const readJsonOptionalFn = async (filePath) => {
+    const normalized = String(filePath);
+    if (normalized.includes('queue-supervisor-report.json')) {
+      return {
+        exists: true,
+        error: null,
+        path: filePath,
+        payload: {
+          paused: false,
+          throughputController: { mode: 'healthy' },
+          retryHistory: {}
+        }
+      };
+    }
+    return {
+      exists: true,
+      error: null,
+      path: filePath,
+      payload: {
+        schema: 'priority/policy-live-state@v1',
+        generatedAt: '2026-03-06T10:00:00Z',
+        state: {}
+      }
+    };
+  };
+
+  const runGhJsonFn = (args) => {
+    if (args[0] === 'api') {
+      return makeWorkflowRunsResponse(String(args[1]));
+    }
+    throw new Error(`unexpected gh args: ${args.join(' ')}`);
+  };
+
+  const { report, exitCode } = await runReleaseConductor({
+    repoRoot: process.cwd(),
+    now: new Date('2026-03-06T12:00:00.000Z'),
+    args: {
+      apply: false,
+      dryRun: true,
+      repairExistingTag: false,
+      reportPath: 'tests/results/_agent/release/release-conductor-report.json',
+      queueReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      policySnapshotPath: 'tests/results/_agent/policy/policy-state-snapshot.json',
+      repo: 'owner/repo',
+      stream: 'comparevi-cli',
+      channel: 'stable',
+      version: null,
+      dwellMinutes: 60,
+      quarantineStaleHours: 24,
+      help: false
+    },
+    environment: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      RELEASE_CONDUCTOR_ENABLED: '1'
+    },
+    runGhJsonFn,
+    runCommandFn: () => ({ status: 0, stdout: '', stderr: '' }),
+    readJsonOptionalFn,
+    writeReportFn: async (reportPath) => reportPath
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(report.decision.status, 'pass');
+  assert.equal(report.release.proposalOnly, true);
+  assert.equal(report.release.version, null);
+  assert.equal(report.release.targetTag, null);
+  assert.deepEqual(report.decision.blockers, []);
+});
+
 test('runReleaseConductor creates and publishes a signed tag when apply is enabled and signing key is available', async () => {
   const readJsonOptionalFn = async (filePath) => {
     const normalized = String(filePath);

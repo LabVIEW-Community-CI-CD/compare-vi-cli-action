@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
-test('release conductor workflow keeps workflow_run proposal-only when apply mode is disabled', async () => {
+test('release conductor workflow keeps workflow_run proposal-only because it lacks explicit version inputs', async () => {
   const workflowPath = path.join(repoRoot, '.github', 'workflows', 'release-conductor.yml');
   const workflow = await readFile(workflowPath, 'utf8');
 
@@ -31,7 +31,7 @@ test('release conductor workflow keeps workflow_run proposal-only when apply mod
   assert.match(workflow, /RELEASE_TAG_SIGNING_IDENTITY_SOURCE=\$identity_source/);
   assert.match(
     workflow,
-    /elseif \(\$eventName -eq 'workflow_run'\) \{\s+\$apply = \$conductorEnabled\s+if \(-not \$apply\) \{\s+Write-Host 'Release conductor apply mode disabled; workflow_run will remain proposal-only\.'\s+\}\s+\}/ms
+    /elseif \(\$eventName -eq 'workflow_run'\) \{\s+\$apply = \$false\s+if \(-not \$conductorEnabled\) \{\s+Write-Host 'Release conductor apply mode disabled; workflow_run will remain proposal-only\.'\s+\} else \{\s+Write-Host 'Release conductor workflow_run does not carry explicit release version inputs; running proposal-only\.'\s+\}\s+\}/ms
   );
   assert.match(workflow, /RELEASE_TAG_SIGNING_BACKEND:\s+\$\{\{\s*env\.RELEASE_TAG_SIGNING_BACKEND \|\| ''\s*\}\}/);
   assert.match(workflow, /RELEASE_TAG_SIGNING_SOURCE:\s+\$\{\{\s*env\.RELEASE_TAG_SIGNING_SOURCE \|\| ''\s*\}\}/);
