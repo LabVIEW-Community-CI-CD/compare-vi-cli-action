@@ -390,6 +390,19 @@
         ]
     },
     {
+      "name": "Background Agent Saturation KPI Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Runtime agent-state snapshot and handoff saturation receipt contracts, plus the weighting logic and focused tests that partially penalize awaiting-instruction background agents instead of treating them as fully productive or fully done.",
+      "files": [
+        "docs/schemas/background-agent-state-snapshot-v1.schema.json",
+        "docs/schemas/background-agent-saturation-v1.schema.json",
+        "tools/priority/background-agent-saturation.mjs",
+        "tools/priority/__tests__/background-agent-saturation.test.mjs",
+        "tools/priority/__tests__/background-agent-saturation-schema.test.mjs"
+      ]
+    },
+    {
       "name": "Headless Sample Corpus Contracts",
       "category": "supporting",
       "status": "reference",
