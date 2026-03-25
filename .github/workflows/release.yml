@@ -728,6 +728,7 @@ jobs:
       issues: write
     env:
       RELEASE_TAG: ${{ needs.release.outputs.target_tag }}
+      RELEASE_PUBLICATION_MODE: ${{ needs.certification-matrix.outputs.publication_mode }}
     steps:
       - uses: actions/checkout@v5
 
@@ -741,7 +742,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: release-supply-chain-trust-${{ github.run_id }}
-          path: tests/results/_agent/supply-chain
+          path: tests/results/_agent
 
       - name: Download shared-source resolution artifact
         uses: actions/download-artifact@v8
@@ -936,6 +937,7 @@ jobs:
           set -euo pipefail
           channel="stable"
           downstream_promotion_path="${{ steps.downstream_proving_artifacts.outputs.downstream_proving_scorecard_path }}"
+          downstream_proving_selection_path='tests/results/_agent/release/downstream-proving-selection.json'
           if printf '%s' "${RELEASE_TAG}" | grep -q -- '-rc\.'; then
             channel="rc"
           fi
@@ -950,12 +952,16 @@ jobs:
             --slo tests/results/_agent/slo/release-slo-metrics.json
             --rollback tests/results/_agent/release/rollback-drill-health.json
             --trust tests/results/_agent/supply-chain/release-trust-gate.json
-            --downstream-proving-selection tests/results/_agent/release/downstream-proving-selection.json
-            --require-downstream-proving
             --output tests/results/_agent/release/release-scorecard.json
           )
-          if [ -n "${downstream_promotion_path}" ]; then
-            scorecard_args+=(--downstream-promotion "${downstream_promotion_path}")
+          if [[ "${RELEASE_PUBLICATION_MODE}" == 'publish' ]]; then
+            scorecard_args+=(
+              --downstream-proving-selection "${downstream_proving_selection_path}"
+              --require-downstream-proving
+            )
+            if [ -n "${downstream_promotion_path}" ]; then
+              scorecard_args+=(--downstream-promotion "${downstream_promotion_path}")
+            fi
           fi
           if ! printf '%s' "${RELEASE_TAG}" | grep -Eq -- '-tools\.[0-9]+$'; then
             signed_tag_args+=(--require-signed-tag)

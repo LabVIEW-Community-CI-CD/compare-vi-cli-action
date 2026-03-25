@@ -156,6 +156,9 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.match(workflowRaw, /name: Resolve release source commit/);
   assert.match(workflowRaw, /git fetch --force --tags origin "refs\/tags\/\$\{RELEASE_TAG\}:refs\/tags\/\$\{RELEASE_TAG\}"/);
   assert.match(workflowRaw, /git rev-parse "\$\{RELEASE_TAG\}\^\{commit\}"/);
+  assert.match(workflowRaw, /RELEASE_PUBLICATION_MODE:\s*\$\{\{\s*needs\.certification-matrix\.outputs\.publication_mode\s*\}\}/);
+  assert.match(workflowRaw, /name: Download supply-chain trust artifact/);
+  assert.match(workflowRaw, /path:\s*tests\/results\/_agent/);
   assert.match(workflowRaw, /name: Resolve downstream proving artifact selection/);
   assert.match(workflowRaw, /resolve-downstream-proving-artifact\.mjs/);
   assert.match(workflowRaw, /--workflow downstream-promotion\.yml/);
@@ -163,15 +166,16 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.match(workflowRaw, /tests\/results\/_agent\/release\/downstream-proving-selection\.json/);
   assert.match(workflowRaw, /name: Validate downstream proving selection schema/);
   assert.match(workflowRaw, /docs\/schemas\/downstream-proving-selection-v1\.schema\.json/);
-  assert.match(workflowRaw, /--downstream-proving-selection tests\/results\/_agent\/release\/downstream-proving-selection\.json/);
   assert.match(workflowRaw, /steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path/);
   assert.match(workflowRaw, /downstream_promotion_path="\$\{\{\s*steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path\s*\}\}"/);
+  assert.match(workflowRaw, /downstream_proving_selection_path='tests\/results\/_agent\/release\/downstream-proving-selection\.json'/);
+  assert.match(workflowRaw, /if \[\[ "\$\{RELEASE_PUBLICATION_MODE\}" == 'publish' \]\]; then/);
+  assert.match(workflowRaw, /scorecard_args\+=\(\s*--downstream-proving-selection "\$\{downstream_proving_selection_path\}"\s*--require-downstream-proving\s*\)/ms);
   assert.match(workflowRaw, /if \[ -n "\$\{downstream_promotion_path\}" \]; then/);
   assert.match(workflowRaw, /scorecard_args\+=\(--downstream-promotion "\$\{downstream_promotion_path\}"\)/);
   assert.match(workflowRaw, /tools\/release-review\/Evaluate-ReleaseReviewPolicy\.ps1/);
   assert.match(workflowRaw, /tests\/results\/release-contract\/review-comment\.md/);
   assert.match(workflowRaw, /--candidate-workflow release\.yml/);
-  assert.match(workflowRaw, /--require-downstream-proving/);
   assert.doesNotMatch(workflowRaw, /--downstream-promotion "\$\{\{\s*steps\.downstream_proving_artifacts\.outputs\.downstream_proving_scorecard_path\s*\}\}"/);
   assert.match(workflowRaw, /signed_tag_args=\(\)/);
   assert.match(workflowRaw, /scorecard_args=\(/);
