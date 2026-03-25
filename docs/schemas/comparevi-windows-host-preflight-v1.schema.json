@@ -33,7 +33,7 @@
       "type": "string"
     },
     "status": {
-      "enum": ["pending", "ready", "warning", "failure"]
+      "enum": ["pending", "ready", "warning", "failure", "unavailable"]
     },
     "failureClass": {
       "type": "string"
