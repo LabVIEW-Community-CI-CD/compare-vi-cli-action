@@ -206,13 +206,10 @@ if ($Branch -match '^(?:refs/)?pull/\d+/(?:merge|head)$') {
 }
 
 $idxPath = Join-Path $ResultsDir 'session-index.json'
+$summaryJson = 'pester-summary.json'
+& (Join-Path $PSScriptRoot 'Ensure-SessionIndex.ps1') -ResultsDir $ResultsDir -SummaryJson $summaryJson | Out-Null
 if (-not (Test-Path -LiteralPath $idxPath -PathType Leaf)) {
-  # Attempt to create a minimal session index so we have a target
-  $summaryJson = 'pester-summary.json'
-  & (Join-Path $PSScriptRoot 'Ensure-SessionIndex.ps1') -ResultsDir $ResultsDir -SummaryJson $summaryJson | Out-Null
-  if (-not (Test-Path -LiteralPath $idxPath -PathType Leaf)) {
-    throw "session-index.json not found after Ensure-SessionIndex: $idxPath"
-  }
+  throw "session-index.json not found after Ensure-SessionIndex: $idxPath"
 }
 
 try {

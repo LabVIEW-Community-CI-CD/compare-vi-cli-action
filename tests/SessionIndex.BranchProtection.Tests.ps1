@@ -328,4 +328,17 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
     $bp = $idx.branchProtection
     $bp.notes | Should -Contain 'API 404: branch protection contexts not accessible'
   }
+
+  It 'backfills session-index-v2.json when branch protection metadata is updated on an existing v1 index' {
+    $resultsDir = & $script:newSessionIndexFixture 'results-backfill-v2'
+    Remove-Item -LiteralPath (Join-Path $resultsDir 'session-index-v2.json') -Force
+
+    & $script:updateScript `
+      -ResultsDir $resultsDir `
+      -PolicyPath $script:policyPath `
+      -Branch 'develop' `
+      -ProducedContexts $script:developExpected
+
+    Test-Path -LiteralPath (Join-Path $resultsDir 'session-index-v2.json') | Should -BeTrue
+  }
 }
