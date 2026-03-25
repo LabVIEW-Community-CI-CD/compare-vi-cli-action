@@ -87,7 +87,7 @@ function Add-Failure {
   )
 
   $Failures.Value += $Message
-  Write-Host ("::warning::{0}" -f $Message)
+  Write-Output ("::warning::{0}" -f $Message)
 }
 
 function Write-GitHubOutputValue {
@@ -111,7 +111,7 @@ $Repository = $repoContext.Repository
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $resolvedPolicyPath = if ([System.IO.Path]::IsPathRooted($PolicyPath)) { $PolicyPath } else { Join-Path $repoRoot $PolicyPath }
 
-function Get-ApiHeaders {
+function Get-ApiHeaderSet {
   param([string]$Token)
 
   if ([string]::IsNullOrWhiteSpace($Token)) {
@@ -298,7 +298,7 @@ function Get-BurnInDisposition {
   return 'burn-in-mismatch'
 }
 
-function New-ContractArtifacts {
+function Get-ContractArtifactBundle {
   param(
     [string[]]$Failures,
     [string[]]$Notes,
@@ -309,7 +309,6 @@ function New-ContractArtifacts {
     [bool]$PromotionReady,
     [string]$Disposition,
     [string]$ReportPath,
-    [string]$DispositionPath,
     [string]$V1Path,
     [string]$V2Path,
     [string[]]$ExpectedContexts,
@@ -462,10 +461,11 @@ if ($v2) {
   } else {
     $bpExpected = @($v2.branchProtection.expected)
     $bpActual = @($v2.branchProtection.actual)
+    $bpReason = [string]$v2.branchProtection.reason
     if ($bpExpected.Count -eq 0) {
       Add-Failure -Failures ([ref]$failures) -Message 'branchProtection.expected is empty in session-index-v2.json.'
     }
-    if ($bpActual.Count -eq 0) {
+    if ($bpActual.Count -eq 0 -and $bpReason -notin @('api_unavailable', 'api_error', 'api_forbidden')) {
       Add-Failure -Failures ([ref]$failures) -Message 'branchProtection.actual is empty in session-index-v2.json.'
     }
 
@@ -487,7 +487,7 @@ if ([string]::IsNullOrWhiteSpace($token)) {
   $token = $env:GITHUB_TOKEN
 }
 
-$burnIn = Get-ConsecutiveSuccessCount -Headers (Get-ApiHeaders -Token $token) -Owner $Owner -Repository $Repository -WorkflowFileName $WorkflowFileName -Branch $Branch -JobName 'session-index-v2-contract'
+$burnIn = Get-ConsecutiveSuccessCount -Headers (Get-ApiHeaderSet -Token $token) -Owner $Owner -Repository $Repository -WorkflowFileName $WorkflowFileName -Branch $Branch -JobName 'session-index-v2-contract'
 $promotionReady = ($burnIn.status -eq 'ok' -and $burnIn.consecutiveSuccess -ge $BurnInThreshold)
 $mismatchClass = Get-BurnInMismatchClass -Failures $failures
 $mismatchFingerprint = Get-BurnInMismatchFingerprint -MismatchClass $mismatchClass -Failures $failures
@@ -502,7 +502,7 @@ if ($burnIn.status -eq 'unavailable') {
   $notes += ("Burn-in status unavailable ({0})." -f $burnIn.reason)
 }
 
-$artifacts = New-ContractArtifacts `
+$artifacts = Get-ContractArtifactBundle `
   -Failures $failures `
   -Notes $notes `
   -MismatchClass $mismatchClass `
@@ -512,7 +512,6 @@ $artifacts = New-ContractArtifacts `
   -PromotionReady $promotionReady `
   -Disposition $disposition `
   -ReportPath $reportPath `
-  -DispositionPath $dispositionPath `
   -V1Path $v1Path `
   -V2Path $v2Path `
   -ExpectedContexts $expectedContexts `
@@ -521,9 +520,9 @@ $report = $artifacts.Report
 $summary = $artifacts.Summary
 
 Write-JsonArtifact -Path $reportPath -Data $report -Depth 50
-Write-Host ("session-index-v2 contract report written: {0}" -f $reportPath)
+Write-Output ("session-index-v2 contract report written: {0}" -f $reportPath)
 Write-JsonArtifact -Path $dispositionPath -Data $summary -Depth 20
-Write-Host ("session-index-v2 disposition summary written: {0}" -f $dispositionPath)
+Write-Output ("session-index-v2 disposition summary written: {0}" -f $dispositionPath)
 
 $cutoverReport = $null
 try {
@@ -554,7 +553,7 @@ try {
     -PromotionReady $promotionReady `
     -RecurrenceClassification $recurrenceClassification
 
-  $artifacts = New-ContractArtifacts `
+  $artifacts = Get-ContractArtifactBundle `
     -Failures $failures `
     -Notes $notes `
     -MismatchClass $mismatchClass `
@@ -564,7 +563,6 @@ try {
     -PromotionReady $promotionReady `
     -Disposition $disposition `
     -ReportPath $reportPath `
-    -DispositionPath $dispositionPath `
     -V1Path $v1Path `
     -V2Path $v2Path `
     -ExpectedContexts $expectedContexts `
@@ -631,5 +629,5 @@ if ($failures.Count -gt 0 -and $Enforce) {
 }
 
 if ($failures.Count -gt 0 -and -not $Enforce) {
-  Write-Host '::warning::session-index-v2 contract check failed in burn-in mode (non-blocking).'
+  Write-Output '::warning::session-index-v2 contract check failed in burn-in mode (non-blocking).'
 }
