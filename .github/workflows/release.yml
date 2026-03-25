@@ -105,6 +105,24 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
+      - name: Checkout replay automation surfaces
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/checkout@v5
+        with:
+          ref: develop
+          path: .release-automation
+
+      - name: Resolve release automation root
+        id: automation_root
+        shell: bash
+        run: |
+          set -euo pipefail
+          automation_root='.'
+          if [[ -f '.release-automation/tools/priority/release-trust-remediation.mjs' ]]; then
+            automation_root='.release-automation'
+          fi
+          echo "path=${automation_root}" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node 20
         uses: actions/setup-node@v6
         with:
@@ -284,7 +302,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node tools/priority/release-trust-remediation.mjs \
+          node "${{ steps.automation_root.outputs.path }}/tools/priority/release-trust-remediation.mjs" \
             --trust-report tests/results/_agent/supply-chain/release-trust-gate.json \
             --tag-ref "${RELEASE_TAG}" \
             --output tests/results/_agent/release/release-trust-remediation.md \
@@ -306,9 +324,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          node tools/priority/rollback-drill-health.mjs \
+          node "${{ steps.automation_root.outputs.path }}/tools/priority/rollback-drill-health.mjs" \
             --repo "${{ github.repository }}" \
-            --policy tools/policy/release-rollback-policy.json \
+            --policy "${{ steps.automation_root.outputs.path }}/tools/policy/release-rollback-policy.json" \
             --report tests/results/_agent/release/rollback-drill-health.json
 
       - name: Validate rollback drill health schema
@@ -317,7 +335,7 @@ jobs:
         run: |
           pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
             -JsonPath tests/results/_agent/release/rollback-drill-health.json `
-            -SchemaPath docs/schemas/release-rollback-drill-health-v1.schema.json
+            -SchemaPath '${{ steps.automation_root.outputs.path }}/docs/schemas/release-rollback-drill-health-v1.schema.json'
 
       - name: Upload rollback drill health artifact
         if: always()
