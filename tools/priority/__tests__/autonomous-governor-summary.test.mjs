@@ -422,6 +422,42 @@ test('runAutonomousGovernorSummary reports monitoring-active when no wake lifecy
   assert.equal(report.summary.releaseSigningStatus, 'missing');
 });
 
+test('runAutonomousGovernorSummary suppresses stale delivery runtime blockers during queue-empty pivot monitoring', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-monitoring-stale-runtime-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      status: 'blocked',
+      laneLifecycle: 'blocked',
+      activeLane: {
+        issue: 959,
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1017',
+        laneLifecycle: 'blocked',
+        actionType: 'merge-pr',
+        outcome: 'merge-blocked',
+        blockerClass: 'merge',
+        nextWakeCondition: 'mergeable-pr',
+        reason: 'Stale merge blocker carried from an old delivery-runtime receipt.'
+      }
+    })
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.summary.governorMode, 'monitoring-active');
+  assert.equal(report.summary.nextAction, 'future-agent-may-pivot');
+  assert.equal(report.compare.deliveryRuntime.status, 'none');
+  assert.equal(report.compare.deliveryRuntime.prUrl, null);
+  assert.equal(report.compare.deliveryRuntime.issueNumber, null);
+  assert.equal(report.summary.queueHandoffStatus, 'none');
+  assert.equal(report.summary.queueHandoffNextWakeCondition, null);
+  assert.equal(report.summary.queueHandoffPrUrl, null);
+  assert.equal(report.summary.queueAuthoritySource, 'none');
+});
+
 test('runAutonomousGovernorSummary carries explicit release signing blocker state into the governor summary', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-release-signing-'));
   writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());

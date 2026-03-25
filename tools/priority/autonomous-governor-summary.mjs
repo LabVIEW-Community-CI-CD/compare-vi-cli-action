@@ -757,6 +757,26 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
   };
 }
 
+function suppressDeliveryRuntimeForMonitoring(deliveryRuntime) {
+  const emptyDeliveryRuntime = deriveDeliveryRuntime(null);
+  return {
+    ...emptyDeliveryRuntime,
+    runtimeStatus: deliveryRuntime.runtimeStatus,
+    queueAuthorityRefresh: deliveryRuntime.queueAuthorityRefresh
+  };
+}
+
+function shouldSuppressStaleDeliveryRuntime({ queueState, continuity, monitoringMode, wake }) {
+  return (
+    queueState.status === 'queue-empty' &&
+    continuity.status === 'maintained' &&
+    continuity.turnBoundary === 'safe-idle' &&
+    asOptional(monitoringMode?.summary?.status) === 'active' &&
+    asOptional(monitoringMode?.summary?.futureAgentAction) === 'future-agent-may-pivot' &&
+    wake.terminalState === null
+  );
+}
+
 function deriveQueueAuthority({ repoRoot, repository, deliveryRuntime, readOptionalJsonFn }) {
   const prNumber = parsePullRequestNumber(deliveryRuntime.prUrl);
   const queueRefreshReceiptPath = resolveLatestQueueRefreshReceiptPath(repoRoot, prNumber);
@@ -997,7 +1017,10 @@ function buildReport({
   const wake = deriveWake(wakeLifecycle);
   const funding = deriveFunding(wakeInvestmentAccounting);
   const releaseSigningReadiness = deriveReleaseSigningReadiness(releaseSigningReadinessReport);
-  const deliveryRuntime = deriveDeliveryRuntime(deliveryRuntimeState);
+  const rawDeliveryRuntime = deriveDeliveryRuntime(deliveryRuntimeState);
+  const deliveryRuntime = shouldSuppressStaleDeliveryRuntime({ queueState, continuity, monitoringMode, wake })
+    ? suppressDeliveryRuntimeForMonitoring(rawDeliveryRuntime)
+    : rawDeliveryRuntime;
   const queueAuthority = deriveQueueAuthority({
     repoRoot,
     repository,
