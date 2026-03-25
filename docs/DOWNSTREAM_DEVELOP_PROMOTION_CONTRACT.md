@@ -114,7 +114,10 @@ when needed, synthesizes authority from the latest supported template proof
 aligned to the canonical template head before projecting the local `.local.json`
 overlay. Local consumers such as
 `tools/priority/template-pivot-gate.mjs` must prefer that overlay when it is
-present.
+present. The pivot gate now treats that supported-proof authority as the source
+of truth for `templateDependency.version/ref`, so the gate consumes the current
+canonical template head instead of a static `v0.1.1` pin when the supported
+proof is aligned and healthy.
 
 Generate the report with:
 
@@ -219,6 +222,12 @@ The gate only reports `ready` when all of the following are true:
 - `tests/results/_agent/handoff/release-summary.json` is valid and its version
   matches `X.Y.Z-rc.N`
 - `tests/results/_agent/handoff/entrypoint-status.json` reports `status = pass`
+- `tests/results/_agent/promotion/template-agent-verification-report.local.json`
+  reports `authorityProjection.source = supported-template-proof`, proves
+  `supportedProofHeadSha = canonicalHeadSha`, and carries
+  `provenance.templateDependency.version/ref = canonicalHeadSha` for
+  `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` with the checked-in
+  `cookiecutterVersion`
 - the policy still requires a future agent, disallows operator steering, and
   requires precise session feedback at pivot time
 
