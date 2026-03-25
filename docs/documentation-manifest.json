@@ -288,11 +288,12 @@
       "name": "Session Index v2 Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Session-index-v2 burn-in, disposition, cutover-readiness, promotion-decision, and issue-bundle projection surfaces, including schemas, generators, and focused tests.",
+      "description": "Session-index-v2 burn-in, disposition, cutover-readiness, promotion-decision, Docker replay-lane, and issue-bundle projection surfaces, including schemas, generators, and focused tests.",
       "files": [
         "docs/schemas/session-index-v2-contract-v1.schema.json",
         "docs/schemas/session-index-v2-disposition-summary-v1.schema.json",
         "docs/schemas/session-index-v2-cutover-readiness-v1.schema.json",
+        "docs/schemas/docker-workflow-replay-lane-v1.schema.json",
         "tools/Test-SessionIndexV2Contract.ps1",
         "tools/Write-SessionIndexV2CutoverReadiness.ps1",
         "tools/priority/__tests__/session-index-v2-schema.test.mjs",
@@ -300,8 +301,10 @@
         "tests/Test-SessionIndexV2Contract.Tests.ps1",
         "tests/Write-SessionIndexV2CutoverReadiness.Tests.ps1",
         "docs/schemas/session-index-v2-promotion-decision-v1.schema.json",
+        "tools/priority/docker-workflow-replay-lane.mjs",
         "tools/priority/session-index-v2-promotion-decision.mjs",
         "tools/priority/project-session-index-v2-promotion-decision.mjs",
+        "tools/priority/__tests__/docker-workflow-replay-lane.test.mjs",
         "tools/priority/__tests__/session-index-v2-promotion-decision.test.mjs",
         "tools/priority/__tests__/project-session-index-v2-promotion-decision.test.mjs"
       ]

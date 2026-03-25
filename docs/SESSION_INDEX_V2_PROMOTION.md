@@ -71,6 +71,28 @@ Bootstrap also projects the latest promotion decision into the standing issue bu
 That keeps the promotion state in the same repo-owned reporting surface future agents already review during first
 actions, instead of requiring a bespoke one-off helper invocation every time.
 
+## Local Docker replay lane
+
+Use the Docker replay lane when you need to re-run the promotion decision against a known Validate artifact bundle with
+Linux container semantics before paying for another hosted rerun:
+
+```text
+node tools/npm/run-script.mjs priority:workflow:replay:docker -- --mode session-index-v2-promotion --run-id 23543808174 --repo LabVIEW-Community-CI-CD/compare-vi-cli-action
+```
+
+The first slice is Linux-first and runs the checked-in promotion-decision helper inside the CompareVI tools image. It
+writes its outer receipt under:
+
+- `tests/results/docker-tools-parity/workflow-replay/session-index-v2-promotion-receipt.json`
+
+And it forwards the inner replay artifacts under:
+
+- `tests/results/docker-tools-parity/workflow-replay/session-index-v2-promotion/`
+
+The replay lane fails closed on missing GitHub token, missing Docker image, or failing in-container helper execution.
+Use it as the local proving surface for issue-class defects like `#1956`, then treat hosted Validate as the
+confirmation/publication pass after the local replay is understood.
+
 ## Triage runbook
 
 When `session-index-v2-contract` reports failures:
