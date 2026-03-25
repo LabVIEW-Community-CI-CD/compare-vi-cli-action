@@ -355,6 +355,46 @@ Describe 'Test-SessionIndexV2Contract' {
     $run.Report.branchProtection.missingContexts | Should -BeNullOrEmpty
   }
 
+  It 'allows empty live branch-protection contexts when the payload explicitly records API forbidden' {
+    $resultsDir = Get-SessionIndexFixture -Name 'api-forbidden' -ExpectedContexts @('lint', 'session-index')
+    $policyPath = Join-Path $TestDrive 'branch-policy.api-forbidden.json'
+    Write-JsonFile -Path $policyPath -Data @{
+      schema = 'branch-required-checks/v1'
+      schemaVersion = '1.0.0'
+      branches = @{
+        develop = @('lint', 'session-index')
+      }
+    }
+
+    Write-JsonFile -Path (Join-Path $resultsDir 'session-index-v2.json') -Data @{
+      schema = 'session-index/v2'
+      schemaVersion = '1.0.0'
+      generatedAtUtc = '2026-03-25T00:00:00.000Z'
+      run = @{
+        workflow = 'Validate'
+      }
+      branchProtection = @{
+        status = 'error'
+        reason = 'api_forbidden'
+        expected = @('lint', 'session-index')
+        actual = @()
+      }
+      artifacts = @(
+        @{
+          name = 'session-index-v2'
+          path = 'session-index-v2.json'
+        }
+      )
+    }
+
+    $run = Invoke-ContractTool -ResultsDir $resultsDir -PolicyPath $policyPath
+
+    $run.ExitCode | Should -Be 0
+    $run.Report.status | Should -Be 'pass'
+    $run.Report.failures | Should -BeNullOrEmpty
+    $run.Report.branchProtection.missingContexts | Should -BeNullOrEmpty
+  }
+
   It 'still fails when branch-protection actual contexts are empty for a real mismatch reason' {
     $resultsDir = Get-SessionIndexFixture -Name 'missing-required-empty-actual' -ExpectedContexts @('lint')
     $policyPath = Join-Path $TestDrive 'branch-policy.missing-required-empty-actual.json'
