@@ -111,14 +111,20 @@
       "additionalProperties": false,
       "required": [
         "repository",
-        "version",
-        "ref",
-        "cookiecutterVersion"
+        "cookiecutterVersion",
+        "resolutionMode"
       ],
       "properties": {
         "repository": {
           "type": "string",
           "minLength": 1
+        },
+        "resolutionMode": {
+          "type": "string",
+          "enum": [
+            "pinned-template-dependency",
+            "supported-proof-authority"
+          ]
         },
         "version": {
           "type": "string",
@@ -131,8 +137,49 @@
         "cookiecutterVersion": {
           "type": "string",
           "minLength": 1
+        },
+        "requiredAuthoritySource": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requireCanonicalHeadAlignment": {
+          "type": "boolean"
+        },
+        "requiredExecutionPlane": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredLaneId": {
+          "type": "string",
+          "minLength": 1
         }
-      }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "version",
+            "ref"
+          ],
+          "properties": {
+            "resolutionMode": {
+              "const": "pinned-template-dependency"
+            }
+          }
+        },
+        {
+          "required": [
+            "requiredAuthoritySource",
+            "requireCanonicalHeadAlignment",
+            "requiredExecutionPlane",
+            "requiredLaneId"
+          ],
+          "properties": {
+            "resolutionMode": {
+              "const": "supported-proof-authority"
+            }
+          }
+        }
+      ]
     },
     "decision": {
       "type": "object",

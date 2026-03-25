@@ -34,9 +34,12 @@ test('template pivot gate report matches the checked-in schema', async () => {
     targetBranch: 'develop',
     templateDependency: {
       repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-      version: 'v0.1.1',
-      ref: 'v0.1.1',
-      cookiecutterVersion: '2.7.1'
+      resolutionMode: 'supported-proof-authority',
+      cookiecutterVersion: '2.7.1',
+      requiredAuthoritySource: 'supported-template-proof',
+      requireCanonicalHeadAlignment: true,
+      requiredExecutionPlane: 'hosted-github-actions',
+      requiredLaneId: 'supported-template-proof'
     },
     queueEmpty: {
       requiredSchema: 'standing-priority/no-standing@v1',
@@ -148,18 +151,27 @@ test('template pivot gate report matches the checked-in schema', async () => {
     provenance: {
       templateDependency: {
         repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
-        version: 'v0.1.1',
-        ref: 'v0.1.1',
+        version: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
+        ref: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
         cookiecutterVersion: '2.7.1'
       },
       execution: {
-        executionPlane: 'linux-tools-image',
-        containerImage: 'ghcr.io/labview-community-ci-cd/comparevi-tools:v0.1.0',
-        generatedConsumerWorkspaceRoot: 'E:\\comparevi-template-consumers\\run-1',
-        laneId: 'lane-template-verify',
-        agentId: 'darwin',
-        fundingWindowId: 'HQ1VJLMV-0027'
+        executionPlane: 'hosted-github-actions',
+        containerImage: null,
+        generatedConsumerWorkspaceRoot: null,
+        laneId: 'supported-template-proof',
+        agentId: 'compare-monitoring-mode',
+        fundingWindowId: null
       }
+    },
+    authorityProjection: {
+      source: 'supported-template-proof',
+      supportedRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork',
+      supportedRole: 'org-consumer-fork',
+      canonicalRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      canonicalHeadSha: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
+      supportedProofRunUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork/actions/runs/23567964307',
+      supportedProofHeadSha: 'c3ae46c2b0a02b514b4b08d426302953a87243bc'
     },
     goals: {
       maxVerificationLagIterations: 1,

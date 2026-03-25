@@ -148,8 +148,10 @@ Hosted Ubuntu renders the pinned template dependency inside the tools image.
 Hosted Windows verifies the same pinned release host-native so the conveyor belt
 has both a container-backed render plane and a mirrored verification plane. A
 follow-on hosted verification job then emits the machine-readable template-agent
-verification report so downstream proving and the template pivot gate consume
-the same pinned dependency provenance.
+verification report so downstream proving can retain the pinned dependency
+provenance while the template pivot gate may instead consume the latest
+supported template proof aligned to the canonical template head through the
+local authoritative overlay.
 
 ## Natural Follow-Ons
 

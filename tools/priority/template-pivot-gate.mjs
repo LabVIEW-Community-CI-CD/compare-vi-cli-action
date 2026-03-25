@@ -155,16 +155,52 @@ function resolvePreferredTemplateAgentVerificationReportPath(filePath) {
 }
 
 function normalizeTemplateDependency(value) {
+  const resolutionMode =
+    asOptional(value?.resolutionMode) ||
+    (asOptional(value?.version) && asOptional(value?.ref) ? 'pinned-template-dependency' : null);
   return {
     repository: asOptional(value?.repository),
+    resolutionMode,
     version: asOptional(value?.version),
     ref: asOptional(value?.ref),
-    cookiecutterVersion: asOptional(value?.cookiecutterVersion)
+    cookiecutterVersion: asOptional(value?.cookiecutterVersion),
+    requiredAuthoritySource: asOptional(value?.requiredAuthoritySource),
+    requireCanonicalHeadAlignment:
+      typeof value?.requireCanonicalHeadAlignment === 'boolean' ? value.requireCanonicalHeadAlignment : null,
+    requiredExecutionPlane: asOptional(value?.requiredExecutionPlane),
+    requiredLaneId: asOptional(value?.requiredLaneId)
   };
 }
 
 function allFieldsPresent(object, fields) {
   return fields.every((field) => asOptional(object?.[field]) != null);
+}
+
+function evaluateTemplateDependencyPolicyReadiness(policyTemplateDependency) {
+  if (policyTemplateDependency.resolutionMode === 'pinned-template-dependency') {
+    return allFieldsPresent(policyTemplateDependency, [
+      'repository',
+      'resolutionMode',
+      'version',
+      'ref',
+      'cookiecutterVersion'
+    ]);
+  }
+
+  if (policyTemplateDependency.resolutionMode === 'supported-proof-authority') {
+    return (
+      allFieldsPresent(policyTemplateDependency, [
+        'repository',
+        'resolutionMode',
+        'cookiecutterVersion',
+        'requiredAuthoritySource',
+        'requiredExecutionPlane',
+        'requiredLaneId'
+      ]) && typeof policyTemplateDependency.requireCanonicalHeadAlignment === 'boolean'
+    );
+  }
+
+  return false;
 }
 
 export function parseArgs(argv = process.argv) {
@@ -264,11 +300,19 @@ export async function runTemplatePivotGate(
   const blockers = [];
   const releaseCandidateRegex = new RegExp(policy.releaseCandidate.versionPattern);
   const policyTemplateDependency = normalizeTemplateDependency(policy.templateDependency);
-  const templateDependencyFields = ['repository', 'version', 'ref', 'cookiecutterVersion'];
-  const templateDependencyPolicyReady = allFieldsPresent(policyTemplateDependency, templateDependencyFields);
+  const templateDependencyPolicyReady = evaluateTemplateDependencyPolicyReadiness(policyTemplateDependency);
   const templateAgentVerificationTemplateDependency = normalizeTemplateDependency(
     templateAgentVerification?.provenance?.templateDependency
   );
+  const templateAgentVerificationAuthorityProjection = {
+    source: asOptional(templateAgentVerification?.authorityProjection?.source),
+    canonicalRepository: asOptional(templateAgentVerification?.authorityProjection?.canonicalRepository),
+    canonicalHeadSha: asOptional(templateAgentVerification?.authorityProjection?.canonicalHeadSha),
+    supportedRepository: asOptional(templateAgentVerification?.authorityProjection?.supportedRepository),
+    supportedRole: asOptional(templateAgentVerification?.authorityProjection?.supportedRole),
+    supportedProofRunUrl: asOptional(templateAgentVerification?.authorityProjection?.supportedProofRunUrl),
+    supportedProofHeadSha: asOptional(templateAgentVerification?.authorityProjection?.supportedProofHeadSha)
+  };
   const templateAgentVerificationExecution = {
     executionPlane: asOptional(templateAgentVerification?.provenance?.execution?.executionPlane),
     containerImage: asOptional(templateAgentVerification?.provenance?.execution?.containerImage),
@@ -287,11 +331,32 @@ export async function runTemplatePivotGate(
     'agentId',
     'fundingWindowId'
   ]);
+  const templateAgentVerificationExecutionMatchesPolicy =
+    policyTemplateDependency.resolutionMode === 'supported-proof-authority'
+      ? templateAgentVerificationExecution.executionPlane === policyTemplateDependency.requiredExecutionPlane &&
+        templateAgentVerificationExecution.laneId === policyTemplateDependency.requiredLaneId
+      : templateAgentVerificationExecutionReady;
   const templateAgentVerificationTemplateDependencyReady =
     templateDependencyPolicyReady &&
-    templateDependencyFields.every(
-      (field) => templateAgentVerificationTemplateDependency[field] === policyTemplateDependency[field]
-    );
+    (policyTemplateDependency.resolutionMode === 'supported-proof-authority'
+      ? templateAgentVerificationTemplateDependency.repository === policyTemplateDependency.repository &&
+        templateAgentVerificationTemplateDependency.cookiecutterVersion ===
+          policyTemplateDependency.cookiecutterVersion &&
+        templateAgentVerificationAuthorityProjection.source === policyTemplateDependency.requiredAuthoritySource &&
+        templateAgentVerificationAuthorityProjection.canonicalRepository === policyTemplateDependency.repository &&
+        asOptional(templateAgentVerificationAuthorityProjection.canonicalHeadSha) != null &&
+        templateAgentVerificationTemplateDependency.version === templateAgentVerificationAuthorityProjection.canonicalHeadSha &&
+        templateAgentVerificationTemplateDependency.ref === templateAgentVerificationAuthorityProjection.canonicalHeadSha &&
+        asOptional(templateAgentVerificationAuthorityProjection.supportedProofRunUrl) != null &&
+        (!policyTemplateDependency.requireCanonicalHeadAlignment ||
+          (asOptional(templateAgentVerificationAuthorityProjection.supportedProofHeadSha) != null &&
+            templateAgentVerificationAuthorityProjection.supportedProofHeadSha ===
+              templateAgentVerificationAuthorityProjection.canonicalHeadSha))
+      : templateAgentVerificationTemplateDependency.repository === policyTemplateDependency.repository &&
+        templateAgentVerificationTemplateDependency.version === policyTemplateDependency.version &&
+        templateAgentVerificationTemplateDependency.ref === policyTemplateDependency.ref &&
+        templateAgentVerificationTemplateDependency.cookiecutterVersion ===
+          policyTemplateDependency.cookiecutterVersion);
 
   const queueEmptyReady =
     queueEmpty?.schema === policy.queueEmpty.requiredSchema && queueEmpty?.reason === policy.queueEmpty.requiredReason;
@@ -385,7 +450,7 @@ export async function runTemplatePivotGate(
     templateAgentVerification?.verification?.status === 'pass' &&
     asOptional(templateAgentVerification?.lane?.targetRepository) === targetRepository &&
     templateAgentVerificationTemplateDependencyReady &&
-    templateAgentVerificationExecutionReady;
+    templateAgentVerificationExecutionMatchesPolicy;
   if (!templateAgentVerification) {
     blockers.push(
       createBlocker(
@@ -427,7 +492,7 @@ export async function runTemplatePivotGate(
     blockers.push(
       createBlocker(
         'template-dependency-policy-missing',
-        'Template pivot gate policy must pin the template dependency repository, version, ref, and cookiecutter version.'
+        'Template pivot gate policy must define either a pinned template dependency or a supported-proof authority contract.'
       )
     );
   } else if (templateAgentVerificationTemplateDependency.repository !== policyTemplateDependency.repository) {
@@ -436,24 +501,6 @@ export async function runTemplatePivotGate(
         'template-dependency-repository-mismatch',
         `Template dependency repository must be ${policyTemplateDependency.repository}; received ${
           templateAgentVerificationTemplateDependency.repository ?? 'null'
-        }.`
-      )
-    );
-  } else if (templateAgentVerificationTemplateDependency.version !== policyTemplateDependency.version) {
-    blockers.push(
-      createBlocker(
-        'template-dependency-version-mismatch',
-        `Template dependency version must be ${policyTemplateDependency.version}; received ${
-          templateAgentVerificationTemplateDependency.version ?? 'null'
-        }.`
-      )
-    );
-  } else if (templateAgentVerificationTemplateDependency.ref !== policyTemplateDependency.ref) {
-    blockers.push(
-      createBlocker(
-        'template-dependency-ref-mismatch',
-        `Template dependency ref must be ${policyTemplateDependency.ref}; received ${
-          templateAgentVerificationTemplateDependency.ref ?? 'null'
         }.`
       )
     );
@@ -468,11 +515,100 @@ export async function runTemplatePivotGate(
         }.`
       )
     );
-  } else if (!templateAgentVerificationExecutionReady) {
+  } else if (
+    policyTemplateDependency.resolutionMode === 'supported-proof-authority' &&
+    templateAgentVerificationAuthorityProjection.source !== policyTemplateDependency.requiredAuthoritySource
+  ) {
     blockers.push(
       createBlocker(
-        'template-agent-execution-provenance-incomplete',
-        'Template-agent verification report must include execution-plane, container-image, consumer-workspace-root, lane-id, agent-id, and funding-window provenance.'
+        'template-dependency-authority-source-mismatch',
+        `Template dependency authority source must be ${policyTemplateDependency.requiredAuthoritySource}; received ${
+          templateAgentVerificationAuthorityProjection.source ?? 'null'
+        }.`
+      )
+    );
+  } else if (
+    policyTemplateDependency.resolutionMode === 'supported-proof-authority' &&
+    templateAgentVerificationAuthorityProjection.canonicalRepository !== policyTemplateDependency.repository
+  ) {
+    blockers.push(
+      createBlocker(
+        'template-dependency-canonical-repository-mismatch',
+        `Template dependency canonical repository must be ${policyTemplateDependency.repository}; received ${
+          templateAgentVerificationAuthorityProjection.canonicalRepository ?? 'null'
+        }.`
+      )
+    );
+  } else if (
+    policyTemplateDependency.resolutionMode === 'supported-proof-authority' &&
+    !templateAgentVerificationAuthorityProjection.canonicalHeadSha
+  ) {
+    blockers.push(
+      createBlocker(
+        'template-dependency-canonical-head-missing',
+        'Template dependency canonical head SHA must be present when the pivot gate consumes supported proof authority.'
+      )
+    );
+  } else if (
+    (policyTemplateDependency.resolutionMode === 'supported-proof-authority' &&
+      templateAgentVerificationTemplateDependency.version !==
+        templateAgentVerificationAuthorityProjection.canonicalHeadSha) ||
+    (policyTemplateDependency.resolutionMode !== 'supported-proof-authority' &&
+      templateAgentVerificationTemplateDependency.version !== policyTemplateDependency.version)
+  ) {
+    blockers.push(
+      createBlocker(
+        'template-dependency-version-mismatch',
+        policyTemplateDependency.resolutionMode === 'supported-proof-authority'
+          ? `Template dependency version must match the canonical template head ${templateAgentVerificationAuthorityProjection.canonicalHeadSha ?? 'null'}; received ${
+              templateAgentVerificationTemplateDependency.version ?? 'null'
+            }.`
+          : `Template dependency version must be ${policyTemplateDependency.version}; received ${
+              templateAgentVerificationTemplateDependency.version ?? 'null'
+            }.`
+      )
+    );
+  } else if (
+    (policyTemplateDependency.resolutionMode === 'supported-proof-authority' &&
+      templateAgentVerificationTemplateDependency.ref !== templateAgentVerificationAuthorityProjection.canonicalHeadSha) ||
+    (policyTemplateDependency.resolutionMode !== 'supported-proof-authority' &&
+      templateAgentVerificationTemplateDependency.ref !== policyTemplateDependency.ref)
+  ) {
+    blockers.push(
+      createBlocker(
+        'template-dependency-ref-mismatch',
+        policyTemplateDependency.resolutionMode === 'supported-proof-authority'
+          ? `Template dependency ref must match the canonical template head ${templateAgentVerificationAuthorityProjection.canonicalHeadSha ?? 'null'}; received ${
+              templateAgentVerificationTemplateDependency.ref ?? 'null'
+            }.`
+          : `Template dependency ref must be ${policyTemplateDependency.ref}; received ${
+              templateAgentVerificationTemplateDependency.ref ?? 'null'
+            }.`
+      )
+    );
+  } else if (
+    policyTemplateDependency.resolutionMode === 'supported-proof-authority' &&
+    policyTemplateDependency.requireCanonicalHeadAlignment &&
+    templateAgentVerificationAuthorityProjection.supportedProofHeadSha !==
+      templateAgentVerificationAuthorityProjection.canonicalHeadSha
+  ) {
+    blockers.push(
+      createBlocker(
+        'template-dependency-supported-proof-head-mismatch',
+        `Supported proof head must match the canonical template head ${
+          templateAgentVerificationAuthorityProjection.canonicalHeadSha ?? 'null'
+        }; received ${templateAgentVerificationAuthorityProjection.supportedProofHeadSha ?? 'null'}.`
+      )
+    );
+  } else if (!templateAgentVerificationExecutionMatchesPolicy) {
+    blockers.push(
+      createBlocker(
+        policyTemplateDependency.resolutionMode === 'supported-proof-authority'
+          ? 'template-agent-execution-policy-mismatch'
+          : 'template-agent-execution-provenance-incomplete',
+        policyTemplateDependency.resolutionMode === 'supported-proof-authority'
+          ? `Template-agent verification execution must report executionPlane=${policyTemplateDependency.requiredExecutionPlane} and laneId=${policyTemplateDependency.requiredLaneId}.`
+          : 'Template-agent verification report must include execution-plane, container-image, consumer-workspace-root, lane-id, agent-id, and funding-window provenance.'
       )
     );
   }
@@ -491,9 +627,14 @@ export async function runTemplatePivotGate(
       requirePreciseSessionFeedback: policy.decision.requirePreciseSessionFeedback,
       templateDependency: {
         repository: policyTemplateDependency.repository,
+        resolutionMode: policyTemplateDependency.resolutionMode,
         version: policyTemplateDependency.version,
         ref: policyTemplateDependency.ref,
-        cookiecutterVersion: policyTemplateDependency.cookiecutterVersion
+        cookiecutterVersion: policyTemplateDependency.cookiecutterVersion,
+        requiredAuthoritySource: policyTemplateDependency.requiredAuthoritySource,
+        requireCanonicalHeadAlignment: policyTemplateDependency.requireCanonicalHeadAlignment,
+        requiredExecutionPlane: policyTemplateDependency.requiredExecutionPlane,
+        requiredLaneId: policyTemplateDependency.requiredLaneId
       },
       releaseCandidateVersionPattern: policy.releaseCandidate.versionPattern,
       releaseCandidateVersionPatternDescription: policy.releaseCandidate.versionPatternDescription
@@ -539,10 +680,24 @@ export async function runTemplatePivotGate(
         consumerRailBranch: asOptional(templateAgentVerification?.lane?.consumerRailBranch),
         templateDependency: {
           repository: templateAgentVerificationTemplateDependency.repository,
+          resolutionMode: policyTemplateDependency.resolutionMode,
           version: templateAgentVerificationTemplateDependency.version,
           ref: templateAgentVerificationTemplateDependency.ref,
           cookiecutterVersion: templateAgentVerificationTemplateDependency.cookiecutterVersion,
           matchesPolicy: templateAgentVerificationTemplateDependencyReady
+        },
+        authorityProjection: {
+          source: templateAgentVerificationAuthorityProjection.source,
+          canonicalRepository: templateAgentVerificationAuthorityProjection.canonicalRepository,
+          canonicalHeadSha: templateAgentVerificationAuthorityProjection.canonicalHeadSha,
+          supportedRepository: templateAgentVerificationAuthorityProjection.supportedRepository,
+          supportedRole: templateAgentVerificationAuthorityProjection.supportedRole,
+          supportedProofRunUrl: templateAgentVerificationAuthorityProjection.supportedProofRunUrl,
+          supportedProofHeadSha: templateAgentVerificationAuthorityProjection.supportedProofHeadSha,
+          matchesPolicy:
+            policyTemplateDependency.resolutionMode === 'supported-proof-authority'
+              ? templateAgentVerificationTemplateDependencyReady
+              : true
         },
         execution: {
           executionPlane: templateAgentVerificationExecution.executionPlane,
@@ -551,7 +706,8 @@ export async function runTemplatePivotGate(
           laneId: templateAgentVerificationExecution.laneId,
           agentId: templateAgentVerificationExecution.agentId,
           fundingWindowId: templateAgentVerificationExecution.fundingWindowId,
-          complete: templateAgentVerificationExecutionReady
+          complete: templateAgentVerificationExecutionReady,
+          matchesPolicy: templateAgentVerificationExecutionMatchesPolicy
         },
         ready: templateAgentVerificationReady
       }
