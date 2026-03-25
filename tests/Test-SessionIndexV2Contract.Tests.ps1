@@ -31,7 +31,7 @@ Describe 'Test-SessionIndexV2Contract' {
       return $functionAst.Extent.Text
     }
 
-    Invoke-Expression (Get-ScriptFunctionDefinition -ScriptPath $scriptPath -FunctionName 'Get-BurnInDisposition')
+    . ([scriptblock]::Create((Get-ScriptFunctionDefinition -ScriptPath $scriptPath -FunctionName 'Get-BurnInDisposition')))
 
     function Write-JsonFile {
       param(
@@ -42,7 +42,7 @@ Describe 'Test-SessionIndexV2Contract' {
       $Data | ConvertTo-Json -Depth 50 | Set-Content -LiteralPath $Path -Encoding utf8
     }
 
-    function New-SessionIndexFixture {
+    function Get-SessionIndexFixture {
       param(
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$ExpectedContexts,
@@ -93,7 +93,7 @@ Describe 'Test-SessionIndexV2Contract' {
 
       $psi = [System.Diagnostics.ProcessStartInfo]::new()
       $psi.FileName = 'pwsh'
-      $args = @(
+      $scriptArgs = @(
         '-NoLogo',
         '-NoProfile',
         '-NonInteractive',
@@ -105,9 +105,9 @@ Describe 'Test-SessionIndexV2Contract' {
         '-Repository', 'example-repo'
       )
       if ($Enforce) {
-        $args += '-Enforce'
+        $scriptArgs += '-Enforce'
       }
-      foreach ($arg in $args) {
+      foreach ($arg in $scriptArgs) {
         $psi.ArgumentList.Add([string]$arg) | Out-Null
       }
       $psi.WorkingDirectory = $WorkingDirectory
@@ -172,7 +172,7 @@ Describe 'Test-SessionIndexV2Contract' {
   }
 
   It 'projects required contexts from branch classes when explicit branch lists are absent' {
-    $resultsDir = New-SessionIndexFixture -Name 'projected' -ExpectedContexts @('lint', 'session-index')
+    $resultsDir = Get-SessionIndexFixture -Name 'projected' -ExpectedContexts @('lint', 'session-index')
     $policyPath = Join-Path $TestDrive 'branch-policy.projected.json'
     Write-JsonFile -Path $policyPath -Data @{
       schema = 'branch-required-checks/v1'
@@ -209,7 +209,7 @@ Describe 'Test-SessionIndexV2Contract' {
   }
 
   It 'falls back to explicit branch lists when no branch-class binding exists' {
-    $resultsDir = New-SessionIndexFixture -Name 'fallback' -ExpectedContexts @('lint', 'session-index')
+    $resultsDir = Get-SessionIndexFixture -Name 'fallback' -ExpectedContexts @('lint', 'session-index')
     $policyPath = Join-Path $TestDrive 'branch-policy.fallback.json'
     Write-JsonFile -Path $policyPath -Data @{
       schema = 'branch-required-checks/v1'
@@ -228,7 +228,7 @@ Describe 'Test-SessionIndexV2Contract' {
   }
 
   It 'fails closed in enforce mode when neither branch-class projection nor fallback data exist' {
-    $resultsDir = New-SessionIndexFixture -Name 'missing' -ExpectedContexts @('lint')
+    $resultsDir = Get-SessionIndexFixture -Name 'missing' -ExpectedContexts @('lint')
     $policyPath = Join-Path $TestDrive 'branch-policy.missing.json'
     Write-JsonFile -Path $policyPath -Data @{
       schema = 'branch-required-checks/v1'
@@ -265,7 +265,7 @@ Describe 'Test-SessionIndexV2Contract' {
   }
 
   It 'classifies missing artifact failures deterministically in the machine-readable report' {
-    $resultsDir = New-SessionIndexFixture -Name 'missing-artifact' -ExpectedContexts @('lint', 'session-index')
+    $resultsDir = Get-SessionIndexFixture -Name 'missing-artifact' -ExpectedContexts @('lint', 'session-index')
     Remove-Item -LiteralPath (Join-Path $resultsDir 'session-index-v2.json') -Force
     $policyPath = Join-Path $TestDrive 'branch-policy.missing-artifact.json'
     Write-JsonFile -Path $policyPath -Data @{
@@ -291,7 +291,7 @@ Describe 'Test-SessionIndexV2Contract' {
   }
 
   It 'classifies branch-protection parity mismatches when required contexts are missing from expected contexts' {
-    $resultsDir = New-SessionIndexFixture -Name 'missing-required-contexts' -ExpectedContexts @('lint') -ActualContexts @('lint')
+    $resultsDir = Get-SessionIndexFixture -Name 'missing-required-contexts' -ExpectedContexts @('lint') -ActualContexts @('lint')
     $policyPath = Join-Path $TestDrive 'branch-policy.missing-required-contexts.json'
     Write-JsonFile -Path $policyPath -Data @{
       schema = 'branch-required-checks/v1'
@@ -315,8 +315,88 @@ Describe 'Test-SessionIndexV2Contract' {
     $run.Summary.mismatchClass | Should -Be 'missing-required-contexts'
   }
 
+  It 'allows empty live branch-protection contexts when the payload explicitly records API unavailability' {
+    $resultsDir = Get-SessionIndexFixture -Name 'api-unavailable' -ExpectedContexts @('lint', 'session-index')
+    $policyPath = Join-Path $TestDrive 'branch-policy.api-unavailable.json'
+    Write-JsonFile -Path $policyPath -Data @{
+      schema = 'branch-required-checks/v1'
+      schemaVersion = '1.0.0'
+      branches = @{
+        develop = @('lint', 'session-index')
+      }
+    }
+
+    Write-JsonFile -Path (Join-Path $resultsDir 'session-index-v2.json') -Data @{
+      schema = 'session-index/v2'
+      schemaVersion = '1.0.0'
+      generatedAtUtc = '2026-03-25T00:00:00.000Z'
+      run = @{
+        workflow = 'Validate'
+      }
+      branchProtection = @{
+        status = 'warn'
+        reason = 'api_unavailable'
+        expected = @('lint', 'session-index')
+        actual = @()
+      }
+      artifacts = @(
+        @{
+          name = 'session-index-v2'
+          path = 'session-index-v2.json'
+        }
+      )
+    }
+
+    $run = Invoke-ContractTool -ResultsDir $resultsDir -PolicyPath $policyPath
+
+    $run.ExitCode | Should -Be 0
+    $run.Report.status | Should -Be 'pass'
+    $run.Report.failures | Should -BeNullOrEmpty
+    $run.Report.branchProtection.missingContexts | Should -BeNullOrEmpty
+  }
+
+  It 'still fails when branch-protection actual contexts are empty for a real mismatch reason' {
+    $resultsDir = Get-SessionIndexFixture -Name 'missing-required-empty-actual' -ExpectedContexts @('lint')
+    $policyPath = Join-Path $TestDrive 'branch-policy.missing-required-empty-actual.json'
+    Write-JsonFile -Path $policyPath -Data @{
+      schema = 'branch-required-checks/v1'
+      schemaVersion = '1.0.0'
+      branches = @{
+        develop = @('lint', 'session-index')
+      }
+    }
+
+    Write-JsonFile -Path (Join-Path $resultsDir 'session-index-v2.json') -Data @{
+      schema = 'session-index/v2'
+      schemaVersion = '1.0.0'
+      generatedAtUtc = '2026-03-25T00:00:00.000Z'
+      run = @{
+        workflow = 'Validate'
+      }
+      branchProtection = @{
+        status = 'warn'
+        reason = 'missing_required'
+        expected = @('lint')
+        actual = @()
+      }
+      artifacts = @(
+        @{
+          name = 'session-index-v2'
+          path = 'session-index-v2.json'
+        }
+      )
+    }
+
+    $run = Invoke-ContractTool -ResultsDir $resultsDir -PolicyPath $policyPath
+
+    $run.ExitCode | Should -Be 0
+    $run.Report.status | Should -Be 'fail'
+    $run.Report.failures | Should -Contain 'branchProtection.actual is empty in session-index-v2.json.'
+    $run.Summary.disposition | Should -Be 'burn-in-mismatch'
+  }
+
   It 'writes machine-readable GitHub outputs and summary evidence for non-blocking burn-in mismatches' {
-    $resultsDir = New-SessionIndexFixture -Name 'telemetry' -ExpectedContexts @('lint')
+    $resultsDir = Get-SessionIndexFixture -Name 'telemetry' -ExpectedContexts @('lint')
     $policyPath = Join-Path $TestDrive 'branch-policy.telemetry.json'
     Write-JsonFile -Path $policyPath -Data @{
       schema = 'branch-required-checks/v1'
@@ -365,7 +445,7 @@ Describe 'Test-SessionIndexV2Contract' {
   }
 
   It 'regenerates cutover readiness artifacts successfully even when invoked from outside the repo root' {
-    $resultsDir = New-SessionIndexFixture -Name 'stale-cutover' -ExpectedContexts @('lint', 'session-index')
+    $resultsDir = Get-SessionIndexFixture -Name 'stale-cutover' -ExpectedContexts @('lint', 'session-index')
     $policyPath = Join-Path $TestDrive 'branch-policy.stale-cutover.json'
     $outsideDir = Join-Path $TestDrive 'outside-workdir'
     New-Item -ItemType Directory -Path $outsideDir -Force | Out-Null

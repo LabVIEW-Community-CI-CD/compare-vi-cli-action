@@ -1,4 +1,6 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'GitHub Actions annotations and step-summary notices intentionally use the host stream.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseApprovedVerbs', 'To-Ordered', Justification = 'Helper name is stable and scoped locally within this script.')]
 <#
 .SYNOPSIS
   Inject branch-protection verification metadata into a session-index.json file.
@@ -65,7 +67,7 @@ function Get-FileDigestHex {
   & (Join-Path $PSScriptRoot 'Get-FileSha256.ps1') -Path $Path
 }
 
-function To-Ordered {
+function ConvertTo-Ordered {
   param([psobject]$Object)
   $ordered = [ordered]@{}
   foreach ($prop in $Object.PSObject.Properties) {
@@ -74,7 +76,7 @@ function To-Ordered {
   return $ordered
 }
 
-function Get-ContextAliases {
+function Get-ContextAliasSet {
   param([string]$Context)
 
   $aliases = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
@@ -108,8 +110,8 @@ function Test-ContextMatch {
     return $false
   }
 
-  $leftAliases = Get-ContextAliases -Context $Left
-  $rightAliases = Get-ContextAliases -Context $Right
+  $leftAliases = Get-ContextAliasSet -Context $Left
+  $rightAliases = Get-ContextAliasSet -Context $Right
 
   foreach ($leftAlias in $leftAliases) {
     foreach ($rightAlias in $rightAliases) {
@@ -170,7 +172,7 @@ function Resolve-PatternValue {
   return $null
 }
 
-function Resolve-BranchExpectedContexts {
+function Resolve-BranchExpectedContextSet {
   param(
     [psobject]$Branches,
     [string]$BranchName
@@ -207,7 +209,7 @@ if ($Branch -match '^(?:refs/)?pull/\d+/(?:merge|head)$') {
 
 $idxPath = Join-Path $ResultsDir 'session-index.json'
 $summaryJson = 'pester-summary.json'
-& (Join-Path $PSScriptRoot 'Ensure-SessionIndex.ps1') -ResultsDir $ResultsDir -SummaryJson $summaryJson | Out-Null
+& (Join-Path $PSScriptRoot 'Ensure-SessionIndex.ps1') -ResultsDir $ResultsDir -SummaryJson $summaryJson -DisableSessionIndexV2 | Out-Null
 if (-not (Test-Path -LiteralPath $idxPath -PathType Leaf)) {
   throw "session-index.json not found after Ensure-SessionIndex: $idxPath"
 }
@@ -217,7 +219,7 @@ try {
 } catch {
   throw "Failed to parse session-index.json: $($_.Exception.Message)"
 }
-$idx = To-Ordered $idxJson
+$idx = ConvertTo-Ordered $idxJson
 
 $policy = Get-CanonicalMapping -Path $PolicyPath
 $mappingDigest = Get-FileDigestHex -Path $PolicyPath
@@ -237,10 +239,10 @@ if ($branchClassBindings) {
 
 $expectedRaw = @()
 if ($branchClassId -and $branchClassRequiredChecks) {
-  $expectedRaw = @(Resolve-BranchExpectedContexts -Branches $branchClassRequiredChecks -BranchName $branchClassId)
+  $expectedRaw = @(Resolve-BranchExpectedContextSet -Branches $branchClassRequiredChecks -BranchName $branchClassId)
 }
 if ($expectedRaw.Count -eq 0) {
-  $expectedRaw = @(Resolve-BranchExpectedContexts -Branches $branches -BranchName $Branch)
+  $expectedRaw = @(Resolve-BranchExpectedContextSet -Branches $branches -BranchName $Branch)
 }
 $expected = @($expectedRaw | Where-Object { $_ } | Sort-Object -Unique)
 
@@ -375,6 +377,7 @@ $idx['branchProtection'] = $bpObject
 
 $jsonOut = ($idx | ConvertTo-Json -Depth 10)
 Set-Content -LiteralPath $idxPath -Value $jsonOut -Encoding UTF8
+& (Join-Path $PSScriptRoot 'Ensure-SessionIndex.ps1') -ResultsDir $ResultsDir -SummaryJson $summaryJson -ForceSessionIndexV2 | Out-Null
 
 if ($env:GITHUB_STEP_SUMMARY) {
   $summaryLines = @('### Branch Protection Verification','')

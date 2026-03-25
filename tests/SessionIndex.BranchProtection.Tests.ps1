@@ -52,7 +52,9 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
       -ResultsDir $resultsDir `
       -PolicyPath $script:policyPath `
       -Branch 'develop' `
-      -ProducedContexts $script:developExpected
+      -ProducedContexts $script:developExpected `
+      -ActualStatus 'available' `
+      -ActualContexts $script:developExpected
 
     $idx = Get-Content -LiteralPath (Join-Path $resultsDir 'session-index.json') -Raw | ConvertFrom-Json
     $bp = $idx.branchProtection
@@ -337,8 +339,15 @@ Describe 'Update-SessionIndexBranchProtection' -Tag 'Unit' {
       -ResultsDir $resultsDir `
       -PolicyPath $script:policyPath `
       -Branch 'develop' `
-      -ProducedContexts $script:developExpected
+      -ProducedContexts $script:developExpected `
+      -ActualStatus 'available' `
+      -ActualContexts $script:developExpected
 
-    Test-Path -LiteralPath (Join-Path $resultsDir 'session-index-v2.json') | Should -BeTrue
+    $v2Path = Join-Path $resultsDir 'session-index-v2.json'
+    Test-Path -LiteralPath $v2Path | Should -BeTrue
+    $v2 = Get-Content -LiteralPath $v2Path -Raw | ConvertFrom-Json -Depth 50
+    @($v2.branchProtection.expected) | Should -Be ($script:developExpected | Sort-Object)
+    (@($v2.branchProtection.actual) | Sort-Object) | Should -Be ($script:developExpected | Sort-Object)
+    @($v2.artifacts).Count | Should -BeGreaterThan 0
   }
 }
