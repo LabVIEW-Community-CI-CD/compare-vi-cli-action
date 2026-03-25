@@ -46,6 +46,7 @@ $continuitySummary = Read-HandoffJson -Name 'continuity-summary.json'
 $monitoringMode = Read-HandoffJson -Name 'monitoring-mode.json'
 $governorSummary = Read-HandoffJson -Name 'autonomous-governor-summary.json'
 $governorPortfolioSummary = Read-HandoffJson -Name 'autonomous-governor-portfolio-summary.json'
+$contextConcentrator = Read-HandoffJson -Name 'sagan-context-concentrator.json'
 $operatorSteeringEvent = Read-HandoffJson -Name 'operator-steering-event.json'
 
 if ($issueSummary) {
@@ -277,6 +278,18 @@ if ($governorSummary) {
   Write-Host ("  next     : {0}" -f (Format-NullableValue $governorSummary.summary.nextAction))
   Write-Host ("  queue    : {0}" -f (Format-NullableValue $governorSummary.summary.queueState))
   Write-Host ("  signal   : {0}" -f (Format-NullableValue $governorSummary.summary.signalQuality))
+  if ($governorSummary.summary.PSObject.Properties['releaseSigningStatus']) {
+    Write-Host ("  release  : {0}" -f (Format-NullableValue $governorSummary.summary.releaseSigningStatus))
+    if ($governorSummary.summary.PSObject.Properties['releaseSigningExternalBlocker'] -and $governorSummary.summary.releaseSigningExternalBlocker) {
+      Write-Host ("  blocker  : {0}" -f (Format-NullableValue $governorSummary.summary.releaseSigningExternalBlocker))
+    }
+    if ($governorSummary.summary.PSObject.Properties['releasePublishedBundleState'] -and $governorSummary.summary.releasePublishedBundleState) {
+      Write-Host ("  bundle   : {0}" -f (Format-NullableValue $governorSummary.summary.releasePublishedBundleState))
+    }
+    if ($governorSummary.summary.PSObject.Properties['releasePublishedBundleReleaseTag'] -and $governorSummary.summary.releasePublishedBundleReleaseTag) {
+      Write-Host ("  bundleTag: {0}" -f (Format-NullableValue $governorSummary.summary.releasePublishedBundleReleaseTag))
+    }
+  }
   if ($governorSummary.summary.nextOwnerRepository) {
     Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governorSummary.summary.nextOwnerRepository))
   }
@@ -304,6 +317,21 @@ if ($governorPortfolioSummary) {
   Write-Host ("  next     : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.nextAction))
   Write-Host ("  template : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.templateMonitoringStatus))
   Write-Host ("  proof    : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.supportedProofStatus))
+  if ($governorPortfolioSummary.summary.PSObject.Properties['viHistoryDistributorDependencyStatus']) {
+    Write-Host ("  vhist    : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.viHistoryDistributorDependencyStatus))
+    if ($governorPortfolioSummary.summary.PSObject.Properties['viHistoryDistributorDependencyTargetRepository'] -and $governorPortfolioSummary.summary.viHistoryDistributorDependencyTargetRepository) {
+      Write-Host ("  vhistRepo: {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.viHistoryDistributorDependencyTargetRepository))
+    }
+    if ($governorPortfolioSummary.summary.PSObject.Properties['viHistoryDistributorDependencyExternalBlocker'] -and $governorPortfolioSummary.summary.viHistoryDistributorDependencyExternalBlocker) {
+      Write-Host ("  vhistBlk : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.viHistoryDistributorDependencyExternalBlocker))
+    }
+    if ($governorPortfolioSummary.summary.PSObject.Properties['viHistoryDistributorDependencyPublishedBundleState'] -and $governorPortfolioSummary.summary.viHistoryDistributorDependencyPublishedBundleState) {
+      Write-Host ("  vhistPub : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.viHistoryDistributorDependencyPublishedBundleState))
+    }
+    if ($governorPortfolioSummary.summary.PSObject.Properties['viHistoryDistributorDependencyPublishedBundleReleaseTag'] -and $governorPortfolioSummary.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag) {
+      Write-Host ("  vhistTag : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag))
+    }
+  }
   if ($governorPortfolioSummary.summary.nextOwnerRepository) {
     Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.nextOwnerRepository))
   }
@@ -316,6 +344,23 @@ if ($governorPortfolioSummary) {
     }
   }
   Set-Variable -Name HandoffAutonomousGovernorPortfolioSummary -Scope Global -Value $governorPortfolioSummary -Force
+}
+if ($contextConcentrator) {
+  Write-Host '[handoff] Context concentrator' -ForegroundColor Cyan
+  Write-Host ("  status   : {0}" -f (Format-NullableValue $contextConcentrator.summary.concentrationStatus))
+  if ($contextConcentrator.summary.activeIssueNumber) {
+    Write-Host ("  issue    : #{0}" -f (Format-NullableValue $contextConcentrator.summary.activeIssueNumber))
+  }
+  Write-Host ("  owner    : {0}" -f (Format-NullableValue $contextConcentrator.summary.currentOwnerRepository))
+  Write-Host ("  next     : {0}" -f (Format-NullableValue $contextConcentrator.summary.nextAction))
+  Write-Host ("  hot/warm : {0}/{1}" -f (Format-NullableValue $contextConcentrator.summary.hotWorkingSetCount), (Format-NullableValue $contextConcentrator.summary.warmMemoryCount))
+  Write-Host ("  archive  : {0}" -f (Format-NullableValue $contextConcentrator.summary.archiveCount))
+  Write-Host ("  blockers : {0}" -f (Format-NullableValue $contextConcentrator.summary.blockerCount))
+  Write-Host ('  spend    : ${0}' -f (Format-NullableValue $contextConcentrator.summary.blendedLowerBoundUsd))
+  foreach ($entry in @($contextConcentrator.memory.hotWorkingSet | Select-Object -First 3)) {
+    Write-Host ("  - {0} [{1}]" -f (Format-NullableValue $entry.label), (Format-NullableValue $entry.status))
+  }
+  Set-Variable -Name HandoffContextConcentrator -Scope Global -Value $contextConcentrator -Force
 }
 if ($operatorSteeringEvent) {
   Write-Host '[handoff] Operator steering event' -ForegroundColor Cyan

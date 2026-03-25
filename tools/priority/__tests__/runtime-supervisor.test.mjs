@@ -561,6 +561,26 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
           },
           error: null
         },
+        executionBundle: {
+          path: 'tests/results/_agent/runtime/execution-cell-bundle.json',
+          schema: 'priority/execution-cell-bundle-report@v1',
+          status: 'committed',
+          cellId: 'cell-sagan-kernel',
+          laneId: 'docker-lane-01',
+          cellClass: 'kernel-coordinator',
+          suiteClass: 'dual-plane-parity',
+          executionCellLeaseId: 'exec-lease-123',
+          dockerLaneLeaseId: 'docker-lease-456',
+          harnessKind: 'teststand-compare-harness',
+          harnessInstanceId: 'ts-harness-01',
+          planeBinding: 'dual-plane-parity',
+          premiumSaganMode: true,
+          reciprocalLinkReady: true,
+          effectiveBillableRateUsdPerHour: 375,
+          operatorAuthorizationRef: 'budget-auth://operator/session-2026-03-24',
+          isolatedLaneGroupId: 'host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+        },
         laneStatuses: [
           {
             id: 'hosted-linux-proof',
@@ -595,6 +615,9 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
           deferredLaneCount: 1,
           manualLaneCount: 1,
           shadowLaneCount: 0,
+          executionBundleStatus: 'committed',
+          executionBundleReciprocalLinkReady: true,
+          executionBundlePremiumSaganMode: true,
           pullRequestStatus: 'not-requested',
           orchestratorDisposition: 'wait-hosted-run'
         }
@@ -763,7 +786,40 @@ test('buildCompareviTaskPacket projects concurrent lane status receipts from the
 
   assert.equal(packet.status, 'waiting-ci');
   assert.equal(packet.evidence.delivery.laneLifecycle, 'waiting-ci');
+  assert.equal(packet.evidence.delivery.executionTopology.status, 'bundle-committed');
+  assert.equal(packet.evidence.delivery.executionTopology.executionPlane, 'hosted');
+  assert.equal(packet.evidence.delivery.executionTopology.providerId, 'hosted-github-workflow');
+  assert.equal(packet.evidence.delivery.executionTopology.workerSlotId, 'worker-slot-2');
+  assert.equal(packet.evidence.delivery.executionTopology.cellId, 'cell-sagan-kernel');
+  assert.equal(packet.evidence.delivery.executionTopology.laneId, 'docker-lane-01');
+  assert.equal(packet.evidence.delivery.executionTopology.cellClass, 'kernel-coordinator');
+  assert.equal(packet.evidence.delivery.executionTopology.suiteClass, 'dual-plane-parity');
+  assert.equal(packet.evidence.delivery.executionTopology.planeBinding, 'dual-plane-parity');
+  assert.equal(packet.evidence.delivery.executionTopology.harnessKind, 'teststand-compare-harness');
+  assert.equal(packet.evidence.delivery.executionTopology.harnessInstanceId, 'ts-harness-01');
+  assert.equal(packet.evidence.delivery.executionTopology.executionCellLeaseId, 'exec-lease-123');
+  assert.equal(packet.evidence.delivery.executionTopology.dockerLaneLeaseId, 'docker-lease-456');
+  assert.equal(packet.evidence.delivery.executionTopology.premiumSaganMode, true);
+  assert.equal(packet.evidence.delivery.executionTopology.reciprocalLinkReady, true);
+  assert.equal(
+    packet.evidence.delivery.executionTopology.operatorAuthorizationRef,
+    'budget-auth://operator/session-2026-03-24'
+  );
+  assert.equal(packet.evidence.delivery.executionTopology.runtimeSurface, 'windows-native-teststand');
+  assert.equal(packet.evidence.delivery.executionTopology.processModelClass, 'parallel-process-model');
+  assert.equal(packet.evidence.delivery.executionTopology.windowsOnly, true);
+  assert.equal(packet.evidence.delivery.executionTopology.requestedSimultaneous, true);
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus.executionBundle.status, 'committed');
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus.executionBundle.cellClass, 'kernel-coordinator');
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus.executionBundle.suiteClass, 'dual-plane-parity');
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus.executionBundle.harnessKind, 'teststand-compare-harness');
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus.executionBundle.reciprocalLinkReady, true);
+  assert.equal(
+    packet.evidence.delivery.concurrentLaneStatus.executionBundle.operatorAuthorizationRef,
+    'budget-auth://operator/session-2026-03-24'
+  );
   assert.equal(packet.evidence.delivery.concurrentLaneStatus.summary.orchestratorDisposition, 'wait-hosted-run');
+  assert.equal(packet.evidence.delivery.concurrentLaneStatus.summary.executionBundleStatus, 'committed');
   assert.equal(packet.evidence.delivery.concurrentLaneStatus.summary.deferredLaneCount, 1);
   assert.equal(packet.evidence.delivery.workerProviderSelection.selectedAssignmentMode, 'async-validation');
   assert.equal(
@@ -7487,6 +7543,28 @@ test('persistDeliveryAgentRuntimeState keeps deferred concurrent lane obligation
     'release-with-deferred-local'
   );
   assert.equal(persistedState.activeLane.concurrentLaneStatus.summary.shadowLaneCount, 1);
+  assert.equal(persistedState.activeLane.executionTopology.status, 'logical-lanes-tracked');
+  assert.equal(persistedState.activeLane.executionTopology.executionPlane, null);
+  assert.equal(persistedState.activeLane.executionTopology.providerId, null);
+  assert.equal(persistedState.activeLane.executionTopology.workerSlotId, null);
+  assert.equal(persistedState.activeLane.executionTopology.cellId, null);
+  assert.equal(persistedState.activeLane.executionTopology.laneId, null);
+  assert.equal(persistedState.activeLane.executionTopology.cellClass, null);
+  assert.equal(persistedState.activeLane.executionTopology.suiteClass, null);
+  assert.equal(persistedState.activeLane.executionTopology.planeBinding, null);
+  assert.equal(persistedState.activeLane.executionTopology.harnessKind, null);
+  assert.equal(persistedState.activeLane.executionTopology.harnessInstanceId, null);
+  assert.equal(persistedState.activeLane.executionTopology.executionCellLeaseId, null);
+  assert.equal(persistedState.activeLane.executionTopology.dockerLaneLeaseId, null);
+  assert.equal(persistedState.activeLane.executionTopology.premiumSaganMode, false);
+  assert.equal(persistedState.activeLane.executionTopology.reciprocalLinkReady, false);
+  assert.equal(persistedState.activeLane.executionTopology.operatorAuthorizationRef, null);
+  assert.equal(persistedState.activeLane.executionTopology.activeLogicalLaneCount, 4);
+  assert.equal(persistedState.activeLane.executionTopology.seededLogicalLaneCount, 4);
+  assert.equal(persistedState.activeLane.executionTopology.runtimeSurface, null);
+  assert.equal(persistedState.activeLane.executionTopology.processModelClass, null);
+  assert.equal(persistedState.activeLane.executionTopology.windowsOnly, false);
+  assert.equal(persistedState.activeLane.executionTopology.requestedSimultaneous, false);
   assert.equal(
     persistedState.artifacts.concurrentLaneApplyReceiptPath,
     'tests/results/_agent/runtime/concurrent-lane-apply-receipt.json'

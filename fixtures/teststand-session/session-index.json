@@ -54,5 +54,37 @@
     "command": "lvcompare --diff --nobdcosm --nofppos --noattr --out compare-report.html VI1.vi VI2.vi",
     "diff": false
   },
-  "error": null
+  "error": null,
+  "executionCell": {
+    "cellId": "exec-cell-hooke-01",
+    "leaseId": "lease-hooke-01",
+    "leasePath": "tests/results/_agent/runtime/execution-cell-hooke-01.json",
+    "agentId": "hooke",
+    "agentClass": "subagent",
+    "cellClass": "worker",
+    "suiteClass": "single-compare",
+    "planeBinding": "native-labview-2025-64",
+    "runtimeSurface": "windows-native-teststand",
+    "premiumSaganMode": false,
+    "operatorAuthorizationRef": null,
+    "workingRoot": "tests/results/teststand-session",
+    "artifactRoot": "tests/results/teststand-session",
+    "isolatedLaneGroupId": "host-os-fingerprint:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "hostOsFingerprintSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  },
+  "harnessInstance": {
+    "harnessKind": "teststand-compare-harness",
+    "instanceId": "ts-harness-hooke-01",
+    "role": "single-plane",
+    "processModelClass": "sequential-process-model",
+    "planeBinding": "native-labview-2025-64",
+    "parentInstanceId": null
+  },
+  "processModel": {
+    "runtimeSurface": "windows-native-teststand",
+    "processModelClass": "sequential-process-model",
+    "windowsOnly": true,
+    "rootHarnessInstanceId": "ts-harness-hooke-01",
+    "planeCount": 1
+  }
 }

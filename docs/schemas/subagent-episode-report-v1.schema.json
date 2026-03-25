@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/subagent-episode-report-v1.schema.json",
+  "title": "Subagent Episode Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "inputs",
+    "episodeId",
+    "agent",
+    "task",
+    "execution",
+    "summary",
+    "evidence",
+    "cost"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/subagent-episode-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": ["string", "null"]
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourcePath"],
+      "properties": {
+        "sourcePath": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "episodeId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "role", "model"],
+      "properties": {
+        "id": { "type": ["string", "null"] },
+        "name": { "type": ["string", "null"] },
+        "role": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "class", "issueNumber", "issueUrl"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "class": { "type": ["string", "null"] },
+        "issueNumber": { "type": ["integer", "null"], "minimum": 1 },
+        "issueUrl": { "type": ["string", "null"] }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "lane", "branch", "executionPlane", "dockerLaneId", "hostCapabilityLeaseId"],
+      "properties": {
+        "status": { "type": "string", "minLength": 1 },
+        "lane": { "type": ["string", "null"] },
+        "branch": { "type": ["string", "null"] },
+        "executionPlane": { "type": ["string", "null"] },
+        "dockerLaneId": { "type": ["string", "null"] },
+        "hostCapabilityLeaseId": { "type": ["string", "null"] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "outcome", "blocker", "nextAction", "detail"],
+      "properties": {
+        "status": { "type": "string", "minLength": 1 },
+        "outcome": { "type": ["string", "null"] },
+        "blocker": { "type": ["string", "null"] },
+        "nextAction": { "type": ["string", "null"] },
+        "detail": { "type": ["string", "null"] }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filesTouched", "receipts", "commands", "notes"],
+      "properties": {
+        "filesTouched": { "$ref": "#/$defs/stringArray" },
+        "receipts": { "$ref": "#/$defs/stringArray" },
+        "commands": { "$ref": "#/$defs/stringArray" },
+        "notes": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observedDurationSeconds", "tokenUsd", "operatorLaborUsd", "blendedLowerBoundUsd"],
+      "properties": {
+        "observedDurationSeconds": { "type": ["number", "null"] },
+        "tokenUsd": { "type": ["number", "null"] },
+        "operatorLaborUsd": { "type": ["number", "null"] },
+        "blendedLowerBoundUsd": { "type": ["number", "null"] }
+      }
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

@@ -80,12 +80,29 @@ test('release workflow explicitly dispatches publish-tools-image with actions wr
   assert.ok(dispatchStep, 'release workflow should dispatch publish-tools-image explicitly');
   assert.equal(dispatchStep.uses, 'actions/github-script@v8');
   assert.match(dispatchStep.with.script, /workflow_id:\s*'publish-tools-image\.yml'/);
-  assert.match(dispatchStep.with.script, /ref:\s*'\$\{\{\s*github\.ref_name\s*\}\}'/);
+  assert.match(dispatchStep.with.script, /ref:\s*'develop'/);
   assert.match(
     dispatchStep.with.script,
     /const releaseVersion = '\$\{\{\s*steps\.comparevi_tools\.outputs\.comparevi_tools_release_version\s*\}\}';/
   );
   assert.match(dispatchStep.with.script, /const releaseChannel = releaseVersion\.includes\('-rc\.'\) \? 'rc' : 'stable';/);
+});
+
+test('release workflow remains tag-triggered and also supports workflow_dispatch replay for repaired tags', () => {
+  const workflowPath = path.join(workflowsRoot, 'release.yml');
+  const workflowRaw = readFileSync(workflowPath, 'utf8');
+  const workflow = yaml.load(workflowRaw);
+
+  assert.deepEqual(workflow?.on?.push?.tags, ['v*']);
+  assert.ok(Object.prototype.hasOwnProperty.call(workflow?.on ?? {}, 'workflow_dispatch'));
+  assert.equal(workflow?.on?.workflow_dispatch?.inputs?.release_tag?.required, true);
+  assert.equal(workflow?.on?.workflow_dispatch?.inputs?.release_tag?.type, 'string');
+  assert.match(workflowRaw, /name: Resolve release target tag/);
+  assert.match(workflowRaw, /tag='\$\{\{\s*inputs\.release_tag\s*\}\}'/);
+  assert.match(workflowRaw, /target_tag:\s*\$\{\{\s*steps\.release_target\.outputs\.tag\s*\}\}/);
+  assert.match(workflowRaw, /ref:\s*\$\{\{\s*steps\.release_target\.outputs\.tag\s*\}\}/);
+  assert.match(workflowRaw, /RELEASE_TAG:\s*\$\{\{\s*needs\.certification-matrix\.outputs\.target_tag\s*\}\}/);
+  assert.match(workflowRaw, /tag_name:\s*\$\{\{\s*env\.RELEASE_TAG\s*\}\}/);
 });
 
 test('release workflow resolves downloaded artifacts through the shared helper before validation', () => {
@@ -125,7 +142,8 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.match(workflowRaw, /name: Download release-review scenario artifacts/);
   assert.match(workflowRaw, /merge-multiple:\s*true/);
   assert.match(workflowRaw, /name: Resolve release source commit/);
-  assert.match(workflowRaw, /git rev-parse "\$\{\{\s*github\.ref_name\s*\}\}\^\{commit\}"/);
+  assert.match(workflowRaw, /git fetch --force --tags origin "refs\/tags\/\$\{RELEASE_TAG\}:refs\/tags\/\$\{RELEASE_TAG\}"/);
+  assert.match(workflowRaw, /git rev-parse "\$\{RELEASE_TAG\}\^\{commit\}"/);
   assert.match(workflowRaw, /name: Resolve downstream proving artifact selection/);
   assert.match(workflowRaw, /resolve-downstream-proving-artifact\.mjs/);
   assert.match(workflowRaw, /--workflow downstream-promotion\.yml/);
@@ -153,6 +171,19 @@ test('release workflow resolves downloaded artifacts through the shared helper b
   assert.doesNotMatch(workflowRaw, /tarball=\"cli-dl\/comparevi-cli-v\$\{v\}-linux-x64-selfcontained\.tar\.gz\"/);
   assert.doesNotMatch(workflowRaw, /cli-dl\/SHA256SUMS\.txt/);
   assert.doesNotMatch(workflowRaw, /steps\.contract_artifacts\.outputs\.linux_tarball_path/);
+});
+
+test('release workflow appends repair-mode guidance for unsigned or lightweight tags', () => {
+  const workflowPath = path.join(workflowsRoot, 'release.yml');
+  const workflowRaw = readFileSync(workflowPath, 'utf8');
+
+  assert.match(workflowRaw, /name: Append release trust remediation guidance/);
+  assert.match(workflowRaw, /node tools\/priority\/release-trust-remediation\.mjs/);
+  assert.match(workflowRaw, /--trust-report tests\/results\/_agent\/supply-chain\/release-trust-gate\.json/);
+  assert.match(workflowRaw, /--tag-ref "\$\{RELEASE_TAG\}"/);
+  assert.match(workflowRaw, /--output tests\/results\/_agent\/release\/release-trust-remediation\.md/);
+  assert.match(workflowRaw, /--summary "\$GITHUB_STEP_SUMMARY"/);
+  assert.match(workflowRaw, /tests\/results\/_agent\/release\/release-trust-remediation\.md/);
 });
 
 test('monthly release workflow marks itself as the SLO remediation candidate', () => {

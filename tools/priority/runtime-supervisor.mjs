@@ -59,6 +59,7 @@ import {
 } from './sync-standing-priority.mjs';
 import {
   buildWorkerProviderSelectionRequest,
+  buildExecutionTopologyRuntimeState,
   buildLocalReviewLoopRequest,
   buildCanonicalDeliveryDecision,
   selectWorkerProviderAssignment,
@@ -416,6 +417,10 @@ async function resolveGovernorPortfolioHandoff({ repoRoot, repository, deps = {}
       nextAction: null,
       ownerDecisionSource: null,
       governorMode: null,
+      viHistoryDistributorDependencyStatus: null,
+      viHistoryDistributorDependencyTargetRepository: null,
+      viHistoryDistributorDependencyExternalBlocker: null,
+      viHistoryDistributorDependencyPublicationState: null,
       reason: `Unable to read governor portfolio summary: ${error?.message || String(error)}`
     };
   }
@@ -429,6 +434,10 @@ async function resolveGovernorPortfolioHandoff({ repoRoot, repository, deps = {}
       nextAction: null,
       ownerDecisionSource: null,
       governorMode: null,
+      viHistoryDistributorDependencyStatus: null,
+      viHistoryDistributorDependencyTargetRepository: null,
+      viHistoryDistributorDependencyExternalBlocker: null,
+      viHistoryDistributorDependencyPublicationState: null,
       reason: 'Governor portfolio summary is unavailable for queue-empty handoff.'
     };
   }
@@ -442,6 +451,10 @@ async function resolveGovernorPortfolioHandoff({ repoRoot, repository, deps = {}
       nextAction: null,
       ownerDecisionSource: null,
       governorMode: null,
+      viHistoryDistributorDependencyStatus: null,
+      viHistoryDistributorDependencyTargetRepository: null,
+      viHistoryDistributorDependencyExternalBlocker: null,
+      viHistoryDistributorDependencyPublicationState: null,
       reason: 'Governor portfolio summary does not match the expected schema.'
     };
   }
@@ -451,6 +464,14 @@ async function resolveGovernorPortfolioHandoff({ repoRoot, repository, deps = {}
   const nextAction = normalizeText(payload?.summary?.nextAction) || null;
   const ownerDecisionSource = normalizeText(payload?.summary?.ownerDecisionSource) || null;
   const governorMode = normalizeText(payload?.summary?.governorMode) || null;
+  const viHistoryDistributorDependencyStatus =
+    normalizeText(payload?.summary?.viHistoryDistributorDependencyStatus) || null;
+  const viHistoryDistributorDependencyTargetRepository =
+    normalizeText(payload?.summary?.viHistoryDistributorDependencyTargetRepository) || null;
+  const viHistoryDistributorDependencyExternalBlocker =
+    normalizeText(payload?.summary?.viHistoryDistributorDependencyExternalBlocker) || null;
+  const viHistoryDistributorDependencyPublicationState =
+    normalizeText(payload?.summary?.viHistoryDistributorDependencyPublicationState) || null;
 
   if (!currentOwnerRepository || !nextOwnerRepository || !nextAction || !ownerDecisionSource || !governorMode) {
     return {
@@ -461,8 +482,32 @@ async function resolveGovernorPortfolioHandoff({ repoRoot, repository, deps = {}
       nextAction,
       ownerDecisionSource,
       governorMode,
+      viHistoryDistributorDependencyStatus,
+      viHistoryDistributorDependencyTargetRepository,
+      viHistoryDistributorDependencyExternalBlocker,
+      viHistoryDistributorDependencyPublicationState,
       reason: 'Governor portfolio summary is missing required owner handoff fields.'
     };
+  }
+
+  let reason = null;
+  if (currentOwnerRepository === repository) {
+    if (viHistoryDistributorDependencyStatus === 'blocked' && viHistoryDistributorDependencyTargetRepository) {
+      reason =
+        `Governor portfolio keeps current ownership in ${currentOwnerRepository} while the vi-history distributor ` +
+        `dependency for ${viHistoryDistributorDependencyTargetRepository} remains blocked` +
+        (viHistoryDistributorDependencyExternalBlocker
+          ? ` (${viHistoryDistributorDependencyExternalBlocker}).`
+          : '.');
+    } else if (viHistoryDistributorDependencyStatus === 'unknown' && viHistoryDistributorDependencyTargetRepository) {
+      reason =
+        `Governor portfolio keeps current ownership in ${currentOwnerRepository} until the vi-history distributor ` +
+        `dependency for ${viHistoryDistributorDependencyTargetRepository} is refreshed.`;
+    } else {
+      reason = `Governor portfolio keeps current ownership in ${currentOwnerRepository}.`;
+    }
+  } else {
+    reason = `Governor portfolio assigns current ownership to ${currentOwnerRepository}.`;
   }
 
   return {
@@ -473,10 +518,11 @@ async function resolveGovernorPortfolioHandoff({ repoRoot, repository, deps = {}
     nextAction,
     ownerDecisionSource,
     governorMode,
-    reason:
-      currentOwnerRepository === repository
-        ? `Governor portfolio keeps current ownership in ${currentOwnerRepository}.`
-        : `Governor portfolio assigns current ownership to ${currentOwnerRepository}.`
+    viHistoryDistributorDependencyStatus,
+    viHistoryDistributorDependencyTargetRepository,
+    viHistoryDistributorDependencyExternalBlocker,
+    viHistoryDistributorDependencyPublicationState,
+    reason
   };
 }
 
@@ -508,8 +554,29 @@ async function resolveGovernorPortfolioPivotExecution({
   const nextAction = normalizeText(governorPortfolioHandoff?.nextAction) || null;
   const ownerDecisionSource = normalizeText(governorPortfolioHandoff?.ownerDecisionSource) || null;
   const governorMode = normalizeText(governorPortfolioHandoff?.governorMode) || null;
+  const viHistoryDistributorDependencyStatus =
+    normalizeText(governorPortfolioHandoff?.viHistoryDistributorDependencyStatus) || null;
+  const viHistoryDistributorDependencyTargetRepository =
+    normalizeText(governorPortfolioHandoff?.viHistoryDistributorDependencyTargetRepository) || null;
+  const viHistoryDistributorDependencyExternalBlocker =
+    normalizeText(governorPortfolioHandoff?.viHistoryDistributorDependencyExternalBlocker) || null;
+  const viHistoryDistributorDependencyPublicationState =
+    normalizeText(governorPortfolioHandoff?.viHistoryDistributorDependencyPublicationState) || null;
 
   if (!nextOwnerRepository || nextOwnerRepository.toLowerCase() === currentRepository.toLowerCase()) {
+    let reason = `Governor portfolio keeps repo-context ownership in ${currentRepository}.`;
+    if (viHistoryDistributorDependencyStatus === 'blocked' && viHistoryDistributorDependencyTargetRepository) {
+      reason =
+        `Governor portfolio keeps repo-context ownership in ${currentRepository} while the vi-history distributor ` +
+        `dependency for ${viHistoryDistributorDependencyTargetRepository} remains blocked` +
+        (viHistoryDistributorDependencyExternalBlocker
+          ? ` (${viHistoryDistributorDependencyExternalBlocker}).`
+          : '.');
+    } else if (viHistoryDistributorDependencyStatus === 'unknown' && viHistoryDistributorDependencyTargetRepository) {
+      reason =
+        `Governor portfolio keeps repo-context ownership in ${currentRepository} until the vi-history distributor ` +
+        `dependency for ${viHistoryDistributorDependencyTargetRepository} is refreshed.`;
+    }
     return {
       status: 'same-repository',
       registryPath: null,
@@ -519,12 +586,16 @@ async function resolveGovernorPortfolioPivotExecution({
       nextAction,
       ownerDecisionSource,
       governorMode,
+      viHistoryDistributorDependencyStatus,
+      viHistoryDistributorDependencyTargetRepository,
+      viHistoryDistributorDependencyExternalBlocker,
+      viHistoryDistributorDependencyPublicationState,
       targetEntrypointPath: null,
       targetHeadSha: null,
       targetCheckoutState: null,
       targetReceipts: null,
       targetCurrentState: null,
-      reason: `Governor portfolio keeps repo-context ownership in ${currentRepository}.`
+      reason
     };
   }
 
@@ -538,6 +609,10 @@ async function resolveGovernorPortfolioPivotExecution({
       nextAction,
       ownerDecisionSource,
       governorMode,
+      viHistoryDistributorDependencyStatus,
+      viHistoryDistributorDependencyTargetRepository,
+      viHistoryDistributorDependencyExternalBlocker,
+      viHistoryDistributorDependencyPublicationState,
       targetEntrypointPath: null,
       targetHeadSha: null,
       targetCheckoutState: null,
@@ -573,6 +648,10 @@ async function resolveGovernorPortfolioPivotExecution({
       nextAction,
       ownerDecisionSource,
       governorMode,
+      viHistoryDistributorDependencyStatus,
+      viHistoryDistributorDependencyTargetRepository,
+      viHistoryDistributorDependencyExternalBlocker,
+      viHistoryDistributorDependencyPublicationState,
       targetEntrypointPath: null,
       targetHeadSha: null,
       targetCheckoutState: null,
@@ -592,6 +671,10 @@ async function resolveGovernorPortfolioPivotExecution({
       nextAction,
       ownerDecisionSource,
       governorMode,
+      viHistoryDistributorDependencyStatus,
+      viHistoryDistributorDependencyTargetRepository,
+      viHistoryDistributorDependencyExternalBlocker,
+      viHistoryDistributorDependencyPublicationState,
       targetEntrypointPath: null,
       targetHeadSha: null,
       targetCheckoutState: null,
@@ -611,6 +694,10 @@ async function resolveGovernorPortfolioPivotExecution({
       nextAction,
       ownerDecisionSource,
       governorMode,
+      viHistoryDistributorDependencyStatus,
+      viHistoryDistributorDependencyTargetRepository,
+      viHistoryDistributorDependencyExternalBlocker,
+      viHistoryDistributorDependencyPublicationState,
       targetEntrypointPath: null,
       targetHeadSha: null,
       targetCheckoutState: null,
@@ -649,6 +736,10 @@ async function resolveGovernorPortfolioPivotExecution({
     nextAction,
     ownerDecisionSource,
     governorMode,
+    viHistoryDistributorDependencyStatus,
+    viHistoryDistributorDependencyTargetRepository,
+    viHistoryDistributorDependencyExternalBlocker,
+    viHistoryDistributorDependencyPublicationState,
     targetEntrypointPath: normalizeText(entrypoint.path) || null,
     targetHeadSha: normalizeText(entrypoint.headSha) || null,
     targetCheckoutState: normalizeText(entrypoint.checkoutState) || null,
@@ -733,6 +824,7 @@ function projectConcurrentLaneStatusReceipt(receiptPath, receipt) {
   const hostedRun = receipt.hostedRun && typeof receipt.hostedRun === 'object' ? receipt.hostedRun : {};
   const pullRequest = receipt.pullRequest && typeof receipt.pullRequest === 'object' ? receipt.pullRequest : {};
   const mergeQueue = pullRequest.mergeQueue && typeof pullRequest.mergeQueue === 'object' ? pullRequest.mergeQueue : {};
+  const executionBundle = receipt.executionBundle && typeof receipt.executionBundle === 'object' ? receipt.executionBundle : {};
 
   return {
     receiptPath,
@@ -755,6 +847,28 @@ function projectConcurrentLaneStatusReceipt(receiptPath, receipt) {
         enqueuedAt: normalizeText(mergeQueue.enqueuedAt) || null
       }
     },
+    executionBundle: {
+      path: normalizeText(executionBundle.path) || null,
+      schema: normalizeText(executionBundle.schema) || null,
+      status: normalizeText(executionBundle.status) || null,
+      cellId: normalizeText(executionBundle.cellId) || null,
+      laneId: normalizeText(executionBundle.laneId) || null,
+      cellClass: normalizeText(executionBundle.cellClass) || null,
+      suiteClass: normalizeText(executionBundle.suiteClass) || null,
+      executionCellLeaseId: normalizeText(executionBundle.executionCellLeaseId) || null,
+      dockerLaneLeaseId: normalizeText(executionBundle.dockerLaneLeaseId) || null,
+      harnessKind: normalizeText(executionBundle.harnessKind) || null,
+      harnessInstanceId: normalizeText(executionBundle.harnessInstanceId) || null,
+      planeBinding: normalizeText(executionBundle.planeBinding) || null,
+      premiumSaganMode: executionBundle.premiumSaganMode === true,
+      reciprocalLinkReady: executionBundle.reciprocalLinkReady === true,
+      effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle.effectiveBillableRateUsdPerHour)
+        ? executionBundle.effectiveBillableRateUsdPerHour
+        : null,
+      operatorAuthorizationRef: normalizeText(executionBundle.operatorAuthorizationRef) || null,
+      isolatedLaneGroupId: normalizeText(executionBundle.isolatedLaneGroupId) || null,
+      fingerprintSha256: normalizeText(executionBundle.fingerprintSha256) || null
+    },
     summary: {
       laneCount: coercePositiveInteger(summary.laneCount) ?? 0,
       activeLaneCount: coercePositiveInteger(summary.activeLaneCount) ?? 0,
@@ -763,6 +877,9 @@ function projectConcurrentLaneStatusReceipt(receiptPath, receipt) {
       deferredLaneCount: coercePositiveInteger(summary.deferredLaneCount) ?? 0,
       manualLaneCount: coercePositiveInteger(summary.manualLaneCount) ?? 0,
       shadowLaneCount: coercePositiveInteger(summary.shadowLaneCount) ?? 0,
+      executionBundleStatus: normalizeText(summary.executionBundleStatus) || null,
+      executionBundleReciprocalLinkReady: summary.executionBundleReciprocalLinkReady === true,
+      executionBundlePremiumSaganMode: summary.executionBundlePremiumSaganMode === true,
       pullRequestStatus: normalizeText(summary.pullRequestStatus) || null,
       orchestratorDisposition: normalizeText(summary.orchestratorDisposition) || null
     }
@@ -1074,7 +1191,16 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
 
       let reason = classification.message;
       if (governorPortfolioHandoff.status === 'owner-match') {
-        if (
+        if (normalizeText(governorPortfolioHandoff.viHistoryDistributorDependencyStatus) === 'blocked') {
+          const dependencyTarget =
+            normalizeText(governorPortfolioHandoff.viHistoryDistributorDependencyTargetRepository) ||
+            'the canonical template';
+          const dependencyBlocker = normalizeText(governorPortfolioHandoff.viHistoryDistributorDependencyExternalBlocker);
+          reason =
+            `standing queue is empty; governor portfolio keeps ownership in ${governorPortfolioHandoff.currentOwnerRepository} ` +
+            `while the vi-history distributor dependency for ${dependencyTarget} remains blocked` +
+            (dependencyBlocker ? ` (${dependencyBlocker}).` : '.');
+        } else if (
           normalizeText(governorPortfolioHandoff.nextOwnerRepository) &&
           normalizeText(governorPortfolioHandoff.nextOwnerRepository).toLowerCase() !== targetRepository.toLowerCase() &&
           ['future-agent-may-pivot', 'reopen-template-monitoring-work'].includes(
@@ -1296,6 +1422,15 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
     deps,
     selectedProviderId: workerProviderSelection.selectedProviderId
   });
+  const executionTopology = buildExecutionTopologyRuntimeState({
+    providerSelection: workerProviderSelection,
+    workerSlotId:
+      normalizeText(workerBranch?.slotId) ||
+      normalizeText(workerReady?.slotId) ||
+      normalizeText(preparedWorker?.slotId) ||
+      null,
+    concurrentLaneStatus
+  });
 
   return {
     source: 'comparevi-runtime',
@@ -1386,6 +1521,7 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
         backlog: artifacts.backlogRepair ?? null,
         concurrentLaneApply,
         concurrentLaneStatus,
+        executionTopology,
         planeTransition,
         localReviewLoop,
         liveAgentModelSelection,

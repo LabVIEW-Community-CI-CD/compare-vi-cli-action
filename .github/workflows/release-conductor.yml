@@ -8,6 +8,11 @@ on:
         required: false
         default: false
         type: boolean
+      repair_existing_tag:
+        description: 'Repair an existing authoritative tag as a signed annotated tag'
+        required: false
+        default: false
+        type: boolean
       channel:
         description: 'Release channel'
         required: false
@@ -66,12 +71,82 @@ jobs:
         run: |
           pwsh -NoLogo -NoProfile -File tools/priority/Resolve-PolicyToken.ps1 -TokenFileName release-conductor-gh-token.txt
 
+      - name: Configure release tag signing material
+        shell: bash
+        env:
+          RELEASE_TAG_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_TAG_SIGNING_PRIVATE_KEY }}
+          RELEASE_TAG_SIGNING_PUBLIC_KEY: ${{ secrets.RELEASE_TAG_SIGNING_PUBLIC_KEY }}
+          RELEASE_TAG_SIGNING_IDENTITY_NAME: ${{ vars.RELEASE_TAG_SIGNING_IDENTITY_NAME || '' }}
+          RELEASE_TAG_SIGNING_IDENTITY_EMAIL: ${{ vars.RELEASE_TAG_SIGNING_IDENTITY_EMAIL || '' }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_TAG_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "No release tag signing key configured; skipping workflow-owned signing setup."
+            exit 0
+          fi
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::GH_TOKEN is unavailable after Resolve-PolicyToken; cannot derive workflow signing identity."
+            exit 1
+          fi
+          signing_dir="$RUNNER_TEMP/release-tag-signing"
+          mkdir -p "$signing_dir"
+          private_key_path="$signing_dir/id_release_tag_signing"
+          public_key_path="${private_key_path}.pub"
+          signing_login="$(gh api user --jq '.login')"
+          signing_id="$(gh api user --jq '.id')"
+          signing_name="${RELEASE_TAG_SIGNING_IDENTITY_NAME:-}"
+          signing_email="${RELEASE_TAG_SIGNING_IDENTITY_EMAIL:-}"
+
+          if [[ -z "$signing_name" ]]; then
+            signing_name="$(gh api user --jq '.name // .login')"
+          fi
+          if [[ -z "$signing_email" ]]; then
+            signing_email="$(gh api user --jq '.email // ""')"
+          fi
+          if [[ -z "$signing_email" ]]; then
+            signing_email="${signing_id}+${signing_login}@users.noreply.github.com"
+          fi
+
+          identity_source="policy-token-user"
+          if [[ -n "${RELEASE_TAG_SIGNING_IDENTITY_NAME:-}" || -n "${RELEASE_TAG_SIGNING_IDENTITY_EMAIL:-}" ]]; then
+            identity_source="repo-variable-override"
+          fi
+
+          printf '%s\n' "$RELEASE_TAG_SIGNING_PRIVATE_KEY" > "$private_key_path"
+          chmod 600 "$private_key_path"
+
+          if [[ -n "${RELEASE_TAG_SIGNING_PUBLIC_KEY:-}" ]]; then
+            printf '%s\n' "$RELEASE_TAG_SIGNING_PUBLIC_KEY" > "$public_key_path"
+          else
+            ssh-keygen -y -f "$private_key_path" > "$public_key_path"
+          fi
+          chmod 644 "$public_key_path"
+
+          git config gpg.format ssh
+          git config user.signingkey "$public_key_path"
+          git config user.name "$signing_name"
+          git config user.email "$signing_email"
+          git config tag.gpgSign true
+
+          {
+            echo "RELEASE_TAG_SIGNING_BACKEND=ssh"
+            echo "RELEASE_TAG_SIGNING_SOURCE=workflow-secret"
+            echo "RELEASE_TAG_SIGNING_IDENTITY_NAME=$signing_name"
+            echo "RELEASE_TAG_SIGNING_IDENTITY_EMAIL=$signing_email"
+            echo "RELEASE_TAG_SIGNING_IDENTITY_LOGIN=$signing_login"
+            echo "RELEASE_TAG_SIGNING_IDENTITY_ID=$signing_id"
+            echo "RELEASE_TAG_SIGNING_IDENTITY_SOURCE=$identity_source"
+          } >> "$GITHUB_ENV"
+
       - name: Run release conductor
         shell: pwsh
         env:
           RELEASE_CONDUCTOR_ENABLED: ${{ vars.RELEASE_CONDUCTOR_ENABLED || '0' }}
+          RELEASE_TAG_SIGNING_BACKEND: ${{ env.RELEASE_TAG_SIGNING_BACKEND || '' }}
+          RELEASE_TAG_SIGNING_SOURCE: ${{ env.RELEASE_TAG_SIGNING_SOURCE || '' }}
         run: |
           npm ci --ignore-scripts
+          node tools/npm/run-script.mjs priority:queue:supervisor -- --dry-run --report tests/results/_agent/queue/queue-supervisor-report.json
           node tools/npm/run-script.mjs priority:policy:snapshot -- --output tests/results/_agent/policy/policy-state-snapshot.json
 
           $reportPath = 'tests/results/_agent/release/release-conductor-report.json'
@@ -105,6 +180,10 @@ jobs:
             $args += '--dry-run'
           }
 
+          if ('${{ inputs.repair_existing_tag }}' -eq 'true') {
+            $args += '--repair-existing-tag'
+          }
+
           $channelInput = '${{ inputs.channel }}'
           if (-not [string]::IsNullOrWhiteSpace($channelInput)) {
             $args += @('--channel', $channelInput.Trim().ToLowerInvariant())
@@ -134,5 +213,6 @@ jobs:
           name: release-conductor-${{ github.run_id }}
           path: |
             tests/results/_agent/release/release-conductor-report.json
+            tests/results/_agent/queue/queue-supervisor-report.json
             tests/results/_agent/policy/policy-state-snapshot.json
           if-no-files-found: error

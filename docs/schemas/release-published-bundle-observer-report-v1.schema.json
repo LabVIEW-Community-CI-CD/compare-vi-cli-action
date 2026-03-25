@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/release-published-bundle-observer-report-v1.schema.json",
+  "title": "Release Published Bundle Observer Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "inputs",
+    "selection",
+    "bundle",
+    "bundleContract",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/release-published-bundle-observer-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestedTag", "resultsDir"],
+      "properties": {
+        "requestedTag": { "type": ["string", "null"] },
+        "resultsDir": { "type": "string", "minLength": 1 }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "releaseTag",
+        "publishedAt",
+        "releaseName",
+        "releaseId",
+        "prerelease",
+        "draft",
+        "assetName",
+        "assetId"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["selected", "release-unobserved", "release-not-found", "asset-missing"]
+        },
+        "releaseTag": { "type": ["string", "null"] },
+        "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+        "releaseName": { "type": ["string", "null"] },
+        "releaseId": { "type": ["integer", "null"] },
+        "prerelease": { "type": ["boolean", "null"] },
+        "draft": { "type": ["boolean", "null"] },
+        "assetName": { "type": ["string", "null"] },
+        "assetId": { "type": ["integer", "null"] }
+      }
+    },
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "archivePath", "extractionRoot", "downloadDirectory"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["not-downloaded", "downloaded", "extracted", "download-failed", "extract-failed"]
+        },
+        "archivePath": { "type": ["string", "null"] },
+        "extractionRoot": { "type": ["string", "null"] },
+        "downloadDirectory": { "type": "string", "minLength": 1 },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "bundleContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "metadataPath",
+        "schema",
+        "authoritativeConsumerPin",
+        "authoritativeConsumerPinKind",
+        "capabilityId",
+        "distributionRole",
+        "distributionModel",
+        "bundleImportPath",
+        "bundleImportPathExists",
+        "releaseAssetPattern",
+        "contractPathResolutions",
+        "dockerCapabilityId",
+        "dockerDistributionRole",
+        "dockerDistributionModel",
+        "authoritativeImageContractSource",
+        "authoritativeImageContractSourceResolved",
+        "dockerBundleImportPath",
+        "dockerBundleImportPathExists",
+        "dockerReleaseAssetPattern",
+        "dockerImageContractSchema",
+        "metadataPresent",
+        "metadataSchemaMatches",
+        "viHistoryCapabilityPresent",
+        "viHistoryCapabilityProducerNative",
+        "dockerProfileCapabilityPresent",
+        "dockerProfileCapabilityProducerNative",
+        "bundleContractPinResolved",
+        "bundleContractPathsResolved"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "release-unobserved",
+            "unobserved",
+            "metadata-missing",
+            "producer-native-incomplete",
+            "producer-native-ready",
+            "download-failed",
+            "extract-failed"
+          ]
+        },
+        "metadataPath": { "type": ["string", "null"] },
+        "schema": { "type": ["string", "null"] },
+        "authoritativeConsumerPin": { "type": ["string", "null"] },
+        "authoritativeConsumerPinKind": { "type": ["string", "null"] },
+        "capabilityId": { "type": ["string", "null"] },
+        "distributionRole": { "type": ["string", "null"] },
+        "distributionModel": { "type": ["string", "null"] },
+        "bundleImportPath": { "type": ["string", "null"] },
+        "bundleImportPathExists": { "type": "boolean" },
+        "releaseAssetPattern": { "type": ["string", "null"] },
+        "contractPathResolutions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "path", "resolved"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "path": { "type": "string", "minLength": 1 },
+              "resolved": { "type": "boolean" }
+            }
+          }
+        },
+        "dockerCapabilityId": { "type": ["string", "null"] },
+        "dockerDistributionRole": { "type": ["string", "null"] },
+        "dockerDistributionModel": { "type": ["string", "null"] },
+        "authoritativeImageContractSource": { "type": ["string", "null"] },
+        "authoritativeImageContractSourceResolved": { "type": "boolean" },
+        "dockerBundleImportPath": { "type": ["string", "null"] },
+        "dockerBundleImportPathExists": { "type": "boolean" },
+        "dockerReleaseAssetPattern": { "type": ["string", "null"] },
+        "dockerImageContractSchema": { "type": ["string", "null"] },
+        "metadataPresent": { "type": "boolean" },
+        "metadataSchemaMatches": { "type": "boolean" },
+        "viHistoryCapabilityPresent": { "type": "boolean" },
+        "viHistoryCapabilityProducerNative": { "type": "boolean" },
+        "dockerProfileCapabilityPresent": { "type": "boolean" },
+        "dockerProfileCapabilityProducerNative": { "type": "boolean" },
+        "bundleContractPinResolved": { "type": "boolean" },
+        "bundleContractPathsResolved": { "type": "boolean" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "releaseTag", "assetName", "publishedAt", "authoritativeConsumerPin"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "release-unobserved",
+            "release-not-found",
+            "asset-missing",
+            "download-failed",
+            "extract-failed",
+            "metadata-missing",
+            "producer-native-incomplete",
+            "producer-native-ready"
+          ]
+        },
+        "releaseTag": { "type": ["string", "null"] },
+        "assetName": { "type": ["string", "null"] },
+        "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+        "authoritativeConsumerPin": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

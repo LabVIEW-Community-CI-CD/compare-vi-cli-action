@@ -38,6 +38,24 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   expectations between backend releases in this repo and facade releases in
   `comparevi-history`.
 
+## [v0.6.4-rc.2] - 2026-03-24
+
+### Changed
+
+- The published `CompareVI.Tools` bundle contract now targets the next RC
+  identity so release publication can carry the merged producer-owned Docker
+  contract instead of replaying the earlier `v0.6.4-rc.1` bundle metadata.
+- Release branch materials now treat `v0.6.4-rc.2` as the active RC cut for the
+  template Docker-profile rail, keeping the changelog, PR notes, checklist, and
+  archived release notes aligned to the same release identity.
+
+### Added
+
+- The `CompareVI.Tools` release manifest now includes the producer-owned
+  `consumerContract.capabilities.dockerProfile` capability and
+  `consumerContract.dockerImageContract` source needed by
+  `LabviewGitHubCiTemplate#20` once the next authoritative bundle is published.
+
 ## [v0.6.4-rc.1] - 2026-03-22
 
 ### Changed

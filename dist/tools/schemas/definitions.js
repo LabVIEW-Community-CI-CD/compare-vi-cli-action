@@ -279,35 +279,136 @@ const warmupModeSchema = z.enum(['detect', 'spawn', 'skip']);
 const warmupEventsSchema = z.union([z.string().min(1), z.null()]);
 const compareCliSchema = cliInfoSchema;
 const comparePolicySchema = z.enum(['lv-first', 'cli-first', 'cli-only', 'lv-only']);
+const testStandCompareOutcomeSchema = z
+    .object({
+    exitCode: z.number(),
+    seconds: z.number().optional(),
+    command: z.string().optional(),
+    diff: z.boolean().optional(),
+})
+    .nullable();
+const testStandCompareNodeSchema = z.object({
+    events: z.string().min(1),
+    capture: z.union([z.string().min(1), z.null()]),
+    report: z.boolean(),
+    command: z.string().min(1).optional(),
+    cliPath: z.string().min(1).optional(),
+    cli: compareCliSchema.optional(),
+    staging: z
+        .object({
+        enabled: z.boolean(),
+        root: z.union([z.string().min(1), z.null()]),
+    })
+        .optional(),
+    allowSameLeaf: z.boolean().optional(),
+    policy: comparePolicySchema.optional(),
+    mode: z.string().min(1).optional(),
+    autoCli: z.boolean().optional(),
+    sameName: z.boolean().optional(),
+    timeoutSeconds: z.number().min(0).optional(),
+});
+const testStandExecutionCellSchema = z.object({
+    cellId: z.string().min(1).nullable().optional(),
+    leaseId: z.string().min(1).nullable().optional(),
+    leasePath: z.string().min(1).nullable().optional(),
+    agentId: z.string().min(1).nullable().optional(),
+    agentClass: z.enum(['sagan', 'subagent', 'other']).nullable().optional(),
+    cellClass: z.enum(['worker', 'coordinator', 'kernel-coordinator']).nullable().optional(),
+    suiteClass: z.enum(['single-compare', 'dual-plane-parity']).nullable().optional(),
+    planeBinding: z.string().min(1).nullable().optional(),
+    runtimeSurface: z.literal('windows-native-teststand').nullable().optional(),
+    premiumSaganMode: z.boolean().optional(),
+    operatorAuthorizationRef: z.string().min(1).nullable().optional(),
+    workingRoot: z.string().min(1).nullable().optional(),
+    artifactRoot: z.string().min(1).nullable().optional(),
+    isolatedLaneGroupId: z.string().min(1).nullable().optional(),
+    hostOsFingerprintSha256: hexSha256.nullable().optional(),
+});
+const testStandProcessModelSchema = z.object({
+    runtimeSurface: z.literal('windows-native-teststand'),
+    processModelClass: z.enum(['sequential-process-model', 'parallel-process-model']),
+    windowsOnly: z.literal(true),
+    rootHarnessInstanceId: z.string().min(1),
+    planeCount: z.number().int().min(1),
+});
+const testStandHarnessInstanceSchema = z.object({
+    harnessKind: z.string().min(1),
+    instanceId: z.string().min(1),
+    role: z.enum(['single-plane', 'coordinator', 'plane-child']),
+    processModelClass: z.enum(['sequential-process-model', 'parallel-process-model']),
+    planeBinding: z.string().min(1).nullable().optional(),
+    parentInstanceId: z.string().min(1).nullable().optional(),
+});
+const testStandPlaneSessionSchema = z.object({
+    plane: z.string().min(1),
+    architecture: z.enum(['32-bit', '64-bit']),
+    labviewExePath: z.union([z.string().min(1), z.null()]).optional(),
+    outputRoot: z.string().min(1),
+    warmup: z.object({
+        mode: warmupModeSchema,
+        events: warmupEventsSchema,
+    }),
+    compare: testStandCompareNodeSchema,
+    outcome: testStandCompareOutcomeSchema,
+    error: z.union([z.string().min(1), z.null()]).optional(),
+    exitCode: z.number(),
+    executionCell: testStandExecutionCellSchema.nullable().optional(),
+    harnessInstance: testStandHarnessInstanceSchema.nullable().optional(),
+    processModel: testStandProcessModelSchema.optional(),
+});
+const testStandParitySummarySchema = z.object({
+    status: z.enum(['match', 'mismatch', 'incomplete']),
+    comparedFields: z.array(z.string().min(1)),
+    exitCodeParity: z.boolean().nullable().optional(),
+    diffParity: z.boolean().nullable().optional(),
+    mismatchCount: z.number().int().min(0),
+    mismatches: z.array(z.object({
+        field: z.string().min(1),
+        x64: z.union([z.string().min(1), z.number(), z.boolean(), z.null()]).optional(),
+        x32: z.union([z.string().min(1), z.number(), z.boolean(), z.null()]).optional(),
+    })),
+});
 const testStandCompareSessionSchema = z.object({
-    schema: z.literal('teststand-compare-session/v1'),
+    schema: z.enum(['teststand-compare-session/v1', 'teststand-compare-session/v2']),
     at: isoString,
     warmup: z.object({
         mode: warmupModeSchema,
         events: warmupEventsSchema,
     }),
-    compare: z.object({
-        events: z.string().min(1),
-        capture: z.union([z.string().min(1), z.null()]),
-        report: z.boolean(),
-        command: z.string().min(1).optional(),
-        cliPath: z.string().min(1).optional(),
-        cli: compareCliSchema.optional(),
-        policy: comparePolicySchema.optional(),
-        mode: z.string().min(1).optional(),
-        autoCli: z.boolean().optional(),
-        sameName: z.boolean().optional(),
-        timeoutSeconds: z.number().min(0).optional(),
-    }),
-    outcome: z
-        .object({
-        exitCode: z.number(),
-        seconds: z.number().optional(),
-        command: z.string().optional(),
-        diff: z.boolean().optional(),
-    })
-        .nullable(),
+    compare: testStandCompareNodeSchema,
+    outcome: testStandCompareOutcomeSchema,
     error: z.union([z.string().min(1), z.null()]).optional(),
+    executionCell: testStandExecutionCellSchema.nullable().optional(),
+    harnessInstance: testStandHarnessInstanceSchema.nullable().optional(),
+    processModel: testStandProcessModelSchema.optional(),
+    suiteClass: z.enum(['single-compare', 'dual-plane-parity']).optional(),
+    primaryPlane: z.string().min(1).optional(),
+    requestedSimultaneous: z.boolean().optional(),
+    planes: z
+        .object({
+        x64: testStandPlaneSessionSchema,
+        x32: testStandPlaneSessionSchema,
+    })
+        .optional(),
+    parity: testStandParitySummarySchema.optional(),
+}).superRefine((value, ctx) => {
+    if (value.schema === 'teststand-compare-session/v2') {
+        if (!value.suiteClass) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'suiteClass is required for v2 sessions', path: ['suiteClass'] });
+        }
+        if (!value.primaryPlane) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'primaryPlane is required for v2 sessions', path: ['primaryPlane'] });
+        }
+        if (typeof value.requestedSimultaneous !== 'boolean') {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'requestedSimultaneous is required for v2 sessions', path: ['requestedSimultaneous'] });
+        }
+        if (!value.planes) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'planes is required for v2 sessions', path: ['planes'] });
+        }
+        if (!value.parity) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'parity is required for v2 sessions', path: ['parity'] });
+        }
+    }
 });
 const invokerEventSchema = z.object({
     timestamp: isoString,

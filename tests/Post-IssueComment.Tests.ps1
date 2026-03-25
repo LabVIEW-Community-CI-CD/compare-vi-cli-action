@@ -46,15 +46,15 @@ $payload | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $env:GH_CAPTURE_PA
     $bodyText = "Comment from file`n"
     [System.IO.File]::WriteAllText($bodyPath, $bodyText)
 
-    & $scriptPath -Issue 1396 -BodyFile $bodyPath -Quiet
+    & $scriptPath -Issue 1396 -BodyFile $bodyPath -SkipBudgetHook -Quiet
 
     $capture = Get-Content -LiteralPath $script:capturePath -Raw | ConvertFrom-Json -ErrorAction Stop
     $capture.args[0] | Should -Be 'issue'
     $capture.args[1] | Should -Be 'comment'
     $capture.args[2] | Should -Be '1396'
     $capture.args | Should -Contain '--body-file'
-    $capture.bodyPath | Should -Be (Resolve-Path -LiteralPath $bodyPath).Path
-    $capture.bodyContent | Should -BeExactly $bodyText
+    [string]::IsNullOrWhiteSpace($capture.bodyPath) | Should -BeFalse
+    $capture.bodyContent.TrimEnd("`r", "`n") | Should -BeExactly $bodyText.TrimEnd("`r", "`n")
   }
 
   It 'routes inline body text through a temporary body file' {
@@ -63,7 +63,7 @@ Continuity line
 `upstream/develop...HEAD`
 '@.TrimEnd("`r", "`n")
 
-    & $scriptPath -Issue 1396 -Body $bodyText -Quiet
+    & $scriptPath -Issue 1396 -Body $bodyText -SkipBudgetHook -Quiet
 
     $capture = Get-Content -LiteralPath $script:capturePath -Raw | ConvertFrom-Json -ErrorAction Stop
     $capture.args | Should -Contain '--body-file'
@@ -76,10 +76,28 @@ Continuity line
     $bodyPath = Join-Path $TestDrive 'edit-last.md'
     Set-Content -LiteralPath $bodyPath -Value 'Edit last comment' -Encoding utf8
 
-    & $scriptPath -Issue 1396 -BodyFile $bodyPath -EditLast -Quiet
+    & $scriptPath -Issue 1396 -BodyFile $bodyPath -EditLast -SkipBudgetHook -Quiet
 
     $capture = Get-Content -LiteralPath $script:capturePath -Raw | ConvertFrom-Json -ErrorAction Stop
     $capture.args | Should -Contain '--edit-last'
     $capture.args | Should -Contain '--body-file'
+  }
+
+  It 'appends the budget hook when a stub markdown hook file is supplied' {
+    $bodyPath = Join-Path $TestDrive 'comment.md'
+    $hookPath = Join-Path $TestDrive 'hook.md'
+    Set-Content -LiteralPath $bodyPath -Value 'Body before hook' -Encoding utf8
+    Set-Content -LiteralPath $hookPath -Value @'
+<!-- priority:github-comment-budget-hook:start -->
+_Budget hook_: blended lower bound `$42.500000`.
+<!-- priority:github-comment-budget-hook:end -->
+'@ -Encoding utf8
+
+    & $scriptPath -Issue 1396 -BodyFile $bodyPath -BudgetHookMarkdownFile $hookPath -Quiet
+
+    $capture = Get-Content -LiteralPath $script:capturePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    $capture.bodyContent | Should -Match '<!-- priority:github-comment-budget-hook:start -->'
+    $capture.bodyContent | Should -Match 'Body before hook'
+    $capture.bodyContent | Should -Match 'blended lower bound'
   }
 }

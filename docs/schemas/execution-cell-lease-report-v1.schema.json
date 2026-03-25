@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/execution-cell-lease-report-v1.schema.json",
+  "title": "Execution Cell Lease Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "action",
+    "status",
+    "cellId",
+    "leasePath",
+    "lease",
+    "summary",
+    "policy"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/execution-cell-lease-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "request",
+        "grant",
+        "commit",
+        "heartbeat",
+        "release",
+        "inspect"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "requested",
+        "granted",
+        "committed",
+        "renewed",
+        "released",
+        "active",
+        "busy",
+        "denied",
+        "not-found",
+        "mismatch",
+        "invalid-state",
+        "stale"
+      ]
+    },
+    "cellId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "leasePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lease": {
+      "oneOf": [
+        {
+          "$ref": "execution-cell-lease-v1.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operatorId",
+        "currency",
+        "laborRateUsdPerHour"
+      ],
+      "properties": {
+        "operatorId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "currency": {
+          "type": "string",
+          "minLength": 1
+        },
+        "laborRateUsdPerHour": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "leaseState",
+        "leaseId",
+        "holder",
+        "agentClass",
+        "cellClass",
+        "harnessKind",
+        "harnessInstanceId",
+        "suiteClass",
+        "planeBinding",
+        "premiumSaganMode",
+        "billableRateMultiplier",
+        "billableRateUsdPerHour",
+        "operatorAuthorizationRef",
+        "isolatedLaneGroupId",
+        "fingerprintSha256",
+        "linkedDockerLaneId",
+        "linkedDockerLaneLeaseId",
+        "workingRoot",
+        "artifactRoot",
+        "isStale",
+        "ageSeconds",
+        "ttlSeconds",
+        "denialReasons",
+        "observations"
+      ],
+      "properties": {
+        "leaseState": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "leaseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "holder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agentClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cellClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harnessKind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harnessInstanceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suiteClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "planeBinding": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "premiumSaganMode": {
+          "type": "boolean"
+        },
+        "billableRateMultiplier": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "billableRateUsdPerHour": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "operatorAuthorizationRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "isolatedLaneGroupId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fingerprintSha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "linkedDockerLaneId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "linkedDockerLaneLeaseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workingRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifactRoot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "isStale": {
+          "type": "boolean"
+        },
+        "ageSeconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "ttlSeconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "denialReasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

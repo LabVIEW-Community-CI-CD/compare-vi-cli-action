@@ -136,11 +136,13 @@ $($consumerMatrixLines -join "`n")
 ## Burn-in tracking
 "@
 
-      $checklistLines = foreach ($item in $RemainingChecklistItems) {
-        "- [ ] $item"
-      }
-      if ($checklistLines.Count -eq 0) {
-        $checklistLines = '- [x] Remove v1 generation from producer paths/workflows.'
+      $checklistLines = @(
+        foreach ($item in $RemainingChecklistItems) {
+          "- [ ] $item"
+        }
+      )
+      if ($checklistLines.Length -eq 0) {
+        $checklistLines = @('- [x] Remove v1 generation from producer paths/workflows.')
       }
 
       Write-TextFile -Path $deprecationPath -Content (@"

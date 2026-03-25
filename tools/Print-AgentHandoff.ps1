@@ -1293,19 +1293,27 @@ try {
   $templateVerificationSyncScript = Join-Path $repoRoot 'tools' 'priority' 'sync-template-agent-verification-report.mjs'
   $templatePivotGateScript = Join-Path $repoRoot 'tools' 'priority' 'template-pivot-gate.mjs'
   $monitoringModeScript = Join-Path $repoRoot 'tools' 'priority' 'handoff-monitoring-mode.mjs'
+  $releasePublishedBundleObserverScript = Join-Path $repoRoot 'tools' 'priority' 'release-published-bundle-observer.mjs'
+  $releaseSigningReadinessScript = Join-Path $repoRoot 'tools' 'priority' 'release-signing-readiness.mjs'
   $governorSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-summary.mjs'
   $governorPortfolioSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-portfolio-summary.mjs'
+  $contextConcentratorScript = Join-Path $repoRoot 'tools' 'priority' 'sagan-context-concentrator.mjs'
   $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
   if ($nodeCmd) {
     $promotionDir = Join-Path $ResultsRoot '_agent/promotion'
+    $releaseDir = Join-Path $ResultsRoot '_agent/release'
     $handoffDir = Join-Path $ResultsRoot '_agent/handoff'
     New-Item -ItemType Directory -Force -Path $promotionDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
     New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
 
     $templateVerificationSeedPath = Join-Path $promotionDir 'template-agent-verification-report.json'
     $templateVerificationOverlayPath = Join-Path $promotionDir 'template-agent-verification-report.local.json'
     $templateVerificationSyncPath = Join-Path $promotionDir 'template-agent-verification-sync.json'
     $templatePivotGatePath = Join-Path $promotionDir 'template-pivot-gate-report.json'
+    $releaseConductorReportPath = Join-Path $releaseDir 'release-conductor-report.json'
+    $releasePublishedBundleObserverPath = Join-Path $releaseDir 'release-published-bundle-observer.json'
+    $releaseSigningReadinessPath = Join-Path $releaseDir 'release-signing-readiness.json'
     $queueEmptyReportPath = Join-Path $repoRoot 'tests/results/_agent/issue/no-standing-priority.json'
     $entrypointStatusPath = Join-Path $ResultsRoot '_agent/handoff/entrypoint-status.json'
     $continuitySummaryPath = Join-Path $ResultsRoot '_agent/handoff/continuity-summary.json'
@@ -1313,6 +1321,7 @@ try {
     $monitoringModePath = Join-Path $handoffDir 'monitoring-mode.json'
     $governorSummaryPath = Join-Path $handoffDir 'autonomous-governor-summary.json'
     $governorPortfolioSummaryPath = Join-Path $handoffDir 'autonomous-governor-portfolio-summary.json'
+    $contextConcentratorPath = Join-Path $handoffDir 'sagan-context-concentrator.json'
 
     if (Test-Path -LiteralPath $repoGraphTruthScript -PathType Leaf) {
       & $nodeCmd.Source $repoGraphTruthScript `
@@ -1346,12 +1355,27 @@ try {
         --output $monitoringModePath | Out-Host
     }
 
+    if (Test-Path -LiteralPath $releasePublishedBundleObserverScript -PathType Leaf) {
+      & $nodeCmd.Source $releasePublishedBundleObserverScript `
+        --repo-root $repoRoot `
+        --output $releasePublishedBundleObserverPath | Out-Host
+    }
+
+    if (Test-Path -LiteralPath $releaseSigningReadinessScript -PathType Leaf) {
+      & $nodeCmd.Source $releaseSigningReadinessScript `
+        --repo-root $repoRoot `
+        --release-conductor-report $releaseConductorReportPath `
+        --release-published-bundle-observer $releasePublishedBundleObserverPath `
+        --output $releaseSigningReadinessPath | Out-Host
+    }
+
     if (Test-Path -LiteralPath $governorSummaryScript -PathType Leaf) {
       & $nodeCmd.Source $governorSummaryScript `
         --repo-root $repoRoot `
         --queue-empty-report $queueEmptyReportPath `
         --continuity-summary $continuitySummaryPath `
         --monitoring-mode $monitoringModePath `
+        --release-signing-readiness $releaseSigningReadinessPath `
         --output $governorSummaryPath | Out-Host
     }
 
@@ -1362,6 +1386,18 @@ try {
         --monitoring-mode $monitoringModePath `
         --repo-graph-truth $repoGraphTruthPath `
         --output $governorPortfolioSummaryPath | Out-Host
+    }
+
+    if (Test-Path -LiteralPath $contextConcentratorScript -PathType Leaf) {
+      & $nodeCmd.Source $contextConcentratorScript `
+        --repo-root $repoRoot `
+        --priority-cache (Join-Path $repoRoot '.agent_priority_cache.json') `
+        --governor-summary $governorSummaryPath `
+        --governor-portfolio-summary $governorPortfolioSummaryPath `
+        --monitoring-mode $monitoringModePath `
+        --operator-steering-event (Join-Path $handoffDir 'operator-steering-event.json') `
+        --episode-directory (Join-Path $ResultsRoot '_agent/memory/subagent-episodes') `
+        --output $contextConcentratorPath | Out-Host
     }
   }
 } catch {
@@ -1517,6 +1553,21 @@ try {
     Write-Host ("  next     : {0}" -f (Format-NullableValue $governor.summary.nextAction))
     Write-Host ("  signal   : {0}" -f (Format-NullableValue $governor.summary.signalQuality))
     Write-Host ("  queue    : {0}" -f (Format-NullableValue $governor.summary.queueState))
+    if ($governor.summary.PSObject.Properties['releaseSigningStatus']) {
+      Write-Host ("  signing  : {0}" -f (Format-NullableValue $governor.summary.releaseSigningStatus))
+      if ($governor.summary.PSObject.Properties['releaseSigningExternalBlocker'] -and $governor.summary.releaseSigningExternalBlocker) {
+        Write-Host ("  blocker  : {0}" -f (Format-NullableValue $governor.summary.releaseSigningExternalBlocker))
+      }
+      if ($governor.summary.PSObject.Properties['releasePublicationState'] -and $governor.summary.releasePublicationState) {
+        Write-Host ("  publish  : {0}" -f (Format-NullableValue $governor.summary.releasePublicationState))
+      }
+      if ($governor.summary.PSObject.Properties['releasePublishedBundleState'] -and $governor.summary.releasePublishedBundleState) {
+        Write-Host ("  bundle   : {0}" -f (Format-NullableValue $governor.summary.releasePublishedBundleState))
+      }
+      if ($governor.summary.PSObject.Properties['releasePublishedBundleReleaseTag'] -and $governor.summary.releasePublishedBundleReleaseTag) {
+        Write-Host ("  bundleTag: {0}" -f (Format-NullableValue $governor.summary.releasePublishedBundleReleaseTag))
+      }
+    }
     if ($governor.summary.nextOwnerRepository) {
       Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governor.summary.nextOwnerRepository))
     }
@@ -1532,6 +1583,39 @@ try {
         Write-Host ("  pr       : {0}" -f (Format-NullableValue $governor.summary.queueHandoffPrUrl))
       }
     }
+    if ($governor.summary.PSObject.Properties['executionTopologyStatus'] -and $governor.summary.executionTopologyStatus) {
+      Write-Host ("  execTopo : {0}" -f (Format-NullableValue $governor.summary.executionTopologyStatus))
+      Write-Host ("  execProv : {0}" -f (Format-NullableValue $governor.summary.executionTopologyProviderId))
+      Write-Host ("  execSlot : {0}" -f (Format-NullableValue $governor.summary.executionTopologyWorkerSlotId))
+      Write-Host ("  execLanes: {0}/{1}" -f
+        (Format-NullableValue $governor.summary.executionTopologyActiveLogicalLaneCount),
+        (Format-NullableValue $governor.summary.executionTopologySeededLogicalLaneCount))
+      if ($governor.summary.PSObject.Properties['executionTopologyRuntimeSurface'] -and $governor.summary.executionTopologyRuntimeSurface) {
+        Write-Host ("  execSurf : {0}" -f (Format-NullableValue $governor.summary.executionTopologyRuntimeSurface))
+      }
+      if ($governor.summary.PSObject.Properties['executionTopologyProcessModelClass'] -and $governor.summary.executionTopologyProcessModelClass) {
+        Write-Host ("  execProc : {0}" -f (Format-NullableValue $governor.summary.executionTopologyProcessModelClass))
+      }
+      if ($governor.summary.PSObject.Properties['executionTopologyRequestedSimultaneous'] -and $governor.summary.executionTopologyRequestedSimultaneous) {
+        Write-Host ("  execSim  : {0}" -f (Format-NullableValue $governor.summary.executionTopologyRequestedSimultaneous))
+      }
+      if ($governor.summary.PSObject.Properties['executionTopologyCellClass'] -and $governor.summary.executionTopologyCellClass) {
+        Write-Host ("  execCell : {0}" -f (Format-NullableValue $governor.summary.executionTopologyCellClass))
+      }
+      if ($governor.summary.PSObject.Properties['executionTopologySuiteClass'] -and $governor.summary.executionTopologySuiteClass) {
+        Write-Host ("  execSuite: {0}" -f (Format-NullableValue $governor.summary.executionTopologySuiteClass))
+      }
+      if ($governor.summary.PSObject.Properties['executionTopologyOperatorAuthorizationRef'] -and $governor.summary.executionTopologyOperatorAuthorizationRef) {
+        Write-Host ("  execAuth : {0}" -f (Format-NullableValue $governor.summary.executionTopologyOperatorAuthorizationRef))
+      }
+    }
+    if ($governor.summary.PSObject.Properties['executionBundleStatus'] -and $governor.summary.executionBundleStatus) {
+      Write-Host ("  exec     : {0}" -f (Format-NullableValue $governor.summary.executionBundleStatus))
+      Write-Host ("  execPlan : {0}" -f (Format-NullableValue $governor.summary.executionBundlePlaneBinding))
+      Write-Host ("  execPrem : {0}" -f (Format-NullableValue $governor.summary.executionBundlePremiumSaganMode))
+      Write-Host ("  execLink : {0}" -f (Format-NullableValue $governor.summary.executionBundleReciprocalLinkReady))
+      Write-Host ("  execRate : {0}" -f (Format-NullableValue $governor.summary.executionBundleEffectiveBillableRateUsdPerHour))
+    }
     if ($env:GITHUB_STEP_SUMMARY) {
       $governorLines = @(
         '### Autonomous Governor',
@@ -1542,6 +1626,21 @@ try {
         ('- Signal quality: {0}' -f (Format-NullableValue $governor.summary.signalQuality)),
         ('- Queue state: {0}' -f (Format-NullableValue $governor.summary.queueState))
       )
+      if ($governor.summary.PSObject.Properties['releaseSigningStatus']) {
+        $governorLines += ('- Release signing: {0}' -f (Format-NullableValue $governor.summary.releaseSigningStatus))
+        if ($governor.summary.PSObject.Properties['releaseSigningExternalBlocker'] -and $governor.summary.releaseSigningExternalBlocker) {
+          $governorLines += ('- Release blocker: {0}' -f (Format-NullableValue $governor.summary.releaseSigningExternalBlocker))
+        }
+        if ($governor.summary.PSObject.Properties['releasePublicationState'] -and $governor.summary.releasePublicationState) {
+          $governorLines += ('- Release publication: {0}' -f (Format-NullableValue $governor.summary.releasePublicationState))
+        }
+        if ($governor.summary.PSObject.Properties['releasePublishedBundleState'] -and $governor.summary.releasePublishedBundleState) {
+          $governorLines += ('- Published bundle: {0}' -f (Format-NullableValue $governor.summary.releasePublishedBundleState))
+        }
+        if ($governor.summary.PSObject.Properties['releasePublishedBundleReleaseTag'] -and $governor.summary.releasePublishedBundleReleaseTag) {
+          $governorLines += ('- Published bundle tag: {0}' -f (Format-NullableValue $governor.summary.releasePublishedBundleReleaseTag))
+        }
+      }
       if ($governor.summary.nextOwnerRepository) {
         $governorLines += ('- Next owner: {0}' -f (Format-NullableValue $governor.summary.nextOwnerRepository))
       }
@@ -1556,6 +1655,39 @@ try {
         if ($governor.summary.PSObject.Properties['queueHandoffPrUrl'] -and $governor.summary.queueHandoffPrUrl) {
           $governorLines += ('- Queue PR: {0}' -f (Format-NullableValue $governor.summary.queueHandoffPrUrl))
         }
+      }
+      if ($governor.summary.PSObject.Properties['executionTopologyStatus'] -and $governor.summary.executionTopologyStatus) {
+        $governorLines += ('- Execution topology: {0}' -f (Format-NullableValue $governor.summary.executionTopologyStatus))
+        $governorLines += ('- Execution provider: {0}' -f (Format-NullableValue $governor.summary.executionTopologyProviderId))
+        $governorLines += ('- Execution worker slot: {0}' -f (Format-NullableValue $governor.summary.executionTopologyWorkerSlotId))
+        $governorLines += ('- Execution logical lanes active/seeded: {0}/{1}' -f
+          (Format-NullableValue $governor.summary.executionTopologyActiveLogicalLaneCount),
+          (Format-NullableValue $governor.summary.executionTopologySeededLogicalLaneCount))
+        if ($governor.summary.PSObject.Properties['executionTopologyRuntimeSurface'] -and $governor.summary.executionTopologyRuntimeSurface) {
+          $governorLines += ('- Execution runtime surface: {0}' -f (Format-NullableValue $governor.summary.executionTopologyRuntimeSurface))
+        }
+        if ($governor.summary.PSObject.Properties['executionTopologyProcessModelClass'] -and $governor.summary.executionTopologyProcessModelClass) {
+          $governorLines += ('- Execution process model: {0}' -f (Format-NullableValue $governor.summary.executionTopologyProcessModelClass))
+        }
+        if ($governor.summary.PSObject.Properties['executionTopologyRequestedSimultaneous'] -and $governor.summary.executionTopologyRequestedSimultaneous) {
+          $governorLines += ('- Execution simultaneous: {0}' -f (Format-NullableValue $governor.summary.executionTopologyRequestedSimultaneous))
+        }
+        if ($governor.summary.PSObject.Properties['executionTopologyCellClass'] -and $governor.summary.executionTopologyCellClass) {
+          $governorLines += ('- Execution cell class: {0}' -f (Format-NullableValue $governor.summary.executionTopologyCellClass))
+        }
+        if ($governor.summary.PSObject.Properties['executionTopologySuiteClass'] -and $governor.summary.executionTopologySuiteClass) {
+          $governorLines += ('- Execution suite class: {0}' -f (Format-NullableValue $governor.summary.executionTopologySuiteClass))
+        }
+        if ($governor.summary.PSObject.Properties['executionTopologyOperatorAuthorizationRef'] -and $governor.summary.executionTopologyOperatorAuthorizationRef) {
+          $governorLines += ('- Execution operator authorization: {0}' -f (Format-NullableValue $governor.summary.executionTopologyOperatorAuthorizationRef))
+        }
+      }
+      if ($governor.summary.PSObject.Properties['executionBundleStatus'] -and $governor.summary.executionBundleStatus) {
+        $governorLines += ('- Execution bundle: {0}' -f (Format-NullableValue $governor.summary.executionBundleStatus))
+        $governorLines += ('- Execution plane: {0}' -f (Format-NullableValue $governor.summary.executionBundlePlaneBinding))
+        $governorLines += ('- Premium Sagan mode: {0}' -f (Format-NullableValue $governor.summary.executionBundlePremiumSaganMode))
+        $governorLines += ('- Execution reciprocal link: {0}' -f (Format-NullableValue $governor.summary.executionBundleReciprocalLinkReady))
+        $governorLines += ('- Execution effective rate USD/hr: {0}' -f (Format-NullableValue $governor.summary.executionBundleEffectiveBillableRateUsdPerHour))
       }
       ($governorLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
     }
@@ -1575,6 +1707,21 @@ try {
     Write-Host ("  next     : {0}" -f (Format-NullableValue $portfolio.summary.nextAction))
     Write-Host ("  template : {0}" -f (Format-NullableValue $portfolio.summary.templateMonitoringStatus))
     Write-Host ("  proof    : {0}" -f (Format-NullableValue $portfolio.summary.supportedProofStatus))
+    if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyStatus']) {
+      Write-Host ("  vhist    : {0}" -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyStatus))
+      if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyTargetRepository'] -and $portfolio.summary.viHistoryDistributorDependencyTargetRepository) {
+        Write-Host ("  vhistRepo: {0}" -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyTargetRepository))
+      }
+      if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyExternalBlocker'] -and $portfolio.summary.viHistoryDistributorDependencyExternalBlocker) {
+        Write-Host ("  vhistBlk : {0}" -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyExternalBlocker))
+      }
+      if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyPublishedBundleState'] -and $portfolio.summary.viHistoryDistributorDependencyPublishedBundleState) {
+        Write-Host ("  vhistPub : {0}" -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyPublishedBundleState))
+      }
+      if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyPublishedBundleReleaseTag'] -and $portfolio.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag) {
+        Write-Host ("  vhistTag : {0}" -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag))
+      }
+    }
     if ($portfolio.summary.nextOwnerRepository) {
       Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $portfolio.summary.nextOwnerRepository))
     }
@@ -1586,6 +1733,39 @@ try {
         Write-Host ("  queueSrc : {0}" -f (Format-NullableValue $portfolio.summary.queueAuthoritySource))
       }
     }
+    if ($portfolio.summary.PSObject.Properties['executionTopologyStatus'] -and $portfolio.summary.executionTopologyStatus) {
+      Write-Host ("  execTopo : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyStatus))
+      Write-Host ("  execProv : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyProviderId))
+      Write-Host ("  execSlot : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyWorkerSlotId))
+      Write-Host ("  execLanes: {0}/{1}" -f
+        (Format-NullableValue $portfolio.summary.executionTopologyActiveLogicalLaneCount),
+        (Format-NullableValue $portfolio.summary.executionTopologySeededLogicalLaneCount))
+      if ($portfolio.summary.PSObject.Properties['executionTopologyRuntimeSurface'] -and $portfolio.summary.executionTopologyRuntimeSurface) {
+        Write-Host ("  execSurf : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyRuntimeSurface))
+      }
+      if ($portfolio.summary.PSObject.Properties['executionTopologyProcessModelClass'] -and $portfolio.summary.executionTopologyProcessModelClass) {
+        Write-Host ("  execProc : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyProcessModelClass))
+      }
+      if ($portfolio.summary.PSObject.Properties['executionTopologyRequestedSimultaneous'] -and $portfolio.summary.executionTopologyRequestedSimultaneous) {
+        Write-Host ("  execSim  : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyRequestedSimultaneous))
+      }
+      if ($portfolio.summary.PSObject.Properties['executionTopologyCellClass'] -and $portfolio.summary.executionTopologyCellClass) {
+        Write-Host ("  execCell : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyCellClass))
+      }
+      if ($portfolio.summary.PSObject.Properties['executionTopologySuiteClass'] -and $portfolio.summary.executionTopologySuiteClass) {
+        Write-Host ("  execSuite: {0}" -f (Format-NullableValue $portfolio.summary.executionTopologySuiteClass))
+      }
+      if ($portfolio.summary.PSObject.Properties['executionTopologyOperatorAuthorizationRef'] -and $portfolio.summary.executionTopologyOperatorAuthorizationRef) {
+        Write-Host ("  execAuth : {0}" -f (Format-NullableValue $portfolio.summary.executionTopologyOperatorAuthorizationRef))
+      }
+    }
+    if ($portfolio.summary.PSObject.Properties['executionBundleStatus'] -and $portfolio.summary.executionBundleStatus) {
+      Write-Host ("  exec     : {0}" -f (Format-NullableValue $portfolio.summary.executionBundleStatus))
+      Write-Host ("  execPlan : {0}" -f (Format-NullableValue $portfolio.summary.executionBundlePlaneBinding))
+      Write-Host ("  execPrem : {0}" -f (Format-NullableValue $portfolio.summary.executionBundlePremiumSaganMode))
+      Write-Host ("  execLink : {0}" -f (Format-NullableValue $portfolio.summary.executionBundleReciprocalLinkReady))
+      Write-Host ("  execRate : {0}" -f (Format-NullableValue $portfolio.summary.executionBundleEffectiveBillableRateUsdPerHour))
+    }
     if ($env:GITHUB_STEP_SUMMARY) {
       $portfolioLines = @(
         '### Governor Portfolio',
@@ -1596,6 +1776,21 @@ try {
         ('- Template monitoring: {0}' -f (Format-NullableValue $portfolio.summary.templateMonitoringStatus)),
         ('- Supported proof: {0}' -f (Format-NullableValue $portfolio.summary.supportedProofStatus))
       )
+      if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyStatus']) {
+        $portfolioLines += ('- VI-history dependency: {0}' -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyStatus))
+        if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyTargetRepository'] -and $portfolio.summary.viHistoryDistributorDependencyTargetRepository) {
+          $portfolioLines += ('- VI-history target: {0}' -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyTargetRepository))
+        }
+        if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyExternalBlocker'] -and $portfolio.summary.viHistoryDistributorDependencyExternalBlocker) {
+          $portfolioLines += ('- VI-history blocker: {0}' -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyExternalBlocker))
+        }
+        if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyPublishedBundleState'] -and $portfolio.summary.viHistoryDistributorDependencyPublishedBundleState) {
+          $portfolioLines += ('- VI-history published bundle: {0}' -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyPublishedBundleState))
+        }
+        if ($portfolio.summary.PSObject.Properties['viHistoryDistributorDependencyPublishedBundleReleaseTag'] -and $portfolio.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag) {
+          $portfolioLines += ('- VI-history published bundle tag: {0}' -f (Format-NullableValue $portfolio.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag))
+        }
+      }
       if ($portfolio.summary.nextOwnerRepository) {
         $portfolioLines += ('- Next owner: {0}' -f (Format-NullableValue $portfolio.summary.nextOwnerRepository))
       }
@@ -1607,11 +1802,87 @@ try {
           $portfolioLines += ('- Queue source: {0}' -f (Format-NullableValue $portfolio.summary.queueAuthoritySource))
         }
       }
+      if ($portfolio.summary.PSObject.Properties['executionTopologyStatus'] -and $portfolio.summary.executionTopologyStatus) {
+        $portfolioLines += ('- Execution topology: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyStatus))
+        $portfolioLines += ('- Execution provider: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyProviderId))
+        $portfolioLines += ('- Execution worker slot: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyWorkerSlotId))
+        $portfolioLines += ('- Execution logical lanes active/seeded: {0}/{1}' -f
+          (Format-NullableValue $portfolio.summary.executionTopologyActiveLogicalLaneCount),
+          (Format-NullableValue $portfolio.summary.executionTopologySeededLogicalLaneCount))
+        if ($portfolio.summary.PSObject.Properties['executionTopologyRuntimeSurface'] -and $portfolio.summary.executionTopologyRuntimeSurface) {
+          $portfolioLines += ('- Execution runtime surface: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyRuntimeSurface))
+        }
+        if ($portfolio.summary.PSObject.Properties['executionTopologyProcessModelClass'] -and $portfolio.summary.executionTopologyProcessModelClass) {
+          $portfolioLines += ('- Execution process model: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyProcessModelClass))
+        }
+        if ($portfolio.summary.PSObject.Properties['executionTopologyRequestedSimultaneous'] -and $portfolio.summary.executionTopologyRequestedSimultaneous) {
+          $portfolioLines += ('- Execution simultaneous: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyRequestedSimultaneous))
+        }
+        if ($portfolio.summary.PSObject.Properties['executionTopologyCellClass'] -and $portfolio.summary.executionTopologyCellClass) {
+          $portfolioLines += ('- Execution cell class: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyCellClass))
+        }
+        if ($portfolio.summary.PSObject.Properties['executionTopologySuiteClass'] -and $portfolio.summary.executionTopologySuiteClass) {
+          $portfolioLines += ('- Execution suite class: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologySuiteClass))
+        }
+        if ($portfolio.summary.PSObject.Properties['executionTopologyOperatorAuthorizationRef'] -and $portfolio.summary.executionTopologyOperatorAuthorizationRef) {
+          $portfolioLines += ('- Execution operator authorization: {0}' -f (Format-NullableValue $portfolio.summary.executionTopologyOperatorAuthorizationRef))
+        }
+      }
+      if ($portfolio.summary.PSObject.Properties['executionBundleStatus'] -and $portfolio.summary.executionBundleStatus) {
+        $portfolioLines += ('- Execution bundle: {0}' -f (Format-NullableValue $portfolio.summary.executionBundleStatus))
+        $portfolioLines += ('- Execution plane: {0}' -f (Format-NullableValue $portfolio.summary.executionBundlePlaneBinding))
+        $portfolioLines += ('- Premium Sagan mode: {0}' -f (Format-NullableValue $portfolio.summary.executionBundlePremiumSaganMode))
+        $portfolioLines += ('- Execution reciprocal link: {0}' -f (Format-NullableValue $portfolio.summary.executionBundleReciprocalLinkReady))
+        $portfolioLines += ('- Execution effective rate USD/hr: {0}' -f (Format-NullableValue $portfolio.summary.executionBundleEffectiveBillableRateUsdPerHour))
+      }
       ($portfolioLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
     }
   }
 } catch {
   Write-Warning ("Failed to display governor portfolio summary: {0}" -f $_.Exception.Message)
+}
+
+try {
+  $contextConcentratorPath = Join-Path $ResultsRoot '_agent/handoff/sagan-context-concentrator.json'
+  if (Test-Path -LiteralPath $contextConcentratorPath -PathType Leaf) {
+    $concentrator = Get-Content -LiteralPath $contextConcentratorPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    Write-Host ''
+    Write-Host '[Context Concentrator]' -ForegroundColor Cyan
+    Write-Host ("  status   : {0}" -f (Format-NullableValue $concentrator.summary.concentrationStatus))
+    if ($concentrator.summary.activeIssueNumber) {
+      Write-Host ("  issue    : #{0}" -f (Format-NullableValue $concentrator.summary.activeIssueNumber))
+    }
+    Write-Host ("  owner    : {0}" -f (Format-NullableValue $concentrator.summary.currentOwnerRepository))
+    Write-Host ("  next     : {0}" -f (Format-NullableValue $concentrator.summary.nextAction))
+    Write-Host ("  hot/warm : {0}/{1}" -f (Format-NullableValue $concentrator.summary.hotWorkingSetCount), (Format-NullableValue $concentrator.summary.warmMemoryCount))
+    Write-Host ("  archive  : {0}" -f (Format-NullableValue $concentrator.summary.archiveCount))
+    Write-Host ("  blockers : {0}" -f (Format-NullableValue $concentrator.summary.blockerCount))
+    Write-Host ('  spend    : ${0}' -f (Format-NullableValue $concentrator.summary.blendedLowerBoundUsd))
+    foreach ($entry in @($concentrator.memory.hotWorkingSet | Select-Object -First 3)) {
+      Write-Host ("  - {0} [{1}]" -f (Format-NullableValue $entry.label), (Format-NullableValue $entry.status))
+    }
+    if ($env:GITHUB_STEP_SUMMARY) {
+      $activeIssueLabel = if ($concentrator.summary.activeIssueNumber) {
+        "#$($concentrator.summary.activeIssueNumber)"
+      } else {
+        'n/a'
+      }
+      $contextLines = @(
+        '### Context Concentrator',
+        '',
+        ('- Status: {0}' -f (Format-NullableValue $concentrator.summary.concentrationStatus)),
+        ('- Active issue: {0}' -f $activeIssueLabel),
+        ('- Current owner: {0}' -f (Format-NullableValue $concentrator.summary.currentOwnerRepository)),
+        ('- Next action: {0}' -f (Format-NullableValue $concentrator.summary.nextAction)),
+        ('- Hot/warm/archive: {0}/{1}/{2}' -f (Format-NullableValue $concentrator.summary.hotWorkingSetCount), (Format-NullableValue $concentrator.summary.warmMemoryCount), (Format-NullableValue $concentrator.summary.archiveCount)),
+        ('- Blockers: {0}' -f (Format-NullableValue $concentrator.summary.blockerCount)),
+        ('- Blended lower-bound spend: ${0}' -f (Format-NullableValue $concentrator.summary.blendedLowerBoundUsd))
+      )
+      ($contextLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+    }
+  }
+} catch {
+  Write-Warning ("Failed to display context concentrator summary: {0}" -f $_.Exception.Message)
 }
 
 try {

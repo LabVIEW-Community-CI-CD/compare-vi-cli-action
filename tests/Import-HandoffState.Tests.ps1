@@ -204,11 +204,63 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         monitoringModePath = 'tests/results/_agent/handoff/monitoring-mode.json'
         wakeLifecyclePath = 'tests/results/_agent/issue/wake-lifecycle.json'
         wakeInvestmentAccountingPath = 'tests/results/_agent/capital/wake-investment-accounting.json'
+        deliveryRuntimeStatePath = 'tests/results/_agent/runtime/delivery-agent-state.json'
+        releaseSigningReadinessPath = 'tests/results/_agent/release/release-signing-readiness.json'
       }
       compare = [ordered]@{
         queueState = [ordered]@{ status = 'queue-empty'; reason = 'queue-empty'; openIssueCount = 11; ready = $true }
         continuity = [ordered]@{ status = 'maintained'; turnBoundary = 'safe-idle'; supervisionState = 'safe-idle'; operatorPromptRequiredToResume = $false }
         monitoringMode = [ordered]@{ status = 'active'; futureAgentAction = 'future-agent-may-pivot'; wakeConditionCount = 0 }
+        releaseSigningReadiness = [ordered]@{
+          status = 'warn'
+          codePathState = 'ready'
+          signingCapabilityState = 'missing'
+          publicationState = 'tag-created-not-pushed'
+          publishedBundleState = 'producer-native-incomplete'
+          publishedBundleReleaseTag = 'v0.6.3-tools.14'
+          publishedBundleAuthoritativeConsumerPin = $null
+          externalBlocker = 'workflow-signing-secret-missing'
+          blockerCount = 1
+        }
+        deliveryRuntime = [ordered]@{
+          status = 'none'
+          runtimeStatus = $null
+          laneLifecycle = $null
+          actionType = $null
+          outcome = $null
+          blockerClass = $null
+          nextWakeCondition = $null
+          queueAuthorityRefresh = [ordered]@{
+            attempted = $false
+            status = $null
+            reason = $null
+            summaryPath = $null
+            mergeSummaryPath = $null
+            receiptGeneratedAt = $null
+            receiptStatus = $null
+            receiptReason = $null
+            evidenceFreshness = $null
+            nextWakeCondition = $null
+            mergeStateStatus = $null
+            isInMergeQueue = $null
+            autoMergeEnabled = $null
+            mergedAt = $null
+          }
+          prUrl = $null
+          issueNumber = $null
+          reason = $null
+        }
+        queueAuthority = [ordered]@{
+          status = 'none'
+          source = 'none'
+          nextWakeCondition = $null
+          summaryPath = $null
+          promotionStatus = $null
+          mergeStateStatus = $null
+          isInMergeQueue = $false
+          autoMergeEnabled = $false
+          prUrl = $null
+        }
       }
       wake = [ordered]@{
         terminalState = 'compare-work'
@@ -247,6 +299,16 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         wakeTerminalState = 'compare-work'
         monitoringStatus = 'active'
         futureAgentAction = 'future-agent-may-pivot'
+        releaseSigningStatus = 'warn'
+        releaseSigningExternalBlocker = 'workflow-signing-secret-missing'
+        releasePublicationState = 'tag-created-not-pushed'
+        releasePublishedBundleState = 'producer-native-incomplete'
+        releasePublishedBundleReleaseTag = 'v0.6.3-tools.14'
+        releasePublishedBundleAuthoritativeConsumerPin = $null
+        queueHandoffStatus = 'none'
+        queueHandoffNextWakeCondition = $null
+        queueHandoffPrUrl = $null
+        queueAuthoritySource = 'none'
       }
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $handoffDir 'autonomous-governor-summary.json') -Encoding utf8
 
@@ -255,6 +317,10 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match '\[handoff\] Autonomous governor summary'
     $output | Should -Match 'mode\s+: compare-governance-work'
     $output | Should -Match 'next\s+: continue-compare-governance-work'
+    $output | Should -Match 'release\s+: warn'
+    $output | Should -Match 'blocker\s+: workflow-signing-secret-missing'
+    $output | Should -Match 'bundle\s+: producer-native-incomplete'
+    $output | Should -Match 'bundleTag: v0.6.3-tools.14'
     $global:HandoffAutonomousGovernorSummary.schema | Should -Be 'priority/autonomous-governor-summary-report@v1'
 
     Remove-Variable -Name HandoffAutonomousGovernorSummary -Scope Global -ErrorAction SilentlyContinue
@@ -283,10 +349,32 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         futureAgentAction = 'stay-in-compare-monitoring'
         governorMode = 'compare-governance-work'
         nextAction = 'continue-compare-governance-work'
+        queueHandoffStatus = $null
+        queueHandoffNextWakeCondition = $null
+        queueHandoffPrUrl = $null
+        queueAuthoritySource = $null
       }
       portfolio = [ordered]@{
         repositoryCount = 4
         repositories = @()
+        dependencies = @(
+          [ordered]@{
+            id = 'vi-history-producer-native-distributor'
+            status = 'blocked'
+            ownerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+            dependentRepository = 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+            requiredCapability = 'vi-history'
+            source = 'compare-release-signing-readiness'
+            releaseSigningStatus = 'warn'
+            releasePublicationState = 'unobserved'
+            publishedBundleState = 'producer-native-incomplete'
+            publishedBundleReleaseTag = 'v0.6.3-tools.14'
+            publishedBundleAuthoritativeConsumerPin = $null
+            signingCapabilityState = 'missing'
+            externalBlocker = 'workflow-signing-secret-missing'
+            detail = 'awaiting-compare-release-signing-blocker-clear'
+          }
+        )
         unsupportedPaths = @()
       }
       summary = [ordered]@{
@@ -299,6 +387,17 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         templateMonitoringStatus = 'pass'
         supportedProofStatus = 'pass'
         repoGraphStatus = 'pass'
+        queueHandoffStatus = $null
+        queueHandoffNextWakeCondition = $null
+        queueHandoffPrUrl = $null
+        queueAuthoritySource = $null
+        viHistoryDistributorDependencyStatus = 'blocked'
+        viHistoryDistributorDependencyTargetRepository = 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+        viHistoryDistributorDependencyExternalBlocker = 'workflow-signing-secret-missing'
+        viHistoryDistributorDependencyPublicationState = 'unobserved'
+        viHistoryDistributorDependencyPublishedBundleState = 'producer-native-incomplete'
+        viHistoryDistributorDependencyPublishedBundleReleaseTag = 'v0.6.3-tools.14'
+        viHistoryDistributorDependencyAuthoritativeConsumerPin = $null
         portfolioWakeConditionCount = 3
         triggeredWakeConditions = @(
           'compare-queue-not-empty',
@@ -313,8 +412,120 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match '\[handoff\] Governor portfolio summary'
     $output | Should -Match 'mode\s+: compare-governance-work'
     $output | Should -Match 'proof\s+: pass'
+    $output | Should -Match 'vhist\s+: blocked'
+    $output | Should -Match 'vhistRepo: LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+    $output | Should -Match 'vhistBlk : workflow-signing-secret-missing'
+    $output | Should -Match 'vhistPub : producer-native-incomplete'
+    $output | Should -Match 'vhistTag : v0.6.3-tools.14'
     $global:HandoffAutonomousGovernorPortfolioSummary.schema | Should -Be 'priority/autonomous-governor-portfolio-summary-report@v1'
 
     Remove-Variable -Name HandoffAutonomousGovernorPortfolioSummary -Scope Global -ErrorAction SilentlyContinue
+  }
+
+  It 'surfaces context concentrator summary when present' {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $scriptPath = Join-Path $repoRoot 'tools' 'priority' 'Import-HandoffState.ps1'
+    $handoffDir = Join-Path $TestDrive 'handoff'
+    New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+
+    [ordered]@{
+      schema = 'priority/sagan-context-concentrator-report@v1'
+      generatedAt = '2026-03-23T23:25:00Z'
+      repository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+      inputs = [ordered]@{
+        priorityCachePath = '.agent_priority_cache.json'
+        governorSummaryPath = 'tests/results/_agent/handoff/autonomous-governor-summary.json'
+        governorPortfolioSummaryPath = 'tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json'
+        monitoringModePath = 'tests/results/_agent/handoff/monitoring-mode.json'
+        operatorSteeringEventPath = 'tests/results/_agent/handoff/operator-steering-event.json'
+        episodeDirectoryPath = 'tests/results/_agent/memory/subagent-episodes'
+      }
+      sources = [ordered]@{
+        priorityCache = [ordered]@{ path = '.agent_priority_cache.json'; exists = $true }
+        governorSummary = [ordered]@{ path = 'tests/results/_agent/handoff/autonomous-governor-summary.json'; exists = $true }
+        governorPortfolioSummary = [ordered]@{ path = 'tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json'; exists = $true }
+        monitoringMode = [ordered]@{ path = 'tests/results/_agent/handoff/monitoring-mode.json'; exists = $true }
+        operatorSteeringEvent = [ordered]@{ path = 'tests/results/_agent/handoff/operator-steering-event.json'; exists = $false }
+        episodeDirectory = [ordered]@{
+          path = 'tests/results/_agent/memory/subagent-episodes'
+          exists = $true
+          fileCount = 2
+          validEpisodeCount = 2
+          invalidEpisodeCount = 0
+        }
+      }
+      focus = [ordered]@{
+        activeIssue = [ordered]@{
+          number = 1909
+          title = '[governor]: build Sagan context concentrator for durable subagent memory'
+          url = 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1909'
+          state = 'OPEN'
+          repository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+        }
+        currentOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+        nextOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+        nextAction = 'merge concentrator handoff support'
+        governorMode = 'compare-governance-work'
+        monitoringStatus = 'active'
+      }
+      memory = [ordered]@{
+        hotWorkingSet = @(
+          [ordered]@{
+            id = 'issue-1909'
+            kind = 'active-issue'
+            label = '#1909: [governor]: build Sagan context concentrator for durable subagent memory'
+            status = 'OPEN'
+            detail = 'Current standing-priority objective'
+            sourcePath = '.agent_priority_cache.json'
+            updatedAt = '2026-03-23T23:24:00Z'
+            issueNumber = 1909
+            repository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+            agentName = $null
+            nextAction = 'merge concentrator handoff support'
+          }
+        )
+        warmMemory = @()
+        archiveCount = 1
+      }
+      episodes = [ordered]@{
+        totalCount = 2
+        validCount = 2
+        invalidCount = 0
+        invalidEpisodes = @()
+        byStatus = @([ordered]@{ status = 'reported'; count = 2 })
+        byAgent = @([ordered]@{ agentId = 'euler-id'; agentName = 'Euler'; count = 1 })
+        recent = @()
+      }
+      cost = [ordered]@{
+        episodeCountWithCost = 2
+        tokenUsd = 0.12
+        operatorLaborUsd = 10.416667
+        blendedLowerBoundUsd = 10.536667
+        observedDurationSeconds = 150
+      }
+      summary = [ordered]@{
+        status = 'active'
+        concentrationStatus = 'pass'
+        currentOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+        nextOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+        nextAction = 'merge concentrator handoff support'
+        activeIssueNumber = 1909
+        hotWorkingSetCount = 1
+        warmMemoryCount = 0
+        archiveCount = 1
+        blockerCount = 0
+        recentEpisodeCount = 2
+        blendedLowerBoundUsd = 10.536667
+      }
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $handoffDir 'sagan-context-concentrator.json') -Encoding utf8
+
+    $output = & $scriptPath -HandoffDir $handoffDir *>&1 | Out-String
+
+    $output | Should -Match '\[handoff\] Context concentrator'
+    $output | Should -Match 'issue\s+: #1909'
+    $output | Should -Match 'hot/warm\s+: 1/0'
+    $global:HandoffContextConcentrator.schema | Should -Be 'priority/sagan-context-concentrator-report@v1'
+
+    Remove-Variable -Name HandoffContextConcentrator -Scope Global -ErrorAction SilentlyContinue
   }
 }

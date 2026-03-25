@@ -114,6 +114,11 @@ The capability contract tells downstream distributors:
   - `consumerContract.localOperatorSession`
   - `consumerContract.diagnosticsCommentRenderer`
   - `consumerContract.hostedNiLinuxRunner`
+- the template Docker profile should resolve the Producer-published Docker
+  image contract from
+  `consumerContract.capabilities.dockerProfile.authoritativeImageContractSource`,
+  which currently points at `consumerContract.dockerImageContract` inside the
+  same immutable `comparevi-tools-release.json` payload
 
 That keeps the producer/distributor boundary clean:
 
@@ -121,6 +126,11 @@ That keeps the producer/distributor boundary clean:
 - `LabviewGitHubCiTemplate` distributes the capability
 - generated repositories consume the pinned release surface instead of
   vendoring compare internals
+
+The autonomous governor portfolio also treats that producer/distributor link as
+an explicit dependency. Compare remains the current owner until the signed
+producer-native `CompareVI.Tools` release is ready, and only then does the
+portfolio hand off the next-owner route to `LabviewGitHubCiTemplate`.
 
 For hosted GitHub runner diagnostics, use the same extracted bundle root as
 `COMPAREVI_SCRIPTS_ROOT` and resolve the NI Linux runner from

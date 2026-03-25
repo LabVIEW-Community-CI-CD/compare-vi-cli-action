@@ -56,6 +56,13 @@ export const DEFAULT_DELIVERY_RUNTIME_STATE_PATH = path.join(
   'runtime',
   'delivery-agent-state.json'
 );
+export const DEFAULT_RELEASE_SIGNING_READINESS_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'release',
+  'release-signing-readiness.json'
+);
 
 function asOptional(value) {
   if (value == null) {
@@ -179,6 +186,310 @@ function parseBoolean(value) {
   return value === true;
 }
 
+function coalesceBoolean(...values) {
+  for (const value of values) {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+  }
+  return false;
+}
+
+function normalizeLower(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function deriveExecutionTopologyProcessModel(executionBundle) {
+  const planeBinding = asOptional(executionBundle?.planeBinding);
+  const normalizedPlaneBinding = normalizeLower(planeBinding);
+  const harnessKind = asOptional(executionBundle?.harnessKind);
+  const requestedSimultaneous = normalizedPlaneBinding === 'dual-plane-parity';
+  const windowsNativeTestStand =
+    (!harnessKind || harnessKind === 'teststand-compare-harness') &&
+    (requestedSimultaneous || normalizedPlaneBinding.startsWith('native-labview-'));
+  const runtimeSurface = windowsNativeTestStand ? 'windows-native-teststand' : null;
+  const processModelClass = !runtimeSurface
+    ? null
+    : requestedSimultaneous
+      ? 'parallel-process-model'
+      : 'sequential-process-model';
+
+  return {
+    runtimeSurface,
+    processModelClass,
+    windowsOnly: runtimeSurface === 'windows-native-teststand',
+    requestedSimultaneous
+  };
+}
+
+function deriveExecutionTopologyStatus({ activeLogicalLaneCount, seededLogicalLaneCount, providerDispatch, executionBundle }) {
+  const bundleStatus = asOptional(executionBundle?.status);
+  if (bundleStatus) {
+    return `bundle-${bundleStatus}`;
+  }
+
+  const completionStatus = asOptional(providerDispatch?.completionStatus);
+  if (completionStatus) {
+    return `provider-${completionStatus}`;
+  }
+
+  const dispatchStatus = asOptional(providerDispatch?.dispatchStatus);
+  if (dispatchStatus) {
+    return `provider-${dispatchStatus}`;
+  }
+
+  if ((activeLogicalLaneCount ?? 0) > 0 || (seededLogicalLaneCount ?? 0) > 0) {
+    return 'logical-lanes-tracked';
+  }
+
+  return 'none';
+}
+
+function deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBundle }) {
+  const logicalLaneActivation = normalizeOptionalObject(deliveryRuntimeState?.logicalLaneActivation);
+  const logicalLaneCatalog = Array.isArray(logicalLaneActivation?.catalog) ? logicalLaneActivation.catalog : [];
+  const providerDispatch =
+    normalizeOptionalObject(activeLane?.providerDispatch) ??
+    normalizeOptionalObject(deliveryRuntimeState?.artifacts?.providerDispatch);
+  const activeLaneExecutionTopology = normalizeOptionalObject(activeLane?.executionTopology);
+  const activeLogicalLaneCountFallback = Number.isInteger(logicalLaneActivation?.activeLaneCount)
+    ? logicalLaneActivation.activeLaneCount
+    : null;
+  const seededLogicalLaneCountFallback = Number.isInteger(logicalLaneActivation?.seededLaneCount)
+    ? logicalLaneActivation.seededLaneCount
+    : null;
+
+  if (activeLaneExecutionTopology) {
+    const topologyLogicalLaneActivation = normalizeOptionalObject(activeLaneExecutionTopology.logicalLaneActivation);
+    const topologyProviderDispatch = normalizeOptionalObject(activeLaneExecutionTopology.providerDispatch);
+    const topologyExecutionBundle = normalizeOptionalObject(activeLaneExecutionTopology.executionBundle);
+    const effectiveProviderDispatch = topologyProviderDispatch ?? providerDispatch;
+    const effectiveExecutionBundle = topologyExecutionBundle ?? executionBundle;
+    const processModel = deriveExecutionTopologyProcessModel(effectiveExecutionBundle);
+    const activeLogicalLaneCount = Number.isInteger(activeLaneExecutionTopology.activeLogicalLaneCount)
+      ? activeLaneExecutionTopology.activeLogicalLaneCount
+      : Number.isInteger(topologyLogicalLaneActivation?.activeLaneCount)
+        ? topologyLogicalLaneActivation.activeLaneCount
+        : activeLogicalLaneCountFallback;
+    const seededLogicalLaneCount = Number.isInteger(activeLaneExecutionTopology.seededLogicalLaneCount)
+      ? activeLaneExecutionTopology.seededLogicalLaneCount
+      : Number.isInteger(topologyLogicalLaneActivation?.seededLaneCount)
+        ? topologyLogicalLaneActivation.seededLaneCount
+        : seededLogicalLaneCountFallback;
+    const catalogCount = Number.isInteger(activeLaneExecutionTopology.catalogCount)
+      ? activeLaneExecutionTopology.catalogCount
+      : Number.isInteger(topologyLogicalLaneActivation?.catalogCount)
+        ? topologyLogicalLaneActivation.catalogCount
+        : logicalLaneCatalog.length;
+    const executionPlane =
+      asOptional(activeLaneExecutionTopology.executionPlane) ||
+      asOptional(topologyProviderDispatch?.executionPlane) ||
+      asOptional(providerDispatch?.executionPlane) ||
+      asOptional(activeLaneExecutionTopology.planeBinding) ||
+      asOptional(topologyExecutionBundle?.planeBinding) ||
+      asOptional(executionBundle?.planeBinding);
+
+    return {
+      status:
+        asOptional(activeLaneExecutionTopology.status) ||
+        deriveExecutionTopologyStatus({
+          activeLogicalLaneCount,
+          seededLogicalLaneCount,
+          providerDispatch: effectiveProviderDispatch,
+          executionBundle: effectiveExecutionBundle
+        }),
+      executionPlane,
+      providerId:
+        asOptional(activeLaneExecutionTopology.providerId) ||
+        asOptional(topologyProviderDispatch?.providerId) ||
+        asOptional(providerDispatch?.providerId),
+      workerSlotId:
+        asOptional(activeLaneExecutionTopology.workerSlotId) ||
+        asOptional(topologyProviderDispatch?.workerSlotId) ||
+        asOptional(providerDispatch?.workerSlotId),
+      activeLogicalLaneCount,
+      seededLogicalLaneCount,
+      catalogCount,
+      runtimeSurface: asOptional(activeLaneExecutionTopology.runtimeSurface) || processModel.runtimeSurface,
+      processModelClass: asOptional(activeLaneExecutionTopology.processModelClass) || processModel.processModelClass,
+      windowsOnly: coalesceBoolean(activeLaneExecutionTopology.windowsOnly, processModel.windowsOnly),
+      requestedSimultaneous: coalesceBoolean(
+        activeLaneExecutionTopology.requestedSimultaneous,
+        processModel.requestedSimultaneous
+      ),
+      cellClass:
+        asOptional(activeLaneExecutionTopology.cellClass) ||
+        asOptional(topologyExecutionBundle?.cellClass) ||
+        asOptional(executionBundle?.cellClass),
+      suiteClass:
+        asOptional(activeLaneExecutionTopology.suiteClass) ||
+        asOptional(topologyExecutionBundle?.suiteClass) ||
+        asOptional(executionBundle?.suiteClass),
+      operatorAuthorizationRef:
+        asOptional(activeLaneExecutionTopology.operatorAuthorizationRef) ||
+        asOptional(topologyExecutionBundle?.operatorAuthorizationRef) ||
+        asOptional(executionBundle?.operatorAuthorizationRef),
+      premiumSaganMode: coalesceBoolean(
+        activeLaneExecutionTopology.premiumSaganMode,
+        topologyExecutionBundle?.premiumSaganMode,
+        executionBundle?.premiumSaganMode
+      ),
+      reciprocalLinkReady: coalesceBoolean(
+        activeLaneExecutionTopology.reciprocalLinkReady,
+        topologyExecutionBundle?.reciprocalLinkReady,
+        executionBundle?.reciprocalLinkReady
+      ),
+      logicalLaneActivation: {
+        activeLaneCount: activeLogicalLaneCount,
+        seededLaneCount: seededLogicalLaneCount,
+        catalogCount
+      },
+      providerDispatch: {
+        providerId: asOptional(topologyProviderDispatch?.providerId) || asOptional(providerDispatch?.providerId),
+        providerKind: asOptional(topologyProviderDispatch?.providerKind) || asOptional(providerDispatch?.providerKind),
+        executionPlane,
+        assignmentMode:
+          asOptional(topologyProviderDispatch?.assignmentMode) || asOptional(providerDispatch?.assignmentMode),
+        dispatchSurface:
+          asOptional(topologyProviderDispatch?.dispatchSurface) || asOptional(providerDispatch?.dispatchSurface),
+        completionMode:
+          asOptional(topologyProviderDispatch?.completionMode) || asOptional(providerDispatch?.completionMode),
+        workerSlotId:
+          asOptional(topologyProviderDispatch?.workerSlotId) || asOptional(providerDispatch?.workerSlotId),
+        dispatchStatus:
+          asOptional(topologyProviderDispatch?.dispatchStatus) || asOptional(providerDispatch?.dispatchStatus),
+        completionStatus:
+          asOptional(topologyProviderDispatch?.completionStatus) || asOptional(providerDispatch?.completionStatus),
+        failureClass:
+          asOptional(topologyProviderDispatch?.failureClass) || asOptional(providerDispatch?.failureClass)
+      },
+      executionBundle: {
+        status: asOptional(topologyExecutionBundle?.status) || asOptional(executionBundle?.status),
+        planeBinding:
+          asOptional(activeLaneExecutionTopology.planeBinding) ||
+          asOptional(topologyExecutionBundle?.planeBinding) ||
+          asOptional(executionBundle?.planeBinding),
+        cellClass:
+          asOptional(topologyExecutionBundle?.cellClass) || asOptional(executionBundle?.cellClass),
+        suiteClass:
+          asOptional(topologyExecutionBundle?.suiteClass) || asOptional(executionBundle?.suiteClass),
+        premiumSaganMode: coalesceBoolean(
+          topologyExecutionBundle?.premiumSaganMode,
+          executionBundle?.premiumSaganMode
+        ),
+        reciprocalLinkReady: coalesceBoolean(
+          topologyExecutionBundle?.reciprocalLinkReady,
+          executionBundle?.reciprocalLinkReady
+        ),
+        effectiveBillableRateUsdPerHour: Number.isFinite(topologyExecutionBundle?.effectiveBillableRateUsdPerHour)
+          ? topologyExecutionBundle.effectiveBillableRateUsdPerHour
+          : Number.isFinite(executionBundle?.effectiveBillableRateUsdPerHour)
+            ? executionBundle.effectiveBillableRateUsdPerHour
+            : null,
+        executionCellLeaseId:
+          asOptional(activeLaneExecutionTopology.executionCellLeaseId) ||
+          asOptional(topologyExecutionBundle?.executionCellLeaseId) ||
+          asOptional(executionBundle?.executionCellLeaseId),
+        dockerLaneLeaseId:
+          asOptional(activeLaneExecutionTopology.dockerLaneLeaseId) ||
+          asOptional(topologyExecutionBundle?.dockerLaneLeaseId) ||
+          asOptional(executionBundle?.dockerLaneLeaseId),
+        harnessKind:
+          asOptional(activeLaneExecutionTopology.harnessKind) ||
+          asOptional(topologyExecutionBundle?.harnessKind) ||
+          asOptional(executionBundle?.harnessKind),
+        harnessInstanceId:
+          asOptional(activeLaneExecutionTopology.harnessInstanceId) ||
+          asOptional(topologyExecutionBundle?.harnessInstanceId) ||
+          asOptional(executionBundle?.harnessInstanceId),
+        operatorAuthorizationRef:
+          asOptional(topologyExecutionBundle?.operatorAuthorizationRef) ||
+          asOptional(executionBundle?.operatorAuthorizationRef),
+        cellId:
+          asOptional(activeLaneExecutionTopology.cellId) ||
+          asOptional(topologyExecutionBundle?.cellId) ||
+          asOptional(executionBundle?.cellId),
+        laneId:
+          asOptional(activeLaneExecutionTopology.laneId) ||
+          asOptional(topologyExecutionBundle?.laneId) ||
+          asOptional(executionBundle?.laneId),
+        isolatedLaneGroupId:
+          asOptional(topologyExecutionBundle?.isolatedLaneGroupId) ||
+          asOptional(executionBundle?.isolatedLaneGroupId),
+        fingerprintSha256:
+          asOptional(topologyExecutionBundle?.fingerprintSha256) ||
+          asOptional(executionBundle?.fingerprintSha256)
+      }
+    };
+  }
+
+  const processModel = deriveExecutionTopologyProcessModel(executionBundle);
+  const activeLogicalLaneCount = activeLogicalLaneCountFallback;
+  const seededLogicalLaneCount = seededLogicalLaneCountFallback;
+  const executionPlane = asOptional(providerDispatch?.executionPlane) || asOptional(executionBundle?.planeBinding);
+
+  return {
+    status: deriveExecutionTopologyStatus({
+      activeLogicalLaneCount,
+      seededLogicalLaneCount,
+      providerDispatch,
+      executionBundle
+    }),
+    executionPlane,
+    providerId: asOptional(providerDispatch?.providerId),
+    workerSlotId: asOptional(providerDispatch?.workerSlotId),
+    activeLogicalLaneCount,
+    seededLogicalLaneCount,
+    catalogCount: logicalLaneCatalog.length,
+    runtimeSurface: processModel.runtimeSurface,
+    processModelClass: processModel.processModelClass,
+    windowsOnly: processModel.windowsOnly,
+    requestedSimultaneous: processModel.requestedSimultaneous,
+    cellClass: asOptional(executionBundle?.cellClass),
+    suiteClass: asOptional(executionBundle?.suiteClass),
+    operatorAuthorizationRef: asOptional(executionBundle?.operatorAuthorizationRef),
+    premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
+    reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
+    logicalLaneActivation: {
+      activeLaneCount: activeLogicalLaneCount,
+      seededLaneCount: seededLogicalLaneCount,
+      catalogCount: logicalLaneCatalog.length
+    },
+    providerDispatch: {
+      providerId: asOptional(providerDispatch?.providerId),
+      providerKind: asOptional(providerDispatch?.providerKind),
+      executionPlane,
+      assignmentMode: asOptional(providerDispatch?.assignmentMode),
+      dispatchSurface: asOptional(providerDispatch?.dispatchSurface),
+      completionMode: asOptional(providerDispatch?.completionMode),
+      workerSlotId: asOptional(providerDispatch?.workerSlotId),
+      dispatchStatus: asOptional(providerDispatch?.dispatchStatus),
+      completionStatus: asOptional(providerDispatch?.completionStatus),
+      failureClass: asOptional(providerDispatch?.failureClass)
+    },
+    executionBundle: {
+      status: asOptional(executionBundle?.status),
+      planeBinding: asOptional(executionBundle?.planeBinding),
+      cellClass: asOptional(executionBundle?.cellClass),
+      suiteClass: asOptional(executionBundle?.suiteClass),
+      premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
+      reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
+      effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle?.effectiveBillableRateUsdPerHour)
+        ? executionBundle.effectiveBillableRateUsdPerHour
+        : null,
+      executionCellLeaseId: asOptional(executionBundle?.executionCellLeaseId),
+      dockerLaneLeaseId: asOptional(executionBundle?.dockerLaneLeaseId),
+      harnessKind: asOptional(executionBundle?.harnessKind),
+      harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
+      operatorAuthorizationRef: asOptional(executionBundle?.operatorAuthorizationRef),
+      cellId: asOptional(executionBundle?.cellId),
+      laneId: asOptional(executionBundle?.laneId),
+      isolatedLaneGroupId: asOptional(executionBundle?.isolatedLaneGroupId),
+      fingerprintSha256: asOptional(executionBundle?.fingerprintSha256)
+    }
+  };
+}
+
 export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
@@ -189,6 +500,7 @@ export function parseArgs(argv = process.argv) {
     wakeLifecyclePath: DEFAULT_WAKE_LIFECYCLE_PATH,
     wakeInvestmentAccountingPath: DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH,
     deliveryRuntimeStatePath: DEFAULT_DELIVERY_RUNTIME_STATE_PATH,
+    releaseSigningReadinessPath: DEFAULT_RELEASE_SIGNING_READINESS_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
     help: false
   };
@@ -201,6 +513,7 @@ export function parseArgs(argv = process.argv) {
     ['--wake-lifecycle', 'wakeLifecyclePath'],
     ['--wake-investment-accounting', 'wakeInvestmentAccountingPath'],
     ['--delivery-runtime-state', 'deliveryRuntimeStatePath'],
+    ['--release-signing-readiness', 'releaseSigningReadinessPath'],
     ['--output', 'outputPath']
   ]);
 
@@ -237,6 +550,7 @@ function printHelp() {
     `  --wake-lifecycle <path>           Wake lifecycle path (default: ${DEFAULT_WAKE_LIFECYCLE_PATH}).`,
     `  --wake-investment-accounting <path> Wake investment accounting path (default: ${DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH}).`,
     `  --delivery-runtime-state <path>   Delivery runtime state path (default: ${DEFAULT_DELIVERY_RUNTIME_STATE_PATH}).`,
+    `  --release-signing-readiness <path> Release signing readiness path (default: ${DEFAULT_RELEASE_SIGNING_READINESS_PATH}).`,
     `  --output <path>                   Output path (default: ${DEFAULT_OUTPUT_PATH}).`,
     '  -h, --help                        Show help.'
   ].forEach((line) => console.log(line));
@@ -328,6 +642,42 @@ function deriveFunding(wakeInvestmentAccounting) {
   };
 }
 
+function deriveReleaseSigningReadiness(releaseSigningReadinessReport) {
+  if (releaseSigningReadinessReport?.schema !== 'priority/release-signing-readiness-report@v1') {
+    return {
+      status: 'missing',
+      codePathState: null,
+      signingCapabilityState: null,
+      signingAuthorityState: null,
+      releaseConductorApplyState: null,
+      publicationState: null,
+      publishedBundleState: null,
+      publishedBundleReleaseTag: null,
+      publishedBundleAuthoritativeConsumerPin: null,
+      externalBlocker: null,
+      blockerCount: 0
+    };
+  }
+
+  return {
+    status: asOptional(releaseSigningReadinessReport?.summary?.status) || 'missing',
+    codePathState: asOptional(releaseSigningReadinessReport?.summary?.codePathState),
+    signingCapabilityState: asOptional(releaseSigningReadinessReport?.summary?.signingCapabilityState),
+    signingAuthorityState: asOptional(releaseSigningReadinessReport?.summary?.signingAuthorityState),
+    releaseConductorApplyState: asOptional(releaseSigningReadinessReport?.summary?.releaseConductorApplyState),
+    publicationState: asOptional(releaseSigningReadinessReport?.summary?.publicationState),
+    publishedBundleState: asOptional(releaseSigningReadinessReport?.summary?.publishedBundleState),
+    publishedBundleReleaseTag: asOptional(releaseSigningReadinessReport?.summary?.publishedBundleReleaseTag),
+    publishedBundleAuthoritativeConsumerPin: asOptional(
+      releaseSigningReadinessReport?.summary?.publishedBundleAuthoritativeConsumerPin
+    ),
+    externalBlocker: asOptional(releaseSigningReadinessReport?.summary?.externalBlocker),
+    blockerCount: Number.isInteger(releaseSigningReadinessReport?.summary?.blockerCount)
+      ? releaseSigningReadinessReport.summary.blockerCount
+      : 0
+  };
+}
+
 function deriveDeliveryRuntime(deliveryRuntimeState) {
   const activeLane = deliveryRuntimeState?.activeLane || {};
   const prUrl = asOptional(activeLane?.prUrl);
@@ -337,6 +687,9 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
   const queueAuthorityRefresh =
     normalizeOptionalObject(activeLane?.queueAuthorityRefresh) ??
     normalizeOptionalObject(deliveryRuntimeState?.queueAuthorityRefresh);
+  const concurrentLaneStatus = normalizeOptionalObject(activeLane?.concurrentLaneStatus);
+  const executionBundle = normalizeOptionalObject(concurrentLaneStatus?.executionBundle);
+  const executionTopology = deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBundle });
 
   let status = 'none';
   if (prUrl) {
@@ -359,6 +712,27 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
     outcome,
     blockerClass,
     nextWakeCondition: asOptional(activeLane?.nextWakeCondition),
+    executionTopology,
+    executionBundle: {
+      status: asOptional(executionBundle?.status),
+      planeBinding: asOptional(executionBundle?.planeBinding),
+      cellClass: asOptional(executionBundle?.cellClass),
+      suiteClass: asOptional(executionBundle?.suiteClass),
+      premiumSaganMode: parseBoolean(executionBundle?.premiumSaganMode),
+      reciprocalLinkReady: parseBoolean(executionBundle?.reciprocalLinkReady),
+      effectiveBillableRateUsdPerHour: Number.isFinite(executionBundle?.effectiveBillableRateUsdPerHour)
+        ? executionBundle.effectiveBillableRateUsdPerHour
+        : null,
+      executionCellLeaseId: asOptional(executionBundle?.executionCellLeaseId),
+      dockerLaneLeaseId: asOptional(executionBundle?.dockerLaneLeaseId),
+      harnessKind: asOptional(executionBundle?.harnessKind),
+      harnessInstanceId: asOptional(executionBundle?.harnessInstanceId),
+      operatorAuthorizationRef: asOptional(executionBundle?.operatorAuthorizationRef),
+      cellId: asOptional(executionBundle?.cellId),
+      laneId: asOptional(executionBundle?.laneId),
+      isolatedLaneGroupId: asOptional(executionBundle?.isolatedLaneGroupId),
+      fingerprintSha256: asOptional(executionBundle?.fingerprintSha256)
+    },
     queueAuthorityRefresh: {
       attempted: queueAuthorityRefresh?.attempted === true,
       status: asOptional(queueAuthorityRefresh?.status),
@@ -607,6 +981,8 @@ function buildReport({
   wakeInvestmentAccounting,
   deliveryRuntimeStatePath,
   deliveryRuntimeState,
+  releaseSigningReadinessPath,
+  releaseSigningReadinessReport,
   readOptionalJsonFn,
   now
 }) {
@@ -620,6 +996,7 @@ function buildReport({
   const continuity = deriveContinuity(continuitySummary, monitoringMode);
   const wake = deriveWake(wakeLifecycle);
   const funding = deriveFunding(wakeInvestmentAccounting);
+  const releaseSigningReadiness = deriveReleaseSigningReadiness(releaseSigningReadinessReport);
   const deliveryRuntime = deriveDeliveryRuntime(deliveryRuntimeState);
   const queueAuthority = deriveQueueAuthority({
     repoRoot,
@@ -642,7 +1019,8 @@ function buildReport({
       monitoringModePath: toRelative(repoRoot, monitoringModePath),
       wakeLifecyclePath: toRelative(repoRoot, wakeLifecyclePath),
       wakeInvestmentAccountingPath: toRelative(repoRoot, wakeInvestmentAccountingPath),
-      deliveryRuntimeStatePath: toRelative(repoRoot, deliveryRuntimeStatePath)
+      deliveryRuntimeStatePath: toRelative(repoRoot, deliveryRuntimeStatePath),
+      releaseSigningReadinessPath: toRelative(repoRoot, releaseSigningReadinessPath)
     },
     compare: {
       queueState,
@@ -654,6 +1032,7 @@ function buildReport({
           ? monitoringMode.summary.wakeConditionCount
           : null
       },
+      releaseSigningReadiness,
       deliveryRuntime,
       queueAuthority
     },
@@ -670,6 +1049,32 @@ function buildReport({
       wakeTerminalState: wake.terminalState,
       monitoringStatus: asOptional(monitoringMode?.summary?.status),
       futureAgentAction: asOptional(monitoringMode?.summary?.futureAgentAction),
+      releaseSigningStatus: releaseSigningReadiness.status,
+      releaseSigningAuthorityState: releaseSigningReadiness.signingAuthorityState,
+      releaseConductorApplyState: releaseSigningReadiness.releaseConductorApplyState,
+      releaseSigningExternalBlocker: releaseSigningReadiness.externalBlocker,
+      releasePublicationState: releaseSigningReadiness.publicationState,
+      releasePublishedBundleState: releaseSigningReadiness.publishedBundleState,
+      releasePublishedBundleReleaseTag: releaseSigningReadiness.publishedBundleReleaseTag,
+      releasePublishedBundleAuthoritativeConsumerPin: releaseSigningReadiness.publishedBundleAuthoritativeConsumerPin,
+      executionTopologyStatus: deliveryRuntime.executionTopology.status,
+      executionTopologyExecutionPlane: deliveryRuntime.executionTopology.executionPlane,
+      executionTopologyProviderId: deliveryRuntime.executionTopology.providerId,
+      executionTopologyWorkerSlotId: deliveryRuntime.executionTopology.workerSlotId,
+      executionTopologyActiveLogicalLaneCount: deliveryRuntime.executionTopology.activeLogicalLaneCount,
+      executionTopologySeededLogicalLaneCount: deliveryRuntime.executionTopology.seededLogicalLaneCount,
+      executionTopologyRuntimeSurface: deliveryRuntime.executionTopology.runtimeSurface,
+      executionTopologyProcessModelClass: deliveryRuntime.executionTopology.processModelClass,
+      executionTopologyWindowsOnly: deliveryRuntime.executionTopology.windowsOnly,
+      executionTopologyRequestedSimultaneous: deliveryRuntime.executionTopology.requestedSimultaneous,
+      executionTopologyCellClass: deliveryRuntime.executionTopology.cellClass,
+      executionTopologySuiteClass: deliveryRuntime.executionTopology.suiteClass,
+      executionTopologyOperatorAuthorizationRef: deliveryRuntime.executionTopology.operatorAuthorizationRef,
+      executionBundleStatus: deliveryRuntime.executionBundle.status,
+      executionBundlePlaneBinding: deliveryRuntime.executionBundle.planeBinding,
+      executionBundlePremiumSaganMode: deliveryRuntime.executionBundle.premiumSaganMode,
+      executionBundleReciprocalLinkReady: deliveryRuntime.executionBundle.reciprocalLinkReady,
+      executionBundleEffectiveBillableRateUsdPerHour: deliveryRuntime.executionBundle.effectiveBillableRateUsdPerHour,
       queueHandoffStatus: queueAuthority.status,
       queueHandoffNextWakeCondition: queueAuthority.nextWakeCondition,
       queueHandoffPrUrl: queueAuthority.prUrl,
@@ -692,6 +1097,10 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     repoRoot,
     options.deliveryRuntimeStatePath || DEFAULT_DELIVERY_RUNTIME_STATE_PATH
   );
+  const releaseSigningReadinessPath = path.resolve(
+    repoRoot,
+    options.releaseSigningReadinessPath || DEFAULT_RELEASE_SIGNING_READINESS_PATH
+  );
   const outputPath = path.resolve(repoRoot, options.outputPath || DEFAULT_OUTPUT_PATH);
 
   const readOptionalJsonFn = deps.readOptionalJsonFn || readOptionalJson;
@@ -704,6 +1113,7 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   const wakeLifecycle = readOptionalJsonFn(wakeLifecyclePath);
   const wakeInvestmentAccounting = readOptionalJsonFn(wakeInvestmentAccountingPath);
   const deliveryRuntimeState = readOptionalJsonFn(deliveryRuntimeStatePath);
+  const releaseSigningReadinessReport = readOptionalJsonFn(releaseSigningReadinessPath);
 
   if (queueEmptyReport) {
     ensureSchema(queueEmptyReport, queueEmptyReportPath, 'standing-priority/no-standing@v1');
@@ -723,6 +1133,13 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   if (deliveryRuntimeState) {
     ensureSchema(deliveryRuntimeState, deliveryRuntimeStatePath, 'priority/delivery-agent-runtime-state@v1');
   }
+  if (releaseSigningReadinessReport) {
+    ensureSchema(
+      releaseSigningReadinessReport,
+      releaseSigningReadinessPath,
+      'priority/release-signing-readiness-report@v1'
+    );
+  }
 
   const report = buildReport({
     repoRoot,
@@ -738,6 +1155,8 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     wakeInvestmentAccounting,
     deliveryRuntimeStatePath,
     deliveryRuntimeState,
+    releaseSigningReadinessPath,
+    releaseSigningReadinessReport,
     readOptionalJsonFn,
     now
   });

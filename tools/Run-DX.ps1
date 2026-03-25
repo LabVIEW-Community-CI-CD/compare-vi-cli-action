@@ -15,6 +15,8 @@ param(
   [string]$BaseVi,
   [string]$HeadVi,
   [string]$LabVIEWExePath,
+  [string]$LabVIEW64ExePath,
+  [string]$LabVIEW32ExePath,
   [string]$LVComparePath,
   [string]$OutputRoot = 'tests/results/teststand-session',
   [string[]]$Flags,
@@ -23,6 +25,14 @@ param(
   [string]$NoiseProfile = 'full',
   [ValidateSet('detect','spawn','skip')]
   [string]$Warmup = 'detect',
+  [ValidateSet('single-compare','dual-plane-parity')]
+  [string]$TestStandSuiteClass = 'single-compare',
+  [string]$AgentId,
+  [string]$AgentClass,
+  [string]$ExecutionCellLeasePath,
+  [string]$ExecutionCellId,
+  [string]$ExecutionCellLeaseId,
+  [string]$HarnessInstanceId,
   [switch]$RenderReport,
   [switch]$CloseLabVIEW,
   [switch]$CloseLVCompare,
@@ -50,6 +60,24 @@ function Resolve-PathSafe([string]$path){
 function Write-DxLine([string]$msg,[string]$kind='info'){
   $ts = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
   Write-Host ("[dx] {0} {1}" -f $kind,$msg)
+}
+
+function Get-SessionBoolValue($Source, [string]$PropertyName, [bool]$Default = $false) {
+  try {
+    if ($Source -and $Source.PSObject.Properties.Name -contains $PropertyName) {
+      return [bool]$Source.$PropertyName
+    }
+  } catch {}
+  return $Default
+}
+
+function Get-SessionValue($Source, [string]$PropertyName, $Default = $null) {
+  try {
+    if ($Source -and $Source.PSObject.Properties.Name -contains $PropertyName) {
+      return $Source.$PropertyName
+    }
+  } catch {}
+  return $Default
 }
 
 # Apply DX toggles
@@ -144,7 +172,16 @@ $harness = Join-Path $repoRoot 'tools/TestStand-CompareHarness.ps1'
   if ($sameNameCollision) { $hParams.SameNameHint = $true }
 
   if ($LabVIEWExePath) { $hParams.LabVIEWExePath = $LabVIEWExePath }
+  if ($LabVIEW64ExePath) { $hParams.LabVIEW64ExePath = $LabVIEW64ExePath }
+  if ($LabVIEW32ExePath) { $hParams.LabVIEW32ExePath = $LabVIEW32ExePath }
   if ($LVComparePath)  { $hParams.LVComparePath  = $LVComparePath }
+  $hParams.SuiteClass = $TestStandSuiteClass
+  if ($AgentId) { $hParams.AgentId = $AgentId }
+  if ($AgentClass) { $hParams.AgentClass = $AgentClass }
+  if ($ExecutionCellLeasePath) { $hParams.ExecutionCellLeasePath = $ExecutionCellLeasePath }
+  if ($ExecutionCellId) { $hParams.ExecutionCellId = $ExecutionCellId }
+  if ($ExecutionCellLeaseId) { $hParams.ExecutionCellLeaseId = $ExecutionCellLeaseId }
+  if ($HarnessInstanceId) { $hParams.HarnessInstanceId = $HarnessInstanceId }
   if ($PSBoundParameters.ContainsKey('Flags')) { $hParams.Flags = $Flags }
   if ($ReplaceFlags)   { $hParams.ReplaceFlags = $true }
   if ($RenderReport)   { $hParams.RenderReport   = $true }
@@ -201,11 +238,37 @@ $harness = Join-Path $repoRoot 'tools/TestStand-CompareHarness.ps1'
   }
   if ($session) {
     try {
+      $requestedSimultaneous = $false
+      if ($session.PSObject.Properties.Name -contains 'requestedSimultaneous') {
+        $requestedSimultaneous = [bool]$session.requestedSimultaneous
+      } elseif ($session.processModel -and $session.processModel.PSObject.Properties.Name -contains 'processModelClass') {
+        $requestedSimultaneous = ($session.processModel.processModelClass -eq 'parallel-process-model')
+      }
       $statusEnvelope.session = @{
-        outcome  = $session.outcome
-        error    = $session.error
-        compare  = $session.compare
-        content  = $session.content
+        suiteClass = Get-SessionValue $session 'suiteClass'
+        primaryPlane = Get-SessionValue $session 'primaryPlane'
+        requestedSimultaneous = $requestedSimultaneous
+        outcome  = Get-SessionValue $session 'outcome'
+        error    = Get-SessionValue $session 'error'
+        executionCell = Get-SessionValue $session 'executionCell'
+        harnessInstance = Get-SessionValue $session 'harnessInstance'
+        processModel = Get-SessionValue $session 'processModel'
+        compare  = Get-SessionValue $session 'compare'
+        content  = Get-SessionValue $session 'content'
+        parity   = Get-SessionValue $session 'parity'
+        planes   = Get-SessionValue $session 'planes'
+      }
+      $statusEnvelope.executionTopology = @{
+        suiteClass = if ($session.PSObject.Properties.Name -contains 'suiteClass') { $session.suiteClass } elseif (Get-SessionValue $session 'executionCell') { (Get-SessionValue (Get-SessionValue $session 'executionCell') 'suiteClass') } else { $null }
+        runtimeSurface = Get-SessionValue (Get-SessionValue $session 'processModel') 'runtimeSurface'
+        processModelClass = Get-SessionValue (Get-SessionValue $session 'processModel') 'processModelClass'
+        requestedSimultaneous = $requestedSimultaneous
+        cellClass = Get-SessionValue (Get-SessionValue $session 'executionCell') 'cellClass'
+        operatorAuthorizationRef = Get-SessionValue (Get-SessionValue $session 'executionCell') 'operatorAuthorizationRef'
+        premiumSaganMode = if (Get-SessionValue $session 'executionCell') { Get-SessionBoolValue (Get-SessionValue $session 'executionCell') 'premiumSaganMode' } else { $false }
+        harnessKind = Get-SessionValue (Get-SessionValue $session 'harnessInstance') 'harnessKind'
+        executionCellId = Get-SessionValue (Get-SessionValue $session 'executionCell') 'cellId'
+        executionCellLeaseId = Get-SessionValue (Get-SessionValue $session 'executionCell') 'leaseId'
       }
     } catch {}
   }

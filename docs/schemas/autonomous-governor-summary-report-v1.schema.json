@@ -37,7 +37,8 @@
         "monitoringModePath",
         "wakeLifecyclePath",
         "wakeInvestmentAccountingPath",
-        "deliveryRuntimeStatePath"
+        "deliveryRuntimeStatePath",
+        "releaseSigningReadinessPath"
       ],
       "properties": {
         "queueEmptyReportPath": { "type": "string", "minLength": 1 },
@@ -45,7 +46,8 @@
         "monitoringModePath": { "type": "string", "minLength": 1 },
         "wakeLifecyclePath": { "type": "string", "minLength": 1 },
         "wakeInvestmentAccountingPath": { "type": "string", "minLength": 1 },
-        "deliveryRuntimeStatePath": { "type": "string", "minLength": 1 }
+        "deliveryRuntimeStatePath": { "type": "string", "minLength": 1 },
+        "releaseSigningReadinessPath": { "type": "string", "minLength": 1 }
       }
     },
     "compare": {
@@ -55,6 +57,7 @@
         "queueState",
         "continuity",
         "monitoringMode",
+        "releaseSigningReadiness",
         "deliveryRuntime",
         "queueAuthority"
       ],
@@ -62,6 +65,7 @@
         "queueState": { "$ref": "#/$defs/queueState" },
         "continuity": { "$ref": "#/$defs/continuity" },
         "monitoringMode": { "$ref": "#/$defs/monitoringMode" },
+        "releaseSigningReadiness": { "$ref": "#/$defs/releaseSigningReadiness" },
         "deliveryRuntime": { "$ref": "#/$defs/deliveryRuntime" },
         "queueAuthority": { "$ref": "#/$defs/queueAuthority" }
       }
@@ -134,6 +138,8 @@
         "outcome",
         "blockerClass",
         "nextWakeCondition",
+        "executionTopology",
+        "executionBundle",
         "queueAuthorityRefresh",
         "prUrl",
         "issueNumber",
@@ -157,10 +163,50 @@
         "outcome": { "type": ["string", "null"] },
         "blockerClass": { "type": ["string", "null"] },
         "nextWakeCondition": { "type": ["string", "null"] },
+        "executionTopology": { "$ref": "#/$defs/executionTopology" },
+        "executionBundle": { "$ref": "#/$defs/executionBundle" },
         "queueAuthorityRefresh": { "$ref": "#/$defs/queueAuthorityRefresh" },
         "prUrl": { "type": ["string", "null"] },
         "issueNumber": { "type": ["integer", "null"], "minimum": 1 },
         "reason": { "type": ["string", "null"] }
+      }
+    },
+    "releaseSigningReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "codePathState",
+        "signingCapabilityState",
+        "signingAuthorityState",
+        "releaseConductorApplyState",
+        "publicationState",
+        "publishedBundleState",
+        "publishedBundleReleaseTag",
+        "publishedBundleAuthoritativeConsumerPin",
+        "externalBlocker",
+        "blockerCount"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn",
+            "fail",
+            "missing"
+          ]
+        },
+        "codePathState": { "type": ["string", "null"] },
+        "signingCapabilityState": { "type": ["string", "null"] },
+        "signingAuthorityState": { "type": ["string", "null"] },
+        "releaseConductorApplyState": { "type": ["string", "null"] },
+        "publicationState": { "type": ["string", "null"] },
+        "publishedBundleState": { "type": ["string", "null"] },
+        "publishedBundleReleaseTag": { "type": ["string", "null"] },
+        "publishedBundleAuthoritativeConsumerPin": { "type": ["string", "null"] },
+        "externalBlocker": { "type": ["string", "null"] },
+        "blockerCount": { "type": "integer", "minimum": 0 }
       }
     },
     "queueAuthority": {
@@ -281,6 +327,32 @@
         "wakeTerminalState",
         "monitoringStatus",
         "futureAgentAction",
+        "releaseSigningStatus",
+        "releaseSigningAuthorityState",
+        "releaseConductorApplyState",
+        "releaseSigningExternalBlocker",
+        "releasePublicationState",
+        "releasePublishedBundleState",
+        "releasePublishedBundleReleaseTag",
+        "releasePublishedBundleAuthoritativeConsumerPin",
+        "executionTopologyStatus",
+        "executionTopologyExecutionPlane",
+        "executionTopologyProviderId",
+        "executionTopologyWorkerSlotId",
+        "executionTopologyActiveLogicalLaneCount",
+        "executionTopologySeededLogicalLaneCount",
+        "executionTopologyRuntimeSurface",
+        "executionTopologyProcessModelClass",
+        "executionTopologyWindowsOnly",
+        "executionTopologyRequestedSimultaneous",
+        "executionTopologyCellClass",
+        "executionTopologySuiteClass",
+        "executionTopologyOperatorAuthorizationRef",
+        "executionBundleStatus",
+        "executionBundlePlaneBinding",
+        "executionBundlePremiumSaganMode",
+        "executionBundleReciprocalLinkReady",
+        "executionBundleEffectiveBillableRateUsdPerHour",
         "queueHandoffStatus",
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
@@ -320,6 +392,40 @@
         "wakeTerminalState": { "type": ["string", "null"] },
         "monitoringStatus": { "type": ["string", "null"] },
         "futureAgentAction": { "type": ["string", "null"] },
+        "releaseSigningStatus": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warn",
+            "fail",
+            "missing"
+          ]
+        },
+        "releaseSigningAuthorityState": { "type": ["string", "null"] },
+        "releaseConductorApplyState": { "type": ["string", "null"] },
+        "releaseSigningExternalBlocker": { "type": ["string", "null"] },
+        "releasePublicationState": { "type": ["string", "null"] },
+        "releasePublishedBundleState": { "type": ["string", "null"] },
+        "releasePublishedBundleReleaseTag": { "type": ["string", "null"] },
+        "releasePublishedBundleAuthoritativeConsumerPin": { "type": ["string", "null"] },
+        "executionTopologyStatus": { "type": ["string", "null"] },
+        "executionTopologyExecutionPlane": { "type": ["string", "null"] },
+        "executionTopologyProviderId": { "type": ["string", "null"] },
+        "executionTopologyWorkerSlotId": { "type": ["string", "null"] },
+        "executionTopologyActiveLogicalLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "executionTopologySeededLogicalLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "executionTopologyRuntimeSurface": { "type": ["string", "null"] },
+        "executionTopologyProcessModelClass": { "type": ["string", "null"] },
+        "executionTopologyWindowsOnly": { "type": "boolean" },
+        "executionTopologyRequestedSimultaneous": { "type": "boolean" },
+        "executionTopologyCellClass": { "type": ["string", "null"] },
+        "executionTopologySuiteClass": { "type": ["string", "null"] },
+        "executionTopologyOperatorAuthorizationRef": { "type": ["string", "null"] },
+        "executionBundleStatus": { "type": ["string", "null"] },
+        "executionBundlePlaneBinding": { "type": ["string", "null"] },
+        "executionBundlePremiumSaganMode": { "type": "boolean" },
+        "executionBundleReciprocalLinkReady": { "type": "boolean" },
+        "executionBundleEffectiveBillableRateUsdPerHour": { "type": ["number", "null"], "minimum": 0 },
         "queueHandoffStatus": {
           "type": "string",
           "enum": [
@@ -381,6 +487,130 @@
         "isInMergeQueue": { "type": ["boolean", "null"] },
         "autoMergeEnabled": { "type": ["boolean", "null"] },
         "mergedAt": { "type": ["string", "null"] }
+      }
+    },
+    "executionBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "planeBinding",
+        "cellClass",
+        "suiteClass",
+        "premiumSaganMode",
+        "reciprocalLinkReady",
+        "effectiveBillableRateUsdPerHour",
+        "executionCellLeaseId",
+        "dockerLaneLeaseId",
+        "harnessKind",
+        "harnessInstanceId",
+        "operatorAuthorizationRef",
+        "cellId",
+        "laneId",
+        "isolatedLaneGroupId",
+        "fingerprintSha256"
+      ],
+      "properties": {
+        "status": { "type": ["string", "null"] },
+        "planeBinding": { "type": ["string", "null"] },
+        "cellClass": { "type": ["string", "null"] },
+        "suiteClass": { "type": ["string", "null"] },
+        "premiumSaganMode": { "type": "boolean" },
+        "reciprocalLinkReady": { "type": "boolean" },
+        "effectiveBillableRateUsdPerHour": { "type": ["number", "null"], "minimum": 0 },
+        "executionCellLeaseId": { "type": ["string", "null"] },
+        "dockerLaneLeaseId": { "type": ["string", "null"] },
+        "harnessKind": { "type": ["string", "null"] },
+        "harnessInstanceId": { "type": ["string", "null"] },
+        "operatorAuthorizationRef": { "type": ["string", "null"] },
+        "cellId": { "type": ["string", "null"] },
+        "laneId": { "type": ["string", "null"] },
+        "isolatedLaneGroupId": { "type": ["string", "null"] },
+        "fingerprintSha256": { "type": ["string", "null"] }
+      }
+    },
+    "executionTopologyLogicalLaneActivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["activeLaneCount", "seededLaneCount", "catalogCount"],
+      "properties": {
+        "activeLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "seededLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "catalogCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "executionTopologyProviderDispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerId",
+        "providerKind",
+        "executionPlane",
+        "assignmentMode",
+        "dispatchSurface",
+        "completionMode",
+        "workerSlotId",
+        "dispatchStatus",
+        "completionStatus",
+        "failureClass"
+      ],
+      "properties": {
+        "providerId": { "type": ["string", "null"] },
+        "providerKind": { "type": ["string", "null"] },
+        "executionPlane": { "type": ["string", "null"] },
+        "assignmentMode": { "type": ["string", "null"] },
+        "dispatchSurface": { "type": ["string", "null"] },
+        "completionMode": { "type": ["string", "null"] },
+        "workerSlotId": { "type": ["string", "null"] },
+        "dispatchStatus": { "type": ["string", "null"] },
+        "completionStatus": { "type": ["string", "null"] },
+        "failureClass": { "type": ["string", "null"] }
+      }
+    },
+    "executionTopology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "executionPlane",
+        "providerId",
+        "workerSlotId",
+        "activeLogicalLaneCount",
+        "seededLogicalLaneCount",
+        "catalogCount",
+        "runtimeSurface",
+        "processModelClass",
+        "windowsOnly",
+        "requestedSimultaneous",
+        "cellClass",
+        "suiteClass",
+        "operatorAuthorizationRef",
+        "premiumSaganMode",
+        "reciprocalLinkReady",
+        "logicalLaneActivation",
+        "providerDispatch",
+        "executionBundle"
+      ],
+      "properties": {
+        "status": { "type": ["string", "null"] },
+        "executionPlane": { "type": ["string", "null"] },
+        "providerId": { "type": ["string", "null"] },
+        "workerSlotId": { "type": ["string", "null"] },
+        "activeLogicalLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "seededLogicalLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "catalogCount": { "type": "integer", "minimum": 0 },
+        "runtimeSurface": { "type": ["string", "null"] },
+        "processModelClass": { "type": ["string", "null"] },
+        "windowsOnly": { "type": "boolean" },
+        "requestedSimultaneous": { "type": "boolean" },
+        "cellClass": { "type": ["string", "null"] },
+        "suiteClass": { "type": ["string", "null"] },
+        "operatorAuthorizationRef": { "type": ["string", "null"] },
+        "premiumSaganMode": { "type": "boolean" },
+        "reciprocalLinkReady": { "type": "boolean" },
+        "logicalLaneActivation": { "$ref": "#/$defs/executionTopologyLogicalLaneActivation" },
+        "providerDispatch": { "$ref": "#/$defs/executionTopologyProviderDispatch" },
+        "executionBundle": { "$ref": "#/$defs/executionBundle" }
       }
     }
   }

@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.comparevi.dev/docker-lane-handshake-report-v1.schema.json",
+  "title": "Docker Lane Handshake Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "action",
+    "status",
+    "laneId",
+    "handshakePath",
+    "policy",
+    "handshake",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/docker-lane-handshake-report@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "action": {
+      "enum": ["request", "grant", "commit", "heartbeat", "release", "inspect"]
+    },
+    "status": {
+      "enum": [
+        "requested",
+        "granted",
+        "committed",
+        "released",
+        "renewed",
+        "active",
+        "busy",
+        "denied",
+        "not-found",
+        "mismatch",
+        "invalid-state",
+        "stale"
+      ]
+    },
+    "laneId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "handshakePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operatorId", "currency", "laborRateUsdPerHour", "premiumSaganRateMultiplier"],
+      "properties": {
+        "operatorId": { "type": ["string", "null"] },
+        "currency": { "type": ["string", "null"] },
+        "laborRateUsdPerHour": { "type": ["number", "null"], "minimum": 0 },
+        "premiumSaganRateMultiplier": { "type": "number", "minimum": 1 }
+      }
+    },
+    "handshake": {
+      "anyOf": [
+        { "type": "null" },
+        { "$ref": "docker-lane-handshake-v1.schema.json" }
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handshakeState",
+        "leaseId",
+        "holder",
+        "premiumSaganMode",
+        "billableRateMultiplier",
+        "billableRateUsdPerHour",
+        "operatorAuthorizationRef",
+        "isolatedLaneGroupId",
+        "fingerprintSha256",
+        "linkedExecutionCellId",
+        "linkedExecutionCellLeaseId",
+        "isStale",
+        "ageSeconds",
+        "ttlSeconds",
+        "denialReasons",
+        "observations"
+      ],
+      "properties": {
+        "handshakeState": { "type": ["string", "null"] },
+        "leaseId": { "type": ["string", "null"] },
+        "holder": { "type": ["string", "null"] },
+        "premiumSaganMode": { "type": "boolean" },
+        "billableRateMultiplier": { "type": ["number", "null"], "minimum": 1 },
+        "billableRateUsdPerHour": { "type": ["number", "null"], "minimum": 0 },
+        "operatorAuthorizationRef": { "type": ["string", "null"] },
+        "isolatedLaneGroupId": { "type": ["string", "null"] },
+        "fingerprintSha256": { "type": ["string", "null"] },
+        "linkedExecutionCellId": { "type": ["string", "null"] },
+        "linkedExecutionCellLeaseId": { "type": ["string", "null"] },
+        "isStale": { "type": "boolean" },
+        "ageSeconds": { "type": ["number", "null"], "minimum": 0 },
+        "ttlSeconds": { "type": ["integer", "null"], "minimum": 1 },
+        "denialReasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "observations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -177,10 +177,14 @@ Quick reference for building, testing, and releasing the LVCompare composite act
   `gh issue create/edit`. Omit `--output` to print to STDOUT.
 - `pwsh -NoLogo -NoProfile -File tools/Post-IssueComment.ps1 -Issue <number> -BodyFile issue-comment.md`
   Posts GitHub issue comments through `--body-file` by default so multiline Markdown survives PowerShell and mixed
-  Windows/WSL shells without backtick-escape drift.
+  Windows/WSL shells without backtick-escape drift. The wrapper also appends the
+  checked-in durable budget hook by default; pass `-SkipBudgetHook` only when a
+  test or break-glass path must suppress the attestation.
 - `pwsh -NoLogo -NoProfile -File tools/Post-PullRequestComment.ps1 -PullRequest <number> -Repo <owner/repo> -BodyFile pr-comment.md`
   Posts GitHub pull-request comments through `--body-file` by default so multiline Markdown survives PowerShell and
-  mixed Windows/WSL shells without backtick-escape drift.
+  mixed Windows/WSL shells without backtick-escape drift. The wrapper also
+  appends the checked-in durable budget hook by default; pass `-SkipBudgetHook`
+  only when a test or break-glass path must suppress the attestation.
 - `node tools/priority/github-helper.mjs snippet --issue 531 --prefix Fixes`  
   Emits an auto-link snippet (defaults to `Fixes #531`) you can drop into PR descriptions so GitHub auto-closes the issue.
 - `node tools/npm/run-script.mjs priority:project:portfolio:apply -- --url <issue-or-pr-url> --use-config`  
@@ -476,8 +480,8 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
     Auto mode activates on release windows, open `release/*` PRs, or `release-burst` labels, and backs off for
     30 minutes whenever the throughput controller enters `stabilize`.
   For queue-aware release proposals, run `node tools/npm/run-script.mjs priority:release:conductor -- --dry-run`.
-  Apply mode requires `RELEASE_CONDUCTOR_ENABLED=1`; if signing material is unavailable, the conductor remains
-  proposal-only and emits evidence without mutating tags.
+  Apply mode requires `RELEASE_CONDUCTOR_ENABLED=1`; if signing material is unavailable, the conductor now fails closed
+  before tag creation and emits readiness evidence without mutating tags.
   Hosted `schedule` and `workflow_run` conductor lanes stay proposal-only when apply mode is disabled, and dry-runs
   record advisory-only queue-evidence / no-recent-success diagnostics instead of failing for missing queue artifacts or
   idle dwell windows.
@@ -657,6 +661,9 @@ pwsh -File tools/Print-AgentHandoff.ps1 -ApplyToggles -AutoTrim
   `node tools/npm/run-script.mjs priority:handoff`, which now prints the
   entrypoint index alongside the standing-priority snapshot and other handoff
   summaries.
+- Refresh the compact hot/warm durable memory view directly with
+  `node tools/npm/run-script.mjs priority:context:concentrate`, which writes
+  `tests/results/_agent/handoff/sagan-context-concentrator.json`.
 - The overall future-agent handoff contract is summarized in
   [`docs/knowledgebase/Agent-Handoff-Surfaces.md`](./knowledgebase/Agent-Handoff-Surfaces.md).
 - See [`WATCHER_TELEMETRY_DX.md`](./WATCHER_TELEMETRY_DX.md) for automation response expectations.

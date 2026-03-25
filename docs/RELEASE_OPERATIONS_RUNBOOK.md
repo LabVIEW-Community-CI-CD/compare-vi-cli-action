@@ -53,11 +53,20 @@ Configuration path: `Settings -> Environments -> <environment> -> Required revie
      backend stable release as fully complete
 5. Finalize release (draft tag + metadata):
    - `node tools/npm/run-script.mjs release:finalize -- <version>`
-6. Verify rollback drill health:
+6. Verify workflow signing readiness before authoritative tag publication:
+   - `node tools/npm/run-script.mjs priority:release:signing:readiness`
+   - confirm `tests/results/_agent/release/release-signing-readiness.json` reports:
+     - `codePathState = ready`
+     - `signingCapabilityState = configured`
+     - `signingAuthorityState = ready`
+     - `releaseConductorApplyState = enabled`
+   - if `externalBlocker` reports any signing secret, signing authority, or apply-gating blocker,
+     treat that as an explicit external blocker and stop before rerunning release publication flows
+7. Verify rollback drill health:
    - `node tools/npm/run-script.mjs priority:rollback:drill:health -- --repo <owner/repo>`
    - confirm `tests/results/_agent/release/rollback-drill-health.json` reports `status=pass`
-7. Obtain environment approvals for protected deployments from GitHub UI/mobile.
-8. Record evidence links in the governing issue/PR before closure.
+8. Obtain environment approvals for protected deployments from GitHub UI/mobile.
+9. Record evidence links in the governing issue/PR before closure.
 
 ## One-command rollback
 
@@ -138,6 +147,35 @@ For unattended cadence, use `.github/workflows/downstream-onboarding-feedback.ym
 
 ## Supply-chain trust remediation classes
 
+Before relying on a local workstation tag, prefer the release conductor
+automation path:
+
+- run `.github/workflows/release-conductor.yml` in apply mode
+- if the authoritative release tag already exists but the trust gate reports
+  `tag-not-annotated` or `tag-signature-unverified`, rerun
+  `.github/workflows/release-conductor.yml` with:
+  - the target `version`
+  - `apply = true`
+  - `repair_existing_tag = true`
+- provision `RELEASE_TAG_SIGNING_PRIVATE_KEY` and optional
+  `RELEASE_TAG_SIGNING_PUBLIC_KEY` for workflow-owned signing
+- optionally set `RELEASE_TAG_SIGNING_IDENTITY_NAME` and
+  `RELEASE_TAG_SIGNING_IDENTITY_EMAIL` when the signing authority should use an
+  explicit Git identity override; otherwise the workflow derives the signer
+  identity from the resolved policy token account
+- inspect `tests/results/_agent/release/release-conductor-report.json`
+  first
+- require both:
+  - `release.tagCreated = true`
+  - `release.tagPushed = true`
+  - when repair mode is used:
+    - `release.repair.status = repaired`
+    - `release.repair.remoteTargetCommitOid` matches the authoritative commit
+    - `release.publicationReplay.status = dispatched`
+    - `release.publicationReplay.ref = develop`
+    - `release.publicationReplay.tagInputValue` matches the authoritative tag
+    - the replayed `Release on tag` run succeeds for the repaired tag
+
 When the release trust gate fails, inspect `tests/results/_agent/supply-chain/release-trust-gate.json` and follow the
 matching remediation path:
 
@@ -148,7 +186,23 @@ matching remediation path:
 - `tag-signature-cli-unavailable`
   - Restore GitHub CLI availability on runner and retry release.
 - `tag-not-annotated`, `tag-signature-unverified`
-  - Recreate release tag as a signed annotated tag and rerun release.
+  - Use `node tools/npm/run-script.mjs priority:release:signing:readiness`
+    first.
+  - If signing readiness is `ready`, run the release conductor in repair mode
+    for the target version so the authoritative tag is recreated as a signed
+    annotated tag without changing the intended release commit.
+  - Rerun release only after the repair report shows
+    `release.repair.status = repaired` and
+    `release.publicationReplay.status = dispatched`.
+  - Repaired-tag replay now dispatches `release.yml` from `develop` with
+    `workflow_dispatch.inputs.release_tag=<target tag>`; do not rely on the
+    repaired tag itself carrying the newer workflow definition.
+- `workflow-signing-secret-missing`, `workflow-signing-secret-unverifiable`
+- `workflow-signing-admin-scope-missing`, `workflow-signing-key-missing`, `workflow-signing-authority-unverifiable`
+- `release-conductor-apply-disabled`, `release-conductor-apply-unverifiable`
+  - Use `node tools/npm/run-script.mjs priority:release:signing:readiness` to confirm the blocker, provision or repair
+    the workflow signing secrets, signing authority, or release-conductor enablement, and only then rerun authoritative
+    release publication.
 - `checksum-invalid-line`, `checksum-empty`, `checksum-entry-missing-file`, `checksum-missing-artifact`, `checksum-mismatch`
   - Regenerate `SHA256SUMS.txt` from fresh artifacts and ensure no post-pack mutation occurred.
 - `sbom-parse-failed`, `sbom-invalid`
@@ -178,6 +232,7 @@ matching remediation path:
 
 - `tests/results/_agent/release/release-<tag>-branch.json`
 - `tests/results/_agent/release/release-<tag>-finalize.json`
+- `tests/results/_agent/release/release-signing-readiness.json`
 - `tests/results/_agent/policy/policy-drift-report.json`
 - `tests/results/_agent/health-snapshot/health-snapshot.json`
 - `tests/results/_agent/supply-chain/release-trust-gate.json`

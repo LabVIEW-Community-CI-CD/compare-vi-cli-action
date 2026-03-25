@@ -48,6 +48,13 @@ Describe 'Write-LabVIEW2026HostPlaneDiagnostics.ps1' -Tag 'Unit' {
     $report.schema | Should -Be 'labview-2026-host-plane-report@v1'
     $report.runner.hostIsRunner | Should -BeTrue
     $report.runner.runnerName | Should -Not -BeNullOrEmpty
+    $report.host.osFingerprint.role | Should -Be 'canonical-host-baseline'
+    $report.host.osFingerprint.comparisonScope | Should -Be 'isolated-lane-group'
+    $report.host.osFingerprint.fingerprintSha256 | Should -Match '^[a-f0-9]{64}$'
+    $report.host.osFingerprint.isolatedLaneGroupId | Should -Match '^host-os-fingerprint:[a-f0-9]{64}$'
+    $report.host.osFingerprint.canonical.version | Should -Not -BeNullOrEmpty
+    $report.host.osFingerprint.canonical.buildNumber | Should -Not -BeNullOrEmpty
+    $report.host.osFingerprint.canonical.architecture | Should -Not -BeNullOrEmpty
     $report.policy.authoritativePlanes | Should -Contain 'docker-desktop/linux-container-2026'
     $report.policy.authoritativePlanes | Should -Contain 'docker-desktop/windows-container-2026'
     $report.policy.hostNativeShadowPlane.plane | Should -Be 'native-labview-2026-32'
@@ -68,6 +75,10 @@ Describe 'Write-LabVIEW2026HostPlaneDiagnostics.ps1' -Tag 'Unit' {
     Test-Path -LiteralPath $summaryPath | Should -BeTrue
     $summary = Get-Content -LiteralPath $summaryPath -Raw
     $summary | Should -Match '# LabVIEW 2026 Host Plane Summary'
+    $summary | Should -Match '- Canonical host OS:'
+    $summary | Should -Match '- Host OS fingerprint SHA-256:'
+    $summary | Should -Match '- Isolated lane group ID:'
+    $summary | Should -Match '- Host OS branding:'
     $summary | Should -Match '- Native 64-bit: `ready`'
     $summary | Should -Match '- Native 32-bit: `ready`'
     $summary | Should -Match 'Host-native 32-bit shadow: `acceleration-surface`'
@@ -141,5 +152,9 @@ Describe 'Write-LabVIEW2026HostPlaneDiagnostics.ps1' -Tag 'Unit' {
     $outputText | Should -Match 'labview-2026-native-64-status=ready'
     $outputText | Should -Match 'labview-2026-native-32-status=ready'
     $outputText | Should -Match 'labview-2026-native-parallel-supported=True'
+    $outputText | Should -Match 'labview-2026-host-os-fingerprint-sha256='
+    $outputText | Should -Match 'labview-2026-host-isolated-lane-group-id='
+    $outputText | Should -Match 'labview-2026-host-os-version='
+    $outputText | Should -Match 'labview-2026-host-os-build='
   }
 }

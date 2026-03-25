@@ -2,7 +2,7 @@
   "$schema": "./schemas/documentation-manifest-v1.schema.json",
   "schema": "documentation-manifest-v1",
   "version": "1.0.0",
-  "updated": "2026-03-22T23:35:00Z",
+      "updated": "2026-03-24T02:15:00Z",
   "entries": [
     {
       "name": "Root Entry Points",
@@ -29,6 +29,33 @@
         "docs/release/PR_NOTES.md",
         "docs/release/ROLLBACK_PLAN.md",
         "docs/release/TAG_PREP_CHECKLIST.md"
+      ]
+    },
+    {
+      "name": "Release Signing Readiness Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Workflow-owned tag-signing readiness report contract, focused tests, and runbook references used to surface signing capability as an explicit external blocker before release attempts.",
+      "files": [
+        "docs/RELEASE_OPERATIONS_RUNBOOK.md",
+        "docs/RELEASE_PROMOTION_CONTRACT.md",
+        "docs/schemas/release-signing-readiness-report-v1.schema.json",
+        "tools/priority/release-signing-readiness.mjs",
+        "tools/priority/__tests__/release-signing-readiness.test.mjs",
+        "tools/priority/__tests__/release-signing-readiness-schema.test.mjs"
+      ]
+    },
+    {
+      "name": "Published CompareVI.Tools Bundle Observer",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Published-release observer that downloads the latest CompareVI.Tools asset and checks whether the producer-native vi-history contract is live for downstream template distribution.",
+      "files": [
+        "docs/RELEASE_PROMOTION_CONTRACT.md",
+        "docs/schemas/release-published-bundle-observer-report-v1.schema.json",
+        "tools/priority/release-published-bundle-observer.mjs",
+        "tools/priority/__tests__/release-published-bundle-observer.test.mjs",
+        "tools/priority/__tests__/release-published-bundle-observer-schema.test.mjs"
       ]
     },
     {
@@ -134,6 +161,8 @@
         "docs/schemas/agent-cost-turn-v1.schema.json",
         "docs/schemas/agent-cost-rollup-v1.schema.json",
         "docs/schemas/average-issue-cost-scorecard-v1.schema.json",
+        "docs/schemas/github-comment-budget-hook-policy-v1.schema.json",
+        "docs/schemas/github-comment-budget-hook-report-v1.schema.json",
         "docs/schemas/operator-cost-profile-v1.schema.json",
         "docs/schemas/pr-spend-projection-v1.schema.json",
         "tools/priority/__fixtures__/agent-cost-rollup/live-turn-estimated.json",
@@ -142,13 +171,17 @@
         "tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-next-baseline.json",
         "tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline-reconciled.json",
         "tools/priority/__fixtures__/agent-cost-rollup/private-invoice-metadata-sample.json",
+        "tools/policy/github-comment-budget-hook.json",
         "tools/policy/operator-cost-profile.json",
         "tools/priority/agent-cost-invoice-normalize.mjs",
         "tools/priority/agent-cost-invoice-turn.mjs",
         "tools/priority/agent-cost-turn.mjs",
         "tools/priority/agent-cost-rollup.mjs",
         "tools/priority/average-issue-cost-scorecard.mjs",
+        "tools/priority/github-comment-budget-hook.mjs",
         "tools/priority/pr-spend-projection.mjs",
+        "tools/priority/__tests__/github-comment-budget-hook.test.mjs",
+        "tools/priority/__tests__/github-comment-budget-hook-schema.test.mjs",
         "tools/priority/__tests__/average-issue-cost-scorecard.test.mjs",
         "tools/priority/__tests__/average-issue-cost-scorecard-schema.test.mjs",
         "tools/priority/__tests__/agent-cost-invoice-normalize.test.mjs",
@@ -435,7 +468,7 @@
       "name": "Host Plane Diagnostics Contracts",
       "category": "supporting",
       "status": "reference",
-      "description": "Machine-readable report and summary contracts, VI-history local runtime-plane receipts, helper entrypoints, fast-loop provenance surfaces, and the single-host runbook for the LabVIEW 2026 host-plane split.",
+      "description": "Machine-readable report and summary contracts, VI-history local runtime-plane receipts, lease-backed Docker-lane handshake contracts, TestStand harness host-plane attribution, helper entrypoints, fast-loop provenance surfaces, and the single-host runbook for the LabVIEW 2026 host-plane split.",
       "files": [
         "docs/DEVELOPER_GUIDE.md",
         "docs/SINGLE_HOST_LABVIEW_2026_PLANES.md",
@@ -447,18 +480,34 @@
         "docs/schemas/comparevi-local-runtime-health-v1.schema.json",
         "docs/schemas/comparevi-local-runtime-lease-v1.schema.json",
         "docs/schemas/comparevi-local-runtime-state-v1.schema.json",
+        "docs/schemas/docker-lane-handshake-v1.schema.json",
+        "docs/schemas/docker-lane-handshake-report-v1.schema.json",
+        "docs/schemas/execution-cell-bundle-report-v1.schema.json",
+        "docs/schemas/execution-cell-lease-v1.schema.json",
+        "docs/schemas/execution-cell-lease-report-v1.schema.json",
         "docs/schemas/labview-2026-host-plane-report-v1.schema.json",
         "tests/VIHistoryLocalAcceleration.Tests.ps1",
+        "tests/TestStand-CompareHarness.Tests.ps1",
         "tools/Build-VIHistoryDevImage.ps1",
         "tools/Invoke-VIHistoryLocalOperatorSession.ps1",
         "tools/Invoke-VIHistoryLocalRefinement.ps1",
+        "tools/TestStand-CompareHarness.ps1",
         "tools/Manage-VIHistoryRuntimeInDocker.ps1",
         "tools/LabVIEW2026HostPlaneDiagnostics.psm1",
         "tools/Show-DockerFastLoopDiagnostics.ps1",
         "tools/Test-DockerDesktopFastLoop.ps1",
         "tools/Write-DockerFastLoopProof.ps1",
         "tools/Write-DockerFastLoopReadiness.ps1",
-        "tools/Write-LabVIEW2026HostPlaneDiagnostics.ps1"
+        "tools/Write-LabVIEW2026HostPlaneDiagnostics.ps1",
+        "tools/priority/docker-lane-handshake.mjs",
+        "tools/priority/execution-cell-bundle.mjs",
+        "tools/priority/execution-cell-lease.mjs",
+        "tools/priority/__tests__/docker-lane-handshake.test.mjs",
+        "tools/priority/__tests__/docker-lane-handshake-schema.test.mjs",
+        "tools/priority/__tests__/execution-cell-bundle.test.mjs",
+        "tools/priority/__tests__/execution-cell-bundle-schema.test.mjs",
+        "tools/priority/__tests__/execution-cell-lease.test.mjs",
+        "tools/priority/__tests__/execution-cell-lease-schema.test.mjs"
       ]
     },
     {

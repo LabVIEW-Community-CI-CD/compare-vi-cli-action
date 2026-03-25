@@ -124,11 +124,30 @@ test('monitoring work injection report matches schema', async () => {
       monitoringStatus: 'active',
       futureAgentAction: 'future-agent-may-pivot',
       governorMode: 'compare-governance-work',
-      nextAction: 'continue-compare-governance-work'
+      nextAction: 'continue-compare-governance-work',
+      queueHandoffStatus: null,
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: null
     },
     portfolio: {
       repositoryCount: 4,
       repositories: [],
+      dependencies: [
+        {
+          id: 'vi-history-producer-native-distributor',
+          status: 'unknown',
+          ownerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          dependentRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          requiredCapability: 'vi-history',
+          source: 'compare-release-signing-readiness',
+          releaseSigningStatus: null,
+          releasePublicationState: null,
+          signingCapabilityState: null,
+          externalBlocker: null,
+          detail: 'fixture'
+        }
+      ],
       unsupportedPaths: []
     },
     summary: {
@@ -141,6 +160,14 @@ test('monitoring work injection report matches schema', async () => {
       templateMonitoringStatus: 'pass',
       supportedProofStatus: 'pass',
       repoGraphStatus: 'pass',
+      queueHandoffStatus: null,
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: null,
+      viHistoryDistributorDependencyStatus: 'unknown',
+      viHistoryDistributorDependencyTargetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      viHistoryDistributorDependencyExternalBlocker: null,
+      viHistoryDistributorDependencyPublicationState: null,
       portfolioWakeConditionCount: 0,
       triggeredWakeConditions: []
     }

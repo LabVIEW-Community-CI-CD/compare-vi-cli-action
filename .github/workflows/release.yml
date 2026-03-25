@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Authoritative release tag to publish or replay.'
+        required: true
+        type: string
 
 jobs:
   certification-matrix:
@@ -13,17 +19,40 @@ jobs:
       actions: read
       contents: read
     outputs:
+      target_tag: ${{ steps.release_target.outputs.tag }}
       channel: ${{ steps.channel.outputs.channel }}
     steps:
+      - name: Resolve release target tag
+        id: release_target
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag='${{ inputs.release_tag }}'
+          fi
+          if [[ -z "$tag" ]]; then
+            echo "Release target tag could not be resolved." >&2
+            exit 1
+          fi
+          if [[ "$tag" != v* ]]; then
+            echo "Release target tag must start with v: $tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.release_target.outputs.tag }}
 
       - name: Resolve release channel
         id: channel
         shell: bash
         run: |
           set -euo pipefail
+          resolved_tag='${{ steps.release_target.outputs.tag }}'
           channel="stable"
-          if [[ "${GITHUB_REF_NAME}" == *"-rc."* ]]; then
+          if [[ "$resolved_tag" == *-rc.* ]]; then
             channel="rc"
           fi
           echo "channel=${channel}" >> "$GITHUB_OUTPUT"
@@ -68,8 +97,31 @@ jobs:
       id-token: write
     outputs:
       cli_version: ${{ steps.meta.outputs.cli_version }}
+      target_tag: ${{ needs.certification-matrix.outputs.target_tag }}
+    env:
+      RELEASE_TAG: ${{ needs.certification-matrix.outputs.target_tag }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Checkout replay automation surfaces
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/checkout@v5
+        with:
+          ref: develop
+          path: .release-automation
+
+      - name: Resolve release automation root
+        id: automation_root
+        shell: bash
+        run: |
+          set -euo pipefail
+          automation_root='.'
+          if [[ -f '.release-automation/tools/priority/release-trust-remediation.mjs' ]]; then
+            automation_root='.release-automation'
+          fi
+          echo "path=${automation_root}" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node 20
         uses: actions/setup-node@v6
@@ -85,7 +137,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
+          TAG="${RELEASE_TAG}"
           awk -v tag="$TAG" '
             $0 ~ "^##[[:space:]]*\\[?" tag "\\]?$" {print; in=1; next}
             in && $0 ~ "^##[[:space:]]*\\[" {exit}
@@ -212,7 +264,7 @@ jobs:
           if-no-files-found: error
 
       - name: Attest release assets provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             artifacts/cli/*.zip
@@ -233,7 +285,7 @@ jobs:
             --checksums artifacts/cli/SHA256SUMS.txt \
             --sbom artifacts/cli/sbom.spdx.json \
             --provenance artifacts/cli/provenance.json \
-            --tag-ref "${{ github.ref_name }}" \
+            --tag-ref "${RELEASE_TAG}" \
             --signer-workflow "${{ github.repository }}/.github/workflows/release.yml" \
             --report tests/results/_agent/supply-chain/release-trust-gate.json
 
@@ -245,12 +297,25 @@ jobs:
             -JsonPath tests/results/_agent/supply-chain/release-trust-gate.json `
             -SchemaPath docs/schemas/supply-chain-trust-gate-v1.schema.json
 
+      - name: Append release trust remediation guidance
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node "${{ steps.automation_root.outputs.path }}/tools/priority/release-trust-remediation.mjs" \
+            --trust-report tests/results/_agent/supply-chain/release-trust-gate.json \
+            --tag-ref "${RELEASE_TAG}" \
+            --output tests/results/_agent/release/release-trust-remediation.md \
+            --summary "$GITHUB_STEP_SUMMARY"
+
       - name: Upload supply-chain trust artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: release-supply-chain-trust-${{ github.run_id }}
-          path: tests/results/_agent/supply-chain/release-trust-gate.json
+          path: |
+            tests/results/_agent/supply-chain/release-trust-gate.json
+            tests/results/_agent/release/release-trust-remediation.md
           if-no-files-found: error
 
       - name: Enforce rollback drill health gate
@@ -259,9 +324,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          node tools/priority/rollback-drill-health.mjs \
+          node "${{ steps.automation_root.outputs.path }}/tools/priority/rollback-drill-health.mjs" \
             --repo "${{ github.repository }}" \
-            --policy tools/policy/release-rollback-policy.json \
+            --policy "${{ steps.automation_root.outputs.path }}/tools/policy/release-rollback-policy.json" \
             --report tests/results/_agent/release/rollback-drill-health.json
 
       - name: Validate rollback drill health schema
@@ -270,7 +335,7 @@ jobs:
         run: |
           pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
             -JsonPath tests/results/_agent/release/rollback-drill-health.json `
-            -SchemaPath docs/schemas/release-rollback-drill-health-v1.schema.json
+            -SchemaPath '${{ steps.automation_root.outputs.path }}/docs/schemas/release-rollback-drill-health-v1.schema.json'
 
       - name: Upload rollback drill health artifact
         if: always()
@@ -283,7 +348,6 @@ jobs:
       - name: Append release surface map
         shell: pwsh
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
           CLI_VERSION: ${{ steps.meta.outputs.cli_version }}
           MODULE_VERSION: ${{ steps.comparevi_tools.outputs.comparevi_tools_release_version }}
           MODULE_METADATA: tests/results/_agent/release/comparevi-tools-artifact.json
@@ -304,6 +368,7 @@ jobs:
         if: steps.notes.outputs.fallback == 'false'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           body_path: RELEASE_NOTES.md
           files: |
             artifacts/cli/*.zip
@@ -316,6 +381,7 @@ jobs:
         if: steps.notes.outputs.fallback == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           generate_release_notes: true
           files: |
             artifacts/cli/*.zip
@@ -334,7 +400,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'publish-tools-image.yml',
-              ref: '${{ github.ref_name }}',
+              ref: 'develop',
               inputs: {
                 version: releaseVersion,
                 channel: releaseChannel
@@ -345,6 +411,8 @@ jobs:
   validate-cli-artifacts:
     runs-on: ${{ matrix.os }}
     needs: release
+    env:
+      RELEASE_TAG: ${{ needs.release.outputs.target_tag }}
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
@@ -518,7 +586,7 @@ jobs:
           }
           pwsh -NoLogo -NoProfile -File tools/release-review/Write-ReleaseReviewScenarioSummary.ps1 `
             -Os '${{ matrix.os }}' `
-            -Tag '${{ github.ref_name }}' `
+            -Tag '${{ env.RELEASE_TAG }}' `
             -ChecksumOutcome $checksumOutcome `
             -SmokeOutcome $smokeOutcome `
             -OutputPath 'tests/results/release-review/scenario-summary-${{ matrix.os }}.json'
@@ -616,6 +684,8 @@ jobs:
       actions: read
       contents: read
       issues: write
+    env:
+      RELEASE_TAG: ${{ needs.release.outputs.target_tag }}
     steps:
       - uses: actions/checkout@v5
 
@@ -655,7 +725,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_sha="$(git rev-parse "${{ github.ref_name }}^{commit}")"
+          git fetch --force --tags origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          source_sha="$(git rev-parse "${RELEASE_TAG}^{commit}")"
           echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
 
       - name: Resolve downstream proving artifact selection
@@ -743,7 +814,7 @@ jobs:
             -ScenarioRoot tests/results/release-contract/scenarios `
             -ProfilePath tools/release-review/scenario-profiles.json `
             -PolicyPath tools/policy/release-review-gates.json `
-            -Tag '${{ github.ref_name }}' `
+            -Tag '${{ env.RELEASE_TAG }}' `
             -OutputIndexPath tests/results/release-contract/review-index.json `
             -OutputCommentPath tests/results/release-contract/review-comment.md
           if (Test-Path -LiteralPath 'tests/results/release-contract/review-comment.md' -PathType Leaf) {
@@ -800,7 +871,7 @@ jobs:
             'cancelled' { 'blocked' }
             default { 'fail' }
           }
-          $channel = if ('${{ github.ref_name }}' -match '-rc\.') { 'rc' } else { 'stable' }
+          $channel = if ('${{ env.RELEASE_TAG }}' -match '-rc\.') { 'rc' } else { 'stable' }
           pwsh -NoLogo -NoProfile -File tools/Write-PromotionEvidenceLedger.ps1 -OutputPath tests/results/promotion-contract/release-ledger.json -WorkflowName '${{ github.workflow }}' -Stream 'comparevi-cli' -Channel $channel -Version '${{ needs.release.outputs.cli_version }}' -GateStatus $gateStatus -GateReason 'release-contract job result' -SummaryPath 'tests/results/release-contract/review-index.json' -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Emit SLO metrics
@@ -822,11 +893,11 @@ jobs:
         run: |
           set -euo pipefail
           channel="stable"
-          if printf '%s' "${{ github.ref_name }}" | grep -q -- '-rc\.'; then
+          if printf '%s' "${RELEASE_TAG}" | grep -q -- '-rc\.'; then
             channel="rc"
           fi
           signed_tag_args=()
-          if ! printf '%s' "${{ github.ref_name }}" | grep -Eq -- '-tools\.[0-9]+$'; then
+          if ! printf '%s' "${RELEASE_TAG}" | grep -Eq -- '-tools\.[0-9]+$'; then
             signed_tag_args+=(--require-signed-tag)
           fi
           node tools/priority/release-scorecard.mjs \
@@ -834,7 +905,7 @@ jobs:
             --stream comparevi-cli \
             --channel "${channel}" \
             --version "${{ needs.release.outputs.cli_version }}" \
-            --tag-ref "${{ github.ref_name }}" \
+            --tag-ref "${RELEASE_TAG}" \
             --ledger tests/results/promotion-contract/release-ledger.json \
             --slo tests/results/_agent/slo/release-slo-metrics.json \
             --rollback tests/results/_agent/release/rollback-drill-health.json \

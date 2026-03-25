@@ -18,12 +18,21 @@ Describe 'Run-DX.ps1 (TestStand staging)' -Tag 'Unit' {
       New-Item -ItemType Directory -Path 'tools' | Out-Null
       Copy-Item -LiteralPath $script:RunDxPath -Destination 'tools/Run-DX.ps1'
       Copy-Item -LiteralPath $script:StageScriptPath -Destination 'tools/Stage-CompareInputs.ps1'
+      $runDxContent = Get-Content -LiteralPath (Join-Path $work 'tools/Run-DX.ps1') -Raw
+      $runDxContent = $runDxContent -replace '(?m)^exit \$exit$', 'return $exit'
+      Set-Content -LiteralPath (Join-Path $work 'tools/Run-DX.ps1') -Value $runDxContent -Encoding UTF8
 $harnessStub = @'
 param(
   [string]$BaseVi,
   [string]$HeadVi,
   [string]$OutputRoot,
   [string]$StagingRoot,
+  [string]$AgentId,
+  [string]$AgentClass,
+  [string]$ExecutionCellLeasePath,
+  [string]$ExecutionCellId,
+  [string]$ExecutionCellLeaseId,
+  [string]$HarnessInstanceId,
   [switch]$SameNameHint,
   [switch]$AllowSameLeaf,
   [string]$NoiseProfile,
@@ -34,6 +43,12 @@ $log = [ordered]@{
   base          = $BaseVi
   head          = $HeadVi
   stagingRoot   = $StagingRoot
+  agentId       = $AgentId
+  agentClass    = $AgentClass
+  executionCellLeasePath = $ExecutionCellLeasePath
+  executionCellId = $ExecutionCellId
+  executionCellLeaseId = $ExecutionCellLeaseId
+  harnessInstanceId = $HarnessInstanceId
   sameNameHint  = $SameNameHint.IsPresent
   allowSameLeaf = $AllowSameLeaf.IsPresent
   noiseProfile  = $NoiseProfile
@@ -42,6 +57,8 @@ $log = [ordered]@{
 $log | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputRoot 'harness-log.json') -Encoding utf8
 $session = [ordered]@{
   schema = 'teststand-compare-session/v1'
+  suiteClass = 'single-compare'
+  requestedSimultaneous = $false
   warmup = @{
     mode   = $Warmup
     events = $null
@@ -60,6 +77,30 @@ $session = [ordered]@{
   }
   outcome = $null
   error   = $null
+  executionCell = @{
+    cellId = $ExecutionCellId
+    leaseId = $ExecutionCellLeaseId
+    leasePath = $ExecutionCellLeasePath
+    agentId = $AgentId
+    agentClass = $AgentClass
+    cellClass = 'worker'
+    suiteClass = 'single-compare'
+    operatorAuthorizationRef = 'budget-auth://operator/session-2026-03-24'
+    premiumSaganMode = $false
+  }
+  harnessInstance = @{
+    harnessKind = 'teststand-compare-harness'
+    instanceId = $HarnessInstanceId
+    role = 'single-plane'
+    processModelClass = 'sequential-process-model'
+  }
+  processModel = @{
+    runtimeSurface = 'windows-native-teststand'
+    processModelClass = 'sequential-process-model'
+    windowsOnly = $true
+    rootHarnessInstanceId = $HarnessInstanceId
+    planeCount = 1
+  }
 }
 $session | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $OutputRoot 'session-index.json') -Encoding utf8
 exit 0
@@ -78,13 +119,20 @@ exit 0
 
       $outputRoot = Join-Path $work 'results'
       $runDx = Join-Path $work 'tools/Run-DX.ps1'
-      & pwsh -NoLogo -NoProfile -File $runDx `
+      $result = & $runDx `
         -Suite TestStand `
         -BaseVi $baseVi `
         -HeadVi $headVi `
         -OutputRoot $outputRoot `
-        -Warmup skip *> $null
-      $LASTEXITCODE | Should -Be 0
+        -ResultsPath $outputRoot `
+        -Warmup skip `
+        -AgentId hooke `
+        -AgentClass subagent `
+        -ExecutionCellLeasePath 'E:\comparevi-lanes\cells\hooke-01\execution-cell.json' `
+        -ExecutionCellId 'exec-cell-hooke-01' `
+        -ExecutionCellLeaseId 'lease-hooke-01' `
+        -HarnessInstanceId 'harness-hooke-01'
+      $result | Should -Be 0
 
       $logPath = Join-Path $outputRoot 'harness-log.json'
       Test-Path -LiteralPath $logPath | Should -BeTrue
@@ -96,6 +144,11 @@ exit 0
       $log.sameNameHint | Should -BeTrue
       $log.allowSameLeaf | Should -BeFalse
       $log.stagingRoot | Should -Not -BeNullOrEmpty
+      $log.agentId | Should -Be 'hooke'
+      $log.agentClass | Should -Be 'subagent'
+      $log.executionCellId | Should -Be 'exec-cell-hooke-01'
+      $log.executionCellLeaseId | Should -Be 'lease-hooke-01'
+      $log.harnessInstanceId | Should -Be 'harness-hooke-01'
       $log.noiseProfile | Should -Be 'full'
       Test-Path -LiteralPath $log.stagingRoot | Should -BeFalse
 
@@ -104,6 +157,23 @@ exit 0
       $session.compare.staging.enabled | Should -BeTrue
       $session.compare.staging.root | Should -Be $log.stagingRoot
       $session.compare.allowSameLeaf | Should -BeFalse
+      $session.executionCell.cellId | Should -Be 'exec-cell-hooke-01'
+      $session.executionCell.leaseId | Should -Be 'lease-hooke-01'
+      $session.harnessInstance.instanceId | Should -Be 'harness-hooke-01'
+      $session.processModel.runtimeSurface | Should -Be 'windows-native-teststand'
+      $session.processModel.processModelClass | Should -Be 'sequential-process-model'
+      $statusPath = Join-Path $outputRoot '_agent/dx-status.json'
+      $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+      $status.executionTopology.suiteClass | Should -Be 'single-compare'
+      $status.executionTopology.runtimeSurface | Should -Be 'windows-native-teststand'
+      $status.executionTopology.processModelClass | Should -Be 'sequential-process-model'
+      $status.executionTopology.requestedSimultaneous | Should -BeFalse
+      $status.executionTopology.cellClass | Should -Be 'worker'
+      $status.executionTopology.operatorAuthorizationRef | Should -Be 'budget-auth://operator/session-2026-03-24'
+      $status.executionTopology.premiumSaganMode | Should -BeFalse
+      $status.executionTopology.harnessKind | Should -Be 'teststand-compare-harness'
+      $status.executionTopology.executionCellId | Should -Be 'exec-cell-hooke-01'
+      $status.executionTopology.executionCellLeaseId | Should -Be 'lease-hooke-01'
     }
     finally { Pop-Location }
   }
@@ -116,12 +186,21 @@ exit 0
       New-Item -ItemType Directory -Path 'tools' | Out-Null
       Copy-Item -LiteralPath $script:RunDxPath -Destination 'tools/Run-DX.ps1'
       Copy-Item -LiteralPath $script:StageScriptPath -Destination 'tools/Stage-CompareInputs.ps1'
+      $runDxContent = Get-Content -LiteralPath (Join-Path $work 'tools/Run-DX.ps1') -Raw
+      $runDxContent = $runDxContent -replace '(?m)^exit \$exit$', 'return $exit'
+      Set-Content -LiteralPath (Join-Path $work 'tools/Run-DX.ps1') -Value $runDxContent -Encoding UTF8
 $harnessStub = @'
 param(
   [string]$BaseVi,
   [string]$HeadVi,
   [string]$OutputRoot,
   [string]$StagingRoot,
+  [string]$AgentId,
+  [string]$AgentClass,
+  [string]$ExecutionCellLeasePath,
+  [string]$ExecutionCellId,
+  [string]$ExecutionCellLeaseId,
+  [string]$HarnessInstanceId,
   [switch]$SameNameHint,
   [switch]$AllowSameLeaf,
   [string]$NoiseProfile,
@@ -132,6 +211,12 @@ $log = [ordered]@{
   base          = $BaseVi
   head          = $HeadVi
   stagingRoot   = $StagingRoot
+  agentId       = $AgentId
+  agentClass    = $AgentClass
+  executionCellLeasePath = $ExecutionCellLeasePath
+  executionCellId = $ExecutionCellId
+  executionCellLeaseId = $ExecutionCellLeaseId
+  harnessInstanceId = $HarnessInstanceId
   sameNameHint  = $SameNameHint.IsPresent
   allowSameLeaf = $AllowSameLeaf.IsPresent
   noiseProfile  = $NoiseProfile
@@ -140,6 +225,8 @@ $log = [ordered]@{
 $log | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputRoot 'harness-log.json') -Encoding utf8
 $session = [ordered]@{
   schema = 'teststand-compare-session/v1'
+  suiteClass = 'single-compare'
+  requestedSimultaneous = $false
   warmup = @{
     mode   = $Warmup
     events = $null
@@ -158,6 +245,30 @@ $session = [ordered]@{
   }
   outcome = $null
   error   = $null
+  executionCell = @{
+    cellId = $ExecutionCellId
+    leaseId = $ExecutionCellLeaseId
+    leasePath = $ExecutionCellLeasePath
+    agentId = $AgentId
+    agentClass = $AgentClass
+    cellClass = 'worker'
+    suiteClass = 'single-compare'
+    operatorAuthorizationRef = $null
+    premiumSaganMode = $false
+  }
+  harnessInstance = @{
+    harnessKind = 'teststand-compare-harness'
+    instanceId = $HarnessInstanceId
+    role = 'single-plane'
+    processModelClass = 'sequential-process-model'
+  }
+  processModel = @{
+    runtimeSurface = 'windows-native-teststand'
+    processModelClass = 'sequential-process-model'
+    windowsOnly = $true
+    rootHarnessInstanceId = $HarnessInstanceId
+    planeCount = 1
+  }
 }
 $session | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $OutputRoot 'session-index.json') -Encoding utf8
 exit 0
@@ -174,15 +285,16 @@ exit 0
 
       $outputRoot = Join-Path $work 'results'
       $runDx = Join-Path $work 'tools/Run-DX.ps1'
-      & pwsh -NoLogo -NoProfile -File $runDx `
+      $result = & $runDx `
         -Suite TestStand `
         -BaseVi $baseVi `
         -HeadVi $headVi `
         -OutputRoot $outputRoot `
+        -ResultsPath $outputRoot `
         -Warmup detect `
         -UseRawPaths `
-        -NoiseProfile legacy *> $null
-      $LASTEXITCODE | Should -Be 0
+        -NoiseProfile legacy
+      $result | Should -Be 0
 
       $logPath = Join-Path $outputRoot 'harness-log.json'
       Test-Path -LiteralPath $logPath | Should -BeTrue
@@ -202,5 +314,38 @@ exit 0
     }
     finally { Pop-Location }
   }
-}
 
+  It 'declares dual-plane parity forwarding and status projection in the wrapper contract' {
+    $content = Get-Content -LiteralPath $script:RunDxPath -Raw
+
+    $content | Should -Match '\[string\]\$LabVIEW64ExePath'
+    $content | Should -Match '\[string\]\$LabVIEW32ExePath'
+    $content | Should -Match '\[string\]\$AgentId'
+    $content | Should -Match '\[string\]\$AgentClass'
+    $content | Should -Match '\[string\]\$ExecutionCellLeasePath'
+    $content | Should -Match '\[string\]\$ExecutionCellId'
+    $content | Should -Match '\[string\]\$ExecutionCellLeaseId'
+    $content | Should -Match '\[string\]\$HarnessInstanceId'
+    $content | Should -Match "\[ValidateSet\('single-compare','dual-plane-parity'\)\]\s*\[string\]\`$TestStandSuiteClass"
+    $content | Should -Match '\$hParams\.LabVIEW64ExePath\s*=\s*\$LabVIEW64ExePath'
+    $content | Should -Match '\$hParams\.LabVIEW32ExePath\s*=\s*\$LabVIEW32ExePath'
+    $content | Should -Match '\$hParams\.SuiteClass\s*=\s*\$TestStandSuiteClass'
+    $content | Should -Match '\$hParams\.AgentId\s*=\s*\$AgentId'
+    $content | Should -Match '\$hParams\.AgentClass\s*=\s*\$AgentClass'
+    $content | Should -Match '\$hParams\.ExecutionCellLeasePath\s*=\s*\$ExecutionCellLeasePath'
+    $content | Should -Match '\$hParams\.ExecutionCellId\s*=\s*\$ExecutionCellId'
+    $content | Should -Match '\$hParams\.ExecutionCellLeaseId\s*=\s*\$ExecutionCellLeaseId'
+    $content | Should -Match '\$hParams\.HarnessInstanceId\s*=\s*\$HarnessInstanceId'
+    $content | Should -Match 'suiteClass\s*=\s*if\s*\(\$session\.PSObject\.Properties\.Name\s*-contains\s*''suiteClass''\)'
+    $content | Should -Match 'primaryPlane\s*=\s*Get-SessionValue\s+\$session\s+''primaryPlane'''
+    $content | Should -Match 'Get-SessionBoolValue'
+    $content | Should -Match '\$requestedSimultaneous\s*=\s*\$false'
+    $content | Should -Match 'requestedSimultaneous\s*=\s*\$requestedSimultaneous'
+    $content | Should -Match 'executionTopology\s*=\s*@\{'
+    $content | Should -Match 'executionCell\s*=\s*Get-SessionValue\s+\$session\s+''executionCell'''
+    $content | Should -Match 'harnessInstance\s*=\s*Get-SessionValue\s+\$session\s+''harnessInstance'''
+    $content | Should -Match 'processModel\s*=\s*Get-SessionValue\s+\$session\s+''processModel'''
+    $content | Should -Match 'parity\s*=\s*Get-SessionValue\s+\$session\s+''parity'''
+    $content | Should -Match 'planes\s*=\s*Get-SessionValue\s+\$session\s+''planes'''
+  }
+}
