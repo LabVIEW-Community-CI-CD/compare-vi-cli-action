@@ -208,6 +208,104 @@ test('runDownstreamPromotionScorecard projects manifest provenance when present'
   );
 });
 
+test('runDownstreamPromotionScorecard accepts monitoring-derived template verification authority', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-promotion-scorecard-supported-proof-'));
+  const successReportPath = path.join(tmpDir, 'downstream-onboarding-success.json');
+  const feedbackReportPath = path.join(tmpDir, 'downstream-onboarding-feedback.json');
+  const templateAgentVerificationReportPath = path.join(tmpDir, 'template-agent-verification-report.json');
+  const manifestReportPath = path.join(tmpDir, 'downstream-develop-promotion-manifest.json');
+
+  writeJson(successReportPath, {
+    schema: 'priority/downstream-onboarding-success@v1',
+    summary: { status: 'pass', repositoriesEvaluated: 1, totalBlockers: 0, totalWarnings: 0 }
+  });
+  writeJson(feedbackReportPath, {
+    schema: 'priority/downstream-onboarding-feedback@v1',
+    inputs: { downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate' },
+    execution: { status: 'pass', evaluateExitCode: 0, successExitCode: 0 }
+  });
+  writeJson(templateAgentVerificationReportPath, {
+    schema: 'priority/template-agent-verification-report@v1',
+    summary: { status: 'pass', blockerCount: 0, recommendation: 'continue-template-agent-loop' },
+    iteration: {
+      label: 'supported template proof for compare 12345678',
+      ref: 'develop:12345678',
+      headSha: '1234567890abcdef1234567890abcdef12345678'
+    },
+    lane: {
+      enabled: true,
+      reservedSlotCount: 1,
+      minimumImplementationSlots: 3,
+      implementationSlotsRemaining: 19,
+      executionMode: 'hosted-first',
+      targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      consumerRailBranch: 'downstream/develop'
+    },
+    verification: {
+      provider: 'hosted-github-workflow',
+      status: 'pass',
+      runUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork/actions/runs/23567964307'
+    },
+    provenance: {
+      templateDependency: {
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        version: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
+        ref: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
+        cookiecutterVersion: '2.7.1'
+      },
+      execution: {
+        executionPlane: 'hosted-github-actions',
+        containerImage: null,
+        generatedConsumerWorkspaceRoot: null,
+        laneId: 'supported-template-proof',
+        agentId: 'compare-monitoring-mode',
+        fundingWindowId: null
+      }
+    },
+    authorityProjection: {
+      source: 'supported-template-proof',
+      supportedRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork'
+    },
+    goals: {
+      maxVerificationLagIterations: 1,
+      maxHostedDurationMinutes: 30,
+      requireMachineReadableRecommendation: true
+    },
+    metrics: {
+      targetSlotCount: 20,
+      reservedSlotCount: 1,
+      implementationSlotsRemaining: 19,
+      durationWithinGoal: null,
+      recommendationPresent: true
+    },
+    blockers: []
+  });
+  writeJson(manifestReportPath, {
+    schema: 'priority/downstream-promotion-manifest@v1',
+    promotion: {
+      sourceRef: 'upstream/develop',
+      sourceCommitSha: '1234567890abcdef1234567890abcdef12345678',
+      targetBranch: 'downstream/develop',
+      targetBranchClassId: 'downstream-consumer-proving-rail',
+      localSourceVerification: { attempted: true, matched: true }
+    },
+    inputs: { cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@develop' }
+  });
+
+  const result = runDownstreamPromotionScorecard({
+    successReportPath,
+    feedbackReportPath,
+    templateAgentVerificationReportPath,
+    manifestReportPath,
+    failOnBlockers: true
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.summary.status, 'pass');
+  assert.equal(result.report.gates.templateAgentVerificationReport.templateRef, 'c3ae46c2b0a02b514b4b08d426302953a87243bc');
+  assert.equal(result.report.gates.templateAgentVerificationReport.verificationRunUrl, 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork/actions/runs/23567964307');
+});
+
 test('runDownstreamPromotionScorecard fails closed when onboarding blockers remain', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-promotion-scorecard-fail-'));
   const successReportPath = path.join(tmpDir, 'downstream-onboarding-success.json');
