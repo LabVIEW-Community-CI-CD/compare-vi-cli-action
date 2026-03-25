@@ -82,6 +82,25 @@ test('labview-cli-compare consumes an explicit LV32 host-plane readiness receipt
   );
 });
 
+test('pester-reusable generic ingress preflight stays off implicit x86 LVCompare fallback', () => {
+  const workflow = readWorkflow('.github/workflows/pester-reusable.yml');
+  const jobBlock = extractJobBlock(workflow, 'preflight');
+
+  assert.match(jobBlock, /runs-on:\s*\[self-hosted, Windows, X64, comparevi, capability-ingress\]/);
+  assert.match(jobBlock, /LVCOMPARE_PATH:\s*\$\{\{\s*vars\.LVCOMPARE_PATH \|\| ''\s*\}\}/);
+  assert.match(jobBlock, /C:\\Program Files\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare\.exe/);
+  assert.doesNotMatch(
+    jobBlock,
+    /Program Files \(x86\)\\National Instruments\\Shared\\LabVIEW Compare\\LVCompare\.exe/,
+    'generic ingress preflight should not silently fall back to the specialized x86 compare path'
+  );
+  assert.match(
+    jobBlock,
+    /does not silently fall back to Program Files \(x86\); use LVCOMPARE_PATH or an explicit specialized LV32 workflow/,
+    'generic ingress preflight should explain how to use the specialized path explicitly when needed'
+  );
+});
+
 test('workflow updater probe job defaults to compare capability ingress labels', () => {
   const updater = fs.readFileSync(
     path.join(repoRoot, 'tools/workflows/_update_workflows_impl.py'),
