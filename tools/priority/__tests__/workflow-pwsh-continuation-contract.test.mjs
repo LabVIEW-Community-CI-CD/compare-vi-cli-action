@@ -225,3 +225,10 @@ test('monthly release workflow marks itself as the SLO remediation candidate', (
 
   assert.match(workflowRaw, /--candidate-workflow monthly-stability-release\.yml/);
 });
+
+test('monthly release workflow routes breach umbrellas as standing-excluded governance issues', () => {
+  const workflowPath = path.join(workflowsRoot, 'monthly-stability-release.yml');
+  const workflowRaw = readFileSync(workflowPath, 'utf8');
+
+  assert.match(workflowRaw, /--route-labels "slo,ci,governance,standing-excluded"/);
+});
