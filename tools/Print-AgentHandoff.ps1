@@ -34,6 +34,36 @@ function Format-BoolLabel {
   return 'unknown'
 }
 
+function Test-IsHookSummaryFileName {
+  param([string]$FileName)
+
+  if ([string]::IsNullOrWhiteSpace($FileName)) {
+    return $false
+  }
+
+  return $FileName -match '^(pre-commit|post-commit|pre-push)(\.(shell|pwsh))?\.json$'
+}
+
+function Get-OptionalPropertyValue {
+  param(
+    [AllowNull()]
+    [object]$Object,
+    [Parameter(Mandatory = $true)]
+    [string]$Name
+  )
+
+  if ($null -eq $Object) {
+    return $null
+  }
+
+  $property = $Object.PSObject.Properties[$Name]
+  if ($null -ne $property) {
+    return $property.Value
+  }
+
+  return $null
+}
+
 function New-WatcherEventsTelemetry {
   param($EventsStatus)
 
@@ -917,7 +947,9 @@ function Write-HookSummaries {
     return @()
   }
 
-  $files = Get-ChildItem -LiteralPath $hooksDir -Filter '*.json' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+  $files = Get-ChildItem -LiteralPath $hooksDir -Filter '*.json' -ErrorAction SilentlyContinue |
+    Where-Object { Test-IsHookSummaryFileName -FileName $_.Name } |
+    Sort-Object LastWriteTime -Descending
   if (-not $files) {
     Write-Host '  (no hook summaries found)'
     return @()
@@ -937,11 +969,11 @@ function Write-HookSummaries {
       $latest[$hookName] = [ordered]@{
         hook = $hookName
         file = $file.FullName
-        status = $summary.status
-        exitCode = $summary.exitCode
-        timestamp = $summary.timestamp
-        plane = if ($summary.environment) { $summary.environment.plane } else { $null }
-        enforcement = if ($summary.environment) { $summary.environment.enforcement } else { $null }
+        status = Get-OptionalPropertyValue -Object $summary -Name 'status'
+        exitCode = Get-OptionalPropertyValue -Object $summary -Name 'exitCode'
+        timestamp = Get-OptionalPropertyValue -Object $summary -Name 'timestamp'
+        plane = if ($summary.environment) { Get-OptionalPropertyValue -Object $summary.environment -Name 'plane' } else { $null }
+        enforcement = if ($summary.environment) { Get-OptionalPropertyValue -Object $summary.environment -Name 'enforcement' } else { $null }
       }
     }
   }
