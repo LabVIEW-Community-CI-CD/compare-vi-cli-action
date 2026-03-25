@@ -168,9 +168,11 @@ jobs:
           if ($eventName -eq 'workflow_dispatch') {
             $apply = ('${{ inputs.apply }}' -eq 'true')
           } elseif ($eventName -eq 'workflow_run') {
-            $apply = $conductorEnabled
-            if (-not $apply) {
+            $apply = $false
+            if (-not $conductorEnabled) {
               Write-Host 'Release conductor apply mode disabled; workflow_run will remain proposal-only.'
+            } else {
+              Write-Host 'Release conductor workflow_run does not carry explicit release version inputs; running proposal-only.'
             }
           }
 
