@@ -146,6 +146,12 @@ test('docker desktop fast-loop only accepts lane-specific LabVIEW path contracts
 test('actionlint config no longer carries legacy Windows docker runner labels', () => {
   const config = readRepoFile('.github/actionlint.yaml');
 
+  assert.match(config, /comparevi/);
+  assert.match(config, /capability-ingress/);
+  assert.match(config, /labview-2026/);
+  assert.match(config, /lv32/);
+  assert.match(config, /docker-lane/);
+  assert.match(config, /teststand/);
   assert.match(config, /self-hosted-docker-linux/);
   assert.match(config, /hosted-docker-linux/);
   assert.doesNotMatch(config, /self-hosted-docker-windows/);
