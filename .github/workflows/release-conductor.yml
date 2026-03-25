@@ -9,7 +9,7 @@ on:
         default: false
         type: boolean
       repair_existing_tag:
-        description: 'Repair an existing authoritative tag as a signed annotated tag'
+        description: 'Repair an existing authoritative tag or dispatch protected-tag-safe replay for immutable published tags'
         required: false
         default: false
         type: boolean

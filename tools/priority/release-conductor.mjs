@@ -16,6 +16,9 @@ export const DEFAULT_QUARANTINE_STALE_HOURS = 24;
 export const RELEASE_PUBLICATION_WORKFLOW = 'release.yml';
 export const RELEASE_PUBLICATION_WORKFLOW_REF = 'develop';
 export const RELEASE_PUBLICATION_TAG_INPUT = 'release_tag';
+export const RELEASE_PUBLICATION_MODE_INPUT = 'publication_mode';
+export const RELEASE_PUBLICATION_MODE_PUBLISH = 'publish';
+export const RELEASE_PUBLICATION_MODE_VERIFY_EXISTING_RELEASE = 'verify-existing-release';
 
 const REQUIRED_DWELL_WORKFLOWS = Object.freeze([
   { name: 'Validate', file: 'validate.yml' },
@@ -27,7 +30,7 @@ function printUsage() {
   console.log('');
   console.log('Options:');
   console.log('  --apply                     Apply release mutation (default is --dry-run).');
-  console.log('  --repair-existing-tag       Repair an existing authoritative tag by recreating it as a signed annotated tag.');
+  console.log('  --repair-existing-tag       Repair an existing authoritative tag or dispatch protected-tag-safe replay for immutable published tags.');
   console.log(`  --report <path>             Write report JSON (default: ${DEFAULT_REPORT_PATH}).`);
   console.log(`  --queue-report <path>       Queue supervisor report path (default: ${DEFAULT_QUEUE_REPORT_PATH}).`);
   console.log(`  --policy-snapshot <path>    Policy snapshot path (default: ${DEFAULT_POLICY_SNAPSHOT_PATH}).`);
@@ -763,11 +766,11 @@ function inspectImmutableReleaseState({ repository, tagRef, runGhJsonFn, cwd }) 
   return immutableRelease;
 }
 
-function buildImmutableRepairBlockedMessage({ targetTag, immutableRelease }) {
+function buildImmutableRepairReplayMessage({ targetTag, immutableRelease }) {
   const normalizedTag = asOptional(targetTag) ?? 'the current release tag';
   const releaseUrl = asOptional(immutableRelease?.publishedRelease?.releaseUrl);
   const releaseLocation = releaseUrl ? ` (${releaseUrl})` : '';
-  return `Authoritative tag ${normalizedTag} already backs an immutable published GitHub Release${releaseLocation}. Do not rerun release conductor with --repair-existing-tag against the same published tag; publish a new authoritative tag or use the protected-tag authority path.`;
+  return `Authoritative tag ${normalizedTag} already backs an immutable published GitHub Release${releaseLocation}. Rerun release conductor with --repair-existing-tag to dispatch protected-tag-safe release replay from develop without mutating the published release.`;
 }
 
 async function writeReport(filePath, payload) {
@@ -887,6 +890,8 @@ export async function runReleaseConductor(options = {}) {
     ref: RELEASE_PUBLICATION_WORKFLOW_REF,
     tagInputName: RELEASE_PUBLICATION_TAG_INPUT,
     tagInputValue: targetTag,
+    modeInputName: RELEASE_PUBLICATION_MODE_INPUT,
+    modeInputValue: null,
     dispatched: false,
     status: args.repairExistingTag && applyRequested ? 'blocked' : 'not-requested',
     error: null
@@ -925,13 +930,13 @@ export async function runReleaseConductor(options = {}) {
   const repairBlockedByImmutableRelease = Boolean(repair.remoteTagExists && immutableRelease.repairBlocked);
 
   if (repair.remoteTagExists && !repair.requested) {
-    repair.status = repairBlockedByImmutableRelease ? 'blocked' : 'repair-available';
+    repair.status = repairBlockedByImmutableRelease ? 'ready-equivalent-replay' : 'repair-available';
     pushUniqueDecisionEntry(
       advisories,
       repairBlockedByImmutableRelease
         ? {
             code: 'existing-tag-repair-blocked-by-immutable-release',
-            message: buildImmutableRepairBlockedMessage({ targetTag, immutableRelease })
+            message: buildImmutableRepairReplayMessage({ targetTag, immutableRelease })
           }
         : {
             code: 'existing-tag-repair-available',
@@ -950,7 +955,7 @@ export async function runReleaseConductor(options = {}) {
   } else if (repair.requested && (!repair.remoteTargetCommitOid || !repair.pushLeaseExpectedOid)) {
     repair.status = 'blocked';
   } else if (repair.requested && repairBlockedByImmutableRelease) {
-    repair.status = 'blocked';
+    repair.status = applyRequested ? 'blocked' : 'ready-equivalent-replay';
   } else if (repair.requested && repair.remoteTagExists) {
     repair.status = applyRequested ? 'blocked' : 'ready';
   }
@@ -976,11 +981,6 @@ export async function runReleaseConductor(options = {}) {
         code: 'repair-target-tag-missing',
         message: `Repair mode requires existing authoritative tag ${targetTag}, but no authoritative tag ref was found on ${tagPushRemote.remoteName}.`
       });
-    } else if (repairBlockedByImmutableRelease) {
-      blockers.push({
-        code: 'repair-target-release-immutable',
-        message: buildImmutableRepairBlockedMessage({ targetTag, immutableRelease })
-      });
     } else if (!repair.remoteTargetCommitOid || !repair.pushLeaseExpectedOid) {
       blockers.push({
         code: 'repair-target-unresolved',
@@ -995,6 +995,42 @@ export async function runReleaseConductor(options = {}) {
         code: 'missing-version-for-tag',
         message: 'Apply mode requires --version to propose/create a release tag.'
       });
+    } else if (args.repairExistingTag && repairBlockedByImmutableRelease) {
+      publicationReplay.modeInputValue = RELEASE_PUBLICATION_MODE_VERIFY_EXISTING_RELEASE;
+      const dispatchResult = runCommandFn(
+        'gh',
+        [
+          'workflow',
+          'run',
+          RELEASE_PUBLICATION_WORKFLOW,
+          '--ref',
+          RELEASE_PUBLICATION_WORKFLOW_REF,
+          '-f',
+          `${RELEASE_PUBLICATION_TAG_INPUT}=${targetTag}`,
+          '-f',
+          `${RELEASE_PUBLICATION_MODE_INPUT}=${RELEASE_PUBLICATION_MODE_VERIFY_EXISTING_RELEASE}`
+        ],
+        {
+          cwd: repoRoot,
+          allowFailure: true
+        }
+      );
+      if (dispatchResult.status === 0) {
+        proposalOnly = false;
+        repair.status = 'equivalent-replay-dispatched';
+        publicationReplay.dispatched = true;
+        publicationReplay.status = 'dispatched';
+      } else {
+        publicationReplay.status = 'dispatch-failed';
+        publicationReplay.error =
+          asOptional(dispatchResult.stderr) ??
+          asOptional(dispatchResult.stdout) ??
+          'release workflow dispatch failed';
+        blockers.push({
+          code: 'release-replay-dispatch-failed',
+          message: `Release publication replay dispatch failed for ${targetTag}: ${publicationReplay.error}`
+        });
+      }
     } else if (!signingMaterial.available) {
       blockers.push({
         code: 'tag-signing-material-missing',
@@ -1050,6 +1086,7 @@ export async function runReleaseConductor(options = {}) {
                 tagPushed = true;
                 proposalOnly = false;
                 repair.status = 'repaired';
+                publicationReplay.modeInputValue = RELEASE_PUBLICATION_MODE_PUBLISH;
                 const dispatchResult = runCommandFn(
                   'gh',
                   [
@@ -1059,7 +1096,9 @@ export async function runReleaseConductor(options = {}) {
                     '--ref',
                     RELEASE_PUBLICATION_WORKFLOW_REF,
                     '-f',
-                    `${RELEASE_PUBLICATION_TAG_INPUT}=${targetTag}`
+                    `${RELEASE_PUBLICATION_TAG_INPUT}=${targetTag}`,
+                    '-f',
+                    `${RELEASE_PUBLICATION_MODE_INPUT}=${RELEASE_PUBLICATION_MODE_PUBLISH}`
                   ],
                   {
                     cwd: repoRoot,
@@ -1101,7 +1140,7 @@ export async function runReleaseConductor(options = {}) {
         repairBlockedByImmutableRelease
           ? {
               code: 'existing-tag-repair-blocked-by-immutable-release',
-              message: buildImmutableRepairBlockedMessage({ targetTag, immutableRelease })
+              message: buildImmutableRepairReplayMessage({ targetTag, immutableRelease })
             }
           : {
               code: 'existing-tag-requires-repair-mode',

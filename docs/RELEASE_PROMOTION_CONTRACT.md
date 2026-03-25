@@ -154,9 +154,12 @@ finds repair-eligible tag failures:
     - `apply = true`
     - `repair_existing_tag = true`
   - if the target tag already backs an immutable published GitHub Release, do
-    not rerun `repair_existing_tag` against the same published tag
-    - use the protected-tag authority path or publish a new authoritative tag
-      identity instead
+    not attempt in-place tag mutation against the same published tag
+    - rerun release conductor with `repair_existing_tag = true` so it dispatches
+      protected-tag-safe `release.yml` replay from `develop`
+    - the replay must use:
+      - `workflow_dispatch.inputs.release_tag=<target tag>`
+      - `workflow_dispatch.inputs.publication_mode=verify-existing-release`
 
 Authoritative signed tag publication now belongs to the release conductor control
 plane:
@@ -169,14 +172,18 @@ plane:
   - `RELEASE_TAG_SIGNING_IDENTITY_EMAIL`
   - when unset, the workflow derives signer identity from the resolved policy
     token account before recreating or publishing the signed tag
-- when signing material is present, release conductor must:
-  - configure workflow-owned tag signing
-  - configure workflow-owned signer identity
-  - create the signed annotated tag
-  - push the tag to the authoritative remote for the target repository
-  - when repairing an existing tag, dispatch `.github/workflows/release.yml`
-    from `develop` with `workflow_dispatch.inputs.release_tag=<target tag>` so
-    publication replays deterministically against the repaired authoritative tag
+  - when signing material is present, release conductor must:
+    - configure workflow-owned tag signing
+    - configure workflow-owned signer identity
+    - create the signed annotated tag
+    - push the tag to the authoritative remote for the target repository
+    - when repairing an existing tag, dispatch `.github/workflows/release.yml`
+      from `develop` with `workflow_dispatch.inputs.release_tag=<target tag>` so
+      publication replays deterministically against the repaired authoritative tag
+    - when the target tag already backs an immutable published release, dispatch
+      `.github/workflows/release.yml` from `develop` with
+      `workflow_dispatch.inputs.publication_mode=verify-existing-release`
+      instead of mutating the published GitHub Release
 - `tests/results/_agent/release/release-conductor-report.json` must record:
   - signing backend/source
   - signer identity used for tag creation/repair
@@ -187,6 +194,7 @@ plane:
   - the authoritative remote tag object/commit used for repair
   - which workflow ref carried the replay dispatch
   - which explicit tag input was used for repaired-tag publication replay
+  - which explicit publication mode input was used for the replay dispatch
   - whether repaired-tag publication replay was dispatched
   - any push failure blocker
 
@@ -223,6 +231,9 @@ If the report emits an external blocker such as:
 promotion remains blocked by external signing readiness. Repair the specific
 secret, authority, or apply-gating surface first, then refresh readiness
 instead of rerunning release publication just to rediscover the same blocker.
+When the blocker is `release-repair-immutable-blocked`, rerun release conductor
+only through the protected-tag-safe replay path; do not attempt in-place tag
+mutation on the same immutable published release.
 
 ## Published CompareVI.Tools bundle observer
 

@@ -13,7 +13,7 @@ test('release conductor workflow keeps workflow_run proposal-only when apply mod
   const workflow = await readFile(workflowPath, 'utf8');
 
   assert.match(workflow, /repair_existing_tag:/);
-  assert.match(workflow, /description:\s+'Repair an existing authoritative tag as a signed annotated tag'/);
+  assert.match(workflow, /description:\s+'Repair an existing authoritative tag or dispatch protected-tag-safe replay for immutable published tags'/);
   assert.match(workflow, /RELEASE_CONDUCTOR_ENABLED:\s+\$\{\{\s*vars\.RELEASE_CONDUCTOR_ENABLED \|\| '0'\s*\}\}/);
   assert.match(workflow, /name:\s+Configure release tag signing material/);
   assert.match(workflow, /if \[\[ -z "\$\{RELEASE_TAG_SIGNING_PRIVATE_KEY:-\}" \]\]; then/);
