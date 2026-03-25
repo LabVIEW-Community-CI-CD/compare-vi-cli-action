@@ -178,12 +178,25 @@ test('release workflow appends repair-mode guidance for unsigned or lightweight 
   const workflowRaw = readFileSync(workflowPath, 'utf8');
 
   assert.match(workflowRaw, /name: Append release trust remediation guidance/);
-  assert.match(workflowRaw, /node tools\/priority\/release-trust-remediation\.mjs/);
+  assert.match(workflowRaw, /node "\$\{\{\s*steps\.automation_root\.outputs\.path\s*\}\}\/tools\/priority\/release-trust-remediation\.mjs"/);
   assert.match(workflowRaw, /--trust-report tests\/results\/_agent\/supply-chain\/release-trust-gate\.json/);
   assert.match(workflowRaw, /--tag-ref "\$\{RELEASE_TAG\}"/);
   assert.match(workflowRaw, /--output tests\/results\/_agent\/release\/release-trust-remediation\.md/);
   assert.match(workflowRaw, /--summary "\$GITHUB_STEP_SUMMARY"/);
   assert.match(workflowRaw, /tests\/results\/_agent\/release\/release-trust-remediation\.md/);
+});
+
+test('release workflow always evaluates rollback drill health after trust gate failures', () => {
+  const workflowPath = path.join(workflowsRoot, 'release.yml');
+  const workflow = yaml.load(readFileSync(workflowPath, 'utf8'));
+  const releaseSteps = workflow?.jobs?.release?.steps ?? [];
+  const rollbackHealthStep = releaseSteps.find((step) => step?.name === 'Enforce rollback drill health gate');
+  const validateRollbackStep = releaseSteps.find((step) => step?.name === 'Validate rollback drill health schema');
+  const uploadRollbackStep = releaseSteps.find((step) => step?.name === 'Upload rollback drill health artifact');
+
+  assert.equal(rollbackHealthStep?.if, 'always()');
+  assert.equal(validateRollbackStep?.if, 'always()');
+  assert.equal(uploadRollbackStep?.if, 'always()');
 });
 
 test('monthly release workflow marks itself as the SLO remediation candidate', () => {

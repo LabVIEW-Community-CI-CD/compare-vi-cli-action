@@ -319,6 +319,7 @@ jobs:
           if-no-files-found: error
 
       - name: Enforce rollback drill health gate
+        if: always()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
