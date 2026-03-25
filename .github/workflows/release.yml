@@ -894,28 +894,34 @@ jobs:
         run: |
           set -euo pipefail
           channel="stable"
+          downstream_promotion_path="${{ steps.downstream_proving_artifacts.outputs.downstream_proving_scorecard_path }}"
           if printf '%s' "${RELEASE_TAG}" | grep -q -- '-rc\.'; then
             channel="rc"
           fi
           signed_tag_args=()
+          scorecard_args=(
+            --repo "${{ github.repository }}"
+            --stream comparevi-cli
+            --channel "${channel}"
+            --version "${{ needs.release.outputs.cli_version }}"
+            --tag-ref "${RELEASE_TAG}"
+            --ledger tests/results/promotion-contract/release-ledger.json
+            --slo tests/results/_agent/slo/release-slo-metrics.json
+            --rollback tests/results/_agent/release/rollback-drill-health.json
+            --trust tests/results/_agent/supply-chain/release-trust-gate.json
+            --downstream-proving-selection tests/results/_agent/release/downstream-proving-selection.json
+            --require-downstream-proving
+            --output tests/results/_agent/release/release-scorecard.json
+          )
+          if [ -n "${downstream_promotion_path}" ]; then
+            scorecard_args+=(--downstream-promotion "${downstream_promotion_path}")
+          fi
           if ! printf '%s' "${RELEASE_TAG}" | grep -Eq -- '-tools\.[0-9]+$'; then
             signed_tag_args+=(--require-signed-tag)
           fi
           node tools/priority/release-scorecard.mjs \
-            --repo "${{ github.repository }}" \
-            --stream comparevi-cli \
-            --channel "${channel}" \
-            --version "${{ needs.release.outputs.cli_version }}" \
-            --tag-ref "${RELEASE_TAG}" \
-            --ledger tests/results/promotion-contract/release-ledger.json \
-            --slo tests/results/_agent/slo/release-slo-metrics.json \
-            --rollback tests/results/_agent/release/rollback-drill-health.json \
-            --trust tests/results/_agent/supply-chain/release-trust-gate.json \
-            --downstream-proving-selection tests/results/_agent/release/downstream-proving-selection.json \
-            --downstream-promotion "${{ steps.downstream_proving_artifacts.outputs.downstream_proving_scorecard_path }}" \
-            --require-downstream-proving \
             "${signed_tag_args[@]}" \
-            --output tests/results/_agent/release/release-scorecard.json
+            "${scorecard_args[@]}"
 
       - name: Validate release scorecard schema
         if: always()
