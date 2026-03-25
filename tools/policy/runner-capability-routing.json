@@ -13,16 +13,7 @@
     "docker-lane",
     "teststand"
   ],
-  "deferredCapabilityCandidates": [
-    {
-      "workflow": ".github/workflows/labview-cli-compare.yml",
-      "job": "cli-compare",
-      "candidateLabels": [
-        "lv32"
-      ],
-      "reason": "The job validates the Program Files (x86) LabVIEW CLI path today, but this slice keeps lv32 reserved for explicit native 32-bit plane consumers until that label contract is widened deliberately."
-    }
-  ],
+  "deferredCapabilityCandidates": [],
   "workflowJobRouting": [
     {
       "workflow": ".github/workflows/ci-orchestrated.yml",
@@ -64,8 +55,14 @@
       "jobs": [
         {
           "id": "cli-compare",
-          "routingClass": "ingress-only",
-          "requiredCapabilityLabels": []
+          "routingClass": "specialized-opt-in",
+          "requiredCapabilityLabels": [
+            "labview-2026",
+            "lv32"
+          ],
+          "requiredHealthReceipts": [
+            "labview-2026-host-plane-report"
+          ]
         }
       ]
     },

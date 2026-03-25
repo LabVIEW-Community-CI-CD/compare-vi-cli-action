@@ -98,8 +98,18 @@ today's compare jobs is:
 
 - `tools/policy/runner-capability-routing.json`
 
-That matrix intentionally keeps most current compare jobs ingress-only until
-they truly consume `labview-2026`, `lv32`, `docker-lane`, or `teststand`.
+That matrix keeps most compare jobs ingress-only, but
+`.github/workflows/labview-cli-compare.yml` is now an explicit native 32-bit
+consumer:
+
+- `runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress, labview-2026, lv32]`
+- emit `node tools/npm/run-script.mjs env:labview:2026:host-planes`
+- require `native.planes.x32.status = ready` before trusting the lane
+- source `LABVIEW_CLI_PATH` from the generated host-plane receipt instead of a
+  hard-coded `Program Files (x86)` fallback
+
+Keep `labview-2026`, `lv32`, `docker-lane`, and `teststand` opt-in everywhere
+else until a job has the same explicit machine-readable need.
 
 ## Maintenance
 
