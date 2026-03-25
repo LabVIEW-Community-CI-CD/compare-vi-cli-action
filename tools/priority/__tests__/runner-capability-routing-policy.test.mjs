@@ -48,20 +48,18 @@ test('runner capability routing policy covers all current self-hosted compare wo
     assert.ok(fs.existsSync(path.join(repoRoot, entry.workflow)), `${entry.workflow} must exist`);
     assert.ok(entry.jobs.length > 0, `${entry.workflow} must list at least one self-hosted job`);
     for (const job of entry.jobs) {
-      assert.equal(job.routingClass, 'ingress-only');
-      assert.deepEqual(job.requiredCapabilityLabels, []);
+      if (entry.workflow === '.github/workflows/labview-cli-compare.yml' && job.id === 'cli-compare') {
+        assert.equal(job.routingClass, 'specialized-opt-in');
+        assert.deepEqual(job.requiredCapabilityLabels, ['labview-2026', 'lv32']);
+        assert.deepEqual(job.requiredHealthReceipts, ['labview-2026-host-plane-report']);
+      } else {
+        assert.equal(job.routingClass, 'ingress-only');
+        assert.deepEqual(job.requiredCapabilityLabels, []);
+      }
     }
   }
 });
 
-test('runner capability routing policy records deferred specialization candidates explicitly', () => {
-  assert.deepEqual(policy.deferredCapabilityCandidates, [
-    {
-      workflow: '.github/workflows/labview-cli-compare.yml',
-      job: 'cli-compare',
-      candidateLabels: ['lv32'],
-      reason:
-        'The job validates the Program Files (x86) LabVIEW CLI path today, but this slice keeps lv32 reserved for explicit native 32-bit plane consumers until that label contract is widened deliberately.'
-    }
-  ]);
+test('runner capability routing policy records no deferred specialization candidates after lv32 promotion', () => {
+  assert.deepEqual(policy.deferredCapabilityCandidates, []);
 });

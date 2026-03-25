@@ -9,7 +9,6 @@ const routingPolicy = JSON.parse(
 );
 
 const ingressRunOnPattern = /\bruns-on:\s*\[[^\]\r\n]*\bself-hosted\b[^\]\r\n]*\]/g;
-const expectedBaseRunsOn = `runs-on: [${routingPolicy.baseIngressLabels.join(', ')}]`;
 
 function readWorkflow(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
@@ -28,7 +27,11 @@ function extractJobBlock(workflowText, jobId) {
   return match[1];
 }
 
-test('self-hosted compare workflows stay ingress-only until they need specialized planes', () => {
+function expectedRunsOn(job) {
+  return `runs-on: [${routingPolicy.baseIngressLabels.concat(job.requiredCapabilityLabels ?? []).join(', ')}]`;
+}
+
+test('self-hosted compare workflows follow the checked-in routing policy', () => {
   for (const workflow of routingPolicy.workflowJobRouting) {
     const content = readWorkflow(workflow.workflow);
     const selfHostedCount = content.match(ingressRunOnPattern)?.length ?? 0;
@@ -40,20 +43,43 @@ test('self-hosted compare workflows stay ingress-only until they need specialize
     );
 
     for (const job of workflow.jobs) {
-      assert.deepEqual(
-        job.requiredCapabilityLabels,
-        [],
-        `${workflow.workflow}#${job.id} should remain ingress-only in this slice`
-      );
+      if ((job.requiredCapabilityLabels ?? []).length === 0) {
+        assert.equal(
+          job.routingClass,
+          'ingress-only',
+          `${workflow.workflow}#${job.id} should stay ingress-only when no specialized labels are required`
+        );
+      } else {
+        assert.equal(
+          job.routingClass,
+          'specialized-opt-in',
+          `${workflow.workflow}#${job.id} must declare a specialized opt-in routing class`
+        );
+      }
 
       const jobBlock = extractJobBlock(content, job.id);
       assert.match(
         jobBlock,
-        new RegExp(escapeRegex(expectedBaseRunsOn)),
-        `${workflow.workflow}#${job.id} must route through compare capability ingress`
+        new RegExp(escapeRegex(expectedRunsOn(job))),
+        `${workflow.workflow}#${job.id} must route through its declared compare capability contract`
       );
     }
   }
+});
+
+test('labview-cli-compare consumes an explicit LV32 host-plane readiness receipt', () => {
+  const workflow = readWorkflow('.github/workflows/labview-cli-compare.yml');
+  const jobBlock = extractJobBlock(workflow, 'cli-compare');
+
+  assert.match(jobBlock, /id:\s*host_plane/);
+  assert.match(jobBlock, /node tools\/npm\/run-script\.mjs env:labview:2026:host-planes/);
+  assert.match(jobBlock, /\$report\.native\.planes\.x32\.status -ne 'ready'/);
+  assert.match(jobBlock, /LABVIEW_CLI_PATH:\s*\$\{\{\s*steps\.host_plane\.outputs\.cli\s*\}\}/);
+  assert.doesNotMatch(
+    jobBlock,
+    /Program Files \(x86\)\\National Instruments\\Shared\\LabVIEW CLI\\LabVIEWCLI\.exe/,
+    'specialized LV32 workflow should derive its CLI path from the host-plane receipt instead of a hard-coded fallback'
+  );
 });
 
 test('workflow updater probe job defaults to compare capability ingress labels', () => {

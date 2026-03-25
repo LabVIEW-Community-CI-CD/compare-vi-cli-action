@@ -157,3 +157,19 @@ test('actionlint config no longer carries legacy Windows docker runner labels', 
   assert.doesNotMatch(config, /self-hosted-docker-windows/);
   assert.doesNotMatch(config, /hosted-docker-windows/);
 });
+
+test('labview-cli-compare routes through the explicit lv32 host plane contract', () => {
+  const workflow = readRepoFile('.github/workflows/labview-cli-compare.yml');
+
+  assert.match(
+    workflow,
+    /runs-on:\s*\[self-hosted, Windows, X64, comparevi, capability-ingress, labview-2026, lv32\]/
+  );
+  assert.match(workflow, /node tools\/npm\/run-script\.mjs env:labview:2026:host-planes/);
+  assert.match(workflow, /\$report\.native\.planes\.x32\.status -ne 'ready'/);
+  assert.match(workflow, /LABVIEW_CLI_PATH:\s*\$\{\{\s*steps\.host_plane\.outputs\.cli\s*\}\}/);
+  assert.doesNotMatch(
+    workflow,
+    /Program Files \(x86\)\\National Instruments\\Shared\\LabVIEW CLI\\LabVIEWCLI\.exe/
+  );
+});
