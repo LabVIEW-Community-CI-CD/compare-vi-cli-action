@@ -300,6 +300,74 @@ test('runtime-daemon wrapper schedules from the comparevi standing-priority cach
   );
 });
 
+test('runtime-daemon wrapper writes current-cycle queue-empty monitoring receipts when the standing queue is empty', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-comparevi-queue-empty-'));
+  const runtimeDir = 'tests/results/_agent/runtime';
+  const deps = makeLeaseDeps();
+  let tick = 0;
+
+  const result = await runRuntimeObserverLoop(
+    {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      runtimeDir,
+      owner: 'agent@example',
+      pollIntervalSeconds: 0,
+      maxCycles: 1,
+      executeTurn: true
+    },
+    {
+      platform: 'linux',
+      loadDeliveryAgentPolicyFn: makeRepoLocalDeliveryPolicyFn(),
+      resolveRepoRootFn: () => repoRoot,
+      loadBranchClassContractFn: () => makeRuntimeBranchContract(),
+      resolveStandingPriorityForRepoFn: async () => ({
+        found: null
+      }),
+      classifyNoStandingPriorityConditionFn: async () => ({
+        status: 'classified',
+        reason: 'queue-empty',
+        message: 'standing queue is empty; governor portfolio keeps ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action.',
+        openIssueCount: 0
+      }),
+      runMonitoringWorkInjectionFn: async () => ({
+        outputPath: null,
+        ledgerPath: null,
+        issueNumber: null,
+        issueUrl: null
+      }),
+      runTemplateAgentVerificationReportFn: async () => null,
+      nowFactory: () => new Date(Date.UTC(2026, 2, 10, 18, 0, tick++)),
+      sleepFn: async () => {
+        throw new Error('sleep should not run when maxCycles=1');
+      },
+      ...deps
+    }
+  );
+
+  const heartbeat = await readJson(path.join(repoRoot, runtimeDir, 'observer-heartbeat.json'));
+  const deliveryState = await readJson(path.join(repoRoot, runtimeDir, 'delivery-agent-state.json'));
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.outcome, 'max-cycles-reached');
+  assert.equal(heartbeat.outcome, 'queue-empty');
+  assert.equal(heartbeat.schedulerDecision.outcome, 'idle');
+  assert.equal(heartbeat.activeLane, null);
+  assert.equal(deliveryState.status, 'idle');
+  assert.equal(deliveryState.laneLifecycle, 'idle');
+  assert.equal(deliveryState.activeLane.outcome, 'queue-empty');
+  assert.equal(deliveryState.activeLane.reason, 'queue-empty');
+  assert.equal(deliveryState.activeLane.actionType, 'monitoring-idle');
+  assert.equal(deliveryState.activeLane.nextWakeCondition, 'future-agent-may-pivot');
+  assert.equal(
+    deliveryState.activeLane.retryable,
+    true
+  );
+  assert.deepEqual(
+    deps.calls.map((entry) => entry.type),
+    ['acquire', 'release']
+  );
+});
+
 test('comparevi worker checkout allocator refreshes and reuses an existing lane worktree path', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-reuse-'));
   const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
