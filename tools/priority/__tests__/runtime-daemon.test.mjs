@@ -524,6 +524,9 @@ test('comparevi worker checkout allocator repairs concurrent upstream fetch race
           }
           return { stdout: '', stderr: '' };
         }
+        if (args[0] === 'fetch' && args[1] === 'origin' && args[2] === '--prune') {
+          return { stdout: '', stderr: '' };
+        }
         if (args[0] === 'fetch' && args[1] === 'upstream' && args[2] === '+develop:refs/remotes/upstream/develop') {
           return { stdout: '', stderr: '' };
         }
@@ -860,6 +863,90 @@ test('comparevi worker checkout allocator quarantines stale runtime drift before
   );
 });
 
+test('comparevi worker checkout allocator quarantines a checkout path that exists without a git marker and recreates the slot', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-missing-git-'));
+  const laneId = 'origin-2010';
+  const slotId = 'worker-slot-1';
+  const { checkoutPath } = compareviRuntimeTest.resolveCompareviWorkerCheckoutPath({
+    repoRoot,
+    repository: 'example/repo',
+    laneId,
+    slotId,
+    storageRootsPolicy: REPO_LOCAL_STORAGE_ROOTS_POLICY
+  });
+  await mkdir(checkoutPath, { recursive: true });
+
+  const calls = [];
+  const prepared = await compareviRuntimeTest.prepareCompareviWorkerCheckout({
+    repoRoot,
+    repository: 'example/repo',
+    schedulerDecision: {
+      activeLane: {
+        laneId
+      },
+      stepOptions: {}
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: makeRepoLocalDeliveryPolicyFn(),
+      platform: 'linux',
+      execFileFn: async (command, args) => {
+        calls.push({ command, args });
+        if (command !== 'git') {
+          throw new Error(`unexpected command: ${command}`);
+        }
+        if (args[0] === 'remote') {
+          return { stdout: 'upstream\norigin\n', stderr: '' };
+        }
+        if (args[0] === 'fetch') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'rev-parse' && args[1] === '--verify' && args[2] === '--quiet') {
+          if (args[3] === 'upstream/develop^{commit}') {
+            return { stdout: '0123456789abcdef\n', stderr: '' };
+          }
+          const error = new Error(`unknown ref ${args[3]}`);
+          error.code = 1;
+          throw error;
+        }
+        if (args[0] === 'worktree' && args[1] === 'remove' && args[2] === '--force') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'worktree' && args[1] === 'prune') {
+          return { stdout: '', stderr: '' };
+        }
+        if (args[0] === 'worktree' && args[1] === 'add' && args[2] === '--detach') {
+          await mkdir(path.dirname(path.join(checkoutPath, '.git')), { recursive: true });
+          await writeFile(path.join(checkoutPath, '.git'), 'gitdir: mocked\n', 'utf8');
+          return { stdout: '', stderr: '' };
+        }
+        throw new Error(`unexpected git args: ${args.join(' ')}`);
+      }
+    }
+  });
+
+  assert.equal(prepared.status, 'created');
+  assert.equal(prepared.worktreeStateRepair.quarantined, true);
+  assert.equal(prepared.worktreeStateRepair.quarantineReason, 'worker checkout path exists but is not a git worktree');
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'worktree' &&
+        entry.args[1] === 'remove' &&
+        entry.args[2] === '--force'
+    )
+  );
+  assert.ok(
+    calls.some(
+      (entry) =>
+        entry.command === 'git' &&
+        entry.args[0] === 'worktree' &&
+        entry.args[1] === 'add' &&
+        entry.args[2] === '--detach'
+    )
+  );
+});
+
 test('comparevi worker checkout allocator rewrites new WSL worktree pointers into cross-plane relative metadata', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worker-create-relative-'));
   const laneId = 'origin-1201';
@@ -984,6 +1071,39 @@ test('comparevi worktree scrub repairs stale /work registrations and clears init
   );
   await assert.rejects(readFile(path.join(worktreeAdminDir, 'locked'), 'utf8'));
   assert.deepEqual(pruneCalls, [{ command: 'git', args: ['worktree', 'prune', '--verbose', '--expire', 'now'] }]);
+});
+
+test('comparevi worktree scrub quarantines unresolved runtime registrations when checkout metadata is missing', async () => {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-daemon-worktree-quarantine-'));
+  const runtimeRoot = path.join(repoRoot, '.runtime-worktrees', 'example-repo-fork');
+  const laneId = 'worker-slot-1';
+  const checkoutPath = path.join(runtimeRoot, laneId);
+  const worktreeAdminDir = path.join(repoRoot, '.git', 'worktrees', laneId);
+
+  await mkdir(checkoutPath, { recursive: true });
+  await mkdir(worktreeAdminDir, { recursive: true });
+  await writeFile(path.join(worktreeAdminDir, 'gitdir'), '/mnt/c/stale/runtime-worktree/.git\n', 'utf8');
+
+  const report = await compareviRuntimeTest.repairRegisteredWorktreeGitPointers({
+    repoRoot,
+    deps: {
+      execFileFn: async (command, args) => {
+        if (command === 'git' && args[0] === 'rev-parse' && args[1] === '--git-common-dir') {
+          return { stdout: '.git\n', stderr: '' };
+        }
+        if (command === 'git' && args[0] === 'worktree' && args[1] === 'prune') {
+          return { stdout: '', stderr: '' };
+        }
+        throw new Error(`unexpected git args: ${args.join(' ')}`);
+      }
+    }
+  });
+
+  assert.equal(report.unresolved.length, 0);
+  assert.equal(report.quarantined.length, 1);
+  assert.equal(report.quarantined[0].laneSegment, laneId);
+  assert.equal(report.quarantined[0].quarantineReason, 'checkout-git-not-found');
+  assert.deepEqual(report.quarantined[0].checkoutPaths, [checkoutPath]);
 });
 
 test('comparevi worker checkout allocator reuses runtime worktrees from a clean worktree root via the git common dir', async () => {

@@ -28,7 +28,7 @@ param(
   [switch]$DispatchValidateOnQueuePause,
   [switch]$QueuePauseRecoveryAllowFork,
   [switch]$OnlyRecoverQueueWhenEligible,
-  [int]$MaxConsecutiveCycleFailures = 0,
+  [int]$MaxConsecutiveCycleFailures = 3,
   [switch]$AutoBootstrapOnFailure,
   [switch]$AutoPrioritySyncLane,
   [switch]$AutoDevelopSync,

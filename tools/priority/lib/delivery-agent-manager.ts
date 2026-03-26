@@ -270,6 +270,90 @@ export function resolveDaemonStartFailure({
   };
 }
 
+export function resolveManagerCycleFailureState({
+  daemonAlive,
+  blockedByHostConflict,
+  stopOnIdle,
+  heartbeat,
+  report,
+  notBefore,
+  priorFailureCount = 0,
+  priorFailureSignature = '',
+  maxConsecutiveCycleFailures = 0,
+}) {
+  const heartbeatOutcome = getOptionalStringProperty(heartbeat, 'outcome');
+  const reportOutcome = getOptionalStringProperty(report, 'outcome');
+  const heartbeatGeneratedAt = getOptionalDateTimeProperty(heartbeat, 'generatedAt');
+  const reportGeneratedAt = getOptionalDateTimeProperty(report, 'generatedAt');
+  const notBeforeAt =
+    notBefore instanceof Date
+      ? notBefore
+      : typeof notBefore === 'string'
+        ? getOptionalDateTimeProperty({ notBefore }, 'notBefore')
+        : null;
+  const heartbeatFresh = !notBeforeAt || Boolean(heartbeatGeneratedAt && heartbeatGeneratedAt >= notBeforeAt);
+  const reportFresh = !notBeforeAt || Boolean(reportGeneratedAt && reportGeneratedAt >= notBeforeAt);
+
+  let observerOutcome = null;
+  let observerOutcomeSource = null;
+  if (reportOutcome && reportFresh) {
+    observerOutcome = reportOutcome;
+    observerOutcomeSource = 'report';
+  } else if (heartbeatOutcome && heartbeatFresh) {
+    observerOutcome = heartbeatOutcome;
+    observerOutcomeSource = 'heartbeat';
+  }
+
+  const heartbeatLane = getOptionalProperty(heartbeat, 'activeLane');
+  const laneId = getOptionalStringProperty(heartbeatLane, 'laneId');
+  const issue = getOptionalIntProperty(heartbeatLane, 'issue');
+  const taskPacket = getOptionalProperty(heartbeatLane, 'taskPacket');
+  const laneEvidence = getOptionalProperty(getOptionalProperty(taskPacket, 'evidence'), 'lane');
+  const workerSlotId = getOptionalStringProperty(laneEvidence, 'workerSlotId');
+  const blockerClass =
+    getOptionalStringProperty(heartbeatLane, 'blockerClass') ||
+    getOptionalStringProperty(getOptionalProperty(taskPacket, 'checks'), 'blockerClass');
+  const failureSignature = observerOutcome
+    ? [observerOutcome, laneId || '', issue > 0 ? String(issue) : '', workerSlotId || '', blockerClass || '']
+        .join('|')
+        .replace(/\|+$/, '')
+    : '';
+
+  if (daemonAlive || blockedByHostConflict || !observerOutcome || (stopOnIdle && observerOutcome === 'idle-stop')) {
+    return {
+      status: 'clear',
+      shouldStop: false,
+      consecutiveCycleFailures: 0,
+      failureSignature: '',
+      observerOutcome,
+      observerOutcomeSource,
+      heartbeatFresh,
+      reportFresh,
+      reason: daemonAlive ? 'daemon-running' : blockedByHostConflict ? 'host-conflict-blocked' : !observerOutcome ? 'no-fresh-observer-outcome' : 'idle-stop',
+    };
+  }
+
+  const nextFailureCount = failureSignature && failureSignature === priorFailureSignature
+    ? priorFailureCount + 1
+    : 1;
+  const threshold = Number.isInteger(maxConsecutiveCycleFailures) && maxConsecutiveCycleFailures > 0
+    ? maxConsecutiveCycleFailures
+    : 0;
+  const shouldStop = threshold > 0 && nextFailureCount >= threshold;
+
+  return {
+    status: shouldStop ? 'fail-closed' : 'counted-failure',
+    shouldStop,
+    consecutiveCycleFailures: nextFailureCount,
+    failureSignature,
+    observerOutcome,
+    observerOutcomeSource,
+    heartbeatFresh,
+    reportFresh,
+    reason: shouldStop ? 'repeated-daemon-cycle-failures' : 'daemon-cycle-failure',
+  };
+}
+
 export function buildWslRuntimeDaemonEnvironment({
   repoRoot,
   runtimeDir,
@@ -370,6 +454,7 @@ export function emitStatus(options) {
   const repoRoot = options.repoRoot || resolveRepoRoot();
   const paths = getArtifactPaths(repoRoot, options.runtimeDir);
   const issuePaths = getIssueArtifactPaths(repoRoot);
+  const persistedManagerState = readJsonFile(paths.managerStatePath);
   const pidState = readJsonFile(paths.managerPidPath);
   const managerAlive = testProcessAlive(getOptionalIntProperty(pidState, 'pid'));
   const managerStartedAt = getOptionalDateTimeProperty(pidState, 'startedAt');
@@ -442,11 +527,18 @@ export function emitStatus(options) {
   const daemonLogTail = readLogTail(paths.daemonLogPath);
   const managerLogTail = readLogTail(paths.runnerLogPath);
   const managerErrorLogTail = readLogTail(paths.runnerErrorPath);
-  const status = managerAlive || daemonAlive ? 'running' : 'stopped';
+  const persistedOutcome = getOptionalStringProperty(persistedManagerState, 'outcome');
+  const persistedStatus = getOptionalStringProperty(persistedManagerState, 'status');
+  const effectiveOutcome =
+    options.outcome === 'status' && !managerAlive && !daemonAlive && persistedOutcome
+      ? persistedOutcome
+      : options.outcome;
+  const status = managerAlive || daemonAlive ? 'running' : persistedStatus || 'stopped';
+  const managerFailureCircuitBreaker = getOptionalProperty(persistedManagerState, 'managerFailureCircuitBreaker') || null;
 
-  writeLogTailTrace({ repo: options.repo, runtimeDir: options.runtimeDir, distro: options.wslDistro, tracePath: paths.managerTracePath, source: 'daemon', reason: `status:${options.outcome}`, logPath: paths.daemonLogPath, lines: daemonLogTail });
-  writeLogTailTrace({ repo: options.repo, runtimeDir: options.runtimeDir, distro: options.wslDistro, tracePath: paths.managerTracePath, source: 'manager-stdout', reason: `status:${options.outcome}`, logPath: paths.runnerLogPath, lines: managerLogTail });
-  writeLogTailTrace({ repo: options.repo, runtimeDir: options.runtimeDir, distro: options.wslDistro, tracePath: paths.managerTracePath, source: 'manager-stderr', reason: `status:${options.outcome}`, logPath: paths.runnerErrorPath, lines: managerErrorLogTail });
+  writeLogTailTrace({ repo: options.repo, runtimeDir: options.runtimeDir, distro: options.wslDistro, tracePath: paths.managerTracePath, source: 'daemon', reason: `status:${effectiveOutcome}`, logPath: paths.daemonLogPath, lines: daemonLogTail });
+  writeLogTailTrace({ repo: options.repo, runtimeDir: options.runtimeDir, distro: options.wslDistro, tracePath: paths.managerTracePath, source: 'manager-stdout', reason: `status:${effectiveOutcome}`, logPath: paths.runnerLogPath, lines: managerLogTail });
+  writeLogTailTrace({ repo: options.repo, runtimeDir: options.runtimeDir, distro: options.wslDistro, tracePath: paths.managerTracePath, source: 'manager-stderr', reason: `status:${effectiveOutcome}`, logPath: paths.runnerErrorPath, lines: managerErrorLogTail });
 
   const report = {
     schema: MANAGER_REPORT_SCHEMA,
@@ -455,7 +547,7 @@ export function emitStatus(options) {
     runtimeDir: options.runtimeDir,
     distro: options.wslDistro,
     status,
-    outcome: options.outcome,
+    outcome: effectiveOutcome,
     manager: {
       pid: getOptionalIntProperty(pidState, 'pid'),
       alive: managerAlive,
@@ -479,6 +571,7 @@ export function emitStatus(options) {
     hostSignalDiagnostics: hostSignalResolution.diagnostics,
     hostIsolation,
     wslNativeDocker,
+    managerFailureCircuitBreaker,
     logTail: {
       daemon: daemonLogTail,
       managerStdout: managerLogTail,
@@ -514,7 +607,7 @@ export function emitStatus(options) {
     tracePath: paths.managerTracePath,
     eventType: 'status',
     detail: {
-      outcome: options.outcome,
+      outcome: effectiveOutcome,
       managerAlive,
       daemonAlive,
       heartbeatReason: deliveryDiagnostics.reason,
@@ -682,6 +775,20 @@ export async function runManagerLoop(options) {
   let monitoringWorkInjection = null;
   let hostConflictResolution = null;
   let blockedByHostConflict = false;
+  let consecutiveCycleFailures = 0;
+  let lastFailureSignature = '';
+  let finalOutcome = 'stopped';
+  let finalStatus = 'stopped';
+  let finalFailClosedReason = null;
+  let managerFailureCircuitBreaker = {
+    status: 'clear',
+    threshold: options.maxConsecutiveCycleFailures,
+    consecutiveCycleFailures,
+    failureSignature: null,
+    observerOutcome: null,
+    observerOutcomeSource: null,
+    reason: 'manager-started',
+  };
 
   try {
     await runPrereqsCommand({ ...options, repoRoot });
@@ -1064,6 +1171,50 @@ export async function runManagerLoop(options) {
         });
       }
 
+      const cycleFailureState = resolveManagerCycleFailureState({
+        daemonAlive,
+        blockedByHostConflict,
+        stopOnIdle: options.stopWhenNoOpenIssues || options.sleepMode,
+        heartbeat,
+        report,
+        notBefore: cycleStartedAt,
+        priorFailureCount: consecutiveCycleFailures,
+        priorFailureSignature: lastFailureSignature,
+        maxConsecutiveCycleFailures: options.maxConsecutiveCycleFailures,
+      });
+      consecutiveCycleFailures = cycleFailureState.consecutiveCycleFailures;
+      lastFailureSignature = cycleFailureState.failureSignature;
+      managerFailureCircuitBreaker = {
+        status: cycleFailureState.status,
+        threshold: options.maxConsecutiveCycleFailures,
+        consecutiveCycleFailures,
+        failureSignature: cycleFailureState.failureSignature || null,
+        observerOutcome: cycleFailureState.observerOutcome || null,
+        observerOutcomeSource: cycleFailureState.observerOutcomeSource || null,
+        reason: cycleFailureState.reason,
+      };
+      if (cycleFailureState.shouldStop) {
+        finalOutcome = 'manager-stopped-fail-closed';
+        finalStatus = 'fail-closed';
+        finalFailClosedReason = cycleFailureState.reason;
+        writeManagerTrace({
+          repo: options.repo,
+          runtimeDir: options.runtimeDir,
+          distro: options.wslDistro,
+          tracePath: paths.managerTracePath,
+          eventType: 'circuit-breaker-opened',
+          detail: {
+            cycle,
+            threshold: options.maxConsecutiveCycleFailures,
+            consecutiveCycleFailures,
+            failureSignature: cycleFailureState.failureSignature || null,
+            observerOutcome: cycleFailureState.observerOutcome || null,
+            observerOutcomeSource: cycleFailureState.observerOutcomeSource || null,
+            reason: cycleFailureState.reason,
+          },
+        });
+      }
+
       const state = {
         schema: MANAGER_STATE_SCHEMA,
         generatedAt: toIso(),
@@ -1082,6 +1233,8 @@ export async function runManagerLoop(options) {
         observer: observerTelemetry,
         codexStateHygiene,
         deliveryMemory,
+        managerFailureCircuitBreaker,
+        failClosedReason: cycleFailureState.shouldStop ? cycleFailureState.reason : null,
         deliveryMemoryPath: paths.deliveryMemoryPath,
         hostSignalPath: paths.hostSignalPath,
         hostIsolationPath: paths.hostIsolationPath,
@@ -1106,9 +1259,13 @@ export async function runManagerLoop(options) {
         observer: observerTelemetry,
         codexStateHygiene,
         deliveryMemory,
+        managerFailureCircuitBreaker,
         managerTracePath: paths.managerTracePath,
       });
 
+      if (cycleFailureState.shouldStop) {
+        break;
+      }
       if (blockedByHostConflict) {
         await sleep(options.cycleIntervalSeconds * 1000);
         continue;
@@ -1178,6 +1335,8 @@ export async function runManagerLoop(options) {
         hostConflictResolution,
         codexStateHygiene,
         deliveryMemory,
+        managerFailureCircuitBreaker,
+        failClosedReason: finalFailClosedReason,
         deliveryMemoryPath: paths.deliveryMemoryPath,
       hostSignalPath: paths.hostSignalPath,
         hostIsolationPath: paths.hostIsolationPath,
@@ -1185,7 +1344,8 @@ export async function runManagerLoop(options) {
         managerTracePath: paths.managerTracePath,
         wslNativeDockerPath: paths.wslNativeDockerPath,
         blockedByHostRuntimeConflict: blockedByHostConflict,
-        outcome: 'stopped',
+        status: finalStatus,
+        outcome: finalOutcome,
       });
   }
 }
