@@ -292,6 +292,74 @@ export function getArtifactPaths(repoRoot, runtimeDir) {
   };
 }
 
+export function getIssueArtifactPaths(repoRoot) {
+  const issueDirPath = path.join(repoRoot, 'tests', 'results', '_agent', 'issue');
+  const handoffDirPath = path.join(repoRoot, 'tests', 'results', '_agent', 'handoff');
+  return {
+    issueDirPath,
+    handoffDirPath,
+    queueEmptyReportPath: path.join(issueDirPath, 'no-standing-priority.json'),
+    routerPath: path.join(issueDirPath, 'router.json'),
+    monitoringModePath: path.join(handoffDirPath, 'monitoring-mode.json'),
+  };
+}
+
+export function isQueueEmptyMonitoringReady({ queueEmptyReport, router }) {
+  const queueEmptyReason = getOptionalStringProperty(queueEmptyReport, 'reason');
+  const routerIssue = getOptionalIntProperty(router, 'issue');
+  return queueEmptyReason === 'queue-empty' && routerIssue <= 0;
+}
+
+export function buildQueueEmptyMonitoringDeliveryState({
+  repo,
+  runtimeDir,
+  generatedAt = null,
+  paths,
+  queueEmptyReportPath = null,
+  monitoringMode = null,
+}) {
+  const monitoringAction = getOptionalStringProperty(monitoringMode, 'futureAgentAction') || 'future-agent-may-pivot';
+  const iso = generatedAt ? toIso(generatedAt) : toIso();
+  return {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: iso,
+    repository: repo,
+    runtimeDir,
+    status: 'idle',
+    laneLifecycle: 'idle',
+    activeCodingLanes: 0,
+    derivedFromQueueEmptyState: true,
+    queueState: {
+      status: 'queue-empty',
+      reason: 'queue-empty',
+      reportPath: queueEmptyReportPath,
+    },
+    activeLane: {
+      schema: 'priority/delivery-agent-lane-state@v1',
+      generatedAt: iso,
+      laneId: 'queue-empty-monitoring',
+      issue: null,
+      epic: null,
+      branch: null,
+      forkRemote: null,
+      prUrl: null,
+      blockerClass: 'none',
+      laneLifecycle: 'idle',
+      actionType: 'monitoring-idle',
+      outcome: 'queue-empty',
+      reason: 'queue-empty',
+      retryable: false,
+      nextWakeCondition: monitoringAction,
+      syntheticIdle: true,
+    },
+    artifacts: {
+      statePath: paths.deliveryStatePath,
+      lanePath: null,
+      concurrentLaneApplyReceiptPath: null,
+    },
+  };
+}
+
 export function testProcessAlive(processId) {
   if (!Number.isInteger(processId) || processId <= 0) {
     return false;

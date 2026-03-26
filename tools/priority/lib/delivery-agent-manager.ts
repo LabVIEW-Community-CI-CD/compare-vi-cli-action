@@ -14,20 +14,23 @@ import {
   MANAGER_REPORT_SCHEMA,
   MANAGER_STATE_SCHEMA,
   STOP_REQUEST_SCHEMA,
+  buildQueueEmptyMonitoringDeliveryState,
   convertToWslPath,
   getArtifactPaths,
+  getIssueArtifactPaths,
   getOptionalDateTimeProperty,
   getOptionalIntProperty,
   getOptionalProperty,
   getOptionalStringProperty,
   getStableLeaseOwner,
   getWslRuntimeDaemonUnitName,
+  isQueueEmptyMonitoringReady,
   normalizeText,
   readJsonFile,
   readLogTail,
-  resolveHostSignalForStatus,
   resolveDeliveryStateForStatus,
   resolveGitDirPath,
+  resolveHostSignalForStatus,
   resolveObserverTelemetry,
   resolveRepoRoot,
   resolveWorkspaceQuarantine,
@@ -366,6 +369,7 @@ export function stopWslRuntimeDaemon({ distro, unitName, processId }) {
 export function emitStatus(options) {
   const repoRoot = options.repoRoot || resolveRepoRoot();
   const paths = getArtifactPaths(repoRoot, options.runtimeDir);
+  const issuePaths = getIssueArtifactPaths(repoRoot);
   const pidState = readJsonFile(paths.managerPidPath);
   const managerAlive = testProcessAlive(getOptionalIntProperty(pidState, 'pid'));
   const managerStartedAt = getOptionalDateTimeProperty(pidState, 'startedAt');
@@ -388,7 +392,42 @@ export function emitStatus(options) {
     daemonStartedAt,
     daemonAlive,
   });
-  const resolvedDeliveryState = resolvedDelivery.state;
+  let resolvedDeliveryState = resolvedDelivery.state;
+  let deliveryDiagnostics = { ...resolvedDelivery.diagnostics };
+  const queueEmptyReport = readJsonFile(issuePaths.queueEmptyReportPath);
+  const router = readJsonFile(issuePaths.routerPath);
+  const monitoringMode = readJsonFile(issuePaths.monitoringModePath);
+  const eligibleQueueEmptyOverride =
+    managerAlive &&
+    isQueueEmptyMonitoringReady({ queueEmptyReport, router }) &&
+    deliveryDiagnostics.usedHeartbeat !== true &&
+    deliveryDiagnostics.usedRuntimeState !== true &&
+    ['stale-before-current-manager', 'stale-heartbeat-daemon-dead', 'delivery-state-missing'].includes(
+      normalizeText(deliveryDiagnostics.reason)
+    );
+  if (eligibleQueueEmptyOverride) {
+    resolvedDeliveryState = buildQueueEmptyMonitoringDeliveryState({
+      repo: options.repo,
+      runtimeDir: options.runtimeDir,
+      generatedAt: managerStartedAt || new Date(),
+      paths,
+      queueEmptyReportPath: issuePaths.queueEmptyReportPath,
+      monitoringMode,
+    });
+    deliveryDiagnostics = {
+      ...deliveryDiagnostics,
+      usedQueueEmptyState: true,
+      reason: 'queue-empty-current-manager',
+      queueEmptyReportPath: issuePaths.queueEmptyReportPath,
+      queueEmptyReportGeneratedAt: getOptionalStringProperty(queueEmptyReport, 'generatedAt'),
+      queueState: getOptionalStringProperty(queueEmptyReport, 'reason') || null,
+      routerPath: issuePaths.routerPath,
+      routerIssue: getOptionalIntProperty(router, 'issue') || null,
+      monitoringModePath: issuePaths.monitoringModePath,
+      monitoringStatus: getOptionalStringProperty(monitoringMode, 'status'),
+      monitoringAction: getOptionalStringProperty(monitoringMode, 'futureAgentAction'),
+    };
+  }
   const deliveryMemory = readJsonFile(paths.deliveryMemoryPath);
   const codexStateHygiene = readJsonFile(paths.codexStateHygienePath);
   const observer = resolveObserverTelemetry(codexStateHygiene, paths.codexStateHygienePath);
@@ -431,7 +470,7 @@ export function emitStatus(options) {
     },
     heartbeat,
     delivery: resolvedDeliveryState,
-    heartbeatDiagnostics: resolvedDelivery.diagnostics,
+    heartbeatDiagnostics: deliveryDiagnostics,
     deliveryMemory,
     observer,
     workspaceQuarantine,
@@ -478,9 +517,11 @@ export function emitStatus(options) {
       outcome: options.outcome,
       managerAlive,
       daemonAlive,
-      heartbeatReason: resolvedDelivery.diagnostics.reason,
-      heartbeatUsed: Boolean(resolvedDelivery.diagnostics.usedHeartbeat),
-      heartbeatGeneratedAt: resolvedDelivery.diagnostics.heartbeatGeneratedAt,
+      heartbeatReason: deliveryDiagnostics.reason,
+      heartbeatUsed: Boolean(deliveryDiagnostics.usedHeartbeat),
+      heartbeatGeneratedAt: deliveryDiagnostics.heartbeatGeneratedAt,
+      queueEmptyUsed: Boolean(deliveryDiagnostics.usedQueueEmptyState),
+      monitoringAction: deliveryDiagnostics.monitoringAction ?? null,
       observerStatus: getOptionalStringProperty(observer, 'status'),
       workspaceQuarantineStatus: getOptionalStringProperty(workspaceQuarantine, 'status'),
       daemonLogLineCount: daemonLogTail.length,
