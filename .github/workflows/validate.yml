@@ -1801,7 +1801,8 @@ jobs:
       id: plan
       shell: pwsh
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
       run: |
         $resultsRoot = 'tests/results/_agent/vi-history-dispatch'
         New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
@@ -1876,7 +1877,8 @@ jobs:
     - name: Validate self-hosted runner label contract
       shell: pwsh
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
       run: |
         $resultsRoot = Join-Path $env:GITHUB_WORKSPACE 'tests/results/local-parity/windows/lv32-shadow-proof'
         New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null

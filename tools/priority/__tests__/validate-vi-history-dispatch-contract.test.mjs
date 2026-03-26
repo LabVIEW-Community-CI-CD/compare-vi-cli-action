@@ -100,11 +100,15 @@ test('validate workflow self-hosted Windows LV32 VI-history lane is gated by inv
   assert.match(workflow, /vi-history-scenarios-windows-lv32-plan:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'/);
   assert.match(planSection, /Resolve self-hosted Windows LV32 lane/);
   assert.match(planSection, /tools\/Resolve-SelfHostedWindowsLanePlan\.ps1/);
+  assert.match(planSection, /GITHUB_TOKEN:\s+\$\{\{\s*secrets\.GH_TOKEN \|\| secrets\.GITHUB_TOKEN\s*\}\}/);
+  assert.match(planSection, /GH_TOKEN:\s+\$\{\{\s*secrets\.GH_TOKEN \|\| secrets\.GITHUB_TOKEN\s*\}\}/);
   assert.match(planSection, /required_labels:\s+\$\{\{\s*steps\.plan\.outputs\.required_labels\s*\}\}/);
   assert.match(workflow, /vi-history-scenarios-windows-lv32:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-windows-lv32-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true' && needs\.vi-history-scenarios-plan\.outputs\.execute_lanes == 'true' && needs\.vi-history-scenarios-windows-lv32-plan\.outputs\.available == 'true'/);
   assert.match(lv32Section, /runs-on:\s*\[self-hosted, Windows, X64, comparevi, capability-ingress, labview-2026, lv32\]/);
   assert.match(lv32Section, /Validate self-hosted runner label contract/);
   assert.match(lv32Section, /Assert-RunnerLabelContract\.ps1/);
+  assert.match(lv32Section, /GITHUB_TOKEN:\s+\$\{\{\s*secrets\.GH_TOKEN \|\| secrets\.GITHUB_TOKEN\s*\}\}/);
+  assert.match(lv32Section, /GH_TOKEN:\s+\$\{\{\s*secrets\.GH_TOKEN \|\| secrets\.GITHUB_TOKEN\s*\}\}/);
   assert.match(lv32Section, /Capture LabVIEW 2026 host-plane diagnostics/);
   assert.match(lv32Section, /env:labview:2026:host-planes/);
   assert.match(lv32Section, /Run VI history shadow proof on the self-hosted LV32 runner/);
