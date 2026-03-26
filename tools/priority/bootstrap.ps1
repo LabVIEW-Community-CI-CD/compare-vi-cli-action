@@ -938,6 +938,101 @@ if (-not $PreflightOnly) {
     -ScriptRelativePath 'tools/priority/operator-steering-event.mjs' `
     -Arguments @('--repo-root', $priorityWorkingDirectory, '--continuity', $continuityRuntimePath, '--output', $steeringRuntimePath, '--handoff-output', $steeringHandoffPath, '--history-dir', $steeringHistoryDir, '--invoice-turn-dir', $invoiceTurnDir) `
     -AllowFailure:$true
+
+  if (-not $routerIssue) {
+    try {
+      Write-Host '[bootstrap] Refreshing queue-empty handoff control-plane surfaces…'
+      $resultsRoot = Join-Path $priorityWorkingDirectory 'tests/results'
+      $promotionDir = Join-Path $resultsRoot '_agent/promotion'
+      $releaseDir = Join-Path $resultsRoot '_agent/release'
+      $handoffDir = Join-Path $resultsRoot '_agent/handoff'
+      New-Item -ItemType Directory -Force -Path $promotionDir | Out-Null
+      New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+      New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+
+      $queueEmptyReportPath = Join-Path $priorityWorkingDirectory 'tests/results/_agent/issue/no-standing-priority.json'
+      $templateVerificationSeedPath = Join-Path $promotionDir 'template-agent-verification-report.json'
+      $templateVerificationOverlayPath = Join-Path $promotionDir 'template-agent-verification-report.local.json'
+      $templateVerificationSyncPath = Join-Path $promotionDir 'template-agent-verification-sync.json'
+      $entrypointStatusPath = Join-Path $handoffDir 'entrypoint-status.json'
+      $repoGraphTruthPath = Join-Path $handoffDir 'downstream-repo-graph-truth.json'
+      $templatePivotGatePath = Join-Path $promotionDir 'template-pivot-gate-report.json'
+      $monitoringModePath = Join-Path $handoffDir 'monitoring-mode.json'
+      $releaseConductorReportPath = Join-Path $releaseDir 'release-conductor-report.json'
+      $releasePublishedBundleObserverPath = Join-Path $releaseDir 'release-published-bundle-observer.json'
+      $releaseSigningReadinessPath = Join-Path $releaseDir 'release-signing-readiness.json'
+      $governorSummaryPath = Join-Path $handoffDir 'autonomous-governor-summary.json'
+      $governorPortfolioSummaryPath = Join-Path $handoffDir 'autonomous-governor-portfolio-summary.json'
+      $contextConcentratorPath = Join-Path $handoffDir 'sagan-context-concentrator.json'
+
+      Invoke-Npm -Script 'handoff:entrypoint:check' -AllowFailure:$true
+
+      Invoke-NodeScriptFromRepoRoot `
+        -RepoRoot $priorityHelperRepoRoot `
+        -WorkingDirectory $priorityWorkingDirectory `
+        -ScriptRelativePath 'tools/priority/downstream-repo-graph-truth.mjs' `
+        -Arguments @('--repo-root', $priorityWorkingDirectory, '--output', $repoGraphTruthPath) `
+        -AllowFailure:$true
+
+      Invoke-NodeScriptFromRepoRoot `
+        -RepoRoot $priorityHelperRepoRoot `
+        -WorkingDirectory $priorityWorkingDirectory `
+        -ScriptRelativePath 'tools/priority/sync-template-agent-verification-report.mjs' `
+        -Arguments @('--repo-root', $priorityWorkingDirectory, '--local-report', $templateVerificationSeedPath, '--local-overlay-report', $templateVerificationOverlayPath, '--output', $templateVerificationSyncPath) `
+        -AllowFailure:$true
+
+      Invoke-NodeScriptFromRepoRoot `
+        -RepoRoot $priorityHelperRepoRoot `
+        -WorkingDirectory $priorityWorkingDirectory `
+        -ScriptRelativePath 'tools/priority/template-pivot-gate.mjs' `
+        -Arguments @('--queue-empty-report', $queueEmptyReportPath, '--handoff-entrypoint', $entrypointStatusPath, '--template-agent-verification-report', $templateVerificationSeedPath, '--output', $templatePivotGatePath) `
+        -AllowFailure:$true
+
+      Invoke-NodeScriptFromRepoRoot `
+        -RepoRoot $priorityHelperRepoRoot `
+        -WorkingDirectory $priorityWorkingDirectory `
+        -ScriptRelativePath 'tools/priority/handoff-monitoring-mode.mjs' `
+        -Arguments @('--repo-root', $priorityWorkingDirectory, '--repo-graph-truth', $repoGraphTruthPath, '--queue-empty-report', $queueEmptyReportPath, '--continuity-summary', $continuityHandoffPath, '--template-pivot-gate', $templatePivotGatePath, '--output', $monitoringModePath) `
+        -AllowFailure:$true
+
+      Invoke-NodeScriptFromRepoRoot `
+        -RepoRoot $priorityHelperRepoRoot `
+        -WorkingDirectory $priorityWorkingDirectory `
+        -ScriptRelativePath 'tools/priority/release-published-bundle-observer.mjs' `
+        -Arguments @('--repo-root', $priorityWorkingDirectory, '--output', $releasePublishedBundleObserverPath) `
+        -AllowFailure:$true
+
+      Invoke-NodeScriptFromRepoRoot `
+        -RepoRoot $priorityHelperRepoRoot `
+        -WorkingDirectory $priorityWorkingDirectory `
+        -ScriptRelativePath 'tools/priority/release-signing-readiness.mjs' `
+        -Arguments @('--repo-root', $priorityWorkingDirectory, '--release-conductor-report', $releaseConductorReportPath, '--release-published-bundle-observer', $releasePublishedBundleObserverPath, '--output', $releaseSigningReadinessPath) `
+        -AllowFailure:$true
+
+      Invoke-NodeScriptFromRepoRoot `
+        -RepoRoot $priorityHelperRepoRoot `
+        -WorkingDirectory $priorityWorkingDirectory `
+        -ScriptRelativePath 'tools/priority/autonomous-governor-summary.mjs' `
+        -Arguments @('--repo-root', $priorityWorkingDirectory, '--queue-empty-report', $queueEmptyReportPath, '--continuity-summary', $continuityHandoffPath, '--monitoring-mode', $monitoringModePath, '--release-signing-readiness', $releaseSigningReadinessPath, '--output', $governorSummaryPath) `
+        -AllowFailure:$true
+
+      Invoke-NodeScriptFromRepoRoot `
+        -RepoRoot $priorityHelperRepoRoot `
+        -WorkingDirectory $priorityWorkingDirectory `
+        -ScriptRelativePath 'tools/priority/autonomous-governor-portfolio-summary.mjs' `
+        -Arguments @('--repo-root', $priorityWorkingDirectory, '--compare-governor-summary', $governorSummaryPath, '--monitoring-mode', $monitoringModePath, '--repo-graph-truth', $repoGraphTruthPath, '--output', $governorPortfolioSummaryPath) `
+        -AllowFailure:$true
+
+      Invoke-NodeScriptFromRepoRoot `
+        -RepoRoot $priorityHelperRepoRoot `
+        -WorkingDirectory $priorityWorkingDirectory `
+        -ScriptRelativePath 'tools/priority/sagan-context-concentrator.mjs' `
+        -Arguments @('--repo-root', $priorityWorkingDirectory, '--priority-cache', (Join-Path $priorityWorkingDirectory '.agent_priority_cache.json'), '--governor-summary', $governorSummaryPath, '--governor-portfolio-summary', $governorPortfolioSummaryPath, '--monitoring-mode', $monitoringModePath, '--operator-steering-event', $steeringHandoffPath, '--episode-directory', (Join-Path $resultsRoot '_agent/memory/subagent-episodes'), '--output', $contextConcentratorPath) `
+        -AllowFailure:$true
+    } catch {
+      Write-Warning ("[bootstrap] Failed to refresh queue-empty handoff control-plane surfaces: {0}" -f $_.Exception.Message)
+    }
+  }
 }
 
 Write-Host '[bootstrap] Bootstrapping complete.'

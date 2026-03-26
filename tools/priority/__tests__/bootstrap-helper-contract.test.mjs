@@ -63,4 +63,26 @@ test('bootstrap routes standing-priority helper scripts through the resolved hel
     /Invoke-SafeGitReliabilitySummary -RepoRoot \$priorityHelperRepoRoot -WorkingDirectory \$priorityWorkingDirectory/
   );
   assert.match(content, /\$routerPath = Join-Path \$priorityWorkingDirectory 'tests\/results\/_agent\/issue\/router\.json'/);
+  assert.match(content, /if \(-not \$routerIssue\) \{\s*try \{\s*Write-Host '\[bootstrap\] Refreshing queue-empty handoff control-plane surfaces…'/);
+  assert.match(content, /Invoke-Npm -Script 'handoff:entrypoint:check' -AllowFailure:\$true/);
+  assert.match(
+    content,
+    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/release-published-bundle-observer\.mjs'[\s\S]*--repo-root[\s\S]*--output[\s\S]*-AllowFailure:\$true/
+  );
+  assert.match(
+    content,
+    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/release-signing-readiness\.mjs'[\s\S]*--release-conductor-report[\s\S]*--release-published-bundle-observer[\s\S]*-AllowFailure:\$true/
+  );
+  assert.match(
+    content,
+    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/autonomous-governor-summary\.mjs'[\s\S]*--release-signing-readiness[\s\S]*-AllowFailure:\$true/
+  );
+  assert.match(
+    content,
+    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/autonomous-governor-portfolio-summary\.mjs'[\s\S]*--compare-governor-summary[\s\S]*--repo-graph-truth[\s\S]*-AllowFailure:\$true/
+  );
+  assert.match(
+    content,
+    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/sagan-context-concentrator\.mjs'[\s\S]*--governor-summary[\s\S]*--governor-portfolio-summary[\s\S]*-AllowFailure:\$true/
+  );
 });
