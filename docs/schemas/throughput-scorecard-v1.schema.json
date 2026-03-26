@@ -39,7 +39,10 @@
         "releasedLaneCount",
         "utilizationRatio",
         "activeCodingLanes",
-        "liveOrchestratorLane"
+        "liveOrchestratorLane",
+        "authoritySource",
+        "staleRuntimeSuppressed",
+        "currentCycleIdleAuthority"
       ],
       "properties": {
         "targetSlotCount": { "type": "integer", "minimum": 0 },
@@ -48,7 +51,20 @@
         "releasedLaneCount": { "type": "integer", "minimum": 0 },
         "utilizationRatio": { "type": "number", "minimum": 0 },
         "activeCodingLanes": { "type": "integer", "minimum": 0 },
-        "liveOrchestratorLane": { "type": "string" }
+        "liveOrchestratorLane": { "type": "string" },
+        "authoritySource": { "enum": ["runtime-state", "current-cycle-idle"] },
+        "staleRuntimeSuppressed": { "type": "boolean" },
+        "currentCycleIdleAuthority": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "source", "observedAt", "nextWakeCondition"],
+          "properties": {
+            "status": { "enum": ["observed", "missing"] },
+            "source": { "type": ["string", "null"] },
+            "observedAt": { "type": ["string", "null"], "format": "date-time" },
+            "nextWakeCondition": { "type": ["string", "null"] }
+          }
+        }
       }
     },
     "logicalLaneAllocation": {
