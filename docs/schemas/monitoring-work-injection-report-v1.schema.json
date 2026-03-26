@@ -388,6 +388,43 @@
             "null"
           ]
         },
+        "brokerSelectedIssueNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "brokerSelectedIssueUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brokerSelectedIssueTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brokerProviderId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brokerSlotId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brokerSelectionSource": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "ownerDecisionSource": {
           "type": [
             "string",
@@ -477,6 +514,43 @@
           ]
         },
         "nextAction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brokerSelectedIssueNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "brokerSelectedIssueUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brokerSelectedIssueTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brokerProviderId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brokerSlotId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brokerSelectionSource": {
           "type": [
             "string",
             "null"

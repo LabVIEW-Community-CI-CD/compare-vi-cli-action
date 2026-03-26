@@ -911,6 +911,11 @@ test('runAutonomousGovernorPortfolioSummary preserves repo-context pivot authori
           nextAction: 'reopen-template-monitoring-work',
           ownerDecisionSource: 'delivery-runtime-marketplace',
           pivotStatus: 'ready',
+          brokerSelectedIssueNumber: 52,
+          brokerSelectedIssueUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52',
+          brokerSelectedIssueTitle: '[comparevi]: template consumer rail',
+          brokerProviderId: 'local-codex',
+          brokerSlotId: 'slot-template-1',
           brokerSelectionSource: 'released-waiting-state-marketplace'
         },
         executionTopology: {
@@ -1045,5 +1050,14 @@ test('runAutonomousGovernorPortfolioSummary preserves repo-context pivot authori
   assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
   assert.equal(report.summary.nextAction, 'reopen-template-monitoring-work');
+  assert.equal(report.summary.brokerSelectedIssueNumber, 52);
+  assert.equal(
+    report.summary.brokerSelectedIssueUrl,
+    'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52'
+  );
+  assert.equal(report.summary.brokerSelectedIssueTitle, '[comparevi]: template consumer rail');
+  assert.equal(report.summary.brokerProviderId, 'local-codex');
+  assert.equal(report.summary.brokerSlotId, 'slot-template-1');
+  assert.equal(report.summary.brokerSelectionSource, 'released-waiting-state-marketplace');
   assert.equal(report.summary.ownerDecisionSource, 'delivery-runtime-marketplace');
 });

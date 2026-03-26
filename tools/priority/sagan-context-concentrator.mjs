@@ -273,6 +273,24 @@ function deriveOwnerSummary(governorSummary, governorPortfolioSummary, monitorin
     nextAction:
       normalizeText(governorPortfolioSummary?.summary?.nextAction) ||
       normalizeText(governorSummary?.summary?.nextAction),
+    brokerSelectedIssueNumber:
+      normalizeInteger(governorPortfolioSummary?.summary?.brokerSelectedIssueNumber) ??
+      normalizeInteger(governorSummary?.summary?.brokerSelectedIssueNumber),
+    brokerSelectedIssueUrl:
+      normalizeText(governorPortfolioSummary?.summary?.brokerSelectedIssueUrl) ||
+      normalizeText(governorSummary?.summary?.brokerSelectedIssueUrl),
+    brokerSelectedIssueTitle:
+      normalizeText(governorPortfolioSummary?.summary?.brokerSelectedIssueTitle) ||
+      normalizeText(governorSummary?.summary?.brokerSelectedIssueTitle),
+    brokerProviderId:
+      normalizeText(governorPortfolioSummary?.summary?.brokerProviderId) ||
+      normalizeText(governorSummary?.summary?.brokerProviderId),
+    brokerSlotId:
+      normalizeText(governorPortfolioSummary?.summary?.brokerSlotId) ||
+      normalizeText(governorSummary?.summary?.brokerSlotId),
+    brokerSelectionSource:
+      normalizeText(governorPortfolioSummary?.summary?.brokerSelectionSource) ||
+      normalizeText(governorSummary?.summary?.brokerSelectionSource),
     governorMode:
       normalizeText(governorSummary?.summary?.governorMode) ||
       normalizeText(governorPortfolioSummary?.summary?.governorMode),
@@ -297,6 +315,12 @@ function deriveFocus(priorityCache, ownerSummary) {
     currentOwnerRepository: ownerSummary.currentOwnerRepository,
     nextOwnerRepository: ownerSummary.nextOwnerRepository,
     nextAction: ownerSummary.nextAction,
+    brokerSelectedIssueNumber: ownerSummary.brokerSelectedIssueNumber,
+    brokerSelectedIssueUrl: ownerSummary.brokerSelectedIssueUrl,
+    brokerSelectedIssueTitle: ownerSummary.brokerSelectedIssueTitle,
+    brokerProviderId: ownerSummary.brokerProviderId,
+    brokerSlotId: ownerSummary.brokerSlotId,
+    brokerSelectionSource: ownerSummary.brokerSelectionSource,
     governorMode: ownerSummary.governorMode,
     monitoringStatus: ownerSummary.monitoringStatus
   };
@@ -564,6 +588,12 @@ function buildReport({
       currentOwnerRepository: focus.currentOwnerRepository,
       nextOwnerRepository: focus.nextOwnerRepository,
       nextAction: focus.nextAction,
+      brokerSelectedIssueNumber: focus.brokerSelectedIssueNumber,
+      brokerSelectedIssueUrl: focus.brokerSelectedIssueUrl,
+      brokerSelectedIssueTitle: focus.brokerSelectedIssueTitle,
+      brokerProviderId: focus.brokerProviderId,
+      brokerSlotId: focus.brokerSlotId,
+      brokerSelectionSource: focus.brokerSelectionSource,
       activeIssueNumber: normalizeInteger(focus.activeIssue?.number),
       hotWorkingSetCount: hotWorkingSet.length,
       warmMemoryCount: warmEpisodes.length,

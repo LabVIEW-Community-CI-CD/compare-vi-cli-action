@@ -44,7 +44,8 @@ function createGovernorSummary() {
   };
 }
 
-function createGovernorPortfolioSummary() {
+function createGovernorPortfolioSummary(overrides = {}) {
+  const summaryOverrides = overrides.summary || {};
   return {
     schema: 'priority/autonomous-governor-portfolio-summary-report@v1',
     generatedAt: '2026-03-23T22:31:00Z',
@@ -67,6 +68,12 @@ function createGovernorPortfolioSummary() {
       currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       nextOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       nextAction: 'publish-producer-native-vi-history-bundle',
+      brokerSelectedIssueNumber: null,
+      brokerSelectedIssueUrl: null,
+      brokerSelectedIssueTitle: null,
+      brokerProviderId: null,
+      brokerSlotId: null,
+      brokerSelectionSource: null,
       ownerDecisionSource: 'compare-governor-summary',
       templateMonitoringStatus: 'pass',
       supportedProofStatus: 'pass',
@@ -82,7 +89,8 @@ function createGovernorPortfolioSummary() {
       viHistoryDistributorDependencyPublishedBundleState: 'producer-native-incomplete',
       viHistoryDistributorDependencyPublishedBundleReleaseTag: 'v0.6.3-tools.14',
       viHistoryDistributorDependencyAuthoritativeConsumerPin: null,
-      viHistoryDistributorDependencySigningAuthorityState: 'configured'
+      viHistoryDistributorDependencySigningAuthorityState: 'configured',
+      ...summaryOverrides
     }
   };
 }
@@ -256,4 +264,62 @@ test('runSaganContextConcentrator tolerates missing optional episode directory',
   assert.equal(report.episodes.totalCount, 0);
   assert.equal(report.summary.concentrationStatus, 'pass');
   assert.equal(report.summary.hotWorkingSetCount >= 2, true);
+});
+
+test('runSaganContextConcentrator surfaces broker-selected issue attribution in focus and summary', async () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sagan-context-concentrator-broker-'));
+  writeJson(path.join(repoRoot, '.agent_priority_cache.json'), {
+    number: 1986,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    title: '[ci]: surface broker-selected issue and slot attribution in portfolio handoff',
+    url: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/1986',
+    state: 'OPEN'
+  });
+  writeJson(
+    path.join(repoRoot, 'tests', 'results', '_agent', 'handoff', 'autonomous-governor-summary.json'),
+    createGovernorSummary()
+  );
+  writeJson(
+    path.join(repoRoot, 'tests', 'results', '_agent', 'handoff', 'autonomous-governor-portfolio-summary.json'),
+    createGovernorPortfolioSummary({
+      summary: {
+        currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        nextAction: 'resume-template-consumer-rail',
+        brokerSelectedIssueNumber: 52,
+        brokerSelectedIssueUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52',
+        brokerSelectedIssueTitle: '[comparevi]: template consumer rail',
+        brokerProviderId: 'local-codex',
+        brokerSlotId: 'slot-template-1',
+        brokerSelectionSource: 'released-waiting-state-marketplace'
+      }
+    })
+  );
+  writeJson(
+    path.join(repoRoot, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'),
+    createMonitoringMode()
+  );
+
+  const { report } = await runSaganContextConcentrator(
+    {
+      repoRoot
+    },
+    {
+      now: new Date('2026-03-23T22:50:00Z')
+    }
+  );
+
+  assert.equal(report.focus.brokerSelectedIssueNumber, 52);
+  assert.equal(
+    report.focus.brokerSelectedIssueUrl,
+    'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52'
+  );
+  assert.equal(report.focus.brokerSelectedIssueTitle, '[comparevi]: template consumer rail');
+  assert.equal(report.focus.brokerProviderId, 'local-codex');
+  assert.equal(report.focus.brokerSlotId, 'slot-template-1');
+  assert.equal(report.focus.brokerSelectionSource, 'released-waiting-state-marketplace');
+  assert.equal(report.summary.brokerSelectedIssueNumber, 52);
+  assert.equal(report.summary.brokerProviderId, 'local-codex');
+  assert.equal(report.summary.brokerSlotId, 'slot-template-1');
+  assert.equal(report.summary.brokerSelectionSource, 'released-waiting-state-marketplace');
 });

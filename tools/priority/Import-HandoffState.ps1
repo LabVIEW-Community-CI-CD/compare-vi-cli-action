@@ -1,4 +1,5 @@
 #Requires -Version 7.0
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'This script is a human-facing handoff renderer and intentionally writes concise operator summaries to the host stream.')]
 [CmdletBinding()]
 param(
   [string]$HandoffDir = (Join-Path (Resolve-Path '.').Path 'tests/results/_agent/handoff')
@@ -335,6 +336,25 @@ if ($governorPortfolioSummary) {
   if ($governorPortfolioSummary.summary.nextOwnerRepository) {
     Write-Host ("  nextRepo : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.nextOwnerRepository))
   }
+  if ($governorPortfolioSummary.summary.PSObject.Properties['brokerSelectedIssueNumber'] -and $null -ne $governorPortfolioSummary.summary.brokerSelectedIssueNumber) {
+    $nextIssueLine = "#{0}" -f (Format-NullableValue $governorPortfolioSummary.summary.brokerSelectedIssueNumber)
+    if ($governorPortfolioSummary.summary.PSObject.Properties['brokerSelectedIssueTitle'] -and $governorPortfolioSummary.summary.brokerSelectedIssueTitle) {
+      $nextIssueLine = "{0} {1}" -f $nextIssueLine, (Format-NullableValue $governorPortfolioSummary.summary.brokerSelectedIssueTitle)
+    }
+    Write-Host ("  nextIssue: {0}" -f $nextIssueLine)
+    if ($governorPortfolioSummary.summary.PSObject.Properties['brokerSelectedIssueUrl'] -and $governorPortfolioSummary.summary.brokerSelectedIssueUrl) {
+      Write-Host ("  issueUrl : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.brokerSelectedIssueUrl))
+    }
+  }
+  if ($governorPortfolioSummary.summary.PSObject.Properties['brokerProviderId'] -and $governorPortfolioSummary.summary.brokerProviderId) {
+    Write-Host ("  broker   : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.brokerProviderId))
+  }
+  if ($governorPortfolioSummary.summary.PSObject.Properties['brokerSlotId'] -and $governorPortfolioSummary.summary.brokerSlotId) {
+    Write-Host ("  slot     : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.brokerSlotId))
+  }
+  if ($governorPortfolioSummary.summary.PSObject.Properties['brokerSelectionSource'] -and $governorPortfolioSummary.summary.brokerSelectionSource) {
+    Write-Host ("  selSrc   : {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.brokerSelectionSource))
+  }
   if ($governorPortfolioSummary.summary.PSObject.Properties['queueHandoffStatus'] -and
       $governorPortfolioSummary.summary.queueHandoffStatus) {
     Write-Host ("  queueWait: {0}" -f (Format-NullableValue $governorPortfolioSummary.summary.queueHandoffStatus))
@@ -353,6 +373,25 @@ if ($contextConcentrator) {
   }
   Write-Host ("  owner    : {0}" -f (Format-NullableValue $contextConcentrator.summary.currentOwnerRepository))
   Write-Host ("  next     : {0}" -f (Format-NullableValue $contextConcentrator.summary.nextAction))
+  if ($contextConcentrator.summary.PSObject.Properties['brokerSelectedIssueNumber'] -and $null -ne $contextConcentrator.summary.brokerSelectedIssueNumber) {
+    $nextIssueLine = "#{0}" -f (Format-NullableValue $contextConcentrator.summary.brokerSelectedIssueNumber)
+    if ($contextConcentrator.summary.PSObject.Properties['brokerSelectedIssueTitle'] -and $contextConcentrator.summary.brokerSelectedIssueTitle) {
+      $nextIssueLine = "{0} {1}" -f $nextIssueLine, (Format-NullableValue $contextConcentrator.summary.brokerSelectedIssueTitle)
+    }
+    Write-Host ("  nextIssue: {0}" -f $nextIssueLine)
+    if ($contextConcentrator.summary.PSObject.Properties['brokerSelectedIssueUrl'] -and $contextConcentrator.summary.brokerSelectedIssueUrl) {
+      Write-Host ("  issueUrl : {0}" -f (Format-NullableValue $contextConcentrator.summary.brokerSelectedIssueUrl))
+    }
+  }
+  if ($contextConcentrator.summary.PSObject.Properties['brokerProviderId'] -and $contextConcentrator.summary.brokerProviderId) {
+    Write-Host ("  broker   : {0}" -f (Format-NullableValue $contextConcentrator.summary.brokerProviderId))
+  }
+  if ($contextConcentrator.summary.PSObject.Properties['brokerSlotId'] -and $contextConcentrator.summary.brokerSlotId) {
+    Write-Host ("  slot     : {0}" -f (Format-NullableValue $contextConcentrator.summary.brokerSlotId))
+  }
+  if ($contextConcentrator.summary.PSObject.Properties['brokerSelectionSource'] -and $contextConcentrator.summary.brokerSelectionSource) {
+    Write-Host ("  selSrc   : {0}" -f (Format-NullableValue $contextConcentrator.summary.brokerSelectionSource))
+  }
   Write-Host ("  hot/warm : {0}/{1}" -f (Format-NullableValue $contextConcentrator.summary.hotWorkingSetCount), (Format-NullableValue $contextConcentrator.summary.warmMemoryCount))
   Write-Host ("  archive  : {0}" -f (Format-NullableValue $contextConcentrator.summary.archiveCount))
   Write-Host ("  blockers : {0}" -f (Format-NullableValue $contextConcentrator.summary.blockerCount))

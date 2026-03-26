@@ -16,7 +16,7 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match 'status\s+: pass'
     $output | Should -Match 'command\.bootstrap'
     $output | Should -Match 'artifact\.entrypointStatus'
-    $global:HandoffEntrypointStatus.schema | Should -Be 'agent-handoff/entrypoint-status-v1'
+    (Get-Variable -Name HandoffEntrypointStatus -Scope Global -ValueOnly).schema | Should -Be 'agent-handoff/entrypoint-status-v1'
 
     Remove-Variable -Name HandoffEntrypointStatus -Scope Global -ErrorAction SilentlyContinue
   }
@@ -34,7 +34,7 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match '\[handoff\] Docker review loop summary'
     $output | Should -Match 'status\s+: passed'
     $output | Should -Match 'head\s+: 433e8aa70326007be74c27ccf54c1ae91559b6f3'
-    $global:DockerReviewLoopHandoffSummary.schema | Should -Be 'docker-tools-parity-agent-verification@v1'
+    (Get-Variable -Name DockerReviewLoopHandoffSummary -Scope Global -ValueOnly).schema | Should -Be 'docker-tools-parity-agent-verification@v1'
 
     Remove-Variable -Name DockerReviewLoopHandoffSummary -Scope Global -ErrorAction SilentlyContinue
   }
@@ -69,7 +69,7 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match '\[handoff\] Plane transition evidence'
     $output | Should -Match 'status\s+: ok'
     $output | Should -Match 'upstream->origin'
-    $global:PlaneTransitionHandoffSummary.schema | Should -Be 'agent-handoff/plane-transition-v1'
+    (Get-Variable -Name PlaneTransitionHandoffSummary -Scope Global -ValueOnly).schema | Should -Be 'agent-handoff/plane-transition-v1'
 
     Remove-Variable -Name PlaneTransitionHandoffSummary -Scope Global -ErrorAction SilentlyContinue
   }
@@ -138,7 +138,7 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match 'supervision\s+: supervised-background'
     $output | Should -Match 'prompt-resume\s+: false'
     $output | Should -Match 'pending\s+: Resume when wake condition'
-    $global:HandoffContinuitySummary.schema | Should -Be 'priority/continuity-telemetry-report@v1'
+    (Get-Variable -Name HandoffContinuitySummary -Scope Global -ValueOnly).schema | Should -Be 'priority/continuity-telemetry-report@v1'
 
     Remove-Variable -Name HandoffContinuitySummary -Scope Global -ErrorAction SilentlyContinue
   }
@@ -183,7 +183,7 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match '\[handoff\] Monitoring mode'
     $output | Should -Match 'action\s+: future-agent-may-pivot'
     $output | Should -Match 'template\s+: pass'
-    $global:HandoffMonitoringMode.schema | Should -Be 'agent-handoff/monitoring-mode-v1'
+    (Get-Variable -Name HandoffMonitoringMode -Scope Global -ValueOnly).schema | Should -Be 'agent-handoff/monitoring-mode-v1'
 
     Remove-Variable -Name HandoffMonitoringMode -Scope Global -ErrorAction SilentlyContinue
   }
@@ -321,7 +321,7 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match 'blocker\s+: workflow-signing-secret-missing'
     $output | Should -Match 'bundle\s+: producer-native-incomplete'
     $output | Should -Match 'bundleTag: v0.6.3-tools.14'
-    $global:HandoffAutonomousGovernorSummary.schema | Should -Be 'priority/autonomous-governor-summary-report@v1'
+    (Get-Variable -Name HandoffAutonomousGovernorSummary -Scope Global -ValueOnly).schema | Should -Be 'priority/autonomous-governor-summary-report@v1'
 
     Remove-Variable -Name HandoffAutonomousGovernorSummary -Scope Global -ErrorAction SilentlyContinue
   }
@@ -383,6 +383,12 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         currentOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
         nextOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
         nextAction = 'continue-compare-governance-work'
+        brokerSelectedIssueNumber = 52
+        brokerSelectedIssueUrl = 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52'
+        brokerSelectedIssueTitle = '[comparevi]: template consumer rail'
+        brokerProviderId = 'local-codex'
+        brokerSlotId = 'slot-template-1'
+        brokerSelectionSource = 'released-waiting-state-marketplace'
         ownerDecisionSource = 'compare-governor-summary'
         templateMonitoringStatus = 'pass'
         supportedProofStatus = 'pass'
@@ -417,7 +423,12 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match 'vhistBlk : workflow-signing-secret-missing'
     $output | Should -Match 'vhistPub : producer-native-incomplete'
     $output | Should -Match 'vhistTag : v0.6.3-tools.14'
-    $global:HandoffAutonomousGovernorPortfolioSummary.schema | Should -Be 'priority/autonomous-governor-portfolio-summary-report@v1'
+    $output | Should -Match 'nextIssue: #52 \[comparevi\]: template consumer rail'
+    $output | Should -Match 'issueUrl : https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52'
+    $output | Should -Match 'broker\s+: local-codex'
+    $output | Should -Match 'slot\s+: slot-template-1'
+    $output | Should -Match 'selSrc\s+: released-waiting-state-marketplace'
+    (Get-Variable -Name HandoffAutonomousGovernorPortfolioSummary -Scope Global -ValueOnly).schema | Should -Be 'priority/autonomous-governor-portfolio-summary-report@v1'
 
     Remove-Variable -Name HandoffAutonomousGovernorPortfolioSummary -Scope Global -ErrorAction SilentlyContinue
   }
@@ -465,6 +476,12 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         currentOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
         nextOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
         nextAction = 'merge concentrator handoff support'
+        brokerSelectedIssueNumber = 52
+        brokerSelectedIssueUrl = 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52'
+        brokerSelectedIssueTitle = '[comparevi]: template consumer rail'
+        brokerProviderId = 'local-codex'
+        brokerSlotId = 'slot-template-1'
+        brokerSelectionSource = 'released-waiting-state-marketplace'
         governorMode = 'compare-governance-work'
         monitoringStatus = 'active'
       }
@@ -509,6 +526,12 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         currentOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
         nextOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
         nextAction = 'merge concentrator handoff support'
+        brokerSelectedIssueNumber = 52
+        brokerSelectedIssueUrl = 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52'
+        brokerSelectedIssueTitle = '[comparevi]: template consumer rail'
+        brokerProviderId = 'local-codex'
+        brokerSlotId = 'slot-template-1'
+        brokerSelectionSource = 'released-waiting-state-marketplace'
         activeIssueNumber = 1909
         hotWorkingSetCount = 1
         warmMemoryCount = 0
@@ -523,8 +546,12 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
 
     $output | Should -Match '\[handoff\] Context concentrator'
     $output | Should -Match 'issue\s+: #1909'
+    $output | Should -Match 'nextIssue: #52 \[comparevi\]: template consumer rail'
+    $output | Should -Match 'broker\s+: local-codex'
+    $output | Should -Match 'slot\s+: slot-template-1'
+    $output | Should -Match 'selSrc\s+: released-waiting-state-marketplace'
     $output | Should -Match 'hot/warm\s+: 1/0'
-    $global:HandoffContextConcentrator.schema | Should -Be 'priority/sagan-context-concentrator-report@v1'
+    (Get-Variable -Name HandoffContextConcentrator -Scope Global -ValueOnly).schema | Should -Be 'priority/sagan-context-concentrator-report@v1'
 
     Remove-Variable -Name HandoffContextConcentrator -Scope Global -ErrorAction SilentlyContinue
   }
