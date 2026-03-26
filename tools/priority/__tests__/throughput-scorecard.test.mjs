@@ -87,6 +87,84 @@ test('buildThroughputScorecard warns when actionable work exists while the worke
   assert.deepEqual(report.mergeQueueUtilization.reasons, ['merge-queue-occupancy-below-floor']);
 });
 
+test('buildThroughputScorecard suppresses stale runtime occupancy when current-cycle idle authority is observed', () => {
+  const report = buildThroughputScorecard({
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeState: {
+      generatedAt: '2026-03-26T11:00:00Z',
+      status: 'idle',
+      laneLifecycle: 'idle',
+      derivedFromQueueEmptyState: true,
+      queueState: {
+        status: 'queue-empty'
+      },
+      activeLane: {
+        laneId: 'queue-empty-monitoring',
+        actionType: 'monitoring-idle',
+        outcome: 'queue-empty',
+        nextWakeCondition: 'future-agent-may-pivot'
+      },
+      workerPool: {
+        targetSlotCount: 4,
+        occupiedSlotCount: 2,
+        availableSlotCount: 2,
+        releasedLaneCount: 1,
+        utilizationRatio: 0.5
+      },
+      activeCodingLanes: 2
+    },
+    deliveryMemory: {
+      summary: {
+        totalTerminalPullRequestCount: 0,
+        mergedPullRequestCount: 0,
+        closedPullRequestCount: 0,
+        hostedWaitEscapeCount: 0,
+        meanTerminalDurationMinutes: 0,
+        viHistorySuitePullRequestCount: 0
+      }
+    },
+    queueReport: {
+      inflight: 0,
+      capacity: 0,
+      effectiveMaxInflight: 0,
+      paused: false,
+      throughputController: { mode: 'healthy' },
+      governor: { mode: 'normal' },
+      workerOccupancy: {
+        currentCycleIdleAuthority: {
+          status: 'observed',
+          source: 'delivery-agent-state',
+          observedAt: '2026-03-26T11:00:00Z',
+          nextWakeCondition: 'future-agent-may-pivot'
+        }
+      },
+      readiness: {
+        readySet: []
+      }
+    },
+    utilizationPolicy: {
+      mergeQueue: {
+        readyInventoryFloor: 1,
+        occupancyFloorRatio: 0.5,
+        occupancyTargetRatio: 1,
+        treatPausedQueueAsExempt: true
+      }
+    },
+    now: new Date('2026-03-26T12:00:00.000Z')
+  });
+
+  assert.equal(report.workerPool.authoritySource, 'current-cycle-idle');
+  assert.equal(report.workerPool.occupiedSlotCount, 0);
+  assert.equal(report.workerPool.availableSlotCount, 4);
+  assert.equal(report.workerPool.releasedLaneCount, 0);
+  assert.equal(report.workerPool.activeCodingLanes, 0);
+  assert.equal(report.workerPool.staleRuntimeSuppressed, true);
+  assert.equal(report.workerPool.currentCycleIdleAuthority.status, 'observed');
+  assert.equal(report.workerPool.currentCycleIdleAuthority.nextWakeCondition, 'future-agent-may-pivot');
+  assert.equal(report.logicalLaneAllocation.allocatedLogicalLaneCount, 0);
+  assert.equal(report.summary.status, 'pass');
+});
+
 test('runThroughputScorecard writes a pass report when queue pressure and worker use are aligned', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'throughput-scorecard-'));
   const runtimeStatePath = path.join(tempDir, 'delivery-agent-state.json');

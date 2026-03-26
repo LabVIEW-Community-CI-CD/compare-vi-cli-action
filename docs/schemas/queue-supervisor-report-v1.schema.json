@@ -268,12 +268,15 @@
       "required": [
         "runtimeStatePath",
         "available",
+        "authoritySource",
         "targetSlotCount",
         "occupiedSlotCount",
         "availableSlotCount",
         "releasedLaneCount",
         "utilizationRatio",
-        "activeCodingLanes"
+        "activeCodingLanes",
+        "staleRuntimeSuppressed",
+        "currentCycleIdleAuthority"
       ],
       "properties": {
         "runtimeStatePath": {
@@ -282,6 +285,9 @@
         },
         "available": {
           "type": "boolean"
+        },
+        "authoritySource": {
+          "enum": ["delivery-runtime", "current-cycle-idle"]
         },
         "targetSlotCount": {
           "type": "integer",
@@ -306,6 +312,29 @@
         "activeCodingLanes": {
           "type": "integer",
           "minimum": 0
+        },
+        "staleRuntimeSuppressed": {
+          "type": "boolean"
+        },
+        "currentCycleIdleAuthority": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "source", "observedAt", "nextWakeCondition"],
+          "properties": {
+            "status": {
+              "enum": ["observed", "missing"]
+            },
+            "source": {
+              "type": ["string", "null"]
+            },
+            "observedAt": {
+              "type": ["string", "null"],
+              "format": "date-time"
+            },
+            "nextWakeCondition": {
+              "type": ["string", "null"]
+            }
+          }
         }
       }
     },
