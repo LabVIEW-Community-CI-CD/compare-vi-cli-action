@@ -76,11 +76,23 @@ function buildThroughput({
   mergedPullRequestCount = 0,
   closedPullRequestCount = 0,
   totalTerminalPullRequestCount = 0,
-  viHistorySuitePullRequestCount = 0
+  viHistorySuitePullRequestCount = 0,
+  currentCycleIdleStatus = 'missing',
+  currentCycleIdleSource = null,
+  currentCycleIdleObservedAt = null,
+  currentCycleIdleNextWakeCondition = null
 }) {
   return {
     schema: 'priority/throughput-scorecard@v1',
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    workerPool: {
+      currentCycleIdleAuthority: {
+        status: currentCycleIdleStatus,
+        source: currentCycleIdleSource,
+        observedAt: currentCycleIdleObservedAt,
+        nextWakeCondition: currentCycleIdleNextWakeCondition
+      }
+    },
     concurrentLanes: {
       activeLaneCount: concurrentLaneActiveCount,
       deferredLaneCount: concurrentLaneDeferredCount
@@ -242,6 +254,52 @@ test('runAgentSpendGapSlo classifies actionable idle gaps as optimization signal
   assert.equal(result.report.fundedThroughput.fundingWindow.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.equal(result.report.fundedThroughput.metrics.validatedPullRequestCount, 0);
   assert.equal(fs.existsSync(outputPath), true);
+});
+
+test('runAgentSpendGapSlo treats current-cycle idle authority as a quiet window even when actionable reasons are present', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-spend-gap-slo-idle-authority-'));
+  const costRollupPath = path.join(tempDir, 'agent-cost-rollup.json');
+  const throughputPath = path.join(tempDir, 'throughput-scorecard.json');
+
+  writeJson(costRollupPath, buildCostRollup({
+    turns: [
+      buildTurn({
+        turnId: 'turn-1',
+        observedAt: '2026-03-26T01:00:00.000Z'
+      }),
+      buildTurn({
+        turnId: 'turn-2',
+        observedAt: '2026-03-26T01:45:00.000Z'
+      })
+    ]
+  }));
+  writeJson(
+    throughputPath,
+    buildThroughput({
+      reasons: ['actionable-work-with-idle-worker-pool'],
+      readyPrInventory: 2,
+      currentWorkerUtilizationRatio: 0,
+      currentCycleIdleStatus: 'observed',
+      currentCycleIdleSource: 'delivery-agent-state',
+      currentCycleIdleObservedAt: '2026-03-26T01:40:00.000Z',
+      currentCycleIdleNextWakeCondition: 'future-agent-may-pivot'
+    })
+  );
+
+  const result = runAgentSpendGapSlo({
+    costRollupPath,
+    throughputScorecardPath: throughputPath,
+    gapThresholdMinutes: 30,
+    now: new Date('2026-03-26T02:00:00.000Z')
+  });
+
+  assert.equal(result.report.summary.metrics.optimizationSignalGapCount, 0);
+  assert.equal(result.report.summary.metrics.quietWindowGapCount, 1);
+  assert.equal(result.report.gaps[0].classification, 'accepted-quiet-window');
+  assert.equal(result.report.gaps[0].evidence.currentCycleIdleStatus, 'observed');
+  assert.equal(result.report.gaps[0].evidence.currentCycleIdleSource, 'delivery-agent-state');
+  assert.equal(result.report.gaps[0].evidence.currentCycleIdleNextWakeCondition, 'future-agent-may-pivot');
+  assert.equal(result.report.fundedThroughput.throughputWindow.currentCycleIdleStatus, 'observed');
 });
 
 test('runAgentSpendGapSlo classifies quiet windows without raising an optimization warning', () => {

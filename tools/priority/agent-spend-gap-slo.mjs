@@ -191,6 +191,12 @@ function extractThroughputEvidence(throughputScorecard = null) {
   const hostedWaitEscapeCount =
     coerceNonNegativeInteger(metrics.hostedWaitEscapeCount) ??
     coerceNonNegativeInteger(throughputScorecard?.delivery?.hostedWaitEscapeCount);
+  const currentCycleIdleAuthority =
+    throughputScorecard?.workerPool?.currentCycleIdleAuthority
+    && typeof throughputScorecard.workerPool.currentCycleIdleAuthority === 'object'
+      ? throughputScorecard.workerPool.currentCycleIdleAuthority
+      : null;
+  const idleAuthority = normalizeCurrentCycleIdleAuthority(currentCycleIdleAuthority);
 
   return {
     available:
@@ -204,7 +210,20 @@ function extractThroughputEvidence(throughputScorecard = null) {
     concurrentLaneActiveCount,
     concurrentLaneDeferredCount,
     hostedWaitEscapeCount,
+    currentCycleIdleStatus: idleAuthority.currentCycleIdleStatus,
+    currentCycleIdleSource: idleAuthority.currentCycleIdleSource,
+    currentCycleIdleObservedAt: idleAuthority.currentCycleIdleObservedAt,
+    currentCycleIdleNextWakeCondition: idleAuthority.currentCycleIdleNextWakeCondition,
     throughputReasons: reasons
+  };
+}
+
+function normalizeCurrentCycleIdleAuthority(currentCycleIdleAuthority = null) {
+  return {
+    currentCycleIdleStatus: normalizeText(currentCycleIdleAuthority?.status) || 'missing',
+    currentCycleIdleSource: normalizeText(currentCycleIdleAuthority?.source) || null,
+    currentCycleIdleObservedAt: normalizeText(currentCycleIdleAuthority?.observedAt) || null,
+    currentCycleIdleNextWakeCondition: normalizeText(currentCycleIdleAuthority?.nextWakeCondition) || null
   };
 }
 
@@ -240,6 +259,12 @@ function extractFundedThroughputEvidence({ costRollup = null, throughputScorecar
     coerceNonNegativeInteger(costRollup?.summary?.metrics?.operatorSteeringEventCount) ??
     0;
   const laneMinutesAllocated = roundMetric(activeLaneCount * Math.max(observedMinutes, 0));
+  const idleAuthority = normalizeCurrentCycleIdleAuthority(
+    throughputScorecard?.workerPool?.currentCycleIdleAuthority
+    && typeof throughputScorecard.workerPool.currentCycleIdleAuthority === 'object'
+      ? throughputScorecard.workerPool.currentCycleIdleAuthority
+      : null
+  );
 
   const perDollar = fundedUsd != null && fundedUsd > 0
     ? (count) => roundPerDollar(count / fundedUsd)
@@ -258,6 +283,7 @@ function extractFundedThroughputEvidence({ costRollup = null, throughputScorecar
       heuristicUsdDelta,
       heuristicUsdDeltaRatio
     },
+    throughputWindow: idleAuthority,
     metrics: {
       validatedPullRequestCount,
       closedIssueCount,
@@ -298,6 +324,13 @@ function classifyGap(previousTurn, nextTurn, evidence, operatorSteeringEvidence 
   if (!evidence.available) {
     return {
       classification: 'insufficient-evidence',
+      trackingIssueNumber: null
+    };
+  }
+
+  if (evidence.currentCycleIdleStatus === 'observed') {
+    return {
+      classification: 'accepted-quiet-window',
       trackingIssueNumber: null
     };
   }
@@ -374,6 +407,10 @@ function buildGap(previousTurn, nextTurn, evidence, operatorSteeringEvidence) {
       concurrentLaneActiveCount: evidence.concurrentLaneActiveCount,
       concurrentLaneDeferredCount: evidence.concurrentLaneDeferredCount,
       hostedWaitEscapeCount: evidence.hostedWaitEscapeCount,
+      currentCycleIdleStatus: evidence.currentCycleIdleStatus,
+      currentCycleIdleSource: evidence.currentCycleIdleSource,
+      currentCycleIdleObservedAt: evidence.currentCycleIdleObservedAt,
+      currentCycleIdleNextWakeCondition: evidence.currentCycleIdleNextWakeCondition,
       throughputReasons: evidence.throughputReasons,
       operatorSteeringEventCount: operatorSteeringEvidence?.matchingEventCount ?? 0,
       operatorSteeringKinds: Array.from(new Set((operatorSteeringEvidence?.matchingEvents ?? []).map((event) => event.steeringKind).filter(Boolean))),
