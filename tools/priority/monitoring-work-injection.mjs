@@ -380,6 +380,14 @@ function createGovernorPortfolioEvidence(governorPortfolioSummary) {
     currentOwnerRepository: asOptional(governorPortfolioSummary.summary?.currentOwnerRepository),
     nextOwnerRepository: asOptional(governorPortfolioSummary.summary?.nextOwnerRepository),
     nextAction: asOptional(governorPortfolioSummary.summary?.nextAction),
+    brokerSelectedIssueNumber: Number.isInteger(governorPortfolioSummary.summary?.brokerSelectedIssueNumber)
+      ? governorPortfolioSummary.summary.brokerSelectedIssueNumber
+      : null,
+    brokerSelectedIssueUrl: asOptional(governorPortfolioSummary.summary?.brokerSelectedIssueUrl),
+    brokerSelectedIssueTitle: asOptional(governorPortfolioSummary.summary?.brokerSelectedIssueTitle),
+    brokerProviderId: asOptional(governorPortfolioSummary.summary?.brokerProviderId),
+    brokerSlotId: asOptional(governorPortfolioSummary.summary?.brokerSlotId),
+    brokerSelectionSource: asOptional(governorPortfolioSummary.summary?.brokerSelectionSource),
     ownerDecisionSource: asOptional(governorPortfolioSummary.summary?.ownerDecisionSource),
     templateMonitoringStatus: asOptional(governorPortfolioSummary.summary?.templateMonitoringStatus),
     supportedProofStatus: asOptional(governorPortfolioSummary.summary?.supportedProofStatus),
@@ -922,6 +930,14 @@ function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wa
   const nextOwnerRepository = asOptional(summary?.nextOwnerRepository);
   const governorMode = asOptional(summary?.governorMode);
   const nextAction = asOptional(summary?.nextAction);
+  const brokerSelectedIssueNumber = Number.isInteger(summary?.brokerSelectedIssueNumber)
+    ? summary.brokerSelectedIssueNumber
+    : null;
+  const brokerSelectedIssueUrl = asOptional(summary?.brokerSelectedIssueUrl);
+  const brokerSelectedIssueTitle = asOptional(summary?.brokerSelectedIssueTitle);
+  const brokerProviderId = asOptional(summary?.brokerProviderId);
+  const brokerSlotId = asOptional(summary?.brokerSlotId);
+  const brokerSelectionSource = asOptional(summary?.brokerSelectionSource);
   const ownerDecisionSource = asOptional(summary?.ownerDecisionSource);
   const wakeHasOwnershipSignal = Boolean(
     wakeEvidence?.recommendedOwnerRepository ||
@@ -946,6 +962,12 @@ function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wa
       currentOwnerRepository,
       nextOwnerRepository,
       nextAction,
+      brokerSelectedIssueNumber,
+      brokerSelectedIssueUrl,
+      brokerSelectedIssueTitle,
+      brokerProviderId,
+      brokerSlotId,
+      brokerSelectionSource,
       ownerDecisionSource,
       contradiction: false,
       contradictionFields: [],
@@ -963,6 +985,12 @@ function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wa
       currentOwnerRepository: null,
       nextOwnerRepository: null,
       nextAction: null,
+      brokerSelectedIssueNumber: null,
+      brokerSelectedIssueUrl: null,
+      brokerSelectedIssueTitle: null,
+      brokerProviderId: null,
+      brokerSlotId: null,
+      brokerSelectionSource: null,
       ownerDecisionSource: null,
       contradiction: false,
       contradictionFields: [],
@@ -980,6 +1008,12 @@ function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wa
       currentOwnerRepository,
       nextOwnerRepository,
       nextAction,
+      brokerSelectedIssueNumber,
+      brokerSelectedIssueUrl,
+      brokerSelectedIssueTitle,
+      brokerProviderId,
+      brokerSlotId,
+      brokerSelectionSource,
       ownerDecisionSource,
       contradiction: true,
       contradictionFields: ['recommendedOwnerRepository'],
@@ -997,6 +1031,12 @@ function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wa
       currentOwnerRepository,
       nextOwnerRepository,
       nextAction,
+      brokerSelectedIssueNumber,
+      brokerSelectedIssueUrl,
+      brokerSelectedIssueTitle,
+      brokerProviderId,
+      brokerSlotId,
+      brokerSelectionSource,
       ownerDecisionSource,
       contradiction: false,
       contradictionFields: [],
@@ -1011,12 +1051,18 @@ function buildPortfolioRoutingContext({ governorPortfolioSummary, repository, wa
     reason: currentOwnerRepository
       ? `Governor portfolio assigns current ownership to ${currentOwnerRepository}.`
       : 'Governor portfolio does not override the current repository owner.',
-    governorMode,
-    currentOwnerRepository,
-    nextOwnerRepository,
-    nextAction,
-    ownerDecisionSource,
-    contradiction: false,
+      governorMode,
+      currentOwnerRepository,
+      nextOwnerRepository,
+      nextAction,
+      brokerSelectedIssueNumber,
+      brokerSelectedIssueUrl,
+      brokerSelectedIssueTitle,
+      brokerProviderId,
+      brokerSlotId,
+      brokerSelectionSource,
+      ownerDecisionSource,
+      contradiction: false,
     contradictionFields: [],
     allowInjection: true
   };

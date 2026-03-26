@@ -370,6 +370,12 @@ function deriveOwners(compareGovernorSummary, monitoringMode, portfolioMode, viH
       currentOwnerRepository: repoContextPivot.currentOwnerRepository || repoContextPivot.currentRepository || compareRepository,
       nextOwnerRepository: repoContextPivot.nextOwnerRepository,
       nextAction: repoContextPivot.nextAction,
+      brokerSelectedIssueNumber: repoContextPivot.brokerSelectedIssueNumber,
+      brokerSelectedIssueUrl: repoContextPivot.brokerSelectedIssueUrl,
+      brokerSelectedIssueTitle: repoContextPivot.brokerSelectedIssueTitle,
+      brokerProviderId: repoContextPivot.brokerProviderId,
+      brokerSlotId: repoContextPivot.brokerSlotId,
+      brokerSelectionSource: repoContextPivot.brokerSelectionSource,
       ownerDecisionSource:
         asOptional(compareGovernorSummary?.summary?.ownerDecisionSource) ||
         repoContextPivot.ownerDecisionSource ||
@@ -436,7 +442,13 @@ function normalizeRepoContextPivot(value) {
     currentOwnerRepository: asOptional(value.currentOwnerRepository),
     nextOwnerRepository: asOptional(value.nextOwnerRepository),
     nextAction: asOptional(value.nextAction),
-    ownerDecisionSource: asOptional(value.ownerDecisionSource)
+    ownerDecisionSource: asOptional(value.ownerDecisionSource),
+    brokerSelectedIssueNumber: Number.isInteger(value.brokerSelectedIssueNumber) ? value.brokerSelectedIssueNumber : null,
+    brokerSelectedIssueUrl: asOptional(value.brokerSelectedIssueUrl),
+    brokerSelectedIssueTitle: asOptional(value.brokerSelectedIssueTitle),
+    brokerProviderId: asOptional(value.brokerProviderId),
+    brokerSlotId: asOptional(value.brokerSlotId),
+    brokerSelectionSource: asOptional(value.brokerSelectionSource)
   };
 
   const hasSignal = Object.values(normalized).some((entry) => entry !== null);
@@ -618,6 +630,14 @@ function buildReport({
       currentOwnerRepository: ownerDecision.currentOwnerRepository,
       nextOwnerRepository: ownerDecision.nextOwnerRepository,
       nextAction: ownerDecision.nextAction,
+      brokerSelectedIssueNumber: Number.isInteger(ownerDecision.brokerSelectedIssueNumber)
+        ? ownerDecision.brokerSelectedIssueNumber
+        : null,
+      brokerSelectedIssueUrl: asOptional(ownerDecision.brokerSelectedIssueUrl),
+      brokerSelectedIssueTitle: asOptional(ownerDecision.brokerSelectedIssueTitle),
+      brokerProviderId: asOptional(ownerDecision.brokerProviderId),
+      brokerSlotId: asOptional(ownerDecision.brokerSlotId),
+      brokerSelectionSource: asOptional(ownerDecision.brokerSelectionSource),
       ownerDecisionSource: ownerDecision.ownerDecisionSource,
       templateMonitoringStatus,
       supportedProofStatus,

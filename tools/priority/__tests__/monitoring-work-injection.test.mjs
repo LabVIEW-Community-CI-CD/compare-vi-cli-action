@@ -63,6 +63,12 @@ function createGovernorPortfolioSummary({
   nextOwnerRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
   governorMode = 'compare-governance-work',
   nextAction = 'continue-compare-governance-work',
+  brokerSelectedIssueNumber = null,
+  brokerSelectedIssueUrl = null,
+  brokerSelectedIssueTitle = null,
+  brokerProviderId = null,
+  brokerSlotId = null,
+  brokerSelectionSource = null,
   ownerDecisionSource = 'compare-governor-summary',
   status = 'active',
   viHistoryDistributorDependencyStatus = 'unknown',
@@ -116,6 +122,12 @@ function createGovernorPortfolioSummary({
       currentOwnerRepository,
       nextOwnerRepository,
       nextAction,
+      brokerSelectedIssueNumber,
+      brokerSelectedIssueUrl,
+      brokerSelectedIssueTitle,
+      brokerProviderId,
+      brokerSlotId,
+      brokerSelectionSource,
       ownerDecisionSource,
       templateMonitoringStatus: 'pass',
       supportedProofStatus: 'pass',
@@ -238,6 +250,50 @@ function createInputs(tmpDir, { includeWakeEvidence = true, governorPortfolioSum
     wakeInvestmentAccountingPath
   };
 }
+
+test('runMonitoringWorkInjection preserves broker-selected issue and slot attribution from governor portfolio summary', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-broker-attribution-'));
+  const inputs = createInputs(tmpDir, {
+    governorPortfolioSummaryOverride: createGovernorPortfolioSummary({
+      currentOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      nextAction: 'resume-template-consumer-rail',
+      ownerDecisionSource: 'repo-context-pivot',
+      brokerSelectedIssueNumber: 52,
+      brokerSelectedIssueUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52',
+      brokerSelectedIssueTitle: '[comparevi]: template consumer rail',
+      brokerProviderId: 'local-codex',
+      brokerSlotId: 'slot-template-1',
+      brokerSelectionSource: 'released-waiting-state-marketplace'
+    })
+  });
+
+  const { report } = await runMonitoringWorkInjection({
+    repoRoot: tmpDir,
+    policyPath: inputs.policyPath,
+    queueEmptyReportPath: inputs.queuePath,
+    monitoringModePath: inputs.monitoringPath,
+    governorPortfolioSummaryPath: inputs.governorPortfolioSummaryPath,
+    hostSignalPath: inputs.hostSignalPath,
+    wakeAdjudicationPath: inputs.wakeAdjudicationPath,
+    wakeWorkSynthesisPath: inputs.wakeWorkSynthesisPath,
+    wakeInvestmentAccountingPath: inputs.wakeInvestmentAccountingPath
+  });
+
+  assert.equal(report.evidence.governorPortfolio.brokerSelectedIssueNumber, 52);
+  assert.equal(
+    report.evidence.governorPortfolio.brokerSelectedIssueUrl,
+    'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52'
+  );
+  assert.equal(report.evidence.governorPortfolio.brokerSelectedIssueTitle, '[comparevi]: template consumer rail');
+  assert.equal(report.evidence.governorPortfolio.brokerProviderId, 'local-codex');
+  assert.equal(report.evidence.governorPortfolio.brokerSlotId, 'slot-template-1');
+  assert.equal(report.evidence.governorPortfolio.brokerSelectionSource, 'released-waiting-state-marketplace');
+  assert.equal(report.portfolioRouting.brokerSelectedIssueNumber, 52);
+  assert.equal(report.portfolioRouting.brokerProviderId, 'local-codex');
+  assert.equal(report.portfolioRouting.brokerSlotId, 'slot-template-1');
+  assert.equal(report.portfolioRouting.brokerSelectionSource, 'released-waiting-state-marketplace');
+});
 
 test('runMonitoringWorkInjection reports no-trigger when queue is not empty', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monitoring-work-injection-noop-'));
