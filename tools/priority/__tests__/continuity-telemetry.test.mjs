@@ -259,6 +259,88 @@ test('buildContinuityTelemetry treats wake-conditioned background work as superv
   assert.match(report.continuity.recommendation, /wake condition/i);
 });
 
+test('buildContinuityTelemetry treats repo-context pivots as supervised background work', () => {
+  const fixtureRoot = createRepoFixture('continuity-repo-context-pivot');
+  const now = new Date('2026-03-21T20:00:00.000Z');
+
+  writeJson(path.join(fixtureRoot, '.git', 'agent-writer-leases', 'workspace.json'), {
+    schema: 'agent/writer-lease@v1',
+    scope: 'workspace',
+    leaseId: 'lease-pivot',
+    owner: 'agent@host:default',
+    acquiredAt: '2026-03-21T19:40:00.000Z',
+    heartbeatAt: '2026-03-21T19:58:00.000Z'
+  });
+  writeJson(path.join(fixtureRoot, 'tests', 'results', '_agent', 'issue', 'router.json'), {
+    schema: 'agent/priority-router@v1',
+    issue: 1984,
+    updatedAt: '2026-03-21T19:50:00.000Z',
+    actions: []
+  });
+  writeJson(path.join(fixtureRoot, 'tests', 'results', '_agent', 'handoff', 'entrypoint-status.json'), {
+    schema: 'agent-handoff/entrypoint-status-v1',
+    generatedAt: '2026-03-21T19:54:00.000Z',
+    handoffPath: 'AGENT_HANDOFF.txt',
+    maxLines: 80,
+    actualLineCount: 40,
+    status: 'pass',
+    checks: {
+      primaryHeading: true,
+      lineBudget: true,
+      requiredHeadings: true,
+      liveArtifactGuidance: true,
+      stableEntrypointGuidance: true,
+      noStatusLogGuidance: true,
+      machineGeneratedArtifactGuidance: true,
+      noDatedHistorySections: true
+    },
+    commands: {
+      bootstrap: 'pwsh -File tools/priority/bootstrap.ps1'
+    },
+    artifacts: {
+      priorityCache: '.agent_priority_cache.json',
+      router: 'tests/results/_agent/issue/router.json',
+      noStandingPriority: 'tests/results/_agent/issue/no-standing-priority.json',
+      continuitySummary: 'tests/results/_agent/handoff/continuity-summary.json',
+      entrypointStatus: 'tests/results/_agent/handoff/entrypoint-status.json',
+      handoffGlob: 'tests/results/_agent/handoff/*.json',
+      sessionGlob: 'tests/results/_agent/sessions/*.json'
+    },
+    violations: []
+  });
+  writeJson(path.join(fixtureRoot, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'), {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: '2026-03-21T19:53:00.000Z',
+    status: 'blocked',
+    activeLane: {
+      issue: 1984,
+      blockerClass: 'merge',
+      nextWakeCondition: 'mergeable-pr',
+      prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1985',
+      repoContextPivot: {
+        currentRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        nextAction: 'reopen-template-monitoring-work',
+        ownerDecisionSource: 'delivery-runtime-marketplace',
+        pivotStatus: 'ready',
+        brokerSelectionSource: 'released-waiting-state-marketplace'
+      }
+    }
+  });
+
+  const { report } = buildContinuityTelemetry({ repoRoot: fixtureRoot }, now);
+  assert.equal(report.status, 'maintained');
+  assert.equal(report.continuity.turnBoundary.status, 'active-work-pending');
+  assert.equal(report.continuity.turnBoundary.supervisionState, 'supervised-background');
+  assert.equal(report.continuity.turnBoundary.operatorTurnEndWouldCreateIdleGap, false);
+  assert.equal(report.continuity.turnBoundary.operatorPromptRequiredToResume, false);
+  assert.equal(report.continuity.turnBoundary.source, 'repo-context-pivot');
+  assert.equal(report.continuity.turnBoundary.wakeCondition, null);
+  assert.match(report.continuity.turnBoundary.reason, /repo-context pivot ownership/i);
+  assert.match(report.continuity.turnBoundary.pendingActions[0], /brokered pivot/i);
+});
+
 test('buildContinuityTelemetry preserves queue-empty continuity without inventing an issue', () => {
   const fixtureRoot = createRepoFixture('continuity-queue-empty');
   const now = new Date('2026-03-21T20:00:00.000Z');

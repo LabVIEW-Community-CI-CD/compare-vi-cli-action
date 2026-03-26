@@ -168,7 +168,8 @@
         "queueAuthorityRefresh": { "$ref": "#/$defs/queueAuthorityRefresh" },
         "prUrl": { "type": ["string", "null"] },
         "issueNumber": { "type": ["integer", "null"], "minimum": 1 },
-        "reason": { "type": ["string", "null"] }
+        "reason": { "type": ["string", "null"] },
+        "repoContextPivot": { "$ref": "#/$defs/repoContextPivot" }
       }
     },
     "releaseSigningReadiness": {
@@ -321,6 +322,7 @@
         "currentOwnerRepository",
         "nextOwnerRepository",
         "nextAction",
+        "ownerDecisionSource",
         "signalQuality",
         "queueState",
         "continuityStatus",
@@ -375,6 +377,7 @@
         "currentOwnerRepository": { "type": ["string", "null"] },
         "nextOwnerRepository": { "type": ["string", "null"] },
         "nextAction": { "type": ["string", "null"] },
+        "ownerDecisionSource": { "type": ["string", "null"] },
         "signalQuality": {
           "type": "string",
           "enum": [
@@ -448,6 +451,50 @@
             "queue-refresh-summary"
           ]
         }
+      }
+    },
+    "repoContextPivot": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "currentRepository",
+        "currentOwnerRepository",
+        "nextOwnerRepository",
+        "nextAction",
+        "ownerDecisionSource",
+        "governorMode",
+        "pivotStatus",
+        "targetEntrypointPath",
+        "targetHeadSha",
+        "brokerSelectedIssueNumber",
+        "brokerSelectedIssueUrl",
+        "brokerSelectedIssueTitle",
+        "brokerProviderId",
+        "brokerSlotId",
+        "brokerSelectionSource",
+        "releasedSlotId",
+        "waitingLaneLifecycle",
+        "waitingStateReason"
+      ],
+      "properties": {
+        "currentRepository": { "type": ["string", "null"] },
+        "currentOwnerRepository": { "type": ["string", "null"] },
+        "nextOwnerRepository": { "type": ["string", "null"] },
+        "nextAction": { "type": ["string", "null"] },
+        "ownerDecisionSource": { "type": ["string", "null"] },
+        "governorMode": { "type": ["string", "null"] },
+        "pivotStatus": { "type": ["string", "null"] },
+        "targetEntrypointPath": { "type": ["string", "null"] },
+        "targetHeadSha": { "type": ["string", "null"] },
+        "brokerSelectedIssueNumber": { "type": ["integer", "null"], "minimum": 1 },
+        "brokerSelectedIssueUrl": { "type": ["string", "null"] },
+        "brokerSelectedIssueTitle": { "type": ["string", "null"] },
+        "brokerProviderId": { "type": ["string", "null"] },
+        "brokerSlotId": { "type": ["string", "null"] },
+        "brokerSelectionSource": { "type": ["string", "null"] },
+        "releasedSlotId": { "type": ["string", "null"] },
+        "waitingLaneLifecycle": { "type": ["string", "null"] },
+        "waitingStateReason": { "type": ["string", "null"] }
       }
     },
     "queueAuthorityRefresh": {

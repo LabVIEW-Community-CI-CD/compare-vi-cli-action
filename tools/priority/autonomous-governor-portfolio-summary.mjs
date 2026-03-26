@@ -363,6 +363,19 @@ function deriveOwners(compareGovernorSummary, monitoringMode, portfolioMode, viH
   const futureAgentAction = asOptional(monitoringMode?.summary?.futureAgentAction);
   const compareGovernorNextOwnerRepository =
     asOptional(compareGovernorSummary?.summary?.nextOwnerRepository) || compareRepository;
+  const repoContextPivot = normalizeRepoContextPivot(compareGovernorSummary?.compare?.deliveryRuntime?.repoContextPivot);
+
+  if (repoContextPivot?.nextOwnerRepository && repoContextPivot?.nextAction) {
+    return {
+      currentOwnerRepository: repoContextPivot.currentOwnerRepository || repoContextPivot.currentRepository || compareRepository,
+      nextOwnerRepository: repoContextPivot.nextOwnerRepository,
+      nextAction: repoContextPivot.nextAction,
+      ownerDecisionSource:
+        asOptional(compareGovernorSummary?.summary?.ownerDecisionSource) ||
+        repoContextPivot.ownerDecisionSource ||
+        'repo-context-pivot'
+    };
+  }
 
   if (portfolioMode === 'template-work') {
     return {
@@ -411,6 +424,23 @@ function deriveOwners(compareGovernorSummary, monitoringMode, portfolioMode, viH
     nextAction: asOptional(compareGovernorSummary?.summary?.nextAction) || 'refresh-portfolio-inputs',
     ownerDecisionSource: 'compare-governor-summary'
   };
+}
+
+function normalizeRepoContextPivot(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const normalized = {
+    currentRepository: asOptional(value.currentRepository),
+    currentOwnerRepository: asOptional(value.currentOwnerRepository),
+    nextOwnerRepository: asOptional(value.nextOwnerRepository),
+    nextAction: asOptional(value.nextAction),
+    ownerDecisionSource: asOptional(value.ownerDecisionSource)
+  };
+
+  const hasSignal = Object.values(normalized).some((entry) => entry !== null);
+  return hasSignal ? normalized : null;
 }
 
 function normalizeMonitoringStatus(value) {
