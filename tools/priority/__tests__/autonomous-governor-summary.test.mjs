@@ -672,6 +672,50 @@ test('runAutonomousGovernorSummary suppresses stale delivery runtime blockers du
   assert.equal(report.summary.queueAuthoritySource, 'none');
 });
 
+test('runAutonomousGovernorSummary preserves fresh current-cycle idle authority while suppressing stale delivery runtime blockers', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-monitoring-current-cycle-idle-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      generatedAt: '2026-03-26T12:00:00.000Z',
+      status: 'blocked',
+      laneLifecycle: 'blocked',
+      activeLane: {
+        issue: 959,
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1017',
+        laneLifecycle: 'blocked',
+        actionType: 'merge-pr',
+        outcome: 'merge-blocked',
+        blockerClass: 'merge',
+        nextWakeCondition: 'mergeable-pr',
+        reason: 'Stale merge blocker carried from an old delivery-runtime receipt.'
+      }
+    })
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'observer-heartbeat.json'),
+    {
+      schema: 'priority/runtime-observer-heartbeat@v1',
+      generatedAt: '2026-03-26T12:30:00.000Z',
+      outcome: 'queue-empty',
+      activeLane: null
+    }
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir }, { now: new Date('2026-03-26T12:35:00.000Z') });
+
+  assert.equal(report.summary.governorMode, 'monitoring-active');
+  assert.equal(report.compare.deliveryRuntime.status, 'none');
+  assert.equal(report.compare.deliveryRuntime.currentCycleIdleAuthority.status, 'observed');
+  assert.equal(report.compare.deliveryRuntime.currentCycleIdleAuthority.source, 'observer-heartbeat');
+  assert.equal(report.summary.currentCycleIdleStatus, 'observed');
+  assert.equal(report.summary.currentCycleIdleSource, 'observer-heartbeat');
+  assert.equal(report.summary.currentCycleIdleNextWakeCondition, null);
+});
+
 test('runAutonomousGovernorSummary preserves broker pivot authority while suppressing stale delivery runtime blockers', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-monitoring-pivot-authority-'));
   writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());

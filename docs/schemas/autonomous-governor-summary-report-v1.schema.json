@@ -38,6 +38,7 @@
         "wakeLifecyclePath",
         "wakeInvestmentAccountingPath",
         "deliveryRuntimeStatePath",
+        "observerHeartbeatPath",
         "releaseSigningReadinessPath",
         "queueSupervisorReportPath",
         "throughputScorecardPath",
@@ -50,6 +51,7 @@
         "wakeLifecyclePath": { "type": "string", "minLength": 1 },
         "wakeInvestmentAccountingPath": { "type": "string", "minLength": 1 },
         "deliveryRuntimeStatePath": { "type": "string", "minLength": 1 },
+        "observerHeartbeatPath": { "type": "string", "minLength": 1 },
         "releaseSigningReadinessPath": { "type": "string", "minLength": 1 },
         "queueSupervisorReportPath": { "type": "string", "minLength": 1 },
         "throughputScorecardPath": { "type": "string", "minLength": 1 },
@@ -151,7 +153,8 @@
         "queueAuthorityRefresh",
         "prUrl",
         "issueNumber",
-        "reason"
+        "reason",
+        "currentCycleIdleAuthority"
       ],
       "properties": {
         "status": {
@@ -177,7 +180,40 @@
         "prUrl": { "type": ["string", "null"] },
         "issueNumber": { "type": ["integer", "null"], "minimum": 1 },
         "reason": { "type": ["string", "null"] },
-        "repoContextPivot": { "$ref": "#/$defs/repoContextPivot" }
+        "repoContextPivot": { "$ref": "#/$defs/repoContextPivot" },
+        "currentCycleIdleAuthority": { "$ref": "#/$defs/currentCycleIdleAuthority" }
+      }
+    },
+    "currentCycleIdleAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "source",
+        "observedAt",
+        "fresh",
+        "freshnessThresholdSeconds",
+        "nextWakeCondition",
+        "syntheticIdle",
+        "queueState",
+        "deliveryStateObservedAt",
+        "deliveryStateFresh",
+        "observerHeartbeatObservedAt",
+        "observerHeartbeatFresh"
+      ],
+      "properties": {
+        "status": { "enum": ["observed", "missing"] },
+        "source": { "type": ["string", "null"] },
+        "observedAt": { "type": ["string", "null"], "format": "date-time" },
+        "fresh": { "type": "boolean" },
+        "freshnessThresholdSeconds": { "type": "integer", "minimum": 0 },
+        "nextWakeCondition": { "type": ["string", "null"] },
+        "syntheticIdle": { "type": "boolean" },
+        "queueState": { "type": ["string", "null"] },
+        "deliveryStateObservedAt": { "type": ["string", "null"], "format": "date-time" },
+        "deliveryStateFresh": { "type": "boolean" },
+        "observerHeartbeatObservedAt": { "type": ["string", "null"], "format": "date-time" },
+        "observerHeartbeatFresh": { "type": "boolean" }
       }
     },
     "releaseSigningReadiness": {
@@ -390,6 +426,9 @@
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
         "queueAuthoritySource",
+        "currentCycleIdleStatus",
+        "currentCycleIdleSource",
+        "currentCycleIdleNextWakeCondition",
         "treasuryStatus",
         "treasuryPosture",
         "treasuryFundingWindowId",
@@ -503,6 +542,9 @@
             "queue-refresh-summary"
           ]
         },
+        "currentCycleIdleStatus": { "enum": ["observed", "missing"] },
+        "currentCycleIdleSource": { "type": ["string", "null"] },
+        "currentCycleIdleNextWakeCondition": { "type": ["string", "null"] },
         "treasuryStatus": { "type": ["string", "null"] },
         "treasuryPosture": { "type": ["string", "null"] },
         "treasuryFundingWindowId": { "type": ["string", "null"] },

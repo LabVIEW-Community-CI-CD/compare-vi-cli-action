@@ -302,3 +302,49 @@ test('runTreasuryLedger auto-discovers local treasury evidence and marks post-ex
   assert.equal(result.report.summary.warningCount, 1);
   assert.equal(result.report.summary.warnings[0].code, 'treasury-reconciliation-pending');
 });
+
+test('runTreasuryLedger records current-cycle idle authority from fresh queue-empty runtime receipts', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'treasury-ledger-idle-authority-'));
+  const options = createTreasuryLedgerInputs(tmpDir, {
+    filenameStartLabel: 'Mar 15',
+    filenameEndLabel: 'Mar 24',
+    observedEndDate: '2026-03-24'
+  });
+
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'), {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: '2026-03-25T16:59:00.000Z',
+    status: 'idle',
+    laneLifecycle: 'idle',
+    activeLane: {
+      laneId: 'queue-empty-monitoring',
+      issue: null,
+      actionType: 'monitoring-idle',
+      outcome: 'queue-empty',
+      reason: 'queue-empty',
+      nextWakeCondition: 'future-agent-may-pivot',
+      syntheticIdle: true
+    }
+  });
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'observer-heartbeat.json'), {
+    schema: 'priority/runtime-observer-heartbeat@v1',
+    generatedAt: '2026-03-25T16:59:30.000Z',
+    outcome: 'queue-empty',
+    activeLane: null
+  });
+
+  const result = runTreasuryLedger(
+    {
+      repoRoot: tmpDir,
+      ...options,
+      deliveryRuntimeStatePath: path.join('tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+      observerHeartbeatPath: path.join('tests', 'results', '_agent', 'runtime', 'observer-heartbeat.json')
+    },
+    new Date('2026-03-25T17:00:00.000Z')
+  );
+
+  assert.equal(result.report.schedulerState.currentCycleIdleStatus, 'observed');
+  assert.equal(result.report.schedulerState.currentCycleIdleSource, 'delivery-and-observer');
+  assert.equal(result.report.summary.currentCycleIdleStatus, 'observed');
+  assert.equal(result.report.summary.currentCycleIdleSource, 'delivery-and-observer');
+});

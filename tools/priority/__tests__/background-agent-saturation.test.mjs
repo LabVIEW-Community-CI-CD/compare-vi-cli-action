@@ -91,11 +91,35 @@ test('runBackgroundAgentSaturation marks queue-empty repos as constrained while 
     reason: 'queue-empty',
     openIssueCount: 0
   });
+  writeJson(path.join(root, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'), {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: '2026-03-25T19:45:30Z',
+    status: 'idle',
+    laneLifecycle: 'idle',
+    activeLane: {
+      laneId: 'queue-empty-monitoring',
+      issue: null,
+      actionType: 'monitoring-idle',
+      outcome: 'queue-empty',
+      reason: 'queue-empty',
+      nextWakeCondition: 'future-agent-may-pivot',
+      syntheticIdle: true
+    }
+  });
+  writeJson(path.join(root, 'tests', 'results', '_agent', 'runtime', 'observer-heartbeat.json'), {
+    schema: 'priority/runtime-observer-heartbeat@v1',
+    generatedAt: '2026-03-25T19:45:40Z',
+    outcome: 'queue-empty',
+    activeLane: null
+  });
 
   const { report, outputPath } = await runBackgroundAgentSaturation({ repoRoot: root }, { now: new Date('2026-03-25T19:46:00Z') });
 
   assert.equal(report.status, 'constrained');
-  assert.equal(report.constraintReason, 'queue-empty');
+  assert.equal(report.constraintReason, 'queue-empty-current-cycle-idle');
+  assert.equal(report.currentCycleIdleAuthority.status, 'observed');
+  assert.equal(report.currentCycleIdleAuthority.source, 'delivery-and-observer');
+  assert.equal(report.currentCycleIdleAuthority.nextWakeCondition, 'future-agent-may-pivot');
   assert.equal(report.awaitingInstructionAgents, 1);
   assert.equal(report.doneAgents, 1);
   assert.equal(report.weightedProductiveAgents, 0.25);
