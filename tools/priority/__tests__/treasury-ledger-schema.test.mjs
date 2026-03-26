@@ -155,8 +155,10 @@ test('treasury ledger receipt and nested normalized receipts validate against th
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.schedulerState.status, 'pass');
   assert.equal(result.report.schedulerState.status, result.report.summary.status);
+  assert.equal(result.report.schedulerState.treasuryPosture, 'trusted-capital');
   assert.equal(result.report.remainingCapitalPosture.status, 'resolved');
   assert.equal(result.report.summary.remainingCapitalStatus, 'resolved');
+  assert.equal(result.report.summary.treasuryPosture, 'trusted-capital');
   assert.equal(result.report.observedBurn.filenameRangeStatus, 'match');
 
   const invoiceTurn = JSON.parse(fs.readFileSync(result.report.inputs.normalizedInvoiceTurnPath, 'utf8'));

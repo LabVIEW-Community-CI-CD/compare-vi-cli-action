@@ -624,8 +624,21 @@ Use it to record:
 - any observed or inferred hard-stop event
 - the resume event after replenishment
 - whether the current usage export can be trusted for scheduler decisions
+- whether treasury is in `trusted-capital` or
+  `replenished-but-unreconciled` posture
 
-The treasury layer is intentionally fail-closed. For example, if a local usage
-CSV filename claims a wider date range than the rows actually present, the
-treasury receipt should keep `summary.status = fail-closed` and
-`schedulerState.status = fail-closed` until a corrected export is supplied.
+When explicit CLI overrides are absent, the treasury layer should auto-discover
+the latest local treasury metadata, normalized invoice-turn receipt, and
+normalized usage-export receipt from `tests/results/_agent/cost/`.
+
+The treasury layer is intentionally conservative. For example:
+
+- if a local usage CSV filename claims a wider date range than the rows
+  actually present, the treasury receipt should keep `summary.status =
+  fail-closed` and `schedulerState.status = fail-closed` until a corrected
+  export is supplied
+- if a replenishment invoice has been observed but the underlying cost rollup
+  still points at the exhausted prior invoice turn, the treasury receipt should
+  surface `schedulerState.treasuryPosture =
+  replenished-but-unreconciled` instead of silently pretending the older
+  funding window is still current

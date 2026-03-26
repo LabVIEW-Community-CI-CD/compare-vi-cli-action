@@ -125,6 +125,72 @@ function createTreasuryLedgerInputs(tmpDir, { filenameStartLabel, filenameEndLab
   };
 }
 
+function createAutoDiscoveryFixture(tmpDir, { filenameStartLabel, filenameEndLabel, observedEndDate, rollupInvoiceTurnId }) {
+  const treasuryDir = path.join(tmpDir, 'tests', 'results', '_agent', 'cost', 'treasury');
+  const costDir = path.join(tmpDir, 'tests', 'results', '_agent', 'cost');
+  const runtimeDir = path.join(tmpDir, 'tests', 'results', '_agent', 'runtime');
+  const usageExportCsvPath = path.join(
+    tmpDir,
+    `LabVIEW Open-Source Initiative Credit Usage Report (${filenameStartLabel} - ${filenameEndLabel}).csv`
+  );
+
+  writeCsv(
+    usageExportCsvPath,
+    buildUsageExportCsv({
+      startDate: '2026-03-15',
+      endDate: observedEndDate
+    })
+  );
+
+  fs.mkdirSync(treasuryDir, { recursive: true });
+  fs.copyFileSync(createInvoiceMetadata(tmpDir), path.join(treasuryDir, 'HQ1VJLMV-0030.private-metadata.local.json'));
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  writeJson(path.join(runtimeDir, 'operator-steering-event.json'), {
+    schema: 'priority/operator-steering-event@v1',
+    generatedAt: '2026-03-26T00:12:00Z',
+    observedAt: '2026-03-26T00:12:00Z',
+    steeringKind: 'operator-prompt-resume',
+    eventKey: 'resume-001',
+    source: { kind: 'bootstrap-resume-detection' }
+  });
+  writeJson(path.join(costDir, 'agent-cost-rollup.json'), {
+    schema: 'priority/agent-cost-rollup@v1',
+    generatedAt: '2026-03-26T00:15:00Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    inputs: {
+      selectedInvoiceTurnId: rollupInvoiceTurnId
+    },
+    summary: {
+      metrics: {
+        creditsRemaining: 9999.4975,
+        estimatedPrepaidUsdRemaining: 399.9799
+      }
+    },
+    billingWindow: {
+      invoiceTurnId: rollupInvoiceTurnId,
+      invoiceId: rollupInvoiceTurnId.endsWith('0030') ? 'HQ1VJLMV-0030' : 'HQ1VJLMV-0027',
+      openedAt: rollupInvoiceTurnId.endsWith('0030') ? '2026-03-26T00:00:00-07:00' : '2026-03-21T10:01:07.000-07:00',
+      activationState: 'active',
+      fundingPurpose: 'operational',
+      sourceKind: 'operator-invoice',
+      sourcePathEvidence: 'C:/Users/sveld/Downloads/Invoice-HQ1VJLMV-0027.pdf',
+      operatorNote: 'Auto-discovery treasury test rollup.'
+    }
+  });
+
+  runTreasuryLedger(
+    {
+      repoRoot: tmpDir,
+      usageExportCsvPath,
+      costRollupPath: path.join('tests', 'results', '_agent', 'cost', 'agent-cost-rollup.json'),
+      operatorSteeringEventPath: path.join('tests', 'results', '_agent', 'runtime', 'operator-steering-event.json'),
+      outputPath: path.join('tests', 'results', '_agent', 'capital', 'seed.json'),
+      handoffOutputPath: path.join('tests', 'results', '_agent', 'handoff', 'seed.json')
+    },
+    new Date('2026-03-25T17:00:00.000Z')
+  );
+}
+
 test('runTreasuryLedger materializes normalized invoice-turn and usage-export receipts from local inputs', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'treasury-ledger-pass-'));
   const options = createTreasuryLedgerInputs(tmpDir, {
@@ -139,9 +205,11 @@ test('runTreasuryLedger materializes normalized invoice-turn and usage-export re
   assert.equal(result.report.summary.status, 'pass');
   assert.equal(result.report.schedulerState.status, 'pass');
   assert.equal(result.report.schedulerState.status, result.report.summary.status);
+  assert.equal(result.report.schedulerState.treasuryPosture, 'trusted-capital');
   assert.equal(result.report.remainingCapitalPosture.status, 'resolved');
   assert.equal(result.report.summary.remainingCapitalStatus, 'resolved');
   assert.equal(result.report.summary.remainingCapitalStatus, result.report.remainingCapitalPosture.status);
+  assert.equal(result.report.summary.treasuryPosture, 'trusted-capital');
   assert.equal(result.report.observedBurn.status, 'observed');
   assert.equal(result.report.observedBurn.filenameRangeStatus, 'match');
   assert.equal(result.report.summary.blockerCount, 0);
@@ -189,8 +257,9 @@ test('runTreasuryLedger fails closed when the usage CSV filename claims a broade
   assert.equal(result.report.summary.status, 'fail-closed');
   assert.equal(result.report.schedulerState.status, 'fail-closed');
   assert.equal(result.report.schedulerState.failClosed, true);
-  assert.equal(result.report.remainingCapitalPosture.status, 'fail-closed');
-  assert.equal(result.report.summary.remainingCapitalStatus, 'fail-closed');
+  assert.equal(result.report.schedulerState.treasuryPosture, 'trusted-capital');
+  assert.equal(result.report.remainingCapitalPosture.status, 'resolved');
+  assert.equal(result.report.summary.remainingCapitalStatus, 'resolved');
   assert.equal(result.report.observedBurn.status, 'fail-closed');
   assert.equal(result.report.observedBurn.filenameRangeStatus, 'mismatch');
   assert.equal(result.report.summary.blockerCount, result.report.summary.blockers.length);
@@ -198,4 +267,38 @@ test('runTreasuryLedger fails closed when the usage CSV filename claims a broade
   assert.equal(result.report.summary.warningCount, 0);
   assert.equal(fs.existsSync(options.outputPath), true);
   assert.equal(fs.existsSync(options.handoffOutputPath), true);
+});
+
+test('runTreasuryLedger auto-discovers local treasury evidence and marks post-exhaustion replenishment as unreconciled when rollup is still on the prior invoice turn', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'treasury-ledger-autodiscovery-'));
+  createAutoDiscoveryFixture(tmpDir, {
+    filenameStartLabel: 'Mar 15',
+    filenameEndLabel: 'Mar 24',
+    observedEndDate: '2026-03-24',
+    rollupInvoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027'
+  });
+
+  const result = runTreasuryLedger(
+    {
+      repoRoot: tmpDir,
+      outputPath: path.join('tests', 'results', '_agent', 'capital', 'treasury-ledger.json'),
+      handoffOutputPath: path.join('tests', 'results', '_agent', 'handoff', 'treasury-ledger.json')
+    },
+    new Date('2026-03-26T06:30:00.000Z')
+  );
+
+  assert.match(result.report.inputs.invoiceMetadataPath || '', /HQ1VJLMV-0030\.private-metadata\.local\.json$/i);
+  assert.match(result.report.inputs.normalizedUsageExportPath || '', /usage-exports/i);
+  assert.equal(result.report.events.replenishment.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0030');
+  assert.equal(result.report.fundingWindow.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0030');
+  assert.equal(result.report.remainingCapitalPosture.status, 'replenished-but-unreconciled');
+  assert.equal(result.report.remainingCapitalPosture.reason, 'funding-window-rollup-lagging-replenishment');
+  assert.equal(result.report.schedulerState.status, 'pass');
+  assert.equal(result.report.schedulerState.treasuryPosture, 'replenished-but-unreconciled');
+  assert.equal(result.report.schedulerState.capitalModeRecommended, 'conserve');
+  assert.equal(result.report.summary.status, 'pass');
+  assert.equal(result.report.summary.remainingCapitalStatus, 'replenished-but-unreconciled');
+  assert.equal(result.report.summary.treasuryPosture, 'replenished-but-unreconciled');
+  assert.equal(result.report.summary.warningCount, 1);
+  assert.equal(result.report.summary.warnings[0].code, 'treasury-reconciliation-pending');
 });

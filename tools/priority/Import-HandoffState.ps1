@@ -410,6 +410,7 @@ if ($treasuryLedger) {
   Write-Host ("  hardStop : {0}" -f (Format-NullableValue $treasuryLedger.events.hardStop.status))
   Write-Host ("  resume   : {0}" -f (Format-NullableValue $treasuryLedger.events.resume.status))
   Write-Host ("  capital  : {0}" -f (Format-NullableValue $treasuryLedger.remainingCapitalPosture.status))
+  Write-Host ("  posture  : {0}" -f (Format-NullableValue $treasuryLedger.schedulerState.treasuryPosture))
   Write-Host ("  mode     : {0}" -f (Format-NullableValue $treasuryLedger.schedulerState.capitalModeRecommended))
   if ($treasuryLedger.schedulerState.blockingReasonCodes) {
     $treasuryBlockers = @($treasuryLedger.schedulerState.blockingReasonCodes | Where-Object { $_ })

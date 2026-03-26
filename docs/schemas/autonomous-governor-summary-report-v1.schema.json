@@ -40,7 +40,8 @@
         "deliveryRuntimeStatePath",
         "releaseSigningReadinessPath",
         "queueSupervisorReportPath",
-        "throughputScorecardPath"
+        "throughputScorecardPath",
+        "treasuryLedgerPath"
       ],
       "properties": {
         "queueEmptyReportPath": { "type": "string", "minLength": 1 },
@@ -51,7 +52,8 @@
         "deliveryRuntimeStatePath": { "type": "string", "minLength": 1 },
         "releaseSigningReadinessPath": { "type": "string", "minLength": 1 },
         "queueSupervisorReportPath": { "type": "string", "minLength": 1 },
-        "throughputScorecardPath": { "type": "string", "minLength": 1 }
+        "throughputScorecardPath": { "type": "string", "minLength": 1 },
+        "treasuryLedgerPath": { "type": "string", "minLength": 1 }
       }
     },
     "compare": {
@@ -305,7 +307,12 @@
         "activationState",
         "benchmarkIssueUsd",
         "observedWakeIssueUsd",
-        "netPaybackUsd"
+        "netPaybackUsd",
+        "treasuryStatus",
+        "treasuryPosture",
+        "treasuryFundingWindowId",
+        "treasuryCapitalModeRecommended",
+        "treasuryRemainingCapitalStatus"
       ],
       "properties": {
         "accountingBucket": { "type": ["string", "null"] },
@@ -317,7 +324,12 @@
         "activationState": { "type": ["string", "null"] },
         "benchmarkIssueUsd": { "type": ["number", "null"] },
         "observedWakeIssueUsd": { "type": ["number", "null"] },
-        "netPaybackUsd": { "type": ["number", "null"] }
+        "netPaybackUsd": { "type": ["number", "null"] },
+        "treasuryStatus": { "type": ["string", "null"] },
+        "treasuryPosture": { "type": ["string", "null"] },
+        "treasuryFundingWindowId": { "type": ["string", "null"] },
+        "treasuryCapitalModeRecommended": { "type": ["string", "null"] },
+        "treasuryRemainingCapitalStatus": { "type": ["string", "null"] }
       }
     },
     "summary": {
@@ -377,7 +389,12 @@
         "queueHandoffStatus",
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
-        "queueAuthoritySource"
+        "queueAuthoritySource",
+        "treasuryStatus",
+        "treasuryPosture",
+        "treasuryFundingWindowId",
+        "treasuryCapitalModeRecommended",
+        "treasuryRemainingCapitalStatus"
       ],
       "properties": {
         "governorMode": {
@@ -485,7 +502,12 @@
             "merge-sync-summary",
             "queue-refresh-summary"
           ]
-        }
+        },
+        "treasuryStatus": { "type": ["string", "null"] },
+        "treasuryPosture": { "type": ["string", "null"] },
+        "treasuryFundingWindowId": { "type": ["string", "null"] },
+        "treasuryCapitalModeRecommended": { "type": ["string", "null"] },
+        "treasuryRemainingCapitalStatus": { "type": ["string", "null"] }
       }
     },
     "workerPoolCapital": {

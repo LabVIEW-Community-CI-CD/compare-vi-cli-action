@@ -274,6 +274,7 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         status = 'fail-closed'
         failClosed = $true
         capitalModeRecommended = 'conserve'
+        treasuryPosture = 'replenished-but-unreconciled'
         blockingReasonCodes = @('usage-export-window-mismatch', 'funding-window-rollup-mismatch')
         currentFundingWindowId = 'invoice-turn-2026-03-HQ1VJLMV-0030'
         latestHardStopStatus = 'observed'
@@ -291,6 +292,7 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
         latestHardStopStatus = 'observed'
         latestResumeStatus = 'observed'
         remainingCapitalStatus = 'fail-closed'
+        treasuryPosture = 'replenished-but-unreconciled'
       }
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $handoffDir 'treasury-ledger.json') -Encoding utf8
 
@@ -299,6 +301,7 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     $output | Should -Match '\[handoff\] Treasury ledger'
     $output | Should -Match 'status\s+: fail-closed'
     $output | Should -Match 'funding\s+: invoice-turn-2026-03-HQ1VJLMV-0030'
+    $output | Should -Match 'posture\s+: replenished-but-unreconciled'
     $output | Should -Match 'mode\s+: conserve'
     (Get-Variable -Name HandoffTreasuryLedger -Scope Global -ValueOnly).schema | Should -Be 'priority/treasury-ledger@v1'
 

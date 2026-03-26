@@ -1940,6 +1940,7 @@ try {
     Write-Host ("  hardStop : {0}" -f (Format-NullableValue $treasury.events.hardStop.status))
     Write-Host ("  resume   : {0}" -f (Format-NullableValue $treasury.events.resume.status))
     Write-Host ("  capital  : {0}" -f (Format-NullableValue $treasury.remainingCapitalPosture.status))
+    Write-Host ("  posture  : {0}" -f (Format-NullableValue $treasury.schedulerState.treasuryPosture))
     Write-Host ("  mode     : {0}" -f (Format-NullableValue $treasury.schedulerState.capitalModeRecommended))
     if ($treasury.schedulerState.blockingReasonCodes -and @($treasury.schedulerState.blockingReasonCodes).Count -gt 0) {
       Write-Host ("  blockers : {0}" -f ((@($treasury.schedulerState.blockingReasonCodes) -join ', ')))
@@ -1953,6 +1954,7 @@ try {
         ('- Hard-stop: {0}' -f (Format-NullableValue $treasury.events.hardStop.status)),
         ('- Resume: {0}' -f (Format-NullableValue $treasury.events.resume.status)),
         ('- Remaining capital: {0}' -f (Format-NullableValue $treasury.remainingCapitalPosture.status)),
+        ('- Treasury posture: {0}' -f (Format-NullableValue $treasury.schedulerState.treasuryPosture)),
         ('- Capital mode: {0}' -f (Format-NullableValue $treasury.schedulerState.capitalModeRecommended))
       )
       if ($treasury.schedulerState.blockingReasonCodes -and @($treasury.schedulerState.blockingReasonCodes).Count -gt 0) {
