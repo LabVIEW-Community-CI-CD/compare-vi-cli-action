@@ -275,8 +275,11 @@
           "enum": [
             "unobserved",
             "not-attempted",
+            "ready-to-publish",
             "tag-created-not-pushed",
-            "authoritative-publication-successful"
+            "authoritative-publication-successful",
+            "published-observed",
+            "published-consumer-aligned"
           ]
         },
         "publishedBundleState": {

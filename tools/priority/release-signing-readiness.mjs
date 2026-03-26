@@ -283,6 +283,56 @@ function derivePublishedBundleObserverState(observerReport) {
   };
 }
 
+function normalizeReleaseTagIdentity(value) {
+  const normalized = asOptional(value);
+  if (!normalized) {
+    return null;
+  }
+  return normalized.startsWith('v') ? normalized.slice(1) : normalized;
+}
+
+function derivePublicationControlState({
+  workflowContract,
+  secretInventory,
+  releaseConductorApply,
+  signingAuthority,
+  publication,
+  publishedBundleObserver,
+  immutableRepairBlocker
+}) {
+  const observedReleaseTag =
+    asOptional(publishedBundleObserver?.releaseTag) ||
+    (publication?.tagPushed === true ? asOptional(publication?.targetTag) : null);
+  const consumerPin = asOptional(publishedBundleObserver?.authoritativeConsumerPin);
+  const normalizedObservedReleaseTag = normalizeReleaseTagIdentity(observedReleaseTag);
+  const normalizedConsumerPin = normalizeReleaseTagIdentity(consumerPin);
+  const consumerAligned =
+    asOptional(publishedBundleObserver?.status) === 'producer-native-ready' &&
+    normalizedObservedReleaseTag != null &&
+    normalizedConsumerPin != null &&
+    normalizedConsumerPin === normalizedObservedReleaseTag;
+  const publishReady =
+    workflowContract?.ready === true &&
+    secretInventory?.status === 'configured' &&
+    releaseConductorApply?.status === 'enabled' &&
+    signingAuthority?.status === 'ready' &&
+    immutableRepairBlocker == null;
+
+  if (consumerAligned) {
+    return 'published-consumer-aligned';
+  }
+  if (observedReleaseTag) {
+    return 'published-observed';
+  }
+  if (publication?.tagCreated === true && publication?.tagPushed !== true) {
+    return 'tag-created-not-pushed';
+  }
+  if (publishReady) {
+    return 'ready-to-publish';
+  }
+  return publication?.status ?? 'unobserved';
+}
+
 function createPublishedBundleBlocker(publishedBundleObserver) {
   switch (publishedBundleObserver.status) {
     case 'release-unobserved':
@@ -495,6 +545,15 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
   if (immutableRepairBlocker) {
     blockers.push(immutableRepairBlocker);
   }
+  const publicationControlState = derivePublicationControlState({
+    workflowContract,
+    secretInventory,
+    releaseConductorApply,
+    signingAuthority,
+    publication,
+    publishedBundleObserver,
+    immutableRepairBlocker
+  });
 
   const externalBlockerPriority = [
     'workflow-signing-secret-missing',
@@ -518,7 +577,7 @@ export async function runReleaseSigningReadiness(options = {}, deps = {}) {
           : 'unverifiable',
     signingAuthorityState: signingAuthority.status,
     releaseConductorApplyState: releaseConductorApply.status,
-    publicationState: publication.status,
+    publicationState: publicationControlState,
     publishedBundleState: publishedBundleObserver.status,
     publishedBundleReleaseTag: publishedBundleObserver.releaseTag,
     publishedBundleAuthoritativeConsumerPin: publishedBundleObserver.authoritativeConsumerPin,
