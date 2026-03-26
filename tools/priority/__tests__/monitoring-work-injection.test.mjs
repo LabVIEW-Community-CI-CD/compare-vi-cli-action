@@ -71,6 +71,18 @@ function createGovernorPortfolioSummary({
   brokerSelectionSource = null,
   ownerDecisionSource = 'compare-governor-summary',
   status = 'active',
+  workerPoolAuthoritySource = 'queue-supervisor',
+  workerPoolTargetSlotCount = 4,
+  workerPoolOccupiedSlotCount = 3,
+  workerPoolAvailableSlotCount = 1,
+  workerPoolReleasedLaneCount = 1,
+  workerPoolUtilizationRatio = 0.75,
+  workerPoolReleasedCapitalAvailable = true,
+  workerPoolIdleWorkerCapacityAvailable = true,
+  workerPoolUnderfilled = true,
+  workerPoolThroughputStatus = null,
+  workerPoolThroughputPressureReasons = [],
+  workerPoolQueueThroughputMode = 'stabilize',
   viHistoryDistributorDependencyStatus = 'unknown',
   viHistoryDistributorDependencyExternalBlocker = null,
   viHistoryDistributorDependencyPublicationState = null
@@ -132,6 +144,18 @@ function createGovernorPortfolioSummary({
       templateMonitoringStatus: 'pass',
       supportedProofStatus: 'pass',
       repoGraphStatus: 'pass',
+      workerPoolAuthoritySource,
+      workerPoolTargetSlotCount,
+      workerPoolOccupiedSlotCount,
+      workerPoolAvailableSlotCount,
+      workerPoolReleasedLaneCount,
+      workerPoolUtilizationRatio,
+      workerPoolReleasedCapitalAvailable,
+      workerPoolIdleWorkerCapacityAvailable,
+      workerPoolUnderfilled,
+      workerPoolThroughputStatus,
+      workerPoolThroughputPressureReasons,
+      workerPoolQueueThroughputMode,
       queueHandoffStatus: null,
       queueHandoffNextWakeCondition: null,
       queueHandoffPrUrl: null,
@@ -488,6 +512,8 @@ test('runMonitoringWorkInjection creates a compare governance issue from actiona
   assert.equal(report.selectedRule.resolvedDedupeMarker, 'monitoring-work-injector:compare-governance-wake:reconcile-downstream-branch-target-provenance');
   assert.equal(report.evidence.wake.decision, 'compare-governance-work');
   assert.equal(report.portfolioRouting.status, 'owner-match');
+  assert.equal(report.evidence.governorPortfolio.workerPoolAuthoritySource, 'queue-supervisor');
+  assert.equal(report.portfolioRouting.workerPoolReleasedCapitalAvailable, true);
   assert.ok(ghCalls.some((entry) => entry.startsWith('issue create')));
 });
 

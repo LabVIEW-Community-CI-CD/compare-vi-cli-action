@@ -28,7 +28,11 @@ function createCompareGovernorSummary(overrides = {}) {
       continuitySummaryPath: 'tests/results/_agent/handoff/continuity-summary.json',
       monitoringModePath: 'tests/results/_agent/handoff/monitoring-mode.json',
       wakeLifecyclePath: 'tests/results/_agent/issue/wake-lifecycle.json',
-      wakeInvestmentAccountingPath: 'tests/results/_agent/capital/wake-investment-accounting.json'
+      wakeInvestmentAccountingPath: 'tests/results/_agent/capital/wake-investment-accounting.json',
+      deliveryRuntimeStatePath: 'tests/results/_agent/runtime/delivery-agent-state.json',
+      releaseSigningReadinessPath: 'tests/results/_agent/release/release-signing-readiness.json',
+      queueSupervisorReportPath: 'tests/results/_agent/queue/queue-supervisor-report.json',
+      throughputScorecardPath: 'tests/results/_agent/throughput/throughput-scorecard.json'
     },
     compare: {
       queueState: { status: 'not-queue-empty', reason: 'standing-open', openIssueCount: 1, ready: false },
@@ -111,6 +115,35 @@ function createCompareGovernorSummary(overrides = {}) {
             fingerprintSha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
           }
         }
+      },
+      workerPoolCapital: {
+        authoritySource: 'throughput-scorecard',
+        targetSlotCount: 4,
+        occupiedSlotCount: 3,
+        availableSlotCount: 1,
+        releasedLaneCount: 1,
+        utilizationRatio: 0.75,
+        activeCodingLanes: 3,
+        throughputStatus: 'pressure',
+        throughputPressureReasons: ['actionable-work-with-idle-worker-pool'],
+        queueThroughputMode: 'stabilize',
+        queueThroughputReasons: ['actionable-work-below-worker-slot-target'],
+        queueThroughputTargetCap: 4,
+        queueThroughputSaturation: 0.75,
+        releasedCapitalAvailable: true,
+        idleWorkerCapacityAvailable: true,
+        underfilledWorkerPool: true
+      },
+      queueAuthority: {
+        status: 'checks-pending',
+        source: 'delivery-runtime',
+        nextWakeCondition: 'checks-green',
+        summaryPath: null,
+        promotionStatus: null,
+        mergeStateStatus: null,
+        isInMergeQueue: false,
+        autoMergeEnabled: false,
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1864'
       }
     },
     wake: {
@@ -173,6 +206,19 @@ function createCompareGovernorSummary(overrides = {}) {
       executionBundlePremiumSaganMode: true,
       executionBundleReciprocalLinkReady: true,
       executionBundleEffectiveBillableRateUsdPerHour: 375,
+      workerPoolAuthoritySource: 'throughput-scorecard',
+      workerPoolTargetSlotCount: 4,
+      workerPoolOccupiedSlotCount: 3,
+      workerPoolAvailableSlotCount: 1,
+      workerPoolReleasedLaneCount: 1,
+      workerPoolUtilizationRatio: 0.75,
+      workerPoolActiveCodingLanes: 3,
+      workerPoolReleasedCapitalAvailable: true,
+      workerPoolIdleWorkerCapacityAvailable: true,
+      workerPoolUnderfilled: true,
+      workerPoolThroughputStatus: 'pressure',
+      workerPoolThroughputPressureReasons: ['actionable-work-with-idle-worker-pool'],
+      workerPoolQueueThroughputMode: 'stabilize',
       releaseSigningStatus: 'warn',
       releaseSigningAuthorityState: 'scope-missing',
       releaseConductorApplyState: 'disabled',
@@ -873,6 +919,27 @@ test('runAutonomousGovernorPortfolioSummary propagates marketplace-selected next
   assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/comparevi-history');
   assert.equal(report.summary.nextAction, 'future-agent-may-pivot');
   assert.equal(report.summary.ownerDecisionSource, 'delivery-runtime-marketplace');
+});
+
+test('runAutonomousGovernorPortfolioSummary carries worker-pool capital into compare and summary surfaces', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-portfolio-worker-pool-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'autonomous-governor-summary.json'), createCompareGovernorSummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'downstream-repo-graph-truth.json'), createRepoGraphTruth());
+
+  const { report } = await runAutonomousGovernorPortfolioSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.compare.workerPoolCapital.authoritySource, 'throughput-scorecard');
+  assert.equal(report.compare.workerPoolCapital.releasedCapitalAvailable, true);
+  assert.equal(report.compare.workerPoolCapital.idleWorkerCapacityAvailable, true);
+  assert.equal(report.compare.workerPoolCapital.underfilledWorkerPool, true);
+  assert.equal(report.summary.workerPoolAuthoritySource, 'throughput-scorecard');
+  assert.equal(report.summary.workerPoolTargetSlotCount, 4);
+  assert.equal(report.summary.workerPoolAvailableSlotCount, 1);
+  assert.equal(report.summary.workerPoolReleasedLaneCount, 1);
+  assert.equal(report.summary.workerPoolIdleWorkerCapacityAvailable, true);
+  assert.equal(report.summary.workerPoolUnderfilled, true);
+  assert.deepEqual(report.summary.workerPoolThroughputPressureReasons, ['actionable-work-with-idle-worker-pool']);
 });
 
 test('runAutonomousGovernorPortfolioSummary preserves repo-context pivot authority during monitoring-active brokerage', async () => {
