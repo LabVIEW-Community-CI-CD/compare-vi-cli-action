@@ -117,6 +117,9 @@ test('validate workflow self-hosted Windows LV32 VI-history lane is gated by inv
   assert.match(lv32Section, /Invoke-LVCompare\.ps1/);
   assert.match(lv32Section, /Write VI history LV32 shadow proof receipt/);
   assert.match(lv32Section, /Write-VIHistoryLV32ShadowProofReceipt\.ps1/);
+  assert.match(lv32Section, /\$receiptArgs = @\{/);
+  assert.match(lv32Section, /RunnerLabelContractPaths = \$runnerContractPaths/);
+  assert.match(lv32Section, /& \$receiptScriptPath @receiptArgs/);
   assert.match(lv32Section, /LABVIEW_PATH:\s*\$\{\{\s*steps\.host-plane\.outputs\.labview_path\s*\}\}/);
   assert.doesNotMatch(lv32Section, /windows-2022/);
 });

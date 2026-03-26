@@ -152,10 +152,31 @@ test('Write-VIHistoryLV32ShadowProofReceipt writes a promotion-ready receipt whe
 
   writeJson(compareSummaryPath, {
     schema: 'comparevi-tools/history-facade@v1',
-    status: 'passed',
-    reportPath: compareReportPath,
+    generatedAtUtc: '2026-03-26T01:12:33.2480163Z',
+    execution: {
+      status: 'ok',
+      reportFormat: 'html',
+      resultsDir: path.join(tempDir, 'history'),
+      manifestPath: path.join(tempDir, 'history', 'manifest.json'),
+      requestedModes: ['default'],
+      executedModes: ['default']
+    },
     summary: {
-      status: 'pass'
+      modes: 1,
+      comparisons: 0,
+      diffs: 0,
+      signalDiffs: 0,
+      noiseCollapsed: 0,
+      missing: 0,
+      errors: 0,
+      categories: [],
+      bucketProfile: [],
+      categoryCountKeys: [],
+      bucketCountKeys: []
+    },
+    reports: {
+      markdownPath: path.join(tempDir, 'history-report.md'),
+      htmlPath: compareReportPath
     }
   });
   fs.writeFileSync(compareReportPath, '<html><body>shadow proof</body></html>', 'utf8');

@@ -152,6 +152,9 @@ $compareSummaryStatus = ConvertTo-NormalizedText (Get-PropertyValue -InputObject
 if ([string]::IsNullOrWhiteSpace($compareSummaryStatus) -and $compareSummary) {
   $compareSummaryStatus = ConvertTo-NormalizedText (Get-PropertyValue -InputObject (Get-PropertyValue -InputObject $compareSummary -Name 'summary') -Name 'status')
 }
+if ([string]::IsNullOrWhiteSpace($compareSummaryStatus) -and $compareSummary) {
+  $compareSummaryStatus = ConvertTo-NormalizedText (Get-PropertyValue -InputObject (Get-PropertyValue -InputObject $compareSummary -Name 'execution') -Name 'status')
+}
 
 $requiredLabels = @(
   'self-hosted',
