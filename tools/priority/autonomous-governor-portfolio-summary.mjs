@@ -455,6 +455,77 @@ function normalizeRepoContextPivot(value) {
   return hasSignal ? normalized : null;
 }
 
+function normalizeStringArray(value) {
+  return Array.isArray(value) ? value.map((entry) => asOptional(entry)).filter(Boolean) : [];
+}
+
+function normalizeWorkerPoolCapital(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {
+      authoritySource: 'none',
+      targetSlotCount: null,
+      occupiedSlotCount: null,
+      availableSlotCount: null,
+      releasedLaneCount: null,
+      utilizationRatio: null,
+      activeCodingLanes: null,
+      throughputStatus: null,
+      throughputPressureReasons: [],
+      queueThroughputMode: null,
+      queueThroughputReasons: [],
+      queueThroughputTargetCap: null,
+      queueThroughputSaturation: null,
+      releasedCapitalAvailable: false,
+      idleWorkerCapacityAvailable: false,
+      underfilledWorkerPool: false
+    };
+  }
+
+  return {
+    authoritySource: asOptional(value.authoritySource) || 'none',
+    targetSlotCount: Number.isInteger(value.targetSlotCount) ? value.targetSlotCount : null,
+    occupiedSlotCount: Number.isInteger(value.occupiedSlotCount) ? value.occupiedSlotCount : null,
+    availableSlotCount: Number.isInteger(value.availableSlotCount) ? value.availableSlotCount : null,
+    releasedLaneCount: Number.isInteger(value.releasedLaneCount) ? value.releasedLaneCount : null,
+    utilizationRatio: Number.isFinite(Number(value.utilizationRatio)) ? Number(value.utilizationRatio) : null,
+    activeCodingLanes: Number.isInteger(value.activeCodingLanes) ? value.activeCodingLanes : null,
+    throughputStatus: asOptional(value.throughputStatus),
+    throughputPressureReasons: normalizeStringArray(value.throughputPressureReasons),
+    queueThroughputMode: asOptional(value.queueThroughputMode),
+    queueThroughputReasons: normalizeStringArray(value.queueThroughputReasons),
+    queueThroughputTargetCap: Number.isInteger(value.queueThroughputTargetCap) ? value.queueThroughputTargetCap : null,
+    queueThroughputSaturation: Number.isFinite(Number(value.queueThroughputSaturation))
+      ? Number(value.queueThroughputSaturation)
+      : null,
+    releasedCapitalAvailable: value.releasedCapitalAvailable === true,
+    idleWorkerCapacityAvailable: value.idleWorkerCapacityAvailable === true,
+    underfilledWorkerPool: value.underfilledWorkerPool === true
+  };
+}
+
+function deriveWorkerPoolCapital(compareGovernorSummary) {
+  const nested = normalizeWorkerPoolCapital(compareGovernorSummary?.compare?.workerPoolCapital);
+  if (nested.authoritySource !== 'none') {
+    return nested;
+  }
+
+  return normalizeWorkerPoolCapital({
+    authoritySource: asOptional(compareGovernorSummary?.summary?.workerPoolAuthoritySource),
+    targetSlotCount: compareGovernorSummary?.summary?.workerPoolTargetSlotCount,
+    occupiedSlotCount: compareGovernorSummary?.summary?.workerPoolOccupiedSlotCount,
+    availableSlotCount: compareGovernorSummary?.summary?.workerPoolAvailableSlotCount,
+    releasedLaneCount: compareGovernorSummary?.summary?.workerPoolReleasedLaneCount,
+    utilizationRatio: compareGovernorSummary?.summary?.workerPoolUtilizationRatio,
+    activeCodingLanes: compareGovernorSummary?.summary?.workerPoolActiveCodingLanes,
+    throughputStatus: compareGovernorSummary?.summary?.workerPoolThroughputStatus,
+    throughputPressureReasons: compareGovernorSummary?.summary?.workerPoolThroughputPressureReasons,
+    queueThroughputMode: compareGovernorSummary?.summary?.workerPoolQueueThroughputMode,
+    releasedCapitalAvailable: compareGovernorSummary?.summary?.workerPoolReleasedCapitalAvailable,
+    idleWorkerCapacityAvailable: compareGovernorSummary?.summary?.workerPoolIdleWorkerCapacityAvailable,
+    underfilledWorkerPool: compareGovernorSummary?.summary?.workerPoolUnderfilled
+  });
+}
+
 function normalizeMonitoringStatus(value) {
   if (value === 'pass' || value === 'fail' || value === 'unknown') {
     return value;
@@ -577,6 +648,7 @@ function buildReport({
     ? monitoringMode.summary.triggeredWakeConditions
     : [];
   const executionTopology = deriveExecutionTopology(compareGovernorSummary);
+  const workerPoolCapital = deriveWorkerPoolCapital(compareGovernorSummary);
 
   return {
     schema: 'priority/autonomous-governor-portfolio-summary-report@v1',
@@ -600,6 +672,7 @@ function buildReport({
       queueHandoffNextWakeCondition: asOptional(compareGovernorSummary?.summary?.queueHandoffNextWakeCondition),
       queueHandoffPrUrl: asOptional(compareGovernorSummary?.summary?.queueHandoffPrUrl),
       queueAuthoritySource: asOptional(compareGovernorSummary?.summary?.queueAuthoritySource),
+      workerPoolCapital,
       executionTopology,
       executionBundleStatus: asOptional(compareGovernorSummary?.summary?.executionBundleStatus),
       executionBundlePlaneBinding: asOptional(compareGovernorSummary?.summary?.executionBundlePlaneBinding),
@@ -669,6 +742,19 @@ function buildReport({
       )
         ? compareGovernorSummary.summary.executionBundleEffectiveBillableRateUsdPerHour
         : null,
+      workerPoolAuthoritySource: workerPoolCapital.authoritySource,
+      workerPoolTargetSlotCount: workerPoolCapital.targetSlotCount,
+      workerPoolOccupiedSlotCount: workerPoolCapital.occupiedSlotCount,
+      workerPoolAvailableSlotCount: workerPoolCapital.availableSlotCount,
+      workerPoolReleasedLaneCount: workerPoolCapital.releasedLaneCount,
+      workerPoolUtilizationRatio: workerPoolCapital.utilizationRatio,
+      workerPoolActiveCodingLanes: workerPoolCapital.activeCodingLanes,
+      workerPoolReleasedCapitalAvailable: workerPoolCapital.releasedCapitalAvailable,
+      workerPoolIdleWorkerCapacityAvailable: workerPoolCapital.idleWorkerCapacityAvailable,
+      workerPoolUnderfilled: workerPoolCapital.underfilledWorkerPool,
+      workerPoolThroughputStatus: workerPoolCapital.throughputStatus,
+      workerPoolThroughputPressureReasons: workerPoolCapital.throughputPressureReasons,
+      workerPoolQueueThroughputMode: workerPoolCapital.queueThroughputMode,
       viHistoryDistributorDependencyStatus: viHistoryDistributorDependency.status,
       viHistoryDistributorDependencyTargetRepository: viHistoryDistributorDependency.dependentRepository,
       viHistoryDistributorDependencyExternalBlocker: viHistoryDistributorDependency.externalBlocker,

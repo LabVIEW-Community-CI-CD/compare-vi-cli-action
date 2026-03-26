@@ -66,6 +66,20 @@ export const DEFAULT_RELEASE_SIGNING_READINESS_PATH = path.join(
   'release',
   'release-signing-readiness.json'
 );
+export const DEFAULT_QUEUE_SUPERVISOR_REPORT_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'queue',
+  'queue-supervisor-report.json'
+);
+export const DEFAULT_THROUGHPUT_SCORECARD_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'throughput',
+  'throughput-scorecard.json'
+);
 
 function asOptional(value) {
   if (value == null) {
@@ -187,6 +201,20 @@ function ensureSchema(payload, filePath, schema) {
 
 function parseBoolean(value) {
   return value === true;
+}
+
+function toNonNegativeInteger(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function toNonNegativeNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function normalizeStringArray(value) {
+  return Array.isArray(value) ? value.map((entry) => asOptional(entry)).filter(Boolean) : [];
 }
 
 function coalesceBoolean(...values) {
@@ -504,6 +532,8 @@ export function parseArgs(argv = process.argv) {
     wakeInvestmentAccountingPath: DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH,
     deliveryRuntimeStatePath: DEFAULT_DELIVERY_RUNTIME_STATE_PATH,
     releaseSigningReadinessPath: DEFAULT_RELEASE_SIGNING_READINESS_PATH,
+    queueSupervisorReportPath: DEFAULT_QUEUE_SUPERVISOR_REPORT_PATH,
+    throughputScorecardPath: DEFAULT_THROUGHPUT_SCORECARD_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
     help: false
   };
@@ -517,6 +547,8 @@ export function parseArgs(argv = process.argv) {
     ['--wake-investment-accounting', 'wakeInvestmentAccountingPath'],
     ['--delivery-runtime-state', 'deliveryRuntimeStatePath'],
     ['--release-signing-readiness', 'releaseSigningReadinessPath'],
+    ['--queue-supervisor-report', 'queueSupervisorReportPath'],
+    ['--throughput-scorecard', 'throughputScorecardPath'],
     ['--output', 'outputPath']
   ]);
 
@@ -554,6 +586,8 @@ function printHelp() {
     `  --wake-investment-accounting <path> Wake investment accounting path (default: ${DEFAULT_WAKE_INVESTMENT_ACCOUNTING_PATH}).`,
     `  --delivery-runtime-state <path>   Delivery runtime state path (default: ${DEFAULT_DELIVERY_RUNTIME_STATE_PATH}).`,
     `  --release-signing-readiness <path> Release signing readiness path (default: ${DEFAULT_RELEASE_SIGNING_READINESS_PATH}).`,
+    `  --queue-supervisor-report <path>  Queue supervisor report path (default: ${DEFAULT_QUEUE_SUPERVISOR_REPORT_PATH}).`,
+    `  --throughput-scorecard <path>     Throughput scorecard path (default: ${DEFAULT_THROUGHPUT_SCORECARD_PATH}).`,
     `  --output <path>                   Output path (default: ${DEFAULT_OUTPUT_PATH}).`,
     '  -h, --help                        Show help.'
   ].forEach((line) => console.log(line));
@@ -760,6 +794,112 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
     reason: asOptional(activeLane?.reason),
     repoContextPivot
   };
+}
+
+function createEmptyWorkerPoolCapital() {
+  return {
+    authoritySource: 'none',
+    targetSlotCount: null,
+    occupiedSlotCount: null,
+    availableSlotCount: null,
+    releasedLaneCount: null,
+    utilizationRatio: null,
+    activeCodingLanes: null,
+    throughputStatus: null,
+    throughputPressureReasons: [],
+    queueThroughputMode: null,
+    queueThroughputReasons: [],
+    queueThroughputTargetCap: null,
+    queueThroughputSaturation: null,
+    releasedCapitalAvailable: false,
+    idleWorkerCapacityAvailable: false,
+    underfilledWorkerPool: false
+  };
+}
+
+function buildWorkerPoolCapital(overrides = {}) {
+  const targetSlotCount = toNonNegativeInteger(overrides.targetSlotCount);
+  const occupiedSlotCount = toNonNegativeInteger(overrides.occupiedSlotCount);
+  const availableSlotCount = toNonNegativeInteger(overrides.availableSlotCount);
+  const releasedLaneCount = toNonNegativeInteger(overrides.releasedLaneCount);
+  const utilizationRatio = toNonNegativeNumber(overrides.utilizationRatio);
+  const activeCodingLanes = toNonNegativeInteger(overrides.activeCodingLanes);
+  const throughputPressureReasons = normalizeStringArray(overrides.throughputPressureReasons);
+  const queueThroughputReasons = normalizeStringArray(overrides.queueThroughputReasons);
+
+  return {
+    authoritySource: asOptional(overrides.authoritySource) || 'none',
+    targetSlotCount,
+    occupiedSlotCount,
+    availableSlotCount,
+    releasedLaneCount,
+    utilizationRatio,
+    activeCodingLanes,
+    throughputStatus: asOptional(overrides.throughputStatus),
+    throughputPressureReasons,
+    queueThroughputMode: asOptional(overrides.queueThroughputMode),
+    queueThroughputReasons,
+    queueThroughputTargetCap: toNonNegativeInteger(overrides.queueThroughputTargetCap),
+    queueThroughputSaturation: toNonNegativeNumber(overrides.queueThroughputSaturation),
+    releasedCapitalAvailable: (releasedLaneCount ?? 0) > 0,
+    idleWorkerCapacityAvailable: (availableSlotCount ?? 0) > 0,
+    underfilledWorkerPool:
+      throughputPressureReasons.includes('actionable-work-below-worker-slot-target') ||
+      queueThroughputReasons.includes('actionable-work-below-worker-slot-target')
+  };
+}
+
+function deriveWorkerPoolCapital({ throughputScorecard, queueSupervisorReport, deliveryRuntimeState }) {
+  const throughputWorkerPool = normalizeOptionalObject(throughputScorecard?.workerPool);
+  if (throughputWorkerPool) {
+    return buildWorkerPoolCapital({
+      authoritySource: 'throughput-scorecard',
+      targetSlotCount: throughputWorkerPool.targetSlotCount,
+      occupiedSlotCount: throughputWorkerPool.occupiedSlotCount,
+      availableSlotCount: throughputWorkerPool.availableSlotCount,
+      releasedLaneCount: throughputWorkerPool.releasedLaneCount,
+      utilizationRatio: throughputWorkerPool.utilizationRatio,
+      activeCodingLanes: throughputWorkerPool.activeCodingLanes,
+      throughputStatus: throughputScorecard?.summary?.status,
+      throughputPressureReasons: throughputScorecard?.summary?.reasons,
+      queueThroughputMode: throughputScorecard?.queue?.throughputMode,
+      queueThroughputReasons: queueSupervisorReport?.throughputController?.reasons,
+      queueThroughputTargetCap: queueSupervisorReport?.throughputController?.targetCap,
+      queueThroughputSaturation: queueSupervisorReport?.throughputController?.metrics?.saturation
+    });
+  }
+
+  const workerOccupancy = normalizeOptionalObject(queueSupervisorReport?.workerOccupancy);
+  if (workerOccupancy?.available === true) {
+    return buildWorkerPoolCapital({
+      authoritySource: 'queue-supervisor',
+      targetSlotCount: workerOccupancy.targetSlotCount,
+      occupiedSlotCount: workerOccupancy.occupiedSlotCount,
+      availableSlotCount: workerOccupancy.availableSlotCount,
+      releasedLaneCount: workerOccupancy.releasedLaneCount,
+      utilizationRatio: workerOccupancy.utilizationRatio,
+      activeCodingLanes: workerOccupancy.activeCodingLanes,
+      queueThroughputMode: queueSupervisorReport?.throughputController?.mode,
+      queueThroughputReasons: queueSupervisorReport?.throughputController?.reasons,
+      queueThroughputTargetCap: queueSupervisorReport?.throughputController?.targetCap,
+      queueThroughputSaturation: queueSupervisorReport?.throughputController?.metrics?.saturation
+    });
+  }
+
+  const runtimeWorkerPool = normalizeOptionalObject(deliveryRuntimeState?.workerPool);
+  if (runtimeWorkerPool) {
+    return buildWorkerPoolCapital({
+      authoritySource: 'delivery-runtime',
+      targetSlotCount: runtimeWorkerPool.targetSlotCount,
+      occupiedSlotCount: runtimeWorkerPool.occupiedSlotCount,
+      availableSlotCount: runtimeWorkerPool.availableSlotCount,
+      releasedLaneCount: runtimeWorkerPool.releasedLaneCount,
+      utilizationRatio: runtimeWorkerPool.utilizationRatio,
+      activeCodingLanes: deliveryRuntimeState?.activeCodingLanes
+    });
+  }
+
+  return createEmptyWorkerPoolCapital();
 }
 
 function suppressDeliveryRuntimeForMonitoring(deliveryRuntime) {
@@ -1108,6 +1248,10 @@ function buildReport({
   deliveryRuntimeState,
   releaseSigningReadinessPath,
   releaseSigningReadinessReport,
+  queueSupervisorReportPath,
+  queueSupervisorReport,
+  throughputScorecardPath,
+  throughputScorecard,
   readOptionalJsonFn,
   now
 }) {
@@ -1126,6 +1270,11 @@ function buildReport({
   const deliveryRuntime = shouldSuppressStaleDeliveryRuntime({ queueState, continuity, monitoringMode, wake })
     ? suppressDeliveryRuntimeForMonitoring(rawDeliveryRuntime)
     : rawDeliveryRuntime;
+  const workerPoolCapital = deriveWorkerPoolCapital({
+    throughputScorecard,
+    queueSupervisorReport,
+    deliveryRuntimeState
+  });
   const queueAuthority = deriveQueueAuthority({
     repoRoot,
     repository,
@@ -1157,7 +1306,9 @@ function buildReport({
       wakeLifecyclePath: toRelative(repoRoot, wakeLifecyclePath),
       wakeInvestmentAccountingPath: toRelative(repoRoot, wakeInvestmentAccountingPath),
       deliveryRuntimeStatePath: toRelative(repoRoot, deliveryRuntimeStatePath),
-      releaseSigningReadinessPath: toRelative(repoRoot, releaseSigningReadinessPath)
+      releaseSigningReadinessPath: toRelative(repoRoot, releaseSigningReadinessPath),
+      queueSupervisorReportPath: toRelative(repoRoot, queueSupervisorReportPath),
+      throughputScorecardPath: toRelative(repoRoot, throughputScorecardPath)
     },
     compare: {
       queueState,
@@ -1171,6 +1322,7 @@ function buildReport({
       },
       releaseSigningReadiness,
       deliveryRuntime,
+      workerPoolCapital,
       queueAuthority
     },
     wake,
@@ -1213,6 +1365,19 @@ function buildReport({
       executionBundlePremiumSaganMode: deliveryRuntime.executionBundle.premiumSaganMode,
       executionBundleReciprocalLinkReady: deliveryRuntime.executionBundle.reciprocalLinkReady,
       executionBundleEffectiveBillableRateUsdPerHour: deliveryRuntime.executionBundle.effectiveBillableRateUsdPerHour,
+      workerPoolAuthoritySource: workerPoolCapital.authoritySource,
+      workerPoolTargetSlotCount: workerPoolCapital.targetSlotCount,
+      workerPoolOccupiedSlotCount: workerPoolCapital.occupiedSlotCount,
+      workerPoolAvailableSlotCount: workerPoolCapital.availableSlotCount,
+      workerPoolReleasedLaneCount: workerPoolCapital.releasedLaneCount,
+      workerPoolUtilizationRatio: workerPoolCapital.utilizationRatio,
+      workerPoolActiveCodingLanes: workerPoolCapital.activeCodingLanes,
+      workerPoolReleasedCapitalAvailable: workerPoolCapital.releasedCapitalAvailable,
+      workerPoolIdleWorkerCapacityAvailable: workerPoolCapital.idleWorkerCapacityAvailable,
+      workerPoolUnderfilled: workerPoolCapital.underfilledWorkerPool,
+      workerPoolThroughputStatus: workerPoolCapital.throughputStatus,
+      workerPoolThroughputPressureReasons: workerPoolCapital.throughputPressureReasons,
+      workerPoolQueueThroughputMode: workerPoolCapital.queueThroughputMode,
       queueHandoffStatus: queueAuthority.status,
       queueHandoffNextWakeCondition: queueAuthority.nextWakeCondition,
       queueHandoffPrUrl: queueAuthority.prUrl,
@@ -1239,6 +1404,14 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     repoRoot,
     options.releaseSigningReadinessPath || DEFAULT_RELEASE_SIGNING_READINESS_PATH
   );
+  const queueSupervisorReportPath = path.resolve(
+    repoRoot,
+    options.queueSupervisorReportPath || DEFAULT_QUEUE_SUPERVISOR_REPORT_PATH
+  );
+  const throughputScorecardPath = path.resolve(
+    repoRoot,
+    options.throughputScorecardPath || DEFAULT_THROUGHPUT_SCORECARD_PATH
+  );
   const outputPath = path.resolve(repoRoot, options.outputPath || DEFAULT_OUTPUT_PATH);
 
   const readOptionalJsonFn = deps.readOptionalJsonFn || readOptionalJson;
@@ -1252,6 +1425,8 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   const wakeInvestmentAccounting = readOptionalJsonFn(wakeInvestmentAccountingPath);
   const deliveryRuntimeState = readOptionalJsonFn(deliveryRuntimeStatePath);
   const releaseSigningReadinessReport = readOptionalJsonFn(releaseSigningReadinessPath);
+  const queueSupervisorReport = readOptionalJsonFn(queueSupervisorReportPath);
+  const throughputScorecard = readOptionalJsonFn(throughputScorecardPath);
 
   if (queueEmptyReport) {
     ensureSchema(queueEmptyReport, queueEmptyReportPath, 'standing-priority/no-standing@v1');
@@ -1278,6 +1453,12 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
       'priority/release-signing-readiness-report@v1'
     );
   }
+  if (queueSupervisorReport) {
+    ensureSchema(queueSupervisorReport, queueSupervisorReportPath, 'priority/queue-supervisor-report@v1');
+  }
+  if (throughputScorecard) {
+    ensureSchema(throughputScorecard, throughputScorecardPath, 'priority/throughput-scorecard@v1');
+  }
 
   const report = buildReport({
     repoRoot,
@@ -1295,6 +1476,10 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     deliveryRuntimeState,
     releaseSigningReadinessPath,
     releaseSigningReadinessReport,
+    queueSupervisorReportPath,
+    queueSupervisorReport,
+    throughputScorecardPath,
+    throughputScorecard,
     readOptionalJsonFn,
     now
   });

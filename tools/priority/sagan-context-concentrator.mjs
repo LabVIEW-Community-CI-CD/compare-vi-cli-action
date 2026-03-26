@@ -296,7 +296,47 @@ function deriveOwnerSummary(governorSummary, governorPortfolioSummary, monitorin
       normalizeText(governorPortfolioSummary?.summary?.governorMode),
     monitoringStatus:
       normalizeText(governorSummary?.summary?.monitoringStatus) ||
-      normalizeText(monitoringMode?.summary?.status)
+      normalizeText(monitoringMode?.summary?.status),
+    workerPoolAuthoritySource:
+      normalizeText(governorPortfolioSummary?.summary?.workerPoolAuthoritySource) ||
+      normalizeText(governorSummary?.summary?.workerPoolAuthoritySource),
+    workerPoolTargetSlotCount:
+      normalizeInteger(governorPortfolioSummary?.summary?.workerPoolTargetSlotCount) ??
+      normalizeInteger(governorSummary?.summary?.workerPoolTargetSlotCount),
+    workerPoolOccupiedSlotCount:
+      normalizeInteger(governorPortfolioSummary?.summary?.workerPoolOccupiedSlotCount) ??
+      normalizeInteger(governorSummary?.summary?.workerPoolOccupiedSlotCount),
+    workerPoolAvailableSlotCount:
+      normalizeInteger(governorPortfolioSummary?.summary?.workerPoolAvailableSlotCount) ??
+      normalizeInteger(governorSummary?.summary?.workerPoolAvailableSlotCount),
+    workerPoolReleasedLaneCount:
+      normalizeInteger(governorPortfolioSummary?.summary?.workerPoolReleasedLaneCount) ??
+      normalizeInteger(governorSummary?.summary?.workerPoolReleasedLaneCount),
+    workerPoolUtilizationRatio:
+      normalizeFiniteNumber(governorPortfolioSummary?.summary?.workerPoolUtilizationRatio) ??
+      normalizeFiniteNumber(governorSummary?.summary?.workerPoolUtilizationRatio),
+    workerPoolReleasedCapitalAvailable:
+      governorPortfolioSummary?.summary?.workerPoolReleasedCapitalAvailable === true ||
+      governorSummary?.summary?.workerPoolReleasedCapitalAvailable === true,
+    workerPoolIdleWorkerCapacityAvailable:
+      governorPortfolioSummary?.summary?.workerPoolIdleWorkerCapacityAvailable === true ||
+      governorSummary?.summary?.workerPoolIdleWorkerCapacityAvailable === true,
+    workerPoolUnderfilled:
+      governorPortfolioSummary?.summary?.workerPoolUnderfilled === true ||
+      governorSummary?.summary?.workerPoolUnderfilled === true,
+    workerPoolThroughputStatus:
+      normalizeText(governorPortfolioSummary?.summary?.workerPoolThroughputStatus) ||
+      normalizeText(governorSummary?.summary?.workerPoolThroughputStatus),
+    workerPoolThroughputPressureReasons: Array.isArray(
+      governorPortfolioSummary?.summary?.workerPoolThroughputPressureReasons
+    )
+      ? governorPortfolioSummary.summary.workerPoolThroughputPressureReasons.map((entry) => String(entry))
+      : Array.isArray(governorSummary?.summary?.workerPoolThroughputPressureReasons)
+        ? governorSummary.summary.workerPoolThroughputPressureReasons.map((entry) => String(entry))
+        : [],
+    workerPoolQueueThroughputMode:
+      normalizeText(governorPortfolioSummary?.summary?.workerPoolQueueThroughputMode) ||
+      normalizeText(governorSummary?.summary?.workerPoolQueueThroughputMode)
   };
 }
 
@@ -322,7 +362,19 @@ function deriveFocus(priorityCache, ownerSummary) {
     brokerSlotId: ownerSummary.brokerSlotId,
     brokerSelectionSource: ownerSummary.brokerSelectionSource,
     governorMode: ownerSummary.governorMode,
-    monitoringStatus: ownerSummary.monitoringStatus
+    monitoringStatus: ownerSummary.monitoringStatus,
+    workerPoolAuthoritySource: ownerSummary.workerPoolAuthoritySource,
+    workerPoolTargetSlotCount: ownerSummary.workerPoolTargetSlotCount,
+    workerPoolOccupiedSlotCount: ownerSummary.workerPoolOccupiedSlotCount,
+    workerPoolAvailableSlotCount: ownerSummary.workerPoolAvailableSlotCount,
+    workerPoolReleasedLaneCount: ownerSummary.workerPoolReleasedLaneCount,
+    workerPoolUtilizationRatio: ownerSummary.workerPoolUtilizationRatio,
+    workerPoolReleasedCapitalAvailable: ownerSummary.workerPoolReleasedCapitalAvailable,
+    workerPoolIdleWorkerCapacityAvailable: ownerSummary.workerPoolIdleWorkerCapacityAvailable,
+    workerPoolUnderfilled: ownerSummary.workerPoolUnderfilled,
+    workerPoolThroughputStatus: ownerSummary.workerPoolThroughputStatus,
+    workerPoolThroughputPressureReasons: ownerSummary.workerPoolThroughputPressureReasons,
+    workerPoolQueueThroughputMode: ownerSummary.workerPoolQueueThroughputMode
   };
 }
 
@@ -415,6 +467,39 @@ function deriveSystemMemoryItems({
         updatedAt: normalizeText(governorPortfolioSummary?.generatedAt),
         repository:
           normalizeText(governorPortfolioSummary?.summary?.viHistoryDistributorDependencyTargetRepository),
+        nextAction: focus.nextAction
+      }),
+      seenIds
+    );
+  }
+
+  if (
+    focus.workerPoolAuthoritySource ||
+    focus.workerPoolReleasedCapitalAvailable ||
+    focus.workerPoolIdleWorkerCapacityAvailable ||
+    focus.workerPoolUnderfilled
+  ) {
+    addUniqueMemoryItem(
+      items,
+      makeMemoryItem({
+        id: 'worker-pool-capital',
+        kind: 'capacity-signal',
+        label: `Worker pool ${focus.workerPoolAuthoritySource || 'none'}`,
+        status: focus.workerPoolUnderfilled
+          ? 'underfilled'
+          : focus.workerPoolReleasedCapitalAvailable
+            ? 'released-capital'
+            : focus.workerPoolIdleWorkerCapacityAvailable
+              ? 'idle-capacity'
+              : 'observed',
+        detail: focus.workerPoolThroughputPressureReasons.length > 0
+          ? focus.workerPoolThroughputPressureReasons.join(', ')
+          : focus.workerPoolQueueThroughputMode,
+        sourcePath: toDisplayPath(repoRoot, governorPortfolioSummaryPath || governorSummaryPath),
+        updatedAt:
+          normalizeText(governorPortfolioSummary?.generatedAt) || normalizeText(governorSummary?.generatedAt),
+        issueNumber: focus.activeIssue?.number,
+        repository: focus.currentOwnerRepository,
         nextAction: focus.nextAction
       }),
       seenIds

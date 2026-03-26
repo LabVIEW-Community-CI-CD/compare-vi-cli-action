@@ -175,6 +175,56 @@ function createReleaseSigningReadiness(overrides = {}) {
   };
 }
 
+function createQueueSupervisorReport(overrides = {}) {
+  return {
+    schema: 'priority/queue-supervisor-report@v1',
+    generatedAt: '2026-03-25T18:00:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    workerOccupancy: {
+      available: true,
+      targetSlotCount: 4,
+      occupiedSlotCount: 3,
+      availableSlotCount: 1,
+      releasedLaneCount: 1,
+      utilizationRatio: 0.75,
+      activeCodingLanes: 3
+    },
+    throughputController: {
+      mode: 'stabilize',
+      reasons: ['actionable-work-below-worker-slot-target'],
+      targetCap: 4,
+      metrics: {
+        saturation: 0.75
+      }
+    },
+    ...overrides
+  };
+}
+
+function createThroughputScorecard(overrides = {}) {
+  return {
+    schema: 'priority/throughput-scorecard@v1',
+    generatedAt: '2026-03-25T18:01:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    workerPool: {
+      targetSlotCount: 4,
+      occupiedSlotCount: 4,
+      availableSlotCount: 0,
+      releasedLaneCount: 1,
+      utilizationRatio: 1,
+      activeCodingLanes: 3
+    },
+    queue: {
+      throughputMode: 'surge'
+    },
+    summary: {
+      status: 'pressure',
+      reasons: ['actionable-work-with-idle-worker-pool']
+    },
+    ...overrides
+  };
+}
+
 function createDeliveryRuntimeState(overrides = {}) {
   return {
     schema: 'priority/delivery-agent-runtime-state@v1',
@@ -275,6 +325,14 @@ function createDeliveryRuntimeState(overrides = {}) {
         }
       }
     },
+    workerPool: {
+      targetSlotCount: 4,
+      occupiedSlotCount: 2,
+      availableSlotCount: 2,
+      releasedLaneCount: 0,
+      utilizationRatio: 0.5
+    },
+    activeCodingLanes: 2,
     ...overrides
   };
 }
@@ -548,6 +606,75 @@ test('runAutonomousGovernorSummary preserves broker pivot authority while suppre
   assert.equal(report.compare.deliveryRuntime.repoContextPivot.brokerSelectionSource, 'released-waiting-state-marketplace');
   assert.equal(report.summary.queueHandoffStatus, 'none');
   assert.equal(report.summary.queueAuthoritySource, 'none');
+});
+
+test('runAutonomousGovernorSummary prefers throughput scorecard worker-pool capital over queue and runtime fallbacks', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-throughput-worker-pool-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json'),
+    createQueueSupervisorReport()
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'throughput', 'throughput-scorecard.json'),
+    createThroughputScorecard()
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState()
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.compare.workerPoolCapital.authoritySource, 'throughput-scorecard');
+  assert.equal(report.compare.workerPoolCapital.targetSlotCount, 4);
+  assert.equal(report.compare.workerPoolCapital.occupiedSlotCount, 4);
+  assert.equal(report.compare.workerPoolCapital.availableSlotCount, 0);
+  assert.equal(report.compare.workerPoolCapital.releasedLaneCount, 1);
+  assert.equal(report.compare.workerPoolCapital.releasedCapitalAvailable, true);
+  assert.equal(report.compare.workerPoolCapital.idleWorkerCapacityAvailable, false);
+  assert.equal(report.compare.workerPoolCapital.underfilledWorkerPool, true);
+  assert.equal(report.summary.workerPoolAuthoritySource, 'throughput-scorecard');
+  assert.equal(report.summary.workerPoolQueueThroughputMode, 'surge');
+  assert.deepEqual(report.summary.workerPoolThroughputPressureReasons, ['actionable-work-with-idle-worker-pool']);
+});
+
+test('runAutonomousGovernorSummary falls back to queue supervisor worker-pool capital when throughput scorecard is absent', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-queue-worker-pool-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'queue', 'queue-supervisor-report.json'),
+    createQueueSupervisorReport()
+  );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      workerPool: {
+        targetSlotCount: 4,
+        occupiedSlotCount: 1,
+        availableSlotCount: 3,
+        releasedLaneCount: 0,
+        utilizationRatio: 0.25
+      }
+    })
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.compare.workerPoolCapital.authoritySource, 'queue-supervisor');
+  assert.equal(report.compare.workerPoolCapital.availableSlotCount, 1);
+  assert.equal(report.compare.workerPoolCapital.releasedLaneCount, 1);
+  assert.equal(report.compare.workerPoolCapital.idleWorkerCapacityAvailable, true);
+  assert.equal(report.compare.workerPoolCapital.releasedCapitalAvailable, true);
+  assert.equal(report.compare.workerPoolCapital.underfilledWorkerPool, true);
+  assert.equal(report.summary.workerPoolAuthoritySource, 'queue-supervisor');
+  assert.equal(report.summary.workerPoolThroughputStatus, null);
+  assert.deepEqual(report.summary.workerPoolThroughputPressureReasons, []);
+  assert.equal(report.summary.workerPoolQueueThroughputMode, 'stabilize');
 });
 
 test('runAutonomousGovernorSummary carries explicit release signing blocker state into the governor summary', async () => {

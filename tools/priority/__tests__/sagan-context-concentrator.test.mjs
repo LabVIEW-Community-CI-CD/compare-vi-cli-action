@@ -35,6 +35,18 @@ function createGovernorSummary() {
       nextAction: 'publish-producer-native-vi-history-bundle',
       queueState: 'active',
       monitoringStatus: 'active',
+      workerPoolAuthoritySource: 'throughput-scorecard',
+      workerPoolTargetSlotCount: 4,
+      workerPoolOccupiedSlotCount: 4,
+      workerPoolAvailableSlotCount: 0,
+      workerPoolReleasedLaneCount: 1,
+      workerPoolUtilizationRatio: 1,
+      workerPoolReleasedCapitalAvailable: true,
+      workerPoolIdleWorkerCapacityAvailable: false,
+      workerPoolUnderfilled: false,
+      workerPoolThroughputStatus: 'pressure',
+      workerPoolThroughputPressureReasons: ['actionable-work-with-idle-worker-pool'],
+      workerPoolQueueThroughputMode: 'surge',
       releaseSigningStatus: 'warn',
       releaseSigningExternalBlocker: 'tag-signature-unverified',
       releasePublicationState: 'tag-created-not-published',
@@ -78,6 +90,18 @@ function createGovernorPortfolioSummary(overrides = {}) {
       templateMonitoringStatus: 'pass',
       supportedProofStatus: 'pass',
       repoGraphStatus: 'pass',
+      workerPoolAuthoritySource: 'queue-supervisor',
+      workerPoolTargetSlotCount: 4,
+      workerPoolOccupiedSlotCount: 3,
+      workerPoolAvailableSlotCount: 1,
+      workerPoolReleasedLaneCount: 1,
+      workerPoolUtilizationRatio: 0.75,
+      workerPoolReleasedCapitalAvailable: true,
+      workerPoolIdleWorkerCapacityAvailable: true,
+      workerPoolUnderfilled: true,
+      workerPoolThroughputStatus: null,
+      workerPoolThroughputPressureReasons: [],
+      workerPoolQueueThroughputMode: 'stabilize',
       queueHandoffStatus: 'none',
       queueHandoffNextWakeCondition: null,
       queueHandoffPrUrl: null,
@@ -226,12 +250,15 @@ test('runSaganContextConcentrator builds hot and warm memory from episodes and g
   assert.equal(report.focus.activeIssue.number, 1877);
   assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.summary.nextAction, 'publish-producer-native-vi-history-bundle');
+  assert.equal(report.focus.workerPoolAuthoritySource, 'queue-supervisor');
+  assert.equal(report.focus.workerPoolAvailableSlotCount, 1);
   assert.equal(report.summary.hotWorkingSetCount, report.memory.hotWorkingSet.length);
   assert.equal(report.episodes.validCount, 3);
   assert.ok(report.episodes.byAgent.some((entry) => entry.agentName === 'Euler'));
   assert.equal(report.cost.tokenUsd, 0.18);
   assert.equal(report.cost.blendedLowerBoundUsd, 14.763334);
   assert.ok(report.memory.hotWorkingSet.some((entry) => entry.kind === 'dependency'));
+  assert.ok(report.memory.hotWorkingSet.some((entry) => entry.id === 'worker-pool-capital'));
   assert.ok(report.memory.hotWorkingSet.some((entry) => entry.agentName === 'Euler'));
   assert.ok(report.memory.warmMemory.some((entry) => entry.agentName === 'Hooke'));
   assert.ok(fs.existsSync(outputPath));

@@ -87,7 +87,19 @@
         "nextOwnerRepository",
         "nextAction",
         "governorMode",
-        "monitoringStatus"
+        "monitoringStatus",
+        "workerPoolAuthoritySource",
+        "workerPoolTargetSlotCount",
+        "workerPoolOccupiedSlotCount",
+        "workerPoolAvailableSlotCount",
+        "workerPoolReleasedLaneCount",
+        "workerPoolUtilizationRatio",
+        "workerPoolReleasedCapitalAvailable",
+        "workerPoolIdleWorkerCapacityAvailable",
+        "workerPoolUnderfilled",
+        "workerPoolThroughputStatus",
+        "workerPoolThroughputPressureReasons",
+        "workerPoolQueueThroughputMode"
       ],
       "properties": {
         "activeIssue": {
@@ -112,7 +124,22 @@
         "brokerSlotId": { "type": ["string", "null"] },
         "brokerSelectionSource": { "type": ["string", "null"] },
         "governorMode": { "type": ["string", "null"] },
-        "monitoringStatus": { "type": ["string", "null"] }
+        "monitoringStatus": { "type": ["string", "null"] },
+        "workerPoolAuthoritySource": { "type": ["string", "null"] },
+        "workerPoolTargetSlotCount": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolOccupiedSlotCount": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolAvailableSlotCount": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolReleasedLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolUtilizationRatio": { "type": ["number", "null"], "minimum": 0 },
+        "workerPoolReleasedCapitalAvailable": { "type": "boolean" },
+        "workerPoolIdleWorkerCapacityAvailable": { "type": "boolean" },
+        "workerPoolUnderfilled": { "type": "boolean" },
+        "workerPoolThroughputStatus": { "type": ["string", "null"] },
+        "workerPoolThroughputPressureReasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "workerPoolQueueThroughputMode": { "type": ["string", "null"] }
       }
     },
     "memory": {

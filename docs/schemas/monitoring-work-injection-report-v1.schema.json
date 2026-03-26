@@ -354,6 +354,18 @@
         "templateMonitoringStatus",
         "supportedProofStatus",
         "repoGraphStatus",
+        "workerPoolAuthoritySource",
+        "workerPoolTargetSlotCount",
+        "workerPoolOccupiedSlotCount",
+        "workerPoolAvailableSlotCount",
+        "workerPoolReleasedLaneCount",
+        "workerPoolUtilizationRatio",
+        "workerPoolReleasedCapitalAvailable",
+        "workerPoolIdleWorkerCapacityAvailable",
+        "workerPoolUnderfilled",
+        "workerPoolThroughputStatus",
+        "workerPoolThroughputPressureReasons",
+        "workerPoolQueueThroughputMode",
         "portfolioWakeConditionCount",
         "triggeredWakeConditions"
       ],
@@ -449,6 +461,74 @@
             "null"
           ]
         },
+        "workerPoolAuthoritySource": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workerPoolTargetSlotCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "workerPoolOccupiedSlotCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "workerPoolAvailableSlotCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "workerPoolReleasedLaneCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "workerPoolUtilizationRatio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "workerPoolReleasedCapitalAvailable": {
+          "type": "boolean"
+        },
+        "workerPoolIdleWorkerCapacityAvailable": {
+          "type": "boolean"
+        },
+        "workerPoolUnderfilled": {
+          "type": "boolean"
+        },
+        "workerPoolThroughputStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workerPoolThroughputPressureReasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "workerPoolQueueThroughputMode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "portfolioWakeConditionCount": {
           "type": [
             "integer",
@@ -477,6 +557,18 @@
         "nextOwnerRepository",
         "nextAction",
         "ownerDecisionSource",
+        "workerPoolAuthoritySource",
+        "workerPoolTargetSlotCount",
+        "workerPoolOccupiedSlotCount",
+        "workerPoolAvailableSlotCount",
+        "workerPoolReleasedLaneCount",
+        "workerPoolUtilizationRatio",
+        "workerPoolReleasedCapitalAvailable",
+        "workerPoolIdleWorkerCapacityAvailable",
+        "workerPoolUnderfilled",
+        "workerPoolThroughputStatus",
+        "workerPoolThroughputPressureReasons",
+        "workerPoolQueueThroughputMode",
         "contradiction",
         "contradictionFields",
         "allowInjection"
@@ -557,6 +649,74 @@
           ]
         },
         "ownerDecisionSource": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workerPoolAuthoritySource": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workerPoolTargetSlotCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "workerPoolOccupiedSlotCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "workerPoolAvailableSlotCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "workerPoolReleasedLaneCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "workerPoolUtilizationRatio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "workerPoolReleasedCapitalAvailable": {
+          "type": "boolean"
+        },
+        "workerPoolIdleWorkerCapacityAvailable": {
+          "type": "boolean"
+        },
+        "workerPoolUnderfilled": {
+          "type": "boolean"
+        },
+        "workerPoolThroughputStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workerPoolThroughputPressureReasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "workerPoolQueueThroughputMode": {
           "type": [
             "string",
             "null"

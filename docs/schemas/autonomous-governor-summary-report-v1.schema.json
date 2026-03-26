@@ -38,7 +38,9 @@
         "wakeLifecyclePath",
         "wakeInvestmentAccountingPath",
         "deliveryRuntimeStatePath",
-        "releaseSigningReadinessPath"
+        "releaseSigningReadinessPath",
+        "queueSupervisorReportPath",
+        "throughputScorecardPath"
       ],
       "properties": {
         "queueEmptyReportPath": { "type": "string", "minLength": 1 },
@@ -47,7 +49,9 @@
         "wakeLifecyclePath": { "type": "string", "minLength": 1 },
         "wakeInvestmentAccountingPath": { "type": "string", "minLength": 1 },
         "deliveryRuntimeStatePath": { "type": "string", "minLength": 1 },
-        "releaseSigningReadinessPath": { "type": "string", "minLength": 1 }
+        "releaseSigningReadinessPath": { "type": "string", "minLength": 1 },
+        "queueSupervisorReportPath": { "type": "string", "minLength": 1 },
+        "throughputScorecardPath": { "type": "string", "minLength": 1 }
       }
     },
     "compare": {
@@ -59,6 +63,7 @@
         "monitoringMode",
         "releaseSigningReadiness",
         "deliveryRuntime",
+        "workerPoolCapital",
         "queueAuthority"
       ],
       "properties": {
@@ -67,6 +72,7 @@
         "monitoringMode": { "$ref": "#/$defs/monitoringMode" },
         "releaseSigningReadiness": { "$ref": "#/$defs/releaseSigningReadiness" },
         "deliveryRuntime": { "$ref": "#/$defs/deliveryRuntime" },
+        "workerPoolCapital": { "$ref": "#/$defs/workerPoolCapital" },
         "queueAuthority": { "$ref": "#/$defs/queueAuthority" }
       }
     },
@@ -355,6 +361,19 @@
         "executionBundlePremiumSaganMode",
         "executionBundleReciprocalLinkReady",
         "executionBundleEffectiveBillableRateUsdPerHour",
+        "workerPoolAuthoritySource",
+        "workerPoolTargetSlotCount",
+        "workerPoolOccupiedSlotCount",
+        "workerPoolAvailableSlotCount",
+        "workerPoolReleasedLaneCount",
+        "workerPoolUtilizationRatio",
+        "workerPoolActiveCodingLanes",
+        "workerPoolReleasedCapitalAvailable",
+        "workerPoolIdleWorkerCapacityAvailable",
+        "workerPoolUnderfilled",
+        "workerPoolThroughputStatus",
+        "workerPoolThroughputPressureReasons",
+        "workerPoolQueueThroughputMode",
         "queueHandoffStatus",
         "queueHandoffNextWakeCondition",
         "queueHandoffPrUrl",
@@ -429,6 +448,22 @@
         "executionBundlePremiumSaganMode": { "type": "boolean" },
         "executionBundleReciprocalLinkReady": { "type": "boolean" },
         "executionBundleEffectiveBillableRateUsdPerHour": { "type": ["number", "null"], "minimum": 0 },
+        "workerPoolAuthoritySource": { "type": ["string", "null"] },
+        "workerPoolTargetSlotCount": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolOccupiedSlotCount": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolAvailableSlotCount": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolReleasedLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolUtilizationRatio": { "type": ["number", "null"], "minimum": 0 },
+        "workerPoolActiveCodingLanes": { "type": ["integer", "null"], "minimum": 0 },
+        "workerPoolReleasedCapitalAvailable": { "type": "boolean" },
+        "workerPoolIdleWorkerCapacityAvailable": { "type": "boolean" },
+        "workerPoolUnderfilled": { "type": "boolean" },
+        "workerPoolThroughputStatus": { "type": ["string", "null"] },
+        "workerPoolThroughputPressureReasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "workerPoolQueueThroughputMode": { "type": ["string", "null"] },
         "queueHandoffStatus": {
           "type": "string",
           "enum": [
@@ -451,6 +486,52 @@
             "queue-refresh-summary"
           ]
         }
+      }
+    },
+    "workerPoolCapital": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authoritySource",
+        "targetSlotCount",
+        "occupiedSlotCount",
+        "availableSlotCount",
+        "releasedLaneCount",
+        "utilizationRatio",
+        "activeCodingLanes",
+        "throughputStatus",
+        "throughputPressureReasons",
+        "queueThroughputMode",
+        "queueThroughputReasons",
+        "queueThroughputTargetCap",
+        "queueThroughputSaturation",
+        "releasedCapitalAvailable",
+        "idleWorkerCapacityAvailable",
+        "underfilledWorkerPool"
+      ],
+      "properties": {
+        "authoritySource": { "type": "string" },
+        "targetSlotCount": { "type": ["integer", "null"], "minimum": 0 },
+        "occupiedSlotCount": { "type": ["integer", "null"], "minimum": 0 },
+        "availableSlotCount": { "type": ["integer", "null"], "minimum": 0 },
+        "releasedLaneCount": { "type": ["integer", "null"], "minimum": 0 },
+        "utilizationRatio": { "type": ["number", "null"], "minimum": 0 },
+        "activeCodingLanes": { "type": ["integer", "null"], "minimum": 0 },
+        "throughputStatus": { "type": ["string", "null"] },
+        "throughputPressureReasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "queueThroughputMode": { "type": ["string", "null"] },
+        "queueThroughputReasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "queueThroughputTargetCap": { "type": ["integer", "null"], "minimum": 0 },
+        "queueThroughputSaturation": { "type": ["number", "null"], "minimum": 0 },
+        "releasedCapitalAvailable": { "type": "boolean" },
+        "idleWorkerCapacityAvailable": { "type": "boolean" },
+        "underfilledWorkerPool": { "type": "boolean" }
       }
     },
     "repoContextPivot": {
