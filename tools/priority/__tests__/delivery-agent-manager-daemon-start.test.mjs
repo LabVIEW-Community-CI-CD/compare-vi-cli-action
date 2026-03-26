@@ -33,6 +33,7 @@ test('buildWslRuntimeDaemonEnvironment exports WSL-safe git paths for linked wor
     daemonLogPath: 'E:/comparevi-lanes/1824-wsl-runtime-daemon-pid-clean/tests/results/_agent/runtime-1824-live/runtime-daemon-wsl.log',
     repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     stopOnIdle: true,
+    runtimeEpochId: '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action',
     gitDirPath: 'C:/dev/compare-vi-cli-action/compare-vi-cli-action/.git/worktrees/1824-wsl-runtime-daemon-pid-clean',
   });
 
@@ -45,11 +46,20 @@ test('buildWslRuntimeDaemonEnvironment exports WSL-safe git paths for linked wor
     environment.COMPAREVI_RUNTIME_DAEMON_LOG,
     '/mnt/e/comparevi-lanes/1824-wsl-runtime-daemon-pid-clean/tests/results/_agent/runtime-1824-live/runtime-daemon-wsl.log'
   );
+  assert.equal(
+    environment.COMPAREVI_RUNTIME_DAEMON_RUNTIME_EPOCH_ID,
+    '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action'
+  );
   assert.equal(environment.COMPAREVI_RUNTIME_DAEMON_STOP_ON_IDLE, 'true');
 
   const setenvArgs = buildWslRuntimeDaemonSetenvArgs(environment);
   assert.ok(setenvArgs.includes('--setenv=GIT_DIR=/mnt/c/dev/compare-vi-cli-action/compare-vi-cli-action/.git/worktrees/1824-wsl-runtime-daemon-pid-clean'));
   assert.ok(setenvArgs.includes('--setenv=GIT_WORK_TREE=/mnt/e/comparevi-lanes/1824-wsl-runtime-daemon-pid-clean'));
+  assert.ok(
+    setenvArgs.includes(
+      '--setenv=COMPAREVI_RUNTIME_DAEMON_RUNTIME_EPOCH_ID=2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action'
+    )
+  );
 });
 
 test('resolveDaemonStartFailure routes fresh observer reports when the daemon exits before PID observation', async () => {

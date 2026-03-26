@@ -264,6 +264,7 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
   const calls = [];
   let sleepCalls = 0;
   let tick = 0;
+  const runtimeEpochId = '2026-03-26T21-10-00-000Z-example-repo';
   const nowFactory = () => new Date(Date.UTC(2026, 2, 10, 16, 0, tick++));
 
   const result = await runRuntimeObserverLoop(
@@ -285,6 +286,10 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
     {
       platform: 'linux',
       adapter: makeAdapter(repoRoot, calls),
+      env: {
+        ...process.env,
+        COMPAREVI_RUNTIME_DAEMON_RUNTIME_EPOCH_ID: runtimeEpochId
+      },
       nowFactory,
       sleepFn: async (ms) => {
         sleepCalls += 1;
@@ -332,17 +337,21 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
   assert.equal(workerBranch.branch, 'issue/origin-977-fork-policy-portability');
   assert.equal(workerBranchHistory.length, 1);
   assert.equal(taskPacket.schema, 'priority/runtime-worker-task-packet@v1');
+  assert.equal(taskPacket.runtimeEpochId, runtimeEpochId);
   assert.equal(taskPacket.objective.summary, 'Execute issue #977');
   assert.equal(taskPacket.helperSurface.preferred[0], 'node tools/npm/run-script.mjs priority:pr');
   assert.equal(taskPacket.recentEvents.length, 1);
   assert.equal(taskPacketHistory.length, 2);
   assert.equal(heartbeat.activeLane.issue, 977);
+  assert.equal(heartbeat.runtimeEpochId, runtimeEpochId);
   assert.equal(heartbeat.activeLane.worker.status, 'created');
   assert.equal(heartbeat.activeLane.workerReady.status, 'ready');
   assert.equal(heartbeat.activeLane.workerBranch.status, 'attached');
   assert.equal(heartbeat.activeLane.taskPacket.objective.summary, 'Execute issue #977');
   assert.equal(heartbeat.artifacts.taskPacketPath, path.join(runtimeDir, 'task-packet.json'));
   assert.equal(state.lifecycle.cycle, 2);
+  assert.equal(state.runtimeEpochId, runtimeEpochId);
+  assert.equal(state.activeLane.runtimeEpochId, runtimeEpochId);
   assert.equal(state.activeLane.issue, 977);
   assert.equal(state.activeLane.worker.status, 'created');
   assert.equal(state.activeLane.workerReady.status, 'ready');
@@ -352,6 +361,7 @@ test('runRuntimeObserverLoop writes heartbeat and state across bounded linux cyc
   assert.equal(result.report.lastStep.workerReady.status, 'ready');
   assert.equal(result.report.lastStep.workerBranch.status, 'attached');
   assert.equal(result.report.lastStep.taskPacket.objective.summary, 'Execute issue #977');
+  assert.equal(result.report.runtimeEpochId, runtimeEpochId);
   assert.equal(sleepCalls, 1);
   assert.deepEqual(
     calls.map((entry) => entry.type),
@@ -643,6 +653,7 @@ test('runRuntimeObserverLoop writes an execution receipt when executeTurn is ena
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-observer-execution-root-'));
   const calls = [];
   let tick = 0;
+  const runtimeEpochId = '2026-03-26T21-20-00-000Z-example-repo';
 
   const result = await runRuntimeObserverLoop(
     {
@@ -660,6 +671,10 @@ test('runRuntimeObserverLoop writes an execution receipt when executeTurn is ena
     {
       platform: 'linux',
       adapter: makeAdapter(repoRoot, calls, { executeMode: 'complete' }),
+      env: {
+        ...process.env,
+        COMPAREVI_RUNTIME_DAEMON_RUNTIME_EPOCH_ID: runtimeEpochId
+      },
       nowFactory: () => new Date(Date.UTC(2026, 2, 10, 16, 40, tick++)),
       sleepFn: async () => {
         throw new Error('sleep should not run when maxCycles=1');
@@ -673,6 +688,8 @@ test('runRuntimeObserverLoop writes an execution receipt when executeTurn is ena
   assert.equal(result.exitCode, 0);
   assert.equal(result.report.lastStep.execution.outcome, 'execution-completed');
   assert.equal(executionReceipt.outcome, 'execution-completed');
+  assert.equal(executionReceipt.runtimeEpochId, runtimeEpochId);
+  assert.equal(heartbeat.runtimeEpochId, runtimeEpochId);
   assert.equal(heartbeat.activeLane.execution.outcome, 'execution-completed');
 });
 

@@ -370,6 +370,7 @@ export function buildWslRuntimeDaemonEnvironment({
   daemonLogPath,
   repo,
   stopOnIdle,
+  runtimeEpochId = null,
   gitDirPath = resolveGitDirPath(repoRoot),
 }) {
   const repoRootWsl = convertToWslPath(repoRoot);
@@ -382,6 +383,7 @@ export function buildWslRuntimeDaemonEnvironment({
     COMPAREVI_RUNTIME_DAEMON_CWD: repoRootWsl,
     COMPAREVI_RUNTIME_DAEMON_REPO: repo,
     COMPAREVI_RUNTIME_DAEMON_RUNTIME_DIR: runtimeDir,
+    COMPAREVI_RUNTIME_DAEMON_RUNTIME_EPOCH_ID: runtimeEpochId || '',
     COMPAREVI_RUNTIME_DAEMON_LEASE_ROOT: leaseRootWsl,
     COMPAREVI_RUNTIME_DAEMON_POLL_INTERVAL: String(daemonPollIntervalSeconds),
     AGENT_WRITER_LEASE_OWNER: leaseOwner,
@@ -407,6 +409,7 @@ export function startWslRuntimeDaemon({
   repo,
   unitName,
   stopOnIdle,
+  runtimeEpochId = null,
 }) {
   const launchScriptPath = path.join(repoRoot, 'tools', 'priority', 'bash', 'start-runtime-daemon.sh');
   const launchScriptPathWsl = convertToWslPath(launchScriptPath);
@@ -419,6 +422,7 @@ export function startWslRuntimeDaemon({
     daemonLogPath,
     repo,
     stopOnIdle,
+    runtimeEpochId,
   });
   const systemdArgs = [
     '--user',
@@ -469,10 +473,11 @@ export function emitStatus(options) {
   const daemonAlive = testWslProcessAlive(options.wslDistro, getOptionalIntProperty(daemonState, 'pid'));
   const daemonStartedAt = getOptionalDateTimeProperty(daemonState, 'startedAt');
   const runtimeEpoch = readJsonFile(paths.runtimeEpochPath);
+  const currentRuntimeEpochId = getOptionalStringProperty(runtimeEpoch, 'runtimeEpochId');
   const heartbeat = readJsonFile(paths.observerHeartbeatPath);
   const taskPacket = readJsonFile(paths.taskPacketPath);
   const deliveryState = readJsonFile(paths.deliveryStatePath);
-  const runtimeState = deliveryState ? null : readJsonFile(paths.runtimeStatePath);
+  const runtimeState = readJsonFile(paths.runtimeStatePath);
   const resolvedDelivery = resolveDeliveryStateForStatus({
     repo: options.repo,
     runtimeDir: options.runtimeDir,
@@ -484,6 +489,7 @@ export function emitStatus(options) {
     managerStartedAt,
     daemonStartedAt,
     daemonAlive,
+    currentRuntimeEpochId,
   });
   let resolvedDeliveryState = resolvedDelivery.state;
   let deliveryDiagnostics = { ...resolvedDelivery.diagnostics };
@@ -495,8 +501,20 @@ export function emitStatus(options) {
     isQueueEmptyMonitoringReady({ queueEmptyReport, router }) &&
     deliveryDiagnostics.usedHeartbeat !== true &&
     deliveryDiagnostics.usedRuntimeState !== true &&
-    ['stale-before-current-manager', 'stale-heartbeat-daemon-dead', 'delivery-state-missing'].includes(
-      normalizeText(deliveryDiagnostics.reason)
+    (
+      ['stale-before-current-manager', 'stale-heartbeat-daemon-dead', 'delivery-state-missing'].includes(
+        normalizeText(deliveryDiagnostics.reason)
+      ) ||
+      [
+        'delivery-state-runtime-epoch-missing',
+        'delivery-state-runtime-epoch-mismatch',
+        'runtime-state-runtime-epoch-missing',
+        'runtime-state-runtime-epoch-mismatch',
+        'heartbeat-runtime-epoch-missing',
+        'heartbeat-runtime-epoch-mismatch',
+      ].includes(
+        normalizeText(deliveryDiagnostics.reason)
+      )
     );
   if (eligibleQueueEmptyOverride) {
     resolvedDeliveryState = buildQueueEmptyMonitoringDeliveryState({
@@ -506,6 +524,7 @@ export function emitStatus(options) {
       paths,
       queueEmptyReportPath: issuePaths.queueEmptyReportPath,
       monitoringMode,
+      runtimeEpochId: currentRuntimeEpochId,
     });
     deliveryDiagnostics = {
       ...deliveryDiagnostics,
@@ -1112,6 +1131,7 @@ export async function runManagerLoop(options) {
             repo: options.repo,
             unitName: daemonUnitName,
             stopOnIdle: options.stopWhenNoOpenIssues || options.sleepMode,
+            runtimeEpochId,
           });
           writeJsonFile(paths.wslDaemonPidPath, {
             schema: DAEMON_PID_SCHEMA,

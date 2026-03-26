@@ -19,6 +19,7 @@
     "generatedAt": { "type": "string", "format": "date-time" },
     "repository": { "type": "string" },
     "runtimeDir": { "type": "string" },
+    "runtimeEpochId": { "type": ["string", "null"] },
     "status": { "enum": ["running", "blocked", "idle"] },
     "laneLifecycle": {
       "enum": [
@@ -171,6 +172,7 @@
       "properties": {
         "schema": { "const": "priority/delivery-agent-lane-state@v1" },
         "generatedAt": { "type": "string", "format": "date-time" },
+        "runtimeEpochId": { "type": ["string", "null"] },
         "laneId": { "type": "string" },
         "issue": { "type": ["integer", "null"], "minimum": 1 },
         "epic": { "type": ["integer", "null"], "minimum": 1 },

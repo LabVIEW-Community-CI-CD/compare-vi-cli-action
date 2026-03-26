@@ -165,6 +165,10 @@ function resolveExecutionPaths(options, repoRoot) {
   };
 }
 
+function resolveRuntimeEpochId(options = {}, env = process.env) {
+  return normalizeText(options.runtimeEpochId) || normalizeText(env.COMPAREVI_RUNTIME_DAEMON_RUNTIME_EPOCH_ID) || null;
+}
+
 async function writeJson(filePath, payload) {
   const resolved = path.resolve(filePath);
   await mkdir(path.dirname(resolved), { recursive: true });
@@ -591,7 +595,7 @@ function summarizeExecutionReceipt(executionReceipt) {
   };
 }
 
-function normalizeExecutionReceipt(executionReceipt, { now, adapter, repository, cycle, schedulerDecision }) {
+function normalizeExecutionReceipt(executionReceipt, { now, adapter, repository, cycle, schedulerDecision, runtimeEpochId }) {
   if (!executionReceipt || typeof executionReceipt !== 'object') {
     return null;
   }
@@ -603,6 +607,7 @@ function normalizeExecutionReceipt(executionReceipt, { now, adapter, repository,
     cycle: Number.isInteger(executionReceipt.cycle) ? executionReceipt.cycle : cycle,
     runtimeAdapter: adapter.name,
     repository,
+    runtimeEpochId: normalizeText(executionReceipt.runtimeEpochId) || runtimeEpochId || null,
     laneId: normalizeText(executionReceipt.laneId) || schedulerDecision?.activeLane?.laneId || null,
     issue:
       coercePositiveInteger(executionReceipt.issue) ??
@@ -735,7 +740,8 @@ async function buildTaskPacket({
   workerBranchArtifacts,
   previousDecision,
   previousStep,
-  now
+  now,
+  runtimeEpochId = null
 }) {
   const activeLane = schedulerDecision?.activeLane ?? null;
   const taskPacketHook =
@@ -749,6 +755,7 @@ async function buildTaskPacket({
     cycle,
     runtimeAdapter: adapter.name,
     repository,
+    runtimeEpochId,
     laneId: activeLane?.laneId ?? null,
     status: determineTaskPacketStatus({
       schedulerDecision,
@@ -1027,6 +1034,7 @@ export function parseObserverArgs(argv = process.argv) {
 export async function runRuntimeObserverLoop(options = {}, deps = {}) {
   const platform = deps.platform ?? process.platform;
   const adapter = createRuntimeAdapter(deps.adapter ?? {});
+  const env = deps.env ?? process.env;
   const repoRoot = resolveRepoRoot(options, deps, adapter);
   const heartbeatPath = resolveHeartbeatPath(options, repoRoot);
   const runtimeArtifactPaths = resolveRuntimeArtifactPaths(options, repoRoot);
@@ -1034,6 +1042,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
   const workerPaths = resolveWorkerPaths(options, repoRoot);
   const taskPacketPaths = resolveTaskPacketPaths(options, repoRoot);
   const executionPaths = resolveExecutionPaths(options, repoRoot);
+  const runtimeEpochId = resolveRuntimeEpochId(options, env);
   const nowFactory = deps.nowFactory ?? (() => deps.now ?? new Date());
   const sleepFn = deps.sleepFn ?? sleep;
 
@@ -1041,10 +1050,11 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
     schema: OBSERVER_REPORT_SCHEMA,
     generatedAt: toIso(nowFactory()),
     runtimeAdapter: adapter.name,
+    runtimeEpochId,
     repository:
       typeof adapter.resolveRepository === 'function'
-        ? adapter.resolveRepository({ options, env: process.env, repoRoot, deps, adapter })
-        : normalizeText(options.repo) || process.env.GITHUB_REPOSITORY || 'unknown/unknown',
+        ? adapter.resolveRepository({ options, env, repoRoot, deps, adapter })
+        : normalizeText(options.repo) || env.GITHUB_REPOSITORY || 'unknown/unknown',
     heartbeatPath,
     scheduler: {
       latestPath: schedulerPaths.latestPath,
@@ -1150,7 +1160,8 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         },
         previousDecision,
         previousStep,
-        now: stepNow
+        now: stepNow,
+        runtimeEpochId
       });
       const persistedTaskPacket = await writeTaskPacket(taskPacketPaths, taskPacketRecord);
       taskPacket = persistedTaskPacket.taskPacket;
@@ -1173,6 +1184,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           generatedAt: toIso(heartbeatNow),
           runtimeAdapter: adapter.name,
           repository: report.repository,
+          runtimeEpochId,
           platform,
           cyclesCompleted: report.cyclesCompleted,
           outcome: 'idle-stop',
@@ -1201,6 +1213,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         generatedAt: toIso(heartbeatNow),
         runtimeAdapter: adapter.name,
         repository: report.repository,
+        runtimeEpochId,
         platform,
         cyclesCompleted: report.cyclesCompleted,
         outcome: 'scheduler-blocked',
@@ -1253,7 +1266,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         preparedWorker = normalizeWorkerCheckout(
           await prepareWorkerFn({
             options,
-            env: process.env,
+            env,
             repoRoot,
             deps,
             adapter,
@@ -1291,6 +1304,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           generatedAt: toIso(heartbeatNow),
           runtimeAdapter: adapter.name,
           repository: report.repository,
+          runtimeEpochId,
           platform,
           cyclesCompleted: report.cyclesCompleted,
           outcome: 'worker-blocked',
@@ -1336,7 +1350,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         workerReady = normalizeWorkerReady(
           await bootstrapWorkerFn({
             options,
-            env: process.env,
+            env,
             repoRoot,
             deps,
             adapter,
@@ -1363,6 +1377,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           generatedAt: toIso(heartbeatNow),
           runtimeAdapter: adapter.name,
           repository: report.repository,
+          runtimeEpochId,
           platform,
           cyclesCompleted: report.cyclesCompleted,
           outcome: 'worker-bootstrap-failed',
@@ -1411,6 +1426,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           generatedAt: toIso(heartbeatNow),
           runtimeAdapter: adapter.name,
           repository: report.repository,
+          runtimeEpochId,
           platform,
           cyclesCompleted: report.cyclesCompleted,
           outcome: 'worker-ready-blocked',
@@ -1458,7 +1474,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         workerBranch = normalizeWorkerBranch(
           await activateWorkerFn({
             options,
-            env: process.env,
+            env,
             repoRoot,
             deps,
             adapter,
@@ -1515,7 +1531,8 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         workerBranchArtifacts,
         previousDecision,
         previousStep,
-        now: stepNow
+        now: stepNow,
+        runtimeEpochId
       });
       const persistedTaskPacket = await writeTaskPacket(taskPacketPaths, taskPacketRecord);
       taskPacket = persistedTaskPacket.taskPacket;
@@ -1532,6 +1549,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
         generatedAt: toIso(heartbeatNow),
         runtimeAdapter: adapter.name,
         repository: report.repository,
+        runtimeEpochId,
         platform,
         cyclesCompleted: report.cyclesCompleted,
         outcome: 'worker-branch-blocked',
@@ -1601,7 +1619,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
       try {
         const rawExecutionReceipt = await executeTurnFn({
           options,
-          env: process.env,
+          env,
           repoRoot,
           deps,
           adapter,
@@ -1630,7 +1648,8 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
           adapter,
           repository: report.repository,
           cycle,
-          schedulerDecision
+          schedulerDecision,
+          runtimeEpochId
         });
       } catch (error) {
         const executionErrorMessage = error?.message || String(error);
@@ -1650,7 +1669,8 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
               adapter,
               repository: report.repository,
               cycle,
-              schedulerDecision
+              schedulerDecision,
+              runtimeEpochId
             }
           );
           const persistedExecutionReceipt = await writeExecutionReceipt(executionPaths, executionReceipt);
@@ -1671,6 +1691,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
             generatedAt: toIso(heartbeatNow),
             runtimeAdapter: adapter.name,
             repository: report.repository,
+            runtimeEpochId,
             platform,
             cyclesCompleted: report.cyclesCompleted,
             outcome: executionReceipt?.outcome || report.outcome,
@@ -1722,6 +1743,7 @@ export async function runRuntimeObserverLoop(options = {}, deps = {}) {
       generatedAt: toIso(heartbeatNow),
       runtimeAdapter: adapter.name,
       repository: report.repository,
+      runtimeEpochId,
       platform,
       cyclesCompleted: report.cyclesCompleted,
       outcome: executionReceipt?.outcome || stepResult.report.outcome,
