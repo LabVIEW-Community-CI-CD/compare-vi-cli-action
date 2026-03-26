@@ -33,6 +33,7 @@ test('runner capability routing policy covers all current self-hosted compare wo
     '.github/workflows/runbook-validation.yml',
     '.github/workflows/smoke-on-label.yml',
     '.github/workflows/smoke.yml',
+    '.github/workflows/validate.yml',
     '.github/workflows/vi-compare-pr.yml',
     '.github/workflows/vi-compare-refs.yml',
     '.github/workflows/vi-history-compare.yml',
@@ -49,6 +50,10 @@ test('runner capability routing policy covers all current self-hosted compare wo
     assert.ok(entry.jobs.length > 0, `${entry.workflow} must list at least one self-hosted job`);
     for (const job of entry.jobs) {
       if (entry.workflow === '.github/workflows/labview-cli-compare.yml' && job.id === 'cli-compare') {
+        assert.equal(job.routingClass, 'specialized-opt-in');
+        assert.deepEqual(job.requiredCapabilityLabels, ['labview-2026', 'lv32']);
+        assert.deepEqual(job.requiredHealthReceipts, ['labview-2026-host-plane-report']);
+      } else if (entry.workflow === '.github/workflows/validate.yml' && job.id === 'vi-history-scenarios-windows-lv32') {
         assert.equal(job.routingClass, 'specialized-opt-in');
         assert.deepEqual(job.requiredCapabilityLabels, ['labview-2026', 'lv32']);
         assert.deepEqual(job.requiredHealthReceipts, ['labview-2026-host-plane-report']);

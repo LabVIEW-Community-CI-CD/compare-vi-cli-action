@@ -2,6 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,6 +11,10 @@ import { evaluateDownstreamPromotionScorecard, parseArgs, runDownstreamPromotion
 function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
+function sha256File(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
 test('parseArgs enforces required downstream promotion scorecard inputs', () => {
@@ -24,6 +29,8 @@ test('parseArgs enforces required downstream promotion scorecard inputs', () => 
     'template-agent-verification-report.json',
     '--manifest-report',
     'manifest.json',
+    '--vi-history-lv32-shadow-proof-receipt',
+    'vi-history-lv32-shadow-proof-receipt.json',
     '--repo',
     'example/repo',
     '--no-fail-on-blockers'
@@ -33,6 +40,7 @@ test('parseArgs enforces required downstream promotion scorecard inputs', () => 
   assert.equal(parsed.feedbackReportPath, 'feedback.json');
   assert.equal(parsed.templateAgentVerificationReportPath, 'template-agent-verification-report.json');
   assert.equal(parsed.manifestReportPath, 'manifest.json');
+  assert.equal(parsed.viHistoryLv32ShadowProofReceiptPath, 'vi-history-lv32-shadow-proof-receipt.json');
   assert.equal(parsed.repo, 'example/repo');
   assert.equal(parsed.failOnBlockers, false);
 });
@@ -185,7 +193,7 @@ test('runDownstreamPromotionScorecard projects manifest provenance when present'
   });
 
   const result = runDownstreamPromotionScorecard({
-    repo: 'example/repo',
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     successReportPath,
     feedbackReportPath,
     templateAgentVerificationReportPath,
@@ -206,6 +214,437 @@ test('runDownstreamPromotionScorecard projects manifest provenance when present'
     result.report.summary.provenance.templateVerificationRepository,
     'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
   );
+});
+
+test('runDownstreamPromotionScorecard ingests an optional LV32 shadow proof receipt when manifest supplies it', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-promotion-scorecard-lv32-'));
+  const successReportPath = path.join(tmpDir, 'downstream-onboarding-success.json');
+  const feedbackReportPath = path.join(tmpDir, 'downstream-onboarding-feedback.json');
+  const templateAgentVerificationReportPath = path.join(tmpDir, 'template-agent-verification-report.json');
+  const receiptPath = path.join(tmpDir, 'tests', 'results', '_agent', 'promotion', 'vi-history-lv32-shadow-proof-receipt.json');
+  const manifestReportPath = path.join(tmpDir, 'downstream-develop-promotion-manifest.json');
+
+  writeJson(successReportPath, {
+    schema: 'priority/downstream-onboarding-success@v1',
+    summary: { status: 'pass', repositoriesEvaluated: 1, totalBlockers: 0, totalWarnings: 0 }
+  });
+  writeJson(feedbackReportPath, {
+    schema: 'priority/downstream-onboarding-feedback@v1',
+    inputs: { downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate' },
+    execution: { status: 'pass', evaluateExitCode: 0, successExitCode: 0 }
+  });
+  writeJson(templateAgentVerificationReportPath, {
+    schema: 'priority/template-agent-verification-report@v1',
+    summary: { status: 'pass', blockerCount: 0, recommendation: 'continue-template-agent-loop' },
+    iteration: {
+      label: 'supported template proof for compare 12345678',
+      ref: 'develop:12345678',
+      headSha: '1234567890abcdef1234567890abcdef12345678'
+    },
+    lane: {
+      enabled: true,
+      reservedSlotCount: 1,
+      minimumImplementationSlots: 3,
+      implementationSlotsRemaining: 19,
+      executionMode: 'hosted-first',
+      targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      consumerRailBranch: 'downstream/develop'
+    },
+    verification: {
+      provider: 'hosted-github-workflow',
+      status: 'pass',
+      runUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork/actions/runs/23567964307'
+    },
+    provenance: {
+      templateDependency: {
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        version: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
+        ref: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
+        cookiecutterVersion: '2.7.1'
+      },
+      execution: {
+        executionPlane: 'hosted-github-actions',
+        containerImage: null,
+        generatedConsumerWorkspaceRoot: null,
+        laneId: 'supported-template-proof',
+        agentId: 'compare-monitoring-mode',
+        fundingWindowId: null
+      }
+    },
+    authorityProjection: {
+      source: 'supported-template-proof',
+      supportedRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork'
+    },
+    goals: {
+      maxVerificationLagIterations: 1,
+      maxHostedDurationMinutes: 30,
+      requireMachineReadableRecommendation: true
+    },
+    metrics: {
+      targetSlotCount: 20,
+      reservedSlotCount: 1,
+      implementationSlotsRemaining: 19,
+      durationWithinGoal: null,
+      recommendationPresent: true
+    },
+    blockers: []
+  });
+  writeJson(receiptPath, {
+    schema: 'priority/vi-history-lv32-shadow-proof-receipt@v1',
+    generatedAt: '2026-03-25T12:00:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    sourceCommitSha: '1234567890abcdef1234567890abcdef12345678',
+    lane: { id: 'vi-history-scenarios-windows-lv32' },
+    runner: {
+      name: 'self-hosted-windows-lv32',
+      requiredLabels: ['self-hosted', 'Windows', 'X64', 'comparevi', 'capability-ingress', 'labview-2026', 'lv32'],
+      actualLabels: ['self-hosted', 'Windows', 'X64', 'comparevi', 'capability-ingress', 'labview-2026', 'lv32'],
+      labelsMatched: true
+    },
+    headless: { required: true, enforced: true, executionMode: 'labview-cli-headless' },
+    hostPlane: {
+      status: 'ready',
+      native32Status: 'ready',
+      reportPath: 'tests/results/_agent/host-planes/labview-2026-host-plane-report.json',
+      labviewPath: 'C:/Program Files (x86)/National Instruments/LabVIEW 2026/LabVIEW.exe',
+      cliPath: 'C:/Program Files/National Instruments/LabVIEW 2026/LabVIEWCLI.exe',
+      comparePath: 'C:/Program Files (x86)/National Instruments/Shared/LVCompare/LVCompare.exe'
+    },
+    verification: {
+      status: 'pass',
+      runUrl: 'https://example.invalid/runs/17',
+      summaryPath: 'tests/results/_agent/vi-history/compare-summary.json',
+      reportPath: 'tests/results/_agent/promotion/vi-history-lv32-shadow-proof-receipt.json'
+    }
+  });
+  writeJson(manifestReportPath, {
+    schema: 'priority/downstream-promotion-manifest@v1',
+    promotion: {
+      sourceRef: 'upstream/develop',
+      sourceCommitSha: '1234567890abcdef1234567890abcdef12345678',
+      targetBranch: 'downstream/develop',
+      targetBranchClassId: 'downstream-consumer-proving-rail',
+      localSourceVerification: { attempted: true, matched: true }
+    },
+    inputs: {
+      compareviToolsRelease: 'v0.6.3-tools.14',
+      compareviHistoryRelease: 'v1.3.24',
+      scenarioPackIdentity: 'scenario-pack@v1',
+      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.1',
+      viHistoryLv32ShadowProofReceipt: {
+        path: receiptPath,
+        sha256: sha256File(receiptPath)
+      }
+    }
+  });
+
+  const result = runDownstreamPromotionScorecard({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    successReportPath,
+    feedbackReportPath,
+    templateAgentVerificationReportPath,
+    viHistoryLv32ShadowProofReceiptPath: receiptPath,
+    manifestReportPath,
+    outputPath: path.join(tmpDir, 'scorecard.json')
+  });
+
+  assert.equal(result.report.gates.viHistoryLv32ShadowProofReceipt.status, 'pass');
+  assert.equal(result.report.gates.viHistoryLv32ShadowProofReceipt.sourceCommitMatched, true);
+  assert.equal(result.report.gates.viHistoryLv32ShadowProofReceipt.sha256Matched, true);
+  assert.equal(result.report.summary.provenance.viHistoryLv32ShadowProofReceiptStatus, 'pass');
+});
+
+test('runDownstreamPromotionScorecard fails closed when LV32 shadow proof receipt is present without manifest provenance', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-promotion-scorecard-lv32-provenance-'));
+  const successReportPath = path.join(tmpDir, 'downstream-onboarding-success.json');
+  const feedbackReportPath = path.join(tmpDir, 'downstream-onboarding-feedback.json');
+  const templateAgentVerificationReportPath = path.join(tmpDir, 'template-agent-verification-report.json');
+  const receiptPath = path.join(
+    tmpDir,
+    'tests',
+    'results',
+    '_agent',
+    'promotion',
+    'vi-history-lv32-shadow-proof-receipt.json'
+  );
+  const outputPath = path.join(tmpDir, 'downstream-develop-promotion-scorecard.json');
+
+  writeJson(successReportPath, {
+    schema: 'priority/downstream-onboarding-success@v1',
+    summary: { status: 'pass', repositoriesEvaluated: 1, totalBlockers: 0, totalWarnings: 0 }
+  });
+  writeJson(feedbackReportPath, {
+    schema: 'priority/downstream-onboarding-feedback@v1',
+    inputs: { downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate' },
+    execution: { status: 'pass', evaluateExitCode: 0, successExitCode: 0 }
+  });
+  writeJson(templateAgentVerificationReportPath, {
+    schema: 'priority/template-agent-verification-report@v1',
+    summary: { status: 'pass', blockerCount: 0, recommendation: 'continue-template-agent-loop' },
+    iteration: {
+      label: 'supported template proof for compare 12345678',
+      ref: 'develop:12345678',
+      headSha: '1234567890abcdef1234567890abcdef12345678'
+    },
+    lane: {
+      enabled: true,
+      reservedSlotCount: 1,
+      minimumImplementationSlots: 3,
+      implementationSlotsRemaining: 19,
+      executionMode: 'hosted-first',
+      targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      consumerRailBranch: 'downstream/develop'
+    },
+    verification: {
+      provider: 'hosted-github-workflow',
+      status: 'pass',
+      runUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork/actions/runs/23567964307'
+    },
+    provenance: {
+      templateDependency: {
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        version: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
+        ref: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
+        cookiecutterVersion: '2.7.1'
+      },
+      execution: {
+        executionPlane: 'hosted-github-actions',
+        containerImage: null,
+        generatedConsumerWorkspaceRoot: null,
+        laneId: 'supported-template-proof',
+        agentId: 'compare-monitoring-mode',
+        fundingWindowId: null
+      }
+    },
+    authorityProjection: {
+      source: 'supported-template-proof',
+      supportedRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork'
+    },
+    goals: {
+      maxVerificationLagIterations: 1,
+      maxHostedDurationMinutes: 30,
+      requireMachineReadableRecommendation: true
+    },
+    metrics: {
+      targetSlotCount: 20,
+      reservedSlotCount: 1,
+      implementationSlotsRemaining: 19,
+      durationWithinGoal: null,
+      recommendationPresent: true
+    },
+    blockers: []
+  });
+  writeJson(receiptPath, {
+    schema: 'priority/vi-history-lv32-shadow-proof-receipt@v1',
+    generatedAt: '2026-03-25T12:00:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    sourceCommitSha: '1234567890abcdef1234567890abcdef12345678',
+    lane: { id: 'vi-history-scenarios-windows-lv32' },
+    runner: {
+      name: 'self-hosted-windows-lv32',
+      requiredLabels: ['self-hosted', 'Windows', 'X64', 'comparevi', 'capability-ingress', 'labview-2026', 'lv32'],
+      actualLabels: ['self-hosted', 'Windows', 'X64', 'comparevi', 'capability-ingress', 'labview-2026', 'lv32'],
+      labelsMatched: true
+    },
+    headless: { required: true, enforced: true, executionMode: 'labview-cli-headless' },
+    hostPlane: {
+      status: 'ready',
+      native32Status: 'ready',
+      reportPath: 'tests/results/_agent/host-planes/labview-2026-host-plane-report.json',
+      labviewPath: 'C:/Program Files (x86)/National Instruments/LabVIEW 2026/LabVIEW.exe',
+      cliPath: 'C:/Program Files/National Instruments/LabVIEW 2026/LabVIEWCLI.exe',
+      comparePath: 'C:/Program Files (x86)/National Instruments/Shared/LVCompare/LVCompare.exe'
+    },
+    verification: {
+      status: 'pass',
+      runUrl: 'https://example.invalid/runs/1',
+      summaryPath: 'tests/results/_agent/vi-history/compare-summary.json',
+      reportPath: 'tests/results/_agent/promotion/vi-history-lv32-shadow-proof-receipt.json'
+    }
+  });
+
+  const result = runDownstreamPromotionScorecard({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    successReportPath,
+    feedbackReportPath,
+    templateAgentVerificationReportPath,
+    viHistoryLv32ShadowProofReceiptPath: receiptPath,
+    outputPath
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report.summary.status, 'fail');
+  assert.equal(result.report.gates.viHistoryLv32ShadowProofReceipt.expectedContextPresent, false);
+  assert.ok(
+    result.report.summary.blockers.some((entry) => entry.code === 'vi-history-lv32-shadow-proof-manifest-provenance')
+  );
+});
+
+test('runDownstreamPromotionScorecard fails closed when LV32 shadow proof receipt bytes drift from the manifest SHA', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-promotion-scorecard-lv32-sha-'));
+  const successReportPath = path.join(tmpDir, 'downstream-onboarding-success.json');
+  const feedbackReportPath = path.join(tmpDir, 'downstream-onboarding-feedback.json');
+  const templateAgentVerificationReportPath = path.join(tmpDir, 'template-agent-verification-report.json');
+  const receiptPath = path.join(tmpDir, 'tests', 'results', '_agent', 'promotion', 'vi-history-lv32-shadow-proof-receipt.json');
+  const manifestReportPath = path.join(tmpDir, 'downstream-develop-promotion-manifest.json');
+
+  writeJson(successReportPath, {
+    schema: 'priority/downstream-onboarding-success@v1',
+    summary: { status: 'pass', repositoriesEvaluated: 1, totalBlockers: 0, totalWarnings: 0 }
+  });
+  writeJson(feedbackReportPath, {
+    schema: 'priority/downstream-onboarding-feedback@v1',
+    inputs: { downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate' },
+    execution: { status: 'pass', evaluateExitCode: 0, successExitCode: 0 }
+  });
+  writeJson(templateAgentVerificationReportPath, {
+    schema: 'priority/template-agent-verification-report@v1',
+    summary: { status: 'pass', blockerCount: 0, recommendation: 'continue-template-agent-loop' },
+    iteration: {
+      label: 'supported template proof for compare 12345678',
+      ref: 'develop:12345678',
+      headSha: '1234567890abcdef1234567890abcdef12345678'
+    },
+    lane: {
+      enabled: true,
+      reservedSlotCount: 1,
+      minimumImplementationSlots: 3,
+      implementationSlotsRemaining: 19,
+      executionMode: 'hosted-first',
+      targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      consumerRailBranch: 'downstream/develop'
+    },
+    verification: {
+      provider: 'hosted-github-workflow',
+      status: 'pass',
+      runUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork/actions/runs/23567964307'
+    },
+    provenance: {
+      templateDependency: {
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        version: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
+        ref: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
+        cookiecutterVersion: '2.7.1'
+      },
+      execution: {
+        executionPlane: 'hosted-github-actions',
+        containerImage: null,
+        generatedConsumerWorkspaceRoot: null,
+        laneId: 'supported-template-proof',
+        agentId: 'compare-monitoring-mode',
+        fundingWindowId: null
+      }
+    },
+    authorityProjection: {
+      source: 'supported-template-proof',
+      supportedRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork'
+    },
+    goals: {
+      maxVerificationLagIterations: 1,
+      maxHostedDurationMinutes: 30,
+      requireMachineReadableRecommendation: true
+    },
+    metrics: {
+      targetSlotCount: 20,
+      reservedSlotCount: 1,
+      implementationSlotsRemaining: 19,
+      durationWithinGoal: null,
+      recommendationPresent: true
+    },
+    blockers: []
+  });
+  writeJson(receiptPath, {
+    schema: 'priority/vi-history-lv32-shadow-proof-receipt@v1',
+    generatedAt: '2026-03-25T12:00:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    sourceCommitSha: '1234567890abcdef1234567890abcdef12345678',
+    lane: { id: 'vi-history-scenarios-windows-lv32' },
+    runner: {
+      name: 'self-hosted-windows-lv32',
+      requiredLabels: ['self-hosted', 'Windows', 'X64', 'comparevi', 'capability-ingress', 'labview-2026', 'lv32'],
+      actualLabels: ['self-hosted', 'Windows', 'X64', 'comparevi', 'capability-ingress', 'labview-2026', 'lv32'],
+      labelsMatched: true
+    },
+    headless: { required: true, enforced: true, executionMode: 'labview-cli-headless' },
+    hostPlane: {
+      status: 'ready',
+      native32Status: 'ready',
+      reportPath: 'tests/results/_agent/host-planes/labview-2026-host-plane-report.json',
+      labviewPath: 'C:/Program Files (x86)/National Instruments/LabVIEW 2026/LabVIEW.exe',
+      cliPath: 'C:/Program Files/National Instruments/LabVIEW 2026/LabVIEWCLI.exe',
+      comparePath: 'C:/Program Files (x86)/National Instruments/Shared/LVCompare/LVCompare.exe'
+    },
+    verification: {
+      status: 'pass',
+      runUrl: 'https://example.invalid/runs/19',
+      summaryPath: 'tests/results/_agent/vi-history/compare-summary.json',
+      reportPath: 'tests/results/_agent/promotion/vi-history-lv32-shadow-proof-receipt.json'
+    }
+  });
+  const manifestReceiptSha256 = sha256File(receiptPath);
+  writeJson(receiptPath, {
+    schema: 'priority/vi-history-lv32-shadow-proof-receipt@v1',
+    generatedAt: '2026-03-25T12:00:01.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    sourceCommitSha: '1234567890abcdef1234567890abcdef12345678',
+    lane: { id: 'vi-history-scenarios-windows-lv32' },
+    runner: {
+      name: 'self-hosted-windows-lv32',
+      requiredLabels: ['self-hosted', 'Windows', 'X64', 'comparevi', 'capability-ingress', 'labview-2026', 'lv32'],
+      actualLabels: ['self-hosted', 'Windows', 'X64', 'comparevi', 'capability-ingress', 'labview-2026', 'lv32'],
+      labelsMatched: true
+    },
+    headless: { required: true, enforced: true, executionMode: 'labview-cli-headless' },
+    hostPlane: {
+      status: 'ready',
+      native32Status: 'ready',
+      reportPath: 'tests/results/_agent/host-planes/labview-2026-host-plane-report.json',
+      labviewPath: 'C:/Program Files (x86)/National Instruments/LabVIEW 2026/LabVIEW.exe',
+      cliPath: 'C:/Program Files/National Instruments/LabVIEW 2026/LabVIEWCLI.exe',
+      comparePath: 'C:/Program Files (x86)/National Instruments/Shared/LVCompare/LVCompare.exe'
+    },
+    verification: {
+      status: 'pass',
+      runUrl: 'https://example.invalid/runs/19',
+      summaryPath: 'tests/results/_agent/vi-history/compare-summary.json',
+      reportPath: 'tests/results/_agent/promotion/vi-history-lv32-shadow-proof-receipt.json'
+    }
+  });
+  writeJson(manifestReportPath, {
+    schema: 'priority/downstream-promotion-manifest@v1',
+    promotion: {
+      sourceRef: 'upstream/develop',
+      sourceCommitSha: '1234567890abcdef1234567890abcdef12345678',
+      targetBranch: 'downstream/develop',
+      targetBranchClassId: 'downstream-consumer-proving-rail',
+      localSourceVerification: { attempted: true, matched: true }
+    },
+    inputs: {
+      compareviToolsRelease: 'v0.6.3-tools.14',
+      compareviHistoryRelease: 'v1.3.24',
+      scenarioPackIdentity: 'scenario-pack@v1',
+      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.1',
+      viHistoryLv32ShadowProofReceipt: {
+        path: receiptPath,
+        sha256: manifestReceiptSha256
+      }
+    }
+  });
+
+  const result = runDownstreamPromotionScorecard({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    successReportPath,
+    feedbackReportPath,
+    templateAgentVerificationReportPath,
+    viHistoryLv32ShadowProofReceiptPath: receiptPath,
+    manifestReportPath,
+    outputPath: path.join(tmpDir, 'scorecard.json'),
+    failOnBlockers: false
+  });
+
+  assert.equal(result.report.summary.status, 'fail');
+  assert.equal(result.report.gates.viHistoryLv32ShadowProofReceipt.sha256Matched, false);
+  assert.ok(result.report.summary.blockers.some((entry) => entry.code === 'vi-history-lv32-shadow-proof-sha-mismatch'));
 });
 
 test('runDownstreamPromotionScorecard accepts monitoring-derived template verification authority', () => {
@@ -458,6 +897,7 @@ test('runDownstreamPromotionScorecard fails closed when template verification he
   });
 
   const result = runDownstreamPromotionScorecard({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     successReportPath,
     feedbackReportPath,
     templateAgentVerificationReportPath,
@@ -544,4 +984,141 @@ test('runDownstreamPromotionScorecard fails closed when template verification la
   assert.equal(result.report.summary.status, 'fail');
   assert.equal(result.report.gates.templateAgentVerificationReport.verificationProvider, 'local-manual');
   assert.ok(result.report.summary.blockers.some((entry) => entry.code === 'template-agent-verification-hosted-provenance'));
+});
+
+test('runDownstreamPromotionScorecard fails closed when LV32 shadow proof receipt mismatches the promoted source commit', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-promotion-scorecard-lv32-mismatch-'));
+  const successReportPath = path.join(tmpDir, 'downstream-onboarding-success.json');
+  const feedbackReportPath = path.join(tmpDir, 'downstream-onboarding-feedback.json');
+  const templateAgentVerificationReportPath = path.join(tmpDir, 'template-agent-verification-report.json');
+  const receiptPath = path.join(tmpDir, 'tests', 'results', '_agent', 'promotion', 'vi-history-lv32-shadow-proof-receipt.json');
+  const manifestReportPath = path.join(tmpDir, 'downstream-develop-promotion-manifest.json');
+
+  writeJson(successReportPath, {
+    schema: 'priority/downstream-onboarding-success@v1',
+    summary: { status: 'pass', repositoriesEvaluated: 1, totalBlockers: 0, totalWarnings: 0 }
+  });
+  writeJson(feedbackReportPath, {
+    schema: 'priority/downstream-onboarding-feedback@v1',
+    inputs: { downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate' },
+    execution: { status: 'pass', evaluateExitCode: 0, successExitCode: 0 }
+  });
+  writeJson(templateAgentVerificationReportPath, {
+    schema: 'priority/template-agent-verification-report@v1',
+    summary: { status: 'pass', blockerCount: 0, recommendation: 'continue-template-agent-loop' },
+    iteration: {
+      label: 'supported template proof for compare 12345678',
+      ref: 'develop:12345678',
+      headSha: '1234567890abcdef1234567890abcdef12345678'
+    },
+    lane: {
+      enabled: true,
+      reservedSlotCount: 1,
+      minimumImplementationSlots: 3,
+      implementationSlotsRemaining: 19,
+      executionMode: 'hosted-first',
+      targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      consumerRailBranch: 'downstream/develop'
+    },
+    verification: {
+      provider: 'hosted-github-workflow',
+      status: 'pass',
+      runUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork/actions/runs/23567964307'
+    },
+    provenance: {
+      templateDependency: {
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        version: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
+        ref: 'c3ae46c2b0a02b514b4b08d426302953a87243bc',
+        cookiecutterVersion: '2.7.1'
+      },
+      execution: {
+        executionPlane: 'hosted-github-actions',
+        containerImage: null,
+        generatedConsumerWorkspaceRoot: null,
+        laneId: 'supported-template-proof',
+        agentId: 'compare-monitoring-mode',
+        fundingWindowId: null
+      }
+    },
+    authorityProjection: {
+      source: 'supported-template-proof',
+      supportedRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork'
+    },
+    goals: {
+      maxVerificationLagIterations: 1,
+      maxHostedDurationMinutes: 30,
+      requireMachineReadableRecommendation: true
+    },
+    metrics: {
+      targetSlotCount: 20,
+      reservedSlotCount: 1,
+      implementationSlotsRemaining: 19,
+      durationWithinGoal: null,
+      recommendationPresent: true
+    },
+    blockers: []
+  });
+  writeJson(receiptPath, {
+    schema: 'priority/vi-history-lv32-shadow-proof-receipt@v1',
+    generatedAt: '2026-03-25T12:00:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    sourceCommitSha: 'ffffffffffffffffffffffffffffffffffffffff',
+    lane: { id: 'vi-history-scenarios-windows-lv32' },
+    runner: {
+      name: 'self-hosted-windows-lv32',
+      requiredLabels: ['self-hosted', 'Windows', 'X64', 'comparevi', 'capability-ingress', 'labview-2026', 'lv32'],
+      actualLabels: ['self-hosted', 'Windows', 'X64', 'comparevi', 'capability-ingress', 'labview-2026', 'lv32'],
+      labelsMatched: true
+    },
+    headless: { required: true, enforced: true, executionMode: 'labview-cli-headless' },
+    hostPlane: {
+      status: 'ready',
+      native32Status: 'ready',
+      reportPath: 'tests/results/_agent/host-planes/labview-2026-host-plane-report.json',
+      labviewPath: 'C:/Program Files (x86)/National Instruments/LabVIEW 2026/LabVIEW.exe',
+      cliPath: 'C:/Program Files/National Instruments/LabVIEW 2026/LabVIEWCLI.exe',
+      comparePath: 'C:/Program Files (x86)/National Instruments/Shared/LVCompare/LVCompare.exe'
+    },
+    verification: {
+      status: 'pass',
+      runUrl: 'https://example.invalid/runs/18',
+      summaryPath: 'tests/results/_agent/vi-history/compare-summary.json',
+      reportPath: 'tests/results/_agent/promotion/vi-history-lv32-shadow-proof-receipt.json'
+    }
+  });
+  writeJson(manifestReportPath, {
+    schema: 'priority/downstream-promotion-manifest@v1',
+    promotion: {
+      sourceRef: 'upstream/develop',
+      sourceCommitSha: '1234567890abcdef1234567890abcdef12345678',
+      targetBranch: 'downstream/develop',
+      targetBranchClassId: 'downstream-consumer-proving-rail',
+      localSourceVerification: { attempted: true, matched: true }
+    },
+    inputs: {
+      compareviToolsRelease: 'v0.6.3-tools.14',
+      compareviHistoryRelease: 'v1.3.24',
+      scenarioPackIdentity: 'scenario-pack@v1',
+      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.1',
+      viHistoryLv32ShadowProofReceipt: {
+        path: receiptPath,
+        sha256: sha256File(receiptPath)
+      }
+    }
+  });
+
+  const result = runDownstreamPromotionScorecard({
+    successReportPath,
+    feedbackReportPath,
+    templateAgentVerificationReportPath,
+    manifestReportPath,
+    failOnBlockers: false
+  });
+
+  assert.equal(result.report.summary.status, 'fail');
+  assert.equal(result.report.gates.viHistoryLv32ShadowProofReceipt.status, 'fail');
+  assert.equal(result.report.gates.viHistoryLv32ShadowProofReceipt.sourceCommitMatched, false);
+  assert.ok(result.report.summary.blockers.some((entry) => entry.code === 'vi-history-lv32-shadow-proof-contract'));
+  assert.ok(result.report.summary.blockers.some((entry) => entry.code === 'vi-history-lv32-shadow-proof-source-mismatch'));
 });

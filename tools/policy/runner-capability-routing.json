@@ -117,6 +117,22 @@
       ]
     },
     {
+      "workflow": ".github/workflows/validate.yml",
+      "jobs": [
+        {
+          "id": "vi-history-scenarios-windows-lv32",
+          "routingClass": "specialized-opt-in",
+          "requiredCapabilityLabels": [
+            "labview-2026",
+            "lv32"
+          ],
+          "requiredHealthReceipts": [
+            "labview-2026-host-plane-report"
+          ]
+        }
+      ]
+    },
+    {
       "workflow": ".github/workflows/vi-compare-pr.yml",
       "jobs": [
         {

@@ -19,23 +19,25 @@
     "inputs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["successReport", "feedbackReport", "templateAgentVerificationReport", "manifestReport"],
+      "required": ["successReport", "feedbackReport", "templateAgentVerificationReport", "manifestReport", "viHistoryLv32ShadowProofReceipt"],
       "properties": {
         "successReport": { "$ref": "#/$defs/inputRef" },
         "feedbackReport": { "$ref": "#/$defs/inputRef" },
         "templateAgentVerificationReport": { "$ref": "#/$defs/inputRef" },
-        "manifestReport": { "$ref": "#/$defs/inputRefNullablePath" }
+        "manifestReport": { "$ref": "#/$defs/inputRefNullablePath" },
+        "viHistoryLv32ShadowProofReceipt": { "$ref": "#/$defs/inputRefNullablePath" }
       }
     },
     "gates": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["successReport", "feedbackReport", "templateAgentVerificationReport", "manifestReport"],
+      "required": ["successReport", "feedbackReport", "templateAgentVerificationReport", "manifestReport", "viHistoryLv32ShadowProofReceipt"],
       "properties": {
         "successReport": { "$ref": "#/$defs/successGate" },
         "feedbackReport": { "$ref": "#/$defs/feedbackGate" },
         "templateAgentVerificationReport": { "$ref": "#/$defs/templateAgentVerificationGate" },
-        "manifestReport": { "$ref": "#/$defs/manifestGate" }
+        "manifestReport": { "$ref": "#/$defs/manifestGate" },
+        "viHistoryLv32ShadowProofReceipt": { "$ref": "#/$defs/viHistoryLv32ShadowProofReceiptGate" }
       }
     },
     "summary": {
@@ -66,13 +68,17 @@
             "sourceRef",
             "sourceCommitSha",
             "compareviToolsRelease",
-            "compareviHistoryRelease",
-            "scenarioPackIdentity",
-            "cookiecutterTemplateIdentity",
-            "templateVerificationRepository",
-            "templateVerificationVersion",
-            "templateVerificationRef",
-            "templateVerificationConsumerRailBranch"
+          "compareviHistoryRelease",
+          "scenarioPackIdentity",
+          "cookiecutterTemplateIdentity",
+          "templateVerificationRepository",
+          "templateVerificationVersion",
+          "templateVerificationRef",
+          "templateVerificationConsumerRailBranch",
+          "viHistoryLv32ShadowProofReceiptPath",
+          "viHistoryLv32ShadowProofReceiptSha256",
+          "viHistoryLv32ShadowProofReceiptSourceCommitSha",
+          "viHistoryLv32ShadowProofReceiptStatus"
           ],
           "properties": {
             "sourceRef": { "type": ["string", "null"] },
@@ -84,7 +90,11 @@
             "templateVerificationRepository": { "type": ["string", "null"] },
             "templateVerificationVersion": { "type": ["string", "null"] },
             "templateVerificationRef": { "type": ["string", "null"] },
-            "templateVerificationConsumerRailBranch": { "type": ["string", "null"] }
+            "templateVerificationConsumerRailBranch": { "type": ["string", "null"] },
+            "viHistoryLv32ShadowProofReceiptPath": { "type": ["string", "null"] },
+            "viHistoryLv32ShadowProofReceiptSha256": { "type": ["string", "null"] },
+            "viHistoryLv32ShadowProofReceiptSourceCommitSha": { "type": ["string", "null"] },
+            "viHistoryLv32ShadowProofReceiptStatus": { "type": ["string", "null"] }
           }
         }
       }
@@ -193,6 +203,8 @@
         "sourceRef",
         "sourceCommitSha",
         "localSourceMatched",
+        "viHistoryLv32ShadowProofReceiptPath",
+        "viHistoryLv32ShadowProofReceiptSha256",
         "compareviToolsRelease",
         "compareviHistoryRelease",
         "scenarioPackIdentity",
@@ -206,10 +218,74 @@
         "sourceRef": { "type": ["string", "null"] },
         "sourceCommitSha": { "type": ["string", "null"] },
         "localSourceMatched": { "type": ["boolean", "null"] },
+        "viHistoryLv32ShadowProofReceiptPath": { "type": ["string", "null"] },
+        "viHistoryLv32ShadowProofReceiptSha256": { "type": ["string", "null"] },
         "compareviToolsRelease": { "type": ["string", "null"] },
         "compareviHistoryRelease": { "type": ["string", "null"] },
         "scenarioPackIdentity": { "type": ["string", "null"] },
         "cookiecutterTemplateIdentity": { "type": ["string", "null"] }
+      }
+    },
+    "viHistoryLv32ShadowProofReceiptGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "schema",
+        "expectedContextPresent",
+        "repository",
+        "sourceCommitSha",
+        "repositoryMatched",
+        "sourceCommitMatched",
+        "laneId",
+        "runnerName",
+        "requiredRunnerLabels",
+        "actualRunnerLabels",
+        "requiredLabelsMatched",
+        "labelsMatched",
+        "headlessRequired",
+        "headlessEnforced",
+        "headlessExecutionMode",
+        "expectedSha256",
+        "actualSha256",
+        "sha256Matched",
+        "hostPlaneStatus",
+        "hostPlaneNative32Status",
+        "verificationStatus",
+        "verificationRunUrl",
+        "verificationReportPath"
+      ],
+      "properties": {
+        "status": { "enum": ["pass", "fail", "missing"] },
+        "schema": { "type": ["string", "null"] },
+        "expectedContextPresent": { "type": ["boolean", "null"] },
+        "repository": { "type": ["string", "null"] },
+        "sourceCommitSha": { "type": ["string", "null"] },
+        "repositoryMatched": { "type": ["boolean", "null"] },
+        "sourceCommitMatched": { "type": ["boolean", "null"] },
+        "laneId": { "type": ["string", "null"] },
+        "runnerName": { "type": ["string", "null"] },
+        "requiredRunnerLabels": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "actualRunnerLabels": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+          "requiredLabelsMatched": { "type": ["boolean", "null"] },
+          "labelsMatched": { "type": ["boolean", "null"] },
+          "headlessRequired": { "type": ["boolean", "null"] },
+          "headlessEnforced": { "type": ["boolean", "null"] },
+          "headlessExecutionMode": { "type": ["string", "null"] },
+          "expectedSha256": { "type": ["string", "null"] },
+          "actualSha256": { "type": ["string", "null"] },
+          "sha256Matched": { "type": ["boolean", "null"] },
+          "hostPlaneStatus": { "type": ["string", "null"] },
+          "hostPlaneNative32Status": { "type": ["string", "null"] },
+        "verificationStatus": { "type": ["string", "null"] },
+        "verificationRunUrl": { "type": ["string", "null"] },
+        "verificationReportPath": { "type": ["string", "null"] }
       }
     }
   }
