@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
@@ -92,6 +93,10 @@ function loadInputFile(filePath) {
   } catch (error) {
     return { exists: true, path: resolvedPath, payload: null, error: error.message || String(error) };
   }
+}
+
+function sha256File(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
 function toNonNegativeInteger(value) {
@@ -329,11 +334,14 @@ function statusFromViHistoryLv32ShadowProofReceipt(payload, expected = {}) {
   const expectedRunnerLabels = Array.isArray(expected.requiredRunnerLabels)
     ? expected.requiredRunnerLabels.map((label) => normalizeText(label)).filter(Boolean)
     : [];
+  const expectedSha256 = normalizeText(expected.sha256) || null;
   const expectedContextPresent = Boolean(expectedRepository && expectedSourceCommitSha);
   const repositoryMatched = expectedRepository ? repository === expectedRepository : null;
   const sourceCommitMatched = expectedSourceCommitSha ? sourceCommitSha === expectedSourceCommitSha : null;
   const requiredLabelsMatched =
     expectedRunnerLabels.length > 0 ? expectedRunnerLabels.every((label) => actualRunnerLabels.includes(label)) : null;
+  const actualSha256 = normalizeText(expected.actualSha256) || null;
+  const sha256Matched = expectedSha256 ? actualSha256 === expectedSha256 : null;
 
   return {
     status:
@@ -347,6 +355,7 @@ function statusFromViHistoryLv32ShadowProofReceipt(payload, expected = {}) {
       headlessRequired === true &&
       headlessEnforced === true &&
       headlessExecutionMode === 'labview-cli-headless' &&
+      (expectedSha256 ? sha256Matched === true : true) &&
       hostPlaneStatus === 'ready' &&
       hostPlaneNative32Status === 'ready' &&
       verificationStatus === 'pass'
@@ -367,6 +376,9 @@ function statusFromViHistoryLv32ShadowProofReceipt(payload, expected = {}) {
     headlessRequired,
     headlessEnforced,
     headlessExecutionMode,
+    expectedSha256,
+    actualSha256,
+    sha256Matched,
     hostPlaneStatus,
     hostPlaneNative32Status,
     verificationStatus,
@@ -566,6 +578,12 @@ export function evaluateDownstreamPromotionScorecard({
           'LV32 shadow proof receipt does not prove headless LabVIEW 32-bit execution.'
         );
       }
+      if (viHistoryLv32ShadowProofReceiptGate.sha256Matched === false) {
+        recordBlocker(
+          'vi-history-lv32-shadow-proof-sha-mismatch',
+          'LV32 shadow proof receipt bytes do not match the immutable SHA256 recorded in the promotion manifest.'
+        );
+      }
       if (
         viHistoryLv32ShadowProofReceiptGate.hostPlaneStatus !== 'ready' ||
         viHistoryLv32ShadowProofReceiptGate.hostPlaneNative32Status !== 'ready'
@@ -617,6 +635,10 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
       ? path.resolve(cliReceiptPath) !== path.resolve(manifestReceiptPath)
       : false;
   const viHistoryLv32ShadowProofReceiptReport = loadInputFile(receiptPath);
+  const actualReceiptSha256 =
+    viHistoryLv32ShadowProofReceiptReport.exists && !viHistoryLv32ShadowProofReceiptReport.error && viHistoryLv32ShadowProofReceiptReport.path
+      ? sha256File(viHistoryLv32ShadowProofReceiptReport.path)
+      : null;
   const successGate = statusFromSuccessReport(successReport.payload);
   const feedbackGate = statusFromFeedbackReport(feedbackReport.payload);
   const manifestGate = statusFromManifestReport(manifestReport?.payload);
@@ -625,7 +647,9 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
     {
       repository: resolveRepoSlug(options.repo),
       sourceCommitSha: manifestGate.sourceCommitSha,
-      requiredRunnerLabels: EXPECTED_VI_HISTORY_LV32_RUNNER_LABELS
+      requiredRunnerLabels: EXPECTED_VI_HISTORY_LV32_RUNNER_LABELS,
+      sha256: manifestGate.viHistoryLv32ShadowProofReceiptSha256,
+      actualSha256: actualReceiptSha256
     }
   );
   const templateAgentVerificationGate = statusFromTemplateAgentVerificationReport(

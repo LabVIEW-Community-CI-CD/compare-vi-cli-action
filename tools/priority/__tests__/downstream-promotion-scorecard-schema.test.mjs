@@ -2,6 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,6 +17,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
+function sha256File(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
 test('downstream promotion scorecard schema validates generated report payload', async () => {
@@ -146,7 +151,7 @@ test('downstream promotion scorecard schema validates generated report payload',
       cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.1',
       viHistoryLv32ShadowProofReceipt: {
         path: receiptPath,
-        sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        sha256: sha256File(receiptPath)
       }
     }
   });

@@ -233,20 +233,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          receipt_args=()
           if [ -n "${{ inputs.vi_history_lv32_shadow_proof_receipt }}" ]; then
-            receipt_args+=(--vi-history-lv32-shadow-proof-receipt '${{ inputs.vi_history_lv32_shadow_proof_receipt }}')
+            node tools/priority/downstream-promotion-manifest.mjs \
+              --source-sha '${{ steps.source.outputs.source_sha }}' \
+              --comparevi-tools-release '${{ inputs.comparevi_tools_release }}' \
+              --comparevi-history-release '${{ inputs.comparevi_history_release }}' \
+              --scenario-pack-id '${{ inputs.scenario_pack_id }}' \
+              --cookiecutter-template-id '${{ inputs.cookiecutter_template_id }}' \
+              --proving-scorecard-ref tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json \
+              --actor '${{ github.actor }}' \
+              --vi-history-lv32-shadow-proof-receipt '${{ inputs.vi_history_lv32_shadow_proof_receipt }}' \
+              --output tests/results/_agent/promotion/downstream-develop-promotion-manifest.json
+          else
+            node tools/priority/downstream-promotion-manifest.mjs \
+              --source-sha '${{ steps.source.outputs.source_sha }}' \
+              --comparevi-tools-release '${{ inputs.comparevi_tools_release }}' \
+              --comparevi-history-release '${{ inputs.comparevi_history_release }}' \
+              --scenario-pack-id '${{ inputs.scenario_pack_id }}' \
+              --cookiecutter-template-id '${{ inputs.cookiecutter_template_id }}' \
+              --proving-scorecard-ref tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json \
+              --actor '${{ github.actor }}' \
+              --output tests/results/_agent/promotion/downstream-develop-promotion-manifest.json
           fi
-          node tools/priority/downstream-promotion-manifest.mjs \
-            --source-sha '${{ steps.source.outputs.source_sha }}' \
-            --comparevi-tools-release '${{ inputs.comparevi_tools_release }}' \
-            --comparevi-history-release '${{ inputs.comparevi_history_release }}' \
-            --scenario-pack-id '${{ inputs.scenario_pack_id }}' \
-            --cookiecutter-template-id '${{ inputs.cookiecutter_template_id }}' \
-            --proving-scorecard-ref tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json \
-            --actor '${{ github.actor }}' \
-            "${receipt_args[@]}" \
-            --output tests/results/_agent/promotion/downstream-develop-promotion-manifest.json
 
       - name: Validate downstream promotion manifest schema
         if: ${{ always() && hashFiles('tests/results/_agent/promotion/downstream-develop-promotion-manifest.json') != '' }}
@@ -262,17 +270,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          receipt_args=()
           if [ -n "${{ inputs.vi_history_lv32_shadow_proof_receipt }}" ]; then
-            receipt_args+=(--vi-history-lv32-shadow-proof-receipt '${{ inputs.vi_history_lv32_shadow_proof_receipt }}')
+            node tools/priority/downstream-promotion-scorecard.mjs \
+              --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json \
+              --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json \
+              --template-agent-verification-report tests/results/_agent/promotion/template-agent-verification-report.json \
+              --manifest-report tests/results/_agent/promotion/downstream-develop-promotion-manifest.json \
+              --vi-history-lv32-shadow-proof-receipt '${{ inputs.vi_history_lv32_shadow_proof_receipt }}' \
+              --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
+          else
+            node tools/priority/downstream-promotion-scorecard.mjs \
+              --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json \
+              --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json \
+              --template-agent-verification-report tests/results/_agent/promotion/template-agent-verification-report.json \
+              --manifest-report tests/results/_agent/promotion/downstream-develop-promotion-manifest.json \
+              --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
           fi
-          node tools/priority/downstream-promotion-scorecard.mjs \
-            --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json \
-            --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json \
-            --template-agent-verification-report tests/results/_agent/promotion/template-agent-verification-report.json \
-            --manifest-report tests/results/_agent/promotion/downstream-develop-promotion-manifest.json \
-            "${receipt_args[@]}" \
-            --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
 
       - name: Validate downstream promotion scorecard schema
         if: ${{ always() && hashFiles('tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json') != '' }}
