@@ -361,6 +361,8 @@ function deriveOwners(compareGovernorSummary, monitoringMode, portfolioMode, viH
   const pivotTargetRepository =
     asOptional(monitoringMode?.policy?.pivotTargetRepository) || asOptional(compareRepository);
   const futureAgentAction = asOptional(monitoringMode?.summary?.futureAgentAction);
+  const compareGovernorNextOwnerRepository =
+    asOptional(compareGovernorSummary?.summary?.nextOwnerRepository) || compareRepository;
 
   if (portfolioMode === 'template-work') {
     return {
@@ -390,9 +392,15 @@ function deriveOwners(compareGovernorSummary, monitoringMode, portfolioMode, viH
 
     return {
       currentOwnerRepository: compareRepository,
-      nextOwnerRepository: futureAgentAction === 'future-agent-may-pivot' ? pivotTargetRepository : compareRepository,
+      nextOwnerRepository:
+        futureAgentAction === 'future-agent-may-pivot'
+          ? compareGovernorNextOwnerRepository
+          : compareRepository,
       nextAction: futureAgentAction || asOptional(compareGovernorSummary?.summary?.nextAction) || 'remain-in-monitoring',
-      ownerDecisionSource: 'compare-monitoring-mode'
+      ownerDecisionSource:
+        futureAgentAction === 'future-agent-may-pivot' && compareGovernorNextOwnerRepository !== pivotTargetRepository
+          ? 'delivery-runtime-marketplace'
+          : 'compare-monitoring-mode'
     };
   }
 

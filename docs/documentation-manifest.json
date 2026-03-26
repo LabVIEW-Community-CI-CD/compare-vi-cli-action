@@ -390,6 +390,18 @@
         ]
     },
     {
+      "name": "Cross-Repo Lane Broker Contracts",
+      "category": "supporting",
+      "status": "reference",
+      "description": "Checked-in marketplace broker decision receipt, generator, focused tests, and runtime control-plane docs for selecting the next compare/template/history lane and worker provider when the current repository is queue-empty.",
+      "files": [
+        "docs/schemas/cross-repo-lane-broker-decision-v1.schema.json",
+        "tools/priority/cross-repo-lane-broker.mjs",
+        "tools/priority/__tests__/cross-repo-lane-broker.test.mjs",
+        "tools/priority/__tests__/cross-repo-lane-broker-schema.test.mjs"
+      ]
+    },
+    {
       "name": "Background Agent Saturation KPI Contracts",
       "category": "supporting",
       "status": "reference",

@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(MODULE_DIR, '..', '..');
+const COMPAREVI_UPSTREAM_REPOSITORY = 'LabVIEW-Community-CI-CD/compare-vi-cli-action';
+const COMPAREVI_HISTORY_REPOSITORY = 'LabVIEW-Community-CI-CD/comparevi-history';
+const TEMPLATE_CANONICAL_REPOSITORY = 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate';
 
 export const DEFAULT_OUTPUT_PATH = path.join(
   'tests',
@@ -875,6 +878,18 @@ function deriveQueueAuthority({ repoRoot, repository, deliveryRuntime, readOptio
   };
 }
 
+function deriveMarketplaceRecommendationRepository(deliveryRuntimeState) {
+  const repository = asOptional(deliveryRuntimeState?.marketplace?.recommendedLane?.repository);
+  if (
+    repository === COMPAREVI_UPSTREAM_REPOSITORY ||
+    repository === COMPAREVI_HISTORY_REPOSITORY ||
+    repository === TEMPLATE_CANONICAL_REPOSITORY
+  ) {
+    return repository;
+  }
+  return null;
+}
+
 function deriveGovernorMode({ queueState, continuity, monitoringMode, wake }) {
   switch (wake.terminalState) {
     case 'compare-work':
@@ -927,7 +942,7 @@ function deriveSignalQuality({ governorMode, wake }) {
   return 'unknown';
 }
 
-function deriveOwners({ governorMode, monitoringMode, wake, repository }) {
+function deriveOwners({ governorMode, monitoringMode, wake, repository, marketplaceRecommendationRepository = null }) {
   const compareRepository =
     asOptional(monitoringMode?.policy?.compareRepository) ||
     asOptional(monitoringMode?.repository) ||
@@ -950,7 +965,7 @@ function deriveOwners({ governorMode, monitoringMode, wake, repository }) {
         currentOwnerRepository: compareRepository,
         nextOwnerRepository:
           asOptional(monitoringMode?.summary?.futureAgentAction) === 'future-agent-may-pivot'
-            ? pivotTargetRepository
+            ? marketplaceRecommendationRepository || pivotTargetRepository
             : compareRepository
       };
     case 'external-route':
@@ -1029,7 +1044,14 @@ function buildReport({
   });
   const governorMode = deriveGovernorMode({ queueState, continuity, monitoringMode, wake });
   const signalQuality = deriveSignalQuality({ governorMode, wake });
-  const owners = deriveOwners({ governorMode, monitoringMode, wake, repository });
+  const marketplaceRecommendationRepository = deriveMarketplaceRecommendationRepository(deliveryRuntimeState);
+  const owners = deriveOwners({
+    governorMode,
+    monitoringMode,
+    wake,
+    repository,
+    marketplaceRecommendationRepository
+  });
   const nextAction = deriveNextAction({ governorMode, monitoringMode, wake });
 
   return {

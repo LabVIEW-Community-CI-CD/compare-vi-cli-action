@@ -36,6 +36,7 @@ next turn until one of two stop conditions is true:
 | Supervisor | Owns the event loop, stop conditions, ranking, and lease renewal. | `tools/priority/queue-supervisor.mjs` |
 | State mirror | Refreshes live GitHub epics, child issues, PRs, checks, and project metadata. | `gh`, `priority:project:portfolio:check` |
 | Marketplace registry | Enumerates cross-repo integration, fork, and consumer rails for rankable work stealing. | `tools/priority/lane-marketplace.json`, `priority:lane:marketplace` |
+| Cross-repo broker | Turns marketplace, governor, and worker-provider receipts into one schedulable repo/lane/provider decision. | `tools/priority/cross-repo-lane-broker.mjs` |
 | Lease broker | Prevents overlapping writers in the same repo scope. | `tools/priority/agent-writer-lease.mjs` |
 | Worker pool | Maintains isolated worktrees per lane/fork. | git worktrees + `priority:develop:sync` |
 | Command broker | Executes repo-native helpers and records fallback evidence. | `bootstrap.ps1`, `priority:pr`, `priority:issue:mirror` |
@@ -50,12 +51,13 @@ bounded loop:
 1. Acquire the writer lease for the repo and lane scopes.
 2. Refresh live GitHub state from upstream and both fork planes.
 3. Recompute open epics, child issues, PRs, blockers, and free fork lanes.
-4. Select exactly one highest-value next action.
-5. Materialize a dedicated worker checkout for that lane.
-6. Call the model with a compact task packet for that one action.
-7. Execute the resulting helper/tool calls.
-8. Persist evidence and update runtime state.
-9. Re-enter the scheduler immediately.
+4. Materialize the cross-repo broker decision from marketplace, governor, and worker-provider policy.
+5. Select exactly one highest-value next action.
+6. Materialize a dedicated worker checkout for that lane.
+7. Call the model with a compact task packet for that one action.
+8. Execute the resulting helper/tool calls.
+9. Persist evidence and update runtime state.
+10. Re-enter the scheduler immediately.
 
 The model stays stateless between turns. The runtime owns continuity.
 

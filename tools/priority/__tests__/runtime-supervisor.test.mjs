@@ -124,7 +124,8 @@ function makeLaneBranchClassContract() {
 
 function createMonitoringEntrypoints({
   comparePath = 'E:\\comparevi-lanes\\compare-monitoring-canonical',
-  templatePath = 'E:\\comparevi-lanes\\LabviewGitHubCiTemplate-monitoring-canonical'
+  templatePath = 'E:\\comparevi-lanes\\LabviewGitHubCiTemplate-monitoring-canonical',
+  historyPath = 'E:\\comparevi-lanes\\comparevi-history-monitoring-canonical'
 } = {}) {
   return {
     schema: 'local/monitoring-entrypoints-v1',
@@ -158,6 +159,19 @@ function createMonitoringEntrypoints({
       supportedProofRuns: {
         orgFork: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork/actions/runs/23405232217',
         personalFork: 'https://github.com/svelderrainruiz/LabviewGitHubCiTemplate/actions/runs/23405232554'
+      }
+    },
+    history: {
+      authoritative: true,
+      path: historyPath,
+      checkoutState: 'branch-monitoring/upstream-develop',
+      headSha: '9be0b25c4a5d4fd49b7576f2f4dfca53a5d7f4c9',
+      receipts: {
+        standingQueue: `${historyPath}\\tests\\results\\_agent\\issue\\standing-priority.json`
+      },
+      currentState: {
+        standingQueue: 'standing-open',
+        continuity: 'maintained'
       }
     }
   };
@@ -3780,6 +3794,93 @@ test('comparevi runtime executes repo-context pivot when queue-empty portfolio h
   assert.equal(persisted.activeLane.nextWakeCondition, 'target-repository-cycle');
 });
 
+test('comparevi runtime prefers a ready cross-repo broker decision when queue-empty execution pivots to another repository', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'comparevi-runtime-cross-repo-broker-pivot-'));
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    env: {
+      GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    schedulerDecision: {
+      outcome: 'idle',
+      reason:
+        'standing queue is empty; cross-repo broker selects LabVIEW-Community-CI-CD/comparevi-history issue #301 via local-codex.',
+      artifacts: {
+        governorPortfolioHandoff: {
+          summaryPath: 'tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json',
+          status: 'owner-match',
+          currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          nextAction: 'future-agent-may-pivot',
+          ownerDecisionSource: 'compare-monitoring-mode',
+          governorMode: 'monitoring-active',
+          reason: 'Governor portfolio keeps current ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action.'
+        },
+        crossRepoLaneBrokerDecision: {
+          schema: 'priority/cross-repo-lane-broker-decision@v1',
+          decision: {
+            status: 'ready',
+            selectedRepository: 'LabVIEW-Community-CI-CD/comparevi-history',
+            selectedIssueNumber: 301,
+            selectedIssueUrl: 'https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/301',
+            selectedIssueTitle: '[ci]: history proving lane',
+            selectedProviderId: 'local-codex',
+            selectedSlotId: 'worker-slot-1'
+          }
+        }
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      objective: {
+        summary:
+          'standing queue is empty; cross-repo broker selects LabVIEW-Community-CI-CD/comparevi-history issue #301 via local-codex.'
+      }
+    },
+    taskPacketArtifacts: {
+      latestPath: path.join(runtimeDir, 'task-packet.json')
+    },
+    runtimeArtifactPaths: {
+      runtimeDir
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        implementationRemote: 'origin',
+        maxActiveCodingLanes: 4
+      }),
+      readMonitoringEntrypointsFn: async () => createMonitoringEntrypoints(),
+      collectMarketplaceSnapshotFn: async () => ({
+        schema: 'priority/lane-marketplace-snapshot@v1',
+        generatedAt: '2026-03-23T04:31:00.000Z',
+        summary: {
+          repositoryCount: 0,
+          eligibleLaneCount: 0,
+          topEligibleLane: null
+        },
+        entries: []
+      }),
+      writeMarketplaceSnapshotFn: async () => path.join(runtimeDir, 'lane-marketplace-snapshot.json'),
+      selectMarketplaceRecommendationFn: () => null,
+      runTemplateAgentVerificationReportFn: async () => null
+    }
+  });
+
+  assert.equal(execution.outcome, 'repo-context-pivot');
+  assert.equal(execution.details.nextOwnerRepository, 'LabVIEW-Community-CI-CD/comparevi-history');
+  assert.equal(execution.details.brokerSelectedIssueNumber, 301);
+  assert.equal(execution.details.brokerProviderId, 'local-codex');
+  assert.equal(
+    execution.artifacts.governorPortfolioPivot.targetEntrypointPath,
+    'E:\\comparevi-lanes\\comparevi-history-monitoring-canonical'
+  );
+});
+
 test('comparevi runtime keeps idle when repo-context pivot target registry is unavailable', async () => {
   const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'comparevi-runtime-portfolio-pending-'));
   const execution = await compareviRuntimeTest.executeCompareviTurn({
@@ -3853,6 +3954,77 @@ test('comparevi runtime keeps idle when repo-context pivot target registry is un
   const persisted = await readJson(path.join(runtimeDir, 'delivery-agent-state.json'));
   assert.equal(persisted.activeLane.actionType, 'repo-context-pivot-pending');
   assert.equal(persisted.activeLane.outcome, 'idle');
+});
+
+test('comparevi runtime executes repo-context pivot when queue-empty portfolio handoff targets comparevi-history', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'comparevi-runtime-history-pivot-'));
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    env: {
+      GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot: '/tmp/repo',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    schedulerDecision: {
+      outcome: 'idle',
+      reason:
+        'standing queue is empty; governor portfolio keeps ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action while preparing repo-context pivot to LabVIEW-Community-CI-CD/comparevi-history.',
+      artifacts: {
+        governorPortfolioHandoff: {
+          summaryPath: 'tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json',
+          status: 'owner-match',
+          currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/comparevi-history',
+          nextAction: 'future-agent-may-pivot',
+          ownerDecisionSource: 'delivery-runtime-marketplace',
+          governorMode: 'monitoring-active',
+          reason: 'Governor portfolio keeps current ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action.'
+        }
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      objective: {
+        summary:
+          'standing queue is empty; governor portfolio keeps ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action while preparing repo-context pivot to LabVIEW-Community-CI-CD/comparevi-history.'
+      }
+    },
+    taskPacketArtifacts: {
+      latestPath: path.join(runtimeDir, 'task-packet.json')
+    },
+    runtimeArtifactPaths: {
+      runtimeDir
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        implementationRemote: 'origin',
+        maxActiveCodingLanes: 4
+      }),
+      readMonitoringEntrypointsFn: async () => createMonitoringEntrypoints(),
+      collectMarketplaceSnapshotFn: async () => ({
+        schema: 'priority/lane-marketplace-snapshot@v1',
+        generatedAt: '2026-03-23T04:31:00.000Z',
+        summary: {
+          repositoryCount: 0,
+          eligibleLaneCount: 0,
+          topEligibleLane: null
+        },
+        entries: []
+      }),
+      writeMarketplaceSnapshotFn: async () => path.join(runtimeDir, 'lane-marketplace-snapshot.json'),
+      selectMarketplaceRecommendationFn: () => null,
+      runTemplateAgentVerificationReportFn: async () => null
+    }
+  });
+
+  assert.equal(execution.outcome, 'repo-context-pivot');
+  assert.equal(execution.details.nextOwnerRepository, 'LabVIEW-Community-CI-CD/comparevi-history');
+  assert.equal(execution.details.targetEntrypointPath, 'E:\\comparevi-lanes\\comparevi-history-monitoring-canonical');
+  assert.equal(execution.artifacts.governorPortfolioPivot.status, 'ready');
 });
 
 test('comparevi canonical execution consumes the broker receipt file when stdout includes helper chatter', async () => {
