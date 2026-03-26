@@ -122,7 +122,7 @@
       "additionalProperties": false,
       "required": ["status", "source", "remainingCredits", "remainingUsd", "rollupInvoiceTurnId", "reason"],
       "properties": {
-        "status": { "enum": ["resolved", "fail-closed"] },
+        "status": { "enum": ["resolved", "replenished-but-unreconciled", "fail-closed"] },
         "source": { "type": ["string", "null"] },
         "remainingCredits": { "type": ["number", "null"], "minimum": 0 },
         "remainingUsd": { "type": ["number", "null"], "minimum": 0 },
@@ -137,6 +137,7 @@
         "status",
         "failClosed",
         "capitalModeRecommended",
+        "treasuryPosture",
         "blockingReasonCodes",
         "currentFundingWindowId",
         "latestHardStopStatus",
@@ -147,6 +148,7 @@
         "status": { "enum": ["pass", "fail-closed"] },
         "failClosed": { "type": "boolean" },
         "capitalModeRecommended": { "enum": ["balanced", "conserve"] },
+        "treasuryPosture": { "enum": ["trusted-capital", "replenished-but-unreconciled", "fail-closed"] },
         "blockingReasonCodes": {
           "type": "array",
           "items": { "type": "string" }
@@ -170,7 +172,8 @@
         "latestReplenishmentInvoiceId",
         "latestHardStopStatus",
         "latestResumeStatus",
-        "remainingCapitalStatus"
+        "remainingCapitalStatus",
+        "treasuryPosture"
       ],
       "properties": {
         "status": { "enum": ["pass", "fail-closed"] },
@@ -188,7 +191,8 @@
         "latestReplenishmentInvoiceId": { "type": ["string", "null"] },
         "latestHardStopStatus": { "enum": ["missing", "observed", "inferred"] },
         "latestResumeStatus": { "enum": ["missing", "observed", "inferred"] },
-        "remainingCapitalStatus": { "enum": ["resolved", "fail-closed"] }
+        "remainingCapitalStatus": { "enum": ["resolved", "replenished-but-unreconciled", "fail-closed"] },
+        "treasuryPosture": { "enum": ["trusted-capital", "replenished-but-unreconciled", "fail-closed"] }
       }
     }
   },

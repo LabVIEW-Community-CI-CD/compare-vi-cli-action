@@ -102,6 +102,111 @@ function createWakeInvestmentAccounting() {
   };
 }
 
+function createTreasuryLedger(overrides = {}) {
+  return {
+    schema: 'priority/treasury-ledger@v1',
+    generatedAt: '2026-03-26T06:30:00.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    inputs: {
+      invoiceMetadataPath: 'tests/results/_agent/cost/treasury/HQ1VJLMV-0030.private-metadata.local.json',
+      normalizedInvoiceTurnPath: 'tests/results/_agent/cost/invoice-turns/HQ1VJLMV-0030.local.json',
+      usageExportCsvPath: 'C:/Users/sveld/Downloads/LabVIEW Open-Source Initiative Credit Usage Report (Mar 15 - Apr 15) (3).csv',
+      normalizedUsageExportPath: 'tests/results/_agent/cost/usage-exports/labview_open-source_initiative_credit_usage_report_mar_15_-_apr_15_3.json',
+      costRollupPath: 'tests/results/_agent/cost/agent-cost-rollup.json',
+      operatorSteeringEventPath: 'tests/results/_agent/runtime/operator-steering-event.json'
+    },
+    events: {
+      hardStop: {
+        status: 'inferred',
+        observedAt: null,
+        sourceKind: 'invoice-metadata',
+        reason: 'replenishmentReason=post-exhaustion implies a prior hard-stop event'
+      },
+      replenishment: {
+        status: 'observed',
+        observedAt: '2026-03-26T06:26:03.419Z',
+        sourceKind: 'operator-invoice',
+        reason: 'normalized local invoice metadata established the replenishment window',
+        invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0030',
+        invoiceId: 'HQ1VJLMV-0030',
+        openedAt: '2026-03-26T00:00:00-07:00',
+        creditsPurchased: 5000,
+        prepaidUsd: 200,
+        activationState: 'active',
+        fundingPurpose: 'operational',
+        sourcePathEvidence: 'C:/Users/sveld/Downloads/Invoice-HQ1VJLMV-0030.pdf'
+      },
+      resume: {
+        status: 'observed',
+        observedAt: '2026-03-26T06:10:28.492Z',
+        sourceKind: 'operator-steering-event',
+        reason: 'operator steering event confirms autonomous work resumed after replenishment handling'
+      }
+    },
+    fundingWindow: {
+      status: 'selected',
+      source: 'normalized-invoice-turn',
+      invoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0030',
+      invoiceId: 'HQ1VJLMV-0030',
+      openedAt: '2026-03-26T00:00:00-07:00',
+      activationState: 'active',
+      fundingPurpose: 'operational'
+    },
+    observedBurn: {
+      status: 'fail-closed',
+      normalizedUsageExportPath: 'tests/results/_agent/cost/usage-exports/labview_open-source_initiative_credit_usage_report_mar_15_-_apr_15_3.json',
+      sourcePathEvidence: 'C:/Users/sveld/Downloads/LabVIEW Open-Source Initiative Credit Usage Report (Mar 15 - Apr 15) (3).csv',
+      startDate: '2026-03-15',
+      endDate: '2026-03-24',
+      usageCredits: 24685.09,
+      usageQuantity: 493701.8,
+      filenameRangeStatus: 'mismatch',
+      declaredFileRange: {
+        startLabel: 'Mar 15',
+        endLabel: 'Apr 15',
+        startMonth: 3,
+        startDay: 15,
+        endMonth: 4,
+        endDay: 15
+      },
+      reason: 'usage export filename declares Mar 15 - Apr 15, but rows cover 2026-03-15..2026-03-24'
+    },
+    remainingCapitalPosture: {
+      status: 'replenished-but-unreconciled',
+      source: 'treasury-ledger',
+      remainingCredits: null,
+      remainingUsd: null,
+      rollupInvoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0027',
+      reason: 'funding-window-rollup-lagging-replenishment'
+    },
+    schedulerState: {
+      status: 'fail-closed',
+      failClosed: true,
+      capitalModeRecommended: 'conserve',
+      treasuryPosture: 'replenished-but-unreconciled',
+      blockingReasonCodes: ['usage-export-window-mismatch'],
+      currentFundingWindowId: 'invoice-turn-2026-03-HQ1VJLMV-0030',
+      latestHardStopStatus: 'inferred',
+      latestResumeStatus: 'observed',
+      latestReplenishmentInvoiceTurnId: 'invoice-turn-2026-03-HQ1VJLMV-0030'
+    },
+    summary: {
+      status: 'fail-closed',
+      blockerCount: 1,
+      blockers: [],
+      warningCount: 1,
+      warnings: [],
+      currentFundingWindowId: 'invoice-turn-2026-03-HQ1VJLMV-0030',
+      latestReplenishmentInvoiceId: 'HQ1VJLMV-0030',
+      latestHardStopStatus: 'inferred',
+      latestResumeStatus: 'observed',
+      remainingCapitalStatus: 'replenished-but-unreconciled',
+      treasuryPosture: 'replenished-but-unreconciled'
+    },
+    ...overrides
+  };
+}
+
 function createReleaseSigningReadiness(overrides = {}) {
   return {
     schema: 'priority/release-signing-readiness-report@v1',
@@ -444,6 +549,10 @@ test('runAutonomousGovernorSummary reports compare governance work when the late
     path.join(tmpDir, 'tests', 'results', '_agent', 'capital', 'wake-investment-accounting.json'),
     createWakeInvestmentAccounting()
   );
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'treasury-ledger.json'),
+    createTreasuryLedger()
+  );
 
   const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
 
@@ -454,6 +563,10 @@ test('runAutonomousGovernorSummary reports compare governance work when the late
   assert.equal(report.summary.ownerDecisionSource, 'wake-lifecycle');
   assert.equal(report.summary.signalQuality, 'validated-governance-work');
   assert.equal(report.funding.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
+  assert.equal(report.funding.treasuryPosture, 'replenished-but-unreconciled');
+  assert.equal(report.funding.treasuryFundingWindowId, 'invoice-turn-2026-03-HQ1VJLMV-0030');
+  assert.equal(report.summary.treasuryStatus, 'fail-closed');
+  assert.equal(report.summary.treasuryPosture, 'replenished-but-unreconciled');
   assert.equal(report.compare.releaseSigningReadiness.status, 'missing');
   assert.equal(report.summary.releaseSigningStatus, 'missing');
   assert.equal(report.summary.releaseSigningExternalBlocker, null);

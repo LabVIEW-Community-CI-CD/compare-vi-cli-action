@@ -14,6 +14,7 @@ export const DEFAULT_COST_ROLLUP_PATH = path.join('tests', 'results', '_agent', 
 export const DEFAULT_OPERATOR_STEERING_EVENT_PATH = path.join('tests', 'results', '_agent', 'runtime', 'operator-steering-event.json');
 export const DEFAULT_INVOICE_OUTPUT_DIR = path.join('tests', 'results', '_agent', 'cost', 'invoice-turns');
 export const DEFAULT_USAGE_OUTPUT_DIR = path.join('tests', 'results', '_agent', 'cost', 'usage-exports');
+export const DEFAULT_TREASURY_METADATA_DIR = path.join('tests', 'results', '_agent', 'cost', 'treasury');
 
 const MONTH_INDEX = new Map([
   ['jan', 1],
@@ -112,6 +113,55 @@ function sanitizeStem(value) {
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '')
     .toLowerCase();
+}
+
+function discoverLatestMatchingFile(directoryPath, matcher = () => true) {
+  const resolvedDirectoryPath = resolvePathOrNull(directoryPath);
+  if (!resolvedDirectoryPath || !fs.existsSync(resolvedDirectoryPath)) {
+    return null;
+  }
+
+  const candidates = fs.readdirSync(resolvedDirectoryPath, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && matcher(entry.name))
+    .map((entry) => {
+      const filePath = path.join(resolvedDirectoryPath, entry.name);
+      return {
+        filePath,
+        name: entry.name,
+        mtimeMs: fs.statSync(filePath).mtimeMs
+      };
+    })
+    .sort((left, right) => {
+      if (right.mtimeMs !== left.mtimeMs) {
+        return right.mtimeMs - left.mtimeMs;
+      }
+      return right.name.localeCompare(left.name);
+    });
+
+  return candidates[0]?.filePath || null;
+}
+
+function discoverLatestTreasuryMetadataPath(repoRoot) {
+  return discoverLatestMatchingFile(
+    path.resolve(repoRoot, DEFAULT_TREASURY_METADATA_DIR),
+    (name) => /\.private(?:-metadata)?(?:\.local)?\.json$/i.test(name)
+  );
+}
+
+function discoverLatestNormalizedInvoiceTurnPath(repoRoot) {
+  const directoryPath = path.resolve(repoRoot, DEFAULT_INVOICE_OUTPUT_DIR);
+  return (
+    discoverLatestMatchingFile(directoryPath, (name) => /\.local\.json$/i.test(name)) ||
+    discoverLatestMatchingFile(directoryPath, (name) => /\.json$/i.test(name) && !/sample|wrapper-smoke/i.test(name)) ||
+    discoverLatestMatchingFile(directoryPath, (name) => /\.json$/i.test(name))
+  );
+}
+
+function discoverLatestNormalizedUsageExportPath(repoRoot) {
+  return discoverLatestMatchingFile(
+    path.resolve(repoRoot, DEFAULT_USAGE_OUTPUT_DIR),
+    (name) => /\.json$/i.test(name)
+  );
 }
 
 function inferInvoiceId(payload) {
@@ -254,6 +304,32 @@ function selectFundingWindow(normalizedInvoiceTurn, costRollup) {
     activationState: null,
     fundingPurpose: null
   };
+}
+
+function isReplenishmentSuccession(fundingWindow, replenishmentEvent, costRollup) {
+  if (fundingWindow?.status !== 'selected' || fundingWindow?.source !== 'normalized-invoice-turn') {
+    return false;
+  }
+  if (replenishmentEvent?.status !== 'observed') {
+    return false;
+  }
+  const fundingWindowInvoiceTurnId = normalizeText(fundingWindow?.invoiceTurnId);
+  const rollupInvoiceTurnId =
+    normalizeText(costRollup?.billingWindow?.invoiceTurnId) ||
+    normalizeText(costRollup?.inputs?.selectedInvoiceTurnId);
+
+  if (!fundingWindowInvoiceTurnId || !rollupInvoiceTurnId || fundingWindowInvoiceTurnId === rollupInvoiceTurnId) {
+    return false;
+  }
+
+  const fundingWindowOpenedAt = Date.parse(normalizeText(fundingWindow?.openedAt) || '');
+  const rollupOpenedAt = Date.parse(normalizeText(costRollup?.billingWindow?.openedAt) || '');
+
+  if (Number.isFinite(fundingWindowOpenedAt) && Number.isFinite(rollupOpenedAt)) {
+    return fundingWindowOpenedAt >= rollupOpenedAt;
+  }
+
+  return true;
 }
 
 function buildReplenishmentEvent(invoiceTurn, invoicePath) {
@@ -414,7 +490,7 @@ function buildObservedBurn(usageExportReceipt, normalizedUsageExportPath) {
   };
 }
 
-function buildRemainingCapitalPosture(fundingWindow, observedBurn, costRollup) {
+function buildRemainingCapitalPosture(fundingWindow, costRollup, replenishmentEvent) {
   const rollupInvoiceTurnId = normalizeText(costRollup?.billingWindow?.invoiceTurnId) || normalizeText(costRollup?.inputs?.selectedInvoiceTurnId) || null;
   if (fundingWindow.status !== 'selected' || !fundingWindow.invoiceTurnId) {
     return {
@@ -437,6 +513,16 @@ function buildRemainingCapitalPosture(fundingWindow, observedBurn, costRollup) {
     };
   }
   if (rollupInvoiceTurnId && normalizeText(fundingWindow.invoiceTurnId) !== normalizeText(rollupInvoiceTurnId)) {
+    if (isReplenishmentSuccession(fundingWindow, replenishmentEvent, costRollup)) {
+      return {
+        status: 'replenished-but-unreconciled',
+        source: 'treasury-ledger',
+        remainingCredits: null,
+        remainingUsd: null,
+        rollupInvoiceTurnId,
+        reason: 'funding-window-rollup-lagging-replenishment'
+      };
+    }
     return {
       status: 'fail-closed',
       source: 'agent-cost-rollup',
@@ -444,16 +530,6 @@ function buildRemainingCapitalPosture(fundingWindow, observedBurn, costRollup) {
       remainingUsd: null,
       rollupInvoiceTurnId,
       reason: 'funding-window-rollup-mismatch'
-    };
-  }
-  if (observedBurn.status === 'fail-closed') {
-    return {
-      status: 'fail-closed',
-      source: 'agent-cost-rollup',
-      remainingCredits: null,
-      remainingUsd: null,
-      rollupInvoiceTurnId,
-      reason: 'usage-export-window-mismatch'
     };
   }
 
@@ -491,11 +567,18 @@ function buildSchedulerState(fundingWindow, hardStopEvent, resumeEvent, replenis
   if (remainingCapitalPosture.status === 'fail-closed' && normalizeText(remainingCapitalPosture.reason)) {
     blockingReasonCodes.push(normalizeText(remainingCapitalPosture.reason));
   }
+  const treasuryPosture =
+    remainingCapitalPosture.status === 'resolved'
+      ? 'trusted-capital'
+      : remainingCapitalPosture.status === 'replenished-but-unreconciled'
+        ? 'replenished-but-unreconciled'
+        : 'fail-closed';
 
   return {
     status: blockingReasonCodes.length === 0 ? 'pass' : 'fail-closed',
     failClosed: blockingReasonCodes.length > 0,
-    capitalModeRecommended: blockingReasonCodes.length === 0 ? 'balanced' : 'conserve',
+    capitalModeRecommended: blockingReasonCodes.length === 0 && treasuryPosture === 'trusted-capital' ? 'balanced' : 'conserve',
+    treasuryPosture,
     blockingReasonCodes,
     currentFundingWindowId: fundingWindow.invoiceTurnId,
     latestHardStopStatus: hardStopEvent.status,
@@ -516,6 +599,15 @@ function buildSummary(fundingWindow, replenishmentEvent, hardStopEvent, resumeEv
       createMessage(
         normalizeText(remainingCapitalPosture.reason) || 'remaining-capital-fail-closed',
         `Remaining capital posture is fail-closed: ${remainingCapitalPosture.reason || 'unknown reason'}`,
+        inputs.costRollupPath
+      )
+    );
+  }
+  if (remainingCapitalPosture.status === 'replenished-but-unreconciled') {
+    warnings.push(
+      createMessage(
+        'treasury-reconciliation-pending',
+        'Treasury funding window advanced to the replenishment invoice, but the cost rollup has not reconciled to that window yet.',
         inputs.costRollupPath
       )
     );
@@ -543,7 +635,8 @@ function buildSummary(fundingWindow, replenishmentEvent, hardStopEvent, resumeEv
     latestReplenishmentInvoiceId: replenishmentEvent.invoiceId,
     latestHardStopStatus: hardStopEvent.status,
     latestResumeStatus: resumeEvent.status,
-    remainingCapitalStatus: remainingCapitalPosture.status
+    remainingCapitalStatus: remainingCapitalPosture.status,
+    treasuryPosture: schedulerState.treasuryPosture
   };
 }
 
@@ -604,7 +697,7 @@ export function parseArgs(argv = process.argv) {
 
 export function runTreasuryLedger(options = {}, now = new Date()) {
   const repoRoot = resolvePathOrNull(options.repoRoot) || process.cwd();
-  const invoiceMetadataPath = resolveRepoPath(repoRoot, options.invoiceMetadataPath);
+  const invoiceMetadataPath = resolveRepoPath(repoRoot, options.invoiceMetadataPath) || discoverLatestTreasuryMetadataPath(repoRoot);
   const usageExportCsvPath = resolveRepoPath(repoRoot, options.usageExportCsvPath);
   const costRollupPath = options.costRollupPath === null ? null : resolveRepoPath(repoRoot, options.costRollupPath || DEFAULT_COST_ROLLUP_PATH);
   const operatorSteeringEventPath =
@@ -616,9 +709,11 @@ export function runTreasuryLedger(options = {}, now = new Date()) {
 
   const invoiceMetadata = invoiceMetadataPath ? readJson(invoiceMetadataPath) : null;
   const invoiceOutputPath =
-    resolveRepoPath(repoRoot, options.invoiceOutputPath) || (invoiceMetadata ? deriveDefaultInvoiceOutputPath(repoRoot, invoiceMetadata) : null);
+    resolveRepoPath(repoRoot, options.invoiceOutputPath) ||
+    (invoiceMetadata ? deriveDefaultInvoiceOutputPath(repoRoot, invoiceMetadata) : discoverLatestNormalizedInvoiceTurnPath(repoRoot));
   const usageOutputPath =
-    resolveRepoPath(repoRoot, options.usageOutputPath) || (usageExportCsvPath ? deriveDefaultUsageOutputPath(repoRoot, usageExportCsvPath) : null);
+    resolveRepoPath(repoRoot, options.usageOutputPath) ||
+    (usageExportCsvPath ? deriveDefaultUsageOutputPath(repoRoot, usageExportCsvPath) : discoverLatestNormalizedUsageExportPath(repoRoot));
 
   let normalizedInvoiceTurnPath = invoiceOutputPath;
   let normalizedUsageExportPath = usageOutputPath;
@@ -659,7 +754,7 @@ export function runTreasuryLedger(options = {}, now = new Date()) {
   const hardStopEvent = buildHardStopEvent(invoiceMetadata);
   const resumeEvent = buildResumeEvent(invoiceMetadata, operatorSteeringEvent);
   const observedBurn = buildObservedBurn(usageExportReceipt, normalizedUsageExportPath);
-  const remainingCapitalPosture = buildRemainingCapitalPosture(fundingWindow, observedBurn, costRollup);
+  const remainingCapitalPosture = buildRemainingCapitalPosture(fundingWindow, costRollup, replenishmentEvent);
   const schedulerState = buildSchedulerState(fundingWindow, hardStopEvent, resumeEvent, replenishmentEvent, remainingCapitalPosture, observedBurn);
 
   const inputs = {

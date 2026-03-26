@@ -80,6 +80,13 @@ export const DEFAULT_THROUGHPUT_SCORECARD_PATH = path.join(
   'throughput',
   'throughput-scorecard.json'
 );
+export const DEFAULT_TREASURY_LEDGER_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'handoff',
+  'treasury-ledger.json'
+);
 
 function asOptional(value) {
   if (value == null) {
@@ -534,6 +541,7 @@ export function parseArgs(argv = process.argv) {
     releaseSigningReadinessPath: DEFAULT_RELEASE_SIGNING_READINESS_PATH,
     queueSupervisorReportPath: DEFAULT_QUEUE_SUPERVISOR_REPORT_PATH,
     throughputScorecardPath: DEFAULT_THROUGHPUT_SCORECARD_PATH,
+    treasuryLedgerPath: DEFAULT_TREASURY_LEDGER_PATH,
     outputPath: DEFAULT_OUTPUT_PATH,
     help: false
   };
@@ -549,6 +557,7 @@ export function parseArgs(argv = process.argv) {
     ['--release-signing-readiness', 'releaseSigningReadinessPath'],
     ['--queue-supervisor-report', 'queueSupervisorReportPath'],
     ['--throughput-scorecard', 'throughputScorecardPath'],
+    ['--treasury-ledger', 'treasuryLedgerPath'],
     ['--output', 'outputPath']
   ]);
 
@@ -588,6 +597,7 @@ function printHelp() {
     `  --release-signing-readiness <path> Release signing readiness path (default: ${DEFAULT_RELEASE_SIGNING_READINESS_PATH}).`,
     `  --queue-supervisor-report <path>  Queue supervisor report path (default: ${DEFAULT_QUEUE_SUPERVISOR_REPORT_PATH}).`,
     `  --throughput-scorecard <path>     Throughput scorecard path (default: ${DEFAULT_THROUGHPUT_SCORECARD_PATH}).`,
+    `  --treasury-ledger <path>          Treasury ledger path (default: ${DEFAULT_TREASURY_LEDGER_PATH}).`,
     `  --output <path>                   Output path (default: ${DEFAULT_OUTPUT_PATH}).`,
     '  -h, --help                        Show help.'
   ].forEach((line) => console.log(line));
@@ -655,7 +665,7 @@ function deriveWake(wakeLifecycle) {
   };
 }
 
-function deriveFunding(wakeInvestmentAccounting) {
+function deriveFunding(wakeInvestmentAccounting, treasuryLedger) {
   return {
     accountingBucket: asOptional(wakeInvestmentAccounting?.summary?.accountingBucket),
     status: asOptional(wakeInvestmentAccounting?.summary?.status),
@@ -675,7 +685,14 @@ function deriveFunding(wakeInvestmentAccounting) {
     netPaybackUsd:
       typeof wakeInvestmentAccounting?.summary?.metrics?.netPaybackUsd === 'number'
         ? wakeInvestmentAccounting.summary.metrics.netPaybackUsd
-        : null
+        : null,
+    treasuryStatus: asOptional(treasuryLedger?.summary?.status),
+    treasuryPosture: asOptional(treasuryLedger?.schedulerState?.treasuryPosture),
+    treasuryFundingWindowId:
+      asOptional(treasuryLedger?.summary?.currentFundingWindowId) ||
+      asOptional(treasuryLedger?.fundingWindow?.invoiceTurnId),
+    treasuryCapitalModeRecommended: asOptional(treasuryLedger?.schedulerState?.capitalModeRecommended),
+    treasuryRemainingCapitalStatus: asOptional(treasuryLedger?.remainingCapitalPosture?.status)
   };
 }
 
@@ -1252,6 +1269,8 @@ function buildReport({
   queueSupervisorReport,
   throughputScorecardPath,
   throughputScorecard,
+  treasuryLedgerPath,
+  treasuryLedger,
   readOptionalJsonFn,
   now
 }) {
@@ -1264,7 +1283,7 @@ function buildReport({
   const queueState = deriveQueueState(queueEmptyReport, monitoringMode);
   const continuity = deriveContinuity(continuitySummary, monitoringMode);
   const wake = deriveWake(wakeLifecycle);
-  const funding = deriveFunding(wakeInvestmentAccounting);
+  const funding = deriveFunding(wakeInvestmentAccounting, treasuryLedger);
   const releaseSigningReadiness = deriveReleaseSigningReadiness(releaseSigningReadinessReport);
   const rawDeliveryRuntime = deriveDeliveryRuntime(deliveryRuntimeState);
   const deliveryRuntime = shouldSuppressStaleDeliveryRuntime({ queueState, continuity, monitoringMode, wake })
@@ -1308,7 +1327,8 @@ function buildReport({
       deliveryRuntimeStatePath: toRelative(repoRoot, deliveryRuntimeStatePath),
       releaseSigningReadinessPath: toRelative(repoRoot, releaseSigningReadinessPath),
       queueSupervisorReportPath: toRelative(repoRoot, queueSupervisorReportPath),
-      throughputScorecardPath: toRelative(repoRoot, throughputScorecardPath)
+      throughputScorecardPath: toRelative(repoRoot, throughputScorecardPath),
+      treasuryLedgerPath: toRelative(repoRoot, treasuryLedgerPath)
     },
     compare: {
       queueState,
@@ -1381,7 +1401,12 @@ function buildReport({
       queueHandoffStatus: queueAuthority.status,
       queueHandoffNextWakeCondition: queueAuthority.nextWakeCondition,
       queueHandoffPrUrl: queueAuthority.prUrl,
-      queueAuthoritySource: queueAuthority.source
+      queueAuthoritySource: queueAuthority.source,
+      treasuryStatus: funding.treasuryStatus,
+      treasuryPosture: funding.treasuryPosture,
+      treasuryFundingWindowId: funding.treasuryFundingWindowId,
+      treasuryCapitalModeRecommended: funding.treasuryCapitalModeRecommended,
+      treasuryRemainingCapitalStatus: funding.treasuryRemainingCapitalStatus
     }
   };
 }
@@ -1412,6 +1437,10 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     repoRoot,
     options.throughputScorecardPath || DEFAULT_THROUGHPUT_SCORECARD_PATH
   );
+  const treasuryLedgerPath = path.resolve(
+    repoRoot,
+    options.treasuryLedgerPath || DEFAULT_TREASURY_LEDGER_PATH
+  );
   const outputPath = path.resolve(repoRoot, options.outputPath || DEFAULT_OUTPUT_PATH);
 
   const readOptionalJsonFn = deps.readOptionalJsonFn || readOptionalJson;
@@ -1427,6 +1456,7 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   const releaseSigningReadinessReport = readOptionalJsonFn(releaseSigningReadinessPath);
   const queueSupervisorReport = readOptionalJsonFn(queueSupervisorReportPath);
   const throughputScorecard = readOptionalJsonFn(throughputScorecardPath);
+  const treasuryLedger = readOptionalJsonFn(treasuryLedgerPath);
 
   if (queueEmptyReport) {
     ensureSchema(queueEmptyReport, queueEmptyReportPath, 'standing-priority/no-standing@v1');
@@ -1459,6 +1489,9 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   if (throughputScorecard) {
     ensureSchema(throughputScorecard, throughputScorecardPath, 'priority/throughput-scorecard@v1');
   }
+  if (treasuryLedger) {
+    ensureSchema(treasuryLedger, treasuryLedgerPath, 'priority/treasury-ledger@v1');
+  }
 
   const report = buildReport({
     repoRoot,
@@ -1480,6 +1513,8 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     queueSupervisorReport,
     throughputScorecardPath,
     throughputScorecard,
+    treasuryLedgerPath,
+    treasuryLedger,
     readOptionalJsonFn,
     now
   });
