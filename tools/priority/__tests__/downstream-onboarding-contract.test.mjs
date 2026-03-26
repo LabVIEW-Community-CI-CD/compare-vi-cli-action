@@ -19,46 +19,39 @@ test('downstream onboarding policy defines required checklist seams', () => {
 });
 
 test('workflow executes onboarding, success, feedback, and promotion scorecard contracts', () => {
-  const workflow = read('.github/workflows/downstream-onboarding-feedback.yml');
-  assert.match(workflow, /push:\s+branches:\s+- develop/);
-  assert.match(workflow, /downstream_branch:/);
+  const workflow = read('.github/workflows/downstream-promotion.yml');
+  assert.match(workflow, /source_sha:/);
+  assert.match(workflow, /downstream_repo:/);
+  assert.match(workflow, /comparevi_tools_release:/);
+  assert.match(workflow, /comparevi_history_release:/);
+  assert.match(workflow, /scenario_pack_id:/);
+  assert.match(workflow, /cookiecutter_template_id:/);
   assert.match(workflow, /GITHUB_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
   assert.match(workflow, /GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/);
-  assert.match(workflow, /consumer_issue_repo:/);
-  assert.match(workflow, /DOWNSTREAM_CONSUMER_ISSUE_REPO:/);
+  assert.match(workflow, /DOWNSTREAM_REPO:\s*\$\{\{\s*inputs\.downstream_repo\s*\}\}/);
+  assert.match(workflow, /DOWNSTREAM_PILOT_REPO:\s*\$\{\{\s*vars\.DOWNSTREAM_PILOT_REPO\s*\}\}/);
   assert.match(workflow, /Resolve pinned template dependency policy/);
   assert.match(workflow, /tools\/policy\/template-dependency\.json/);
   assert.match(workflow, /Resolve immutable upstream source/);
   assert.match(workflow, /git fetch --no-tags origin '\+refs\/heads\/develop:refs\/remotes\/upstream\/develop'/);
-  assert.match(workflow, /policy_consumer_rail_branch/);
-  assert.match(workflow, /resolved_branch_override/);
-  assert.match(workflow, /resolved_branch_source/);
-  assert.match(workflow, /branch="\$\{DOWNSTREAM_BRANCH\}"/);
-  assert.doesNotMatch(workflow, /branch="\$\{policy_consumer_rail_branch/);
   assert.match(workflow, /downstream-onboarding-feedback\.mjs/);
-  assert.match(workflow, /args\+=\(--branch "\$branch"\)/);
-  assert.match(workflow, /--issue-repo "\$issue_repo"/);
+  assert.match(workflow, /--parent-issue 1497/);
   assert.match(workflow, /downstream-onboarding-report-v1\.schema\.json/);
   assert.match(workflow, /downstream-onboarding-success-v1\.schema\.json/);
   assert.match(workflow, /downstream-onboarding-feedback-v1\.schema\.json/);
-  assert.match(workflow, /Adjudicate downstream wake against live branch truth/);
-  assert.match(workflow, /wake-adjudication\.mjs/);
-  assert.match(workflow, /wake-adjudication-report-v1\.schema\.json/);
-  assert.match(workflow, /tests\/results\/_agent\/issue\/wake-adjudication\.json/);
   assert.match(workflow, /Refresh template-agent verification report/);
   assert.match(workflow, /priority:template:agent:verify/);
-  assert.doesNotMatch(
-    workflow,
-    /resolved_branch == steps\.feedback\.outputs\.policy_template_branch/
-  );
   assert.match(workflow, /Generate downstream promotion manifest/);
   assert.match(workflow, /downstream-promotion-manifest\.mjs/);
   assert.match(workflow, /--source-sha '\$\{\{ steps\.source\.outputs\.source_sha \}\}'/);
-  assert.match(workflow, /--comparevi-tools-release 'develop@\$\{\{ steps\.source\.outputs\.source_sha \}\}'/);
-  assert.match(workflow, /--comparevi-history-release 'not-evaluated:onboarding-feedback'/);
-  assert.match(workflow, /--scenario-pack-id 'downstream-onboarding-feedback@v1'/);
-  assert.match(workflow, /--cookiecutter-template-id '\$\{\{ steps\.template-policy\.outputs\.repository \}\}@\$\{\{ steps\.template-policy\.outputs\.ref \}\}'/);
+  assert.match(workflow, /--comparevi-tools-release '\$\{\{ inputs\.comparevi_tools_release \}\}'/);
+  assert.match(workflow, /--comparevi-history-release '\$\{\{ inputs\.comparevi_history_release \}\}'/);
+  assert.match(workflow, /--scenario-pack-id '\$\{\{ inputs\.scenario_pack_id \}\}'/);
+  assert.match(workflow, /--cookiecutter-template-id '\$\{\{ inputs\.cookiecutter_template_id \}\}'/);
+  assert.match(workflow, /vi_history_lv32_shadow_proof_receipt:/);
   assert.match(workflow, /downstream-promotion-manifest-v1\.schema\.json/);
+  assert.match(workflow, /Validate LV32 shadow proof receipt schema/);
+  assert.match(workflow, /--vi-history-lv32-shadow-proof-receipt/);
   assert.match(workflow, /template-agent-verification-report-v1\.schema\.json/);
   assert.match(workflow, /tests\/results\/_agent\/promotion\/template-agent-verification-report\.json/);
   assert.match(workflow, /Build downstream promotion scorecard/);
@@ -70,17 +63,7 @@ test('workflow executes onboarding, success, feedback, and promotion scorecard c
   assert.ok(
     workflow.indexOf('Generate downstream promotion manifest') < workflow.indexOf('Build downstream promotion scorecard')
   );
-  assert.match(workflow, /Append onboarding feedback summary/);
-  assert.match(workflow, /requested branch override/);
-  assert.match(workflow, /branch resolution source/);
-  assert.match(workflow, /evaluated branch/);
-  assert.match(workflow, /repository default branch/);
-  assert.match(workflow, /policy consumer rail branch/);
-  assert.match(workflow, /execution status/);
-  assert.match(workflow, /wake adjudication/);
-  assert.match(workflow, /template-agent verification status/);
   assert.match(workflow, /hashFiles\('tests\/results\/_agent\/onboarding\/downstream-onboarding\.json'\)/);
-  assert.match(workflow, /hashFiles\('tests\/results\/_agent\/issue\/wake-adjudication\.json'\)/);
   assert.match(workflow, /hashFiles\('tests\/results\/_agent\/promotion\/downstream-develop-promotion-manifest\.json'\)/);
   assert.match(workflow, /hashFiles\('tests\/results\/_agent\/promotion\/downstream-develop-promotion-scorecard\.json'\)/);
 });

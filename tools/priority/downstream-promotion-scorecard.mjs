@@ -13,6 +13,15 @@ export const DEFAULT_OUTPUT_PATH = path.join(
   'promotion',
   'downstream-develop-promotion-scorecard.json'
 );
+const EXPECTED_VI_HISTORY_LV32_RUNNER_LABELS = [
+  'self-hosted',
+  'Windows',
+  'X64',
+  'comparevi',
+  'capability-ingress',
+  'labview-2026',
+  'lv32'
+];
 
 function printUsage() {
   console.log('Usage: node tools/priority/downstream-promotion-scorecard.mjs [options]');
@@ -22,6 +31,7 @@ function printUsage() {
   console.log('  --feedback-report <path>        Downstream onboarding feedback report JSON path (required).');
   console.log('  --template-agent-verification-report <path>  Template-agent verification report JSON path (required).');
   console.log('  --manifest-report <path>        Downstream promotion manifest JSON path (optional).');
+  console.log('  --vi-history-lv32-shadow-proof-receipt <path>  Optional LV32 shadow proof receipt JSON path.');
   console.log(`  --output <path>                 Output path (default: ${DEFAULT_OUTPUT_PATH}).`);
   console.log('  --repo <owner/repo>             Repository slug override.');
   console.log('  --fail-on-blockers              Exit non-zero when blockers exist (default true).');
@@ -65,6 +75,9 @@ function resolveRepoSlug(explicitRepo) {
 }
 
 function loadInputFile(filePath) {
+  if (!normalizeText(filePath)) {
+    return { exists: false, path: null, payload: null, error: null };
+  }
   const resolvedPath = path.resolve(filePath);
   if (!fs.existsSync(resolvedPath)) {
     return { exists: false, path: resolvedPath, payload: null, error: null };
@@ -93,6 +106,7 @@ export function parseArgs(argv = process.argv) {
     feedbackReportPath: null,
     templateAgentVerificationReportPath: null,
     manifestReportPath: null,
+    viHistoryLv32ShadowProofReceiptPath: null,
     outputPath: DEFAULT_OUTPUT_PATH,
     repo: null,
     failOnBlockers: true,
@@ -120,6 +134,7 @@ export function parseArgs(argv = process.argv) {
       token === '--feedback-report' ||
       token === '--template-agent-verification-report' ||
       token === '--manifest-report' ||
+      token === '--vi-history-lv32-shadow-proof-receipt' ||
       token === '--output' ||
       token === '--repo'
     ) {
@@ -131,6 +146,7 @@ export function parseArgs(argv = process.argv) {
       if (token === '--feedback-report') options.feedbackReportPath = next;
       if (token === '--template-agent-verification-report') options.templateAgentVerificationReportPath = next;
       if (token === '--manifest-report') options.manifestReportPath = next;
+      if (token === '--vi-history-lv32-shadow-proof-receipt') options.viHistoryLv32ShadowProofReceiptPath = next;
       if (token === '--output') options.outputPath = next;
       if (token === '--repo') options.repo = next;
       continue;
@@ -215,6 +231,8 @@ function statusFromManifestReport(payload) {
       sourceRef: null,
       sourceCommitSha: null,
       localSourceMatched: null,
+      viHistoryLv32ShadowProofReceiptPath: null,
+      viHistoryLv32ShadowProofReceiptSha256: null,
       compareviToolsRelease: null,
       compareviHistoryRelease: null,
       scenarioPackIdentity: null,
@@ -231,6 +249,10 @@ function statusFromManifestReport(payload) {
     typeof payload?.promotion?.localSourceVerification?.matched === 'boolean'
       ? payload.promotion.localSourceVerification.matched
       : null;
+  const viHistoryLv32ShadowProofReceiptPath =
+    normalizeText(payload?.inputs?.viHistoryLv32ShadowProofReceipt?.path) || null;
+  const viHistoryLv32ShadowProofReceiptSha256 =
+    normalizeText(payload?.inputs?.viHistoryLv32ShadowProofReceipt?.sha256) || null;
 
   return {
     status:
@@ -246,10 +268,110 @@ function statusFromManifestReport(payload) {
     sourceRef,
     sourceCommitSha,
     localSourceMatched,
+    viHistoryLv32ShadowProofReceiptPath,
+    viHistoryLv32ShadowProofReceiptSha256,
     compareviToolsRelease: normalizeText(payload?.inputs?.compareviToolsRelease) || null,
     compareviHistoryRelease: normalizeText(payload?.inputs?.compareviHistoryRelease) || null,
     scenarioPackIdentity: normalizeText(payload?.inputs?.scenarioPackIdentity) || null,
     cookiecutterTemplateIdentity: normalizeText(payload?.inputs?.cookiecutterTemplateIdentity) || null
+  };
+}
+
+function statusFromViHistoryLv32ShadowProofReceipt(payload, expected = {}) {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      status: 'missing',
+      schema: null,
+      expectedContextPresent: null,
+      repository: null,
+      sourceCommitSha: null,
+      repositoryMatched: null,
+      sourceCommitMatched: null,
+      laneId: null,
+      runnerName: null,
+      requiredRunnerLabels: null,
+      actualRunnerLabels: null,
+      requiredLabelsMatched: null,
+      labelsMatched: null,
+      headlessRequired: null,
+      headlessEnforced: null,
+      headlessExecutionMode: null,
+      hostPlaneStatus: null,
+      hostPlaneNative32Status: null,
+      verificationStatus: null,
+      verificationRunUrl: null,
+      verificationReportPath: null
+    };
+  }
+
+  const schema = normalizeText(payload.schema) || null;
+  const repository = normalizeText(payload.repository) || null;
+  const sourceCommitSha = normalizeText(payload.sourceCommitSha) || null;
+  const laneId = normalizeText(payload?.lane?.id) || null;
+  const runnerName = normalizeText(payload?.runner?.name) || null;
+  const requiredRunnerLabels = Array.isArray(payload?.runner?.requiredLabels)
+    ? payload.runner.requiredLabels.map((label) => normalizeText(label)).filter(Boolean)
+    : [];
+  const actualRunnerLabels = Array.isArray(payload?.runner?.actualLabels)
+    ? payload.runner.actualLabels.map((label) => normalizeText(label)).filter(Boolean)
+    : [];
+  const labelsMatched = typeof payload?.runner?.labelsMatched === 'boolean' ? payload.runner.labelsMatched : null;
+  const headlessRequired = typeof payload?.headless?.required === 'boolean' ? payload.headless.required : null;
+  const headlessEnforced = typeof payload?.headless?.enforced === 'boolean' ? payload.headless.enforced : null;
+  const headlessExecutionMode = normalizeText(payload?.headless?.executionMode) || null;
+  const hostPlaneStatus = normalizeText(payload?.hostPlane?.status) || null;
+  const hostPlaneNative32Status = normalizeText(payload?.hostPlane?.native32Status) || null;
+  const verificationStatus = normalizeText(payload?.verification?.status) || null;
+  const verificationRunUrl = normalizeText(payload?.verification?.runUrl) || null;
+  const verificationReportPath = normalizeText(payload?.verification?.reportPath) || null;
+  const expectedRepository = normalizeText(expected.repository) || null;
+  const expectedSourceCommitSha = normalizeText(expected.sourceCommitSha) || null;
+  const expectedRunnerLabels = Array.isArray(expected.requiredRunnerLabels)
+    ? expected.requiredRunnerLabels.map((label) => normalizeText(label)).filter(Boolean)
+    : [];
+  const expectedContextPresent = Boolean(expectedRepository && expectedSourceCommitSha);
+  const repositoryMatched = expectedRepository ? repository === expectedRepository : null;
+  const sourceCommitMatched = expectedSourceCommitSha ? sourceCommitSha === expectedSourceCommitSha : null;
+  const requiredLabelsMatched =
+    expectedRunnerLabels.length > 0 ? expectedRunnerLabels.every((label) => actualRunnerLabels.includes(label)) : null;
+
+  return {
+    status:
+      schema === 'priority/vi-history-lv32-shadow-proof-receipt@v1' &&
+      expectedContextPresent &&
+      repositoryMatched === true &&
+      sourceCommitMatched === true &&
+      laneId === 'vi-history-scenarios-windows-lv32' &&
+      labelsMatched === true &&
+      requiredLabelsMatched !== false &&
+      headlessRequired === true &&
+      headlessEnforced === true &&
+      headlessExecutionMode === 'labview-cli-headless' &&
+      hostPlaneStatus === 'ready' &&
+      hostPlaneNative32Status === 'ready' &&
+      verificationStatus === 'pass'
+        ? 'pass'
+        : 'fail',
+    schema,
+    repository,
+    sourceCommitSha,
+    expectedContextPresent,
+    repositoryMatched,
+    sourceCommitMatched,
+    laneId,
+    runnerName,
+    requiredRunnerLabels,
+    actualRunnerLabels,
+    requiredLabelsMatched,
+    labelsMatched,
+    headlessRequired,
+    headlessEnforced,
+    headlessExecutionMode,
+    hostPlaneStatus,
+    hostPlaneNative32Status,
+    verificationStatus,
+    verificationRunUrl,
+    verificationReportPath
   };
 }
 
@@ -322,10 +444,14 @@ export function evaluateDownstreamPromotionScorecard({
   feedbackReport,
   templateAgentVerificationReport,
   manifestReport,
+  viHistoryLv32ShadowProofReceiptReport,
   successGate,
   feedbackGate,
   templateAgentVerificationGate,
-  manifestGate
+  manifestGate,
+  viHistoryLv32ShadowProofReceiptGate,
+  viHistoryLv32ShadowProofReceiptExpected,
+  viHistoryLv32ShadowProofReceiptPathMismatch
 }) {
   const blockers = [];
   const recordBlocker = (code, message) => blockers.push({ code, message });
@@ -386,6 +512,77 @@ export function evaluateDownstreamPromotionScorecard({
       `Downstream promotion manifest did not verify immutable downstream/develop proving inputs (status=${manifestGate.status}).`
     );
   }
+  if (viHistoryLv32ShadowProofReceiptPathMismatch) {
+    recordBlocker(
+      'vi-history-lv32-shadow-proof-receipt-path-mismatch',
+      'LV32 shadow proof receipt path differs between the CLI input and the promotion manifest.'
+    );
+  }
+  if (viHistoryLv32ShadowProofReceiptExpected) {
+    if (viHistoryLv32ShadowProofReceiptGate.status === 'missing') {
+      recordBlocker(
+        'vi-history-lv32-shadow-proof-receipt-missing',
+        'LV32 shadow proof receipt is missing or unreadable.'
+      );
+    } else if (viHistoryLv32ShadowProofReceiptGate.status !== 'pass') {
+      recordBlocker(
+        'vi-history-lv32-shadow-proof-contract',
+        `LV32 shadow proof receipt did not verify the expected headless runner proof (status=${viHistoryLv32ShadowProofReceiptGate.status}).`
+      );
+      if (viHistoryLv32ShadowProofReceiptGate.expectedContextPresent === false) {
+        recordBlocker(
+          'vi-history-lv32-shadow-proof-manifest-provenance',
+          'LV32 shadow proof receipt is present, but the promotion manifest does not provide the repository and source commit required to verify it.'
+        );
+      }
+      if (viHistoryLv32ShadowProofReceiptGate.repositoryMatched === false) {
+        recordBlocker(
+          'vi-history-lv32-shadow-proof-repository-mismatch',
+          'LV32 shadow proof receipt repository does not match the downstream promotion repository.'
+        );
+      }
+      if (viHistoryLv32ShadowProofReceiptGate.sourceCommitMatched === false) {
+        recordBlocker(
+          'vi-history-lv32-shadow-proof-source-mismatch',
+          'LV32 shadow proof receipt does not match the promoted source commit.'
+        );
+      }
+      if (
+        viHistoryLv32ShadowProofReceiptGate.requiredLabelsMatched === false ||
+        viHistoryLv32ShadowProofReceiptGate.labelsMatched === false
+      ) {
+        recordBlocker(
+          'vi-history-lv32-shadow-proof-runner-labels',
+          'LV32 shadow proof receipt does not prove the expected self-hosted Windows runner labels.'
+        );
+      }
+      if (
+        viHistoryLv32ShadowProofReceiptGate.headlessRequired !== true ||
+        viHistoryLv32ShadowProofReceiptGate.headlessEnforced !== true ||
+        viHistoryLv32ShadowProofReceiptGate.headlessExecutionMode !== 'labview-cli-headless'
+      ) {
+        recordBlocker(
+          'vi-history-lv32-shadow-proof-headless-contract',
+          'LV32 shadow proof receipt does not prove headless LabVIEW 32-bit execution.'
+        );
+      }
+      if (
+        viHistoryLv32ShadowProofReceiptGate.hostPlaneStatus !== 'ready' ||
+        viHistoryLv32ShadowProofReceiptGate.hostPlaneNative32Status !== 'ready'
+      ) {
+        recordBlocker(
+          'vi-history-lv32-shadow-proof-host-plane',
+          'LV32 shadow proof receipt does not prove ready native x32 host-plane state.'
+        );
+      }
+      if (viHistoryLv32ShadowProofReceiptGate.verificationStatus !== 'pass') {
+        recordBlocker(
+          'vi-history-lv32-shadow-proof-verification',
+          'LV32 shadow proof receipt does not record a passing verification status.'
+        );
+      }
+    }
+  }
 
   return {
     status: blockers.length === 0 ? 'pass' : 'fail',
@@ -412,9 +609,25 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
   const feedbackReport = loadInputFile(options.feedbackReportPath);
   const templateAgentVerificationReport = loadInputFile(options.templateAgentVerificationReportPath);
   const manifestReport = options.manifestReportPath ? loadInputFile(options.manifestReportPath) : null;
+  const manifestReceiptPath = normalizeText(manifestReport?.payload?.inputs?.viHistoryLv32ShadowProofReceipt?.path) || null;
+  const cliReceiptPath = normalizeText(options.viHistoryLv32ShadowProofReceiptPath) || null;
+  const receiptPath = cliReceiptPath || manifestReceiptPath;
+  const receiptPathMismatch =
+    cliReceiptPath && manifestReceiptPath
+      ? path.resolve(cliReceiptPath) !== path.resolve(manifestReceiptPath)
+      : false;
+  const viHistoryLv32ShadowProofReceiptReport = loadInputFile(receiptPath);
   const successGate = statusFromSuccessReport(successReport.payload);
   const feedbackGate = statusFromFeedbackReport(feedbackReport.payload);
   const manifestGate = statusFromManifestReport(manifestReport?.payload);
+  const viHistoryLv32ShadowProofReceiptGate = statusFromViHistoryLv32ShadowProofReceipt(
+    viHistoryLv32ShadowProofReceiptReport.payload,
+    {
+      repository: resolveRepoSlug(options.repo),
+      sourceCommitSha: manifestGate.sourceCommitSha,
+      requiredRunnerLabels: EXPECTED_VI_HISTORY_LV32_RUNNER_LABELS
+    }
+  );
   const templateAgentVerificationGate = statusFromTemplateAgentVerificationReport(
     templateAgentVerificationReport.payload,
     manifestGate
@@ -427,7 +640,10 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
     successGate,
     feedbackGate,
     templateAgentVerificationGate,
-    manifestGate
+    manifestGate,
+    viHistoryLv32ShadowProofReceiptGate,
+    viHistoryLv32ShadowProofReceiptExpected: Boolean(receiptPath),
+    viHistoryLv32ShadowProofReceiptPathMismatch: receiptPathMismatch
   });
 
   const report = {
@@ -454,13 +670,19 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
         path: manifestReport?.path ?? null,
         exists: manifestReport?.exists ?? false,
         error: manifestReport?.error ?? null
+      },
+      viHistoryLv32ShadowProofReceipt: {
+        path: viHistoryLv32ShadowProofReceiptReport.path,
+        exists: viHistoryLv32ShadowProofReceiptReport.exists,
+        error: viHistoryLv32ShadowProofReceiptReport.error
       }
     },
     gates: {
       successReport: successGate,
       feedbackReport: feedbackGate,
       templateAgentVerificationReport: templateAgentVerificationGate,
-      manifestReport: manifestGate
+      manifestReport: manifestGate,
+      viHistoryLv32ShadowProofReceipt: viHistoryLv32ShadowProofReceiptGate
     },
     summary: {
       ...summary,
@@ -476,6 +698,10 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
         compareviHistoryRelease: manifestGate.compareviHistoryRelease,
         scenarioPackIdentity: manifestGate.scenarioPackIdentity,
         cookiecutterTemplateIdentity: manifestGate.cookiecutterTemplateIdentity,
+        viHistoryLv32ShadowProofReceiptPath: manifestGate.viHistoryLv32ShadowProofReceiptPath,
+        viHistoryLv32ShadowProofReceiptSha256: manifestGate.viHistoryLv32ShadowProofReceiptSha256,
+        viHistoryLv32ShadowProofReceiptSourceCommitSha: viHistoryLv32ShadowProofReceiptGate.sourceCommitSha,
+        viHistoryLv32ShadowProofReceiptStatus: viHistoryLv32ShadowProofReceiptGate.status,
         templateVerificationRepository: templateAgentVerificationGate.templateRepository,
         templateVerificationVersion: templateAgentVerificationGate.templateVersion,
         templateVerificationRef: templateAgentVerificationGate.templateRef,
@@ -502,10 +728,13 @@ export function runDownstreamPromotionScorecard(rawOptions = {}) {
       `- template verification source commit matched: \`${report.gates.templateAgentVerificationReport.sourceCommitMatched ?? 'n/a'}\``,
       `- template consumer rail branch: \`${report.gates.templateAgentVerificationReport.consumerRailBranch ?? 'n/a'}\``,
       `- manifest status: \`${report.gates.manifestReport.status}\``,
+      `- LV32 shadow proof status: \`${report.gates.viHistoryLv32ShadowProofReceipt.status}\``,
+      `- LV32 shadow proof source commit matched: \`${report.gates.viHistoryLv32ShadowProofReceipt.sourceCommitMatched ?? 'n/a'}\``,
       `- CompareVI.Tools: \`${report.summary.provenance.compareviToolsRelease ?? 'n/a'}\``,
       `- comparevi-history: \`${report.summary.provenance.compareviHistoryRelease ?? 'n/a'}\``,
       `- scenario/corpus: \`${report.summary.provenance.scenarioPackIdentity ?? 'n/a'}\``,
-      `- cookiecutter template: \`${report.summary.provenance.cookiecutterTemplateIdentity ?? 'n/a'}\``
+      `- cookiecutter template: \`${report.summary.provenance.cookiecutterTemplateIdentity ?? 'n/a'}\``,
+      `- LV32 shadow proof receipt: \`${report.summary.provenance.viHistoryLv32ShadowProofReceiptPath ?? 'n/a'}\``
     ];
     for (const blocker of report.summary.blockers) {
       lines.push(`- ${blocker.code}: ${blocker.message}`);

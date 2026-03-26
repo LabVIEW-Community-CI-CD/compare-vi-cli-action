@@ -26,6 +26,7 @@ const HELP = [
   '  --scenario-pack-id <id>               Scenario-pack or corpus identity (required).',
   '  --cookiecutter-template-id <id>       Cookiecutter/template identity (required).',
   '  --proving-scorecard-ref <ref>         Proving scorecard reference (required).',
+  '  --vi-history-lv32-shadow-proof-receipt <path>  Optional LV32 shadow proof receipt path.',
   '  --actor <value>                       Promotion actor (default: GITHUB_ACTOR).',
   '  --promotion-kind <kind>               promote|replay|rollback (default: promote).',
   '  --replay-of-manifest <ref>            Required when promotion-kind=replay.',
@@ -125,6 +126,7 @@ export function parseArgs(argv = process.argv) {
     scenarioPackIdentity: null,
     cookiecutterTemplateIdentity: null,
     provingScorecardRef: null,
+    viHistoryLv32ShadowProofReceiptPath: null,
     actor: asOptional(process.env.GITHUB_ACTOR),
     promotionKind: 'promote',
     replayOfManifest: null,
@@ -152,6 +154,7 @@ export function parseArgs(argv = process.argv) {
       ['--scenario-pack-id', 'scenarioPackIdentity'],
       ['--cookiecutter-template-id', 'cookiecutterTemplateIdentity'],
       ['--proving-scorecard-ref', 'provingScorecardRef'],
+      ['--vi-history-lv32-shadow-proof-receipt', 'viHistoryLv32ShadowProofReceiptPath'],
       ['--actor', 'actor'],
       ['--promotion-kind', 'promotionKind'],
       ['--replay-of-manifest', 'replayOfManifest'],
@@ -232,6 +235,7 @@ export async function runDownstreamPromotionManifest(
   const sourceRef = asOptional(options.sourceRef) || policy.sourceRef;
   const targetBranch = asOptional(policy.targetBranch);
   const targetBranchClassId = asOptional(policy.targetBranchClassId);
+  const shadowProofReceiptPath = asOptional(options.viHistoryLv32ShadowProofReceiptPath);
   if (sourceRef !== policy.sourceRef) {
     throw new Error(`Source ref must remain ${policy.sourceRef}.`);
   }
@@ -240,6 +244,19 @@ export async function runDownstreamPromotionManifest(
   }
   if (targetBranchClassId !== 'downstream-consumer-proving-rail') {
     throw new Error('Downstream promotion contract target branch class drifted.');
+  }
+  let shadowProofReceipt = null;
+  if (shadowProofReceiptPath) {
+    const resolvedShadowProofReceiptPath = path.resolve(shadowProofReceiptPath);
+    if (!fs.existsSync(resolvedShadowProofReceiptPath) || !fs.statSync(resolvedShadowProofReceiptPath).isFile()) {
+      throw new Error(
+        `LV32 shadow proof receipt is missing or unreadable: ${resolvedShadowProofReceiptPath}.`
+      );
+    }
+    shadowProofReceipt = {
+      path: path.relative(process.cwd(), resolvedShadowProofReceiptPath).replace(/\\/g, '/'),
+      sha256: sha256FileFn(resolvedShadowProofReceiptPath)
+    };
   }
 
   let resolvedSourceCommitSha = null;
@@ -285,7 +302,8 @@ export async function runDownstreamPromotionManifest(
       compareviToolsRelease: asOptional(options.compareviToolsRelease),
       compareviHistoryRelease: asOptional(options.compareviHistoryRelease),
       scenarioPackIdentity: asOptional(options.scenarioPackIdentity),
-      cookiecutterTemplateIdentity: asOptional(options.cookiecutterTemplateIdentity)
+      cookiecutterTemplateIdentity: asOptional(options.cookiecutterTemplateIdentity),
+      viHistoryLv32ShadowProofReceipt: shadowProofReceipt
     },
     lineage: {
       promotionKind: options.promotionKind,

@@ -28,8 +28,8 @@ on:
         description: 'Cookiecutter/template identity'
         required: true
         type: string
-      started_at:
-        description: 'Optional proving start timestamp (ISO-8601 UTC)'
+      vi_history_lv32_shadow_proof_receipt:
+        description: 'Optional LV32 shadow proof receipt path to ingest into promotion surfaces'
         required: false
         default: ''
         type: string
@@ -62,7 +62,6 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       GH_TOKEN: ${{ github.token }}
       DOWNSTREAM_REPO: ${{ inputs.downstream_repo }}
-      DOWNSTREAM_STARTED_AT: ${{ inputs.started_at }}
       DOWNSTREAM_CREATE_ISSUES: ${{ inputs.create_hardening_issues || 'false' }}
       DOWNSTREAM_FAIL_ON_GAP: ${{ inputs.fail_on_gap || 'false' }}
       DOWNSTREAM_PILOT_REPO: ${{ vars.DOWNSTREAM_PILOT_REPO }}
@@ -135,6 +134,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          started_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           repo="${DOWNSTREAM_REPO}"
           if [ -z "$repo" ]; then
             repo="${DOWNSTREAM_PILOT_REPO:-$GITHUB_REPOSITORY}"
@@ -145,10 +145,8 @@ jobs:
             --report tests/results/_agent/onboarding/downstream-onboarding.json
             --success-output tests/results/_agent/onboarding/downstream-onboarding-success.json
             --feedback-output tests/results/_agent/onboarding/downstream-onboarding-feedback.json
+            --started-at "${started_at}"
           )
-          if [ -n "${DOWNSTREAM_STARTED_AT}" ]; then
-            args+=(--started-at "${DOWNSTREAM_STARTED_AT}")
-          fi
           if [ "${DOWNSTREAM_CREATE_ISSUES}" = "true" ]; then
             args+=(--create-hardening-issues)
           fi
@@ -221,11 +219,24 @@ jobs:
             --schema docs/schemas/template-agent-verification-report-v1.schema.json \
             --data tests/results/_agent/promotion/template-agent-verification-report.json
 
+      - name: Validate LV32 shadow proof receipt schema
+        if: ${{ always() && inputs.vi_history_lv32_shadow_proof_receipt != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/npm/run-script.mjs schema:validate -- \
+            --schema docs/schemas/vi-history-lv32-shadow-proof-receipt-v1.schema.json \
+            --data '${{ inputs.vi_history_lv32_shadow_proof_receipt }}'
+
       - name: Generate downstream promotion manifest
         if: ${{ always() }}
         shell: bash
         run: |
           set -euo pipefail
+          receipt_args=()
+          if [ -n "${{ inputs.vi_history_lv32_shadow_proof_receipt }}" ]; then
+            receipt_args+=(--vi-history-lv32-shadow-proof-receipt '${{ inputs.vi_history_lv32_shadow_proof_receipt }}')
+          fi
           node tools/priority/downstream-promotion-manifest.mjs \
             --source-sha '${{ steps.source.outputs.source_sha }}' \
             --comparevi-tools-release '${{ inputs.comparevi_tools_release }}' \
@@ -234,6 +245,7 @@ jobs:
             --cookiecutter-template-id '${{ inputs.cookiecutter_template_id }}' \
             --proving-scorecard-ref tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json \
             --actor '${{ github.actor }}' \
+            "${receipt_args[@]}" \
             --output tests/results/_agent/promotion/downstream-develop-promotion-manifest.json
 
       - name: Validate downstream promotion manifest schema
@@ -250,11 +262,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          receipt_args=()
+          if [ -n "${{ inputs.vi_history_lv32_shadow_proof_receipt }}" ]; then
+            receipt_args+=(--vi-history-lv32-shadow-proof-receipt '${{ inputs.vi_history_lv32_shadow_proof_receipt }}')
+          fi
           node tools/priority/downstream-promotion-scorecard.mjs \
             --success-report tests/results/_agent/onboarding/downstream-onboarding-success.json \
             --feedback-report tests/results/_agent/onboarding/downstream-onboarding-feedback.json \
             --template-agent-verification-report tests/results/_agent/promotion/template-agent-verification-report.json \
             --manifest-report tests/results/_agent/promotion/downstream-develop-promotion-manifest.json \
+            "${receipt_args[@]}" \
             --output tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
 
       - name: Validate downstream promotion scorecard schema

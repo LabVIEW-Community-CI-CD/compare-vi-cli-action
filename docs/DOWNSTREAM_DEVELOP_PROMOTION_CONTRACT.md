@@ -15,6 +15,9 @@ It is not a second feature-development branch.
 - Proving scorecard generator: `tools/priority/downstream-promotion-scorecard.mjs`
 - Proving scorecard schema: `docs/schemas/downstream-promotion-scorecard-v1.schema.json`
 - Proving scorecard output: `tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json`
+- Optional LV32 shadow proof receipt schema: `docs/schemas/vi-history-lv32-shadow-proof-receipt-v1.schema.json`
+- Optional LV32 shadow proof receipt output:
+  `tests/results/_agent/promotion/vi-history-lv32-shadow-proof-receipt.json`
 - Template-agent verification lane report: `tests/results/_agent/promotion/template-agent-verification-report.json`
 - Authoritative template verification overlay: `tests/results/_agent/promotion/template-agent-verification-report.local.json`, projected during bootstrap from the latest matching downstream proving artifact for the current `develop` source SHA
 - Supported template-proof authority synthesis: `tests/results/_agent/promotion/template-agent-verification-report.supported.json`, projected from the latest supported `template-smoke` `workflow_dispatch` proof on a supported consumer fork when that proof is aligned to the current canonical template head
@@ -193,12 +196,18 @@ Release promotion should consume the downstream proving rail through the
 `Downstream Promotion` workflow artifact, not from the onboarding-only feedback
 workflow.
 
+If a host-native LabVIEW 32-bit shadow proof is available, the promotion rail
+may ingest it through the optional LV32 receipt path. The receipt is
+non-blocking when absent, but when present it must prove the same source commit
+and the expected self-hosted Windows `lv32` runner contract.
+
 That means release should select a successful `downstream-promotion.yml` run
 whose `downstream-develop-promotion-scorecard.json`:
 
 - reports `summary.status = pass`
 - proves `targetBranch = downstream/develop`
 - records `summary.provenance.sourceCommitSha` matching the release source commit
+- when present, records a passing `viHistoryLv32ShadowProofReceipt` gate
 
 Release evidence should retain the machine-readable selection report that points
 back to the exact downstream promotion run and scorecard artifact used.

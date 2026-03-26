@@ -60,7 +60,7 @@ test('validate workflow Linux VI-history lane consumes shared dispatch-plan outp
 test('validate workflow Windows VI-history lane is gated by shared dispatch planning and portable hosted execution', () => {
   const workflow = readRepoFile('.github/workflows/validate.yml');
   const planSection = extractWorkflowJobSection(workflow, 'vi-history-scenarios-windows-plan', 'vi-history-scenarios-windows');
-  const windowsSection = extractWorkflowJobSection(workflow, 'vi-history-scenarios-windows');
+  const windowsSection = extractWorkflowJobSection(workflow, 'vi-history-scenarios-windows', 'vi-history-scenarios-windows-lv32-plan');
 
   assert.match(workflow, /vi-history-scenarios-windows-plan:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'/);
   assert.match(planSection, /permissions:\s*\r?\n\s+contents: read/);
@@ -86,4 +86,32 @@ test('validate workflow Windows VI-history lane is gated by shared dispatch plan
   assert.match(windowsSection, /ni-windows-container-stdout\.txt/);
   assert.match(windowsSection, /ni-windows-container-stderr\.txt/);
   assert.doesNotMatch(windowsSection, /Assert-RunnerLabelContract\.ps1/);
+});
+
+test('validate workflow self-hosted Windows LV32 VI-history lane is gated by inventory planning and headless proof receipts', () => {
+  const workflow = readRepoFile('.github/workflows/validate.yml');
+  const planSection = extractWorkflowJobSection(
+    workflow,
+    'vi-history-scenarios-windows-lv32-plan',
+    'vi-history-scenarios-windows-lv32'
+  );
+  const lv32Section = extractWorkflowJobSection(workflow, 'vi-history-scenarios-windows-lv32');
+
+  assert.match(workflow, /vi-history-scenarios-windows-lv32-plan:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true'/);
+  assert.match(planSection, /Resolve self-hosted Windows LV32 lane/);
+  assert.match(planSection, /tools\/Resolve-SelfHostedWindowsLanePlan\.ps1/);
+  assert.match(planSection, /required_labels:\s+\$\{\{\s*steps\.plan\.outputs\.required_labels\s*\}\}/);
+  assert.match(workflow, /vi-history-scenarios-windows-lv32:\s*\r?\n\s+needs:\s*\[smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-windows-lv32-plan\]\r?\n\s+if:\s+needs\.smoke-gate\.outputs\.skip != 'true' && needs\.vi-history-scenarios-plan\.outputs\.execute_lanes == 'true' && needs\.vi-history-scenarios-windows-lv32-plan\.outputs\.available == 'true'/);
+  assert.match(lv32Section, /runs-on:\s*\[self-hosted, Windows, X64, comparevi, capability-ingress, labview-2026, lv32\]/);
+  assert.match(lv32Section, /Validate self-hosted runner label contract/);
+  assert.match(lv32Section, /Assert-RunnerLabelContract\.ps1/);
+  assert.match(lv32Section, /Capture LabVIEW 2026 host-plane diagnostics/);
+  assert.match(lv32Section, /env:labview:2026:host-planes/);
+  assert.match(lv32Section, /Run VI history shadow proof on the self-hosted LV32 runner/);
+  assert.match(lv32Section, /Compare-VIHistory\.ps1/);
+  assert.match(lv32Section, /Invoke-LVCompare\.ps1/);
+  assert.match(lv32Section, /Write VI history LV32 shadow proof receipt/);
+  assert.match(lv32Section, /Write-VIHistoryLV32ShadowProofReceipt\.ps1/);
+  assert.match(lv32Section, /LABVIEW_PATH:\s*\$\{\{\s*steps\.host-plane\.outputs\.labview_path\s*\}\}/);
+  assert.doesNotMatch(lv32Section, /windows-2022/);
 });

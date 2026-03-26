@@ -1761,3 +1761,228 @@ jobs:
           tests/results/local-parity/windows/runtime-manager-compare-windows.json
           tests/results/local-parity/windows/_agent/runner-health.json
         if-no-files-found: warn
+
+  vi-history-scenarios-windows-lv32-plan:
+    needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan]
+    if: needs.smoke-gate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      available: ${{ steps.plan.outputs.available }}
+      status: ${{ steps.plan.outputs.status }}
+      skip_reason: ${{ steps.plan.outputs.skip_reason }}
+      summary_path: ${{ steps.plan.outputs.summary_path }}
+      execution_model: ${{ steps.plan.outputs.execution_model }}
+      runner_image: ${{ steps.plan.outputs.runner_image }}
+      expected_context: ${{ steps.plan.outputs.expected_context }}
+      expected_os: ${{ steps.plan.outputs.expected_os }}
+      required_labels: ${{ steps.plan.outputs.required_labels }}
+      matching_runner_count: ${{ steps.plan.outputs.matching_runner_count }}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Resolve self-hosted Windows LV32 lane
+      id: plan
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        $resultsRoot = 'tests/results/_agent/vi-history-dispatch'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $planPath = Join-Path $resultsRoot 'validate-vi-history-windows-lv32-plan.json'
+        pwsh -NoLogo -NoProfile -File tools/Resolve-SelfHostedWindowsLanePlan.ps1 `
+          -Repository '${{ github.repository }}' `
+          -OutputJsonPath $planPath `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY `
+          -Token $env:GITHUB_TOKEN
+    - name: Upload self-hosted Windows LV32 lane plan artifact
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: validate-vi-history-windows-lv32-plan
+        path: tests/results/_agent/vi-history-dispatch/validate-vi-history-windows-lv32-plan.json
+        if-no-files-found: error
+
+  vi-history-scenarios-windows-lv32:
+    needs: [smoke-gate, lint, session-index, session-index-v2-contract, vi-history-scenarios-plan, vi-history-scenarios-windows-lv32-plan]
+    if: needs.smoke-gate.outputs.skip != 'true' && needs.vi-history-scenarios-plan.outputs.execute_lanes == 'true' && needs.vi-history-scenarios-windows-lv32-plan.outputs.available == 'true'
+    runs-on: [self-hosted, Windows, X64, comparevi, capability-ingress, labview-2026, lv32]
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+    env:
+      LVCI_COMPARE_MODE: labview-cli
+      LVCI_COMPARE_POLICY: cli-only
+      LV_SUPPRESS_UI: '1'
+      LV_NO_ACTIVATE: '1'
+      LV_CURSOR_RESTORE: '1'
+      UNBLOCK_GUARD: '1'
+      VI_HISTORY_LV32_RESULTS_ROOT: tests/results/local-parity/windows/lv32-shadow-proof
+      VI_HISTORY_LV32_RECEIPT_PATH: tests/results/_agent/promotion/vi-history-lv32-shadow-proof-receipt.json
+      VI_HISTORY_LV32_PLAN_PATH: tests/results/_agent/vi-history-dispatch/validate-vi-history-windows-lv32-plan.json
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+    - name: Append VI history self-hosted LV32 lane plan
+      run: |
+        if ($env:GITHUB_STEP_SUMMARY) {
+          $lines = @(
+            '### VI History Scenarios (Windows self-hosted LV32 shadow proof)',
+            '',
+            ('- execute_lanes: `{0}`' -f '${{ needs.vi-history-scenarios-plan.outputs.execute_lanes }}'),
+            ('- plan_status: `{0}`' -f '${{ needs.vi-history-scenarios-windows-lv32-plan.outputs.status }}'),
+            ('- runner_image: `{0}`' -f '${{ needs.vi-history-scenarios-windows-lv32-plan.outputs.runner_image }}'),
+            ('- expected_context: `{0}`' -f '${{ needs.vi-history-scenarios-windows-lv32-plan.outputs.expected_context }}'),
+            ('- required_labels: `{0}`' -f '${{ needs.vi-history-scenarios-windows-lv32-plan.outputs.required_labels }}'),
+            '- shadow proof is non-required and records promotion-ready evidence only when the self-hosted LV32 runner and host-plane are both ready.'
+          )
+          $lines -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+        }
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    - name: Wire Probe (J1)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J1
+        results-dir: tests/results
+    - name: Wire Probe (J2)
+      if: '${{ vars.WIRE_PROBES != ''0'' }}'
+      uses: ./.github/actions/wire-probe
+      with:
+        phase: J2
+        results-dir: tests/results
+    - name: Validate self-hosted runner label contract
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        $resultsRoot = Join-Path $env:GITHUB_WORKSPACE 'tests/results/local-parity/windows/lv32-shadow-proof'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $requiredLabels = @(
+          'self-hosted',
+          'Windows',
+          'X64',
+          'comparevi',
+          'capability-ingress',
+          'labview-2026',
+          'lv32'
+        )
+        foreach ($label in $requiredLabels) {
+          $contractPath = Join-Path $resultsRoot ("runner-label-contract-{0}.json" -f $label)
+          pwsh -NoLogo -NoProfile -File tools/Assert-RunnerLabelContract.ps1 `
+            -Repository '${{ github.repository }}' `
+            -RunnerName $env:RUNNER_NAME `
+            -RequiredLabel $label `
+            -Token $env:GITHUB_TOKEN `
+            -OutputJsonPath $contractPath `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+        }
+    - name: Capture LabVIEW 2026 host-plane diagnostics
+      id: host-plane
+      shell: pwsh
+      run: |
+        $resultsRoot = Join-Path $env:GITHUB_WORKSPACE 'tests/results/local-parity/windows/lv32-shadow-proof'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $reportPath = node tools/npm/run-script.mjs env:labview:2026:host-planes
+        if ([string]::IsNullOrWhiteSpace($reportPath)) {
+          throw 'env:labview:2026:host-planes did not return a host-plane report path.'
+        }
+        $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 12
+        if ($report.native.planes.x32.status -ne 'ready') {
+          throw ("Native LabVIEW 32-bit host plane is not ready. Observed status: {0}" -f $report.native.planes.x32.status)
+        }
+        $labviewPath = [string]$report.native.planes.x32.labviewPath
+        if ([string]::IsNullOrWhiteSpace($labviewPath)) {
+          throw 'Native LabVIEW 32-bit host-plane report did not include LabVIEW path.'
+        }
+        if (-not (Test-Path -LiteralPath $labviewPath -PathType Leaf)) {
+          throw ("Native LabVIEW 32-bit LabVIEW.exe was not found at {0}" -f $labviewPath)
+        }
+        "host_plane_report_path=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "labview_path=$labviewPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "labview_cli_path=$([string]$report.native.planes.x32.cliPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "compare_path=$([string]$report.native.planes.x32.comparePath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "labview_32_status=$([string]$report.native.planes.x32.status)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        $env:LABVIEW_PATH = $labviewPath
+        $env:LABVIEW_CLI_PATH = [string]$report.native.planes.x32.cliPath
+        $env:LABVIEWCLI_PATH = [string]$report.native.planes.x32.cliPath
+        $reportPath | Out-File -FilePath (Join-Path $resultsRoot 'host-plane-report-path.txt') -Encoding utf8
+    - name: Run VI history shadow proof on the self-hosted LV32 runner
+      id: history-shadow
+      shell: pwsh
+      env:
+        LABVIEW_PATH: ${{ steps.host-plane.outputs.labview_path }}
+        LABVIEW_CLI_PATH: ${{ steps.host-plane.outputs.labview_cli_path }}
+        LABVIEWCLI_PATH: ${{ steps.host-plane.outputs.labview_cli_path }}
+      run: |
+        $resultsRoot = Join-Path $env:GITHUB_WORKSPACE 'tests/results/local-parity/windows/lv32-shadow-proof'
+        New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+        $historyResultsRoot = Join-Path $resultsRoot 'history'
+        New-Item -ItemType Directory -Path $historyResultsRoot -Force | Out-Null
+        $invokeScriptPath = Join-Path $env:GITHUB_WORKSPACE 'tools/Invoke-LVCompare.ps1'
+        pwsh -NoLogo -NoProfile -File tools/Compare-VIHistory.ps1 `
+          -TargetPath 'VI1.vi' `
+          -StartRef HEAD `
+          -MaxPairs 1 `
+          -Mode default `
+          -RenderReport `
+          -FailOnDiff:$false `
+          -ResultsDir $historyResultsRoot `
+          -InvokeScriptPath $invokeScriptPath
+        $summaryPath = Join-Path $historyResultsRoot 'history-summary.json'
+        $reportPath = Join-Path $historyResultsRoot 'history-report.html'
+        if (-not (Test-Path -LiteralPath $summaryPath -PathType Leaf)) {
+          throw ("VI history compare did not emit a summary at {0}" -f $summaryPath)
+        }
+        "history_summary_path=$summaryPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        "history_report_path=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+    - name: Write VI history LV32 shadow proof receipt
+      shell: pwsh
+      run: |
+        $resultsRoot = Join-Path $env:GITHUB_WORKSPACE 'tests/results/local-parity/windows/lv32-shadow-proof'
+        $runnerContractPaths = @(
+          'runner-label-contract-self-hosted.json',
+          'runner-label-contract-Windows.json',
+          'runner-label-contract-X64.json',
+          'runner-label-contract-comparevi.json',
+          'runner-label-contract-capability-ingress.json',
+          'runner-label-contract-labview-2026.json',
+          'runner-label-contract-lv32.json'
+        ) | ForEach-Object { Join-Path $resultsRoot $_ }
+        pwsh -NoLogo -NoProfile -File tools/Write-VIHistoryLV32ShadowProofReceipt.ps1 `
+          -LaneName 'vi-history-scenarios-windows-lv32' `
+          -RunnerLabelContractPaths $runnerContractPaths `
+          -HostPlaneReportPath '${{ steps.host-plane.outputs.host_plane_report_path }}' `
+          -CompareSummaryPath '${{ steps.history-shadow.outputs.history_summary_path }}' `
+          -CompareReportPath '${{ steps.history-shadow.outputs.history_report_path }}' `
+          -OutputJsonPath $env:VI_HISTORY_LV32_RECEIPT_PATH `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+    - name: Runner Unblock Guard
+      if: always()
+      uses: ./.github/actions/runner-unblock-guard
+      with:
+        snapshot-path: tests/results/local-parity/windows/lv32-shadow-proof/runner-unblock-snapshot.json
+        cleanup: ${{ env.UNBLOCK_GUARD == '1' }}
+        process-names: 'conhost,pwsh,LabVIEW,LVCompare,LabVIEWCLI'
+    - name: Upload VI history LV32 shadow proof artifacts
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: validate-vi-history-scenarios-windows-lv32
+        path: |
+          tests/results/local-parity/windows/lv32-shadow-proof/**
+          tests/results/_agent/promotion/vi-history-lv32-shadow-proof-receipt.json
+          tests/results/_agent/host-planes/labview-2026-host-plane-report.json
+        if-no-files-found: warn
