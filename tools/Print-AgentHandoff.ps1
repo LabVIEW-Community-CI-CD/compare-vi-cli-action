@@ -1321,128 +1321,18 @@ try {
 }
 
 try {
-  $repoGraphTruthScript = Join-Path $repoRoot 'tools' 'priority' 'downstream-repo-graph-truth.mjs'
-  $templateVerificationSyncScript = Join-Path $repoRoot 'tools' 'priority' 'sync-template-agent-verification-report.mjs'
-  $templatePivotGateScript = Join-Path $repoRoot 'tools' 'priority' 'template-pivot-gate.mjs'
-  $monitoringModeScript = Join-Path $repoRoot 'tools' 'priority' 'handoff-monitoring-mode.mjs'
-  $releasePublishedBundleObserverScript = Join-Path $repoRoot 'tools' 'priority' 'release-published-bundle-observer.mjs'
-  $releaseSigningReadinessScript = Join-Path $repoRoot 'tools' 'priority' 'release-signing-readiness.mjs'
-  $treasuryLedgerScript = Join-Path $repoRoot 'tools' 'priority' 'treasury-ledger.mjs'
-  $governorSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-summary.mjs'
-  $governorPortfolioSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-portfolio-summary.mjs'
-  $contextConcentratorScript = Join-Path $repoRoot 'tools' 'priority' 'sagan-context-concentrator.mjs'
-  $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
-  if ($nodeCmd) {
-    $promotionDir = Join-Path $ResultsRoot '_agent/promotion'
-    $releaseDir = Join-Path $ResultsRoot '_agent/release'
-    $handoffDir = Join-Path $ResultsRoot '_agent/handoff'
-    New-Item -ItemType Directory -Force -Path $promotionDir | Out-Null
-    New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
-    New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
-
-    $templateVerificationSeedPath = Join-Path $promotionDir 'template-agent-verification-report.json'
-    $templateVerificationOverlayPath = Join-Path $promotionDir 'template-agent-verification-report.local.json'
-    $templateVerificationSyncPath = Join-Path $promotionDir 'template-agent-verification-sync.json'
-    $templatePivotGatePath = Join-Path $promotionDir 'template-pivot-gate-report.json'
-    $releaseConductorReportPath = Join-Path $releaseDir 'release-conductor-report.json'
-    $releasePublishedBundleObserverPath = Join-Path $releaseDir 'release-published-bundle-observer.json'
-    $releaseSigningReadinessPath = Join-Path $releaseDir 'release-signing-readiness.json'
-    $queueEmptyReportPath = Join-Path $repoRoot 'tests/results/_agent/issue/no-standing-priority.json'
-    $entrypointStatusPath = Join-Path $ResultsRoot '_agent/handoff/entrypoint-status.json'
-    $continuitySummaryPath = Join-Path $ResultsRoot '_agent/handoff/continuity-summary.json'
-    $repoGraphTruthPath = Join-Path $handoffDir 'downstream-repo-graph-truth.json'
-    $monitoringModePath = Join-Path $handoffDir 'monitoring-mode.json'
-    $treasuryLedgerPath = Join-Path $handoffDir 'treasury-ledger.json'
-    $treasuryRuntimePath = Join-Path $ResultsRoot '_agent/capital/treasury-ledger.json'
-    $governorSummaryPath = Join-Path $handoffDir 'autonomous-governor-summary.json'
-    $governorPortfolioSummaryPath = Join-Path $handoffDir 'autonomous-governor-portfolio-summary.json'
-    $contextConcentratorPath = Join-Path $handoffDir 'sagan-context-concentrator.json'
-
-    if (Test-Path -LiteralPath $repoGraphTruthScript -PathType Leaf) {
-      & $nodeCmd.Source $repoGraphTruthScript `
-        --repo-root $repoRoot `
-        --output $repoGraphTruthPath | Out-Host
-    }
-
-    if (Test-Path -LiteralPath $templateVerificationSyncScript -PathType Leaf) {
-      & $nodeCmd.Source $templateVerificationSyncScript `
-        --repo-root $repoRoot `
-        --local-report $templateVerificationSeedPath `
-        --local-overlay-report $templateVerificationOverlayPath `
-        --output $templateVerificationSyncPath | Out-Host
-    }
-
-    if (Test-Path -LiteralPath $templatePivotGateScript -PathType Leaf) {
-      & $nodeCmd.Source $templatePivotGateScript `
-        --queue-empty-report $queueEmptyReportPath `
-        --handoff-entrypoint $entrypointStatusPath `
-        --template-agent-verification-report $templateVerificationSeedPath `
-        --output $templatePivotGatePath | Out-Host
-    }
-
-    if (Test-Path -LiteralPath $monitoringModeScript -PathType Leaf) {
-      & $nodeCmd.Source $monitoringModeScript `
-        --repo-root $repoRoot `
-        --repo-graph-truth $repoGraphTruthPath `
-        --queue-empty-report $queueEmptyReportPath `
-        --continuity-summary $continuitySummaryPath `
-        --template-pivot-gate $templatePivotGatePath `
-        --output $monitoringModePath | Out-Host
-    }
-
-    if (Test-Path -LiteralPath $releasePublishedBundleObserverScript -PathType Leaf) {
-      & $nodeCmd.Source $releasePublishedBundleObserverScript `
-        --repo-root $repoRoot `
-        --output $releasePublishedBundleObserverPath | Out-Host
-    }
-
-    if (Test-Path -LiteralPath $releaseSigningReadinessScript -PathType Leaf) {
-      & $nodeCmd.Source $releaseSigningReadinessScript `
-        --repo-root $repoRoot `
-        --release-conductor-report $releaseConductorReportPath `
-        --release-published-bundle-observer $releasePublishedBundleObserverPath `
-        --output $releaseSigningReadinessPath | Out-Host
-    }
-
-    if (Test-Path -LiteralPath $treasuryLedgerScript -PathType Leaf) {
-      & $nodeCmd.Source $treasuryLedgerScript `
-        --repo-root $repoRoot `
-        --cost-rollup (Join-Path $ResultsRoot '_agent/cost/agent-cost-rollup.json') `
-        --operator-steering-event (Join-Path $ResultsRoot '_agent/runtime/operator-steering-event.json') `
-        --output $treasuryRuntimePath `
-        --handoff-output $treasuryLedgerPath | Out-Host
-    }
-
-    if (Test-Path -LiteralPath $governorSummaryScript -PathType Leaf) {
-      & $nodeCmd.Source $governorSummaryScript `
-        --repo-root $repoRoot `
-        --queue-empty-report $queueEmptyReportPath `
-        --continuity-summary $continuitySummaryPath `
-        --monitoring-mode $monitoringModePath `
-        --release-signing-readiness $releaseSigningReadinessPath `
-        --output $governorSummaryPath | Out-Host
-    }
-
-    if (Test-Path -LiteralPath $governorPortfolioSummaryScript -PathType Leaf) {
-      & $nodeCmd.Source $governorPortfolioSummaryScript `
-        --repo-root $repoRoot `
-        --compare-governor-summary $governorSummaryPath `
-        --monitoring-mode $monitoringModePath `
-        --repo-graph-truth $repoGraphTruthPath `
-        --output $governorPortfolioSummaryPath | Out-Host
-    }
-
-    if (Test-Path -LiteralPath $contextConcentratorScript -PathType Leaf) {
-      & $nodeCmd.Source $contextConcentratorScript `
-        --repo-root $repoRoot `
-        --priority-cache (Join-Path $repoRoot '.agent_priority_cache.json') `
-        --governor-summary $governorSummaryPath `
-        --governor-portfolio-summary $governorPortfolioSummaryPath `
-        --monitoring-mode $monitoringModePath `
-        --operator-steering-event (Join-Path $handoffDir 'operator-steering-event.json') `
-        --episode-directory (Join-Path $ResultsRoot '_agent/memory/subagent-episodes') `
-        --output $contextConcentratorPath | Out-Host
-    }
+  $controlPlaneRefreshScript = Join-Path $repoRoot 'tools' 'priority' 'Refresh-HandoffControlPlane.ps1'
+  if (Test-Path -LiteralPath $controlPlaneRefreshScript -PathType Leaf) {
+    & $controlPlaneRefreshScript `
+      -RepoRoot $repoRoot `
+      -ResultsRoot $ResultsRoot `
+      -HelperRepoRoot $repoRoot `
+      -WorkingDirectory $repoRoot `
+      -ContinuitySummaryPath (Join-Path $ResultsRoot '_agent/handoff/continuity-summary.json') `
+      -OperatorSteeringEventPath (Join-Path $ResultsRoot '_agent/handoff/operator-steering-event.json') `
+      -QueueEmptyReportPath (Join-Path $repoRoot 'tests/results/_agent/issue/no-standing-priority.json') `
+      -CostRollupPath (Join-Path $ResultsRoot '_agent/cost/agent-cost-rollup.json') `
+      -EpisodeDirectory (Join-Path $ResultsRoot '_agent/memory/subagent-episodes')
   }
 } catch {
   Write-Warning ("Failed to refresh monitoring-mode handoff state: {0}" -f $_.Exception.Message)

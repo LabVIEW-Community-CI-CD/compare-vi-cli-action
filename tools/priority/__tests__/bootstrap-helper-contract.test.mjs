@@ -67,22 +67,18 @@ test('bootstrap routes standing-priority helper scripts through the resolved hel
   assert.match(content, /Invoke-Npm -Script 'handoff:entrypoint:check' -AllowFailure:\$true/);
   assert.match(
     content,
-    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/release-published-bundle-observer\.mjs'[\s\S]*--repo-root[\s\S]*--output[\s\S]*-AllowFailure:\$true/
+    /\$controlPlaneRefreshScript = Join-Path \$priorityWorkingDirectory 'tools\/priority\/Refresh-HandoffControlPlane\.ps1'/
   );
   assert.match(
     content,
-    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/release-signing-readiness\.mjs'[\s\S]*--release-conductor-report[\s\S]*--release-published-bundle-observer[\s\S]*-AllowFailure:\$true/
+    /& \$controlPlaneRefreshScript[\s\S]*-RepoRoot \$priorityWorkingDirectory[\s\S]*-HelperRepoRoot \$priorityHelperRepoRoot[\s\S]*-ContinuitySummaryPath \$continuityHandoffPath[\s\S]*-OperatorSteeringEventPath \$steeringHandoffPath/
   );
   assert.match(
     content,
-    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/autonomous-governor-summary\.mjs'[\s\S]*--release-signing-readiness[\s\S]*-AllowFailure:\$true/
+    /& \$controlPlaneRefreshScript[\s\S]*-QueueEmptyReportPath \(Join-Path \$priorityWorkingDirectory 'tests\/results\/_agent\/issue\/no-standing-priority\.json'\)/
   );
   assert.match(
     content,
-    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/autonomous-governor-portfolio-summary\.mjs'[\s\S]*--compare-governor-summary[\s\S]*--repo-graph-truth[\s\S]*-AllowFailure:\$true/
-  );
-  assert.match(
-    content,
-    /Invoke-NodeScriptFromRepoRoot[\s\S]*-ScriptRelativePath 'tools\/priority\/sagan-context-concentrator\.mjs'[\s\S]*--governor-summary[\s\S]*--governor-portfolio-summary[\s\S]*-AllowFailure:\$true/
+    /& \$controlPlaneRefreshScript[\s\S]*-EpisodeDirectory \(Join-Path \$resultsRoot '_agent\/memory\/subagent-episodes'\)/
   );
 });
