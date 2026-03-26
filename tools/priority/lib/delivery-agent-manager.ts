@@ -13,7 +13,9 @@ import {
   MANAGER_PID_SCHEMA,
   MANAGER_REPORT_SCHEMA,
   MANAGER_STATE_SCHEMA,
+  RUNTIME_EPOCH_SCHEMA,
   STOP_REQUEST_SCHEMA,
+  buildRuntimeEpochId,
   buildQueueEmptyMonitoringDeliveryState,
   convertToWslPath,
   getArtifactPaths,
@@ -26,6 +28,7 @@ import {
   getWslRuntimeDaemonUnitName,
   isQueueEmptyMonitoringReady,
   normalizeText,
+  quarantineStaleRuntimeReceipts,
   readJsonFile,
   readLogTail,
   resolveDeliveryStateForStatus,
@@ -94,6 +97,10 @@ function buildManagerChildCommand({ repoRoot, options }) {
     String(options.maxCycles),
     '--wsl-distro',
     options.wslDistro,
+    '--manager-started-at',
+    options.managerStartedAt,
+    '--runtime-epoch-id',
+    options.runtimeEpochId,
   ];
 }
 
@@ -461,6 +468,7 @@ export function emitStatus(options) {
   const daemonState = readJsonFile(paths.wslDaemonPidPath);
   const daemonAlive = testWslProcessAlive(options.wslDistro, getOptionalIntProperty(daemonState, 'pid'));
   const daemonStartedAt = getOptionalDateTimeProperty(daemonState, 'startedAt');
+  const runtimeEpoch = readJsonFile(paths.runtimeEpochPath);
   const heartbeat = readJsonFile(paths.observerHeartbeatPath);
   const taskPacket = readJsonFile(paths.taskPacketPath);
   const deliveryState = readJsonFile(paths.deliveryStatePath);
@@ -572,6 +580,15 @@ export function emitStatus(options) {
     hostIsolation,
     wslNativeDocker,
     managerFailureCircuitBreaker,
+    runtimeEpoch: runtimeEpoch || {
+      schema: RUNTIME_EPOCH_SCHEMA,
+      generatedAt: null,
+      repo: options.repo,
+      runtimeDir: options.runtimeDir,
+      runtimeEpochId: getOptionalStringProperty(pidState, 'runtimeEpochId'),
+      managerStartedAt: getOptionalProperty(pidState, 'startedAt'),
+      startupQuarantine: null,
+    },
     logTail: {
       daemon: daemonLogTail,
       managerStdout: managerLogTail,
@@ -596,6 +613,7 @@ export function emitStatus(options) {
       daemonLogPath: paths.daemonLogPath,
       runnerLogPath: paths.runnerLogPath,
       runnerErrorPath: paths.runnerErrorPath,
+      runtimeEpochPath: paths.runtimeEpochPath,
     },
   };
 
@@ -622,6 +640,8 @@ export function emitStatus(options) {
       managerStderrLineCount: managerErrorLogTail.length,
       hostSignalReason: hostSignalResolution.diagnostics.reason,
       hostSignalUsed: Boolean(hostSignalResolution.diagnostics.usedHostSignal),
+      runtimeEpochId: getOptionalStringProperty(runtimeEpoch, 'runtimeEpochId') || getOptionalStringProperty(pidState, 'runtimeEpochId'),
+      startupQuarantineEntryCount: getOptionalIntProperty(getOptionalProperty(runtimeEpoch, 'startupQuarantine'), 'entryCount'),
     },
   });
   return report;
@@ -661,13 +681,22 @@ export async function ensureManagerCommand(options, dependencies = {}) {
     return emitStatus({ ...options, repoRoot, outcome: 'already-running', workspaceQuarantine });
   }
 
+  const managerStartedAtIso = toIso();
+  const runtimeEpochId = buildRuntimeEpochId({ repo: options.repo, startedAt: managerStartedAtIso });
   rmSync(paths.stopRequestPath, { force: true });
   invokeHostSignal({ mode: 'isolate', repoRoot, distro: options.wslDistro, paths, previousFingerprint: null, allowRunnerServices: false });
 
   mkdirSync(path.dirname(paths.runnerLogPath), { recursive: true });
   const stdoutFd = openSync(paths.runnerLogPath, 'a');
   const stderrFd = openSync(paths.runnerErrorPath, 'a');
-  const childArgs = buildManagerChildCommand({ repoRoot, options });
+  const childArgs = buildManagerChildCommand({
+    repoRoot,
+    options: {
+      ...options,
+      managerStartedAt: managerStartedAtIso,
+      runtimeEpochId,
+    },
+  });
   if (options.stopWhenNoOpenIssues || options.sleepMode) {
     childArgs.push('--stop-when-no-open-issues');
   }
@@ -687,11 +716,12 @@ export async function ensureManagerCommand(options, dependencies = {}) {
 
   writeJsonFile(paths.managerPidPath, {
     schema: MANAGER_PID_SCHEMA,
-    startedAt: toIso(),
+    startedAt: managerStartedAtIso,
     pid: child.pid,
     repo: options.repo,
     runtimeDir: options.runtimeDir,
     distro: options.wslDistro,
+    runtimeEpochId,
     command: [process.execPath, ...childArgs],
   });
 
@@ -751,6 +781,26 @@ export async function runManagerLoop(options) {
   const repoRoot = options.repoRoot || resolveRepoRoot();
   const paths = getArtifactPaths(repoRoot, options.runtimeDir);
   mkdirSync(paths.runtimeDirPath, { recursive: true });
+  const managerStartedAt = getOptionalDateTimeProperty({ startedAt: options.managerStartedAt }, 'startedAt') || new Date();
+  const runtimeEpochId = getOptionalStringProperty({ runtimeEpochId: options.runtimeEpochId }, 'runtimeEpochId')
+    || buildRuntimeEpochId({ repo: options.repo, startedAt: managerStartedAt });
+  const startupQuarantine = quarantineStaleRuntimeReceipts({
+    repo: options.repo,
+    runtimeDir: options.runtimeDir,
+    paths,
+    runtimeEpochId,
+    managerStartedAt,
+  });
+  const runtimeEpoch = {
+    schema: RUNTIME_EPOCH_SCHEMA,
+    generatedAt: toIso(),
+    repo: options.repo,
+    runtimeDir: options.runtimeDir,
+    runtimeEpochId,
+    managerStartedAt: toIso(managerStartedAt),
+    startupQuarantine,
+  };
+  writeJsonFile(paths.runtimeEpochPath, runtimeEpoch);
 
   const gitDirPath = resolveGitDirPath(repoRoot);
   const leaseRootWsl = convertToWslPath(path.join(gitDirPath, 'agent-writer-leases'));
@@ -802,8 +852,26 @@ export async function runManagerLoop(options) {
         ensureStatus: hostSignal?.status || 'ok',
         repoRootWsl: convertToWslPath(repoRoot),
         leaseOwner,
+        runtimeEpochId,
+        startupQuarantineEntryCount: startupQuarantine.entryCount,
       },
     });
+    if (startupQuarantine.entryCount > 0) {
+      writeManagerTrace({
+        repo: options.repo,
+        runtimeDir: options.runtimeDir,
+        distro: options.wslDistro,
+        tracePath: paths.managerTracePath,
+        eventType: 'runtime-startup-quarantine',
+        detail: {
+          runtimeEpochId,
+          managerStartedAt: runtimeEpoch.managerStartedAt,
+          quarantineDirPath: startupQuarantine.quarantineDirPath,
+          entryCount: startupQuarantine.entryCount,
+          entries: startupQuarantine.entries,
+        },
+      });
+    }
   } catch (error) {
     writeManagerTrace({
       repo: options.repo,
@@ -1234,6 +1302,7 @@ export async function runManagerLoop(options) {
         codexStateHygiene,
         deliveryMemory,
         managerFailureCircuitBreaker,
+        runtimeEpoch,
         failClosedReason: cycleFailureState.shouldStop ? cycleFailureState.reason : null,
         deliveryMemoryPath: paths.deliveryMemoryPath,
         hostSignalPath: paths.hostSignalPath,
@@ -1260,6 +1329,7 @@ export async function runManagerLoop(options) {
         codexStateHygiene,
         deliveryMemory,
         managerFailureCircuitBreaker,
+        runtimeEpoch,
         managerTracePath: paths.managerTracePath,
       });
 
@@ -1336,6 +1406,7 @@ export async function runManagerLoop(options) {
         codexStateHygiene,
         deliveryMemory,
         managerFailureCircuitBreaker,
+        runtimeEpoch,
         failClosedReason: finalFailClosedReason,
         deliveryMemoryPath: paths.deliveryMemoryPath,
       hostSignalPath: paths.hostSignalPath,

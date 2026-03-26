@@ -1,7 +1,7 @@
 // @ts-nocheck
 
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +29,7 @@ export const MANAGER_PID_SCHEMA = 'priority/unattended-delivery-agent-manager-pi
 export const DAEMON_PID_SCHEMA = 'priority/unattended-delivery-agent-wsl-daemon-pid@v1';
 export const STOP_REQUEST_SCHEMA = 'priority/unattended-delivery-agent-stop@v1';
 export const TRACE_SCHEMA = 'priority/unattended-delivery-agent-trace@v1';
+export const RUNTIME_EPOCH_SCHEMA = 'priority/unattended-delivery-agent-runtime-epoch@v1';
 export const MAX_BUFFER = 32 * 1024 * 1024;
 
 export function resolveRepoRoot() {
@@ -289,6 +290,8 @@ export function getArtifactPaths(repoRoot, runtimeDir) {
     runnerErrorPath: path.join(runtimeDirPath, 'delivery-agent-manager.stderr.log'),
     cyclePath: path.join(runtimeDirPath, 'delivery-agent-manager-cycle.json'),
     observerReportPath: path.join(runtimeDirPath, 'runtime-daemon-report.json'),
+    runtimeEpochPath: path.join(runtimeDirPath, 'delivery-agent-runtime-epoch.json'),
+    runtimeQuarantineRootPath: path.join(runtimeDirPath, 'quarantine'),
   };
 }
 
@@ -390,6 +393,94 @@ export function writeManagerTrace({ repo, runtimeDir, distro, tracePath, eventTy
     eventType,
     ...detail,
   });
+}
+
+export function buildRuntimeEpochId({ repo = '', startedAt = new Date() } = {}) {
+  const startedAtIso = toIso(startedAt).replace(/[:.]/g, '-');
+  const repoSlug = normalizeText(repo)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'repo';
+  return `${startedAtIso}-${repoSlug}`;
+}
+
+export function resolveRuntimeEpochTimestamp(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  for (const propertyName of ['generatedAt', 'startedAt', 'requestedAt', 'updatedAt']) {
+    const value = getOptionalDateTimeProperty(payload, propertyName);
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+export function quarantineStaleRuntimeReceipts({
+  repo,
+  runtimeDir,
+  paths,
+  runtimeEpochId,
+  managerStartedAt,
+}) {
+  const quarantineEntries = [];
+  const managerStartedAtIso = toIso(managerStartedAt);
+  const quarantineDirPath = path.join(paths.runtimeQuarantineRootPath, runtimeEpochId);
+  const candidates = [
+    ['runtime-epoch', paths.runtimeEpochPath],
+    ['manager-state', paths.managerStatePath],
+    ['manager-cycle', paths.cyclePath],
+    ['observer-heartbeat', paths.observerHeartbeatPath],
+    ['delivery-state', paths.deliveryStatePath],
+    ['runtime-state', paths.runtimeStatePath],
+    ['task-packet', paths.taskPacketPath],
+    ['delivery-memory', paths.deliveryMemoryPath],
+    ['wsl-daemon-pid', paths.wslDaemonPidPath],
+    ['host-signal', paths.hostSignalPath],
+    ['host-isolation', paths.hostIsolationPath],
+    ['wsl-native-docker', paths.wslNativeDockerPath],
+    ['observer-report', paths.observerReportPath],
+  ];
+
+  for (const [artifactId, artifactPath] of candidates) {
+    if (!existsSync(artifactPath)) {
+      continue;
+    }
+    const payload = readJsonFile(artifactPath);
+    const generatedAt = resolveRuntimeEpochTimestamp(payload);
+    const shouldQuarantine =
+      payload == null ||
+      generatedAt == null ||
+      generatedAt < managerStartedAt;
+    if (!shouldQuarantine) {
+      continue;
+    }
+
+    mkdirSync(quarantineDirPath, { recursive: true });
+    const quarantinePath = path.join(quarantineDirPath, path.basename(artifactPath));
+    rmSync(quarantinePath, { force: true, recursive: true });
+    renameSync(artifactPath, quarantinePath);
+    quarantineEntries.push({
+      artifactId,
+      sourcePath: artifactPath,
+      quarantinePath,
+      reason: payload == null ? 'invalid-json' : generatedAt == null ? 'missing-timestamp' : 'predates-current-manager-epoch',
+      generatedAt: generatedAt ? generatedAt.toISOString() : null,
+    });
+  }
+
+  return {
+    schema: 'priority/unattended-delivery-agent-startup-quarantine@v1',
+    generatedAt: toIso(),
+    repo,
+    runtimeDir,
+    runtimeEpochId,
+    managerStartedAt: managerStartedAtIso,
+    quarantineDirPath: quarantineEntries.length > 0 ? quarantineDirPath : null,
+    entryCount: quarantineEntries.length,
+    entries: quarantineEntries,
+  };
 }
 
 export function writeLogTailTrace({ repo, runtimeDir, distro, tracePath, source, reason, logPath, lines = null, detail = {} }) {

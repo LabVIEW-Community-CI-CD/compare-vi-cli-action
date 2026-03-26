@@ -54,6 +54,8 @@ export function parseArgs(argv = process.argv) {
     autoPrioritySyncLane: false,
     autoDevelopSync: false,
     codexHygieneIntervalCycles: 3,
+    managerStartedAt: null,
+    runtimeEpochId: null,
   };
 
   const valueOptions = new Set([
@@ -80,6 +82,8 @@ export function parseArgs(argv = process.argv) {
     '--queue-pause-recovery-ref',
     '--max-consecutive-cycle-failures',
     '--codex-hygiene-interval-cycles',
+    '--manager-started-at',
+    '--runtime-epoch-id',
   ]);
   const booleanMap = {
     '--sleep-mode': 'sleepMode',
@@ -134,6 +138,8 @@ export function parseArgs(argv = process.argv) {
         case '--queue-pause-recovery-ref': options.queuePauseRecoveryRef = value; break;
         case '--max-consecutive-cycle-failures': options.maxConsecutiveCycleFailures = Number(value); break;
         case '--codex-hygiene-interval-cycles': options.codexHygieneIntervalCycles = Number(value); break;
+        case '--manager-started-at': options.managerStartedAt = value; break;
+        case '--runtime-epoch-id': options.runtimeEpochId = value; break;
         default: break;
       }
       continue;
