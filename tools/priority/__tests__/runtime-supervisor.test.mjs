@@ -3587,7 +3587,7 @@ test('comparevi canonical execution delegates to the delivery broker instead of 
     env: {
       AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
     },
-    repoRoot: '/tmp/repo',
+    repoRoot,
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     schedulerDecision: {
       activeLane: {
@@ -3720,7 +3720,7 @@ test('comparevi runtime executes repo-context pivot when queue-empty portfolio h
       GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
     },
-    repoRoot: '/tmp/repo',
+    repoRoot,
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     schedulerDecision: {
       outcome: 'idle',
@@ -3804,7 +3804,7 @@ test('comparevi runtime prefers a ready cross-repo broker decision when queue-em
       GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
     },
-    repoRoot: '/tmp/repo',
+    repoRoot,
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     schedulerDecision: {
       outcome: 'idle',
@@ -3891,7 +3891,7 @@ test('comparevi runtime keeps idle when repo-context pivot target registry is un
       GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
     },
-    repoRoot: '/tmp/repo',
+    repoRoot,
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     schedulerDecision: {
       outcome: 'idle',
@@ -3966,7 +3966,7 @@ test('comparevi runtime executes repo-context pivot when queue-empty portfolio h
       GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
     },
-    repoRoot: '/tmp/repo',
+    repoRoot,
     repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
     schedulerDecision: {
       outcome: 'idle',
@@ -4025,6 +4025,548 @@ test('comparevi runtime executes repo-context pivot when queue-empty portfolio h
   assert.equal(execution.details.nextOwnerRepository, 'LabVIEW-Community-CI-CD/comparevi-history');
   assert.equal(execution.details.targetEntrypointPath, 'E:\\comparevi-lanes\\comparevi-history-monitoring-canonical');
   assert.equal(execution.artifacts.governorPortfolioPivot.status, 'ready');
+});
+
+test('comparevi runtime releases a waiting-ci slot into cross-repo history work stealing', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'comparevi-runtime-waiting-ci-work-steal-'));
+  let brokerCall = null;
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    env: {
+      GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-1982',
+        issue: 1982,
+        forkRemote: 'origin',
+        branch: 'issue/origin-1982-ci-release-waiting-state-worker-slots-into-active-cross-repo-work-stealing',
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1982',
+        blockerClass: 'ci'
+      },
+      artifacts: {
+        standingRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        standingIssueNumber: 1982,
+        laneLifecycle: 'waiting-ci',
+        selectedActionType: 'watch-pr',
+        planeTransition: {
+          from: 'origin',
+          to: 'upstream',
+          action: 'promote',
+          via: 'pull-request',
+          branchClass: 'lane',
+          sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+          targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+        }
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      issue: 1982,
+      branch: {
+        name: 'issue/origin-1982-ci-release-waiting-state-worker-slots-into-active-cross-repo-work-stealing',
+        forkRemote: 'origin'
+      },
+      objective: { summary: 'Advance issue #1982' },
+      evidence: {
+        lane: {
+          workerSlotId: 'worker-slot-2'
+        },
+        delivery: {
+          selectedIssue: {
+            number: 1982,
+            title: '[ci]: release waiting-state worker slots into active cross-repo work stealing'
+          },
+          laneLifecycle: 'waiting-ci',
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+          },
+          workerProviderSelection: {
+            selectedSlotId: 'worker-slot-2'
+          }
+        }
+      }
+    },
+    taskPacketArtifacts: {
+      latestPath: path.join(runtimeDir, 'task-packet.json')
+    },
+    runtimeArtifactPaths: {
+      runtimeDir
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        implementationRemote: 'origin',
+        maxActiveCodingLanes: 4,
+        workerPool: {
+          targetSlotCount: 4,
+          prewarmSlotCount: 1,
+          releaseWaitingStates: ['waiting-ci', 'waiting-review', 'ready-merge'],
+          providers: [
+            {
+              id: 'local-codex',
+              kind: 'local',
+              enabled: true,
+              slotCount: 2,
+              executionPlane: 'local',
+              assignmentMode: 'interactive-coding',
+              dispatchSurface: 'codex-cli',
+              completionMode: 'synchronous',
+              requiresLocalCheckout: true
+            },
+            {
+              id: 'hosted-github-workflow',
+              kind: 'hosted-github-workflow',
+              enabled: true,
+              slotCount: 2,
+              executionPlane: 'hosted',
+              assignmentMode: 'async-validation',
+              dispatchSurface: 'github-actions',
+              completionMode: 'async',
+              requiresLocalCheckout: false
+            }
+          ]
+        }
+      }),
+      invokeDeliveryTurnBrokerFn: async () => ({
+        status: 'completed',
+        outcome: 'waiting-ci',
+        reason: 'Hosted validation is still running.',
+        details: {
+          actionType: 'watch-pr',
+          laneLifecycle: 'waiting-ci',
+          blockerClass: 'ci',
+          retryable: true,
+          nextWakeCondition: 'hosted-lane-settled',
+          workerSlotId: 'worker-slot-2'
+        }
+      }),
+      readGovernorPortfolioSummaryFn: async () => ({
+        schema: 'priority/autonomous-governor-portfolio-summary-report@v1',
+        summary: {
+          currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextAction: 'continue-compare-governance-work',
+          ownerDecisionSource: 'compare-governor-summary',
+          governorMode: 'compare-governance-work'
+        }
+      }),
+      runCrossRepoLaneBrokerFn: async (options) => {
+        brokerCall = options;
+        return {
+          outputPath: path.join(runtimeDir, 'cross-repo-lane-broker-decision.json'),
+          report: {
+            schema: 'priority/cross-repo-lane-broker-decision@v1',
+            decision: {
+              status: 'ready',
+              selectedRepository: 'LabVIEW-Community-CI-CD/comparevi-history',
+              selectedIssueNumber: 301,
+              selectedIssueUrl: 'https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/301',
+              selectedIssueTitle: '[ci]: history proving lane',
+              selectedProviderId: 'local-codex',
+              selectedSlotId: 'worker-slot-1',
+              selectionSource: 'released-waiting-state-marketplace'
+            }
+          }
+        };
+      },
+      readMonitoringEntrypointsFn: async () => createMonitoringEntrypoints(),
+      collectMarketplaceSnapshotFn: async () => ({
+        schema: 'priority/lane-marketplace-snapshot@v1',
+        generatedAt: '2026-03-26T03:15:00.000Z',
+        summary: {
+          repositoryCount: 3,
+          eligibleLaneCount: 1,
+          topEligibleLane: {
+            repository: 'LabVIEW-Community-CI-CD/comparevi-history',
+            issueNumber: 301
+          }
+        },
+        entries: []
+      }),
+      writeMarketplaceSnapshotFn: async () => path.join(runtimeDir, 'lane-marketplace-snapshot.json'),
+      selectMarketplaceRecommendationFn: () => ({
+        repository: 'LabVIEW-Community-CI-CD/comparevi-history',
+        issueNumber: 301
+      }),
+      loadBranchClassContractFn: () => makeLaneBranchClassContract(),
+      runTemplateAgentVerificationReportFn: async () => null
+    }
+  });
+
+  assert.equal(brokerCall.allowReleasedWaitingStateDispatch, true);
+  assert.equal(execution.outcome, 'repo-context-pivot');
+  assert.equal(execution.details.laneLifecycle, 'waiting-ci');
+  assert.equal(execution.details.releasedSlotId, 'worker-slot-2');
+  assert.equal(execution.details.nextOwnerRepository, 'LabVIEW-Community-CI-CD/comparevi-history');
+  assert.equal(execution.details.brokerSelectedIssueNumber, 301);
+  assert.equal(execution.details.brokerProviderId, 'local-codex');
+
+  const persisted = await readJson(path.join(runtimeDir, 'delivery-agent-state.json'));
+  assert.equal(persisted.workerPool.releasedLaneCount, 1);
+  assert.equal(persisted.workerPool.releasedLanes[0].slotId, 'worker-slot-2');
+  assert.equal(persisted.activeLane.actionType, 'repo-context-pivot');
+  assert.equal(persisted.activeLane.laneLifecycle, 'waiting-ci');
+  assert.equal(
+    persisted.activeLane.repoContextPivot.nextOwnerRepository,
+    'LabVIEW-Community-CI-CD/comparevi-history'
+  );
+  assert.equal(persisted.activeLane.repoContextPivot.brokerSelectedIssueNumber, 301);
+  assert.equal(persisted.activeLane.repoContextPivot.releasedSlotId, 'worker-slot-2');
+});
+
+test('comparevi runtime releases a waiting-review slot into cross-repo template work stealing', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'comparevi-runtime-waiting-review-work-steal-'));
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    env: {
+      GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-1982',
+        issue: 1982,
+        forkRemote: 'origin',
+        branch: 'issue/origin-1982-ci-release-waiting-state-worker-slots-into-active-cross-repo-work-stealing',
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1982',
+        blockerClass: 'review'
+      },
+      artifacts: {
+        standingRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        standingIssueNumber: 1982,
+        laneLifecycle: 'waiting-review',
+        selectedActionType: 'watch-pr',
+        planeTransition: {
+          from: 'origin',
+          to: 'upstream',
+          action: 'promote',
+          via: 'pull-request',
+          branchClass: 'lane',
+          sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+          targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+        }
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      issue: 1982,
+      branch: {
+        name: 'issue/origin-1982-ci-release-waiting-state-worker-slots-into-active-cross-repo-work-stealing',
+        forkRemote: 'origin'
+      },
+      objective: { summary: 'Advance issue #1982' },
+      evidence: {
+        lane: {
+          workerSlotId: 'worker-slot-2'
+        },
+        delivery: {
+          selectedIssue: {
+            number: 1982,
+            title: '[ci]: release waiting-state worker slots into active cross-repo work stealing'
+          },
+          laneLifecycle: 'waiting-review',
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+          },
+          workerProviderSelection: {
+            selectedSlotId: 'worker-slot-2'
+          }
+        }
+      }
+    },
+    taskPacketArtifacts: {
+      latestPath: path.join(runtimeDir, 'task-packet.json')
+    },
+    runtimeArtifactPaths: {
+      runtimeDir
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        implementationRemote: 'origin',
+        maxActiveCodingLanes: 4,
+        workerPool: {
+          targetSlotCount: 4,
+          prewarmSlotCount: 1,
+          releaseWaitingStates: ['waiting-ci', 'waiting-review', 'ready-merge'],
+          providers: [
+            {
+              id: 'local-codex',
+              kind: 'local',
+              enabled: true,
+              slotCount: 2,
+              executionPlane: 'local',
+              assignmentMode: 'interactive-coding',
+              dispatchSurface: 'codex-cli',
+              completionMode: 'synchronous',
+              requiresLocalCheckout: true
+            }
+          ]
+        }
+      }),
+      invokeDeliveryTurnBrokerFn: async () => ({
+        status: 'completed',
+        outcome: 'waiting-review',
+        reason: 'Review disposition is pending.',
+        details: {
+          actionType: 'watch-pr',
+          laneLifecycle: 'waiting-review',
+          blockerClass: 'review',
+          retryable: true,
+          nextWakeCondition: 'review-disposition-updated',
+          workerSlotId: 'worker-slot-2'
+        }
+      }),
+      readGovernorPortfolioSummaryFn: async () => ({
+        schema: 'priority/autonomous-governor-portfolio-summary-report@v1',
+        summary: {
+          currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextAction: 'continue-compare-governance-work',
+          ownerDecisionSource: 'compare-governor-summary',
+          governorMode: 'compare-governance-work'
+        }
+      }),
+      runCrossRepoLaneBrokerFn: async () => ({
+        outputPath: path.join(runtimeDir, 'cross-repo-lane-broker-decision.json'),
+        report: {
+          schema: 'priority/cross-repo-lane-broker-decision@v1',
+          decision: {
+            status: 'ready',
+            selectedRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+            selectedIssueNumber: 52,
+            selectedIssueUrl: 'https://github.com/LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate/issues/52',
+            selectedIssueTitle: '[comparevi]: template consumer rail',
+            selectedProviderId: 'local-codex',
+            selectedSlotId: 'worker-slot-1',
+            selectionSource: 'released-waiting-state-marketplace'
+          }
+        }
+      }),
+      readMonitoringEntrypointsFn: async () => createMonitoringEntrypoints(),
+      collectMarketplaceSnapshotFn: async () => ({
+        schema: 'priority/lane-marketplace-snapshot@v1',
+        generatedAt: '2026-03-26T03:15:00.000Z',
+        summary: {
+          repositoryCount: 3,
+          eligibleLaneCount: 1,
+          topEligibleLane: {
+            repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+            issueNumber: 52
+          }
+        },
+        entries: []
+      }),
+      writeMarketplaceSnapshotFn: async () => path.join(runtimeDir, 'lane-marketplace-snapshot.json'),
+      selectMarketplaceRecommendationFn: () => ({
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        issueNumber: 52
+      }),
+      loadBranchClassContractFn: () => makeLaneBranchClassContract(),
+      runTemplateAgentVerificationReportFn: async () => null
+    }
+  });
+
+  assert.equal(execution.outcome, 'repo-context-pivot');
+  assert.equal(execution.details.laneLifecycle, 'waiting-review');
+  assert.equal(execution.details.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(execution.details.brokerSelectedIssueNumber, 52);
+  assert.equal(execution.details.releasedSlotId, 'worker-slot-2');
+
+  const persisted = await readJson(path.join(runtimeDir, 'delivery-agent-state.json'));
+  assert.equal(persisted.workerPool.releasedLaneCount, 1);
+  assert.equal(persisted.workerPool.releasedLanes[0].laneLifecycle, 'waiting-review');
+  assert.equal(
+    persisted.activeLane.repoContextPivot.nextOwnerRepository,
+    'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+  );
+  assert.equal(persisted.activeLane.repoContextPivot.brokerSelectedIssueNumber, 52);
+});
+
+test('comparevi runtime fails closed when released waiting-state capacity finds no external marketplace candidate', async () => {
+  const runtimeDir = await mkdtemp(path.join(os.tmpdir(), 'comparevi-runtime-waiting-ci-fail-closed-'));
+  const execution = await compareviRuntimeTest.executeCompareviTurn({
+    options: {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    env: {
+      GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      AGENT_PRIORITY_UPSTREAM_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    repoRoot,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    schedulerDecision: {
+      activeLane: {
+        laneId: 'origin-1982',
+        issue: 1982,
+        forkRemote: 'origin',
+        branch: 'issue/origin-1982-ci-release-waiting-state-worker-slots-into-active-cross-repo-work-stealing',
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1982',
+        blockerClass: 'ci'
+      },
+      artifacts: {
+        standingRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+        standingIssueNumber: 1982,
+        laneLifecycle: 'waiting-ci',
+        selectedActionType: 'watch-pr',
+        planeTransition: {
+          from: 'origin',
+          to: 'upstream',
+          action: 'promote',
+          via: 'pull-request',
+          branchClass: 'lane',
+          sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+          targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+        }
+      }
+    },
+    taskPacket: {
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      issue: 1982,
+      branch: {
+        name: 'issue/origin-1982-ci-release-waiting-state-worker-slots-into-active-cross-repo-work-stealing',
+        forkRemote: 'origin'
+      },
+      objective: { summary: 'Advance issue #1982' },
+      evidence: {
+        lane: {
+          workerSlotId: 'worker-slot-2'
+        },
+        delivery: {
+          selectedIssue: {
+            number: 1982,
+            title: '[ci]: release waiting-state worker slots into active cross-repo work stealing'
+          },
+          laneLifecycle: 'waiting-ci',
+          planeTransition: {
+            from: 'origin',
+            to: 'upstream',
+            action: 'promote',
+            via: 'pull-request',
+            branchClass: 'lane',
+            sourceRepository: 'labview-community-ci-cd/compare-vi-cli-action-fork',
+            targetRepository: 'labview-community-ci-cd/compare-vi-cli-action'
+          },
+          workerProviderSelection: {
+            selectedSlotId: 'worker-slot-2'
+          }
+        }
+      }
+    },
+    taskPacketArtifacts: {
+      latestPath: path.join(runtimeDir, 'task-packet.json')
+    },
+    runtimeArtifactPaths: {
+      runtimeDir
+    },
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({
+        schema: 'priority/delivery-agent-policy@v1',
+        implementationRemote: 'origin',
+        maxActiveCodingLanes: 4,
+        workerPool: {
+          targetSlotCount: 4,
+          prewarmSlotCount: 1,
+          releaseWaitingStates: ['waiting-ci', 'waiting-review', 'ready-merge'],
+          providers: [
+            {
+              id: 'local-codex',
+              kind: 'local',
+              enabled: true,
+              slotCount: 2,
+              executionPlane: 'local',
+              assignmentMode: 'interactive-coding',
+              dispatchSurface: 'codex-cli',
+              completionMode: 'synchronous',
+              requiresLocalCheckout: true
+            }
+          ]
+        }
+      }),
+      invokeDeliveryTurnBrokerFn: async () => ({
+        status: 'completed',
+        outcome: 'waiting-ci',
+        reason: 'Hosted validation is still running.',
+        details: {
+          actionType: 'watch-pr',
+          laneLifecycle: 'waiting-ci',
+          blockerClass: 'ci',
+          retryable: true,
+          nextWakeCondition: 'hosted-lane-settled',
+          workerSlotId: 'worker-slot-2'
+        }
+      }),
+      readGovernorPortfolioSummaryFn: async () => ({
+        schema: 'priority/autonomous-governor-portfolio-summary-report@v1',
+        summary: {
+          currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextAction: 'continue-compare-governance-work',
+          ownerDecisionSource: 'compare-governor-summary',
+          governorMode: 'compare-governance-work'
+        }
+      }),
+      runCrossRepoLaneBrokerFn: async () => ({
+        outputPath: path.join(runtimeDir, 'cross-repo-lane-broker-decision.json'),
+        report: {
+          schema: 'priority/cross-repo-lane-broker-decision@v1',
+          decision: {
+            status: 'no-eligible-repository',
+            selectedRepository: null,
+            selectedIssueNumber: null,
+            selectedProviderId: 'local-codex',
+            selectedSlotId: 'worker-slot-1',
+            selectionSource: 'released-waiting-state-marketplace'
+          }
+        }
+      }),
+      collectMarketplaceSnapshotFn: async () => ({
+        schema: 'priority/lane-marketplace-snapshot@v1',
+        generatedAt: '2026-03-26T03:15:00.000Z',
+        summary: {
+          repositoryCount: 0,
+          eligibleLaneCount: 0,
+          topEligibleLane: null
+        },
+        entries: []
+      }),
+      writeMarketplaceSnapshotFn: async () => path.join(runtimeDir, 'lane-marketplace-snapshot.json'),
+      selectMarketplaceRecommendationFn: () => null,
+      loadBranchClassContractFn: () => makeLaneBranchClassContract(),
+      runTemplateAgentVerificationReportFn: async () => null
+    }
+  });
+
+  assert.equal(execution.outcome, 'waiting-ci');
+  assert.equal(execution.details.actionType, 'watch-pr');
+  assert.equal(execution.details.nextWakeCondition, 'hosted-lane-settled');
+
+  const persisted = await readJson(path.join(runtimeDir, 'delivery-agent-state.json'));
+  assert.equal(persisted.workerPool.releasedLaneCount, 1);
+  assert.equal(persisted.activeLane.actionType, 'watch-pr');
+  assert.equal(persisted.activeLane.repoContextPivot, null);
 });
 
 test('comparevi canonical execution consumes the broker receipt file when stdout includes helper chatter', async () => {
