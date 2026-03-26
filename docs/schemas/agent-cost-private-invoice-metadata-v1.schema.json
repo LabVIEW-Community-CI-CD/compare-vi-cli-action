@@ -19,6 +19,12 @@
     "sourcePath": { "type": "string", "minLength": 1 },
     "operatorNote": { "type": ["string", "null"] },
     "activationState": { "type": ["string", "null"], "enum": ["active", "hold", null] },
-    "fundingPurpose": { "type": ["string", "null"], "enum": ["operational", "calibration", null] }
+    "fundingPurpose": { "type": ["string", "null"], "enum": ["operational", "calibration", null] },
+    "replenishmentReason": {
+      "type": ["string", "null"],
+      "enum": ["post-exhaustion", "scheduled-top-up", "manual-resume", null]
+    },
+    "exhaustionObservedAt": { "type": ["string", "null"], "format": "date-time" },
+    "resumeObservedAt": { "type": ["string", "null"], "format": "date-time" }
   }
 }

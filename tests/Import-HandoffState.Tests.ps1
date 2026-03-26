@@ -188,6 +188,123 @@ Describe 'Import-HandoffState' -Tag 'Unit' {
     Remove-Variable -Name HandoffMonitoringMode -Scope Global -ErrorAction SilentlyContinue
   }
 
+  It 'surfaces treasury ledger state when present' {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $scriptPath = Join-Path $repoRoot 'tools' 'priority' 'Import-HandoffState.ps1'
+    $handoffDir = Join-Path $TestDrive 'handoff'
+    New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+
+    [ordered]@{
+      schema = 'priority/treasury-ledger@v1'
+      generatedAt = '2026-03-26T06:25:00Z'
+      repository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+      inputs = [ordered]@{
+        invoiceMetadataPath = 'C:\Users\sveld\Downloads\Invoice-HQ1VJLMV-0030.json'
+        normalizedInvoiceTurnPath = 'tests/results/_agent/cost/invoice-turns/HQ1VJLMV-0030.local.json'
+        usageExportCsvPath = 'C:\Users\sveld\Downloads\usage.csv'
+        normalizedUsageExportPath = 'tests/results/_agent/cost/usage-exports/mar-usage.json'
+        costRollupPath = 'tests/results/_agent/cost/agent-cost-rollup.json'
+        operatorSteeringEventPath = 'tests/results/_agent/runtime/operator-steering-event.json'
+      }
+      events = [ordered]@{
+        hardStop = [ordered]@{
+          status = 'observed'
+          observedAt = '2026-03-25T23:50:00Z'
+          sourceKind = 'invoice-metadata'
+          reason = 'credit exhaustion observed'
+        }
+        replenishment = [ordered]@{
+          status = 'observed'
+          observedAt = '2026-03-26T00:10:00Z'
+          sourceKind = 'operator-invoice'
+          reason = 'new invoice opened'
+          invoiceTurnId = 'invoice-turn-2026-03-HQ1VJLMV-0030'
+          invoiceId = 'HQ1VJLMV-0030'
+          openedAt = '2026-03-26T00:10:00Z'
+          creditsPurchased = 5000
+          prepaidUsd = 200
+          activationState = 'active'
+          fundingPurpose = 'operational'
+          sourcePathEvidence = 'C:\Users\sveld\Downloads\Invoice-HQ1VJLMV-0030.pdf'
+        }
+        resume = [ordered]@{
+          status = 'observed'
+          observedAt = '2026-03-26T00:12:00Z'
+          sourceKind = 'invoice-metadata'
+          reason = 'resume observed'
+        }
+      }
+      fundingWindow = [ordered]@{
+        status = 'selected'
+        source = 'normalized-invoice-turn'
+        invoiceTurnId = 'invoice-turn-2026-03-HQ1VJLMV-0030'
+        invoiceId = 'HQ1VJLMV-0030'
+        openedAt = '2026-03-26T00:10:00Z'
+        activationState = 'active'
+        fundingPurpose = 'operational'
+      }
+      observedBurn = [ordered]@{
+        status = 'fail-closed'
+        normalizedUsageExportPath = 'tests/results/_agent/cost/usage-exports/mar-usage.json'
+        sourcePathEvidence = 'C:\Users\sveld\Downloads\LabVIEW Open-Source Initiative Credit Usage Report (Mar 15 - Apr 15) (3).csv'
+        startDate = '2026-03-15'
+        endDate = '2026-03-24'
+        usageCredits = 24685.09
+        usageQuantity = 493701.8
+        filenameRangeStatus = 'mismatch'
+        declaredFileRange = [ordered]@{
+          startLabel = 'Mar 15'
+          endLabel = 'Apr 15'
+          startMonth = 3
+          startDay = 15
+          endMonth = 4
+          endDay = 15
+        }
+        reason = 'filename range is broader than observed rows'
+      }
+      remainingCapitalPosture = [ordered]@{
+        status = 'fail-closed'
+        source = 'agent-cost-rollup'
+        remainingCredits = $null
+        remainingUsd = $null
+        rollupInvoiceTurnId = 'invoice-turn-2026-03-HQ1VJLMV-0027'
+        reason = 'funding-window-rollup-mismatch'
+      }
+      schedulerState = [ordered]@{
+        status = 'fail-closed'
+        failClosed = $true
+        capitalModeRecommended = 'conserve'
+        blockingReasonCodes = @('usage-export-window-mismatch', 'funding-window-rollup-mismatch')
+        currentFundingWindowId = 'invoice-turn-2026-03-HQ1VJLMV-0030'
+        latestHardStopStatus = 'observed'
+        latestResumeStatus = 'observed'
+        latestReplenishmentInvoiceTurnId = 'invoice-turn-2026-03-HQ1VJLMV-0030'
+      }
+      summary = [ordered]@{
+        status = 'fail-closed'
+        blockerCount = 2
+        blockers = @()
+        warningCount = 0
+        warnings = @()
+        currentFundingWindowId = 'invoice-turn-2026-03-HQ1VJLMV-0030'
+        latestReplenishmentInvoiceId = 'HQ1VJLMV-0030'
+        latestHardStopStatus = 'observed'
+        latestResumeStatus = 'observed'
+        remainingCapitalStatus = 'fail-closed'
+      }
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $handoffDir 'treasury-ledger.json') -Encoding utf8
+
+    $output = & $scriptPath -HandoffDir $handoffDir *>&1 | Out-String
+
+    $output | Should -Match '\[handoff\] Treasury ledger'
+    $output | Should -Match 'status\s+: fail-closed'
+    $output | Should -Match 'funding\s+: invoice-turn-2026-03-HQ1VJLMV-0030'
+    $output | Should -Match 'mode\s+: conserve'
+    (Get-Variable -Name HandoffTreasuryLedger -Scope Global -ValueOnly).schema | Should -Be 'priority/treasury-ledger@v1'
+
+    Remove-Variable -Name HandoffTreasuryLedger -Scope Global -ErrorAction SilentlyContinue
+  }
+
   It 'surfaces autonomous governor summary when present' {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
     $scriptPath = Join-Path $repoRoot 'tools' 'priority' 'Import-HandoffState.ps1'

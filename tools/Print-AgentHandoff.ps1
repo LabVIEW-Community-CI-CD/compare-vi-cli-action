@@ -1327,6 +1327,7 @@ try {
   $monitoringModeScript = Join-Path $repoRoot 'tools' 'priority' 'handoff-monitoring-mode.mjs'
   $releasePublishedBundleObserverScript = Join-Path $repoRoot 'tools' 'priority' 'release-published-bundle-observer.mjs'
   $releaseSigningReadinessScript = Join-Path $repoRoot 'tools' 'priority' 'release-signing-readiness.mjs'
+  $treasuryLedgerScript = Join-Path $repoRoot 'tools' 'priority' 'treasury-ledger.mjs'
   $governorSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-summary.mjs'
   $governorPortfolioSummaryScript = Join-Path $repoRoot 'tools' 'priority' 'autonomous-governor-portfolio-summary.mjs'
   $contextConcentratorScript = Join-Path $repoRoot 'tools' 'priority' 'sagan-context-concentrator.mjs'
@@ -1351,6 +1352,8 @@ try {
     $continuitySummaryPath = Join-Path $ResultsRoot '_agent/handoff/continuity-summary.json'
     $repoGraphTruthPath = Join-Path $handoffDir 'downstream-repo-graph-truth.json'
     $monitoringModePath = Join-Path $handoffDir 'monitoring-mode.json'
+    $treasuryLedgerPath = Join-Path $handoffDir 'treasury-ledger.json'
+    $treasuryRuntimePath = Join-Path $ResultsRoot '_agent/capital/treasury-ledger.json'
     $governorSummaryPath = Join-Path $handoffDir 'autonomous-governor-summary.json'
     $governorPortfolioSummaryPath = Join-Path $handoffDir 'autonomous-governor-portfolio-summary.json'
     $contextConcentratorPath = Join-Path $handoffDir 'sagan-context-concentrator.json'
@@ -1399,6 +1402,15 @@ try {
         --release-conductor-report $releaseConductorReportPath `
         --release-published-bundle-observer $releasePublishedBundleObserverPath `
         --output $releaseSigningReadinessPath | Out-Host
+    }
+
+    if (Test-Path -LiteralPath $treasuryLedgerScript -PathType Leaf) {
+      & $nodeCmd.Source $treasuryLedgerScript `
+        --repo-root $repoRoot `
+        --cost-rollup (Join-Path $ResultsRoot '_agent/cost/agent-cost-rollup.json') `
+        --operator-steering-event (Join-Path $ResultsRoot '_agent/runtime/operator-steering-event.json') `
+        --output $treasuryRuntimePath `
+        --handoff-output $treasuryLedgerPath | Out-Host
     }
 
     if (Test-Path -LiteralPath $governorSummaryScript -PathType Leaf) {
@@ -1915,6 +1927,42 @@ try {
   }
 } catch {
   Write-Warning ("Failed to display context concentrator summary: {0}" -f $_.Exception.Message)
+}
+
+try {
+  $treasuryPath = Join-Path $ResultsRoot '_agent/handoff/treasury-ledger.json'
+  if (Test-Path -LiteralPath $treasuryPath -PathType Leaf) {
+    $treasury = Get-Content -LiteralPath $treasuryPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    Write-Host ''
+    Write-Host '[Treasury Ledger]' -ForegroundColor Cyan
+    Write-Host ("  status   : {0}" -f (Format-NullableValue $treasury.summary.status))
+    Write-Host ("  funding  : {0}" -f (Format-NullableValue $treasury.fundingWindow.invoiceTurnId))
+    Write-Host ("  hardStop : {0}" -f (Format-NullableValue $treasury.events.hardStop.status))
+    Write-Host ("  resume   : {0}" -f (Format-NullableValue $treasury.events.resume.status))
+    Write-Host ("  capital  : {0}" -f (Format-NullableValue $treasury.remainingCapitalPosture.status))
+    Write-Host ("  mode     : {0}" -f (Format-NullableValue $treasury.schedulerState.capitalModeRecommended))
+    if ($treasury.schedulerState.blockingReasonCodes -and @($treasury.schedulerState.blockingReasonCodes).Count -gt 0) {
+      Write-Host ("  blockers : {0}" -f ((@($treasury.schedulerState.blockingReasonCodes) -join ', ')))
+    }
+    if ($env:GITHUB_STEP_SUMMARY) {
+      $treasuryLines = @(
+        '### Treasury Ledger',
+        '',
+        ('- Status: {0}' -f (Format-NullableValue $treasury.summary.status)),
+        ('- Funding window: {0}' -f (Format-NullableValue $treasury.fundingWindow.invoiceTurnId)),
+        ('- Hard-stop: {0}' -f (Format-NullableValue $treasury.events.hardStop.status)),
+        ('- Resume: {0}' -f (Format-NullableValue $treasury.events.resume.status)),
+        ('- Remaining capital: {0}' -f (Format-NullableValue $treasury.remainingCapitalPosture.status)),
+        ('- Capital mode: {0}' -f (Format-NullableValue $treasury.schedulerState.capitalModeRecommended))
+      )
+      if ($treasury.schedulerState.blockingReasonCodes -and @($treasury.schedulerState.blockingReasonCodes).Count -gt 0) {
+        $treasuryLines += ('- Blockers: {0}' -f ((@($treasury.schedulerState.blockingReasonCodes) -join ', ')))
+      }
+      ($treasuryLines -join "`n") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+    }
+  }
+} catch {
+  Write-Warning ("Failed to display treasury ledger summary: {0}" -f $_.Exception.Message)
 }
 
 try {
