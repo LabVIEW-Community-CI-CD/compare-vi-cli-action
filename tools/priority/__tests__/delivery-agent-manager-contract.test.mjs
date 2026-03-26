@@ -21,6 +21,23 @@ async function writeJson(filePath, payload) {
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 
+async function readTextIfExists(filePath) {
+  try {
+    return await readFile(filePath, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+async function restoreTextFile(filePath, text) {
+  if (text == null) {
+    await rm(filePath, { force: true });
+    return;
+  }
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, text, 'utf8');
+}
+
 async function copyRepoFile(relativePath, tempRoot) {
   const destinationPath = path.join(tempRoot, relativePath);
   await mkdir(path.dirname(destinationPath), { recursive: true });
@@ -352,6 +369,110 @@ test('delivery-agent manager status ignores stale host-signal artifacts from bef
   assert.equal(status.hostSignalDiagnostics.reason, 'stale-before-current-manager');
   assert.equal(status.hostSignalDiagnostics.hostSignalGeneratedAt, hostSignalGeneratedAt);
   assert.equal(status.hostSignalDiagnostics.managerStartedAt, managerStartedAt);
+});
+
+test('delivery-agent manager status projects queue-empty monitoring when the current manager is alive and historical lane receipts are stale', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-queue-empty-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  const issueDirPath = path.join(repoRoot, 'tests', 'results', '_agent', 'issue');
+  const handoffDirPath = path.join(repoRoot, 'tests', 'results', '_agent', 'handoff');
+  const queueEmptyReportPath = path.join(issueDirPath, 'no-standing-priority.json');
+  const routerPath = path.join(issueDirPath, 'router.json');
+  const monitoringModePath = path.join(handoffDirPath, 'monitoring-mode.json');
+  const originalQueueEmptyReport = await readTextIfExists(queueEmptyReportPath);
+  const originalRouter = await readTextIfExists(routerPath);
+  const originalMonitoringMode = await readTextIfExists(monitoringModePath);
+
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+    await restoreTextFile(queueEmptyReportPath, originalQueueEmptyReport);
+    await restoreTextFile(routerPath, originalRouter);
+    await restoreTextFile(monitoringModePath, originalMonitoringMode);
+  });
+
+  const now = Date.now();
+  const deliveryGeneratedAt = new Date(now - 120_000).toISOString();
+  const heartbeatGeneratedAt = new Date(now - 60_000).toISOString();
+  const managerStartedAt = new Date(now - 10_000).toISOString();
+  const daemonStartedAt = new Date(now - 9_000).toISOString();
+
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-state.json'), {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: deliveryGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: runtimeDirPath,
+    status: 'blocked',
+    laneLifecycle: 'blocked',
+    activeCodingLanes: 0,
+    activeLane: {
+      schema: 'priority/delivery-agent-lane-state@v1',
+      generatedAt: deliveryGeneratedAt,
+      laneId: 'origin-1010',
+      issue: 1010,
+      branch: 'issue/origin-1010-example',
+      forkRemote: 'origin',
+      blockerClass: 'validation-failure',
+      laneLifecycle: 'blocked'
+    }
+  });
+  await writeJson(path.join(runtimeDirPath, 'observer-heartbeat.json'), {
+    schema: 'priority/runtime-observer-heartbeat@v1',
+    generatedAt: heartbeatGeneratedAt,
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    outcome: 'lease-blocked',
+    activeLane: {
+      laneId: 'origin-959',
+      issue: 959,
+      branch: 'issue/origin-959-example',
+      forkRemote: 'origin',
+      blockerClass: 'none'
+    }
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-manager-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-manager-pid@v1',
+    startedAt: managerStartedAt,
+    pid: process.pid
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-wsl-daemon-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-wsl-daemon-pid@v1',
+    startedAt: daemonStartedAt,
+    pid: 0
+  });
+  await writeJson(queueEmptyReportPath, {
+    schema: 'standing-priority/no-standing@v1',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    reason: 'queue-empty',
+    generatedAt: new Date(now - 5_000).toISOString(),
+    openIssueCount: 0,
+    message: 'Queue empty for unattended monitoring.'
+  });
+  await writeJson(routerPath, {
+    schema: 'agent/priority-router@v1',
+    issue: null,
+    updatedAt: new Date(now - 5_000).toISOString(),
+    actions: []
+  });
+  await writeJson(monitoringModePath, {
+    status: 'active',
+    futureAgentAction: 'future-agent-may-pivot'
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.delivery.derivedFromQueueEmptyState, true);
+  assert.equal(status.delivery.status, 'idle');
+  assert.equal(status.delivery.laneLifecycle, 'idle');
+  assert.equal(status.delivery.activeCodingLanes, 0);
+  assert.equal(status.delivery.activeLane.issue, null);
+  assert.equal(status.delivery.activeLane.laneId, 'queue-empty-monitoring');
+  assert.equal(status.delivery.activeLane.syntheticIdle, true);
+  assert.equal(status.delivery.activeLane.nextWakeCondition, 'future-agent-may-pivot');
+  assert.equal(status.heartbeatDiagnostics.reason, 'queue-empty-current-manager');
+  assert.equal(status.heartbeatDiagnostics.usedHeartbeat, false);
+  assert.equal(status.heartbeatDiagnostics.usedRuntimeState, false);
+  assert.equal(status.heartbeatDiagnostics.usedQueueEmptyState, true);
+  assert.equal(status.heartbeatDiagnostics.queueState, 'queue-empty');
+  assert.equal(status.heartbeatDiagnostics.monitoringAction, 'future-agent-may-pivot');
 });
 
 test('Manage-UnattendedDeliveryAgent suppresses fallback build chatter before JSON status output', async (t) => {
