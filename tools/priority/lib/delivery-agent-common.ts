@@ -797,7 +797,8 @@ export function resolveDeliveryStateForStatus({
       : false;
   const beforeCurrentManager = Boolean(managerStartedAt && heartbeatGeneratedAt && heartbeatGeneratedAt < managerStartedAt);
   const beforeCurrentDaemon = Boolean(daemonStartedAt && heartbeatGeneratedAt && heartbeatGeneratedAt < daemonStartedAt);
-  if (!daemonAlive && (beforeCurrentManager || beforeCurrentDaemon)) {
+  const heartbeatPredatesCurrentEpoch = beforeCurrentManager || beforeCurrentDaemon;
+  if (heartbeatPredatesCurrentEpoch) {
     if (runtimeDeliveryState && (!deliveryGeneratedAt || runtimeGeneratedAt > deliveryGeneratedAt || deliveryIssue !== runtimeIssue)) {
       return useRuntimeIfCurrent();
     }

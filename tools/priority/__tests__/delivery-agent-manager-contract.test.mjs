@@ -475,6 +475,40 @@ test('delivery-agent manager status projects queue-empty monitoring when the cur
   assert.equal(status.heartbeatDiagnostics.monitoringAction, 'future-agent-may-pivot');
 });
 
+test('delivery-agent manager status preserves a persisted fail-closed outcome after the manager stops', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-fail-closed-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+  });
+
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-manager-state.json'), {
+    schema: 'priority/unattended-delivery-agent-report@v1',
+    generatedAt: new Date('2026-03-26T20:00:00.000Z').toISOString(),
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: relativeRuntimeDir,
+    status: 'fail-closed',
+    outcome: 'manager-stopped-fail-closed',
+    managerFailureCircuitBreaker: {
+      status: 'fail-closed',
+      threshold: 3,
+      consecutiveCycleFailures: 3,
+      failureSignature: 'worker-blocked|origin-2010|2010|worker-slot-1|validation-failure',
+      observerOutcome: 'worker-blocked',
+      observerOutcomeSource: 'report',
+      reason: 'repeated-daemon-cycle-failures',
+    },
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.status, 'fail-closed');
+  assert.equal(status.outcome, 'manager-stopped-fail-closed');
+  assert.equal(status.managerFailureCircuitBreaker.status, 'fail-closed');
+  assert.equal(status.managerFailureCircuitBreaker.consecutiveCycleFailures, 3);
+  assert.equal(status.managerFailureCircuitBreaker.reason, 'repeated-daemon-cycle-failures');
+});
+
 test('Manage-UnattendedDeliveryAgent suppresses fallback build chatter before JSON status output', async (t) => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-wrapper-status-'));
   t.after(async () => {

@@ -49,7 +49,7 @@ export function parseArgs(argv = process.argv) {
     dispatchValidateOnQueuePause: false,
     queuePauseRecoveryAllowFork: false,
     onlyRecoverQueueWhenEligible: false,
-    maxConsecutiveCycleFailures: 0,
+    maxConsecutiveCycleFailures: 3,
     autoBootstrapOnFailure: false,
     autoPrioritySyncLane: false,
     autoDevelopSync: false,

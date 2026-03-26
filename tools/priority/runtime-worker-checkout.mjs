@@ -199,13 +199,20 @@ async function repairExistingWorktreeGitPointers({ repoRoot, checkoutPath, laneS
   const worktreeAdminDir = path.join(resolvedGitCommonDir, 'worktrees', resolvedLaneSegment);
   const checkoutGitFile = path.join(checkoutPath, '.git');
   const adminGitdirFile = path.join(worktreeAdminDir, 'gitdir');
+  const checkoutGitExists = await pathExists(checkoutGitFile);
+  const worktreeAdminDirExists = await pathExists(worktreeAdminDir);
+  const adminGitdirFileExists = await pathExists(adminGitdirFile);
 
-  if (!(await pathExists(checkoutGitFile)) || !(await pathExists(worktreeAdminDir)) || !(await pathExists(adminGitdirFile))) {
+  if (!checkoutGitExists || !worktreeAdminDirExists || !adminGitdirFileExists) {
     return {
       repaired: false,
+      structurallyValid: false,
       worktreeAdminDir,
       checkoutGitFile,
-      adminGitdirFile
+      adminGitdirFile,
+      missingCheckoutGitFile: !checkoutGitExists,
+      missingWorktreeAdminDir: !worktreeAdminDirExists,
+      missingAdminGitdirFile: !adminGitdirFileExists
     };
   }
 
@@ -227,11 +234,77 @@ async function repairExistingWorktreeGitPointers({ repoRoot, checkoutPath, laneS
 
   return {
     repaired,
+    structurallyValid: true,
     laneSegment: resolvedLaneSegment,
     worktreeAdminDir,
     checkoutGitFile,
     adminGitdirFile
   };
+}
+
+async function collectRuntimeCheckoutCandidates(runtimeRoot, laneSegment) {
+  if (!(await pathExists(runtimeRoot))) {
+    return [];
+  }
+
+  const candidates = [];
+  const repoRoots = await readdir(runtimeRoot, { withFileTypes: true });
+  for (const entry of repoRoots) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const checkoutPath = path.join(runtimeRoot, entry.name, laneSegment);
+    if (await pathExists(checkoutPath)) {
+      candidates.push(checkoutPath);
+    }
+  }
+
+  return candidates;
+}
+
+async function quarantineRuntimeWorktree({
+  execFileFn,
+  repoRoot,
+  checkoutPath,
+  laneId,
+  gitCommonDir,
+  dirtyEntries = [],
+  quarantineReason
+}) {
+  const laneSegment = sanitizeSegment(laneId);
+  const worktreeAdminDir = path.join(gitCommonDir, 'worktrees', laneSegment);
+  const report = {
+    repaired: false,
+    quarantined: true,
+    dirtyEntries,
+    quarantineReason,
+    removalMethod: null,
+    removeError: null,
+    pruneInvoked: false,
+    pruneError: null,
+    worktreeAdminDir,
+    checkoutPath
+  };
+
+  try {
+    await execFileFn('git', ['worktree', 'remove', '--force', checkoutPath], { cwd: repoRoot });
+    report.removalMethod = 'git-worktree-remove';
+  } catch (error) {
+    report.removalMethod = 'filesystem-remove';
+    report.removeError = formatExecError(error);
+  }
+
+  await rm(checkoutPath, { recursive: true, force: true });
+  await rm(worktreeAdminDir, { recursive: true, force: true });
+
+  try {
+    await execFileFn('git', ['worktree', 'prune', '--verbose', '--expire', 'now'], { cwd: repoRoot });
+    report.pruneInvoked = true;
+  } catch (error) {
+    report.pruneError = formatExecError(error);
+  }
+
+  return report;
 }
 
 export async function repairRegisteredWorktreeGitPointers({ repoRoot, deps = {} }) {
@@ -243,6 +316,7 @@ export async function repairRegisteredWorktreeGitPointers({ repoRoot, deps = {} 
     repaired: [],
     skipped: [],
     unlocked: [],
+    quarantined: [],
     unresolved: [],
     prune: {
       attempted: false,
@@ -270,10 +344,16 @@ export async function repairRegisteredWorktreeGitPointers({ repoRoot, deps = {} 
     });
 
     if (!checkoutGitFile) {
-      report.unresolved.push({
+      const checkoutCandidates = await collectRuntimeCheckoutCandidates(runtimeRoot, laneSegment);
+      await rm(worktreeAdminDir, { recursive: true, force: true });
+      for (const candidate of checkoutCandidates) {
+        await rm(candidate, { recursive: true, force: true });
+      }
+      report.quarantined.push({
         laneSegment,
         worktreeAdminDir,
-        reason: 'checkout-git-not-found'
+        checkoutPaths: checkoutCandidates,
+        quarantineReason: 'checkout-git-not-found'
       });
       continue;
     }
@@ -425,41 +505,6 @@ async function inspectReusedWorktreeState(execFileFn, checkoutPath) {
     repaired: false,
     dirtyEntries
   };
-}
-
-async function quarantineDirtyRuntimeWorktree({ execFileFn, repoRoot, checkoutPath, laneId, gitCommonDir, dirtyEntries }) {
-  const laneSegment = sanitizeSegment(laneId);
-  const worktreeAdminDir = path.join(gitCommonDir, 'worktrees', laneSegment);
-  const report = {
-    repaired: false,
-    quarantined: true,
-    dirtyEntries,
-    quarantineReason: 'dirty-existing-checkout',
-    removalMethod: null,
-    removeError: null,
-    pruneInvoked: false,
-    pruneError: null
-  };
-
-  try {
-    await execFileFn('git', ['worktree', 'remove', '--force', checkoutPath], { cwd: repoRoot });
-    report.removalMethod = 'git-worktree-remove';
-  } catch (error) {
-    report.removalMethod = 'filesystem-remove';
-    report.removeError = formatExecError(error);
-  }
-
-  await rm(checkoutPath, { recursive: true, force: true });
-  await rm(worktreeAdminDir, { recursive: true, force: true });
-
-  try {
-    await execFileFn('git', ['worktree', 'prune', '--verbose', '--expire', 'now'], { cwd: repoRoot });
-    report.pruneInvoked = true;
-  } catch (error) {
-    report.pruneError = formatExecError(error);
-  }
-
-  return report;
 }
 
 function resolveGitHubSshPushUrl(remoteUrl) {
@@ -817,41 +862,85 @@ export async function prepareCompareviWorkerCheckout({
   if (await pathExists(gitMarkerPath)) {
     const fetchedRemotes = [];
     try {
-      await repairExistingWorktreeGitPointers({
+      const pointerRepair = await repairExistingWorktreeGitPointers({
         repoRoot,
         checkoutPath: resolvedCheckoutPath,
         laneSegment: checkoutSegment,
         gitCommonDir
       });
-      worktreeStateRepair = await inspectReusedWorktreeState(execFileFn, resolvedCheckoutPath);
-      if (worktreeStateRepair.dirtyEntries.length > 0) {
-        worktreeStateRepair = await quarantineDirtyRuntimeWorktree({
+      if (pointerRepair.structurallyValid === false) {
+        worktreeStateRepair = await quarantineRuntimeWorktree({
           execFileFn,
           repoRoot,
           checkoutPath: resolvedCheckoutPath,
           laneId: checkoutSegment,
           gitCommonDir,
-          dirtyEntries: worktreeStateRepair.dirtyEntries
+          quarantineReason: 'invalid-existing-worktree-registration'
         });
       } else {
-        const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: resolvedCheckoutPath }))
-          .split(/\r?\n/)
-          .map((entry) => normalizeText(entry))
-          .filter(Boolean);
-        if (availableRemotes.includes('upstream')) {
-          await fetchAttachableRemote(execFileFn, resolvedCheckoutPath, 'upstream');
-          fetchedRemotes.push('upstream');
-        } else if (availableRemotes.includes('origin')) {
-          await fetchAttachableRemote(execFileFn, resolvedCheckoutPath, 'origin');
-          fetchedRemotes.push('origin');
+        worktreeStateRepair = await inspectReusedWorktreeState(execFileFn, resolvedCheckoutPath);
+        if (worktreeStateRepair.dirtyEntries.length > 0) {
+          worktreeStateRepair = await quarantineRuntimeWorktree({
+            execFileFn,
+            repoRoot,
+            checkoutPath: resolvedCheckoutPath,
+            laneId: checkoutSegment,
+            gitCommonDir,
+            dirtyEntries: worktreeStateRepair.dirtyEntries,
+            quarantineReason: 'dirty-existing-checkout'
+          });
+        } else {
+          const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: resolvedCheckoutPath }))
+            .split(/\r?\n/)
+            .map((entry) => normalizeText(entry))
+            .filter(Boolean);
+          if (availableRemotes.includes('upstream')) {
+            await fetchAttachableRemote(execFileFn, resolvedCheckoutPath, 'upstream');
+            fetchedRemotes.push('upstream');
+          } else if (availableRemotes.includes('origin')) {
+            await fetchAttachableRemote(execFileFn, resolvedCheckoutPath, 'origin');
+            fetchedRemotes.push('origin');
+          }
+          const resolvedRef = await resolveAuthoritativeStandingBaseRef(execFileFn, repoRoot, schedulerDecision, {
+            availableRemotes
+          });
+          await execFileFn('git', ['checkout', '--force', '--detach', resolvedRef], { cwd: resolvedCheckoutPath });
+          const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, resolvedCheckoutPath, {
+            platform: deps.platform ?? platform ?? process.platform
+          });
+          return {
+            laneId: activeLane.laneId,
+            slotId,
+            providerId: providerSelection.selectedProviderId,
+            providerKind: providerSelection.selectedProviderKind,
+            executionPlane: providerSelection.selectedExecutionPlane,
+            assignmentMode: providerSelection.selectedAssignmentMode,
+            checkoutRoot,
+            checkoutPath: resolvedCheckoutPath,
+            checkoutRootPolicy,
+            status: 'reused',
+            ref: resolvedRef,
+            requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
+            source: 'comparevi-worktree',
+            fetchedRemotes,
+            pushRemotesNormalized,
+            worktreeStateRepair
+          };
         }
-        const resolvedRef = await resolveAuthoritativeStandingBaseRef(execFileFn, repoRoot, schedulerDecision, {
-          availableRemotes
+      }
+    } catch (error) {
+      const errorMessage = formatExecError(error);
+      const structuralGitError = /not a git repository|enoent|cannot change to|branch-classes\.json/i.test(errorMessage);
+      if (structuralGitError) {
+        worktreeStateRepair = await quarantineRuntimeWorktree({
+          execFileFn,
+          repoRoot,
+          checkoutPath: resolvedCheckoutPath,
+          laneId: checkoutSegment,
+          gitCommonDir,
+          quarantineReason: 'structural-existing-checkout-error'
         });
-        await execFileFn('git', ['checkout', '--force', '--detach', resolvedRef], { cwd: resolvedCheckoutPath });
-        const pushRemotesNormalized = await normalizeGitHubRemotePushUrls(execFileFn, resolvedCheckoutPath, {
-          platform: deps.platform ?? platform ?? process.platform
-        });
+      } else {
         return {
           laneId: activeLane.laneId,
           slotId,
@@ -862,50 +951,27 @@ export async function prepareCompareviWorkerCheckout({
           checkoutRoot,
           checkoutPath: resolvedCheckoutPath,
           checkoutRootPolicy,
-          status: 'reused',
-          ref: resolvedRef,
+          status: 'blocked',
+          ref: DEFAULT_WORKER_REF,
           requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
+          reason: `failed to refresh existing worker checkout: ${errorMessage}`,
           source: 'comparevi-worktree',
-          fetchedRemotes,
-          pushRemotesNormalized,
-          worktreeStateRepair
+          fetchedRemotes
         };
       }
-    } catch (error) {
-      return {
-        laneId: activeLane.laneId,
-        slotId,
-        providerId: providerSelection.selectedProviderId,
-        providerKind: providerSelection.selectedProviderKind,
-        executionPlane: providerSelection.selectedExecutionPlane,
-        assignmentMode: providerSelection.selectedAssignmentMode,
-        checkoutRoot,
-        checkoutPath: resolvedCheckoutPath,
-        checkoutRootPolicy,
-        status: 'blocked',
-        ref: DEFAULT_WORKER_REF,
-        requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
-        reason: `failed to refresh existing worker checkout: ${formatExecError(error)}`,
-        source: 'comparevi-worktree',
-        fetchedRemotes
-      };
     }
 
   }
 
   if (await pathExists(resolvedCheckoutPath)) {
-    return {
-      laneId: activeLane.laneId,
-      slotId,
-      checkoutRoot,
+    worktreeStateRepair = await quarantineRuntimeWorktree({
+      execFileFn,
+      repoRoot,
       checkoutPath: resolvedCheckoutPath,
-      checkoutRootPolicy,
-      status: 'blocked',
-      ref: DEFAULT_WORKER_REF,
-      requestedBranch: normalizeText(schedulerDecision?.stepOptions?.branch) || null,
-      reason: 'worker checkout path exists but is not a git worktree',
-      source: 'comparevi-worktree'
-    };
+      laneId: checkoutSegment,
+      gitCommonDir,
+      quarantineReason: 'worker checkout path exists but is not a git worktree'
+    });
   }
 
   const availableRemotes = (await tryReadGitStdout(execFileFn, ['remote'], { cwd: repoRoot }))

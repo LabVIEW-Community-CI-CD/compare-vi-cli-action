@@ -169,3 +169,76 @@ test('resolveDaemonStartFailure still routes fresh structured outcomes when stop
   assert.equal(resolution.observerOutcome, 'idle-stop');
   assert.equal(resolution.observerOutcomeSource, 'report');
 });
+
+test('resolveManagerCycleFailureState opens the circuit after repeated fresh blocked outcomes', async () => {
+  const { resolveManagerCycleFailureState } = await loadModule();
+  const notBefore = new Date('2026-03-22T18:00:00.000Z');
+
+  const resolution = resolveManagerCycleFailureState({
+    daemonAlive: false,
+    blockedByHostConflict: false,
+    stopOnIdle: true,
+    heartbeat: {
+      generatedAt: '2026-03-22T18:00:02.000Z',
+      outcome: 'worker-blocked',
+      activeLane: {
+        laneId: 'origin-2010',
+        issue: 2010,
+        blockerClass: 'validation-failure',
+        taskPacket: {
+          evidence: {
+            lane: {
+              workerSlotId: 'worker-slot-1',
+            },
+          },
+        },
+      },
+    },
+    report: {
+      generatedAt: '2026-03-22T18:00:03.000Z',
+      outcome: 'worker-blocked',
+    },
+    notBefore,
+    priorFailureCount: 2,
+    priorFailureSignature: 'worker-blocked|origin-2010|2010|worker-slot-1|validation-failure',
+    maxConsecutiveCycleFailures: 3,
+  });
+
+  assert.equal(resolution.status, 'fail-closed');
+  assert.equal(resolution.shouldStop, true);
+  assert.equal(resolution.consecutiveCycleFailures, 3);
+  assert.equal(resolution.failureSignature, 'worker-blocked|origin-2010|2010|worker-slot-1|validation-failure');
+  assert.equal(resolution.observerOutcome, 'worker-blocked');
+  assert.equal(resolution.observerOutcomeSource, 'report');
+  assert.equal(resolution.reason, 'repeated-daemon-cycle-failures');
+});
+
+test('resolveManagerCycleFailureState clears the failure streak on fresh idle-stop proof', async () => {
+  const { resolveManagerCycleFailureState } = await loadModule();
+  const notBefore = new Date('2026-03-22T18:00:00.000Z');
+
+  const resolution = resolveManagerCycleFailureState({
+    daemonAlive: false,
+    blockedByHostConflict: false,
+    stopOnIdle: true,
+    heartbeat: {
+      generatedAt: '2026-03-22T18:00:02.000Z',
+      outcome: 'idle-stop',
+    },
+    report: {
+      generatedAt: '2026-03-22T18:00:03.000Z',
+      outcome: 'idle-stop',
+    },
+    notBefore,
+    priorFailureCount: 2,
+    priorFailureSignature: 'worker-blocked|origin-2010|2010|worker-slot-1|validation-failure',
+    maxConsecutiveCycleFailures: 3,
+  });
+
+  assert.equal(resolution.status, 'clear');
+  assert.equal(resolution.shouldStop, false);
+  assert.equal(resolution.consecutiveCycleFailures, 0);
+  assert.equal(resolution.failureSignature, '');
+  assert.equal(resolution.observerOutcome, 'idle-stop');
+  assert.equal(resolution.reason, 'idle-stop');
+});
