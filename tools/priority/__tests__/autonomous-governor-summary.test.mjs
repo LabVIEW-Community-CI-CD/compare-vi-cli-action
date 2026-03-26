@@ -215,6 +215,7 @@ function createDeliveryRuntimeState(overrides = {}) {
       blockerClass: 'none',
       nextWakeCondition: 'checks-green',
       reason: 'Waiting for hosted checks to finish before merge queue advances.',
+      repoContextPivot: null,
       providerDispatch: {
         providerId: 'hosted-github-workflow',
         providerKind: 'hosted-github-workflow',
@@ -392,6 +393,7 @@ test('runAutonomousGovernorSummary reports compare governance work when the late
   assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.summary.nextAction, 'continue-compare-governance-work');
+  assert.equal(report.summary.ownerDecisionSource, 'wake-lifecycle');
   assert.equal(report.summary.signalQuality, 'validated-governance-work');
   assert.equal(report.funding.invoiceTurnId, 'invoice-turn-2026-03-HQ1VJLMV-0027');
   assert.equal(report.compare.releaseSigningReadiness.status, 'missing');
@@ -409,6 +411,7 @@ test('runAutonomousGovernorSummary reports monitoring-active when no wake lifecy
 
   assert.equal(report.summary.governorMode, 'monitoring-active');
   assert.equal(report.summary.nextAction, 'future-agent-may-pivot');
+  assert.equal(report.summary.ownerDecisionSource, 'compare-monitoring-mode');
   assert.equal(report.summary.signalQuality, 'idle-monitoring');
   assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
@@ -459,6 +462,7 @@ test('runAutonomousGovernorSummary prefers marketplace-recommended canonical rep
   assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/comparevi-history');
   assert.equal(report.summary.nextAction, 'future-agent-may-pivot');
+  assert.equal(report.summary.ownerDecisionSource, 'delivery-runtime-marketplace');
 });
 
 test('runAutonomousGovernorSummary suppresses stale delivery runtime blockers during queue-empty pivot monitoring', async () => {
@@ -494,6 +498,55 @@ test('runAutonomousGovernorSummary suppresses stale delivery runtime blockers du
   assert.equal(report.summary.queueHandoffStatus, 'none');
   assert.equal(report.summary.queueHandoffNextWakeCondition, null);
   assert.equal(report.summary.queueHandoffPrUrl, null);
+  assert.equal(report.summary.queueAuthoritySource, 'none');
+});
+
+test('runAutonomousGovernorSummary preserves broker pivot authority while suppressing stale delivery runtime blockers', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-monitoring-pivot-authority-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      status: 'blocked',
+      laneLifecycle: 'blocked',
+      activeLane: {
+        issue: 959,
+        prUrl: 'https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/pull/1017',
+        laneLifecycle: 'blocked',
+        actionType: 'merge-pr',
+        outcome: 'merge-blocked',
+        blockerClass: 'merge',
+        nextWakeCondition: 'mergeable-pr',
+        reason: 'Stale merge blocker carried from an old delivery-runtime receipt.',
+        repoContextPivot: {
+          currentRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          nextAction: 'reopen-template-monitoring-work',
+          ownerDecisionSource: 'delivery-runtime-marketplace',
+          pivotStatus: 'ready',
+          brokerSelectionSource: 'released-waiting-state-marketplace'
+        }
+      }
+    })
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.summary.governorMode, 'monitoring-active');
+  assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(report.summary.nextAction, 'reopen-template-monitoring-work');
+  assert.equal(report.summary.ownerDecisionSource, 'delivery-runtime-marketplace');
+  assert.equal(report.compare.deliveryRuntime.status, 'none');
+  assert.equal(report.compare.deliveryRuntime.prUrl, null);
+  assert.equal(report.compare.deliveryRuntime.issueNumber, null);
+  assert.equal(report.compare.deliveryRuntime.repoContextPivot.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(report.compare.deliveryRuntime.repoContextPivot.pivotStatus, 'ready');
+  assert.equal(report.compare.deliveryRuntime.repoContextPivot.brokerSelectionSource, 'released-waiting-state-marketplace');
+  assert.equal(report.summary.queueHandoffStatus, 'none');
   assert.equal(report.summary.queueAuthoritySource, 'none');
 });
 

@@ -692,6 +692,7 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
     normalizeOptionalObject(deliveryRuntimeState?.queueAuthorityRefresh);
   const concurrentLaneStatus = normalizeOptionalObject(activeLane?.concurrentLaneStatus);
   const executionBundle = normalizeOptionalObject(concurrentLaneStatus?.executionBundle);
+  const repoContextPivot = normalizeRepoContextPivot(activeLane?.repoContextPivot);
   const executionTopology = deriveExecutionTopology({ deliveryRuntimeState, activeLane, executionBundle });
 
   let status = 'none';
@@ -756,7 +757,8 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
     },
     prUrl,
     issueNumber: Number.isInteger(activeLane?.issue) ? activeLane.issue : null,
-    reason: asOptional(activeLane?.reason)
+    reason: asOptional(activeLane?.reason),
+    repoContextPivot
   };
 }
 
@@ -765,7 +767,8 @@ function suppressDeliveryRuntimeForMonitoring(deliveryRuntime) {
   return {
     ...emptyDeliveryRuntime,
     runtimeStatus: deliveryRuntime.runtimeStatus,
-    queueAuthorityRefresh: deliveryRuntime.queueAuthorityRefresh
+    queueAuthorityRefresh: deliveryRuntime.queueAuthorityRefresh,
+    repoContextPivot: deliveryRuntime.repoContextPivot
   };
 }
 
@@ -890,6 +893,64 @@ function deriveMarketplaceRecommendationRepository(deliveryRuntimeState) {
   return null;
 }
 
+function normalizeRepoContextPivot(repoContextPivot) {
+  const pivot = normalizeOptionalObject(repoContextPivot);
+  if (!pivot) {
+    return null;
+  }
+
+  const normalized = {
+    currentRepository: asOptional(pivot.currentRepository),
+    currentOwnerRepository: asOptional(pivot.currentOwnerRepository),
+    nextOwnerRepository: asOptional(pivot.nextOwnerRepository),
+    nextAction: asOptional(pivot.nextAction),
+    ownerDecisionSource: asOptional(pivot.ownerDecisionSource),
+    governorMode: asOptional(pivot.governorMode),
+    pivotStatus: asOptional(pivot.pivotStatus),
+    targetEntrypointPath: asOptional(pivot.targetEntrypointPath),
+    targetHeadSha: asOptional(pivot.targetHeadSha),
+    brokerSelectedIssueNumber: Number.isInteger(pivot.brokerSelectedIssueNumber) ? pivot.brokerSelectedIssueNumber : null,
+    brokerSelectedIssueUrl: asOptional(pivot.brokerSelectedIssueUrl),
+    brokerSelectedIssueTitle: asOptional(pivot.brokerSelectedIssueTitle),
+    brokerProviderId: asOptional(pivot.brokerProviderId),
+    brokerSlotId: asOptional(pivot.brokerSlotId),
+    brokerSelectionSource: asOptional(pivot.brokerSelectionSource),
+    releasedSlotId: asOptional(pivot.releasedSlotId),
+    waitingLaneLifecycle: asOptional(pivot.waitingLaneLifecycle),
+    waitingStateReason: asOptional(pivot.waitingStateReason)
+  };
+
+  const hasSignal =
+    Object.values(normalized).some((value) => value !== null && value !== undefined && value !== '') ||
+    normalized.brokerSelectedIssueNumber !== null;
+
+  return hasSignal ? normalized : null;
+}
+
+function deriveRepoContextPivotAuthority(deliveryRuntime) {
+  const pivot = normalizeOptionalObject(deliveryRuntime?.repoContextPivot);
+  if (!pivot) {
+    return null;
+  }
+
+  const currentOwnerRepository = asOptional(pivot.currentOwnerRepository) || asOptional(pivot.currentRepository);
+  const nextOwnerRepository = asOptional(pivot.nextOwnerRepository);
+  const nextAction = asOptional(pivot.nextAction);
+
+  if (!currentOwnerRepository || !nextOwnerRepository || !nextAction) {
+    return null;
+  }
+
+  return {
+    currentOwnerRepository,
+    nextOwnerRepository,
+    nextAction,
+    ownerDecisionSource: asOptional(pivot.ownerDecisionSource) || 'repo-context-pivot',
+    pivotStatus: asOptional(pivot.pivotStatus),
+    brokerSelectionSource: asOptional(pivot.brokerSelectionSource)
+  };
+}
+
 function deriveGovernorMode({ queueState, continuity, monitoringMode, wake }) {
   switch (wake.terminalState) {
     case 'compare-work':
@@ -942,23 +1003,40 @@ function deriveSignalQuality({ governorMode, wake }) {
   return 'unknown';
 }
 
-function deriveOwners({ governorMode, monitoringMode, wake, repository, marketplaceRecommendationRepository = null }) {
+function deriveOwners({
+  governorMode,
+  monitoringMode,
+  wake,
+  repository,
+  marketplaceRecommendationRepository = null,
+  repoContextPivotAuthority = null
+}) {
   const compareRepository =
     asOptional(monitoringMode?.policy?.compareRepository) ||
     asOptional(monitoringMode?.repository) ||
     asOptional(repository);
   const pivotTargetRepository = asOptional(monitoringMode?.policy?.pivotTargetRepository);
 
+  if (repoContextPivotAuthority) {
+    return {
+      currentOwnerRepository: repoContextPivotAuthority.currentOwnerRepository,
+      nextOwnerRepository: repoContextPivotAuthority.nextOwnerRepository,
+      ownerDecisionSource: repoContextPivotAuthority.ownerDecisionSource
+    };
+  }
+
   switch (governorMode) {
     case 'compare-governance-work':
       return {
         currentOwnerRepository: wake.recommendedOwnerRepository || compareRepository,
-        nextOwnerRepository: wake.recommendedOwnerRepository || compareRepository
+        nextOwnerRepository: wake.recommendedOwnerRepository || compareRepository,
+        ownerDecisionSource: 'wake-lifecycle'
       };
     case 'template-work':
       return {
         currentOwnerRepository: wake.recommendedOwnerRepository || pivotTargetRepository,
-        nextOwnerRepository: wake.recommendedOwnerRepository || pivotTargetRepository
+        nextOwnerRepository: wake.recommendedOwnerRepository || pivotTargetRepository,
+        ownerDecisionSource: 'wake-lifecycle'
       };
     case 'monitoring-active':
       return {
@@ -966,22 +1044,34 @@ function deriveOwners({ governorMode, monitoringMode, wake, repository, marketpl
         nextOwnerRepository:
           asOptional(monitoringMode?.summary?.futureAgentAction) === 'future-agent-may-pivot'
             ? marketplaceRecommendationRepository || pivotTargetRepository
-            : compareRepository
+            : compareRepository,
+        ownerDecisionSource:
+          asOptional(monitoringMode?.summary?.futureAgentAction) === 'future-agent-may-pivot' &&
+          marketplaceRecommendationRepository &&
+          marketplaceRecommendationRepository !== pivotTargetRepository
+            ? 'delivery-runtime-marketplace'
+            : 'compare-monitoring-mode'
       };
     case 'external-route':
       return {
         currentOwnerRepository: compareRepository,
-        nextOwnerRepository: wake.recommendedOwnerRepository || compareRepository
+        nextOwnerRepository: wake.recommendedOwnerRepository || compareRepository,
+        ownerDecisionSource: 'wake-lifecycle'
       };
     default:
       return {
         currentOwnerRepository: compareRepository,
-        nextOwnerRepository: compareRepository
+        nextOwnerRepository: compareRepository,
+        ownerDecisionSource: 'compare-monitoring-mode'
       };
   }
 }
 
-function deriveNextAction({ governorMode, monitoringMode, wake }) {
+function deriveNextAction({ governorMode, monitoringMode, wake, repoContextPivotAuthority = null }) {
+  if (repoContextPivotAuthority?.nextAction) {
+    return repoContextPivotAuthority.nextAction;
+  }
+
   switch (governorMode) {
     case 'compare-governance-work':
       return wake.issueNumber ? 'continue-standing-work' : 'continue-compare-governance-work';
@@ -1045,14 +1135,16 @@ function buildReport({
   const governorMode = deriveGovernorMode({ queueState, continuity, monitoringMode, wake });
   const signalQuality = deriveSignalQuality({ governorMode, wake });
   const marketplaceRecommendationRepository = deriveMarketplaceRecommendationRepository(deliveryRuntimeState);
+  const repoContextPivotAuthority = deriveRepoContextPivotAuthority(deliveryRuntime);
   const owners = deriveOwners({
     governorMode,
     monitoringMode,
     wake,
     repository,
-    marketplaceRecommendationRepository
+    marketplaceRecommendationRepository,
+    repoContextPivotAuthority
   });
-  const nextAction = deriveNextAction({ governorMode, monitoringMode, wake });
+  const nextAction = deriveNextAction({ governorMode, monitoringMode, wake, repoContextPivotAuthority });
 
   return {
     schema: 'priority/autonomous-governor-summary-report@v1',
@@ -1088,6 +1180,7 @@ function buildReport({
       currentOwnerRepository: owners.currentOwnerRepository,
       nextOwnerRepository: owners.nextOwnerRepository,
       nextAction,
+      ownerDecisionSource: owners.ownerDecisionSource,
       signalQuality,
       queueState: queueState.status,
       continuityStatus: continuity.status,

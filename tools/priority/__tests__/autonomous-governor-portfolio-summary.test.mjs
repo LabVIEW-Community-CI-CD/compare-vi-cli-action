@@ -56,6 +56,7 @@ function createCompareGovernorSummary(overrides = {}) {
         externalBlocker: 'workflow-signing-secret-missing'
       },
       deliveryRuntime: {
+        repoContextPivot: null,
         executionTopology: {
           status: 'bundle-committed',
           executionPlane: 'hosted',
@@ -143,6 +144,7 @@ function createCompareGovernorSummary(overrides = {}) {
       currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       nextOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
       nextAction: 'continue-compare-governance-work',
+      ownerDecisionSource: 'wake-lifecycle',
       signalQuality: 'validated-governance-work',
       queueState: 'not-queue-empty',
       continuityStatus: 'at-risk',
@@ -870,5 +872,178 @@ test('runAutonomousGovernorPortfolioSummary propagates marketplace-selected next
   assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
   assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/comparevi-history');
   assert.equal(report.summary.nextAction, 'future-agent-may-pivot');
+  assert.equal(report.summary.ownerDecisionSource, 'delivery-runtime-marketplace');
+});
+
+test('runAutonomousGovernorPortfolioSummary preserves repo-context pivot authority during monitoring-active brokerage', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-portfolio-pivot-authority-'));
+  const compareSummary = createCompareGovernorSummary({
+    compare: {
+      queueState: { status: 'queue-empty', reason: 'queue-empty', openIssueCount: 0, ready: true },
+      continuity: {
+        status: 'maintained',
+        turnBoundary: 'safe-idle',
+        supervisionState: 'safe-idle',
+        operatorPromptRequiredToResume: false
+      },
+      monitoringMode: {
+        status: 'active',
+        futureAgentAction: 'future-agent-may-pivot',
+        wakeConditionCount: 0
+      },
+      releaseSigningReadiness: {
+        status: 'pass',
+        codePathState: 'ready',
+        signingCapabilityState: 'ready',
+        signingAuthorityState: 'ready',
+        releaseConductorApplyState: 'enabled',
+        publicationState: 'unobserved',
+        publishedBundleState: 'producer-native-ready',
+        publishedBundleReleaseTag: 'v0.6.4-rc.2',
+        publishedBundleAuthoritativeConsumerPin: 'v0.6.4-rc.2',
+        externalBlocker: null
+      },
+      deliveryRuntime: {
+        repoContextPivot: {
+          currentRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          nextAction: 'reopen-template-monitoring-work',
+          ownerDecisionSource: 'delivery-runtime-marketplace',
+          pivotStatus: 'ready',
+          brokerSelectionSource: 'released-waiting-state-marketplace'
+        },
+        executionTopology: {
+          status: 'none',
+          executionPlane: null,
+          providerId: null,
+          workerSlotId: null,
+          activeLogicalLaneCount: null,
+          seededLogicalLaneCount: null,
+          catalogCount: null,
+          runtimeSurface: null,
+          processModelClass: null,
+          windowsOnly: false,
+          requestedSimultaneous: false,
+          cellClass: null,
+          suiteClass: null,
+          operatorAuthorizationRef: null,
+          premiumSaganMode: false,
+          reciprocalLinkReady: false,
+          logicalLaneActivation: {
+            activeLaneCount: null,
+            seededLaneCount: null,
+            catalogCount: null
+          },
+          providerDispatch: {
+            providerId: null,
+            providerKind: null,
+            executionPlane: null,
+            assignmentMode: null,
+            dispatchSurface: null,
+            completionMode: null,
+            workerSlotId: null,
+            dispatchStatus: null,
+            completionStatus: null,
+            failureClass: null
+          },
+          executionBundle: {
+            status: null,
+            planeBinding: null,
+            cellClass: null,
+            suiteClass: null,
+            premiumSaganMode: false,
+            reciprocalLinkReady: false,
+            effectiveBillableRateUsdPerHour: null,
+            executionCellLeaseId: null,
+            dockerLaneLeaseId: null,
+            harnessKind: null,
+            harnessInstanceId: null,
+            operatorAuthorizationRef: null,
+            cellId: null,
+            laneId: null,
+            isolatedLaneGroupId: null,
+            fingerprintSha256: null
+          }
+        }
+      }
+    },
+    wake: {
+      terminalState: null,
+      currentStage: 'monitoring',
+      classification: null,
+      decision: null,
+      monitoringStatus: 'active',
+      authoritativeTier: null,
+      blockedLowerTierEvidence: false,
+      replayMatched: false,
+      replayAuthorityCompatible: null,
+      issueNumber: null,
+      issueUrl: null,
+      recommendedOwnerRepository: null
+    },
+    summary: {
+      governorMode: 'monitoring-active',
+      currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      nextAction: 'reopen-template-monitoring-work',
+      ownerDecisionSource: 'delivery-runtime-marketplace',
+      signalQuality: 'idle-monitoring',
+      queueState: 'queue-empty',
+      continuityStatus: 'maintained',
+      wakeTerminalState: null,
+      monitoringStatus: 'active',
+      futureAgentAction: 'future-agent-may-pivot',
+      queueHandoffStatus: 'none',
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: 'none',
+      executionTopologyStatus: 'none',
+      executionTopologyExecutionPlane: null,
+      executionTopologyProviderId: null,
+      executionTopologyWorkerSlotId: null,
+      executionTopologyActiveLogicalLaneCount: null,
+      executionTopologySeededLogicalLaneCount: null,
+      executionTopologyRuntimeSurface: null,
+      executionTopologyProcessModelClass: null,
+      executionTopologyWindowsOnly: false,
+      executionTopologyRequestedSimultaneous: false,
+      executionTopologyCellClass: null,
+      executionTopologySuiteClass: null,
+      executionTopologyOperatorAuthorizationRef: null,
+      executionBundleStatus: null,
+      executionBundlePlaneBinding: null,
+      executionBundlePremiumSaganMode: false,
+      executionBundleReciprocalLinkReady: false,
+      executionBundleEffectiveBillableRateUsdPerHour: null,
+      releaseSigningStatus: 'pass',
+      releaseSigningAuthorityState: 'ready',
+      releaseConductorApplyState: 'enabled',
+      releaseSigningExternalBlocker: null,
+      releasePublicationState: 'unobserved',
+      releasePublishedBundleState: 'producer-native-ready',
+      releasePublishedBundleReleaseTag: 'v0.6.4-rc.2',
+      releasePublishedBundleAuthoritativeConsumerPin: 'v0.6.4-rc.2'
+    }
+  });
+  const monitoringMode = createMonitoringMode({
+    summary: {
+      status: 'active',
+      futureAgentAction: 'future-agent-may-pivot',
+      wakeConditionCount: 0,
+      triggeredWakeConditions: []
+    }
+  });
+
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'autonomous-governor-summary.json'), compareSummary);
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), monitoringMode);
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'downstream-repo-graph-truth.json'), createRepoGraphTruth());
+
+  const { report } = await runAutonomousGovernorPortfolioSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.summary.governorMode, 'monitoring-active');
+  assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate');
+  assert.equal(report.summary.nextAction, 'reopen-template-monitoring-work');
   assert.equal(report.summary.ownerDecisionSource, 'delivery-runtime-marketplace');
 });
