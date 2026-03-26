@@ -110,7 +110,8 @@ test('validate workflow self-hosted Windows LV32 VI-history lane is gated by inv
   assert.match(lv32Section, /GITHUB_TOKEN:\s+\$\{\{\s*secrets\.GH_TOKEN \|\| secrets\.GITHUB_TOKEN\s*\}\}/);
   assert.match(lv32Section, /GH_TOKEN:\s+\$\{\{\s*secrets\.GH_TOKEN \|\| secrets\.GITHUB_TOKEN\s*\}\}/);
   assert.match(lv32Section, /Capture LabVIEW 2026 host-plane diagnostics/);
-  assert.match(lv32Section, /env:labview:2026:host-planes/);
+  assert.match(lv32Section, /Write-LabVIEW2026HostPlaneDiagnostics\.ps1/);
+  assert.match(lv32Section, /-OutputPath \$reportPath/);
   assert.match(lv32Section, /Run VI history shadow proof on the self-hosted LV32 runner/);
   assert.match(lv32Section, /Compare-VIHistory\.ps1/);
   assert.match(lv32Section, /Invoke-LVCompare\.ps1/);

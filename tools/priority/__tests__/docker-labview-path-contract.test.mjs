@@ -37,7 +37,8 @@ test('validate workflow pins explicit LabVIEW paths for hosted Linux and Windows
   assert.match(workflow, /vi-history-scenarios-windows-lv32:/);
   assert.match(workflow, /runs-on:\s*\[self-hosted, Windows, X64, comparevi, capability-ingress, labview-2026, lv32\]/);
   assert.match(workflow, /Assert-RunnerLabelContract\.ps1/);
-  assert.match(workflow, /env:labview:2026:host-planes/);
+  assert.match(workflow, /Write-LabVIEW2026HostPlaneDiagnostics\.ps1/);
+  assert.match(workflow, /-OutputPath \$reportPath/);
   assert.match(workflow, /Compare-VIHistory\.ps1/);
   assert.match(workflow, /Invoke-LVCompare\.ps1/);
   assert.match(workflow, /Write-VIHistoryLV32ShadowProofReceipt\.ps1/);
