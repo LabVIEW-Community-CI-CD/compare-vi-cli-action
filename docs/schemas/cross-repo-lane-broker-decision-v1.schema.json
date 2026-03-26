@@ -1,0 +1,433 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/compare-vi-cli-action/schemas/cross-repo-lane-broker-decision-v1.schema.json",
+  "title": "Cross-Repo Lane Broker Decision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repoRoot",
+    "currentRepository",
+    "policyPath",
+    "marketplaceSnapshotPath",
+    "governor",
+    "marketplace",
+    "workerProviderSelection",
+    "decision"
+  ],
+  "properties": {
+    "schema": {
+      "const": "priority/cross-repo-lane-broker-decision@v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repoRoot": {
+      "type": "string"
+    },
+    "currentRepository": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "policyPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "marketplaceSnapshotPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "governor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "currentOwnerRepository",
+        "nextOwnerRepository",
+        "nextAction",
+        "ownerDecisionSource",
+        "governorMode",
+        "governorSuggestedRepository",
+        "dependencyStatus",
+        "dependencyTarget",
+        "dependencyBlocker",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "governor-unavailable",
+            "blocked-dependency",
+            "same-repository",
+            "external-selection-allowed"
+          ]
+        },
+        "currentOwnerRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextOwnerRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextAction": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ownerDecisionSource": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "governorMode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "governorSuggestedRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dependencyStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dependencyTarget": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dependencyBlocker": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "marketplace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "recommendation",
+        "governorPreferredRepository",
+        "governorPreferredEligible"
+      ],
+      "properties": {
+        "summary": {
+          "type": "object"
+        },
+        "recommendation": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "governorPreferredRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "governorPreferredEligible": {
+          "type": "boolean"
+        }
+      }
+    },
+    "workerProviderSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectedProviderId",
+        "selectedProviderKind",
+        "selectedExecutionPlane",
+        "selectedAssignmentMode",
+        "dispatchSurface",
+        "completionMode",
+        "requiresLocalCheckout",
+        "selectedSlotId",
+        "eligibleProviderIds"
+      ],
+      "properties": {
+        "selectedProviderId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedProviderKind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedExecutionPlane": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedAssignmentMode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dispatchSurface": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "completionMode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requiresLocalCheckout": {
+          "type": "boolean"
+        },
+        "selectedSlotId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "eligibleProviderIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "selectionSource",
+        "selectedRepository",
+        "selectedIssueNumber",
+        "selectedIssueUrl",
+        "selectedIssueTitle",
+        "selectedAuthorityTier",
+        "selectedLaneClass",
+        "selectedPromotionRail",
+        "selectedRankingOrder",
+        "selectedProviderId",
+        "selectedExecutionPlane",
+        "selectedAssignmentMode",
+        "selectedDispatchSurface",
+        "selectedSlotId",
+        "requiresLocalCheckout",
+        "deferredCandidates"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "governor-unavailable",
+            "blocked-dependency",
+            "same-repository",
+            "external-selection-allowed",
+            "no-eligible-repository",
+            "no-provider",
+            "ready"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "selectionSource": {
+          "type": "string",
+          "enum": [
+            "governor-preferred",
+            "marketplace-top-ranked",
+            "none"
+          ]
+        },
+        "selectedRepository": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedIssueNumber": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "selectedIssueUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedIssueTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedAuthorityTier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedLaneClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedPromotionRail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedRankingOrder": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "selectedProviderId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedExecutionPlane": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedAssignmentMode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedDispatchSurface": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedSlotId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requiresLocalCheckout": {
+          "type": "boolean"
+        },
+        "deferredCandidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "repository",
+              "issueNumber",
+              "issueUrl",
+              "issueTitle",
+              "authorityTier",
+              "laneClass",
+              "promotionRail",
+              "rankingOrder",
+              "deferReason"
+            ],
+            "properties": {
+              "repository": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "issueNumber": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "issueUrl": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "issueTitle": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "authorityTier": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "laneClass": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "promotionRail": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rankingOrder": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "deferReason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

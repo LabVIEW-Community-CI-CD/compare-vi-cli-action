@@ -273,6 +273,59 @@ test('planCompareviRuntimeStep describes repo-context pivot preparation when com
   );
 });
 
+test('planCompareviRuntimeStep surfaces a ready cross-repo broker decision when queue-empty compare can offload to another repo', async () => {
+  const decision = await compareviRuntimeTest.planCompareviRuntimeStep({
+    repoRoot: '/tmp/repo',
+    env: { GITHUB_REPOSITORY: 'LabVIEW-Community-CI-CD/compare-vi-cli-action' },
+    options: {},
+    deps: {
+      loadDeliveryAgentPolicyFn: async () => ({ implementationRemote: 'origin' }),
+      runMonitoringWorkInjectionFn: async () => ({
+        issueNumber: null,
+        outputPath: '/tmp/repo/tests/results/_agent/issue/monitoring-work-injection.json',
+        ledgerPath: '/tmp/repo/tests/results/_agent/ops/ops-decision-ledger.json'
+      }),
+      classifyNoStandingPriorityConditionFn: async () => ({
+        status: 'classified',
+        reason: 'queue-empty',
+        openIssueCount: 0,
+        message: 'queue empty'
+      }),
+      resolveStandingPriorityForRepoFn: async () => ({ found: null }),
+      readGovernorPortfolioSummaryFn: async () =>
+        createGovernorPortfolioSummary({
+          nextOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+          nextAction: 'future-agent-may-pivot',
+          ownerDecisionSource: 'compare-monitoring-mode',
+          governorMode: 'monitoring-active'
+        }),
+      runCrossRepoLaneBrokerFn: async () => ({
+        outputPath: '/tmp/repo/tests/results/_agent/runtime/cross-repo-lane-broker-decision.json',
+        report: {
+          schema: 'priority/cross-repo-lane-broker-decision@v1',
+          decision: {
+            status: 'ready',
+            selectedRepository: 'LabVIEW-Community-CI-CD/comparevi-history',
+            selectedIssueNumber: 301,
+            selectedProviderId: 'local-codex'
+          }
+        }
+      })
+    }
+  });
+
+  assert.equal(decision.outcome, 'idle');
+  assert.match(decision.reason, /cross-repo broker selects/i);
+  assert.equal(
+    decision.artifacts.crossRepoLaneBrokerDecision.decision.selectedRepository,
+    'LabVIEW-Community-CI-CD/comparevi-history'
+  );
+  assert.equal(
+    decision.artifacts.crossRepoLaneBrokerDecisionPath,
+    '/tmp/repo/tests/results/_agent/runtime/cross-repo-lane-broker-decision.json'
+  );
+});
+
 test('planCompareviRuntimeStep reports queue-empty external-owner handoff metadata when portfolio points at template', async () => {
   const decision = await compareviRuntimeTest.planCompareviRuntimeStep({
     repoRoot: '/tmp/repo',

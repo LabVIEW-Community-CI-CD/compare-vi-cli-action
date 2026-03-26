@@ -21,11 +21,15 @@ follow-up remains open.
   safely instead of going dark.
 - Concrete evidence surfaces:
   - code: `tools/priority/lane-marketplace.mjs`,
-    `tools/priority/lane-marketplace.json`, runtime projection in
-    `tools/priority/delivery-agent.mjs`
+    `tools/priority/lane-marketplace.json`,
+    `tools/priority/cross-repo-lane-broker.mjs`, runtime projection in
+    `tools/priority/delivery-agent.mjs` and `tools/priority/runtime-supervisor.mjs`
   - receipts: `tests/results/_agent/marketplace/lane-marketplace-snapshot.json`,
+    `tests/results/_agent/runtime/cross-repo-lane-broker-decision.json`,
     `artifacts.marketplaceSnapshotPath`
   - tests: `tools/priority/__tests__/lane-marketplace.test.mjs`,
+    `tools/priority/__tests__/cross-repo-lane-broker.test.mjs`,
+    `tools/priority/__tests__/cross-repo-lane-broker-schema.test.mjs`,
     `tools/priority/__tests__/delivery-agent-schema.test.mjs`
 - Follow-up issue: #1508
 

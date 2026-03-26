@@ -83,6 +83,10 @@ import {
   DEFAULT_OUTPUT_PATH as DEFAULT_MONITORING_WORK_INJECTION_PATH,
   runMonitoringWorkInjection
 } from './monitoring-work-injection.mjs';
+import {
+  DEFAULT_OUTPUT_PATH as DEFAULT_CROSS_REPO_LANE_BROKER_OUTPUT_PATH,
+  runCrossRepoLaneBroker
+} from './cross-repo-lane-broker.mjs';
 
 export {
   ACTIONS,
@@ -106,6 +110,8 @@ export {
 };
 
 const COMPAREVI_UPSTREAM_REPOSITORY = 'LabVIEW-Community-CI-CD/compare-vi-cli-action';
+const COMPAREVI_HISTORY_REPOSITORY = 'LabVIEW-Community-CI-CD/comparevi-history';
+const TEMPLATE_CANONICAL_REPOSITORY = 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate';
 const PRIORITY_CACHE_FILENAME = '.agent_priority_cache.json';
 const PRIORITY_ISSUE_DIR = path.join('tests', 'results', '_agent', 'issue');
 const DEFAULT_AUTONOMOUS_GOVERNOR_PORTFOLIO_SUMMARY_PATH = path.join(
@@ -534,8 +540,11 @@ function resolveMonitoringEntrypointByRepository(payload, repository) {
   if (normalizedRepository === COMPAREVI_UPSTREAM_REPOSITORY.toLowerCase()) {
     return payload?.compare ?? null;
   }
-  if (normalizedRepository === 'labview-community-ci-cd/labviewgithubcitemplate') {
+  if (normalizedRepository === TEMPLATE_CANONICAL_REPOSITORY.toLowerCase()) {
     return payload?.template ?? null;
+  }
+  if (normalizedRepository === COMPAREVI_HISTORY_REPOSITORY.toLowerCase()) {
+    return payload?.history ?? null;
   }
   return null;
 }
@@ -1188,9 +1197,62 @@ async function planCompareviRuntimeStepFromLiveStanding({ repoRoot, targetReposi
         deps
       });
       artifactPaths.governorPortfolioHandoff = governorPortfolioHandoff;
+      let crossRepoLaneBrokerDecision = null;
+      const shouldRunCrossRepoLaneBroker =
+        typeof deps.runCrossRepoLaneBrokerFn === 'function' ||
+        (
+          normalizeText(governorPortfolioHandoff?.viHistoryDistributorDependencyStatus) !== 'blocked' &&
+          (
+            normalizeText(governorPortfolioHandoff?.status) === 'external-owner' ||
+            (
+              normalizeText(governorPortfolioHandoff?.status) === 'owner-match' &&
+              normalizeText(governorPortfolioHandoff?.nextOwnerRepository) &&
+              normalizeText(governorPortfolioHandoff?.nextOwnerRepository).toLowerCase() !== targetRepository.toLowerCase() &&
+              ['future-agent-may-pivot', 'reopen-template-monitoring-work'].includes(
+                normalizeText(governorPortfolioHandoff?.nextAction)
+              )
+            )
+          )
+        );
+      if (shouldRunCrossRepoLaneBroker) {
+        const runCrossRepoLaneBrokerFn = deps.runCrossRepoLaneBrokerFn ?? runCrossRepoLaneBroker;
+        try {
+          const crossRepoLaneBrokerResult = await runCrossRepoLaneBrokerFn({
+            repoRoot,
+            currentRepository: targetRepository,
+            governorPortfolioHandoff,
+            policy: deliveryPolicy,
+            outputPath: deps.crossRepoLaneBrokerOutputPath ?? DEFAULT_CROSS_REPO_LANE_BROKER_OUTPUT_PATH
+          });
+          crossRepoLaneBrokerDecision = crossRepoLaneBrokerResult?.report ?? null;
+          if (crossRepoLaneBrokerDecision && typeof crossRepoLaneBrokerDecision === 'object') {
+            artifactPaths.crossRepoLaneBrokerDecision = crossRepoLaneBrokerDecision;
+          }
+          if (normalizeText(crossRepoLaneBrokerResult?.outputPath)) {
+            artifactPaths.crossRepoLaneBrokerDecisionPath = crossRepoLaneBrokerResult.outputPath;
+          }
+        } catch (error) {
+          crossRepoLaneBrokerDecision = {
+            status: 'invalid',
+            reason: normalizeText(error?.message) || 'Cross-repo lane broker failed.'
+          };
+          artifactPaths.crossRepoLaneBrokerDecision = crossRepoLaneBrokerDecision;
+        }
+      }
 
       let reason = classification.message;
-      if (governorPortfolioHandoff.status === 'owner-match') {
+      const brokerStatus = normalizeText(crossRepoLaneBrokerDecision?.decision?.status) || null;
+      if (brokerStatus === 'ready') {
+        reason =
+          `standing queue is empty; cross-repo broker selects ${crossRepoLaneBrokerDecision.decision.selectedRepository}` +
+          (Number.isInteger(crossRepoLaneBrokerDecision.decision.selectedIssueNumber)
+            ? ` issue #${crossRepoLaneBrokerDecision.decision.selectedIssueNumber}`
+            : '') +
+          (normalizeText(crossRepoLaneBrokerDecision.decision.selectedProviderId)
+            ? ` via ${crossRepoLaneBrokerDecision.decision.selectedProviderId}`
+            : '') +
+          '.';
+      } else if (governorPortfolioHandoff.status === 'owner-match') {
         if (normalizeText(governorPortfolioHandoff.viHistoryDistributorDependencyStatus) === 'blocked') {
           const dependencyTarget =
             normalizeText(governorPortfolioHandoff.viHistoryDistributorDependencyTargetRepository) ||
@@ -1758,10 +1820,35 @@ async function executeCompareviTurn({
   }
 
   if (!standingRepository || !Number.isInteger(standingIssueNumber) || standingIssueNumber <= 0) {
+    const crossRepoLaneBrokerDecision = schedulerDecision?.artifacts?.crossRepoLaneBrokerDecision ?? null;
+    const brokerReady =
+      normalizeText(crossRepoLaneBrokerDecision?.decision?.status) === 'ready' &&
+      normalizeText(crossRepoLaneBrokerDecision?.decision?.selectedRepository);
+    const brokerSelectedRepository = normalizeText(crossRepoLaneBrokerDecision?.decision?.selectedRepository) || null;
+    const brokerSelectedIssueNumber = coercePositiveInteger(crossRepoLaneBrokerDecision?.decision?.selectedIssueNumber);
+    const brokerSelectedIssueUrl = normalizeText(crossRepoLaneBrokerDecision?.decision?.selectedIssueUrl) || null;
+    const brokerSelectedIssueTitle = normalizeText(crossRepoLaneBrokerDecision?.decision?.selectedIssueTitle) || null;
+    const brokerProviderId = normalizeText(crossRepoLaneBrokerDecision?.decision?.selectedProviderId) || null;
+    const brokerSlotId = normalizeText(crossRepoLaneBrokerDecision?.decision?.selectedSlotId) || null;
+    const governorPortfolioHandoffForExecution = brokerReady
+      ? {
+          ...(schedulerDecision?.artifacts?.governorPortfolioHandoff ?? {}),
+          status: 'owner-match',
+          currentOwnerRepository:
+            normalizeText(schedulerDecision?.artifacts?.governorPortfolioHandoff?.currentOwnerRepository) ||
+            repository ||
+            options.repo ||
+            env.GITHUB_REPOSITORY ||
+            upstreamRepository,
+          nextOwnerRepository: brokerSelectedRepository,
+          nextAction: 'future-agent-may-pivot',
+          ownerDecisionSource: 'cross-repo-lane-broker'
+        }
+      : schedulerDecision?.artifacts?.governorPortfolioHandoff ?? null;
     const governorPortfolioPivot = await resolveGovernorPortfolioPivotExecution({
       repoRoot,
       repository: repository || options.repo || env.GITHUB_REPOSITORY || upstreamRepository,
-      governorPortfolioHandoff: schedulerDecision?.artifacts?.governorPortfolioHandoff ?? null,
+      governorPortfolioHandoff: governorPortfolioHandoffForExecution,
       env,
       deps
     });
@@ -1769,7 +1856,10 @@ async function executeCompareviTurn({
       const receipt = {
         status: 'completed',
         outcome: 'repo-context-pivot',
-        reason: `Standing queue is empty; runtime repo-context pivots to ${governorPortfolioPivot.nextOwnerRepository}.`,
+        reason:
+          `Standing queue is empty; runtime repo-context pivots to ${governorPortfolioPivot.nextOwnerRepository}` +
+          (brokerSelectedIssueNumber ? ` for issue #${brokerSelectedIssueNumber}` : '') +
+          '.',
         source: 'comparevi-runtime',
         details: {
           laneLifecycle: 'idle',
@@ -1788,11 +1878,17 @@ async function executeCompareviTurn({
           targetHeadSha: governorPortfolioPivot.targetHeadSha,
           targetCheckoutState: governorPortfolioPivot.targetCheckoutState,
           targetCurrentState: governorPortfolioPivot.targetCurrentState,
-          targetReceipts: governorPortfolioPivot.targetReceipts
+          targetReceipts: governorPortfolioPivot.targetReceipts,
+          brokerSelectedIssueNumber,
+          brokerSelectedIssueUrl,
+          brokerSelectedIssueTitle,
+          brokerProviderId,
+          brokerSlotId
         },
         artifacts: {
           governorPortfolioHandoff: schedulerDecision?.artifacts?.governorPortfolioHandoff ?? null,
-          governorPortfolioPivot
+          governorPortfolioPivot,
+          crossRepoLaneBrokerDecision
         }
       };
       await persistCompareviDeliveryRuntime({
@@ -1834,11 +1930,17 @@ async function executeCompareviTurn({
           targetCheckoutState: governorPortfolioPivot.targetCheckoutState,
           targetCurrentState: governorPortfolioPivot.targetCurrentState,
           targetReceipts: governorPortfolioPivot.targetReceipts,
-          pivotStatus: governorPortfolioPivot.status
+          pivotStatus: governorPortfolioPivot.status,
+          brokerSelectedIssueNumber,
+          brokerSelectedIssueUrl,
+          brokerSelectedIssueTitle,
+          brokerProviderId,
+          brokerSlotId
         },
         artifacts: {
           governorPortfolioHandoff: schedulerDecision?.artifacts?.governorPortfolioHandoff ?? null,
-          governorPortfolioPivot
+          governorPortfolioPivot,
+          crossRepoLaneBrokerDecision
         }
       };
       await persistCompareviDeliveryRuntime({

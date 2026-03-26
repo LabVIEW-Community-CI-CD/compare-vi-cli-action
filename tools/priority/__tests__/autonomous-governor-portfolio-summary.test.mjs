@@ -804,3 +804,71 @@ test('runAutonomousGovernorPortfolioSummary flips next owner to template once vi
   assert.equal(report.summary.viHistoryDistributorDependencyPublishedBundleReleaseTag, 'v0.6.4-rc.1-tools.1');
   assert.equal(report.summary.viHistoryDistributorDependencyAuthoritativeConsumerPin, 'v0.6.4-rc.1-tools.1');
 });
+
+test('runAutonomousGovernorPortfolioSummary propagates marketplace-selected next ownership during monitoring-active mode', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-portfolio-marketplace-'));
+  const compareSummary = createCompareGovernorSummary({
+    summary: {
+      governorMode: 'monitoring-active',
+      currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      nextOwnerRepository: 'LabVIEW-Community-CI-CD/comparevi-history',
+      nextAction: 'future-agent-may-pivot',
+      signalQuality: 'idle-monitoring',
+      queueState: 'queue-empty',
+      continuityStatus: 'maintained',
+      wakeTerminalState: null,
+      monitoringStatus: 'active',
+      futureAgentAction: 'future-agent-may-pivot',
+      queueHandoffStatus: null,
+      queueHandoffNextWakeCondition: null,
+      queueHandoffPrUrl: null,
+      queueAuthoritySource: null,
+      executionTopologyStatus: 'none',
+      executionTopologyExecutionPlane: null,
+      executionTopologyProviderId: null,
+      executionTopologyWorkerSlotId: null,
+      executionTopologyActiveLogicalLaneCount: null,
+      executionTopologySeededLogicalLaneCount: null,
+      executionTopologyRuntimeSurface: null,
+      executionTopologyProcessModelClass: null,
+      executionTopologyWindowsOnly: false,
+      executionTopologyRequestedSimultaneous: false,
+      executionTopologyCellClass: null,
+      executionTopologySuiteClass: null,
+      executionTopologyOperatorAuthorizationRef: null,
+      executionBundleStatus: null,
+      executionBundlePlaneBinding: null,
+      executionBundlePremiumSaganMode: false,
+      executionBundleReciprocalLinkReady: false,
+      executionBundleEffectiveBillableRateUsdPerHour: null,
+      releaseSigningStatus: 'pass',
+      releaseSigningAuthorityState: 'ready',
+      releaseConductorApplyState: 'enabled',
+      releaseSigningExternalBlocker: null,
+      releasePublicationState: 'unobserved',
+      releasePublishedBundleState: 'producer-native-ready',
+      releasePublishedBundleReleaseTag: 'v0.6.4-rc.2',
+      releasePublishedBundleAuthoritativeConsumerPin: 'v0.6.4-rc.2'
+    }
+  });
+  const monitoringMode = createMonitoringMode({
+    summary: {
+      status: 'active',
+      futureAgentAction: 'future-agent-may-pivot',
+      wakeConditionCount: 0,
+      triggeredWakeConditions: []
+    }
+  });
+
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'autonomous-governor-summary.json'), compareSummary);
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), monitoringMode);
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'downstream-repo-graph-truth.json'), createRepoGraphTruth());
+
+  const { report } = await runAutonomousGovernorPortfolioSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.summary.governorMode, 'monitoring-active');
+  assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/comparevi-history');
+  assert.equal(report.summary.nextAction, 'future-agent-may-pivot');
+  assert.equal(report.summary.ownerDecisionSource, 'delivery-runtime-marketplace');
+});

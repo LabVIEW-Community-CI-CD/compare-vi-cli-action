@@ -422,6 +422,45 @@ test('runAutonomousGovernorSummary reports monitoring-active when no wake lifecy
   assert.equal(report.summary.releaseSigningStatus, 'missing');
 });
 
+test('runAutonomousGovernorSummary prefers marketplace-recommended canonical repos during safe-idle monitoring', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-marketplace-'));
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'continuity-summary.json'), createContinuitySummary());
+  writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'handoff', 'monitoring-mode.json'), createMonitoringMode());
+  writeJson(
+    path.join(tmpDir, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'),
+    createDeliveryRuntimeState({
+      status: 'idle',
+      laneLifecycle: 'idle',
+      marketplace: {
+        status: 'ready',
+        snapshotPath: 'tests/results/_agent/marketplace/lane-marketplace-snapshot.json',
+        recommendedLane: {
+          repository: 'LabVIEW-Community-CI-CD/comparevi-history',
+          issueNumber: 186,
+          issueUrl: 'https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/186',
+          issueTitle: 'Shared platform lane'
+        }
+      },
+      activeLane: {
+        laneLifecycle: 'idle',
+        blockerClass: 'none',
+        actionType: null,
+        outcome: null,
+        nextWakeCondition: null,
+        reason: null
+      }
+    })
+  );
+
+  const { report } = await runAutonomousGovernorSummary({ repoRoot: tmpDir });
+
+  assert.equal(report.summary.governorMode, 'monitoring-active');
+  assert.equal(report.summary.currentOwnerRepository, 'LabVIEW-Community-CI-CD/compare-vi-cli-action');
+  assert.equal(report.summary.nextOwnerRepository, 'LabVIEW-Community-CI-CD/comparevi-history');
+  assert.equal(report.summary.nextAction, 'future-agent-may-pivot');
+});
+
 test('runAutonomousGovernorSummary suppresses stale delivery runtime blockers during queue-empty pivot monitoring', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-summary-monitoring-stale-runtime-'));
   writeJson(path.join(tmpDir, 'tests', 'results', '_agent', 'issue', 'no-standing-priority.json'), createQueueEmpty());
