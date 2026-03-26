@@ -1560,12 +1560,24 @@ async function buildCompareviTaskPacket({ repoRoot, schedulerDecision, preparedW
     normalizeText(snapshot?.repository) ||
     normalizeText(artifacts.standingRepository) ||
     COMPAREVI_UPSTREAM_REPOSITORY;
-  const planeTransition = resolveBranchPlaneTransition({
-    branch: branchName,
-    sourcePlane: normalizeText(activeLane?.forkRemote) || normalizeText(deliveryPolicy.implementationRemote) || 'origin',
-    targetRepository: canonicalRepository,
-    contract: loadBranchClassContractFn(repoRoot)
-  });
+  const laneRequiresBranchPlaneTransition =
+    activeLane != null &&
+    (
+      Number.isInteger(activeLane?.issue) ||
+      normalizeText(activeLane?.forkRemote) ||
+      normalizeText(activeLane?.branch)
+    );
+  if (laneRequiresBranchPlaneTransition && !branchName) {
+    throw new Error('Branch name is required to resolve plane transition for an active comparevi lane.');
+  }
+  const planeTransition = branchName
+    ? resolveBranchPlaneTransition({
+        branch: branchName,
+        sourcePlane: normalizeText(activeLane?.forkRemote) || normalizeText(deliveryPolicy.implementationRemote) || 'origin',
+        targetRepository: canonicalRepository,
+        contract: loadBranchClassContractFn(repoRoot)
+      })
+    : null;
   const objectiveSummary =
     selectedActionType === 'reshape-backlog'
       ? `Reshape epic #${issueNumber}${issueTitle ? `: ${issueTitle}` : ''} into an executable child slice`
@@ -2077,19 +2089,37 @@ async function executeCompareviTurn({
       return receipt;
     }
 
-    const receipt = {
-      status: 'completed',
-      outcome: 'idle',
-      reason: 'standing repository or issue number unavailable for unattended execution',
-      source: 'comparevi-runtime',
-      details: {
-        laneLifecycle: 'idle',
-        blockerClass: 'none',
-        actionType: 'idle',
-        retryable: false,
-        nextWakeCondition: 'next-scheduler-cycle'
-      }
-    };
+    const queueEmptyNoStandingReason = normalizeText(schedulerDecision?.artifacts?.noStandingReason) === 'queue-empty';
+    const monitoringNextWakeCondition =
+      normalizeText(schedulerDecision?.artifacts?.governorPortfolioHandoff?.nextAction) || 'future-agent-may-pivot';
+    const receipt = queueEmptyNoStandingReason
+      ? {
+          status: 'completed',
+          outcome: 'queue-empty',
+          reason: 'queue-empty',
+          source: 'comparevi-runtime',
+          details: {
+            laneLifecycle: 'idle',
+            blockerClass: 'none',
+            actionType: 'monitoring-idle',
+            retryable: true,
+            nextWakeCondition: monitoringNextWakeCondition,
+            queueState: 'queue-empty'
+          }
+        }
+      : {
+          status: 'completed',
+          outcome: 'idle',
+          reason: 'standing repository or issue number unavailable for unattended execution',
+          source: 'comparevi-runtime',
+          details: {
+            laneLifecycle: 'idle',
+            blockerClass: 'none',
+            actionType: 'idle',
+            retryable: false,
+            nextWakeCondition: 'next-scheduler-cycle'
+          }
+        };
     await persistCompareviDeliveryRuntime({
       repository: repository || standingRepository || options.repo || env.GITHUB_REPOSITORY || 'unknown/unknown',
       runtimeArtifactPaths,

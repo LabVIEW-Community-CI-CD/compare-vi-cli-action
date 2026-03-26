@@ -293,6 +293,30 @@ test('buildCompareviTaskPacket carries a daemon-requested Docker/Desktop review 
   assert.equal(packet.evidence.delivery.planeTransition.branchClass, 'lane');
 });
 
+test('buildCompareviTaskPacket keeps queue-empty monitoring packets branchless without plane-transition evidence', async () => {
+  const packet = await compareviRuntimeTest.buildCompareviTaskPacket({
+    repoRoot,
+    schedulerDecision: {
+      source: 'comparevi-standing-priority-live',
+      outcome: 'idle',
+      reason: 'standing queue is empty; governor portfolio keeps ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action.',
+      activeLane: null,
+      artifacts: {
+        noStandingReason: 'queue-empty',
+        laneLifecycle: 'idle'
+      }
+    }
+  });
+
+  assert.equal(packet.status, 'idle');
+  assert.equal('branch' in packet, false);
+  assert.equal(
+    packet.objective.summary,
+    'standing queue is empty; governor portfolio keeps ownership in LabVIEW-Community-CI-CD/compare-vi-cli-action.'
+  );
+  assert.equal(packet.evidence.delivery.planeTransition, null);
+});
+
 test('buildCompareviTaskPacket honors local review-loop directives from the selected issue when the standing issue body lacks them', async () => {
   const packet = await compareviRuntimeTest.buildCompareviTaskPacket({
     repoRoot,
