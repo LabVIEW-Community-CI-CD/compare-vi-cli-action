@@ -283,6 +283,14 @@ function derivePublishedBundleObserverState(observerReport) {
   };
 }
 
+function normalizeReleaseTagIdentity(value) {
+  const normalized = asOptional(value);
+  if (!normalized) {
+    return null;
+  }
+  return normalized.startsWith('v') ? normalized.slice(1) : normalized;
+}
+
 function derivePublicationControlState({
   workflowContract,
   secretInventory,
@@ -296,11 +304,13 @@ function derivePublicationControlState({
     asOptional(publishedBundleObserver?.releaseTag) ||
     (publication?.tagPushed === true ? asOptional(publication?.targetTag) : null);
   const consumerPin = asOptional(publishedBundleObserver?.authoritativeConsumerPin);
+  const normalizedObservedReleaseTag = normalizeReleaseTagIdentity(observedReleaseTag);
+  const normalizedConsumerPin = normalizeReleaseTagIdentity(consumerPin);
   const consumerAligned =
     asOptional(publishedBundleObserver?.status) === 'producer-native-ready' &&
-    observedReleaseTag != null &&
-    consumerPin != null &&
-    consumerPin === observedReleaseTag;
+    normalizedObservedReleaseTag != null &&
+    normalizedConsumerPin != null &&
+    normalizedConsumerPin === normalizedObservedReleaseTag;
   const publishReady =
     workflowContract?.ready === true &&
     secretInventory?.status === 'configured' &&

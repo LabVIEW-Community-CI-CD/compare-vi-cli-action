@@ -258,6 +258,67 @@ test('runReleaseSigningReadiness reports publication success when signing capabi
   assert.deepEqual(result.report.blockers, []);
 });
 
+test('runReleaseSigningReadiness treats release-version consumer pins as aligned with v-prefixed observed tags', async () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'release-signing-readiness-release-version-pin-'));
+  seedWorkflowContract(repoRoot);
+  writeJson(path.join(repoRoot, DEFAULT_RELEASE_CONDUCTOR_REPORT_PATH), {
+    release: {
+      tagCreated: true,
+      tagPushed: true,
+      targetTag: 'v0.6.4-rc.2'
+    }
+  });
+  writeJson(
+    path.join(repoRoot, DEFAULT_RELEASE_PUBLISHED_BUNDLE_OBSERVER_PATH),
+    createPublishedBundleObserver({
+      selection: {
+        ...createPublishedBundleObserver().selection,
+        releaseTag: 'v0.6.4-rc.2',
+        releaseName: 'v0.6.4-rc.2'
+      },
+      bundleContract: {
+        ...createPublishedBundleObserver().bundleContract,
+        authoritativeConsumerPin: '0.6.4-rc.2',
+        authoritativeConsumerPinKind: 'release-version'
+      },
+      summary: {
+        ...createPublishedBundleObserver().summary,
+        releaseTag: 'v0.6.4-rc.2',
+        authoritativeConsumerPin: '0.6.4-rc.2'
+      }
+    })
+  );
+
+  const result = await runReleaseSigningReadiness(
+    {
+      repoRoot,
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    {
+      now: new Date('2026-03-23T17:21:15Z'),
+      runGhJsonFn: (args) => {
+        const endpoint = args[1] ?? '';
+        if (endpoint.includes('/actions/secrets')) {
+          return { secrets: [{ name: REQUIRED_SIGNING_SECRET }, { name: OPTIONAL_SIGNING_SECRET }] };
+        }
+        if (endpoint.includes('/actions/variables')) {
+          return { variables: [{ name: 'RELEASE_CONDUCTOR_ENABLED', value: '1' }] };
+        }
+        if (endpoint.startsWith('user/ssh_signing_keys')) {
+          return [{ id: 1, title: 'compare-release-signing' }];
+        }
+        throw new Error(`Unexpected endpoint: ${endpoint}`);
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.summary.status, 'pass');
+  assert.equal(result.report.summary.publicationState, 'published-consumer-aligned');
+  assert.equal(result.report.summary.publishedBundleReleaseTag, 'v0.6.4-rc.2');
+  assert.equal(result.report.summary.publishedBundleAuthoritativeConsumerPin, '0.6.4-rc.2');
+});
+
 test('runReleaseSigningReadiness reports ready-to-publish when signing is configured but publication has not been observed yet', async () => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'release-signing-readiness-ready-to-publish-'));
   seedWorkflowContract(repoRoot);
