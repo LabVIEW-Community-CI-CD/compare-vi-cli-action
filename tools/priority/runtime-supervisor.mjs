@@ -758,6 +758,127 @@ async function resolveGovernorPortfolioPivotExecution({
   };
 }
 
+async function maybeBuildReleasedWaitingStateCrossRepoPivot({
+  repoRoot,
+  repository,
+  schedulerDecision,
+  taskPacket,
+  executionReceipt,
+  env = {},
+  deps = {}
+}) {
+  const laneLifecycle = normalizeText(executionReceipt?.details?.laneLifecycle) || null;
+  if (!['waiting-ci', 'waiting-review', 'ready-merge'].includes(laneLifecycle)) {
+    return null;
+  }
+
+  const releasedSlotId =
+    normalizeText(taskPacket?.evidence?.lane?.workerSlotId) ||
+    normalizeText(taskPacket?.evidence?.delivery?.workerProviderSelection?.selectedSlotId) ||
+    normalizeText(executionReceipt?.details?.workerSlotId) ||
+    null;
+  if (!releasedSlotId) {
+    return null;
+  }
+
+  const governorPortfolioHandoff = await resolveGovernorPortfolioHandoff({
+    repoRoot,
+    repository,
+    deps
+  });
+  const runCrossRepoLaneBrokerFn = deps.runCrossRepoLaneBrokerFn ?? runCrossRepoLaneBroker;
+  const crossRepoLaneBrokerResult = await runCrossRepoLaneBrokerFn({
+    repoRoot,
+    currentRepository: repository,
+    governorPortfolioHandoff,
+    policyPath: deps.deliveryAgentPolicyPath || DELIVERY_AGENT_POLICY_RELATIVE_PATH,
+    outputPath: deps.crossRepoLaneBrokerOutputPath ?? DEFAULT_CROSS_REPO_LANE_BROKER_OUTPUT_PATH,
+    allowReleasedWaitingStateDispatch: true
+  });
+  const crossRepoLaneBrokerDecision = crossRepoLaneBrokerResult?.report ?? null;
+  if (normalizeText(crossRepoLaneBrokerDecision?.decision?.status) !== 'ready') {
+    return null;
+  }
+
+  const brokerSelectedRepository = normalizeText(crossRepoLaneBrokerDecision?.decision?.selectedRepository) || null;
+  const brokerSelectedIssueNumber = coercePositiveInteger(crossRepoLaneBrokerDecision?.decision?.selectedIssueNumber);
+  const brokerSelectedIssueUrl = normalizeText(crossRepoLaneBrokerDecision?.decision?.selectedIssueUrl) || null;
+  const brokerSelectedIssueTitle = normalizeText(crossRepoLaneBrokerDecision?.decision?.selectedIssueTitle) || null;
+  const brokerProviderId = normalizeText(crossRepoLaneBrokerDecision?.decision?.selectedProviderId) || null;
+  const brokerSlotId = normalizeText(crossRepoLaneBrokerDecision?.decision?.selectedSlotId) || null;
+  const brokerSelectionSource = normalizeText(crossRepoLaneBrokerDecision?.decision?.selectionSource) || null;
+  if (!brokerSelectedRepository) {
+    return null;
+  }
+
+  const governorPortfolioHandoffForExecution = {
+    ...governorPortfolioHandoff,
+    status: 'owner-match',
+    currentOwnerRepository: repository,
+    nextOwnerRepository: brokerSelectedRepository,
+    nextAction: 'future-agent-may-pivot',
+    ownerDecisionSource: 'delivery-runtime-marketplace'
+  };
+  const governorPortfolioPivot = await resolveGovernorPortfolioPivotExecution({
+    repoRoot,
+    repository,
+    governorPortfolioHandoff: governorPortfolioHandoffForExecution,
+    env,
+    deps
+  });
+  if (governorPortfolioPivot.status !== 'ready') {
+    return null;
+  }
+
+  const selectedIssueNumber =
+    coercePositiveInteger(taskPacket?.evidence?.delivery?.selectedIssue?.number) ?? coercePositiveInteger(taskPacket?.issue);
+
+  return {
+    status: 'completed',
+    outcome: 'repo-context-pivot',
+    reason:
+      `Issue #${selectedIssueNumber ?? 'unknown'} is ${laneLifecycle}; released ${releasedSlotId} and repo-context pivots to ` +
+      `${governorPortfolioPivot.nextOwnerRepository}` +
+      (brokerSelectedIssueNumber ? ` issue #${brokerSelectedIssueNumber}` : '') +
+      '.',
+    source: 'comparevi-runtime',
+    details: {
+      laneLifecycle,
+      waitingLaneLifecycle: laneLifecycle,
+      waitingStateReason: normalizeText(executionReceipt?.reason) || null,
+      blockerClass: normalizeText(executionReceipt?.details?.blockerClass) || 'none',
+      actionType: 'repo-context-pivot',
+      retryable: true,
+      nextWakeCondition: 'target-repository-cycle',
+      currentRepository: governorPortfolioPivot.currentRepository,
+      currentOwnerRepository: governorPortfolioPivot.currentOwnerRepository,
+      nextOwnerRepository: governorPortfolioPivot.nextOwnerRepository,
+      nextAction: governorPortfolioPivot.nextAction,
+      ownerDecisionSource: governorPortfolioPivot.ownerDecisionSource,
+      governorMode: governorPortfolioPivot.governorMode,
+      monitoringEntrypointsPath: governorPortfolioPivot.registryPath,
+      targetEntrypointPath: governorPortfolioPivot.targetEntrypointPath,
+      targetHeadSha: governorPortfolioPivot.targetHeadSha,
+      targetCheckoutState: governorPortfolioPivot.targetCheckoutState,
+      targetCurrentState: governorPortfolioPivot.targetCurrentState,
+      targetReceipts: governorPortfolioPivot.targetReceipts,
+      brokerSelectedIssueNumber,
+      brokerSelectedIssueUrl,
+      brokerSelectedIssueTitle,
+      brokerProviderId,
+      brokerSlotId,
+      brokerSelectionSource,
+      releasedSlotId
+    },
+    artifacts: {
+      canonicalExecutionReceipt: executionReceipt,
+      governorPortfolioHandoff,
+      governorPortfolioPivot,
+      crossRepoLaneBrokerDecision
+    }
+  };
+}
+
 function resolveCheckoutPath(repoRoot, checkoutPath) {
   const normalized = normalizeText(checkoutPath);
   if (!normalized) {
@@ -2012,13 +2133,23 @@ async function executeCompareviTurn({
   }
 
   if (standingRepository === upstreamRepository || !Number.isInteger(mirrorOf?.number) || !normalizeText(mirrorOf?.url)) {
-    const receipt = await invokeCanonicalDeliveryTurn({
+    const canonicalReceipt = await invokeCanonicalDeliveryTurn({
       repoRoot,
       deps,
       taskPacket,
       taskPacketArtifacts,
       schedulerDecision
     });
+    const receipt =
+      (await maybeBuildReleasedWaitingStateCrossRepoPivot({
+        repoRoot,
+        repository: repository || standingRepository || options.repo || env.GITHUB_REPOSITORY || upstreamRepository,
+        schedulerDecision,
+        taskPacket,
+        executionReceipt: canonicalReceipt,
+        env,
+        deps
+      })) ?? canonicalReceipt;
     await persistCompareviDeliveryRuntime({
       repository: repository || standingRepository,
       runtimeArtifactPaths,

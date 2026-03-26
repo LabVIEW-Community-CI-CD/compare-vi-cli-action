@@ -178,6 +178,34 @@ test('cross-repo lane broker fails closed when governor keeps work in the curren
   assert.equal(report.decision.selectedRepository, null);
 });
 
+test('cross-repo lane broker can offload released waiting-state capacity to the top-ranked external marketplace candidate', () => {
+  const report = buildCrossRepoLaneBrokerDecision({
+    repoRoot: '/tmp/repo',
+    currentRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    governorPortfolioHandoff: {
+      status: 'owner-match',
+      currentOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      nextOwnerRepository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      nextAction: 'continue-compare-governance-work',
+      ownerDecisionSource: 'compare-governor-summary',
+      governorMode: 'compare-governance-work'
+    },
+    marketplaceSnapshot: createMarketplaceSnapshot(),
+    marketplaceSnapshotPath: 'tests/results/_agent/marketplace/lane-marketplace-snapshot.json',
+    policy: createPolicy(),
+    policyPath: 'tools/priority/delivery-agent.policy.json',
+    allowReleasedWaitingStateDispatch: true
+  });
+
+  assert.equal(report.releaseContext.allowReleasedWaitingStateDispatch, true);
+  assert.equal(report.decision.status, 'ready');
+  assert.equal(report.decision.selectionSource, 'released-waiting-state-marketplace');
+  assert.equal(report.decision.selectedRepository, 'LabVIEW-Community-CI-CD/comparevi-history');
+  assert.equal(report.decision.selectedIssueNumber, 301);
+  assert.equal(report.decision.selectedProviderId, 'local-codex');
+  assert.equal(report.decision.selectedSlotId, 'worker-slot-1');
+});
+
 test('cross-repo lane broker writes a machine-readable receipt', async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cross-repo-lane-broker-'));
   const result = await runCrossRepoLaneBroker({

@@ -242,6 +242,7 @@ export function buildCrossRepoLaneBrokerDecision({
   marketplaceSnapshotPath = null,
   policy = {},
   policyPath = DELIVERY_AGENT_POLICY_RELATIVE_PATH,
+  allowReleasedWaitingStateDispatch = false,
   now = new Date()
 } = {}) {
   const currentRepositoryNormalized = normalizeText(currentRepository);
@@ -265,14 +266,24 @@ export function buildCrossRepoLaneBrokerDecision({
     marketplaceSnapshot,
     governor.governorSuggestedRepository
   );
+  const releasedWaitingStateDispatchAllowed =
+    allowReleasedWaitingStateDispatch === true &&
+    governor.status !== 'governor-unavailable' &&
+    governor.status !== 'blocked-dependency';
   const selectedEntry =
     governor.status === 'external-selection-allowed'
       ? governorPreferredEntry ??
         findEligibleMarketplaceEntry(marketplaceSnapshot, marketplaceRecommendation?.repository)
+      : releasedWaitingStateDispatchAllowed
+        ? findEligibleMarketplaceEntry(marketplaceSnapshot, marketplaceRecommendation?.repository)
       : null;
   const selectionSource =
     governor.status !== 'external-selection-allowed'
-      ? 'none'
+      ? releasedWaitingStateDispatchAllowed
+        ? marketplaceRecommendation
+          ? 'released-waiting-state-marketplace'
+          : 'none'
+        : 'none'
       : governorPreferredEntry
         ? 'governor-preferred'
         : marketplaceRecommendation
@@ -281,19 +292,24 @@ export function buildCrossRepoLaneBrokerDecision({
 
   let status = governor.status;
   let reason = governor.reason;
-  if (governor.status === 'external-selection-allowed') {
+  if (governor.status === 'external-selection-allowed' || releasedWaitingStateDispatchAllowed) {
     if (!selectedEntry) {
       status = 'no-eligible-repository';
-      reason = 'Cross-repo lane marketplace does not expose an eligible external standing lane.';
+      reason = releasedWaitingStateDispatchAllowed
+        ? 'Released waiting-state capacity did not find an eligible external standing lane.'
+        : 'Cross-repo lane marketplace does not expose an eligible external standing lane.';
     } else if (!providerSelection.selectedProviderId) {
       status = 'no-provider';
       reason = 'Worker-provider policy does not expose an eligible provider for cross-repo broker dispatch.';
     } else {
       status = 'ready';
-      reason =
-        `Cross-repo broker selected ${selectedEntry.repository}` +
-        (selectedEntry?.standing?.number ? ` issue #${selectedEntry.standing.number}` : '') +
-        ` via provider ${providerSelection.selectedProviderId}.`;
+      reason = releasedWaitingStateDispatchAllowed
+        ? `Released waiting-state capacity selected ${selectedEntry.repository}` +
+          (selectedEntry?.standing?.number ? ` issue #${selectedEntry.standing.number}` : '') +
+          ` via provider ${providerSelection.selectedProviderId}.`
+        : `Cross-repo broker selected ${selectedEntry.repository}` +
+          (selectedEntry?.standing?.number ? ` issue #${selectedEntry.standing.number}` : '') +
+          ` via provider ${providerSelection.selectedProviderId}.`;
     }
   }
 
@@ -319,6 +335,9 @@ export function buildCrossRepoLaneBrokerDecision({
       recommendation: marketplaceRecommendation,
       governorPreferredRepository: governor.governorSuggestedRepository,
       governorPreferredEligible: governorPreferredEntry != null
+    },
+    releaseContext: {
+      allowReleasedWaitingStateDispatch: allowReleasedWaitingStateDispatch === true
     },
     workerProviderSelection: {
       selectedProviderId: providerSelection.selectedProviderId,
@@ -369,6 +388,7 @@ export async function runCrossRepoLaneBroker({
   marketplaceSnapshot = null,
   marketplaceSnapshotPath = null,
   marketplaceSnapshotOutputPath = DEFAULT_MARKETPLACE_SNAPSHOT_PATH,
+  allowReleasedWaitingStateDispatch = false,
   collectMarketplaceSnapshotFn = collectMarketplaceSnapshot,
   writeMarketplaceSnapshotFn = writeMarketplaceSnapshot,
   loadDeliveryAgentPolicyFn = loadDeliveryAgentPolicy,
@@ -400,6 +420,7 @@ export async function runCrossRepoLaneBroker({
       : null,
     policy: effectivePolicy,
     policyPath,
+    allowReleasedWaitingStateDispatch,
     now
   });
   const writtenOutputPath = await writeJson(outputPath, report, repoRoot);

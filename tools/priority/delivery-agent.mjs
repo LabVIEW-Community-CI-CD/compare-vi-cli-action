@@ -3513,6 +3513,31 @@ export function buildDeliveryAgentRuntimeRecord({
     workerSlotId: normalizeText(providerDispatch?.workerSlotId) || normalizeText(workerProviderSelection?.selectedSlotId) || null,
     concurrentLaneStatus
   });
+  const repoContextPivot =
+    ['repo-context-pivot', 'repo-context-pivot-pending'].includes(
+      normalizeText(executionReceipt?.details?.actionType) || ''
+    )
+      ? {
+          currentRepository: normalizeText(executionReceipt?.details?.currentRepository) || null,
+          currentOwnerRepository: normalizeText(executionReceipt?.details?.currentOwnerRepository) || null,
+          nextOwnerRepository: normalizeText(executionReceipt?.details?.nextOwnerRepository) || null,
+          nextAction: normalizeText(executionReceipt?.details?.nextAction) || null,
+          ownerDecisionSource: normalizeText(executionReceipt?.details?.ownerDecisionSource) || null,
+          governorMode: normalizeText(executionReceipt?.details?.governorMode) || null,
+          pivotStatus: normalizeText(executionReceipt?.details?.pivotStatus) || null,
+          targetEntrypointPath: normalizeText(executionReceipt?.details?.targetEntrypointPath) || null,
+          targetHeadSha: normalizeText(executionReceipt?.details?.targetHeadSha) || null,
+          brokerSelectedIssueNumber: coercePositiveInteger(executionReceipt?.details?.brokerSelectedIssueNumber),
+          brokerSelectedIssueUrl: normalizeText(executionReceipt?.details?.brokerSelectedIssueUrl) || null,
+          brokerSelectedIssueTitle: normalizeText(executionReceipt?.details?.brokerSelectedIssueTitle) || null,
+          brokerProviderId: normalizeText(executionReceipt?.details?.brokerProviderId) || null,
+          brokerSlotId: normalizeText(executionReceipt?.details?.brokerSlotId) || null,
+          brokerSelectionSource: normalizeText(executionReceipt?.details?.brokerSelectionSource) || null,
+          releasedSlotId: normalizeText(executionReceipt?.details?.releasedSlotId) || null,
+          waitingLaneLifecycle: normalizeText(executionReceipt?.details?.waitingLaneLifecycle) || null,
+          waitingStateReason: normalizeText(executionReceipt?.details?.waitingStateReason) || null
+        }
+      : null;
   const activeLane = {
     schema: DELIVERY_AGENT_LANE_STATE_SCHEMA,
     generatedAt: toIso(now),
@@ -3545,6 +3570,7 @@ export function buildDeliveryAgentRuntimeRecord({
     concurrentLaneApply,
     concurrentLaneStatus,
     executionTopology,
+    repoContextPivot,
     liveAgentModelSelection,
     workerProviderSelection,
     providerDispatch
