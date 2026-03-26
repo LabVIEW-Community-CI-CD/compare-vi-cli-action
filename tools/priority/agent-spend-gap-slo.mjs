@@ -196,6 +196,7 @@ function extractThroughputEvidence(throughputScorecard = null) {
     && typeof throughputScorecard.workerPool.currentCycleIdleAuthority === 'object'
       ? throughputScorecard.workerPool.currentCycleIdleAuthority
       : null;
+  const idleAuthority = normalizeCurrentCycleIdleAuthority(currentCycleIdleAuthority);
 
   return {
     available:
@@ -209,11 +210,20 @@ function extractThroughputEvidence(throughputScorecard = null) {
     concurrentLaneActiveCount,
     concurrentLaneDeferredCount,
     hostedWaitEscapeCount,
+    currentCycleIdleStatus: idleAuthority.currentCycleIdleStatus,
+    currentCycleIdleSource: idleAuthority.currentCycleIdleSource,
+    currentCycleIdleObservedAt: idleAuthority.currentCycleIdleObservedAt,
+    currentCycleIdleNextWakeCondition: idleAuthority.currentCycleIdleNextWakeCondition,
+    throughputReasons: reasons
+  };
+}
+
+function normalizeCurrentCycleIdleAuthority(currentCycleIdleAuthority = null) {
+  return {
     currentCycleIdleStatus: normalizeText(currentCycleIdleAuthority?.status) || 'missing',
     currentCycleIdleSource: normalizeText(currentCycleIdleAuthority?.source) || null,
     currentCycleIdleObservedAt: normalizeText(currentCycleIdleAuthority?.observedAt) || null,
-    currentCycleIdleNextWakeCondition: normalizeText(currentCycleIdleAuthority?.nextWakeCondition) || null,
-    throughputReasons: reasons
+    currentCycleIdleNextWakeCondition: normalizeText(currentCycleIdleAuthority?.nextWakeCondition) || null
   };
 }
 
@@ -249,6 +259,12 @@ function extractFundedThroughputEvidence({ costRollup = null, throughputScorecar
     coerceNonNegativeInteger(costRollup?.summary?.metrics?.operatorSteeringEventCount) ??
     0;
   const laneMinutesAllocated = roundMetric(activeLaneCount * Math.max(observedMinutes, 0));
+  const idleAuthority = normalizeCurrentCycleIdleAuthority(
+    throughputScorecard?.workerPool?.currentCycleIdleAuthority
+    && typeof throughputScorecard.workerPool.currentCycleIdleAuthority === 'object'
+      ? throughputScorecard.workerPool.currentCycleIdleAuthority
+      : null
+  );
 
   const perDollar = fundedUsd != null && fundedUsd > 0
     ? (count) => roundPerDollar(count / fundedUsd)
@@ -267,16 +283,7 @@ function extractFundedThroughputEvidence({ costRollup = null, throughputScorecar
       heuristicUsdDelta,
       heuristicUsdDeltaRatio
     },
-    throughputWindow: {
-      currentCycleIdleStatus:
-        normalizeText(throughputScorecard?.workerPool?.currentCycleIdleAuthority?.status) || 'missing',
-      currentCycleIdleSource:
-        normalizeText(throughputScorecard?.workerPool?.currentCycleIdleAuthority?.source) || null,
-      currentCycleIdleObservedAt:
-        normalizeText(throughputScorecard?.workerPool?.currentCycleIdleAuthority?.observedAt) || null,
-      currentCycleIdleNextWakeCondition:
-        normalizeText(throughputScorecard?.workerPool?.currentCycleIdleAuthority?.nextWakeCondition) || null
-    },
+    throughputWindow: idleAuthority,
     metrics: {
       validatedPullRequestCount,
       closedIssueCount,

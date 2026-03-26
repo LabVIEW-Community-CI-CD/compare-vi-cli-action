@@ -144,7 +144,7 @@
           "properties": {
             "currentCycleIdleStatus": { "enum": ["observed", "missing"] },
             "currentCycleIdleSource": { "$ref": "#/$defs/nullableString" },
-            "currentCycleIdleObservedAt": { "$ref": "#/$defs/nullableString" },
+            "currentCycleIdleObservedAt": { "$ref": "#/$defs/nullableDateTime" },
             "currentCycleIdleNextWakeCondition": { "$ref": "#/$defs/nullableString" }
           }
         },
@@ -170,6 +170,10 @@
   "$defs": {
     "nullableString": {
       "type": ["string", "null"]
+    },
+    "nullableDateTime": {
+      "type": ["string", "null"],
+      "format": "date-time"
     },
     "inputRef": {
       "type": "object",
@@ -234,7 +238,7 @@
         "hostedWaitEscapeCount": { "type": ["integer", "null"], "minimum": 0 },
         "currentCycleIdleStatus": { "enum": ["observed", "missing"] },
         "currentCycleIdleSource": { "$ref": "#/$defs/nullableString" },
-        "currentCycleIdleObservedAt": { "$ref": "#/$defs/nullableString" },
+        "currentCycleIdleObservedAt": { "$ref": "#/$defs/nullableDateTime" },
         "currentCycleIdleNextWakeCondition": { "$ref": "#/$defs/nullableString" },
         "throughputReasons": {
           "type": "array",
