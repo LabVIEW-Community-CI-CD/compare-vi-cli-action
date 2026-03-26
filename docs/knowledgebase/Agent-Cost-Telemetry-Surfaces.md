@@ -607,3 +607,25 @@ This keeps the calibration layer honest:
 These evidence receipts are optional. Missing directories do not fail the roll-
 up, but unreadable or schema-mismatched receipts do surface as blockers once
 they are present.
+
+## Treasury Ledger And Hard-Stop Recovery
+
+`#1990` adds a treasury receipt that sits above the existing invoice-turn,
+usage-export, roll-up, and operator-steering surfaces:
+
+- `docs/schemas/treasury-ledger-v1.schema.json`
+- `tools/priority/treasury-ledger.mjs`
+- `tests/results/_agent/capital/treasury-ledger.json`
+- `tests/results/_agent/handoff/treasury-ledger.json`
+
+Use it to record:
+
+- the latest replenishment window
+- any observed or inferred hard-stop event
+- the resume event after replenishment
+- whether the current usage export can be trusted for scheduler decisions
+
+The treasury layer is intentionally fail-closed. For example, if a local usage
+CSV filename claims a wider date range than the rows actually present, the
+treasury receipt should keep `summary.status = fail-closed` and
+`schedulerState.status = fail-closed` until a corrected export is supplied.

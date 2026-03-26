@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labview-community-cicd.example/compare-vi-cli-action/treasury-ledger-v1.schema.json",
+  "title": "Treasury Ledger v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "repository",
+    "inputs",
+    "events",
+    "fundingWindow",
+    "observedBurn",
+    "remainingCapitalPosture",
+    "schedulerState",
+    "summary"
+  ],
+  "properties": {
+    "schema": { "const": "priority/treasury-ledger@v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repository": { "type": ["string", "null"] },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invoiceMetadataPath",
+        "normalizedInvoiceTurnPath",
+        "usageExportCsvPath",
+        "normalizedUsageExportPath",
+        "costRollupPath",
+        "operatorSteeringEventPath"
+      ],
+      "properties": {
+        "invoiceMetadataPath": { "type": ["string", "null"] },
+        "normalizedInvoiceTurnPath": { "type": ["string", "null"] },
+        "usageExportCsvPath": { "type": ["string", "null"] },
+        "normalizedUsageExportPath": { "type": ["string", "null"] },
+        "costRollupPath": { "type": ["string", "null"] },
+        "operatorSteeringEventPath": { "type": ["string", "null"] }
+      }
+    },
+    "events": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hardStop", "replenishment", "resume"],
+      "properties": {
+        "hardStop": { "$ref": "#/$defs/stateEvent" },
+        "replenishment": { "$ref": "#/$defs/replenishmentEvent" },
+        "resume": { "$ref": "#/$defs/stateEvent" }
+      }
+    },
+    "fundingWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "source",
+        "invoiceTurnId",
+        "invoiceId",
+        "openedAt",
+        "activationState",
+        "fundingPurpose"
+      ],
+      "properties": {
+        "status": { "enum": ["selected", "missing"] },
+        "source": { "type": ["string", "null"] },
+        "invoiceTurnId": { "type": ["string", "null"] },
+        "invoiceId": { "type": ["string", "null"] },
+        "openedAt": { "type": ["string", "null"], "format": "date-time" },
+        "activationState": { "type": ["string", "null"] },
+        "fundingPurpose": { "type": ["string", "null"] }
+      }
+    },
+    "observedBurn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "normalizedUsageExportPath",
+        "sourcePathEvidence",
+        "startDate",
+        "endDate",
+        "usageCredits",
+        "usageQuantity",
+        "filenameRangeStatus",
+        "declaredFileRange",
+        "reason"
+      ],
+      "properties": {
+        "status": { "enum": ["missing", "observed", "fail-closed"] },
+        "normalizedUsageExportPath": { "type": ["string", "null"] },
+        "sourcePathEvidence": { "type": ["string", "null"] },
+        "startDate": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "endDate": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "usageCredits": { "type": ["number", "null"], "minimum": 0 },
+        "usageQuantity": { "type": ["number", "null"], "minimum": 0 },
+        "filenameRangeStatus": { "enum": ["missing", "absent", "match", "mismatch"] },
+        "declaredFileRange": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["startLabel", "endLabel", "startMonth", "startDay", "endMonth", "endDay"],
+              "properties": {
+                "startLabel": { "type": "string", "minLength": 1 },
+                "endLabel": { "type": "string", "minLength": 1 },
+                "startMonth": { "type": "integer", "minimum": 1, "maximum": 12 },
+                "startDay": { "type": "integer", "minimum": 1, "maximum": 31 },
+                "endMonth": { "type": "integer", "minimum": 1, "maximum": 12 },
+                "endDay": { "type": "integer", "minimum": 1, "maximum": 31 }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "remainingCapitalPosture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "source", "remainingCredits", "remainingUsd", "rollupInvoiceTurnId", "reason"],
+      "properties": {
+        "status": { "enum": ["resolved", "fail-closed"] },
+        "source": { "type": ["string", "null"] },
+        "remainingCredits": { "type": ["number", "null"], "minimum": 0 },
+        "remainingUsd": { "type": ["number", "null"], "minimum": 0 },
+        "rollupInvoiceTurnId": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "schedulerState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "failClosed",
+        "capitalModeRecommended",
+        "blockingReasonCodes",
+        "currentFundingWindowId",
+        "latestHardStopStatus",
+        "latestResumeStatus",
+        "latestReplenishmentInvoiceTurnId"
+      ],
+      "properties": {
+        "status": { "enum": ["pass", "fail-closed"] },
+        "failClosed": { "type": "boolean" },
+        "capitalModeRecommended": { "enum": ["balanced", "conserve"] },
+        "blockingReasonCodes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "currentFundingWindowId": { "type": ["string", "null"] },
+        "latestHardStopStatus": { "enum": ["missing", "observed", "inferred"] },
+        "latestResumeStatus": { "enum": ["missing", "observed", "inferred"] },
+        "latestReplenishmentInvoiceTurnId": { "type": ["string", "null"] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "blockerCount",
+        "blockers",
+        "warningCount",
+        "warnings",
+        "currentFundingWindowId",
+        "latestReplenishmentInvoiceId",
+        "latestHardStopStatus",
+        "latestResumeStatus",
+        "remainingCapitalStatus"
+      ],
+      "properties": {
+        "status": { "enum": ["pass", "fail-closed"] },
+        "blockerCount": { "type": "integer", "minimum": 0 },
+        "warningCount": { "type": "integer", "minimum": 0 },
+        "blockers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/messageEntry" }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/messageEntry" }
+        },
+        "currentFundingWindowId": { "type": ["string", "null"] },
+        "latestReplenishmentInvoiceId": { "type": ["string", "null"] },
+        "latestHardStopStatus": { "enum": ["missing", "observed", "inferred"] },
+        "latestResumeStatus": { "enum": ["missing", "observed", "inferred"] },
+        "remainingCapitalStatus": { "enum": ["resolved", "fail-closed"] }
+      }
+    }
+  },
+  "$defs": {
+    "messageEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "path"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "path": { "type": ["string", "null"] }
+      }
+    },
+    "stateEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observedAt", "sourceKind", "reason"],
+      "properties": {
+        "status": { "enum": ["missing", "observed", "inferred"] },
+        "observedAt": { "type": ["string", "null"], "format": "date-time" },
+        "sourceKind": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "replenishmentEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "observedAt",
+        "sourceKind",
+        "reason",
+        "invoiceTurnId",
+        "invoiceId",
+        "openedAt",
+        "creditsPurchased",
+        "prepaidUsd",
+        "activationState",
+        "fundingPurpose",
+        "sourcePathEvidence"
+      ],
+      "properties": {
+        "status": { "enum": ["missing", "observed"] },
+        "observedAt": { "type": ["string", "null"], "format": "date-time" },
+        "sourceKind": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] },
+        "invoiceTurnId": { "type": ["string", "null"] },
+        "invoiceId": { "type": ["string", "null"] },
+        "openedAt": { "type": ["string", "null"], "format": "date-time" },
+        "creditsPurchased": { "type": ["number", "null"], "minimum": 0 },
+        "prepaidUsd": { "type": ["number", "null"], "minimum": 0 },
+        "activationState": { "type": ["string", "null"] },
+        "fundingPurpose": { "type": ["string", "null"] },
+        "sourcePathEvidence": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

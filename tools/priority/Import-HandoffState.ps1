@@ -49,6 +49,7 @@ $governorSummary = Read-HandoffJson -Name 'autonomous-governor-summary.json'
 $governorPortfolioSummary = Read-HandoffJson -Name 'autonomous-governor-portfolio-summary.json'
 $contextConcentrator = Read-HandoffJson -Name 'sagan-context-concentrator.json'
 $operatorSteeringEvent = Read-HandoffJson -Name 'operator-steering-event.json'
+$treasuryLedger = Read-HandoffJson -Name 'treasury-ledger.json'
 
 if ($issueSummary) {
   Write-Host '[handoff] Standing priority snapshot' -ForegroundColor Cyan
@@ -400,6 +401,23 @@ if ($contextConcentrator) {
     Write-Host ("  - {0} [{1}]" -f (Format-NullableValue $entry.label), (Format-NullableValue $entry.status))
   }
   Set-Variable -Name HandoffContextConcentrator -Scope Global -Value $contextConcentrator -Force
+}
+
+if ($treasuryLedger) {
+  Write-Host '[handoff] Treasury ledger' -ForegroundColor Cyan
+  Write-Host ("  status   : {0}" -f (Format-NullableValue $treasuryLedger.summary.status))
+  Write-Host ("  funding  : {0}" -f (Format-NullableValue $treasuryLedger.fundingWindow.invoiceTurnId))
+  Write-Host ("  hardStop : {0}" -f (Format-NullableValue $treasuryLedger.events.hardStop.status))
+  Write-Host ("  resume   : {0}" -f (Format-NullableValue $treasuryLedger.events.resume.status))
+  Write-Host ("  capital  : {0}" -f (Format-NullableValue $treasuryLedger.remainingCapitalPosture.status))
+  Write-Host ("  mode     : {0}" -f (Format-NullableValue $treasuryLedger.schedulerState.capitalModeRecommended))
+  if ($treasuryLedger.schedulerState.blockingReasonCodes) {
+    $treasuryBlockers = @($treasuryLedger.schedulerState.blockingReasonCodes | Where-Object { $_ })
+    if ($treasuryBlockers.Count -gt 0) {
+      Write-Host ("  blockers : {0}" -f ($treasuryBlockers -join ', '))
+    }
+  }
+  Set-Variable -Name HandoffTreasuryLedger -Scope Global -Value $treasuryLedger -Force
 }
 if ($operatorSteeringEvent) {
   Write-Host '[handoff] Operator steering event' -ForegroundColor Cyan

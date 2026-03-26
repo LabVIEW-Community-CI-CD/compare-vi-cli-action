@@ -23,11 +23,13 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.ok(docsEntry.files.includes('docs/knowledgebase/Agent-Cost-Telemetry-Surfaces.md'));
   assert.ok(contractEntry.files.includes('docs/schemas/agent-cost-private-invoice-metadata-v1.schema.json'));
   assert.ok(contractEntry.files.includes('docs/schemas/agent-cost-invoice-turn-v1.schema.json'));
+  assert.ok(contractEntry.files.includes('docs/schemas/treasury-ledger-v1.schema.json'));
   assert.ok(contractEntry.files.includes('docs/schemas/operator-cost-profile-v1.schema.json'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-invoice-normalize.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-invoice-turn.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-turn.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/agent-cost-rollup.mjs'));
+  assert.ok(contractEntry.files.includes('tools/priority/treasury-ledger.mjs'));
   assert.ok(contractEntry.files.includes('tools/policy/operator-cost-profile.json'));
   assert.ok(contractEntry.files.includes('tools/priority/__tests__/operator-cost-profile-schema.test.mjs'));
   assert.ok(contractEntry.files.includes('docs/schemas/average-issue-cost-scorecard-v1.schema.json'));
@@ -37,6 +39,8 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.ok(contractEntry.files.includes('tools/priority/__fixtures__/agent-cost-rollup/private-invoice-metadata-sample.json'));
   assert.ok(contractEntry.files.includes('tools/priority/__tests__/agent-cost-invoice-normalize.test.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/__tests__/agent-cost-invoice-normalize-schema.test.mjs'));
+  assert.ok(contractEntry.files.includes('tools/priority/__tests__/treasury-ledger.test.mjs'));
+  assert.ok(contractEntry.files.includes('tools/priority/__tests__/treasury-ledger-schema.test.mjs'));
   assert.ok(contractEntry.files.includes('tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-next-baseline.json'));
   assert.ok(contractEntry.files.includes('tools/priority/__fixtures__/agent-cost-rollup/invoice-turn-baseline-reconciled.json'));
   assert.match(guide, /tools\/local-collab\/ledger\/local-review-ledger\.mjs/);
@@ -97,4 +101,10 @@ test('agent cost telemetry knowledgebase points at the checked-in precursor surf
   assert.match(guide, /Operator Steering Attribution/);
   assert.match(guide, /summary\.metrics\.steeredTurnCount/);
   assert.match(guide, /breakdown\.bySteering/);
+  assert.match(guide, /Treasury Ledger And Hard-Stop Recovery/);
+  assert.match(guide, /docs\/schemas\/treasury-ledger-v1\.schema\.json/);
+  assert.match(guide, /tools\/priority\/treasury-ledger\.mjs/);
+  assert.match(guide, /tests\/results\/_agent\/capital\/treasury-ledger\.json/);
+  assert.match(guide, /tests\/results\/_agent\/handoff\/treasury-ledger\.json/);
+  assert.match(guide, /schedulerState\.status = fail-closed/);
 });

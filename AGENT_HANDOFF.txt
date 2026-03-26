@@ -30,10 +30,8 @@ Live repository state belongs in the machine-generated artifacts under
 
 ## Live State Surfaces
 
-- Standing priority:
-  `pwsh -NoLogo -NoProfile -File tools/Get-StandingPriority.ps1 -Plain`
-- Handoff snapshot:
-  `pwsh -NoLogo -NoProfile -File tools/Print-AgentHandoff.ps1 -ApplyToggles`
+- Standing priority: `pwsh -NoLogo -NoProfile -File tools/Get-StandingPriority.ps1 -Plain`
+- Handoff snapshot: `pwsh -NoLogo -NoProfile -File tools/Print-AgentHandoff.ps1 -ApplyToggles`
 - Project visibility:
   `node tools/npm/run-script.mjs priority:project:portfolio:check`
 - Develop sync:
@@ -44,6 +42,7 @@ Live repository state belongs in the machine-generated artifacts under
   `node tools/npm/run-script.mjs priority:governor:summary`
 - Governor portfolio:
   `node tools/npm/run-script.mjs priority:governor:portfolio`
+- Treasury ledger: `node tools/npm/run-script.mjs priority:cost:treasury`
 - Context concentrator:
   `node tools/npm/run-script.mjs priority:context:concentrate`
 
@@ -56,6 +55,7 @@ Live repository state belongs in the machine-generated artifacts under
 - `tests/results/_agent/handoff/continuity-summary.json`
 - `tests/results/_agent/handoff/entrypoint-status.json`
 - `tests/results/_agent/handoff/monitoring-mode.json`
+- `tests/results/_agent/handoff/treasury-ledger.json`
 - `tests/results/_agent/handoff/autonomous-governor-summary.json`
 - `tests/results/_agent/handoff/sagan-context-concentrator.json`
 - `tests/results/_agent/handoff/autonomous-governor-portfolio-summary.json`
