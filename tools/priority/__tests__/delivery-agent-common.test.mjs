@@ -4,6 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -163,4 +165,50 @@ test('resolveDeliveryStateForStatus falls back to fresh runtime state when heart
   assert.equal(result.diagnostics.usedHeartbeat, false);
   assert.equal(result.diagnostics.usedRuntimeState, true);
   assert.equal(result.diagnostics.reason, 'runtime-state-current');
+});
+
+test('quarantineStaleRuntimeReceipts rotates stale active runtime receipts into the startup quarantine folder', async (t) => {
+  const { getArtifactPaths, quarantineStaleRuntimeReceipts } = await loadModule();
+  const runtimeDirPath = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-runtime-epoch-'));
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+  });
+
+  const managerStartedAt = new Date('2026-03-26T16:53:24.000Z');
+  const paths = getArtifactPaths(repoRoot, runtimeDirPath);
+  await writeFile(
+    paths.observerHeartbeatPath,
+    `${JSON.stringify({
+      schema: 'priority/runtime-observer-heartbeat@v1',
+      generatedAt: '2026-03-11T16:22:59.000Z',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      outcome: 'lane-tracked',
+    }, null, 2)}\n`,
+    'utf8',
+  );
+  await writeFile(
+    paths.hostSignalPath,
+    `${JSON.stringify({
+      schema: 'priority/delivery-host-signal@v1',
+      generatedAt: '2026-03-11T16:22:59.000Z',
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      status: 'native-wsl',
+    }, null, 2)}\n`,
+    'utf8',
+  );
+  await writeFile(paths.runtimeStatePath, '{not-json}\n', 'utf8');
+
+  const result = quarantineStaleRuntimeReceipts({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: runtimeDirPath,
+    paths,
+    runtimeEpochId: '2026-03-26T16-53-24-000Z-labview-community-ci-cd-compare-vi-cli-action',
+    managerStartedAt,
+  });
+
+  assert.equal(result.entryCount, 3);
+  assert.equal(result.quarantineDirPath, path.join(paths.runtimeQuarantineRootPath, result.runtimeEpochId));
+  assert.equal(await readFile(path.join(result.quarantineDirPath, 'observer-heartbeat.json'), 'utf8').then((text) => JSON.parse(text).generatedAt), '2026-03-11T16:22:59.000Z');
+  assert.equal(await readFile(path.join(result.quarantineDirPath, 'daemon-host-signal.json'), 'utf8').then((text) => JSON.parse(text).generatedAt), '2026-03-11T16:22:59.000Z');
+  assert.equal(await readFile(path.join(result.quarantineDirPath, 'runtime-state.json'), 'utf8'), '{not-json}\n');
 });

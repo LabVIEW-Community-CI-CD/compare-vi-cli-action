@@ -509,6 +509,46 @@ test('delivery-agent manager status preserves a persisted fail-closed outcome af
   assert.equal(status.managerFailureCircuitBreaker.reason, 'repeated-daemon-cycle-failures');
 });
 
+test('delivery-agent manager status exposes the current runtime epoch and startup quarantine summary', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-runtime-epoch-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+  });
+
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-manager-pid.json'), {
+    schema: 'priority/unattended-delivery-agent-manager-pid@v1',
+    startedAt: '2026-03-26T20:10:00.000Z',
+    pid: process.pid,
+    runtimeEpochId: '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action',
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-runtime-epoch.json'), {
+    schema: 'priority/unattended-delivery-agent-runtime-epoch@v1',
+    generatedAt: '2026-03-26T20:10:00.500Z',
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: relativeRuntimeDir,
+    runtimeEpochId: '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action',
+    managerStartedAt: '2026-03-26T20:10:00.000Z',
+    startupQuarantine: {
+      schema: 'priority/unattended-delivery-agent-startup-quarantine@v1',
+      generatedAt: '2026-03-26T20:10:00.500Z',
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      runtimeDir: relativeRuntimeDir,
+      runtimeEpochId: '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action',
+      managerStartedAt: '2026-03-26T20:10:00.000Z',
+      quarantineDirPath: path.join(runtimeDirPath, 'quarantine', '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action'),
+      entryCount: 2,
+      entries: [],
+    },
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.runtimeEpoch.runtimeEpochId, '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action');
+  assert.equal(status.runtimeEpoch.startupQuarantine.entryCount, 2);
+  assert.equal(status.paths.runtimeEpochPath, path.join(runtimeDirPath, 'delivery-agent-runtime-epoch.json'));
+});
+
 test('Manage-UnattendedDeliveryAgent suppresses fallback build chatter before JSON status output', async (t) => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-wrapper-status-'));
   t.after(async () => {
