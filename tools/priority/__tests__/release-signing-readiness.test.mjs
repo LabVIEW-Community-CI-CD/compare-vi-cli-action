@@ -187,7 +187,7 @@ test('runReleaseSigningReadiness reports explicit external blocker when workflow
   assert.equal(result.report.summary.signingCapabilityState, 'missing');
   assert.equal(result.report.summary.signingAuthorityState, 'scope-missing');
   assert.equal(result.report.summary.releaseConductorApplyState, 'disabled');
-  assert.equal(result.report.summary.publicationState, 'unobserved');
+  assert.equal(result.report.summary.publicationState, 'published-observed');
   assert.equal(result.report.summary.publishedBundleState, 'producer-native-incomplete');
   assert.equal(result.report.summary.publishedBundleReleaseTag, 'v0.6.4-rc.1-tools.1');
   assert.equal(result.report.summary.publishedBundleAuthoritativeConsumerPin, null);
@@ -245,7 +245,7 @@ test('runReleaseSigningReadiness reports publication success when signing capabi
   assert.equal(result.report.summary.signingCapabilityState, 'configured');
   assert.equal(result.report.summary.signingAuthorityState, 'ready');
   assert.equal(result.report.summary.releaseConductorApplyState, 'enabled');
-  assert.equal(result.report.summary.publicationState, 'authoritative-publication-successful');
+  assert.equal(result.report.summary.publicationState, 'published-consumer-aligned');
   assert.equal(result.report.summary.publishedBundleState, 'producer-native-ready');
   assert.equal(result.report.summary.publishedBundleReleaseTag, 'v0.6.4-rc.1-tools.1');
   assert.equal(result.report.summary.publishedBundleAuthoritativeConsumerPin, 'v0.6.4-rc.1-tools.1');
@@ -256,6 +256,115 @@ test('runReleaseSigningReadiness reports publication success when signing capabi
   assert.equal(result.report.publication.targetTag, 'v0.6.4-rc.1');
   assert.equal(result.report.publishedBundleObserver.status, 'producer-native-ready');
   assert.deepEqual(result.report.blockers, []);
+});
+
+test('runReleaseSigningReadiness reports ready-to-publish when signing is configured but publication has not been observed yet', async () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'release-signing-readiness-ready-to-publish-'));
+  seedWorkflowContract(repoRoot);
+
+  const result = await runReleaseSigningReadiness(
+    {
+      repoRoot,
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    {
+      now: new Date('2026-03-23T17:21:30Z'),
+      runGhJsonFn: (args) => {
+        const endpoint = args[1] ?? '';
+        if (endpoint.includes('/actions/secrets')) {
+          return { secrets: [{ name: REQUIRED_SIGNING_SECRET }, { name: OPTIONAL_SIGNING_SECRET }] };
+        }
+        if (endpoint.includes('/actions/variables')) {
+          return { variables: [{ name: 'RELEASE_CONDUCTOR_ENABLED', value: '1' }] };
+        }
+        if (endpoint.startsWith('user/ssh_signing_keys')) {
+          return [{ id: 1, title: 'compare-release-signing' }];
+        }
+        throw new Error(`Unexpected endpoint: ${endpoint}`);
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.summary.status, 'pass');
+  assert.equal(result.report.summary.publicationState, 'ready-to-publish');
+  assert.equal(result.report.summary.publishedBundleState, 'unobserved');
+  assert.equal(result.report.summary.publishedBundleReleaseTag, null);
+  assert.equal(result.report.summary.publishedBundleAuthoritativeConsumerPin, null);
+});
+
+test('runReleaseSigningReadiness reports published-observed when publication is visible but consumer alignment is not complete', async () => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'release-signing-readiness-published-observed-'));
+  seedWorkflowContract(repoRoot);
+  writeJson(path.join(repoRoot, DEFAULT_RELEASE_CONDUCTOR_REPORT_PATH), {
+    release: {
+      tagCreated: true,
+      tagPushed: true,
+      targetTag: 'v0.6.4-rc.2'
+    }
+  });
+  writeJson(
+    path.join(repoRoot, DEFAULT_RELEASE_PUBLISHED_BUNDLE_OBSERVER_PATH),
+    createPublishedBundleObserver({
+      selection: {
+        ...createPublishedBundleObserver().selection,
+        releaseTag: 'v0.6.4-rc.2',
+        releaseName: 'v0.6.4-rc.2'
+      },
+      bundleContract: {
+        ...createPublishedBundleObserver().bundleContract,
+        status: 'producer-native-incomplete',
+        authoritativeConsumerPin: null,
+        authoritativeConsumerPinKind: null,
+        capabilityId: null,
+        distributionRole: null,
+        distributionModel: null,
+        bundleImportPath: null,
+        bundleImportPathExists: false,
+        releaseAssetPattern: null,
+        viHistoryCapabilityPresent: false,
+        viHistoryCapabilityProducerNative: false,
+        bundleContractPinResolved: false
+      },
+      summary: {
+        ...createPublishedBundleObserver().summary,
+        status: 'producer-native-incomplete',
+        releaseTag: 'v0.6.4-rc.2',
+        authoritativeConsumerPin: null
+      }
+    })
+  );
+
+  const result = await runReleaseSigningReadiness(
+    {
+      repoRoot,
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action'
+    },
+    {
+      now: new Date('2026-03-23T17:21:45Z'),
+      runGhJsonFn: (args) => {
+        const endpoint = args[1] ?? '';
+        if (endpoint.includes('/actions/secrets')) {
+          return { secrets: [{ name: REQUIRED_SIGNING_SECRET }, { name: OPTIONAL_SIGNING_SECRET }] };
+        }
+        if (endpoint.includes('/actions/variables')) {
+          return { variables: [{ name: 'RELEASE_CONDUCTOR_ENABLED', value: '1' }] };
+        }
+        if (endpoint.startsWith('user/ssh_signing_keys')) {
+          return [{ id: 1, title: 'compare-release-signing' }];
+        }
+        throw new Error(`Unexpected endpoint: ${endpoint}`);
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.report.summary.status, 'warn');
+  assert.equal(result.report.summary.publicationState, 'published-observed');
+  assert.equal(result.report.summary.publishedBundleState, 'producer-native-incomplete');
+  assert.equal(result.report.summary.publishedBundleReleaseTag, 'v0.6.4-rc.2');
+  assert.equal(result.report.summary.publishedBundleAuthoritativeConsumerPin, null);
+  assert.ok(result.report.blockers.some((entry) => entry.code === 'published-bundle-producer-native-incomplete'));
 });
 
 test('runReleaseSigningReadiness reports immutable published-tag repair as an external blocker', async () => {

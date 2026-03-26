@@ -174,9 +174,21 @@ function deriveViHistoryDistributorDependency(compareGovernorSummary, monitoring
 
   let status = 'unknown';
   let detail = 'missing-release-signing-readiness';
-  if (publishedBundleState === 'producer-native-ready' || releasePublicationState === 'producer-native-ready') {
+  if (releasePublicationState === 'published-consumer-aligned') {
     status = 'ready';
-    detail = 'producer-native-release-ready';
+    detail = 'published-consumer-aligned';
+  } else if (releasePublicationState === 'published-observed') {
+    status = 'blocked';
+    detail =
+      publishedBundleState === 'producer-native-ready'
+        ? 'awaiting-consumer-aligned-publication'
+        : 'published-observed-awaiting-producer-native-bundle';
+  } else if (releasePublicationState === 'ready-to-publish') {
+    status = 'blocked';
+    detail = 'ready-to-publish';
+  } else if (releasePublicationState === 'tag-created-not-pushed') {
+    status = 'blocked';
+    detail = 'tag-created-not-pushed';
   } else if (
     publishedBundleState ||
     releaseSigningStatus ||
@@ -190,6 +202,8 @@ function deriveViHistoryDistributorDependency(compareGovernorSummary, monitoring
         ? 'awaiting-producer-native-bundle-publication'
         : externalBlocker
           ? 'awaiting-compare-release-signing-blocker-clear'
+          : releaseSigningStatus === 'pass'
+            ? 'ready-to-publish'
           : 'awaiting-producer-native-release-publication';
   }
 
