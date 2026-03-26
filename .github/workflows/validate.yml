@@ -1975,15 +1975,18 @@ jobs:
           'runner-label-contract-labview-2026.json',
           'runner-label-contract-lv32.json'
         ) | ForEach-Object { Join-Path $resultsRoot $_ }
-        pwsh -NoLogo -NoProfile -File tools/Write-VIHistoryLV32ShadowProofReceipt.ps1 `
-          -LaneName 'vi-history-scenarios-windows-lv32' `
-          -RunnerLabelContractPaths $runnerContractPaths `
-          -HostPlaneReportPath '${{ steps.host-plane.outputs.host_plane_report_path }}' `
-          -CompareSummaryPath '${{ steps.history-shadow.outputs.history_summary_path }}' `
-          -CompareReportPath '${{ steps.history-shadow.outputs.history_report_path }}' `
-          -OutputJsonPath $env:VI_HISTORY_LV32_RECEIPT_PATH `
-          -GitHubOutputPath $env:GITHUB_OUTPUT `
-          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+        $receiptScriptPath = Join-Path $env:GITHUB_WORKSPACE 'tools/Write-VIHistoryLV32ShadowProofReceipt.ps1'
+        $receiptArgs = @{
+          LaneName = 'vi-history-scenarios-windows-lv32'
+          RunnerLabelContractPaths = $runnerContractPaths
+          HostPlaneReportPath = '${{ steps.host-plane.outputs.host_plane_report_path }}'
+          CompareSummaryPath = '${{ steps.history-shadow.outputs.history_summary_path }}'
+          CompareReportPath = '${{ steps.history-shadow.outputs.history_report_path }}'
+          OutputJsonPath = $env:VI_HISTORY_LV32_RECEIPT_PATH
+          GitHubOutputPath = $env:GITHUB_OUTPUT
+          StepSummaryPath = $env:GITHUB_STEP_SUMMARY
+        }
+        & $receiptScriptPath @receiptArgs
     - name: Runner Unblock Guard
       if: always()
       uses: ./.github/actions/runner-unblock-guard
