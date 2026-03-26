@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deriveCurrentCycleIdleAuthority } from './lib/current-cycle-idle-authority.mjs';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(MODULE_DIR, '..', '..');
@@ -37,6 +38,20 @@ export const DEFAULT_NO_STANDING_PRIORITY_PATH = path.join(
   '_agent',
   'issue',
   'no-standing-priority.json'
+);
+export const DEFAULT_DELIVERY_RUNTIME_STATE_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'runtime',
+  'delivery-agent-state.json'
+);
+export const DEFAULT_OBSERVER_HEARTBEAT_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'runtime',
+  'observer-heartbeat.json'
 );
 
 export const MODE_DEFAULTS = {
@@ -362,11 +377,11 @@ function countAgentStates(agents) {
   return counts;
 }
 
-function resolveConstraint({ noStandingPriority, router }) {
+function resolveConstraint({ noStandingPriority, router, currentCycleIdleAuthority }) {
   if (noStandingPriority?.reason === 'queue-empty' && !normalizeInteger(router?.issue)) {
     return {
       status: 'constrained',
-      reason: 'queue-empty'
+      reason: currentCycleIdleAuthority?.status === 'observed' ? 'queue-empty-current-cycle-idle' : 'queue-empty'
     };
   }
   return {
@@ -418,10 +433,19 @@ export function buildBackgroundAgentSaturationReport(snapshotInput = {}, options
   const priorityCachePath = path.resolve(repoRoot, options.priorityCachePath || DEFAULT_PRIORITY_CACHE_PATH);
   const routerPath = path.resolve(repoRoot, options.routerPath || DEFAULT_ROUTER_PATH);
   const noStandingPriorityPath = path.resolve(repoRoot, options.noStandingPriorityPath || DEFAULT_NO_STANDING_PRIORITY_PATH);
+  const deliveryRuntimeStatePath = path.resolve(repoRoot, options.deliveryRuntimeStatePath || DEFAULT_DELIVERY_RUNTIME_STATE_PATH);
+  const observerHeartbeatPath = path.resolve(repoRoot, options.observerHeartbeatPath || DEFAULT_OBSERVER_HEARTBEAT_PATH);
   const priorityCache = readJsonFn(priorityCachePath);
   const router = readJsonFn(routerPath);
   const noStandingPriority = readJsonFn(noStandingPriorityPath);
-  const resolvedConstraint = resolveConstraint({ noStandingPriority, router });
+  const deliveryRuntimeState = readJsonFn(deliveryRuntimeStatePath);
+  const observerHeartbeat = readJsonFn(observerHeartbeatPath);
+  const currentCycleIdleAuthority = deriveCurrentCycleIdleAuthority({
+    deliveryRuntimeState,
+    observerHeartbeat,
+    now
+  });
+  const resolvedConstraint = resolveConstraint({ noStandingPriority, router, currentCycleIdleAuthority });
   const explicitConstraintReason = normalizeText(snapshot.constraintReason);
   const constraintReason = explicitConstraintReason || resolvedConstraint.reason;
   const status = availableAgents <= 0 ? 'not-applicable' : constraintReason ? 'constrained' : resolvedConstraint.status;
@@ -454,6 +478,7 @@ export function buildBackgroundAgentSaturationReport(snapshotInput = {}, options
     effectiveSaturation,
     status,
     constraintReason,
+    currentCycleIdleAuthority,
     applicable: availableAgents > 0,
     priorityRule: 'throughput-and-proof-quality-outrank-saturation',
     countingRule: {
@@ -475,12 +500,17 @@ export function buildBackgroundAgentSaturationReport(snapshotInput = {}, options
       snapshotPath: toDisplayPath(repoRoot, path.resolve(repoRoot, options.snapshotPath || DEFAULT_SNAPSHOT_PATH)),
       priorityCache: toDisplayPath(repoRoot, priorityCachePath),
       router: toDisplayPath(repoRoot, routerPath),
-      noStandingPriority: toDisplayPath(repoRoot, noStandingPriorityPath)
+      noStandingPriority: toDisplayPath(repoRoot, noStandingPriorityPath),
+      deliveryRuntimeState: toDisplayPath(repoRoot, deliveryRuntimeStatePath),
+      observerHeartbeat: toDisplayPath(repoRoot, observerHeartbeatPath)
     },
     notes: [
       `Mode ${mode} uses target saturation ${targetSaturation}.`,
       'Awaiting-instruction agents incur a partial penalty (0.25) instead of counting as fully productive.',
-      'Done agents count as fully non-productive for effective saturation.'
+      'Done agents count as fully non-productive for effective saturation.',
+      currentCycleIdleAuthority.status === 'observed'
+        ? `Current-cycle idle authority is sourced from ${currentCycleIdleAuthority.source}.`
+        : 'Current-cycle idle authority is not currently observed in the source runtime receipts.'
     ].concat(Array.isArray(snapshot.notes) ? snapshot.notes.map((entry) => normalizeText(entry)).filter(Boolean) : []),
     agents
   };

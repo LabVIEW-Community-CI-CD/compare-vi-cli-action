@@ -6,12 +6,15 @@ import { fileURLToPath } from 'node:url';
 
 import { runAgentCostInvoiceNormalize } from './agent-cost-invoice-normalize.mjs';
 import { runAgentCostUsageExportNormalize } from './agent-cost-usage-export-normalize.mjs';
+import { deriveCurrentCycleIdleAuthority } from './lib/current-cycle-idle-authority.mjs';
 
 export const REPORT_SCHEMA = 'priority/treasury-ledger@v1';
 export const DEFAULT_RUNTIME_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'capital', 'treasury-ledger.json');
 export const DEFAULT_HANDOFF_OUTPUT_PATH = path.join('tests', 'results', '_agent', 'handoff', 'treasury-ledger.json');
 export const DEFAULT_COST_ROLLUP_PATH = path.join('tests', 'results', '_agent', 'cost', 'agent-cost-rollup.json');
 export const DEFAULT_OPERATOR_STEERING_EVENT_PATH = path.join('tests', 'results', '_agent', 'runtime', 'operator-steering-event.json');
+export const DEFAULT_DELIVERY_RUNTIME_STATE_PATH = path.join('tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json');
+export const DEFAULT_OBSERVER_HEARTBEAT_PATH = path.join('tests', 'results', '_agent', 'runtime', 'observer-heartbeat.json');
 export const DEFAULT_INVOICE_OUTPUT_DIR = path.join('tests', 'results', '_agent', 'cost', 'invoice-turns');
 export const DEFAULT_USAGE_OUTPUT_DIR = path.join('tests', 'results', '_agent', 'cost', 'usage-exports');
 export const DEFAULT_TREASURY_METADATA_DIR = path.join('tests', 'results', '_agent', 'cost', 'treasury');
@@ -556,7 +559,15 @@ function buildRemainingCapitalPosture(fundingWindow, costRollup, replenishmentEv
   };
 }
 
-function buildSchedulerState(fundingWindow, hardStopEvent, resumeEvent, replenishmentEvent, remainingCapitalPosture, observedBurn) {
+function buildSchedulerState(
+  fundingWindow,
+  hardStopEvent,
+  resumeEvent,
+  replenishmentEvent,
+  remainingCapitalPosture,
+  observedBurn,
+  currentCycleIdleAuthority
+) {
   const blockingReasonCodes = [];
   if (fundingWindow.status !== 'selected') {
     blockingReasonCodes.push('funding-window-missing');
@@ -579,6 +590,9 @@ function buildSchedulerState(fundingWindow, hardStopEvent, resumeEvent, replenis
     failClosed: blockingReasonCodes.length > 0,
     capitalModeRecommended: blockingReasonCodes.length === 0 && treasuryPosture === 'trusted-capital' ? 'balanced' : 'conserve',
     treasuryPosture,
+    currentCycleIdleStatus: currentCycleIdleAuthority.status,
+    currentCycleIdleSource: currentCycleIdleAuthority.source,
+    currentCycleIdleObservedAt: currentCycleIdleAuthority.observedAt,
     blockingReasonCodes,
     currentFundingWindowId: fundingWindow.invoiceTurnId,
     latestHardStopStatus: hardStopEvent.status,
@@ -587,7 +601,17 @@ function buildSchedulerState(fundingWindow, hardStopEvent, resumeEvent, replenis
   };
 }
 
-function buildSummary(fundingWindow, replenishmentEvent, hardStopEvent, resumeEvent, remainingCapitalPosture, schedulerState, observedBurn, inputs) {
+function buildSummary(
+  fundingWindow,
+  replenishmentEvent,
+  hardStopEvent,
+  resumeEvent,
+  remainingCapitalPosture,
+  schedulerState,
+  observedBurn,
+  currentCycleIdleAuthority,
+  inputs
+) {
   const blockers = [];
   const warnings = [];
 
@@ -636,7 +660,9 @@ function buildSummary(fundingWindow, replenishmentEvent, hardStopEvent, resumeEv
     latestHardStopStatus: hardStopEvent.status,
     latestResumeStatus: resumeEvent.status,
     remainingCapitalStatus: remainingCapitalPosture.status,
-    treasuryPosture: schedulerState.treasuryPosture
+    treasuryPosture: schedulerState.treasuryPosture,
+    currentCycleIdleStatus: currentCycleIdleAuthority.status,
+    currentCycleIdleSource: currentCycleIdleAuthority.source
   };
 }
 
@@ -659,6 +685,8 @@ export function parseArgs(argv = process.argv) {
     usageOutputPath: null,
     costRollupPath: DEFAULT_COST_ROLLUP_PATH,
     operatorSteeringEventPath: DEFAULT_OPERATOR_STEERING_EVENT_PATH,
+    deliveryRuntimeStatePath: DEFAULT_DELIVERY_RUNTIME_STATE_PATH,
+    observerHeartbeatPath: DEFAULT_OBSERVER_HEARTBEAT_PATH,
     outputPath: DEFAULT_RUNTIME_OUTPUT_PATH,
     handoffOutputPath: DEFAULT_HANDOFF_OUTPUT_PATH,
     help: false
@@ -672,7 +700,19 @@ export function parseArgs(argv = process.argv) {
       continue;
     }
     if (
-      ['--repo-root', '--invoice-metadata', '--invoice-output', '--usage-export-csv', '--usage-output', '--cost-rollup', '--operator-steering-event', '--output', '--handoff-output'].includes(token)
+      [
+        '--repo-root',
+        '--invoice-metadata',
+        '--invoice-output',
+        '--usage-export-csv',
+        '--usage-output',
+        '--cost-rollup',
+        '--operator-steering-event',
+        '--delivery-runtime-state',
+        '--observer-heartbeat',
+        '--output',
+        '--handoff-output'
+      ].includes(token)
     ) {
       if (!next || next.startsWith('-')) {
         throw new Error(`Missing value for ${token}.`);
@@ -685,6 +725,8 @@ export function parseArgs(argv = process.argv) {
       if (token === '--usage-output') options.usageOutputPath = next;
       if (token === '--cost-rollup') options.costRollupPath = next;
       if (token === '--operator-steering-event') options.operatorSteeringEventPath = next;
+      if (token === '--delivery-runtime-state') options.deliveryRuntimeStatePath = next;
+      if (token === '--observer-heartbeat') options.observerHeartbeatPath = next;
       if (token === '--output') options.outputPath = next;
       if (token === '--handoff-output') options.handoffOutputPath = next;
       continue;
@@ -704,6 +746,14 @@ export function runTreasuryLedger(options = {}, now = new Date()) {
     options.operatorSteeringEventPath === null
       ? null
       : resolveRepoPath(repoRoot, options.operatorSteeringEventPath || DEFAULT_OPERATOR_STEERING_EVENT_PATH);
+  const deliveryRuntimeStatePath =
+    options.deliveryRuntimeStatePath === null
+      ? null
+      : resolveRepoPath(repoRoot, options.deliveryRuntimeStatePath || DEFAULT_DELIVERY_RUNTIME_STATE_PATH);
+  const observerHeartbeatPath =
+    options.observerHeartbeatPath === null
+      ? null
+      : resolveRepoPath(repoRoot, options.observerHeartbeatPath || DEFAULT_OBSERVER_HEARTBEAT_PATH);
   const outputPath = resolveRepoPath(repoRoot, options.outputPath || DEFAULT_RUNTIME_OUTPUT_PATH);
   const handoffOutputPath = resolveRepoPath(repoRoot, options.handoffOutputPath || DEFAULT_HANDOFF_OUTPUT_PATH);
 
@@ -744,6 +794,8 @@ export function runTreasuryLedger(options = {}, now = new Date()) {
 
   const costRollupState = loadJsonFile(costRollupPath);
   const operatorSteeringState = loadJsonFile(operatorSteeringEventPath);
+  const deliveryRuntimeState = loadJsonFile(deliveryRuntimeStatePath);
+  const observerHeartbeatState = loadJsonFile(observerHeartbeatPath);
   const costRollup = costRollupState.payload;
   const operatorSteeringEvent = operatorSteeringState.payload;
 
@@ -755,7 +807,20 @@ export function runTreasuryLedger(options = {}, now = new Date()) {
   const resumeEvent = buildResumeEvent(invoiceMetadata, operatorSteeringEvent);
   const observedBurn = buildObservedBurn(usageExportReceipt, normalizedUsageExportPath);
   const remainingCapitalPosture = buildRemainingCapitalPosture(fundingWindow, costRollup, replenishmentEvent);
-  const schedulerState = buildSchedulerState(fundingWindow, hardStopEvent, resumeEvent, replenishmentEvent, remainingCapitalPosture, observedBurn);
+  const currentCycleIdleAuthority = deriveCurrentCycleIdleAuthority({
+    deliveryRuntimeState: deliveryRuntimeState.payload,
+    observerHeartbeat: observerHeartbeatState.payload,
+    now
+  });
+  const schedulerState = buildSchedulerState(
+    fundingWindow,
+    hardStopEvent,
+    resumeEvent,
+    replenishmentEvent,
+    remainingCapitalPosture,
+    observedBurn,
+    currentCycleIdleAuthority
+  );
 
   const inputs = {
     invoiceMetadataPath,
@@ -763,7 +828,9 @@ export function runTreasuryLedger(options = {}, now = new Date()) {
     usageExportCsvPath,
     normalizedUsageExportPath,
     costRollupPath: costRollupState.path,
-    operatorSteeringEventPath: operatorSteeringState.path
+    operatorSteeringEventPath: operatorSteeringState.path,
+    deliveryRuntimeStatePath: deliveryRuntimeState.path,
+    observerHeartbeatPath: observerHeartbeatState.path
   };
 
   const summary = buildSummary(
@@ -774,6 +841,7 @@ export function runTreasuryLedger(options = {}, now = new Date()) {
     remainingCapitalPosture,
     schedulerState,
     observedBurn,
+    currentCycleIdleAuthority,
     inputs
   );
 
@@ -817,6 +885,8 @@ function printUsage() {
   console.log('  --usage-output <path>          Explicit normalized usage export receipt path.');
   console.log(`  --cost-rollup <path>           Cost rollup receipt path (default: ${DEFAULT_COST_ROLLUP_PATH}).`);
   console.log(`  --operator-steering-event <path> Operator steering event path (default: ${DEFAULT_OPERATOR_STEERING_EVENT_PATH}).`);
+  console.log(`  --delivery-runtime-state <path> Delivery runtime state path (default: ${DEFAULT_DELIVERY_RUNTIME_STATE_PATH}).`);
+  console.log(`  --observer-heartbeat <path>    Observer heartbeat path (default: ${DEFAULT_OBSERVER_HEARTBEAT_PATH}).`);
   console.log(`  --output <path>                Treasury runtime receipt output (default: ${DEFAULT_RUNTIME_OUTPUT_PATH}).`);
   console.log(`  --handoff-output <path>        Treasury handoff receipt output (default: ${DEFAULT_HANDOFF_OUTPUT_PATH}).`);
   console.log('  -h, --help                     Show help and exit.');

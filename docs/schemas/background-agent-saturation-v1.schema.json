@@ -25,6 +25,7 @@
     "effectiveSaturation",
     "status",
     "constraintReason",
+    "currentCycleIdleAuthority",
     "applicable",
     "priorityRule",
     "countingRule",
@@ -141,6 +142,38 @@
     "constraintReason": {
       "type": ["string", "null"]
     },
+    "currentCycleIdleAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "source",
+        "observedAt",
+        "fresh",
+        "freshnessThresholdSeconds",
+        "nextWakeCondition",
+        "syntheticIdle",
+        "queueState",
+        "deliveryStateObservedAt",
+        "deliveryStateFresh",
+        "observerHeartbeatObservedAt",
+        "observerHeartbeatFresh"
+      ],
+      "properties": {
+        "status": { "enum": ["observed", "missing"] },
+        "source": { "type": ["string", "null"] },
+        "observedAt": { "type": ["string", "null"], "format": "date-time" },
+        "fresh": { "type": "boolean" },
+        "freshnessThresholdSeconds": { "type": "integer", "minimum": 0 },
+        "nextWakeCondition": { "type": ["string", "null"] },
+        "syntheticIdle": { "type": "boolean" },
+        "queueState": { "type": ["string", "null"] },
+        "deliveryStateObservedAt": { "type": ["string", "null"], "format": "date-time" },
+        "deliveryStateFresh": { "type": "boolean" },
+        "observerHeartbeatObservedAt": { "type": ["string", "null"], "format": "date-time" },
+        "observerHeartbeatFresh": { "type": "boolean" }
+      }
+    },
     "applicable": {
       "type": "boolean"
     },
@@ -167,12 +200,14 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["snapshotPath", "priorityCache", "router", "noStandingPriority"],
+      "required": ["snapshotPath", "priorityCache", "router", "noStandingPriority", "deliveryRuntimeState", "observerHeartbeat"],
       "properties": {
         "snapshotPath": { "type": ["string", "null"] },
         "priorityCache": { "type": "string", "minLength": 1 },
         "router": { "type": "string", "minLength": 1 },
-        "noStandingPriority": { "type": "string", "minLength": 1 }
+        "noStandingPriority": { "type": "string", "minLength": 1 },
+        "deliveryRuntimeState": { "type": ["string", "null"] },
+        "observerHeartbeat": { "type": ["string", "null"] }
       }
     },
     "notes": {

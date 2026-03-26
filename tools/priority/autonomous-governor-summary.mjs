@@ -3,6 +3,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  deriveCurrentCycleIdleAuthority,
+  DEFAULT_IDLE_AUTHORITY_FRESH_SECONDS
+} from './lib/current-cycle-idle-authority.mjs';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(MODULE_DIR, '..', '..');
@@ -58,6 +62,13 @@ export const DEFAULT_DELIVERY_RUNTIME_STATE_PATH = path.join(
   '_agent',
   'runtime',
   'delivery-agent-state.json'
+);
+export const DEFAULT_OBSERVER_HEARTBEAT_PATH = path.join(
+  'tests',
+  'results',
+  '_agent',
+  'runtime',
+  'observer-heartbeat.json'
 );
 export const DEFAULT_RELEASE_SIGNING_READINESS_PATH = path.join(
   'tests',
@@ -809,7 +820,21 @@ function deriveDeliveryRuntime(deliveryRuntimeState) {
     prUrl,
     issueNumber: Number.isInteger(activeLane?.issue) ? activeLane.issue : null,
     reason: asOptional(activeLane?.reason),
-    repoContextPivot
+    repoContextPivot,
+    currentCycleIdleAuthority: {
+      status: 'missing',
+      source: null,
+      observedAt: null,
+      fresh: false,
+      freshnessThresholdSeconds: DEFAULT_IDLE_AUTHORITY_FRESH_SECONDS,
+      nextWakeCondition: null,
+      syntheticIdle: false,
+      queueState: null,
+      deliveryStateObservedAt: null,
+      deliveryStateFresh: false,
+      observerHeartbeatObservedAt: null,
+      observerHeartbeatFresh: false
+    }
   };
 }
 
@@ -919,13 +944,14 @@ function deriveWorkerPoolCapital({ throughputScorecard, queueSupervisorReport, d
   return createEmptyWorkerPoolCapital();
 }
 
-function suppressDeliveryRuntimeForMonitoring(deliveryRuntime) {
+function suppressDeliveryRuntimeForMonitoring(deliveryRuntime, currentCycleIdleAuthority = null) {
   const emptyDeliveryRuntime = deriveDeliveryRuntime(null);
   return {
     ...emptyDeliveryRuntime,
     runtimeStatus: deliveryRuntime.runtimeStatus,
     queueAuthorityRefresh: deliveryRuntime.queueAuthorityRefresh,
-    repoContextPivot: deliveryRuntime.repoContextPivot
+    repoContextPivot: deliveryRuntime.repoContextPivot,
+    currentCycleIdleAuthority: currentCycleIdleAuthority || emptyDeliveryRuntime.currentCycleIdleAuthority
   };
 }
 
@@ -1263,6 +1289,8 @@ function buildReport({
   wakeInvestmentAccounting,
   deliveryRuntimeStatePath,
   deliveryRuntimeState,
+  observerHeartbeatPath,
+  observerHeartbeat,
   releaseSigningReadinessPath,
   releaseSigningReadinessReport,
   queueSupervisorReportPath,
@@ -1286,9 +1314,18 @@ function buildReport({
   const funding = deriveFunding(wakeInvestmentAccounting, treasuryLedger);
   const releaseSigningReadiness = deriveReleaseSigningReadiness(releaseSigningReadinessReport);
   const rawDeliveryRuntime = deriveDeliveryRuntime(deliveryRuntimeState);
+  const currentCycleIdleAuthority = deriveCurrentCycleIdleAuthority({
+    deliveryRuntimeState,
+    observerHeartbeat,
+    now,
+    freshnessThresholdSeconds: DEFAULT_IDLE_AUTHORITY_FRESH_SECONDS
+  });
   const deliveryRuntime = shouldSuppressStaleDeliveryRuntime({ queueState, continuity, monitoringMode, wake })
-    ? suppressDeliveryRuntimeForMonitoring(rawDeliveryRuntime)
-    : rawDeliveryRuntime;
+    ? suppressDeliveryRuntimeForMonitoring(rawDeliveryRuntime, currentCycleIdleAuthority)
+    : {
+        ...rawDeliveryRuntime,
+        currentCycleIdleAuthority
+      };
   const workerPoolCapital = deriveWorkerPoolCapital({
     throughputScorecard,
     queueSupervisorReport,
@@ -1325,6 +1362,7 @@ function buildReport({
       wakeLifecyclePath: toRelative(repoRoot, wakeLifecyclePath),
       wakeInvestmentAccountingPath: toRelative(repoRoot, wakeInvestmentAccountingPath),
       deliveryRuntimeStatePath: toRelative(repoRoot, deliveryRuntimeStatePath),
+      observerHeartbeatPath: toRelative(repoRoot, observerHeartbeatPath),
       releaseSigningReadinessPath: toRelative(repoRoot, releaseSigningReadinessPath),
       queueSupervisorReportPath: toRelative(repoRoot, queueSupervisorReportPath),
       throughputScorecardPath: toRelative(repoRoot, throughputScorecardPath),
@@ -1402,6 +1440,9 @@ function buildReport({
       queueHandoffNextWakeCondition: queueAuthority.nextWakeCondition,
       queueHandoffPrUrl: queueAuthority.prUrl,
       queueAuthoritySource: queueAuthority.source,
+      currentCycleIdleStatus: deliveryRuntime.currentCycleIdleAuthority.status,
+      currentCycleIdleSource: deliveryRuntime.currentCycleIdleAuthority.source,
+      currentCycleIdleNextWakeCondition: deliveryRuntime.currentCycleIdleAuthority.nextWakeCondition,
       treasuryStatus: funding.treasuryStatus,
       treasuryPosture: funding.treasuryPosture,
       treasuryFundingWindowId: funding.treasuryFundingWindowId,
@@ -1424,6 +1465,10 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   const deliveryRuntimeStatePath = path.resolve(
     repoRoot,
     options.deliveryRuntimeStatePath || DEFAULT_DELIVERY_RUNTIME_STATE_PATH
+  );
+  const observerHeartbeatPath = path.resolve(
+    repoRoot,
+    options.observerHeartbeatPath || DEFAULT_OBSERVER_HEARTBEAT_PATH
   );
   const releaseSigningReadinessPath = path.resolve(
     repoRoot,
@@ -1453,6 +1498,7 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   const wakeLifecycle = readOptionalJsonFn(wakeLifecyclePath);
   const wakeInvestmentAccounting = readOptionalJsonFn(wakeInvestmentAccountingPath);
   const deliveryRuntimeState = readOptionalJsonFn(deliveryRuntimeStatePath);
+  const observerHeartbeat = readOptionalJsonFn(observerHeartbeatPath);
   const releaseSigningReadinessReport = readOptionalJsonFn(releaseSigningReadinessPath);
   const queueSupervisorReport = readOptionalJsonFn(queueSupervisorReportPath);
   const throughputScorecard = readOptionalJsonFn(throughputScorecardPath);
@@ -1475,6 +1521,9 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
   }
   if (deliveryRuntimeState) {
     ensureSchema(deliveryRuntimeState, deliveryRuntimeStatePath, 'priority/delivery-agent-runtime-state@v1');
+  }
+  if (observerHeartbeat) {
+    ensureSchema(observerHeartbeat, observerHeartbeatPath, 'priority/runtime-observer-heartbeat@v1');
   }
   if (releaseSigningReadinessReport) {
     ensureSchema(
@@ -1507,6 +1556,8 @@ export async function runAutonomousGovernorSummary(options = {}, deps = {}) {
     wakeInvestmentAccounting,
     deliveryRuntimeStatePath,
     deliveryRuntimeState,
+    observerHeartbeatPath,
+    observerHeartbeat,
     releaseSigningReadinessPath,
     releaseSigningReadinessReport,
     queueSupervisorReportPath,

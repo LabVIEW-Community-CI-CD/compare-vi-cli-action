@@ -29,7 +29,9 @@
         "usageExportCsvPath",
         "normalizedUsageExportPath",
         "costRollupPath",
-        "operatorSteeringEventPath"
+        "operatorSteeringEventPath",
+        "deliveryRuntimeStatePath",
+        "observerHeartbeatPath"
       ],
       "properties": {
         "invoiceMetadataPath": { "type": ["string", "null"] },
@@ -37,7 +39,9 @@
         "usageExportCsvPath": { "type": ["string", "null"] },
         "normalizedUsageExportPath": { "type": ["string", "null"] },
         "costRollupPath": { "type": ["string", "null"] },
-        "operatorSteeringEventPath": { "type": ["string", "null"] }
+        "operatorSteeringEventPath": { "type": ["string", "null"] },
+        "deliveryRuntimeStatePath": { "type": ["string", "null"] },
+        "observerHeartbeatPath": { "type": ["string", "null"] }
       }
     },
     "events": {
@@ -138,6 +142,9 @@
         "failClosed",
         "capitalModeRecommended",
         "treasuryPosture",
+        "currentCycleIdleStatus",
+        "currentCycleIdleSource",
+        "currentCycleIdleObservedAt",
         "blockingReasonCodes",
         "currentFundingWindowId",
         "latestHardStopStatus",
@@ -149,6 +156,9 @@
         "failClosed": { "type": "boolean" },
         "capitalModeRecommended": { "enum": ["balanced", "conserve"] },
         "treasuryPosture": { "enum": ["trusted-capital", "replenished-but-unreconciled", "fail-closed"] },
+        "currentCycleIdleStatus": { "enum": ["observed", "missing"] },
+        "currentCycleIdleSource": { "type": ["string", "null"] },
+        "currentCycleIdleObservedAt": { "type": ["string", "null"], "format": "date-time" },
         "blockingReasonCodes": {
           "type": "array",
           "items": { "type": "string" }
@@ -173,7 +183,9 @@
         "latestHardStopStatus",
         "latestResumeStatus",
         "remainingCapitalStatus",
-        "treasuryPosture"
+        "treasuryPosture",
+        "currentCycleIdleStatus",
+        "currentCycleIdleSource"
       ],
       "properties": {
         "status": { "enum": ["pass", "fail-closed"] },
@@ -192,7 +204,9 @@
         "latestHardStopStatus": { "enum": ["missing", "observed", "inferred"] },
         "latestResumeStatus": { "enum": ["missing", "observed", "inferred"] },
         "remainingCapitalStatus": { "enum": ["resolved", "replenished-but-unreconciled", "fail-closed"] },
-        "treasuryPosture": { "enum": ["trusted-capital", "replenished-but-unreconciled", "fail-closed"] }
+        "treasuryPosture": { "enum": ["trusted-capital", "replenished-but-unreconciled", "fail-closed"] },
+        "currentCycleIdleStatus": { "enum": ["observed", "missing"] },
+        "currentCycleIdleSource": { "type": ["string", "null"] }
       }
     }
   },
