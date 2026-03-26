@@ -549,6 +549,113 @@ test('delivery-agent manager status exposes the current runtime epoch and startu
   assert.equal(status.paths.runtimeEpochPath, path.join(runtimeDirPath, 'delivery-agent-runtime-epoch.json'));
 });
 
+test('delivery-agent manager status prefers an aligned runtime receipt over a fresher but wrong-epoch canonical delivery receipt', async (t) => {
+  const runtimeDirPath = await mkdtemp(path.join(repoRoot, 'tests', 'results', '_agent', 'tmp-manager-status-epoch-alignment-'));
+  const relativeRuntimeDir = path.relative(repoRoot, runtimeDirPath);
+  t.after(async () => {
+    await rm(runtimeDirPath, { recursive: true, force: true });
+  });
+
+  const currentRuntimeEpochId = '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action';
+  const staleRuntimeEpochId = '2026-03-11T16-22-59-000Z-labview-community-ci-cd-compare-vi-cli-action';
+
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-runtime-epoch.json'), {
+    schema: 'priority/unattended-delivery-agent-runtime-epoch@v1',
+    generatedAt: '2026-03-26T20:10:00.500Z',
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: relativeRuntimeDir,
+    runtimeEpochId: currentRuntimeEpochId,
+    managerStartedAt: '2026-03-26T20:10:00.000Z',
+    startupQuarantine: {
+      schema: 'priority/unattended-delivery-agent-startup-quarantine@v1',
+      generatedAt: '2026-03-26T20:10:00.500Z',
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      runtimeDir: relativeRuntimeDir,
+      runtimeEpochId: currentRuntimeEpochId,
+      managerStartedAt: '2026-03-26T20:10:00.000Z',
+      quarantineDirPath: path.join(runtimeDirPath, 'quarantine', currentRuntimeEpochId),
+      entryCount: 0,
+      entries: [],
+    },
+  });
+  await writeJson(path.join(runtimeDirPath, 'delivery-agent-state.json'), {
+    schema: 'priority/delivery-agent-runtime-state@v1',
+    generatedAt: '2026-03-26T20:10:30.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: runtimeDirPath,
+    runtimeEpochId: staleRuntimeEpochId,
+    status: 'blocked',
+    laneLifecycle: 'blocked',
+    activeCodingLanes: 0,
+    activeLane: {
+      schema: 'priority/delivery-agent-lane-state@v1',
+      generatedAt: '2026-03-26T20:10:30.000Z',
+      runtimeEpochId: staleRuntimeEpochId,
+      laneId: 'origin-1010',
+      issue: 1010,
+      branch: 'issue/origin-1010-example',
+      forkRemote: 'origin',
+      blockerClass: 'ci',
+      laneLifecycle: 'blocked',
+    },
+  });
+  await writeJson(path.join(runtimeDirPath, 'runtime-state.json'), {
+    schema: 'priority/runtime-supervisor-state@v1',
+    generatedAt: '2026-03-26T20:10:40.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeEpochId: currentRuntimeEpochId,
+    lifecycle: {
+      status: 'coding',
+      cycle: 1,
+      startedAt: '2026-03-26T20:10:00.000Z',
+      updatedAt: '2026-03-26T20:10:40.000Z',
+      lastAction: 'step',
+      stopRequested: false,
+    },
+    activeLane: {
+      laneId: 'origin-2014',
+      issue: 2014,
+      branch: 'issue/origin-2014-runtime-epoch-alignment',
+      forkRemote: 'origin',
+      runtimeEpochId: currentRuntimeEpochId,
+    },
+  });
+  await writeJson(path.join(runtimeDirPath, 'task-packet.json'), {
+    schema: 'priority/runtime-worker-task-packet@v1',
+    generatedAt: '2026-03-26T20:10:45.000Z',
+    repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeEpochId: currentRuntimeEpochId,
+    laneId: 'origin-2014',
+    status: 'coding',
+    branch: {
+      name: 'issue/origin-2014-runtime-epoch-alignment',
+      forkRemote: 'origin',
+    },
+    pullRequest: {
+      url: null,
+    },
+    checks: {
+      blockerClass: 'none',
+    },
+    evidence: {
+      delivery: {
+        selectedActionType: 'advance-standing-issue',
+        laneLifecycle: 'coding',
+      },
+    },
+  });
+
+  const status = await invokeManagerStatus(relativeRuntimeDir);
+
+  assert.equal(status.delivery.runtimeEpochId, currentRuntimeEpochId);
+  assert.equal(status.delivery.activeLane.runtimeEpochId, currentRuntimeEpochId);
+  assert.equal(status.delivery.activeLane.issue, 2014);
+  assert.equal(status.heartbeatDiagnostics.usedRuntimeState, true);
+  assert.equal(status.heartbeatDiagnostics.reason, 'runtime-state-current');
+  assert.equal(status.heartbeatDiagnostics.deliveryRuntimeEpochAlignment, 'mismatch');
+  assert.equal(status.heartbeatDiagnostics.runtimeStateRuntimeEpochAlignment, 'aligned');
+});
+
 test('Manage-UnattendedDeliveryAgent suppresses fallback build chatter before JSON status output', async (t) => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-wrapper-status-'));
   t.after(async () => {

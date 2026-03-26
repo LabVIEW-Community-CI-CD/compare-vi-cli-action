@@ -167,6 +167,103 @@ test('resolveDeliveryStateForStatus falls back to fresh runtime state when heart
   assert.equal(result.diagnostics.reason, 'runtime-state-current');
 });
 
+test('resolveDeliveryStateForStatus rejects wrong-epoch delivery and heartbeat receipts when a current runtime epoch is present', async () => {
+  const { resolveDeliveryStateForStatus } = await loadModule();
+  const now = Date.now();
+  const runtimeEpochId = '2026-03-26T20-10-00-000Z-labview-community-ci-cd-compare-vi-cli-action';
+  const staleRuntimeEpochId = '2026-03-11T16-22-59-000Z-labview-community-ci-cd-compare-vi-cli-action';
+  const deliveryGeneratedAt = new Date(now - 90_000).toISOString();
+  const heartbeatGeneratedAt = new Date(now - 60_000).toISOString();
+  const runtimeGeneratedAt = new Date(now - 5_000).toISOString();
+  const managerStartedAt = new Date(now - 10_000);
+  const daemonStartedAt = new Date(now - 9_000);
+
+  const result = resolveDeliveryStateForStatus({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    runtimeDir: 'tests/results/_agent/runtime',
+    deliveryState: {
+      schema: 'priority/delivery-agent-runtime-state@v1',
+      generatedAt: deliveryGeneratedAt,
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      runtimeEpochId: staleRuntimeEpochId,
+      status: 'blocked',
+      laneLifecycle: 'blocked',
+      activeCodingLanes: 0,
+      activeLane: {
+        schema: 'priority/delivery-agent-lane-state@v1',
+        generatedAt: deliveryGeneratedAt,
+        runtimeEpochId: staleRuntimeEpochId,
+        laneId: 'origin-1010',
+        issue: 1010,
+        branch: 'issue/origin-1010-example',
+        laneLifecycle: 'blocked',
+      },
+    },
+    heartbeat: {
+      schema: 'priority/runtime-observer-heartbeat@v1',
+      generatedAt: heartbeatGeneratedAt,
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      runtimeEpochId: staleRuntimeEpochId,
+      outcome: 'lane-tracked',
+      activeLane: {
+        laneId: 'origin-959',
+        issue: 959,
+        branch: 'issue/origin-959-example',
+      },
+    },
+    runtimeState: {
+      schema: 'priority/runtime-supervisor-state@v1',
+      generatedAt: runtimeGeneratedAt,
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      runtimeEpochId,
+      lifecycle: {
+        status: 'coding',
+      },
+      activeLane: {
+        laneId: 'origin-2014',
+        issue: 2014,
+        branch: 'issue/origin-2014-runtime-epoch-alignment',
+        forkRemote: 'origin',
+        runtimeEpochId,
+      },
+    },
+    taskPacket: {
+      schema: 'priority/runtime-worker-task-packet@v1',
+      generatedAt: runtimeGeneratedAt,
+      repository: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      runtimeEpochId,
+      laneId: 'origin-2014',
+      status: 'coding',
+      branch: {
+        name: 'issue/origin-2014-runtime-epoch-alignment',
+        forkRemote: 'origin',
+      },
+      evidence: {
+        delivery: {
+          selectedActionType: 'advance-standing-issue',
+          laneLifecycle: 'coding',
+        },
+      },
+    },
+    paths: buildPaths(),
+    managerStartedAt,
+    daemonStartedAt,
+    daemonAlive: true,
+    currentRuntimeEpochId: runtimeEpochId,
+  });
+
+  assert.equal(result.state?.runtimeEpochId, runtimeEpochId);
+  assert.equal(result.state?.activeLane?.runtimeEpochId, runtimeEpochId);
+  assert.equal(result.state?.activeLane?.issue, 2014);
+  assert.equal(result.diagnostics.usedHeartbeat, false);
+  assert.equal(result.diagnostics.usedRuntimeState, true);
+  assert.equal(result.diagnostics.reason, 'runtime-state-current');
+  assert.equal(result.diagnostics.deliveryRuntimeEpochAlignment, 'mismatch');
+  assert.equal(result.diagnostics.heartbeatRuntimeEpochAlignment, 'mismatch');
+  assert.equal(result.diagnostics.runtimeStateRuntimeEpochAlignment, 'aligned');
+  assert.equal(result.diagnostics.taskPacketRuntimeEpochAlignment, 'aligned');
+});
+
 test('quarantineStaleRuntimeReceipts rotates stale active runtime receipts into the startup quarantine folder', async (t) => {
   const { getArtifactPaths, quarantineStaleRuntimeReceipts } = await loadModule();
   const runtimeDirPath = await mkdtemp(path.join(os.tmpdir(), 'delivery-agent-runtime-epoch-'));

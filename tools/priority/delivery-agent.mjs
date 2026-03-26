@@ -3412,6 +3412,11 @@ export function buildDeliveryAgentRuntimeRecord({
   lanePath,
   marketplace = null
 }) {
+  const runtimeEpochId =
+    normalizeText(executionReceipt?.runtimeEpochId) ||
+    normalizeText(taskPacket?.runtimeEpochId) ||
+    normalizeText(process.env.COMPAREVI_RUNTIME_DAEMON_RUNTIME_EPOCH_ID) ||
+    null;
   const laneId =
     normalizeText(executionReceipt?.laneId) ||
     normalizeText(taskPacket?.laneId) ||
@@ -3541,6 +3546,7 @@ export function buildDeliveryAgentRuntimeRecord({
   const activeLane = {
     schema: DELIVERY_AGENT_LANE_STATE_SCHEMA,
     generatedAt: toIso(now),
+    runtimeEpochId,
     laneId,
     issue,
     epic,
@@ -3596,6 +3602,7 @@ export function buildDeliveryAgentRuntimeRecord({
     generatedAt: toIso(now),
     repository,
     runtimeDir,
+    runtimeEpochId,
     policy: {
       schema: DELIVERY_AGENT_POLICY_SCHEMA,
       backlogAuthority: policy.backlogAuthority,

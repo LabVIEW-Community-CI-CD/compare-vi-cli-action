@@ -187,6 +187,35 @@ export function getOptionalDateTimeProperty(inputObject, name) {
   return Number.isFinite(parsed) ? new Date(parsed) : null;
 }
 
+export function getRuntimeEpochId(inputObject) {
+  return (
+    getOptionalStringProperty(inputObject, 'runtimeEpochId') ||
+    getOptionalStringProperty(getOptionalProperty(inputObject, 'activeLane'), 'runtimeEpochId')
+  );
+}
+
+export function describeRuntimeEpochAlignment(currentRuntimeEpochId, observedRuntimeEpochId) {
+  const current = normalizeText(currentRuntimeEpochId);
+  const observed = normalizeText(observedRuntimeEpochId);
+  if (!current) {
+    return 'not-required';
+  }
+  if (!observed) {
+    return 'missing';
+  }
+  return observed === current ? 'aligned' : 'mismatch';
+}
+
+function resolveRuntimeEpochMismatchReason(prefix, alignment) {
+  if (alignment === 'missing') {
+    return `${prefix}-runtime-epoch-missing`;
+  }
+  if (alignment === 'mismatch') {
+    return `${prefix}-runtime-epoch-mismatch`;
+  }
+  return `${prefix}-runtime-epoch-not-required`;
+}
+
 export function resolveObserverTelemetry(codexStateHygiene, reportPath) {
   const fallback = {
     plane: 'observer',
@@ -320,6 +349,7 @@ export function buildQueueEmptyMonitoringDeliveryState({
   paths,
   queueEmptyReportPath = null,
   monitoringMode = null,
+  runtimeEpochId = null,
 }) {
   const monitoringAction = getOptionalStringProperty(monitoringMode, 'futureAgentAction') || 'future-agent-may-pivot';
   const iso = generatedAt ? toIso(generatedAt) : toIso();
@@ -328,6 +358,7 @@ export function buildQueueEmptyMonitoringDeliveryState({
     generatedAt: iso,
     repository: repo,
     runtimeDir,
+    runtimeEpochId,
     status: 'idle',
     laneLifecycle: 'idle',
     activeCodingLanes: 0,
@@ -340,6 +371,7 @@ export function buildQueueEmptyMonitoringDeliveryState({
     activeLane: {
       schema: 'priority/delivery-agent-lane-state@v1',
       generatedAt: iso,
+      runtimeEpochId,
       laneId: 'queue-empty-monitoring',
       issue: null,
       epic: null,
@@ -744,12 +776,14 @@ export function convertRuntimeArtifactsToDeliveryState({ repo, runtimeDir, runti
       ? taskPacketGeneratedAt
       : runtimeGeneratedAt;
   const iso = generatedAt ? generatedAt.toISOString() : toIso();
+  const runtimeEpochId = getRuntimeEpochId(taskPacket) || getRuntimeEpochId(runtimeState) || null;
 
   return {
     schema: 'priority/delivery-agent-runtime-state@v1',
     generatedAt: iso,
     repository: repo,
     runtimeDir,
+    runtimeEpochId,
     status,
     laneLifecycle,
     activeCodingLanes: laneLifecycle === 'coding' ? 1 : 0,
@@ -758,6 +792,7 @@ export function convertRuntimeArtifactsToDeliveryState({ repo, runtimeDir, runti
     activeLane: {
       schema: 'priority/delivery-agent-lane-state@v1',
       generatedAt: iso,
+      runtimeEpochId,
       laneId: getOptionalStringProperty(activeLane, 'laneId'),
       issue,
       epic: getOptionalIntProperty(activeLane, 'epic'),
@@ -805,15 +840,34 @@ export function resolveDeliveryStateForStatus({
   daemonStartedAt = null,
   daemonAlive = false,
   heartbeatFreshnessSeconds = 300,
+  currentRuntimeEpochId = null,
 }) {
+  const runtimeEpochId = normalizeText(currentRuntimeEpochId) || null;
   const deliveryGeneratedAt = getOptionalDateTimeProperty(deliveryState, 'generatedAt');
   const heartbeatGeneratedAt = getOptionalDateTimeProperty(heartbeat, 'generatedAt');
   const runtimeGeneratedAt = getOptionalDateTimeProperty(runtimeState, 'generatedAt');
   const taskPacketGeneratedAt = getOptionalDateTimeProperty(taskPacket, 'generatedAt');
+  const deliveryRuntimeEpochId = getRuntimeEpochId(deliveryState);
+  const heartbeatRuntimeEpochId = getRuntimeEpochId(heartbeat);
+  const runtimeStateRuntimeEpochId = getRuntimeEpochId(runtimeState);
+  const taskPacketRuntimeEpochId = getRuntimeEpochId(taskPacket);
+  const deliveryRuntimeEpochAlignment = describeRuntimeEpochAlignment(runtimeEpochId, deliveryRuntimeEpochId);
+  const heartbeatRuntimeEpochAlignment = describeRuntimeEpochAlignment(runtimeEpochId, heartbeatRuntimeEpochId);
+  const runtimeStateRuntimeEpochAlignment = describeRuntimeEpochAlignment(runtimeEpochId, runtimeStateRuntimeEpochId);
+  const taskPacketRuntimeEpochAlignment = describeRuntimeEpochAlignment(runtimeEpochId, taskPacketRuntimeEpochId);
   const diagnostics = {
     usedHeartbeat: false,
     usedRuntimeState: false,
     reason: 'delivery-state-missing',
+    currentRuntimeEpochId: runtimeEpochId,
+    deliveryRuntimeEpochId,
+    heartbeatRuntimeEpochId,
+    runtimeStateRuntimeEpochId,
+    taskPacketRuntimeEpochId,
+    deliveryRuntimeEpochAlignment,
+    heartbeatRuntimeEpochAlignment,
+    runtimeStateRuntimeEpochAlignment,
+    taskPacketRuntimeEpochAlignment,
     heartbeatGeneratedAt: heartbeatGeneratedAt ? heartbeatGeneratedAt.toISOString() : null,
     deliveryGeneratedAt: deliveryGeneratedAt ? deliveryGeneratedAt.toISOString() : null,
     runtimeGeneratedAt: runtimeGeneratedAt ? runtimeGeneratedAt.toISOString() : null,
@@ -826,14 +880,35 @@ export function resolveDeliveryStateForStatus({
     runtimeRepository: getOptionalStringProperty(runtimeState, 'repository'),
   };
 
+  let effectiveDeliveryState = deliveryState;
+  let effectiveDeliveryGeneratedAt = deliveryGeneratedAt;
+  if (runtimeEpochId && deliveryState && deliveryRuntimeEpochAlignment !== 'aligned') {
+    effectiveDeliveryState = null;
+    effectiveDeliveryGeneratedAt = null;
+    diagnostics.reason = resolveRuntimeEpochMismatchReason('delivery-state', deliveryRuntimeEpochAlignment);
+  }
+
+  const effectiveTaskPacket =
+    runtimeEpochId && taskPacket && taskPacketRuntimeEpochAlignment !== 'aligned'
+      ? null
+      : taskPacket;
+
   let runtimeDeliveryState = null;
   let runtimeIssue = 0;
   const runtimeRepo = getOptionalStringProperty(runtimeState, 'repository');
   if (runtimeState) {
     if (runtimeRepo && runtimeRepo !== repo) {
       diagnostics.reason = 'runtime-state-repository-mismatch';
+    } else if (runtimeEpochId && runtimeStateRuntimeEpochAlignment !== 'aligned') {
+      diagnostics.reason = resolveRuntimeEpochMismatchReason('runtime-state', runtimeStateRuntimeEpochAlignment);
     } else {
-      runtimeDeliveryState = convertRuntimeArtifactsToDeliveryState({ repo, runtimeDir, runtimeState, taskPacket, paths });
+      runtimeDeliveryState = convertRuntimeArtifactsToDeliveryState({
+        repo,
+        runtimeDir,
+        runtimeState,
+        taskPacket: effectiveTaskPacket,
+        paths,
+      });
       if (runtimeDeliveryState?.activeLane) {
         runtimeIssue = getOptionalIntProperty(runtimeDeliveryState.activeLane, 'issue');
       }
@@ -849,36 +924,43 @@ export function resolveDeliveryStateForStatus({
   if (!heartbeat?.activeLane) {
     if (
       runtimeDeliveryState &&
-      (!deliveryGeneratedAt ||
-        runtimeGeneratedAt > deliveryGeneratedAt ||
-        (deliveryState?.activeLane && getOptionalIntProperty(deliveryState.activeLane, 'issue') !== runtimeIssue))
+      (!effectiveDeliveryGeneratedAt ||
+        runtimeGeneratedAt > effectiveDeliveryGeneratedAt ||
+        (effectiveDeliveryState?.activeLane &&
+          getOptionalIntProperty(effectiveDeliveryState.activeLane, 'issue') !== runtimeIssue))
     ) {
       return useRuntimeIfCurrent();
     }
-    if (deliveryState) {
+    if (effectiveDeliveryState) {
       diagnostics.reason = 'delivery-state-current';
     }
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
   }
 
   const heartbeatLane = heartbeat.activeLane;
-  const deliveryIssue = deliveryState?.activeLane ? getOptionalIntProperty(deliveryState.activeLane, 'issue') : 0;
+  const deliveryIssue = effectiveDeliveryState?.activeLane ? getOptionalIntProperty(effectiveDeliveryState.activeLane, 'issue') : 0;
   const heartbeatIssue = getOptionalIntProperty(heartbeatLane, 'issue');
   if (heartbeatIssue <= 0) {
-    if (runtimeDeliveryState && (!deliveryGeneratedAt || runtimeGeneratedAt > deliveryGeneratedAt || deliveryIssue !== runtimeIssue)) {
+    if (
+      runtimeDeliveryState &&
+      (!effectiveDeliveryGeneratedAt || runtimeGeneratedAt > effectiveDeliveryGeneratedAt || deliveryIssue !== runtimeIssue)
+    ) {
       return useRuntimeIfCurrent();
     }
     diagnostics.reason = 'heartbeat-missing-issue';
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
   }
 
   const heartbeatRepo = getOptionalStringProperty(heartbeat, 'repository');
   if (heartbeatRepo && heartbeatRepo !== repo) {
-    if (runtimeDeliveryState && (!deliveryGeneratedAt || runtimeGeneratedAt > deliveryGeneratedAt || deliveryIssue !== runtimeIssue)) {
+    if (
+      runtimeDeliveryState &&
+      (!effectiveDeliveryGeneratedAt || runtimeGeneratedAt > effectiveDeliveryGeneratedAt || deliveryIssue !== runtimeIssue)
+    ) {
       return useRuntimeIfCurrent();
     }
     diagnostics.reason = 'heartbeat-repository-mismatch';
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
   }
 
   const nowUtc = new Date();
@@ -890,38 +972,61 @@ export function resolveDeliveryStateForStatus({
   const beforeCurrentDaemon = Boolean(daemonStartedAt && heartbeatGeneratedAt && heartbeatGeneratedAt < daemonStartedAt);
   const heartbeatPredatesCurrentEpoch = beforeCurrentManager || beforeCurrentDaemon;
   if (heartbeatPredatesCurrentEpoch) {
-    if (runtimeDeliveryState && (!deliveryGeneratedAt || runtimeGeneratedAt > deliveryGeneratedAt || deliveryIssue !== runtimeIssue)) {
+    if (
+      runtimeDeliveryState &&
+      (!effectiveDeliveryGeneratedAt || runtimeGeneratedAt > effectiveDeliveryGeneratedAt || deliveryIssue !== runtimeIssue)
+    ) {
       return useRuntimeIfCurrent();
     }
     diagnostics.reason = 'stale-before-current-manager';
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
   }
   if (!daemonAlive && heartbeatTooOld) {
-    if (runtimeDeliveryState && (!deliveryGeneratedAt || runtimeGeneratedAt > deliveryGeneratedAt || deliveryIssue !== runtimeIssue)) {
+    if (
+      runtimeDeliveryState &&
+      (!effectiveDeliveryGeneratedAt || runtimeGeneratedAt > effectiveDeliveryGeneratedAt || deliveryIssue !== runtimeIssue)
+    ) {
       return useRuntimeIfCurrent();
     }
     diagnostics.reason = 'stale-heartbeat-daemon-dead';
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
+  }
+  if (runtimeEpochId && heartbeatRuntimeEpochAlignment !== 'aligned') {
+    if (
+      runtimeDeliveryState &&
+      (!effectiveDeliveryGeneratedAt || runtimeGeneratedAt > effectiveDeliveryGeneratedAt || deliveryIssue !== runtimeIssue)
+    ) {
+      return useRuntimeIfCurrent();
+    }
+    diagnostics.reason = resolveRuntimeEpochMismatchReason('heartbeat', heartbeatRuntimeEpochAlignment);
+    return { state: effectiveDeliveryState, diagnostics };
   }
 
-  if (deliveryState && deliveryGeneratedAt && (!heartbeatGeneratedAt || deliveryGeneratedAt >= heartbeatGeneratedAt)) {
+  if (
+    effectiveDeliveryState &&
+    effectiveDeliveryGeneratedAt &&
+    (!heartbeatGeneratedAt || effectiveDeliveryGeneratedAt >= heartbeatGeneratedAt)
+  ) {
     diagnostics.reason = 'delivery-state-current';
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
   }
 
-  let freshestBaseGeneratedAt = deliveryGeneratedAt;
-  if (runtimeGeneratedAt && (!freshestBaseGeneratedAt || runtimeGeneratedAt > freshestBaseGeneratedAt)) {
+  let freshestBaseGeneratedAt = effectiveDeliveryGeneratedAt;
+  if (runtimeDeliveryState && runtimeGeneratedAt && (!freshestBaseGeneratedAt || runtimeGeneratedAt > freshestBaseGeneratedAt)) {
     freshestBaseGeneratedAt = runtimeGeneratedAt;
   }
   const currentBaseIssue = runtimeIssue > 0 ? runtimeIssue : deliveryIssue;
   const heartbeatNewer = Boolean(heartbeatGeneratedAt && (!freshestBaseGeneratedAt || heartbeatGeneratedAt > freshestBaseGeneratedAt));
   const issueDrift = currentBaseIssue !== heartbeatIssue;
   if (!heartbeatNewer && !issueDrift) {
-    if (runtimeDeliveryState && (!deliveryGeneratedAt || runtimeGeneratedAt > deliveryGeneratedAt || deliveryIssue !== runtimeIssue)) {
+    if (
+      runtimeDeliveryState &&
+      (!effectiveDeliveryGeneratedAt || runtimeGeneratedAt > effectiveDeliveryGeneratedAt || deliveryIssue !== runtimeIssue)
+    ) {
       return useRuntimeIfCurrent();
     }
     diagnostics.reason = 'delivery-state-current';
-    return { state: deliveryState, diagnostics };
+    return { state: effectiveDeliveryState, diagnostics };
   }
 
   const laneId = getOptionalStringProperty(heartbeatLane, 'laneId');
@@ -948,6 +1053,7 @@ export function resolveDeliveryStateForStatus({
       generatedAt: heartbeatGeneratedAt ? heartbeatGeneratedAt.toISOString() : toIso(),
       repository: repo,
       runtimeDir,
+      runtimeEpochId: runtimeEpochId || heartbeatRuntimeEpochId || null,
       status,
       laneLifecycle,
       activeCodingLanes: laneLifecycle === 'coding' ? 1 : 0,
@@ -956,6 +1062,7 @@ export function resolveDeliveryStateForStatus({
       activeLane: {
         schema: 'priority/delivery-agent-lane-state@v1',
         generatedAt: heartbeatGeneratedAt ? heartbeatGeneratedAt.toISOString() : toIso(),
+        runtimeEpochId: runtimeEpochId || heartbeatRuntimeEpochId || null,
         laneId,
         issue: heartbeatIssue,
         epic: getOptionalIntProperty(heartbeatLane, 'epic'),

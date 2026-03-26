@@ -157,6 +157,16 @@ function resolveRuntimePaths(repoRoot, options) {
   };
 }
 
+function resolveRuntimeEpochId(options = {}, env = process.env, persisted = null) {
+  return (
+    normalizeText(options.runtimeEpochId) ||
+    normalizeText(env.COMPAREVI_RUNTIME_DAEMON_RUNTIME_EPOCH_ID) ||
+    normalizeText(persisted?.runtimeEpochId) ||
+    normalizeText(persisted?.activeLane?.runtimeEpochId) ||
+    null
+  );
+}
+
 export function parseArgs(argv = process.argv) {
   const args = argv.slice(2);
   const options = {
@@ -365,6 +375,7 @@ function summarizeWorkerBranch(workerBranchRecord) {
 function summarizeTaskPacket(taskPacketRecord) {
   if (!taskPacketRecord) return null;
   return {
+    runtimeEpochId: taskPacketRecord.runtimeEpochId ?? null,
     laneId: taskPacketRecord.laneId,
     cycle: taskPacketRecord.cycle,
     status: taskPacketRecord.status,
@@ -491,7 +502,7 @@ function normalizeWorkerBranchRecord(workerBranch, now) {
   };
 }
 
-function normalizeTaskPacketRecord(taskPacket, now) {
+function normalizeTaskPacketRecord(taskPacket, now, runtimeEpochId = null) {
   if (!taskPacket || typeof taskPacket !== 'object') return null;
   const objective = taskPacket.objective && typeof taskPacket.objective === 'object' ? taskPacket.objective : {};
   const branch = taskPacket.branch && typeof taskPacket.branch === 'object' ? taskPacket.branch : {};
@@ -505,6 +516,7 @@ function normalizeTaskPacketRecord(taskPacket, now) {
     schema: TASK_PACKET_SCHEMA,
     generatedAt: normalizeText(taskPacket.generatedAt) || toIso(now),
     cycle: Number.isInteger(taskPacket.cycle) ? taskPacket.cycle : null,
+    runtimeEpochId: normalizeText(taskPacket.runtimeEpochId) || runtimeEpochId || null,
     laneId: normalizeText(taskPacket.laneId) || null,
     status: normalizeText(taskPacket.status).toLowerCase() || 'ready',
     source: normalizeText(taskPacket.source) || null,
@@ -544,6 +556,7 @@ function normalizeTaskPacketRecord(taskPacket, now) {
 function buildActiveLaneSummary(laneRecord) {
   if (!laneRecord) return null;
   return {
+    runtimeEpochId: laneRecord.runtimeEpochId ?? null,
     laneId: laneRecord.laneId,
     issue: laneRecord.issue,
     epic: laneRecord.epic,
@@ -559,7 +572,7 @@ function buildActiveLaneSummary(laneRecord) {
   };
 }
 
-function buildEmptyState({ repository, repoRoot, runtimePaths, now, owner, adapter }) {
+function buildEmptyState({ repository, repoRoot, runtimePaths, now, owner, adapter, runtimeEpochId = null }) {
   const timestamp = toIso(now);
   return {
     schema: STATE_SCHEMA,
@@ -568,6 +581,7 @@ function buildEmptyState({ repository, repoRoot, runtimePaths, now, owner, adapt
     repoRoot,
     runtimeDir: runtimePaths.runtimeDir,
     runtimeAdapter: adapter.name,
+    runtimeEpochId,
     lifecycle: {
       status: 'idle',
       cycle: 0,
@@ -599,7 +613,7 @@ async function ensureRuntimeLayout(runtimePaths) {
   await ensureDir(runtimePaths.turnsDir);
 }
 
-async function loadState({ repository, repoRoot, runtimePaths, now, owner, adapter }) {
+async function loadState({ repository, repoRoot, runtimePaths, now, owner, adapter, options = {}, env = process.env }) {
   const existing = await readJson(runtimePaths.statePath);
   const existingLegacy =
     existing || !runtimePaths.legacyStatePath || path.resolve(runtimePaths.legacyStatePath) === path.resolve(runtimePaths.statePath)
@@ -613,6 +627,7 @@ async function loadState({ repository, repoRoot, runtimePaths, now, owner, adapt
       repoRoot: persisted.repoRoot || repoRoot,
       runtimeDir: persisted.runtimeDir || runtimePaths.runtimeDir,
       runtimeAdapter: persisted.runtimeAdapter || adapter.name,
+      runtimeEpochId: resolveRuntimeEpochId(options, env, persisted),
       owner: persisted.owner || owner,
       artifacts: {
         ...(persisted.artifacts || {}),
@@ -625,10 +640,18 @@ async function loadState({ repository, repoRoot, runtimePaths, now, owner, adapt
       }
     };
   }
-  return buildEmptyState({ repository, repoRoot, runtimePaths, now, owner, adapter });
+  return buildEmptyState({
+    repository,
+    repoRoot,
+    runtimePaths,
+    now,
+    owner,
+    adapter,
+    runtimeEpochId: resolveRuntimeEpochId(options, env)
+  });
 }
 
-function buildLaneRecord(options, now) {
+function buildLaneRecord(options, now, runtimeEpochId = null) {
   const hasLaneContext =
     Boolean(options.lane) ||
     Number.isInteger(options.issue) ||
@@ -648,9 +671,10 @@ function buildLaneRecord(options, now) {
   const worker = normalizeWorkerRecord(options.worker, now);
   const workerReady = normalizeWorkerReadyRecord(options.workerReady, now);
   const workerBranch = normalizeWorkerBranchRecord(options.workerBranch, now);
-  const taskPacket = normalizeTaskPacketRecord(options.taskPacket, now);
+  const taskPacket = normalizeTaskPacketRecord(options.taskPacket, now, runtimeEpochId);
   return {
     schema: LANE_SCHEMA,
+    runtimeEpochId,
     laneId,
     issue: Number.isInteger(options.issue) ? options.issue : null,
     epic: Number.isInteger(options.epic) ? options.epic : null,
@@ -725,13 +749,14 @@ async function finalizeState(state, runtimePaths, now) {
   return state;
 }
 
-function buildBaseReport({ action, repository, runtimePaths, now, adapter }) {
+function buildBaseReport({ action, repository, runtimePaths, now, adapter, runtimeEpochId = null }) {
   return {
     schema: REPORT_SCHEMA,
     generatedAt: toIso(now),
     action,
     repository,
     runtimeAdapter: adapter.name,
+    runtimeEpochId,
     status: 'pass',
     runtime: {
       runtimeDir: runtimePaths.runtimeDir,
@@ -856,7 +881,7 @@ async function runStepAction(context) {
 
   try {
     const stopRequest = await readJson(runtimePaths.stopRequestPath);
-    const laneRecord = buildLaneRecord(options, now);
+    const laneRecord = buildLaneRecord(options, now, state.runtimeEpochId ?? null);
     let lanePath = null;
     let blockerPath = null;
     let outcome = 'idle';
@@ -952,12 +977,13 @@ function resolveAdapter(deps = {}) {
 export async function runRuntimeSupervisor(options = {}, deps = {}) {
   const now = deps.now ?? new Date();
   const adapter = resolveAdapter(deps);
+  const env = deps.env ?? process.env;
   const resolveRepoRootFn = deps.resolveRepoRootFn ?? ((context) => adapter.resolveRepoRoot(context));
-  const repoRoot = deps.repoRoot ?? resolveRepoRootFn({ options, env: process.env, deps, adapter });
+  const repoRoot = deps.repoRoot ?? resolveRepoRootFn({ options, env, deps, adapter });
   const resolveRepositoryFn = deps.resolveRepositoryFn ?? ((context) => adapter.resolveRepository(context));
-  const repository = resolveRepositoryFn({ options, env: process.env, repoRoot, deps, adapter });
+  const repository = resolveRepositoryFn({ options, env, repoRoot, deps, adapter });
   const resolveOwnerFn = deps.resolveOwnerFn ?? ((context) => adapter.resolveOwner(context));
-  const owner = normalizeText(options.owner) || resolveOwnerFn({ options, env: process.env, repoRoot, deps, adapter });
+  const owner = normalizeText(options.owner) || resolveOwnerFn({ options, env, repoRoot, deps, adapter });
   const runtimePaths = resolveRuntimePaths(repoRoot, options);
   await ensureRuntimeLayout(runtimePaths);
 
@@ -967,14 +993,18 @@ export async function runRuntimeSupervisor(options = {}, deps = {}) {
     runtimePaths,
     now,
     owner,
-    adapter
+    adapter,
+    options,
+    env
   });
+  state.runtimeEpochId = resolveRuntimeEpochId(options, env, state);
   const report = buildBaseReport({
     action: options.action,
     repository,
     runtimePaths,
     now,
-    adapter
+    adapter,
+    runtimeEpochId: state.runtimeEpochId
   });
 
   const context = {
@@ -983,12 +1013,13 @@ export async function runRuntimeSupervisor(options = {}, deps = {}) {
     state,
     runtimePaths,
     now,
+    env,
     repoRoot,
     report,
     acquireWriterLeaseFn:
-      deps.acquireWriterLeaseFn ?? ((leaseOptions) => adapter.acquireLease(leaseOptions, { options, env: process.env, repoRoot, deps })),
+      deps.acquireWriterLeaseFn ?? ((leaseOptions) => adapter.acquireLease(leaseOptions, { options, env, repoRoot, deps })),
     releaseWriterLeaseFn:
-      deps.releaseWriterLeaseFn ?? ((leaseOptions) => adapter.releaseLease(leaseOptions, { options, env: process.env, repoRoot, deps }))
+      deps.releaseWriterLeaseFn ?? ((leaseOptions) => adapter.releaseLease(leaseOptions, { options, env, repoRoot, deps }))
   };
 
   if (options.action === 'status') {

@@ -41,6 +41,7 @@ test('parseArgs preserves the generic runtime surface', () => {
 test('runRuntimeSupervisor executes through an injected adapter', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'runtime-harness-core-'));
   const adapterCalls = [];
+  const runtimeEpochId = '2026-03-26T21-30-00-000Z-example-repo';
   const adapter = createRuntimeAdapter({
     name: 'test-adapter',
     resolveRepoRoot: () => repoRoot,
@@ -148,14 +149,21 @@ test('runRuntimeSupervisor executes through an injected adapter', async () => {
     },
     {
       now: new Date('2026-03-10T15:00:00.000Z'),
-      adapter
+      adapter,
+      env: {
+        ...process.env,
+        COMPAREVI_RUNTIME_DAEMON_RUNTIME_EPOCH_ID: runtimeEpochId
+      }
     }
   );
 
   const state = await readJson(path.join(repoRoot, 'tests', 'results', '_agent', 'runtime', 'delivery-agent-state.json'));
   assert.equal(result.exitCode, 0);
   assert.equal(result.report.runtimeAdapter, 'test-adapter');
+  assert.equal(result.report.runtimeEpochId, runtimeEpochId);
   assert.equal(state.runtimeAdapter, 'test-adapter');
+  assert.equal(state.runtimeEpochId, runtimeEpochId);
+  assert.equal(state.activeLane.runtimeEpochId, runtimeEpochId);
   assert.equal(state.activeLane.worker.checkoutPath, path.join(repoRoot, 'workers', 'origin-977'));
   assert.equal(result.report.worker.status, 'created');
   assert.equal(state.activeLane.workerReady.status, 'ready');
@@ -163,6 +171,7 @@ test('runRuntimeSupervisor executes through an injected adapter', async () => {
   assert.equal(state.activeLane.workerBranch.status, 'attached');
   assert.equal(result.report.workerBranch.branch, 'issue/origin-977-fork-policy-portability');
   assert.equal(state.activeLane.taskPacket.objective.summary, 'Advance issue #977');
+  assert.equal(state.activeLane.taskPacket.runtimeEpochId, runtimeEpochId);
   assert.equal(result.report.taskPacket.status, 'ready');
   assert.deepEqual(
     adapterCalls.map((entry) => entry.type),
