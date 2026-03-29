@@ -72,7 +72,8 @@ test('labview-cli-compare consumes an explicit LV32 host-plane readiness receipt
   const jobBlock = extractJobBlock(workflow, 'cli-compare');
 
   assert.match(jobBlock, /id:\s*host_plane/);
-  assert.match(jobBlock, /node tools\/npm\/run-script\.mjs env:labview:2026:host-planes/);
+  assert.match(jobBlock, /Write-LabVIEW2026HostPlaneDiagnostics\.ps1 -OutputPath \$reportPath/);
+  assert.match(jobBlock, /tests\/results\/_agent\/host-planes\/labview-2026-host-plane-report\.json/);
   assert.match(jobBlock, /\$report\.native\.planes\.x32\.status -ne 'ready'/);
   assert.match(jobBlock, /LABVIEW_CLI_PATH:\s*\$\{\{\s*steps\.host_plane\.outputs\.cli\s*\}\}/);
   assert.doesNotMatch(

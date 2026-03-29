@@ -38,9 +38,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $reportPath = node tools/npm/run-script.mjs env:labview:2026:host-planes
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
+          $reportPath = Join-Path $env:GITHUB_WORKSPACE 'tests/results/_agent/host-planes/labview-2026-host-plane-report.json'
+          pwsh -NoLogo -NoProfile -File tools/Write-LabVIEW2026HostPlaneDiagnostics.ps1 -OutputPath $reportPath | Out-Null
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw ("LabVIEW 2026 host-plane diagnostics report was not written to {0}" -f $reportPath)
           }
           $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -Depth 12
           if ($report.native.planes.x32.status -ne 'ready') {
