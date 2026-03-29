@@ -34,9 +34,19 @@ explicitly in the governing issue or PR.
 | Incident commander | Declares incident severity, coordinates containment, drives rollback decision. | Incident timeline issue/comment thread |
 | Audit recorder | Confirms promotion/rollback evidence is complete and linked in issue/PR context. | Promotion contract artifacts + issue closure notes |
 
+Current operating reality: this repository still has one human maintainer, so a
+single account may fill more than one role above during a release or rollback.
+Keep the role names distinct in runbooks, deployment records, and issue/PR
+notes even when one person performs multiple roles so approvals, decisions, and
+evidence remain explicit.
+
 ## Environment protection mapping
 
-Configure these roles as required reviewers in GitHub repository environment settings.
+Configure these roles as required reviewers in GitHub repository environment
+settings. In the current single-maintainer state, those reviewer roles may
+collapse to the same owner account; the control objective is explicit protected
+deployment acknowledgement plus a durable evidence trail, not implied
+separation of duties that the repository does not yet have.
 
 | Environment | Workflow entrypoints | Required reviewer role |
 | --- | --- | --- |
@@ -76,7 +86,9 @@ Configuration path: `Settings -> Environments -> <environment> -> Required revie
 7. Verify rollback drill health:
    - `node tools/npm/run-script.mjs priority:rollback:drill:health -- --repo <owner/repo>`
    - confirm `tests/results/_agent/release/rollback-drill-health.json` reports `status=pass`
-8. Obtain environment approvals for protected deployments from GitHub UI/mobile.
+8. Obtain environment approvals for protected deployments from GitHub UI/mobile
+   and record which release role(s) were exercised, even when the same account
+   approved more than one step.
 9. Record evidence links in the governing issue/PR before closure.
 
 ## One-command rollback

@@ -407,6 +407,9 @@ For each cut:
 - Configure required reviewers in GitHub environment settings so deployment acknowledgement is explicit and review
   requests can be approved through GitHub web/mobile:
   Settings -> Environments -> `production` / `monthly-stability-release` -> Required reviewers.
+- In the current single-maintainer state, those environment reviewer roles may map to the same owner account; treat
+  the protected environment as an explicit acknowledgement checkpoint with recorded evidence, not as proof of
+  multi-person release approval.
 - Run `node tools/npm/run-script.mjs priority:deployment:gate-policy` to verify the protected promotion environments enforce
   required reviewers and admin-bypass policy; report path:
   `tests/results/_agent/deployments/environment-gate-policy.json`.
