@@ -324,16 +324,35 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
 
 ## Release checklist
 
-1. Update `CHANGELOG.md`
-2. Tag (semantic version, e.g. `v0.6.0`)
-3. Push tag (release workflow auto-generates notes)
-4. Update README usage examples to latest tag
-5. Verify marketplace listing once published
+This checklist is intentionally high-level. Treat the following as the
+authoritative release procedure and helper surface:
+
+- [`RELEASE_OPERATIONS_RUNBOOK.md`](./RELEASE_OPERATIONS_RUNBOOK.md)
+- [`release/PR_NOTES.md`](./release/PR_NOTES.md)
+- [`release/TAG_PREP_CHECKLIST.md`](./release/TAG_PREP_CHECKLIST.md)
+
+For each cut:
+
+1. Align `CHANGELOG.md`, version surfaces, and any checked-in release helper
+   docs to the target release line.
+2. Create and validate the release branch with
+   `node tools/npm/run-script.mjs release:branch -- <version>` (or the dry-run
+   helper when rehearsing).
+3. Finalize through the release helpers, then verify signing readiness,
+   required checks, and protected-environment approvals before authoritative
+   publication.
+4. Confirm the published release assets, checksums, and release notes match the
+   intended `rc` or stable release line.
+5. Update stable consumer-facing examples after stable promotion. Do not treat
+   RC tags as default downstream pins unless the release note explicitly says
+   to do so.
 
 ## Branching model
 
-- `develop` is the integration branch. All standing-priority work lands here via squash merges (linear history).
-- `main` reflects the latest release. Use release branches to promote changes from `develop` to `main`.
+- `develop` is the canonical integration branch and the queue-managed landing
+  surface for standing work.
+- `main` is the protected release branch. Treat it as a promotion surface, not
+  the default feature target.
 - For standing-priority work, create the plane-appropriate lane branch and merge back with squash once checks are green:
   - `issue/personal-<number>-<slug>` for the personal authoring plane
   - `issue/origin-<number>-<slug>` for the org-fork review plane
@@ -343,27 +362,37 @@ For Docker/Desktop VI history validation, run fast-loop lanes explicitly:
   `node tools/npm/run-script.mjs priority:branch:rename -- --issue <number>`. The helper derives the slug from the
   issue title, renames the local branch, pushes the new name to any remotes that carried the old branch, retargets the
   matching PR, and (unless you pass `--keep-remote`) deletes the stale remote ref.
-- Use short-lived `feature/<slug>` branches when parallel threads are needed. Rebase on `develop` frequently and
-  open PRs with `node tools/npm/run-script.mjs priority:pr`.
+- Use short-lived `feature/<slug>` branches only for deliberate rehearsal or
+  parallel experiment threads. Lane branches remain the default standing-work
+  vehicle. Rebase on `develop` frequently and open PRs with
+  `node tools/npm/run-script.mjs priority:pr`.
+- Merge eligibility for `develop` and `main` follows the live GitHub rulesets,
+  required checks, and merge-queue policy. Use
+  `node tools/npm/run-script.mjs priority:policy` or
+  `node tools/npm/run-script.mjs priority:policy:snapshot` when you need the
+  current state; do not treat this guide as the sole source of truth for
+  repository settings.
 - When preparing a release:
   1. Create `release/<version>` from `develop` with `node tools/npm/run-script.mjs release:branch`. The helper bumps `package.json`,
-    pushes the branch to your fork, and opens a PR targeting `main`. Use `node tools/npm/run-script.mjs release:branch:dry`
+     pushes the branch to your fork, and opens a PR targeting `main`. Use `node tools/npm/run-script.mjs release:branch:dry`
      when you want to rehearse the flow without touching remotes.
   2. Finish release-only work on feature branches targeting `release/<version>`.
-  3. Merge the release branch into `main`, create the draft release, then fast-forward `develop`
-     with `node tools/npm/run-script.mjs release:finalize -- <version>`. The helper fast-forwards `main`, creates a
-     draft GitHub release, fast-forwards `develop`, and records metadata under `tests/results/_agent/release/`.
-     Use `node tools/npm/run-script.mjs release:finalize:dry` to rehearse the flow without pushing.
-     - Finalize now requires the release branch metadata artifact (`release-<tag>-branch.json`) to be present before it
-       cuts a draft tag, and it verifies both branch/finalize artifacts are retained under
-        `tests/results/_agent/release/`.
-     - The finalize helper blocks if the release PR has pending or failing checks; set
-       `RELEASE_FINALIZE_SKIP_CHECKS=1` (or `RELEASE_FINALIZE_ALLOW_MERGED=1` / `RELEASE_FINALIZE_ALLOW_DIRTY=1`) to
-       override in emergencies.
-     - If `main` and the release branch no longer share history (for example, after cutting over to a new repository
-       baseline), rerun the helper with `RELEASE_FINALIZE_ALLOW_RESET=1` so it can reset `main` to the release tip and
-       push with `--force-with-lease`. Leave the variable unset during normal releases so unintended history rewrites
-       are blocked.
+  3. Use [`RELEASE_OPERATIONS_RUNBOOK.md`](./RELEASE_OPERATIONS_RUNBOOK.md),
+     [`release/PR_NOTES.md`](./release/PR_NOTES.md), and
+     [`release/TAG_PREP_CHECKLIST.md`](./release/TAG_PREP_CHECKLIST.md) as the
+     authoritative finalize/publication procedure.
+  4. Use `node tools/npm/run-script.mjs release:finalize -- <version>` (or
+     `release:finalize:dry`) only after the release branch checks, evidence
+     artifacts, and signing-readiness requirements are satisfied.
+     - Finalize requires the release branch metadata artifact
+       (`release-<tag>-branch.json`) before it cuts a draft tag, and it
+       verifies both branch/finalize artifacts are retained under
+       `tests/results/_agent/release/`.
+     - The finalize helper blocks on pending or failing release PR checks by
+       default. Use `RELEASE_FINALIZE_SKIP_CHECKS=1`,
+       `RELEASE_FINALIZE_ALLOW_MERGED=1`, `RELEASE_FINALIZE_ALLOW_DIRTY=1`, or
+       `RELEASE_FINALIZE_ALLOW_RESET=1` only for explicitly reviewed emergency
+       recovery cases, not routine release work.
 - When rehearsing feature branch work, use `node tools/npm/run-script.mjs feature:branch:dry -- my-feature` and
   `node tools/npm/run-script.mjs feature:finalize:dry -- my-feature` to simulate branch creation and finalization
   without touching remotes.
@@ -715,8 +744,9 @@ pwsh -File scripts/CompareVI.ps1 `
   uploads artifacts identical to the `/vi-stage` workflow.
 - `/vi-stage` and `/vi-history` commands remain available for both upstream and fork contributions. They now re-use the
   fetch helper so they can operate on fork heads safely.
-- PR approval is no longer automated; merge queue admission relies on required checks and repository branch policy
-  (currently `0` required reviewers on queue-managed branches).
+- PR approval is not automated. Merge-queue admission and merge eligibility
+  follow the live required checks, rulesets, and protected-branch policy. Do
+  not rely on a hard-coded reviewer count in this document.
 - Deployment acknowledgement for protected promotion flows now uses GitHub Actions environment reviewers
   (`production`, `monthly-stability-release`) so approval notifications can be handled through GitHub's built-in
   deployment review UI (web/mobile).
