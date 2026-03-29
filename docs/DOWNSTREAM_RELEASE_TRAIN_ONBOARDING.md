@@ -7,6 +7,11 @@ This runbook defines the controlled onboarding path for issue `#715`:
 - pilot onboarding + stabilization feedback loop
 - success reporting with deltas, pain points, and hardening backlog
 
+If a downstream team only needs a first successful adoption before entering the
+full proving loop, start with
+[`FIRST_CONSUMER_SUCCESS_PATH.md`](./FIRST_CONSUMER_SUCCESS_PATH.md) and use
+this runbook only after that narrower path is complete.
+
 ## Artifacts and schemas
 
 - Onboarding report:
