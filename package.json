@@ -288,7 +288,7 @@
     "argparse": "^2.0.1",
     "braces": "^3.0.3",
     "chokidar": "^3.6.0",
-    "entities": "^4.5.0",
+    "entities": "^8.0.0",
     "fast-glob": "^3.3.3",
     "fastq": "^1.19.1",
     "fill-range": "^7.1.1",
