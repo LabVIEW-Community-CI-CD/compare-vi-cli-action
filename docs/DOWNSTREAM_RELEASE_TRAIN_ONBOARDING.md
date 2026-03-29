@@ -109,6 +109,13 @@ consumer repo itself: pass `workflow_dispatch.inputs.downstream_repo` or set
 `vars.DOWNSTREAM_PILOT_REPO` to the intended consumer repository. It no longer
 silently falls back to the upstream action repository.
 
+When the downstream repo is accessible but the live branch-protection API is
+not, onboarding now falls back to the checked-in
+`docs/policy/<branch>-branch-protection.json` contract in the downstream repo.
+That keeps `required-checks-visible` evidence anchored to the consumer's own
+declared branch policy instead of degrading to a warning purely because the
+workflow token cannot read protected branch settings across repositories.
+
 ## Success report generation
 
 Aggregate one or more onboarding reports into a single success view:
