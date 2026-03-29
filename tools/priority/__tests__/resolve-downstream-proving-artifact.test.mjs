@@ -3,13 +3,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import {
   buildWorkflowRunsApiPath,
   parseArgs,
   runResolveDownstreamProvingArtifact
 } from '../resolve-downstream-proving-artifact.mjs';
+
+function makeRepoTempDir(prefix) {
+  return path.relative(
+    process.cwd(),
+    fs.mkdtempSync(path.join(path.resolve('tests', 'results', '_agent'), prefix))
+  );
+}
 
 function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -59,8 +65,8 @@ test('buildWorkflowRunsApiPath targets successful workflow runs on the proving b
 });
 
 test('runResolveDownstreamProvingArtifact selects the first pass scorecard that matches the expected source sha', async (t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-proving-selection-'));
-  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  const tmpDir = makeRepoTempDir('downstream-proving-selection-');
+  t.after(() => fs.rmSync(path.resolve(tmpDir), { recursive: true, force: true }));
 
   const expectedSourceSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const result = await runResolveDownstreamProvingArtifact(
@@ -184,8 +190,8 @@ test('runResolveDownstreamProvingArtifact selects the first pass scorecard that 
 });
 
 test('runResolveDownstreamProvingArtifact fails closed when no downloaded scorecard matches the expected source sha', async (t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-proving-selection-fail-'));
-  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+  const tmpDir = makeRepoTempDir('downstream-proving-selection-fail-');
+  t.after(() => fs.rmSync(path.resolve(tmpDir), { recursive: true, force: true }));
 
   const result = await runResolveDownstreamProvingArtifact(
     {
@@ -281,4 +287,136 @@ test('runResolveDownstreamProvingArtifact fails closed when no downloaded scorec
   assert.equal(result.report.candidates.length, 1);
   assert.equal(result.report.candidates[0].scorecard.matchedExpectedSourceSha, false);
   assert.equal(result.report.candidates[0].templateAgentVerification.matchedExpectedSourceSha, false);
+});
+
+test('runResolveDownstreamProvingArtifact falls back to completed runs when no successful run proves the expected source sha', async (t) => {
+  const tmpDir = makeRepoTempDir('downstream-proving-selection-completed-');
+  t.after(() => fs.rmSync(path.resolve(tmpDir), { recursive: true, force: true }));
+
+  const expectedSourceSha = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+  const result = await runResolveDownstreamProvingArtifact(
+    {
+      repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+      workflow: 'downstream-promotion.yml',
+      branch: 'develop',
+      expectedSourceSha,
+      destinationRoot: path.join(tmpDir, 'artifacts'),
+      outputPath: path.join(tmpDir, 'selection.json')
+    },
+    {
+      async runGhJsonFn(args) {
+        const apiPath = args[1] ?? '';
+        if (apiPath.includes('status=success')) {
+          return {
+            workflow_runs: [
+              {
+                id: 401,
+                name: 'Downstream Promotion',
+                html_url: 'https://example.test/runs/401',
+                head_branch: 'develop',
+                head_sha: 'ffffffffffffffffffffffffffffffffffffffff',
+                status: 'completed',
+                conclusion: 'success'
+              }
+            ]
+          };
+        }
+        if (apiPath.includes('status=completed')) {
+          return {
+            workflow_runs: [
+              {
+                id: 401,
+                name: 'Downstream Promotion',
+                html_url: 'https://example.test/runs/401',
+                head_branch: 'develop',
+                head_sha: 'ffffffffffffffffffffffffffffffffffffffff',
+                status: 'completed',
+                conclusion: 'success'
+              },
+              {
+                id: 402,
+                name: 'Downstream Promotion',
+                html_url: 'https://example.test/runs/402',
+                head_branch: 'develop',
+                head_sha: '9999999999999999999999999999999999999999',
+                status: 'completed',
+                conclusion: 'failure'
+              }
+            ]
+          };
+        }
+        throw new Error(`Unexpected API path: ${apiPath}`);
+      },
+      async downloadNamedArtifactsFn({ runId, destinationRoot, reportPath }) {
+        const sourceCommitSha = runId === '402'
+          ? expectedSourceSha
+          : 'ffffffffffffffffffffffffffffffffffffffff';
+        writeJson(path.join(destinationRoot, 'downstream-develop-promotion-scorecard.json'), {
+          schema: 'priority/downstream-promotion-scorecard@v1',
+          gates: {
+            manifestReport: {
+              status: 'pass',
+              targetBranch: 'downstream/develop'
+            },
+            feedbackReport: {
+              downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+            }
+          },
+          summary: {
+            status: 'pass',
+            blockerCount: 0,
+            provenance: {
+              sourceCommitSha
+            }
+          }
+        });
+        writeJson(path.join(destinationRoot, 'template-agent-verification-report.json'), {
+          schema: 'priority/template-agent-verification-report@v1',
+          summary: {
+            status: 'pass',
+            blockerCount: 0,
+            recommendation: 'continue-template-agent-loop'
+          },
+          iteration: {
+            label: 'downstream promotion',
+            headSha: sourceCommitSha
+          },
+          lane: {
+            targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+            consumerRailBranch: 'downstream/develop'
+          },
+          verification: {
+            provider: 'hosted-github-workflow',
+            status: 'pass',
+            runUrl: `https://example.test/runs/${runId}`
+          },
+          provenance: {
+            templateDependency: {
+              repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+              version: 'v0.1.1',
+              ref: 'v0.1.1',
+              cookiecutterVersion: '2.7.1'
+            }
+          }
+        });
+        writeJson(reportPath, {
+          schema: 'run-artifact-download@v1',
+          status: 'pass'
+        });
+        return {
+          report: {
+            status: 'pass'
+          },
+          reportPath
+        };
+      }
+    }
+  );
+
+  assert.equal(result.status, 'pass');
+  assert.equal(result.selected.run.id, 402);
+  assert.equal(result.selected.run.conclusion, 'failure');
+  assert.equal(result.selected.scorecardStatus, 'pass');
+  assert.equal(result.selected.scorecard.matchedExpectedSourceSha, true);
+  assert.equal(result.report.candidates.length, 2);
 });
