@@ -52,6 +52,24 @@ If your VIs live under a subfolder, set `working-directory` to avoid long relati
     lvCompareArgs: "-noattr -nofp -nofppos -nobd -nobdcosm"
 ```
 
+## Compare timeout
+
+If a self-hosted compare lane can hang on a stuck LVCompare process, set
+`compare-timeout-seconds` so the action fails closed with exit code `124`
+instead of waiting indefinitely:
+
+```yaml
+- name: Compare VIs
+  uses: LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.6.4
+  with:
+    base: VI1.vi
+    head: VI2.vi
+    compare-timeout-seconds: 180
+    fail-on-diff: false
+```
+
+Use `0` to disable the timeout and preserve the unbounded legacy wait.
+
 ## Path resolution tips
 
 - `base` and `head` are resolved to absolute paths before invoking LVCompare.

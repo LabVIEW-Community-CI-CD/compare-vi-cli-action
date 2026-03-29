@@ -70,6 +70,7 @@ jobs:
           base: VI1.vi
           head: VI2.vi
           fail-on-diff: ${{ inputs.fail_on_diff || 'true' }}
+          compare-timeout-seconds: '180'
 
       - name: Runner Unblock Guard
         if: always()

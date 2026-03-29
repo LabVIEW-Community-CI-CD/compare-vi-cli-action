@@ -142,6 +142,47 @@ function Quote($s) {
   if ($null -eq $s) { return '""' }
   if ($s -match '\s|"') { return '"' + ($s -replace '"','\"') + '"' } else { return $s }
 }
+
+function Wait-LVCompareProcess {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)] [System.Diagnostics.Process] $Process,
+    [int] $TimeoutSeconds = 0
+  )
+
+  if ($TimeoutSeconds -le 0) {
+    $Process.WaitForExit()
+    return [pscustomobject]@{
+      TimedOut       = $false
+      ExitCode       = [int]$Process.ExitCode
+      TimeoutSeconds = 0
+    }
+  }
+
+  $waitTimeoutMs = [Math]::Max(1, [int]$TimeoutSeconds) * 1000
+  $waitSucceeded = $Process.WaitForExit($waitTimeoutMs)
+  if ($waitSucceeded) {
+    return [pscustomobject]@{
+      TimedOut       = $false
+      ExitCode       = [int]$Process.ExitCode
+      TimeoutSeconds = [int]$TimeoutSeconds
+    }
+  }
+
+  try {
+    $Process.Kill($true)
+  } catch {
+    try { $Process.Kill() } catch {}
+  }
+  try { $null = $Process.WaitForExit(5000) } catch {}
+
+  return [pscustomobject]@{
+    TimedOut       = $true
+    ExitCode       = 124
+    TimeoutSeconds = [int]$TimeoutSeconds
+  }
+}
+
 function Convert-ArgTokenList([string[]]$tokens) {
   $out = @()
   if (-not $tokens) { return $out }
@@ -272,11 +313,13 @@ function Invoke-CompareVI {
     [string] $GitHubStepSummaryPath,
     [ScriptBlock] $Executor,
     [switch] $PreviewArgs,
+    [int] $TimeoutSeconds = 0,
     [string] $CompareExecJsonPath
   )
 
   $pushed = $false
   $bitnessPreference = $LvCompareBitness
+  if ($TimeoutSeconds -lt 0) { throw "TimeoutSeconds cannot be negative: $TimeoutSeconds" }
   if ($WorkingDirectory) {
     if (-not (Test-Path -LiteralPath $WorkingDirectory)) { throw "working-directory not found: $WorkingDirectory" }
     Push-Location -LiteralPath $WorkingDirectory; $pushed = $true
@@ -338,6 +381,7 @@ function Invoke-CompareVI {
         Diff                        = $false
         CompareDurationSeconds      = 0
         CompareDurationNanoseconds  = 0
+        TimedOut                    = $false
         ShortCircuitedIdenticalPath = $true
       }
       if ($GitHubOutputPath) {
@@ -361,6 +405,7 @@ function Invoke-CompareVI {
           "- Diff: false",
           "- Duration (s): 0",
           "- Duration (ns): 0",
+          "- Timed out: false",
           "- Short-circuited: true"
         )
         ($summaryLines -join "`n") | Out-File -FilePath $GitHubStepSummaryPath -Append -Encoding utf8
@@ -440,11 +485,13 @@ function Invoke-CompareVI {
 
     if ($Executor) {
       $code = & $Executor $cli $baseAbs $headAbs ,$cliArgs
+      $timedOut = $false
       $compareDurationSeconds = 0
       $compareDurationNanoseconds = 0
     } else {
       $sw = [System.Diagnostics.Stopwatch]::StartNew()
       $code = $null
+      $timedOut = $false
       # Optional: wait for user idle before launching LVCompare to avoid mouse/focus disruption
       $idleWait = 0
       if ($env:LV_IDLE_WAIT_SECONDS -match '^[0-9]+$') { $idleWait = [int]$env:LV_IDLE_WAIT_SECONDS }
@@ -493,11 +540,31 @@ function Invoke-CompareVI {
           } catch {}
         }
         if ($origCursor -ne $null) { try { Set-CursorPosXY $origCursor.X $origCursor.Y } catch {} }
-        $proc.WaitForExit()
-        $code = [int]$proc.ExitCode
+        $waitResult = Wait-LVCompareProcess -Process $proc -TimeoutSeconds $TimeoutSeconds
+        $timedOut = [bool]$waitResult.TimedOut
+        $code = [int]$waitResult.ExitCode
+        try {
+          $n = @{
+            schema   = 'lvcompare-notice/v1'
+            when     = (Get-Date).ToString('o')
+            phase    = $(if ($timedOut) { 'timeout' } else { 'completed' })
+            exitCode = $code
+            cli      = $cli
+            base     = $baseAbs
+            head     = $headAbs
+            args     = $cliArgs
+            cwd      = $cwd
+            path     = $cli
+          }
+          if ($timedOut) { $n.timeoutSeconds = $TimeoutSeconds }
+          if ($CompareExecJsonPath) { $n.execJsonPath = $CompareExecJsonPath }
+          Write-Host ("[lvcompare-notice] {0} LVCompare with exitCode={1}" -f $(if ($timedOut) { 'Timed out' } else { 'Completed' }), $code)
+          Write-LVNotice $n
+        } catch {}
       } else {
         & $cli $baseAbs $headAbs @cliArgs
         $code = if (Get-Variable -Name LASTEXITCODE -ErrorAction SilentlyContinue) { $LASTEXITCODE } else { 0 }
+        $timedOut = $false
         # We do not have PID in this path; record completion
         try {
           $n = @{ schema='lvcompare-notice/v1'; when=(Get-Date).ToString('o'); phase='completed'; exitCode=$code; cli=$cli; base=$baseAbs; head=$headAbs; args=$cliArgs; cwd=$cwd; path=$cli }
@@ -513,7 +580,9 @@ function Invoke-CompareVI {
 
     $diff = $false
     $pendingErrorMessage = $null
-    if ($code -eq 1) {
+    if ($timedOut) {
+      $pendingErrorMessage = "Compare CLI timed out after $TimeoutSeconds second(s)"
+    } elseif ($code -eq 1) {
       $diff = $true
       if ($FailOnDiff) { $pendingErrorMessage = "Compare CLI reported differences (exit code $code)" }
     } elseif ($code -ne 0) {
@@ -546,6 +615,8 @@ function Invoke-CompareVI {
           duration_ns  = $compareDurationNanoseconds
           base         = $baseAbs
           head         = $headAbs
+          timedOut     = $timedOut
+          timeout_s    = $TimeoutSeconds
         }
         $dir = Split-Path -Parent $CompareExecJsonPath
         if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
@@ -565,7 +636,8 @@ function Invoke-CompareVI {
         "- Exit code: $code",
         "- Diff: $diffStr",
         "- Duration (s): $compareDurationSeconds",
-        "- Duration (ns): $compareDurationNanoseconds"
+        "- Duration (ns): $compareDurationNanoseconds",
+        "- Timed out: $($timedOut.ToString().ToLowerInvariant())"
       )
       ($summaryLines -join "`n") | Out-File -FilePath $GitHubStepSummaryPath -Append -Encoding utf8
     }
@@ -582,6 +654,7 @@ function Invoke-CompareVI {
       Diff                         = $diff
       CompareDurationSeconds       = $compareDurationSeconds
       CompareDurationNanoseconds   = $compareDurationNanoseconds
+      TimedOut                     = $timedOut
       ShortCircuitedIdenticalPath  = $false
     }
   }
