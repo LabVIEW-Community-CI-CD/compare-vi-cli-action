@@ -104,6 +104,11 @@ consumer repository instead of falling back to the upstream action repository. T
 to the intended downstream repo, for example `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`, or the workflow
 fails closed.
 
+The downstream proving workflow follows the same fail-closed posture for the
+consumer repo itself: pass `workflow_dispatch.inputs.downstream_repo` or set
+`vars.DOWNSTREAM_PILOT_REPO` to the intended consumer repository. It no longer
+silently falls back to the upstream action repository.
+
 ## Success report generation
 
 Aggregate one or more onboarding reports into a single success view:

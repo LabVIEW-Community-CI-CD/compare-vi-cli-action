@@ -114,7 +114,9 @@ Use the downstream onboarding commands when validating platform adoption in cons
     `tests/results/_agent/onboarding/downstream-onboarding.json --parent-issue 715`
 
 For unattended cadence, use `.github/workflows/downstream-onboarding-feedback.yml` and set
-`vars.DOWNSTREAM_PILOT_REPO` to the current pilot repository.
+`vars.DOWNSTREAM_PILOT_REPO` to the current pilot repository. The downstream
+promotion/proving rail now fails closed when that variable is unset and no
+explicit `downstream_repo` input is provided.
 
 ## Package cadence signal
 

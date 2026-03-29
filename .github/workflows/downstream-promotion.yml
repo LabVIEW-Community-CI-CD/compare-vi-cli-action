@@ -137,7 +137,11 @@ jobs:
           started_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           repo="${DOWNSTREAM_REPO}"
           if [ -z "$repo" ]; then
-            repo="${DOWNSTREAM_PILOT_REPO:-$GITHUB_REPOSITORY}"
+            repo="${DOWNSTREAM_PILOT_REPO}"
+          fi
+          if [ -z "$repo" ]; then
+            echo "Downstream repository is not configured. Pass workflow_dispatch.downstream_repo or set vars.DOWNSTREAM_PILOT_REPO." >&2
+            exit 1
           fi
           args=(
             --repo "$repo"
@@ -297,6 +301,7 @@ jobs:
             --data tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json
 
       - name: Promote downstream/develop ref
+        id: promote_downstream_ref
         if: ${{ inputs.push_downstream }}
         shell: bash
         run: |
@@ -314,7 +319,31 @@ jobs:
             process.exit(1);
           }
           NODE
-          git push origin '${{ steps.source.outputs.source_sha }}:refs/heads/downstream/develop'
+          push_log="$(mktemp)"
+          if git push origin '${{ steps.source.outputs.source_sha }}:refs/heads/downstream/develop' >"${push_log}" 2>&1; then
+            cat "${push_log}"
+            echo "result=updated" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          cat "${push_log}"
+          if grep -q 'GH013:' "${push_log}"; then
+            echo "result=blocked-by-repository-rules" >> "$GITHUB_OUTPUT"
+            if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+              cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+
+## Downstream Promotion Handoff
+
+- Direct `downstream/develop` ref update was blocked by repository rules.
+- The downstream proving artifact remains authoritative for release replay.
+- Advance `downstream/develop` through the required pull request or merge-queue path.
+EOF
+            fi
+            exit 0
+          fi
+
+          echo "result=failed" >> "$GITHUB_OUTPUT"
+          exit 1
 
       - name: Append downstream promotion summary
         if: ${{ always() }}
@@ -330,6 +359,14 @@ jobs:
             `- pinned template dependency: \`${process.env.TEMPLATE_DEPENDENCY_REPO}@${process.env.TEMPLATE_DEPENDENCY_REF}\``,
             `- cookiecutter version: \`${process.env.COOKIECUTTER_VERSION}\``
           ];
+          const promotionResult =
+            process.env.PUSH_DOWNSTREAM === 'true'
+              ? (process.env.PROMOTION_RESULT || 'not-updated')
+              : 'not-requested';
+          summaryLines.push(`- downstream/develop update: \`${promotionResult}\``);
+          if (promotionResult === 'blocked-by-repository-rules') {
+            summaryLines.push('- downstream/develop direct update requires the branch PR or merge-queue path enforced by repository rules.');
+          }
           const scorecardPath = 'tests/results/_agent/promotion/downstream-develop-promotion-scorecard.json';
           if (fs.existsSync(scorecardPath)) {
             const report = JSON.parse(fs.readFileSync(scorecardPath, 'utf8'));
@@ -347,7 +384,8 @@ jobs:
         env:
           SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
           PUSH_DOWNSTREAM: ${{ inputs.push_downstream }}
-          RESOLVED_REPO: ${{ inputs.downstream_repo || vars.DOWNSTREAM_PILOT_REPO || github.repository }}
+          RESOLVED_REPO: ${{ inputs.downstream_repo || vars.DOWNSTREAM_PILOT_REPO }}
+          PROMOTION_RESULT: ${{ steps.promote_downstream_ref.outputs.result }}
           TEMPLATE_DEPENDENCY_REPO: ${{ steps.template-policy.outputs.repository }}
           TEMPLATE_DEPENDENCY_REF: ${{ steps.template-policy.outputs.ref }}
           COOKIECUTTER_VERSION: ${{ steps.template-policy.outputs.cookiecutter_version }}
