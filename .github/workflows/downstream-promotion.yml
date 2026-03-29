@@ -330,14 +330,7 @@ jobs:
           if grep -q 'GH013:' "${push_log}"; then
             echo "result=blocked-by-repository-rules" >> "$GITHUB_OUTPUT"
             if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-              cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
-
-## Downstream Promotion Handoff
-
-- Direct `downstream/develop` ref update was blocked by repository rules.
-- The downstream proving artifact remains authoritative for release replay.
-- Advance `downstream/develop` through the required pull request or merge-queue path.
-EOF
+              printf '\n## Downstream Promotion Handoff\n\n- Direct `downstream/develop` ref update was blocked by repository rules.\n- The downstream proving artifact remains authoritative for release replay.\n- Advance `downstream/develop` through the required pull request or merge-queue path.\n' >> "$GITHUB_STEP_SUMMARY"
             fi
             exit 0
           fi
