@@ -37,10 +37,11 @@ tuning.
 - Maintainer continuity profile: [`docs/MAINTAINER_CONTINUITY_PROFILE.md`](./docs/MAINTAINER_CONTINUITY_PROFILE.md)
 - Release evidence: [`docs/release/RELEASE_EVIDENCE_v0.6.6.md`](./docs/release/RELEASE_EVIDENCE_v0.6.6.md)
 - Certified downstream consumer ring:
-  `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` on `develop`, monitored by
-  the weekly/manual
+  `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` on `develop` and
+  `LabVIEW-Community-CI-CD/comparevi-history` on `main`, monitored by the weekly/manual
   [`Downstream Onboarding Feedback`](./.github/workflows/downstream-onboarding-feedback.yml)
-  workflow and the checked-in repo graph policy at
+  workflow plus the consumer-native release/smoke proof lanes recorded in the
+  checked-in repo graph policy at
   [`tools/policy/downstream-repo-graph.json`](./tools/policy/downstream-repo-graph.json)
 
 ## Documentation portal

@@ -140,12 +140,36 @@ function createRepoGraphTruth() {
           alignmentFailureCount: 0,
           unknownRoleCount: 0
         }
+      },
+      {
+        id: 'comparevi-history',
+        repository: 'LabVIEW-Community-CI-CD/comparevi-history',
+        kind: 'certified-consumer',
+        status: 'pass',
+        roles: [
+          {
+            id: 'comparevi-history-stable-baseline',
+            role: 'certified-stable-baseline',
+            branch: 'main',
+            required: true,
+            status: 'pass',
+            branchExists: true,
+            headSha: 'hist123',
+            relationship: null
+          }
+        ],
+        summary: {
+          requiredMissingRoleCount: 0,
+          optionalMissingRoleCount: 0,
+          alignmentFailureCount: 0,
+          unknownRoleCount: 0
+        }
       }
     ],
     summary: {
       status: 'pass',
-      repositoryCount: 3,
-      roleCount: 4,
+      repositoryCount: 4,
+      roleCount: 5,
       requiredMissingRoleCount: 0,
       optionalMissingRoleCount: 0,
       alignmentFailureCount: 0,
@@ -339,6 +363,26 @@ test('synthesizeWakeWork routes consumer-fork live defects into consumer proving
       recommendedOwnerRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork',
       reportedRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork',
       revalidatedRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork'
+    }),
+    createRepoGraphTruth()
+  );
+
+  assert.equal(report.summary.decision, 'consumer-proving-drift');
+  assert.equal(report.summary.workKind, 'drift-correction');
+  assert.equal(report.summary.routingAuthorityTier, 'authoritative');
+  assert.equal(report.summary.issueRouting.consumerProvingDriftWork, true);
+});
+
+test('synthesizeWakeWork routes certified-consumer live defects into consumer proving drift work', () => {
+  const report = synthesizeWakeWork(
+    createPolicy(),
+    createWakeReport({
+      classification: 'live-defect',
+      status: 'actionable',
+      recommendedOwnerRepository: 'LabVIEW-Community-CI-CD/comparevi-history',
+      reportedRepository: 'LabVIEW-Community-CI-CD/comparevi-history',
+      revalidatedRepository: 'LabVIEW-Community-CI-CD/comparevi-history',
+      suppressDownstreamIssueInjection: true
     }),
     createRepoGraphTruth()
   );

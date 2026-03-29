@@ -52,6 +52,9 @@ Current certified downstream consumer baseline:
 - repository: `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate`
 - branch: `develop`
 - certified action pin: `LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.6.6`
+- repository: `LabVIEW-Community-CI-CD/comparevi-history`
+- branch: `main`
+- certified backend pin: `LabVIEW-Community-CI-CD/compare-vi-cli-action@v0.6.6`
 
 Rollout evidence:
 
@@ -70,8 +73,17 @@ Rollout evidence:
   - run: `23721023554`
   - url: `https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/actions/runs/23721023554`
   - result: `completed/success`
+- comparevi-history backend repin + proof:
+  - PR: `#188`
+  - url: `https://github.com/LabVIEW-Community-CI-CD/comparevi-history/pull/188`
+  - merged at: `2026-03-29T23:09:57Z`
+  - merge commit: `3b187e9aa704fcf6ea4a5c3d3e97138157509dfc`
+  - ci lint run: `23721302975`
+  - smoke run: `23721302976`
+  - release proof run: `23721302977`
+  - result: `completed/success`
 
-Local operator replay on 2026-03-29 also produced:
+Local operator replay for the template-certified consumer on 2026-03-29 also produced:
 
 - onboarding report `status=pass`
 - `requiredFailCount=0`

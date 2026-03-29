@@ -219,8 +219,10 @@ function determineLiveDefectDecision(policy, compareRepository, governingRole, o
   }
   if (
     normalizeText(governingRole?.repositoryKind) === 'consumer-fork' ||
+    normalizeText(governingRole?.repositoryKind) === 'certified-consumer' ||
     normalizeText(governingRole?.role) === 'consumer-proving-rail' ||
-    normalizeText(governingRole?.role) === 'canonical-development-mirror'
+    normalizeText(governingRole?.role) === 'canonical-development-mirror' ||
+    normalizeText(governingRole?.role) === 'certified-stable-baseline'
   ) {
     return policy.liveDefectRouting.consumerProvingDecision;
   }

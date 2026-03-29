@@ -3,8 +3,9 @@
 
 **Status**: `v0.6.6` is published, immutable, and backed by both the protected
 `verify-existing-release` replay and the certified consumer rollout on
-`LabviewGitHubCiTemplate/develop`. The items below are the remaining optional
-maintenance backlog after that cut, not blockers for the shipped baseline.
+`LabviewGitHubCiTemplate/develop` plus `comparevi-history/main`. The items
+below are the remaining optional maintenance backlog after that cut, not
+blockers for the shipped baseline.
 
 ## Completed In v0.6.5
 
@@ -41,10 +42,18 @@ maintenance backlog after that cut, not blockers for the shipped baseline.
   - protected replay run `23720737438`
 - Repinned the certified downstream consumer
   `LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate` through PR `#51`.
+- Repinned the certified downstream facade consumer
+  `LabVIEW-Community-CI-CD/comparevi-history` through PR `#188`.
 - Re-ran the upstream onboarding feedback workflow against the merged consumer
   baseline:
   - workflow run `23721023554`
   - `status=success`
+- Re-ran the `comparevi-history` native consumer proof lanes against the merged
+  `main` baseline:
+  - lint run `23721302975`
+  - smoke run `23721302976`
+  - release proof run `23721302977`
+  - all required checks `success`
 
 ## Deferred Follow-Ups
 
@@ -71,7 +80,8 @@ maintenance backlog after that cut, not blockers for the shipped baseline.
 ## Summary
 
 - **Completed in v0.6.6**: immutable publication, release-contract repair,
-  certified consumer repin, hosted downstream drift proof.
+  certified consumer repins, hosted downstream drift proof, native consumer
+  release/smoke proof.
 - **Deferred**: selective rollout of timeout controls, telemetry enrichment,
   archive/index hygiene.
 - **Last updated**: 2026-03-29.

@@ -51,6 +51,19 @@
       ]
     },
     {
+      "id": "comparevi-history",
+      "repository": "LabVIEW-Community-CI-CD/comparevi-history",
+      "kind": "certified-consumer",
+      "roles": [
+        {
+          "id": "comparevi-history-stable-baseline",
+          "role": "certified-stable-baseline",
+          "branch": "main",
+          "required": true
+        }
+      ]
+    },
+    {
       "id": "org-consumer-fork",
       "repository": "LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate-fork",
       "kind": "consumer-fork",
