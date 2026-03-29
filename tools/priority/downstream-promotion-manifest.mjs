@@ -277,6 +277,16 @@ export async function runDownstreamPromotionManifest(
     );
   }
 
+  const inputs = {
+    compareviToolsRelease: asOptional(options.compareviToolsRelease),
+    compareviHistoryRelease: asOptional(options.compareviHistoryRelease),
+    scenarioPackIdentity: asOptional(options.scenarioPackIdentity),
+    cookiecutterTemplateIdentity: asOptional(options.cookiecutterTemplateIdentity)
+  };
+  if (shadowProofReceipt) {
+    inputs.viHistoryLv32ShadowProofReceipt = shadowProofReceipt;
+  }
+
   const manifest = {
     schema: 'priority/downstream-promotion-manifest@v1',
     generatedAt: now.toISOString(),
@@ -298,13 +308,7 @@ export async function runDownstreamPromotionManifest(
         resolvedCommitSha: resolvedSourceCommitSha
       }
     },
-    inputs: {
-      compareviToolsRelease: asOptional(options.compareviToolsRelease),
-      compareviHistoryRelease: asOptional(options.compareviHistoryRelease),
-      scenarioPackIdentity: asOptional(options.scenarioPackIdentity),
-      cookiecutterTemplateIdentity: asOptional(options.cookiecutterTemplateIdentity),
-      viHistoryLv32ShadowProofReceipt: shadowProofReceipt
-    },
+    inputs,
     lineage: {
       promotionKind: options.promotionKind,
       replayOfManifest: asOptional(options.replayOfManifest),

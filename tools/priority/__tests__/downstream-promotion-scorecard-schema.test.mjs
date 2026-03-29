@@ -180,3 +180,126 @@ test('downstream promotion scorecard schema validates generated report payload',
   assert.equal(result.report.gates.manifestReport.status, 'pass');
   assert.equal(result.report.gates.viHistoryLv32ShadowProofReceipt.status, 'pass');
 });
+
+test('downstream promotion scorecard schema validates when the optional LV32 receipt is absent', async () => {
+  const schemaPath = path.join(repoRoot, 'docs', 'schemas', 'downstream-promotion-scorecard-v1.schema.json');
+  const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'downstream-promotion-scorecard-schema-no-receipt-'));
+  const successReportPath = path.join(tmpDir, 'downstream-onboarding-success.json');
+  const feedbackReportPath = path.join(tmpDir, 'downstream-onboarding-feedback.json');
+  const templateAgentVerificationReportPath = path.join(tmpDir, 'template-agent-verification-report.json');
+  const manifestReportPath = path.join(tmpDir, 'downstream-develop-promotion-manifest.json');
+  const outputPath = path.join(tmpDir, 'scorecard.json');
+
+  writeJson(successReportPath, {
+    schema: 'priority/downstream-onboarding-success@v1',
+    summary: {
+      status: 'warn',
+      repositoriesEvaluated: 1,
+      totalBlockers: 0,
+      totalWarnings: 1
+    }
+  });
+  writeJson(feedbackReportPath, {
+    schema: 'priority/downstream-onboarding-feedback@v1',
+    inputs: {
+      downstreamRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate'
+    },
+    execution: {
+      status: 'pass',
+      evaluateExitCode: 0,
+      successExitCode: 0
+    }
+  });
+  writeJson(templateAgentVerificationReportPath, {
+    schema: 'priority/template-agent-verification-report@v1',
+    summary: {
+      status: 'pass',
+      blockerCount: 0,
+      recommendation: 'continue-template-agent-loop'
+    },
+    iteration: {
+      label: 'post-merge develop',
+      headSha: '1234567890abcdef1234567890abcdef12345678'
+    },
+    lane: {
+      enabled: true,
+      reservedSlotCount: 1,
+      minimumImplementationSlots: 3,
+      implementationSlotsRemaining: 3,
+      targetRepository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+      consumerRailBranch: 'downstream/develop'
+    },
+    verification: {
+      provider: 'hosted-github-workflow',
+      status: 'pass',
+      runUrl: 'https://github.com/example/repo/actions/runs/1'
+    },
+    provenance: {
+      templateDependency: {
+        repository: 'LabVIEW-Community-CI-CD/LabviewGitHubCiTemplate',
+        version: 'v0.1.1',
+        ref: 'v0.1.1',
+        cookiecutterVersion: '2.7.1'
+      },
+      execution: {
+        executionPlane: 'linux-tools-image',
+        containerImage: 'ghcr.io/labview-community-ci-cd/comparevi-tools:latest',
+        generatedConsumerWorkspaceRoot: 'E:/comparevi-template-consumers/example',
+        laneId: 'logical-lane-template-verification',
+        agentId: 'darwin',
+        fundingWindowId: 'invoice-turn-2026-03-HQ1VJLMV-0027'
+      }
+    },
+    goals: {},
+    metrics: {
+      targetSlotCount: 8,
+      reservedSlotCount: 1,
+      implementationSlotsRemaining: 3,
+      recommendationPresent: true
+    },
+    blockers: []
+  });
+  writeJson(manifestReportPath, {
+    schema: 'priority/downstream-promotion-manifest@v1',
+    promotion: {
+      sourceRef: 'upstream/develop',
+      sourceCommitSha: '1234567890abcdef1234567890abcdef12345678',
+      targetBranch: 'downstream/develop',
+      targetBranchClassId: 'downstream-consumer-proving-rail',
+      localSourceVerification: {
+        attempted: true,
+        matched: true
+      }
+    },
+    inputs: {
+      compareviToolsRelease: '0.6.4',
+      compareviHistoryRelease: 'v1.3.24',
+      scenarioPackIdentity: 'scenario-pack@v1',
+      cookiecutterTemplateIdentity: 'LabviewGitHubCiTemplate@v0.1.1'
+    }
+  });
+
+  const result = runDownstreamPromotionScorecard({
+    repo: 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
+    successReportPath,
+    feedbackReportPath,
+    templateAgentVerificationReportPath,
+    manifestReportPath,
+    outputPath
+  });
+
+  const report = JSON.parse(await readFile(outputPath, 'utf8'));
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const validate = ajv.compile(schema);
+  const valid = validate(report);
+  assert.equal(valid, true, JSON.stringify(validate.errors, null, 2));
+
+  assert.equal(result.report.summary.status, 'pass');
+  assert.equal(result.report.gates.viHistoryLv32ShadowProofReceipt.status, 'missing');
+  assert.equal(result.report.gates.viHistoryLv32ShadowProofReceipt.expectedSha256, null);
+  assert.equal(result.report.gates.viHistoryLv32ShadowProofReceipt.actualSha256, null);
+  assert.equal(result.report.gates.viHistoryLv32ShadowProofReceipt.sha256Matched, null);
+});
